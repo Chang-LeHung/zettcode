@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Ruff
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          enable-cache: true
+
+      - name: Sync dependencies
+        run: uv sync --locked --group dev
+
+      - name: Check formatting
+        run: uv run --no-sync ruff format --check src tests
+
+      - name: Lint
+        run: uv run --no-sync ruff check src tests
+
+  test:
+    name: Tests (Python 3.14)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          python-version: "3.14"
+          enable-cache: true
+
+      - name: Sync dependencies
+        run: uv sync --locked --group dev
+
+      - name: Run tests
+        run: uv run --no-sync pytest
+
+  package:
+    name: Build and smoke-test the wheel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          python-version: "3.14"
+          enable-cache: true
+
+      - name: Build
+        run: uv build
+
+      - name: Verify the wheel ships the TUI package
+        run: |
+          python3 - <<'PY'
+          import glob
+          import zipfile
+
+          wheel = glob.glob("dist/*.whl")[0]
+          names = zipfile.ZipFile(wheel).namelist()
+          assert any(name.startswith("zettcode/") for name in names), names
+          entry_points = [name for name in names if name.endswith("entry_points.txt")]
+          assert entry_points, names
+          print(f"{wheel}: {len(names)} files")
+          PY
+
+      - name: Run the console script from the built wheel
+        run: uv run --no-project --python 3.14 --with ./dist/*.whl zettcode --help

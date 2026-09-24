@@ -5,26 +5,46 @@ raw terminal input, component layout, mouse interaction, and cell-level
 differential rendering directly; it does not use prompt-toolkit or another TUI
 framework.
 
+The agent runtime is published separately as
+[`zett-agent`](https://github.com/Chang-LeHung/zett-agent); this repository owns
+only the terminal client.
+
+## Install
+
+ZettCode needs Python 3.14 or newer and is published on PyPI as `zettcode`:
+
+```bash
+uv tool install zettcode
+# or
+pip install zettcode
+```
+
 ## Run
 
 DeepSeek:
 
 ```bash
 export DEEPSEEK_API_KEY=...
-uv run --directory zettcode zettcode --provider deepseek --model deepseek-chat
+zettcode --provider deepseek --model deepseek-chat
 ```
 
 OpenAI or an OpenAI-compatible endpoint:
 
 ```bash
 export OPENAI_API_KEY=...
-uv run --directory zettcode zettcode --provider openai --model gpt-5-mini
-uv run --directory zettcode zettcode \
-  --provider openai --model my-model --base-url https://example.com/v1
+zettcode --provider openai --model gpt-5-mini
+zettcode --provider openai --model my-model --base-url https://example.com/v1
 ```
 
 Pass a workspace path as the final argument. It defaults to the current directory.
 Session data is stored in `~/.zettcode/sessions.sqlite3` by default.
+
+From a source checkout, run the same commands through `uv`:
+
+```bash
+uv sync
+uv run zettcode --provider deepseek --model deepseek-chat
+```
 
 ## Keys
 
