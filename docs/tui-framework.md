@@ -241,12 +241,16 @@ layout when asked. A widget that needs the clock implements `on_tick`, which
 `App.tick` calls for every mounted widget before painting and which the runner
 and the harness both invoke.
 
-Every widget above also has a gallery sample: `make demos` lists the names,
-`make demo-list` prints one component's frame, and `make demo` prints them all.
+Every widget above also has a gallery sample. `make demo` opens a browser: an
+index on the left lists the components and a pane on the right renders the
+highlighted one, Enter hands the keyboard to a focusable preview, Escape gives
+it back, and `q` quits. `make demo-<name>` prints one component's frame instead
+and `make demo-all` prints every one, so a quick look needs no terminal.
+
 The samples live in `tui_framework/gallery.py`, where an entry is a name, a
-size, and a factory, and `render_entry` paints one frame headlessly. That keeps
-a visual check and a smoke test the same code path, and the frames print with
-their palette in a terminal and as plain text through a pipe.
+size, and a factory. The browser mounts that factory as a screen layer, and
+`render_entry` paints the same entry headlessly, so the interactive look and
+the golden tests share one definition.
 
 `TextArea` and `CompletionPopup` are deliberately split: the popup never takes
 focus, so Tab and Enter keep belonging to the text being typed while the popup
