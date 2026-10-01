@@ -113,6 +113,13 @@ makes the tree drivable without a TTY.
 `ColorDepth` and encodes one `Style` as SGR for truecolor, 256-color, 16-color,
 or monochrome output.
 
+`render/renderer.py` writes only the ranges that changed, and it does so with a
+closed vocabulary: Erase in Display (`ED`), Cursor Position (`CUP`), Select
+Graphic Rendition (`SGR`), and the cursor show/hide pair (`DECTCEM`). Every
+sequence in the codebase is commented where it is written, and the terminal
+layer's mode switches (`terminal.py`) and the input decoder's key tables are
+documented the same way, because a bare `ESC[?...h` is unreadable on its own.
+
 `capabilities.py` derives a `TerminalCapabilities` record from the environment.
 Detection only consults variables such as `TERM`, `COLORTERM`, `NO_COLOR`, and
 the locale, and every default errs toward the weaker terminal. The mouse and

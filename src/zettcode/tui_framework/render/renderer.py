@@ -11,7 +11,13 @@ from .style import Cell, Style
 
 
 class DifferentialRenderer:
-    """Write only changed cell ranges since the previous frame."""
+    """Write only changed cell ranges since the previous frame.
+
+    The vocabulary is deliberately small: Erase in Display (``ED``), Cursor
+    Position (``CUP``), Select Graphic Rendition (``SGR``), and the cursor
+    show/hide pair. Anything else would change a mode this renderer has no way
+    to restore.
+    """
 
     def __init__(self, output: TextIO, *, color_depth: ColorDepth = ColorDepth.TRUECOLOR) -> None:
         """Write frames to ``output`` at the given colour depth.
@@ -40,26 +46,35 @@ class DifferentialRenderer:
         full = self.previous is None or (self.previous.width, self.previous.height) != (canvas.width, canvas.height)
         stream = StringIO()
         if full:
+            # ED 2 erases the whole display. A resize renumbers every cell, so
+            # diffing against the old frame would leave stale glyphs behind.
             stream.write("\x1b[2J")
         for y, row in enumerate(canvas.cells):
             previous_row = None if full or self.previous is None else self.previous.cells[y]
             if previous_row == row:
-                continue
+                continue  # An untouched row costs no bytes at all.
             start, end = _changed_bounds(row, previous_row)
+            # CUP carries a 1-based row and column; the canvas is 0-based.
             stream.write(f"\x1b[{y + 1};{start + 1}H")
             active_style: Style | None = None
             for cell in row[start : end + 1]:
                 if cell.continuation:
-                    continue
+                    continue  # The wide glyph's leading cell painted this column.
                 if cell.style != active_style:
+                    # SGR is stateful, so it is emitted only where a run's style
+                    # actually changes rather than once per cell.
                     stream.write(encode_style(cell.style, self.color_depth))
                     active_style = cell.style
                 stream.write(cell.character or " ")
+            # SGR 0 resets colour and attributes before the next CUP, so a run
+            # cannot bleed past the row it belongs to.
             stream.write("\x1b[0m")
         if cursor is None:
+            # DECTCEM hide: no widget asked for the cursor this frame.
             stream.write("\x1b[?25l")
         else:
             x, y = cursor
+            # Move first, then show: CUP on its own leaves the cursor hidden.
             stream.write(f"\x1b[{y + 1};{x + 1}H\x1b[?25h")
         self.output.write(stream.getvalue())
         self.output.flush()

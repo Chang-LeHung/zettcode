@@ -330,6 +330,7 @@ def row_text(canvas: Canvas, index: int, *, color: bool = True, depth: ColorDept
         pending += cell.character or " "
     if pending:
         parts.append(encode_style(style, depth) + pending)
+    # SGR 0 closes each row so a colour cannot leak into the next line.
     return "".join(parts) + "\x1b[0m"
 
 

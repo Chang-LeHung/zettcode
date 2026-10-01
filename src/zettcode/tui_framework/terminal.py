@@ -89,19 +89,33 @@ class Terminal:
         (1003): drags are reported while idle pointer motion is not, so the
         input queue stays quiet and selection still works.
         """
-        parts = ["\x1b[?1049h", "\x1b[?7l", "\x1b[?25l"]
+        parts = [
+            "\x1b[?1049h",  # DECSET 1049: switch to the alternate screen buffer
+            "\x1b[?7l",  # DECRST 7: no auto-wrap, so the last column cannot scroll
+            "\x1b[?25l",  # DECTCEM: hide the cursor until a widget positions it
+        ]
         if self.capabilities.bracketed_paste:
+            # DECSET 2004: wrap pastes in ESC[200~ .. ESC[201~ so a multiline
+            # paste arrives as one event instead of a burst of Enter keys.
             parts.append("\x1b[?2004h")
         if self.capabilities.mouse:
-            parts += ["\x1b[?1000h", "\x1b[?1002h", "\x1b[?1006h"]
+            parts += [
+                "\x1b[?1000h",  # DECSET 1000: report button presses and releases
+                "\x1b[?1002h",  # DECSET 1002: also report drags, not idle motion
+                "\x1b[?1006h",  # DECSET 1006: SGR coordinates, so wide terminals work
+            ]
         return "".join(parts)
 
     def _exit_sequences(self) -> str:
         """Return the modes to restore, mirroring whatever was enabled."""
-        parts = ["\x1b[0m", "\x1b[?25h", "\x1b[?7h"]
+        parts = [
+            "\x1b[0m",  # SGR 0: drop every attribute before the shell gets the tty
+            "\x1b[?25h",  # DECTCEM: show the cursor again
+            "\x1b[?7h",  # DECSET 7: restore auto-wrap
+        ]
         if self.capabilities.mouse:
-            parts += ["\x1b[?1000l", "\x1b[?1002l", "\x1b[?1006l"]
+            parts += ["\x1b[?1000l", "\x1b[?1002l", "\x1b[?1006l"]  # stop mouse reports
         if self.capabilities.bracketed_paste:
-            parts.append("\x1b[?2004l")
-        parts.append("\x1b[?1049l")
+            parts.append("\x1b[?2004l")  # stop wrapping pastes
+        parts.append("\x1b[?1049l")  # switch back to the primary screen buffer
         return "".join(parts)

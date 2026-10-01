@@ -8,6 +8,8 @@ from ..core.events import MouseAction
 from .events import EventType, InputEvent
 from .keys import CONTROL_KEYS, KEY_SEQUENCES
 
+# SGR mouse report: CSI < Cb ; Cx ; Cy M (press or motion) or m (release).
+# Coordinates arrive 1-based, so the decoder subtracts one from each.
 _MOUSE = re.compile(rb"^\x1b\[<(\d+);(\d+);(\d+)([Mm])")
 
 
@@ -45,6 +47,8 @@ class InputDecoder:
             return None
         data = bytes(self.buffer)
         self.buffer.clear()
+        # "ESC <printable>" is how a terminal spells Alt-<key>; anything else
+        # left over is the Escape key on its own.
         if len(data) >= 2 and 0x20 <= data[1] < 0x7F:
             return InputEvent(EventType.KEY, key=chr(data[1]), alt=True)
         return InputEvent(EventType.KEY, key="escape")
@@ -52,6 +56,9 @@ class InputDecoder:
     def _next(self) -> tuple[InputEvent | None, int, bool]:
         """Decode one event, reporting bytes consumed and whether more are needed."""
         data = bytes(self.buffer)
+        # Bracketed paste: 200~ opens the payload, 201~ closes it. Until the
+        # closing guard arrives the payload is held back, so a paste containing
+        # newlines or escape bytes is delivered whole rather than replayed.
         if data.startswith(b"\x1b[200~"):
             end = data.find(b"\x1b[201~", 6)
             if end < 0:
@@ -68,11 +75,11 @@ class InputDecoder:
                     EventType.MOUSE,
                     x=max(0, x - 1),
                     y=max(0, y - 1),
-                    button=code & 3,
+                    button=code & 3,  # low two bits: which button
                     action=action,
-                    shift=bool(code & 4),
-                    alt=bool(code & 8),
-                    control=bool(code & 16),
+                    shift=bool(code & 4),  # bit 2
+                    alt=bool(code & 8),  # bit 3, reported as "meta" by some terminals
+                    control=bool(code & 16),  # bit 4
                 ),
                 mouse.end(),
                 False,
@@ -131,8 +138,8 @@ def _utf8_length(first: int) -> int:
 
 def _mouse_action(code: int, suffix: bytes) -> MouseAction:
     """Map an SGR mouse code and its suffix onto one action."""
-    if code & 64:
+    if code & 64:  # bit 6: wheel; bit 0 then picks up versus down
         return MouseAction.SCROLL_DOWN if code & 1 else MouseAction.SCROLL_UP
-    if code & 32:
+    if code & 32:  # bit 5: motion with a button held
         return MouseAction.MOVE
-    return MouseAction.UP if suffix == b"m" else MouseAction.DOWN
+    return MouseAction.UP if suffix == b"m" else MouseAction.DOWN  # M presses, m releases

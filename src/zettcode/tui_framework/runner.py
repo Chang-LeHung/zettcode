@@ -177,6 +177,9 @@ def clipboard_writer(terminal: Terminal) -> Callable[[str], None]:
             pyperclip.copy(text)
         except pyperclip.PyperclipException:
             encoded = base64.b64encode(text.encode()).decode()
+            # OSC 52: "ESC ] 52 ; c ; <base64> BEL" asks the terminal itself to
+            # put the text on the clipboard. It is the fallback for a headless
+            # session where no clipboard library can reach the display server.
             terminal.write(f"\x1b]52;c;{encoded}\x07")
 
     return write
