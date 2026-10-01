@@ -63,6 +63,9 @@ class AsyncInput:
             self._escape_handle = None
         for event in self.decoder.feed(data):
             self.publish(event)
+        # A trailing ESC may still be growing into a control sequence, so give
+        # it a moment (30 ms, the usual terminal timeout) before reporting the
+        # Escape key itself.
         if self.decoder.buffer.startswith(b"\x1b") and self.loop is not None:
             self._escape_handle = self.loop.call_later(0.03, self._flush_escape)
 

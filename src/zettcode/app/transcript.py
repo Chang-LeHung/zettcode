@@ -29,6 +29,9 @@ MAX_TOOL_OUTPUT = 64_000
 TOOL_PREVIEW_ROWS = 5
 TOOL_EXPANDED_ROWS = 40
 
+# Matches both escape families a tool can smuggle into its output: CSI
+# (``ESC [`` parameters and a final byte) and OSC (``ESC ]`` up to BEL or ST).
+# Stripping them keeps a coloured compiler message from repainting the canvas.
 _ANSI = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\))")
 
 

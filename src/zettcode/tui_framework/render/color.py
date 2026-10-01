@@ -88,15 +88,17 @@ def encode_style(style: Style, depth: ColorDepth = ColorDepth.TRUECOLOR) -> str:
         depth: How precisely the terminal can paint a colour. ``MONO`` drops
             colours entirely but still emits bold, dim, italic, and reverse.
     """
+    # SGR 0 first, so the run starts from a known state and an attribute that
+    # was set earlier can never survive into this one.
     codes = ["0"]
     if style.bold:
-        codes.append("1")
+        codes.append("1")  # SGR 1: bold
     if style.dim:
-        codes.append("2")
+        codes.append("2")  # SGR 2: faint
     if style.italic:
-        codes.append("3")
+        codes.append("3")  # SGR 3: italic
     if style.reverse:
-        codes.append("7")
+        codes.append("7")  # SGR 7: reverse video, used for text selection
     if depth is not ColorDepth.MONO:
         if style.foreground:
             color = _color(style.foreground, depth, foreground=True)
@@ -106,7 +108,7 @@ def encode_style(style: Style, depth: ColorDepth = ColorDepth.TRUECOLOR) -> str:
             color = _color(style.background, depth, foreground=False)
             if color:
                 codes.append(color)
-    return f"\x1b[{';'.join(codes)}m"
+    return f"\x1b[{';'.join(codes)}m"  # CSI ... m: Select Graphic Rendition
 
 
 def _color(value: str, depth: ColorDepth, *, foreground: bool) -> str:
@@ -114,14 +116,20 @@ def _color(value: str, depth: ColorDepth, *, foreground: bool) -> str:
     rgb = parse_hex(value)
     if rgb is None:
         return ""
+    # SGR 38 selects a foreground colour, 48 the background; the parameter that
+    # follows picks how the colour is spelled.
     base = 38 if foreground else 48
     if depth is ColorDepth.TRUECOLOR:
+        # ``;2;r;g;b`` is 24-bit colour, one byte per channel.
         return f"{base};2;{rgb[0]};{rgb[1]};{rgb[2]}"
     if depth is ColorDepth.ANSI256:
+        # ``;5;n`` indexes the 256-colour cube.
         return f"{base};5;{rgb_to_ansi256(*rgb)}"
     index = rgb_to_ansi16(*rgb)
     if index < 8:
+        # SGR 30-37 for foreground and 40-47 for background name the base eight.
         return str((30 if foreground else 40) + index)
+    # SGR 90-97 and 100-107 are the bright half of the same palette.
     return str((90 if foreground else 100) + index - 8)
 
 
