@@ -98,7 +98,9 @@ class TextArea(Widget):
         self._history_index = None
         self._history_draft = ""
         self._completion_state = None
-        self.invalidate()
+        # Clearing is a draft change like any other, so an owner that mirrors
+        # the draft (a completion menu) hears about it.
+        self._changed()
 
     def completion_candidates(self) -> tuple[CompletionItem, ...]:
         """Return the candidates for the token under the cursor."""

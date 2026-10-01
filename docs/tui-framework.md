@@ -225,7 +225,7 @@ passing `selectable=True`.
 | `TextArea` | Multi-line editor: Readline editing, undo, kill/yank, history, completion |
 | `Dialog` | Bordered body plus selectable actions, meant for a modal screen |
 | `Table` | Columns with alignment and truncation that fit the rectangle |
-| `CompletionPopup` | Framed candidate list the editor drives without taking focus |
+| `CompletionPopup` | Borderless candidate list the editor drives without taking focus |
 | `StatusBar` | Left and right segments on one row |
 | `Spinner` / `ProgressBar` | Indeterminate and determinate activity |
 | `Toast` | Timed notice that dismisses its own screen when it expires |

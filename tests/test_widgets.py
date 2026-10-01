@@ -1,6 +1,7 @@
 """Tests for the M4 widget library."""
 
 from zettcode.tui_framework import (
+    DARK,
     App,
     Canvas,
     Collapsible,
@@ -159,24 +160,28 @@ def test_collapsible_toggles_body_and_reveals_it_to_the_tree():
     assert Rect(0, 1, 20, 2) == body.rect
 
 
-def test_completion_popup_scrolls_and_reports_preferred_size():
+def test_completion_popup_bands_the_selection_and_scrolls():
     items = [CompletionItem(f"/cmd{index}", description=f"about {index}") for index in range(4)]
     popup = CompletionPopup(items, max_height=3)
-    popup.layout(Rect(0, 0, 24, 5))
-    canvas = Canvas(24, 5)
+    popup.layout(Rect(0, 0, 24, 3))
+    canvas = Canvas(24, 3)
 
     popup.render(canvas)
 
-    assert row_text(canvas, 0).startswith("\u250c")
-    assert "/cmd0" in row_text(canvas, 1)
-    assert row_text(canvas, 4).startswith("\u2514")
-    assert popup.preferred_size().height == 5
+    # No frame: the menu is a list, and the selection is a band across the row
+    # rather than a border drawn around the text.
+    # The band pads the row to the full width, so compare the visible text.
+    assert row_text(canvas, 0).rstrip() == " /cmd0  about 0"
+    assert popup.preferred_size().height == 3
+    assert {cell.style.background for cell in canvas.cells[0]} == {DARK.selection}
+    assert canvas.cells[1][1].style.background is None
 
     popup.move(3)
 
     assert popup.current.value == "/cmd3"
     popup.render(canvas)
-    assert "/cmd3" in "".join(row_text(canvas, row) for row in range(5))
+    assert "/cmd3" in row_text(canvas, 2)
+    assert popup.top == 1
 
 
 def test_spinner_advances_with_the_clock_and_holds_a_frame_budget():
