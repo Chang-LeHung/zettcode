@@ -13,12 +13,14 @@ from zettcode.tui_framework import (
     MouseEvent,
     Overlay,
     OverlaySlot,
+    PasteEvent,
     Rect,
     ResizeEvent,
     Scheduler,
     Screen,
     Size,
     Style,
+    TextEvent,
     Theme,
     Widget,
     key_id,
@@ -220,6 +222,17 @@ def test_keymap_normalizes_spellings_and_modifiers():
     assert keymap.resolve(KeyEvent(key="ctrl_c"), priority="capture") == "quit"
     assert keymap.resolve(KeyEvent(key="ctrl_c"), priority="bubble") is None
     assert keymap.bindings_for("ctrl+c")[0].command == "quit"
+
+
+def test_keymap_matches_a_typed_character_as_well_as_a_named_key():
+    """A terminal reports a printable key as text, so bindings must see both."""
+    keymap = Keymap()
+    keymap.bind("q", "quit", priority="capture")
+
+    assert keymap.resolve(TextEvent(text="q"), priority="capture") == "quit"
+    assert keymap.resolve(KeyEvent(key="q"), priority="capture") == "quit"
+    assert keymap.resolve(TextEvent(text="quit"), priority="capture") is None
+    assert keymap.resolve(PasteEvent(text="q"), priority="capture") is None
 
 
 def test_keymap_context_predicates_split_priorities_and_unbind():
