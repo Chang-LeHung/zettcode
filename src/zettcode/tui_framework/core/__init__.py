@@ -16,7 +16,7 @@ from .events import (
 from .focus import FocusManager, walk
 from .geometry import Constraints, EdgeInsets, Point, Rect, Size
 from .host import Host
-from .keymap import Binding, Command, CommandRegistry, Keymap, key_id, normalize_key
+from .keymap import Binding, Command, CommandRegistry, Keymap, event_key, key_id, normalize_key
 from .scheduler import Scheduler
 from .screen import Screen, ScreenStack
 from .theme import DARK, LIGHT, Theme, theme_named
@@ -52,6 +52,7 @@ __all__ = [
     "Theme",
     "TextEvent",
     "Widget",
+    "event_key",
     "key_id",
     "normalize_key",
     "theme_named",

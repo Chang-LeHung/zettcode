@@ -6,7 +6,7 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from .events import AnyEvent, KeyEvent
+from .events import AnyEvent, KeyEvent, TextEvent
 from .host import Host
 
 CommandRun = Callable[[AnyEvent, Host], bool]
@@ -22,7 +22,12 @@ def normalize_key(value: str) -> str:
 
 
 def key_id(event: KeyEvent) -> str:
-    """Return the binding name for a key event, including its modifiers."""
+    """Return the binding name for a key event, including its modifiers.
+
+    Args:
+        event: Named key press; a modifier already folded into ``key`` is not
+            repeated in the returned name.
+    """
     name = normalize_key(event.key)
     prefixes = [
         modifier
@@ -35,6 +40,22 @@ def key_id(event: KeyEvent) -> str:
         if active and not name.startswith(f"{modifier}_")
     ]
     return "_".join([*prefixes, name]) if prefixes else name
+
+
+def event_key(event: AnyEvent) -> str | None:
+    """Return the binding name an event resolves to, if it can be bound.
+
+    Args:
+        event: Any input event. A terminal delivers a printable character as
+            text rather than as a named key, so a binding such as ``"q"`` has to
+            be matched from that path as well; only single-character text
+            qualifies, which keeps a paste from tripping a binding.
+    """
+    if isinstance(event, KeyEvent):
+        return key_id(event)
+    if isinstance(event, TextEvent) and len(event.text) == 1:
+        return normalize_key(event.text)
+    return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -187,9 +208,10 @@ class Keymap:
 
     def resolve(self, event: AnyEvent, *, priority: BindingPriority = "bubble") -> str | None:
         """Return the first matching command name, if any binding applies."""
-        if not isinstance(event, KeyEvent):
+        name = event_key(event)
+        if name is None:
             return None
-        for binding in self._bindings.get(key_id(event), ()):
+        for binding in self._bindings.get(name, ()):
             if binding.priority == priority and binding.matches():
                 return binding.command
         return None
