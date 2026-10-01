@@ -107,7 +107,9 @@ uv run zettcode --provider deepseek --model deepseek-chat
 - Double-click a transcript row to select the whole line
 - `Shift`-click to extend the existing selection
 - `Ctrl-C` copies the current selection and clears it
-- `Tab` / `Shift-Tab`: complete slash commands
+- Type `/` to open the command menu: `Up` / `Down` choose a command,
+  `Enter` or `Tab` fills it in, and `Esc` closes the menu
+- `Tab` / `Shift-Tab`: complete slash commands without the menu
 
 Pointer-leave collapse of thinking and user-editable keybindings are not ported
 yet; see `docs/tui-framework.md`.

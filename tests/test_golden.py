@@ -10,6 +10,8 @@ from zettcode.app import Transcript, TranscriptView
 from zettcode.tui_framework import (
     DARK,
     Column,
+    CompletionItem,
+    CompletionPopup,
     Dialog,
     DialogAction,
     ListItem,
@@ -171,4 +173,27 @@ def test_golden_transcript_blocks():
         "13:0-6 fg#e6e9e7\n"
         "13:6-11 fg#d8c07a\n"
         "13:11-12 fg#e6e9e7"
+    )
+
+
+def test_golden_completion_popup():
+    """The slash menu: a command column, a muted description, a full-width band."""
+    popup = CompletionPopup(
+        [
+            CompletionItem("/new", description="start a fresh session"),
+            CompletionItem("/use", description="switch to a session: /use <id>"),
+        ]
+    )
+
+    assert render_block(popup, width=44, height=4, theme=DARK) == (
+        " /new  start a fresh session\n"
+        " /use  switch to a session: /use <id>\n"
+        "\n"
+        "\n"
+        "-- styles --\n"
+        "0:0-7 b,fg#e6e9e7,bg#2f4a38\n"
+        "0:7-28 fg#747d77,bg#2f4a38\n"
+        "0:28-44 b,fg#e6e9e7,bg#2f4a38\n"
+        "1:0-5 fg#e6e9e7\n"
+        "1:7-37 fg#747d77"
     )

@@ -376,6 +376,91 @@ async def test_app_mirrors_the_agent_plan_into_the_panel():
     assert "run the tests" in text
 
 
+async def test_the_slash_menu_lists_and_filters_commands():
+    app = build_app()
+    harness = _harness(app)
+
+    harness.write("/")
+
+    assert [item.value for item in app.completions.items][:3] == ["/help", "/new", "/sessions"]
+    assert "show the commands and the keys" in harness.text()
+
+    harness.write("cl")
+
+    assert [item.value for item in app.completions.items] == ["/clear"]
+    assert "clear the transcript" in harness.text()
+
+    harness.write(" ")
+
+    # Once the draft leaves the bare command token the menu gets out of the way.
+    assert app.completions.visible is False
+
+
+async def test_the_slash_menu_answers_to_arrows_and_escape():
+    app = build_app()
+    harness = _harness(app)
+
+    harness.write("/")
+    harness.press("down")
+    assert app.completions.current.value == "/new"
+
+    harness.press("up")
+    assert app.completions.current.value == "/help"
+
+    harness.press("escape")
+
+    assert app.completions.visible is False
+    assert app.composer.text == "/"
+
+
+async def test_enter_completes_the_highlighted_command_once_then_runs_it():
+    app = build_app()
+    harness = _harness(app)
+
+    harness.write("/se")
+    assert [item.value for item in app.completions.items] == ["/sessions"]
+
+    harness.press("enter")
+
+    assert app.composer.text == "/sessions "
+    assert app.completions.visible is False
+
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    assert app.composer.text == ""
+    assert any(entry.kind == "notice" for entry in app.transcript.entries)
+
+
+async def test_enter_runs_a_fully_typed_command_instead_of_completing_it():
+    app = build_app()
+    harness = _harness(app)
+
+    harness.write("/help")
+    assert app.completions.visible is True
+
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    assert any(entry.kind == "notice" and "/sessions" in entry.text for entry in app.transcript.entries)
+    assert app.composer.text == ""
+    assert app.completions.visible is False
+
+
+async def test_history_still_works_while_the_menu_is_closed():
+    app = build_app()
+    harness = _harness(app)
+
+    harness.write("/help")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    harness.press("up")
+
+    assert app.composer.text == "/help"
+    assert app.completions.visible is True
+
+
 def _harness(app: ZettCodeApp) -> Harness:
     return Harness(app=app.app)
 

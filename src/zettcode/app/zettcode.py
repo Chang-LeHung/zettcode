@@ -18,6 +18,8 @@ from ..tui_framework import (
     DARK,
     Anchor,
     App,
+    CompletionItem,
+    CompletionPopup,
     Dialog,
     DialogAction,
     Host,
@@ -40,7 +42,46 @@ from ..tui_framework.widgets import Rule, Text
 from .projection import TranscriptProjector
 from .transcript import Transcript, TranscriptView, activity_glyph
 
-SLASH_COMMANDS = ("/help", "/new", "/sessions", "/theme", "/use", "/clear", "/quit", "/exit")
+COMMANDS: tuple[tuple[str, str], ...] = (
+    ("/help", "show the commands and the keys"),
+    ("/new", "start a fresh session"),
+    ("/sessions", "list persisted sessions"),
+    ("/use", "switch to a session: /use <id>"),
+    ("/theme", "switch the palette: /theme dark|light"),
+    ("/clear", "clear the transcript"),
+    ("/quit", "exit"),
+    ("/exit", "exit, same as /quit"),
+)
+
+KEY_HELP = (
+    "  Enter send \u00b7 Alt-Enter newline \u00b7 Ctrl-C stop or clear\n"
+    "  Ctrl-T thinking \u00b7 PgUp/PgDn scroll \u00b7 Ctrl-L redraw \u00b7 Ctrl-D exit"
+)
+
+
+def command_completions(text: str, position: int) -> tuple[CompletionItem, ...]:
+    """Return the slash commands matching the line the cursor sits on.
+
+    Args:
+        text: Full draft, newlines included.
+        position: Cursor as a code-point index into ``text``. The menu closes as
+            soon as the line contains a space, so ``/use abc`` stops suggesting.
+    """
+    start = text.rfind("\n", 0, position) + 1
+    token = text[start:position]
+    if not token.startswith("/") or any(character.isspace() for character in token):
+        return ()
+    return tuple(
+        CompletionItem(name, description=description) for name, description in COMMANDS if name.startswith(token)
+    )
+
+
+def help_text() -> str:
+    """Return the ``/help`` body, generated from the command table."""
+    width = max(len(name) for name, _ in COMMANDS) + 2
+    rows = [f"  {name:<{width}}{description}" for name, description in COMMANDS]
+    return "\n".join(["Commands", *rows, "", "Keys", KEY_HELP])
+
 
 WELCOME = (
     "  \u256d\u2500\u2500\u2500\u256e\n"
@@ -48,20 +89,6 @@ WELCOME = (
     "  \u2570\u2500\u25c6\u2500\u256f  A focused coding agent\n"
     "\n"
     "  Type a task below, or /help for commands."
-)
-
-HELP = (
-    "Commands\n"
-    "  /new              start a fresh session\n"
-    "  /sessions         list persisted sessions\n"
-    "  /use ID           switch to a session\n"
-    "  /theme dark|light switch the palette\n"
-    "  /clear            clear the transcript\n"
-    "  /quit             exit\n"
-    "\n"
-    "Keys\n"
-    "  Enter send \u00b7 Alt-Enter newline \u00b7 Ctrl-C stop or clear\n"
-    "  Ctrl-T thinking \u00b7 PgUp/PgDn scroll \u00b7 Ctrl-L redraw \u00b7 Ctrl-D exit"
 )
 
 
@@ -84,10 +111,12 @@ class ZettCodeApp:
         self.view = TranscriptView(self.transcript, theme=theme)
         self.composer = TextArea(
             prompt="\u203a ",
-            completions=SLASH_COMMANDS,
+            completer=command_completions,
             max_height=6,
             on_submit=self.submit,
+            on_change=self._refresh_completions,
         )
+        self.completions = CompletionPopup(max_height=len(COMMANDS))
         self.header = StatusBar(self._header_left, self._header_right)
         self.status = StatusBar(self._status_left, self._status_right)
         self.panel = TaskPanel()
@@ -99,6 +128,7 @@ class ZettCodeApp:
                 Slot(self.view, flex=1),
                 Slot(self.panel, size=lambda width: self.panel.preferred_height()),
                 Slot(Rule(), size=1),
+                Slot(self.completions, size=lambda available: self.completions.visible_height),
                 Slot(self.composer, size=lambda width: self.composer.preferred_height(width)),
                 Slot(self.status, size=1),
             ]
@@ -135,6 +165,10 @@ class ZettCodeApp:
         self.app.commands.add("scroll_up", lambda event, host: (self.view.scroll_by(-3), True)[1])
         self.app.commands.add("scroll_down", lambda event, host: (self.view.scroll_by(3), True)[1])
         self.app.commands.add("quit", lambda event, host: (host.exit(), True)[1])
+        self.app.commands.add("complete_next", self._complete_next)
+        self.app.commands.add("complete_previous", self._complete_previous)
+        self.app.commands.add("complete_accept", self._complete_accept)
+        self.app.commands.add("complete_dismiss", self._complete_dismiss)
         self.app.keymap.bind("ctrl_c", "interrupt", priority="capture")
         self.app.keymap.bind("ctrl_l", "redraw", priority="capture")
         self.app.keymap.bind("ctrl_t", "toggle_thinking", priority="capture")
@@ -148,6 +182,65 @@ class ZettCodeApp:
         )
         self.app.keymap.bind("page_up", "scroll_up")
         self.app.keymap.bind("page_down", "scroll_down")
+        # Capture priority is what lets the menu win the keys it needs: the
+        # composer would otherwise read Up and Down as history navigation and
+        # would treat Tab as its own inline completion.
+        self.app.keymap.bind("down", "complete_next", priority="capture", when=self._menu_open)
+        self.app.keymap.bind("up", "complete_previous", priority="capture", when=self._menu_open)
+        self.app.keymap.bind("tab", "complete_accept", priority="capture", when=self._menu_open)
+        self.app.keymap.bind("escape", "complete_dismiss", priority="capture", when=self._menu_open)
+        self.app.keymap.bind("enter", "complete_accept", priority="capture", when=self._accept_on_enter)
+
+    def _menu_open(self) -> bool:
+        """Return whether the slash-command menu is showing."""
+        return self.completions.visible
+
+    def _accept_on_enter(self) -> bool:
+        """Return whether Enter should complete the draft instead of running it.
+
+        Completing is only useful while the highlighted command differs from
+        what was typed; once the draft already spells it, Enter runs it instead
+        of filling in the same text twice.
+        """
+        item = self.completions.current
+        return item is not None and item.value != self.composer.text.strip()
+
+    def _refresh_completions(self) -> None:
+        """Mirror the composer's slash-command candidates into the menu."""
+        candidates = self.composer.completion_candidates()
+        if candidates == self.completions.items:
+            return
+        self.completions.set_items(candidates, selected=0)
+        self.app.request_layout()
+
+    def _complete_next(self, event: KeyEvent, host: Host) -> bool:
+        """Highlight the next command."""
+        self.completions.move(1)
+        host.invalidate()
+        return True
+
+    def _complete_previous(self, event: KeyEvent, host: Host) -> bool:
+        """Highlight the previous command."""
+        self.completions.move(-1)
+        host.invalidate()
+        return True
+
+    def _complete_accept(self, event: KeyEvent, host: Host) -> bool:
+        """Drop the highlighted command into the composer and close the menu."""
+        item = self.completions.current
+        if item is None:
+            return False
+        # The trailing space is what closes the menu: the draft is no longer a
+        # bare command token, so the next Enter runs the command.
+        self.composer.set_text(f"{item.value} ")
+        host.request_layout()
+        return True
+
+    def _complete_dismiss(self, event: KeyEvent, host: Host) -> bool:
+        """Hide the menu until the draft changes again."""
+        self.completions.set_items(())
+        host.request_layout()
+        return True
 
     def _interrupt(self, event: KeyEvent, host: Host) -> bool:
         """Copy a selection, otherwise stop the running turn or clear the draft."""
@@ -253,7 +346,7 @@ class ZettCodeApp:
             case "/theme":
                 self._set_theme(argument)
             case "/help":
-                self.transcript.notice(HELP)
+                self.transcript.notice(help_text())
             case "/quit" | "/exit":
                 self.app.exit()
             case _:
