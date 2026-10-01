@@ -1,3 +1,5 @@
+"""Tests for the terminal, input, and render layers that stayed in the framework."""
+
 import builtins
 import importlib
 import sys
@@ -9,17 +11,13 @@ from zettcode.tui_framework import (
     Canvas,
     DifferentialRenderer,
     EventType,
+    InputDecoder,
     InputEvent,
     MouseAction,
-    Rect,
-    ScrollableText,
     Span,
     Style,
-    TextInput,
     TextLine,
 )
-from zettcode.tui_framework.components import _layout_input
-from zettcode.tui_framework.input import InputDecoder
 
 
 def test_tui_framework_imports_where_termios_is_unavailable(monkeypatch) -> None:
@@ -58,28 +56,22 @@ def test_terminal_refuses_platforms_without_posix_raw_mode(monkeypatch) -> None:
             pass
 
 
-class Actions:
-    def __init__(self):
-        self.focused = None
-        self.copied = ""
-        self.invalidated = False
-        self.exited = False
-        self.refreshed = False
+def test_terminal_modes_follow_the_declared_capabilities() -> None:
+    from zettcode.tui_framework import terminal as terminal_module
+    from zettcode.tui_framework.capabilities import TerminalCapabilities
 
-    def focus(self, component):
-        self.focused = component
+    full = terminal_module.Terminal(input_fd=0, output=StringIO())
+    # The default terminal keeps the exact sequence the runner has always sent.
+    assert full._enter_sequences() == "\x1b[?1049h\x1b[?7l\x1b[?25l\x1b[?2004h\x1b[?1000h\x1b[?1002h\x1b[?1006h"
+    assert full._exit_sequences() == "\x1b[0m\x1b[?25h\x1b[?7h\x1b[?1000l\x1b[?1002l\x1b[?1006l\x1b[?2004l\x1b[?1049l"
 
-    def invalidate(self):
-        self.invalidated = True
-
-    def copy(self, text):
-        self.copied = text
-
-    def exit(self):
-        self.exited = True
-
-    def refresh(self):
-        self.refreshed = True
+    plain = terminal_module.Terminal(
+        input_fd=0,
+        output=StringIO(),
+        capabilities=TerminalCapabilities(mouse=False, bracketed_paste=False),
+    )
+    assert plain._enter_sequences() == "\x1b[?1049h\x1b[?7l\x1b[?25l"
+    assert plain._exit_sequences() == "\x1b[0m\x1b[?25h\x1b[?7h\x1b[?1049l"
 
 
 def test_input_decoder_handles_fragmented_utf8_keys_mouse_and_paste():
@@ -153,178 +145,16 @@ def test_canvas_never_emits_untrusted_terminal_control_characters():
 
     rendered = output.getvalue()
     assert "safe\x1b[31mred" not in rendered
-    assert "safe�[31mred" in rendered
+    assert "safe\ufffd[31mred" in rendered
 
 
-def test_canvas_and_scrollable_text_expand_tabs_without_replacement_glyphs():
+def test_canvas_expands_tabs_without_replacement_glyphs():
     output = StringIO()
     direct = Canvas(20, 1)
     direct.draw_text(0, 0, "a\tb")
+
     DifferentialRenderer(output).render(direct)
+
     assert "a   b" in output.getvalue()
-    assert "�" not in output.getvalue()
-
-    view = ScrollableText(lambda width: [TextLine((Span("\tindented\tvalue"),))])
-    view.layout(Rect(0, 0, 24, 1))
-    canvas = Canvas(24, 1)
-    view.render(canvas)
-    rendered = "".join(cell.character for cell in canvas.cells[0] if not cell.continuation)
-    assert rendered.startswith("    indented    value")
-    assert "�" not in rendered
-
-
-def test_scrollable_text_wheel_moves_viewport_and_drag_selects():
-    lines = [TextLine((Span(f"line {index}"),)) for index in range(20)]
-    view = ScrollableText(lambda width: lines)
-    view.layout(Rect(0, 0, 20, 5))
-    view.render(Canvas(20, 5))
-    actions = Actions()
-    assert view.scroll_top == 15
-
-    view.handle(InputEvent(EventType.MOUSE, x=2, y=2, action=MouseAction.SCROLL_UP), actions)
-    assert view.scroll_top == 12
-    view.handle(InputEvent(EventType.MOUSE, x=0, y=1, action=MouseAction.DOWN), actions)
-    view.handle(InputEvent(EventType.MOUSE, x=6, y=1, action=MouseAction.MOVE), actions)
-    view.handle(InputEvent(EventType.MOUSE, x=6, y=1, action=MouseAction.UP), actions)
-
-    assert actions.focused is view
-    assert view.selected_text() == "line 1"
-    assert actions.copied == "line 1"
-
-
-def test_scrollable_text_double_click_selects_the_visual_line():
-    clicks = iter((10.0, 10.2))
-    lines = [TextLine((Span("first"),)), TextLine((Span("entire second line"),))]
-    view = ScrollableText(lambda width: lines, clock=lambda: next(clicks))
-    view.layout(Rect(0, 0, 30, 4))
-    view.render(Canvas(30, 4))
-    actions = Actions()
-
-    for _ in range(2):
-        view.handle(InputEvent(EventType.MOUSE, x=4, y=1, action=MouseAction.DOWN), actions)
-        view.handle(InputEvent(EventType.MOUSE, x=4, y=1, action=MouseAction.UP), actions)
-
-    assert actions.focused is view
-    assert view.selected_text() == "entire second line"
-    assert actions.copied == "entire second line"
-
-
-def test_scrollable_text_keyboard_navigation_and_drag_autoscroll():
-    lines = [TextLine((Span(f"line {index}"),)) for index in range(20)]
-    view = ScrollableText(lambda width: lines)
-    view.layout(Rect(0, 0, 20, 5))
-    view.render(Canvas(20, 5))
-    actions = Actions()
-    actions.focus(view)
-
-    view.handle(InputEvent(EventType.KEY, key="home"), actions)
-    assert view.scroll_top == 0
-    view.handle(InputEvent(EventType.KEY, key="down"), actions)
-    assert view.scroll_top == 1
-
-    view.handle(InputEvent(EventType.MOUSE, x=0, y=2, action=MouseAction.DOWN), actions)
-    view.handle(InputEvent(EventType.MOUSE, x=4, y=6, action=MouseAction.MOVE), actions)
-    assert view.scroll_top == 2
-    assert view.selected_text()
-
-    view.handle(InputEvent(EventType.KEY, key="end"), actions)
-    assert view.scroll_top == 15
-
-
-def test_text_input_edits_and_submits_without_external_framework():
-    submitted = []
-    editor = TextInput(submitted.append)
-    actions = Actions()
-
-    editor.handle(InputEvent(EventType.TEXT, text="hello"), actions)
-    editor.handle(InputEvent(EventType.KEY, key="alt_enter"), actions)
-    editor.handle(InputEvent(EventType.PASTE, text="world"), actions)
-    editor.handle(InputEvent(EventType.KEY, key="enter"), actions)
-
-    assert submitted == ["hello\nworld"]
-    assert editor.text == ""
-
-
-def test_rejected_submission_preserves_editor_text():
-    editor = TextInput(lambda value: False)
-    actions = Actions()
-    editor.handle(InputEvent(EventType.TEXT, text="keep me"), actions)
-
-    editor.handle(InputEvent(EventType.KEY, key="enter"), actions)
-
-    assert editor.text == "keep me"
-
-
-def test_editor_supports_line_word_kill_yank_and_undo_shortcuts():
-    editor = TextInput(lambda value: True)
-    actions = Actions()
-    editor.handle(InputEvent(EventType.TEXT, text="alpha beta\ngamma delta"), actions)
-
-    editor.handle(InputEvent(EventType.KEY, key="ctrl_a"), actions)
-    assert editor.position == len("alpha beta\n")
-    editor.handle(InputEvent(EventType.KEY, key="ctrl_k"), actions)
-    assert editor.text == "alpha beta\n"
-    editor.handle(InputEvent(EventType.KEY, key="ctrl_y"), actions)
-    assert editor.text == "alpha beta\ngamma delta"
-    editor.handle(InputEvent(EventType.KEY, key="ctrl_z"), actions)
-    assert editor.text == "alpha beta\n"
-
-    editor.handle(InputEvent(EventType.KEY, key="ctrl_home"), actions)
-    editor.handle(InputEvent(EventType.KEY, key="ctrl_right"), actions)
-    assert editor.position == len("alpha")
-    editor.handle(InputEvent(EventType.KEY, key="d", alt=True), actions)
-    assert editor.text == "alpha\n"
-
-
-def test_editor_navigates_multiline_input_and_submission_history():
-    submitted = []
-    editor = TextInput(submitted.append)
-    actions = Actions()
-    editor.handle(InputEvent(EventType.TEXT, text="one\ntwo"), actions)
-
-    editor.handle(InputEvent(EventType.KEY, key="up"), actions)
-    assert editor.position == 3
-    editor.handle(InputEvent(EventType.KEY, key="down"), actions)
-    assert editor.position == len(editor.text)
-    editor.handle(InputEvent(EventType.KEY, key="enter"), actions)
-    editor.handle(InputEvent(EventType.TEXT, text="second command"), actions)
-    editor.handle(InputEvent(EventType.KEY, key="enter"), actions)
-
-    editor.handle(InputEvent(EventType.KEY, key="up"), actions)
-    assert editor.text == "second command"
-    editor.handle(InputEvent(EventType.KEY, key="up"), actions)
-    assert editor.text == "one\ntwo"
-    editor.handle(InputEvent(EventType.KEY, key="down"), actions)
-    assert editor.text == "second command"
-    editor.handle(InputEvent(EventType.KEY, key="down"), actions)
-    assert editor.text == ""
-
-
-def test_editor_completes_commands_in_both_directions():
-    editor = TextInput(lambda value: True, completions=("/clear", "/close", "/quit"))
-    actions = Actions()
-    editor.handle(InputEvent(EventType.TEXT, text="/cl"), actions)
-
-    editor.handle(InputEvent(EventType.KEY, key="tab"), actions)
-    assert editor.text == "/clear"
-    editor.handle(InputEvent(EventType.KEY, key="tab"), actions)
-    assert editor.text == "/close"
-    editor.handle(InputEvent(EventType.KEY, key="backtab"), actions)
-    assert editor.text == "/clear"
-
-
-def test_editor_wraps_cursor_at_the_terminal_edge():
-    lines, cursor = _layout_input("123", 3, 5, 2)
-
-    assert lines == ["123", ""]
-    assert cursor == (1, 0)
-
-
-def test_editor_expands_pasted_tabs_before_cursor_layout():
-    editor = TextInput(lambda value: True)
-    actions = Actions()
-
-    editor.handle(InputEvent(EventType.PASTE, text="\tgo\n\treturn"), actions)
-
-    assert editor.text == "    go\n    return"
-    assert editor.position == len(editor.text)
+    assert "\ufffd" not in output.getvalue()
+    assert TextLine((Span("\tx"),)).text == "\tx"

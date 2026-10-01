@@ -39,6 +39,41 @@ zettcode --provider openai --model my-model --base-url https://example.com/v1
 Pass a workspace path as the final argument. It defaults to the current directory.
 Session data is stored in `~/.zettcode/sessions.sqlite3` by default.
 
+## Approvals
+
+`run_shell` asks for confirmation before it executes anything. The prompt offers
+Run, Always (remember this exact command), and Abort, and `Esc` aborts. Pass
+`--approval allow-all` to let the agent run shell commands without asking.
+
+The agent's plan, when it publishes one, appears above the composer. Pass
+`--reduced-motion` (or set `ZETTCODE_REDUCED_MOTION`) to suppress decorative
+animation.
+
+## Colours
+
+Everything is drawn from theme tokens, so a palette can be overridden without
+touching code. `zettcode` reads `~/.zettcode/theme.toml` when it exists, or any
+path passed to `--theme-file`:
+
+```toml
+base = "dark"                 # dark | light
+
+[ui]
+accent = "#79b88b"
+
+[code]
+keyword = "#e58fa8"
+string = "#9bddad"
+comment = "#6d7a70"
+number = "#d8b46a"
+function = "#7fb7d8"
+builtin = "#b8a6e0"
+inline = "#d8c07a"
+```
+
+Unknown keys and malformed colours are reported instead of silently ignored.
+`/theme dark|light` still switches the base palette at runtime.
+
 From a source checkout, run the same commands through `uv`:
 
 ```bash
@@ -49,7 +84,7 @@ uv run zettcode --provider deepseek --model deepseek-chat
 ## Keys
 
 - `Enter`: send
-- `Esc`, then `Enter`: insert a newline
+- `Alt-Enter` / `Shift-Enter`: insert a newline
 - `Ctrl-C`: stop the active request, or clear the input
 - `Ctrl-D`: delete the next character; exit when the input is empty and the agent is idle
 - `Ctrl-A` / `Ctrl-E`, `Home` / `End`: move to the start or end of the current line
@@ -66,24 +101,33 @@ uv run zettcode --provider deepseek --model deepseek-chat
 - `Ctrl-L`: redraw the terminal
 - `Ctrl-T`: expand or collapse the latest thinking block
 - `Page Up` / `Page Down`: scroll history while keeping the composer focused
-- Click the transcript and use `Up` / `Down`, `Home` / `End` to browse it
-- Drag in the transcript to select text; dragging past an edge automatically scrolls
-- Double-click a transcript row to select the complete visible line
-- `Shift`-click extends the existing selection
-- Completed mouse selections are copied to the system clipboard automatically
-- `Ctrl-C` also copies a transcript selection and returns focus to the input
+- Mouse wheel: scroll history
+- Click a Thinking or Tool row to expand or collapse it
+- Drag in the transcript to select text; the selection is copied on release
+- Double-click a transcript row to select the whole line
+- `Shift`-click to extend the existing selection
+- `Ctrl-C` copies the current selection and clears it
 - `Tab` / `Shift-Tab`: complete slash commands
 
-Thinking is collapsed by default. Click a Thinking row to inspect it; moving the
-pointer outside that block collapses it again. Tool calls keep their output and
-completion status visible in the transcript. Active thinking and tool rows use a
-low-frequency moving highlight wave with an animated activity icon. Tool results show a five-row preview by default;
-click a completed tool row to expand it. Expanded output is still bounded so a
-large command result cannot take over the terminal or exhaust renderer memory.
+Pointer-leave collapse of thinking and user-editable keybindings are not ported
+yet; see `docs/tui-framework.md`.
+
+Thinking is collapsed by default. Tool calls keep their output and completion
+status visible in the transcript, and completed tool rows show a five-row
+preview until expanded. Expanded output is bounded so a large command result
+cannot take over the terminal or exhaust renderer memory.
+
+Pressing Enter puts a live row in the transcript straight away, so a slow model
+is never mistaken for a frozen one. It shows an animated glyph and the elapsed
+time, and is replaced by the real answer, reasoning, or tool call as soon as one
+arrives. Rows that are still running show the same elapsed timer.
 
 Assistant text renders common terminal-friendly Markdown: bold and emphasis,
 headings, inline and fenced code, links, quotes, unordered bullet lists, and
-GFM-style tables. Tables preserve left, center, and right alignment, account for
-wide CJK characters, and fit or truncate columns to the current terminal width.
+GFM-style tables. Code is highlighted by colour only, never by a background
+block. Tables are borderless — a header, one rule per column, then rows — keep
+left, center, and right alignment, account for wide CJK characters, and wrap a
+cell that does not fit instead of cutting its text.
 
-Use `/help` inside the application to see session commands.
+Use `/help` inside the application to see session commands; `/new`, `/sessions`,
+`/use`, `/theme dark|light`, `/clear`, and `/quit` are available.
