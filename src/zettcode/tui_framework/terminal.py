@@ -1,18 +1,14 @@
-"""TTY ownership and asynchronous input."""
+"""TTY ownership: raw mode, the alternate screen, and size reporting."""
 
 from __future__ import annotations
 
-import asyncio
 import os
 import shutil
-import signal
 import sys
-from collections.abc import Callable
 from types import TracebackType
 from typing import TextIO
 
-from .events import EventType, InputEvent
-from .input import InputDecoder
+from .capabilities import TerminalCapabilities, detect_capabilities
 
 # Raw-mode input, SIGWINCH, and add_reader on stdin are POSIX-only. Keep the
 # import safe on Windows so the rest of ZettCode still loads, and fail with a
@@ -23,17 +19,34 @@ POSIX = os.name == "posix"
 class Terminal:
     """Own raw mode and restore the user's terminal on every exit path."""
 
-    def __init__(self, *, input_fd: int | None = None, output: TextIO | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        input_fd: int | None = None,
+        output: TextIO | None = None,
+        capabilities: TerminalCapabilities | None = None,
+    ) -> None:
+        """Adopt the input and output handles together with the detected capabilities.
+
+        Args:
+            input_fd: File descriptor to read keys from; defaults to stdin.
+            output: Stream to write ANSI to; defaults to stdout.
+            capabilities: What the terminal can render; probed from the
+                environment when omitted.
+        """
         self.input_fd = sys.stdin.fileno() if input_fd is None else input_fd
         self.output = sys.stdout if output is None else output
+        self.capabilities = capabilities or detect_capabilities()
         self._attributes: list | None = None
 
     @property
     def size(self) -> tuple[int, int]:
+        """Return the current terminal size, clamped to a usable minimum."""
         size = shutil.get_terminal_size((80, 24))
         return max(20, size.columns), max(8, size.lines)
 
     def __enter__(self) -> Terminal:
+        """Enter raw mode on the alternate screen, remembering the old settings."""
         if not POSIX:
             raise RuntimeError("ZettCode TUI requires a POSIX terminal")
         import termios
@@ -43,7 +56,7 @@ class Terminal:
             raise RuntimeError("ZettCode TUI requires an interactive terminal")
         self._attributes = termios.tcgetattr(self.input_fd)
         tty.setraw(self.input_fd)
-        self.write("\x1b[?1049h\x1b[?7l\x1b[?25l\x1b[?2004h\x1b[?1000h\x1b[?1003h\x1b[?1006h")
+        self.write(self._enter_sequences())
         return self
 
     def __exit__(
@@ -52,7 +65,8 @@ class Terminal:
         exception: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
-        self.write("\x1b[0m\x1b[?25h\x1b[?7h\x1b[?1000l\x1b[?1003l\x1b[?1006l\x1b[?2004l\x1b[?1049l")
+        """Restore the screen, the mouse modes, and the saved termios attributes."""
+        self.write(self._exit_sequences())
         if self._attributes is not None:
             import termios
 
@@ -60,59 +74,34 @@ class Terminal:
             self._attributes = None
 
     def write(self, value: str) -> None:
+        """Write and flush one control sequence."""
         self.output.write(value)
         self.output.flush()
 
+    def _enter_sequences(self) -> str:
+        """Return the modes to enable, honoring the detected capabilities.
 
-class AsyncInput:
-    """Publish decoded terminal input into one application queue."""
+        Mouse reporting is only requested when the terminal claims to support
+        it, and bracketed paste likewise, so a caller can describe a plainer
+        terminal and have the layer speak only what it understands.
 
-    def __init__(self, terminal: Terminal, publish: Callable[[InputEvent], None]) -> None:
-        self.terminal = terminal
-        self.publish = publish
-        self.decoder = InputDecoder()
-        self.loop: asyncio.AbstractEventLoop | None = None
-        self._previous_resize_handler = None
-        self._escape_handle: asyncio.TimerHandle | None = None
+        Button-event tracking (1002) is used rather than any-event tracking
+        (1003): drags are reported while idle pointer motion is not, so the
+        input queue stays quiet and selection still works.
+        """
+        parts = ["\x1b[?1049h", "\x1b[?7l", "\x1b[?25l"]
+        if self.capabilities.bracketed_paste:
+            parts.append("\x1b[?2004h")
+        if self.capabilities.mouse:
+            parts += ["\x1b[?1000h", "\x1b[?1002h", "\x1b[?1006h"]
+        return "".join(parts)
 
-    def start(self) -> None:
-        self.loop = asyncio.get_running_loop()
-        self.loop.add_reader(self.terminal.input_fd, self._read_ready)
-        if hasattr(signal, "SIGWINCH"):
-            self._previous_resize_handler = signal.getsignal(signal.SIGWINCH)
-            self.loop.add_signal_handler(signal.SIGWINCH, self._resize)
-
-    def close(self) -> None:
-        if self.loop is None:
-            return
-        self.loop.remove_reader(self.terminal.input_fd)
-        if hasattr(signal, "SIGWINCH"):
-            self.loop.remove_signal_handler(signal.SIGWINCH)
-        if self._escape_handle is not None:
-            self._escape_handle.cancel()
-            self._escape_handle = None
-        if hasattr(signal, "SIGWINCH") and callable(self._previous_resize_handler):
-            signal.signal(signal.SIGWINCH, self._previous_resize_handler)
-        self.loop = None
-
-    def _read_ready(self) -> None:
-        try:
-            data = os.read(self.terminal.input_fd, 65536)
-        except OSError:
-            return
-        if self._escape_handle is not None:
-            self._escape_handle.cancel()
-            self._escape_handle = None
-        for event in self.decoder.feed(data):
-            self.publish(event)
-        if self.decoder.buffer == b"\x1b" and self.loop is not None:
-            self._escape_handle = self.loop.call_later(0.03, self._flush_escape)
-
-    def _resize(self) -> None:
-        self.publish(InputEvent(EventType.RESIZE))
-
-    def _flush_escape(self) -> None:
-        self._escape_handle = None
-        event = self.decoder.flush_escape()
-        if event is not None:
-            self.publish(event)
+    def _exit_sequences(self) -> str:
+        """Return the modes to restore, mirroring whatever was enabled."""
+        parts = ["\x1b[0m", "\x1b[?25h", "\x1b[?7h"]
+        if self.capabilities.mouse:
+            parts += ["\x1b[?1000l", "\x1b[?1002l", "\x1b[?1006l"]
+        if self.capabilities.bracketed_paste:
+            parts.append("\x1b[?2004l")
+        parts.append("\x1b[?1049l")
+        return "".join(parts)

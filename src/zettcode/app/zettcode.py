@@ -1,0 +1,401 @@
+"""The ZettCode application: transcript, composer, commands, and approvals."""
+
+from __future__ import annotations
+
+import asyncio
+from contextlib import aclosing
+from pathlib import Path
+
+from zett_agent import (
+    SHELL_APPROVAL_RESPONSE_EVENT_NAME,
+    AgentEvent,
+    AgentRunConfig,
+    ExternalEvent,
+)
+
+from ..runtime import ZettCodeRuntime
+from ..tui_framework import (
+    DARK,
+    Anchor,
+    App,
+    Dialog,
+    DialogAction,
+    Host,
+    KeyEvent,
+    Overlay,
+    OverlaySlot,
+    Screen,
+    StatusBar,
+    TaskPanel,
+    TextArea,
+    Theme,
+    Toast,
+    VBox,
+    Widget,
+    centered,
+    theme_named,
+)
+from ..tui_framework.layout import Slot
+from ..tui_framework.widgets import Rule, Text
+from .projection import TranscriptProjector
+from .transcript import Transcript, TranscriptView, activity_glyph
+
+SLASH_COMMANDS = ("/help", "/new", "/sessions", "/theme", "/use", "/clear", "/quit", "/exit")
+
+WELCOME = (
+    "  \u256d\u2500\u2500\u2500\u256e\n"
+    "  \u2502 \u203a_\u2502  ZettCode\n"
+    "  \u2570\u2500\u25c6\u2500\u256f  A focused coding agent\n"
+    "\n"
+    "  Type a task below, or /help for commands."
+)
+
+HELP = (
+    "Commands\n"
+    "  /new              start a fresh session\n"
+    "  /sessions         list persisted sessions\n"
+    "  /use ID           switch to a session\n"
+    "  /theme dark|light switch the palette\n"
+    "  /clear            clear the transcript\n"
+    "  /quit             exit\n"
+    "\n"
+    "Keys\n"
+    "  Enter send \u00b7 Alt-Enter newline \u00b7 Ctrl-C stop or clear\n"
+    "  Ctrl-T thinking \u00b7 PgUp/PgDn scroll \u00b7 Ctrl-L redraw \u00b7 Ctrl-D exit"
+)
+
+
+class ZettCodeApp:
+    """Own the runtime, the widget tree, the keymap, and the slash commands."""
+
+    def __init__(self, runtime: ZettCodeRuntime, *, theme: Theme = DARK) -> None:
+        """Wire the runtime into the transcript, composer, panel, and keymap.
+
+        Args:
+            runtime: Session, persistence, and agent client this app drives.
+            theme: Initial palette; ``/theme`` replaces it at runtime.
+        """
+        self.runtime = runtime
+        self.transcript = Transcript()
+        self.transcript.welcome(WELCOME)
+        self.projector = TranscriptProjector(self.transcript, on_approval=self._approval_requested)
+        self.runtime.client.event_dispatcher = self.projector
+
+        self.view = TranscriptView(self.transcript, theme=theme)
+        self.composer = TextArea(
+            prompt="\u203a ",
+            completions=SLASH_COMMANDS,
+            max_height=6,
+            on_submit=self.submit,
+        )
+        self.header = StatusBar(self._header_left, self._header_right)
+        self.status = StatusBar(self._status_left, self._status_right)
+        self.panel = TaskPanel()
+
+        body = VBox(
+            [
+                Slot(self.header, size=1),
+                Slot(Rule(), size=1),
+                Slot(self.view, flex=1),
+                Slot(self.panel, size=lambda width: self.panel.preferred_height()),
+                Slot(Rule(), size=1),
+                Slot(self.composer, size=lambda width: self.composer.preferred_height(width)),
+                Slot(self.status, size=1),
+            ]
+        )
+        self.root = ZettCodeRoot(self, body)
+        self.app = App(self.root, theme=theme, reduced_motion=runtime.config.reduced_motion)
+        self._task: asyncio.Task[None] | None = None
+        self._busy = False
+        self._status = "ready"
+        self._install_keymap()
+
+    @property
+    def busy(self) -> bool:
+        """Return whether a turn or command is in flight."""
+        return self._busy
+
+    @property
+    def task(self) -> asyncio.Task[None] | None:
+        """Return the command or turn currently in flight, if any."""
+        return self._task
+
+    async def run(self) -> None:
+        """Own the terminal until the application exits."""
+        from ..tui_framework import TerminalRunner
+
+        await TerminalRunner(self.app).run()
+
+    # -- commands -----------------------------------------------------------
+    def _install_keymap(self) -> None:
+        """Register the global commands and their key bindings."""
+        self.app.commands.add("interrupt", self._interrupt)
+        self.app.commands.add("redraw", lambda event, host: (host.refresh(), True)[1])
+        self.app.commands.add("toggle_thinking", self._toggle_thinking)
+        self.app.commands.add("scroll_up", lambda event, host: (self.view.scroll_by(-3), True)[1])
+        self.app.commands.add("scroll_down", lambda event, host: (self.view.scroll_by(3), True)[1])
+        self.app.commands.add("quit", lambda event, host: (host.exit(), True)[1])
+        self.app.keymap.bind("ctrl_c", "interrupt", priority="capture")
+        self.app.keymap.bind("ctrl_l", "redraw", priority="capture")
+        self.app.keymap.bind("ctrl_t", "toggle_thinking", priority="capture")
+        # Capture priority is what lets the predicate win: the composer would
+        # otherwise swallow Ctrl-D as "delete forward" even on an empty draft.
+        self.app.keymap.bind(
+            "ctrl_d",
+            "quit",
+            priority="capture",
+            when=lambda: not self._busy and not self.composer.text,
+        )
+        self.app.keymap.bind("page_up", "scroll_up")
+        self.app.keymap.bind("page_down", "scroll_down")
+
+    def _interrupt(self, event: KeyEvent, host: Host) -> bool:
+        """Copy a selection, otherwise stop the running turn or clear the draft."""
+        selected = self.view.selected_text()
+        if selected:
+            host.copy(selected)
+            self.view.clear_selection()
+            self._status = f"copied {len(selected)} characters"
+            host.invalidate()
+            return True
+        if self._busy and self._task is not None and not self._task.done():
+            self._task.cancel()
+        elif self.composer.text:
+            self.composer.clear()
+        host.invalidate()
+        return True
+
+    def _toggle_thinking(self, event: KeyEvent, host: Host) -> bool:
+        """Show or hide the newest reasoning block."""
+        if self.transcript.toggle_latest_thinking():
+            host.invalidate()
+        return True
+
+    def submit(self, value: str) -> bool | None:
+        """Start a turn or a slash command, refusing while one is running.
+
+        Args:
+            value: Draft text from the composer; a leading ``/`` selects the
+                slash-command branch.
+
+        Returns:
+            False when the draft was refused because a request is in flight;
+            returning a true value also clears the composer.
+        """
+        if self._busy:
+            self.transcript.notice("busy \u2014 Ctrl-C stops the current request")
+            self.app.invalidate()
+            return False
+        if value.startswith("/"):
+            self._task = asyncio.create_task(self._run_command(value))
+        else:
+            self._task = asyncio.create_task(self._run_prompt(value))
+        return True
+
+    async def _run_prompt(self, prompt: str) -> None:
+        """Stream one agent turn, keeping the task panel and transcript current."""
+        self.projector.begin_turn(prompt)
+        self._busy = True
+        self._status = "running"
+        self.app.scheduler.animate("stream")
+        self.app.invalidate()
+        try:
+            self._refresh_tasks()
+            async with aclosing(
+                self.runtime.client.stream(prompt, config=AgentRunConfig(session_id=self.runtime.session_id))
+            ) as events:
+                async for _event in events:
+                    self._refresh_tasks()
+                    self.app.invalidate()
+        except asyncio.CancelledError:
+            self.transcript.complete_thinking()
+            self.transcript.notice("stopped")
+        except Exception as error:
+            self.transcript.complete_thinking()
+            self.transcript.notice(f"error: {error}")
+        finally:
+            self._busy = False
+            self._status = "ready"
+            self.app.scheduler.animate("stream", active=False)
+            self._refresh_tasks()
+            self.app.invalidate()
+
+    def _refresh_tasks(self) -> None:
+        """Mirror the agent's current plan into the panel above the composer."""
+        progress = self.runtime.todos.todos(self.runtime.session_id)
+        tasks = tuple((item.status.value, item.content) for item in progress.todos) if progress else ()
+        if self.panel.set_tasks(tasks):
+            self.app.request_layout()
+
+    async def _run_command(self, value: str) -> None:
+        """Dispatch one slash command and report its result."""
+        command, _, argument = value.partition(" ")
+        argument = argument.strip()
+        self._status = f"{command} \u2026"
+        match command:
+            case "/new":
+                session = self.runtime.new_session()
+                self._notify(f"started session {session[:8]}", level="success")
+            case "/use" if argument:
+                self.runtime.use_session(argument)
+                self._notify(f"using session {self.runtime.session_id[:8]}", level="success")
+            case "/use":
+                self.transcript.notice("Usage: /use <session-id>")
+            case "/sessions":
+                sessions = await self.runtime.persistence.list_sessions(limit=20)
+                if not sessions:
+                    self.transcript.notice("No persisted sessions.")
+                for session in sessions:
+                    marker = "*" if session.session_id == self.runtime.session_id else " "
+                    self.transcript.notice(f"{marker} {session.session_id}  {session.message_count} messages")
+            case "/clear":
+                self.transcript.clear()
+            case "/theme":
+                self._set_theme(argument)
+            case "/help":
+                self.transcript.notice(HELP)
+            case "/quit" | "/exit":
+                self.app.exit()
+            case _:
+                self.transcript.notice(f"Unknown command: {command}. Try /help.")
+        self._status = "ready"
+        self.app.invalidate()
+
+    def _set_theme(self, name: str) -> None:
+        """Switch the palette, reporting usage errors instead of raising.
+
+        Args:
+            name: Theme name from the argument of ``/theme``.
+        """
+        if not name:
+            self.transcript.notice("Usage: /theme dark|light")
+            return
+        try:
+            theme = theme_named(name)
+        except ValueError:
+            self.transcript.notice(f"Unknown theme: {name}. Try dark or light.")
+            return
+        self.app.theme = theme
+        self.app.request_layout()
+        self.transcript.notice(f"theme: {theme.name}")
+
+    # -- approvals ----------------------------------------------------------
+    def _approval_requested(self, event: AgentEvent) -> None:
+        """Show the shell approval dialog for one agent request."""
+        payload = event.payload if isinstance(event.payload, dict) else {}
+        call_id = str(payload.get("tool_call_id", ""))
+        session_id = str(payload.get("session_id") or self.runtime.session_id)
+        command = str(payload.get("command", ""))
+        actions = [DialogAction("Run", lambda: self._respond(session_id, call_id, "execute", False))]
+        if payload.get("remember_supported"):
+            actions.append(DialogAction("Always", lambda: self._respond(session_id, call_id, "execute", True)))
+        actions.append(DialogAction("Abort", lambda: self._respond(session_id, call_id, "abort", False)))
+        dialog = Dialog(
+            Text(command),
+            title="Run this command?",
+            actions=tuple(actions),
+            on_cancel=lambda: self._respond(session_id, call_id, "abort", False),
+        )
+        self.app.push_screen(Screen(centered(dialog), name="approval", modal=True))
+
+    def _respond(self, session_id: str, call_id: str, decision: str, remember: bool) -> None:
+        """Dismiss the dialog and answer the suspended agent run.
+
+        Args:
+            session_id: Session the approval belongs to, echoed back to the agent.
+            call_id: Tool call the decision applies to.
+            decision: ``"execute"`` or ``"abort"``.
+            remember: Ask the agent to remember this decision for the session.
+        """
+        self.app.pop_screen()
+        try:
+            self.runtime.client.agent.emit_external_event(
+                ExternalEvent(
+                    name=SHELL_APPROVAL_RESPONSE_EVENT_NAME,
+                    payload={"tool_call_id": call_id, "decision": decision, "remember": remember},
+                ),
+                config=AgentRunConfig(session_id=session_id),
+            )
+        except Exception as error:
+            self.transcript.notice(f"approval failed: {error}")
+        self.app.invalidate()
+
+    # -- notifications ------------------------------------------------------
+    def _notify(self, message: str, *, level: str = "info") -> None:
+        """Show a toast, replacing any toast that is still on screen.
+
+        Args:
+            message: Text shown in the toast.
+            level: Colour key understood by ``Toast``.
+        """
+        while len(self.app.screens) > 1 and self.app.screens.top.name == "toast":
+            self.app.pop_screen()
+        toast = Toast(message, level=level, duration=2.5)
+        overlay = Overlay([OverlaySlot(toast, Anchor(horizontal="end", vertical="end", offset_x=-1, offset_y=-1))])
+        self.app.push_screen(Screen(overlay, name="toast"))
+
+    # -- chrome -------------------------------------------------------------
+    def _header_left(self) -> str:
+        """Label the app and the workspace it is running in."""
+        return f"  \u25c8 zettcode  {compact_path(self.runtime.config.workspace)}"
+
+    def _header_right(self) -> str:
+        """Show the active provider and model."""
+        return f"{self.runtime.config.provider.value}/{self.runtime.config.model}  "
+
+    def _status_left(self) -> str:
+        """Show the activity glyph, the status word, and the session id."""
+        icon = activity_glyph(self.transcript.frame) if self._busy else "\u25cf"
+        return f"  {icon} {self._status}  session {self.runtime.session_id[:8]}"
+
+    def _status_right(self) -> str:
+        """List the keys worth remembering while the composer has focus."""
+        return "  ^C stop  ^T thinking  ^D exit  "
+
+
+class ZettCodeRoot(Widget):
+    """Thin root that advances the activity frame while a request runs."""
+
+    def __init__(self, controller: ZettCodeApp, body: VBox) -> None:
+        """Keep the controller reachable from the tick hook."""
+        super().__init__()
+        self.controller = controller
+        self.body = body
+
+    @property
+    def children(self) -> tuple[Widget, ...]:
+        """Expose the single body widget the root lays out."""
+        return (self.body,)
+
+    def layout(self, rect) -> None:
+        """Give the body the full application rectangle."""
+        super().layout(rect)
+        self.body.layout(rect)
+
+    def render(self, canvas) -> None:
+        """Paint the body into the shared canvas."""
+        self.body.render(canvas)
+
+    def cursor(self):
+        """Forward the cursor request to the body."""
+        return self.body.cursor()
+
+    def on_tick(self) -> None:
+        """Advance the activity frame while a request is running."""
+        if self.controller.busy and (self.app is None or not self.app.reduced_motion):
+            self.controller.transcript.advance_frame()
+
+
+def compact_path(path: Path, *, limit: int = 38) -> str:
+    """Shorten a workspace path for the header.
+
+    Args:
+        path: Absolute path to display.
+        limit: Most characters to keep; the home directory collapses to ``~``,
+            and anything longer keeps a leading ellipsis plus its tail.
+    """
+    value = str(path)
+    home = str(Path.home())
+    if value == home or value.startswith(home + "/"):
+        value = "~" + value[len(home) :]
+    return value if len(value) <= limit else "\u2026" + value[-(limit - 1) :]

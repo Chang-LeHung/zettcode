@@ -15,7 +15,10 @@ from zett_agent import (
     CompactionExtension,
     DeepSeekProvider,
     OpenAIProvider,
+    ShellApprovalExtension,
+    ShellApprovalMode,
     SQLiteSessionExtension,
+    TodoWriteExtension,
     ToolGuidelinesExtension,
     create_agent,
     new_uuid7,
@@ -53,6 +56,7 @@ class ZettCodeRuntime:
     config: ZettCodeConfig
     client: AgentClient
     persistence: SQLiteSessionExtension
+    todos: TodoWriteExtension
     model: OpenAIProvider | DeepSeekProvider
     session_id: str
 
@@ -79,6 +83,7 @@ class ZettCodeRuntime:
                     base_url=config.base_url,
                     response=config.responses_api,
                 )
+        todos = TodoWriteExtension()
         try:
             client = await create_agent(
                 model,
@@ -86,7 +91,9 @@ class ZettCodeRuntime:
                 system_prompt=build_system_prompt(config),
                 extensions=[
                     CodingExtension(),
+                    ShellApprovalExtension(enabled=config.shell_approval is ShellApprovalMode.REVIEW),
                     persistence,
+                    todos,
                     ToolGuidelinesExtension(),
                     CompactionExtension(
                         model,
@@ -102,7 +109,7 @@ class ZettCodeRuntime:
             await model.aclose()
             await persistence.close()
             raise
-        return cls(config, client, persistence, model, session_id)
+        return cls(config, client, persistence, todos, model, session_id)
 
     def new_session(self) -> str:
         """Switch future requests to a fresh session identity."""

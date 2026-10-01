@@ -4,64 +4,28 @@ from __future__ import annotations
 
 import re
 
-from .events import EventType, InputEvent, MouseAction
+from ..core.events import MouseAction
+from .events import EventType, InputEvent
+from .keys import CONTROL_KEYS, KEY_SEQUENCES
 
 _MOUSE = re.compile(rb"^\x1b\[<(\d+);(\d+);(\d+)([Mm])")
-_KEYS = {
-    b"\x1b[A": "up",
-    b"\x1b[B": "down",
-    b"\x1b[C": "right",
-    b"\x1b[D": "left",
-    b"\x1b[H": "home",
-    b"\x1b[F": "end",
-    b"\x1b[1~": "home",
-    b"\x1b[4~": "end",
-    b"\x1b[5~": "page_up",
-    b"\x1b[6~": "page_down",
-    b"\x1b[3~": "delete",
-    b"\x1b[2~": "insert",
-    b"\x1b[Z": "backtab",
-    b"\x1b[1;5D": "ctrl_left",
-    b"\x1b[1;5C": "ctrl_right",
-    b"\x1b[1;3D": "alt_left",
-    b"\x1b[1;3C": "alt_right",
-    b"\x1b[1;5H": "ctrl_home",
-    b"\x1b[1;5F": "ctrl_end",
-}
-_CONTROL_KEYS = {
-    0x01: "ctrl_a",
-    0x02: "ctrl_b",
-    0x03: "ctrl_c",
-    0x04: "ctrl_d",
-    0x05: "ctrl_e",
-    0x06: "ctrl_f",
-    0x07: "ctrl_g",
-    0x09: "tab",
-    0x0A: "enter",
-    0x0B: "ctrl_k",
-    0x0C: "ctrl_l",
-    0x0D: "enter",
-    0x0E: "ctrl_n",
-    0x10: "ctrl_p",
-    0x12: "ctrl_r",
-    0x14: "ctrl_t",
-    0x15: "ctrl_u",
-    0x17: "ctrl_w",
-    0x19: "ctrl_y",
-    0x1A: "ctrl_z",
-    0x1F: "ctrl_underscore",
-    0x7F: "backspace",
-    0x08: "backspace",
-}
 
 
 class InputDecoder:
     """Decode fragmented UTF-8, keyboard, paste, and SGR mouse input."""
 
     def __init__(self) -> None:
+        """Start with an empty buffer."""
         self.buffer = bytearray()
 
     def feed(self, data: bytes) -> list[InputEvent]:
+        """Decode everything buffered, holding back a sequence that is still incomplete.
+
+        Args:
+            data: One raw read from the terminal; it may split a key sequence or
+                a UTF-8 character anywhere, so the leftover stays in ``buffer``
+                until the next call or ``flush_escape``.
+        """
         self.buffer.extend(data)
         events: list[InputEvent] = []
         while self.buffer:
@@ -76,13 +40,17 @@ class InputDecoder:
         return events
 
     def flush_escape(self) -> InputEvent | None:
-        """Resolve an isolated ESC after the terminal's sequence timeout."""
-        if self.buffer == b"\x1b":
-            self.buffer.clear()
-            return InputEvent(EventType.KEY, key="escape")
-        return None
+        """Resolve a pending escape once the terminal's sequence timeout lapsed."""
+        if not self.buffer:
+            return None
+        data = bytes(self.buffer)
+        self.buffer.clear()
+        if len(data) >= 2 and 0x20 <= data[1] < 0x7F:
+            return InputEvent(EventType.KEY, key=chr(data[1]), alt=True)
+        return InputEvent(EventType.KEY, key="escape")
 
     def _next(self) -> tuple[InputEvent | None, int, bool]:
+        """Decode one event, reporting bytes consumed and whether more are needed."""
         data = bytes(self.buffer)
         if data.startswith(b"\x1b[200~"):
             end = data.find(b"\x1b[201~", 6)
@@ -110,15 +78,15 @@ class InputDecoder:
                 False,
             )
 
-        for sequence, key in sorted(_KEYS.items(), key=lambda item: len(item[0]), reverse=True):
+        for sequence, key in sorted(KEY_SEQUENCES.items(), key=lambda item: len(item[0]), reverse=True):
             if data.startswith(sequence):
                 return InputEvent(EventType.KEY, key=key), len(sequence), False
             if sequence.startswith(data):
                 return None, 0, True
 
         first = data[0]
-        if first in _CONTROL_KEYS:
-            return InputEvent(EventType.KEY, key=_CONTROL_KEYS[first]), 1, False
+        if first in CONTROL_KEYS:
+            return InputEvent(EventType.KEY, key=CONTROL_KEYS[first]), 1, False
         if first == 0x1B:
             if len(data) == 1:
                 return None, 0, True
@@ -126,6 +94,11 @@ class InputDecoder:
                 return InputEvent(EventType.KEY, key="alt_enter"), 2, False
             if data[1] in (0x08, 0x7F):
                 return InputEvent(EventType.KEY, key="alt_backspace"), 2, False
+            if data[1] in (ord("["), ord("O")):
+                # ``ESC [`` and ``ESC O`` may still grow into a control sequence
+                # the tables do not list, so wait for the timeout rather than
+                # guessing that the user pressed Alt with a bracket.
+                return None, 0, True
             if 0x20 <= data[1] < 0x7F:
                 return InputEvent(EventType.KEY, key=chr(data[1]), alt=True), 2, False
             return InputEvent(EventType.KEY, key="escape"), 1, False
@@ -144,6 +117,7 @@ class InputDecoder:
 
 
 def _utf8_length(first: int) -> int:
+    """Return the byte length of a UTF-8 sequence from its lead byte."""
     if first < 0x80:
         return 1
     if first & 0xE0 == 0xC0:
@@ -156,6 +130,7 @@ def _utf8_length(first: int) -> int:
 
 
 def _mouse_action(code: int, suffix: bytes) -> MouseAction:
+    """Map an SGR mouse code and its suffix onto one action."""
     if code & 64:
         return MouseAction.SCROLL_DOWN if code & 1 else MouseAction.SCROLL_UP
     if code & 32:

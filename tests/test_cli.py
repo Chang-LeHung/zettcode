@@ -90,3 +90,11 @@ def test_missing_api_key_reports_a_usage_error(tmp_path: Path, capsys):
 
     assert exit_info.value.code == 2
     assert "Missing API key for deepseek" in capsys.readouterr().err
+
+
+def test_parse_args_forwards_the_theme_file(tmp_path: Path):
+    path = tmp_path / "theme.toml"
+
+    config = parse_args([str(tmp_path), "--api-key", "secret", "--theme-file", str(path)])
+
+    assert config.theme_file == path.resolve()

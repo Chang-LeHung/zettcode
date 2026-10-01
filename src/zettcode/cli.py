@@ -7,11 +7,18 @@ import asyncio
 import os
 from pathlib import Path
 
-from zett_agent import ReasoningEffort
+from zett_agent import ReasoningEffort, ShellApprovalMode
 
+from .app import ZettCodeApp
 from .config import ProviderName, ZettCodeConfig, default_model, provider_api_key
 from .runtime import ZettCodeRuntime
-from .tui import ZettCodeTUI
+from .tui_framework import DARK, ThemeFileError, detect_reduced_motion, load_theme
+
+
+def _default_theme_file() -> Path | None:
+    """Return the conventional palette file when the user has created one."""
+    candidate = Path.home() / ".zettcode" / "theme.toml"
+    return candidate if candidate.is_file() else None
 
 
 def parse_args(argv: list[str] | None = None) -> ZettCodeConfig:
@@ -27,11 +34,29 @@ def parse_args(argv: list[str] | None = None) -> ZettCodeConfig:
     parser.add_argument("--session")
     parser.add_argument("--database", type=Path, default=Path.home() / ".zettcode" / "sessions.sqlite3")
     parser.add_argument(
+        "--theme-file",
+        type=Path,
+        default=_default_theme_file(),
+        help="TOML palette overrides (default: ~/.zettcode/theme.toml when it exists)",
+    )
+    parser.add_argument(
         "--reasoning-effort",
         choices=[item.value for item in ReasoningEffort],
         default=ReasoningEffort.MEDIUM.value,
     )
     parser.add_argument("--serial-tools", action="store_true")
+    parser.add_argument(
+        "--approval",
+        choices=["review", "allow-all"],
+        default="review",
+        help="Require confirmation before run_shell executes (default: review)",
+    )
+    parser.add_argument(
+        "--reduced-motion",
+        action="store_true",
+        default=detect_reduced_motion(),
+        help="Suppress decorative animation (also honours ZETTCODE_REDUCED_MOTION)",
+    )
     parser.add_argument("--max-iterations", type=int, default=36)
     parser.add_argument("--compaction-max-tokens", type=int, default=128_000)
     parser.add_argument("--compaction-keep-tokens", type=int, default=32_000)
@@ -47,10 +72,13 @@ def parse_args(argv: list[str] | None = None) -> ZettCodeConfig:
             model=args.model or default_model(provider),
             api_key=args.api_key or provider_api_key(provider),
             database=args.database,
+            theme_file=args.theme_file,
             session_id=args.session,
             base_url=args.base_url,
             responses_api=args.responses_api,
             reasoning_effort=ReasoningEffort(args.reasoning_effort),
+            shell_approval=ShellApprovalMode.REVIEW if args.approval == "review" else ShellApprovalMode.ALLOW_ALL,
+            reduced_motion=args.reduced_motion,
             parallel_tool_call=not args.serial_tools,
             max_iterations=args.max_iterations,
             compaction_max_tokens=args.compaction_max_tokens,
@@ -62,9 +90,13 @@ def parse_args(argv: list[str] | None = None) -> ZettCodeConfig:
 
 async def async_main(config: ZettCodeConfig) -> None:
     """Own runtime lifecycle around the full-screen application."""
+    try:
+        theme = load_theme(config.theme_file) if config.theme_file is not None else DARK
+    except ThemeFileError as error:
+        raise SystemExit(f"zettcode: {error}") from error
     runtime = await ZettCodeRuntime.create(config)
     try:
-        await ZettCodeTUI(runtime).run()
+        await ZettCodeApp(runtime, theme=theme).run()
     finally:
         await runtime.aclose()
 
