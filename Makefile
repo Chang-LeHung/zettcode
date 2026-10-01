@@ -1,6 +1,6 @@
 UV ?= uv
 
-.PHONY: help install lint test build smoke check demo demos FORCE
+.PHONY: help install lint test build smoke check demo demo-all demos FORCE
 
 DEMOS := text status_bar spinner progress_bar list table diff markdown textarea completion dialog collapsible toast tasks scroll layout
 
@@ -12,7 +12,8 @@ help:
 	@echo "  make build    Build the sdist and wheel into dist/"
 	@echo "  make smoke    Install the built wheel and run 'zettcode --help'"
 	@echo "  make check    Run lint and tests"
-	@echo "  make demo     Print every widget preview"
+	@echo "  make demo     Browse the widgets interactively"
+	@echo "  make demo-all Print every widget preview"
 	@echo "  make demos    List the widget names"
 	@echo "  make demo-x   Print one widget preview ($(DEMOS))"
 
@@ -41,6 +42,9 @@ demos:
 
 demo:
 	$(UV) run python -m zettcode.tui_framework.gallery
+
+demo-all:
+	$(UV) run python -m zettcode.tui_framework.gallery --print
 
 demo-%: FORCE
 	$(UV) run python -m zettcode.tui_framework.gallery $*

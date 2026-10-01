@@ -14,13 +14,17 @@ countdown, because nothing ticks the clock in a one-shot render.
 from __future__ import annotations
 
 import argparse
+import asyncio
 import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import TextIO
 
 from .core.app import App
-from .core.geometry import Size
+from .core.events import KeyEvent
+from .core.geometry import Point, Rect, Size
+from .core.host import Host
+from .core.screen import Screen
 from .core.theme import DARK, Theme
 from .core.widget import Widget
 from .layout import Anchor, Border, HBox, Overlay, OverlaySlot, Padding, ScrollView, Slot, StaticLines, VBox
@@ -76,6 +80,8 @@ def total(items):
 """
 
 SCROLL_LINES = tuple(f"line {index:02d}" for index in range(1, 21))
+
+SIDEBAR = 30
 
 
 @dataclass(frozen=True, slots=True)
@@ -201,7 +207,7 @@ GALLERY: tuple[GalleryEntry, ...] = (
     GalleryEntry("textarea", "TextArea: prompt, wrapping, and a pre-filled draft", Size(46, 4), _textarea),
     GalleryEntry(
         "completion",
-        "CompletionPopup: framed candidates with descriptions",
+        "CompletionPopup: command column, muted descriptions, banded selection",
         Size(34, 5),
         lambda: CompletionPopup(
             [
@@ -351,6 +357,163 @@ def print_gallery(
         print(file=sink)
 
 
+class GalleryRoot(Widget):
+    """Root that hands the whole application rectangle to the browser body."""
+
+    def __init__(self, body: Widget) -> None:
+        """Keep the body this root exists to place.
+
+        Args:
+            body: The browser's box tree, laid out at the full size of the app.
+        """
+        super().__init__()
+        self.body = body
+
+    @property
+    def children(self) -> tuple[Widget, ...]:
+        """Expose the single body widget."""
+        return (self.body,)
+
+    def layout(self, rect: Rect) -> None:
+        """Give the body the full application rectangle."""
+        super().layout(rect)
+        self.body.layout(rect)
+
+    def render(self, canvas: Canvas) -> None:
+        """Paint the body into the shared canvas."""
+        self.body.render(canvas)
+
+    def cursor(self) -> Point | None:
+        """Forward the cursor request to the body."""
+        return self.body.cursor()
+
+
+class Spacer(Widget):
+    """Hold a column open so a sibling starts further along the row."""
+
+
+class GalleryBrowser:
+    """Interactive browser: an index on the left, a live preview on the right.
+
+    The preview is a screen layer above the index rather than a swapped-in
+    child, because pushing a screen is what mounts a fresh widget subtree and
+    attaches it to the app. ``_show_preview`` therefore closes the previous
+    layer before opening the next one, which keeps exactly one preview mounted
+    while the highlight moves.
+
+    The keyboard stays with the index until Enter is pressed, so the arrow keys
+    keep browsing instead of being absorbed by whichever preview happens to be
+    focusable. Escape hands the keyboard back.
+    """
+
+    def __init__(self, entries: Sequence[GalleryEntry] = GALLERY, *, theme: Theme = DARK) -> None:
+        """Build the index, the preview mechanism, and their key bindings.
+
+        Args:
+            entries: Components to offer, in index order.
+            theme: Palette shared by the index and every preview.
+        """
+        self.entries = tuple(entries)
+        self.preview_screen: Screen | None = None
+        self.list = ListView(
+            [ListItem(entry.name, label=entry.name, description=entry.summary) for entry in self.entries],
+            on_select=self._enter_preview,
+            on_highlight=self._show_preview,
+        )
+        self.status = StatusBar(self._status)
+        index = VBox(
+            [
+                Slot(self.list, flex=1),
+                Slot(Rule(), size=1),
+                Slot(self.status, size=1),
+            ]
+        )
+        body = VBox(
+            [
+                Slot(StatusBar("components", self._hint), size=1),
+                Slot(Rule(), size=1),
+                # The index owns a fixed column so the preview, which is
+                # anchored to the right edge of its own screen, cannot overlap it.
+                Slot(HBox([Slot(index, size=SIDEBAR)]), flex=1),
+            ]
+        )
+        self.app = App(GalleryRoot(body), theme=theme)
+        self._install_keymap()
+        self.app.mount()
+        self._show_preview(self.list.current)
+
+    def run(self) -> None:
+        """Own the terminal until the user quits."""
+        from .runner import TerminalRunner
+
+        asyncio.run(TerminalRunner(self.app).run())
+
+    def _install_keymap(self) -> None:
+        """Bind the browser keys: Ctrl-C and q quit, Escape steps back."""
+        self.app.commands.add("quit", lambda event, host: (host.exit(), True)[1])
+        self.app.commands.add("leave_preview", self._leave_preview)
+        self.app.keymap.bind("ctrl_c", "quit", priority="capture")
+        # q only quits from the index: inside a preview it belongs to the widget
+        # being driven, such as a text area the user is typing into.
+        self.app.keymap.bind("q", "quit", priority="capture", when=self._at_index)
+        self.app.keymap.bind("escape", "leave_preview", priority="capture", when=self._in_preview)
+
+    def _at_index(self) -> bool:
+        """Return whether the index itself holds the keyboard."""
+        return self.app.focused_widget() is self.list
+
+    def _in_preview(self) -> bool:
+        """Return whether the keyboard is inside a preview widget."""
+        return self.preview_screen is not None and not self._at_index()
+
+    def _leave_preview(self, event: KeyEvent, host: Host) -> bool:
+        """Hand the keyboard back to the index."""
+        self.app.focus(self.list)
+        return True
+
+    def _current(self) -> GalleryEntry | None:
+        """Return the entry highlighted in the index."""
+        item = self.list.current
+        if item is None:
+            return None
+        return next((entry for entry in self.entries if entry.name == item.value), None)
+
+    def _status(self) -> str:
+        """Label the previewed component and what it demonstrates."""
+        entry = self._current()
+        return f"  {entry.name}: {entry.summary}" if entry else "  components"
+
+    def _hint(self) -> str:
+        """List the keys worth knowing while the index has focus."""
+        return "  up/down browse \u00b7 enter interact \u00b7 esc back \u00b7 q quit  "
+
+    def _show_preview(self, item: ListItem | None) -> None:
+        """Replace the preview layer with the newly highlighted component.
+
+        Args:
+            item: Row the index just highlighted; ignored when it is unknown.
+        """
+        entry = next((entry for entry in self.entries if entry.name == item.value), None) if item else None
+        if entry is None:
+            return
+        if self.preview_screen is not None:
+            self.app.pop_screen()
+        panel = Border(entry.build(), title=f" {entry.name} ")
+        overlay = Overlay([OverlaySlot(panel, Anchor(horizontal="end", vertical="center", offset_x=-1))])
+        # The spacer keeps the overlay's rectangle to the right of the index, so
+        # an anchor at "end" resolves inside the free area rather than over it.
+        region = HBox([Slot(Spacer(), size=SIDEBAR), Slot(overlay, flex=1)])
+        self.preview_screen = self.app.push_screen(Screen(region, name="preview"))
+        # push_screen would hand the keyboard to a focusable preview; browsing
+        # stays on the index until Enter is pressed.
+        self.app.focus(self.list)
+
+    def _enter_preview(self, item: ListItem) -> None:
+        """Move the keyboard into the preview so the widget can be driven."""
+        if self.preview_screen is not None:
+            self.app.focus_next()
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Render the requested components, returning the process exit code.
 
@@ -362,9 +525,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         ``make demo-`` fails loudly instead of printing nothing.
     """
     parser = argparse.ArgumentParser(prog="make demo", description="Preview the TUI framework widgets.")
-    parser.add_argument("names", nargs="*", help="component names; omit for every component")
+    parser.add_argument("names", nargs="*", help="component names to print; omit to browse or print all")
     parser.add_argument("--list", action="store_true", help="list component names and exit")
     parser.add_argument("--no-color", action="store_true", help="print plain text frames")
+    parser.add_argument(
+        "--print", dest="print_all", action="store_true", help="print every component instead of browsing"
+    )
     args = parser.parse_args(argv)
 
     if args.list:
@@ -377,6 +543,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     except ValueError as error:
         print(error, file=sys.stderr)
         return 2
+
+    # Named components always print: `make demo-list` is the quick "show me this
+    # one" path, while the bare command browses when it owns a terminal.
+    browsing = not args.names and not args.print_all
+    if browsing and sys.stdin.isatty() and sys.stdout.isatty():
+        GalleryBrowser(entries).run()
+        return 0
+
     print_gallery(entries, color=not args.no_color and sys.stdout.isatty())
     return 0
 
