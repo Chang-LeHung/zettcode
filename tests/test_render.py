@@ -25,6 +25,7 @@ from zettcode.tui_framework.render import (
     wrap_columns,
     wrap_spans,
 )
+from zettcode.tui_framework.render.renderer import _changed_bounds
 
 
 def test_color_depth_encodes_truecolor_256_16_and_mono():
@@ -144,3 +145,41 @@ def test_renderer_downgrades_color_to_the_terminal_depth():
 
     assert "38;2;" not in output.getvalue()
     assert "38;5;" not in output.getvalue()
+
+
+def test_changed_bounds_covers_the_whole_row_without_a_previous_frame():
+    canvas = Canvas(4, 1)
+
+    assert _changed_bounds(canvas.cells[0], None) == (0, 3)
+
+
+def test_changed_bounds_reports_an_empty_range_for_identical_rows():
+    """The repaint window is a pure function, so its edges are tested directly."""
+    canvas = Canvas(4, 1)
+    canvas.set_cell(1, 0, "\u4f60")
+
+    start, end = _changed_bounds(canvas.cells[0], list(canvas.cells[0]))
+
+    assert end < start
+
+
+def test_changed_bounds_reaches_back_to_the_leader_of_a_wide_glyph():
+    before = Canvas(4, 1)
+    before.set_cell(1, 0, "\u4f60")
+    after = Canvas(4, 1)
+    after.set_cell(1, 0, "\u4f60")
+    after.set_cell(2, 0, "X")  # an overlay painting over the glyph's tail
+
+    # Column 2 alone changed, but starting there would leave half a glyph.
+    assert _changed_bounds(after.cells[0], before.cells[0]) == (1, 2)
+
+
+def test_changed_bounds_reaches_forward_to_the_tail_of_a_wide_glyph():
+    before = Canvas(4, 1)
+    before.set_cell(1, 0, "\u4f60")
+    after = Canvas(4, 1)
+    after.set_cell(1, 0, "\u4f60")
+    # Restyling skips continuation cells, so only the leader differs.
+    after.restyle(1, 0, 1, lambda style: replace(style, reverse=True))
+
+    assert _changed_bounds(after.cells[0], before.cells[0]) == (1, 2)

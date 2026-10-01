@@ -82,11 +82,26 @@ class DifferentialRenderer:
 
 
 def _changed_bounds(row: list[Cell], previous: list[Cell] | None) -> tuple[int, int]:
-    """Return a glyph-safe inclusive range containing every changed cell."""
+    """Return an inclusive column range that safely repaints every changed cell.
+
+    Args:
+        row: The row being painted.
+        previous: The same row one frame earlier, or ``None`` when the frame is
+            painted from scratch, in which case the whole row counts as changed.
+
+    Returns:
+        ``(start, end)``, both inclusive. The range is widened outward to whole
+        glyphs, so it may cover cells that did not change; ``end < start`` means
+        the rows are identical and nothing has to be painted.
+    """
     if previous is None:
         return 0, len(row) - 1
 
     changed = [index for index, cell in enumerate(row) if cell != previous[index]]
+    if not changed:
+        # An empty range keeps this a total function: a caller that forgot to
+        # skip an identical row gets "nothing to paint" instead of an IndexError.
+        return 0, -1
     start, end = changed[0], changed[-1]
 
     # A wide glyph occupies a leading cell plus one or more continuation cells.
