@@ -22,7 +22,7 @@ from ...tui import (
     TextLine,
     Theme,
 )
-from ...tui.render import truncate, wrap_columns
+from ...tui.render import display_width, truncate, wrap_columns
 from ...tui.widgets.markdown import MarkdownSource
 
 MAX_TOOL_OUTPUT = 64_000
@@ -404,16 +404,38 @@ def render_entry(entry: Entry, width: int, theme: Theme, frame: int) -> list[Tex
     """
     match entry.kind:
         case "welcome":
-            return [TextLine((Span(line, Style(foreground=theme.subtle)),)) for line in entry.text.split("\n")]
+            lines = []
+            for index, line in enumerate(entry.text.split("\n")):
+                if index in (1, 2) and "   " in line and any(glyph in line for glyph in "│╰"):
+                    logo, spacing, label = line.rpartition("   ")
+                    label_style = (
+                        Style(foreground=theme.text, bold=True) if index == 1 else Style(foreground=theme.subtle)
+                    )
+                    lines.append(
+                        TextLine((Span(logo + spacing, Style(foreground=theme.accent)), Span(label, label_style)))
+                    )
+                else:
+                    color = theme.accent if index == 0 and "╭" in line else theme.subtle
+                    lines.append(TextLine((Span(line, Style(foreground=color)),)))
+            return lines
         case "notice":
             return [
                 TextLine(),
                 *[TextLine((Span(f"  {line}", Style(foreground=theme.muted)),)) for line in entry.text.split("\n")],
             ]
         case "user":
-            prompt = entry.text.split("\n")
-            lines = [TextLine(), TextLine((Span(f"\u276f {prompt[0]}", Style(foreground=theme.text, bold=True)),))]
-            lines.extend(TextLine((Span(f"  {line}", Style(foreground=theme.text, bold=True)),)) for line in prompt[1:])
+            style = Style(foreground=theme.text, background=theme.surface_alt)
+            inset = min(2, max(0, (width - 3) // 2))
+            content_width = max(1, width - inset * 2 - 2)
+            prompt = [chunk for row in entry.text.split("\n") for chunk in wrap_columns(row, content_width)]
+            background = TextLine((Span(" " * width, style),))
+            lines = [TextLine(), background]
+            for index, chunk in enumerate(prompt):
+                prefix = "\u203a " if index == 0 else "  "
+                body = truncate(f"{prefix}{chunk}", max(1, width - inset))
+                padding = " " * max(0, width - inset - display_width(body))
+                lines.append(TextLine((Span(" " * inset + body + padding, style),)))
+            lines.append(background)
             return lines
         case "thinking":
             return _thinking_lines(entry, width, theme, frame)

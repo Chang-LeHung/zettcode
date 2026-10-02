@@ -47,6 +47,7 @@ class TextArea(Widget):
         history_limit: int = 200,
         on_submit: Submit | None = None,
         on_change: Callable[[], None] | None = None,
+        surface: bool = False,
     ) -> None:
         """Configure the prompt, history, completion source, and callbacks.
 
@@ -64,6 +65,8 @@ class TextArea(Widget):
             on_submit: Receives the trimmed draft on Enter; returning ``False``
                 rejects it, which leaves the draft and the history untouched.
             on_change: Called after every edit that changes the draft.
+            surface: Paint a padded, theme-coloured input band; the default
+                leaves the editor's existing compact rendering unchanged.
         """
         super().__init__()
         self.prompt = prompt
@@ -74,6 +77,7 @@ class TextArea(Widget):
         self.history_limit = max(1, history_limit)
         self.on_submit = on_submit
         self.on_change = on_change
+        self.surface = surface
         self.text = ""
         self.position = 0
         self._cursor_screen: Point | None = None
@@ -129,8 +133,9 @@ class TextArea(Widget):
 
     def preferred_height(self, width: int) -> int:
         """Return the rows the draft needs, capped at ``max_height``."""
-        lines, _ = layout_input(self.text, self.position, width, self.prompt_width)
-        return min(self.max_height, max(1, len(lines)))
+        inset = min(2, max(0, (width - self.prompt_width - 1) // 2)) if self.surface else 0
+        lines, _ = layout_input(self.text, self.position, max(1, width - 2 * inset), self.prompt_width)
+        return min(self.max_height, max(1, len(lines) + (2 if self.surface else 0)))
 
     @property
     def prompt_width(self) -> int:
@@ -146,31 +151,42 @@ class TextArea(Widget):
     def render(self, canvas: Canvas) -> None:
         """Paint the visible rows and remember the cell the cursor belongs on."""
         theme = self.theme
-        lines, (cursor_row, cursor_column) = layout_input(self.text, self.position, self.rect.width, self.prompt_width)
-        first_visible = max(0, cursor_row - self.rect.height + 1)
-        body_style = Style(foreground=theme.text)
-        prompt_style = Style(foreground=theme.accent_bright, bold=True)
-        for local_row, line in enumerate(lines[first_visible : first_visible + self.rect.height]):
+        inset = min(2, max(0, (self.rect.width - self.prompt_width - 1) // 2)) if self.surface else 0
+        inner_width = max(1, self.rect.width - 2 * inset)
+        inner_height = max(1, self.rect.height - (2 if self.surface and self.rect.height >= 3 else 0))
+        top = 1 if self.surface and self.rect.height >= 3 else 0
+        background = theme.surface_alt if self.surface else None
+        if self.surface:
+            canvas.fill(self.rect.x, self.rect.y, self.rect.width, self.rect.height, Style(background=background))
+        lines, (cursor_row, cursor_column) = layout_input(self.text, self.position, inner_width, self.prompt_width)
+        first_visible = max(0, cursor_row - inner_height + 1)
+        body_style = Style(foreground=theme.text, background=background)
+        prompt_style = Style(foreground=theme.accent_bright, background=background, bold=True)
+        for local_row, line in enumerate(lines[first_visible : first_visible + inner_height]):
             source_row = first_visible + local_row
-            x = self.rect.x + (self.prompt_width if source_row == 0 else 0)
+            x = self.rect.x + inset + (self.prompt_width if source_row == 0 else 0)
             if source_row == 0 and self.prompt:
                 canvas.draw_text(
-                    self.rect.x, self.rect.y + local_row, self.prompt, prompt_style, max_width=self.rect.width
+                    self.rect.x + inset, self.rect.y + top + local_row, self.prompt, prompt_style, max_width=inner_width
                 )
             if not self.text and source_row == 0 and self.placeholder:
                 canvas.draw_text(
                     x,
-                    self.rect.y + local_row,
-                    truncate(self.placeholder, max(0, self.rect.width - (x - self.rect.x))),
-                    Style(foreground=theme.muted),
-                    max_width=self.rect.width - (x - self.rect.x),
+                    self.rect.y + top + local_row,
+                    truncate(self.placeholder, max(0, inner_width - self.prompt_width)),
+                    Style(foreground=theme.muted, background=background),
+                    max_width=max(0, inner_width - self.prompt_width),
                 )
                 continue
             canvas.draw_text(
-                x, self.rect.y + local_row, line, body_style, max_width=self.rect.width - (x - self.rect.x)
+                x,
+                self.rect.y + top + local_row,
+                line,
+                body_style,
+                max_width=max(0, inner_width - (self.prompt_width if source_row == 0 else 0)),
             )
-        cursor_x = self.rect.x + (self.prompt_width if cursor_row == 0 else 0) + cursor_column
-        self._cursor_screen = Point(cursor_x, self.rect.y + cursor_row - first_visible)
+        cursor_x = self.rect.x + inset + (self.prompt_width if cursor_row == 0 else 0) + cursor_column
+        self._cursor_screen = Point(cursor_x, self.rect.y + top + cursor_row - first_visible)
 
     def cursor(self) -> Point | None:
         """Show the cursor only while this editor actually has focus."""
