@@ -27,7 +27,8 @@ class ZettCodeConfig:
         provider: Which adapter to build.
         model: Model name passed to the provider; must not be blank.
         api_key: Credential for the provider; must not be blank.
-        database: SQLite file holding sessions; ``~`` is expanded as well.
+        store: Directory holding the JSONL session tree, one file per session;
+            ``~`` is expanded. It is created on demand, so it may not exist yet.
         theme_file: Optional TOML palette loaded on top of ``theme``.
         session_id: Session to resume; ``None`` starts a fresh one.
         base_url: Overrides the provider endpoint for a self-hosted gateway.
@@ -46,7 +47,7 @@ class ZettCodeConfig:
     provider: ProviderName
     model: str
     api_key: str
-    database: Path
+    store: Path
     theme_file: Path | None = None
     session_id: str | None = None
     base_url: str | None = None
@@ -62,7 +63,7 @@ class ZettCodeConfig:
     def __post_init__(self) -> None:
         """Normalize the paths and reject settings that cannot build a runtime."""
         workspace = self.workspace.expanduser().resolve()
-        database = self.database.expanduser().resolve()
+        store = self.store.expanduser().resolve()
         if not workspace.is_dir():
             raise ValueError(f"Workspace is not a directory: {workspace}")
         if not self.model.strip():
@@ -76,7 +77,7 @@ class ZettCodeConfig:
         if self.compaction_max_tokens <= self.compaction_keep_tokens:
             raise ValueError("compaction_max_tokens must be greater than compaction_keep_tokens")
         object.__setattr__(self, "workspace", workspace)
-        object.__setattr__(self, "database", database)
+        object.__setattr__(self, "store", store)
         if self.theme_file is not None:
             object.__setattr__(self, "theme_file", self.theme_file.expanduser().resolve())
 

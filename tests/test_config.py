@@ -11,11 +11,11 @@ def test_config_resolves_paths(tmp_path: Path):
         provider=ProviderName.DEEPSEEK,
         model="model",
         api_key="secret",
-        database=tmp_path / "data" / "sessions.sqlite3",
+        store=tmp_path / "data" / "sessions",
     )
 
     assert config.workspace == tmp_path.resolve()
-    assert config.database == (tmp_path / "data" / "sessions.sqlite3").resolve()
+    assert config.store == (tmp_path / "data" / "sessions").resolve()
 
 
 @pytest.mark.parametrize(
@@ -34,7 +34,7 @@ def test_config_rejects_invalid_values(tmp_path: Path, changes, message):
         "provider": ProviderName.OPENAI,
         "model": "model",
         "api_key": "secret",
-        "database": tmp_path / "sessions.sqlite3",
+        "store": tmp_path / "sessions",
         **changes,
     }
     with pytest.raises(ValueError, match=message):
