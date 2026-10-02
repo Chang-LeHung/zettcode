@@ -14,7 +14,17 @@ DEFAULT_FRAMES = ("\u280b", "\u2819", "\u2839", "\u2838", "\u283c", "\u2834", "\
 
 
 class Spinner(Widget):
-    """An animated glyph that keeps the frame loop alive while it runs."""
+    """An animated glyph that keeps the frame loop alive while it runs.
+
+    Shape::
+
+        <glyph> working                   <- braille frames, cycled every interval
+
+    The glyph is derived from the clock at paint time rather than advanced by a
+    tick, so it never drifts or speeds up when frames are dropped. What keeps
+    frames coming is the scheduler token registered in ``start``; with
+    ``app.reduced_motion`` the token is skipped and the first frame stays put.
+    """
 
     def __init__(
         self,
@@ -97,7 +107,17 @@ class Spinner(Widget):
 
 
 class ProgressBar(Widget):
-    """A determinate bar with an optional label."""
+    """A determinate bar with an optional label.
+
+    Shape::
+
+        build ##########------------      <- label, filled, empty
+              |<-- width * value -->|
+
+    ``value`` is clamped into 0..1; filled cells use U+2588 and empty ones
+    U+2591. The label is truncated first and always keeps one cell for the bar;
+    if nothing is left, only the label is drawn.
+    """
 
     def __init__(self, value: float = 0.0, *, label: str = "", filled: str = "\u2588", empty: str = "\u2591") -> None:
         """Store the value and the glyphs used for the filled and empty parts.

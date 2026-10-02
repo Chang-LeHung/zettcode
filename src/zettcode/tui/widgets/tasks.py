@@ -20,6 +20,17 @@ class TaskPanel(Widget):
 
     The widget only knows about a state name and a label, which keeps the
     framework free of any particular task vocabulary.
+
+    Shape::
+
+          Plan                             <- title, muted
+          x read the renderer              <- completed: muted, U+2713
+          > preview widgets                <- processing: accent, bold, U+25B8
+          . run make check                 <- pending: body text, U+00B7
+
+    An unknown state falls back to the pending dot, and ``preferred_height()``
+    is the slot size an owner passes to keep the panel exactly as tall as its
+    contents (zero rows when there is nothing to show).
     """
 
     def __init__(self, title: str = "Plan") -> None:

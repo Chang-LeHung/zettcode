@@ -13,7 +13,18 @@ Value = str | Callable[[], str]
 
 
 class Text(Widget):
-    """A label that may compute its value at paint time and wrap to its width."""
+    """A label that may compute its value at paint time and wrap to its width.
+
+    Shape::
+
+        bold heading                      <- bold=True
+        muted caption that wraps across   <- muted=True, wrapped at rect.width
+        rows
+                            right aligned <- align="right"
+
+    Each wrapped row is one ``draw_text``; the label never grows past the
+    rectangle it was given, it just writes fewer rows.
+    """
 
     def __init__(
         self,
@@ -77,7 +88,16 @@ class Text(Widget):
 
 
 class Rule(Widget):
-    """A one-row horizontal separator."""
+    """A one-row horizontal separator.
+
+    Shape::
+
+        --------------------------------  <- character repeated rect.width times
+
+    Drawn with U+2500 by default. It asks for a single cell and takes whatever
+    width its slot gives it, so it is normally used as ``Slot(Rule(), size=1)``
+    between two regions.
+    """
 
     def __init__(self, character: str = "\u2500") -> None:
         """Set the glyph the rule repeats across its width.

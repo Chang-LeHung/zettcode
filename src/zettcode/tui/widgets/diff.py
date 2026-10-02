@@ -132,7 +132,21 @@ def build_unified(
 
 
 class DiffView(Widget):
-    """Paint unified-diff rows with a gutter and word-level emphasis."""
+    """Paint unified-diff rows with a gutter and word-level emphasis.
+
+    Shape::
+
+                 --- a
+                 +++ b
+                 @@ -1,5 +1,2 @@          <- hunk headers, dim
+          1    1  def total(items):      <- old and new line numbers
+          2       -    value = 0          <- removed
+               2  +    return sum(...)    <- added
+
+    The gutter is reserved only when the diff carries line numbers. Removed and
+    added lines are paired by position, and only the tokens that actually differ
+    get the selection colour, which is what makes a one-word change readable.
+    """
 
     def __init__(self, lines: tuple[DiffLine, ...] | list[DiffLine] = ()) -> None:
         """Store the diff rows; the widget itself only paints them.

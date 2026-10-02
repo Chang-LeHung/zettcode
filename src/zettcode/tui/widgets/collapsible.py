@@ -12,7 +12,18 @@ from ..render import Canvas, Style, truncate
 
 
 class Collapsible(Widget):
-    """Show a title row and, when expanded, a body beneath it."""
+    """Show a title row and, when expanded, a body beneath it.
+
+    Shape::
+
+        > Thinking                        <- collapsed: U+25B8, one row only
+        v Thinking                        <- expanded: U+25BE
+          Checked the renderer.           <- body, directly beneath the header
+
+    Expanding changes the widget's height, so toggling calls
+    ``host.request_layout()``; the body is only a child while it is expanded,
+    which keeps it out of layout and hit testing when collapsed.
+    """
 
     MARKERS = ("\u25b8", "\u25be")
 

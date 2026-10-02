@@ -79,7 +79,23 @@ class TranscriptSource(LineSource):
 
 
 class TranscriptView(ScrollView):
-    """Scrollable transcript that toggles entries when they are clicked."""
+    """Scrollable transcript that toggles entries when they are clicked.
+
+    Shape, one blank row between entries::
+
+        > inspect the project                <- user prompt, bold, U+276F prefix
+        v Thinking  0 ms                     <- reasoning row; v collapsed,
+          checking the renderer                 U+25BE expanded, animated while
+                                                running, stamped when finished
+        x read_file {"path":"app.py"}  0 ms v <- tool row: glyph, name, argument
+            | line one                          preview, duration, and U+25B8
+              line two                          when its bounded output can open
+        Fixed parse.                         <- answer: parsed as Markdown
+
+    The last two rows are the same entry: a tool row collapses its output to
+    `TOOL_PREVIEW_ROWS` unless it is expanded. A click toggles the entry under
+    the pointer; everything else, the wheel included, is ScrollView's.
+    """
 
     def __init__(self, transcript: Transcript, *, theme: Theme) -> None:
         """Scroll the transcript and keep its line source in sync with the theme.

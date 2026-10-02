@@ -15,7 +15,18 @@ LEVELS = ("info", "success", "warning", "error")
 
 
 class Toast(Widget):
-    """A framed notice that counts down while the application keeps painting."""
+    """A framed notice that counts down while the application keeps painting.
+
+    Shape::
+
+        +-----------------------+
+        | saved to disk         |  <- frame and text in the level's colour
+        +-----------------------+
+
+    Mount registers a scheduler token so the frame loop keeps running for the
+    countdown; ``on_tick`` dismisses it once the deadline passes, either by
+    popping its own screen or by calling ``on_expire``.
+    """
 
     def __init__(
         self,
