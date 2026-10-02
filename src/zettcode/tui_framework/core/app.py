@@ -9,6 +9,7 @@ from ..render import Canvas
 from .events import AnyEvent, MouseEvent, ResizeEvent
 from .focus import FocusManager, walk
 from .geometry import Point, Rect
+from .host import Host
 from .keymap import CommandRegistry, Keymap
 from .scheduler import Scheduler
 from .screen import Screen, ScreenStack
@@ -16,13 +17,13 @@ from .theme import DARK, Theme
 from .widget import Widget
 
 
-class App:
+class TuiApp(Host):
     """Own one widget tree and everything that drives it.
 
-    The class implements :class:`~zettcode.tui_framework.core.host.Host`, so
-    widgets reach the outside world only through it. It never touches a
-    terminal: callers hand it a size and paint the returned canvas, which is
-    what lets the same tree run under a real TTY or a headless test.
+    It is the only :class:`~zettcode.tui_framework.core.host.Host`, so widgets
+    reach the outside world only through it. It never touches a terminal:
+    callers hand it a size and paint the returned canvas, which is what lets
+    the same tree run under a real TTY or a headless test.
     """
 
     def __init__(

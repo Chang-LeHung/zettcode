@@ -6,12 +6,12 @@ from io import StringIO
 
 from zettcode.tui_framework import (
     AnyEvent,
-    App,
     ColorDepth,
     Host,
     KeyEvent,
     TerminalCapabilities,
     TextEvent,
+    TuiApp,
     Widget,
 )
 from zettcode.tui_framework.runner import TerminalRunner, run_app
@@ -99,7 +99,7 @@ async def test_runner_decodes_pipe_bytes_and_paints_until_exit():
     read_fd, write_fd = os.pipe()
     terminal = StubTerminal(read_fd, width=24, height=3)
     editor = Editor()
-    app = App(editor, width=24, height=3)
+    app = TuiApp(editor, width=24, height=3)
     task = asyncio.create_task(run_app(app, terminal=terminal))
     try:
         await _wait_for(lambda: app.focused_widget() is not None)
@@ -131,7 +131,7 @@ async def test_runner_wakes_up_for_a_repaint_requested_while_idle():
     read_fd, write_fd = os.pipe()
     terminal = StubTerminal(read_fd, width=24, height=3)
     painter = LatePainter()
-    app = App(painter, width=24, height=3)
+    app = TuiApp(painter, width=24, height=3)
     task = asyncio.create_task(run_app(app, terminal=terminal))
     try:
         await _wait_for(lambda: "start" in terminal.output.getvalue())
@@ -150,7 +150,7 @@ async def test_the_runner_class_owns_the_loop_and_releases_it():
     read_fd, write_fd = os.pipe()
     terminal = StubTerminal(read_fd, width=24, height=3)
     editor = Editor()
-    app = App(editor, width=24, height=3)
+    app = TuiApp(editor, width=24, height=3)
     runner = TerminalRunner(app, terminal=terminal)
 
     assert runner.renderer.color_depth is terminal.capabilities.color_depth

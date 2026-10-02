@@ -1,5 +1,7 @@
 """Contract tests for the standalone TUI framework core and its test harness."""
 
+import pytest
+
 from zettcode.tui_framework import (
     AnyEvent,
     Constraints,
@@ -13,6 +15,7 @@ from zettcode.tui_framework import (
     Size,
     Style,
     TextEvent,
+    TuiApp,
     Widget,
 )
 from zettcode.tui_framework.testing import Harness
@@ -98,6 +101,24 @@ def test_rect_geometry_is_clipped_and_absolute():
     assert rect.translate(2, -1) == Rect(3, 1, 3, 4)
     assert rect.intersection(Rect(3, 3, 5, 5)) == Rect(3, 3, 1, 3)
     assert Rect(0, 0, 0, 0).union(rect) == rect
+
+
+def test_host_is_abstract_and_tui_app_implements_all_of_it():
+    """The contract is enforced by inheritance, not by looking compatible."""
+
+    class Partial(Host):
+        def focus(self, widget) -> None:
+            return None
+
+    assert issubclass(TuiApp, Host)
+
+    with pytest.raises(TypeError, match="abstract"):
+        Host()
+    with pytest.raises(TypeError, match="abstract"):
+        Partial()
+
+    # TuiApp answers every method, so it is the one class that can be built.
+    assert TuiApp(Widget(), width=4, height=1).focused_widget() is None
 
 
 def test_constraints_clamp_measurements_and_deflate():

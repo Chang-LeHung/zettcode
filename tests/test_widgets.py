@@ -2,7 +2,6 @@
 
 from zettcode.tui_framework import (
     DARK,
-    App,
     Canvas,
     Collapsible,
     Column,
@@ -23,6 +22,7 @@ from zettcode.tui_framework import (
     Table,
     TextArea,
     Toast,
+    TuiApp,
     Widget,
     centered,
 )
@@ -187,7 +187,7 @@ def test_completion_popup_bands_the_selection_and_scrolls():
 def test_spinner_advances_with_the_clock_and_holds_a_frame_budget():
     clock = FakeClock()
     spinner = Spinner("working", clock=clock)
-    app = App(spinner, width=20, height=1, clock=clock)
+    app = TuiApp(spinner, width=20, height=1, clock=clock)
     app.mount()
 
     spinner.start()
@@ -206,7 +206,7 @@ def test_spinner_advances_with_the_clock_and_holds_a_frame_budget():
 def test_reduced_motion_suppresses_decorative_animation():
     clock = FakeClock()
     spinner = Spinner("working", clock=clock)
-    app = App(spinner, width=20, height=1, clock=clock, reduced_motion=True)
+    app = TuiApp(spinner, width=20, height=1, clock=clock, reduced_motion=True)
     app.mount()
 
     spinner.start()
@@ -229,7 +229,7 @@ def test_progress_bar_fills_proportionally():
 def test_toast_expires_on_the_clock_and_dismisses_its_screen():
     clock = FakeClock()
     calls: list[str] = []
-    app = App(Label("base"), width=20, height=5, clock=clock)
+    app = TuiApp(Label("base"), width=20, height=5, clock=clock)
     app.mount()
     toast = Toast("saved", duration=2.0, clock=clock)
     app.push_screen(Screen(centered(toast, vertical="end"), name="toast", modal=True))

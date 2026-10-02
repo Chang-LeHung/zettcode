@@ -2,7 +2,7 @@
 
 The gallery is headless by design: an entry is a name, a one-line summary, the
 size it wants, and a factory that builds the widget. :func:`render_entry` mounts
-one widget in a throwaway :class:`~zettcode.tui_framework.core.app.App` and
+one widget in a throwaway :class:`~zettcode.tui_framework.core.app.TuiApp` and
 paints a single frame, and :func:`print_gallery` writes those frames to a
 stream. That is what lets ``make demo-list`` show a component with no TTY and no
 test harness in the way.
@@ -20,7 +20,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import TextIO
 
-from .core.app import App
+from .core.app import TuiApp
 from .core.events import KeyEvent
 from .core.geometry import Point, Rect, Size
 from .core.host import Host
@@ -282,7 +282,7 @@ def render_entry(entry: GalleryEntry, *, theme: Theme = DARK) -> Canvas:
         entry: Component to render; its factory is called once per invocation.
         theme: Palette the preview is painted with.
     """
-    app = App(entry.build(), width=entry.size.width, height=entry.size.height, theme=theme)
+    app = TuiApp(entry.build(), width=entry.size.width, height=entry.size.height, theme=theme)
     app.mount()
     return app.render()
 
@@ -438,7 +438,7 @@ class GalleryBrowser:
                 Slot(HBox([Slot(index, size=SIDEBAR)]), flex=1),
             ]
         )
-        self.app = App(GalleryRoot(body), theme=theme)
+        self.app = TuiApp(GalleryRoot(body), theme=theme)
         self._install_keymap()
         self.app.mount()
         self._show_preview(self.list.current)

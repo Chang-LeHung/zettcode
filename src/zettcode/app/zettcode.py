@@ -17,7 +17,6 @@ from ..runtime import ZettCodeRuntime
 from ..tui_framework import (
     DARK,
     Anchor,
-    App,
     CompletionItem,
     CompletionPopup,
     Dialog,
@@ -32,6 +31,7 @@ from ..tui_framework import (
     TextArea,
     Theme,
     Toast,
+    TuiApp,
     VBox,
     Widget,
     centered,
@@ -134,7 +134,7 @@ class ZettCodeApp:
             ]
         )
         self.root = ZettCodeRoot(self, body)
-        self.app = App(self.root, theme=theme, reduced_motion=runtime.config.reduced_motion)
+        self.app = TuiApp(self.root, theme=theme, reduced_motion=runtime.config.reduced_motion)
         self._task: asyncio.Task[None] | None = None
         self._busy = False
         self._status = "ready"
