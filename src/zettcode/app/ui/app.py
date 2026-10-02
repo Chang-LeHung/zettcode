@@ -160,7 +160,7 @@ class ZettCodeApp:
 
     async def run(self) -> None:
         """Own the terminal until the application exits."""
-        from ..tui import TerminalRunner
+        from ...tui import TerminalRunner
 
         await TerminalRunner(self.app).run()
 
