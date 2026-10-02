@@ -18,8 +18,9 @@ class Slot:
     Attributes:
         widget: The child laid out in this slot.
         size: Fixed cell count on the main axis, or a callable receiving the
-            available length and returning one; ``None`` uses the child's own
-            measurement.
+            box's extent on the cross axis (the width of a ``VBox``, the height
+            of an ``HBox``) and returning main-axis cells. ``None`` contributes
+            nothing to the fixed budget, leaving the slot to ``flex``.
         flex: Share of the leftover space; zero means the slot never grows.
         min_size: Floor applied to the main-axis extent.
     """
@@ -100,7 +101,8 @@ class VBox(_Box):
         """Split the height across the slots and stack them from the top."""
         super().layout(rect)
         y = rect.y
-        for slot, extent in zip(self.slots, resolve_tracks(rect.height, [s.track() for s in self.slots]), strict=True):
+        measured = resolve_tracks(rect.height, [s.track() for s in self.slots], cross=rect.width)
+        for slot, extent in zip(self.slots, measured, strict=True):
             slot.widget.layout(Rect(rect.x, y, rect.width, extent))
             y += extent
 
@@ -117,6 +119,7 @@ class HBox(_Box):
         """Split the width across the slots and place them from the left."""
         super().layout(rect)
         x = rect.x
-        for slot, extent in zip(self.slots, resolve_tracks(rect.width, [s.track() for s in self.slots]), strict=True):
+        measured = resolve_tracks(rect.width, [s.track() for s in self.slots], cross=rect.height)
+        for slot, extent in zip(self.slots, measured, strict=True):
             slot.widget.layout(Rect(x, rect.y, extent, rect.height))
             x += extent
