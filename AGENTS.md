@@ -2,13 +2,15 @@
 
 ## Scope
 
-- ZettCode is the terminal coding agent. `src/zettcode` owns the CLI, the agent
-  runtime composition, and the TUI framework; `tests` drives all of it without a
-  real terminal.
+- ZettCode is the terminal coding agent. `src/zettcode` holds `cli.py` and
+  `config.py` at the top, the application in `app/` (`agent/` for the
+  conversation model, the event projection, and the runtime composition; `ui/`
+  for the shell and the views), and the reusable framework in `tui/`; `tests`
+  drives all of it without a real terminal.
 - The agent runtime is an external dependency: depend on released `zett-agent`
   versions and never vendor, copy, or re-implement runtime code here.
 - The TUI owns the terminal. Raw mode, input decoding, layout, and differential
-  cell rendering live in `src/zettcode/tui_framework`; do not add prompt-toolkit
+  cell rendering live in `src/zettcode/tui`; do not add prompt-toolkit
   or another TUI framework.
 - Keep Zett application vocabulary (artifacts, tags, cards, channels, scheduled
   tasks) out of this repository. ZettCode is a coding agent, not a host app.

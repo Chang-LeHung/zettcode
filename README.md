@@ -112,7 +112,7 @@ uv run zettcode --provider deepseek --model deepseek-chat
 - `Tab` / `Shift-Tab`: complete slash commands without the menu
 
 Pointer-leave collapse of thinking and user-editable keybindings are not ported
-yet; see `docs/tui-framework.md`.
+yet; see `docs/tui.md`.
 
 Thinking is collapsed by default. Tool calls keep their output and completion
 status visible in the transcript, and completed tool rows show a five-row

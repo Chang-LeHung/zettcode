@@ -2,7 +2,7 @@
 
 The gallery is headless by design: an entry is a name, a one-line summary, the
 size it wants, and a factory that builds the widget. :func:`render_entry` mounts
-one widget in a throwaway :class:`~zettcode.tui_framework.core.app.TuiApp` and
+one widget in a throwaway :class:`~zettcode.tui.core.app.TuiApp` and
 paints a single frame, and :func:`print_gallery` writes those frames to a
 stream. That is what lets ``make demo-list`` show a component with no TTY and no
 test harness in the way.

@@ -24,7 +24,7 @@ from zett_agent import (
     new_uuid7,
 )
 
-from .config import ProviderName, ZettCodeConfig
+from ...config import ProviderName, ZettCodeConfig
 
 
 def build_system_prompt(config: ZettCodeConfig) -> str:

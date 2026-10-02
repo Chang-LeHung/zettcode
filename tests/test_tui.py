@@ -7,7 +7,7 @@ from io import StringIO
 
 import pytest
 
-from zettcode.tui_framework import (
+from zettcode.tui import (
     Canvas,
     DifferentialRenderer,
     EventType,
@@ -20,12 +20,10 @@ from zettcode.tui_framework import (
 )
 
 
-def test_tui_framework_imports_where_termios_is_unavailable(monkeypatch) -> None:
+def test_tui_imports_where_termios_is_unavailable(monkeypatch) -> None:
     """ZettCode must load on platforms without raw-mode terminal modules."""
     real_import = builtins.__import__
-    saved_modules = {
-        name: sys.modules.get(name) for name in ("zettcode.tui_framework.terminal", "zettcode.tui_framework")
-    }
+    saved_modules = {name: sys.modules.get(name) for name in ("zettcode.tui.terminal", "zettcode.tui")}
 
     def blocked(name, *args, **kwargs):
         if name in {"termios", "tty"}:
@@ -36,7 +34,7 @@ def test_tui_framework_imports_where_termios_is_unavailable(monkeypatch) -> None
     try:
         for module_name in saved_modules:
             sys.modules.pop(module_name, None)
-        module = importlib.import_module("zettcode.tui_framework")
+        module = importlib.import_module("zettcode.tui")
         assert hasattr(module, "Terminal")
     finally:
         for module_name, saved in saved_modules.items():
@@ -47,7 +45,7 @@ def test_tui_framework_imports_where_termios_is_unavailable(monkeypatch) -> None
 
 
 def test_terminal_refuses_platforms_without_posix_raw_mode(monkeypatch) -> None:
-    from zettcode.tui_framework import terminal as terminal_module
+    from zettcode.tui import terminal as terminal_module
 
     monkeypatch.setattr(terminal_module, "POSIX", False)
 
@@ -57,8 +55,8 @@ def test_terminal_refuses_platforms_without_posix_raw_mode(monkeypatch) -> None:
 
 
 def test_terminal_modes_follow_the_declared_capabilities() -> None:
-    from zettcode.tui_framework import terminal as terminal_module
-    from zettcode.tui_framework.capabilities import TerminalCapabilities
+    from zettcode.tui import terminal as terminal_module
+    from zettcode.tui.capabilities import TerminalCapabilities
 
     full = terminal_module.Terminal(input_fd=0, output=StringIO())
     # The default terminal keeps the exact sequence the runner has always sent.

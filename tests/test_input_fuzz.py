@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import random
 
-from zettcode.tui_framework import InputDecoder, InputEvent
+from zettcode.tui import InputDecoder, InputEvent
 
 CORPUS = [
     b"a",

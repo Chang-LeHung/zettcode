@@ -4,9 +4,9 @@ from dataclasses import replace
 
 import pytest
 
-from zettcode.tui_framework import DARK, EXAMPLE, LIGHT, ThemeFileError, load_theme, theme_from_toml
-from zettcode.tui_framework.render import highlight
-from zettcode.tui_framework.widgets.markdown import render_markdown
+from zettcode.tui import DARK, EXAMPLE, LIGHT, ThemeFileError, load_theme, theme_from_toml
+from zettcode.tui.render import highlight
+from zettcode.tui.widgets.markdown import render_markdown
 
 
 def color_of(spans, needle: str) -> str | None:

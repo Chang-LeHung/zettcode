@@ -20,7 +20,7 @@ from .widget import Widget
 class TuiApp(Host):
     """Own one widget tree and everything that drives it.
 
-    It is the only :class:`~zettcode.tui_framework.core.host.Host`, so widgets
+    It is the only :class:`~zettcode.tui.core.host.Host`, so widgets
     reach the outside world only through it. It never touches a terminal:
     callers hand it a size and paint the returned canvas, which is what lets
     the same tree run under a real TTY or a headless test.

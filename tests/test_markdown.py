@@ -1,11 +1,11 @@
 """Tests for Markdown rendering and its incremental parse cache."""
 
-from zettcode.tui_framework import Canvas, Markdown, MarkdownView, Rect
-from zettcode.tui_framework.core.theme import DARK
-from zettcode.tui_framework.render import display_width
-from zettcode.tui_framework.testing import Harness
-from zettcode.tui_framework.widgets import markdown
-from zettcode.tui_framework.widgets.markdown import render_markdown, stable_cut
+from zettcode.tui import Canvas, Markdown, MarkdownView, Rect
+from zettcode.tui.core.theme import DARK
+from zettcode.tui.render import display_width
+from zettcode.tui.testing import Harness
+from zettcode.tui.widgets import markdown
+from zettcode.tui.widgets.markdown import render_markdown, stable_cut
 
 
 def test_markdown_renders_headings_lists_and_inline_markup():

@@ -7,7 +7,7 @@ like any other code.
 """
 
 from zettcode.app import Transcript, TranscriptView
-from zettcode.tui_framework import (
+from zettcode.tui import (
     DARK,
     Column,
     CompletionItem,
@@ -20,9 +20,9 @@ from zettcode.tui_framework import (
     Table,
     Text,
 )
-from zettcode.tui_framework.testing import render_block
-from zettcode.tui_framework.widgets import Collapsible, MarkdownView
-from zettcode.tui_framework.widgets.diff import DiffView, build_unified
+from zettcode.tui.testing import render_block
+from zettcode.tui.widgets import Collapsible, MarkdownView
+from zettcode.tui.widgets.diff import DiffView, build_unified
 
 
 def test_golden_status_bar():

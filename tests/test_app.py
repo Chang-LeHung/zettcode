@@ -2,7 +2,7 @@
 
 import pytest
 
-from zettcode.tui_framework import (
+from zettcode.tui import (
     Anchor,
     CommandRegistry,
     Constraints,
@@ -27,7 +27,7 @@ from zettcode.tui_framework import (
     normalize_key,
     theme_named,
 )
-from zettcode.tui_framework.core.theme import DARK, LIGHT
+from zettcode.tui.core.theme import DARK, LIGHT
 
 
 class Pane(Widget):
@@ -143,7 +143,7 @@ def test_popping_a_screen_clears_what_the_overlay_covered():
 
 def test_a_framed_overlay_is_opaque():
     """An overlay panel must not let the screen behind it show through."""
-    from zettcode.tui_framework.layout import Border
+    from zettcode.tui.layout import Border
 
     app = TuiApp(Filler("A"), width=20, height=6)
     app.mount()

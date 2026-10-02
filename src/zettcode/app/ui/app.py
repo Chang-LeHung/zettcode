@@ -13,8 +13,7 @@ from zett_agent import (
     ExternalEvent,
 )
 
-from ..runtime import ZettCodeRuntime
-from ..tui_framework import (
+from ...tui import (
     DARK,
     Anchor,
     Completer,
@@ -38,10 +37,12 @@ from ..tui_framework import (
     centered,
     theme_named,
 )
-from ..tui_framework.layout import Slot
-from ..tui_framework.widgets import Rule, Text
-from .projection import TranscriptProjector
-from .transcript import Transcript, TranscriptView, activity_glyph
+from ...tui.layout import Slot
+from ...tui.widgets import Rule, Text
+from ..agent.projection import TranscriptProjector
+from ..agent.runtime import ZettCodeRuntime
+from ..agent.transcript import Transcript, activity_glyph
+from .transcript import TranscriptView
 
 COMMANDS: tuple[tuple[str, str], ...] = (
     ("/help", "show the commands and the keys"),
@@ -159,7 +160,7 @@ class ZettCodeApp:
 
     async def run(self) -> None:
         """Own the terminal until the application exits."""
-        from ..tui_framework import TerminalRunner
+        from ..tui import TerminalRunner
 
         await TerminalRunner(self.app).run()
 

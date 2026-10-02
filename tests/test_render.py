@@ -3,14 +3,14 @@
 from dataclasses import replace
 from io import StringIO
 
-from zettcode.tui_framework import Canvas, ColorDepth, DifferentialRenderer, Span, Style
-from zettcode.tui_framework.capabilities import (
+from zettcode.tui import Canvas, ColorDepth, DifferentialRenderer, Span, Style
+from zettcode.tui.capabilities import (
     detect_capabilities,
     detect_color_depth,
     detect_reduced_motion,
     detect_unicode,
 )
-from zettcode.tui_framework.render import (
+from zettcode.tui.render import (
     cell_glyph,
     character_width,
     display_width,
@@ -25,7 +25,7 @@ from zettcode.tui_framework.render import (
     wrap_columns,
     wrap_spans,
 )
-from zettcode.tui_framework.render.renderer import _changed_bounds
+from zettcode.tui.render.renderer import _changed_bounds
 
 
 def test_color_depth_encodes_truecolor_256_16_and_mono():

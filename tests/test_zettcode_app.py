@@ -19,9 +19,9 @@ from zett_agent import (
 )
 
 from zettcode.app import Transcript, TranscriptSource, ZettCodeApp
-from zettcode.app.projection import TranscriptProjector
-from zettcode.tui_framework import DARK, LIGHT, Rect
-from zettcode.tui_framework.testing import Harness
+from zettcode.app.agent.projection import TranscriptProjector
+from zettcode.tui import DARK, LIGHT, Rect
+from zettcode.tui.testing import Harness
 
 
 class FakeAgent:

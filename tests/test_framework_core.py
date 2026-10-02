@@ -2,7 +2,7 @@
 
 import pytest
 
-from zettcode.tui_framework import (
+from zettcode.tui import (
     AnyEvent,
     Completer,
     Constraints,
@@ -22,7 +22,7 @@ from zettcode.tui_framework import (
     TuiApp,
     Widget,
 )
-from zettcode.tui_framework.testing import Harness
+from zettcode.tui.testing import Harness
 
 
 class Demo(Widget):
