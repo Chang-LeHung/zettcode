@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Protocol
 
 from ..core.geometry import Constraints, Size
 from ..core.widget import Widget
@@ -32,9 +32,14 @@ class CompletionItem:
         return self.label or self.value
 
 
-class Completer(Protocol):
-    """Return candidates for the token under the cursor."""
+class Completer(ABC):
+    """Return candidates for the token under the cursor.
 
+    Subclass this and implement ``__call__``; the editor stores one and calls it
+    with the draft and the cursor position on every keystroke.
+    """
+
+    @abstractmethod
     def __call__(self, text: str, position: int) -> Sequence[CompletionItem]:
         """Return the candidates for the token ending at ``position``."""
 

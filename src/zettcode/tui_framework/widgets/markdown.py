@@ -11,7 +11,7 @@ import re
 from dataclasses import replace
 
 from ..core.theme import DARK, Theme
-from ..layout.scroll import ScrollView
+from ..layout.scroll import LineSource, ScrollView
 from ..render import Canvas, Span, Style, TextLine, highlight, language_for, wrap_spans
 from ..render.text import display_width
 
@@ -401,7 +401,7 @@ class Markdown:
             self._tail_key = key
 
 
-class MarkdownSource:
+class MarkdownSource(LineSource):
     """LineSource adapter so Markdown composes with ScrollView."""
 
     def __init__(self, markdown: Markdown) -> None:
