@@ -36,7 +36,7 @@ def test_parse_args_reads_provider_and_api_key_from_the_environment(tmp_path: Pa
 
 
 def test_parse_args_forwards_endpoint_and_session_flags(tmp_path: Path):
-    database = tmp_path / "sessions.sqlite3"
+    store = tmp_path / "sessions"
     config = parse_args(
         [
             str(tmp_path),
@@ -44,8 +44,8 @@ def test_parse_args_forwards_endpoint_and_session_flags(tmp_path: Path):
             "secret",
             "--session",
             "session-1",
-            "--database",
-            str(database),
+            "--store",
+            str(store),
             "--base-url",
             "https://example.test/v1",
             "--responses-api",
@@ -58,7 +58,7 @@ def test_parse_args_forwards_endpoint_and_session_flags(tmp_path: Path):
     )
 
     assert config.session_id == "session-1"
-    assert config.database == database.resolve()
+    assert config.store == store.resolve()
     assert config.base_url == "https://example.test/v1"
     assert config.responses_api is True
     assert config.reasoning_effort is ReasoningEffort.HIGH

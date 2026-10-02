@@ -32,7 +32,12 @@ def parse_args(argv: list[str] | None = None) -> ZettCodeConfig:
     parser.add_argument("--base-url")
     parser.add_argument("--responses-api", action="store_true")
     parser.add_argument("--session")
-    parser.add_argument("--database", type=Path, default=Path.home() / ".zettcode" / "sessions.sqlite3")
+    parser.add_argument(
+        "--store",
+        type=Path,
+        default=Path.home() / ".zettcode" / "sessions",
+        help="Directory holding the JSONL session tree (default: ~/.zettcode/sessions)",
+    )
     parser.add_argument(
         "--theme-file",
         type=Path,
@@ -71,7 +76,7 @@ def parse_args(argv: list[str] | None = None) -> ZettCodeConfig:
             provider=provider,
             model=args.model or default_model(provider),
             api_key=args.api_key or provider_api_key(provider),
-            database=args.database,
+            store=args.store,
             theme_file=args.theme_file,
             session_id=args.session,
             base_url=args.base_url,

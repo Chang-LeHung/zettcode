@@ -17,7 +17,6 @@ from zett_agent import (
     OpenAIProvider,
     ShellApprovalExtension,
     ShellApprovalMode,
-    SQLiteSessionExtension,
     TodoWriteExtension,
     ToolGuidelinesExtension,
     create_agent,
@@ -25,6 +24,7 @@ from zett_agent import (
 )
 
 from ...config import ProviderName, ZettCodeConfig
+from .session import SessionStore
 
 
 def build_system_prompt(config: ZettCodeConfig) -> str:
@@ -55,7 +55,7 @@ class ZettCodeRuntime:
 
     config: ZettCodeConfig
     client: AgentClient
-    persistence: SQLiteSessionExtension
+    persistence: SessionStore
     todos: TodoWriteExtension
     model: OpenAIProvider | DeepSeekProvider
     session_id: str
@@ -64,8 +64,7 @@ class ZettCodeRuntime:
     async def create(cls, config: ZettCodeConfig) -> ZettCodeRuntime:
         """Create all owned resources after changing into the chosen workspace."""
         os.chdir(config.workspace)
-        config.database.parent.mkdir(parents=True, exist_ok=True)
-        persistence = SQLiteSessionExtension(config.database)
+        persistence = SessionStore(config.store)
         recent = await persistence.list_sessions(limit=1)
         session_id = config.session_id or (recent[0].session_id if recent else new_uuid7())
         match config.provider:
