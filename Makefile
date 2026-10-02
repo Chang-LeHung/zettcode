@@ -38,13 +38,13 @@ check: lint test
 FORCE:
 
 demos:
-	$(UV) run python -m zettcode.tui_framework.gallery --list
+	$(UV) run python -m zettcode.tui.gallery --list
 
 demo:
-	$(UV) run python -m zettcode.tui_framework.gallery
+	$(UV) run python -m zettcode.tui.gallery
 
 demo-all:
-	$(UV) run python -m zettcode.tui_framework.gallery --print
+	$(UV) run python -m zettcode.tui.gallery --print
 
 demo-%: FORCE
-	$(UV) run python -m zettcode.tui_framework.gallery $*
+	$(UV) run python -m zettcode.tui.gallery $*

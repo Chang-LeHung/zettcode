@@ -1,6 +1,6 @@
 """Tests for the M4 widget library."""
 
-from zettcode.tui_framework import (
+from zettcode.tui import (
     DARK,
     Canvas,
     Collapsible,
@@ -26,10 +26,10 @@ from zettcode.tui_framework import (
     Widget,
     centered,
 )
-from zettcode.tui_framework.render import display_width
-from zettcode.tui_framework.testing import Harness
-from zettcode.tui_framework.widgets.progress import DEFAULT_FRAMES
-from zettcode.tui_framework.widgets.textarea import layout_input
+from zettcode.tui.render import display_width
+from zettcode.tui.testing import Harness
+from zettcode.tui.widgets.progress import DEFAULT_FRAMES
+from zettcode.tui.widgets.textarea import layout_input
 
 
 class Label(Widget):

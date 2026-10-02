@@ -1,8 +1,8 @@
 """Tests for unified-diff parsing, word emphasis, and rendering."""
 
-from zettcode.tui_framework import Canvas, DiffLine, DiffSegment, Rect, build_unified, parse_unified, word_diff
-from zettcode.tui_framework.core.theme import DARK
-from zettcode.tui_framework.widgets.diff import DiffView
+from zettcode.tui import Canvas, DiffLine, DiffSegment, Rect, build_unified, parse_unified, word_diff
+from zettcode.tui.core.theme import DARK
+from zettcode.tui.widgets.diff import DiffView
 
 SAMPLE = """\
 --- a/file.txt

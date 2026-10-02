@@ -10,9 +10,9 @@ from pathlib import Path
 from zett_agent import ReasoningEffort, ShellApprovalMode
 
 from .app import ZettCodeApp
+from .app.agent.runtime import ZettCodeRuntime
 from .config import ProviderName, ZettCodeConfig, default_model, provider_api_key
-from .runtime import ZettCodeRuntime
-from .tui_framework import DARK, ThemeFileError, detect_reduced_motion, load_theme
+from .tui import DARK, ThemeFileError, detect_reduced_motion, load_theme
 
 
 def _default_theme_file() -> Path | None:

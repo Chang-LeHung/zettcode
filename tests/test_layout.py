@@ -2,8 +2,8 @@
 
 import pytest
 
-from zettcode.tui_framework import Canvas, Constraints, Rect, Size, Span, TextLine, Widget
-from zettcode.tui_framework.layout import (
+from zettcode.tui import Canvas, Constraints, Rect, Size, Span, TextLine, Widget
+from zettcode.tui.layout import (
     Anchor,
     Border,
     HBox,
@@ -17,8 +17,8 @@ from zettcode.tui_framework.layout import (
     VBox,
     resolve_tracks,
 )
-from zettcode.tui_framework.render import display_width
-from zettcode.tui_framework.testing import Harness
+from zettcode.tui.render import display_width
+from zettcode.tui.testing import Harness
 
 
 class Label(Widget):

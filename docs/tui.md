@@ -1,6 +1,6 @@
 # TUI Framework
 
-`src/zettcode/tui_framework` is a terminal UI toolkit that knows nothing about
+`src/zettcode/tui` is a terminal UI toolkit that knows nothing about
 the coding agent. ZettCode is its first consumer, not its definition. This
 document is the contract and the roadmap for that framework.
 
@@ -8,7 +8,7 @@ document is the contract and the roadmap for that framework.
 
 Three rules define the framework:
 
-1. No module under `tui_framework` may import `zett_agent`.
+1. No module under `tui` may import `zett_agent`.
 2. The application imports only the public surface; the framework never imports
    the application.
 3. The framework ships primitives, the application owns semantics. A `Dialog`,
@@ -29,9 +29,11 @@ data), `core/events.py` (the input model), `core/widget.py` (the contract),
 `core/app.py` (routing, focus, screens, painting), `runner.py` (the terminal
 loop). Everything else is built on these.
 
-**Pass 2 — the application (~880 lines).** `app/projection.py` maps agent events
-onto transcript blocks, `app/transcript.py` owns the model and its render cache,
-`app/zettcode.py` owns the keymap, the slash commands, and the approval dialog.
+**Pass 2 — the application (~880 lines).** `app/agent/transcript.py` owns the
+conversation model and the render cache behind each entry,
+`app/agent/projection.py` maps agent events onto it, and `app/ui/app.py` owns
+the keymap, the slash commands, and the approval dialog. `app/ui/transcript.py`
+is the scrollable, virtualized view over the model.
 
 **Pass 3 — by need.** `render/` for text and colour, `input/` and `terminal.py`
 for the TTY, `layout/` for boxes and scrolling, `widgets/` for the component
@@ -62,16 +64,25 @@ Layout as of M6:
 
 ```
 src/zettcode/
-  app/              the ZettCode application, built on the framework
-                    transcript.py, projection.py, zettcode.py
-  config.py, runtime.py, cli.py
-  tui_framework/    the reusable, agent-agnostic framework
+  cli.py, config.py  the outermost layer: entry point and validated settings
+  app/               the ZettCode application, built on the framework
+    agent/           transcript.py (the conversation model and its render
+                     cache), projection.py (agent events into that model),
+                     runtime.py (AgentClient, persistence, session)
+    ui/              app.py (shell, keymap, commands), transcript.py (the
+                     virtualized view over the model)
+  tui/               the reusable, agent-agnostic framework
 ```
+
+The arrows only point one way: `ui` reads `agent`, `agent` builds on `tui`, and
+nothing under `tui` knows the application exists. `app/__init__.py` is the
+facade over both halves, so callers keep writing `from zettcode.app import
+ZettCodeApp`.
 
 Inside the framework:
 
 ```
-tui_framework/
+tui/
   capabilities.py   environment-derived terminal capabilities
   terminal.py       raw mode, alternate screen, size
   runner.py         terminal-backed async loop over a TuiApp
@@ -256,7 +267,7 @@ highlighted one, Enter hands the keyboard to a focusable preview, Escape gives
 it back, and `q` quits. `make demo-<name>` prints one component's frame instead
 and `make demo-all` prints every one, so a quick look needs no terminal.
 
-The samples live in `tui_framework/gallery.py`, where an entry is a name, a
+The samples live in `tui/gallery.py`, where an entry is a name, a
 size, and a factory. The browser mounts that factory as a screen layer, and
 `render_entry` paints the same entry headlessly, so the interactive look and
 the golden tests share one definition.
@@ -465,7 +476,7 @@ and reduced-motion support. *(done)*
 
 ## Decisions
 
-1. The package stays `tui_framework`, split into internal subpackages.
+1. The package stays `tui`, split into internal subpackages.
 2. It stays in this repository but is organized so it could be extracted; it
    never imports `zettcode.*`.
 3. The current application keeps running during M0-M3 through compatibility

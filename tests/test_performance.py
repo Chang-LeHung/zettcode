@@ -5,9 +5,9 @@ from __future__ import annotations
 from time import perf_counter
 
 from zettcode.app import Transcript, TranscriptSource
-from zettcode.app import transcript as transcript_module
-from zettcode.tui_framework import DARK
-from zettcode.tui_framework.widgets import markdown as markdown_module
+from zettcode.app.agent import transcript as transcript_module
+from zettcode.tui import DARK
+from zettcode.tui.widgets import markdown as markdown_module
 
 
 def spy_on_entries(monkeypatch) -> list[int]:

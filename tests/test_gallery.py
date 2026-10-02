@@ -4,7 +4,7 @@ from io import StringIO
 
 import pytest
 
-from zettcode.tui_framework.gallery import (
+from zettcode.tui.gallery import (
     GALLERY,
     GalleryBrowser,
     main,
@@ -12,7 +12,7 @@ from zettcode.tui_framework.gallery import (
     render_entry,
     select_entries,
 )
-from zettcode.tui_framework.testing import Harness
+from zettcode.tui.testing import Harness
 
 
 def test_gallery_names_are_unique_and_cover_the_widgets():

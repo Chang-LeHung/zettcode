@@ -4,7 +4,7 @@ import asyncio
 import os
 from io import StringIO
 
-from zettcode.tui_framework import (
+from zettcode.tui import (
     AnyEvent,
     ColorDepth,
     Host,
@@ -14,7 +14,7 @@ from zettcode.tui_framework import (
     TuiApp,
     Widget,
 )
-from zettcode.tui_framework.runner import TerminalRunner, run_app
+from zettcode.tui.runner import TerminalRunner, run_app
 
 
 class StubTerminal:
