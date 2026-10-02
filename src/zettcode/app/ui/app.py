@@ -6,12 +6,7 @@ import asyncio
 from contextlib import aclosing
 from pathlib import Path
 
-from zett_agent import (
-    SHELL_APPROVAL_RESPONSE_EVENT_NAME,
-    AgentEvent,
-    AgentRunConfig,
-    ExternalEvent,
-)
+from zett_agent import AgentEvent
 
 from ...tui import (
     DARK,
@@ -39,8 +34,8 @@ from ...tui import (
 )
 from ...tui.layout import Slot
 from ...tui.widgets import Rule, Text
+from ..agent.agent import ZettCodeAgent
 from ..agent.projection import TranscriptProjector
-from ..agent.runtime import ZettCodeRuntime
 from ..agent.transcript import Transcript, activity_glyph
 from .transcript import TranscriptView
 
@@ -102,20 +97,20 @@ WELCOME = (
 
 
 class ZettCodeApp:
-    """Own the runtime, the widget tree, the keymap, and the slash commands."""
+    """Own the application agent, widget tree, keymap, and slash commands."""
 
-    def __init__(self, runtime: ZettCodeRuntime, *, theme: Theme = DARK) -> None:
-        """Wire the runtime into the transcript, composer, panel, and keymap.
+    def __init__(self, agent: ZettCodeAgent, *, theme: Theme = DARK) -> None:
+        """Wire the agent into the transcript, composer, panel, and keymap.
 
         Args:
-            runtime: Session, persistence, and agent client this app drives.
+            agent: Application agent that owns turns, sessions, and models.
             theme: Initial palette; ``/theme`` replaces it at runtime.
         """
-        self.runtime = runtime
+        self.agent = agent
         self.transcript = Transcript()
         self.transcript.welcome(WELCOME)
         self.projector = TranscriptProjector(self.transcript, on_approval=self._approval_requested)
-        self.runtime.client.event_dispatcher = self.projector
+        self.agent.set_event_dispatcher(self.projector)
 
         self.view = TranscriptView(self.transcript, theme=theme)
         self.composer = TextArea(
@@ -143,7 +138,7 @@ class ZettCodeApp:
             ]
         )
         self.root = ZettCodeRoot(self, body)
-        self.app = TuiApp(self.root, theme=theme, reduced_motion=runtime.config.reduced_motion)
+        self.app = TuiApp(self.root, theme=theme, reduced_motion=agent.reduced_motion)
         self._task: asyncio.Task[None] | None = None
         self._busy = False
         self._status = "ready"
@@ -303,11 +298,7 @@ class ZettCodeApp:
         self.app.invalidate()
         try:
             self._refresh_tasks()
-            async with aclosing(
-                self.runtime.client.stream(
-                    prompt, config=AgentRunConfig(session_id=self.runtime.session_id), model=self.runtime.model
-                )
-            ) as events:
+            async with aclosing(self.agent.stream(prompt)) as events:
                 async for _event in events:
                     self._refresh_tasks()
                     self.app.invalidate()
@@ -326,9 +317,7 @@ class ZettCodeApp:
 
     def _refresh_tasks(self) -> None:
         """Mirror the agent's current plan into the panel above the composer."""
-        progress = self.runtime.todos.todos(self.runtime.session_id)
-        tasks = tuple((item.status.value, item.content) for item in progress.todos) if progress else ()
-        if self.panel.set_tasks(tasks):
+        if self.panel.set_tasks(self.agent.tasks()):
             self.app.request_layout()
 
     async def _run_command(self, value: str) -> None:
@@ -338,30 +327,30 @@ class ZettCodeApp:
         self._status = f"{command} \u2026"
         match command:
             case "/new":
-                session = self.runtime.new_session()
+                session = self.agent.new_session()
                 self._notify(f"started session {session[:8]}", level="success")
             case "/use" if argument:
-                self.runtime.use_session(argument)
-                self._notify(f"using session {self.runtime.session_id[:8]}", level="success")
+                self.agent.use_session(argument)
+                self._notify(f"using session {self.agent.session_id[:8]}", level="success")
             case "/use":
                 self.transcript.notice("Usage: /use <session-id>")
             case "/sessions":
-                sessions = await self.runtime.persistence.list_sessions(limit=20)
+                sessions = await self.agent.list_sessions(limit=20)
                 if not sessions:
                     self.transcript.notice("No persisted sessions.")
                 for session in sessions:
-                    marker = "*" if session.session_id == self.runtime.session_id else " "
+                    marker = "*" if session.session_id == self.agent.session_id else " "
                     self.transcript.notice(f"{marker} {session.session_id}  {session.message_count} messages")
             case "/model" if argument:
                 try:
-                    selected = self.runtime.use_model(argument)
+                    selected = self.agent.use_model(argument)
                 except ValueError as error:
                     self.transcript.notice(str(error))
                 else:
                     self._notify(f"using model {selected.shown_name}", level="success")
             case "/model":
-                for entry in self.runtime.config.models:
-                    marker = "*" if entry is self.runtime.active_model else " "
+                for entry in self.agent.models:
+                    marker = "*" if entry is self.agent.active_model else " "
                     self.transcript.notice(f"{marker} {entry.shown_name} ({entry.model})")
             case "/clear":
                 self.transcript.clear()
@@ -399,7 +388,7 @@ class ZettCodeApp:
         """Show the shell approval dialog for one agent request."""
         payload = event.payload if isinstance(event.payload, dict) else {}
         call_id = str(payload.get("tool_call_id", ""))
-        session_id = str(payload.get("session_id") or self.runtime.session_id)
+        session_id = str(payload.get("session_id") or self.agent.session_id)
         command = str(payload.get("command", ""))
         actions = [DialogAction("Run", lambda: self._respond(session_id, call_id, "execute", False))]
         if payload.get("remember_supported"):
@@ -424,13 +413,7 @@ class ZettCodeApp:
         """
         self.app.pop_screen()
         try:
-            self.runtime.client.agent.emit_external_event(
-                ExternalEvent(
-                    name=SHELL_APPROVAL_RESPONSE_EVENT_NAME,
-                    payload={"tool_call_id": call_id, "decision": decision, "remember": remember},
-                ),
-                config=AgentRunConfig(session_id=session_id),
-            )
+            self.agent.respond_approval(session_id, call_id, decision, remember)
         except Exception as error:
             self.transcript.notice(f"approval failed: {error}")
         self.app.invalidate()
@@ -452,16 +435,16 @@ class ZettCodeApp:
     # -- chrome -------------------------------------------------------------
     def _header_left(self) -> str:
         """Label the app and the workspace it is running in."""
-        return f"  \u25c8 zettcode  {compact_path(self.runtime.config.workspace)}"
+        return f"  \u25c8 zettcode  {compact_path(self.agent.workspace)}"
 
     def _header_right(self) -> str:
         """Show the model the agent is configured to use."""
-        return f"{self.runtime.active_model.shown_name}  "
+        return f"{self.agent.active_model.shown_name}  "
 
     def _status_left(self) -> str:
         """Show the activity glyph, the status word, and the session id."""
         icon = activity_glyph(self.transcript.frame) if self._busy else "\u25cf"
-        return f"  {icon} {self._status}  session {self.runtime.session_id[:8]}"
+        return f"  {icon} {self._status}  session {self.agent.session_id[:8]}"
 
     def _status_right(self) -> str:
         """List the keys worth remembering while the composer has focus."""

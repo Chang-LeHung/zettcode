@@ -12,7 +12,7 @@ import asyncio
 from pathlib import Path
 
 from .app import ZettCodeApp
-from .app.agent.runtime import ZettCodeRuntime
+from .app.agent.agent import ZettCodeAgent
 from .config import ZettCodeConfig, load_config
 from .tui import DARK, ThemeFileError, detect_reduced_motion, load_theme
 
@@ -38,11 +38,11 @@ async def async_main(config: ZettCodeConfig) -> None:
         theme = load_theme(config.theme_file) if config.theme_file is not None else DARK
     except ThemeFileError as error:
         raise SystemExit(f"zettcode: {error}") from error
-    runtime = await ZettCodeRuntime.create(config)
+    agent = await ZettCodeAgent.create(config)
     try:
-        await ZettCodeApp(runtime, theme=theme).run()
+        await ZettCodeApp(agent, theme=theme).run()
     finally:
-        await runtime.aclose()
+        await agent.aclose()
 
 
 def main() -> None:
