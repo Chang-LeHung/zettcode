@@ -90,7 +90,24 @@ class _Box(Widget):
 
 
 class VBox(_Box):
-    """Stack children top to bottom, sharing leftover height by flex."""
+    """Stack children top to bottom, sharing leftover height by flex.
+
+    Shape::
+
+        +-------------------+  <- the box's own rectangle
+        | header  (size=1)  |  <- fixed rows keep their height
+        +-------------------+
+        | body    (flex=1)  |  <- flexible rows share what is left
+        |                   |
+        +-------------------+
+        | status  (size=1)  |
+        +-------------------+
+
+    A fixed size may be a callable, which receives the box's *width* — a
+    wrapping child's height depends on the space across, not along. When the
+    fixed rows alone overflow, every row is scaled down proportionally so the
+    box never paints outside its rectangle.
+    """
 
     @property
     def _vertical(self) -> bool:
@@ -108,7 +125,18 @@ class VBox(_Box):
 
 
 class HBox(_Box):
-    """Place children left to right, sharing leftover width by flex."""
+    """Place children left to right, sharing leftover width by flex.
+
+    Shape::
+
+        +--------+---------------------------+
+        | left   | right                     |  <- size=8, then flex=1
+        +--------+---------------------------+
+                  ^ the callable form receives the box's *height*
+
+    The horizontal mirror of `VBox`: same track solver, same proportional
+    shrink when the fixed columns do not fit.
+    """
 
     @property
     def _vertical(self) -> bool:

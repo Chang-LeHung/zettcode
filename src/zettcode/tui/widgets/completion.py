@@ -51,6 +51,18 @@ class CompletionPopup(Widget):
     selected row is painted as a full-width band so the choice reads at a
     glance. The popup never takes focus: the editor keeps the cursor and drives
     the selection, so Tab and Enter still belong to the text being typed.
+
+    Shape::
+
+        /clear  clear the transcript      <- selected: band across the whole row
+        /quit   exit                      <- command column, muted description
+        /theme  switch palette
+                 ^
+                 descriptions start here, at 1 + longest command + 2
+
+    The command column is as wide as the longest candidate, so the descriptions
+    never shift as the selection moves; the band is a ``fill`` of the row, not
+    just a styled label.
     """
 
     def __init__(

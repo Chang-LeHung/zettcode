@@ -13,7 +13,18 @@ Text = str | Callable[[], str]
 
 
 class StatusBar(Widget):
-    """Render a left-aligned and a right-aligned segment on one row."""
+    """Render a left-aligned and a right-aligned segment on one row.
+
+    Shape::
+
+        zettcode              openai/gpt-5 <- right segment, flush to the edge
+        ^^^^^^^^^^^^^^^^^^^^^^                ^^^^^^^^^^^^^
+        left segment                          never truncated
+
+    The right segment wins when space runs out: it keeps its width and the left
+    one is cut instead. A right segment wider than the whole row is drawn alone.
+    Either segment may be a callable, read once per paint.
+    """
 
     def __init__(self, left: Text = "", right: Text = "") -> None:
         """Store both segments; either may be a callback evaluated at paint time.

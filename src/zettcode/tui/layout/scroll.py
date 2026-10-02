@@ -55,6 +55,19 @@ class ScrollView(Widget):
     so appending content never moves the view while the reader is scrolled up.
     Call :meth:`adjust_for_insertion` when lines are inserted above the window
     to keep the same content on screen.
+
+    Shape::
+
+        line 01                           <- row 0 of the window (top = 0 here)
+        line 02
+        line 03                           <- only rect.height lines are asked for
+        line 04
+        ------
+        ^ the source is never materialised: count(width) then line(i, width)
+
+    ``measure`` claims nothing, because the window size comes from the slot it
+    is placed in, not from its contents. With ``selectable`` a drag inverts the
+    covered cells and copies them on release.
     """
 
     def __init__(

@@ -35,6 +35,18 @@ class ListView(Widget):
 
     The window is an absolute row index so the list never rebuilds itself, and
     the selection is always kept inside the visible window.
+
+    Shape::
+
+        > alpha  first                    <- selected: marker, bold, selection band
+          beta   second                   <- description starts at a fixed column
+          gamma                           <- disabled: dim, no marker, refuses Enter
+          delta  fourth
+
+    Only ``rect.height`` rows are drawn, starting at ``top``; the marker is part
+    of the label (U+25B8 selected, two spaces otherwise) and the muted
+    description keeps the row's background so the selection band stays
+    continuous.
     """
 
     MARKERS = ("\u25b8 ", "  ")

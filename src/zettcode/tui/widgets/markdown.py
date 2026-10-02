@@ -418,7 +418,21 @@ class MarkdownSource(LineSource):
 
 
 class MarkdownView(ScrollView):
-    """A scrollable Markdown document that follows the tail while streaming."""
+    """A scrollable Markdown document that follows the tail while streaming.
+
+    Shape::
+
+        Heading                            <- bold, dimmed by level
+        prose with bold, code, and links   <- inline styles
+        . bullet                           <- bullet prefix
+        | quote                            <- accent bar
+          python                           <- fence label, muted
+          def add(a, b):                   <- highlighted code
+
+    Parsing is incremental: closed blocks are parsed once and cached, and only
+    the still-open tail is re-parsed as text streams in, so a long answer stays
+    linear in the number of blocks rather than the number of frames.
+    """
 
     def __init__(self, text: str = "", *, follow_tail: bool = True, focusable: bool = False) -> None:
         """Scroll a document that follows the tail while text streams in.

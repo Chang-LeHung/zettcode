@@ -99,7 +99,21 @@ class OverlaySlot:
 
 
 class Overlay(Widget):
-    """Stack children on top of each other at anchored positions."""
+    """Stack children on top of each other at anchored positions.
+
+    Shape::
+
+        parent rectangle
+        +---------------------------+
+        |          +--------+       |
+        |          | child  |       |  <- measured, then placed by its anchor
+        |          +--------+       |
+        +---------------------------+
+
+    Later slots paint over earlier ones. Each child is measured against the full
+    rectangle first, so an anchor can align by the child's own size; the result
+    is always capped to the parent, and ``"stretch"`` fills it.
+    """
 
     def __init__(self, slots: Sequence[OverlaySlot]) -> None:
         """Store the slots in paint order, so later slots sit on top.

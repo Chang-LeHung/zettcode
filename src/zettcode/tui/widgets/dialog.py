@@ -62,7 +62,20 @@ class _ActionRow(Widget):
 
 
 class Dialog(Widget):
-    """A bordered body plus actions, meant to live on a modal screen."""
+    """A bordered body plus actions, meant to live on a modal screen.
+
+    Shape::
+
+        +-- Run this command? --------+  <- frame, title embedded in the top edge
+        |rm -rf build/                |  <- body, takes the flexible rows
+        |                             |
+        | Run   Always   Abort        |  <- actions on the last row, one highlighted
+        +-----------------------------+
+
+    The frame uses box-drawing glyphs and clears its own rectangle before
+    drawing, so a dialog over another screen is opaque. Left and Right move the
+    highlight, Enter runs it, Escape cancels when ``on_cancel`` is given.
+    """
 
     def __init__(
         self,

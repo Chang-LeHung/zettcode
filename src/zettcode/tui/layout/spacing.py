@@ -8,7 +8,20 @@ from ..render import DEFAULT_STYLE, Canvas, Style
 
 
 class Padding(Widget):
-    """Place one child inside an inset rectangle."""
+    """Place one child inside an inset rectangle.
+
+    Shape::
+
+        +---------------------+  <- the widget's own rectangle (draws nothing)
+        |  +---------------+  |
+        |  | child         |  |  <- child gets rect.inset(edges)
+        |  +---------------+  |
+        +---------------------+
+
+    It contributes no glyphs of its own; it only deflates the constraints on
+    the way down and adds the edges back on the way up, so the parent's budget
+    stays exact.
+    """
 
     def __init__(self, child: Widget, edges: EdgeInsets | int = 1) -> None:
         """Accept a full EdgeInsets or one value applied to all four sides.
@@ -47,7 +60,19 @@ class Padding(Widget):
 
 
 class Border(Widget):
-    """Draw a box around one child and inset it by the drawn frame."""
+    """Draw a box around one child and inset it by the drawn frame.
+
+    Shape::
+
+        +-- title ---------+  <- title only when the frame is wider than 4 cells
+        |child             |  <- child gets rect.inset(1), one cell on every side
+        |                  |
+        +------------------+
+
+    The frame is box-drawing (U+250C, U+2500, U+2502, U+2514). It clears its own
+    rectangle before drawing, which is what lets a panel sit over another screen
+    without letting it show through; a border with no child still draws.
+    """
 
     HORIZONTAL = "\u2500"
     VERTICAL = "\u2502"

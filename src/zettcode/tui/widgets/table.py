@@ -42,6 +42,16 @@ class Table(Widget):
     Rendering is delegated to the Markdown table renderer so a table looks the
     same wherever it comes from: a header, one rule per column, and cells that
     wrap instead of being cut. ``Column.width`` pins a column when needed.
+
+    Shape::
+
+        Name       Files   State
+        ---------  -----   -----          <- one rule per column, dim
+        parser        12   done           <- per-column alignment
+        renderer       7    wip
+
+    The rule is U+2500. Columns are dropped from the right when they cannot fit,
+    and the header row disappears when every title is empty.
     """
 
     def __init__(

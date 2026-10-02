@@ -21,6 +21,17 @@ class TextArea(Widget):
     Editing follows Emacs conventions: character and word motion, line and word
     killing, a yank buffer, undo, and submission history. Tabs are stored
     expanded so cursor movement, wrapping, and rendering share one width.
+
+    Shape::
+
+        > first line                       <- prompt, drawn on the first row only
+          second line wraps onto more rows <- wraps at rect.width
+          fourth row scrolls               <- past max_height the draft scrolls
+                                              to keep the cursor row visible
+
+    The prompt shifts only the first row (its width is ``display_width(prompt)``).
+    The row count is geometry, not just paint: a draft that wraps asks the app
+    for a fresh layout, which is what makes a composer grow in its box.
     """
 
     NEWLINE_KEYS = ("alt_enter", "shift_enter")
