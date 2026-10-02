@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import platform
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 
 from zett_agent import (
@@ -13,7 +13,6 @@ from zett_agent import (
     AgentRunConfig,
     CodingExtension,
     CompactionExtension,
-    DeepSeekProvider,
     OpenAIProvider,
     ShellApprovalExtension,
     ShellApprovalMode,
@@ -23,7 +22,7 @@ from zett_agent import (
     new_uuid7,
 )
 
-from ...config import ProviderName, ZettCodeConfig
+from ...config import ModelConfig, ZettCodeConfig
 from .session import SessionStore
 
 
@@ -57,8 +56,10 @@ class ZettCodeRuntime:
     client: AgentClient
     persistence: SessionStore
     todos: TodoWriteExtension
-    model: OpenAIProvider | DeepSeekProvider
+    model: OpenAIProvider
     session_id: str
+    active_model: ModelConfig
+    _models: dict[ModelConfig, OpenAIProvider] = field(default_factory=dict)
 
     @classmethod
     async def create(cls, config: ZettCodeConfig) -> ZettCodeRuntime:
@@ -66,22 +67,14 @@ class ZettCodeRuntime:
         os.chdir(config.workspace)
         persistence = SessionStore(config.store)
         recent = await persistence.list_sessions(limit=1)
-        session_id = config.session_id or (recent[0].session_id if recent else new_uuid7())
-        match config.provider:
-            case ProviderName.DEEPSEEK:
-                model = DeepSeekProvider(
-                    config.model,
-                    config.api_key,
-                    base_url=config.base_url,
-                    response=config.responses_api,
-                )
-            case ProviderName.OPENAI:
-                model = OpenAIProvider(
-                    config.model,
-                    config.api_key,
-                    base_url=config.base_url,
-                    response=config.responses_api,
-                )
+        session_id = recent[0].session_id if recent else new_uuid7()
+        selected = config.models[0]
+        model = OpenAIProvider(
+            selected.model,
+            selected.token,
+            base_url=selected.base_url,
+            response=selected.responses_api,
+        )
         todos = TodoWriteExtension()
         try:
             client = await create_agent(
@@ -95,7 +88,7 @@ class ZettCodeRuntime:
                     todos,
                     ToolGuidelinesExtension(),
                     CompactionExtension(
-                        model,
+                        None,
                         max_tokens=config.compaction_max_tokens,
                         keep_recent_tokens=config.compaction_keep_tokens,
                     ),
@@ -108,7 +101,26 @@ class ZettCodeRuntime:
             await model.aclose()
             await persistence.close()
             raise
-        return cls(config, client, persistence, todos, model, session_id)
+        return cls(config, client, persistence, todos, model, session_id, selected, {selected: model})
+
+    def use_model(self, name: str) -> ModelConfig:
+        """Select a configured model for subsequent requests without changing sessions."""
+        matches = [entry for entry in self.config.models if name in (entry.model, entry.display_model)]
+        if not matches:
+            raise ValueError(f"Unknown model: {name}")
+        if len(matches) > 1:
+            raise ValueError(f"Ambiguous model: {name}; use a unique display_model")
+        chosen = matches[0]
+        if chosen not in self._models:
+            self._models[chosen] = OpenAIProvider(
+                chosen.model,
+                chosen.token,
+                base_url=chosen.base_url,
+                response=chosen.responses_api,
+            )
+        self.model = self._models[chosen]
+        self.active_model = chosen
+        return chosen
 
     def new_session(self) -> str:
         """Switch future requests to a fresh session identity."""
@@ -123,5 +135,6 @@ class ZettCodeRuntime:
 
     async def aclose(self) -> None:
         """Release all resources owned by this runtime."""
-        await self.model.aclose()
+        for model in self._models.values():
+            await model.aclose()
         await self.persistence.close()

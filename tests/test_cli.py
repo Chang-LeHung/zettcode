@@ -1,100 +1,45 @@
+"""The command line only picks the workspace; settings come from the config file."""
+
 from pathlib import Path
 
 import pytest
-from zett_agent import ReasoningEffort
 
-from zettcode.cli import parse_args
-from zettcode.config import ProviderName
+from zettcode.cli import resolve_config, workspace_from_args
 
 
 @pytest.fixture(autouse=True)
-def isolate_credentials(monkeypatch):
-    for name in ("DEEPSEEK_API_KEY", "DEEPSEEK_API", "OPENAI_API_KEY", "ZETTCODE_PROVIDER"):
+def isolate_environment(monkeypatch):
+    for name in ("OPENAI_API_KEY", "ZETTCODE_CONFIG"):
         monkeypatch.delenv(name, raising=False)
 
 
-def test_parse_args_applies_defaults(tmp_path: Path):
-    config = parse_args([str(tmp_path), "--api-key", "secret"])
+def test_workspace_defaults_to_the_current_directory(monkeypatch, tmp_path: Path):
+    monkeypatch.chdir(tmp_path)
 
+    assert workspace_from_args([]) == Path.cwd()
+
+
+def test_workspace_comes_from_the_positional(tmp_path: Path):
+    assert workspace_from_args([str(tmp_path)]) == tmp_path
+
+
+def test_resolve_config_reads_the_config_file(tmp_path: Path, monkeypatch):
+    path = tmp_path / "config.toml"
+    path.write_text('[[models]]\nmodel = "my-model"\ntoken = "secret"\n', encoding="utf-8")
+    monkeypatch.setenv("ZETTCODE_CONFIG", str(path))
+
+    config = resolve_config([str(tmp_path)])
+
+    assert config.models[0].model == "my-model"
     assert config.workspace == tmp_path.resolve()
-    assert config.provider is ProviderName.DEEPSEEK
-    assert config.model == "deepseek-chat"
-    assert config.reasoning_effort is ReasoningEffort.MEDIUM
-    assert config.parallel_tool_call is True
-    assert config.max_iterations == 36
 
 
-def test_parse_args_reads_provider_and_api_key_from_the_environment(tmp_path: Path, monkeypatch):
-    monkeypatch.setenv("ZETTCODE_PROVIDER", "openai")
-    monkeypatch.setenv("OPENAI_API_KEY", "from-environment")
-
-    config = parse_args([str(tmp_path)])
-
-    assert config.provider is ProviderName.OPENAI
-    assert config.model == "gpt-5-mini"
-    assert config.api_key == "from-environment"
-
-
-def test_parse_args_forwards_endpoint_and_session_flags(tmp_path: Path):
-    store = tmp_path / "sessions"
-    config = parse_args(
-        [
-            str(tmp_path),
-            "--api-key",
-            "secret",
-            "--session",
-            "session-1",
-            "--store",
-            str(store),
-            "--base-url",
-            "https://example.test/v1",
-            "--responses-api",
-            "--reasoning-effort",
-            "high",
-            "--serial-tools",
-            "--max-iterations",
-            "5",
-        ]
-    )
-
-    assert config.session_id == "session-1"
-    assert config.store == store.resolve()
-    assert config.base_url == "https://example.test/v1"
-    assert config.responses_api is True
-    assert config.reasoning_effort is ReasoningEffort.HIGH
-    assert config.parallel_tool_call is False
-    assert config.max_iterations == 5
-
-
-def test_unknown_provider_override_reports_a_usage_error(tmp_path: Path, monkeypatch, capsys):
-    monkeypatch.setenv("ZETTCODE_PROVIDER", "bogus")
+def test_resolve_config_reports_a_bad_config_file(tmp_path: Path, monkeypatch):
+    path = tmp_path / "config.toml"
+    path.write_text("nope = 1\n", encoding="utf-8")
+    monkeypatch.setenv("ZETTCODE_CONFIG", str(path))
 
     with pytest.raises(SystemExit) as exit_info:
-        parse_args([str(tmp_path)])
+        resolve_config([str(tmp_path)])
 
-    assert exit_info.value.code == 2
-    assert "Unsupported provider: 'bogus'" in capsys.readouterr().err
-
-
-def test_unknown_provider_flag_reports_a_usage_error(tmp_path: Path, capsys):
-    with pytest.raises(SystemExit) as exit_info:
-        parse_args([str(tmp_path), "--api-key", "secret", "--provider", "bogus"])
-
-    assert exit_info.value.code == 2
-    assert "invalid choice" in capsys.readouterr().err
-
-
-def test_missing_api_key_reports_a_usage_error(tmp_path: Path, capsys):
-    with pytest.raises(SystemExit) as exit_info:
-        parse_args([str(tmp_path)])
-
-    assert exit_info.value.code == 2
-    assert "Missing API key for deepseek" in capsys.readouterr().err
-
-
-def test_parse_args_forwards_the_theme_file(tmp_path: Path):
-    path = tmp_path / "theme.toml"
-
-    config = parse_args([str(tmp_path), "--api-key", "secret", "--theme-file", str(path)])
-
-    assert config.theme_file == path.resolve()
+    assert "Unknown config keys" in str(exit_info.value.code)

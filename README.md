@@ -19,44 +19,56 @@ uv tool install zettcode
 pip install zettcode
 ```
 
-## Run
+## Configure
 
-DeepSeek:
-
-```bash
-export DEEPSEEK_API_KEY=...
-zettcode --provider deepseek --model deepseek-chat
-```
-
-OpenAI or an OpenAI-compatible endpoint:
+ZettCode reads `~/.zettcode/config.toml` (override the path with
+`ZETTCODE_CONFIG`). The file lists available models; the command line just
+takes a workspace:
 
 ```bash
-export OPENAI_API_KEY=...
-zettcode --provider openai --model gpt-5-mini
-zettcode --provider openai --model my-model --base-url https://example.com/v1
+zettcode /path/to/project     # the workspace defaults to the current directory
 ```
 
-Pass a workspace path as the final argument. It defaults to the current directory.
+```toml
+# ~/.zettcode/config.toml
+[[models]]
+model = "gpt-4o"                       # model id sent to the endpoint
+display_model = "GPT-4o"               # optional; shown in the header
+token = "sk-..."                       # or set OPENAI_API_KEY
+base_url = "http://tds.com:8787"       # OpenAI-compatible API root
+responses_api = false
+multimodal = true                      # accepts images as well as text
+
+[[models]]
+model = "deepseek-chat"
+display_model = "DeepSeek Chat"
+token = "sk-..."
+base_url = "https://api.deepseek.com/v1"
+```
+
+Several models can be configured. The first entry is active at startup; use
+`/model` to list them or `/model GPT-4o` to switch by display name or model id
+for future requests. `multimodal` records whether a model accepts images; it
+does not itself add image input to the composer. Unknown keys and wrong types
+are reported, not ignored.
+
 Sessions live in `~/.zettcode/sessions/`, one append-only JSONL file per session:
 every record carries a parent id, so a session is a tree, and a compaction adds a
-summary node the active context is cut at. `--store` points that directory
-somewhere else.
+summary node the active context is cut at. Use `/sessions` and `/use <id>` to
+inspect and resume sessions; sessions are not selected in the config file.
 
 ## Approvals
 
 `run_shell` asks for confirmation before it executes anything. The prompt offers
-Run, Always (remember this exact command), and Abort, and `Esc` aborts. Pass
-`--approval allow-all` to let the agent run shell commands without asking.
+Run, Always (remember this exact command), and Abort, and `Esc` aborts.
 
-The agent's plan, when it publishes one, appears above the composer. Pass
-`--reduced-motion` (or set `ZETTCODE_REDUCED_MOTION`) to suppress decorative
-animation.
+The agent's plan, when it publishes one, appears above the composer. Set
+`ZETTCODE_REDUCED_MOTION` to suppress decorative animation.
 
 ## Colours
 
 Everything is drawn from theme tokens, so a palette can be overridden without
-touching code. `zettcode` reads `~/.zettcode/theme.toml` when it exists, or any
-path passed to `--theme-file`:
+touching code. `zettcode` reads `~/.zettcode/theme.toml` when it exists:
 
 ```toml
 base = "dark"                 # dark | light
@@ -77,11 +89,11 @@ inline = "#d8c07a"
 Unknown keys and malformed colours are reported instead of silently ignored.
 `/theme dark|light` still switches the base palette at runtime.
 
-From a source checkout, run the same commands through `uv`:
+From a source checkout, run it through `uv`:
 
 ```bash
 uv sync
-uv run zettcode --provider deepseek --model deepseek-chat
+uv run zettcode /path/to/project
 ```
 
 ## Keys
@@ -135,4 +147,4 @@ left, center, and right alignment, account for wide CJK characters, and wrap a
 cell that does not fit instead of cutting its text.
 
 Use `/help` inside the application to see session commands; `/new`, `/sessions`,
-`/use`, `/theme dark|light`, `/clear`, and `/quit` are available.
+`/use`, `/model`, `/theme dark|light`, `/clear`, and `/quit` are available.

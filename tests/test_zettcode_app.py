@@ -20,6 +20,7 @@ from zett_agent import (
 
 from zettcode.app import Transcript, TranscriptSource, ZettCodeApp
 from zettcode.app.agent.projection import TranscriptProjector
+from zettcode.config import ModelConfig
 from zettcode.tui import DARK, LIGHT, Rect
 from zettcode.tui.testing import Harness
 
@@ -39,8 +40,10 @@ class FakeClient:
         self.events = events or []
         self.block = block
         self.event_dispatcher = None
+        self.models: list[object] = []
 
-    async def stream(self, message, *, config=None):
+    async def stream(self, message, *, config=None, model=None):
+        self.models.append(model)
         if self.event_dispatcher is not None:
             self.event_dispatcher.begin_turn(message)
         for event in self.events:
@@ -66,15 +69,13 @@ class FakeTodos:
         return self.result
 
 
-class FakeProvider:
-    value = "deepseek"
-
-
 @dataclass
 class FakeConfig:
     workspace: Path = Path("/tmp/workspace")
-    provider: FakeProvider = field(default_factory=FakeProvider)
-    model: str = "deepseek-chat"
+    models: tuple[ModelConfig, ...] = (
+        ModelConfig(model="gpt-5-mini", token="test-token"),
+        ModelConfig(model="gpt-4o", display_model="GPT-4o", token="test-token", multimodal=True),
+    )
     reduced_motion: bool = False
 
 
@@ -85,6 +86,23 @@ class FakeRuntime:
     persistence: FakePersistence = field(default_factory=FakePersistence)
     todos: FakeTodos = field(default_factory=FakeTodos)
     config: FakeConfig = field(default_factory=FakeConfig)
+    active_model: ModelConfig = field(init=False)
+    model: object = field(init=False)
+
+    def __post_init__(self) -> None:
+        self.active_model = self.config.models[0]
+        self.model = self.active_model.model
+
+    def use_model(self, name: str) -> ModelConfig:
+        entry = next(
+            (entry for entry in self.config.models if name in (entry.model, entry.display_model)),
+            None,
+        )
+        if entry is None:
+            raise ValueError(f"Unknown model: {name}")
+        self.active_model = entry
+        self.model = entry.model
+        return entry
 
     def new_session(self) -> str:
         self.session_id = "session-0002"
@@ -250,6 +268,39 @@ async def test_app_slash_commands_change_theme_sessions_and_exit():
 
     harness.press("ctrl_d")
     assert app.app.running is False
+
+
+async def test_model_command_lists_and_switches_models_for_the_next_request():
+    app = build_app()
+    harness = _harness(app)
+
+    harness.write("/model")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+    assert any("GPT-4o (gpt-4o)" in entry.text for entry in app.transcript.entries)
+
+    harness.write("/model GPT-4o")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+    assert app.runtime.active_model.model == "gpt-4o"
+    assert app._header_right() == "GPT-4o  "
+
+    harness.write("hello")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+    assert app.runtime.client.models[-1] == "gpt-4o"
+
+
+async def test_unknown_model_keeps_the_current_model():
+    app = build_app()
+    harness = _harness(app)
+
+    harness.write("/model nonexistent")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    assert app.runtime.active_model.model == "gpt-5-mini"
+    assert any("Unknown model" in entry.text for entry in app.transcript.entries)
 
 
 async def test_app_asks_for_approval_and_emits_the_decision():
