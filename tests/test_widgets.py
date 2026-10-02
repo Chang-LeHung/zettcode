@@ -294,6 +294,21 @@ def test_text_area_edits_wraps_and_reports_the_cursor():
     assert area.preferred_height(20) == 2
 
 
+def test_text_area_surface_paints_a_padded_input_band():
+    area = TextArea(prompt="\u203a ", placeholder="Ask anything", surface=True)
+    harness = Harness(area, width=24, height=3)
+    canvas = harness.app.render()
+
+    assert area.preferred_height(24) == 3
+    assert {cell.style.background for row in canvas.cells for cell in row} == {DARK.surface_alt}
+    assert canvas.cells[1][2].character == "\u203a"
+    assert area.cursor() == Point(4, 1)
+
+    harness.write("hello")
+    canvas = harness.app.render()
+    assert "".join(cell.character for cell in canvas.cells[1]).strip() == "\u203a hello"
+
+
 def test_text_area_keeps_word_editing_undo_and_yank():
     area = TextArea()
     harness = Harness(area, width=30, height=3)

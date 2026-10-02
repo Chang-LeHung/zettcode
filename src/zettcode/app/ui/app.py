@@ -88,9 +88,9 @@ def help_text() -> str:
 
 
 WELCOME = (
-    "  \u256d\u2500\u2500\u2500\u256e\n"
-    "  \u2502 \u203a_\u2502  ZettCode\n"
-    "  \u2570\u2500\u25c6\u2500\u256f  A focused coding agent\n"
+    "     ╭─────┬─────╮\n"
+    "     │     ✦     │   ZettCode\n"
+    "     ╰─────┴─────╯   A focused coding agent\n"
     "\n"
     "  Type a task below, or /help for commands."
 )
@@ -115,10 +115,12 @@ class ZettCodeApp:
         self.view = TranscriptView(self.transcript, theme=theme)
         self.composer = TextArea(
             prompt="\u203a ",
+            placeholder="Ask ZettCode to do anything",
             completer=CommandCompleter(),
-            max_height=6,
+            max_height=8,
             on_submit=self.submit,
             on_change=self._refresh_completions,
+            surface=True,
         )
         self.completions = CompletionPopup(max_height=len(COMMANDS))
         self.header = StatusBar(self._header_left, self._header_right)
@@ -348,6 +350,7 @@ class ZettCodeApp:
                     self.transcript.notice(str(error))
                 else:
                     self._notify(f"using model {selected.shown_name}", level="success")
+                    self.app.request_layout()
             case "/model":
                 for entry in self.agent.models:
                     marker = "*" if entry is self.agent.active_model else " "

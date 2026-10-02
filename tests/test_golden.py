@@ -145,10 +145,12 @@ def test_golden_transcript_blocks():
     transcript.complete_tool("1", "line one\nline two")
     transcript.append_answer("# Result\n\nFixed `parse`.")
 
-    assert render_block(TranscriptView(transcript, theme=DARK), width=44, height=16, theme=DARK) == (
+    assert render_block(TranscriptView(transcript, theme=DARK), width=44, height=18, theme=DARK) == (
         "hi\n"
         "\n"
-        "\u276f find the bug\n"
+        "\n"
+        "  \u203a find the bug\n"
+        "\n"
         "\n"
         "\u25b8 Thinking  0 ms\n"
         "\n"
@@ -164,16 +166,29 @@ def test_golden_transcript_blocks():
         "\n"
         "-- styles --\n"
         "0:0-2 fg#a3ada6\n"
-        "2:0-14 b,fg#e6e9e7\n"
-        "4:0-16 b,fg#79b88b\n"
-        "6:0-37 b,fg#79b88b\n"
-        "7:0-14 fg#a3ada6\n"
-        "8:0-14 fg#a3ada6\n"
-        "10:0-6 b,fg#e6e9e7\n"
-        "13:0-6 fg#e6e9e7\n"
-        "13:6-11 fg#d8c07a\n"
-        "13:11-12 fg#e6e9e7"
+        "2:0-44 fg#e6e9e7,bg#222725\n"
+        "3:0-44 fg#e6e9e7,bg#222725\n"
+        "4:0-44 fg#e6e9e7,bg#222725\n"
+        "6:0-16 b,fg#79b88b\n"
+        "8:0-37 b,fg#79b88b\n"
+        "9:0-14 fg#a3ada6\n"
+        "10:0-14 fg#a3ada6\n"
+        "12:0-6 b,fg#e6e9e7\n"
+        "15:0-6 fg#e6e9e7\n"
+        "15:6-11 fg#d8c07a\n"
+        "15:11-12 fg#e6e9e7"
     )
+
+
+def test_user_prompt_surface_wraps_and_keeps_full_width():
+    transcript = Transcript(clock=lambda: 0.0)
+    transcript.begin_turn("abcdef" * 2)
+    source = TranscriptView(transcript, theme=DARK).transcript_source
+    user_rows = [source.line(index, 12) for index in range(5)]
+
+    assert [line.text.strip() for line in user_rows] == ["", "", "\u203a abcdef", "abcdef", ""]
+    assert all(len(line.text) == 12 for line in user_rows[1:])
+    assert all(line.spans[0].style.background == DARK.surface_alt for line in user_rows[1:])
 
 
 def test_golden_completion_popup():

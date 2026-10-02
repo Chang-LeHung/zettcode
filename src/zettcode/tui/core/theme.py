@@ -17,10 +17,8 @@ class Theme:
     Attributes:
         name: Palette key used by ``/theme`` and by ``base =`` in a theme file.
         background: Page fill behind everything.
-        surface: Raised panel fill; reserved for widgets that paint an opaque
-            panel, no built-in widget fills with it yet.
-        surface_alt: Secondary surface nested inside ``surface``; likewise
-            reserved.
+        surface: Raised panel fill.
+        surface_alt: Fill shared by the composer and submitted user messages.
         text: Body text.
         muted: Lowest-emphasis text (hints, timestamps, disabled rows).
         subtle: Secondary body text that must stay readable, such as a reasoning

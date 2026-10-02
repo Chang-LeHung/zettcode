@@ -21,6 +21,7 @@ from zett_agent import (
 from zettcode.app import Transcript, TranscriptSource, ZettCodeApp
 from zettcode.app.agent.agent import ZettCodeAgent
 from zettcode.app.agent.projection import TranscriptProjector
+from zettcode.app.ui.app import WELCOME
 from zettcode.config import ModelConfig
 from zettcode.tui import DARK, LIGHT, Rect
 from zettcode.tui.testing import Harness
@@ -120,6 +121,26 @@ def build_app(events: list[AgentEvent] | None = None, *, block: bool = False) ->
     app.app.resize(60, 14)
     app.app.mount()
     return app
+
+
+def test_welcome_mark_is_compact_and_readable_in_both_themes():
+    assert len(WELCOME.splitlines()) == 5
+    assert WELCOME.splitlines()[0].strip() == "╭─────┬─────╮"
+    assert WELCOME.splitlines()[2].split("╯", 1)[0].strip() + "╯" == "╰─────┴─────╯"
+    for theme in (DARK, LIGHT):
+        transcript = Transcript()
+        transcript.welcome(WELCOME)
+        source = TranscriptSource(transcript, theme=theme)
+        logo = source.line(0, 60)
+        title = source.line(1, 60)
+        subtitle = source.line(2, 60)
+
+        assert "✦" in title.text
+        assert title.text.index("ZettCode") == subtitle.text.index("A focused")
+        assert logo.spans[0].style.foreground == theme.accent
+        assert title.spans[0].style.foreground == theme.accent
+        assert title.spans[1].style.foreground == theme.text
+        assert subtitle.spans[1].style.foreground == theme.subtle
 
 
 async def test_agent_stream_uses_selected_session_and_model():
@@ -291,6 +312,7 @@ async def test_app_slash_commands_change_theme_sessions_and_exit():
 async def test_model_command_lists_and_switches_models_for_the_next_request():
     app = build_app()
     harness = _harness(app)
+    harness.render()
 
     harness.write("/model")
     harness.press("enter")
@@ -302,6 +324,8 @@ async def test_model_command_lists_and_switches_models_for_the_next_request():
     await asyncio.wait_for(app.task, 2.0)
     assert app.agent.active_model.model == "gpt-4o"
     assert app._header_right() == "GPT-4o  "
+    assert app.app._layout_dirty is True
+    assert "GPT-4o" in harness.render().text
 
     harness.write("hello")
     harness.press("enter")
@@ -392,7 +416,10 @@ async def test_ctrl_c_copies_the_transcript_selection():
         app.transcript.notice(f"line {index}")
     harness.render()
     view = app.view
-    view.scroll_to(76)
+    target = next(
+        index for index in range(view.line_count()) if view.source.line(index, view.line_width).text.strip() == "line 3"
+    )
+    view.scroll_to(target)
     harness.render()
     x = view.rect.x + 2
     y = view.rect.y
@@ -542,7 +569,7 @@ async def test_a_wrapping_draft_grows_the_composer_and_shrinks_the_transcript():
 
     assert app.composer.rect.height == app.composer.preferred_height(app.composer.rect.width)
     assert app.composer.rect.height > composer_before.height
-    assert app.composer.rect.height <= 6
+    assert app.composer.rect.height <= 8
     # The row above and the row below keep their size; the flexible transcript
     # absorbs the difference, which is what a re-layout is for.
     assert app.header.rect == Rect(0, 0, 60, 1)
