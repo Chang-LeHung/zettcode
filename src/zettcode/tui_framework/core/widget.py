@@ -12,7 +12,7 @@ from .host import Host
 from .theme import DARK, Theme
 
 if TYPE_CHECKING:
-    from .app import App
+    from .app import TuiApp
 
 
 class Widget:
@@ -27,7 +27,7 @@ class Widget:
         """Start detached, unfocused, and due for a first measure and paint."""
         self.rect = Rect(0, 0, 0, 0)
         self.parent: Widget | None = None
-        self.app: App | None = None
+        self.app: TuiApp | None = None
         self.focused = False
         self._mounted = False
         self._needs_layout = True

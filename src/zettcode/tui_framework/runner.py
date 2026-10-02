@@ -1,4 +1,4 @@
-"""Own a real terminal and drive an App until it exits.
+"""Own a real terminal and drive a TuiApp until it exits.
 
 The loop has one job: paint when a frame is due, and sleep otherwise without
 missing a repaint that a background task asked for while it slept. Two sources
@@ -7,7 +7,7 @@ that bounds animation.
 
 Lifecycle and steady state:
 
-    streaming task      App / Scheduler       TerminalRunner        AsyncInput       TTY
+    streaming task      TuiApp / Scheduler       TerminalRunner        AsyncInput       TTY
          |                    |                     |                   |             |
     -----+--------------------+---------------------+-------------------+-------------+----- startup
          |                    |      with terminal: raw mode, alternate screen,
@@ -42,7 +42,7 @@ Lifecycle and steady state:
 
 Without the wake-up callback the loop would park on an empty input queue with an
 infinite timeout and stay there until the user pressed a key, so a streamed
-answer would never appear. ``App.invalidate`` is therefore wired to the same
+answer would never appear. ``TuiApp.invalidate`` is therefore wired to the same
 event the loop is already waiting on.
 """
 
@@ -54,7 +54,7 @@ from collections.abc import Callable
 
 import pyperclip
 
-from .core.app import App
+from .core.app import TuiApp
 from .core.events import ResizeEvent
 from .input import AsyncInput, InputEvent, translate
 from .render import DifferentialRenderer
@@ -62,9 +62,9 @@ from .terminal import Terminal
 
 
 class TerminalRunner:
-    """Drive one App from a real terminal, owning every resource it needs."""
+    """Drive one TuiApp from a real terminal, owning every resource it needs."""
 
-    def __init__(self, app: App, *, terminal: Terminal | None = None) -> None:
+    def __init__(self, app: TuiApp, *, terminal: Terminal | None = None) -> None:
         """Bind the app to a terminal renderer, an input queue, and a wake-up event.
 
         Args:
@@ -158,7 +158,7 @@ class TerminalRunner:
         self.app.close()
 
 
-async def run_app(app: App, *, terminal: Terminal | None = None) -> None:
+async def run_app(app: TuiApp, *, terminal: Terminal | None = None) -> None:
     """Convenience wrapper for the common case of running one app once.
 
     Args:

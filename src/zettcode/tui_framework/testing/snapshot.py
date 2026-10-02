@@ -6,7 +6,7 @@ inline, which keeps a test run from touching the checkout.
 
 from __future__ import annotations
 
-from ..core.app import App
+from ..core.app import TuiApp
 from ..core.theme import Theme
 from ..core.widget import Widget
 from ..render import DEFAULT_STYLE, Canvas, Style
@@ -53,12 +53,12 @@ def serialize(canvas: Canvas) -> str:
     return text + "\n-- styles --\n" + "\n".join(runs)
 
 
-def render_block(subject: Widget | App, *, width: int = 40, height: int = 8, theme: Theme | None = None) -> str:
+def render_block(subject: Widget | TuiApp, *, width: int = 40, height: int = 8, theme: Theme | None = None) -> str:
     """Mount, lay out, and paint one frame, then return its snapshot block."""
-    if isinstance(subject, App):
+    if isinstance(subject, TuiApp):
         app = subject
         app.resize(width, height)
     else:
-        app = App(subject, width=width, height=height, theme=theme)
+        app = TuiApp(subject, width=width, height=height, theme=theme)
     app.mount()
     return serialize(app.render())

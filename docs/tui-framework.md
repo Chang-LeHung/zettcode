@@ -51,7 +51,7 @@ nothing but `wcwidth`, so `terminal` and `core` both build on it.
 ```
 testing      headless driver and snapshot assertions (shared with consumers)
 widgets      List / Dialog / TextArea / Table / Diff / Markdown / Toast ...
-core         App loop, screen stack, focus tree, event routing, keymap, scheduler, theme
+core         TuiApp loop, screen stack, focus tree, event routing, keymap, scheduler, theme
 layout       Rect, constraints (fixed/flex/min/max), Box/Overlay, scrolling
 render       Style/Span/Canvas, differential renderer, width and wrapping
 input        byte-stream decoding, key tables, paste/mouse/resize/focus events
@@ -74,7 +74,7 @@ Inside the framework:
 tui_framework/
   capabilities.py   environment-derived terminal capabilities
   terminal.py       raw mode, alternate screen, size
-  runner.py         terminal-backed async loop over an App
+  runner.py         terminal-backed async loop over a TuiApp
   input/            events.py, keys.py, decoder.py, reader.py, bridge.py
   render/           style.py, text.py, color.py, canvas.py, renderer.py
   core/             geometry.py, events.py, host.py, widget.py, theme.py,
@@ -147,18 +147,20 @@ understands; `unicode` is advisory until widgets grow ASCII glyph fallbacks.
 ## Runtime
 
 `core/app.py` owns one tree: screens, focus, keymap, scheduler, theme, layout,
-and painting. It implements `Host`, so widgets reach the outside world only
-through it. It never touches a terminal, which is what lets the same tree run
-under a TTY or headlessly.
+and painting. `TuiApp` is the only `Host`, so widgets reach the outside world
+only through it. It never touches a terminal, which is what lets the same tree
+run under a TTY or headlessly.
 
 `core/host.py` is the narrow waist between the two. `handle(event, host)` hands
 every widget the same seven capabilities — focus, focused_widget, invalidate,
-request_layout, copy, refresh, exit — so a widget never imports `App`, and the
-keymap's commands go through the same door.
+request_layout, copy, refresh, exit — so a widget never imports `TuiApp`, and the
+keymap's commands go through the same door. `Host` is an abstract base class
+rather than a protocol, so an implementation subclasses it and answers every
+method; a class that merely looks compatible does not count.
 
-The protocol covers input-time capabilities only. A widget that needs the clock
+The interface covers input-time capabilities only. A widget that needs the clock
 or the screen stack during a lifecycle hook reads `self.app` instead, which is
-typed as the concrete `App`. That is a deliberate trade: keeping `Host` at seven
+typed as the concrete `TuiApp`. That is a deliberate trade: keeping `Host` at seven
 methods is worth more than routing `scheduler` and `screens` through it, but it
 does mean there are two channels rather than one. See Open work.
 
@@ -172,7 +174,7 @@ Dispatch precedence for one event is fixed:
 
 The split exists so an application can reserve keys such as `ctrl_c` in the
 capture phase while a composer keeps `tab` for completion by declining it in
-the target phase. `Harness.dispatch` and `App.dispatch` are the same code path.
+the target phase. `Harness.dispatch` and `TuiApp.dispatch` are the same code path.
 
 `core/screen.py` stacks layers: painting runs bottom to top, and the topmost
 modal layer both traps input and becomes the focus scope. `core/focus.py`
@@ -245,7 +247,7 @@ passing `selectable=True`.
 Two conventions make these cooperate with the runtime. A widget that changes
 its own layout calls `host.request_layout()`, because the app only re-runs
 layout when asked. A widget that needs the clock implements `on_tick`, which
-`App.tick` calls for every mounted widget before painting and which the runner
+`TuiApp.tick` calls for every mounted widget before painting and which the runner
 and the harness both invoke.
 
 Every widget above also has a gallery sample. `make demo` opens a browser: an
@@ -360,7 +362,7 @@ requires zero re-renders for an unchanged frame and for entries that only
 streamed answer text. Two generous wall-clock ceilings cover the first paint of
 a large transcript and repeated paints of an unchanged one.
 
-Reduced motion is a first-class setting: `App.reduced_motion` stops decorative
+Reduced motion is a first-class setting: `TuiApp.reduced_motion` stops decorative
 animation, `Spinner` renders a static frame and never registers an animation
 token, and the transcript stops advancing its activity counter. It is wired to
 `--reduced-motion` and the `ZETTCODE_REDUCED_MOTION` environment variable.
@@ -426,7 +428,7 @@ geometry, package layout, and the headless harness. *(done)*
 their final subpackages, add capability detection and truecolor fallback, and
 add one Unicode text module for width, wrapping, and truncation. *(done)*
 
-**M2 - Core runtime.** `App` loop, screen and layer stack, focus tree,
+**M2 - Core runtime.** `TuiApp` loop, screen and layer stack, focus tree,
 capture/bubble event routing, keymap and command registry, a frame scheduler
 with an animation budget, and theme tokens. *(done)*
 
@@ -459,7 +461,7 @@ and reduced-motion support. *(done)*
 - One channel instead of two. `Host` carries input-time capabilities while
   lifecycle hooks use the concrete `widget.app` for the scheduler, screens, and
   `reduced_motion`. Unifying them means widening `Host` to roughly a dozen
-  methods and typing `widget.app` as the protocol.
+  methods and typing `widget.app` as the interface.
 
 ## Decisions
 

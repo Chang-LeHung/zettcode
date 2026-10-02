@@ -4,7 +4,6 @@ import pytest
 
 from zettcode.tui_framework import (
     Anchor,
-    App,
     CommandRegistry,
     Constraints,
     KeyEvent,
@@ -22,6 +21,7 @@ from zettcode.tui_framework import (
     Style,
     TextEvent,
     Theme,
+    TuiApp,
     Widget,
     key_id,
     normalize_key,
@@ -107,13 +107,13 @@ class Filler(Widget):
         canvas.fill(self.rect.x, self.rect.y, self.rect.width, self.rect.height, Style(), self.character)
 
 
-def canvas_text(app: App) -> str:
+def canvas_text(app: TuiApp) -> str:
     canvas = app.render()
     return "\n".join("".join(cell.character for cell in row if not cell.continuation) for row in canvas.cells)
 
 
 def test_popping_a_screen_clears_what_the_overlay_covered():
-    app = App(Filler("A"), width=12, height=4)
+    app = TuiApp(Filler("A"), width=12, height=4)
     app.mount()
 
     assert set(canvas_text(app).replace("\n", "")) == {"A"}
@@ -145,7 +145,7 @@ def test_a_framed_overlay_is_opaque():
     """An overlay panel must not let the screen behind it show through."""
     from zettcode.tui_framework.layout import Border
 
-    app = App(Filler("A"), width=20, height=6)
+    app = TuiApp(Filler("A"), width=20, height=6)
     app.mount()
     panel = Border()
 
@@ -278,7 +278,7 @@ def test_routing_runs_capture_target_then_bubble():
     leaf = Pane("leaf", log, focusable=True)
     mid = Pane("mid", log, kids=(leaf,))
     root = Pane("root", log, kids=(mid,))
-    app = App(root, width=20, height=4)
+    app = TuiApp(root, width=20, height=4)
     app.mount()
     app.focus(leaf)
 
@@ -292,7 +292,7 @@ def test_a_consuming_target_stops_the_bubble_phase():
     log: list[str] = []
     leaf = Pane("leaf", log, focusable=True, consume=True)
     root = Pane("root", log, kids=(leaf,))
-    app = App(root, width=20, height=4)
+    app = TuiApp(root, width=20, height=4)
     app.mount()
     app.focus(leaf)
 
@@ -304,7 +304,7 @@ def test_capture_binding_wins_and_bubble_binding_runs_after_the_target():
     log: list[str] = []
     leaf = Pane("leaf", log, focusable=True)
     root = Pane("root", log, kids=(leaf,))
-    app = App(root, width=20, height=4)
+    app = TuiApp(root, width=20, height=4)
     app.mount()
     app.focus(leaf)
     app.commands.add("cap", lambda event, host: log.append("cap") or True)
@@ -329,7 +329,7 @@ def test_focus_traversal_visits_focusable_widgets_in_tree_order():
     first = Pane("first", log, focusable=True)
     second = Pane("second", log, focusable=True)
     root = Pane("root", log, kids=(first, second))
-    app = App(root, width=20, height=4)
+    app = TuiApp(root, width=20, height=4)
     app.mount()
 
     # Mounting focuses the first Tab stop so a composer is ready immediately.
@@ -346,7 +346,7 @@ def test_modal_screen_traps_input_and_restores_focus_on_pop():
     base = Pane("base", log, kids=(base_leaf,))
     modal_leaf = Pane("modal_leaf", log, focusable=True)
     modal = Pane("modal", log, kids=(modal_leaf,))
-    app = App(base, width=20, height=4)
+    app = TuiApp(base, width=20, height=4)
     app.mount()
     app.focus(base_leaf)
 
@@ -373,7 +373,7 @@ def test_mouse_routing_uses_paint_order_and_resize_updates_geometry():
     top = Pane("top", log, focusable=True)
     bottom = Pane("bottom", log, focusable=True)
     root = Pane("root", log, kids=(top, bottom), split=True)
-    app = App(root, width=20, height=4)
+    app = TuiApp(root, width=20, height=4)
     app.mount()
     app.layout()
 
@@ -395,7 +395,7 @@ def test_mouse_routing_uses_paint_order_and_resize_updates_geometry():
 def test_widgets_see_the_app_theme_and_unhandled_events_return_false():
     log: list[str] = []
     root = Pane("root", log)
-    app = App(root, width=20, height=4, theme=LIGHT)
+    app = TuiApp(root, width=20, height=4, theme=LIGHT)
     app.mount()
 
     assert root.theme is LIGHT

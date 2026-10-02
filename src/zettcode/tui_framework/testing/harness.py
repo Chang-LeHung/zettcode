@@ -1,7 +1,7 @@
-"""Headless driver that feeds input into an App and snapshots the result.
+"""Headless driver that feeds input into a TuiApp and snapshots the result.
 
 The harness exists so the framework can be exercised without a real terminal.
-It runs a real :class:`App` at a synthetic size and paints through the same
+It runs a real :class:`TuiApp` at a synthetic size and paints through the same
 Canvas and DifferentialRenderer path the terminal runner uses, so a passing
 snapshot means the routing and render paths actually ran.
 """
@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from io import StringIO
 from time import monotonic
 
-from ..core.app import App
+from ..core.app import TuiApp
 from ..core.events import AnyEvent, KeyEvent, MouseAction, MouseEvent, PasteEvent, ResizeEvent, TextEvent
 from ..core.geometry import Point
 from ..core.theme import Theme
@@ -38,13 +38,13 @@ class Snapshot:
 
 
 class Harness:
-    """Drive an App with deterministic input and capture its frames."""
+    """Drive a TuiApp with deterministic input and capture its frames."""
 
     def __init__(
         self,
         root: Widget | None = None,
         *,
-        app: App | None = None,
+        app: TuiApp | None = None,
         width: int = 80,
         height: int = 24,
         clock: Callable[[], float] | None = None,
@@ -67,7 +67,7 @@ class Harness:
             self.root = app.root
         elif root is not None:
             self.root = root
-            self.app = App(root, width=width, height=height, theme=theme, clock=self.clock)
+            self.app = TuiApp(root, width=width, height=height, theme=theme, clock=self.clock)
         else:
             raise TypeError("Harness needs a root widget or an existing app")
         self._output = StringIO()
@@ -77,9 +77,9 @@ class Harness:
 
     # -- state the tests read back ------------------------------------------
     #
-    # The harness is not the Host: the App it wraps is. Only the few calls a
+    # The harness is not the Host: the TuiApp it wraps is. Only the few calls a
     # test actually makes are forwarded, so this class does not grow a second,
-    # drifting copy of the App's surface.
+    # drifting copy of the TuiApp's surface.
     def focus(self, widget: Widget | None) -> None:
         """Forward a focus change to the app."""
         self.app.focus(widget)

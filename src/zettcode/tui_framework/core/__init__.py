@@ -1,6 +1,6 @@
 """Framework runtime: contracts, focus, screens, keymaps, and the app loop."""
 
-from .app import App
+from .app import TuiApp
 from .events import (
     AnyEvent,
     Event,
@@ -24,7 +24,7 @@ from .widget import Widget
 
 __all__ = [
     "AnyEvent",
-    "App",
+    "TuiApp",
     "Binding",
     "Command",
     "CommandRegistry",

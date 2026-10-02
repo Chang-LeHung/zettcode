@@ -33,7 +33,7 @@ class ScreenStack:
         """Start a stack whose base layer can never be popped.
 
         Args:
-            base: The permanent bottom layer, named ``"main"`` by ``App``.
+            base: The permanent bottom layer, named ``"main"`` by ``TuiApp``.
         """
         self._screens: list[Screen] = [base]
 
