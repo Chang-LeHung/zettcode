@@ -66,8 +66,7 @@ class ZettCodeRuntime:
         """Create all owned resources after changing into the chosen workspace."""
         os.chdir(config.workspace)
         persistence = SessionStore(config.store)
-        recent = await persistence.list_sessions(limit=1)
-        session_id = recent[0].session_id if recent else new_uuid7()
+        session_id = new_uuid7()
         selected = config.models[0]
         model = OpenAIProvider(
             selected.model,
