@@ -19,6 +19,7 @@ from zett_agent import (
 )
 
 from zettcode.app import Transcript, TranscriptSource, ZettCodeApp
+from zettcode.app.agent.agent import ZettCodeAgent
 from zettcode.app.agent.projection import TranscriptProjector
 from zettcode.config import ModelConfig
 from zettcode.tui import DARK, LIGHT, Rect
@@ -41,9 +42,11 @@ class FakeClient:
         self.block = block
         self.event_dispatcher = None
         self.models: list[object] = []
+        self.configs: list[object] = []
 
     async def stream(self, message, *, config=None, model=None):
         self.models.append(model)
+        self.configs.append(config)
         if self.event_dispatcher is not None:
             self.event_dispatcher.begin_turn(message)
         for event in self.events:
@@ -113,10 +116,25 @@ class FakeRuntime:
 
 
 def build_app(events: list[AgentEvent] | None = None, *, block: bool = False) -> ZettCodeApp:
-    app = ZettCodeApp(FakeRuntime(FakeClient(events, block=block)))
+    app = ZettCodeApp(ZettCodeAgent(FakeRuntime(FakeClient(events, block=block))))
     app.app.resize(60, 14)
     app.app.mount()
     return app
+
+
+async def test_agent_stream_uses_selected_session_and_model():
+    runtime = FakeRuntime(FakeClient())
+    agent = ZettCodeAgent(runtime)
+    agent.use_session("session-0003")
+    agent.use_model("GPT-4o")
+
+    async for _ in agent.stream("hello"):
+        pass
+
+    assert runtime.client.configs[-1].session_id == "session-0003"
+    assert runtime.client.models[-1] == "gpt-4o"
+    assert agent.models == runtime.config.models
+    assert agent.workspace == runtime.config.workspace
 
 
 async def test_projector_maps_events_into_ordered_blocks():
@@ -259,7 +277,7 @@ async def test_app_slash_commands_change_theme_sessions_and_exit():
     harness.write("/new")
     harness.press("enter")
     await asyncio.wait_for(app.task, 2.0)
-    assert app.runtime.session_id == "session-0002"
+    assert app.agent.session_id == "session-0002"
 
     harness.write("/help")
     harness.press("enter")
@@ -282,13 +300,13 @@ async def test_model_command_lists_and_switches_models_for_the_next_request():
     harness.write("/model GPT-4o")
     harness.press("enter")
     await asyncio.wait_for(app.task, 2.0)
-    assert app.runtime.active_model.model == "gpt-4o"
+    assert app.agent.active_model.model == "gpt-4o"
     assert app._header_right() == "GPT-4o  "
 
     harness.write("hello")
     harness.press("enter")
     await asyncio.wait_for(app.task, 2.0)
-    assert app.runtime.client.models[-1] == "gpt-4o"
+    assert app.agent.runtime.client.models[-1] == "gpt-4o"
 
 
 async def test_unknown_model_keeps_the_current_model():
@@ -299,7 +317,7 @@ async def test_unknown_model_keeps_the_current_model():
     harness.press("enter")
     await asyncio.wait_for(app.task, 2.0)
 
-    assert app.runtime.active_model.model == "gpt-5-mini"
+    assert app.agent.active_model.model == "gpt-5-mini"
     assert any("Unknown model" in entry.text for entry in app.transcript.entries)
 
 
@@ -326,7 +344,7 @@ async def test_app_asks_for_approval_and_emits_the_decision():
     harness.press("right")
     harness.press("enter")
 
-    event, config = app.runtime.client.agent.emitted[0]
+    event, config = app.agent.runtime.client.agent.emitted[0]
     assert event.name == "shell_approval_response"
     assert event.payload == {"tool_call_id": "call-1", "decision": "execute", "remember": True}
     assert config.session_id == "session-0001"
@@ -401,7 +419,7 @@ async def test_app_mirrors_the_agent_plan_into_the_panel():
             AgentEvent(AgentEventType.RUN_COMPLETED, "s", message=AssistantMessage(content="done")),
         ]
     )
-    app.runtime.todos.result = TodoWriteResult(
+    app.agent.runtime.todos.result = TodoWriteResult(
         todos=(
             TodoItem(content="inspect the repo", status=TodoStatus.COMPLETED),
             TodoItem(content="write the fix", status=TodoStatus.PROCESSING),
