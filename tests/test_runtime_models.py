@@ -1,8 +1,10 @@
 """Model switching uses the configured OpenAI-compatible endpoint per request."""
 
 import pytest
+from zett_agent import UserMessage
 
 from zettcode.app.agent import runtime as runtime_module
+from zettcode.app.agent.session import SessionStore
 from zettcode.config import ModelConfig, ZettCodeConfig
 
 
@@ -33,8 +35,11 @@ async def test_runtime_switches_models_and_closes_every_provider(tmp_path, monke
     first = ModelConfig(model="shared-id", display_model="First", token="first", base_url="http://first.test")
     second = ModelConfig(model="shared-id", display_model="Second", token="second", base_url="http://tds.com:8787")
     config = ZettCodeConfig(workspace=tmp_path, models=(first, second), store=tmp_path / "sessions")
+    await SessionStore(config.store).append("existing-session", "old-request", UserMessage(content="earlier"))
 
     runtime = await runtime_module.ZettCodeRuntime.create(config)
+    assert runtime.session_id != "existing-session"
+    assert captured["config"].session_id == runtime.session_id
     assert runtime.active_model is first
     assert captured["model"] is created[0]
     assert captured["extensions"][-1].model is None
