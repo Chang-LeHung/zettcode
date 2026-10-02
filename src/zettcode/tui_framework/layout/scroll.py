@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from collections.abc import Callable, Sequence
 from dataclasses import replace
 from time import monotonic
-from typing import Protocol
 
 from ..core.events import KeyEvent, MouseAction, MouseEvent
 from ..core.geometry import Constraints, Size
@@ -15,21 +15,24 @@ from ..render import Canvas, TextLine
 from ..render.text import display_width, slice_columns
 
 
-class LineSource(Protocol):
+class LineSource(ABC):
     """Supplies already-wrapped lines without materializing the whole list.
 
     ``count`` must be cheap, because it runs on every frame, and ``line`` is
-    only ever called for rows that are actually visible.
+    only ever called for rows that are actually visible. Subclass this and
+    answer both; a class that merely looks compatible does not count.
     """
 
+    @abstractmethod
     def count(self, width: int) -> int:
         """Return the total number of lines at ``width``; this runs every frame."""
 
+    @abstractmethod
     def line(self, index: int, width: int) -> TextLine:
         """Return one line; only indexes that are actually visible are requested."""
 
 
-class StaticLines:
+class StaticLines(LineSource):
     """A LineSource over a fixed sequence of lines."""
 
     def __init__(self, lines: Sequence[TextLine] = ()) -> None:

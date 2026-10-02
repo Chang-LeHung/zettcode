@@ -17,6 +17,7 @@ from ..runtime import ZettCodeRuntime
 from ..tui_framework import (
     DARK,
     Anchor,
+    Completer,
     CompletionItem,
     CompletionPopup,
     Dialog,
@@ -59,21 +60,27 @@ KEY_HELP = (
 )
 
 
-def command_completions(text: str, position: int) -> tuple[CompletionItem, ...]:
-    """Return the slash commands matching the line the cursor sits on.
+class CommandCompleter(Completer):
+    """Complete the slash commands matching the line the cursor sits on.
 
-    Args:
-        text: Full draft, newlines included.
-        position: Cursor as a code-point index into ``text``. The menu closes as
-            soon as the line contains a space, so ``/use abc`` stops suggesting.
+    A space ends the suggestion: ``/use abc`` has moved on to a session id, so
+    the menu steps aside instead of filtering the commands down to nothing.
     """
-    start = text.rfind("\n", 0, position) + 1
-    token = text[start:position]
-    if not token.startswith("/") or any(character.isspace() for character in token):
-        return ()
-    return tuple(
-        CompletionItem(name, description=description) for name, description in COMMANDS if name.startswith(token)
-    )
+
+    def __call__(self, text: str, position: int) -> tuple[CompletionItem, ...]:
+        """Return the matching commands for the token ending at ``position``.
+
+        Args:
+            text: Full draft, newlines included.
+            position: Cursor as a code-point index into ``text``.
+        """
+        start = text.rfind("\n", 0, position) + 1
+        token = text[start:position]
+        if not token.startswith("/") or any(character.isspace() for character in token):
+            return ()
+        return tuple(
+            CompletionItem(name, description=description) for name, description in COMMANDS if name.startswith(token)
+        )
 
 
 def help_text() -> str:
@@ -111,7 +118,7 @@ class ZettCodeApp:
         self.view = TranscriptView(self.transcript, theme=theme)
         self.composer = TextArea(
             prompt="\u203a ",
-            completer=command_completions,
+            completer=CommandCompleter(),
             max_height=6,
             on_submit=self.submit,
             on_change=self._refresh_completions,

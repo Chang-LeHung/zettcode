@@ -7,6 +7,7 @@ from zettcode.tui_framework.layout import (
     Anchor,
     Border,
     HBox,
+    LineSource,
     Overlay,
     OverlaySlot,
     Padding,
@@ -35,7 +36,7 @@ class Label(Widget):
         canvas.draw_text(self.rect.x, self.rect.y, self.text, max_width=self.rect.width)
 
 
-class RecordingSource:
+class RecordingSource(LineSource):
     """Line source that remembers exactly which lines were requested."""
 
     def __init__(self, lines: list[str]) -> None:

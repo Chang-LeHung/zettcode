@@ -12,6 +12,7 @@ from time import monotonic
 from ..tui_framework import (
     Canvas,
     Host,
+    LineSource,
     Markdown,
     MouseAction,
     MouseEvent,
@@ -364,7 +365,7 @@ class Transcript:
         return changed
 
 
-class TranscriptSource:
+class TranscriptSource(LineSource):
     """LineSource over the transcript, rendering each entry at most once."""
 
     def __init__(self, transcript: Transcript, *, theme: Theme, frame: Callable[[], int] = lambda: 0) -> None:
@@ -428,7 +429,7 @@ class TranscriptSource:
         self._count = total
 
 
-class LeadingGap:
+class LeadingGap(LineSource):
     """LineSource that renders one blank row before a nested source.
 
     Streamed answers are served by ``Markdown`` so their parsing stays
@@ -436,11 +437,12 @@ class LeadingGap:
     generic entry renderer.
     """
 
-    def __init__(self, source: object) -> None:
+    def __init__(self, source: LineSource) -> None:
         """Wrap the nested line source.
 
         Args:
-            source: Line source whose rows shift down by one.
+            source: Line source whose rows shift down by one; it is a
+                ``LineSource`` itself, so the wrapper stays composable.
         """
         self.source = source
 

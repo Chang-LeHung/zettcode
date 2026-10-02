@@ -4,15 +4,19 @@ import pytest
 
 from zettcode.tui_framework import (
     AnyEvent,
+    Completer,
     Constraints,
     EdgeInsets,
     EventKind,
     Host,
     KeyEvent,
+    LineSource,
+    MarkdownSource,
     PasteEvent,
     Point,
     Rect,
     Size,
+    StaticLines,
     Style,
     TextEvent,
     TuiApp,
@@ -119,6 +123,18 @@ def test_host_is_abstract_and_tui_app_implements_all_of_it():
 
     # TuiApp answers every method, so it is the one class that can be built.
     assert TuiApp(Widget(), width=4, height=1).focused_widget() is None
+
+
+def test_line_source_and_completer_are_abstract_too():
+    """Every framework contract is a base class, and its users subclass it."""
+
+    assert issubclass(StaticLines, LineSource)
+    assert issubclass(MarkdownSource, LineSource)
+
+    with pytest.raises(TypeError, match="abstract"):
+        LineSource()
+    with pytest.raises(TypeError, match="abstract"):
+        Completer()
 
 
 def test_constraints_clamp_measurements_and_deflate():
