@@ -48,6 +48,7 @@ COMMANDS: tuple[tuple[str, str], ...] = (
     ("/help", "show the commands and the keys"),
     ("/new", "start a fresh session"),
     ("/sessions", "list persisted sessions"),
+    ("/model", "list or switch models: /model <name>"),
     ("/use", "switch to a session: /use <id>"),
     ("/theme", "switch the palette: /theme dark|light"),
     ("/clear", "clear the transcript"),
@@ -303,7 +304,9 @@ class ZettCodeApp:
         try:
             self._refresh_tasks()
             async with aclosing(
-                self.runtime.client.stream(prompt, config=AgentRunConfig(session_id=self.runtime.session_id))
+                self.runtime.client.stream(
+                    prompt, config=AgentRunConfig(session_id=self.runtime.session_id), model=self.runtime.model
+                )
             ) as events:
                 async for _event in events:
                     self._refresh_tasks()
@@ -349,6 +352,17 @@ class ZettCodeApp:
                 for session in sessions:
                     marker = "*" if session.session_id == self.runtime.session_id else " "
                     self.transcript.notice(f"{marker} {session.session_id}  {session.message_count} messages")
+            case "/model" if argument:
+                try:
+                    selected = self.runtime.use_model(argument)
+                except ValueError as error:
+                    self.transcript.notice(str(error))
+                else:
+                    self._notify(f"using model {selected.shown_name}", level="success")
+            case "/model":
+                for entry in self.runtime.config.models:
+                    marker = "*" if entry is self.runtime.active_model else " "
+                    self.transcript.notice(f"{marker} {entry.shown_name} ({entry.model})")
             case "/clear":
                 self.transcript.clear()
             case "/theme":
@@ -441,8 +455,8 @@ class ZettCodeApp:
         return f"  \u25c8 zettcode  {compact_path(self.runtime.config.workspace)}"
 
     def _header_right(self) -> str:
-        """Show the active provider and model."""
-        return f"{self.runtime.config.provider.value}/{self.runtime.config.model}  "
+        """Show the model the agent is configured to use."""
+        return f"{self.runtime.active_model.shown_name}  "
 
     def _status_left(self) -> str:
         """Show the activity glyph, the status word, and the session id."""
