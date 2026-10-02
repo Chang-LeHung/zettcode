@@ -63,6 +63,9 @@ def test_resolve_tracks_honours_fixed_minimum_and_flex():
     assert resolve_tracks(10, [Track(None, flex=1), Track(None, flex=3)]) == [3, 7]
     assert resolve_tracks(10, [Track(4, flex=1), Track(None, flex=1)]) == [7, 3]
     assert resolve_tracks(20, [Track(lambda available: available // 4)]) == [5]
+    # A callable sizes the main axis from the cross axis, because that is the
+    # extent a wrapping child actually depends on.
+    assert resolve_tracks(20, [Track(lambda cross: cross // 4)], cross=40) == [10]
 
 
 def test_resolve_tracks_shrinks_proportionally_when_fixed_sizes_overflow():
@@ -93,6 +96,22 @@ def test_hbox_distributes_columns_and_boxes_report_intrinsic_size():
     assert right.rect == Rect(6, 0, 14, 4)
     assert VBox([Slot(Label("abc"))]).measure(Constraints.loose(Size(20, 10))) == Size(3, 1)
     assert HBox([Slot(Label("ab")), Slot(Label("cde"))]).measure(Constraints.loose(Size(20, 10))) == Size(5, 1)
+
+
+def test_a_box_hands_slot_callbacks_the_cross_axis_extent():
+    """A VBox measures a slot's height from the width it has to work with."""
+    widths: list[int] = []
+    heights: list[int] = []
+    vertical = VBox([Slot(Label("x"), size=lambda width: widths.append(width) or 1)])
+    horizontal = HBox([Slot(Label("x"), size=lambda height: heights.append(height) or 1)])
+
+    vertical.layout(Rect(0, 0, 30, 8))
+    horizontal.layout(Rect(0, 0, 30, 8))
+
+    assert widths == [30]
+    assert heights == [8]
+    assert vertical.children[0].rect.height == 1
+    assert horizontal.children[0].rect.width == 1
 
 
 def test_padding_insets_its_child_and_reserves_space():

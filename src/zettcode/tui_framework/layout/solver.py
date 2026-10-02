@@ -13,8 +13,9 @@ class Track:
     """One row or column in a box layout.
 
     Attributes:
-        size: Fixed cells, a callable receiving the available cells, or ``None``
-            to leave the track at its minimum.
+        size: Fixed cells on the main axis, a callable receiving the box's
+            extent on the *cross* axis, or ``None`` to contribute nothing to the
+            fixed budget.
         flex: Share of the leftover space; zero never grows.
         minimum: Floor applied to the final extent.
     """
@@ -23,21 +24,26 @@ class Track:
     flex: int = 0
     minimum: int = 0
 
-    def fixed(self, available: int) -> int:
+    def fixed(self, available: int, cross: int) -> int:
         """Return the extent this track claims before flex is shared out.
 
         Args:
-            available: Cells the box has on the main axis, passed on to a
-                callable ``size``.
+            available: Cells the box has on the main axis. Kept for the callers
+                that reason in main-axis terms; a callable ``size`` does not see
+                it.
+            cross: Cells the box has on the other axis, which is what a callable
+                ``size`` receives: a child's natural main-axis size usually
+                depends on the space it gets across (a paragraph's height
+                depends on its width).
         """
         if callable(self.size):
-            return max(self.minimum, self.size(available))
+            return max(self.minimum, self.size(cross))
         if self.size is None:
             return self.minimum
         return max(self.minimum, self.size)
 
 
-def resolve_tracks(available: int, tracks: Sequence[Track]) -> list[int]:
+def resolve_tracks(available: int, tracks: Sequence[Track], *, cross: int | None = None) -> list[int]:
     """Return the extent of every track, honoring fixed, minimum, and flex.
 
     Fixed tracks keep their size and flex tracks share whatever is left. When
@@ -47,11 +53,15 @@ def resolve_tracks(available: int, tracks: Sequence[Track]) -> list[int]:
     Args:
         available: Cells the box has on the main axis.
         tracks: Per-slot sizing requests, in layout order.
+        cross: Cells the box has on the other axis, handed to a callable
+            ``size``. A caller that only uses fixed numbers can leave it out, in
+            which case a callable would receive ``available`` instead.
     """
     available = max(0, available)
     if not tracks:
         return []
-    fixed = [track.fixed(available) for track in tracks]
+    extent = available if cross is None else cross
+    fixed = [track.fixed(available, extent) for track in tracks]
     if sum(fixed) > available:
         return _shrink(fixed, available)
     remaining = available - sum(fixed)

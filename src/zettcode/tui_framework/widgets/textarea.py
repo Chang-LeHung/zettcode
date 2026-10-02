@@ -425,8 +425,17 @@ class TextArea(Widget):
         self._changed()
 
     def _changed(self) -> None:
-        """Repaint the editor and tell the owner the draft changed."""
+        """Repaint the editor, re-layout when it grew, and tell the owner.
+
+        The row count is geometry, not just paint: a draft that wraps onto
+        another row needs the boxes around this editor to split their space
+        again, so the app is asked for a fresh layout whenever the height at the
+        current width changes. Keystrokes that stay on the same rows only
+        repaint.
+        """
         self.invalidate()
+        if self.app is not None and self.preferred_height(max(1, self.rect.width)) != self.rect.height:
+            self.app.request_layout()
         if self.on_change is not None:
             self.on_change()
 

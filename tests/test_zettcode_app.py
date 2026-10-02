@@ -20,7 +20,7 @@ from zett_agent import (
 
 from zettcode.app import Transcript, TranscriptSource, ZettCodeApp
 from zettcode.app.projection import TranscriptProjector
-from zettcode.tui_framework import DARK, LIGHT
+from zettcode.tui_framework import DARK, LIGHT, Rect
 from zettcode.tui_framework.testing import Harness
 
 
@@ -459,6 +459,25 @@ async def test_history_still_works_while_the_menu_is_closed():
 
     assert app.composer.text == "/help"
     assert app.completions.visible is True
+
+
+async def test_a_wrapping_draft_grows_the_composer_and_shrinks_the_transcript():
+    """The composer's height is geometry: the boxes have to be laid out again."""
+    app = build_app()
+    harness = _harness(app)
+    harness.render()
+    composer_before, view_before = app.composer.rect, app.view.rect
+
+    harness.write("x" * 200)
+    harness.render()
+
+    assert app.composer.rect.height == app.composer.preferred_height(app.composer.rect.width)
+    assert app.composer.rect.height > composer_before.height
+    assert app.composer.rect.height <= 6
+    # The row above and the row below keep their size; the flexible transcript
+    # absorbs the difference, which is what a re-layout is for.
+    assert app.header.rect == Rect(0, 0, 60, 1)
+    assert app.view.rect.height == view_before.height - (app.composer.rect.height - composer_before.height)
 
 
 def _harness(app: ZettCodeApp) -> Harness:
