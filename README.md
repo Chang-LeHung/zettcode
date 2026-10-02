@@ -37,7 +37,10 @@ zettcode --provider openai --model my-model --base-url https://example.com/v1
 ```
 
 Pass a workspace path as the final argument. It defaults to the current directory.
-Session data is stored in `~/.zettcode/sessions.sqlite3` by default.
+Sessions live in `~/.zettcode/sessions/`, one append-only JSONL file per session:
+every record carries a parent id, so a session is a tree, and a compaction adds a
+summary node the active context is cut at. `--store` points that directory
+somewhere else.
 
 ## Approvals
 
