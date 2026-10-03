@@ -7,8 +7,7 @@ ZettCodeApp`` keeps working for callers that do not care where it lives.
 """
 
 from .agent import Entry, Transcript, TranscriptProjector, ZettCodeAgent, ZettCodeRuntime
-from .ui.app import ZettCodeApp, ZettCodeRoot
-from .ui.transcript import TranscriptSource, TranscriptView
+from .ui import TranscriptSource, TranscriptView, ZettCodeApp, ZettCodeRoot
 
 __all__ = [
     "Entry",

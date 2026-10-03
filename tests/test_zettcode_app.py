@@ -22,7 +22,7 @@ from zettcode.app import Transcript, TranscriptSource, ZettCodeApp
 from zettcode.app.agent.agent import ZettCodeAgent
 from zettcode.app.agent.projection import TranscriptProjector
 from zettcode.app.commands import Command, CommandResult
-from zettcode.app.ui.app import WELCOME
+from zettcode.app.ui.widgets import WELCOME
 from zettcode.config import ModelConfig
 from zettcode.tui import DARK, LIGHT, Rect
 from zettcode.tui.testing import Harness
