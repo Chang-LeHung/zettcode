@@ -560,6 +560,34 @@ async def test_restoring_keeps_instructions_and_drops_interrupted_tool_batches(t
     assert second.state.messages[-1].content == "done"
 
 
+async def test_restoring_skips_persisted_instructions_so_the_prefix_stays_stable(tmp_path: Path):
+    """A turn's instructions are rebuilt, never replayed from the log.
+
+    Replaying them duplicated the system prompt and the extension notes at the
+    head of every request, which moved the dialogue down and broke the
+    provider's prefix cache from the first duplicated message on.
+    """
+    store = SessionStore(tmp_path)
+    first = context(request_id="req-1")
+    await store.on_state(first)
+    for message in (
+        SystemMessage(content="stale system prompt"),
+        UserMessage(content="hello"),
+        AssistantMessage(content="hi"),
+    ):
+        await store.on_event(first, appended(message))
+    await store.on_success(first, AssistantMessage(content="hi"))
+
+    second = context(request_id="req-2")
+    await store.on_state(second)
+
+    assert [getattr(message, "text", None) or message.content for message in second.state.messages] == [
+        "current instructions",
+        "hello",
+        "hi",
+    ]
+
+
 async def test_cancelling_drops_the_bookkeeping_so_late_events_are_ignored(tmp_path: Path):
     store = SessionStore(tmp_path)
     ctx = context()

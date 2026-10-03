@@ -27,9 +27,20 @@ from .storage import SessionStore
 from .usage import UsageExtension
 
 
-def build_system_prompt(config: ZettCodeConfig) -> str:
-    """Build request instructions with an explicit workspace boundary."""
-    now = datetime.now().astimezone()
+def build_system_prompt(config: ZettCodeConfig, *, now: datetime | None = None) -> str:
+    """Build request instructions with an explicit workspace boundary.
+
+    The prompt is the head of every request, so whatever it contains is part of
+    the provider's cache key: the date is deliberately the only time-derived
+    value, and only the day of it. A clock reading with seconds would make the
+    head unique to each launch and drop the cache for the whole conversation.
+
+    Args:
+        config: Settings the runtime was built from.
+        now: Moment to describe, injectable for tests; defaults to the local
+            current time.
+    """
+    moment = now or datetime.now().astimezone()
     return f"""You are ZettCode, a focused coding agent working with the user in one local workspace.
 
 Inspect relevant files before editing. Make focused changes, preserve unrelated work,
@@ -38,7 +49,7 @@ destructive actions unless the user explicitly requests them.
 
 Runtime environment:
 - Workspace: {config.workspace}
-- Local time: {now.isoformat(timespec="seconds")}
+- Today: {moment.date().isoformat()}
 - Operating system: {platform.platform()}
 - Architecture: {platform.machine() or "unknown"}
 - Python: {platform.python_implementation()} {platform.python_version()}
