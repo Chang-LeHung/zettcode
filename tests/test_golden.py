@@ -146,37 +146,37 @@ def test_golden_transcript_blocks():
     transcript.append_answer("# Result\n\nFixed `parse`.")
 
     assert render_block(TranscriptView(transcript, theme=DARK), width=44, height=18, theme=DARK) == (
-        "hi\n"
+        "  hi\n"
         "\n"
         "\n"
-        "  \u203a find the bug\n"
+        "\u203a find the bug\n"
         "\n"
         "\n"
-        "\u25b8 Thinking  0 ms\n"
+        "  \u25b8 Thinking  0 ms\n"
         "\n"
-        '\u2713 read_file {"path":"app.py"}  0 ms \u25b8\n'
-        "    \u2514 line one\n"
-        "      line two\n"
+        '  \u2713 read_file {"path":"app.py"}  0 ms \u25b8\n'
+        "      \u2514 line one\n"
+        "        line two\n"
         "\n"
-        "Result\n"
+        "  Result\n"
         "\n"
         "\n"
-        "Fixed parse.\n"
+        "  Fixed parse.\n"
         "\n"
         "\n"
         "-- styles --\n"
-        "0:0-2 fg#a3ada6\n"
+        "0:0-4 fg#a3ada6\n"
         "2:0-44 fg#e6e9e7,bg#222725\n"
         "3:0-44 fg#e6e9e7,bg#222725\n"
         "4:0-44 fg#e6e9e7,bg#222725\n"
-        "6:0-16 b,fg#79b88b\n"
-        "8:0-37 b,fg#79b88b\n"
-        "9:0-14 fg#a3ada6\n"
-        "10:0-14 fg#a3ada6\n"
-        "12:0-6 b,fg#e6e9e7\n"
-        "15:0-6 fg#e6e9e7\n"
-        "15:6-11 fg#9bddad\n"
-        "15:11-12 fg#e6e9e7"
+        "6:0-18 b,fg#79b88b\n"
+        "8:0-39 b,fg#79b88b\n"
+        "9:0-16 fg#a3ada6\n"
+        "10:0-16 fg#a3ada6\n"
+        "12:0-8 b,fg#e6e9e7\n"
+        "15:0-8 fg#e6e9e7\n"
+        "15:8-13 fg#9bddad\n"
+        "15:13-14 fg#e6e9e7"
     )
 
 
@@ -186,7 +186,8 @@ def test_user_prompt_surface_wraps_and_keeps_full_width():
     source = TranscriptView(transcript, theme=DARK).transcript_source
     user_rows = [source.line(index, 12) for index in range(5)]
 
-    assert [line.text.strip() for line in user_rows] == ["", "", "\u203a abcdef", "abcdef", ""]
+    # The arrow sits flush left and the text under it uses the full width.
+    assert [line.text.strip() for line in user_rows] == ["", "", "\u203a abcdefabcd", "ef", ""]
     assert all(len(line.text) == 12 for line in user_rows[1:])
     assert all(line.spans[0].style.background == DARK.surface_alt for line in user_rows[1:])
 

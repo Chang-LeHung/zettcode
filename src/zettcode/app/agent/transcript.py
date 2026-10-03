@@ -26,6 +26,11 @@ from ...tui import (
 from ...tui.render import display_width, truncate, wrap_columns
 from ...tui.widgets.markdown import MarkdownSource
 
+#: Left margin of every transcript row: the width of the composer's ``\u203a ``
+#: prompt, so text lines up under what the user types and never starts left of
+#: the caret in an empty composer.
+CONTENT_INDENT = 2
+
 MAX_TOOL_OUTPUT = 64_000
 TOOL_PREVIEW_ROWS = 5
 TOOL_EXPANDED_ROWS = 40
@@ -188,7 +193,7 @@ class Entry:
         if self.markdown is not None:
             self.markdown.theme = theme
             if self.block is None:
-                self.block = LeadingGap(MarkdownSource(self.markdown))
+                self.block = self._inset(LeadingGap(MarkdownSource(self.markdown)))
             return self.block
         # Only a running row animates, so a completed row must not be re-rendered
         # just because the frame counter moved on.
@@ -203,9 +208,17 @@ class Entry:
             self.detail,
         )
         if self.block is None or self.block_key != key:
-            self.block = StaticLines(render_entry(self, width, theme, frame))
+            self.block = self._inset(StaticLines(render_entry(self, width, theme, frame)))
             self.block_key = key
         return self.block
+
+    def _inset(self, block: LineSource) -> LineSource:
+        """Shift a rendered block right, except for the prompt echoing the composer.
+
+        A user message draws its own ``\u203a `` at column zero, exactly like the
+        composer, so indenting it again would push the arrow away from the edge.
+        """
+        return block if self.kind == "user" else Indented(block)
 
 
 class Transcript:
@@ -434,6 +447,41 @@ class LeadingGap(LineSource):
         return self.source.line(index - 1, width)
 
 
+class Indented(LineSource):
+    """LineSource that shifts every row right by a fixed margin.
+
+    The margin is drawn with the row's own leading style, so a line that carries
+    a background keeps it across the gutter. The nested source wraps at the
+    remaining width, which keeps long lines inside the window instead of
+    wrapping past its right edge.
+    """
+
+    def __init__(self, source: LineSource, columns: int = CONTENT_INDENT) -> None:
+        """Wrap ``source`` with ``columns`` cells of leading space.
+
+        Args:
+            source: Line source to shift right.
+            columns: Margin in cells; the nested source wraps that much narrower.
+        """
+        self.source = source
+        self.columns = max(0, columns)
+
+    def count(self, width: int) -> int:
+        """Return the nested row count, which the margin does not change."""
+        return self.source.count(max(1, width - self.columns))
+
+    def line(self, index: int, width: int) -> TextLine:
+        """Draw the margin, then the nested row at the reduced width."""
+        row = self.source.line(index, max(1, width - self.columns))
+        if not row.spans:
+            return TextLine(metadata=row.metadata)
+        # The gutter joins the first run rather than becoming a run of its own,
+        # so a caller indexing spans still finds the same structure it rendered.
+        first = row.spans[0]
+        gutter = Span(" " * self.columns + first.text, first.style)
+        return TextLine((gutter, *row.spans[1:]), metadata=row.metadata)
+
+
 def render_entry(entry: Entry, width: int, theme: Theme, frame: int) -> list[TextLine]:
     """Render one non-streaming entry into terminal lines.
 
@@ -461,22 +509,23 @@ def render_entry(entry: Entry, width: int, theme: Theme, frame: int) -> list[Tex
                     lines.append(TextLine((Span(line, Style(foreground=color)),)))
             return lines
         case "notice":
+            # No indent of its own: the gutter already lines a notice up with
+            # the answer text above it.
             return [
                 TextLine(),
-                *[TextLine((Span(f"  {line}", Style(foreground=theme.muted)),)) for line in entry.text.split("\n")],
+                *[TextLine((Span(line, Style(foreground=theme.muted)),)) for line in entry.text.split("\n")],
             ]
         case "user":
             style = Style(foreground=theme.text, background=theme.surface_alt)
-            inset = min(2, max(0, (width - 3) // 2))
-            content_width = max(1, width - inset * 2 - 2)
+            content_width = max(1, width - CONTENT_INDENT)
             prompt = [chunk for row in entry.text.split("\n") for chunk in wrap_columns(row, content_width)]
             background = TextLine((Span(" " * width, style),))
             lines = [TextLine(), background]
             for index, chunk in enumerate(prompt):
                 prefix = "\u203a " if index == 0 else "  "
-                body = truncate(f"{prefix}{chunk}", max(1, width - inset))
-                padding = " " * max(0, width - inset - display_width(body))
-                lines.append(TextLine((Span(" " * inset + body + padding, style),)))
+                body = truncate(f"{prefix}{chunk}", width)
+                padding = " " * max(0, width - display_width(body))
+                lines.append(TextLine((Span(body + padding, style),)))
             lines.append(background)
             return lines
         case "thinking":
