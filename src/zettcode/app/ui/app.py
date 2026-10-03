@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 from contextlib import aclosing
 from pathlib import Path
+from time import monotonic
 
 from zett_agent import AgentEvent
 
@@ -35,7 +36,7 @@ from ...tui.layout import Slot
 from ...tui.widgets import Rule
 from ..agent.agent import ZettCodeAgent
 from ..agent.projection import TranscriptProjector
-from ..agent.transcript import Transcript, activity_glyph
+from ..agent.transcript import Transcript, activity_glyph, clock_text, elapsed_text
 from ..commands import CommandResult
 from .commands import ShellCommands
 from .widgets import WELCOME, ApprovalChoice, ApprovalPage, CommandCompleter, TranscriptView, ZettCodeRoot, bottom_panel
@@ -257,6 +258,7 @@ class ZettCodeApp:
     async def _run_prompt(self, prompt: str) -> None:
         """Stream one agent turn, keeping the task panel and transcript current."""
         self.projector.begin_turn(prompt)
+        started = monotonic()
         self._busy = True
         self._status = "running"
         self.app.scheduler.animate("stream")
@@ -276,6 +278,8 @@ class ZettCodeApp:
         else:
             self._title_session_later(self.agent.session_id)
         finally:
+            took = elapsed_text(monotonic() - started)
+            self.transcript.notice(f"Processed {took} \u00b7 {clock_text()}")
             self._busy = False
             self._status = "ready"
             self.app.scheduler.animate("stream", active=False)

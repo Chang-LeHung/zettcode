@@ -24,7 +24,9 @@ from zettcode.app import Transcript, TranscriptSource, ZettCodeApp
 from zettcode.app.agent.agent import ZettCodeAgent
 from zettcode.app.agent.projection import TranscriptProjector
 from zettcode.app.agent.storage import SessionInfo, SessionStore
+from zettcode.app.agent.transcript import clock_text, elapsed_text
 from zettcode.app.commands import Command, CommandResult
+from zettcode.app.ui import app as app_module
 from zettcode.app.ui.widgets import WELCOME, ApprovalChoice, ApprovalPage, SessionsPage, bottom_panel, format_ago
 from zettcode.config import ModelConfig
 from zettcode.tui import DARK, LIGHT, ListItem, ListPage, Rect, walk
@@ -289,10 +291,45 @@ async def test_app_streams_a_prompt_into_the_transcript():
 
     text = harness.render().text
 
-    assert "find the bug" in text
+    # The turn footer pushes the prompt out of the short test viewport, so the
+    # prompt is checked in the model and the answer in what is on screen.
+    assert any(entry.kind == "user" and entry.text == "find the bug" for entry in app.transcript.entries)
     assert "Result" in text
     assert "bold finding" in text
+    assert "Processed " in text
     assert app.busy is False
+
+
+def test_elapsed_text_keeps_the_largest_unit_that_fits():
+    assert elapsed_text(0.4) == "0s"
+    assert elapsed_text(3.2) == "3s"
+    assert elapsed_text(59.6) == "1m"
+    assert elapsed_text(22 * 60 + 30) == "22m"
+    assert elapsed_text(59 * 60 + 59) == "59m"
+    assert elapsed_text(3600) == "1h"
+    assert elapsed_text(2 * 3600 + 5 * 60) == "2h 5m"
+    assert elapsed_text(-5) == "0s"
+
+
+def test_clock_text_formats_a_local_reading():
+    assert clock_text(datetime(2026, 10, 3, 9, 5)) == "09:05"
+    assert clock_text(datetime(2026, 10, 3, 23, 59)) == "23:59"
+
+
+async def test_each_turn_reports_how_long_it_took(monkeypatch):
+    app = build_app()
+    harness = _harness(app)
+    monkeypatch.setattr(app_module, "monotonic", iter([100.0, 131.5]).__next__)
+    monkeypatch.setattr(app_module, "clock_text", lambda: "13:14")
+
+    harness.write("find the bug")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    assert any(
+        entry.kind == "notice" and entry.text == "Processed 32s \u00b7 13:14" for entry in app.transcript.entries
+    )
+    assert "Processed 32s \u00b7 13:14" in harness.render().text
 
 
 async def test_app_refuses_a_second_prompt_and_ctrl_c_stops_the_first():

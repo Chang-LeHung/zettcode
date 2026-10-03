@@ -147,7 +147,9 @@ cannot take over the terminal or exhaust renderer memory.
 Pressing Enter puts a live row in the transcript straight away, so a slow model
 is never mistaken for a frozen one. It shows an animated glyph and the elapsed
 time, and is replaced by the real answer, reasoning, or tool call as soon as one
-arrives. Rows that are still running show the same elapsed timer.
+arrives. Rows that are still running show the same elapsed timer, and when the
+turn ends the transcript closes with a muted summary of the wall time it took:
+`Processed 51s · 09:41`, `Processed 22m · 14:05`, or `Processed 2h 5m · 18:30`.
 
 Assistant text renders common terminal-friendly Markdown: bold and emphasis,
 headings, inline and fenced code, links, quotes, unordered bullet lists, and

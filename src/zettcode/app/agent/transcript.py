@@ -11,6 +11,7 @@ import json
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from datetime import datetime
 from time import monotonic
 
 from ...tui import (
@@ -103,6 +104,37 @@ def duration_text(seconds: float | None) -> str:
     if seconds is None:
         return "done"
     return f"{round(seconds * 1000)} ms" if seconds < 1 else f"{seconds:.1f} s"
+
+
+def elapsed_text(seconds: float) -> str:
+    """Format a whole request's wall time the way a person reads it.
+
+    A row header needs millisecond precision, but the line under a finished
+    request is a summary: ``51s``, ``22m``, ``2h 5m``. Rounded to the largest
+    unit that fits, with the next unit down kept only once the total passes an
+    hour.
+
+    Args:
+        seconds: Wall time of the request, negative values clamped to zero.
+    """
+    total = max(0, round(seconds))
+    if total < 60:
+        return f"{total}s"
+    minutes, _ = divmod(total, 60)
+    if minutes < 60:
+        return f"{minutes}m"
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours}h {minutes}m" if minutes else f"{hours}h"
+
+
+def clock_text(moment: datetime | None = None) -> str:
+    """Format a wall-clock reading as local ``HH:MM``.
+
+    Args:
+        moment: Time to show; ``None`` reads the clock, and tests inject a value
+            so a rendered footer stays deterministic.
+    """
+    return (moment or datetime.now()).strftime("%H:%M")
 
 
 @dataclass(slots=True)
