@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from math import ceil
 from pathlib import Path
 
 import pytest
@@ -25,7 +26,15 @@ from zettcode.app import Transcript, TranscriptSource, TranscriptView, ZettCodeA
 from zettcode.app.agent.agent import ZettCodeAgent
 from zettcode.app.agent.projection import TranscriptProjector
 from zettcode.app.agent.storage import SessionInfo, SessionStore
-from zettcode.app.agent.transcript import BLINK_FRAMES, SWEEP_FRAMES, activity_glyph, clock_text, elapsed_text
+from zettcode.app.agent.transcript import (
+    BLINK_FRAMES,
+    SWEEP_FRAMES,
+    activity_glyph,
+    clock_text,
+    elapsed_text,
+    sweep_step,
+    terminal_safe,
+)
 from zettcode.app.commands import Command, CommandResult
 from zettcode.app.ui import app as app_module
 from zettcode.app.ui import demo
@@ -236,7 +245,7 @@ def test_a_placeholder_is_shown_before_anything_is_known():
     rendered = "\n".join(_rendered(transcript, 40))
 
     assert [entry.kind for entry in transcript.entries] == ["user", "pending"]
-    assert "Waiting for the model" in rendered
+    assert "Processing" in rendered
 
     thinking = transcript.start_thinking()
     transcript.append_thinking("now it is reasoning")
@@ -254,13 +263,76 @@ def test_the_placeholder_is_removed_once_output_starts():
     transcript.append_answer("an answer")
 
     assert [entry.kind for entry in transcript.entries] == ["user", "answer"]
-    assert "Waiting for the model" not in "\n".join(_rendered(transcript, 40))
+    assert "Processing" not in "\n".join(_rendered(transcript, 40))
 
     finished = Transcript(clock=lambda: 0.0)
     finished.begin_turn("question")
     finished.complete_thinking()
 
     assert [entry.kind for entry in finished.entries] == ["user"]
+
+
+def test_a_request_waits_again_after_every_tool_batch():
+    transcript = Transcript(clock=lambda: 0.0)
+    transcript.begin_turn("question")
+    transcript.start_tool("1", "read_file", {"path": "a.py"})
+    assert [entry.kind for entry in transcript.entries] == ["user", "tool"]
+
+    transcript.complete_tool("1", "content")
+
+    # The loop calls the model again once the batch has results, so the wait row
+    # comes back below the rows it belongs to.
+    assert [(entry.kind, entry.title) for entry in transcript.entries] == [
+        ("user", ""),
+        ("tool", "Read a.py"),
+        ("pending", "Processing"),
+    ]
+    assert transcript.entries[-1].status == "running"
+
+    transcript.append_answer("done")
+
+    assert [entry.kind for entry in transcript.entries] == ["user", "tool", "answer"]
+
+
+def test_a_wait_row_waits_for_the_whole_tool_batch():
+    transcript = Transcript(clock=lambda: 0.0)
+    transcript.begin_turn("question")
+    transcript.start_tool("1", "read_file", {"path": "a.py"})
+    transcript.start_tool("2", "read_file", {"path": "b.py"})
+
+    transcript.complete_tool("1", "content")
+
+    # One result is not the batch: the model is not called until they all land.
+    assert [entry.kind for entry in transcript.entries] == ["user", "tool", "tool"]
+
+    transcript.complete_tool("2", "content")
+
+    assert [entry.kind for entry in transcript.entries] == ["user", "tool", "tool", "pending"]
+
+
+def test_terminal_safe_normalises_line_endings_before_replacing_controls():
+    # CRLF and a lone carriage return are line breaks here, not stray bytes: a
+    # tool that shells out to curl would otherwise end every line with a glyph.
+    assert terminal_safe("a\r\nb\rc") == "a\nb\nc"
+    assert terminal_safe("HTTP/1.1 200 OK\r\nServer: x\r\n") == "HTTP/1.1 200 OK\nServer: x\n"
+    assert terminal_safe("coloured \x1b[31mred\x1b[0m") == "coloured red"
+    assert terminal_safe("tab\there") == "tab here"
+    assert terminal_safe("x\ty") == "x   y"
+    assert "\ufffd" in terminal_safe("bell\x07")
+    assert "\ufffd" not in terminal_safe("ok\r\n")
+
+
+def test_a_tool_row_prints_crlf_output_without_replacement_glyphs():
+    transcript = Transcript(clock=lambda: 0.0)
+    transcript.begin_turn("question")
+    transcript.start_tool("1", "run_shell", {"command": "curl -i localhost"})
+    transcript.complete_tool("1", "HTTP/1.1 200 OK\r\nServer: ZettCode/1.0\r\n\r\nbody\r\n")
+
+    rendered = "\n".join(_rendered(transcript, 60))
+
+    assert "HTTP/1.1 200 OK" in rendered
+    assert "Server: ZettCode/1.0" in rendered
+    assert "\ufffd" not in rendered
 
 
 def test_provider_wrappers_and_chat_preambles_never_reach_the_transcript():
@@ -289,7 +361,7 @@ async def test_a_waiting_row_appears_as_soon_as_a_turn_starts():
     text = harness.render().text
 
     assert "slow question" in text
-    assert "Waiting for the model" in text
+    assert "Processing" in text
     assert app.transcript.frame > 0
     assert "running" in text
 
@@ -310,7 +382,7 @@ def test_the_running_marker_blinks_between_two_glyphs():
 @pytest.mark.parametrize(
     ("thinking", "needle", "label"),
     [
-        (False, "Waiting", "Waiting for the model\u2026"),
+        (False, "Processing", "Processing"),
         (True, "Thinking", "Thinking  working"),
     ],
 )
@@ -339,12 +411,17 @@ def test_a_running_wording_carries_a_travelling_highlight(thinking, needle, labe
         return -1
 
     # The highlight arrives from the left and moves one column per step.
-    assert peak_column(SWEEP_FRAMES * 5) == 2
-    assert peak_column(SWEEP_FRAMES * 8) == 5
+    def frame_for(step: int) -> int:
+        """Return the first frame at which the highlight has reached ``step``."""
+        return ceil(step * SWEEP_FRAMES)
+
+    assert sweep_step(frame_for(5)) == 5
+    assert peak_column(frame_for(5)) == 2
+    assert peak_column(frame_for(8)) == 5
 
     # Nothing ever goes dark: every run keeps a colour from the bright end of
     # the palette, and the text itself never changes or shifts.
-    for frame in range(0, SWEEP_FRAMES * 14, SWEEP_FRAMES):
+    for frame in (frame_for(step) for step in range(14)):
         runs = wording(frame)
         assert all(run.style.dim is False for run in runs)
         assert all(run.style.foreground != DARK.muted for run in runs)
@@ -372,6 +449,19 @@ async def test_the_blink_demo_script_walks_a_turn():
     finally:
         turn.cancel()
         await asyncio.gather(turn, return_exceptions=True)
+
+
+def test_the_blink_demo_can_be_slowed_down_while_it_runs(monkeypatch):
+    monkeypatch.setattr(demo.transcript_module, "SWEEP_FRAMES", 4.0)
+    harness = Harness(app=demo.build())
+
+    harness.press("]")
+    assert demo.transcript_module.SWEEP_FRAMES == 3.5
+    assert "3.5 frames per column" in harness.render().text
+
+    harness.press("[")
+    harness.press("[")
+    assert demo.transcript_module.SWEEP_FRAMES == 4.5
 
 
 async def test_app_streams_a_prompt_into_the_transcript():

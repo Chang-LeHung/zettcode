@@ -15,10 +15,24 @@ import asyncio
 
 from ...tui import DARK, Slot, Text, TuiApp, VBox, Widget, run_app
 from ...tui.widgets import Rule
+from ..agent import transcript as transcript_module
 from ..agent.transcript import Transcript
 from .widgets import TranscriptView
 
-HINT = "  q / Esc quit \u00b7 a highlight travels across each running row's wording"
+
+def hint() -> str:
+    """Return the key hint, including the pace the sweep is running at."""
+    return f"  q / Esc quit \u00b7 [ slower \u00b7 ] faster \u00b7 {transcript_module.SWEEP_FRAMES:g} frames per column"
+
+
+def nudge_pace(delta: float) -> None:
+    """Change the sweep pace, so the effect can be judged without a rebuild.
+
+    Args:
+        delta: Frames per column to add; the pace is kept between one frame and
+            ten, which spans "a flicker" to "almost stationary".
+    """
+    transcript_module.SWEEP_FRAMES = min(10.0, max(1.0, round(transcript_module.SWEEP_FRAMES + delta, 1)))
 
 
 class Blinking(Widget):
@@ -72,13 +86,17 @@ def build(transcript: Transcript | None = None) -> TuiApp:
             Slot(Rule(), size=1),
             Slot(TranscriptView(transcript, theme=DARK), flex=1),
             Slot(Rule(), size=1),
-            Slot(Text(HINT, muted=True), size=1),
+            Slot(Text(hint, muted=True), size=1),
         ]
     )
     app = TuiApp(Blinking(transcript, body), theme=DARK)
     app.commands.add("quit", lambda event, host: (host.exit(), True)[1])
+    app.commands.add("slower", lambda event, host: (nudge_pace(0.5), host.invalidate(), True)[2])
+    app.commands.add("faster", lambda event, host: (nudge_pace(-0.5), host.invalidate(), True)[2])
     for key in ("q", "escape", "ctrl_c"):
         app.keymap.bind(key, "quit", priority="capture")
+    app.keymap.bind("[", "slower", priority="capture")
+    app.keymap.bind("]", "faster", priority="capture")
     return app
 
 
