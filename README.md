@@ -70,6 +70,15 @@ one, replacing the visible transcript with that session's active branch.
 once it has a title, in place of its short id. Sessions are not selected in the
 config file.
 
+The same line carries the session's token use: `↑22.0k ↓600 · 77% cached ·
+100 tok/s` reads as cumulative input, cumulative output, the share of input the
+provider served from cache, and generated tokens per second of model time. The
+numbers come from a usage extension that accumulates the provider's own counters
+and publishes them as a custom event after every model call, so the shell
+mirrors them without polling; resuming a session seeds the totals from the
+usage stored on its branch. The rate is a session average, not an instant
+reading.
+
 ## Approvals
 
 `run_shell` asks for confirmation before it executes anything. The prompt offers

@@ -38,6 +38,7 @@ from ...tui.widgets import Rule, Text
 from ..agent.agent import ZettCodeAgent
 from ..agent.projection import TranscriptProjector
 from ..agent.transcript import Transcript, activity_glyph, clock_text, elapsed_text
+from ..agent.usage import UsageSnapshot, usage_text
 from ..commands import CommandResult
 from .commands import ShellCommands
 from .widgets import WELCOME, ApprovalChoice, ApprovalPage, CommandCompleter, TranscriptView, ZettCodeRoot, bottom_panel
@@ -64,7 +65,11 @@ class ZettCodeApp:
         self.agent = agent
         self.transcript = Transcript()
         self.transcript.welcome(WELCOME)
-        self.projector = TranscriptProjector(self.transcript, on_approval=self._approval_requested)
+        self.projector = TranscriptProjector(
+            self.transcript,
+            on_approval=self._approval_requested,
+            on_usage=self._usage_updated,
+        )
         self.agent.set_event_dispatcher(self.projector)
         self.commands = ShellCommands(self).build(agent.commands)
 
@@ -103,6 +108,7 @@ class ZettCodeApp:
         self._status = "ready"
         self._auto_shell = False
         self._session_title: str | None = None
+        self._usage = UsageSnapshot()
         self._install_keymap()
 
     @property
@@ -326,6 +332,7 @@ class ZettCodeApp:
                     self.view.scroll_end()
                     self.view.clear_selection()
                     self._remember_session_title()
+                    self._usage = self.agent.usage
                     self._refresh_tasks()
                     self.app.request_layout()
             except ValueError as error:
@@ -396,8 +403,14 @@ class ZettCodeApp:
         self.view.follow_tail = True
         self.view.clear_selection()
         self._remember_session_title()
+        self._usage = self.agent.usage
         self._refresh_tasks()
         self.app.request_layout()
+
+    def _usage_updated(self, event: AgentEvent) -> None:
+        """Mirror the usage extension's cumulative counters into the status line."""
+        self._usage = UsageSnapshot.from_payload(event.payload or {})
+        self.app.invalidate()
 
     # -- titles -------------------------------------------------------------
     def _remember_session_title(self) -> None:
@@ -496,13 +509,13 @@ class ZettCodeApp:
         return f"{self.agent.active_model.shown_name}  "
 
     def _status_left(self) -> str:
-        """Show the activity glyph, the status word, the mode, and the session title."""
+        """Show the activity glyph, status word, mode, session title, and token use."""
         icon = activity_glyph(self.transcript.frame) if self._busy else "\u25cf"
         # The mode sits before the title because the right-hand hint wins
         # the space fight, truncating the tail of this segment.
         mode = " \u00b7 auto" if self._auto_shell else ""
         title = f"  {self._session_title}" if self._session_title else ""
-        return f"  {icon} {self._status}{mode}{title}"
+        return f"  {icon} {self._status}{mode}{title}{usage_text(self._usage)}"
 
     def _status_right(self) -> str:
         """List the keys worth remembering while the composer has focus."""
