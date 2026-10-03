@@ -83,14 +83,20 @@ class TranscriptView(ScrollView):
 
     Shape, one blank row between entries::
 
-        > inspect the project                <- user prompt, bold, U+276F prefix
-        v Thinking  0 ms                     <- reasoning row; v collapsed,
-          checking the renderer                 U+25BE expanded, animated while
-                                                running, stamped when finished
-        x read_file {"path":"app.py"}  0 ms v <- tool row: glyph, name, argument
-            | line one                          preview, duration, and U+25B8
-              line two                          when its bounded output can open
-        Fixed parse.                         <- answer: parsed as Markdown
+        > inspect the project                   <- user prompt: U+276F flush left,
+                                                   text under the composer caret
+          v Thinking  0 ms                      <- reasoning row; v collapsed,
+            checking the renderer                  U+25BE expanded, animated
+                                                   while running, stamped at end
+          x read_file {"path":"app.py"}  0 ms v <- tool row: glyph, name, argument
+              | line one                           preview, duration, and U+25B8
+                line two                           when its bounded output opens
+          Fixed parse.                          <- answer: parsed as Markdown
+
+    Every row starts at the composer's caret column — the width of its ``\u203a ``
+    prompt — so text never sits left of where the user types. A user prompt is
+    the one exception: its own ``\u203a `` draws at column zero, flush with the
+    edge like the composer's, and its text lands on that same shared margin.
 
     The last two rows are the same entry: a tool row collapses its output to
     `TOOL_PREVIEW_ROWS` unless it is expanded. A click toggles the entry under

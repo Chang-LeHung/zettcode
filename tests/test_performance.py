@@ -59,7 +59,9 @@ def test_streaming_an_answer_never_re_renders_completed_entries(monkeypatch):
         source.count(40)
 
     assert calls == []
-    rendered = "\n".join(source.line(index, 40).text for index in range(source.count(40)))
+    # The rows carry the composer's left margin, so stripping each line before
+    # joining makes the check independent of where the text wrapped.
+    rendered = "".join(source.line(index, 40).text.strip() for index in range(source.count(40)))
     assert "word39" in rendered
 
 
