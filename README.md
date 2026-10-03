@@ -156,9 +156,10 @@ streamed text kinds go through the same chain: reasoning loses the
 opens the message carries one.
 
 Pressing Enter puts a live row in the transcript straight away, so a slow model
-is never mistaken for a frozen one. The row reads `Processing`, carries the
-elapsed time, and is replaced by the real answer, reasoning, or tool call as
-soon as one arrives. A request waits more than once: every tool batch is
+is never mistaken for a frozen one. The row reads `Processing` and carries the
+elapsed time in tenths — nothing else moves while the model works, so that count
+is the only sign of progress — and is replaced by the real answer, reasoning, or
+tool call as soon as one arrives. A request waits more than once: every tool batch is
 followed by another model call, and `Processing` comes back below the rows it
 belongs to until that call answers. Rows that are still running show the same
 elapsed timer, and when the

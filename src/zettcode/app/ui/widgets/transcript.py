@@ -85,10 +85,10 @@ class TranscriptView(ScrollView):
 
         > inspect the project                   <- user prompt: U+276F flush left,
                                                    text under the composer caret
-          v Thinking  0 ms                      <- reasoning row; v collapsed,
+          v Thinking  1.2 s                     <- reasoning row; v collapsed,
             checking the renderer                  U+25BE expanded, animated
                                                    while running, stamped at end
-          x Read app.py  0 ms v                 <- tool row: glyph, what the call
+          x Read app.py  0 s v                  <- tool row: glyph, what the call
               | import os                         did, duration, and U+25B8 when
                 ...                               its bounded output can open
           Fixed parse.                          <- answer: parsed as Markdown

@@ -31,6 +31,11 @@ from .rendering import ANSWER, DEFAULT_RENDERERS, THINKING, Renderers
 #: the caret in an empty composer.
 CONTENT_INDENT = 2
 
+#: Wall-clock length of one animation step. ``Transcript.frame`` counts these
+#: steps rather than terminal ticks, so the pace of the sweep and the running
+#: marker does not depend on how often the terminal happens to repaint.
+ANIMATION_SECONDS = 0.1
+
 MAX_TOOL_OUTPUT = 64_000
 TOOL_PREVIEW_ROWS = 5
 TOOL_EXPANDED_ROWS = 40
@@ -98,15 +103,32 @@ def limit_output(value: str) -> str:
 
 
 def duration_text(seconds: float | None) -> str:
-    """Format an elapsed time for a row header, switching units at one second.
+    """Format an elapsed time for a row header, in whole seconds.
 
     Args:
         seconds: Elapsed time, or ``None`` for a row that has already finished
             without a recorded duration.
+
+    Milliseconds are deliberately not shown: a row's duration is there to say
+    whether a step was instant or took a while, and ``0 s`` does that without
+    three digits of noise changing width on every repaint.
     """
     if seconds is None:
         return "done"
-    return f"{round(seconds * 1000)} ms" if seconds < 1 else f"{seconds:.1f} s"
+    return f"{max(0, round(seconds))} s"
+
+
+def wait_text(seconds: float) -> str:
+    """Format a wait row's elapsed time, to a tenth of a second.
+
+    Args:
+        seconds: Time the model call has been running.
+
+    The wait and reasoning rows are the exception to whole seconds: nothing else
+    on screen moves while the model works, so the tenth is the only feedback the
+    reader gets that the call is making progress rather than stuck.
+    """
+    return f"{max(0.0, seconds):.1f} s"
 
 
 def elapsed_text(seconds: float) -> str:
@@ -266,8 +288,15 @@ class Transcript:
         self.version += 1
 
     def advance_frame(self) -> None:
-        """Move the activity animation on so running rows repaint."""
-        self.frame += 1
+        """Move the activity animation on so running rows repaint.
+
+        The counter is derived from the clock, one step per
+        :data:`ANIMATION_SECONDS`, rather than counted in terminal ticks: the
+        renderers pace their sweep and blink with it, so a terminal repainting
+        ten times a second and one repainting sixty times a second look the
+        same. Ticks that fall inside one step leave the counter where it is.
+        """
+        self.frame = int(self.clock() / ANIMATION_SECONDS)
         for entry in self.entries:
             if entry.status == "running" and entry.started_at is not None:
                 entry.duration = self.clock() - entry.started_at
@@ -561,8 +590,8 @@ def render_entry(entry: Entry, width: int, theme: Theme, frame: int) -> list[Tex
             return _thinking_lines(entry, width, theme, frame)
         case "pending":
             label = entry.title
-            if entry.duration is not None and entry.duration >= 1:
-                label += f"  {duration_text(entry.duration)}"
+            if entry.duration is not None:
+                label += f"  {wait_text(entry.duration)}"
             return [TextLine(), TextLine(_running_label(label, theme, frame))]
         case "tool":
             return _tool_lines(entry, width, theme, frame)
@@ -581,7 +610,7 @@ def _thinking_lines(entry: Entry, width: int, theme: Theme, frame: int) -> list[
         frame: Animation frame used for the running marker.
     """
     running = entry.status == "running"
-    timing = duration_text(entry.duration) if entry.duration is not None else "working"
+    timing = wait_text(entry.duration) if entry.duration is not None else "working"
     header = Style(foreground=theme.accent, bold=True)
     if running:
         row = _running_label(f"Thinking  {timing}", theme, frame)
@@ -660,15 +689,15 @@ def _body_line(lead: str, row: str, detail: Style, language: str | None, theme: 
 #: the label after it never shifts as the marker blinks.
 RUNNING_GLYPHS = ("\u2726", "\u00b7")
 
-#: Frames per half-blink. The tick runs at about 30 fps, so the marker blinks
-#: about twice a second: slow enough to read, fast enough to look alive.
-BLINK_FRAMES = 8
+#: Steps per half-blink: 2.7 steps is the quarter second a marker holds each of
+#: its two states, so a running row blinks about twice a second.
+BLINK_FRAMES = 2.7
 
-#: Frames the highlight spends on one column. It is fractional so the pace can
-#: sit between two ticks: at about 30 fps, eight frames is under four columns a
-#: second, so a short label takes about six seconds to cross. Anything faster and
-#: the highlight reads as a flicker rather than a light drifting across the words.
-SWEEP_FRAMES = 8.0
+#: Steps the highlight spends on one column, where a step is
+#: :data:`ANIMATION_SECONDS` of wall time: one step is the 100 ms a column stays
+#: lit, ten columns a second. The step, not the terminal frame, is what sets the
+#: pace, so a repaint at 60 fps and one at 10 look the same.
+SWEEP_FRAMES = 1.0
 
 
 def sweep_step(frame: int) -> int:
@@ -697,7 +726,7 @@ def activity_glyph(frame: int) -> str:
 
 def blinking(frame: int) -> bool:
     """Say whether a running row is in the bright half of its blink."""
-    return (frame // BLINK_FRAMES) % 2 == 0
+    return int(frame / BLINK_FRAMES) % 2 == 0
 
 
 def _running_label(text: str, theme: Theme, frame: int) -> tuple[Span, ...]:

@@ -31,9 +31,11 @@ from zettcode.app.agent.transcript import (
     SWEEP_FRAMES,
     activity_glyph,
     clock_text,
+    duration_text,
     elapsed_text,
     sweep_step,
     terminal_safe,
+    wait_text,
 )
 from zettcode.app.commands import Command, CommandResult
 from zettcode.app.ui import app as app_module
@@ -430,14 +432,18 @@ def test_a_running_wording_carries_a_travelling_highlight(thinking, needle, labe
 
 
 def test_the_blink_demo_keeps_frames_coming_and_advances_the_blink():
-    app = demo.build()
+    transcript = Transcript(clock=lambda: 12.34)
+    app = demo.build(transcript)
     root = app.screens.top.widget
 
     assert isinstance(root, demo.Blinking)
-    before = root.transcript.frame
+    before = transcript.version
     root.on_tick()
 
-    assert root.transcript.frame == before + 1
+    # The counter is derived from the clock, one step per ANIMATION_SECONDS,
+    # rather than counted per tick: the pace cannot depend on the frame rate.
+    assert transcript.frame == 123
+    assert transcript.version == before + 1
 
 
 async def test_the_blink_demo_script_walks_a_turn():
@@ -458,7 +464,7 @@ def test_the_blink_demo_can_be_slowed_down_while_it_runs(monkeypatch):
 
     harness.press("]")
     assert demo.transcript_module.SWEEP_FRAMES == 3.5
-    assert "3.5 frames per column" in harness.render().text
+    assert "350 ms per column" in harness.render().text
 
     harness.press("[")
     harness.press("[")
@@ -501,6 +507,47 @@ def test_elapsed_text_keeps_the_largest_unit_that_fits():
     assert elapsed_text(3600) == "1h"
     assert elapsed_text(2 * 3600 + 5 * 60) == "2h 5m"
     assert elapsed_text(-5) == "0s"
+
+
+def test_row_durations_are_whole_seconds():
+    # A row header says whether a step was instant or took a while; milliseconds
+    # would only make the column jitter as it rerenders.
+    assert duration_text(0.0) == "0 s"
+    assert duration_text(0.4) == "0 s"
+    assert duration_text(0.6) == "1 s"
+    assert duration_text(2.7) == "3 s"
+    assert duration_text(61.2) == "61 s"
+    assert duration_text(None) == "done"
+
+
+def test_a_wait_counts_tenths_of_a_second():
+    # The wait rows are the exception: nothing else moves while the model works,
+    # so the tenth is the only sign the call is progressing.
+    assert wait_text(0.0) == "0.0 s"
+    assert wait_text(0.34) == "0.3 s"
+    assert wait_text(12.36) == "12.4 s"
+
+    now = [0.0]
+    transcript = Transcript(clock=lambda: now[0])
+    transcript.begin_turn("question")
+    now[0] = 1.25
+    transcript.advance_frame()
+
+    assert "Processing  1.2 s" in "\n".join(_rendered(transcript, 40))
+
+    # The reasoning row is read the same way, running or finished.
+    now[0] = 0.0
+    thinking = Transcript(clock=lambda: now[0])
+    thinking.begin_turn("question")
+    thinking.start_thinking()
+    now[0] = 1.25
+    thinking.advance_frame()
+
+    assert "Thinking  1.2 s" in "\n".join(_rendered(thinking, 40))
+
+    thinking.complete_thinking()
+
+    assert "Thinking  1.2 s" in "\n".join(_rendered(thinking, 40))
 
 
 def test_clock_text_formats_a_local_reading():

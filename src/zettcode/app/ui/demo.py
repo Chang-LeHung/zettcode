@@ -22,7 +22,8 @@ from .widgets import TranscriptView
 
 def hint() -> str:
     """Return the key hint, including the pace the sweep is running at."""
-    return f"  q / Esc quit \u00b7 [ slower \u00b7 ] faster \u00b7 {transcript_module.SWEEP_FRAMES:g} frames per column"
+    per_column = transcript_module.SWEEP_FRAMES * transcript_module.ANIMATION_SECONDS * 1000
+    return f"  q / Esc quit \u00b7 [ slower \u00b7 ] faster \u00b7 {per_column:.0f} ms per column"
 
 
 def nudge_pace(delta: float) -> None:
