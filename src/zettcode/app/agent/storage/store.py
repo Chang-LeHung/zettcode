@@ -468,9 +468,13 @@ class SessionStore(SessionPersistenceMixin, AgentExtension):
         context.state.parent_session_id = stored_parent or configured_parent
         checkpoint, tail = session.active()
         stored = [checkpoint.message[0]] if checkpoint is not None else []
-        stored.extend(line.message[0] for line in tail)
         # Instructions come from the current configuration; stored context
-        # contributes dialogue and checkpoints only.
+        # contributes dialogue and checkpoints only, which is what the runtime's
+        # own ``include_in_messages`` flag means. Re-adding a persisted
+        # instruction (the system prompt, the filesystem note, the tool snippets)
+        # would duplicate it at the head of every request, bloating the prompt
+        # and breaking the provider's prefix cache from that point on.
+        stored.extend(line.message[0] for line in tail if line.message[0].include_in_messages)
         instructions = [message for message in context.state.messages if isinstance(message, SystemMessage)]
         context.replace_messages(
             [*instructions, *self._provider_safe_messages(stored)],
