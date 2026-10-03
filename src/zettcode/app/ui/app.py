@@ -17,21 +17,25 @@ from ...config import ModelConfig
 from ...tui import (
     DARK,
     Anchor,
+    Border,
     CompletionPopup,
     Dialog,
     DialogAction,
     Host,
     KeyEvent,
+    ListPage,
     Overlay,
     OverlaySlot,
     Screen,
     StatusBar,
+    Style,
     TaskPanel,
     TextArea,
     Theme,
     Toast,
     TuiApp,
     VBox,
+    Widget,
     centered,
     theme_named,
 )
@@ -335,7 +339,23 @@ class ZettCodeApp:
     def _open_model_page(self) -> None:
         """Replace the composer with a modal, scrollable model list."""
         page = ModelPage(self.agent, on_select=self._select_model, on_cancel=self._close_model_page)
-        self.app.push_screen(Screen(page, name="models", modal=True))
+        self._present(page, name="models")
+
+    def _present(self, page: ListPage, *, name: str) -> None:
+        """Stack a page full screen, or as a bottom panel when the page asks for one.
+
+        A page declares its footprint with ``overlay_rows``: ``None`` covers the
+        screen, and a number puts the page in a bordered panel of that many rows
+        against the bottom edge, leaving the conversation visible above it.
+        """
+        if page.overlay_rows is None:
+            widget: Widget = page
+        else:
+            panel = Border(page, style=Style(foreground=self.app.theme.border))
+            widget = Overlay(
+                [OverlaySlot(panel, Anchor(horizontal="stretch", vertical="end", height=page.overlay_rows))]
+            )
+        self.app.push_screen(Screen(widget, name=name, modal=True))
 
     def _close_model_page(self) -> None:
         """Return to the composer, restoring its focus and layout."""

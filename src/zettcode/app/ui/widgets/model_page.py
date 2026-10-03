@@ -23,7 +23,8 @@ class ModelPage(ListPage):
     and Escape handling come from the base class. Each row carries the
     :class:`ModelConfig` itself, because the same model id can be configured
     twice against different endpoints and the chosen entry, not its name, is
-    what the shell applies.
+    what the shell applies. It asks for a bottom panel rather than the whole
+    screen, so the conversation stays visible while the model is chosen.
     """
 
     def __init__(
@@ -50,4 +51,5 @@ class ModelPage(ListPage):
             on_select=lambda item: on_select(item.value),
             on_cancel=on_cancel,
             selected=agent.models.index(agent.active_model),
+            overlay_rows=14,
         )

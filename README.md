@@ -47,8 +47,9 @@ base_url = "https://api.deepseek.com/v1"
 ```
 
 Several models can be configured. The first entry is active at startup.
-`/model` opens a model picker: `Up` / `Down` navigate its scrolling list,
-`Enter` selects for future requests, and `Esc` returns to the composer.
+`/model` opens a picker panel over the conversation: `Up` / `Down` navigate
+its scrolling list, `Enter` selects for future requests, and `Esc` closes the
+panel and returns to the composer.
 `/model GPT-4o` still switches directly by display name or model id.
 `multimodal` records whether a model accepts images; it does not itself add
 image input to the composer. Unknown keys and wrong types are reported, not
