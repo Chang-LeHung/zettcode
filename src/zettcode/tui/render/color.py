@@ -61,6 +61,27 @@ def parse_hex(value: str) -> tuple[int, int, int] | None:
         return None
 
 
+def blend(first: str, second: str, amount: float) -> str:
+    """Return a colour ``amount`` of the way from ``first`` to ``second``.
+
+    Args:
+        first: Starting ``#rrggbb`` colour, used when ``amount`` is zero.
+        second: Ending ``#rrggbb`` colour, used when ``amount`` is one.
+        amount: Fraction between them, clamped to ``0..1``.
+
+    Either colour may be ``None`` or malformed, in which case the first is
+    returned unchanged: a palette is data, and an unusable one must not crash a
+    repaint.
+    """
+    start = parse_hex(first) if first is not None else None
+    end = parse_hex(second) if second is not None else None
+    if start is None or end is None:
+        return first
+    fraction = min(1.0, max(0.0, amount))
+    channels = (round(a + (b - a) * fraction) for a, b in zip(start, end, strict=True))
+    return "#" + "".join(f"{channel:02x}" for channel in channels)
+
+
 @lru_cache(maxsize=4096)
 def rgb_to_ansi256(red: int, green: int, blue: int) -> int:
     """Return the closest fixed index in the standard 256-color palette.

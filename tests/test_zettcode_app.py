@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import pytest
 from zett_agent import (
     SHELL_APPROVAL_EVENT_NAME,
     AgentEvent,
@@ -20,16 +21,18 @@ from zett_agent import (
     UserMessage,
 )
 
-from zettcode.app import Transcript, TranscriptSource, ZettCodeApp
+from zettcode.app import Transcript, TranscriptSource, TranscriptView, ZettCodeApp
 from zettcode.app.agent.agent import ZettCodeAgent
 from zettcode.app.agent.projection import TranscriptProjector
 from zettcode.app.agent.storage import SessionInfo, SessionStore
-from zettcode.app.agent.transcript import clock_text, elapsed_text
+from zettcode.app.agent.transcript import BLINK_FRAMES, SWEEP_FRAMES, activity_glyph, clock_text, elapsed_text
 from zettcode.app.commands import Command, CommandResult
 from zettcode.app.ui import app as app_module
+from zettcode.app.ui import demo
 from zettcode.app.ui.widgets import WELCOME, ApprovalChoice, ApprovalPage, SessionsPage, bottom_panel, format_ago
 from zettcode.config import ModelConfig
 from zettcode.tui import DARK, LIGHT, ListItem, ListPage, Rect, walk
+from zettcode.tui.render import display_width
 from zettcode.tui.testing import Harness
 
 
@@ -271,6 +274,86 @@ async def test_a_waiting_row_appears_as_soon_as_a_turn_starts():
     assert "Waiting for the model" in text
     assert app.transcript.frame > 0
     assert "running" in text
+
+
+def test_the_running_marker_blinks_between_two_glyphs():
+    bright = activity_glyph(0)
+    faint = activity_glyph(BLINK_FRAMES)
+
+    assert bright != faint
+    # Each state holds for a whole half-blink, so the marker does not flicker at
+    # the tick rate, and both are one column wide: the label never shifts.
+    assert activity_glyph(BLINK_FRAMES - 1) == bright
+    assert activity_glyph(BLINK_FRAMES * 2 - 1) == faint
+    assert activity_glyph(BLINK_FRAMES * 2) == bright
+    assert display_width(bright) == display_width(faint) == 1
+
+
+@pytest.mark.parametrize(
+    ("thinking", "needle", "label"),
+    [
+        (False, "Waiting", "Waiting for the model\u2026"),
+        (True, "Thinking", "Thinking  working"),
+    ],
+)
+def test_a_running_wording_carries_a_travelling_highlight(thinking, needle, label):
+    transcript = Transcript(clock=lambda: 0.0)
+    transcript.begin_turn("question")
+    if thinking:
+        transcript.start_thinking()
+    source = TranscriptView(transcript, theme=DARK).transcript_source
+
+    def wording(frame: int) -> list:
+        transcript.frame = frame
+        transcript.version += 1
+        rows = [source.line(index, 50) for index in range(source.count(50))]
+        row = next(row for row in rows if needle in row.text)
+        # The first run is the left margin merged with the marker; the rest is
+        # the wording, split into one run per brightness step.
+        return list(row.spans[1:])
+
+    def peak_column(frame: int) -> int:
+        column = 0
+        for span in wording(frame):
+            if span.style.foreground == DARK.text:
+                return column
+            column += display_width(span.text)
+        return -1
+
+    # The highlight arrives from the left and moves one column per step.
+    assert peak_column(SWEEP_FRAMES * 5) == 2
+    assert peak_column(SWEEP_FRAMES * 8) == 5
+
+    # Nothing ever goes dark: every run keeps a colour from the bright end of
+    # the palette, and the text itself never changes or shifts.
+    for frame in range(0, SWEEP_FRAMES * 14, SWEEP_FRAMES):
+        runs = wording(frame)
+        assert all(run.style.dim is False for run in runs)
+        assert all(run.style.foreground != DARK.muted for run in runs)
+        assert "".join(run.text for run in runs) == label
+
+
+def test_the_blink_demo_keeps_frames_coming_and_advances_the_blink():
+    app = demo.build()
+    root = app.screens.top.widget
+
+    assert isinstance(root, demo.Blinking)
+    before = root.transcript.frame
+    root.on_tick()
+
+    assert root.transcript.frame == before + 1
+
+
+async def test_the_blink_demo_script_walks_a_turn():
+    transcript = Transcript()
+    turn = asyncio.create_task(demo.script(transcript))
+    try:
+        await asyncio.sleep(0)
+        assert [entry.kind for entry in transcript.entries] == ["user", "pending"]
+        assert transcript.entries[-1].status == "running"
+    finally:
+        turn.cancel()
+        await asyncio.gather(turn, return_exceptions=True)
 
 
 async def test_app_streams_a_prompt_into_the_transcript():

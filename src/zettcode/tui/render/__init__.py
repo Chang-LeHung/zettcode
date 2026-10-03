@@ -2,9 +2,10 @@
 
 from .canvas import Canvas
 from .code import DEFAULT_CODE_THEME, GENERIC, LATEX, PYTHON, SHELL, CodeTheme, highlight, language_for, languages
-from .color import ColorDepth, encode_style, parse_hex, rgb_to_ansi16, rgb_to_ansi256
+from .color import ColorDepth, blend, encode_style, parse_hex, rgb_to_ansi16, rgb_to_ansi256
 from .renderer import DifferentialRenderer
 from .style import DEFAULT_STYLE, Cell, Span, Style, TextLine
+from .sweep import SweepSpan, sweep_spans
 from .text import (
     ELLIPSIS,
     cell_glyph,
@@ -33,7 +34,9 @@ __all__ = [
     "DifferentialRenderer",
     "Span",
     "Style",
+    "SweepSpan",
     "TextLine",
+    "blend",
     "cell_glyph",
     "character_width",
     "display_width",
@@ -47,6 +50,7 @@ __all__ = [
     "rgb_to_ansi16",
     "rgb_to_ansi256",
     "slice_columns",
+    "sweep_spans",
     "truncate",
     "wrap_columns",
     "wrap_spans",

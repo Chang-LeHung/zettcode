@@ -1,6 +1,6 @@
 UV ?= uv
 
-.PHONY: help install lint test build smoke check demo demo-all demos FORCE
+.PHONY: help install lint test build smoke check demo demo-all demos demo-thinking FORCE
 
 DEMOS := text status_bar spinner progress_bar list table diff markdown textarea completion dialog collapsible toast tasks scroll layout
 
@@ -16,6 +16,7 @@ help:
 	@echo "  make demo-all Print every widget preview"
 	@echo "  make demos    List the widget names"
 	@echo "  make demo-x   Print one widget preview ($(DEMOS))"
+	@echo "  make demo-thinking  Watch a live turn's running rows blink"
 
 install:
 	$(UV) sync
@@ -39,6 +40,11 @@ FORCE:
 
 demos:
 	$(UV) run python -m zettcode.tui.gallery --list
+
+# An explicit target beats the demo-% pattern rule below, which is what lets a
+# demo live outside the framework gallery.
+demo-thinking:
+	$(UV) run python -m zettcode.app.ui.demo
 
 demo:
 	$(UV) run python -m zettcode.tui.gallery
