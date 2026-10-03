@@ -38,19 +38,29 @@ def test_markdown_highlights_fenced_code_without_drawing_the_label():
     assert keyword.style.foreground == DARK.code.keyword
 
 
-def test_markdown_renders_a_borderless_table():
-    lines = render_markdown("| Name | Count |\n| --- | ---: |\n| a | 1 |", 40, DARK)
+def test_markdown_draws_a_rule_under_the_header_and_every_row():
+    lines = render_markdown("| Name | Count |\n| --- | ---: |\n| a | 1 |\n| b | 2 |", 40, DARK)
     text = "\n".join(line.text for line in lines)
 
     assert "Name" in text and "Count" in text
-    assert "\u2500" in text
     assert "\u256d" not in text and "\u253c" not in text and "\u2502" not in text
     assert "---" not in text
     assert all(display_width(line.text) <= 40 for line in lines)
-    rule = next(line for line in lines if "\u2500" in line.text)
-    # A table rule is structure, so it stays brighter than the section divider.
-    assert rule.spans[0].style.foreground == DARK.subtle
-    assert rule.spans[0].style.dim is False
+    rules = [line for line in lines if line.text.strip() and set(line.text.strip()) <= {"\u2500", " "}]
+    # One under the header, one closing each of the two data rows.
+    assert len(rules) == 3
+    for rule in rules:
+        # A table rule is structure, so it stays brighter than the section divider.
+        assert rule.spans[0].style.foreground == DARK.subtle
+        assert rule.spans[0].style.dim is False
+
+
+def test_inline_underscores_inside_a_word_are_not_emphasis():
+    lines = render_markdown("`code` and replace_in_file and _italic_", 48, DARK)
+    text = "".join(line.text for line in lines)
+
+    assert "replace_in_file" in text
+    assert "italic" in text and "_italic_" not in text
 
 
 def test_markdown_renders_a_thematic_break_as_a_full_width_rule():

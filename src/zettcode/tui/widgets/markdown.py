@@ -8,6 +8,7 @@ the number of blocks instead of re-parsing the whole document every frame.
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import replace
 
 from ..core.theme import DARK, Theme
@@ -20,7 +21,11 @@ TABLE_GAP = 3
 TABLE_MIN_COLUMN = 4
 TABLE_MAX_COLUMN = 60
 _BLANK = re.compile(r"\n[ \t]*\n")
-_INLINE = re.compile(r"(\*\*.+?\*\*|__.+?__|`[^`]+`|\[[^]]+\]\([^)]+\)|(?<!\*)\*[^*]+\*(?!\*)|(?<!_)_[^_]+_(?!_))")
+# Underscore emphasis needs a word boundary on both sides, as CommonMark does:
+# otherwise ``replace_in_file`` would lose the underscores that spell it.
+_INLINE = re.compile(
+    r"(\*\*.+?\*\*|__.+?__|`[^`]+`|\[[^]]+\]\([^)]+\)|(?<!\*)\*[^*]+\*(?!\*)|(?<![\w_])_[^_\n]+_(?![\w_]))"
+)
 _HEADING = re.compile(r"^(#{1,3})\s+(.+)$")
 _BULLET = re.compile(r"^(\s*)[-+*]\s+(.+)$")
 _QUOTE = re.compile(r"^\s*>\s?(.*)$")
@@ -268,14 +273,24 @@ def render_table(
         theme,
         header=True,
     )
-    # A table rule is structure, not a page divider: it is drawn per column and
-    # one step brighter than the thematic break, which only separates sections.
-    rule = (" " * TABLE_GAP).join("\u2500" * width for width in widths)
-    lines.append(TextLine((Span(rule, Style(foreground=theme.subtle)),)))
+    lines.append(table_rule(widths, theme))
     for row in rows:
         cells = [wrap_spans(inline_markdown(row[index], theme=theme), widths[index]) for index in range(columns)]
         lines.extend(table_row(cells, widths, alignments, theme))
+        lines.append(table_rule(widths, theme))
     return lines
+
+
+def table_rule(widths: Sequence[int], theme: Theme) -> TextLine:
+    """Return the line under a table's header or one of its rows.
+
+    A table rule is structure, not a page divider: it is drawn per column, one
+    segment per column width, and one step brighter than the thematic break that
+    only separates sections. Every row is closed by one, so wrapped cells never
+    look like they belong to the row above.
+    """
+    segments = (" " * TABLE_GAP).join("\u2500" * width for width in widths)
+    return TextLine((Span(segments, Style(foreground=theme.subtle)),))
 
 
 def table_widths(header: list[str], rows: list[list[str]]) -> list[int]:

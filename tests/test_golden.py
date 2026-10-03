@@ -46,14 +46,15 @@ def test_golden_table():
         "Name       N\n"
         "\u2500\u2500\u2500\u2500\u2500   \u2500\u2500\u2500\u2500\n"
         "alpha      1\n"
-        "\n"
+        "\u2500\u2500\u2500\u2500\u2500   \u2500\u2500\u2500\u2500\n"
         "\n"
         "-- styles --\n"
         "0:0-4 fg#f2f5f3\n"
         "0:4-11 b,fg#f2f5f3\n"
         "0:11-12 fg#f2f5f3\n"
         "1:0-12 fg#a3ada6\n"
-        "2:0-12 fg#f2f5f3"
+        "2:0-12 fg#f2f5f3\n"
+        "3:0-12 fg#a3ada6"
     )
 
 
