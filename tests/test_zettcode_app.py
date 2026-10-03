@@ -14,6 +14,8 @@ from zett_agent import (
     AgentEvent,
     AgentEventType,
     AssistantMessage,
+    MessageTiming,
+    ModelUsage,
     TodoItem,
     TodoStatus,
     TodoWriteResult,
@@ -36,6 +38,7 @@ from zettcode.app.agent.transcript import (
     sweep_step,
     terminal_safe,
 )
+from zettcode.app.agent.usage import USAGE_EVENT_NAME, UsageExtension, UsageSnapshot
 from zettcode.app.commands import Command, CommandResult
 from zettcode.app.ui import app as app_module
 from zettcode.app.ui import demo
@@ -121,6 +124,7 @@ class FakeRuntime:
     session_id: str = "session-0001"
     persistence: FakePersistence = field(default_factory=FakePersistence)
     todos: FakeTodos = field(default_factory=FakeTodos)
+    usage: UsageExtension = field(default_factory=UsageExtension)
     config: FakeConfig = field(default_factory=FakeConfig)
     active_model: ModelConfig = field(init=False)
     model: object = field(init=False)
@@ -1496,6 +1500,68 @@ async def test_the_first_reply_names_the_session_in_the_background():
     assert not any("Fix the parser crash" in getattr(entry, "text", "") for entry in app.transcript.entries)
     assert "Fix the parser crash" in app._status_left()
     assert "session-0001" not in app._status_left()
+
+
+async def test_the_status_line_mirrors_the_usage_extension():
+    app = build_app()
+    payload = UsageSnapshot(
+        input_tokens=22_000,
+        output_tokens=600,
+        cache_read_tokens=17_000,
+        seconds=6.0,
+        requests=2,
+    ).to_payload()
+
+    await app.projector.on_custom_event(
+        AgentEvent(
+            type=AgentEventType.CUSTOM,
+            session_id="session-0001",
+            name=USAGE_EVENT_NAME,
+            payload=payload,
+        )
+    )
+
+    status = app._status_left()
+    assert "\u219122.0k \u2193600" in status
+    assert "77% cached" in status
+    assert "100 tok/s" in status
+
+
+async def test_resuming_a_session_restores_its_token_totals(tmp_path):
+    store = SessionStore(tmp_path)
+    timing = MessageTiming(started_at=datetime.now(UTC), completed_at=datetime.now(UTC), duration_ns=2_000_000_000)
+    await store.append(
+        "previous",
+        "req",
+        AssistantMessage(content="stored answer"),
+        timing=timing,
+        usage=ModelUsage(input_tokens=10_000, output_tokens=500, cache_read_tokens=8_000),
+    )
+    app = build_app()
+    app.agent.runtime.persistence.store = store
+    harness = _harness(app)
+
+    harness.write("/use previous")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    status = app._status_left()
+    assert "\u219110.0k \u2193500" in status
+    assert "80% cached" in status
+    assert "250 tok/s" in status
+
+
+async def test_a_new_session_starts_the_token_totals_over():
+    app = build_app()
+    app._usage = UsageSnapshot(input_tokens=900, output_tokens=90, seconds=3.0, requests=1)
+    harness = _harness(app)
+
+    harness.write("/new")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    assert app.agent.session_id != "session-0001"
+    assert "\u2191" not in app._status_left()
 
 
 def _harness(app: ZettCodeApp) -> Harness:

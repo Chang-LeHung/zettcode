@@ -14,6 +14,7 @@ from zett_agent import (
 
 from .entries import EntryStatus
 from .transcript import Transcript
+from .usage import USAGE_EVENT_NAME
 
 
 def tool_output(message: ToolMessage) -> str:
@@ -40,7 +41,13 @@ class TranscriptProjector(AgentEventDispatcher):
     that the UI will emit later.
     """
 
-    def __init__(self, transcript: Transcript, *, on_approval: Callable[[AgentEvent], None] | None = None) -> None:
+    def __init__(
+        self,
+        transcript: Transcript,
+        *,
+        on_approval: Callable[[AgentEvent], None] | None = None,
+        on_usage: Callable[[AgentEvent], None] | None = None,
+    ) -> None:
         """Send projected events to ``transcript``; approvals go to ``on_approval``.
 
         Args:
@@ -48,9 +55,12 @@ class TranscriptProjector(AgentEventDispatcher):
             on_approval: Called synchronously for a shell approval request; the
                 callback must not await, because the agent is suspended until the
                 UI emits its response later.
+            on_usage: Called synchronously with each cumulative usage update, so
+                the shell can refresh the status line without polling the store.
         """
         self.transcript = transcript
         self.on_approval = on_approval
+        self.on_usage = on_usage
 
     def begin_turn(self, prompt: str) -> None:
         """Echo the prompt into the transcript before the run starts."""
@@ -130,6 +140,8 @@ class TranscriptProjector(AgentEventDispatcher):
         self.transcript.complete_thinking()
 
     async def on_custom_event(self, event: AgentEvent) -> None:
-        """Forward shell approval requests to the callback that renders the prompt."""
+        """Route extension events: approvals to the prompt, usage to the status line."""
         if event.name == SHELL_APPROVAL_EVENT_NAME and self.on_approval is not None:
             self.on_approval(event)
+        elif event.name == USAGE_EVENT_NAME and self.on_usage is not None:
+            self.on_usage(event)

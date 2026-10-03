@@ -24,6 +24,7 @@ from zett_agent import (
 
 from ...config import ModelConfig, ZettCodeConfig
 from .storage import SessionStore
+from .usage import UsageExtension
 
 
 def build_system_prompt(config: ZettCodeConfig) -> str:
@@ -57,6 +58,7 @@ class ZettCodeRuntime:
     persistence: SessionStore
     approval: ShellApprovalExtension
     todos: TodoWriteExtension
+    usage: UsageExtension
     model: OpenAIProvider
     session_id: str
     active_model: ModelConfig
@@ -77,6 +79,7 @@ class ZettCodeRuntime:
         )
         todos = TodoWriteExtension()
         approval = ShellApprovalExtension(enabled=config.shell_approval is ShellApprovalMode.REVIEW)
+        usage = UsageExtension()
         try:
             client = await create_agent(
                 model,
@@ -87,6 +90,7 @@ class ZettCodeRuntime:
                     approval,
                     persistence,
                     todos,
+                    usage,
                     ToolGuidelinesExtension(),
                     CompactionExtension(
                         None,
@@ -102,7 +106,7 @@ class ZettCodeRuntime:
             await model.aclose()
             await persistence.close()
             raise
-        return cls(config, client, persistence, approval, todos, model, session_id, selected, {selected: model})
+        return cls(config, client, persistence, approval, todos, usage, model, session_id, selected, {selected: model})
 
     def approve_all_shell_commands(self) -> None:
         """Stop asking for shell approval for the rest of this process.

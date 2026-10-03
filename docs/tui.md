@@ -386,7 +386,12 @@ badge over the transcript's last row; clicking it, or pressing `Esc`, follows
 the tail again, and the binding is captured precisely because the composer
 would otherwise swallow `Esc`. The status line's left segment ends with the
 active session's title, cached when a turn names it or a session is resumed so
-the metadata log is not folded on every frame. Two
+the metadata log is not folded on every frame, followed by `app/agent/usage.py`'s
+cumulative token counters: tokens in and out, the cache share of the input, and
+generated tokens per second. That module is an `AgentExtension` observing
+`before_model`/`after_model`; it emits one `session_usage` custom event per
+completed model call, which the projector routes to the shell, so nothing polls
+the store to keep the numbers current. Two
 bindings show why the framework distinguishes capture from bubble priority:
 `ctrl_c` and `ctrl_d` are captured, so the application can interrupt or exit
 before the composer sees the key, while `page_up` and `page_down` are bubble

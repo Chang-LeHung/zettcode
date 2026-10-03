@@ -23,6 +23,7 @@ from .runtime import ZettCodeRuntime
 from .storage import SessionInfo
 from .title import summarize_title
 from .transcript import Transcript
+from .usage import UsageSnapshot
 
 
 class ZettCodeAgent:
@@ -64,6 +65,16 @@ class ZettCodeAgent:
         often should cache the result instead of asking once per frame.
         """
         return self.runtime.persistence.session_title(self.session_id)
+
+    @property
+    def usage(self) -> UsageSnapshot:
+        """Return the active session's cumulative token counters.
+
+        The numbers come from the usage extension's in-memory totals, so the
+        status line can read them every frame; a session replayed from the store
+        is seeded before this is asked.
+        """
+        return self.runtime.usage.snapshot(self.session_id)
 
     @property
     def models(self) -> tuple[ModelConfig, ...]:
@@ -119,7 +130,12 @@ class ZettCodeAgent:
             raise ValueError(f"Unknown session: {session_id}")
         restored = Transcript(renderers=transcript.renderers, processors=transcript.processors)
         restored.frame = transcript.frame
+        usage = UsageSnapshot()
         for line in session.branch():
+            if line.usage is not None:
+                # Assistant lines are the ones that consumed a model response;
+                # their duration is the generation time the rate divides by.
+                usage = usage.with_usage(line.usage, line.timing.duration_ns / 1_000_000_000)
             message = line.message[0]
             match message:
                 case UserMessage():
@@ -138,6 +154,7 @@ class ZettCodeAgent:
                     continue
         restored.finish_restored_tools()
         transcript.replace(restored.entries)
+        self.runtime.usage.seed(session_id, usage)
         self.use_session(session_id)
 
     async def list_sessions(self, *, limit: int = 20) -> list[SessionInfo]:
