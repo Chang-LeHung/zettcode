@@ -67,6 +67,36 @@ class NoticeProcessor(EntryProcessor):
         return [TextLine(), *self.text_lines(entry.text, width, Style(foreground=theme.muted))]
 
 
+class ModelChangeProcessor(EntryProcessor):
+    """Center a model-change announcement between horizontal rules."""
+
+    def supports(self, entry: Entry) -> bool:
+        """Claim model-change announcements."""
+        return isinstance(entry, TextEntry) and entry.kind == "model_change"
+
+    def lines(self, entry: TextEntry, width: int, theme: Theme, frame: int) -> list[TextLine]:
+        """Keep the rules within the transcript width even for long model names."""
+        available = max(1, width)
+        if available <= 2:
+            return [TextLine(), TextLine((Span("─" * available, Style(foreground=theme.border)),)), TextLine()]
+        heading = TextLine(
+            (Span("◇ ", Style(foreground=theme.accent)), Span(entry.text, Style(foreground=theme.subtle)))
+        )
+        heading = heading.layout(available - 2, wrap=False)[0]
+        remaining = max(0, available - heading.width - 2)
+        left = remaining // 2
+        right = remaining - left
+        rule = Style(foreground=theme.border)
+        line = TextLine(
+            (
+                Span("─" * left + " ", rule),
+                *heading.spans,
+                Span(" " + "─" * right, rule),
+            )
+        )
+        return [TextLine(), line, TextLine()]
+
+
 class UserProcessor(EntryProcessor):
     """Paint a full-width message surface with its arrow flush left."""
 
@@ -214,6 +244,7 @@ DEFAULT_PROCESSORS = EntryProcessors(
     (
         WelcomeProcessor(),
         NoticeProcessor(),
+        ModelChangeProcessor(),
         UserProcessor(),
         ProcessingProcessor(),
         ThinkingProcessor(),

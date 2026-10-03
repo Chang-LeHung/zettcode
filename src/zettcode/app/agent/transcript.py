@@ -183,6 +183,36 @@ class Transcript:
         self.entries.clear()
         self.version += 1
 
+    def replace(self, entries: list[Entry]) -> None:
+        """Replace visible entries with the chosen session's rebuilt history."""
+        self.entries[:] = entries
+        self._next_id = max((entry.id for entry in entries), default=0) + 1
+        self.version += 1
+
+    def user_message(self, text: str) -> None:
+        """Append a historical user message without opening a live wait row."""
+        self._add(TextEntry(id=self._next_id, kind="user", text=text))
+
+    def restore_thinking(self, text: str, duration_ns: int | None) -> None:
+        """Append completed reasoning from one stored assistant response."""
+        duration = duration_ns / 1_000_000_000 if duration_ns is not None else None
+        self._add(
+            ThinkingEntry(
+                id=self._next_id,
+                text=self.renderers.text(THINKING, text, opening=True),
+                status=EntryStatus.COMPLETED,
+                duration=duration,
+            )
+        )
+
+    def finish_restored_tools(self) -> None:
+        """Mark tool calls without stored results as interrupted, not running."""
+        for entry in self.entries:
+            if isinstance(entry, ToolEntry) and entry.status is EntryStatus.RUNNING:
+                entry.status = EntryStatus.SKIPPED
+                entry.text = "Result unavailable (session interrupted)"
+                self.version += 1
+
     def advance_frame(self) -> None:
         """Move the activity animation on so running rows repaint.
 
@@ -205,6 +235,10 @@ class Transcript:
     def notice(self, text: str) -> None:
         """Append a muted one-off status line."""
         self._add(TextEntry(id=self._next_id, kind="notice", text=text))
+
+    def model_changed(self, previous: str, current: str) -> None:
+        """Announce a model change as a centered line in the conversation."""
+        self._add(TextEntry(id=self._next_id, kind="model_change", text=f"Model changed from {previous} to {current}."))
 
     def markdown(self, text: str) -> None:
         """Append a Markdown block, parsed and rendered like an answer.
@@ -317,7 +351,9 @@ class Transcript:
             )
         )
 
-    def complete_tool(self, call_id: str, output: str, *, status: EntryStatus = EntryStatus.COMPLETED) -> None:
+    def complete_tool(
+        self, call_id: str, output: str, *, status: EntryStatus = EntryStatus.COMPLETED, wait: bool = True
+    ) -> None:
         """Attach a tool result to its row, ignoring calls that are no longer on screen.
 
         Args:
@@ -339,7 +375,8 @@ class Transcript:
         self.version += 1
         # The loop calls the model again once the batch has produced its
         # results, so the reader is told that work continues.
-        self.wait_for_model()
+        if wait:
+            self.wait_for_model()
 
     def toggle(self, entry_id: int) -> bool:
         """Expand or collapse one collapsible entry and report whether it changed.

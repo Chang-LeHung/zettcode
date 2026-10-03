@@ -34,7 +34,7 @@ from ...tui import (
 )
 from ...tui.layout import Slot
 from ...tui.render import display_width
-from ...tui.widgets import Rule
+from ...tui.widgets import Rule, Text
 from ..agent.agent import ZettCodeAgent
 from ..agent.projection import TranscriptProjector
 from ..agent.transcript import Transcript, activity_glyph, clock_text, elapsed_text
@@ -89,7 +89,7 @@ class ZettCodeApp:
                 Slot(Rule(), size=1),
                 Slot(self.view, flex=1),
                 Slot(self.panel, size=lambda width: self.panel.preferred_height()),
-                Slot(Rule(), size=1),
+                Slot(Text(""), size=1),
                 Slot(self.completions, size=lambda available: self.completions.visible_height),
                 Slot(self.composer, size=lambda width: self.composer.preferred_height(width)),
                 Slot(self.status, size=1),
@@ -297,13 +297,25 @@ class ZettCodeApp:
         name, _, argument = value.partition(" ")
         argument = argument.strip()
         self._status = f"{name} \u2026"
+        previous_session = self.agent.session_id
         command = next((item for item in self.commands if item.name == name), None)
         if command is None:
             self.transcript.notice(f"Unknown command: {name}. Try /help.")
         else:
             try:
                 result = await command.handler(argument)
+                if name == "/use" and self.agent.session_id != previous_session:
+                    self.restore_session(self.agent.session_id)
+                elif name == "/new" and self.agent.session_id != previous_session:
+                    self.transcript.clear()
+                    self.transcript.welcome(WELCOME)
+                    self.view.scroll_end()
+                    self.view.clear_selection()
+                    self._refresh_tasks()
+                    self.app.request_layout()
             except ValueError as error:
+                if name == "/use" and self.agent.session_id != previous_session:
+                    self.agent.use_session(previous_session)
                 self.transcript.notice(str(error))
             else:
                 self._apply_result(result)
@@ -334,18 +346,24 @@ class ZettCodeApp:
     def select_model(self, name: ModelConfig) -> None:
         """Apply the highlighted model and return to the composer."""
         try:
-            selected = self.agent.use_model(name)
+            self.change_model(name)
         except ValueError as error:
             self.transcript.notice(str(error))
-            self.close_page()
-        else:
-            self.close_page()
-            self._notify(f"using model {selected.shown_name}", level="success")
+        self.close_page()
+
+    def change_model(self, name: ModelConfig | str) -> ModelConfig:
+        """Switch models and announce the change in the transcript."""
+        previous = self.agent.active_model
+        selected = self.agent.use_model(name)
+        if selected is not previous:
+            self.transcript.model_changed(previous.shown_name, selected.shown_name)
+        self.app.request_layout()
+        return selected
 
     def select_session(self, session_id: str) -> None:
         """Switch to the session picked in the panel and return to the composer."""
         try:
-            self.agent.use_session(session_id)
+            self.restore_session(session_id)
         except ValueError as error:
             self.transcript.notice(str(error))
             self.close_page()
@@ -354,6 +372,16 @@ class ZettCodeApp:
         # instead of the panel would leave the picker on top.
         self.close_page()
         self._notify(f"using session {session_id[:8]}", level="success")
+
+    def restore_session(self, session_id: str) -> None:
+        """Replace the visible history with the chosen persisted branch."""
+        self.agent.restore_session(session_id, self.transcript)
+        if not self.transcript.entries:
+            self.transcript.welcome(WELCOME)
+        self.view.follow_tail = True
+        self.view.clear_selection()
+        self._refresh_tasks()
+        self.app.request_layout()
 
     # -- titles -------------------------------------------------------------
     def _title_session_later(self, session_id: str) -> None:
@@ -370,8 +398,9 @@ class ZettCodeApp:
             return  # naming a session is a nicety; never report its failure
         if title is None:
             return
-        self.transcript.notice(f"session title: {title}")
-        self.app.invalidate()
+        if session_id == self.agent.session_id:
+            self.transcript.notice(f"session title: {title}")
+            self.app.invalidate()
 
     async def _stop_title_task(self) -> None:
         """Stop a title request that is still in flight when the app exits."""

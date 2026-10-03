@@ -12,14 +12,17 @@ from zett_agent import (
     AgentRunConfig,
     AssistantMessage,
     ExternalEvent,
+    ToolMessage,
     UserMessage,
 )
 
 from ...config import ModelConfig, ZettCodeConfig
 from ..commands import Command, CommandResult
+from .entries import EntryStatus
 from .runtime import ZettCodeRuntime
 from .storage import SessionInfo
 from .title import summarize_title
+from .transcript import Transcript
 
 
 class ZettCodeAgent:
@@ -99,6 +102,34 @@ class ZettCodeAgent:
     def use_session(self, session_id: str) -> None:
         """Switch future turns to a session."""
         self.runtime.use_session(session_id)
+
+    def restore_session(self, session_id: str, transcript: Transcript) -> None:
+        """Load the active stored branch into the UI before switching sessions."""
+        session = self.runtime.persistence.read(session_id)
+        if session.header is None:
+            raise ValueError(f"Unknown session: {session_id}")
+        restored = Transcript(renderers=transcript.renderers, processors=transcript.processors)
+        restored.frame = transcript.frame
+        for line in session.branch():
+            message = line.message[0]
+            match message:
+                case UserMessage():
+                    restored.user_message(message.text)
+                case AssistantMessage():
+                    if message.reasoning:
+                        restored.restore_thinking(message.reasoning, line.timing.reasoning_duration_ns)
+                    if message.content:
+                        restored.append_answer(message.content)
+                    for call in message.tool_calls:
+                        restored.start_tool(call.id, call.name, call.arguments)
+                case ToolMessage():
+                    status = EntryStatus.COMPLETED if message.success else EntryStatus.FAILED
+                    restored.complete_tool(message.tool_call_id, message.text, status=status, wait=False)
+                case _:
+                    continue
+        restored.finish_restored_tools()
+        transcript.replace(restored.entries)
+        self.use_session(session_id)
 
     async def list_sessions(self, *, limit: int = 20) -> list[SessionInfo]:
         """List persisted session metadata by recent activity."""

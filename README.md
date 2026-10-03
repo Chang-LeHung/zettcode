@@ -49,7 +49,8 @@ base_url = "https://api.deepseek.com/v1"
 Several models can be configured. The first entry is active at startup.
 `/model` opens a picker panel over the conversation: `Up` / `Down` navigate
 its scrolling list, `Enter` selects for future requests, and `Esc` closes the
-panel and returns to the composer.
+panel and returns to the composer. Switching models adds a centered
+`Model changed from … to …` line between horizontal rules in the transcript.
 `/model GPT-4o` still switches directly by display name or model id.
 `multimodal` records whether a model accepts images; it does not itself add
 image input to the composer. Unknown keys and wrong types are reported, not
@@ -62,8 +63,10 @@ folder also holds `metadata.jsonl`, a small append-only log of titles and activi
 times that is folded on read, so listing sessions never parses a conversation.
 After the first reply the agent names the session with one small model call and
 appends a title line. `/sessions` opens a picker panel listing recent sessions with
-their title and how long ago they last changed; `Enter` resumes the highlighted one,
-and `/use <id>` still switches directly. Sessions are not selected in the config
+their title and how long ago they last changed; `Enter` resumes the highlighted
+one, replacing the visible transcript with that session's active branch.
+`/use <id>` and `/sessions <id>` also restore the selected conversation directly;
+`/new` clears the visible conversation. Sessions are not selected in the config
 file.
 
 ## Approvals

@@ -56,8 +56,8 @@ class ShellCommands:
         owns the models, the shell owns the widget that chooses between them.
         """
         if name:
-            selected = self.shell.agent.use_model(name)
-            return CommandResult(notification=f"using model {selected.shown_name}", relayout=True)
+            self.shell.change_model(name)
+            return CommandResult(relayout=True)
         page = ModelPage(self.shell.agent, on_select=self.shell.select_model, on_cancel=self.shell.close_page)
         return CommandResult(widget=self._panel(page))
 
@@ -68,7 +68,7 @@ class ShellCommands:
         owns the stored sessions, the shell owns the widget that browses them.
         """
         if name:
-            self.shell.agent.use_session(name)
+            self.shell.restore_session(name)
             return CommandResult(notification=f"using session {name[:8]}", relayout=True)
         sessions = await self.shell.agent.list_sessions(limit=20)
         if not sessions:
