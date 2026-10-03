@@ -35,7 +35,7 @@ def test_golden_list_view():
     view = ListView([ListItem("a", label="alpha"), ListItem("b", label="beta")])
 
     assert render_block(view, width=16, height=3, theme=DARK) == (
-        "\u25b8 alpha\n  beta\n\n-- styles --\n0:0-7 b,fg#e6e9e7,bg#2f4a38\n1:0-6 fg#e6e9e7"
+        "\u25b8 alpha\n  beta\n\n-- styles --\n0:0-7 b,fg#f2f5f3,bg#2f4a38\n1:0-6 fg#f2f5f3"
     )
 
 
@@ -49,11 +49,11 @@ def test_golden_table():
         "\n"
         "\n"
         "-- styles --\n"
-        "0:0-4 fg#e6e9e7\n"
-        "0:4-11 b,fg#e6e9e7\n"
-        "0:11-12 fg#e6e9e7\n"
-        "1:0-12 d,fg#343a36\n"
-        "2:0-12 fg#e6e9e7"
+        "0:0-4 fg#f2f5f3\n"
+        "0:4-11 b,fg#f2f5f3\n"
+        "0:11-12 fg#f2f5f3\n"
+        "1:0-12 fg#a3ada6\n"
+        "2:0-12 fg#f2f5f3"
     )
 
 
@@ -74,7 +74,7 @@ def test_golden_dialog():
         "\u2502 Run   Abort          \u2502\n"
         "\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518\n"
         "-- styles --\n"
-        "1:1-13 fg#e6e9e7\n"
+        "1:1-13 fg#f2f5f3\n"
         "6:1-6 b,fg#0f1412,bg#79b88b\n"
         "6:7-14 fg#747d77"
     )
@@ -97,10 +97,10 @@ def test_golden_markdown():
         "\u00b7 two\n"
         "\n"
         "-- styles --\n"
-        "0:0-5 b,fg#e6e9e7\n"
-        "3:0-5 fg#e6e9e7\n"
-        "4:0-2 fg#e6e9e7\n"
-        "4:2-5 b,fg#e6e9e7"
+        "0:0-5 b,fg#f2f5f3\n"
+        "3:0-5 fg#f2f5f3\n"
+        "4:0-2 fg#f2f5f3\n"
+        "4:2-5 b,fg#f2f5f3"
     )
 
 
@@ -166,17 +166,17 @@ def test_golden_transcript_blocks():
         "\n"
         "-- styles --\n"
         "0:0-4 fg#a3ada6\n"
-        "2:0-44 fg#e6e9e7,bg#222725\n"
-        "3:0-44 fg#e6e9e7,bg#222725\n"
-        "4:0-44 fg#e6e9e7,bg#222725\n"
+        "2:0-44 fg#f2f5f3,bg#222725\n"
+        "3:0-44 fg#f2f5f3,bg#222725\n"
+        "4:0-44 fg#f2f5f3,bg#222725\n"
         "6:0-18 b,fg#79b88b\n"
         "8:0-39 b,fg#79b88b\n"
         "9:0-16 fg#a3ada6\n"
         "10:0-16 fg#a3ada6\n"
-        "12:0-8 b,fg#e6e9e7\n"
-        "15:0-8 fg#e6e9e7\n"
+        "12:0-8 b,fg#f2f5f3\n"
+        "15:0-8 fg#f2f5f3\n"
         "15:8-13 fg#9bddad\n"
-        "15:13-14 fg#e6e9e7"
+        "15:13-14 fg#f2f5f3"
     )
 
 
@@ -207,9 +207,9 @@ def test_golden_completion_popup():
         "\n"
         "\n"
         "-- styles --\n"
-        "0:0-7 b,fg#e6e9e7,bg#2f4a38\n"
+        "0:0-7 b,fg#f2f5f3,bg#2f4a38\n"
         "0:7-28 fg#747d77,bg#2f4a38\n"
-        "0:28-44 b,fg#e6e9e7,bg#2f4a38\n"
-        "1:0-5 fg#e6e9e7\n"
+        "0:28-44 b,fg#f2f5f3,bg#2f4a38\n"
+        "1:0-5 fg#f2f5f3\n"
         "1:7-37 fg#747d77"
     )

@@ -44,6 +44,19 @@ def test_markdown_renders_a_borderless_table():
     assert "\u256d" not in text and "\u253c" not in text and "\u2502" not in text
     assert "---" not in text
     assert all(display_width(line.text) <= 40 for line in lines)
+    rule = next(line for line in lines if "\u2500" in line.text)
+    # A table rule is structure, so it stays brighter than the section divider.
+    assert rule.spans[0].style.foreground == DARK.subtle
+    assert rule.spans[0].style.dim is False
+
+
+def test_markdown_renders_a_thematic_break_as_a_full_width_rule():
+    lines = render_markdown("above\n\n---\n\nbelow", 24, DARK)
+
+    (rule,) = [line for line in lines if set(line.text.strip()) == {"\u2500"}]
+    assert display_width(rule.text) == 24
+    assert rule.spans[0].style.foreground == DARK.muted
+    assert "".join(line.text for line in lines).count("---") == 0
 
 
 def test_a_long_table_cell_wraps_instead_of_being_cut():

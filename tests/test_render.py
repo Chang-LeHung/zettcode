@@ -32,7 +32,7 @@ def test_color_depth_encodes_truecolor_256_16_and_mono():
     red = Style(foreground="#ff0000", bold=True)
 
     assert encode_style(red, ColorDepth.TRUECOLOR) == "\x1b[0;1;38;2;255;0;0m"
-    assert encode_style(red, ColorDepth.ANSI256) == "\x1b[0;1;38;5;9m"
+    assert encode_style(red, ColorDepth.ANSI256) == "\x1b[0;1;38;5;196m"
     assert encode_style(red, ColorDepth.ANSI16) == "\x1b[0;1;91m"
     assert encode_style(red, ColorDepth.MONO) == "\x1b[0;1m"
     assert encode_style(Style(background="#000000"), ColorDepth.ANSI16) == "\x1b[0;40m"
@@ -44,9 +44,13 @@ def test_palette_lookup_picks_the_nearest_index():
     assert parse_hex("bogus") is None
     assert parse_hex("#fff") is None
     assert rgb_to_ansi16(255, 0, 0) == 9
-    assert rgb_to_ansi256(255, 255, 255) == 15
+    # The first sixteen entries alias the terminal's theme, so 256-colour output
+    # is always drawn from the fixed cube and grey ramp above them.
+    assert rgb_to_ansi256(255, 255, 255) == 231
+    assert rgb_to_ansi256(230, 233, 231) == 254
     assert rgb_to_ansi256(95, 95, 95) == 59
     assert rgb_to_ansi256(128, 128, 128) == 244
+    assert all(rgb_to_ansi256(*rgb) >= 16 for rgb in [(0, 0, 0), (255, 0, 0), (205, 205, 205)])
 
 
 def test_capability_detection_reads_the_environment():
@@ -135,7 +139,7 @@ def test_renderer_downgrades_color_to_the_terminal_depth():
     renderer.render(canvas)
 
     frame = output.getvalue()
-    assert "38;5;9" in frame
+    assert "38;5;196" in frame
     assert "38;2;" not in frame
 
     output.seek(0)

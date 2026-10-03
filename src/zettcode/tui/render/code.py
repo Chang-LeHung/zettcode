@@ -44,7 +44,7 @@ class CodeTheme:
 
     name: str = "default"
     inline: str = "#9bddad"
-    text: str = "#e6e9e7"
+    text: str = "#f2f5f3"
     keyword: str = "#e58fa8"
     string: str = "#9bddad"
     comment: str = "#6d7a70"
