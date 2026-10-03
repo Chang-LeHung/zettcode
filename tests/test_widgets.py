@@ -21,6 +21,7 @@ from zettcode.tui import (
     Spinner,
     StatusBar,
     Table,
+    TaskPanel,
     TextArea,
     Toast,
     TuiApp,
@@ -84,6 +85,26 @@ def test_list_view_navigates_wraps_and_activates():
 
     assert view.selected == 0
     assert chosen == ["item-0"]
+
+
+def test_list_view_places_a_description_by_display_width():
+    # A wide label is twice as wide as it is long, so the description has to
+    # start after the columns the label draws, not after its code points.
+    items = [ListItem("a", label="汉字", description="first"), ListItem("b", label="ascii", description="second")]
+    rows = Harness(ListView(items, wrap=False), width=20, height=2).render().text.splitlines()
+
+    def column_of(row: str, needle: str) -> int:
+        return display_width(row[: row.index(needle)])
+
+    assert column_of(rows[0], "first") == 2 + 4 + 1  # marker, wide label, gap
+    assert column_of(rows[1], "second") == 2 + 5 + 1
+
+
+def test_task_panel_measures_wide_labels_by_display_width():
+    panel = TaskPanel()
+    panel.set_tasks([("processing", "汉字")])
+
+    assert panel.measure(Constraints.loose(Size(40, 10))).width == 4 + 4
 
 
 def test_list_view_skips_disabled_rows_and_selects_on_click():
