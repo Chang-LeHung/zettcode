@@ -163,8 +163,9 @@ turn ends the transcript closes with a muted summary of the wall time it took:
 `Processed 51s · 09:41`, `Processed 22m · 14:05`, or `Processed 2h 5m · 18:30`.
 
 Assistant text renders common terminal-friendly Markdown: bold and emphasis,
-headings, inline and fenced code, links, quotes, unordered bullet lists, and
-GFM-style tables. Code is highlighted by colour only, never by a background
+headings, inline and fenced code, links, quotes, bullet and numbered lists —
+inset one level from the prose and wrapped under their own text — and GFM-style
+tables. Code is highlighted by colour only, never by a background
 block, and a fence draws only its code: the language label picks the scanner and
 is never printed. The scanners cover Python, shell, JavaScript/TypeScript, Rust,
 Go, Java, C/C++/C#, Ruby, PHP, SQL, Lua, Haskell, Swift, Kotlin, JSON,

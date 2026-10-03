@@ -94,14 +94,14 @@ def test_golden_markdown():
         "Title\n"
         "\n"
         "\n"
-        "\u00b7 one\n"
-        "\u00b7 two\n"
+        "  \u00b7 one\n"
+        "  \u00b7 two\n"
         "\n"
         "-- styles --\n"
         "0:0-5 b,fg#f2f5f3\n"
-        "3:0-5 fg#f2f5f3\n"
-        "4:0-2 fg#f2f5f3\n"
-        "4:2-5 b,fg#f2f5f3"
+        "3:0-7 fg#f2f5f3\n"
+        "4:0-4 fg#f2f5f3\n"
+        "4:4-7 b,fg#f2f5f3"
     )
 
 

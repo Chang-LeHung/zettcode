@@ -27,6 +27,23 @@ def test_markdown_wraps_paragraphs_inside_the_width():
     assert all(display_width(line.text) <= 20 for line in lines)
 
 
+def test_list_items_are_inset_and_wrap_under_their_own_text():
+    lines = render_markdown("- a long item that has to wrap somewhere, twice over", 26, DARK)
+    texts = [line.text for line in lines]
+
+    # The marker is one level in from the prose, and the wrapped rows line up
+    # under the item's text rather than falling back to the margin.
+    assert texts[0].startswith("  \u00b7 a long item")
+    assert texts[1].startswith("    ")
+    assert all(display_width(text) <= 26 for text in texts)
+
+
+def test_ordered_and_nested_items_keep_their_levels():
+    lines = render_markdown("1. first\n   - nested\n2. second", 40, DARK)
+
+    assert [line.text for line in lines] == ["  1. first", "     \u00b7 nested", "  2. second"]
+
+
 def test_markdown_highlights_fenced_code_without_drawing_the_label():
     lines = render_markdown("```python\ndef parse(x):\n    return x\n```", 30, DARK)
     texts = [line.text for line in lines]
