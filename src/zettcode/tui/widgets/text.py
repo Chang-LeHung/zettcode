@@ -6,13 +6,13 @@ from collections.abc import Callable
 
 from ..core.geometry import Constraints, Size
 from ..core.widget import Widget
-from ..render import Canvas, Span, Style, wrap_spans
-from ..render.text import display_width
+from ..render import Canvas, Span, Style, TextLine
+from .rich_text import RichText
 
 Value = str | Callable[[], str]
 
 
-class Text(Widget):
+class Text(RichText):
     """A label that may compute its value at paint time and wrap to its width.
 
     Shape::
@@ -22,8 +22,8 @@ class Text(Widget):
         rows
                             right aligned <- align="right"
 
-    Each wrapped row is one ``draw_text``; the label never grows past the
-    rectangle it was given, it just writes fewer rows.
+    It uses the same styled-line layout as :class:`RichText`; the label never
+    grows past the rectangle it was given, it just writes fewer rows.
     """
 
     def __init__(
@@ -44,9 +44,8 @@ class Text(Widget):
             bold: Draw every span bold.
             muted: Use the theme's muted colour instead of the body text colour.
         """
-        super().__init__()
+        super().__init__(value, align="right" if align == "right" else "left")
         self.value = value
-        self.align = align
         self.bold = bold
         self.muted = muted
 
@@ -60,31 +59,10 @@ class Text(Widget):
         theme = self.theme
         return Style(foreground=theme.muted if self.muted else theme.text, bold=self.bold)
 
-    def measure(self, constraints: Constraints) -> Size:
-        """Wrap the text to the offered width and count the resulting rows."""
-        text = self.content
-        width = constraints.max_width if constraints.max_width is not None else display_width(text)
-        height = sum(len(wrap_spans((Span(line),), max(1, width))) for line in text.split("\n"))
-        return constraints.constrain(Size(min(display_width(text), max(1, width)), height))
-
-    def render(self, canvas: Canvas) -> None:
-        """Paint the wrapped lines, right-aligning them when asked."""
-        if self.rect.empty:
-            return
+    def _lines(self) -> tuple[TextLine, ...]:
+        """Return the label as styled lines for the shared layout."""
         style = self.style_for()
-        row = 0
-        for source in self.content.split("\n"):
-            for wrapped in wrap_spans((Span(source),), self.rect.width):
-                if row >= self.rect.height:
-                    return
-                text = "".join(span.text for span in wrapped)
-                x = (
-                    self.rect.x + max(0, self.rect.width - display_width(text))
-                    if self.align == "right"
-                    else self.rect.x
-                )
-                canvas.draw_text(x, self.rect.y + row, text, style, max_width=self.rect.width)
-                row += 1
+        return tuple(TextLine((Span(source, style),)) for source in self.content.split("\n"))
 
 
 class Rule(Widget):

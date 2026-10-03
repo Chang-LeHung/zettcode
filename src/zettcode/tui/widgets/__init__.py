@@ -8,6 +8,7 @@ from .list import ListItem, ListView
 from .list_page import ListPage
 from .markdown import Markdown, MarkdownSource, MarkdownView, render_markdown
 from .progress import ProgressBar, Spinner
+from .rich_text import RichText
 from .status import StatusBar
 from .table import Column, Table
 from .tasks import TaskPanel
@@ -33,6 +34,7 @@ __all__ = [
     "MarkdownSource",
     "MarkdownView",
     "ProgressBar",
+    "RichText",
     "Rule",
     "Spinner",
     "StatusBar",

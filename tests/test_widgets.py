@@ -16,13 +16,17 @@ from zettcode.tui import (
     Point,
     ProgressBar,
     Rect,
+    RichText,
     Screen,
     Size,
+    Span,
     Spinner,
     StatusBar,
+    Style,
     Table,
     TaskPanel,
     TextArea,
+    TextLine,
     Toast,
     TuiApp,
     Widget,
@@ -105,6 +109,50 @@ def test_task_panel_measures_wide_labels_by_display_width():
     panel.set_tasks([("processing", "汉字")])
 
     assert panel.measure(Constraints.loose(Size(40, 10))).width == 4 + 4
+
+
+def test_rich_text_widget_paints_styled_spans_and_respects_height():
+    first = TextLine((Span("汉字", Style(foreground="#ff0000")), Span(" + ok", Style(bold=True))))
+    second = TextLine((Span("second"),))
+    widget = RichText((first, second))
+    harness = Harness(widget, width=9, height=1)
+
+    snapshot = harness.render()
+
+    assert snapshot.text == "汉字 + ok"
+    assert snapshot.styled[0][0].style.foreground == "#ff0000"
+    assert snapshot.styled[0][-1].style.bold is True
+    assert widget.measure(Constraints.loose(Size(9, 5))) == Size(9, 2)
+
+
+def test_rich_text_widget_supports_dynamic_text_alignment_and_truncation():
+    content = ["short"]
+    widget = RichText(lambda: content[0], align="right", wrap=False)
+    harness = Harness(widget, width=10, height=1)
+
+    assert harness.render().text == "     short"
+    content[0] = "more than ten letters"
+    assert harness.render().text == "more than…"
+    assert widget.measure(Constraints.loose(Size(10, 4))) == Size(10, 1)
+
+
+def test_rich_text_content_changes_request_layout_and_keep_styles():
+    label = RichText((Span("before", Style(foreground="#ff0000")),))
+    harness = Harness(label, width=12, height=2)
+    harness.render()
+
+    label.set_content((TextLine((Span("汉字", Style(bold=True)),)), TextLine((Span("after"),))))
+
+    assert harness.app._layout_dirty
+    snapshot = harness.render()
+    assert snapshot.text.splitlines()[:2] == ["汉字", "after"]
+    assert snapshot.styled[0][0].style.bold
+
+
+def test_rich_text_accepts_one_span_or_one_text_line():
+    span = Span("汉字", Style(bold=True))
+    assert Harness(RichText(span), width=8, height=1).render().text == "汉字"
+    assert Harness(RichText(TextLine((span,))), width=8, height=1).render().text == "汉字"
 
 
 def test_list_view_skips_disabled_rows_and_selects_on_click():

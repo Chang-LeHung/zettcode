@@ -31,6 +31,8 @@ class TranscriptSource(LineSource):
         self.frame = frame
         self._width = 0
         self._version = -1
+        self._theme: Theme | None = None
+        self._processors = None
         self._starts: list[int] = []
         self._blocks: list[object] = []
         self._count = 0
@@ -60,17 +62,24 @@ class TranscriptSource(LineSource):
 
     def _sync(self, width: int) -> None:
         """Rebuild the block boundaries when the width or the transcript changed."""
-        if width == self._width and self.transcript.version == self._version:
+        if (
+            width == self._width
+            and self.transcript.version == self._version
+            and self._theme == self.theme
+            and self._processors is self.transcript.processors
+        ):
             return
         self._width = width
         self._version = self.transcript.version
+        self._theme = self.theme
+        self._processors = self.transcript.processors
         frame = self.frame()
         starts: list[int] = []
         blocks: list[object] = []
         total = 0
         for entry in self.transcript.entries:
             starts.append(total)
-            block = entry.block_for(width, self.theme, frame)
+            block = entry.block_for(width, self.theme, frame, processors=self.transcript.processors)
             blocks.append(block)
             total += block.count(width)
         self._starts = starts

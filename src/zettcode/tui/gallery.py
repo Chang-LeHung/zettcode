@@ -42,6 +42,7 @@ from .widgets import (
     ListView,
     MarkdownView,
     ProgressBar,
+    RichText,
     Rule,
     Spinner,
     StatusBar,
@@ -258,6 +259,17 @@ GALLERY: tuple[GalleryEntry, ...] = (
         lambda: ScrollView(StaticLines([TextLine((Span(line),)) for line in SCROLL_LINES]), follow_tail=False),
     ),
     GalleryEntry("layout", "VBox, HBox, Padding, Border, and a centred Overlay", Size(48, 8), _layout_sample),
+    GalleryEntry(
+        "rich_text",
+        "RichText: styled spans, wrapping, and display-column alignment",
+        Size(42, 4),
+        lambda: RichText(
+            [
+                TextLine((Span("状态：", Style(foreground=DARK.accent)), Span("运行中", Style(bold=True)))),
+                TextLine((Span("中文 and long styled text wrap at cell boundaries.", Style(foreground=DARK.subtle)),)),
+            ]
+        ),
+    ),
 )
 
 

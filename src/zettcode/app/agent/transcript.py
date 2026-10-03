@@ -9,21 +9,13 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
 from datetime import datetime
 from time import monotonic
 
-from ...tui import (
-    LineSource,
-    Markdown,
-    Span,
-    StaticLines,
-    Style,
-    TextLine,
-    Theme,
-)
-from ...tui.render import SweepSpan, display_width, highlight, sweep_spans, truncate, wrap_columns
-from ...tui.widgets.markdown import MarkdownSource
+from ...tui import LineSource, TextLine
+from ...tui.render import inset_line, wrap_columns
+from .blocks import DEFAULT_PROCESSORS, EntryProcessors
+from .entries import Entry, EntryStatus, MarkdownEntry, ProcessingEntry, TextEntry, ThinkingEntry, ToolEntry
 from .rendering import ANSWER, DEFAULT_RENDERERS, THINKING, Renderers
 
 #: Left margin of every transcript row: the width of the composer's ``\u203a ``
@@ -120,24 +112,19 @@ def duration_text(seconds: float | None) -> str:
 
 
 def elapsed_text(seconds: float) -> str:
-    """Format a whole request's wall time the way a person reads it.
-
-    A row header needs millisecond precision, but the line under a finished
-    request is a summary: ``51s``, ``22m``, ``2h 5m``. Rounded to the largest
-    unit that fits, with the next unit down kept only once the total passes an
-    hour.
+    """Show every nonzero time unit in a finished request's wall time.
 
     Args:
         seconds: Wall time of the request, negative values clamped to zero.
     """
     total = max(0, round(seconds))
-    if total < 60:
-        return f"{total}s"
-    minutes, _ = divmod(total, 60)
-    if minutes < 60:
-        return f"{minutes}m"
-    hours, minutes = divmod(minutes, 60)
-    return f"{hours}h {minutes}m" if minutes else f"{hours}h"
+    hours, remainder = divmod(total, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    if hours:
+        return f"{hours}h {minutes}m {seconds}s"
+    if minutes:
+        return f"{minutes}m {seconds}s"
+    return f"{seconds}s"
 
 
 def clock_text(moment: datetime | None = None) -> str:
@@ -150,87 +137,6 @@ def clock_text(moment: datetime | None = None) -> str:
     return (moment or datetime.now()).strftime("%H:%M")
 
 
-@dataclass(slots=True)
-class Entry:
-    """One semantic block of the conversation, in agent event order.
-
-    Attributes:
-        id: Monotonic id, also the handle used to toggle the entry.
-        kind: Which renderer applies: ``welcome``, ``notice``, ``user``,
-            ``pending``, ``thinking``, ``answer``, ``message``, or ``tool``.
-        text: Body text; for a tool row it is the (bounded) output.
-        title: Row label, already phrased by the renderer chain.
-        tool: Tool name, which the chain uses to shape the row's body.
-        language: Scanner for a tool row's body when it is source code.
-        status: ``running``, ``completed``, ``failed``, or ``skipped``; only a
-            running row animates and only a finished row can be toggled.
-        call_id: Links a tool row to the call it answers.
-        expanded: Disclosure state of a thinking or tool row.
-        started_at: Clock reading when the row opened, used for the elapsed time.
-        duration: Seconds between ``started_at`` and completion, filled in as the
-            row runs so a long step shows progress.
-        markdown: Streaming source for an answer row; answers are parsed
-            incrementally instead of re-rendering on every delta.
-        block: Cached rendered block for non-markdown rows.
-        block_key: Inputs the cached block was rendered from, so a cache hit
-            never shows stale content.
-    """
-
-    id: int
-    kind: str
-    text: str = ""
-    title: str = ""
-    tool: str = ""
-    language: str | None = None
-    status: str = ""
-    call_id: str = ""
-    expanded: bool = False
-    started_at: float | None = None
-    duration: float | None = None
-    markdown: Markdown | None = None
-    block: object | None = None
-    block_key: tuple[object, ...] | None = None
-
-    def block_for(self, width: int, theme: Theme, frame: int) -> object:
-        """Return this entry as a line source, re-rendering only on a real change.
-
-        Args:
-            width: Wrap width in cells; part of the cache key.
-            theme: Palette; the theme name is part of the cache key.
-            frame: Animation frame; only a running row includes it in the cache
-                key, so a finished row is never re-rendered as the clock moves.
-        """
-        if self.markdown is not None:
-            self.markdown.theme = theme
-            if self.block is None:
-                self.block = self._inset(LeadingGap(MarkdownSource(self.markdown)))
-            return self.block
-        # Only a running row animates, so a completed row must not be re-rendered
-        # just because the frame counter moved on.
-        animated = frame if self.status == "running" else 0
-        key: tuple[object, ...] = (
-            width,
-            theme.name,
-            animated,
-            self.expanded,
-            self.status,
-            len(self.text),
-            self.language,
-        )
-        if self.block is None or self.block_key != key:
-            self.block = self._inset(StaticLines(render_entry(self, width, theme, frame)))
-            self.block_key = key
-        return self.block
-
-    def _inset(self, block: LineSource) -> LineSource:
-        """Shift a rendered block right, except for the prompt echoing the composer.
-
-        A user message draws its own ``\u203a `` at column zero, exactly like the
-        composer, so indenting it again would push the arrow away from the edge.
-        """
-        return block if self.kind == "user" else Indented(block)
-
-
 class Transcript:
     """Own the conversation entries and their rendered block boundaries."""
 
@@ -239,6 +145,7 @@ class Transcript:
         *,
         clock: Callable[[], float] = monotonic,
         renderers: Renderers = DEFAULT_RENDERERS,
+        processors: EntryProcessors = DEFAULT_PROCESSORS,
     ) -> None:
         """Start an empty transcript whose elapsed times come from ``clock``.
 
@@ -246,25 +153,26 @@ class Transcript:
             clock: Time source for row durations, injectable for tests.
             renderers: Chain that phrases tool rows; tests can pass their own to
                 pin the wording a row would show.
+            processors: Chain that produces presentation lines for entries.
         """
         self.renderers = renderers
+        self.processors = processors
         self.entries: list[Entry] = []
         self.clock = clock
         self.version = 0
         self.frame = 0
         self._next_id = 1
 
-    def _add(self, kind: str, **values: object) -> Entry:
-        """Append one entry, assigning its id and invalidating rendered caches."""
-        entry = Entry(self._next_id, kind, **values)
+    def _add[T: Entry](self, entry: T) -> T:
+        """Append a typed entry and invalidate the transcript's line boundaries."""
         self._next_id += 1
         self.entries.append(entry)
         self.version += 1
         return entry
 
-    def _last(self, kind: str) -> Entry | None:
-        """Return the newest entry of one kind, or None when there is none."""
-        return next((entry for entry in reversed(self.entries) if entry.kind == kind), None)
+    def _last[T: Entry](self, entry_type: type[T]) -> T | None:
+        """Return the newest entry of one type, or None when there is none."""
+        return next((entry for entry in reversed(self.entries) if isinstance(entry, entry_type)), None)
 
     def entry(self, entry_id: int) -> Entry | None:
         """Return the entry with this id, or None when it has been cleared."""
@@ -286,13 +194,17 @@ class Transcript:
         """
         self.frame = int(self.clock() / ANIMATION_SECONDS)
         for entry in self.entries:
-            if entry.status == "running" and entry.started_at is not None:
+            if (
+                isinstance(entry, (ProcessingEntry, ThinkingEntry, ToolEntry))
+                and entry.status is EntryStatus.RUNNING
+                and entry.started_at is not None
+            ):
                 entry.duration = self.clock() - entry.started_at
         self.version += 1
 
     def notice(self, text: str) -> None:
         """Append a muted one-off status line."""
-        self._add("notice", text=text)
+        self._add(TextEntry(id=self._next_id, kind="notice", text=text))
 
     def markdown(self, text: str) -> None:
         """Append a Markdown block, parsed and rendered like an answer.
@@ -300,17 +212,18 @@ class Transcript:
         Use it for command output, which is usually a list or a table; a notice
         is the terse alternative for one-line status such as ``stopped``.
         """
-        block = Markdown()
-        block.append(text)
-        self._add("message", text=text, markdown=block)
+        entry = MarkdownEntry(id=self._next_id, kind="message")
+        entry.markdown.append(text)
+        entry.text = text
+        self._add(entry)
 
     def welcome(self, text: str) -> None:
         """Append the banner shown once at startup."""
-        self._add("welcome", text=text)
+        self._add(TextEntry(id=self._next_id, kind="welcome", text=text))
 
     def begin_turn(self, prompt: str) -> None:
         """Record the user prompt and open the first wait row for the reply."""
-        self._add("user", text=prompt)
+        self._add(TextEntry(id=self._next_id, kind="user", text=prompt))
         self.wait_for_model()
 
     def wait_for_model(self) -> bool:
@@ -322,32 +235,32 @@ class Transcript:
         is not repeated while a tool is still running, and never while a wait is
         already open.
         """
-        if any(entry.kind == "tool" and entry.status == "running" for entry in self.entries):
+        if any(isinstance(entry, ToolEntry) and entry.status is EntryStatus.RUNNING for entry in self.entries):
             return False
-        pending = self._last("pending")
-        if pending is not None and pending.status == "running":
+        pending = self._last(ProcessingEntry)
+        if pending is not None and pending.status is EntryStatus.RUNNING:
             return False
-        self._add("pending", title=PROCESSING, status="running", started_at=self.clock())
+        self._add(ProcessingEntry(id=self._next_id, title=PROCESSING, started_at=self.clock()))
         return True
 
-    def start_thinking(self) -> Entry:
+    def start_thinking(self) -> ThinkingEntry:
         """Return the open thinking block, promoting the placeholder when it fits."""
-        current = self._last("thinking")
-        if current is not None and current.status == "running":
+        current = self._last(ThinkingEntry)
+        if current is not None and current.status is EntryStatus.RUNNING:
             return current
-        pending = self._last("pending")
+        pending = self._last(ProcessingEntry)
+        thinking = ThinkingEntry(id=pending.id if pending is not None else self._next_id, started_at=self.clock())
         if pending is not None:
-            # The placeholder turned out to be reasoning: keep the same row.
-            pending.kind = "thinking"
-            pending.title = "Thinking"
-            pending.started_at = self.clock()
+            # The placeholder turned out to be reasoning: replace the same row,
+            # retaining its id and position for hit-testing and focus.
+            self.entries[self.entries.index(pending)] = thinking
             self.version += 1
-            return pending
-        return self._add("thinking", title="Thinking", status="running", started_at=self.clock())
+            return thinking
+        return self._add(thinking)
 
     def drop_pending(self) -> bool:
         """Remove the placeholder once real output has started."""
-        if self.entries and self.entries[-1].kind == "pending":
+        if self.entries and isinstance(self.entries[-1], ProcessingEntry):
             self.entries.pop()
             self.version += 1
             return True
@@ -361,11 +274,11 @@ class Transcript:
 
     def complete_thinking(self) -> None:
         """Close the running thinking block and stamp its elapsed time."""
-        entry = self._last("thinking")
-        if entry is None or entry.status != "running":
+        entry = self._last(ThinkingEntry)
+        if entry is None or entry.status is not EntryStatus.RUNNING:
             self.drop_pending()
             return
-        entry.status = "completed"
+        entry.status = EntryStatus.COMPLETED
         if entry.started_at is not None:
             entry.duration = self.clock() - entry.started_at
         self.version += 1
@@ -374,9 +287,9 @@ class Transcript:
         """Stream a delta into the trailing answer block, opening one if needed."""
         self.drop_pending()
         current = self.entries[-1] if self.entries else None
-        if current is None or current.kind != "answer":
-            current = self._add("answer", markdown=Markdown())
-        assert current.markdown is not None
+        if not isinstance(current, MarkdownEntry) or current.kind != "answer":
+            current = MarkdownEntry(id=self._next_id, kind="answer")
+            self._add(current)
         delta = self.renderers.text(ANSWER, delta, opening=not current.text)
         current.markdown.append(delta)
         current.text += delta
@@ -394,16 +307,17 @@ class Transcript:
         self.drop_pending()
         row = self.renderers.describe(name, arguments)
         self._add(
-            "tool",
-            call_id=call_id,
-            tool=name,
-            title=row.title,
-            language=row.language,
-            status="running",
-            started_at=self.clock(),
+            ToolEntry(
+                id=self._next_id,
+                call_id=call_id,
+                tool=name,
+                title=row.title,
+                language=row.language,
+                started_at=self.clock(),
+            )
         )
 
-    def complete_tool(self, call_id: str, output: str, *, status: str = "completed") -> None:
+    def complete_tool(self, call_id: str, output: str, *, status: EntryStatus = EntryStatus.COMPLETED) -> None:
         """Attach a tool result to its row, ignoring calls that are no longer on screen.
 
         Args:
@@ -412,11 +326,14 @@ class Transcript:
             status: Final status, normally ``completed``, ``failed``, or
                 ``skipped``.
         """
-        entry = next((item for item in reversed(self.entries) if item.kind == "tool" and item.call_id == call_id), None)
+        entry = next(
+            (item for item in reversed(self.entries) if isinstance(item, ToolEntry) and item.call_id == call_id), None
+        )
         if entry is None:
             return
+        outcome = EntryStatus(status)
         entry.text = limit_output(self.renderers.body(entry.tool, output))
-        entry.status = status
+        entry.status = outcome
         if entry.started_at is not None:
             entry.duration = self.clock() - entry.started_at
         self.version += 1
@@ -432,9 +349,9 @@ class Transcript:
                 running or empty tool row refuses to expand.
         """
         entry = self.entry(entry_id)
-        if entry is None or entry.kind not in ("thinking", "tool"):
+        if not isinstance(entry, (ThinkingEntry, ToolEntry)):
             return False
-        if entry.kind == "tool" and (entry.status == "running" or not entry.text):
+        if isinstance(entry, ToolEntry) and (entry.status is EntryStatus.RUNNING or not entry.text):
             return False
         entry.expanded = not entry.expanded
         self.version += 1
@@ -442,7 +359,7 @@ class Transcript:
 
     def toggle_latest_thinking(self) -> bool:
         """Expand or collapse the newest thinking block."""
-        entry = self._last("thinking")
+        entry = self._last(ThinkingEntry)
         if entry is None:
             return False
         entry.expanded = not entry.expanded
@@ -457,7 +374,7 @@ class Transcript:
         """
         changed = False
         for entry in self.entries:
-            if entry.kind == "thinking" and entry.expanded and entry.id != entry_id:
+            if isinstance(entry, ThinkingEntry) and entry.expanded and entry.id != entry_id:
                 entry.expanded = False
                 changed = True
         if changed:
@@ -514,163 +431,17 @@ class Indented(LineSource):
 
     def count(self, width: int) -> int:
         """Return the nested row count, which the margin does not change."""
-        return self.source.count(max(1, width - self.columns))
+        return self.source.count(max(1, width - self._margin(width)))
 
     def line(self, index: int, width: int) -> TextLine:
         """Draw the margin, then the nested row at the reduced width."""
-        row = self.source.line(index, max(1, width - self.columns))
-        if not row.spans:
-            return TextLine(metadata=row.metadata)
-        # The gutter joins the first run rather than becoming a run of its own,
-        # so a caller indexing spans still finds the same structure it rendered.
-        first = row.spans[0]
-        gutter = Span(" " * self.columns + first.text, first.style)
-        return TextLine((gutter, *row.spans[1:]), metadata=row.metadata)
+        margin = self._margin(width)
+        row = self.source.line(index, max(1, width - margin))
+        return inset_line(row, margin)
 
-
-def render_entry(entry: Entry, width: int, theme: Theme, frame: int) -> list[TextLine]:
-    """Render one non-streaming entry into terminal lines.
-
-    Args:
-        entry: Entry to render; answer rows are excluded because they are served
-            by ``Markdown`` instead.
-        width: Wrap width in cells.
-        theme: Palette to draw with.
-        frame: Animation frame, used for running rows only.
-    """
-    match entry.kind:
-        case "welcome":
-            lines = []
-            for index, line in enumerate(entry.text.split("\n")):
-                if index in (1, 2) and "   " in line and any(glyph in line for glyph in "│╰"):
-                    logo, spacing, label = line.rpartition("   ")
-                    label_style = (
-                        Style(foreground=theme.text, bold=True) if index == 1 else Style(foreground=theme.subtle)
-                    )
-                    lines.append(
-                        TextLine((Span(logo + spacing, Style(foreground=theme.accent)), Span(label, label_style)))
-                    )
-                else:
-                    color = theme.accent if index == 0 and "╭" in line else theme.subtle
-                    lines.append(TextLine((Span(line, Style(foreground=color)),)))
-            return lines
-        case "notice":
-            # No indent of its own: the gutter already lines a notice up with
-            # the answer text above it.
-            return [
-                TextLine(),
-                *[TextLine((Span(line, Style(foreground=theme.muted)),)) for line in entry.text.split("\n")],
-            ]
-        case "user":
-            style = Style(foreground=theme.text, background=theme.surface_alt)
-            content_width = max(1, width - CONTENT_INDENT)
-            prompt = [chunk for row in entry.text.split("\n") for chunk in wrap_columns(row, content_width)]
-            background = TextLine((Span(" " * width, style),))
-            lines = [TextLine(), background]
-            for index, chunk in enumerate(prompt):
-                prefix = "\u203a " if index == 0 else "  "
-                body = truncate(f"{prefix}{chunk}", width)
-                padding = " " * max(0, width - display_width(body))
-                lines.append(TextLine((Span(body + padding, style),)))
-            lines.append(background)
-            return lines
-        case "thinking":
-            return _thinking_lines(entry, width, theme, frame)
-        case "pending":
-            label = entry.title
-            if entry.duration is not None:
-                label += f"  {duration_text(entry.duration)}"
-            return [TextLine(), TextLine(_running_label(label, theme, frame))]
-        case "tool":
-            return _tool_lines(entry, width, theme, frame)
-        case _:
-            return [TextLine((Span(line, Style(foreground=theme.subtle)),)) for line in entry.text.split("\n")]
-
-
-def _thinking_lines(entry: Entry, width: int, theme: Theme, frame: int) -> list[TextLine]:
-    """Render a thinking row, wrapping its body only while it is expanded.
-
-    Args:
-        entry: Thinking entry; its body is wrapped at ``width - 4`` for the
-            indent, or shown as a waiting message while it is still empty.
-        width: Row width in cells.
-        theme: Palette to draw with.
-        frame: Animation frame used for the running marker.
-    """
-    running = entry.status == "running"
-    timing = duration_text(entry.duration) if entry.duration is not None else "working"
-    header = Style(foreground=theme.accent, bold=True)
-    if running:
-        row = _running_label(f"Thinking  {timing}", theme, frame)
-    else:
-        marker = "\u25be" if entry.expanded else "\u25b8"
-        row = (Span(f"{marker} ", header), Span(f"Thinking  {timing}", header))
-    lines = [TextLine(), TextLine(row)]
-    if entry.expanded:
-        body = Style(foreground=theme.subtle)
-        for row in entry.text.splitlines() or ["Waiting for reasoning\u2026"]:
-            lines.extend(TextLine((Span(f"    {chunk}", body),)) for chunk in wrap_columns(row, max(8, width - 4)))
-    return lines
-
-
-def _tool_lines(entry: Entry, width: int, theme: Theme, frame: int) -> list[TextLine]:
-    """Render a tool row with a preview or expanded view of its output.
-
-    Args:
-        entry: Tool entry; its output is cut to ``TOOL_PREVIEW_ROWS`` unless the
-            row is expanded, which raises the budget to ``TOOL_EXPANDED_ROWS``.
-        width: Row width in cells.
-        theme: Palette to draw with; a failed row switches to the error colour.
-        frame: Animation frame used for the running marker.
-    """
-    running = entry.status == "running"
-    symbol = (
-        RUNNING_GLYPHS[0]
-        if running
-        else {"completed": "\u2713", "failed": "\u00d7", "skipped": "\u2013"}.get(entry.status, "\u25cf")
-    )
-    style = (
-        Style(foreground=theme.error, bold=True)
-        if entry.status == "failed"
-        else Style(foreground=theme.accent, bold=True)
-    )
-    muted = Style(foreground=theme.muted)
-    timing = f"  {duration_text(entry.duration)}" if entry.duration is not None else ""
-    disclosure = "" if running or not entry.text else (" \u25be" if entry.expanded else " \u25b8")
-    # The chain already said what this call did; all that is left is to draw it,
-    # sweeping the words while it runs so the row is visibly alive without any
-    # part of it going dim.
-    room = max(1, width - display_width(f"{symbol} {timing}{disclosure}"))
-    title = truncate(entry.title, room)
-    spans: list[Span] = [Span(f"{symbol} ", style)]
-    if running:
-        label = SweepSpan(title, style, peak=Style(foreground=theme.text, bold=True), ramp=3)
-        spans.extend(sweep_spans(label, sweep_step(frame)))
-    else:
-        spans.append(Span(title, style))
-    if timing:
-        spans.append(Span(timing, muted))
-    if disclosure:
-        spans.append(Span(disclosure, muted))
-    lines = [TextLine(), TextLine(tuple(spans))]
-    output = "Running\u2026" if running else entry.text
-    if output:
-        limit = TOOL_EXPANDED_ROWS if entry.expanded else TOOL_PREVIEW_ROWS
-        rows, omitted = bounded_rows(output, max(8, width - 6), limit)
-        detail = Style(foreground=theme.subtle)
-        for index, row in enumerate(rows):
-            lead = "    \u2514 " if index == 0 else "      "
-            lines.append(_body_line(lead, row, detail, entry.language, theme))
-        if omitted:
-            lines.append(TextLine((Span(f"      \u2026 {omitted} more rows", muted),)))
-    return lines
-
-
-def _body_line(lead: str, row: str, detail: Style, language: str | None, theme: Theme) -> TextLine:
-    """Return one body row, highlighted as ``language`` when the tool named one."""
-    if language is None:
-        return TextLine((Span(lead + row, detail),))
-    return TextLine((Span(lead, detail), *highlight(row, language, theme.code)))
+    def _margin(self, width: int) -> int:
+        """Keep at least one column available for content on narrow screens."""
+        return min(self.columns, max(0, width - 1))
 
 
 #: The running marker's two states: the sparkle, then a dot of the same width so
@@ -715,19 +486,3 @@ def activity_glyph(frame: int) -> str:
 def blinking(frame: int) -> bool:
     """Say whether a running row is in the bright half of its blink."""
     return int(frame / BLINK_FRAMES) % 2 == 0
-
-
-def _running_label(text: str, theme: Theme, frame: int) -> tuple[Span, ...]:
-    """Return one wait row: a still marker, then a highlight sweeping the words.
-
-    Both rows a user reads while the model works — waiting for the first token,
-    and reasoning afterwards — carry the same highlight, so the wait looks the
-    same whether or not reasoning has started. The marker holds its shape, which
-    leaves exactly one thing moving in the row.
-    """
-    resting = Style(foreground=theme.accent, bold=True)
-    # The bright end is the body colour rather than another green: blended back
-    # towards the accent it keeps a distinct step per column even where the
-    # terminal has only 256 colours, which a green-to-green ramp does not.
-    label = SweepSpan(text, resting, peak=Style(foreground=theme.text, bold=True), ramp=3)
-    return (Span(f"{RUNNING_GLYPHS[0]} ", resting), *sweep_spans(label, sweep_step(frame)))

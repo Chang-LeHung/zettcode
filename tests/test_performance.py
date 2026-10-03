@@ -5,7 +5,7 @@ from __future__ import annotations
 from time import perf_counter
 
 from zettcode.app import Transcript, TranscriptSource
-from zettcode.app.agent import transcript as transcript_module
+from zettcode.app.agent import blocks as blocks_module
 from zettcode.tui import DARK
 from zettcode.tui.widgets import markdown as markdown_module
 
@@ -13,13 +13,13 @@ from zettcode.tui.widgets import markdown as markdown_module
 def spy_on_entries(monkeypatch) -> list[int]:
     """Record which transcript entries get rendered."""
     calls: list[int] = []
-    real = transcript_module.render_entry
+    real = blocks_module.render_entry
 
-    def spy(entry, width, theme, frame):
+    def spy(entry, width, theme, frame, *, processors):
         calls.append(entry.id)
-        return real(entry, width, theme, frame)
+        return real(entry, width, theme, frame, processors=processors)
 
-    monkeypatch.setattr(transcript_module, "render_entry", spy)
+    monkeypatch.setattr(blocks_module, "render_entry", spy)
     return calls
 
 

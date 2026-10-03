@@ -4,6 +4,7 @@ from .canvas import Canvas
 from .code import DEFAULT_CODE_THEME, GENERIC, LATEX, PYTHON, SHELL, CodeTheme, highlight, language_for, languages
 from .color import ColorDepth, blend, encode_style, parse_hex, rgb_to_ansi16, rgb_to_ansi256
 from .renderer import DifferentialRenderer
+from .rich_text import Alignment, inset_line, layout_rich_lines
 from .style import DEFAULT_STYLE, Cell, Span, Style, TextLine
 from .sweep import SweepSpan, sweep_spans
 from .text import (
@@ -28,6 +29,7 @@ __all__ = [
     "PYTHON",
     "SHELL",
     "Canvas",
+    "Alignment",
     "Cell",
     "ColorDepth",
     "CodeTheme",
@@ -44,6 +46,8 @@ __all__ = [
     "expand_span_tabs",
     "expand_tabs",
     "highlight",
+    "inset_line",
+    "layout_rich_lines",
     "language_for",
     "languages",
     "parse_hex",
