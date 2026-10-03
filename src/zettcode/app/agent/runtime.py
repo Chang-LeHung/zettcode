@@ -50,11 +50,12 @@ calls. Verify mutable facts with tools instead of assuming this startup snapshot
 
 @dataclass(slots=True)
 class ZettCodeRuntime:
-    """Own the model, persistence extension, AgentClient, and active session."""
+    """Own the model, the persistence and approval extensions, the client, and the active session."""
 
     config: ZettCodeConfig
     client: AgentClient
     persistence: SessionStore
+    approval: ShellApprovalExtension
     todos: TodoWriteExtension
     model: OpenAIProvider
     session_id: str
@@ -75,6 +76,7 @@ class ZettCodeRuntime:
             response=selected.responses_api,
         )
         todos = TodoWriteExtension()
+        approval = ShellApprovalExtension(enabled=config.shell_approval is ShellApprovalMode.REVIEW)
         try:
             client = await create_agent(
                 model,
@@ -82,7 +84,7 @@ class ZettCodeRuntime:
                 system_prompt=build_system_prompt(config),
                 extensions=[
                     CodingExtension(),
-                    ShellApprovalExtension(enabled=config.shell_approval is ShellApprovalMode.REVIEW),
+                    approval,
                     persistence,
                     todos,
                     ToolGuidelinesExtension(),
@@ -100,7 +102,16 @@ class ZettCodeRuntime:
             await model.aclose()
             await persistence.close()
             raise
-        return cls(config, client, persistence, todos, model, session_id, selected, {selected: model})
+        return cls(config, client, persistence, approval, todos, model, session_id, selected, {selected: model})
+
+    def approve_all_shell_commands(self) -> None:
+        """Stop asking for shell approval for the rest of this process.
+
+        Approval is a per-run policy and is deliberately not persisted: the
+        next start begins in review mode again, matching the fresh session the
+        shell opens on launch.
+        """
+        self.approval.enabled = False
 
     def use_model(self, name: str | ModelConfig) -> ModelConfig:
         """Select a configured model for subsequent requests without changing sessions."""

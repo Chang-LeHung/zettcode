@@ -12,7 +12,7 @@ from dataclasses import replace
 
 from ..core.theme import DARK, Theme
 from ..layout.scroll import LineSource, ScrollView
-from ..render import Canvas, Span, Style, TextLine, highlight, language_for, wrap_spans
+from ..render import Canvas, Span, Style, TextLine, highlight, wrap_spans
 from ..render.text import display_width
 
 FENCE = "```"
@@ -96,7 +96,7 @@ def render_markdown(text: str, width: int, theme: Theme = DARK) -> list[TextLine
 def code_spans(line: str, language: str, theme: Theme) -> list[Span]:
     """Highlight one line of a fenced code block, with no background fill."""
     indent = Span("  ", Style(foreground=theme.code.text))
-    return [indent, *highlight(line, language_for(language), theme.code)]
+    return [indent, *highlight(line, language, theme.code)]
 
 
 def markdown_line(line: str, *, theme: Theme) -> list[Span] | None:

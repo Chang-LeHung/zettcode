@@ -175,7 +175,7 @@ def test_golden_transcript_blocks():
         "10:0-14 fg#a3ada6\n"
         "12:0-6 b,fg#e6e9e7\n"
         "15:0-6 fg#e6e9e7\n"
-        "15:6-11 fg#d8c07a\n"
+        "15:6-11 fg#9bddad\n"
         "15:11-12 fg#e6e9e7"
     )
 

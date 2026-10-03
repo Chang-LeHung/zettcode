@@ -49,6 +49,27 @@ def test_highlight_falls_back_to_a_generic_tokenizer():
     assert color_of(spans, "const") == DARK.code.text
 
 
+def test_highlight_reads_shell_commands_flags_and_strings():
+    spans = highlight('cd /tmp && rm -f -- "a b.txt" 2>/dev/null', "bash", DARK.code)
+
+    assert color_of(spans, "cd") == DARK.code.function
+    assert color_of(spans, "rm") == DARK.code.function
+    assert color_of(spans, "&&") == DARK.code.operator
+    assert color_of(spans, '"a b.txt"') == DARK.code.string
+    # ``--`` is a flag in a shell command, not the comment a generic tokenizer
+    # would see, so the strings after it must stay strings; a redirection does
+    # not turn its target into a command name either.
+    assert color_of(spans, "dev/null") == DARK.code.text
+
+
+def test_highlight_leaves_shell_variables_and_arguments_plain():
+    spans = highlight('echo "$HOME" > $OUT', "sh", DARK.code)
+
+    assert color_of(spans, "$HOME") == DARK.code.string
+    assert color_of(spans, "$OUT") == DARK.code.builtin
+    assert color_of(spans, "echo") == DARK.code.function
+
+
 def test_code_and_inline_code_never_paint_a_background():
     block = render_markdown("```python\nvalue = 1\n```\n\nrun `values[0]` now", 40, DARK)
     spans = [span for line in block for span in line.spans]
