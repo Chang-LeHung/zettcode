@@ -5,6 +5,7 @@ from .completion import Completer, CompletionItem, CompletionPopup
 from .dialog import Dialog, DialogAction
 from .diff import DiffLine, DiffSegment, DiffView, build_unified, parse_unified, word_diff
 from .list import ListItem, ListView
+from .list_page import ListPage
 from .markdown import Markdown, MarkdownSource, MarkdownView, render_markdown
 from .progress import ProgressBar, Spinner
 from .status import StatusBar
@@ -27,6 +28,7 @@ __all__ = [
     "DiffView",
     "ListItem",
     "ListView",
+    "ListPage",
     "Markdown",
     "MarkdownSource",
     "MarkdownView",

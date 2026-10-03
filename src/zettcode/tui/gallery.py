@@ -38,6 +38,7 @@ from .widgets import (
     DialogAction,
     DiffView,
     ListItem,
+    ListPage,
     ListView,
     MarkdownView,
     ProgressBar,
@@ -181,6 +182,15 @@ GALLERY: tuple[GalleryEntry, ...] = (
                 ListItem("c", label="gamma", disabled=True),
                 ListItem("d", label="delta", description="fourth"),
             ]
+        ),
+    ),
+    GalleryEntry(
+        "list_page",
+        "ListPage: title, bounded scrolling list, and a footer hint",
+        Size(40, 9),
+        lambda: ListPage(
+            [ListItem(f"item-{index}", f"row {index}", f"detail {index}") for index in range(8)],
+            title="Select Something",
         ),
     ),
     GalleryEntry(
