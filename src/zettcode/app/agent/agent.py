@@ -14,6 +14,7 @@ from zett_agent import (
 )
 
 from ...config import ModelConfig, ZettCodeConfig
+from ..commands import Command, CommandResult
 from .runtime import ZettCodeRuntime
 from .session import Session
 
@@ -55,6 +56,16 @@ class ZettCodeAgent:
         return self.runtime.config.models
 
     @property
+    def commands(self) -> tuple[Command, ...]:
+        """Return the commands owned by the coding agent."""
+        return (
+            Command("/new", "start a fresh session", "agent", self._command_new),
+            Command("/sessions", "list persisted sessions", "agent", self._command_sessions),
+            Command("/model", "choose a model", "agent", self._command_model),
+            Command("/use", "switch to a session: /use <id>", "agent", self._command_use),
+        )
+
+    @property
     def active_model(self) -> ModelConfig:
         """Return the model selected for the next turn."""
         return self.runtime.active_model
@@ -88,9 +99,41 @@ class ZettCodeAgent:
         """List persisted sessions by recent activity."""
         return await self.runtime.persistence.list_sessions(limit=limit)
 
-    def use_model(self, name: str) -> ModelConfig:
+    def use_model(self, name: str | ModelConfig) -> ModelConfig:
         """Select a configured model for subsequent turns."""
         return self.runtime.use_model(name)
+
+    async def _command_new(self, argument: str) -> CommandResult:
+        """Start a fresh session."""
+        session_id = self.new_session()
+        return CommandResult(notification=f"started session {session_id[:8]}")
+
+    async def _command_use(self, argument: str) -> CommandResult:
+        """Switch to the requested session."""
+        if not argument:
+            return CommandResult(messages=("Usage: /use <session-id>",))
+        self.use_session(argument)
+        return CommandResult(notification=f"using session {self.session_id[:8]}")
+
+    async def _command_sessions(self, argument: str) -> CommandResult:
+        """List recent sessions in the transcript."""
+        sessions = await self.list_sessions(limit=20)
+        if not sessions:
+            return CommandResult(messages=("No persisted sessions.",))
+        return CommandResult(
+            messages=tuple(
+                f"{'*' if session.session_id == self.session_id else ' '} "
+                f"{session.session_id}  {session.message_count} messages"
+                for session in sessions
+            )
+        )
+
+    async def _command_model(self, argument: str) -> CommandResult:
+        """Open the picker, or select a named model directly."""
+        if not argument:
+            return CommandResult(page="models")
+        selected = self.use_model(argument)
+        return CommandResult(notification=f"using model {selected.shown_name}", relayout=True)
 
     def respond_approval(self, session_id: str, call_id: str, decision: str, remember: bool) -> None:
         """Answer a pending shell approval for the originating session."""

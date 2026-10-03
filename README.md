@@ -46,11 +46,13 @@ token = "sk-..."
 base_url = "https://api.deepseek.com/v1"
 ```
 
-Several models can be configured. The first entry is active at startup; use
-`/model` to list them or `/model GPT-4o` to switch by display name or model id
-for future requests. `multimodal` records whether a model accepts images; it
-does not itself add image input to the composer. Unknown keys and wrong types
-are reported, not ignored.
+Several models can be configured. The first entry is active at startup.
+`/model` opens a model picker: `Up` / `Down` navigate its scrolling list,
+`Enter` selects for future requests, and `Esc` returns to the composer.
+`/model GPT-4o` still switches directly by display name or model id.
+`multimodal` records whether a model accepts images; it does not itself add
+image input to the composer. Unknown keys and wrong types are reported, not
+ignored.
 
 Sessions live in `~/.zettcode/sessions/`, one append-only JSONL file per session:
 every record carries a parent id, so a session is a tree, and a compaction adds a
@@ -148,3 +150,5 @@ cell that does not fit instead of cutting its text.
 
 Use `/help` inside the application to see session commands; `/new`, `/sessions`,
 `/use`, `/model`, `/theme dark|light`, `/clear`, and `/quit` are available.
+The composer command menu identifies each command as `app` or `agent`, shows
+its description, and scrolls when there are more matches than visible rows.

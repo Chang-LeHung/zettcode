@@ -58,6 +58,7 @@ class ListView(Widget):
         on_select: Callable[[ListItem], None] | None = None,
         on_highlight: Callable[[ListItem], None] | None = None,
         wrap: bool = True,
+        band: bool = False,
     ) -> None:
         """Configure the rows, the callbacks, and whether the selection wraps.
 
@@ -67,12 +68,14 @@ class ListView(Widget):
             on_highlight: Called only when the selection actually moves, which
                 makes it safe to use for previewing the highlighted row.
             wrap: Wrap from the last row to the first and back.
+            band: Fill the entire highlighted row, not just the label.
         """
         super().__init__()
         self._items = tuple(items)
         self.on_select = on_select
         self.on_highlight = on_highlight
         self.wrap = wrap
+        self.band = band
         self.selected = 0 if self._items else -1
         self.top = 0
 
@@ -169,7 +172,9 @@ class ListView(Widget):
             elif selected:
                 style = Style(foreground=theme.text, background=theme.selection, bold=True)
             else:
-                style = Style(foreground=theme.text)
+                style = Style(foreground=theme.text, background=theme.surface_alt if self.band else None)
+            if selected and self.band:
+                canvas.fill(self.rect.x, self.rect.y + row, self.rect.width, 1, style)
             label = truncate(marker + item.label, max(0, self.rect.width))
             canvas.draw_text(self.rect.x, self.rect.y + row, label, style, max_width=self.rect.width)
             if item.description:

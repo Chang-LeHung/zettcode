@@ -20,11 +20,13 @@ class CompletionItem:
         value: Text inserted into the editor when the candidate is chosen.
         label: Row text; falls back to ``value`` when empty.
         description: Muted text shown after the label when space allows.
+        type: Optional command owner displayed in a right-aligned column.
     """
 
     value: str
     label: str = ""
     description: str = ""
+    type: str = ""
 
     @property
     def display(self) -> str:
@@ -134,7 +136,8 @@ class CompletionPopup(Widget):
         such as a full-width row above a composer, gets the whole span painted.
         """
         widest = max((display_width(item.description) for item in self.items), default=0)
-        natural = 1 + self.name_width + 2 + widest + 1 if self.items else 0
+        category = max((display_width(f"[{item.type}]") for item in self.items if item.type), default=0)
+        natural = 1 + self.name_width + 2 + widest + category + (2 if category else 1) if self.items else 0
         return Size(natural, self.visible_height)
 
     def measure(self, constraints: Constraints) -> Size:
@@ -179,7 +182,11 @@ class CompletionPopup(Widget):
                 base,
                 max_width=width,
             )
-            room = width - description_column
+            category = f"[{item.type}]" if item.type else ""
+            category_width = display_width(category)
+            category_column = width - category_width - 1
+            show_category = bool(category) and category_column > description_column
+            room = (category_column - 1 if show_category else width) - description_column
             if item.description and room > 3:
                 canvas.draw_text(
                     self.rect.x + description_column,
@@ -187,4 +194,12 @@ class CompletionPopup(Widget):
                     truncate(item.description, room),
                     Style(foreground=theme.muted, background=base.background),
                     max_width=room,
+                )
+            if show_category:
+                canvas.draw_text(
+                    self.rect.x + category_column,
+                    self.rect.y + row,
+                    category,
+                    Style(foreground=theme.muted, background=base.background),
+                    max_width=category_width,
                 )
