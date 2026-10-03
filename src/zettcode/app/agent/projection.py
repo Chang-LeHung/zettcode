@@ -12,6 +12,7 @@ from zett_agent import (
     ToolMessage,
 )
 
+from .entries import EntryStatus
 from .transcript import Transcript
 
 
@@ -95,13 +96,13 @@ class TranscriptProjector(AgentEventDispatcher):
         """Fail every call in the batch and record the error text."""
         for call in event.tool_calls:
             detail = str(event.error) if event.error is not None else "Tool failed"
-            self.transcript.complete_tool(call.id, detail, status="failed")
+            self.transcript.complete_tool(call.id, detail, status=EntryStatus.FAILED)
 
     async def on_tool_skipped_event(self, event: AgentEvent) -> None:
         """Mark the batch as skipped, keeping any message the tool still produced."""
         for call in event.tool_calls:
             output = tool_output(event.message) if isinstance(event.message, ToolMessage) else "Skipped"
-            self.transcript.complete_tool(call.id, output, status="skipped")
+            self.transcript.complete_tool(call.id, output, status=EntryStatus.SKIPPED)
 
     async def on_server_tool_started_event(self, event: AgentEvent) -> None:
         """Open a row for a tool the server runs on the agent's behalf."""
@@ -121,7 +122,7 @@ class TranscriptProjector(AgentEventDispatcher):
             self.transcript.complete_tool(
                 result.call_id,
                 result.error_code or serialize(result.output),
-                status="failed",
+                status=EntryStatus.FAILED,
             )
 
     async def on_run_completed_event(self, event: AgentEvent) -> None:

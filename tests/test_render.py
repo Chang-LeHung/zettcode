@@ -3,7 +3,7 @@
 from dataclasses import replace
 from io import StringIO
 
-from zettcode.tui import Canvas, ColorDepth, DifferentialRenderer, Span, Style
+from zettcode.tui import Canvas, ColorDepth, DifferentialRenderer, Span, Style, TextLine
 from zettcode.tui.capabilities import (
     detect_capabilities,
     detect_color_depth,
@@ -19,6 +19,8 @@ from zettcode.tui.render import (
     encode_style,
     expand_span_tabs,
     expand_tabs,
+    inset_line,
+    layout_rich_lines,
     parse_hex,
     rgb_to_ansi16,
     rgb_to_ansi256,
@@ -29,6 +31,51 @@ from zettcode.tui.render import (
     wrap_spans,
 )
 from zettcode.tui.render.renderer import _changed_bounds
+
+
+def test_rich_lines_wrap_styled_cjk_and_preserve_hanging_indents():
+    lines = (TextLine((Span("  · ", Style(foreground="#abcdef")), Span("汉字abcd", Style(bold=True))), metadata=4),)
+
+    rows = layout_rich_lines(lines, 8)
+
+    assert [row.text for row in rows] == ["  · 汉字", "    abcd"]
+    assert rows[0].spans[-1].style.bold
+    assert rows[1].spans[-1].style.bold
+    assert all(display_width(row.text) <= 8 for row in rows)
+
+
+def test_rich_lines_align_and_truncate_without_losing_styles():
+    red = Style(foreground="#ff0000")
+    blue = Style(foreground="#0000ff")
+    lines = (TextLine((Span("ab", red), Span("汉字", blue))),)
+
+    assert layout_rich_lines(lines, 10, align="right")[0].text == "    ab汉字"
+    clipped = layout_rich_lines(lines, 5, wrap=False)[0]
+    assert clipped.text == "ab汉…"
+    assert clipped.spans[0].style == red
+    assert clipped.spans[-1].style == blue
+    assert display_width(clipped.text) == 5
+    assert inset_line(TextLine(), 2) == TextLine()
+
+
+def test_span_and_text_line_own_display_width_and_single_line_layout():
+    first = Span("汉字", Style(foreground="#ff0000"))
+    second = Span("ok", Style(bold=True))
+    line = TextLine((first, second))
+
+    assert first.width == 4
+    assert line.width == 6
+    assert [row.text for row in line.layout(4)] == ["汉字", "ok"]
+    assert line.layout(8, align="right")[0].text == "  汉字ok"
+
+
+def test_rich_lines_clip_wide_characters_when_less_than_two_columns_remain():
+    row = TextLine((Span("  · ", Style(foreground="#abcdef")), Span("中文字", Style(bold=True))), metadata=4)
+
+    for width in (1, 2, 3):
+        lines = layout_rich_lines((row,), width)
+        assert all(display_width(line.text) <= width for line in lines)
+        assert all(line.text for line in lines)
 
 
 def test_color_depth_encodes_truecolor_256_16_and_mono():

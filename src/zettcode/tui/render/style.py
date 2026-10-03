@@ -42,6 +42,13 @@ class Span:
     text: str
     style: Style = DEFAULT_STYLE
 
+    @property
+    def width(self) -> int:
+        """Return the columns this fragment paints, including wide glyphs."""
+        from .text import display_width
+
+        return display_width(self.text)
+
 
 @dataclass(frozen=True, slots=True)
 class TextLine:
@@ -60,6 +67,17 @@ class TextLine:
     def text(self) -> str:
         """Return the concatenated text of every span."""
         return "".join(span.text for span in self.spans)
+
+    @property
+    def width(self) -> int:
+        """Return the displayed column width of this line."""
+        return sum(span.width for span in self.spans)
+
+    def layout(self, width: int, *, wrap: bool = True, align: str = "left") -> tuple[TextLine, ...]:
+        """Lay out this line using the same rules as a RichText widget."""
+        from .rich_text import layout_rich_lines
+
+        return layout_rich_lines((self,), width, wrap=wrap, align=align)
 
 
 @dataclass(frozen=True, slots=True)

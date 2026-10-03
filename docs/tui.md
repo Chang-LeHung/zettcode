@@ -281,6 +281,15 @@ only renders the candidates the editor reports.
 
 ## Rich content
 
+`render/rich_text.py` lays out `Span` and `TextLine` values by terminal
+columns: it wraps, aligns, clips, and keeps a list item's hanging indent under
+its text. `RichText` is the retained widget for short styled blocks, while
+`Text` uses that widget with a single style and `Markdown` uses the same layout
+function for parsed lines. The transcript keeps its `LineSource` so a long
+conversation still materializes only its visible rows; its gutter uses the
+same inset operation rather than mounting one widget per message. Try
+`make demo-rich_text` for a preview.
+
 `widgets/diff.py` parses unified diffs into typed rows and pairs each run of
 removals with the additions that follow it. Paired lines go through a token
 level `SequenceMatcher`, so only the tokens that actually changed are marked;
@@ -311,6 +320,22 @@ rendered block against a key of width, theme, expansion, status, and text
 length, so an unchanged transcript costs nothing to repaint. Answer entries
 delegate to `Markdown` instead of caching a flat list, which is what keeps a
 streamed answer linear rather than quadratic.
+
+`app/agent/blocks.py` owns the visual processors for agent entries: welcome,
+notice, user, processing, thinking, and tool each produce `TextLine` values.
+They form an ordered `EntryProcessors` chain: the first processor whose
+`supports(entry)` returns true renders the entry. `app/agent/entries.py`
+represents those records as a union of
+`TextEntry`, `MarkdownEntry`, `ProcessingEntry`, `ThinkingEntry`, and `ToolEntry`,
+with `EntryStatus` for running/completed/failed/skipped states. The common
+base holds identity and the width/theme-dependent line cache; Markdown retains
+its own streaming line source. The virtualized `TranscriptSource` still
+presents only visible rows. These components share `render/rich_text.py` with
+the `RichText` widget, so wrapping, indentation, alignment, and clipping live
+in the framework instead of being duplicated in `transcript.py`. `Span` and
+`TextLine` keep their data definitions and small width/layout entry points
+together in `render/style.py`, while the reusable width-aware algorithms stay
+in `render/text.py` and `render/rich_text.py`.
 
 `projection.py` maps `zett-agent` callbacks onto transcript blocks. Every
 callback returns immediately, including the approval one: the agent is already

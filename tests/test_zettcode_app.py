@@ -24,6 +24,7 @@ from zett_agent import (
 
 from zettcode.app import Transcript, TranscriptSource, TranscriptView, ZettCodeApp
 from zettcode.app.agent.agent import ZettCodeAgent
+from zettcode.app.agent.entries import TextEntry
 from zettcode.app.agent.projection import TranscriptProjector
 from zettcode.app.agent.storage import SessionInfo, SessionStore
 from zettcode.app.agent.transcript import (
@@ -284,7 +285,7 @@ def test_a_request_waits_again_after_every_tool_batch():
 
     # The loop calls the model again once the batch has results, so the wait row
     # comes back below the rows it belongs to.
-    assert [(entry.kind, entry.title) for entry in transcript.entries] == [
+    assert [(entry.kind, getattr(entry, "title", "")) for entry in transcript.entries] == [
         ("user", ""),
         ("tool", "Read a.py"),
         ("pending", "Processing"),
@@ -497,14 +498,15 @@ async def test_app_streams_a_prompt_into_the_transcript():
     assert app.busy is False
 
 
-def test_elapsed_text_keeps_the_largest_unit_that_fits():
+def test_elapsed_text_shows_hours_minutes_and_seconds():
     assert elapsed_text(0.4) == "0s"
     assert elapsed_text(3.2) == "3s"
-    assert elapsed_text(59.6) == "1m"
-    assert elapsed_text(22 * 60 + 30) == "22m"
-    assert elapsed_text(59 * 60 + 59) == "59m"
-    assert elapsed_text(3600) == "1h"
-    assert elapsed_text(2 * 3600 + 5 * 60) == "2h 5m"
+    assert elapsed_text(59.6) == "1m 0s"
+    assert elapsed_text(22 * 60 + 30) == "22m 30s"
+    assert elapsed_text(59 * 60 + 59) == "59m 59s"
+    assert elapsed_text(3600) == "1h 0m 0s"
+    assert elapsed_text(2 * 3600 + 5 * 60 + 7) == "2h 5m 7s"
+    assert elapsed_text(24 * 3600 + 1) == "24h 0m 1s"
     assert elapsed_text(-5) == "0s"
 
 
@@ -1273,7 +1275,10 @@ async def test_the_first_reply_names_the_session_in_the_background():
     await asyncio.wait_for(app._title_task, 2.0)
 
     assert calls == ["session-0001"]
-    assert any("session title: Fix the parser crash" in entry.text for entry in app.transcript.entries)
+    assert any(
+        isinstance(entry, TextEntry) and entry.kind == "notice" and entry.text == "session title: Fix the parser crash"
+        for entry in app.transcript.entries
+    )
 
 
 def _harness(app: ZettCodeApp) -> Harness:

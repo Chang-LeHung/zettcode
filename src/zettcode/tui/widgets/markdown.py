@@ -13,7 +13,7 @@ from dataclasses import replace
 
 from ..core.theme import DARK, Theme
 from ..layout.scroll import LineSource, ScrollView
-from ..render import Canvas, Span, Style, TextLine, highlight, wrap_spans
+from ..render import Canvas, Span, Style, TextLine, highlight, layout_rich_lines, wrap_spans
 from ..render.text import display_width
 
 FENCE = "```"
@@ -101,18 +101,7 @@ def render_markdown(text: str, width: int, theme: Theme = DARK) -> list[TextLine
         if rendered is not None:
             logical.append(rendered)
         index += 1
-    result: list[TextLine] = []
-    for line in logical:
-        # A list item wraps under its own text rather than back to the margin,
-        # which the renderer marks by putting the indent in the line's metadata.
-        indent = line.metadata if isinstance(line.metadata, int) else 0
-        rows = wrap_spans(line.spans, max(1, width - indent))
-        for position, row in enumerate(rows):
-            if position == 0 or indent <= 0:
-                result.append(TextLine(row))
-            else:
-                result.append(TextLine((Span(" " * indent, Style(foreground=theme.text)), *row)))
-    return result
+    return list(layout_rich_lines(logical, width))
 
 
 def code_spans(line: str, language: str, theme: Theme) -> list[Span]:
