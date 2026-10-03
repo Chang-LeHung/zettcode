@@ -33,6 +33,7 @@ from ...tui import (
     VBox,
 )
 from ...tui.layout import Slot
+from ...tui.render import display_width
 from ...tui.widgets import Rule
 from ..agent.agent import ZettCodeAgent
 from ..agent.projection import TranscriptProjector
@@ -463,11 +464,25 @@ def compact_path(path: Path, *, limit: int = 38) -> str:
 
     Args:
         path: Absolute path to display.
-        limit: Most characters to keep; the home directory collapses to ``~``,
-            and anything longer keeps a leading ellipsis plus its tail.
+        limit: Most columns to keep; the home directory collapses to ``~``, and
+            anything longer keeps a leading ellipsis plus its tail. The budget
+            counts display columns, so a path with wide characters is measured
+            the way the header draws it.
     """
     value = str(path)
     home = str(Path.home())
     if value == home or value.startswith(home + "/"):
         value = "~" + value[len(home) :]
-    return value if len(value) <= limit else "\u2026" + value[-(limit - 1) :]
+    width = display_width(value)
+    if width <= limit:
+        return value
+    # Count the tail from the end so a wide glyph is dropped whole rather than
+    # overhanging the budget, which the ellipsis also has to fit inside.
+    budget = limit - 1
+    tail = ""
+    for character in reversed(value):
+        if display_width(character) > budget:
+            break
+        tail = character + tail
+        budget -= display_width(character)
+    return "\u2026" + tail

@@ -38,11 +38,12 @@ from zettcode.app.agent.transcript import (
 from zettcode.app.commands import Command, CommandResult
 from zettcode.app.ui import app as app_module
 from zettcode.app.ui import demo
+from zettcode.app.ui.app import compact_path
 from zettcode.app.ui.widgets import WELCOME, ApprovalChoice, ApprovalPage, SessionsPage, bottom_panel, format_ago
 from zettcode.config import ModelConfig
 from zettcode.tui import DARK, LIGHT, ListItem, ListPage, Rect, walk
 from zettcode.tui.render import display_width
-from zettcode.tui.testing import Harness
+from zettcode.tui.testing import Harness, render_block
 
 
 class FakeAgent:
@@ -1148,6 +1149,34 @@ def test_format_ago_uses_the_coarsest_unit_that_fits():
     assert format_ago(now - timedelta(days=2), now=now) == "2d ago"
     # A clock skew must not produce a negative age.
     assert format_ago(now + timedelta(minutes=1), now=now) == "just now"
+
+
+def test_the_header_trims_a_wide_path_by_display_width():
+    trimmed = compact_path(Path("/tmp") / ("\u6df1" * 30), limit=10)
+
+    assert trimmed.startswith("\u2026")
+    assert display_width(trimmed) <= 10
+
+
+def test_the_sessions_panel_lines_wide_titles_up_in_one_column():
+    now = datetime(2026, 10, 3, 12, 0, tzinfo=UTC)
+    sessions = [
+        SessionInfo("01a1010f", "Flask 实现 Python 服务器", now - timedelta(minutes=17), now - timedelta(minutes=17)),
+        SessionInfo(
+            "01a10119", "Python 实现 HTTP 服务器框架", now - timedelta(minutes=19), now - timedelta(minutes=19)
+        ),
+        SessionInfo("01a10116", None, now - timedelta(hours=3), now - timedelta(hours=3)),
+    ]
+    page = SessionsPage(sessions, on_select=lambda _: None, on_cancel=lambda: None, now=now)
+    rows = [row for row in render_block(page, width=64, height=10, theme=DARK).splitlines() if "01a10" in row]
+
+    assert len(rows) == 3
+    # A wide title is padded by the columns it draws, so every age starts in the
+    # same column however long the title above it is ...
+    assert len({display_width(row[: row.index("ago")]) for row in rows}) == 1
+    # ... and the ages are right-aligned, so "3h ago" lines up with "17m ago"
+    # and the short id after them never steps in and out of column.
+    assert len({display_width(row[: row.index("\u00b7")]) for row in rows}) == 1
 
 
 async def test_sessions_command_opens_a_panel_with_titles_and_ages(tmp_path):

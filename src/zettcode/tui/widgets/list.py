@@ -39,14 +39,16 @@ class ListView(Widget):
     Shape::
 
         > alpha  first                    <- selected: marker, bold, selection band
-          beta   second                   <- description starts at a fixed column
+          beta   second                   <- description one gap after the label
           gamma                           <- disabled: dim, no marker, refuses Enter
           delta  fourth
 
     Only ``rect.height`` rows are drawn, starting at ``top``; the marker is part
     of the label (U+25B8 selected, two spaces otherwise) and the muted
     description keeps the row's background so the selection band stays
-    continuous.
+    continuous. A description is placed one cell after the label *it belongs to*,
+    measured in columns, so a page that wants one description column pads its
+    labels to a common width first (as the session picker does).
     """
 
     MARKERS = ("\u25b8 ", "  ")
@@ -178,7 +180,10 @@ class ListView(Widget):
             label = truncate(marker + item.label, max(0, self.rect.width))
             canvas.draw_text(self.rect.x, self.rect.y + row, label, style, max_width=self.rect.width)
             if item.description:
-                used = len(marker) + len(item.label) + 1
+                # Columns, not code points: a label of CJK characters is twice
+                # as wide as it is long, and counting its length would pull the
+                # description left by one column per wide glyph.
+                used = display_width(marker + item.label) + 1
                 room = self.rect.width - used
                 if room > 3:
                     text = truncate(item.description, room)

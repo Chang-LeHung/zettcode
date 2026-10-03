@@ -7,6 +7,7 @@ from collections.abc import Sequence
 from ..core.geometry import Constraints, Size
 from ..core.widget import Widget
 from ..render import Canvas, Style, truncate
+from ..render.text import display_width
 
 MARKERS = {
     "completed": "\u2713",
@@ -69,7 +70,7 @@ class TaskPanel(Widget):
 
     def measure(self, constraints: Constraints) -> Size:
         """Ask for the widest task label plus the marker indentation."""
-        width = max((len(label) for _, label in self.tasks), default=0) + 4
+        width = max((display_width(label) for _, label in self.tasks), default=0) + 4
         return constraints.constrain(Size(width, self.preferred_height()))
 
     def render(self, canvas: Canvas) -> None:

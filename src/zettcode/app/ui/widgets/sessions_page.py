@@ -34,13 +34,15 @@ class SessionsPage(ListPage):
 
         Sessions
           \u25b8 Fix the parser crash  3m ago \u00b7 1a2b3c4d
-                                 2h ago \u00b7 9f8e7d6c   <- untitled: title column empty
+                                17h ago \u00b7 9f8e7d6c   <- untitled: title column empty
         enter open \u00b7 esc back
 
     A session without a title keeps that column empty rather than inventing a
     placeholder, so the age is what identifies it; the short id still lets an
     untitled session be told apart from its neighbours. Rows commit the session
-    id, which the shell turns into ``use_session``.
+    id, which the shell turns into ``use_session``. Ages are right-aligned in
+    their own column, because ``3h ago`` is a column narrower than ``17m ago``
+    and the id after it would otherwise step in and out of line.
 
     Args:
         sessions: Metadata rows to show, newest first, as returned by the store.
@@ -58,17 +60,19 @@ class SessionsPage(ListPage):
         on_cancel: Callable[[], None],
         now: datetime | None = None,
     ) -> None:
-        """Map each session to a row, padding titles into one column."""
+        """Map each session to a row, padding titles and right-aligning ages."""
         titles = [session.title or "" for session in sessions]
         # Two extra columns keep a gap between the longest title and its age.
         column = max((display_width(title) for title in titles), default=0) + 2
+        ages = [format_ago(session.updated_at, now=now) for session in sessions]
+        age_column = max((display_width(age) for age in ages), default=0)
         items = [
             ListItem(
                 session.session_id,
                 title + " " * max(0, column - display_width(title)),
-                f"{format_ago(session.updated_at, now=now)} \u00b7 {session.session_id[:8]}",
+                f"{' ' * max(0, age_column - display_width(age))}{age} \u00b7 {session.session_id[:8]}",
             )
-            for session, title in zip(sessions, titles, strict=True)
+            for session, title, age in zip(sessions, titles, ages, strict=True)
         ]
         super().__init__(
             items,
