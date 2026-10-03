@@ -35,7 +35,6 @@ from zettcode.app.agent.transcript import (
     elapsed_text,
     sweep_step,
     terminal_safe,
-    wait_text,
 )
 from zettcode.app.commands import Command, CommandResult
 from zettcode.app.ui import app as app_module
@@ -509,23 +508,13 @@ def test_elapsed_text_keeps_the_largest_unit_that_fits():
     assert elapsed_text(-5) == "0s"
 
 
-def test_row_durations_are_whole_seconds():
-    # A row header says whether a step was instant or took a while; milliseconds
-    # would only make the column jitter as it rerenders.
-    assert duration_text(0.0) == "0 s"
-    assert duration_text(0.4) == "0 s"
-    assert duration_text(0.6) == "1 s"
-    assert duration_text(2.7) == "3 s"
-    assert duration_text(61.2) == "61 s"
+def test_row_durations_count_tenths_of_a_second():
+    # A tenth is enough to see a row move, and milliseconds would change the
+    # column's width on every repaint.
+    assert duration_text(0.0) == "0.0 s"
+    assert duration_text(0.34) == "0.3 s"
+    assert duration_text(12.36) == "12.4 s"
     assert duration_text(None) == "done"
-
-
-def test_a_wait_counts_tenths_of_a_second():
-    # The wait rows are the exception: nothing else moves while the model works,
-    # so the tenth is the only sign the call is progressing.
-    assert wait_text(0.0) == "0.0 s"
-    assert wait_text(0.34) == "0.3 s"
-    assert wait_text(12.36) == "12.4 s"
 
     now = [0.0]
     transcript = Transcript(clock=lambda: now[0])

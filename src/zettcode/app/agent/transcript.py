@@ -103,31 +103,19 @@ def limit_output(value: str) -> str:
 
 
 def duration_text(seconds: float | None) -> str:
-    """Format an elapsed time for a row header, in whole seconds.
+    """Format an elapsed time for a row header, to a tenth of a second.
 
     Args:
         seconds: Elapsed time, or ``None`` for a row that has already finished
             without a recorded duration.
 
-    Milliseconds are deliberately not shown: a row's duration is there to say
-    whether a step was instant or took a while, and ``0 s`` does that without
-    three digits of noise changing width on every repaint.
+    Milliseconds are deliberately not shown: the tenth is enough to see a row
+    move, and three digits would change width on every repaint. A whole
+    request's wall time is a different question, so it goes through
+    :func:`elapsed_text` instead.
     """
     if seconds is None:
         return "done"
-    return f"{max(0, round(seconds))} s"
-
-
-def wait_text(seconds: float) -> str:
-    """Format a wait row's elapsed time, to a tenth of a second.
-
-    Args:
-        seconds: Time the model call has been running.
-
-    The wait and reasoning rows are the exception to whole seconds: nothing else
-    on screen moves while the model works, so the tenth is the only feedback the
-    reader gets that the call is making progress rather than stuck.
-    """
     return f"{max(0.0, seconds):.1f} s"
 
 
@@ -591,7 +579,7 @@ def render_entry(entry: Entry, width: int, theme: Theme, frame: int) -> list[Tex
         case "pending":
             label = entry.title
             if entry.duration is not None:
-                label += f"  {wait_text(entry.duration)}"
+                label += f"  {duration_text(entry.duration)}"
             return [TextLine(), TextLine(_running_label(label, theme, frame))]
         case "tool":
             return _tool_lines(entry, width, theme, frame)
@@ -610,7 +598,7 @@ def _thinking_lines(entry: Entry, width: int, theme: Theme, frame: int) -> list[
         frame: Animation frame used for the running marker.
     """
     running = entry.status == "running"
-    timing = wait_text(entry.duration) if entry.duration is not None else "working"
+    timing = duration_text(entry.duration) if entry.duration is not None else "working"
     header = Style(foreground=theme.accent, bold=True)
     if running:
         row = _running_label(f"Thinking  {timing}", theme, frame)
