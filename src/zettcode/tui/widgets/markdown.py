@@ -20,6 +20,9 @@ FENCE = "```"
 TABLE_GAP = 3
 TABLE_MIN_COLUMN = 4
 TABLE_MAX_COLUMN = 60
+#: Columns a list item is inset by, relative to the prose above it, so a list
+#: reads as content under its heading instead of another paragraph.
+LIST_INDENT = 2
 _BLANK = re.compile(r"\n[ \t]*\n")
 # Underscore emphasis needs a word boundary on both sides, as CommonMark does:
 # otherwise ``replace_in_file`` would lose the underscores that spell it.
@@ -28,6 +31,7 @@ _INLINE = re.compile(
 )
 _HEADING = re.compile(r"^(#{1,3})\s+(.+)$")
 _BULLET = re.compile(r"^(\s*)[-+*]\s+(.+)$")
+_ORDERED = re.compile(r"^(\s*)(\d{1,3})[.)]\s+(.+)$")
 _QUOTE = re.compile(r"^\s*>\s?(.*)$")
 _RULE = re.compile(r"^\s{0,3}(?:-{3,}|\*{3,}|_{3,})\s*$")
 
@@ -95,11 +99,19 @@ def render_markdown(text: str, width: int, theme: Theme = DARK) -> list[TextLine
             continue
         rendered = markdown_line(line, theme=theme)
         if rendered is not None:
-            logical.append(TextLine(tuple(rendered)))
+            logical.append(rendered)
         index += 1
     result: list[TextLine] = []
     for line in logical:
-        result.extend(TextLine(row) for row in wrap_spans(line.spans, width))
+        # A list item wraps under its own text rather than back to the margin,
+        # which the renderer marks by putting the indent in the line's metadata.
+        indent = line.metadata if isinstance(line.metadata, int) else 0
+        rows = wrap_spans(line.spans, max(1, width - indent))
+        for position, row in enumerate(rows):
+            if position == 0 or indent <= 0:
+                result.append(TextLine(row))
+            else:
+                result.append(TextLine((Span(" " * indent, Style(foreground=theme.text)), *row)))
     return result
 
 
@@ -118,25 +130,49 @@ def rule_spans(width: int, theme: Theme) -> tuple[Span, ...]:
     return (Span("\u2500" * max(1, width), Style(foreground=theme.muted)),)
 
 
-def markdown_line(line: str, *, theme: Theme) -> list[Span] | None:
-    """Render one non-code logical line."""
+def markdown_line(line: str, *, theme: Theme) -> TextLine | None:
+    """Render one non-code logical line.
+
+    The returned line's metadata carries the indent its wrapped rows should
+    keep, which is how a list item stays aligned under its own text.
+    """
     heading = _HEADING.match(line)
     if heading:
         # Every level keeps the body colour: a dimmed heading read as washed-out
         # text in the answer, and the blank line around it already separates it.
-        return inline_markdown(heading.group(2), base=Style(foreground=theme.text, bold=True), theme=theme)
+        return TextLine(
+            tuple(inline_markdown(heading.group(2), base=Style(foreground=theme.text, bold=True), theme=theme))
+        )
 
     bullet = _BULLET.match(line)
     if bullet:
-        prefix = [Span(f"{bullet.group(1)}\u00b7 ", Style(foreground=theme.text))]
-        return prefix + inline_markdown(bullet.group(2), theme=theme)
+        return list_item(f"{bullet.group(1)}\u00b7 ", bullet.group(2), theme=theme)
+
+    ordered = _ORDERED.match(line)
+    if ordered:
+        return list_item(f"{ordered.group(1)}{ordered.group(2)}. ", ordered.group(3), theme=theme)
 
     quote = _QUOTE.match(line)
     if quote:
         prefix = [Span("\u2502 ", Style(foreground=theme.accent))]
-        return prefix + inline_markdown(quote.group(1), base=Style(foreground=theme.subtle), theme=theme)
+        return TextLine(
+            tuple(prefix + inline_markdown(quote.group(1), base=Style(foreground=theme.subtle), theme=theme))
+        )
 
-    return inline_markdown(line, theme=theme)
+    return TextLine(tuple(inline_markdown(line, theme=theme)))
+
+
+def list_item(marker: str, body: str, *, theme: Theme) -> TextLine:
+    """Return one list item, inset under the prose and wrapping under its text.
+
+    Args:
+        marker: The item's own marker, already carrying any source indent.
+        body: Item text, rendered with the inline rules.
+        theme: Palette used for the marker and the body.
+    """
+    prefix = " " * LIST_INDENT + marker
+    spans = (Span(prefix, Style(foreground=theme.text)), *inline_markdown(body, theme=theme))
+    return TextLine(spans, metadata=display_width(prefix))
 
 
 def inline_markdown(value: str, *, base: Style | None = None, theme: Theme = DARK) -> list[Span]:
