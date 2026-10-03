@@ -384,7 +384,9 @@ and clears the old view. The row before command completions is empty space,
 not a rule. Scrolling away from the newest line floats a `↓ back to bottom`
 badge over the transcript's last row; clicking it, or pressing `Esc`, follows
 the tail again, and the binding is captured precisely because the composer
-would otherwise swallow `Esc`. Two
+would otherwise swallow `Esc`. The status line's left segment ends with the
+active session's title, cached when a turn names it or a session is resumed so
+the metadata log is not folded on every frame. Two
 bindings show why the framework distinguishes capture from bubble priority:
 `ctrl_c` and `ctrl_d` are captured, so the application can interrupt or exit
 before the composer sees the key, while `page_up` and `page_down` are bubble
