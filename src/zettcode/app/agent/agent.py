@@ -10,13 +10,16 @@ from zett_agent import (
     AgentEvent,
     AgentEventDispatcher,
     AgentRunConfig,
+    AssistantMessage,
     ExternalEvent,
+    UserMessage,
 )
 
 from ...config import ModelConfig, ZettCodeConfig
 from ..commands import Command, CommandResult
 from .runtime import ZettCodeRuntime
-from .session import Session
+from .storage import SessionInfo
+from .title import summarize_title
 
 
 class ZettCodeAgent:
@@ -64,7 +67,6 @@ class ZettCodeAgent:
         """
         return (
             Command("/new", "start a fresh session", "agent", self._command_new),
-            Command("/sessions", "list persisted sessions", "agent", self._command_sessions),
             Command("/use", "switch to a session: /use <id>", "agent", self._command_use),
         )
 
@@ -98,9 +100,42 @@ class ZettCodeAgent:
         """Switch future turns to a session."""
         self.runtime.use_session(session_id)
 
-    async def list_sessions(self, *, limit: int = 20) -> list[Session]:
-        """List persisted sessions by recent activity."""
+    async def list_sessions(self, *, limit: int = 20) -> list[SessionInfo]:
+        """List persisted session metadata by recent activity."""
         return await self.runtime.persistence.list_sessions(limit=limit)
+
+    async def title_session(self, session_id: str) -> str | None:
+        """Name a session from its first exchange, unless it already has a title.
+
+        The call is a background nicety: it reads the stored branch, asks the
+        active model for a short title, and appends that title to the session.
+
+        Args:
+            session_id: Session to name.
+
+        Returns:
+            The stored title, or ``None`` when the session was already named, has
+            no first exchange yet, or the model replied with nothing usable.
+        """
+        if self.runtime.persistence.session_title(session_id) is not None:
+            return None
+        session = self.runtime.persistence.read(session_id)
+        branch = session.branch()
+        question = next(
+            (line.message[0].text for line in branch if isinstance(line.message[0], UserMessage)),
+            None,
+        )
+        answer = next(
+            (line.message[0].content for line in reversed(branch) if isinstance(line.message[0], AssistantMessage)),
+            None,
+        )
+        if not question or not answer:
+            return None
+        title = await summarize_title(self.runtime.model, question=question, answer=answer)
+        if title is None:
+            return None
+        await self.runtime.persistence.set_title(session_id, title)
+        return title
 
     def use_model(self, name: str | ModelConfig) -> ModelConfig:
         """Select a configured model for subsequent turns."""
@@ -121,18 +156,6 @@ class ZettCodeAgent:
             return CommandResult(messages=("Usage: `/use <session-id>`",))
         self.use_session(argument)
         return CommandResult(notification=f"using session {self.session_id[:8]}")
-
-    async def _command_sessions(self, argument: str) -> CommandResult:
-        """List recent sessions as a Markdown list, marking the active one."""
-        sessions = await self.list_sessions(limit=20)
-        if not sessions:
-            return CommandResult(messages=("No persisted sessions.",))
-        rows = [
-            f"- `{session.session_id}` · {session.message_count} messages"
-            + (" **(current)**" if session.session_id == self.session_id else "")
-            for session in sessions
-        ]
-        return CommandResult(messages=("\n".join(rows),))
 
     def respond_approval(self, session_id: str, call_id: str, decision: str, remember: bool) -> None:
         """Answer a pending shell approval for the originating session."""

@@ -68,7 +68,10 @@ src/zettcode/
   app/               the ZettCode application, built on the framework
     agent/           transcript.py (the conversation model and its render
                      cache), projection.py (agent events into that model),
-                     runtime.py (AgentClient, persistence, session)
+                     runtime.py (AgentClient and composition), title.py (the
+                     one-shot session naming call), storage/ (the workspace
+                     layout, the JSONL conversation tree, metadata.jsonl, and
+                     the persistence plugin)
     ui/              app.py (shell, keymap, commands), transcript.py (the
                      virtualized view over the model)
   tui/               the reusable, agent-agnostic framework
@@ -321,6 +324,15 @@ the run), or abort (``esc``). Arrows, Enter, the number keys, and clicks all
 pick a row, and Escape aborts. Auto mode flips the runtime's approval extension
 off rather than persisting a session policy, so the next launch reviews
 commands again.
+
+`app/agent/title.py` names a session after its first exchange: one provider
+request with no tools, whose reply is reduced to a single line and written into
+the workspace's `metadata.jsonl`, so renaming appends a line to the index and
+never enters the conversation log. The shell schedules that call in the
+background once a turn ends, which keeps the composer responsive, and `/sessions` presents the
+result as another bottom panel — one row per session, with the title padded into
+a column, the age of the last change, and the short id so an untitled session is
+still identifiable.
 
 `app/ui/app.py` assembles the header, transcript, composer, and status line,
 and owns the keymap, the slash commands, the approval panel, and the toasts. Two

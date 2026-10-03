@@ -55,15 +55,22 @@ panel and returns to the composer.
 image input to the composer. Unknown keys and wrong types are reported, not
 ignored.
 
-Sessions live in `~/.zettcode/sessions/`, one append-only JSONL file per session:
-every record carries a parent id, so a session is a tree, and a compaction adds a
-summary node the active context is cut at. Use `/sessions` and `/use <id>` to
-inspect and resume sessions; sessions are not selected in the config file.
+Sessions live in `~/.zettcode/sessions/<base64 workspace path>/`, one append-only
+JSONL file per session: every record carries a parent id, so a session is a tree,
+and a compaction adds a summary node the active context is cut at. Each workspace
+folder also holds `metadata.jsonl`, a small append-only log of titles and activity
+times that is folded on read, so listing sessions never parses a conversation.
+After the first reply the agent names the session with one small model call and
+appends a title line. `/sessions` opens a picker panel listing recent sessions with
+their title and how long ago they last changed; `Enter` resumes the highlighted one,
+and `/use <id>` still switches directly. Sessions are not selected in the config
+file.
 
 ## Approvals
 
 `run_shell` asks for confirmation before it executes anything. The prompt offers
-Run, Always (remember this exact command), and Abort, and `Esc` aborts.
+`y` (run once), `a` (approve every later command this run), `p` (remember this
+exact command, when the runtime can), and `Esc` to abort.
 
 The agent's plan, when it publishes one, appears above the composer. Set
 `ZETTCODE_REDUCED_MOTION` to suppress decorative animation.

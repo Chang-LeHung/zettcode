@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from zett_agent import (
@@ -16,13 +17,15 @@ from zett_agent import (
     TodoWriteResult,
     ToolCall,
     ToolMessage,
+    UserMessage,
 )
 
 from zettcode.app import Transcript, TranscriptSource, ZettCodeApp
 from zettcode.app.agent.agent import ZettCodeAgent
 from zettcode.app.agent.projection import TranscriptProjector
+from zettcode.app.agent.storage import SessionInfo, SessionStore
 from zettcode.app.commands import Command, CommandResult
-from zettcode.app.ui.widgets import WELCOME, ApprovalChoice, ApprovalPage
+from zettcode.app.ui.widgets import WELCOME, ApprovalChoice, ApprovalPage, SessionsPage, format_ago
 from zettcode.config import ModelConfig
 from zettcode.tui import DARK, LIGHT, ListItem, ListPage, Rect, walk
 from zettcode.tui.testing import Harness
@@ -60,8 +63,11 @@ class FakeClient:
 
 
 class FakePersistence:
+    def __init__(self) -> None:
+        self.sessions: list[SessionInfo] = []
+
     async def list_sessions(self, limit: int | None = None):
-        return []
+        return self.sessions[:limit] if limit is not None else list(self.sessions)
 
 
 class FakeTodos:
@@ -140,6 +146,11 @@ def _presented_page(app: ZettCodeApp) -> ListPage:
 def _approval_page(app: ZettCodeApp) -> ApprovalPage:
     """Return the approval panel on top of the stack, inside its border."""
     return next(widget for widget in walk(app.app.screens.top.widget) if isinstance(widget, ApprovalPage))
+
+
+def _sessions_page(app: ZettCodeApp) -> SessionsPage:
+    """Return the session panel on top of the stack, inside its border."""
+    return next(widget for widget in walk(app.app.screens.top.widget) if isinstance(widget, SessionsPage))
 
 
 def test_welcome_mark_is_compact_and_readable_in_both_themes():
@@ -683,7 +694,7 @@ async def test_the_slash_menu_lists_and_filters_commands():
 
     harness.write("/")
 
-    assert [item.value for item in app.completions.items][:3] == ["/help", "/new", "/sessions"]
+    assert [item.value for item in app.completions.items][:3] == ["/help", "/new", "/use"]
     assert "show the commands and the keys" in harness.text()
     assert "[app]" in harness.text() and "[agent]" in harness.text()
     assert app.completions.items[0].type == "app"
@@ -706,7 +717,7 @@ async def test_app_and_agent_commands_are_routed_to_their_owners():
     assert [(item.name, item.type) for item in app.commands[:3]] == [
         ("/help", "app"),
         ("/new", "agent"),
-        ("/sessions", "agent"),
+        ("/use", "agent"),
     ]
 
     harness.write("/new")
@@ -885,6 +896,78 @@ async def test_a_wrapping_draft_grows_the_composer_and_shrinks_the_transcript():
     # absorbs the difference, which is what a re-layout is for.
     assert app.header.rect == Rect(0, 0, 60, 1)
     assert app.view.rect.height == view_before.height - (app.composer.rect.height - composer_before.height)
+
+
+def test_format_ago_uses_the_coarsest_unit_that_fits():
+    now = datetime(2026, 10, 3, 12, 0, tzinfo=UTC)
+
+    assert format_ago(now - timedelta(seconds=5), now=now) == "just now"
+    assert format_ago(now - timedelta(seconds=90), now=now) == "1m ago"
+    assert format_ago(now - timedelta(hours=3), now=now) == "3h ago"
+    assert format_ago(now - timedelta(days=2), now=now) == "2d ago"
+    # A clock skew must not produce a negative age.
+    assert format_ago(now + timedelta(minutes=1), now=now) == "just now"
+
+
+async def test_sessions_command_opens_a_panel_with_titles_and_ages(tmp_path):
+    store = SessionStore(tmp_path)
+    await store.append("alpha-1", "req", UserMessage(content="hi"))
+    await store.append("beta-2", "req", UserMessage(content="hi"))
+    await store.set_title("alpha-1", "Fix the parser crash")
+    app = build_app()
+    app.agent.runtime.persistence.sessions = await store.list_sessions()
+    harness = _harness(app)
+
+    harness.write("/sessions")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    page = _sessions_page(app)
+    text = harness.render().text
+    assert page.rect.y > 0
+    assert "Fix the parser crash" in text
+    assert text.count("just now") == 2
+    # A session without a title keeps that column empty but still shows its id.
+    assert "beta-2" in text
+    assert [item.value for item in page.list.items] == ["beta-2", "alpha-1"]
+
+    harness.press("down")
+    harness.press("enter")
+
+    assert app.agent.session_id == "alpha-1"
+    assert app.app.screens.top.name != "page"
+
+
+async def test_sessions_command_reports_an_empty_store():
+    app = build_app()
+    harness = _harness(app)
+
+    harness.write("/sessions")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    assert app.app.screens.top.name == "main"
+    assert any("No persisted sessions" in entry.text for entry in app.transcript.entries)
+
+
+async def test_the_first_reply_names_the_session_in_the_background():
+    app = build_app()
+    harness = _harness(app)
+    calls: list[str] = []
+
+    async def fake_title(session_id: str) -> str | None:
+        calls.append(session_id)
+        return "Fix the parser crash"
+
+    app.agent.title_session = fake_title
+    harness.write("please fix the parser")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+    assert app._title_task is not None
+    await asyncio.wait_for(app._title_task, 2.0)
+
+    assert calls == ["session-0001"]
+    assert any("session title: Fix the parser crash" in entry.text for entry in app.transcript.entries)
 
 
 def _harness(app: ZettCodeApp) -> Harness:
