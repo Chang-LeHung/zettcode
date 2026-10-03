@@ -23,7 +23,7 @@ from zett_agent import (
 )
 
 from ...config import ModelConfig, ZettCodeConfig
-from .session import SessionStore
+from .storage import SessionStore
 
 
 def build_system_prompt(config: ZettCodeConfig) -> str:
@@ -66,7 +66,7 @@ class ZettCodeRuntime:
     async def create(cls, config: ZettCodeConfig) -> ZettCodeRuntime:
         """Create all owned resources after changing into the chosen workspace."""
         os.chdir(config.workspace)
-        persistence = SessionStore(config.store)
+        persistence = SessionStore(config.store, config.workspace)
         session_id = new_uuid7()
         selected = config.models[0]
         model = OpenAIProvider(

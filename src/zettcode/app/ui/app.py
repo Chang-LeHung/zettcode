@@ -95,6 +95,7 @@ class ZettCodeApp:
         self.root = ZettCodeRoot(self, body)
         self.app = TuiApp(self.root, theme=theme, reduced_motion=agent.reduced_motion)
         self._task: asyncio.Task[None] | None = None
+        self._title_task: asyncio.Task[None] | None = None
         self._busy = False
         self._status = "ready"
         self._auto_shell = False
@@ -114,7 +115,10 @@ class ZettCodeApp:
         """Own the terminal until the application exits."""
         from ...tui import TerminalRunner
 
-        await TerminalRunner(self.app).run()
+        try:
+            await TerminalRunner(self.app).run()
+        finally:
+            await self._stop_title_task()
 
     # -- commands -----------------------------------------------------------
     def _install_keymap(self) -> None:
@@ -268,6 +272,8 @@ class ZettCodeApp:
         except Exception as error:
             self.transcript.complete_thinking()
             self.transcript.notice(f"error: {error}")
+        else:
+            self._title_session_later(self.agent.session_id)
         finally:
             self._busy = False
             self._status = "ready"
@@ -344,6 +350,44 @@ class ZettCodeApp:
         else:
             self.close_page()
             self._notify(f"using model {selected.shown_name}", level="success")
+
+    def select_session(self, session_id: str) -> None:
+        """Switch to the session picked in the panel and return to the composer."""
+        try:
+            self.agent.use_session(session_id)
+        except ValueError as error:
+            self.transcript.notice(str(error))
+            self.close_page()
+            return
+        # Close the panel first: the toast is its own screen, and closing it
+        # instead of the panel would leave the picker on top.
+        self.close_page()
+        self._notify(f"using session {session_id[:8]}", level="success")
+
+    # -- titles -------------------------------------------------------------
+    def _title_session_later(self, session_id: str) -> None:
+        """Ask the agent to name a session once, off the composer's critical path."""
+        if self._title_task is not None and not self._title_task.done():
+            return
+        self._title_task = asyncio.create_task(self._name_session(session_id))
+
+    async def _name_session(self, session_id: str) -> None:
+        """Store the title the agent summarizes and show it as a notice."""
+        try:
+            title = await self.agent.title_session(session_id)
+        except Exception:
+            return  # naming a session is a nicety; never report its failure
+        if title is None:
+            return
+        self.transcript.notice(f"session title: {title}")
+        self.app.invalidate()
+
+    async def _stop_title_task(self) -> None:
+        """Stop a title request that is still in flight when the app exits."""
+        if self._title_task is None or self._title_task.done():
+            return
+        self._title_task.cancel()
+        await asyncio.gather(self._title_task, return_exceptions=True)
 
     # -- approvals ----------------------------------------------------------
     def _approval_requested(self, event: AgentEvent) -> None:

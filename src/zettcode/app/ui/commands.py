@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 
 from ...tui import theme_named
 from ..commands import Command, CommandResult
-from .widgets import ModelPage, help_text
+from .widgets import ModelPage, SessionsPage, help_text
 
 if TYPE_CHECKING:  # pragma: no cover - only needed for the annotation
     from .app import ZettCodeApp
@@ -32,6 +32,7 @@ class ShellCommands:
         return (
             Command("/help", "show the commands and the keys", "app", self.help),
             *agent_commands,
+            Command("/sessions", "browse recent sessions", "app", self.sessions),
             Command("/model", "choose a model", "app", self.model),
             Command("/theme", "switch the palette: /theme dark|light", "app", self.theme),
             Command("/clear", "clear the transcript", "app", self.clear),
@@ -53,6 +54,21 @@ class ShellCommands:
             selected = self.shell.agent.use_model(name)
             return CommandResult(notification=f"using model {selected.shown_name}", relayout=True)
         page = ModelPage(self.shell.agent, on_select=self.shell.select_model, on_cancel=self.shell.close_page)
+        return CommandResult(page=page)
+
+    async def sessions(self, name: str) -> CommandResult:
+        """Open the recent-session picker, or switch straight to a named session.
+
+        The picker is a widget, so the command lives with the shell: the agent
+        owns the stored sessions, the shell owns the widget that browses them.
+        """
+        if name:
+            self.shell.agent.use_session(name)
+            return CommandResult(notification=f"using session {name[:8]}", relayout=True)
+        sessions = await self.shell.agent.list_sessions(limit=20)
+        if not sessions:
+            return CommandResult(messages=("No persisted sessions.",))
+        page = SessionsPage(sessions, on_select=self.shell.select_session, on_cancel=self.shell.close_page)
         return CommandResult(page=page)
 
     async def theme(self, name: str) -> CommandResult:

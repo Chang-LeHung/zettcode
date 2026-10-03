@@ -1,6 +1,8 @@
 """The session store: JSONL format, the message tree, and the agent lifecycle."""
 
+import base64
 import json
+import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -23,14 +25,15 @@ from zett_agent.extensions.compaction import CompactedMessage
 from zett_agent.extensions.events import CompactionEvent, MessageAppendedEvent, RunCancelledEvent
 from zett_agent.extensions.persistence import BaseSessionPersistenceExtension
 
-from zettcode.app.agent.session import (
-    CompactionLine,
-    MessageLine,
-    SessionLine,
-    SessionPersistenceMixin,
-    SessionStore,
-    now,
+from zettcode.app.agent.storage import SessionPersistenceMixin, SessionStore, now
+from zettcode.app.agent.storage.metadata import (
+    SessionActivity,
+    SessionStarted,
+    SessionTitle,
+    append_metadata,
+    read_metadata,
 )
+from zettcode.app.agent.storage.records import CompactionLine, MessageLine, SessionLine
 
 
 def _lines(store: SessionStore, session_id: str) -> list[dict]:
@@ -386,13 +389,32 @@ async def test_usage_is_rejected_for_user_messages(tmp_path: Path):
         await store.append("s1", "req", UserMessage(content="hi"), usage=ModelUsage(input_tokens=1, output_tokens=1))
 
 
-async def test_each_session_owns_a_directory_with_its_data_file(tmp_path: Path):
-    store = SessionStore(tmp_path)
+async def test_each_session_owns_a_directory_under_its_workspace(tmp_path: Path):
+    store = SessionStore(tmp_path, workspace="/work/project")
     await store.append("s1", "req", UserMessage(content="hi"))
 
-    assert store.session_dir("s1") == tmp_path / "s1"
-    assert store.session_path("s1") == tmp_path / "s1" / "data.jsonl"
-    assert (tmp_path / "s1" / "data.jsonl").is_file()
+    key = base64.urlsafe_b64encode(b"/work/project").decode().rstrip("=")
+    assert store.workspace_dir == tmp_path / key
+    assert store.session_dir("s1") == tmp_path / key / "s1"
+    assert store.session_path("s1") == tmp_path / key / "s1" / "data.jsonl"
+    assert (tmp_path / key / "s1" / "data.jsonl").is_file()
+
+
+def test_the_workspace_folder_keeps_each_project_apart(tmp_path: Path):
+    first = SessionStore(tmp_path, workspace="/work/one")
+    second = SessionStore(tmp_path, workspace="/work/two")
+
+    assert first.workspace_dir != second.workspace_dir
+    # The key is the URL-safe base64 of the resolved path, without padding.
+    assert first.workspace_dir.name == base64.urlsafe_b64encode(b"/work/one").decode().rstrip("=")
+    assert "/" not in first.workspace_dir.name
+
+
+def test_a_very_long_workspace_path_still_names_one_folder(tmp_path: Path):
+    store = SessionStore(tmp_path, workspace="/" + "deep/" * 200)
+
+    assert len(store.workspace_dir.name) <= 120
+    assert store.workspace_dir.is_dir()
 
 
 async def test_list_sessions_reports_activity_newest_first(tmp_path: Path):
@@ -404,8 +426,72 @@ async def test_list_sessions_reports_activity_newest_first(tmp_path: Path):
     listed = await store.list_sessions()
 
     assert [session.session_id for session in listed] == ["newer", "older"]
-    assert [session.message_count for session in listed] == [2, 1]
+    assert store.read("newer").message_count == 2
     assert await store.list_sessions(limit=1, offset=1) == [listed[1]]
+
+
+async def test_the_metadata_log_records_the_session_lifecycle(tmp_path: Path):
+    store = SessionStore(tmp_path, workspace="/work/project")
+    await store.append("s1", "req", UserMessage(content="one"))
+    await store.append("s1", "req", UserMessage(content="two"))
+    await store.set_title("s1", "Fix the parser crash")
+
+    records = [json.loads(line) for line in store.metadata_path.read_text(encoding="utf-8").splitlines()]
+
+    assert [record["kind"] for record in records] == ["session", "activity", "activity", "title"]
+    assert records[0]["session_id"] == "s1"
+    assert records[-1]["title"] == "Fix the parser crash"
+
+
+def test_the_metadata_log_folds_to_the_newest_record_of_each_kind(tmp_path: Path):
+    path = tmp_path / "metadata.jsonl"
+    start = datetime(2026, 10, 3, 12, 0, tzinfo=UTC)
+    append_metadata(path, SessionStarted(session_id="s1", created_at=start))
+    append_metadata(path, SessionTitle(session_id="s1", title="First name"))
+    append_metadata(path, SessionActivity(session_id="s1", updated_at=start))
+    append_metadata(path, SessionTitle(session_id="s1", title="Second name"))
+    append_metadata(path, SessionActivity(session_id="s2", updated_at=start))
+
+    (info,) = read_metadata(path)
+
+    assert (info.session_id, info.title) == ("s1", "Second name")
+    assert info.created_at == start
+    # An activity line for an unknown session cannot invent one.
+    assert [row.session_id for row in read_metadata(path)] == ["s1"]
+
+
+def test_a_torn_final_metadata_line_is_ignored(tmp_path: Path):
+    path = tmp_path / "metadata.jsonl"
+    start = datetime(2026, 10, 3, 12, 0, tzinfo=UTC)
+    append_metadata(path, SessionStarted(session_id="s1", created_at=start))
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write('{"kind": "title", "session_id": "s1"')
+
+    (info,) = read_metadata(path)
+
+    assert (info.session_id, info.title) == ("s1", None)
+
+
+async def test_the_listing_answers_from_the_metadata_log_alone(tmp_path: Path):
+    store = SessionStore(tmp_path, workspace="/work/project")
+    await store.append("indexed", "req", UserMessage(content="hi"))
+    await store.set_title("indexed", "Fix the parser crash")
+    # Damage the conversation file: the listing must not need to parse it, so
+    # the row still answers with its title and activity times.
+    store.session_path("indexed").write_text("torn", encoding="utf-8")
+
+    listed = await store.list_sessions()
+
+    assert [(info.session_id, info.title) for info in listed] == [("indexed", "Fix the parser crash")]
+    assert listed[0].created_at <= listed[0].updated_at
+
+
+async def test_an_index_row_without_a_session_folder_is_hidden(tmp_path: Path):
+    store = SessionStore(tmp_path, workspace="/work/project")
+    await store.append("gone", "req", UserMessage(content="hi"))
+    shutil.rmtree(store.session_dir("gone"))
+
+    assert await store.list_sessions() == []
 
 
 # -- the agent lifecycle ----------------------------------------------------
@@ -432,8 +518,8 @@ async def test_persisting_a_turn_and_restoring_it(tmp_path: Path):
     await store.on_event(first, appended(AssistantMessage(content="hi")))
     await store.on_success(first, AssistantMessage(content="done"))
 
-    assert (tmp_path / "s1" / "data.jsonl").is_file()
-    assert [session.message_count for session in await store.list_sessions()] == [2]
+    assert store.session_path("s1").is_file()
+    assert store.read("s1").message_count == 2
 
     second = context(request_id="req-2")
     await store.on_state(second)

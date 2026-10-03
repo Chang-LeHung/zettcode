@@ -1,54 +1,42 @@
-"""Session storage: the JSONL format, the message tree, and the agent hooks.
+"""Where sessions live: the workspace layout, the JSONL writer, and the plugin.
 
-One class does the whole job the application sees: :class:`SessionStore` is the
-agent plugin — it restores the model context on ``on_state`` and saves messages
-and checkpoints from the event stream. The save/load mechanics live in the
-standalone :class:`SessionPersistenceMixin` it is built from: the store
-directory (``~/.zettcode/sessions`` by default, one ``<session-id>/data.jsonl``
-per session), the append-only records, the message tree, and the queries the
-application needs.
+One store root is shared by every workspace the user opens, so it is grouped by
+workspace first::
 
-Records are a tree, not a list. Every record names the node it continues from::
+    ~/.zettcode/sessions/<base64 workspace path>/
+    ├── metadata.jsonl              <- the index: title and activity times
+    └── <session-id>/
+        └── data.jsonl              <- the conversation tree
 
-    m1 ── m2 ── m3 ── m4 ── m5        <- the head is the last message written
-                 └── C (a checkpoint through m3)
-
-* The **head** is the last message line in the file. Appending continues from
-  it, and a *fork* is therefore a plain append: write a message whose ``parent``
-  is an older node and the abandoned branch stays in the file, out of context.
-* A **checkpoint** is an annotation rather than a conversation node: its
-  ``parent`` is the last message it summarizes. The summary applies to any
-  branch that still contains that boundary, and a checkpoint never becomes the
-  parent of later messages.
-* The **active branch** is the chain from the head back to the first message.
-  Its context is the newest checkpoint whose boundary sits on that chain, plus
-  the messages after it (see :meth:`Session.active`).
-
-Message bodies are the runtime's own types: ``AnyMessage``, ``MessageTiming``,
-and ``ModelUsage`` are imported from ``zett-agent`` rather than restated, and
-the ``{"kind": ..., "data": ...}`` envelope is the runtime's own
-``encode_messages``/``decode_messages`` pair, called at this module's edge.
+The folder name is the URL-safe base64 of the resolved workspace path, so a
+path containing separators never turns into extra folders and two checkouts of
+the same project stay apart.
 
 File operations are plain blocking reads and writes: an append is one small
 line, and the caller is the single process owning the session. The last line of
 a file may be truncated by a crash, so an unparsable *final* line is ignored; a
 corrupt line anywhere else raises, because that means real damage.
+
+:class:`SessionPersistenceMixin` owns all of that — the layout, parsing and the
+torn-last-line policy, the tree walk, ``read``, ``append``, ``checkpoint``, the
+metadata log, and ``list_sessions``. :class:`SessionStore` adds the framework
+hooks on top, so saving stays a mixin concern and the agent lifecycle stays a
+plugin concern.
 """
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
-import re
 from collections import Counter
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
-from enum import StrEnum
+from datetime import datetime
 from pathlib import Path
-from typing import Annotated, Literal
 from weakref import WeakKeyDictionary
 
-from pydantic import BaseModel, Field, TypeAdapter, ValidationError, field_serializer, field_validator
+from pydantic import ValidationError
 from zett_agent import (
     AgentExtension,
     AgentRunContext,
@@ -63,46 +51,54 @@ from zett_agent import (
 )
 from zett_agent.extensions.compaction import CompactedMessage
 from zett_agent.extensions.events import CompactionEvent, MessageAppendedEvent, RunCancelledEvent
-from zett_agent.storage import decode_messages, encode_messages
 
-STORE_FILE = "data.jsonl"
-STORE_VERSION = 1
-MAX_TITLE = 200
-MAX_AGENT_NAME = 64
+from .metadata import (
+    MAX_TITLE,
+    METADATA_FILE,
+    SessionActivity,
+    SessionInfo,
+    SessionStarted,
+    SessionTitle,
+    append_metadata,
+    read_metadata,
+)
+from .records import (
+    LINES,
+    MAX_AGENT_NAME,
+    SAFE_SESSION_ID,
+    STORE_FILE,
+    STORE_VERSION,
+    CompactionLine,
+    Line,
+    MessageLine,
+    Session,
+    SessionLine,
+    now,
+)
 
-# Session ids become directory names, so they may not escape the store root.
-SAFE_SESSION_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
-
-#: A JSON value, as the stored metadata and tags can contain.
-type JsonValue = str | int | float | bool | None | list[JsonValue] | dict[str, JsonValue]
+#: Longest workspace folder name; longer paths keep a hash instead of the tail.
+MAX_KEY_CHARS = 120
 
 
-class LineKind(StrEnum):
-    """Discriminator values of the record union, written as ``kind``."""
+def workspace_key(workspace: str | Path) -> str:
+    """Return the folder name that groups one workspace's sessions.
 
-    SESSION = "session"
-    MESSAGE = "message"
-    COMPACTION = "compaction"
-
-
-def _load_messages(value: object) -> object:
-    """Decode stored ``{"kind", "data"}`` envelopes into runtime messages.
-
-    The runtime's decoder owns the kind-to-type union, so this module never
-    restates the message schema. A value that already holds decoded messages —
-    when a caller re-validates a line this process just built — passes through.
+    The key is the URL-safe base64 of the resolved absolute path without
+    padding, so the store reads as a plain directory tree and a path containing
+    separators never turns into extra folders. A path too long for one file name
+    keeps a short digest instead of its tail, which still keeps two long
+    checkouts apart.
     """
-    if isinstance(value, (tuple, list)) and (not value or not isinstance(value[0], dict)):
-        return value
-    return tuple(decode_messages(json.dumps(list(value))))
+    encoded = base64.urlsafe_b64encode(str(Path(workspace).expanduser().resolve()).encode()).decode().rstrip("=")
+    if len(encoded) <= MAX_KEY_CHARS:
+        return encoded
+    digest = hashlib.sha256(encoded.encode()).hexdigest()[:12]
+    return f"{encoded[: MAX_KEY_CHARS - 13]}-{digest}"
 
 
-def _dump_messages(messages: Sequence[AnyMessage]) -> list[dict[str, object]]:
-    """Encode runtime messages into the stored envelope form."""
-    return json.loads(encode_messages(list(messages)))
-
-
-def _context(value: Mapping[str, object] | None, *, field: str, nonempty_keys: bool = False) -> dict[str, object]:
+def message_context(
+    value: Mapping[str, object] | None, *, field: str, nonempty_keys: bool = False
+) -> dict[str, object]:
     """Validate one metadata or tags object before it reaches the log."""
     if value is None:
         return {}
@@ -114,183 +110,6 @@ def _context(value: Mapping[str, object] | None, *, field: str, nonempty_keys: b
             raise ValueError(f"{field} keys cannot be empty")
         encoded[key] = item
     return encoded
-
-
-def now() -> datetime:
-    """Return the current UTC time, so every writer stamps records the same way."""
-    return datetime.now(UTC)
-
-
-class SessionLine(BaseModel):
-    """The first line of a session file: identity and display values."""
-
-    kind: Literal[LineKind.SESSION] = LineKind.SESSION
-    version: int
-    session_id: str
-    parent_session_id: str | None = None
-    title: str | None = None
-    agent_name: str | None = None
-    created_at: datetime
-
-
-class MessageLine(BaseModel):
-    """One message, continuing from ``parent``."""
-
-    kind: Literal[LineKind.MESSAGE] = LineKind.MESSAGE
-    id: str
-    parent: str | None = None
-    session_id: str
-    request_id: str
-    message: tuple[AnyMessage, ...]
-    timing: MessageTiming
-    usage: ModelUsage | None = None
-    metadata: dict[str, JsonValue] = Field(default_factory=dict)
-    tags: dict[str, JsonValue] = Field(default_factory=dict)
-    created_at: datetime
-
-    @field_validator("message", mode="before")
-    @classmethod
-    def _messages_from_storage(cls, value: object) -> object:
-        """Read the stored envelope list back into typed runtime messages."""
-        return _load_messages(value)
-
-    @field_serializer("message", when_used="json")
-    def _messages_to_storage(self, value: Sequence[AnyMessage]) -> list[dict[str, object]]:
-        """Write typed runtime messages as the stored envelope list."""
-        return _dump_messages(value)
-
-
-class CompactionLine(BaseModel):
-    """One checkpoint summarizing the branch up to ``parent``."""
-
-    kind: Literal[LineKind.COMPACTION] = LineKind.COMPACTION
-    id: str
-    parent: str
-    version: int
-    message: tuple[CompactedMessage, ...]
-    created_at: datetime
-
-    @field_validator("message", mode="before")
-    @classmethod
-    def _messages_from_storage(cls, value: object) -> object:
-        """Read the stored summary envelope back into a typed checkpoint body."""
-        return _load_messages(value)
-
-    @field_serializer("message", when_used="json")
-    def _messages_to_storage(self, value: Sequence[AnyMessage]) -> list[dict[str, object]]:
-        """Write the typed summary as the stored envelope list."""
-        return _dump_messages(value)
-
-
-Line = Annotated[SessionLine | MessageLine | CompactionLine, Field(discriminator="kind")]
-LINES = TypeAdapter(Line)
-
-
-@dataclass(frozen=True, slots=True)
-class Session:
-    """One parsed session file: its header, every record, and the active branch.
-
-    Attributes:
-        header: The session line, or ``None`` for a file that has none yet.
-        messages: Every message line in file order, across all branches.
-        compactions: Every checkpoint in file order.
-        head_id: Id of the last message written, which the next append continues
-            from. A tree can have several leaves, so "the head" is a choice and
-            this is the store's: the most recent append wins, which is what
-            makes a fork a plain append.
-    """
-
-    header: SessionLine | None
-    messages: tuple[MessageLine, ...]
-    compactions: tuple[CompactionLine, ...]
-    head_id: str | None
-
-    @property
-    def session_id(self) -> str:
-        """Return the session id; every listed session has a header."""
-        assert self.header is not None
-        return self.header.session_id
-
-    @property
-    def parent_session_id(self) -> str | None:
-        """Return the conversation this one was delegated from, if any."""
-        return self.header.parent_session_id if self.header is not None else None
-
-    @property
-    def title(self) -> str | None:
-        """Return the display title, when the caller set one."""
-        return self.header.title if self.header is not None else None
-
-    @property
-    def agent_name(self) -> str | None:
-        """Return the agent profile that owns the session, when set."""
-        return self.header.agent_name if self.header is not None else None
-
-    @property
-    def message_count(self) -> int:
-        """Return the number of stored messages, ignoring checkpoints."""
-        return len(self.messages)
-
-    def message(self, message_id: str) -> MessageLine | None:
-        """Return one message by id."""
-        return next((line for line in self.messages if line.id == message_id), None)
-
-    def index(self, message_id: str) -> int | None:
-        """Return a message's position in the file, or None when it is absent."""
-        return next((index for index, line in enumerate(self.messages) if line.id == message_id), None)
-
-    def branch(self) -> tuple[MessageLine, ...]:
-        """Return the active branch, oldest first: the head and its ancestors.
-
-        A fork leaves the abandoned branch in the file; this walk is what keeps
-        the fork out of the active context.
-        """
-        by_id = {line.id: line for line in self.messages}
-        branch: list[MessageLine] = []
-        current = self.head_id
-        while current is not None:
-            line = by_id.get(current)
-            if line is None:
-                break
-            branch.append(line)
-            current = line.parent
-        branch.reverse()
-        return tuple(branch)
-
-    def checkpoint_for(self, branch: tuple[MessageLine, ...] | None = None) -> CompactionLine | None:
-        """Return the newest checkpoint whose boundary the branch still contains."""
-        on_branch = {line.id for line in (self.branch() if branch is None else branch)}
-        applicable = [line for line in self.compactions if line.parent in on_branch]
-        return max(applicable, key=lambda line: line.version, default=None)
-
-    @property
-    def latest_compaction(self) -> CompactionLine | None:
-        """Return the highest-version checkpoint in the file, on any branch."""
-        return max(self.compactions, key=lambda line: line.version, default=None)
-
-    def active(self) -> tuple[CompactionLine | None, tuple[MessageLine, ...]]:
-        """Return the checkpoint and the messages that make up the model context.
-
-        The messages are the part of the active branch after the checkpoint's
-        boundary, oldest first.
-        """
-        branch = self.branch()
-        checkpoint = self.checkpoint_for(branch)
-        if checkpoint is None:
-            return None, branch
-        for position, line in enumerate(branch):
-            if line.id == checkpoint.parent:
-                return checkpoint, branch[position + 1 :]
-        return checkpoint, branch  # unreachable: the boundary is on the branch
-
-    @property
-    def updated_at(self) -> datetime:
-        """Return the time of the newest record, falling back to the header."""
-        stamps = [*self.messages, *self.compactions]
-        if stamps:
-            return max(line.created_at for line in stamps)
-        assert self.header is not None  # a file always starts with its header
-        return self.header.created_at
 
 
 @dataclass(slots=True)
@@ -307,39 +126,53 @@ class _Request:
 
 
 class SessionPersistenceMixin:
-    """Standalone mixin: read and write one conversation's JSONL tree.
+    """Standalone mixin: read and write the conversation log and its metadata.
 
     It inherits nothing, so it can be combined with the framework's
     ``AgentExtension`` (see :class:`SessionStore`). It owns the storage: the
-    session directory layout, parsing and the torn-last-line policy, the tree
-    walk, ``read``, ``append``, ``checkpoint``, and ``list_sessions``. It holds
-    no framework behavior.
+    workspace layout, parsing and the torn-last-line policy, the tree walk,
+    ``read``, ``append``, ``checkpoint``, the metadata log with
+    ``set_title``/``session_title``, and ``list_sessions``. It holds no
+    framework behavior.
 
     Args:
-        root: Directory holding one ``<session_id>/`` folder per session, each
-            with its own ``data.jsonl``. ``None`` uses ``~/.zettcode/sessions``.
-            Parent directories are created eagerly.
+        root: Directory holding one folder per workspace, and inside it one
+            ``<session_id>/`` folder per session with its own ``data.jsonl``.
+            ``None`` uses ``~/.zettcode/sessions``.
+        workspace: Project the sessions belong to; its resolved absolute path,
+            base64-encoded, names the workspace folder. ``None`` uses the
+            current directory, which is only right for standalone use — the
+            runtime always passes the configured workspace.
+
+    Parent directories are created eagerly.
     """
 
-    def __init__(self, root: str | Path | None = None) -> None:
+    def __init__(self, root: str | Path | None = None, workspace: str | Path | None = None) -> None:
         self.root = Path(root) if root is not None else Path.home() / ".zettcode" / "sessions"
-        self.root.mkdir(parents=True, exist_ok=True)
+        self.workspace = Path(workspace).expanduser().resolve() if workspace is not None else Path.cwd()
+        self.workspace_dir = self.root / workspace_key(self.workspace)
+        self.metadata_path = self.workspace_dir / METADATA_FILE
+        self.workspace_dir.mkdir(parents=True, exist_ok=True)
         super().__init__()
+
+    def _record_activity(self, session_id: str, updated_at: datetime) -> None:
+        """Stamp one session's activity, which is what a session list sorts on."""
+        append_metadata(self.metadata_path, SessionActivity(session_id=session_id, updated_at=updated_at))
 
     # -- files --------------------------------------------------------------
     def session_dir(self, session_id: str) -> Path:
         """Return the directory of one session, refusing ids that leave the store."""
         if not SAFE_SESSION_ID.match(session_id) or ".." in session_id:
             raise ValueError(f"Unsafe session id: {session_id!r}")
-        return self.root / session_id
+        return self.workspace_dir / session_id
 
     def session_path(self, session_id: str) -> Path:
         """Return the conversation file of one session."""
         return self.session_dir(session_id) / STORE_FILE
 
     def session_ids(self) -> Iterator[str]:
-        """Yield the id of every session folder this store owns."""
-        for path in sorted(self.root.glob(f"*/{STORE_FILE}")):
+        """Yield the id of every session folder this workspace owns."""
+        for path in sorted(self.workspace_dir.glob(f"*/{STORE_FILE}")):
             session_id = path.parent.name
             if SAFE_SESSION_ID.match(session_id) and ".." not in session_id:
                 yield session_id
@@ -408,7 +241,6 @@ class SessionPersistenceMixin:
         message: AnyMessage,
         timing: MessageTiming | None = None,
         parent_session_id: str | None = None,
-        title: str | None = None,
         agent_name: str | None = None,
         metadata: Mapping[str, object] | None = None,
         tags: Mapping[str, object] | None = None,
@@ -423,19 +255,20 @@ class SessionPersistenceMixin:
         stays in the file and drops out of the active context, and later appends
         continue from the fork.
         """
-        if title is not None and (not title.strip() or len(title) > MAX_TITLE):
-            raise ValueError(f"Session title must contain between 1 and {MAX_TITLE} characters")
         if agent_name is not None and (not agent_name.strip() or len(agent_name) > MAX_AGENT_NAME):
             raise ValueError(f"Agent name must contain between 1 and {MAX_AGENT_NAME} characters")
         if usage is not None and not isinstance(message, AssistantMessage):
             raise ValueError("Model usage belongs only to assistant messages")
         session = self.read(session_id)
-        self._write_header(session, session_id, parent_session_id, title, agent_name)
+        created_at = self._write_header(session, session_id, parent_session_id, agent_name)
+        if created_at is not None:
+            append_metadata(self.metadata_path, SessionStarted(session_id=session_id, created_at=created_at))
         if parent is None:
             parent = session.head_id
         elif session.message(parent) is None:
             raise ValueError(f"Unknown parent message: {parent!r}")
         node_id = new_uuid7()
+        stamp = now()
         self._append_line(
             session_id,
             MessageLine(
@@ -446,11 +279,12 @@ class SessionPersistenceMixin:
                 message=(message,),
                 timing=timing or MessageTiming.instant(),
                 usage=usage,
-                metadata=_context(metadata, field="Message metadata"),
-                tags=_context(tags, field="Message tags", nonempty_keys=True),
-                created_at=now(),
+                metadata=message_context(metadata, field="Message metadata"),
+                tags=message_context(tags, field="Message tags", nonempty_keys=True),
+                created_at=stamp,
             ),
         )
+        self._record_activity(session_id, stamp)
         return node_id
 
     async def checkpoint(
@@ -480,47 +314,76 @@ class SessionPersistenceMixin:
             created_at=now(),
         )
         self._append_line(session_id, line)
+        self._record_activity(session_id, line.created_at)
         return line
 
-    async def list_sessions(self, *, limit: int = 100, offset: int = 0) -> list[Session]:
-        """Return sessions by latest activity, newest first."""
+    async def set_title(self, session_id: str, title: str) -> None:
+        """Write one session's display title, replacing any earlier one.
+
+        The title is metadata, not conversation, so renaming is one more line in
+        the metadata log and never shows up in the message history.
+        """
+        cleaned = title.strip()
+        if not cleaned or len(cleaned) > MAX_TITLE:
+            raise ValueError(f"Session title must contain between 1 and {MAX_TITLE} characters")
+        if not any(info.session_id == session_id for info in read_metadata(self.metadata_path)):
+            raise ValueError("Cannot title a session that has not been written yet")
+        append_metadata(self.metadata_path, SessionTitle(session_id=session_id, title=cleaned))
+
+    def session_title(self, session_id: str) -> str | None:
+        """Return one session's stored title, or ``None`` when it is unnamed."""
+        return next(
+            (info.title for info in read_metadata(self.metadata_path) if info.session_id == session_id),
+            None,
+        )
+
+    async def list_sessions(self, *, limit: int = 100, offset: int = 0) -> list[SessionInfo]:
+        """Return session metadata by latest activity, newest first.
+
+        The listing reads the metadata log alone: no conversation file is
+        opened, and rows whose folder was deleted by hand are skipped rather
+        than shown.
+        """
         if limit < 1:
             raise ValueError("limit must be positive")
         if offset < 0:
             raise ValueError("offset cannot be negative")
-        sessions = [
-            session for session_id in self.session_ids() if (session := self.read(session_id)).header is not None
-        ]
-        sessions.sort(key=lambda session: (session.updated_at, session.session_id), reverse=True)
+        sessions = [info for info in read_metadata(self.metadata_path) if self.session_path(info.session_id).is_file()]
         return sessions[offset : offset + limit]
 
     async def close(self) -> None:
-        """Release nothing; every append opens and closes its own handle."""
+        """Release nothing; every write opens and closes its own handle."""
 
     def _write_header(
         self,
         session: Session,
         session_id: str,
         request_parent: str | None,
-        title: str | None,
         agent_name: str | None,
-    ) -> None:
-        """Create the session line, rejecting a parent that changed after creation."""
+    ) -> datetime | None:
+        """Create the session line, rejecting a parent that changed after creation.
+
+        Returns:
+            The new session's creation time, or ``None`` when the file already
+            had a header — which is also what tells the caller whether to start
+            the session's metadata row.
+        """
         if session.header is not None:
             if session.header.parent_session_id != request_parent:
                 raise ValueError("Session parent cannot change after creation")
-            return
+            return None
+        created_at = now()
         self._append_line(
             session_id,
             SessionLine(
                 version=STORE_VERSION,
                 session_id=session_id,
                 parent_session_id=request_parent,
-                title=title,
                 agent_name=agent_name,
-                created_at=now(),
+                created_at=created_at,
             ),
         )
+        return created_at
 
 
 class SessionStore(SessionPersistenceMixin, AgentExtension):
@@ -532,14 +395,15 @@ class SessionStore(SessionPersistenceMixin, AgentExtension):
     success, error, or cancellation.
 
     Args:
-        root: Directory holding one ``<session_id>/`` folder per session, each
-            with its own ``data.jsonl``; forwarded to the mixin. ``None`` uses
-            ``~/.zettcode/sessions``.
+        root: Store root, grouped by workspace; forwarded to the mixin.
+            ``None`` uses ``~/.zettcode/sessions``.
+        workspace: Project whose sessions this store owns; forwarded to the
+            mixin. ``None`` uses the current directory.
     """
 
-    def __init__(self, root: str | Path | None = None) -> None:
+    def __init__(self, root: str | Path | None = None, workspace: str | Path | None = None) -> None:
         self._requests: WeakKeyDictionary[AgentRunContext, _Request] = WeakKeyDictionary()
-        super().__init__(root)
+        super().__init__(root, workspace)
 
     async def on_state(self, context: AgentRunContext) -> None:
         """Restore the conversation and map every context position to a message id."""
