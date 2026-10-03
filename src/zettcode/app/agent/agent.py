@@ -153,7 +153,7 @@ class ZettCodeAgent:
     async def _command_use(self, argument: str) -> CommandResult:
         """Switch to the requested session."""
         if not argument:
-            return CommandResult(messages=("Usage: `/use <session-id>`",))
+            return CommandResult(message="Usage: `/use <session-id>`")
         self.use_session(argument)
         return CommandResult(notification=f"using session {self.session_id[:8]}")
 

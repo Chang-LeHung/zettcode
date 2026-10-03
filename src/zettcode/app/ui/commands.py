@@ -12,9 +12,14 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
-from ...tui import theme_named
+from ...tui import Widget, theme_named
 from ..commands import Command, CommandResult
-from .widgets import ModelPage, SessionsPage, help_text
+from .widgets import ModelPage, SessionsPage, bottom_panel, help_text
+
+#: Rows the picker panels take from the bottom of the screen: the title, the
+#: list, and the footer hint. The handler owns the number; nothing in the
+#: framework reads it.
+PICKER_ROWS = 14
 
 if TYPE_CHECKING:  # pragma: no cover - only needed for the annotation
     from .app import ZettCodeApp
@@ -42,7 +47,7 @@ class ShellCommands:
 
     async def help(self, argument: str) -> CommandResult:
         """Describe commands from both the shell and the agent."""
-        return CommandResult(messages=(help_text(self.shell.commands),))
+        return CommandResult(message=help_text(self.shell.commands))
 
     async def model(self, name: str) -> CommandResult:
         """Open the model picker, or switch directly to a named model.
@@ -54,7 +59,7 @@ class ShellCommands:
             selected = self.shell.agent.use_model(name)
             return CommandResult(notification=f"using model {selected.shown_name}", relayout=True)
         page = ModelPage(self.shell.agent, on_select=self.shell.select_model, on_cancel=self.shell.close_page)
-        return CommandResult(page=page)
+        return CommandResult(widget=self._panel(page))
 
     async def sessions(self, name: str) -> CommandResult:
         """Open the recent-session picker, or switch straight to a named session.
@@ -67,20 +72,24 @@ class ShellCommands:
             return CommandResult(notification=f"using session {name[:8]}", relayout=True)
         sessions = await self.shell.agent.list_sessions(limit=20)
         if not sessions:
-            return CommandResult(messages=("No persisted sessions.",))
+            return CommandResult(message="No persisted sessions.")
         page = SessionsPage(sessions, on_select=self.shell.select_session, on_cancel=self.shell.close_page)
-        return CommandResult(page=page)
+        return CommandResult(widget=self._panel(page))
+
+    def _panel(self, page: Widget) -> Widget:
+        """Wrap one picker in the bottom panel the shell's own commands use."""
+        return bottom_panel(page, rows=PICKER_ROWS, color=self.shell.app.theme.border)
 
     async def theme(self, name: str) -> CommandResult:
         """Select a theme without changing agent settings."""
         if not name:
-            return CommandResult(messages=("Usage: `/theme dark|light`",))
+            return CommandResult(message="Usage: `/theme dark|light`")
         try:
             theme = theme_named(name)
         except ValueError:
-            return CommandResult(messages=(f"Unknown theme: {name}. Try dark or light.",))
+            return CommandResult(message=f"Unknown theme: {name}. Try dark or light.")
         self.shell.app.theme = theme
-        return CommandResult(messages=(f"theme: {theme.name}",), relayout=True)
+        return CommandResult(message=f"theme: {theme.name}", relayout=True)
 
     async def clear(self, argument: str) -> CommandResult:
         """Clear visible conversation entries."""
