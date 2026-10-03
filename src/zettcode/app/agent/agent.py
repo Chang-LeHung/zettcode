@@ -57,6 +57,15 @@ class ZettCodeAgent:
         return self.runtime.session_id
 
     @property
+    def session_title(self) -> str | None:
+        """Return the active session's stored display title, if it has one.
+
+        Reading the store folds the whole metadata log, so callers that paint
+        often should cache the result instead of asking once per frame.
+        """
+        return self.runtime.persistence.session_title(self.session_id)
+
+    @property
     def models(self) -> tuple[ModelConfig, ...]:
         """Return the models available for selection."""
         return self.runtime.config.models

@@ -24,7 +24,6 @@ from zett_agent import (
 
 from zettcode.app import Transcript, TranscriptSource, TranscriptView, ZettCodeApp
 from zettcode.app.agent.agent import ZettCodeAgent
-from zettcode.app.agent.entries import TextEntry
 from zettcode.app.agent.projection import TranscriptProjector
 from zettcode.app.agent.storage import SessionInfo, SessionStore
 from zettcode.app.agent.transcript import (
@@ -91,6 +90,9 @@ class FakePersistence:
         if self.store is None:
             raise ValueError(f"Unknown session: {session_id}")
         return self.store.read(session_id)
+
+    def session_title(self, session_id: str) -> str | None:
+        return next((info.title for info in self.sessions if info.session_id == session_id), None)
 
 
 class FakeTodos:
@@ -1457,6 +1459,8 @@ async def test_sessions_command_opens_a_panel_with_titles_and_ages(tmp_path):
 
     assert app.agent.session_id == "alpha-1"
     assert app.app.screens.top.name != "page"
+    # Resuming a session puts its stored title, not its id, in the status line.
+    assert "Fix the parser crash" in app._status_left()
 
 
 async def test_sessions_command_reports_an_empty_store():
@@ -1488,10 +1492,10 @@ async def test_the_first_reply_names_the_session_in_the_background():
     await asyncio.wait_for(app._title_task, 2.0)
 
     assert calls == ["session-0001"]
-    assert any(
-        isinstance(entry, TextEntry) and entry.kind == "notice" and entry.text == "session title: Fix the parser crash"
-        for entry in app.transcript.entries
-    )
+    # Naming stays out of the transcript: the status line is where the title lands.
+    assert not any("Fix the parser crash" in getattr(entry, "text", "") for entry in app.transcript.entries)
+    assert "Fix the parser crash" in app._status_left()
+    assert "session-0001" not in app._status_left()
 
 
 def _harness(app: ZettCodeApp) -> Harness:

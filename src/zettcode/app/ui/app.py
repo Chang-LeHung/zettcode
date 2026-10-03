@@ -102,6 +102,7 @@ class ZettCodeApp:
         self._busy = False
         self._status = "ready"
         self._auto_shell = False
+        self._session_title: str | None = None
         self._install_keymap()
 
     @property
@@ -324,6 +325,7 @@ class ZettCodeApp:
                     self.transcript.welcome(WELCOME)
                     self.view.scroll_end()
                     self.view.clear_selection()
+                    self._remember_session_title()
                     self._refresh_tasks()
                     self.app.request_layout()
             except ValueError as error:
@@ -393,10 +395,15 @@ class ZettCodeApp:
             self.transcript.welcome(WELCOME)
         self.view.follow_tail = True
         self.view.clear_selection()
+        self._remember_session_title()
         self._refresh_tasks()
         self.app.request_layout()
 
     # -- titles -------------------------------------------------------------
+    def _remember_session_title(self) -> None:
+        """Cache the active session's title, which the status line paints per frame."""
+        self._session_title = self.agent.session_title
+
     def _title_session_later(self, session_id: str) -> None:
         """Ask the agent to name a session once, off the composer's critical path."""
         if self._title_task is not None and not self._title_task.done():
@@ -404,7 +411,7 @@ class ZettCodeApp:
         self._title_task = asyncio.create_task(self._name_session(session_id))
 
     async def _name_session(self, session_id: str) -> None:
-        """Store the title the agent summarizes and show it as a notice."""
+        """Store the title the agent summarizes and show it in the status line."""
         try:
             title = await self.agent.title_session(session_id)
         except Exception:
@@ -412,7 +419,7 @@ class ZettCodeApp:
         if title is None:
             return
         if session_id == self.agent.session_id:
-            self.transcript.notice(f"session title: {title}")
+            self._session_title = title
             self.app.invalidate()
 
     async def _stop_title_task(self) -> None:
@@ -489,12 +496,13 @@ class ZettCodeApp:
         return f"{self.agent.active_model.shown_name}  "
 
     def _status_left(self) -> str:
-        """Show the activity glyph, the status word, the mode, and the session id."""
+        """Show the activity glyph, the status word, the mode, and the session title."""
         icon = activity_glyph(self.transcript.frame) if self._busy else "\u25cf"
-        # The mode sits before the session id because the right-hand hint wins
+        # The mode sits before the title because the right-hand hint wins
         # the space fight, truncating the tail of this segment.
         mode = " \u00b7 auto" if self._auto_shell else ""
-        return f"  {icon} {self._status}{mode}  session {self.agent.session_id[:8]}"
+        title = f"  {self._session_title}" if self._session_title else ""
+        return f"  {icon} {self._status}{mode}{title}"
 
     def _status_right(self) -> str:
         """List the keys worth remembering while the composer has focus."""

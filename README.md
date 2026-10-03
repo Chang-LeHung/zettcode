@@ -66,8 +66,9 @@ appends a title line. `/sessions` opens a picker panel listing recent sessions w
 their title and how long ago they last changed; `Enter` resumes the highlighted
 one, replacing the visible transcript with that session's active branch.
 `/use <id>` and `/sessions <id>` also restore the selected conversation directly;
-`/new` clears the visible conversation. Sessions are not selected in the config
-file.
+`/new` clears the visible conversation. The status line names the active session
+once it has a title, in place of its short id. Sessions are not selected in the
+config file.
 
 ## Approvals
 
