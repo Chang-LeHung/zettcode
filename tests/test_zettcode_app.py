@@ -313,7 +313,7 @@ async def test_app_slash_commands_change_theme_sessions_and_exit():
     harness.write("/help")
     harness.press("enter")
     await asyncio.wait_for(app.task, 2.0)
-    assert any(entry.kind == "notice" and "/sessions" in entry.text for entry in app.transcript.entries)
+    assert any(entry.kind == "message" and "/sessions" in entry.text for entry in app.transcript.entries)
 
     harness.press("ctrl_d")
     assert app.app.running is False
@@ -327,7 +327,7 @@ async def test_model_command_lists_and_switches_models_for_the_next_request():
     harness.write("/model")
     harness.press("enter")
     await asyncio.wait_for(app.task, 2.0)
-    assert app.app.screens.top.name == "models"
+    assert app.app.screens.top.name == "page"
     assert "Select Model" in harness.render().text
     assert "GPT-4o" in harness.render().text
     harness.press("down")
@@ -351,7 +351,7 @@ async def test_model_page_esc_restores_composer_without_selecting():
     harness.write("/model")
     harness.press("enter")
     await asyncio.wait_for(app.task, 2.0)
-    assert app.app.screens.top.name == "models"
+    assert app.app.screens.top.name == "page"
     page = _presented_page(app)
     assert app.app.focused_widget() is page.list
     # The panel sits at the bottom, so the conversation above it stays visible.
@@ -404,7 +404,7 @@ async def test_model_can_still_be_selected_by_command_argument():
     await asyncio.wait_for(app.task, 2.0)
 
     assert app.agent.active_model.model == "gpt-4o"
-    assert app.app.screens.top.name != "models"
+    assert app.app.screens.top.name != "page"
     assert "GPT-4o" in harness.render().text
 
 
@@ -431,7 +431,7 @@ async def test_model_page_scrolls_many_entries_and_selects_offscreen_one():
     assert "model-0" not in harness.render().text
     harness.press("enter")
     assert app.agent.active_model.model == "model-12"
-    assert app.app.screens.top.name != "models"
+    assert app.app.screens.top.name != "page"
 
 
 async def test_unknown_model_keeps_the_current_model():
@@ -613,8 +613,8 @@ async def test_app_and_agent_commands_are_routed_to_their_owners():
     harness.write("/help")
     harness.press("enter")
     await asyncio.wait_for(app.task, 2.0)
-    help_messages = [entry.text for entry in app.transcript.entries if entry.kind == "notice"]
-    assert any("/model" in message and "[agent]" in message and "[app]" in message for message in help_messages)
+    help_messages = [entry.text for entry in app.transcript.entries if entry.kind == "message"]
+    assert any("/model" in message and "(`agent`)" in message and "(`app`)" in message for message in help_messages)
 
 
 def test_slash_menu_caps_rows_and_scrolls_many_commands():
@@ -659,6 +659,46 @@ async def test_a_registered_command_runs_its_own_handler():
     assert app.app._layout_dirty
 
 
+async def test_command_output_is_rendered_as_markdown():
+    app = build_app()
+    harness = _harness(app)
+
+    harness.write("/help")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    (entry,) = [item for item in app.transcript.entries if item.kind == "message"]
+    rendered = "\n".join(_rendered(app.transcript, 60))
+
+    assert entry.markdown is not None
+    assert "**Commands**" in entry.text  # the handler returns Markdown source
+    assert "Commands" in rendered and "\u00b7 /help" in rendered  # parsed, not raw
+    assert "**" not in rendered  # the emphasis markers are consumed
+
+
+async def test_a_command_can_present_its_own_widget():
+    app = build_app()
+    harness = _harness(app)
+
+    async def show_page(argument: str) -> CommandResult:
+        page = ListPage([ListItem("a", "alpha")], title="Custom Page", on_cancel=app.close_page)
+        return CommandResult(page=page)
+
+    app.commands = (*app.commands, Command("/panel", "show a custom page", "app", show_page))
+    app.composer.completer = type(app.composer.completer)(app.commands)
+    harness.write("/panel")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    page = _presented_page(app)
+    assert app.app.screens.top.name == "page"
+    assert "Custom Page" in harness.render().text
+    assert page.rect == Rect(0, 0, 60, 14)  # no overlay_rows, so it covers the screen
+
+    harness.press("escape")
+    assert app.app.screens.top.name == "main"
+
+
 async def test_the_slash_menu_answers_to_arrows_and_escape():
     app = build_app()
     harness = _harness(app)
@@ -692,7 +732,7 @@ async def test_enter_completes_the_highlighted_command_once_then_runs_it():
     await asyncio.wait_for(app.task, 2.0)
 
     assert app.composer.text == ""
-    assert any(entry.kind == "notice" for entry in app.transcript.entries)
+    assert any(entry.kind == "message" for entry in app.transcript.entries)
 
 
 async def test_enter_runs_a_fully_typed_command_instead_of_completing_it():
@@ -705,7 +745,7 @@ async def test_enter_runs_a_fully_typed_command_instead_of_completing_it():
     harness.press("enter")
     await asyncio.wait_for(app.task, 2.0)
 
-    assert any(entry.kind == "notice" and "/sessions" in entry.text for entry in app.transcript.entries)
+    assert any(entry.kind == "message" and "/sessions" in entry.text for entry in app.transcript.entries)
     assert app.composer.text == ""
     assert app.completions.visible is False
 

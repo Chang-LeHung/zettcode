@@ -4,6 +4,8 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Literal
 
+from ..tui import Page
+
 
 @dataclass(frozen=True, slots=True)
 class CommandResult:
@@ -14,11 +16,14 @@ class CommandResult:
     is optional; the default result changes nothing.
 
     Attributes:
-        messages: Transcript lines to append, in order, as muted notices.
+        messages: Markdown documents appended to the transcript, in order. Each
+            is parsed and rendered like an answer, so a command can report with
+            headings, lists, and inline code instead of plain text.
         notification: One-line toast shown after a successful run; ``None``
             shows no toast.
-        page: Full-screen page to open after the result; the only page today is
-            ``"models"``, which opens the model picker.
+        page: :class:`~zettcode.tui.Page` to present over the conversation after
+            the result; the handler builds it, and its ``overlay_rows`` decides
+            between a bottom panel and the whole screen.
         relayout: Re-measure the widget tree after applying the result. Set it
             when the change affects geometry a fixed-height row already
             measured, such as the header showing a new model name.
@@ -26,7 +31,7 @@ class CommandResult:
 
     messages: tuple[str, ...] = ()
     notification: str | None = None
-    page: Literal["models"] | None = None
+    page: Page | None = None
     relayout: bool = False
 
 
