@@ -10,8 +10,8 @@ from __future__ import annotations
 from bisect import bisect_right
 from collections.abc import Callable
 
-from ...tui import Canvas, Host, LineSource, MouseAction, MouseEvent, ScrollView, TextLine, Theme
-from ..agent.transcript import Entry, Transcript
+from ....tui import Canvas, Host, LineSource, MouseAction, MouseEvent, ScrollView, TextLine, Theme
+from ...agent.transcript import Entry, Transcript
 
 
 class TranscriptSource(LineSource):

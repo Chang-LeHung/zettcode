@@ -1,9 +1,13 @@
-"""The ZettCode application: transcript, composer, commands, and approvals."""
+"""The ZettCode application shell: the controller behind the terminal UI.
+
+It owns the agent, the widget tree, the keymap, and the slash commands, and it
+is the only place that decides what a command result looks like on screen. The
+widgets themselves live in :mod:`zettcode.app.ui.widgets`.
+"""
 
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Sequence
 from contextlib import aclosing
 from pathlib import Path
 
@@ -13,27 +17,21 @@ from ...config import ModelConfig
 from ...tui import (
     DARK,
     Anchor,
-    Completer,
-    CompletionItem,
     CompletionPopup,
     Dialog,
     DialogAction,
     Host,
     KeyEvent,
-    ListItem,
-    ListView,
     Overlay,
     OverlaySlot,
     Screen,
     StatusBar,
-    Style,
     TaskPanel,
     TextArea,
     Theme,
     Toast,
     TuiApp,
     VBox,
-    Widget,
     centered,
     theme_named,
 )
@@ -43,114 +41,7 @@ from ..agent.agent import ZettCodeAgent
 from ..agent.projection import TranscriptProjector
 from ..agent.transcript import Transcript, activity_glyph
 from ..commands import Command, CommandResult
-from .transcript import TranscriptView
-
-KEY_HELP = (
-    "  Enter send \u00b7 Alt-Enter newline \u00b7 Ctrl-C stop or clear\n"
-    "  Ctrl-T thinking \u00b7 PgUp/PgDn scroll \u00b7 Ctrl-L redraw \u00b7 Ctrl-D exit"
-)
-
-
-class CommandCompleter(Completer):
-    """Complete the slash commands matching the line the cursor sits on.
-
-    A space ends the suggestion: ``/use abc`` has moved on to a session id, so
-    the menu steps aside instead of filtering the commands down to nothing.
-    """
-
-    def __init__(self, commands: Sequence[Command]) -> None:
-        self.commands = tuple(commands)
-
-    def __call__(self, text: str, position: int) -> tuple[CompletionItem, ...]:
-        """Return the matching commands for the token ending at ``position``.
-
-        Args:
-            text: Full draft, newlines included.
-            position: Cursor as a code-point index into ``text``.
-        """
-        start = text.rfind("\n", 0, position) + 1
-        token = text[start:position]
-        if not token.startswith("/") or any(character.isspace() for character in token):
-            return ()
-        return tuple(
-            CompletionItem(command.name, description=command.description, type=command.type)
-            for command in self.commands
-            if command.name.startswith(token)
-        )
-
-
-def help_text(commands: Sequence[Command]) -> str:
-    """Return the ``/help`` body, generated from the command table."""
-    width = max(len(command.name) for command in commands) + 2
-    rows = [f"  {command.name:<{width}}{command.description}  [{command.type}]" for command in commands]
-    return "\n".join(["Commands", *rows, "", "Keys", KEY_HELP])
-
-
-class ModelPage(Widget):
-    """Opaque model picker with a bounded scrolling list and Esc navigation."""
-
-    def __init__(
-        self, agent: ZettCodeAgent, *, on_select: Callable[[ModelConfig], None], on_cancel: Callable[[], None]
-    ) -> None:
-        super().__init__()
-        self.on_cancel = on_cancel
-        self.list = ListView(
-            [
-                ListItem(
-                    entry,
-                    f"{index}. {entry.shown_name}{' (current)' if entry is agent.active_model else ''}",
-                    f"{entry.model} · {'multimodal' if entry.multimodal else 'text'}",
-                )
-                for index, entry in enumerate(agent.models, start=1)
-            ],
-            on_select=lambda item: on_select(item.value),
-            wrap=False,
-            band=True,
-        )
-        self.list.select(agent.models.index(agent.active_model), notify=False)
-
-    @property
-    def children(self) -> tuple[Widget, ...]:
-        return (self.list,)
-
-    def layout(self, rect) -> None:
-        super().layout(rect)
-        self.list.layout(type(rect)(rect.x + 2, rect.y + 3, max(0, rect.width - 4), min(6, max(0, rect.height - 5))))
-
-    def render(self, canvas) -> None:
-        if self.rect.empty:
-            return
-        theme = self.theme
-        canvas.fill(self.rect.x, self.rect.y, self.rect.width, self.rect.height, Style(background=theme.surface_alt))
-        canvas.draw_text(
-            self.rect.x + 2,
-            self.rect.y + 1,
-            "Select Model",
-            Style(foreground=theme.text, background=theme.surface_alt, bold=True),
-        )
-        self.list.render(canvas)
-        canvas.draw_text(
-            self.rect.x + 2,
-            self.rect.bottom - 1,
-            "enter select · esc back",
-            Style(foreground=theme.muted, background=theme.surface_alt),
-            max_width=max(0, self.rect.width - 2),
-        )
-
-    def capture_event(self, event, host: Host) -> bool:
-        if isinstance(event, KeyEvent) and event.key == "escape":
-            self.on_cancel()
-            return True
-        return False
-
-
-WELCOME = (
-    "     ╭─────┬─────╮\n"
-    "     │     ✦     │   ZettCode\n"
-    "     ╰─────┴─────╯   A focused coding agent\n"
-    "\n"
-    "  Type a task below, or /help for commands."
-)
+from .widgets import WELCOME, CommandCompleter, ModelPage, TranscriptView, ZettCodeRoot, help_text
 
 
 class ZettCodeApp:
@@ -528,39 +419,6 @@ class ZettCodeApp:
     def _status_right(self) -> str:
         """List the keys worth remembering while the composer has focus."""
         return "  ^C stop  ^T thinking  ^D exit  "
-
-
-class ZettCodeRoot(Widget):
-    """Thin root that advances the activity frame while a request runs."""
-
-    def __init__(self, controller: ZettCodeApp, body: VBox) -> None:
-        """Keep the controller reachable from the tick hook."""
-        super().__init__()
-        self.controller = controller
-        self.body = body
-
-    @property
-    def children(self) -> tuple[Widget, ...]:
-        """Expose the single body widget the root lays out."""
-        return (self.body,)
-
-    def layout(self, rect) -> None:
-        """Give the body the full application rectangle."""
-        super().layout(rect)
-        self.body.layout(rect)
-
-    def render(self, canvas) -> None:
-        """Paint the body into the shared canvas."""
-        self.body.render(canvas)
-
-    def cursor(self):
-        """Forward the cursor request to the body."""
-        return self.body.cursor()
-
-    def on_tick(self) -> None:
-        """Advance the activity frame while a request is running."""
-        if self.controller.busy and (self.app is None or not self.app.reduced_motion):
-            self.controller.transcript.advance_frame()
 
 
 def compact_path(path: Path, *, limit: int = 38) -> str:

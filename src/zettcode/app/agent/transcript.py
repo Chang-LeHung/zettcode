@@ -2,7 +2,7 @@
 
 The projector writes into this model and the UI reads it, so it lives on the
 agent side of the application and never imports the shell. The scrollable view
-over these entries is ``app.ui.transcript``.
+over these entries is ``app.ui.widgets.transcript``.
 """
 
 from __future__ import annotations
