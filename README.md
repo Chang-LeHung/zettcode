@@ -154,7 +154,11 @@ turn ends the transcript closes with a muted summary of the wall time it took:
 Assistant text renders common terminal-friendly Markdown: bold and emphasis,
 headings, inline and fenced code, links, quotes, unordered bullet lists, and
 GFM-style tables. Code is highlighted by colour only, never by a background
-block. Tables are borderless — a header, one rule per column, then rows — keep
+block, and a fence draws only its code: the language label picks the scanner and
+is never printed. The scanners cover Python, shell, JavaScript/TypeScript, Rust,
+Go, Java, C/C++/C#, Ruby, PHP, SQL, Lua, Haskell, Swift, Kotlin, JSON,
+YAML/TOML/INI, HTML/CSS, and LaTeX, with a generic fallback for anything else.
+Tables are borderless — a header, one rule per column, then rows — keep
 left, center, and right alignment, account for wide CJK characters, and wrap a
 cell that does not fit instead of cutting its text.
 

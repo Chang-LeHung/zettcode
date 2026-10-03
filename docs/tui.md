@@ -355,13 +355,18 @@ Code is highlighted but never filled: fenced blocks and inline code use a
 foreground colour only, because a background block reads as a solid rectangle in
 a terminal and fights the text. Inline code takes the palette's highlight green,
 so `` `file.py` `` reads the same colour as the accent chrome around it.
-`render/code.py` owns a small line tokenizer: Python keywords, strings,
-comments, numbers, and called names, a shell mode that colours commands after
-`&&`/`|` and leaves redirection targets plain, and a generic mode for everything
-else. A `CodeTheme` supplies every colour. The tokenizer picks no colours
-itself, so a palette stays data: `theme_file.py` loads `base`, `[ui]`, and
-`[code]` tables from TOML, validates every key, and rejects anything it does not
-understand rather than quietly falling back.
+`render/code.py` owns a small line tokenizer whose languages are data.
+`_scanner` compiles one scanner from a description — comment markers, block
+comments, quotes — and the language table pairs it with a keyword list, so
+JavaScript, Rust, Go, SQL, and the rest of the brace and config families (plus
+the markup and LaTeX shapes, which have their own scanners) are a table entry
+rather than another regex. Python and shell keep hand-written scanners because
+decorators, triple quotes, variables, and command positions do not fit that
+shape, and an unknown fence label falls back to the generic one. A `CodeTheme`
+supplies every colour. The tokenizer picks no colours itself, so a palette stays
+data: `theme_file.py` loads `base`, `[ui]`, and `[code]` tables from TOML,
+validates every key, and rejects anything it does not understand rather than
+quietly falling back.
 
 The plan panel above the composer is a `TaskPanel` with no framework knowledge
 of tasks: the application polls `TodoWriteExtension.todos(session)` after every

@@ -60,9 +60,9 @@ def render_markdown(text: str, width: int, theme: Theme = DARK) -> list[TextLine
                 language = ""
             else:
                 in_code = True
+                # The fence label picks the scanner; it is not part of the code
+                # and is never drawn, so a block starts straight at its text.
                 language = stripped[3:].strip()
-                if language:
-                    logical.append(TextLine((Span(f"  {language}", Style(foreground=theme.muted)),)))
             index += 1
             continue
         if in_code:
