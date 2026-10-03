@@ -81,6 +81,9 @@ def test_model_change_is_centered_between_rules_and_clipped_on_small_screens():
             assert text.style.foreground == DARK.subtle
             assert "Model changed from GPT6-Sol to DeepSeek-Flash." in rows[1].text
             assert abs(left.width - right.width) <= 1
+            # The gutter insets the left edge; the rule leaves the same two
+            # cells free on the right, matching the header and status bar.
+            assert rows[1].width == width - 2
 
 
 def test_agent_components_keep_every_line_within_narrow_bounds():
