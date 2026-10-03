@@ -75,8 +75,14 @@ class ModelChangeProcessor(EntryProcessor):
         return isinstance(entry, TextEntry) and entry.kind == "model_change"
 
     def lines(self, entry: TextEntry, width: int, theme: Theme, frame: int) -> list[TextLine]:
-        """Keep the rules within the transcript width even for long model names."""
-        available = max(1, width)
+        """Center the label inside the padded content box.
+
+        The transcript gutter already insets the row on the left, so the rule
+        keeps the same two cells free on the right; the header, the status bar,
+        and the composer all pad both edges by that amount.
+        """
+        margin = min(model.CONTENT_INDENT, max(0, width - 1))
+        available = max(1, width - margin)
         if available <= 2:
             return [TextLine(), TextLine((Span("─" * available, Style(foreground=theme.border)),)), TextLine()]
         heading = TextLine(
