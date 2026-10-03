@@ -24,7 +24,7 @@ from zettcode.app.agent.projection import TranscriptProjector
 from zettcode.app.commands import Command, CommandResult
 from zettcode.app.ui.widgets import WELCOME
 from zettcode.config import ModelConfig
-from zettcode.tui import DARK, LIGHT, Rect
+from zettcode.tui import DARK, LIGHT, ListItem, ListPage, Rect, walk
 from zettcode.tui.testing import Harness
 
 
@@ -126,6 +126,11 @@ def build_app(events: list[AgentEvent] | None = None, *, block: bool = False) ->
     app.app.resize(60, 14)
     app.app.mount()
     return app
+
+
+def _presented_page(app: ZettCodeApp) -> ListPage:
+    """Return the page on top of the stack, wherever the shell wrapped it."""
+    return next(widget for widget in walk(app.app.screens.top.widget) if isinstance(widget, ListPage))
 
 
 def test_welcome_mark_is_compact_and_readable_in_both_themes():
@@ -340,14 +345,20 @@ async def test_model_command_lists_and_switches_models_for_the_next_request():
 
 async def test_model_page_esc_restores_composer_without_selecting():
     app = build_app()
+    app.app.resize(60, 24)
     harness = _harness(app)
 
     harness.write("/model")
     harness.press("enter")
     await asyncio.wait_for(app.task, 2.0)
     assert app.app.screens.top.name == "models"
-    assert app.app.focused_widget() is app.app.screens.top.widget.list
-    assert "Ask ZettCode" not in harness.render().text
+    page = _presented_page(app)
+    assert app.app.focused_widget() is page.list
+    # The panel sits at the bottom, so the conversation above it stays visible.
+    text = harness.render().text
+    assert page.rect.y > 0
+    assert "Type a task below, or /help for commands." in text
+    assert "Select Model" in text
 
     harness.press("down")
     harness.press("escape")
@@ -355,6 +366,19 @@ async def test_model_page_esc_restores_composer_without_selecting():
     assert app.app.focused_widget() is app.composer
     assert app.agent.active_model.model == "gpt-5-mini"
     assert "Ask ZettCode" in harness.render().text
+
+
+async def test_a_page_without_overlay_rows_is_presented_full_screen():
+    app = build_app()
+    page = ListPage([ListItem("a", "alpha")], title="Full")
+
+    app._present(page, name="full")
+    harness = _harness(app)
+    harness.render()
+
+    assert app.app.screens.top.name == "full"
+    assert page.rect == Rect(0, 0, 60, 14)
+    assert "alpha" in harness.render().text
 
 
 async def test_ctrl_c_returns_from_the_model_page_without_cancelling_a_turn():
@@ -395,7 +419,7 @@ async def test_model_page_scrolls_many_entries_and_selects_offscreen_one():
     harness.write("/model")
     harness.press("enter")
     await asyncio.wait_for(app.task, 2.0)
-    page = app.app.screens.top.widget
+    page = _presented_page(app)
     harness.render()
     assert page.list.rect.height == 6
     for _ in range(12):

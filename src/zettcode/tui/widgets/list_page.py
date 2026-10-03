@@ -23,10 +23,16 @@ class ListPage(Widget):
         enter select \u00b7 esc back                 <- footer, on the bottom row
 
     The page owns the chrome so a caller only maps data to rows: it fills its
-    rectangle with ``surface_alt`` so the screen below cannot show through,
-    bounds the list to ``visible_rows``, and turns Escape into ``on_cancel``
-    before the list can consume the key. It composes :class:`ListView` rather
-    than inheriting it, which keeps that list general-purpose.
+    rectangle with ``surface_alt`` so whatever is underneath cannot show
+    through, bounds the list to ``visible_rows``, and turns Escape into
+    ``on_cancel`` before the list can consume the key. It composes
+    :class:`ListView` rather than inheriting it, which keeps that list
+    general-purpose.
+
+    It paints into whatever rectangle the shell gives it, so the same page can
+    be a full screen or a bottom panel over the conversation. ``overlay_rows``
+    asks for the second: the shell then places the page in a panel of that many
+    rows anchored to the bottom edge instead of filling the screen.
 
     Args:
         items: Rows to show; the list scrolls past ``visible_rows``.
@@ -38,6 +44,9 @@ class ListPage(Widget):
         selected: Index highlighted first, clamped into range.
         visible_rows: Most rows shown at once; the list scrolls when there are
             more.
+        overlay_rows: Rows the shell should give the page when presenting it as
+            a bottom panel over the conversation; ``None`` presents it full
+            screen. The page needs at least five rows for its chrome.
     """
 
     def __init__(
@@ -50,6 +59,7 @@ class ListPage(Widget):
         on_cancel: Callable[[], None] | None = None,
         selected: int = 0,
         visible_rows: int = 6,
+        overlay_rows: int | None = None,
     ) -> None:
         """Build the page and its list, highlighting ``selected`` without notifying."""
         super().__init__()
@@ -57,6 +67,7 @@ class ListPage(Widget):
         self.footer = footer
         self.on_cancel = on_cancel
         self.visible_rows = max(1, visible_rows)
+        self.overlay_rows = overlay_rows
         self.list = ListView(items, on_select=on_select, wrap=False, band=True)
         if items:
             self.list.select(selected, notify=False)
