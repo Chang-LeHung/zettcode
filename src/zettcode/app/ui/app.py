@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable, Sequence
 from contextlib import aclosing
 from pathlib import Path
 
 from zett_agent import AgentEvent
 
+from ...config import ModelConfig
 from ...tui import (
     DARK,
     Anchor,
@@ -18,10 +20,13 @@ from ...tui import (
     DialogAction,
     Host,
     KeyEvent,
+    ListItem,
+    ListView,
     Overlay,
     OverlaySlot,
     Screen,
     StatusBar,
+    Style,
     TaskPanel,
     TextArea,
     Theme,
@@ -37,19 +42,8 @@ from ...tui.widgets import Rule, Text
 from ..agent.agent import ZettCodeAgent
 from ..agent.projection import TranscriptProjector
 from ..agent.transcript import Transcript, activity_glyph
+from ..commands import Command, CommandResult
 from .transcript import TranscriptView
-
-COMMANDS: tuple[tuple[str, str], ...] = (
-    ("/help", "show the commands and the keys"),
-    ("/new", "start a fresh session"),
-    ("/sessions", "list persisted sessions"),
-    ("/model", "list or switch models: /model <name>"),
-    ("/use", "switch to a session: /use <id>"),
-    ("/theme", "switch the palette: /theme dark|light"),
-    ("/clear", "clear the transcript"),
-    ("/quit", "exit"),
-    ("/exit", "exit, same as /quit"),
-)
 
 KEY_HELP = (
     "  Enter send \u00b7 Alt-Enter newline \u00b7 Ctrl-C stop or clear\n"
@@ -64,6 +58,9 @@ class CommandCompleter(Completer):
     the menu steps aside instead of filtering the commands down to nothing.
     """
 
+    def __init__(self, commands: Sequence[Command]) -> None:
+        self.commands = tuple(commands)
+
     def __call__(self, text: str, position: int) -> tuple[CompletionItem, ...]:
         """Return the matching commands for the token ending at ``position``.
 
@@ -76,15 +73,75 @@ class CommandCompleter(Completer):
         if not token.startswith("/") or any(character.isspace() for character in token):
             return ()
         return tuple(
-            CompletionItem(name, description=description) for name, description in COMMANDS if name.startswith(token)
+            CompletionItem(command.name, description=command.description, type=command.type)
+            for command in self.commands
+            if command.name.startswith(token)
         )
 
 
-def help_text() -> str:
+def help_text(commands: Sequence[Command]) -> str:
     """Return the ``/help`` body, generated from the command table."""
-    width = max(len(name) for name, _ in COMMANDS) + 2
-    rows = [f"  {name:<{width}}{description}" for name, description in COMMANDS]
+    width = max(len(command.name) for command in commands) + 2
+    rows = [f"  {command.name:<{width}}{command.description}  [{command.type}]" for command in commands]
     return "\n".join(["Commands", *rows, "", "Keys", KEY_HELP])
+
+
+class ModelPage(Widget):
+    """Opaque model picker with a bounded scrolling list and Esc navigation."""
+
+    def __init__(
+        self, agent: ZettCodeAgent, *, on_select: Callable[[ModelConfig], None], on_cancel: Callable[[], None]
+    ) -> None:
+        super().__init__()
+        self.on_cancel = on_cancel
+        self.list = ListView(
+            [
+                ListItem(
+                    entry,
+                    f"{index}. {entry.shown_name}{' (current)' if entry is agent.active_model else ''}",
+                    f"{entry.model} · {'multimodal' if entry.multimodal else 'text'}",
+                )
+                for index, entry in enumerate(agent.models, start=1)
+            ],
+            on_select=lambda item: on_select(item.value),
+            wrap=False,
+            band=True,
+        )
+        self.list.select(agent.models.index(agent.active_model), notify=False)
+
+    @property
+    def children(self) -> tuple[Widget, ...]:
+        return (self.list,)
+
+    def layout(self, rect) -> None:
+        super().layout(rect)
+        self.list.layout(type(rect)(rect.x + 2, rect.y + 3, max(0, rect.width - 4), min(6, max(0, rect.height - 5))))
+
+    def render(self, canvas) -> None:
+        if self.rect.empty:
+            return
+        theme = self.theme
+        canvas.fill(self.rect.x, self.rect.y, self.rect.width, self.rect.height, Style(background=theme.surface_alt))
+        canvas.draw_text(
+            self.rect.x + 2,
+            self.rect.y + 1,
+            "Select Model",
+            Style(foreground=theme.text, background=theme.surface_alt, bold=True),
+        )
+        self.list.render(canvas)
+        canvas.draw_text(
+            self.rect.x + 2,
+            self.rect.bottom - 1,
+            "enter select · esc back",
+            Style(foreground=theme.muted, background=theme.surface_alt),
+            max_width=max(0, self.rect.width - 2),
+        )
+
+    def capture_event(self, event, host: Host) -> bool:
+        if isinstance(event, KeyEvent) and event.key == "escape":
+            self.on_cancel()
+            return True
+        return False
 
 
 WELCOME = (
@@ -111,18 +168,26 @@ class ZettCodeApp:
         self.transcript.welcome(WELCOME)
         self.projector = TranscriptProjector(self.transcript, on_approval=self._approval_requested)
         self.agent.set_event_dispatcher(self.projector)
+        self.commands = (
+            Command("/help", "show the commands and the keys", "app", self._command_help),
+            *agent.commands,
+            Command("/theme", "switch the palette: /theme dark|light", "app", self._command_theme),
+            Command("/clear", "clear the transcript", "app", self._command_clear),
+            Command("/quit", "exit", "app", self._command_quit),
+            Command("/exit", "exit, same as /quit", "app", self._command_quit),
+        )
 
         self.view = TranscriptView(self.transcript, theme=theme)
         self.composer = TextArea(
             prompt="\u203a ",
             placeholder="Ask ZettCode to do anything",
-            completer=CommandCompleter(),
+            completer=CommandCompleter(self.commands),
             max_height=8,
             on_submit=self.submit,
             on_change=self._refresh_completions,
             surface=True,
         )
-        self.completions = CompletionPopup(max_height=len(COMMANDS))
+        self.completions = CompletionPopup(max_height=5)
         self.header = StatusBar(self._header_left, self._header_right)
         self.status = StatusBar(self._status_left, self._status_right)
         self.panel = TaskPanel()
@@ -184,7 +249,7 @@ class ZettCodeApp:
             "ctrl_d",
             "quit",
             priority="capture",
-            when=lambda: not self._busy and not self.composer.text,
+            when=lambda: self.app.screens.top.name != "models" and not self._busy and not self.composer.text,
         )
         self.app.keymap.bind("page_up", "scroll_up")
         self.app.keymap.bind("page_down", "scroll_down")
@@ -199,7 +264,7 @@ class ZettCodeApp:
 
     def _menu_open(self) -> bool:
         """Return whether the slash-command menu is showing."""
-        return self.completions.visible
+        return self.app.screens.top.name != "models" and self.completions.visible
 
     def _accept_on_enter(self) -> bool:
         """Return whether Enter should complete the draft instead of running it.
@@ -250,6 +315,10 @@ class ZettCodeApp:
 
     def _interrupt(self, event: KeyEvent, host: Host) -> bool:
         """Copy a selection, otherwise stop the running turn or clear the draft."""
+        if self.app.screens.top.name == "models":
+            self._close_model_page()
+            host.invalidate()
+            return True
         selected = self.view.selected_text()
         if selected:
             host.copy(selected)
@@ -323,68 +392,75 @@ class ZettCodeApp:
             self.app.request_layout()
 
     async def _run_command(self, value: str) -> None:
-        """Dispatch one slash command and report its result."""
-        command, _, argument = value.partition(" ")
+        """Execute the matching command's handler and present its result."""
+        name, _, argument = value.partition(" ")
         argument = argument.strip()
-        self._status = f"{command} \u2026"
-        match command:
-            case "/new":
-                session = self.agent.new_session()
-                self._notify(f"started session {session[:8]}", level="success")
-            case "/use" if argument:
-                self.agent.use_session(argument)
-                self._notify(f"using session {self.agent.session_id[:8]}", level="success")
-            case "/use":
-                self.transcript.notice("Usage: /use <session-id>")
-            case "/sessions":
-                sessions = await self.agent.list_sessions(limit=20)
-                if not sessions:
-                    self.transcript.notice("No persisted sessions.")
-                for session in sessions:
-                    marker = "*" if session.session_id == self.agent.session_id else " "
-                    self.transcript.notice(f"{marker} {session.session_id}  {session.message_count} messages")
-            case "/model" if argument:
-                try:
-                    selected = self.agent.use_model(argument)
-                except ValueError as error:
-                    self.transcript.notice(str(error))
-                else:
-                    self._notify(f"using model {selected.shown_name}", level="success")
+        self._status = f"{name} \u2026"
+        command = next((item for item in self.commands if item.name == name), None)
+        if command is None:
+            self.transcript.notice(f"Unknown command: {name}. Try /help.")
+        else:
+            try:
+                result = await command.handler(argument)
+            except ValueError as error:
+                self.transcript.notice(str(error))
+            else:
+                for message in result.messages:
+                    self.transcript.notice(message)
+                if result.notification:
+                    self._notify(result.notification, level="success")
+                if result.page == "models":
+                    self._open_model_page()
+                if result.relayout:
                     self.app.request_layout()
-            case "/model":
-                for entry in self.agent.models:
-                    marker = "*" if entry is self.agent.active_model else " "
-                    self.transcript.notice(f"{marker} {entry.shown_name} ({entry.model})")
-            case "/clear":
-                self.transcript.clear()
-            case "/theme":
-                self._set_theme(argument)
-            case "/help":
-                self.transcript.notice(help_text())
-            case "/quit" | "/exit":
-                self.app.exit()
-            case _:
-                self.transcript.notice(f"Unknown command: {command}. Try /help.")
         self._status = "ready"
         self.app.invalidate()
 
-    def _set_theme(self, name: str) -> None:
-        """Switch the palette, reporting usage errors instead of raising.
+    async def _command_help(self, argument: str) -> CommandResult:
+        """Describe commands from both the app and the agent."""
+        return CommandResult(messages=(help_text(self.commands),))
 
-        Args:
-            name: Theme name from the argument of ``/theme``.
-        """
+    async def _command_clear(self, argument: str) -> CommandResult:
+        """Clear visible conversation entries."""
+        self.transcript.clear()
+        return CommandResult()
+
+    async def _command_quit(self, argument: str) -> CommandResult:
+        """Exit the terminal application."""
+        self.app.exit()
+        return CommandResult()
+
+    async def _command_theme(self, name: str) -> CommandResult:
+        """Select a theme without changing agent settings."""
         if not name:
-            self.transcript.notice("Usage: /theme dark|light")
-            return
+            return CommandResult(messages=("Usage: /theme dark|light",))
         try:
             theme = theme_named(name)
         except ValueError:
-            self.transcript.notice(f"Unknown theme: {name}. Try dark or light.")
-            return
+            return CommandResult(messages=(f"Unknown theme: {name}. Try dark or light.",))
         self.app.theme = theme
+        return CommandResult(messages=(f"theme: {theme.name}",), relayout=True)
+
+    def _open_model_page(self) -> None:
+        """Replace the composer with a modal, scrollable model list."""
+        page = ModelPage(self.agent, on_select=self._select_model, on_cancel=self._close_model_page)
+        self.app.push_screen(Screen(page, name="models", modal=True))
+
+    def _close_model_page(self) -> None:
+        """Return to the composer, restoring its focus and layout."""
+        self.app.pop_screen()
         self.app.request_layout()
-        self.transcript.notice(f"theme: {theme.name}")
+
+    def _select_model(self, name: ModelConfig) -> None:
+        """Apply the highlighted model and return to the composer."""
+        try:
+            selected = self.agent.use_model(name)
+        except ValueError as error:
+            self.transcript.notice(str(error))
+            self._close_model_page()
+        else:
+            self._close_model_page()
+            self._notify(f"using model {selected.shown_name}", level="success")
 
     # -- approvals ----------------------------------------------------------
     def _approval_requested(self, event: AgentEvent) -> None:

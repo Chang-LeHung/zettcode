@@ -56,9 +56,11 @@ async def test_runtime_switches_models_and_closes_every_provider(tmp_path, monke
     with pytest.raises(ValueError, match="Ambiguous model"):
         runtime.use_model("shared-id")
     assert runtime.active_model is first
+    assert runtime.use_model(second) is second
+    assert runtime.model is created[1]
     with pytest.raises(ValueError, match="Unknown model"):
         runtime.use_model("missing")
-    assert runtime.active_model is first
+    assert runtime.active_model is second
 
     await runtime.aclose()
     assert all(provider.closed for provider in created)

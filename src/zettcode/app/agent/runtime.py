@@ -102,14 +102,19 @@ class ZettCodeRuntime:
             raise
         return cls(config, client, persistence, todos, model, session_id, selected, {selected: model})
 
-    def use_model(self, name: str) -> ModelConfig:
+    def use_model(self, name: str | ModelConfig) -> ModelConfig:
         """Select a configured model for subsequent requests without changing sessions."""
-        matches = [entry for entry in self.config.models if name in (entry.model, entry.display_model)]
-        if not matches:
-            raise ValueError(f"Unknown model: {name}")
-        if len(matches) > 1:
-            raise ValueError(f"Ambiguous model: {name}; use a unique display_model")
-        chosen = matches[0]
+        if isinstance(name, ModelConfig):
+            chosen = next((entry for entry in self.config.models if entry is name), None)
+            if chosen is None:
+                raise ValueError("Unknown model selection")
+        else:
+            matches = [entry for entry in self.config.models if name in (entry.model, entry.display_model)]
+            if not matches:
+                raise ValueError(f"Unknown model: {name}")
+            if len(matches) > 1:
+                raise ValueError(f"Ambiguous model: {name}; use a unique display_model")
+            chosen = matches[0]
         if chosen not in self._models:
             self._models[chosen] = OpenAIProvider(
                 chosen.model,

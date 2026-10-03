@@ -21,6 +21,7 @@ from zett_agent import (
 from zettcode.app import Transcript, TranscriptSource, ZettCodeApp
 from zettcode.app.agent.agent import ZettCodeAgent
 from zettcode.app.agent.projection import TranscriptProjector
+from zettcode.app.commands import Command, CommandResult
 from zettcode.app.ui.app import WELCOME
 from zettcode.config import ModelConfig
 from zettcode.tui import DARK, LIGHT, Rect
@@ -97,9 +98,13 @@ class FakeRuntime:
         self.active_model = self.config.models[0]
         self.model = self.active_model.model
 
-    def use_model(self, name: str) -> ModelConfig:
+    def use_model(self, name: str | ModelConfig) -> ModelConfig:
         entry = next(
-            (entry for entry in self.config.models if name in (entry.model, entry.display_model)),
+            (
+                entry
+                for entry in self.config.models
+                if entry is name or (isinstance(name, str) and name in (entry.model, entry.display_model))
+            ),
             None,
         )
         if entry is None:
@@ -317,11 +322,11 @@ async def test_model_command_lists_and_switches_models_for_the_next_request():
     harness.write("/model")
     harness.press("enter")
     await asyncio.wait_for(app.task, 2.0)
-    assert any("GPT-4o (gpt-4o)" in entry.text for entry in app.transcript.entries)
-
-    harness.write("/model GPT-4o")
+    assert app.app.screens.top.name == "models"
+    assert "Select Model" in harness.render().text
+    assert "GPT-4o" in harness.render().text
+    harness.press("down")
     harness.press("enter")
-    await asyncio.wait_for(app.task, 2.0)
     assert app.agent.active_model.model == "gpt-4o"
     assert app._header_right() == "GPT-4o  "
     assert app.app._layout_dirty is True
@@ -331,6 +336,78 @@ async def test_model_command_lists_and_switches_models_for_the_next_request():
     harness.press("enter")
     await asyncio.wait_for(app.task, 2.0)
     assert app.agent.runtime.client.models[-1] == "gpt-4o"
+
+
+async def test_model_page_esc_restores_composer_without_selecting():
+    app = build_app()
+    harness = _harness(app)
+
+    harness.write("/model")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+    assert app.app.screens.top.name == "models"
+    assert app.app.focused_widget() is app.app.screens.top.widget.list
+    assert "Ask ZettCode" not in harness.render().text
+
+    harness.press("down")
+    harness.press("escape")
+    assert app.app.screens.top.name == "main"
+    assert app.app.focused_widget() is app.composer
+    assert app.agent.active_model.model == "gpt-5-mini"
+    assert "Ask ZettCode" in harness.render().text
+
+
+async def test_ctrl_c_returns_from_the_model_page_without_cancelling_a_turn():
+    app = build_app()
+    harness = _harness(app)
+    harness.write("/model")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    harness.press("ctrl_c")
+
+    assert app.app.screens.top.name == "main"
+    assert app.app.focused_widget() is app.composer
+    assert app.agent.active_model.model == "gpt-5-mini"
+
+
+async def test_model_can_still_be_selected_by_command_argument():
+    app = build_app()
+    harness = _harness(app)
+
+    harness.write("/model GPT-4o")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    assert app.agent.active_model.model == "gpt-4o"
+    assert app.app.screens.top.name != "models"
+    assert "GPT-4o" in harness.render().text
+
+
+async def test_model_page_scrolls_many_entries_and_selects_offscreen_one():
+    app = build_app()
+    app.agent.runtime.config.models = tuple(
+        ModelConfig(model=f"model-{index}", token="test-token") for index in range(16)
+    )
+    app.agent.runtime.active_model = app.agent.runtime.config.models[0]
+    harness = _harness(app)
+
+    harness.write("/model")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+    page = app.app.screens.top.widget
+    harness.render()
+    assert page.list.rect.height == 6
+    for _ in range(12):
+        harness.press("down")
+    assert page.list.selected == 12
+    harness.render()
+    assert page.list.top > 0
+    assert "model-12" in harness.render().text
+    assert "model-0" not in harness.render().text
+    harness.press("enter")
+    assert app.agent.active_model.model == "model-12"
+    assert app.app.screens.top.name != "models"
 
 
 async def test_unknown_model_keeps_the_current_model():
@@ -480,6 +557,9 @@ async def test_the_slash_menu_lists_and_filters_commands():
 
     assert [item.value for item in app.completions.items][:3] == ["/help", "/new", "/sessions"]
     assert "show the commands and the keys" in harness.text()
+    assert "[app]" in harness.text() and "[agent]" in harness.text()
+    assert app.completions.items[0].type == "app"
+    assert app.completions.items[1].type == "agent"
 
     harness.write("cl")
 
@@ -490,6 +570,69 @@ async def test_the_slash_menu_lists_and_filters_commands():
 
     # Once the draft leaves the bare command token the menu gets out of the way.
     assert app.completions.visible is False
+
+
+async def test_app_and_agent_commands_are_routed_to_their_owners():
+    app = build_app()
+    harness = _harness(app)
+    assert [(item.name, item.type) for item in app.commands[:3]] == [
+        ("/help", "app"),
+        ("/new", "agent"),
+        ("/sessions", "agent"),
+    ]
+
+    harness.write("/new")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+    assert app.agent.session_id == "session-0002"
+
+    harness.write("/help")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+    help_messages = [entry.text for entry in app.transcript.entries if entry.kind == "notice"]
+    assert any("/model" in message and "[agent]" in message and "[app]" in message for message in help_messages)
+
+
+def test_slash_menu_caps_rows_and_scrolls_many_commands():
+    app = build_app()
+
+    async def no_op(argument: str) -> CommandResult:
+        return CommandResult()
+
+    extra = tuple(Command(f"/agent-{index}", f"action {index}", "agent", no_op) for index in range(15))
+    app.commands = (*app.commands, *extra)
+    app.composer.completer = type(app.composer.completer)(app.commands)
+    harness = _harness(app)
+    harness.write("/")
+
+    assert len(app.completions.items) == len(app.commands)
+    assert app.completions.visible_height == 5
+    for _ in range(12):
+        harness.press("down")
+    assert app.completions.selected == 12
+    harness.render()
+    assert app.completions.top > 0
+    assert "/agent-3" in harness.render().text
+
+
+async def test_a_registered_command_runs_its_own_handler():
+    app = build_app()
+    harness = _harness(app)
+    arguments: list[str] = []
+
+    async def custom_handler(argument: str) -> CommandResult:
+        arguments.append(argument)
+        return CommandResult(messages=(f"custom: {argument}",), relayout=True)
+
+    app.commands = (*app.commands, Command("/custom", "run a custom action", "app", custom_handler))
+    app.composer.completer = type(app.composer.completer)(app.commands)
+    harness.write("/custom hello")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    assert arguments == ["hello"]
+    assert any("custom: hello" in entry.text for entry in app.transcript.entries)
+    assert app.app._layout_dirty
 
 
 async def test_the_slash_menu_answers_to_arrows_and_escape():
