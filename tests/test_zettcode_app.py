@@ -220,7 +220,9 @@ async def test_projector_maps_events_into_ordered_blocks():
 
     assert "inspect the project" in collapsed
     assert "checking" not in collapsed
-    assert "glob" in collapsed and "grep" in collapsed
+    # The chain phrases the rows instead of repeating the tool names.
+    assert "Listed *.py" in collapsed
+    assert "Searched x" in collapsed
     assert "done" in collapsed
 
     assert transcript.toggle_latest_thinking()
@@ -259,6 +261,22 @@ def test_the_placeholder_is_removed_once_output_starts():
     finished.complete_thinking()
 
     assert [entry.kind for entry in finished.entries] == ["user"]
+
+
+def test_provider_wrappers_and_chat_preambles_never_reach_the_transcript():
+    transcript = Transcript()
+    transcript.begin_turn("question")
+    transcript.append_thinking("<thinking>weighing options</thinking>")
+    transcript.toggle_latest_thinking()
+    transcript.append_answer("Assistant: ")  # the fragment that opens the answer
+    transcript.append_answer("here is the fix")
+
+    rendered = "\n".join(_rendered(transcript, 60))
+
+    assert "weighing options" in rendered
+    assert "thinking>" not in rendered
+    assert "Assistant:" not in rendered
+    assert "here is the fix" in rendered
 
 
 async def test_a_waiting_row_appears_as_soon_as_a_turn_starts():

@@ -144,6 +144,17 @@ status visible in the transcript, and completed tool rows show a five-row
 preview until expanded. Expanded output is bounded so a large command result
 cannot take over the terminal or exhaust renderer memory.
 
+Every kind of agent output goes through a chain of render handlers before it is
+shown. Tool rows read like a log rather than a payload dump — `Read src/app.py`,
+`Ran pwd && ls -la`, `Edited app.py (2 edits)`, `Deleted notes.md`,
+`Listed **/*.py`, `Searched TODO in src` — and a tool no handler knows still
+degrades to `name key=value`, never JSON. A read row also names the scanner for
+the file's extension, so the body is highlighted as the language it is. The
+streamed text kinds go through the same chain: reasoning loses the
+`<thinking>`-style wrappers a provider adds, and an answer loses the
+`Assistant:` preamble a local model sometimes repeats, when the fragment that
+opens the message carries one.
+
 Pressing Enter puts a live row in the transcript straight away, so a slow model
 is never mistaken for a frozen one. It shows an animated glyph and the elapsed
 time, and is replaced by the real answer, reasoning, or tool call as soon as one
