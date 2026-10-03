@@ -24,6 +24,7 @@ _INLINE = re.compile(r"(\*\*.+?\*\*|__.+?__|`[^`]+`|\[[^]]+\]\([^)]+\)|(?<!\*)\*
 _HEADING = re.compile(r"^(#{1,3})\s+(.+)$")
 _BULLET = re.compile(r"^(\s*)[-+*]\s+(.+)$")
 _QUOTE = re.compile(r"^\s*>\s?(.*)$")
+_RULE = re.compile(r"^\s{0,3}(?:-{3,}|\*{3,}|_{3,})\s*$")
 
 
 def stable_cut(text: str) -> int:
@@ -83,6 +84,10 @@ def render_markdown(text: str, width: int, theme: Theme = DARK) -> list[TextLine
                 logical.extend(render_table(header, alignments, rows, width, theme))
                 index = cursor
                 continue
+        if _RULE.match(line):
+            logical.append(TextLine(rule_spans(width, theme)))
+            index += 1
+            continue
         rendered = markdown_line(line, theme=theme)
         if rendered is not None:
             logical.append(TextLine(tuple(rendered)))
@@ -99,13 +104,22 @@ def code_spans(line: str, language: str, theme: Theme) -> list[Span]:
     return [indent, *highlight(line, language, theme.code)]
 
 
+def rule_spans(width: int, theme: Theme) -> tuple[Span, ...]:
+    """Return one horizontal rule across ``width`` cells.
+
+    A rule is chrome, but it has to stay readable: ``muted`` draws it clearly
+    while still holding it below the body text, which is what a rule is for.
+    """
+    return (Span("\u2500" * max(1, width), Style(foreground=theme.muted)),)
+
+
 def markdown_line(line: str, *, theme: Theme) -> list[Span] | None:
     """Render one non-code logical line."""
     heading = _HEADING.match(line)
     if heading:
-        level = len(heading.group(1))
-        base = Style(foreground=theme.text, bold=True, dim=level > 1)
-        return inline_markdown(heading.group(2), base=base, theme=theme)
+        # Every level keeps the body colour: a dimmed heading read as washed-out
+        # text in the answer, and the blank line around it already separates it.
+        return inline_markdown(heading.group(2), base=Style(foreground=theme.text, bold=True), theme=theme)
 
     bullet = _BULLET.match(line)
     if bullet:
@@ -254,8 +268,10 @@ def render_table(
         theme,
         header=True,
     )
+    # A table rule is structure, not a page divider: it is drawn per column and
+    # one step brighter than the thematic break, which only separates sections.
     rule = (" " * TABLE_GAP).join("\u2500" * width for width in widths)
-    lines.append(TextLine((Span(rule, Style(foreground=theme.border, dim=True)),)))
+    lines.append(TextLine((Span(rule, Style(foreground=theme.subtle)),)))
     for row in rows:
         cells = [wrap_spans(inline_markdown(row[index], theme=theme), widths[index]) for index in range(columns)]
         lines.extend(table_row(cells, widths, alignments, theme))

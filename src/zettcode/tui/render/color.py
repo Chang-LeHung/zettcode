@@ -34,6 +34,11 @@ _ANSI256_RGB: tuple[tuple[int, int, int], ...] = (
     *((level, level, level) for level in range(8, 8 + 24 * 10, 10)),
 )
 
+#: The 256-colour palette above its first sixteen entries. Indices 0-15 are the
+#: terminal's own theme colours, so a scheme is free to make "white" a mid grey;
+#: everything above them is a fixed RGB value the terminal renders as written.
+_ANSI256_FIXED_RGB = _ANSI256_RGB[len(_ANSI16_RGB) :]
+
 
 class ColorDepth(IntEnum):
     """How many distinct colors the terminal can paint."""
@@ -58,14 +63,19 @@ def parse_hex(value: str) -> tuple[int, int, int] | None:
 
 @lru_cache(maxsize=4096)
 def rgb_to_ansi256(red: int, green: int, blue: int) -> int:
-    """Return the closest index in the standard 256-color palette.
+    """Return the closest fixed index in the standard 256-color palette.
 
     Args:
         red: Channel value in ``0..255``.
         green: Channel value in ``0..255``.
         blue: Channel value in ``0..255``.
+
+    The first sixteen palette entries alias the terminal's theme, where a
+    "white" that looks right on one setup is a dim grey on another. Body text
+    must not degrade like that, so they are skipped: the answer is always one of
+    the 240 fixed colours.
     """
-    return _nearest(_ANSI256_RGB, red, green, blue)
+    return _nearest(_ANSI256_FIXED_RGB, red, green, blue) + len(_ANSI16_RGB)
 
 
 @lru_cache(maxsize=4096)

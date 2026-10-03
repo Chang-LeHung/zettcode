@@ -40,7 +40,7 @@ class Theme:
     background: str = "#0f1412"
     surface: str = "#161c18"
     surface_alt: str = "#222725"
-    text: str = "#e6e9e7"
+    text: str = "#f2f5f3"
     muted: str = "#747d77"
     subtle: str = "#a3ada6"
     accent: str = "#79b88b"
