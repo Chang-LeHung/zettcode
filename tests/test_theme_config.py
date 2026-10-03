@@ -5,7 +5,7 @@ from dataclasses import replace
 import pytest
 
 from zettcode.tui import DARK, EXAMPLE, LIGHT, ThemeFileError, load_theme, theme_from_toml
-from zettcode.tui.render import highlight
+from zettcode.tui.render import highlight, language_for, languages
 from zettcode.tui.widgets.markdown import render_markdown
 
 
@@ -19,6 +19,40 @@ def color_of(spans, needle: str) -> str | None:
         if needle in span.text:
             return span.style.foreground
     raise AssertionError(f"{needle!r} missing from {[span.text for span in spans]}")
+
+
+def test_every_language_resolves_from_its_own_name_and_common_aliases():
+    for name in languages():
+        assert language_for(name) == name
+
+    assert language_for("  PY  ") == "python"
+    assert language_for("yml") == "yaml"
+    assert language_for("c++") == "cpp"
+    assert language_for("tex") == "latex"
+    assert language_for("no-such-language") == "generic"
+    # The names a fence is most likely to carry are all covered.
+    common = {
+        "python",
+        "javascript",
+        "typescript",
+        "rust",
+        "go",
+        "java",
+        "c",
+        "cpp",
+        "csharp",
+        "ruby",
+        "php",
+        "sql",
+        "json",
+        "yaml",
+        "toml",
+        "html",
+        "css",
+        "latex",
+        "shell",
+    }
+    assert common <= set(languages())
 
 
 def test_highlight_classifies_python_tokens():
@@ -42,7 +76,8 @@ def test_highlight_marks_numbers_strings_and_builtins():
 
 
 def test_highlight_falls_back_to_a_generic_tokenizer():
-    spans = highlight("const total = 3; // note", "javascript", DARK.code)
+    # A label no scanner knows still colours the shapes every language shares.
+    spans = highlight("const total = 3; // note", "cobol", DARK.code)
 
     assert color_of(spans, "3") == DARK.code.number
     assert color_of(spans, "// note") == DARK.code.comment
@@ -68,6 +103,53 @@ def test_highlight_leaves_shell_variables_and_arguments_plain():
     assert color_of(spans, "$HOME") == DARK.code.string
     assert color_of(spans, "$OUT") == DARK.code.builtin
     assert color_of(spans, "echo") == DARK.code.function
+
+
+def test_highlight_reads_the_brace_languages():
+    javascript = highlight("const total = 3; // note", "js", DARK.code)
+    assert color_of(javascript, "const") == DARK.code.keyword
+    assert color_of(javascript, "3") == DARK.code.number
+    assert color_of(javascript, "// note") == DARK.code.comment
+
+    rust = highlight("fn main() { let x = 1; }", "rs", DARK.code)
+    assert color_of(rust, "fn") == DARK.code.keyword
+    assert color_of(rust, "let") == DARK.code.keyword
+    # A name that is called is a function, whatever the language calls it.
+    assert color_of(rust, "main") == DARK.code.function
+
+    go = highlight('func main() { fmt.Println("hi") }', "go", DARK.code)
+    assert color_of(go, "func") == DARK.code.keyword
+    assert color_of(go, '"hi"') == DARK.code.string
+
+
+def test_highlight_matches_sql_keywords_case_insensitively():
+    spans = highlight("SELECT id FROM users WHERE id = 1 -- note", "sql", DARK.code)
+
+    assert color_of(spans, "SELECT") == DARK.code.keyword
+    assert color_of(spans, "FROM") == DARK.code.keyword
+    assert color_of(spans, "-- note") == DARK.code.comment
+    assert color_of(spans, "users") == DARK.code.text
+
+
+def test_highlight_reads_config_formats_and_markup():
+    json_spans = highlight('{"name": "zett", "ok": true}', "json", DARK.code)
+    assert color_of(json_spans, '"zett"') == DARK.code.string
+    assert color_of(json_spans, "true") == DARK.code.keyword
+
+    yaml_spans = highlight("key: value # note", "yml", DARK.code)
+    assert color_of(yaml_spans, "# note") == DARK.code.comment
+
+    html_spans = highlight('<div class="row">hi</div>', "html", DARK.code)
+    assert color_of(html_spans, "div") == DARK.code.keyword
+    assert color_of(html_spans, '"row"') == DARK.code.string
+
+
+def test_highlight_reads_latex_commands_math_and_comments():
+    spans = highlight(r"\frac{1}{2} = $x^2$ % note", "tex", DARK.code)
+
+    assert color_of(spans, r"\frac") == DARK.code.function
+    assert color_of(spans, "$x^2$") == DARK.code.string
+    assert color_of(spans, "% note") == DARK.code.comment
 
 
 def test_code_and_inline_code_never_paint_a_background():

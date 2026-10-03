@@ -27,12 +27,15 @@ def test_markdown_wraps_paragraphs_inside_the_width():
     assert all(display_width(line.text) <= 20 for line in lines)
 
 
-def test_markdown_renders_fenced_code_with_a_language_label():
-    lines = render_markdown("```python\nprint(1)\n```", 30, DARK)
+def test_markdown_highlights_fenced_code_without_drawing_the_label():
+    lines = render_markdown("```python\ndef parse(x):\n    return x\n```", 30, DARK)
     texts = [line.text for line in lines]
 
-    assert texts[0].strip() == "python"
-    assert texts[1] == "  print(1)"
+    # The label selects the scanner and is never part of the block.
+    assert "python" not in "\n".join(texts)
+    assert texts[0] == "  def parse(x):"
+    keyword = next(span for line in lines for span in line.spans if span.text == "def")
+    assert keyword.style.foreground == DARK.code.keyword
 
 
 def test_markdown_renders_a_borderless_table():
