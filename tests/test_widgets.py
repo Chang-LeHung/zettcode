@@ -11,6 +11,7 @@ from zettcode.tui import (
     Dialog,
     DialogAction,
     ListItem,
+    ListPage,
     ListView,
     Point,
     ProgressBar,
@@ -182,6 +183,57 @@ def test_completion_popup_bands_the_selection_and_scrolls():
     popup.render(canvas)
     assert "/cmd3" in row_text(canvas, 2)
     assert popup.top == 1
+
+
+def test_list_page_shows_a_title_scrolls_and_keeps_a_bounded_list():
+    page = ListPage(
+        [ListItem(f"item-{index}", f"row {index}") for index in range(10)],
+        title="Select Item",
+        visible_rows=4,
+    )
+    harness = Harness(page, width=30, height=12)
+    text = harness.render().text
+
+    assert "Select Item" in text
+    assert "row 0" in text
+    assert "esc back" in text
+    assert page.list.rect.height == 4
+
+    for _ in range(6):
+        harness.press("down")
+
+    assert page.list.selected == 6
+    text = harness.render().text
+    assert page.list.top > 0
+    assert "row 6" in text
+    assert "row 0" not in text
+
+
+def test_list_page_commits_a_row_and_cancels_on_escape():
+    chosen: list[ListItem] = []
+    cancelled: list[bool] = []
+    page = ListPage(
+        [ListItem("a", "alpha"), ListItem("b", "beta")],
+        title="Pick",
+        on_select=chosen.append,
+        on_cancel=lambda: cancelled.append(True),
+    )
+    harness = Harness(page, width=30, height=12)
+
+    harness.press("enter")
+
+    assert [item.value for item in chosen] == ["a"]
+
+    harness.press("escape")
+
+    assert cancelled == [True]
+
+
+def test_list_page_without_a_cancel_handler_ignores_escape():
+    page = ListPage([ListItem("a", "alpha")], title="Pick")
+    harness = Harness(page, width=30, height=12)
+
+    assert harness.press("escape") is False
 
 
 def test_spinner_advances_with_the_clock_and_holds_a_frame_budget():
