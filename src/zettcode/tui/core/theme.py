@@ -39,7 +39,7 @@ class Theme:
     name: str = "dark"
     background: str = "#0f1412"
     surface: str = "#161c18"
-    surface_alt: str = "#222725"
+    surface_alt: str = "#2b3230"
     text: str = "#f2f5f3"
     muted: str = "#747d77"
     subtle: str = "#a3ada6"
