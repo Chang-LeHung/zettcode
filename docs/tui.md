@@ -325,6 +325,17 @@ pick a row, and Escape aborts. Auto mode flips the runtime's approval extension
 off rather than persisting a session policy, so the next launch reviews
 commands again.
 
+`rendering.py` shapes every kind of agent output, as a chain of handlers: each
+link claims a kind — a tool family (reading, editing, deleting, shell, search,
+the plan), the reasoning channel, the answer — and the first one that claims a
+piece of output shapes it, with a tool link at the end that claims whatever is
+left so nothing ever reaches the transcript as JSON. A link may shape the result
+as well as the words: the read handler drops the vendor's continuation hint and
+names the scanner for the file, which is what makes the row's body highlight as
+the language it is. The text links work on streamed fragments, which is why they
+are told whether a fragment opens its message — the only place a chat preamble
+can appear.
+
 `app/agent/title.py` names a session after its first exchange: one provider
 request with no tools, whose reply is reduced to a single line and written into
 the workspace's `metadata.jsonl`, so renaming appends a line to the index and

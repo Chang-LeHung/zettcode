@@ -7,7 +7,6 @@ over these entries is ``app.ui.widgets.transcript``.
 
 from __future__ import annotations
 
-import json
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -23,8 +22,9 @@ from ...tui import (
     TextLine,
     Theme,
 )
-from ...tui.render import SweepSpan, display_width, sweep_spans, truncate, wrap_columns
+from ...tui.render import SweepSpan, display_width, highlight, sweep_spans, truncate, wrap_columns
 from ...tui.widgets.markdown import MarkdownSource
+from .rendering import ANSWER, DEFAULT_RENDERERS, THINKING, Renderers
 
 #: Left margin of every transcript row: the width of the composer's ``\u203a ``
 #: prompt, so text lines up under what the user types and never starts left of
@@ -85,20 +85,6 @@ def limit_output(value: str) -> str:
     return f"{value[:half]}\n\u2026 {omitted:,} characters omitted \u2026\n{value[-half:]}"
 
 
-def arguments_preview(arguments: Mapping[str, object], *, limit: int = 90) -> str:
-    """Render tool arguments as a single inline preview, truncated to ``limit``.
-
-    Args:
-        arguments: Tool arguments; JSON-encoded on one line.
-        limit: Most characters to show, ellipsis included. The result is prefixed
-            with a space so it can be concatenated onto a tool name directly.
-    """
-    if not arguments:
-        return ""
-    value = json.dumps(arguments, ensure_ascii=False, separators=(",", ":"))
-    return f" {value if len(value) <= limit else value[: limit - 1] + '\u2026'}"
-
-
 def duration_text(seconds: float | None) -> str:
     """Format an elapsed time for a row header, switching units at one second.
 
@@ -151,8 +137,9 @@ class Entry:
         kind: Which renderer applies: ``welcome``, ``notice``, ``user``,
             ``pending``, ``thinking``, ``answer``, ``message``, or ``tool``.
         text: Body text; for a tool row it is the (bounded) output.
-        title: Row label, such as the tool name.
-        detail: Inline suffix after the title, usually the argument preview.
+        title: Row label, already phrased by the renderer chain.
+        tool: Tool name, which the chain uses to shape the row's body.
+        language: Scanner for a tool row's body when it is source code.
         status: ``running``, ``completed``, ``failed``, or ``skipped``; only a
             running row animates and only a finished row can be toggled.
         call_id: Links a tool row to the call it answers.
@@ -171,7 +158,8 @@ class Entry:
     kind: str
     text: str = ""
     title: str = ""
-    detail: str = ""
+    tool: str = ""
+    language: str | None = None
     status: str = ""
     call_id: str = ""
     expanded: bool = False
@@ -205,7 +193,7 @@ class Entry:
             self.expanded,
             self.status,
             len(self.text),
-            self.detail,
+            self.language,
         )
         if self.block is None or self.block_key != key:
             self.block = self._inset(StaticLines(render_entry(self, width, theme, frame)))
@@ -224,12 +212,20 @@ class Entry:
 class Transcript:
     """Own the conversation entries and their rendered block boundaries."""
 
-    def __init__(self, *, clock: Callable[[], float] = monotonic) -> None:
+    def __init__(
+        self,
+        *,
+        clock: Callable[[], float] = monotonic,
+        renderers: Renderers = DEFAULT_RENDERERS,
+    ) -> None:
         """Start an empty transcript whose elapsed times come from ``clock``.
 
         Args:
             clock: Time source for row durations, injectable for tests.
+            renderers: Chain that phrases tool rows; tests can pass their own to
+                pin the wording a row would show.
         """
+        self.renderers = renderers
         self.entries: list[Entry] = []
         self.clock = clock
         self.version = 0
@@ -316,7 +312,7 @@ class Transcript:
     def append_thinking(self, delta: str) -> None:
         """Append a reasoning delta to the running thinking block."""
         entry = self.start_thinking()
-        entry.text += delta
+        entry.text += self.renderers.text(THINKING, delta, opening=not entry.text)
         self.version += 1
 
     def complete_thinking(self) -> None:
@@ -337,6 +333,7 @@ class Transcript:
         if current is None or current.kind != "answer":
             current = self._add("answer", markdown=Markdown())
         assert current.markdown is not None
+        delta = self.renderers.text(ANSWER, delta, opening=not current.text)
         current.markdown.append(delta)
         current.text += delta
         self.version += 1
@@ -346,16 +343,18 @@ class Transcript:
 
         Args:
             call_id: Identifier the matching result will carry.
-            name: Tool name shown in the row label.
-            arguments: Arguments shown as a short inline preview.
+            name: Tool name; the renderer chain turns it into the row's words.
+            arguments: Arguments the chain reads to phrase the call.
         """
         self.complete_thinking()
         self.drop_pending()
+        row = self.renderers.describe(name, arguments)
         self._add(
             "tool",
             call_id=call_id,
-            title=name,
-            detail=arguments_preview(arguments),
+            tool=name,
+            title=row.title,
+            language=row.language,
             status="running",
             started_at=self.clock(),
         )
@@ -372,7 +371,7 @@ class Transcript:
         entry = next((item for item in reversed(self.entries) if item.kind == "tool" and item.call_id == call_id), None)
         if entry is None:
             return
-        entry.text = limit_output(output)
+        entry.text = limit_output(self.renderers.body(entry.tool, output))
         entry.status = status
         if entry.started_at is not None:
             entry.duration = self.clock() - entry.started_at
@@ -579,29 +578,52 @@ def _tool_lines(entry: Entry, width: int, theme: Theme, frame: int) -> list[Text
     """
     running = entry.status == "running"
     symbol = (
-        activity_glyph(frame)
+        RUNNING_GLYPHS[0]
         if running
         else {"completed": "\u2713", "failed": "\u00d7", "skipped": "\u2013"}.get(entry.status, "\u25cf")
     )
-    timing = f"  {duration_text(entry.duration)}" if entry.duration is not None else ""
     style = (
         Style(foreground=theme.error, bold=True)
         if entry.status == "failed"
         else Style(foreground=theme.accent, bold=True)
     )
+    muted = Style(foreground=theme.muted)
+    timing = f"  {duration_text(entry.duration)}" if entry.duration is not None else ""
     disclosure = "" if running or not entry.text else (" \u25be" if entry.expanded else " \u25b8")
-    label = truncate(f"{symbol} {entry.title}{entry.detail}{timing}{disclosure}", width)
-    lines = [TextLine(), TextLine((Span(label, style),))]
+    # The chain already said what this call did; all that is left is to draw it,
+    # sweeping the words while it runs so the row is visibly alive without any
+    # part of it going dim.
+    room = max(1, width - display_width(f"{symbol} {timing}{disclosure}"))
+    title = truncate(entry.title, room)
+    spans: list[Span] = [Span(f"{symbol} ", style)]
+    if running:
+        label = SweepSpan(title, style, peak=Style(foreground=theme.text, bold=True), ramp=3)
+        spans.extend(sweep_spans(label, frame // SWEEP_FRAMES))
+    else:
+        spans.append(Span(title, style))
+    if timing:
+        spans.append(Span(timing, muted))
+    if disclosure:
+        spans.append(Span(disclosure, muted))
+    lines = [TextLine(), TextLine(tuple(spans))]
     output = "Running\u2026" if running else entry.text
     if output:
         limit = TOOL_EXPANDED_ROWS if entry.expanded else TOOL_PREVIEW_ROWS
         rows, omitted = bounded_rows(output, max(8, width - 6), limit)
         detail = Style(foreground=theme.subtle)
-        lines.append(TextLine((Span(f"    \u2514 {rows[0]}", detail),)))
-        lines.extend(TextLine((Span(f"      {row}", detail),)) for row in rows[1:])
+        for index, row in enumerate(rows):
+            lead = "    \u2514 " if index == 0 else "      "
+            lines.append(_body_line(lead, row, detail, entry.language, theme))
         if omitted:
-            lines.append(TextLine((Span(f"      \u2026 {omitted} more rows", Style(foreground=theme.muted)),)))
+            lines.append(TextLine((Span(f"      \u2026 {omitted} more rows", muted),)))
     return lines
+
+
+def _body_line(lead: str, row: str, detail: Style, language: str | None, theme: Theme) -> TextLine:
+    """Return one body row, highlighted as ``language`` when the tool named one."""
+    if language is None:
+        return TextLine((Span(lead + row, detail),))
+    return TextLine((Span(lead, detail), *highlight(row, language, theme.code)))
 
 
 #: The running marker's two states: the sparkle, then a dot of the same width so

@@ -88,9 +88,9 @@ class TranscriptView(ScrollView):
           v Thinking  0 ms                      <- reasoning row; v collapsed,
             checking the renderer                  U+25BE expanded, animated
                                                    while running, stamped at end
-          x read_file {"path":"app.py"}  0 ms v <- tool row: glyph, name, argument
-              | line one                           preview, duration, and U+25B8
-                line two                           when its bounded output opens
+          x Read app.py  0 ms v                 <- tool row: glyph, what the call
+              | import os                         did, duration, and U+25B8 when
+                ...                               its bounded output can open
           Fixed parse.                          <- answer: parsed as Markdown
 
     Every row starts at the composer's caret column — the width of its ``\u203a ``
