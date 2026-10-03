@@ -19,8 +19,6 @@ from ...tui import (
     Anchor,
     Border,
     CompletionPopup,
-    Dialog,
-    DialogAction,
     Host,
     KeyEvent,
     Overlay,
@@ -35,16 +33,15 @@ from ...tui import (
     Toast,
     TuiApp,
     VBox,
-    centered,
 )
 from ...tui.layout import Slot
-from ...tui.widgets import Rule, Text
+from ...tui.widgets import Rule
 from ..agent.agent import ZettCodeAgent
 from ..agent.projection import TranscriptProjector
 from ..agent.transcript import Transcript, activity_glyph
 from ..commands import CommandResult
 from .commands import ShellCommands
-from .widgets import WELCOME, CommandCompleter, TranscriptView, ZettCodeRoot
+from .widgets import WELCOME, ApprovalChoice, ApprovalPage, CommandCompleter, TranscriptView, ZettCodeRoot
 
 #: Screen name used for a page a command presented; the shell checks it to know
 #: that Ctrl-C and Ctrl-D belong to the page rather than the composer.
@@ -78,7 +75,7 @@ class ZettCodeApp:
             on_change=self._refresh_completions,
             surface=True,
         )
-        self.completions = CompletionPopup(max_height=5)
+        self.completions = CompletionPopup(max_height=6)
         self.header = StatusBar(self._header_left, self._header_right)
         self.status = StatusBar(self._status_left, self._status_right)
         self.panel = TaskPanel()
@@ -100,6 +97,7 @@ class ZettCodeApp:
         self._task: asyncio.Task[None] | None = None
         self._busy = False
         self._status = "ready"
+        self._auto_shell = False
         self._install_keymap()
 
     @property
@@ -349,37 +347,44 @@ class ZettCodeApp:
 
     # -- approvals ----------------------------------------------------------
     def _approval_requested(self, event: AgentEvent) -> None:
-        """Show the shell approval dialog for one agent request."""
+        """Show the approval panel for one pending shell command.
+
+        The panel is an :class:`ApprovalPage` in a bottom strip: the question,
+        the command with its shell highlighting, and the numbered choices, so
+        the transcript above stays readable while the command is reviewed.
+        """
         payload = event.payload if isinstance(event.payload, dict) else {}
         call_id = str(payload.get("tool_call_id", ""))
         session_id = str(payload.get("session_id") or self.agent.session_id)
         command = str(payload.get("command", ""))
-        actions = [DialogAction("Run", lambda: self._respond(session_id, call_id, "execute", False))]
-        if payload.get("remember_supported"):
-            actions.append(DialogAction("Always", lambda: self._respond(session_id, call_id, "execute", True)))
-        actions.append(DialogAction("Abort", lambda: self._respond(session_id, call_id, "abort", False)))
-        dialog = Dialog(
-            Text(command),
-            title="Run this command?",
-            actions=tuple(actions),
-            on_cancel=lambda: self._respond(session_id, call_id, "abort", False),
+        page = ApprovalPage(
+            command,
+            on_choice=lambda choice: self._respond(session_id, call_id, choice),
+            remember_supported=bool(payload.get("remember_supported")),
         )
-        self.app.push_screen(Screen(centered(dialog), name="approval", modal=True))
+        self._present(page, name=PAGE_SCREEN)
 
-    def _respond(self, session_id: str, call_id: str, decision: str, remember: bool) -> None:
-        """Dismiss the dialog and answer the suspended agent run.
+    def _respond(self, session_id: str, call_id: str, choice: ApprovalChoice) -> None:
+        """Dismiss the panel and answer the suspended agent run.
 
         Args:
             session_id: Session the approval belongs to, echoed back to the agent.
             call_id: Tool call the decision applies to.
-            decision: ``"execute"`` or ``"abort"``.
-            remember: Ask the agent to remember this decision for the session.
+            choice: What the user picked; ``auto`` also silences every later
+                request this run.
         """
-        self.app.pop_screen()
+        decision = "abort" if choice is ApprovalChoice.ABORT else "execute"
+        remember = choice is ApprovalChoice.ALWAYS
+        self.close_page()
         try:
             self.agent.respond_approval(session_id, call_id, decision, remember)
         except Exception as error:
             self.transcript.notice(f"approval failed: {error}")
+        else:
+            if choice is ApprovalChoice.RUN_AUTO:
+                self.agent.approve_all_shell_commands()
+                self._auto_shell = True
+                self.transcript.notice("auto mode on: approving every shell command this run")
         self.app.invalidate()
 
     # -- notifications ------------------------------------------------------
@@ -406,9 +411,12 @@ class ZettCodeApp:
         return f"{self.agent.active_model.shown_name}  "
 
     def _status_left(self) -> str:
-        """Show the activity glyph, the status word, and the session id."""
+        """Show the activity glyph, the status word, the mode, and the session id."""
         icon = activity_glyph(self.transcript.frame) if self._busy else "\u25cf"
-        return f"  {icon} {self._status}  session {self.agent.session_id[:8]}"
+        # The mode sits before the session id because the right-hand hint wins
+        # the space fight, truncating the tail of this segment.
+        mode = " \u00b7 auto" if self._auto_shell else ""
+        return f"  {icon} {self._status}{mode}  session {self.agent.session_id[:8]}"
 
     def _status_right(self) -> str:
         """List the keys worth remembering while the composer has focus."""

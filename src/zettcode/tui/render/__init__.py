@@ -1,7 +1,7 @@
 """Rendering primitives: styled text, capabilities-aware color, and canvases."""
 
 from .canvas import Canvas
-from .code import DEFAULT_CODE_THEME, GENERIC, PYTHON, CodeTheme, highlight, language_for
+from .code import DEFAULT_CODE_THEME, GENERIC, PYTHON, SHELL, CodeTheme, highlight, language_for
 from .color import ColorDepth, encode_style, parse_hex, rgb_to_ansi16, rgb_to_ansi256
 from .renderer import DifferentialRenderer
 from .style import DEFAULT_STYLE, Cell, Span, Style, TextLine
@@ -24,6 +24,7 @@ __all__ = [
     "ELLIPSIS",
     "GENERIC",
     "PYTHON",
+    "SHELL",
     "Canvas",
     "Cell",
     "ColorDepth",

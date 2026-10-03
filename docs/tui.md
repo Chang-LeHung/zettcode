@@ -32,7 +32,7 @@ loop). Everything else is built on these.
 **Pass 2 — the application (~880 lines).** `app/agent/transcript.py` owns the
 conversation model and the render cache behind each entry,
 `app/agent/projection.py` maps agent events onto it, and `app/ui/app.py` owns
-the keymap, the slash commands, and the approval dialog. `app/ui/transcript.py`
+the keymap, the slash commands, and the approval panel. `app/ui/transcript.py`
 is the scrollable, virtualized view over the model.
 
 **Pass 3 — by need.** `render/` for text and colour, `input/` and `terminal.py`
@@ -312,10 +312,18 @@ streamed answer linear rather than quadratic.
 `projection.py` maps `zett-agent` callbacks onto transcript blocks. Every
 callback returns immediately, including the approval one: the agent is already
 suspended waiting for the response the UI emits later, so a callback that
-awaited the user would deadlock the stream.
+awaited the user would deadlock the stream. The approval callback opens a
+bottom panel that asks the question in the transcript's own voice: the exact
+command, shell-highlighted under a ``$`` prompt, above numbered choices that
+name their keys — run once (``y``), always allow this command (``p``, only when
+the runtime can remember one), auto mode (``a``, stop asking for the rest of
+the run), or abort (``esc``). Arrows, Enter, the number keys, and clicks all
+pick a row, and Escape aborts. Auto mode flips the runtime's approval extension
+off rather than persisting a session policy, so the next launch reviews
+commands again.
 
-`zettcode.py` assembles the header, transcript, composer, and status line, and
-owns the keymap, the slash commands, the approval dialog, and the toasts. Two
+`app/ui/app.py` assembles the header, transcript, composer, and status line,
+and owns the keymap, the slash commands, the approval panel, and the toasts. Two
 bindings show why the framework distinguishes capture from bubble priority:
 `ctrl_c` and `ctrl_d` are captured, so the application can interrupt or exit
 before the composer sees the key, while `page_up` and `page_down` are bubble
@@ -327,12 +335,15 @@ repaint of hardcoded constants.
 
 Code is highlighted but never filled: fenced blocks and inline code use a
 foreground colour only, because a background block reads as a solid rectangle in
-a terminal and fights the text. `render/code.py` owns a small line tokenizer
-(Python keywords, strings, comments, numbers, called names; a generic mode for
-everything else) and a `CodeTheme` that supplies every colour. The tokenizer
-picks no colours itself, so a palette stays data: `theme_file.py` loads
-`base`, `[ui]`, and `[code]` tables from TOML, validates every key, and rejects
-anything it does not understand rather than quietly falling back.
+a terminal and fights the text. Inline code takes the palette's highlight green,
+so `` `file.py` `` reads the same colour as the accent chrome around it.
+`render/code.py` owns a small line tokenizer: Python keywords, strings,
+comments, numbers, and called names, a shell mode that colours commands after
+`&&`/`|` and leaves redirection targets plain, and a generic mode for everything
+else. A `CodeTheme` supplies every colour. The tokenizer picks no colours
+itself, so a palette stays data: `theme_file.py` loads `base`, `[ui]`, and
+`[code]` tables from TOML, validates every key, and rejects anything it does not
+understand rather than quietly falling back.
 
 The plan panel above the composer is a `TaskPanel` with no framework knowledge
 of tasks: the application polls `TodoWriteExtension.todos(session)` after every

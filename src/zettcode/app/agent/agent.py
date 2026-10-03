@@ -106,6 +106,10 @@ class ZettCodeAgent:
         """Select a configured model for subsequent turns."""
         return self.runtime.use_model(name)
 
+    def approve_all_shell_commands(self) -> None:
+        """Approve every shell command for the rest of this run, without asking."""
+        self.runtime.approve_all_shell_commands()
+
     async def _command_new(self, argument: str) -> CommandResult:
         """Start a fresh session."""
         session_id = self.new_session()

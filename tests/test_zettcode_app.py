@@ -22,7 +22,7 @@ from zettcode.app import Transcript, TranscriptSource, ZettCodeApp
 from zettcode.app.agent.agent import ZettCodeAgent
 from zettcode.app.agent.projection import TranscriptProjector
 from zettcode.app.commands import Command, CommandResult
-from zettcode.app.ui.widgets import WELCOME
+from zettcode.app.ui.widgets import WELCOME, ApprovalChoice, ApprovalPage
 from zettcode.config import ModelConfig
 from zettcode.tui import DARK, LIGHT, ListItem, ListPage, Rect, walk
 from zettcode.tui.testing import Harness
@@ -93,6 +93,7 @@ class FakeRuntime:
     config: FakeConfig = field(default_factory=FakeConfig)
     active_model: ModelConfig = field(init=False)
     model: object = field(init=False)
+    auto_approved: bool = field(default=False, init=False)
 
     def __post_init__(self) -> None:
         self.active_model = self.config.models[0]
@@ -120,6 +121,9 @@ class FakeRuntime:
     def use_session(self, session_id: str) -> None:
         self.session_id = session_id
 
+    def approve_all_shell_commands(self) -> None:
+        self.auto_approved = True
+
 
 def build_app(events: list[AgentEvent] | None = None, *, block: bool = False) -> ZettCodeApp:
     app = ZettCodeApp(ZettCodeAgent(FakeRuntime(FakeClient(events, block=block))))
@@ -131,6 +135,11 @@ def build_app(events: list[AgentEvent] | None = None, *, block: bool = False) ->
 def _presented_page(app: ZettCodeApp) -> ListPage:
     """Return the page on top of the stack, wherever the shell wrapped it."""
     return next(widget for widget in walk(app.app.screens.top.widget) if isinstance(widget, ListPage))
+
+
+def _approval_page(app: ZettCodeApp) -> ApprovalPage:
+    """Return the approval panel on top of the stack, inside its border."""
+    return next(widget for widget in walk(app.app.screens.top.widget) if isinstance(widget, ApprovalPage))
 
 
 def test_welcome_mark_is_compact_and_readable_in_both_themes():
@@ -446,34 +455,129 @@ async def test_unknown_model_keeps_the_current_model():
     assert any("Unknown model" in entry.text for entry in app.transcript.entries)
 
 
-async def test_app_asks_for_approval_and_emits_the_decision():
-    app = build_app()
-    harness = _harness(app)
-    request = AgentEvent(
+def _approval_event(
+    command: str = "rm -rf build", *, call_id: str = "call-1", remember_supported: bool = True
+) -> AgentEvent:
+    """Build the CUSTOM event the shell approval extension emits for one command."""
+    return AgentEvent(
         AgentEventType.CUSTOM,
         "session-0001",
         name=SHELL_APPROVAL_EVENT_NAME,
         payload={
-            "tool_call_id": "call-1",
+            "tool_call_id": call_id,
             "session_id": "session-0001",
-            "command": "rm -rf build",
-            "remember_supported": True,
+            "command": command,
+            "remember_supported": remember_supported,
         },
     )
 
-    await app.projector.dispatch(request)
 
-    assert len(app.app.screens) == 2
-    assert "rm -rf build" in harness.render().text
+async def test_app_asks_for_approval_in_a_bottom_panel():
+    app = build_app()
+    harness = _harness(app)
 
-    harness.press("right")
+    await app.projector.dispatch(_approval_event())
+
+    page = _approval_page(app)
+    assert app.app.screens.top.name == "page"
+    text = harness.render().text
+    # The panel sits at the bottom, so the conversation above it stays visible.
+    assert page.rect.y > 0
+    assert "Would you like to run the following command?" in text
+    assert "Environment: local" in text
+    assert "$ rm -rf build" in text
+    assert "1. Yes, proceed (y)" in text
+    assert "2. Yes, and don't ask again for this command (p)" in text
+    assert "3. Yes, and stop asking for the rest of this run (a)" in text
+    assert "4. No, and say what to do differently (esc)" in text
+
     harness.press("enter")
 
     event, config = app.agent.runtime.client.agent.emitted[0]
     assert event.name == "shell_approval_response"
-    assert event.payload == {"tool_call_id": "call-1", "decision": "execute", "remember": True}
+    assert event.payload == {"tool_call_id": "call-1", "decision": "execute", "remember": False}
     assert config.session_id == "session-0001"
-    assert len(app.app.screens) == 1
+    assert app.app.screens.top.name == "main"
+
+
+async def test_always_allow_remembers_only_the_exact_command():
+    app = build_app()
+    harness = _harness(app)
+
+    await app.projector.dispatch(_approval_event())
+    harness.press("p")
+
+    event, _ = app.agent.runtime.client.agent.emitted[0]
+    assert event.payload == {"tool_call_id": "call-1", "decision": "execute", "remember": True}
+    assert app.agent.runtime.auto_approved is False
+
+
+async def test_the_approval_panel_answers_to_arrows_numbers_and_letter_keys():
+    app = build_app()
+    harness = _harness(app)
+
+    await app.projector.dispatch(_approval_event())
+
+    page = _approval_page(app)
+    harness.press("down")
+    assert page.choice is ApprovalChoice.ALWAYS
+    harness.press("up")
+    assert page.choice is ApprovalChoice.RUN
+    harness.press("3")
+    assert page.choice is ApprovalChoice.RUN_AUTO
+
+
+async def test_clicking_an_approval_option_answers_the_prompt():
+    app = build_app()
+    harness = _harness(app)
+
+    await app.projector.dispatch(_approval_event())
+    page = _approval_page(app)
+    rows = harness.render().text.splitlines()
+    target = next(index for index, line in enumerate(rows) if "2. Yes, and don't ask again" in line)
+
+    harness.click(page.rect.x + 6, target)
+
+    event, _ = app.agent.runtime.client.agent.emitted[0]
+    assert event.payload == {"tool_call_id": "call-1", "decision": "execute", "remember": True}
+    assert app.app.screens.top.name == "main"
+
+
+async def test_auto_mode_approves_every_later_command():
+    app = build_app()
+    harness = _harness(app)
+
+    await app.projector.dispatch(_approval_event())
+    harness.press("a")
+
+    event, _ = app.agent.runtime.client.agent.emitted[0]
+    assert event.payload == {"tool_call_id": "call-1", "decision": "execute", "remember": False}
+    assert app.agent.runtime.auto_approved is True
+    assert any("auto mode" in entry.text for entry in app.transcript.entries)
+    assert "auto" in harness.render().text.strip().splitlines()[-1]
+
+
+async def test_the_approval_panel_hides_always_when_the_runtime_cannot_remember():
+    app = build_app()
+    harness = _harness(app)
+
+    await app.projector.dispatch(_approval_event(remember_supported=False))
+
+    text = harness.render().text
+    assert "don't ask again for this command" not in text
+    assert "2. Yes, and stop asking for the rest of this run (a)" in text
+
+
+async def test_escape_aborts_the_pending_command():
+    app = build_app()
+    harness = _harness(app)
+
+    await app.projector.dispatch(_approval_event())
+    harness.press("escape")
+
+    event, _ = app.agent.runtime.client.agent.emitted[0]
+    assert event.payload == {"tool_call_id": "call-1", "decision": "abort", "remember": False}
+    assert app.app.screens.top.name == "main"
 
 
 async def test_ctrl_c_clears_the_composer_when_idle():
@@ -630,7 +734,7 @@ def test_slash_menu_caps_rows_and_scrolls_many_commands():
     harness.write("/")
 
     assert len(app.completions.items) == len(app.commands)
-    assert app.completions.visible_height == 5
+    assert app.completions.visible_height == 6
     for _ in range(12):
         harness.press("down")
     assert app.completions.selected == 12

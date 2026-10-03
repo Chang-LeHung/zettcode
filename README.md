@@ -86,7 +86,7 @@ comment = "#6d7a70"
 number = "#d8b46a"
 function = "#7fb7d8"
 builtin = "#b8a6e0"
-inline = "#d8c07a"
+inline = "#9bddad"
 ```
 
 Unknown keys and malformed colours are reported instead of silently ignored.
