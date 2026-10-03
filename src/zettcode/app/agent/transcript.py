@@ -665,11 +665,10 @@ RUNNING_GLYPHS = ("\u2726", "\u00b7")
 BLINK_FRAMES = 8
 
 #: Frames the highlight spends on one column. It is fractional so the pace can
-#: sit between two ticks: at about 30 fps, four frames is seven columns a second,
-#: so a column stays lit for a beat and a short label takes about three seconds
-#: to cross. Faster than this and the highlight reads as a flicker rather than a
-#: light moving across the words.
-SWEEP_FRAMES = 4.0
+#: sit between two ticks: at about 30 fps, eight frames is under four columns a
+#: second, so a short label takes about six seconds to cross. Anything faster and
+#: the highlight reads as a flicker rather than a light drifting across the words.
+SWEEP_FRAMES = 8.0
 
 
 def sweep_step(frame: int) -> int:
