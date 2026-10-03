@@ -156,9 +156,12 @@ streamed text kinds go through the same chain: reasoning loses the
 opens the message carries one.
 
 Pressing Enter puts a live row in the transcript straight away, so a slow model
-is never mistaken for a frozen one. It shows an animated glyph and the elapsed
-time, and is replaced by the real answer, reasoning, or tool call as soon as one
-arrives. Rows that are still running show the same elapsed timer, and when the
+is never mistaken for a frozen one. The row reads `Processing`, carries the
+elapsed time, and is replaced by the real answer, reasoning, or tool call as
+soon as one arrives. A request waits more than once: every tool batch is
+followed by another model call, and `Processing` comes back below the rows it
+belongs to until that call answers. Rows that are still running show the same
+elapsed timer, and when the
 turn ends the transcript closes with a muted summary of the wall time it took:
 `Processed 51s · 09:41`, `Processed 22m · 14:05`, or `Processed 2h 5m · 18:30`.
 

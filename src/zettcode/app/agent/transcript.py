@@ -35,6 +35,12 @@ MAX_TOOL_OUTPUT = 64_000
 TOOL_PREVIEW_ROWS = 5
 TOOL_EXPANDED_ROWS = 40
 
+#: Label of a row shown while the model is working and has not answered yet.
+#: One request can show it more than once: every tool batch is followed by
+#: another model call, and until that call produces something there is nothing
+#: else on screen to say work is still going on.
+PROCESSING = "Processing"
+
 # Matches both escape families a tool can smuggle into its output: CSI
 # (``ESC [`` parameters and a final byte) and OSC (``ESC ]`` up to BEL or ST).
 # Stripping them keeps a coloured compiler message from repainting the canvas.
@@ -45,11 +51,17 @@ def terminal_safe(value: str) -> str:
     """Strip escape sequences and replace characters the canvas cannot paint.
 
     Args:
-        value: Raw tool output; newlines survive, tabs become four spaces, and
-            anything non-printable becomes the replacement character so a tool
-            cannot smuggle control codes into the canvas.
+        value: Raw tool output; newlines survive, a tab advances to the next
+            four-column stop, and anything else non-printable becomes the
+            replacement character so a tool cannot smuggle control codes into
+            the canvas.
+
+    Line endings are normalised first. Output printed with CRLF — a tool that
+    shells out to ``curl -i`` or to a Windows program — would otherwise leave a
+    replacement glyph at the end of every line, because a carriage return stops
+    being a line break the moment it is replaced.
     """
-    cleaned = _ANSI.sub("", value).expandtabs(4)
+    cleaned = _ANSI.sub("", value).replace("\r\n", "\n").replace("\r", "\n").expandtabs(4)
     return "".join(
         character if character in "\n" else character if character.isprintable() else "\ufffd" for character in cleaned
     )
@@ -280,11 +292,26 @@ class Transcript:
         self._add("welcome", text=text)
 
     def begin_turn(self, prompt: str) -> None:
-        """Record the user prompt and open a placeholder for the reply."""
+        """Record the user prompt and open the first wait row for the reply."""
         self._add("user", text=prompt)
-        # Nothing is known about the response yet, and the first token can take
-        # seconds, so a live placeholder goes up immediately.
-        self._add("pending", title="Waiting for the model\u2026", status="running", started_at=self.clock())
+        self.wait_for_model()
+
+    def wait_for_model(self) -> bool:
+        """Open a wait row for the next model call, and report whether it opened.
+
+        Nothing is known about the response yet, and a call can take seconds, so
+        the row goes up as soon as the call starts. It is opened again after a
+        tool batch, because the loop then calls the model a second time; a wait
+        is not repeated while a tool is still running, and never while a wait is
+        already open.
+        """
+        if any(entry.kind == "tool" and entry.status == "running" for entry in self.entries):
+            return False
+        pending = self._last("pending")
+        if pending is not None and pending.status == "running":
+            return False
+        self._add("pending", title=PROCESSING, status="running", started_at=self.clock())
+        return True
 
     def start_thinking(self) -> Entry:
         """Return the open thinking block, promoting the placeholder when it fits."""
@@ -376,6 +403,9 @@ class Transcript:
         if entry.started_at is not None:
             entry.duration = self.clock() - entry.started_at
         self.version += 1
+        # The loop calls the model again once the batch has produced its
+        # results, so the reader is told that work continues.
+        self.wait_for_model()
 
     def toggle(self, entry_id: int) -> bool:
         """Expand or collapse one collapsible entry and report whether it changed.
@@ -598,7 +628,7 @@ def _tool_lines(entry: Entry, width: int, theme: Theme, frame: int) -> list[Text
     spans: list[Span] = [Span(f"{symbol} ", style)]
     if running:
         label = SweepSpan(title, style, peak=Style(foreground=theme.text, bold=True), ramp=3)
-        spans.extend(sweep_spans(label, frame // SWEEP_FRAMES))
+        spans.extend(sweep_spans(label, sweep_step(frame)))
     else:
         spans.append(Span(title, style))
     if timing:
@@ -634,10 +664,21 @@ RUNNING_GLYPHS = ("\u2726", "\u00b7")
 #: about twice a second: slow enough to read, fast enough to look alive.
 BLINK_FRAMES = 8
 
-#: Frames the highlight spends on one column. At about 30 fps this crosses a
-#: short label in a bit over a second: quick enough to read as motion, slow
-#: enough to follow the words.
-SWEEP_FRAMES = 2
+#: Frames the highlight spends on one column. It is fractional so the pace can
+#: sit between two ticks: at about 30 fps, four frames is seven columns a second,
+#: so a column stays lit for a beat and a short label takes about three seconds
+#: to cross. Faster than this and the highlight reads as a flicker rather than a
+#: light moving across the words.
+SWEEP_FRAMES = 4.0
+
+
+def sweep_step(frame: int) -> int:
+    """Return the column the highlight has reached at one animation frame.
+
+    Args:
+        frame: Monotonic frame counter shared by the whole application.
+    """
+    return int(frame / SWEEP_FRAMES)
 
 
 def activity_glyph(frame: int) -> str:
@@ -673,4 +714,4 @@ def _running_label(text: str, theme: Theme, frame: int) -> tuple[Span, ...]:
     # towards the accent it keeps a distinct step per column even where the
     # terminal has only 256 colours, which a green-to-green ramp does not.
     label = SweepSpan(text, resting, peak=Style(foreground=theme.text, bold=True), ramp=3)
-    return (Span(f"{RUNNING_GLYPHS[0]} ", resting), *sweep_spans(label, frame // SWEEP_FRAMES))
+    return (Span(f"{RUNNING_GLYPHS[0]} ", resting), *sweep_spans(label, sweep_step(frame)))
