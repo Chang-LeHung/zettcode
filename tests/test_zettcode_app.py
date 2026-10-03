@@ -952,6 +952,39 @@ async def test_the_transcript_scrolls_with_the_mouse_wheel():
     assert view.follow_tail is True
 
 
+async def test_a_scrolled_transcript_offers_back_to_bottom_by_click_and_escape():
+    app = build_app()
+    harness = _harness(app)
+    for index in range(60):
+        app.transcript.notice(f"line {index}")
+    harness.render()
+    view = app.view
+
+    assert view.badge_rect() is None
+
+    harness.press("page_up")
+    harness.render()
+
+    badge = view.badge_rect()
+    assert badge is not None
+    assert view.scrolled_up is True
+    assert harness.render().text.splitlines()[badge.y].strip().endswith("back to bottom \u00b7 Esc")
+
+    harness.mouse_down(badge.x + 1, badge.y)
+    harness.mouse_up(badge.x + 1, badge.y)
+
+    assert view.follow_tail is True
+    assert view.badge_rect() is None
+
+    harness.press("page_up")
+    harness.render()
+    assert view.scrolled_up is True
+
+    harness.press("escape")
+
+    assert view.follow_tail is True
+
+
 async def test_ctrl_c_copies_the_transcript_selection():
     app = build_app()
     harness = _harness(app)

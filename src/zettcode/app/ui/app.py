@@ -131,6 +131,7 @@ class ZettCodeApp:
         self.app.commands.add("toggle_thinking", self._toggle_thinking)
         self.app.commands.add("scroll_up", lambda event, host: (self.view.scroll_by(-3), True)[1])
         self.app.commands.add("scroll_down", lambda event, host: (self.view.scroll_by(3), True)[1])
+        self.app.commands.add("scroll_end", self._scroll_end)
         self.app.commands.add("quit", lambda event, host: (host.exit(), True)[1])
         self.app.commands.add("complete_next", self._complete_next)
         self.app.commands.add("complete_previous", self._complete_previous)
@@ -149,6 +150,9 @@ class ZettCodeApp:
         )
         self.app.keymap.bind("page_up", "scroll_up")
         self.app.keymap.bind("page_down", "scroll_down")
+        # Escape is the keyboard twin of the transcript's return badge; capture
+        # priority lets it win, because the composer would otherwise swallow Esc.
+        self.app.keymap.bind("escape", "scroll_end", priority="capture", when=self._transcript_scrolled_up)
         # Capture priority is what lets the menu win the keys it needs: the
         # composer would otherwise read Up and Down as history navigation and
         # would treat Tab as its own inline completion.
@@ -161,6 +165,15 @@ class ZettCodeApp:
     def _menu_open(self) -> bool:
         """Return whether the slash-command menu is showing."""
         return self.app.screens.top.name != PAGE_SCREEN and self.completions.visible
+
+    def _transcript_scrolled_up(self) -> bool:
+        """Return whether Escape should jump the conversation back to its tail."""
+        return self.app.screens.top.name != PAGE_SCREEN and self.view.scrolled_up
+
+    def _scroll_end(self, event: KeyEvent, host: Host) -> bool:
+        """Follow the newest line again, as the transcript's return badge does."""
+        self.view.scroll_end()
+        return True
 
     def _accept_on_enter(self) -> bool:
         """Return whether Enter should complete the draft instead of running it.

@@ -381,7 +381,10 @@ and owns the keymap, the slash commands, the approval panel, and the toasts.
 Model switches produce a centered transcript row; switching sessions rebuilds
 the visible conversation from the JSONL active branch, including tool results,
 and clears the old view. The row before command completions is empty space,
-not a rule. Two
+not a rule. Scrolling away from the newest line floats a `↓ back to bottom`
+badge over the transcript's last row; clicking it, or pressing `Esc`, follows
+the tail again, and the binding is captured precisely because the composer
+would otherwise swallow `Esc`. Two
 bindings show why the framework distinguishes capture from bubble priority:
 `ctrl_c` and `ctrl_d` are captured, so the application can interrupt or exit
 before the composer sees the key, while `page_up` and `page_down` are bubble

@@ -129,6 +129,7 @@ uv run zettcode /path/to/project
 - `Ctrl-L`: redraw the terminal
 - `Ctrl-T`: expand or collapse the latest thinking block
 - `Page Up` / `Page Down`: scroll history while keeping the composer focused
+- `Esc` or the `↓ back to bottom` badge: jump to the newest line once scrolled up
 - Mouse wheel: scroll history
 - Click a Thinking or Tool row to expand or collapse it
 - Drag in the transcript to select text; the selection is copied on release

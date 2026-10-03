@@ -10,8 +10,15 @@ from __future__ import annotations
 from bisect import bisect_right
 from collections.abc import Callable
 
-from ....tui import Canvas, Host, LineSource, MouseAction, MouseEvent, ScrollView, TextLine, Theme
+from ....tui import Canvas, Host, LineSource, MouseAction, MouseEvent, Rect, ScrollView, Span, Style, TextLine, Theme
+from ....tui.render import display_width
 from ...agent.transcript import Entry, Transcript
+
+#: Badge shown once the reader scrolls away from the newest line. It names the
+#: shortcut so the mouse and the keyboard offer the same way back.
+BADGE_ARROW = "\u2193"
+BADGE_LABEL = " back to bottom \u00b7 Esc"
+BACK_TO_BOTTOM = BADGE_ARROW + BADGE_LABEL
 
 
 class TranscriptSource(LineSource):
@@ -124,12 +131,58 @@ class TranscriptView(ScrollView):
         super().__init__(self.transcript_source, follow_tail=True, selectable=True)
 
     def render(self, canvas: Canvas) -> None:
-        """Refresh the source theme so a theme switch repaints the entries."""
+        """Refresh the source theme, then float the return badge over the rows."""
         self.transcript_source.theme = self.theme
         super().render(canvas)
+        self._render_badge(canvas)
+
+    @property
+    def scrolled_up(self) -> bool:
+        """Return whether the newest lines are out of view."""
+        return not self.follow_tail
+
+    def badge_rect(self) -> Rect | None:
+        """Return the cell rectangle of the return badge, or None while at the tail.
+
+        The badge is anchored to the bottom-right corner with the same two-cell
+        margin the header, the status bar, and the composer keep, so it lines up
+        with the rest of the chrome instead of touching the frame.
+        """
+        if not self.scrolled_up or self.rect.empty:
+            return None
+        width = display_width(BACK_TO_BOTTOM) + 2
+        if width > self.rect.width:
+            return None
+        x = max(self.rect.x, self.rect.x + self.rect.width - width - 2)
+        return Rect(x, self.rect.bottom - 1, width, 1)
+
+    def _render_badge(self, canvas: Canvas) -> None:
+        """Paint the return badge in the composer's raised-surface colours."""
+        rect = self.badge_rect()
+        if rect is None:
+            return
+        style = Style(foreground=self.theme.text, background=self.theme.surface_alt)
+        arrow = Style(foreground=self.theme.accent_bright, background=self.theme.surface_alt, bold=True)
+        canvas.draw_spans(
+            rect.x,
+            rect.y,
+            (
+                Span(" ", style),
+                Span(BADGE_ARROW, arrow),
+                Span(BADGE_LABEL, style),
+                Span(" ", style),
+            ),
+            max_width=rect.width,
+        )
 
     def handle(self, event, host: Host) -> bool:
-        """Toggle the clicked entry; every other event stays with ScrollView."""
+        """Run the badge, else toggle the clicked entry, else leave it to ScrollView."""
+        if isinstance(event, MouseEvent) and event.action is MouseAction.DOWN:
+            badge = self.badge_rect()
+            if badge is not None and badge.contains(event.x, event.y):
+                self.scroll_end()
+                host.invalidate()
+                return True
         if isinstance(event, MouseEvent) and event.action is MouseAction.DOWN and self.rect.contains(event.x, event.y):
             index = self.top + event.y - self.rect.y
             entry = self.transcript_source.entry_at(index, self.line_width)
