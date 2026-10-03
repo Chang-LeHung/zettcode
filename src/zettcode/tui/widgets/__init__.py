@@ -7,7 +7,6 @@ from .diff import DiffLine, DiffSegment, DiffView, build_unified, parse_unified,
 from .list import ListItem, ListView
 from .list_page import ListPage
 from .markdown import Markdown, MarkdownSource, MarkdownView, render_markdown
-from .page import Page
 from .progress import ProgressBar, Spinner
 from .status import StatusBar
 from .table import Column, Table
@@ -33,7 +32,6 @@ __all__ = [
     "Markdown",
     "MarkdownSource",
     "MarkdownView",
-    "Page",
     "ProgressBar",
     "Rule",
     "Spinner",

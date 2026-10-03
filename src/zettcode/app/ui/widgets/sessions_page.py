@@ -9,9 +9,6 @@ from ....tui import ListItem, ListPage
 from ....tui.render import display_width
 from ...agent.storage import SessionInfo
 
-#: Rows the shell should give the page when it presents it as a panel.
-OVERLAY_ROWS = 14
-
 
 def format_ago(moment: datetime, *, now: datetime | None = None) -> str:
     """Return how long ago ``moment`` was, in the coarsest unit that fits.
@@ -79,5 +76,4 @@ class SessionsPage(ListPage):
             footer="enter open \u00b7 esc back",
             on_select=lambda item: on_select(str(item.value)),
             on_cancel=on_cancel,
-            overlay_rows=OVERLAY_ROWS,
         )

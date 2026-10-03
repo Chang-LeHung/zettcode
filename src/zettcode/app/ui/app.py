@@ -17,16 +17,13 @@ from ...config import ModelConfig
 from ...tui import (
     DARK,
     Anchor,
-    Border,
     CompletionPopup,
     Host,
     KeyEvent,
     Overlay,
     OverlaySlot,
-    Page,
     Screen,
     StatusBar,
-    Style,
     TaskPanel,
     TextArea,
     Theme,
@@ -41,11 +38,15 @@ from ..agent.projection import TranscriptProjector
 from ..agent.transcript import Transcript, activity_glyph
 from ..commands import CommandResult
 from .commands import ShellCommands
-from .widgets import WELCOME, ApprovalChoice, ApprovalPage, CommandCompleter, TranscriptView, ZettCodeRoot
+from .widgets import WELCOME, ApprovalChoice, ApprovalPage, CommandCompleter, TranscriptView, ZettCodeRoot, bottom_panel
 
 #: Screen name used for a page a command presented; the shell checks it to know
 #: that Ctrl-C and Ctrl-D belong to the page rather than the composer.
 PAGE_SCREEN = "page"
+
+#: Rows the approval panel takes from the bottom of the screen: the question,
+#: up to three lines of command, and the numbered choices.
+APPROVAL_ROWS = 16
 
 
 class ZettCodeApp:
@@ -305,35 +306,20 @@ class ZettCodeApp:
         self.app.invalidate()
 
     def _apply_result(self, result: CommandResult) -> None:
-        """Show what a command returned: Markdown, a toast, a page, a re-layout.
+        """Show what a command returned: Markdown, a toast, a widget, a re-layout.
 
         The order mirrors how the screen stack paints: transcript content and
-        the toast go up first, then a page is stacked on top of them, and the
-        re-layout happens last so it measures what was actually added.
+        the toast go up first, then the widget is stacked on top of them, and
+        the re-layout happens last so it measures what was actually added.
         """
-        for message in result.messages:
-            self.transcript.markdown(message)
+        if result.message:
+            self.transcript.markdown(result.message)
         if result.notification:
             self._notify(result.notification, level="success")
-        if result.page is not None:
-            self._present(result.page, name=PAGE_SCREEN)
+        if result.widget is not None:
+            self.app.push_screen(Screen(result.widget, name=PAGE_SCREEN, modal=True))
         if result.relayout:
             self.app.request_layout()
-
-    def _present(self, page: Page, *, name: str) -> None:
-        """Stack a page full screen, or as a panel when it asks for one.
-
-        A page declares its footprint with :attr:`Page.overlay_rows`: ``None``
-        covers the screen, and a number puts the page in a bordered panel of
-        that many rows against the bottom edge, leaving the conversation
-        visible above it.
-        """
-        if page.overlay_rows is None:
-            self.app.push_screen(Screen(page, name=name, modal=True))
-            return
-        panel = Border(page, style=Style(foreground=self.app.theme.border))
-        overlay = Overlay([OverlaySlot(panel, Anchor(horizontal="stretch", vertical="end", height=page.overlay_rows))])
-        self.app.push_screen(Screen(overlay, name=name, modal=True))
 
     def close_page(self) -> None:
         """Return to the composer, restoring its focus and layout."""
@@ -406,7 +392,8 @@ class ZettCodeApp:
             on_choice=lambda choice: self._respond(session_id, call_id, choice),
             remember_supported=bool(payload.get("remember_supported")),
         )
-        self._present(page, name=PAGE_SCREEN)
+        panel = bottom_panel(page, rows=APPROVAL_ROWS, color=self.app.theme.border)
+        self.app.push_screen(Screen(panel, name=PAGE_SCREEN, modal=True))
 
     def _respond(self, session_id: str, call_id: str, choice: ApprovalChoice) -> None:
         """Dismiss the panel and answer the suspended agent run.

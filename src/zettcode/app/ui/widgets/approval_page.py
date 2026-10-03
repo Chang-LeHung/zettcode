@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 
-from ....tui import Canvas, Host, KeyEvent, MouseAction, MouseEvent, Page
+from ....tui import Canvas, Host, KeyEvent, MouseAction, MouseEvent, Widget
 from ....tui.render import ELLIPSIS, SHELL, Span, Style, highlight, wrap_spans
 
 
@@ -45,7 +45,7 @@ class ApprovalOption:
 _KEY_HINTS = {"escape": "esc"}
 
 
-class ApprovalPage(Page):
+class ApprovalPage(Widget):
     """Review one shell command before it runs.
 
     Shape::
@@ -71,9 +71,8 @@ class ApprovalPage(Page):
     the only chrome. Only the highlighted option bands a row, so the prompt
     never reads as a second surface stacked on the conversation.
 
-    It paints into whatever rectangle the shell gives it and asks for a bottom
-    panel through :attr:`overlay_rows`, so the conversation stays visible above
-    the command being reviewed.
+    It paints into whatever rectangle it is given; the shell puts it in a
+    bottom panel so the conversation stays visible above the command.
 
     Args:
         command: Shell command under review, shown verbatim and highlighted.
@@ -89,8 +88,6 @@ class ApprovalPage(Page):
     #: blank, the question, the blank, the environment line, the blank after
     #: the command, the blank before the options, and one spare bottom row.
     FIXED_ROWS = 7
-    #: Rows the shell should give the page when it presents it as a panel.
-    OVERLAY_ROWS = 16
 
     def __init__(
         self,
@@ -107,7 +104,6 @@ class ApprovalPage(Page):
         self.environment = environment
         self.options = self._options(remember_supported)
         self.selected = 0
-        self.overlay_rows = self.OVERLAY_ROWS
 
     @staticmethod
     def _options(remember_supported: bool) -> tuple[ApprovalOption, ...]:

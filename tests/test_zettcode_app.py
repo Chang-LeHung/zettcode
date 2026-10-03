@@ -25,7 +25,7 @@ from zettcode.app.agent.agent import ZettCodeAgent
 from zettcode.app.agent.projection import TranscriptProjector
 from zettcode.app.agent.storage import SessionInfo, SessionStore
 from zettcode.app.commands import Command, CommandResult
-from zettcode.app.ui.widgets import WELCOME, ApprovalChoice, ApprovalPage, SessionsPage, format_ago
+from zettcode.app.ui.widgets import WELCOME, ApprovalChoice, ApprovalPage, SessionsPage, bottom_panel, format_ago
 from zettcode.config import ModelConfig
 from zettcode.tui import DARK, LIGHT, ListItem, ListPage, Rect, walk
 from zettcode.tui.testing import Harness
@@ -388,17 +388,30 @@ async def test_model_page_esc_restores_composer_without_selecting():
     assert "Ask ZettCode" in harness.render().text
 
 
-async def test_a_page_without_overlay_rows_is_presented_full_screen():
+async def test_a_command_can_compose_its_own_panel():
     app = build_app()
-    page = ListPage([ListItem("a", "alpha")], title="Full")
-
-    app._present(page, name="full")
     harness = _harness(app)
+
+    async def show(argument: str) -> CommandResult:
+        page = ListPage([ListItem("a", "alpha")], title="Panel", on_cancel=app.close_page)
+        return CommandResult(widget=bottom_panel(page, rows=6))
+
+    app.commands = (*app.commands, Command("/panel", "show a panel", "app", show))
+    app.composer.completer = type(app.composer.completer)(app.commands)
+    harness.write("/panel")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    page = _presented_page(app)
     harness.render()
 
-    assert app.app.screens.top.name == "full"
-    assert page.rect == Rect(0, 0, 60, 14)
-    assert "alpha" in harness.render().text
+    assert app.app.screens.top.name == "page"
+    # The handler asked for six rows, the frame takes one on each side.
+    assert page.rect.height == 4
+    assert page.rect.y > 0
+
+    harness.press("escape")
+    assert app.app.screens.top.name == "main"
 
 
 async def test_ctrl_c_returns_from_the_model_page_without_cancelling_a_turn():
@@ -761,7 +774,7 @@ async def test_a_registered_command_runs_its_own_handler():
 
     async def custom_handler(argument: str) -> CommandResult:
         arguments.append(argument)
-        return CommandResult(messages=(f"custom: {argument}",), relayout=True)
+        return CommandResult(message=f"custom: {argument}", relayout=True)
 
     app.commands = (*app.commands, Command("/custom", "run a custom action", "app", custom_handler))
     app.composer.completer = type(app.composer.completer)(app.commands)
@@ -797,7 +810,7 @@ async def test_a_command_can_present_its_own_widget():
 
     async def show_page(argument: str) -> CommandResult:
         page = ListPage([ListItem("a", "alpha")], title="Custom Page", on_cancel=app.close_page)
-        return CommandResult(page=page)
+        return CommandResult(widget=page)
 
     app.commands = (*app.commands, Command("/panel", "show a custom page", "app", show_page))
     app.composer.completer = type(app.composer.completer)(app.commands)
@@ -808,7 +821,7 @@ async def test_a_command_can_present_its_own_widget():
     page = _presented_page(app)
     assert app.app.screens.top.name == "page"
     assert "Custom Page" in harness.render().text
-    assert page.rect == Rect(0, 0, 60, 14)  # no overlay_rows, so it covers the screen
+    assert page.rect == Rect(0, 0, 60, 14)  # nothing wraps it, so it covers the screen
 
     harness.press("escape")
     assert app.app.screens.top.name == "main"

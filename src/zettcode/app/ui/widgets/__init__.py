@@ -9,6 +9,7 @@ reusable framework they are built from.
 from .approval_page import ApprovalChoice, ApprovalPage
 from .completer import CommandCompleter, help_text
 from .model_page import ModelPage
+from .panel import bottom_panel
 from .root import ZettCodeRoot
 from .sessions_page import SessionsPage, format_ago
 from .transcript import TranscriptSource, TranscriptView
@@ -24,6 +25,7 @@ __all__ = [
     "TranscriptView",
     "WELCOME",
     "ZettCodeRoot",
+    "bottom_panel",
     "format_ago",
     "help_text",
 ]

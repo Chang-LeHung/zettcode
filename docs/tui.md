@@ -334,6 +334,12 @@ result as another bottom panel — one row per session, with the title padded in
 a column, the age of the last change, and the short id so an untitled session is
 still identifiable.
 
+Commands never paint: a handler returns a `CommandResult` carrying a widget, and
+the shell pushes it as a screen. The handler composes the presentation itself —
+the pickers wrap their page in `app/ui/widgets/bottom_panel`, which frames it
+and anchors it to the bottom edge — so panel-versus-full-screen is a decision
+made in the command, not a hint the presenting code has to interpret.
+
 `app/ui/app.py` assembles the header, transcript, composer, and status line,
 and owns the keymap, the slash commands, the approval panel, and the toasts. Two
 bindings show why the framework distinguishes capture from bubble priority:

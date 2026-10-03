@@ -10,10 +10,9 @@ from ..core.host import Host
 from ..core.widget import Widget
 from ..render import Canvas, Style
 from .list import ListItem, ListView
-from .page import Page
 
 
-class ListPage(Page):
+class ListPage(Widget):
     """An opaque page with a title, a scrolling list, and a footer hint.
 
     Shape::
@@ -30,10 +29,8 @@ class ListPage(Page):
     :class:`ListView` rather than inheriting it, which keeps that list
     general-purpose.
 
-    It paints into whatever rectangle the shell gives it, so the same page can
-    be a full screen or a bottom panel over the conversation. ``overlay_rows``
-    asks for the second: the shell then places the page in a panel of that many
-    rows anchored to the bottom edge instead of filling the screen.
+    It paints into whatever rectangle it is given: the caller decides whether
+    that is the whole screen or a panel anchored to the bottom edge.
 
     Args:
         items: Rows to show; the list scrolls past ``visible_rows``.
@@ -45,9 +42,6 @@ class ListPage(Page):
         selected: Index highlighted first, clamped into range.
         visible_rows: Most rows shown at once; the list scrolls when there are
             more.
-        overlay_rows: Rows the shell should give the page when presenting it as
-            a bottom panel over the conversation; ``None`` presents it full
-            screen. The page needs at least five rows for its chrome.
     """
 
     def __init__(
@@ -60,7 +54,6 @@ class ListPage(Page):
         on_cancel: Callable[[], None] | None = None,
         selected: int = 0,
         visible_rows: int = 6,
-        overlay_rows: int | None = None,
     ) -> None:
         """Build the page and its list, highlighting ``selected`` without notifying."""
         super().__init__()
@@ -68,7 +61,6 @@ class ListPage(Page):
         self.footer = footer
         self.on_cancel = on_cancel
         self.visible_rows = max(1, visible_rows)
-        self.overlay_rows = overlay_rows
         self.list = ListView(items, on_select=on_select, wrap=False, band=True)
         if items:
             self.list.select(selected, notify=False)

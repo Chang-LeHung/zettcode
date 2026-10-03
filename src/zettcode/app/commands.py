@@ -4,7 +4,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Literal
 
-from ..tui import Page
+from ..tui import Widget
 
 
 @dataclass(frozen=True, slots=True)
@@ -16,22 +16,23 @@ class CommandResult:
     is optional; the default result changes nothing.
 
     Attributes:
-        messages: Markdown documents appended to the transcript, in order. Each
-            is parsed and rendered like an answer, so a command can report with
-            headings, lists, and inline code instead of plain text.
+        message: Markdown appended to the transcript when the command wants to
+            report something. It is parsed and rendered like an answer, so a
+            command can use headings, lists, and inline code instead of plain
+            text.
         notification: One-line toast shown after a successful run; ``None``
             shows no toast.
-        page: :class:`~zettcode.tui.Page` to present over the conversation after
-            the result; the handler builds it, and its ``overlay_rows`` decides
-            between a bottom panel and the whole screen.
+        widget: Widget to present over the conversation after the result. The
+            handler composes it, including its own panel or full-screen layout,
+            and the application only pushes it as a screen.
         relayout: Re-measure the widget tree after applying the result. Set it
             when the change affects geometry a fixed-height row already
             measured, such as the header showing a new model name.
     """
 
-    messages: tuple[str, ...] = ()
+    message: str = ""
     notification: str | None = None
-    page: Page | None = None
+    widget: Widget | None = None
     relayout: bool = False
 
 
