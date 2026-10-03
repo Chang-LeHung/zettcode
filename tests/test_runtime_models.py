@@ -1,11 +1,31 @@
 """Model switching uses the configured OpenAI-compatible endpoint per request."""
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
 from zett_agent import UserMessage
 
 from zettcode.app.agent import runtime as runtime_module
 from zettcode.app.agent.storage import SessionStore
 from zettcode.config import ModelConfig, ZettCodeConfig
+
+
+def test_the_system_prompt_head_changes_only_by_the_day(tmp_path):
+    """The prompt head is part of the provider's cache key.
+
+    A clock reading with seconds would make it unique to every launch, which
+    drops the cache for the whole conversation; the day keeps the head reusable
+    while still telling the model what today is.
+    """
+    config = ZettCodeConfig(workspace=tmp_path, models=(ModelConfig(model="m", token="t"),), store=tmp_path / "s")
+    morning = datetime(2026, 10, 4, 9, 15, 3, tzinfo=UTC)
+    late = datetime(2026, 10, 4, 23, 59, 59, tzinfo=UTC)
+
+    prompt = runtime_module.build_system_prompt(config, now=morning)
+
+    assert "- Today: 2026-10-04" in prompt
+    assert prompt == runtime_module.build_system_prompt(config, now=late)
+    assert prompt != runtime_module.build_system_prompt(config, now=late + timedelta(days=1))
 
 
 async def test_runtime_switches_models_and_closes_every_provider(tmp_path, monkeypatch):
