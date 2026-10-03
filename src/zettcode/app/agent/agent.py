@@ -57,11 +57,14 @@ class ZettCodeAgent:
 
     @property
     def commands(self) -> tuple[Command, ...]:
-        """Return the commands owned by the coding agent."""
+        """Return the conversation commands the agent owns.
+
+        They report through transcript Markdown; commands that present a widget
+        (such as the model picker) belong to the shell, which owns the widgets.
+        """
         return (
             Command("/new", "start a fresh session", "agent", self._command_new),
             Command("/sessions", "list persisted sessions", "agent", self._command_sessions),
-            Command("/model", "choose a model", "agent", self._command_model),
             Command("/use", "switch to a session: /use <id>", "agent", self._command_use),
         )
 
@@ -111,29 +114,21 @@ class ZettCodeAgent:
     async def _command_use(self, argument: str) -> CommandResult:
         """Switch to the requested session."""
         if not argument:
-            return CommandResult(messages=("Usage: /use <session-id>",))
+            return CommandResult(messages=("Usage: `/use <session-id>`",))
         self.use_session(argument)
         return CommandResult(notification=f"using session {self.session_id[:8]}")
 
     async def _command_sessions(self, argument: str) -> CommandResult:
-        """List recent sessions in the transcript."""
+        """List recent sessions as a Markdown list, marking the active one."""
         sessions = await self.list_sessions(limit=20)
         if not sessions:
             return CommandResult(messages=("No persisted sessions.",))
-        return CommandResult(
-            messages=tuple(
-                f"{'*' if session.session_id == self.session_id else ' '} "
-                f"{session.session_id}  {session.message_count} messages"
-                for session in sessions
-            )
-        )
-
-    async def _command_model(self, argument: str) -> CommandResult:
-        """Open the picker, or select a named model directly."""
-        if not argument:
-            return CommandResult(page="models")
-        selected = self.use_model(argument)
-        return CommandResult(notification=f"using model {selected.shown_name}", relayout=True)
+        rows = [
+            f"- `{session.session_id}` · {session.message_count} messages"
+            + (" **(current)**" if session.session_id == self.session_id else "")
+            for session in sessions
+        ]
+        return CommandResult(messages=("\n".join(rows),))
 
     def respond_approval(self, session_id: str, call_id: str, decision: str, remember: bool) -> None:
         """Answer a pending shell approval for the originating session."""

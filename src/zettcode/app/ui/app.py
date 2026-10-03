@@ -23,9 +23,9 @@ from ...tui import (
     DialogAction,
     Host,
     KeyEvent,
-    ListPage,
     Overlay,
     OverlaySlot,
+    Page,
     Screen,
     StatusBar,
     Style,
@@ -35,17 +35,20 @@ from ...tui import (
     Toast,
     TuiApp,
     VBox,
-    Widget,
     centered,
-    theme_named,
 )
 from ...tui.layout import Slot
 from ...tui.widgets import Rule, Text
 from ..agent.agent import ZettCodeAgent
 from ..agent.projection import TranscriptProjector
 from ..agent.transcript import Transcript, activity_glyph
-from ..commands import Command, CommandResult
-from .widgets import WELCOME, CommandCompleter, ModelPage, TranscriptView, ZettCodeRoot, help_text
+from ..commands import CommandResult
+from .commands import ShellCommands
+from .widgets import WELCOME, CommandCompleter, TranscriptView, ZettCodeRoot
+
+#: Screen name used for a page a command presented; the shell checks it to know
+#: that Ctrl-C and Ctrl-D belong to the page rather than the composer.
+PAGE_SCREEN = "page"
 
 
 class ZettCodeApp:
@@ -63,14 +66,7 @@ class ZettCodeApp:
         self.transcript.welcome(WELCOME)
         self.projector = TranscriptProjector(self.transcript, on_approval=self._approval_requested)
         self.agent.set_event_dispatcher(self.projector)
-        self.commands = (
-            Command("/help", "show the commands and the keys", "app", self._command_help),
-            *agent.commands,
-            Command("/theme", "switch the palette: /theme dark|light", "app", self._command_theme),
-            Command("/clear", "clear the transcript", "app", self._command_clear),
-            Command("/quit", "exit", "app", self._command_quit),
-            Command("/exit", "exit, same as /quit", "app", self._command_quit),
-        )
+        self.commands = ShellCommands(self).build(agent.commands)
 
         self.view = TranscriptView(self.transcript, theme=theme)
         self.composer = TextArea(
@@ -144,7 +140,7 @@ class ZettCodeApp:
             "ctrl_d",
             "quit",
             priority="capture",
-            when=lambda: self.app.screens.top.name != "models" and not self._busy and not self.composer.text,
+            when=lambda: self.app.screens.top.name != PAGE_SCREEN and not self._busy and not self.composer.text,
         )
         self.app.keymap.bind("page_up", "scroll_up")
         self.app.keymap.bind("page_down", "scroll_down")
@@ -159,7 +155,7 @@ class ZettCodeApp:
 
     def _menu_open(self) -> bool:
         """Return whether the slash-command menu is showing."""
-        return self.app.screens.top.name != "models" and self.completions.visible
+        return self.app.screens.top.name != PAGE_SCREEN and self.completions.visible
 
     def _accept_on_enter(self) -> bool:
         """Return whether Enter should complete the draft instead of running it.
@@ -210,8 +206,8 @@ class ZettCodeApp:
 
     def _interrupt(self, event: KeyEvent, host: Host) -> bool:
         """Copy a selection, otherwise stop the running turn or clear the draft."""
-        if self.app.screens.top.name == "models":
-            self._close_model_page()
+        if self.app.screens.top.name == PAGE_SCREEN:
+            self.close_page()
             host.invalidate()
             return True
         selected = self.view.selected_text()
@@ -300,77 +296,55 @@ class ZettCodeApp:
             except ValueError as error:
                 self.transcript.notice(str(error))
             else:
-                for message in result.messages:
-                    self.transcript.notice(message)
-                if result.notification:
-                    self._notify(result.notification, level="success")
-                if result.page == "models":
-                    self._open_model_page()
-                if result.relayout:
-                    self.app.request_layout()
+                self._apply_result(result)
         self._status = "ready"
         self.app.invalidate()
 
-    async def _command_help(self, argument: str) -> CommandResult:
-        """Describe commands from both the app and the agent."""
-        return CommandResult(messages=(help_text(self.commands),))
+    def _apply_result(self, result: CommandResult) -> None:
+        """Show what a command returned: Markdown, a toast, a page, a re-layout.
 
-    async def _command_clear(self, argument: str) -> CommandResult:
-        """Clear visible conversation entries."""
-        self.transcript.clear()
-        return CommandResult()
+        The order mirrors how the screen stack paints: transcript content and
+        the toast go up first, then a page is stacked on top of them, and the
+        re-layout happens last so it measures what was actually added.
+        """
+        for message in result.messages:
+            self.transcript.markdown(message)
+        if result.notification:
+            self._notify(result.notification, level="success")
+        if result.page is not None:
+            self._present(result.page, name=PAGE_SCREEN)
+        if result.relayout:
+            self.app.request_layout()
 
-    async def _command_quit(self, argument: str) -> CommandResult:
-        """Exit the terminal application."""
-        self.app.exit()
-        return CommandResult()
+    def _present(self, page: Page, *, name: str) -> None:
+        """Stack a page full screen, or as a panel when it asks for one.
 
-    async def _command_theme(self, name: str) -> CommandResult:
-        """Select a theme without changing agent settings."""
-        if not name:
-            return CommandResult(messages=("Usage: /theme dark|light",))
-        try:
-            theme = theme_named(name)
-        except ValueError:
-            return CommandResult(messages=(f"Unknown theme: {name}. Try dark or light.",))
-        self.app.theme = theme
-        return CommandResult(messages=(f"theme: {theme.name}",), relayout=True)
-
-    def _open_model_page(self) -> None:
-        """Replace the composer with a modal, scrollable model list."""
-        page = ModelPage(self.agent, on_select=self._select_model, on_cancel=self._close_model_page)
-        self._present(page, name="models")
-
-    def _present(self, page: ListPage, *, name: str) -> None:
-        """Stack a page full screen, or as a bottom panel when the page asks for one.
-
-        A page declares its footprint with ``overlay_rows``: ``None`` covers the
-        screen, and a number puts the page in a bordered panel of that many rows
-        against the bottom edge, leaving the conversation visible above it.
+        A page declares its footprint with :attr:`Page.overlay_rows`: ``None``
+        covers the screen, and a number puts the page in a bordered panel of
+        that many rows against the bottom edge, leaving the conversation
+        visible above it.
         """
         if page.overlay_rows is None:
-            widget: Widget = page
-        else:
-            panel = Border(page, style=Style(foreground=self.app.theme.border))
-            widget = Overlay(
-                [OverlaySlot(panel, Anchor(horizontal="stretch", vertical="end", height=page.overlay_rows))]
-            )
-        self.app.push_screen(Screen(widget, name=name, modal=True))
+            self.app.push_screen(Screen(page, name=name, modal=True))
+            return
+        panel = Border(page, style=Style(foreground=self.app.theme.border))
+        overlay = Overlay([OverlaySlot(panel, Anchor(horizontal="stretch", vertical="end", height=page.overlay_rows))])
+        self.app.push_screen(Screen(overlay, name=name, modal=True))
 
-    def _close_model_page(self) -> None:
+    def close_page(self) -> None:
         """Return to the composer, restoring its focus and layout."""
         self.app.pop_screen()
         self.app.request_layout()
 
-    def _select_model(self, name: ModelConfig) -> None:
+    def select_model(self, name: ModelConfig) -> None:
         """Apply the highlighted model and return to the composer."""
         try:
             selected = self.agent.use_model(name)
         except ValueError as error:
             self.transcript.notice(str(error))
-            self._close_model_page()
+            self.close_page()
         else:
-            self._close_model_page()
+            self.close_page()
             self._notify(f"using model {selected.shown_name}", level="success")
 
     # -- approvals ----------------------------------------------------------

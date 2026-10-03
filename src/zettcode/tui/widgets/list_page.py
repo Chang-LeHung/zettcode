@@ -10,9 +10,10 @@ from ..core.host import Host
 from ..core.widget import Widget
 from ..render import Canvas, Style
 from .list import ListItem, ListView
+from .page import Page
 
 
-class ListPage(Widget):
+class ListPage(Page):
     """An opaque page with a title, a scrolling list, and a footer hint.
 
     Shape::

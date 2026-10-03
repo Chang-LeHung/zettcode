@@ -112,7 +112,7 @@ class Entry:
     Attributes:
         id: Monotonic id, also the handle used to toggle the entry.
         kind: Which renderer applies: ``welcome``, ``notice``, ``user``,
-            ``pending``, ``thinking``, ``answer``, or ``tool``.
+            ``pending``, ``thinking``, ``answer``, ``message``, or ``tool``.
         text: Body text; for a tool row it is the (bounded) output.
         title: Row label, such as the tool name.
         detail: Inline suffix after the title, usually the argument preview.
@@ -223,6 +223,16 @@ class Transcript:
     def notice(self, text: str) -> None:
         """Append a muted one-off status line."""
         self._add("notice", text=text)
+
+    def markdown(self, text: str) -> None:
+        """Append a Markdown block, parsed and rendered like an answer.
+
+        Use it for command output, which is usually a list or a table; a notice
+        is the terse alternative for one-line status such as ``stopped``.
+        """
+        block = Markdown()
+        block.append(text)
+        self._add("message", text=text, markdown=block)
 
     def welcome(self, text: str) -> None:
         """Append the banner shown once at startup."""

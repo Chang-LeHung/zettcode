@@ -43,7 +43,6 @@ class CommandCompleter(Completer):
 
 
 def help_text(commands: Sequence[Command]) -> str:
-    """Return the ``/help`` body, generated from the command table."""
-    width = max(len(command.name) for command in commands) + 2
-    rows = [f"  {command.name:<{width}}{command.description}  [{command.type}]" for command in commands]
-    return "\n".join(["Commands", *rows, "", "Keys", KEY_HELP])
+    """Return the ``/help`` body as Markdown, generated from the command table."""
+    rows = [f"- `{command.name}` \u2014 {command.description} (`{command.type}`)" for command in commands]
+    return "\n".join(["**Commands**", *rows, "", "**Keys**", "", KEY_HELP])
