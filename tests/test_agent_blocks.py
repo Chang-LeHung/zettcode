@@ -4,6 +4,7 @@ from zettcode.app.agent.blocks import (
     DEFAULT_PROCESSORS,
     EntryProcessor,
     EntryProcessors,
+    ModelChangeProcessor,
     NoticeProcessor,
     PlainProcessor,
     ProcessingProcessor,
@@ -31,6 +32,7 @@ def test_every_agent_entry_has_a_presentation_component():
     entries = (
         (TextEntry(id=1, kind="welcome", text="hello"), WelcomeProcessor),
         (TextEntry(id=2, kind="notice", text="saved"), NoticeProcessor),
+        (TextEntry(id=8, kind="model_change", text="Model changed from A to B."), ModelChangeProcessor),
         (TextEntry(id=3, kind="user", text="hello"), UserProcessor),
         (ProcessingEntry(id=4, started_at=0.0), ProcessingProcessor),
         (ThinkingEntry(id=5, text="reasoning", expanded=True), ThinkingProcessor),
@@ -64,6 +66,21 @@ def test_the_first_supporting_processor_wins():
     transcript.processors = alternate
     assert source.count(40) == 2
     assert source.line(1, 40).text.strip() == "handled"
+
+
+def test_model_change_is_centered_between_rules_and_clipped_on_small_screens():
+    entry = TextEntry(id=1, kind="model_change", text="Model changed from GPT6-Sol to DeepSeek-Flash.")
+    for width in (1, 2, 3, 8, 60):
+        rows = render_entry(entry, width, DARK, 0)
+        assert len(rows) == 3
+        assert all(row.width <= width for row in rows)
+        if width == 60:
+            left, icon, text, right = rows[1].spans
+            assert left.style.foreground == right.style.foreground == DARK.border
+            assert icon.style.foreground == DARK.accent
+            assert text.style.foreground == DARK.subtle
+            assert "Model changed from GPT6-Sol to DeepSeek-Flash." in rows[1].text
+            assert abs(left.width - right.width) <= 1
 
 
 def test_agent_components_keep_every_line_within_narrow_bounds():

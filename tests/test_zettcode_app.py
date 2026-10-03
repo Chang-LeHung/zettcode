@@ -43,7 +43,7 @@ from zettcode.app.ui import demo
 from zettcode.app.ui.app import compact_path
 from zettcode.app.ui.widgets import WELCOME, ApprovalChoice, ApprovalPage, SessionsPage, bottom_panel, format_ago
 from zettcode.config import ModelConfig
-from zettcode.tui import DARK, LIGHT, ListItem, ListPage, Rect, walk
+from zettcode.tui import DARK, LIGHT, ListItem, ListPage, Rect, Text, walk
 from zettcode.tui.render import display_width
 from zettcode.tui.testing import Harness, render_block
 
@@ -82,9 +82,15 @@ class FakeClient:
 class FakePersistence:
     def __init__(self) -> None:
         self.sessions: list[SessionInfo] = []
+        self.store: SessionStore | None = None
 
     async def list_sessions(self, limit: int | None = None):
         return self.sessions[:limit] if limit is not None else list(self.sessions)
+
+    def read(self, session_id: str):
+        if self.store is None:
+            raise ValueError(f"Unknown session: {session_id}")
+        return self.store.read(session_id)
 
 
 class FakeTodos:
@@ -606,6 +612,20 @@ async def test_app_slash_commands_change_theme_sessions_and_exit():
     assert app.app.running is False
 
 
+async def test_new_session_clears_the_previous_visible_conversation():
+    app = build_app()
+    app.transcript.user_message("previous conversation")
+    harness = _harness(app)
+
+    harness.write("/new")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    assert app.agent.session_id == "session-0002"
+    assert "previous conversation" not in "\n".join(_rendered(app.transcript, 60))
+    assert any(entry.kind == "welcome" for entry in app.transcript.entries)
+
+
 async def test_model_command_lists_and_switches_models_for_the_next_request():
     app = build_app()
     harness = _harness(app)
@@ -622,7 +642,9 @@ async def test_model_command_lists_and_switches_models_for_the_next_request():
     assert app.agent.active_model.model == "gpt-4o"
     assert app._header_right() == "GPT-4o  "
     assert app.app._layout_dirty is True
-    assert "GPT-4o" in harness.render().text
+    rendered = harness.render().text
+    assert "Model changed from gpt-5-mini to GPT-4o." in rendered
+    assert "GPT-4o" in rendered
 
     harness.write("hello")
     harness.press("enter")
@@ -705,7 +727,32 @@ async def test_model_can_still_be_selected_by_command_argument():
 
     assert app.agent.active_model.model == "gpt-4o"
     assert app.app.screens.top.name != "page"
-    assert "GPT-4o" in harness.render().text
+    assert "Model changed from gpt-5-mini to GPT-4o." in harness.render().text
+
+
+async def test_reselecting_the_current_model_adds_no_change_row():
+    app = build_app()
+    harness = _harness(app)
+
+    harness.write("/model gpt-5-mini")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    assert not any(entry.kind == "model_change" for entry in app.transcript.entries)
+
+
+def test_blank_row_replaces_the_rule_above_completions():
+    app = build_app()
+    harness = _harness(app)
+    harness.write("/")
+    harness.render()
+
+    spacer = app.root.body.slots[4].widget
+    assert isinstance(spacer, Text)
+    assert spacer.content == ""
+    assert spacer.rect.height == 1
+    assert app.completions.rect.y == spacer.rect.bottom
+    assert harness.render().lines[spacer.rect.y].strip() == ""
 
 
 async def test_model_page_scrolls_many_entries_and_selects_offscreen_one():
@@ -1217,6 +1264,138 @@ def test_the_sessions_panel_lines_wide_titles_up_in_one_column():
     assert len({display_width(row[: row.index("\u00b7")]) for row in rows}) == 1
 
 
+async def test_switching_sessions_replaces_the_transcript_with_stored_history(tmp_path):
+    store = SessionStore(tmp_path)
+    await store.append("previous", "req-1", UserMessage(content="old question"))
+    await store.append("previous", "req-1", AssistantMessage(content="**old answer**"))
+    await store.append("another", "req-2", UserMessage(content="different question"))
+    app = build_app()
+    app.agent.runtime.persistence.store = store
+    app.agent.runtime.persistence.sessions = await store.list_sessions()
+    app.transcript.notice("from the current session")
+    harness = _harness(app)
+
+    harness.write("/sessions")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+    page = _sessions_page(app)
+    harness.render()
+    page.list.select(next(index for index, item in enumerate(page.list.items) if item.value == "previous"))
+    harness.press("enter")
+
+    assert app.agent.session_id == "previous"
+    assert [entry.kind for entry in app.transcript.entries] == ["user", "answer"]
+    rendered = "\n".join(_rendered(app.transcript, 60))
+    assert "old question" in rendered
+    assert "old answer" in rendered
+    assert "different question" not in rendered
+    assert "from the current session" not in rendered
+    assert app.app.screens.top.name != "page"
+
+    harness.write("follow up")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+    assert app.agent.runtime.client.configs[-1].session_id == "previous"
+
+
+async def test_restoring_history_keeps_message_and_tool_order(tmp_path):
+    store = SessionStore(tmp_path)
+    await store.append("previous", "req-1", UserMessage(content="first question"))
+    await store.append("previous", "req-1", AssistantMessage(content="first answer"))
+    await store.append("previous", "req-2", UserMessage(content="inspect app.py"))
+    await store.append(
+        "previous",
+        "req-2",
+        AssistantMessage(tool_calls=(ToolCall("call-1", "read_file", {"path": "app.py"}),)),
+    )
+    await store.append(
+        "previous",
+        "req-2",
+        ToolMessage(tool_call_id="call-1", name="read_file", content="def parse():\n    return 42"),
+    )
+    await store.append("previous", "req-2", AssistantMessage(content="**fixed**"))
+    app = build_app()
+    app.agent.runtime.persistence.store = store
+    app.restore_session("previous")
+
+    assert [entry.kind for entry in app.transcript.entries] == ["user", "answer", "user", "tool", "answer"]
+    rendered = "\n".join(_rendered(app.transcript, 60))
+    assert rendered.index("first question") < rendered.index("first answer") < rendered.index("inspect app.py")
+    assert rendered.index("Read app.py") < rendered.index("return 42") < rendered.index("fixed")
+    assert all(entry.kind != "pending" for entry in app.transcript.entries)
+
+
+async def test_restoring_an_interrupted_tool_does_not_show_it_as_running(tmp_path):
+    store = SessionStore(tmp_path)
+    await store.append("previous", "req", UserMessage(content="inspect app.py"))
+    await store.append(
+        "previous",
+        "req",
+        AssistantMessage(tool_calls=(ToolCall("call-1", "read_file", {"path": "app.py"}),)),
+    )
+    app = build_app()
+    app.agent.runtime.persistence.store = store
+    app.restore_session("previous")
+
+    tool = next(entry for entry in app.transcript.entries if entry.kind == "tool")
+    assert tool.status == "skipped"
+    assert "Result unavailable" in tool.text
+    assert "Running…" not in "\n".join(_rendered(app.transcript, 60))
+
+
+async def test_restoring_a_fork_excludes_the_abandoned_branch(tmp_path):
+    store = SessionStore(tmp_path)
+    root = await store.append("forked", "req", UserMessage(content="root question"))
+    await store.append("forked", "req", AssistantMessage(content="abandoned answer"))
+    await store.append("forked", "req", AssistantMessage(content="active answer"), parent=root)
+    app = build_app()
+    app.agent.runtime.persistence.store = store
+    app.restore_session("forked")
+
+    assert [entry.kind for entry in app.transcript.entries] == ["user", "answer"]
+    rendered = "\n".join(_rendered(app.transcript, 60))
+    assert "root question" in rendered
+    assert "active answer" in rendered
+    assert "abandoned answer" not in rendered
+
+
+async def test_use_command_restores_history_and_rejects_missing_session(tmp_path):
+    store = SessionStore(tmp_path)
+    await store.append("previous", "req", UserMessage(content="saved question"))
+    app = build_app()
+    app.agent.runtime.persistence.store = store
+    harness = _harness(app)
+
+    harness.write("/use previous")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    assert app.agent.session_id == "previous"
+    assert any(entry.kind == "user" and entry.text == "saved question" for entry in app.transcript.entries)
+
+    harness.write("/use missing")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    assert app.agent.session_id == "previous"
+    assert any(entry.kind == "notice" and "Unknown session: missing" in entry.text for entry in app.transcript.entries)
+
+
+async def test_sessions_argument_restores_the_selected_history(tmp_path):
+    store = SessionStore(tmp_path)
+    await store.append("previous", "req", UserMessage(content="direct selection"))
+    app = build_app()
+    app.agent.runtime.persistence.store = store
+    harness = _harness(app)
+
+    harness.write("/sessions previous")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    assert app.agent.session_id == "previous"
+    assert any(entry.kind == "user" and entry.text == "direct selection" for entry in app.transcript.entries)
+
+
 async def test_sessions_command_opens_a_panel_with_titles_and_ages(tmp_path):
     store = SessionStore(tmp_path)
     await store.append("alpha-1", "req", UserMessage(content="hi"))
@@ -1224,6 +1403,7 @@ async def test_sessions_command_opens_a_panel_with_titles_and_ages(tmp_path):
     await store.set_title("alpha-1", "Fix the parser crash")
     app = build_app()
     app.agent.runtime.persistence.sessions = await store.list_sessions()
+    app.agent.runtime.persistence.store = store
     harness = _harness(app)
 
     harness.write("/sessions")
