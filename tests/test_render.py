@@ -11,6 +11,8 @@ from zettcode.tui.capabilities import (
     detect_unicode,
 )
 from zettcode.tui.render import (
+    SweepSpan,
+    blend,
     cell_glyph,
     character_width,
     display_width,
@@ -21,6 +23,7 @@ from zettcode.tui.render import (
     rgb_to_ansi16,
     rgb_to_ansi256,
     slice_columns,
+    sweep_spans,
     truncate,
     wrap_columns,
     wrap_spans,
@@ -50,6 +53,49 @@ def test_palette_lookup_picks_the_nearest_index():
     assert rgb_to_ansi256(230, 233, 231) == 254
     assert rgb_to_ansi256(95, 95, 95) == 59
     assert rgb_to_ansi256(128, 128, 128) == 244
+
+
+def test_blend_walks_between_two_colours_and_survives_a_bad_palette():
+    assert blend("#000000", "#ffffff", 0) == "#000000"
+    assert blend("#000000", "#ffffff", 1) == "#ffffff"
+    assert blend("#000000", "#ffffff", 0.5) == "#808080"
+    # Clamped, and unusable input falls back to the first colour rather than
+    # failing a repaint.
+    assert blend("#000000", "#ffffff", 2) == "#ffffff"
+    assert blend("#123456", "#ffffff", -1) == "#123456"
+    assert blend("not-a-colour", "#ffffff", 0.5) == "not-a-colour"
+
+
+def test_sweep_spans_moves_the_bright_end_left_to_right():
+    label = SweepSpan("abcdef", Style(foreground="#111111"), peak=Style(foreground="#999999"), ramp=2)
+
+    def peak_column(step: int) -> int:
+        column = 0
+        for span in sweep_spans(label, step):
+            if span.style.foreground == "#999999":
+                return column
+            column += display_width(span.text)
+        return -1
+
+    # Off the text at first, then one column per step, then off the right end.
+    assert peak_column(0) == -1
+    assert [peak_column(step) for step in (2, 3, 4)] == [0, 1, 2]
+    assert peak_column(label.travel - 1) == -1
+    assert peak_column(label.travel + 2) == 0
+
+
+def test_sweep_spans_keeps_the_text_and_merges_equal_runs():
+    label = SweepSpan("wide 字符", Style(foreground="#111111"), peak=Style(foreground="#999999"), ramp=3)
+    ramp_colours = {blend("#111111", "#999999", amount) for amount in (0, 0.25, 0.5, 0.75, 1)}
+
+    for step in range(label.travel):
+        spans = sweep_spans(label, step)
+
+        assert "".join(span.text for span in spans) == label.text
+        assert all(spans[index].style != spans[index + 1].style for index in range(len(spans) - 1))
+        # The ramp never darkens the text: every run sits between the resting
+        # colour and the peak, never below the resting one.
+        assert {span.style.foreground for span in spans} <= ramp_colours
     assert all(rgb_to_ansi256(*rgb) >= 16 for rgb in [(0, 0, 0), (255, 0, 0), (205, 205, 205)])
 
 

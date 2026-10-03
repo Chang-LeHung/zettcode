@@ -23,7 +23,7 @@ from ...tui import (
     TextLine,
     Theme,
 )
-from ...tui.render import display_width, truncate, wrap_columns
+from ...tui.render import SweepSpan, display_width, sweep_spans, truncate, wrap_columns
 from ...tui.widgets.markdown import MarkdownSource
 
 #: Left margin of every transcript row: the width of the composer's ``\u203a ``
@@ -531,10 +531,10 @@ def render_entry(entry: Entry, width: int, theme: Theme, frame: int) -> list[Tex
         case "thinking":
             return _thinking_lines(entry, width, theme, frame)
         case "pending":
-            label = f"{activity_glyph(frame)} {entry.title}"
+            label = entry.title
             if entry.duration is not None and entry.duration >= 1:
                 label += f"  {duration_text(entry.duration)}"
-            return [TextLine(), TextLine((Span(label, Style(foreground=theme.accent, bold=True)),))]
+            return [TextLine(), TextLine(_running_label(label, theme, frame))]
         case "tool":
             return _tool_lines(entry, width, theme, frame)
         case _:
@@ -552,10 +552,14 @@ def _thinking_lines(entry: Entry, width: int, theme: Theme, frame: int) -> list[
         frame: Animation frame used for the running marker.
     """
     running = entry.status == "running"
-    marker = activity_glyph(frame) if running else ("\u25be" if entry.expanded else "\u25b8")
     timing = duration_text(entry.duration) if entry.duration is not None else "working"
     header = Style(foreground=theme.accent, bold=True)
-    lines = [TextLine(), TextLine((Span(f"{marker} Thinking  {timing}", header),))]
+    if running:
+        row = _running_label(f"Thinking  {timing}", theme, frame)
+    else:
+        marker = "\u25be" if entry.expanded else "\u25b8"
+        row = (Span(f"{marker} ", header), Span(f"Thinking  {timing}", header))
+    lines = [TextLine(), TextLine(row)]
     if entry.expanded:
         body = Style(foreground=theme.subtle)
         for row in entry.text.splitlines() or ["Waiting for reasoning\u2026"]:
@@ -600,11 +604,51 @@ def _tool_lines(entry: Entry, width: int, theme: Theme, frame: int) -> list[Text
     return lines
 
 
+#: The running marker's two states: the sparkle, then a dot of the same width so
+#: the label after it never shifts as the marker blinks.
+RUNNING_GLYPHS = ("\u2726", "\u00b7")
+
+#: Frames per half-blink. The tick runs at about 30 fps, so the marker blinks
+#: about twice a second: slow enough to read, fast enough to look alive.
+BLINK_FRAMES = 8
+
+#: Frames the highlight spends on one column. At about 30 fps this crosses a
+#: short label in a bit over a second: quick enough to read as motion, slow
+#: enough to follow the words.
+SWEEP_FRAMES = 2
+
+
 def activity_glyph(frame: int) -> str:
-    """Return the animated glyph shared by every running row.
+    """Return the marker shared by every running row, which blinks in place.
+
+    The marker keeps one column and alternates between its two states instead of
+    cycling through different symbols: a row that blinks reads as "still
+    working" the way a terminal spinner does, while a rotating glyph just looks
+    like noise. Every running row is drawn with the same ``frame``, so the
+    transcript and the status bar icon blink in step.
 
     Args:
-        frame: Monotonic frame counter; the glyph changes every third frame so
-            all running rows animate in step.
+        frame: Monotonic frame counter shared by the whole application.
     """
-    return ("\u2726", "\u2727", "\u00b7", "\u2727")[(frame // 3) % 4]
+    return RUNNING_GLYPHS[0 if blinking(frame) else 1]
+
+
+def blinking(frame: int) -> bool:
+    """Say whether a running row is in the bright half of its blink."""
+    return (frame // BLINK_FRAMES) % 2 == 0
+
+
+def _running_label(text: str, theme: Theme, frame: int) -> tuple[Span, ...]:
+    """Return one wait row: a still marker, then a highlight sweeping the words.
+
+    Both rows a user reads while the model works — waiting for the first token,
+    and reasoning afterwards — carry the same highlight, so the wait looks the
+    same whether or not reasoning has started. The marker holds its shape, which
+    leaves exactly one thing moving in the row.
+    """
+    resting = Style(foreground=theme.accent, bold=True)
+    # The bright end is the body colour rather than another green: blended back
+    # towards the accent it keeps a distinct step per column even where the
+    # terminal has only 256 colours, which a green-to-green ramp does not.
+    label = SweepSpan(text, resting, peak=Style(foreground=theme.text, bold=True), ramp=3)
+    return (Span(f"{RUNNING_GLYPHS[0]} ", resting), *sweep_spans(label, frame // SWEEP_FRAMES))
