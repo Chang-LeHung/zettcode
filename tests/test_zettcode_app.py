@@ -848,13 +848,27 @@ async def test_the_context_command_reports_what_the_request_carries():
 
     page = next(widget for widget in walk(app.app.screens.top.widget) if isinstance(widget, ContextPage))
     assert [item.label for item in page.list.items] == [
+        "Source",
         "System prompt",
         "Environment notes",
         "Tool schemas",
         "User messages",
     ]
+    # The heading row is a row like any other, so its words sit over the
+    # numbers; it is disabled, which is what keeps the selection off it.
+    assert page.list.items[0].disabled is True
+    assert page.list.current.label == "System prompt"
     text = harness.render().text
     assert "Context" in text and "tokens" in text
+    # The title carries the window; the rows carry shares of the context.
+    assert page.title.startswith("Context  ") and page.title.endswith(" / 128,000 tokens")
+    # The window share is not repeated here; the rows carry the context shares,
+    # which add up to the whole of what the next request would send.
+    assert "%" not in page.title
+    # The first row is the heading; every row under it is a share of the context.
+    shares = [float(item.description.split("%")[0]) for item in page.list.items[1:]]
+    assert 99.0 <= sum(shares) <= 101.0
+    assert all(item.description.endswith(")") for item in page.list.items[1:])
     # The fake runtime never loads tiktoken, so the page has to admit the estimate.
     assert "chars/token" in text
 
@@ -878,6 +892,7 @@ async def test_resuming_a_session_makes_it_measurable_before_the_next_reply(tmp_
 
     page = next(widget for widget in walk(app.app.screens.top.widget) if isinstance(widget, ContextPage))
     assert [item.label for item in page.list.items] == [
+        "Source",
         "System prompt",
         "User messages",
         "Assistant messages",

@@ -319,18 +319,20 @@ change is announced in the transcript between rules, the way a model switch is.
 `/context` opens a panel that breaks the next request down by who fills it:
 
 ```
-Context  25,926 / 128,000 tokens  (20%)
-  System prompt        0.2%   (1)
-  Environment notes    0.6%   (2)
-  Tool schemas         1.2%   (9)
-  User messages        0.0%   (3)
-  Assistant messages   2.4%  (12)
-  Tool output         16.0%  (17)
+Context  103,241 / 128,000 tokens
+  Source              Share    Count
+  System prompt        1.9%      (1)
+  Environment notes    4.8%      (2)
+  Tool schemas        10.9%      (9)
+  User messages        0.1%      (3)
+  Assistant messages  22.2%     (12)
+  Tool output         60.1%     (17)
 ~4 chars/token · esc back
 ```
 
 The numbers come from the request the runtime assembled for the last model
 call, measured with `tiktoken` when its encoding can be opened and with a
 four-characters-per-token estimate otherwise — the footer always names the
-counter that produced them. The budget is the compaction threshold, so the
-total is also the point at which the agent starts summarizing.
+counter that produced them. A row's percentage is its share of the context in
+use, so the rows add up to 100%; the title compares the total against the
+model's `context_window`, not against the point at which compaction fires.

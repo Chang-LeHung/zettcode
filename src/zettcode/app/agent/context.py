@@ -99,6 +99,14 @@ class ContextReport:
         """Return ``tokens`` as a share of the budget, in percent."""
         return tokens / self.window * 100 if self.window else 0.0
 
+    def share(self, tokens: int) -> float:
+        """Return ``tokens`` as a share of what the request is using, in percent.
+
+        :meth:`percent` answers "how full is the model's window"; this answers
+        "where does the context go", which is the question a breakdown is for.
+        """
+        return tokens / self.used * 100 if self.used else 0.0
+
 
 class Tokenizer:
     """Count tokens with tiktoken when it can be opened, else by character count."""
