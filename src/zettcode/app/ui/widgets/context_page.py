@@ -6,36 +6,29 @@ from ....tui import ListItem, ListPage
 from ...agent.context import ContextReport
 
 
-def format_share(percent: float) -> str:
-    """Format the heading's share, rounded to whole percent.
-
-    A source that takes a fraction of a percent is still worth showing: it is
-    the difference between "nothing here" and "a little", and the rows carry the
-    decimal the heading rounds away.
-    """
-    return f"{percent:.0f}%" if percent >= 10 else f"{percent:.1f}%"
-
-
 class ContextPage(ListPage):
-    """One row per source, with its tokens and share of the budget.
+    """One row per source, with its share of the context and a count.
 
     Shape::
 
-        Context  25,926 / 128,000 tokens  (20%)
-          System prompt       0.2%  ( 1)     <- this application's instructions
-          Environment notes   0.6%  ( 2)     <- cwd, tool snippets, guidelines
-          Tool schemas        1.2%  ( 9)     <- the tools offered
-          User messages       0.0%  ( 3)     <- what was typed
-          Assistant messages  2.4%  (12)     <- answers and reasoning
-          Tool output        16.0%  (17)     <- command and file results
+        Context  25,926 / 128,000 tokens
+          Source               Share    Count
+          System prompt        1.0%    ( 1)     <- this application's instructions
+          Environment notes    2.9%    ( 2)     <- cwd, tool snippets, guidelines
+          Tool schemas         5.9%    ( 9)     <- the tools offered
+          User messages        0.1%    ( 3)     <- what was typed
+          Assistant messages  12.0%    (12)     <- answers and reasoning
+          Tool output         78.1%    (17)     <- command and file results
         tiktoken cl100k_base \u00b7 esc back
 
-    Rows carry a share and a count rather than a token count: the share is what
-    tells you where the budget goes, and the exact tokens change with every
-    message. Both columns are padded so the numbers line up down the page, and
-    the title carries the total so the rows read as a breakdown. The footer
-    names the counter that produced the numbers: tiktoken when its encoding was
-    available, a character estimate when it was not.
+    The percentage is a share of the context in use, not of the window: rows
+    answer where the tokens went, and the title carries the absolute total
+    against the model's window. A disabled heading row names the columns, and
+    because the list aligns it like any other row its words sit exactly over
+    the numbers below them; the count column is as wide as the word, so the
+    heading fits the column it names. The footer names the counter that
+    produced the numbers: tiktoken when its encoding was available, a character
+    estimate when it was not.
     """
 
     def __init__(self, report: ContextReport, *, on_cancel=None) -> None:
@@ -45,23 +38,26 @@ class ContextPage(ListPage):
             report: Breakdown to show, as produced by the context extension.
             on_cancel: Called when the user presses Escape.
         """
-        title = f"Context  {report.used:,} / {report.window:,} tokens  ({format_share(report.percent(report.used))})"
+        title = f"Context  {report.used:,} / {report.window:,} tokens"
         counts = [f"({share.items})" for share in report.shares]
         width = max((len(count) for count in counts), default=0)
+        width = max(width, len("Count"))
+        head = ListItem(None, "Source", f"{'Share':>6}    {'Count':>{width}}", disabled=True)
         items = [
             ListItem(
                 share.name,
                 share.name,
-                f"{report.percent(share.tokens):>5.1f}%  {count:>{width}}",
+                f"{report.share(share.tokens):>5.1f}%    {count:>{width}}",
             )
             for share, count in zip(report.shares, counts, strict=True)
         ]
         super().__init__(
-            items,
+            [head, *items],
             title=title,
             footer=" \u00b7 ".join(_footer(report)),
             on_cancel=on_cancel,
-            visible_rows=max(1, len(items)),
+            selected=1,
+            visible_rows=max(1, len(items) + 1),
         )
 
 
