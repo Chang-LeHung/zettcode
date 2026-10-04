@@ -12,7 +12,7 @@ from ..render.text import display_width
 
 MARKERS = {
     "completed": DONE,
-    "processing": MARKER,
+    "in_progress": MARKER,
     "pending": PENDING,
 }
 
@@ -28,7 +28,7 @@ class TaskPanel(Widget):
                                            <- blank row, so the box is not glued
         \u250c Plan \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510      to the transcript above
         \u2502 \u2713 read the renderer      \u2502   <- completed: muted, struck out
-        \u2502 \u25b8 preview widgets        \u2502   <- processing: accent, bold, U+25B8
+        \u2502 \u25b8 preview widgets        \u2502   <- in_progress: accent, bold, U+25B8
         \u2502 \u00b7 run make check         \u2502   <- pending: body text, U+00B7
         \u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518
 
@@ -111,7 +111,7 @@ class TaskPanel(Widget):
                 # A finished task is struck out as well as dimmed, so a long
                 # plan shows what is left at a glance.
                 style = Style(foreground=theme.muted, strike=True)
-            elif state == "processing":
+            elif state == "in_progress":
                 style = Style(foreground=theme.accent, bold=True)
             else:
                 style = Style(foreground=theme.text)

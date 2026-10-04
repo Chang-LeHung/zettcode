@@ -16,15 +16,10 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from time import monotonic
 
-from zett_agent import (
-    AgentEvent,
-    AgentEventType,
-    AgentExtension,
-    AgentRunContext,
-    ModelRequest,
-    ModelResponse,
-    ModelUsage,
-)
+from zett_agent.agent import AgentRunContext
+from zett_agent.events import AgentEvent, AgentEventType
+from zett_agent.extensions.base import AgentExtension
+from zett_agent.model import ModelRequest, ModelResponse, ModelUsage
 
 from ...tui import ARROW_DOWN, ARROW_UP, SEPARATOR
 

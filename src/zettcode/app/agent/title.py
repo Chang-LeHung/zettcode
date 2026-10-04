@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import re
 
-from zett_agent import AgentModel, ModelEventType, ModelRequest, ReasoningEffort, SystemMessage, UserMessage
+from zett_agent.messages import SystemMessage, UserMessage
+from zett_agent.model import AgentModel, ModelEventType, ModelRequest, ReasoningEffort
 
 #: Most characters a stored title may use, matching the store's own guard.
 MAX_TITLE_CHARS = 60

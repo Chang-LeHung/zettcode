@@ -118,7 +118,7 @@ def test_list_view_tucks_a_description_behind_its_label_when_space_runs_out():
 
 def test_task_panel_measures_wide_labels_by_display_width():
     panel = TaskPanel()
-    panel.set_tasks([("processing", "汉字")])
+    panel.set_tasks([("in_progress", "汉字")])
 
     # Marker, space, and the two frame columns around the label.
     assert panel.measure(Constraints.loose(Size(40, 10))).width == 4 + 4
@@ -128,7 +128,7 @@ def test_task_panel_measures_wide_labels_by_display_width():
 
 def test_task_panel_frames_the_plan_and_keeps_a_row_above_it():
     panel = TaskPanel()
-    panel.set_tasks([("processing", "preview widgets"), ("pending", "run make check")])
+    panel.set_tasks([("in_progress", "preview widgets"), ("pending", "run make check")])
     rows = Harness(panel, width=40, height=panel.preferred_height()).render().text.splitlines()
 
     assert rows[0].strip() == ""  # a blank row separates it from the transcript

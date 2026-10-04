@@ -37,20 +37,19 @@ from pathlib import Path
 from weakref import WeakKeyDictionary
 
 from pydantic import ValidationError
-from zett_agent import (
-    AgentExtension,
-    AgentRunContext,
-    AnyMessage,
-    AssistantMessage,
-    ExtensionEvent,
-    MessageTiming,
-    ModelUsage,
-    SystemMessage,
-    ToolMessage,
-    new_uuid7,
-)
+from zett_agent.agent import AgentRunContext
+from zett_agent.extensions.base import AgentExtension
 from zett_agent.extensions.compaction import CompactedMessage
-from zett_agent.extensions.events import CompactionEvent, MessageAppendedEvent, RunCancelledEvent
+from zett_agent.extensions.events import (
+    CompactionEvent,
+    ExtensionEvent,
+    MessageAppendedEvent,
+    MessageTiming,
+    RunCancelledEvent,
+)
+from zett_agent.ids import new_uuid7
+from zett_agent.messages import AnyMessage, AssistantMessage, SystemMessage, ToolMessage
+from zett_agent.model import ModelUsage
 
 from .metadata import (
     MAX_TITLE,

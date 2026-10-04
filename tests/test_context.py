@@ -3,17 +3,10 @@
 from __future__ import annotations
 
 import pytest
-from zett_agent import (
-    AgentRunConfig,
-    AssistantMessage,
-    ModelRequest,
-    SystemMessage,
-    ToolCall,
-    ToolDefinition,
-    ToolMessage,
-    UserMessage,
-)
+from zett_agent.agent import AgentRunConfig
 from zett_agent.extensions.compaction import CompactedMessage
+from zett_agent.messages import AssistantMessage, SystemMessage, ToolCall, ToolMessage, UserMessage
+from zett_agent.model import ModelRequest, ToolDefinition
 
 from zettcode.app.agent.context import ContextExtension, Tokenizer, measure, message_text, tool_text
 

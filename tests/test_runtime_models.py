@@ -3,7 +3,9 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from zett_agent import McpExtension, SkillExtension, UserMessage
+from zett_agent.extensions.mcp import McpExtension
+from zett_agent.extensions.skill import SkillExtension
+from zett_agent.messages import UserMessage
 
 from zettcode.app.agent import runtime as runtime_module
 from zettcode.app.agent.storage import SessionStore
@@ -89,6 +91,29 @@ def test_skills_and_mcp_can_be_disabled(tmp_path):
     assert extensions == ()
 
 
+async def test_the_approval_memory_remembers_exact_commands_for_the_run():
+    """The prompt promises one exact command for this run, not an allowlist."""
+    from zett_agent.extensions.shell_approval import ShellApprovalMode
+
+    from zettcode.app.agent.approval import ShellApprovalMemory
+
+    memory = ShellApprovalMemory()
+
+    assert await memory.get_session_mode("session-1") is ShellApprovalMode.REVIEW
+    assert await memory.is_allowed("session-1", "rm -rf build") is False
+
+    await memory.set_session_mode("session-1", ShellApprovalMode.ALLOW_ALL)
+    await memory.allow_command("rm -rf build")
+
+    assert await memory.get_session_mode("session-1") is ShellApprovalMode.ALLOW_ALL
+    assert await memory.is_allowed("session-1", "rm -rf build") is True
+    assert await memory.is_allowed("session-1", "rm -rf dist") is False
+    # The policy is per session, and clearing it reviews again.
+    assert await memory.get_session_mode("session-2") is ShellApprovalMode.REVIEW
+    await memory.clear_session_mode("session-1")
+    assert await memory.get_session_mode("session-1") is ShellApprovalMode.REVIEW
+
+
 def test_error_reasons_are_unwrapped_from_their_groups_and_deduplicated():
     """A task-group failure says nothing; the reasons are its leaves."""
     grouped = ExceptionGroup(
@@ -106,7 +131,7 @@ def test_error_reasons_are_unwrapped_from_their_groups_and_deduplicated():
 
 
 async def test_a_dead_mcp_server_is_named_in_the_failure(tmp_path, monkeypatch):
-    from zett_agent import McpExtension
+    from zett_agent.extensions.mcp import McpExtension
 
     servers = tmp_path / "mcp.json"
     servers.write_text(
@@ -173,6 +198,9 @@ async def test_runtime_switches_models_and_closes_every_provider(tmp_path, monke
     assert captured["extensions"][-1].model is None
     assert any(isinstance(extension, SkillExtension) for extension in captured["extensions"])
     assert not any(isinstance(extension, McpExtension) for extension in captured["extensions"])
+    # The prompt can offer "always allow" only because the runtime hands the
+    # extension something to remember the command in.
+    assert runtime.approval.storage is not None
 
     selected = runtime.use_model("Second")
     assert selected is second

@@ -10,29 +10,21 @@ from math import ceil
 from pathlib import Path
 
 import pytest
-from zett_agent import (
-    SHELL_APPROVAL_EVENT_NAME,
-    AgentEvent,
-    AgentEventType,
-    AgentRunConfig,
-    AgentRunContext,
-    AgentState,
+from zett_agent.agent import AgentRunConfig, AgentRunContext, AgentState
+from zett_agent.events import AgentEvent, AgentEventType
+from zett_agent.extensions.events import MessageTiming
+from zett_agent.extensions.shell_approval import SHELL_APPROVAL_EVENT_NAME
+from zett_agent.extensions.todo import TodoItem, TodoStatus, TodoWriteResult
+from zett_agent.messages import (
     AssistantMessage,
     ImageContent,
-    MessageTiming,
-    ModelRequest,
-    ModelUsage,
-    ReasoningEffort,
     SystemMessage,
     TextContent,
-    TodoItem,
-    TodoStatus,
-    TodoWriteResult,
     ToolCall,
-    ToolDefinition,
     ToolMessage,
     UserMessage,
 )
+from zett_agent.model import ModelRequest, ModelUsage, ReasoningEffort, ToolDefinition
 
 from zettcode.app import Transcript, TranscriptSource, TranscriptView, ZettCodeApp
 from zettcode.app.agent.agent import ZettCodeAgent
@@ -514,16 +506,16 @@ async def test_the_blink_demo_script_walks_a_turn():
 
 
 def test_the_blink_demo_can_be_slowed_down_while_it_runs(monkeypatch):
-    monkeypatch.setattr(demo.transcript_module, "SWEEP_FRAMES", 4.0)
+    monkeypatch.setattr(demo.rows_module, "SWEEP_FRAMES", 4.0)
     harness = Harness(app=demo.build())
 
     harness.press("]")
-    assert demo.transcript_module.SWEEP_FRAMES == 3.5
+    assert demo.rows_module.SWEEP_FRAMES == 3.5
     assert "350 ms per column" in harness.render().text
 
     harness.press("[")
     harness.press("[")
-    assert demo.transcript_module.SWEEP_FRAMES == 4.5
+    assert demo.rows_module.SWEEP_FRAMES == 4.5
 
 
 async def test_app_streams_a_prompt_into_the_transcript():
@@ -1527,11 +1519,11 @@ async def test_app_mirrors_the_agent_plan_into_the_panel():
     app.agent.runtime.todos.result = TodoWriteResult(
         todos=(
             TodoItem(content="inspect the repo", status=TodoStatus.COMPLETED),
-            TodoItem(content="write the fix", status=TodoStatus.PROCESSING),
+            TodoItem(content="write the fix", status=TodoStatus.IN_PROGRESS),
             TodoItem(content="run the tests", status=TodoStatus.PENDING),
         ),
-        processing_index=1,
-        processing=TodoItem(content="write the fix", status=TodoStatus.PROCESSING),
+        in_progress_index=1,
+        in_progress=TodoItem(content="write the fix", status=TodoStatus.IN_PROGRESS),
         completed=False,
     )
     harness = _harness(app)
@@ -1541,7 +1533,7 @@ async def test_app_mirrors_the_agent_plan_into_the_panel():
     await asyncio.wait_for(app.task, 2.0)
 
     assert app.panel.tasks[0] == ("completed", "inspect the repo")
-    assert app.panel.tasks[1][0] == "processing"
+    assert app.panel.tasks[1][0] == "in_progress"
     # Three tasks: a separator row, the frame, and the rows themselves.
     assert app.panel.preferred_height() == 6
 

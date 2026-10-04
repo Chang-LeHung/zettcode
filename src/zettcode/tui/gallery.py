@@ -117,7 +117,7 @@ def _task_panel() -> TaskPanel:
     """Return the plan panel with one task in each state."""
     panel = TaskPanel()
     panel.set_tasks(
-        (("completed", "read the renderer"), ("processing", "preview widgets"), ("pending", "run make check"))
+        (("completed", "read the renderer"), ("in_progress", "preview widgets"), ("pending", "run make check"))
     )
     return panel
 

@@ -5,14 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import pytest
-from zett_agent import (
-    AssistantMessage,
-    ModelEvent,
-    ModelRequest,
-    ModelResponse,
-    RetryOptions,
-    UserMessage,
-)
+from zett_agent.messages import AssistantMessage, UserMessage
+from zett_agent.model import ModelEvent, ModelRequest, ModelResponse, RetryOptions
 
 from zettcode.app.agent.agent import ZettCodeAgent
 from zettcode.app.agent.storage import MAX_TITLE, SessionStore

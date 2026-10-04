@@ -13,7 +13,8 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
-from zett_agent import ReasoningEffort, ShellApprovalMode
+from zett_agent.extensions.shell_approval import ShellApprovalMode
+from zett_agent.model import ReasoningEffort
 
 #: The conventional config file, read when the user has created one.
 CONFIG_FILE = Path.home() / ".zettcode" / "config.toml"
