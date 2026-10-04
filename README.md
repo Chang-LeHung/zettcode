@@ -100,6 +100,10 @@ base = "dark"                 # dark | light
 accent = "#a7c080"
 accent_bright = "#83c092"
 
+[tools]                       # every role ships the same violet
+read = "#b8a6e0"
+shell = "#b8a6e0"
+
 [code]
 keyword = "#e58fa8"
 string = "#9bddad"
@@ -111,6 +115,14 @@ inline = "#9bddad"
 ```
 
 Unknown keys and malformed colours are reported instead of silently ignored.
+Tool rows are painted by what the tool did, but every role ships the same
+violet — the colour the code palette already uses for ``print`` and
+``__main__`` — so the look stays uniform until you decide which actions deserve
+their own hue for your eyes. The `[tools]` table above is where that happens — give
+`shell` a blue, keep `read` green — and a failed row is red whatever it ran.
+An unrecognised tool, such as one from an MCP server, falls back to the
+generic accent.
+
 `/theme` opens a picker over the conversation; `/theme dark|light` still switches the
 base palette in one step. The built-in
 palettes take their accents from Everforest, so reasoning rows use the aqua

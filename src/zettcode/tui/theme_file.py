@@ -6,7 +6,7 @@ import tomllib
 from dataclasses import fields, replace
 from pathlib import Path
 
-from .core.theme import DARK, Theme, theme_named
+from .core.theme import DARK, Theme, ToolTheme, theme_named
 from .render.code import CodeTheme
 from .render.color import parse_hex
 
@@ -16,6 +16,10 @@ base = "dark"                 # dark | light
 [ui]
 accent = "#a7c080"
 error = "#e67e80"
+
+[tools]
+read = "#a7c080"
+shell = "#7fbbb3"
 
 [code]
 keyword = "#e58fa8"
@@ -36,9 +40,9 @@ def theme_from_toml(text: str, *, base: Theme | None = None) -> Theme:
     """Build a theme from TOML text, starting from its base palette.
 
     Args:
-        text: TOML source; ``base`` selects ``dark`` or ``light`` and the ``ui``
-            and ``code`` tables override individual roles, so a file only names
-            the colours it wants to change.
+        text: TOML source; ``base`` selects ``dark`` or ``light`` and the ``ui``,
+            ``tools``, and ``code`` tables override individual roles, so a file
+            only names the colours it wants to change.
         base: Palette to override directly; when omitted the file's ``base`` key
             (default ``dark``) is resolved through ``theme_named``.
     """
@@ -57,9 +61,10 @@ def theme_from_toml(text: str, *, base: Theme | None = None) -> Theme:
         except ValueError as error:
             raise ThemeFileError(str(error)) from error
 
-    ui = _select(data.get("ui", {}), {field.name for field in fields(Theme)} - {"code"})
+    ui = _select(data.get("ui", {}), {field.name for field in fields(Theme)} - {"code", "tools"})
+    tools = _select(data.get("tools", {}), {field.name for field in fields(ToolTheme)})
     code = _select(data.get("code", {}), {field.name for field in fields(CodeTheme)})
-    return replace(palette, **ui, code=replace(palette.code, **code))
+    return replace(palette, **ui, tools=replace(palette.tools, **tools), code=replace(palette.code, **code))
 
 
 def load_theme(path: Path, *, base: Theme | None = None) -> Theme:

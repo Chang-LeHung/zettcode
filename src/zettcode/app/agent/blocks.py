@@ -14,6 +14,26 @@ from ...tui.render import SweepSpan, display_width, highlight, inset_line, layou
 from . import transcript as model
 from .entries import Entry, EntryStatus, PlainEntry, ProcessingEntry, TextEntry, ThinkingEntry, ToolEntry
 
+#: Palette role that paints a tool, by the action it performs. The built-in
+#: palettes give every role the same violet; a theme file can separate them. A
+#: tool this table has never seen falls back to the generic accent.
+TOOL_ROLES = {
+    "read_file": "read",
+    "view_image": "image",
+    "glob": "search",
+    "grep": "search",
+    "write_file": "write",
+    "replace_in_file": "write",
+    "delete_file": "delete",
+    "run_shell": "shell",
+    "todo_write": "plan",
+}
+
+
+def tool_color(tool: str, theme: Theme) -> str:
+    """Return the colour one tool paints its rows with."""
+    return getattr(theme.tools, TOOL_ROLES.get(tool, ""), theme.accent)
+
 
 class EntryProcessor(ABC):
     """One link that claims entries and presents them as already-laid-out lines."""
@@ -167,9 +187,9 @@ class ThinkingProcessor(EntryProcessor):
 class ToolProcessor(EntryProcessor):
     """Draw a tool heading and a bounded preview of its result.
 
-    The marker carries the outcome colour while the command itself stays in the
-    body colour, so a long run of tool rows reads as neutral text with green
-    ticks instead of a wall of green.
+    A row is painted in the hue of the tool that ran, so a transcript reads by
+    what was done: reading, searching, editing, running. Tools that do the same
+    thing share a hue, and a failed row is red whatever the tool was.
     """
 
     def supports(self, entry: Entry) -> bool:
@@ -188,8 +208,10 @@ class ToolProcessor(EntryProcessor):
                 EntryStatus.SKIPPED: "\u2013",
             }.get(entry.status, "\u25cf")
         )
-        marker = Style(foreground=theme.error if entry.status is EntryStatus.FAILED else theme.accent)
-        label = Style(foreground=theme.text)
+        hue = tool_color(entry.tool, theme)
+        colour = theme.error if entry.status is EntryStatus.FAILED else hue
+        marker = Style(foreground=colour)
+        label = Style(foreground=colour)
         muted = Style(foreground=theme.muted)
         timing = f"  {model.duration_text(entry.duration)}" if entry.duration is not None else ""
         disclosure = "" if running or not entry.text else (" \u25be" if entry.expanded else " \u25b8")
@@ -197,7 +219,7 @@ class ToolProcessor(EntryProcessor):
         title = truncate(entry.title, room)
         heading: list[Span] = [Span(f"{symbol} ", marker)]
         if running:
-            travel = SweepSpan(title, label, peak=Style(foreground=theme.accent_bright), ramp=3)
+            travel = SweepSpan(title, label, peak=Style(foreground=theme.text), ramp=3)
             heading.extend(sweep_spans(travel, model.sweep_step(frame)))
         else:
             heading.append(Span(title, label))

@@ -8,6 +8,37 @@ from ..render.code import CodeTheme
 
 
 @dataclass(frozen=True, slots=True)
+class ToolTheme:
+    """The colour a tool row is painted with, by what the tool did.
+
+    The built-in palettes paint every tool with the code palette's builtin
+    violet — the colour a reader already knows from ``print`` and ``__main__``
+    in a snippet — which is what a transcript wants until its reader knows the
+    tools by heart. The roles are separate so a theme file can pull them apart —
+    one hue for reading, another for running — without touching any code. A tool
+    the palette has never heard of, and any role left unset, falls back to
+    :attr:`Theme.accent`.
+
+    Attributes:
+        read: Reading one file, the least surprising action.
+        search: Finding paths or matches across the workspace.
+        image: Looking at a picture rather than text.
+        write: Creating a file or editing one in place.
+        delete: Removing a path; deliberately the same hue as a failure.
+        shell: Running a command in the workspace.
+        plan: Recording the task list.
+    """
+
+    read: str = "#b8a6e0"
+    search: str = "#b8a6e0"
+    image: str = "#b8a6e0"
+    write: str = "#b8a6e0"
+    delete: str = "#b8a6e0"
+    shell: str = "#b8a6e0"
+    plan: str = "#b8a6e0"
+
+
+@dataclass(frozen=True, slots=True)
 class Theme:
     """One named palette expressed as semantic roles, never raw hex.
 
@@ -38,6 +69,7 @@ class Theme:
         focus: Focus ring colour; reserved, no built-in widget draws a ring yet.
         selection: Background of a selected or emphasised cell, used by list
             rows and diff segments; text selection uses reverse video instead.
+        tools: Per-tool palette for agent rows; see :class:`ToolTheme`.
         code: Per-token palette for fenced code blocks.
     """
 
@@ -55,6 +87,7 @@ class Theme:
     border: str = "#3d484d"
     focus: str = "#83c092"
     selection: str = "#4a5f52"
+    tools: ToolTheme = ToolTheme()
     code: CodeTheme = CodeTheme()
 
 
@@ -75,6 +108,15 @@ LIGHT = Theme(
     border="#bdc3af",
     focus="#237a5c",
     selection="#cfe4d6",
+    tools=ToolTheme(
+        read="#5b3fa8",
+        search="#5b3fa8",
+        image="#5b3fa8",
+        write="#5b3fa8",
+        delete="#5b3fa8",
+        shell="#5b3fa8",
+        plan="#5b3fa8",
+    ),
     code=CodeTheme(
         name="light",
         inline="#256b3b",
