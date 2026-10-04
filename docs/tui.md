@@ -413,7 +413,8 @@ before the composer sees the key, while `page_up` and `page_down` are bubble
 bindings that only run because the composer declines them.
 
 The status line, transcript chrome, and every widget read colors from
-`Theme` tokens, which is why `/theme` (a picker) and `/theme dark|light` are data
+`Theme` tokens — the UI roles, the per-tool hues, and the code palette — which is
+why `/theme` (a picker) and `/theme dark|light` are data
 changes rather than a
 repaint of hardcoded constants.
 

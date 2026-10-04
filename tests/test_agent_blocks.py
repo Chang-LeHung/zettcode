@@ -1,5 +1,7 @@
 """Agent output components turn entries into styled, width-bound lines."""
 
+from dataclasses import replace
+
 from zettcode.app.agent.blocks import (
     DEFAULT_PROCESSORS,
     EntryProcessor,
@@ -13,6 +15,7 @@ from zettcode.app.agent.blocks import (
     UserProcessor,
     WelcomeProcessor,
     render_entry,
+    tool_color,
 )
 from zettcode.app.agent.entries import (
     EntryStatus,
@@ -140,3 +143,46 @@ def test_tool_component_keeps_code_colours_and_bounded_preview():
     assert any("more rows" in line.text for line in preview)
     entry.expanded = True
     assert len(render_entry(entry, 40, DARK, 0)) > len(preview)
+
+
+def _tool_entry(tool: str, *, status: EntryStatus = EntryStatus.COMPLETED) -> ToolEntry:
+    """Build one completed or failed tool row with a title and a result."""
+    return ToolEntry(id=1, call_id="call-1", tool=tool, title=f"Ran {tool}", text="output", status=status)
+
+
+def test_tool_rows_share_one_hue_until_a_palette_separates_them():
+    """The built-in palettes paint every tool the same; a theme may differ.
+
+    The roles exist so a palette *can* pull reading and running apart, which is
+    what the custom palette below checks, but the shipped look is one colour.
+    """
+    read = render_entry(_tool_entry("read_file"), 40, DARK, 0)
+    shell = render_entry(_tool_entry("run_shell"), 40, DARK, 0)
+
+    def hue(lines) -> set[str]:
+        return {span.style.foreground for line in lines for span in line.spans if span.text.strip()}
+
+    assert DARK.tools.read in hue(read)
+    assert DARK.tools.shell in hue(shell)
+    assert DARK.tools.read == DARK.tools.search == DARK.tools.shell == DARK.code.builtin
+    # Roles stay separate so one of them can be overridden on its own.
+    assert tool_color("write_file", DARK) == tool_color("replace_in_file", DARK) == DARK.tools.write
+    # An unfamiliar tool still gets a colour rather than no style at all.
+    assert tool_color("mcp__something", DARK) == DARK.accent
+
+
+def test_a_palette_may_separate_the_tool_roles():
+    separated = replace(DARK, tools=replace(DARK.tools, shell="#123456"))
+
+    assert tool_color("run_shell", separated) == "#123456"
+    assert tool_color("read_file", separated) == DARK.tools.read
+
+
+def test_a_failed_tool_row_is_red_whatever_the_tool_was():
+    failed = _tool_entry("read_file", status=EntryStatus.FAILED)
+
+    lines = render_entry(failed, 40, DARK, 0)
+    colours = {span.style.foreground for line in lines for span in line.spans if span.text.strip()}
+
+    assert DARK.error in colours
+    assert DARK.tools.read not in colours

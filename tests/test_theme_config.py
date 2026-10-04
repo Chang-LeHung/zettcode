@@ -205,6 +205,18 @@ def test_load_theme_reads_the_documented_example(tmp_path):
 
     assert theme.code.keyword == "#e58fa8"
     assert theme.accent == "#a7c080"
+    assert theme.tools.read == "#a7c080"
+    assert theme.tools.shell == "#7fbbb3"
+
+
+def test_a_theme_file_can_recolour_one_tool_family(tmp_path):
+    path = tmp_path / "theme.toml"
+    path.write_text('[tools]\nshell = "#123456"\n', encoding="utf-8")
+
+    theme = load_theme(path)
+
+    assert theme.tools.shell == "#123456"
+    assert theme.tools.read == DARK.tools.read  # untouched roles keep the base palette
 
 
 def test_load_theme_reports_a_missing_file(tmp_path):
