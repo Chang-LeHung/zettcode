@@ -34,7 +34,9 @@ DEFAULT_LOG = Path.home() / ".zettcode" / "log" / "tui.log"
 CONFIGURABLE = frozenset({"models", "skills", "mcp"})
 
 #: Keys one ``[[models]]`` entry may set.
-MODEL_KEYS = frozenset({"model", "display_model", "token", "base_url", "responses_api", "multimodal"})
+MODEL_KEYS = frozenset(
+    {"model", "display_model", "token", "base_url", "responses_api", "multimodal", "context_window", "compact_percent"}
+)
 
 #: Keys the ``[skills]`` table may set.
 SKILL_KEYS = frozenset({"enabled", "roots"})
@@ -46,6 +48,12 @@ MCP_KEYS = frozenset({"enabled", "config"})
 #: project-local directory is a configured root, not a default: only what the
 #: user asks for is scanned.
 DEFAULT_SKILL_ROOT = "~/.zettcode/skills"
+
+#: Tokens per model a request may carry before it is compacted, when the config
+#: does not say otherwise; and the share of the trigger kept verbatim.
+DEFAULT_CONTEXT_WINDOW = 128_000
+DEFAULT_COMPACT_PERCENT = 80.0
+KEEP_SHARE = 4
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,6 +68,10 @@ class ModelConfig:
             client's default.
         responses_api: Use the Responses API rather than chat completions.
         multimodal: Whether the model accepts images as well as text.
+        context_window: Tokens the model can carry, which is what ``/context``
+            measures against.
+        compact_percent: Share of :attr:`context_window` at which a request is
+            compacted, in percent.
     """
 
     model: str
@@ -68,6 +80,8 @@ class ModelConfig:
     base_url: str | None = None
     responses_api: bool = False
     multimodal: bool = False
+    context_window: int = DEFAULT_CONTEXT_WINDOW
+    compact_percent: float = DEFAULT_COMPACT_PERCENT
 
     def __post_init__(self) -> None:
         """Reject a model that cannot be called."""
@@ -75,11 +89,25 @@ class ModelConfig:
             raise ValueError("Model cannot be empty")
         if not self.token.strip():
             raise ValueError(f"Missing token for model {self.model!r}; set 'token' or OPENAI_API_KEY")
+        if self.context_window < 1:
+            raise ValueError(f"context_window must be positive for model {self.model!r}")
+        if not 0 < self.compact_percent <= 100:
+            raise ValueError(f"compact_percent must be between 0 and 100 for model {self.model!r}")
 
     @property
     def shown_name(self) -> str:
         """Return the name to display for the model."""
         return self.display_model or self.model
+
+    @property
+    def compaction_max_tokens(self) -> int:
+        """Return the estimated context size at which this model is compacted."""
+        return max(1, round(self.context_window * self.compact_percent / 100))
+
+    @property
+    def compaction_keep_tokens(self) -> int:
+        """Return the recent tokens a compaction keeps: the last quarter of the trigger."""
+        return max(1, self.compaction_max_tokens // KEEP_SHARE)
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,9 +126,6 @@ class ZettCodeConfig:
         reduced_motion: Suppress decorative animation.
         parallel_tool_call: Let the agent issue tool calls in parallel.
         max_iterations: Tool-call rounds allowed in one turn.
-        compaction_max_tokens: Context size at which compaction triggers.
-        compaction_keep_tokens: Tokens preserved verbatim by compaction; must be
-            smaller than ``compaction_max_tokens``.
         skills_enabled: Discover local skills and advertise them to the model.
         skill_roots: Extra skill directories, searched before
             ``~/.zettcode/skills``; a relative entry is resolved against the
@@ -120,8 +145,6 @@ class ZettCodeConfig:
     reduced_motion: bool = False
     parallel_tool_call: bool = True
     max_iterations: int = 360
-    compaction_max_tokens: int = 128_000
-    compaction_keep_tokens: int = 32_000
     skills_enabled: bool = True
     skill_roots: tuple[Path, ...] = ()
     mcp_enabled: bool = True
@@ -137,10 +160,6 @@ class ZettCodeConfig:
             raise ValueError("At least one model must be configured")
         if self.max_iterations < 1:
             raise ValueError("max_iterations must be positive")
-        if self.compaction_keep_tokens < 1:
-            raise ValueError("compaction_keep_tokens must be positive")
-        if self.compaction_max_tokens <= self.compaction_keep_tokens:
-            raise ValueError("compaction_max_tokens must be greater than compaction_keep_tokens")
         object.__setattr__(self, "workspace", workspace)
         object.__setattr__(self, "store", store)
         object.__setattr__(
@@ -187,6 +206,13 @@ def _typed(value: object, where: str, expected: type) -> object:
     return value
 
 
+def _number(value: object, where: str) -> float:
+    """Return an int-or-float setting as a float, rejecting a bool and anything else."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{where} must be a number")
+    return float(value)
+
+
 def _resolve_root(root: str | Path, workspace: Path) -> Path:
     """Return one configured directory: ``~`` expanded, a relative path against the workspace."""
     expanded = Path(root).expanduser()
@@ -218,6 +244,12 @@ def _entry_model(entry: dict[str, object], index: int) -> ModelConfig:
         base_url=_setting(entry, "base_url", str, None),
         responses_api=_setting(entry, "responses_api", bool, False),
         multimodal=_setting(entry, "multimodal", bool, False),
+        context_window=_typed(
+            entry.get("context_window", DEFAULT_CONTEXT_WINDOW), f"{label} key 'context_window'", int
+        ),
+        compact_percent=_number(
+            entry.get("compact_percent", DEFAULT_COMPACT_PERCENT), f"{label} key 'compact_percent'"
+        ),
     )
 
 

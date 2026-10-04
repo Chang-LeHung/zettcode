@@ -38,6 +38,8 @@ token = "sk-..."                       # or set OPENAI_API_KEY
 base_url = "http://tds.com:8787"       # OpenAI-compatible API root
 responses_api = false
 multimodal = true                      # accepts images as well as text
+context_window = 200000                # tokens this model can carry
+compact_percent = 80                   # compact when a request reaches 80%
 
 [[models]]
 model = "deepseek-chat"
@@ -52,9 +54,13 @@ its scrolling list, `Enter` selects for future requests, and `Esc` closes the
 panel and returns to the composer. Switching models adds a centered
 `Model changed from … to …` line between horizontal rules in the transcript.
 `/model GPT-4o` still switches directly by display name or model id.
-`multimodal` records whether a model accepts images; attaching one to a model
-that does not is refused with a notice rather than failing the request. Unknown
-keys and wrong types are reported, not ignored.
+`multimodal` records whether a model accepts images: attaching one — with
+`Ctrl-V`, or by pasting a picture the terminal sends as base64 — is refused
+with an error when it does not, so a text-only model is never sent one.
+`context_window` is the model's own budget, and `compact_percent` is the share
+of it at which a request is compacted; the last quarter of that trigger is kept
+verbatim, and `/context` measures against the window. Both default to
+`128000` and `80`. Unknown keys and wrong types are reported, not ignored.
 
 `Ctrl-V` attaches an image from the desktop clipboard. A terminal cannot hand
 an application the bytes of a pasted image, so the shell reads the clipboard

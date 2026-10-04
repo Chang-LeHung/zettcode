@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 from dataclasses import dataclass, field, fields, replace
 from datetime import UTC, datetime, timedelta
 from math import ceil
@@ -769,7 +770,24 @@ async def test_a_model_without_image_input_refuses_an_attachment(monkeypatch):
     harness.press("ctrl_v")
 
     assert app.composer.text == ""
-    assert any("does not take images" in getattr(entry, "text", "") for entry in app.transcript.entries)
+    refused = [entry for entry in app.transcript.entries if "does not take images" in getattr(entry, "text", "")]
+    assert refused and all(entry.level == "error" for entry in refused)
+
+
+async def test_a_pasted_image_is_refused_by_a_model_that_cannot_read_it():
+    """A base64 paste never goes past the clipboard, so the model is checked here."""
+    app = build_app()  # the default model is text-only
+    harness = _harness(app)
+    data = b"\x89PNG\r\n\x1a\n" + b"pixels" * 60
+    harness.paste("data:image/png;base64," + base64.b64encode(data).decode())
+
+    harness.press("enter")
+    await asyncio.sleep(0.05)
+
+    assert app.agent.runtime.client.messages == []
+    assert app.composer.text == "[image #1]"  # the draft is kept so it can be removed
+    refused = [entry for entry in app.transcript.entries if "does not take images" in getattr(entry, "text", "")]
+    assert refused and all(entry.level == "error" for entry in refused)
 
 
 async def test_the_title_command_names_the_session(tmp_path):

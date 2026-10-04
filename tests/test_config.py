@@ -56,8 +56,6 @@ def test_model_config_rejects_invalid_values(changes, message):
     ("changes", "message"),
     [
         ({"max_iterations": 0}, "max_iterations"),
-        ({"compaction_keep_tokens": 0}, "compaction_keep_tokens"),
-        ({"compaction_max_tokens": 10, "compaction_keep_tokens": 10}, "must be greater"),
     ],
 )
 def test_config_rejects_invalid_limits(tmp_path: Path, changes, message):
@@ -68,6 +66,30 @@ def test_config_rejects_invalid_limits(tmp_path: Path, changes, message):
             models=(_model(),),
             **changes,
         )
+
+
+@pytest.mark.parametrize(
+    ("changes", "message"),
+    [
+        ({"context_window": 0}, "context_window must be positive"),
+        ({"compact_percent": 0}, "compact_percent must be between"),
+        ({"compact_percent": 101}, "compact_percent must be between"),
+    ],
+)
+def test_a_model_rejects_an_unusable_context_budget(changes, message):
+    with pytest.raises(ValueError, match=message):
+        ModelConfig(**{"model": "m", "token": "t", **changes})
+
+
+def test_the_compaction_trigger_is_a_share_of_the_model_window():
+    """One model's window and percentage decide where compaction fires."""
+    model = ModelConfig(model="m", token="t", context_window=200_000, compact_percent=75)
+
+    assert model.compaction_max_tokens == 150_000
+    assert model.compaction_keep_tokens == 37_500
+    # The share kept is a quarter of the trigger, never of a different window.
+    small = ModelConfig(model="m", token="t", context_window=1_000, compact_percent=50)
+    assert (small.compaction_max_tokens, small.compaction_keep_tokens) == (500, 125)
 
 
 def test_load_config_reads_models_and_storage(tmp_path: Path):
@@ -83,6 +105,8 @@ def test_load_config_reads_models_and_storage(tmp_path: Path):
                 'base_url = "https://api.openai.com/v1"',
                 "responses_api = true",
                 "multimodal = true",
+                "context_window = 200000",
+                "compact_percent = 75",
                 "",
                 "[[models]]",
                 'model = "deepseek-chat"',
@@ -103,7 +127,14 @@ def test_load_config_reads_models_and_storage(tmp_path: Path):
     assert config.models[1].base_url == "https://api.deepseek.com/v1"
     assert config.models[0].multimodal is True
     assert config.models[0].responses_api is True
+    assert config.models[0].context_window == 200_000
+    assert config.models[0].compact_percent == 75.0
+    assert config.models[0].compaction_max_tokens == 150_000
     assert config.models[1].multimodal is False
+    # A model that names no budget falls back to the default window and share.
+    assert config.models[1].context_window == 128_000
+    assert config.models[1].compact_percent == 80.0
+    assert config.models[1].compaction_max_tokens == 102_400
     assert config.models[1].shown_name == "DeepSeek Chat"
 
 
@@ -208,6 +239,10 @@ def test_load_config_requires_at_least_one_model(tmp_path: Path):
         ("models = []\n", "No models configured"),
         ('[[models]]\nmodel = "m"\nmultimodal = "yes"\ntoken = "t"\n', "must be bool"),
         ('[[models]]\nmodel = 7\ntoken = "t"\n', "must be str"),
+        ('[[models]]\nmodel = "m"\ncontext_window = 1.5\ntoken = "t"\n', "context_window' must be int"),
+        ('[[models]]\nmodel = "m"\ncontext_window = true\ntoken = "t"\n', "context_window' must be int"),
+        ('[[models]]\nmodel = "m"\ncompact_percent = "80"\ntoken = "t"\n', "compact_percent' must be a number"),
+        ('[[models]]\nmodel = "m"\ncompact_percent = true\ntoken = "t"\n', "compact_percent' must be a number"),
         (
             '[[models]]\nmodel = "m"\ntoken = "t"\n[skills]\nrotos = ["."]\n',
             "Unknown config keys in the \\[skills\\] table",

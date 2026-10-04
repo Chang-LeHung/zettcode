@@ -98,7 +98,7 @@ class ZettCodeAgent:
         await tokenizer.prepare()
         return self.runtime.context.report(
             self.session_id,
-            window=self.runtime.config.compaction_max_tokens,
+            window=self.runtime.active_model.context_window,
             tokenizer=tokenizer,
         )
 
