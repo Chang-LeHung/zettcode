@@ -142,7 +142,7 @@ class ProcessingProcessor(EntryProcessor):
 
 
 class ThinkingProcessor(EntryProcessor):
-    """Draw reasoning, hiding or wrapping its body according to expansion."""
+    """Draw reasoning in the "model" hue, apart from the tool rows' green."""
 
     def supports(self, entry: Entry) -> bool:
         """Claim reasoning entries."""
@@ -151,7 +151,7 @@ class ThinkingProcessor(EntryProcessor):
     def lines(self, entry: ThinkingEntry, width: int, theme: Theme, frame: int) -> list[TextLine]:
         """Show the heading, plus the indented body when expanded."""
         timing = model.duration_text(entry.duration) if entry.duration is not None else "working"
-        header = Style(foreground=theme.accent, bold=True)
+        header = Style(foreground=theme.accent_bright)
         if entry.status is EntryStatus.RUNNING:
             heading = _running_label(f"Thinking  {timing}", theme, frame)
         else:
@@ -165,7 +165,12 @@ class ThinkingProcessor(EntryProcessor):
 
 
 class ToolProcessor(EntryProcessor):
-    """Draw a tool heading and a bounded preview of its result."""
+    """Draw a tool heading and a bounded preview of its result.
+
+    The marker carries the outcome colour while the command itself stays in the
+    body colour, so a long run of tool rows reads as neutral text with green
+    ticks instead of a wall of green.
+    """
 
     def supports(self, entry: Entry) -> bool:
         """Claim tool invocations."""
@@ -183,18 +188,19 @@ class ToolProcessor(EntryProcessor):
                 EntryStatus.SKIPPED: "\u2013",
             }.get(entry.status, "\u25cf")
         )
-        style = Style(foreground=theme.error if entry.status is EntryStatus.FAILED else theme.accent, bold=True)
+        marker = Style(foreground=theme.error if entry.status is EntryStatus.FAILED else theme.accent)
+        label = Style(foreground=theme.text)
         muted = Style(foreground=theme.muted)
         timing = f"  {model.duration_text(entry.duration)}" if entry.duration is not None else ""
         disclosure = "" if running or not entry.text else (" \u25be" if entry.expanded else " \u25b8")
         room = max(1, width - display_width(f"{symbol} {timing}{disclosure}"))
         title = truncate(entry.title, room)
-        heading: list[Span] = [Span(f"{symbol} ", style)]
+        heading: list[Span] = [Span(f"{symbol} ", marker)]
         if running:
-            label = SweepSpan(title, style, peak=Style(foreground=theme.text, bold=True), ramp=3)
-            heading.extend(sweep_spans(label, model.sweep_step(frame)))
+            travel = SweepSpan(title, label, peak=Style(foreground=theme.accent_bright), ramp=3)
+            heading.extend(sweep_spans(travel, model.sweep_step(frame)))
         else:
-            heading.append(Span(title, style))
+            heading.append(Span(title, label))
         if timing:
             heading.append(Span(timing, muted))
         if disclosure:
@@ -214,10 +220,11 @@ class ToolProcessor(EntryProcessor):
 
     @staticmethod
     def _body_line(lead: str, text: str, detail: Style, language: str | None, theme: Theme) -> TextLine:
-        """Highlight file contents with their language while keeping the gutter muted."""
+        """Highlight file contents with their language while the gutter stays faint."""
+        gutter = Style(foreground=theme.muted)
         if language is None:
-            return TextLine((Span(lead + text, detail),))
-        return TextLine((Span(lead, detail), *highlight(text, language, theme.code)))
+            return TextLine((Span(lead, gutter), Span(text, detail)))
+        return TextLine((Span(lead, gutter), *highlight(text, language, theme.code)))
 
 
 class PlainProcessor(EntryProcessor):
@@ -269,6 +276,6 @@ def render_entry(
 
 def _running_label(text: str, theme: Theme, frame: int) -> tuple[Span, ...]:
     """Keep the marker still while the highlight travels through the wording."""
-    resting = Style(foreground=theme.accent, bold=True)
-    label = SweepSpan(text, resting, peak=Style(foreground=theme.text, bold=True), ramp=3)
+    resting = Style(foreground=theme.accent_bright)
+    label = SweepSpan(text, resting, peak=Style(foreground=theme.text), ramp=3)
     return (Span(f"{model.RUNNING_GLYPHS[0]} ", resting), *sweep_spans(label, model.sweep_step(frame)))

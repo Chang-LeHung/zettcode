@@ -14,6 +14,11 @@ class Theme:
     Widgets read roles such as ``accent`` or ``muted`` so a new palette is a
     data change rather than a search-and-replace through every component.
 
+    The built-in dark palette follows Everforest's green-leaning accents
+    (``#A7C080`` green, ``#83C092`` aqua, ``#DBBC7F`` yellow, ``#E67E80`` red)
+    over the neutral greys, so a transcript can tell reasoning from tool output
+    by hue instead of drawing every row in one green.
+
     Attributes:
         name: Palette key used by ``/theme`` and by ``base =`` in a theme file.
         background: Page fill behind everything.
@@ -41,15 +46,15 @@ class Theme:
     surface: str = "#161c18"
     surface_alt: str = "#2b3230"
     text: str = "#f2f5f3"
-    muted: str = "#747d77"
-    subtle: str = "#a3ada6"
-    accent: str = "#79b88b"
-    accent_bright: str = "#9bddad"
-    warning: str = "#d8b46a"
-    error: str = "#dc8178"
-    border: str = "#343a36"
-    focus: str = "#60876b"
-    selection: str = "#2f4a38"
+    muted: str = "#7a8478"
+    subtle: str = "#9da9a0"
+    accent: str = "#a7c080"
+    accent_bright: str = "#83c092"
+    warning: str = "#dbbc7f"
+    error: str = "#e67e80"
+    border: str = "#3d484d"
+    focus: str = "#83c092"
+    selection: str = "#3a5145"
     code: CodeTheme = CodeTheme()
 
 
@@ -61,14 +66,14 @@ LIGHT = Theme(
     surface="#ffffff",
     surface_alt="#eceeec",
     text="#1b211d",
-    muted="#6d766f",
+    muted="#68736c",
     subtle="#4c554e",
-    accent="#2f7a48",
-    accent_bright="#256b3b",
+    accent="#5f7a10",
+    accent_bright="#237a5c",
     warning="#8a6314",
     error="#b23b30",
-    border="#c9cfca",
-    focus="#2f7a48",
+    border="#bdc3af",
+    focus="#237a5c",
     selection="#cfe4d6",
     code=CodeTheme(
         name="light",

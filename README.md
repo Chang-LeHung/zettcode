@@ -97,7 +97,8 @@ touching code. `zettcode` reads `~/.zettcode/theme.toml` when it exists:
 base = "dark"                 # dark | light
 
 [ui]
-accent = "#79b88b"
+accent = "#a7c080"
+accent_bright = "#83c092"
 
 [code]
 keyword = "#e58fa8"
@@ -110,7 +111,10 @@ inline = "#9bddad"
 ```
 
 Unknown keys and malformed colours are reported instead of silently ignored.
-`/theme dark|light` still switches the base palette at runtime.
+`/theme dark|light` still switches the base palette at runtime. The built-in
+palettes take their accents from Everforest, so reasoning rows use the aqua
+token while tool rows keep the green one and timings stay grey, instead of one
+green for every row.
 
 From a source checkout, run it through `uv`:
 

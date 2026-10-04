@@ -14,8 +14,8 @@ EXAMPLE = """\
 base = "dark"                 # dark | light
 
 [ui]
-accent = "#79b88b"
-error = "#dc8178"
+accent = "#a7c080"
+error = "#e67e80"
 
 [code]
 keyword = "#e58fa8"

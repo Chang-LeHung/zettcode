@@ -27,7 +27,7 @@ from zettcode.tui.widgets.diff import DiffView, build_unified
 
 def test_golden_status_bar():
     assert render_block(StatusBar("left", "right"), width=16, height=1, theme=DARK) == (
-        "left       right\n-- styles --\n0:0-4 fg#747d77\n0:11-16 fg#747d77"
+        "left       right\n-- styles --\n0:0-4 fg#7a8478\n0:11-16 fg#7a8478"
     )
 
 
@@ -35,7 +35,7 @@ def test_golden_list_view():
     view = ListView([ListItem("a", label="alpha"), ListItem("b", label="beta")])
 
     assert render_block(view, width=16, height=3, theme=DARK) == (
-        "\u25b8 alpha\n  beta\n\n-- styles --\n0:0-7 b,fg#f2f5f3,bg#2f4a38\n1:0-6 fg#f2f5f3"
+        "\u25b8 alpha\n  beta\n\n-- styles --\n0:0-7 b,fg#f2f5f3,bg#3a5145\n1:0-6 fg#f2f5f3"
     )
 
 
@@ -52,9 +52,9 @@ def test_golden_table():
         "0:0-4 fg#f2f5f3\n"
         "0:4-11 b,fg#f2f5f3\n"
         "0:11-12 fg#f2f5f3\n"
-        "1:0-12 fg#a3ada6\n"
+        "1:0-12 fg#9da9a0\n"
         "2:0-12 fg#f2f5f3\n"
-        "3:0-12 fg#a3ada6"
+        "3:0-12 fg#9da9a0"
     )
 
 
@@ -76,14 +76,14 @@ def test_golden_dialog():
         "\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518\n"
         "-- styles --\n"
         "1:1-13 fg#f2f5f3\n"
-        "6:1-6 b,fg#0f1412,bg#79b88b\n"
-        "6:7-14 fg#747d77"
+        "6:1-6 b,fg#0f1412,bg#a7c080\n"
+        "6:7-14 fg#7a8478"
     )
 
 
 def test_golden_collapsible():
     assert render_block(Collapsible("Steps", Text("body")), width=16, height=3, theme=DARK) == (
-        "\u25b8 Steps\n\n\n-- styles --\n0:0-7 b,fg#79b88b"
+        "\u25b8 Steps\n\n\n-- styles --\n0:0-7 b,fg#a7c080"
     )
 
 
@@ -118,20 +118,20 @@ def test_golden_diff_gutter_and_word_emphasis():
         "   3    3  c\n"
         "\n"
         "-- styles --\n"
-        "0:0-16 d,fg#747d77\n"
-        "1:0-16 d,fg#747d77\n"
-        "2:0-10 d,fg#747d77\n"
-        "2:10-26 d,fg#9bddad\n"
-        "3:0-10 d,fg#747d77\n"
-        "3:10-12 fg#a3ada6\n"
-        "4:0-10 d,fg#747d77\n"
-        "4:10-11 b,fg#dc8178\n"
-        "4:11-12 b,fg#dc8178,bg#2f4a38\n"
-        "5:0-10 d,fg#747d77\n"
-        "5:10-11 b,fg#79b88b\n"
-        "5:11-12 b,fg#79b88b,bg#2f4a38\n"
-        "6:0-10 d,fg#747d77\n"
-        "6:10-12 fg#a3ada6"
+        "0:0-16 d,fg#7a8478\n"
+        "1:0-16 d,fg#7a8478\n"
+        "2:0-10 d,fg#7a8478\n"
+        "2:10-26 d,fg#83c092\n"
+        "3:0-10 d,fg#7a8478\n"
+        "3:10-12 fg#9da9a0\n"
+        "4:0-10 d,fg#7a8478\n"
+        "4:10-11 b,fg#e67e80\n"
+        "4:11-12 b,fg#e67e80,bg#3a5145\n"
+        "5:0-10 d,fg#7a8478\n"
+        "5:10-11 b,fg#a7c080\n"
+        "5:11-12 b,fg#a7c080,bg#3a5145\n"
+        "6:0-10 d,fg#7a8478\n"
+        "6:10-12 fg#9da9a0"
     )
 
 
@@ -166,16 +166,17 @@ def test_golden_transcript_blocks():
         "\n"
         "\n"
         "-- styles --\n"
-        "0:0-4 fg#a3ada6\n"
+        "0:0-4 fg#9da9a0\n"
         "2:0-44 fg#f2f5f3,bg#2b3230\n"
         "3:0-44 fg#f2f5f3,bg#2b3230\n"
         "4:0-44 fg#f2f5f3,bg#2b3230\n"
-        "6:0-19 b,fg#79b88b\n"
-        "8:0-15 b,fg#79b88b\n"
-        "8:15-24 fg#747d77\n"
-        "9:0-8 fg#a3ada6\n"
+        "6:0-19 fg#83c092\n"
+        "8:0-4 fg#a7c080\n"
+        "8:4-15 fg#f2f5f3\n"
+        "8:15-24 fg#7a8478\n"
+        "9:0-8 fg#7a8478\n"
         "9:8-16 fg#f2f5f3\n"
-        "10:0-8 fg#a3ada6\n"
+        "10:0-8 fg#7a8478\n"
         "10:8-16 fg#f2f5f3\n"
         "12:0-8 b,fg#f2f5f3\n"
         "15:0-8 fg#f2f5f3\n"
@@ -211,9 +212,9 @@ def test_golden_completion_popup():
         "\n"
         "\n"
         "-- styles --\n"
-        "0:0-7 b,fg#f2f5f3,bg#2f4a38\n"
-        "0:7-28 fg#747d77,bg#2f4a38\n"
-        "0:28-44 b,fg#f2f5f3,bg#2f4a38\n"
+        "0:0-7 b,fg#f2f5f3,bg#3a5145\n"
+        "0:7-28 fg#7a8478,bg#3a5145\n"
+        "0:28-44 b,fg#f2f5f3,bg#3a5145\n"
         "1:0-5 fg#f2f5f3\n"
-        "1:7-37 fg#747d77"
+        "1:7-37 fg#7a8478"
     )
