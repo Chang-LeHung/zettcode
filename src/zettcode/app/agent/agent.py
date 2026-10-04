@@ -10,16 +10,19 @@ from zett_agent import (
     AgentEvent,
     AgentEventDispatcher,
     AgentRunConfig,
+    AnyMessage,
     AssistantMessage,
     ExternalEvent,
+    SystemMessage,
     ToolMessage,
     UserMessage,
 )
 
 from ...config import ModelConfig, ZettCodeConfig
 from ..commands import Command, CommandResult
+from .context import ContextReport
 from .entries import EntryStatus
-from .runtime import ZettCodeRuntime
+from .runtime import ZettCodeRuntime, build_system_prompt
 from .storage import SessionInfo
 from .title import summarize_title
 from .transcript import Transcript
@@ -76,6 +79,21 @@ class ZettCodeAgent:
         """
         return self.runtime.usage.snapshot(self.session_id)
 
+    async def context_report(self) -> ContextReport | None:
+        """Return what the next request carries by source, or None before the first call.
+
+        The tokenizer is prepared first: it prefers tiktoken and falls back to a
+        character estimate when that vocabulary cannot be opened, which the
+        report names so the numbers are not mistaken for exact ones.
+        """
+        tokenizer = self.runtime.tokenizer
+        await tokenizer.prepare()
+        return self.runtime.context.report(
+            self.session_id,
+            window=self.runtime.config.compaction_max_tokens,
+            tokenizer=tokenizer,
+        )
+
     @property
     def models(self) -> tuple[ModelConfig, ...]:
         """Return the models available for selection."""
@@ -131,12 +149,17 @@ class ZettCodeAgent:
         restored = Transcript(renderers=transcript.renderers, processors=transcript.processors)
         restored.frame = transcript.frame
         usage = UsageSnapshot()
+        history: list[AnyMessage] = []
         for line in session.branch():
             if line.usage is not None:
                 # Assistant lines are the ones that consumed a model response;
                 # their duration is the generation time the rate divides by.
                 usage = usage.with_usage(line.usage, line.timing.duration_ns / 1_000_000_000)
             message = line.message[0]
+            if message.include_in_messages and not isinstance(message, SystemMessage):
+                # The same slice a request would restore, so `/context` can
+                # measure a session that has not run in this process yet.
+                history.append(message)
             match message:
                 case UserMessage():
                     restored.user_message(message.text)
@@ -155,6 +178,13 @@ class ZettCodeAgent:
         restored.finish_restored_tools()
         transcript.replace(restored.entries)
         self.runtime.usage.seed(session_id, usage)
+        # The instructions come from a request this process already assembled, or
+        # from the prompt the runtime would build; the environment and tool notes
+        # only exist inside a request, which the report admits.
+        instructions = self.runtime.context.instructions or (
+            SystemMessage(content=build_system_prompt(self.runtime.config)),
+        )
+        self.runtime.context.remember(session_id, [*instructions, *history])
         self.use_session(session_id)
 
     async def list_sessions(self, *, limit: int = 20) -> list[SessionInfo]:

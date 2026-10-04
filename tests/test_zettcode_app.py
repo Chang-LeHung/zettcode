@@ -13,19 +13,26 @@ from zett_agent import (
     SHELL_APPROVAL_EVENT_NAME,
     AgentEvent,
     AgentEventType,
+    AgentRunConfig,
+    AgentRunContext,
+    AgentState,
     AssistantMessage,
     MessageTiming,
+    ModelRequest,
     ModelUsage,
+    SystemMessage,
     TodoItem,
     TodoStatus,
     TodoWriteResult,
     ToolCall,
+    ToolDefinition,
     ToolMessage,
     UserMessage,
 )
 
 from zettcode.app import Transcript, TranscriptSource, TranscriptView, ZettCodeApp
 from zettcode.app.agent.agent import ZettCodeAgent
+from zettcode.app.agent.context import ContextExtension, Tokenizer
 from zettcode.app.agent.projection import TranscriptProjector
 from zettcode.app.agent.storage import SessionInfo, SessionStore
 from zettcode.app.agent.transcript import (
@@ -43,7 +50,15 @@ from zettcode.app.commands import Command, CommandResult
 from zettcode.app.ui import app as app_module
 from zettcode.app.ui import demo
 from zettcode.app.ui.app import compact_path
-from zettcode.app.ui.widgets import WELCOME, ApprovalChoice, ApprovalPage, SessionsPage, bottom_panel, format_ago
+from zettcode.app.ui.widgets import (
+    WELCOME,
+    ApprovalChoice,
+    ApprovalPage,
+    ContextPage,
+    SessionsPage,
+    bottom_panel,
+    format_ago,
+)
 from zettcode.config import ModelConfig
 from zettcode.tui import DARK, LIGHT, Canvas, ListItem, ListPage, Rect, Text, walk
 from zettcode.tui.render import display_width
@@ -116,6 +131,7 @@ class FakeConfig:
         ModelConfig(model="gpt-4o", display_model="GPT-4o", token="test-token", multimodal=True),
     )
     reduced_motion: bool = False
+    compaction_max_tokens: int = 128_000
 
 
 @dataclass
@@ -125,6 +141,9 @@ class FakeRuntime:
     persistence: FakePersistence = field(default_factory=FakePersistence)
     todos: FakeTodos = field(default_factory=FakeTodos)
     usage: UsageExtension = field(default_factory=UsageExtension)
+    context: ContextExtension = field(default_factory=ContextExtension)
+    # A zero deadline keeps the fake offline: the estimate stands in for tiktoken.
+    tokenizer: Tokenizer = field(default_factory=lambda: Tokenizer(deadline=0.0))
     config: FakeConfig = field(default_factory=FakeConfig)
     active_model: ModelConfig = field(init=False)
     model: object = field(init=False)
@@ -173,12 +192,12 @@ def _presented_page(app: ZettCodeApp) -> ListPage:
 
 
 def _approval_page(app: ZettCodeApp) -> ApprovalPage:
-    """Return the approval panel on top of the stack, inside its border."""
+    """Return the approval panel on top of the stack."""
     return next(widget for widget in walk(app.app.screens.top.widget) if isinstance(widget, ApprovalPage))
 
 
 def _sessions_page(app: ZettCodeApp) -> SessionsPage:
-    """Return the session panel on top of the stack, inside its border."""
+    """Return the session panel on top of the stack."""
     return next(widget for widget in walk(app.app.screens.top.widget) if isinstance(widget, SessionsPage))
 
 
@@ -602,6 +621,76 @@ def _palette(theme) -> set[str]:
     return {value for value in values if isinstance(value, str)}
 
 
+def _run_context(session_id: str = "session-0001") -> AgentRunContext:
+    """Build the run context a hook receives, for tests that call one directly."""
+    return AgentRunContext(AgentRunConfig(session_id=session_id), AgentState(), {})
+
+
+async def test_the_context_command_reports_what_the_request_carries():
+    app = build_app()
+    harness = _harness(app)
+
+    harness.write("/context")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    # Nothing has been assembled yet, so the command says so instead of showing a page of zeroes.
+    assert app.app.screens.top.name != app_module.PAGE_SCREEN
+    assert any("No request yet" in entry.text for entry in app.transcript.entries)
+
+    request = ModelRequest(
+        messages=(
+            SystemMessage(content="You are ZettCode, a focused coding agent. " * 20),
+            SystemMessage(content="# Filesystem environment"),
+            UserMessage(content="add a --json flag"),
+        ),
+        tools=(ToolDefinition(name="read_file", description="read a file", parameters={"type": "object"}),),
+    )
+    await app.agent.runtime.context.before_model(_run_context(), request)
+
+    harness.write("/context")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    page = next(widget for widget in walk(app.app.screens.top.widget) if isinstance(widget, ContextPage))
+    assert [item.label for item in page.list.items] == [
+        "System prompt",
+        "Environment notes",
+        "Tool schemas",
+        "User messages",
+    ]
+    text = harness.render().text
+    assert "Context" in text and "tokens" in text
+    # The fake runtime never loads tiktoken, so the page has to admit the estimate.
+    assert "chars/token" in text
+
+
+async def test_resuming_a_session_makes_it_measurable_before_the_next_reply(tmp_path):
+    """`/context` answers for a restored session, not just one that ran here."""
+    store = SessionStore(tmp_path)
+    await store.append("previous", "req", UserMessage(content="an earlier question"))
+    await store.append("previous", "req", AssistantMessage(content="an earlier answer"))
+    app = build_app()
+    app.agent.runtime.persistence.store = store
+    harness = _harness(app)
+
+    harness.write("/use previous")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+    harness.write("/context")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    page = next(widget for widget in walk(app.app.screens.top.widget) if isinstance(widget, ContextPage))
+    assert [item.label for item in page.list.items] == [
+        "System prompt",
+        "User messages",
+        "Assistant messages",
+    ]
+    # Nothing has been sent in this process, so the notes and tools are unknown.
+    assert "notes and tools pending" in harness.render().text
+
+
 async def test_the_theme_command_opens_a_panel_and_applies_the_choice():
     app = build_app()
     harness = _harness(app)
@@ -791,9 +880,10 @@ async def test_a_command_can_compose_its_own_panel():
     harness.render()
 
     assert app.app.screens.top.name == "page"
-    # The handler asked for six rows, the frame takes one on each side.
-    assert page.rect.height == 4
-    assert page.rect.y > 0
+    # The handler asked for six rows and a panel is not framed, so the page
+    # fills them and the conversation above stays visible.
+    assert page.rect.height == 6
+    assert page.rect.bottom == app.app.height
 
     harness.press("escape")
     assert app.app.screens.top.name == "main"
@@ -915,8 +1005,8 @@ async def test_app_asks_for_approval_in_a_bottom_panel():
     page = _approval_page(app)
     assert app.app.screens.top.name == "page"
     text = harness.render().text
-    # The panel sits at the bottom, so the conversation above it stays visible.
-    assert page.rect.y > 0
+    # The panel is anchored to the bottom edge of the screen.
+    assert page.rect.bottom == app.app.height
     assert "Would you like to run the following command?" in text
     assert "Environment: local" in text
     assert "$ rm -rf build" in text
@@ -1207,7 +1297,9 @@ def test_slash_menu_caps_rows_and_scrolls_many_commands():
     assert app.completions.selected == 12
     harness.render()
     assert app.completions.top > 0
-    assert "/agent-3" in harness.render().text
+    # The highlighted row is scrolled into view; which command it is depends on
+    # how many the shell registers, so read it back instead of naming it.
+    assert app.commands[app.completions.selected].name in harness.render().text
 
 
 async def test_a_registered_command_runs_its_own_handler():
@@ -1541,7 +1633,7 @@ async def test_sessions_command_opens_a_panel_with_titles_and_ages(tmp_path):
 
     page = _sessions_page(app)
     text = harness.render().text
-    assert page.rect.y > 0
+    assert page.rect.bottom == app.app.height
     assert "Fix the parser crash" in text
     assert text.count("just now") == 2
     # A session without a title keeps that column empty but still shows its id.

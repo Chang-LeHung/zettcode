@@ -199,6 +199,25 @@ right alignment, account for wide CJK characters, and wrap a cell that does not
 fit instead of cutting its text.
 
 Use `/help` inside the application to see session commands; `/new`, `/sessions`,
-`/use`, `/model`, `/theme`, `/clear`, and `/quit` are available.
+`/use`, `/model`, `/theme`, `/context`, `/clear`, and `/quit` are available.
 The composer command menu identifies each command as `app` or `agent`, shows
 its description, and scrolls when there are more matches than visible rows.
+
+`/context` opens a panel that breaks the next request down by who fills it:
+
+```
+Context  25,926 / 128,000 tokens  (20%)
+  System prompt        0.2%   (1)
+  Environment notes    0.6%   (2)
+  Tool schemas         1.2%   (9)
+  User messages        0.0%   (3)
+  Assistant messages   2.4%  (12)
+  Tool output         16.0%  (17)
+~4 chars/token · esc back
+```
+
+The numbers come from the request the runtime assembled for the last model
+call, measured with `tiktoken` when its encoding can be opened and with a
+four-characters-per-token estimate otherwise — the footer always names the
+counter that produced them. The budget is the compaction threshold, so the
+total is also the point at which the agent starts summarizing.

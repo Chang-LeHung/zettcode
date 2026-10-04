@@ -480,7 +480,7 @@ class ZettCodeApp:
             on_choice=lambda choice: self._respond(session_id, call_id, choice),
             remember_supported=bool(payload.get("remember_supported")),
         )
-        panel = bottom_panel(page, rows=APPROVAL_ROWS, color=self.app.theme.border)
+        panel = bottom_panel(page, rows=APPROVAL_ROWS)
         self.app.push_screen(Screen(panel, name=PAGE_SCREEN, modal=True))
 
     def _respond(self, session_id: str, call_id: str, choice: ApprovalChoice) -> None:
