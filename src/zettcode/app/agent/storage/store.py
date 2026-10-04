@@ -321,13 +321,18 @@ class SessionPersistenceMixin:
         """Write one session's display title, replacing any earlier one.
 
         The title is metadata, not conversation, so renaming is one more line in
-        the metadata log and never shows up in the message history.
+        the metadata log and never shows up in the message history. Naming a
+        session that has not been used yet creates it: the header that marks a
+        session is written first, so a name the user typed is never dropped for
+        want of a conversation.
         """
         cleaned = title.strip()
         if not cleaned or len(cleaned) > MAX_TITLE:
             raise ValueError(f"Session title must contain between 1 and {MAX_TITLE} characters")
         if not any(info.session_id == session_id for info in read_metadata(self.metadata_path)):
-            raise ValueError("Cannot title a session that has not been written yet")
+            created_at = self._write_header(self.read(session_id), session_id, None, None)
+            if created_at is not None:
+                append_metadata(self.metadata_path, SessionStarted(session_id=session_id, created_at=created_at))
         append_metadata(self.metadata_path, SessionTitle(session_id=session_id, title=cleaned))
 
     def session_title(self, session_id: str) -> str | None:

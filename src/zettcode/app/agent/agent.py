@@ -191,6 +191,20 @@ class ZettCodeAgent:
         """List persisted session metadata by recent activity."""
         return await self.runtime.persistence.list_sessions(limit=limit)
 
+    async def rename_session(self, title: str) -> str:
+        """Store a display title for the active session and return it cleaned.
+
+        A title the user typed wins over the one the background summarizer would
+        have written: ``title_session`` never renames a session that already has
+        a title, so naming by hand also stops the model call.
+
+        Args:
+            title: Name to store; surrounding space is trimmed, and a blank or
+                over-long name is rejected by the store.
+        """
+        await self.runtime.persistence.set_title(self.session_id, title)
+        return title.strip()
+
     async def title_session(self, session_id: str) -> str | None:
         """Name a session from its first exchange, unless it already has a title.
 
