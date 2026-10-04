@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ..render.code import CodeTheme
+from ..render.color import parse_hex
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,6 +134,23 @@ LIGHT = Theme(
         punctuator="#4c554e",
     ),
 )
+
+
+def scheme_named(background: str | None) -> str | None:
+    """Return ``"light"`` or ``"dark"`` for a background colour, or None without one.
+
+    Used to follow the terminal: the luminance of what it says its background is
+    picks the palette, so the shell matches the profile it was started in.
+
+    Args:
+        background: ``#rrggbb`` colour, or None when nothing was reported.
+    """
+    channels = parse_hex(background) if background else None
+    if channels is None:
+        return None
+    red, green, blue = (channel / 255 for channel in channels)
+    luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue
+    return "light" if luminance > 0.5 else "dark"
 
 
 def theme_named(name: str) -> Theme:

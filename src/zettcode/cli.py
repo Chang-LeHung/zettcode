@@ -40,7 +40,7 @@ async def async_main(config: ZettCodeConfig) -> None:
         raise SystemExit(f"zettcode: {error}") from error
     agent = await ZettCodeAgent.create(config)
     try:
-        await ZettCodeApp(agent, theme=theme).run()
+        await ZettCodeApp(agent, theme=theme, auto_theme=config.theme_file is None).run()
     finally:
         await agent.aclose()
 

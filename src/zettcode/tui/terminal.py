@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import os
+import re
+import select
 import shutil
 import sys
+from time import monotonic
 from types import TracebackType
 from typing import TextIO
 
@@ -14,6 +17,31 @@ from .capabilities import TerminalCapabilities, detect_capabilities
 # import safe on Windows so the rest of ZettCode still loads, and fail with a
 # clear message when a TUI is actually requested there.
 POSIX = os.name == "posix"
+
+
+#: OSC 11 with a question mark asks the terminal for its background colour; it
+#: answers on the input side with the same sequence carrying an ``rgb:`` value.
+BACKGROUND_QUERY = "\x1b]11;?\x07"
+_BACKGROUND_REPLY = re.compile(r"rgb:([0-9a-fA-F]{1,4})/([0-9a-fA-F]{1,4})/([0-9a-fA-F]{1,4})")
+
+
+def parse_background(reply: str) -> str | None:
+    """Return the ``#rrggbb`` colour in an OSC 11 reply, or None for anything else.
+
+    Terminals answer with one to four hex digits per channel — ``rgb:1e/1e/1e``
+    xterm-style, or ``rgb:1e1e/1e1e/1e1e`` from iTerm2 — so each channel is
+    scaled down to eight bits before it is spelled as a hex colour.
+    """
+    match = _BACKGROUND_REPLY.search(reply)
+    if match is None:
+        return None
+
+    def channel(digits: str) -> int:
+        value = int(digits, 16)
+        maximum = 16 ** len(digits) - 1
+        return round(value / maximum * 255)
+
+    return "#" + "".join(f"{channel(digits):02x}" for digits in match.groups())
 
 
 def title_sequence(text: str) -> str:
@@ -88,6 +116,29 @@ class Terminal:
 
             termios.tcsetattr(self.input_fd, termios.TCSADRAIN, self._attributes)
             self._attributes = None
+
+    def background(self, *, timeout: float = 0.25) -> str | None:
+        """Ask the terminal for its background colour, or None when it stays quiet.
+
+        The reply arrives on the input side, so this reads it here: call it while
+        raw mode is on and before any other reader owns the descriptor. A
+        terminal that does not implement OSC 11 sends nothing, and the deadline
+        is what keeps that from being a wait.
+
+        Args:
+            timeout: Seconds to wait for a reply.
+        """
+        self.write(BACKGROUND_QUERY)
+        deadline = monotonic() + timeout
+        reply = ""
+        while True:
+            remaining = deadline - monotonic()
+            if remaining <= 0 or not select.select([self.input_fd], [], [], remaining)[0]:
+                return parse_background(reply)
+            chunk = os.read(self.input_fd, 128)
+            if not chunk:
+                return parse_background(reply)
+            reply += chunk.decode("utf-8", "replace")
 
     def write(self, value: str) -> None:
         """Write and flush one control sequence."""

@@ -380,6 +380,12 @@ title alone. `/sessions` presents the result as another bottom panel — one row
 a column, the age of the last change, and the short id so an untitled session is
 still identifiable.
 
+The runner asks the terminal for its background once, before the input reader
+starts, and hands the answer to `core/theme.py`'s `scheme_named`: a light profile
+gets the light palette, a dark one the dark palette, and a terminal that does not
+answer leaves whatever the app was built with. A configured theme file sets
+`auto_theme=False`, because a palette someone wrote is not a guess to replace.
+
 Commands never paint: a handler returns a `CommandResult` carrying a widget, and
 the shell pushes it as a screen. The handler composes the presentation itself —
 the pickers wrap their page in `app/ui/widgets/bottom_panel`, which anchors it

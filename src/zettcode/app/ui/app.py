@@ -56,12 +56,15 @@ APPROVAL_ROWS = 16
 class ZettCodeApp:
     """Own the application agent, widget tree, keymap, and slash commands."""
 
-    def __init__(self, agent: ZettCodeAgent, *, theme: Theme = DARK) -> None:
+    def __init__(self, agent: ZettCodeAgent, *, theme: Theme = DARK, auto_theme: bool = True) -> None:
         """Wire the agent into the transcript, composer, panel, and keymap.
 
         Args:
             agent: Application agent that owns turns, sessions, and models.
             theme: Initial palette; ``/theme`` replaces it at runtime.
+            auto_theme: Let the terminal's own background choose between the
+                light and dark palettes at startup; a configured theme file
+                passes ``False``, because then the palette was a choice.
         """
         self.agent = agent
         self.transcript = Transcript()
@@ -102,7 +105,7 @@ class ZettCodeApp:
             ]
         )
         self.root = ZettCodeRoot(self, body)
-        self.app = TuiApp(self.root, theme=theme, reduced_motion=agent.reduced_motion)
+        self.app = TuiApp(self.root, theme=theme, reduced_motion=agent.reduced_motion, auto_theme=auto_theme)
         # The terminal tab says what this session is about, like any editor tab.
         self.app.title = self._terminal_title
         self._task: asyncio.Task[None] | None = None
