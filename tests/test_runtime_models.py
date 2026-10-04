@@ -152,7 +152,14 @@ async def test_runtime_switches_models_and_closes_every_provider(tmp_path, monke
     # A developer's own ~/.zettcode/mcp.json must not decide what this test sees.
     monkeypatch.setattr(runtime_module, "DEFAULT_MCP_CONFIG", tmp_path / "absent-mcp.json")
     first = ModelConfig(model="shared-id", display_model="First", token="first", base_url="http://first.test")
-    second = ModelConfig(model="shared-id", display_model="Second", token="second", base_url="http://tds.com:8787")
+    second = ModelConfig(
+        model="shared-id",
+        display_model="Second",
+        token="second",
+        base_url="http://tds.com:8787",
+        context_window=200_000,
+        compact_percent=75,
+    )
     config = ZettCodeConfig(workspace=tmp_path, models=(first, second), store=tmp_path / "sessions")
     await SessionStore(config.store, config.workspace).append(
         "existing-session", "old-request", UserMessage(content="earlier")
@@ -170,6 +177,9 @@ async def test_runtime_switches_models_and_closes_every_provider(tmp_path, monke
     selected = runtime.use_model("Second")
     assert selected is second
     assert runtime.model is created[1]
+    # The compaction budget belongs to the model, so it moves with the choice.
+    assert runtime.compaction.max_tokens == second.compaction_max_tokens == 150_000
+    assert runtime.compaction.keep_recent_tokens == second.compaction_keep_tokens == 37_500
     assert created[1].base_url == "http://tds.com:8787"
     assert created[1].token == "second"
     assert runtime.use_model("First") is first

@@ -212,7 +212,7 @@ class ZettCodeApp:
         if image is None:
             self.transcript.notice("no image on the clipboard")
         elif not self.agent.active_model.multimodal:
-            self.transcript.notice(f"{self.agent.active_model.shown_name} does not take images")
+            self.transcript.error(f"{self.agent.active_model.shown_name} does not take images")
         else:
             label = self.composer.attach_image(*image)
             self._status = f"attached {label}"
@@ -312,7 +312,15 @@ class ZettCodeApp:
         else:
             # The parts are taken before the composer is cleared, and keep the
             # order the chips sit in, so text and pictures stay interleaved.
-            self._task = asyncio.create_task(self._run_prompt(value, self.composer.parts()))
+            parts = self.composer.parts()
+            if carries_image(parts) and not self.agent.active_model.multimodal:
+                # A pasted base64 image reaches the composer without the shell
+                # having seen the clipboard, so the model's own limits are
+                # checked again here rather than only when Ctrl-V runs.
+                self.transcript.error(f"{self.agent.active_model.shown_name} does not take images")
+                self.app.invalidate()
+                return False
+            self._task = asyncio.create_task(self._run_prompt(value, parts))
         return True
 
     async def _run_prompt(self, prompt: str, parts: Sequence[PromptPart] = ()) -> None:
@@ -622,6 +630,11 @@ class ZettCodeApp:
     def _status_right(self) -> str:
         """List the keys worth remembering while the composer has focus."""
         return "  ^C stop  ^T thinking  ^D exit  "
+
+
+def carries_image(parts: Sequence[PromptPart]) -> bool:
+    """Return whether one turn holds an image beside its text."""
+    return any(not isinstance(part, str) for part in parts)
 
 
 def compact_path(path: Path, *, limit: int = 38) -> str:

@@ -149,6 +149,7 @@ class ZettCodeRuntime:
     todos: TodoWriteExtension
     usage: UsageExtension
     context: ContextExtension
+    compaction: CompactionExtension
     tokenizer: Tokenizer
     effort: ReasoningEffort
     model: OpenAIProvider
@@ -173,6 +174,11 @@ class ZettCodeRuntime:
         approval = ShellApprovalExtension(enabled=config.shell_approval is ShellApprovalMode.REVIEW)
         usage = UsageExtension()
         context = ContextExtension()
+        compaction = CompactionExtension(
+            None,
+            max_tokens=selected.compaction_max_tokens,
+            keep_recent_tokens=selected.compaction_keep_tokens,
+        )
         try:
             client = await create_agent(
                 model,
@@ -187,11 +193,7 @@ class ZettCodeRuntime:
                     context,
                     ToolGuidelinesExtension(),
                     *integration_extensions(config),
-                    CompactionExtension(
-                        None,
-                        max_tokens=config.compaction_max_tokens,
-                        keep_recent_tokens=config.compaction_keep_tokens,
-                    ),
+                    compaction,
                 ],
                 reasoning_effort=config.reasoning_effort,
                 parallel_tool_call=config.parallel_tool_call,
@@ -209,6 +211,7 @@ class ZettCodeRuntime:
             todos,
             usage,
             context,
+            compaction,
             Tokenizer(),
             config.reasoning_effort,
             model,
@@ -268,6 +271,10 @@ class ZettCodeRuntime:
             )
         self.model = self._models[chosen]
         self.active_model = chosen
+        # Context size is a property of the model, so switching models moves
+        # the point at which a request is compacted with it.
+        self.compaction.max_tokens = chosen.compaction_max_tokens
+        self.compaction.keep_recent_tokens = chosen.compaction_keep_tokens
         return chosen
 
     def new_session(self) -> str:
