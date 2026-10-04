@@ -1,11 +1,11 @@
 """Tests for Markdown rendering and its incremental parse cache."""
 
-from zettcode.tui import Canvas, Markdown, MarkdownView, Rect
+from zettcode.tui import LIGHT, Canvas, Markdown, MarkdownView, Rect
 from zettcode.tui.core.theme import DARK
 from zettcode.tui.render import display_width
 from zettcode.tui.testing import Harness
 from zettcode.tui.widgets import markdown
-from zettcode.tui.widgets.markdown import render_markdown, stable_cut
+from zettcode.tui.widgets.markdown import inline_markdown, render_markdown, stable_cut
 
 
 def test_markdown_renders_headings_lists_and_inline_markup():
@@ -18,6 +18,40 @@ def test_markdown_renders_headings_lists_and_inline_markup():
     assert "\u00b7 one" in text and "\u00b7 two" in text
     bold = [span for line in lines for span in line.spans if span.text == "bold"]
     assert bold and bold[0].style.bold is True
+
+
+def test_markdown_rerenders_when_the_theme_changes():
+    """The cached blocks are keyed by theme, not only by width and length.
+
+    A theme switch keeps the same text and width, so a cache that ignored the
+    palette would keep painting the previous colours.
+    """
+    document = Markdown("## Title\n\nbody with `code` and a [link](https://x.dev)")
+    dark_heading = document.line_at(0, 44)
+    dark_code = [span for span in document.line_at(3, 44).spans if span.text == "code"][0]
+
+    document.theme = LIGHT
+    light_heading = document.line_at(0, 44)
+    light_code = [span for span in document.line_at(3, 44).spans if span.text == "code"][0]
+
+    assert dark_heading.spans[0].style.foreground == DARK.text
+    assert dark_code.style.foreground == DARK.code.inline
+    assert light_heading.spans[0].style.foreground == LIGHT.text
+    assert light_code.style.foreground == LIGHT.code.inline
+
+
+def test_backtick_runs_open_one_code_span():
+    """A span delimited by N backticks may hold backticks of its own.
+
+    Models write this for anything that contains a backtick, and a parser that
+    only knew single delimiters would spill the delimiters into the prose.
+    """
+    spans = inline_markdown("`` `lessons/01`-`05` `` — runnable", theme=DARK)
+
+    assert [(span.text, span.style.foreground) for span in spans] == [
+        ("`lessons/01`-`05`", DARK.code.inline),
+        (" \u2014 runnable", DARK.text),
+    ]
 
 
 def test_markdown_wraps_paragraphs_inside_the_width():
