@@ -145,13 +145,22 @@ class ZettCodeApp:
         return self._task
 
     async def run(self) -> None:
-        """Own the terminal until the application exits."""
+        """Own the terminal until the application exits.
+
+        The runtime is started in the background as the first frame appears:
+        its provider SDK costs a few hundred milliseconds, nothing on screen
+        waits for it, and the first turn awaits the same task.
+        """
         from ...tui import Terminal, TerminalRunner
 
+        warm = self.agent.runtime.start()
         try:
             await TerminalRunner(self.app, terminal=Terminal(diagnostics=DEFAULT_LOG)).run()
         finally:
             await self._stop_title_task()
+            # A start that failed is the first turn's error to report, not a
+            # reason to keep the process alive or to raise on the way out.
+            await asyncio.gather(warm, return_exceptions=True)
 
     # -- commands -----------------------------------------------------------
     def _install_keymap(self) -> None:

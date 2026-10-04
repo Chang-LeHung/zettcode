@@ -1,33 +1,45 @@
-"""Application runtime that composes AgentClient with coding extensions."""
+"""Application runtime that composes AgentClient with coding extensions.
+
+The runtime is built in two steps. :meth:`ZettCodeRuntime.preview` assembles
+everything that needs no provider — settings, the session store, this
+application's own extensions — so the shell can paint its first frame;
+:meth:`ZettCodeRuntime.start` imports the provider SDK, builds the client, and
+is what a turn or a command awaits before it reaches the model. That split is
+worth a few hundred milliseconds of startup, and the modules that cost them
+stay out of the import graph until they are needed.
+"""
 
 from __future__ import annotations
 
+import asyncio
 import os
 import platform
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from zett_agent.agent import AgentRunConfig, AgentRunContext
-from zett_agent.client import AgentClient, create_agent
+from zett_agent.agent import AgentRunConfig
+from zett_agent.client import AgentClient
+from zett_agent.dispatcher import AgentEventDispatcher
 from zett_agent.extensions.base import AgentExtension
 from zett_agent.extensions.coding import CodingExtension
-from zett_agent.extensions.compaction import CompactionExtension
-from zett_agent.extensions.mcp import McpExtension
 from zett_agent.extensions.shell_approval import ShellApprovalExtension, ShellApprovalMode
-from zett_agent.extensions.skill import SkillExtension
 from zett_agent.extensions.todo import TodoWriteExtension
 from zett_agent.extensions.tool_guidelines import ToolGuidelinesExtension
 from zett_agent.ids import new_uuid7
 from zett_agent.model import ReasoningEffort
-from zett_agent.providers.openai import OpenAIProvider
 
 from ...config import DEFAULT_MCP_CONFIG, ModelConfig, ZettCodeConfig
 from .approval import ShellApprovalMemory
 from .context import ContextExtension, Tokenizer
 from .storage import SessionStore
 from .usage import UsageExtension
+
+if TYPE_CHECKING:  # pragma: no cover - annotations only; the imports are the cost
+    from zett_agent.extensions.compaction import CompactionExtension
+    from zett_agent.providers.openai import OpenAIProvider
 
 
 def build_system_prompt(config: ZettCodeConfig, *, now: datetime | None = None) -> str:
@@ -77,6 +89,10 @@ def integration_extensions(config: ZettCodeConfig) -> tuple[AgentExtension, ...]
     Returns:
         The extensions to add, most specific first.
     """
+    from zett_agent.extensions.skill import SkillExtension
+
+    from .mcp import ReportingMcpExtension
+
     extensions: list[AgentExtension] = []
     if config.skills_enabled:
         extensions.append(SkillExtension(config.skill_search_roots()))
@@ -116,108 +132,150 @@ def describe_error(error: BaseException) -> str:
     return "; ".join(reasons)
 
 
-class ReportingMcpExtension(McpExtension):
-    """An MCP extension whose failures say which servers the request tried.
-
-    One server that is not running fails the whole turn, and the failure arrives
-    as a task-group exception naming nothing at all. Adding the configured names
-    is the difference between "unhandled errors in a TaskGroup" and knowing that
-    the server is simply not up.
-    """
-
-    async def on_tool(self, context: AgentRunContext) -> None:
-        """Register remote tools, or fail with the server names in the text."""
-        try:
-            await super().on_tool(context)
-        except BaseException as error:
-            names = ", ".join(server.name for server in self.servers)
-            raise RuntimeError(f"MCP unavailable ({names}): {describe_error(error)}") from error
-
-
 @dataclass(slots=True)
 class ZettCodeRuntime:
-    """Own the model, the persistence and approval extensions, the client, and the active session."""
+    """Own the model, the persistence and approval extensions, the client, and the active session.
+
+    Before :meth:`start` runs, ``client``, ``model``, and ``compaction`` are
+    ``None``: everything that does not need a provider is already here, which is
+    what lets the shell paint. :attr:`started` and :attr:`provider` are the
+    readers that insist the runtime is ready.
+    """
 
     config: ZettCodeConfig
-    client: AgentClient
     persistence: SessionStore
     approval: ShellApprovalExtension
     todos: TodoWriteExtension
     usage: UsageExtension
     context: ContextExtension
-    compaction: CompactionExtension
     tokenizer: Tokenizer
     effort: ReasoningEffort
-    model: OpenAIProvider
     session_id: str
     active_model: ModelConfig
+    event_dispatcher: AgentEventDispatcher | None = None
+    client: AgentClient | None = None
+    model: OpenAIProvider | None = None
+    compaction: CompactionExtension | None = None
+    _starting: asyncio.Task[ZettCodeRuntime] | None = field(default=None, repr=False)
     _models: dict[ModelConfig, OpenAIProvider] = field(default_factory=dict)
 
     @classmethod
-    async def create(cls, config: ZettCodeConfig) -> ZettCodeRuntime:
-        """Create all owned resources after changing into the chosen workspace."""
+    def preview(cls, config: ZettCodeConfig) -> ZettCodeRuntime:
+        """Build the session side of the runtime, without a provider.
+
+        Everything here is cheap: paths, a session identity, and the
+        extensions this application owns. The provider SDK, the MCP client,
+        and the tokenizer's vocabulary stay unimported until :meth:`start`.
+
+        Args:
+            config: Settings for the workspace and the session.
+        """
         os.chdir(config.workspace)
-        persistence = SessionStore(config.store, config.workspace)
-        session_id = new_uuid7()
         selected = config.models[0]
-        model = OpenAIProvider(
-            selected.model,
-            selected.token,
-            base_url=selected.base_url,
-            response=selected.responses_api,
+        return cls(
+            config=config,
+            persistence=SessionStore(config.store, config.workspace),
+            approval=ShellApprovalExtension(
+                ShellApprovalMemory(),
+                enabled=config.shell_approval is ShellApprovalMode.REVIEW,
+            ),
+            todos=TodoWriteExtension(),
+            usage=UsageExtension(),
+            context=ContextExtension(),
+            tokenizer=Tokenizer(),
+            effort=config.reasoning_effort,
+            session_id=new_uuid7(),
+            active_model=selected,
         )
-        todos = TodoWriteExtension()
-        approval = ShellApprovalExtension(
-            ShellApprovalMemory(),
-            enabled=config.shell_approval is ShellApprovalMode.REVIEW,
-        )
-        usage = UsageExtension()
-        context = ContextExtension()
+
+    def start(self) -> asyncio.Task[ZettCodeRuntime]:
+        """Build the provider and the client once, whoever asks first.
+
+        The task is kept, so a background warm-up and the first turn cannot
+        build two clients, and every later caller gets the same answer.
+        """
+        if self._starting is None:
+            self._starting = asyncio.ensure_future(self._build())
+        return self._starting
+
+    async def _build(self) -> ZettCodeRuntime:
+        """Import what a provider needs, then hand the client its extensions."""
+        from zett_agent.client import create_agent
+        from zett_agent.extensions.compaction import CompactionExtension
+
+        selected = self.active_model
+        model = self._provider(selected)
         compaction = CompactionExtension(
             None,
             max_tokens=selected.compaction_max_tokens,
             keep_recent_tokens=selected.compaction_keep_tokens,
         )
-        try:
-            client = await create_agent(
-                model,
-                config=AgentRunConfig(session_id=session_id),
-                system_prompt=build_system_prompt(config),
-                extensions=[
-                    CodingExtension(),
-                    approval,
-                    persistence,
-                    todos,
-                    usage,
-                    context,
-                    ToolGuidelinesExtension(),
-                    *integration_extensions(config),
-                    compaction,
-                ],
-                reasoning_effort=config.reasoning_effort,
-                parallel_tool_call=config.parallel_tool_call,
-                max_iterations=config.max_iterations,
-            )
-        except BaseException:
-            await model.aclose()
-            await persistence.close()
-            raise
-        return cls(
-            config,
-            client,
-            persistence,
-            approval,
-            todos,
-            usage,
-            context,
-            compaction,
-            Tokenizer(),
-            config.reasoning_effort,
+        client = await create_agent(
             model,
-            session_id,
-            selected,
-            {selected: model},
+            config=AgentRunConfig(session_id=self.session_id),
+            system_prompt=build_system_prompt(self.config),
+            extensions=[
+                CodingExtension(),
+                self.approval,
+                self.persistence,
+                self.todos,
+                self.usage,
+                self.context,
+                ToolGuidelinesExtension(),
+                *integration_extensions(self.config),
+                compaction,
+            ],
+            reasoning_effort=self.config.reasoning_effort,
+            parallel_tool_call=self.config.parallel_tool_call,
+            max_iterations=self.config.max_iterations,
         )
+        client.event_dispatcher = self.event_dispatcher
+        self.model = model
+        self.compaction = compaction
+        self.client = client
+        return self
+
+    def _provider(self, selected: ModelConfig) -> OpenAIProvider:
+        """Return the provider for one configured model, building it if needed."""
+        from zett_agent.providers.openai import OpenAIProvider
+
+        provider = self._models.get(selected)
+        if provider is None:
+            provider = OpenAIProvider(
+                selected.model,
+                selected.token,
+                base_url=selected.base_url,
+                response=selected.responses_api,
+            )
+            self._models[selected] = provider
+        return provider
+
+    @property
+    def started(self) -> AgentClient:
+        """Return the client, insisting that :meth:`start` has been awaited."""
+        if self.client is None:
+            raise RuntimeError("Runtime has not started; await start() first")
+        return self.client
+
+    @property
+    def provider(self) -> OpenAIProvider:
+        """Return the provider for the active model, insisting the runtime started."""
+        if self.model is None:
+            raise RuntimeError("Runtime has not started; await start() first")
+        return self.model
+
+    def set_event_dispatcher(self, dispatcher: AgentEventDispatcher | None) -> None:
+        """Send streamed events to ``dispatcher``, now or as soon as there is a client."""
+        self.event_dispatcher = dispatcher
+        if self.client is not None:
+            self.client.event_dispatcher = dispatcher
+
+    @classmethod
+    async def create(cls, config: ZettCodeConfig) -> ZettCodeRuntime:
+        """Build and start a runtime, for callers with nothing to paint."""
+        runtime = cls.preview(config)
+        await runtime.start()
+        return runtime
 
     def approve_all_shell_commands(self) -> None:
         """Stop asking for shell approval for the rest of this process.
@@ -261,19 +319,16 @@ class ZettCodeRuntime:
             if len(matches) > 1:
                 raise ValueError(f"Ambiguous model: {name}; use a unique display_model")
             chosen = matches[0]
-        if chosen not in self._models:
-            self._models[chosen] = OpenAIProvider(
-                chosen.model,
-                chosen.token,
-                base_url=chosen.base_url,
-                response=chosen.responses_api,
-            )
-        self.model = self._models[chosen]
         self.active_model = chosen
-        # Context size is a property of the model, so switching models moves
-        # the point at which a request is compacted with it.
-        self.compaction.max_tokens = chosen.compaction_max_tokens
-        self.compaction.keep_recent_tokens = chosen.compaction_keep_tokens
+        # A preview runtime has no provider and no compaction budget yet; the
+        # model it names is what :meth:`_build` starts from.
+        if self.client is not None:
+            self.model = self._provider(chosen)
+        if self.compaction is not None:
+            # Context size is a property of the model, so switching models moves
+            # the point at which a request is compacted with it.
+            self.compaction.max_tokens = chosen.compaction_max_tokens
+            self.compaction.keep_recent_tokens = chosen.compaction_keep_tokens
         return chosen
 
     def new_session(self) -> str:
@@ -289,6 +344,8 @@ class ZettCodeRuntime:
 
     async def aclose(self) -> None:
         """Release all resources owned by this runtime."""
+        if self._starting is not None and not self._starting.done():
+            await asyncio.gather(self._starting, return_exceptions=True)
         for model in self._models.values():
             await model.aclose()
         await self.persistence.close()

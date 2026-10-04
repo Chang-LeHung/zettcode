@@ -62,6 +62,11 @@ of it at which a request is compacted; the last quarter of that trigger is kept
 verbatim, and `/context` measures against the window. Both default to
 `128000` and `80`. Unknown keys and wrong types are reported, not ignored.
 
+The window comes up before the agent does. The runtime is built in two steps —
+settings and session first, the provider SDK and its client when the first
+message is sent — so nothing waits on an import to draw the first frame; the
+status line reads `ready` while that happens.
+
 `Ctrl-V` attaches an image from the desktop clipboard. A terminal cannot hand
 an application the bytes of a pasted image, so the shell reads the clipboard
 itself — the pasteboard in-process on macOS, with `osascript` as the fallback
