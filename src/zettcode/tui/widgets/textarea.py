@@ -8,7 +8,7 @@ from ..core.events import KeyEvent, MouseAction, MouseEvent, PasteEvent, TextEve
 from ..core.geometry import Constraints, Point, Size
 from ..core.host import Host
 from ..core.widget import Widget
-from ..render import Canvas, Style, truncate
+from ..render import Canvas, Span, Style, truncate
 from ..render.text import character_width, display_width
 from .completion import Completer, CompletionItem
 
@@ -100,10 +100,52 @@ class TextArea(Widget):
 
     def set_text(self, value: str) -> None:
         """Replace the draft and put the cursor at the end of it."""
-        self.text = value
-        self.position = len(value)
+        self.show(value)
         self._leave_history()
         self._changed()
+
+    def show(self, value: str) -> None:
+        """Put ``value`` in the draft with the cursor at the end of it.
+
+        Every wholesale replacement goes through here — ``set_text``, a recalled
+        history entry — so an editor that presents some drafts differently has
+        one place to do it.
+        """
+        self.text = value
+        self.position = len(value)
+
+    @property
+    def value(self) -> str:
+        """Return the draft as it should be submitted.
+
+        The default is the draft itself; an editor that stands a placeholder in
+        for a large paste puts the real text back here.
+        """
+        return self.text
+
+    def paste(self, text: str) -> None:
+        """Insert pasted text.
+
+        The default writes it into the draft as it arrived; an editor that wants
+        a large paste to stand in for itself overrides this.
+        """
+        self._insert(text)
+
+    def spans_for(self, line: str, start: int, body: Style) -> tuple[Span, ...]:
+        """Return the styled pieces one wrapped row is painted with.
+
+        Args:
+            line: Row text as it will be drawn.
+            start: Index in the draft where that row begins, for an editor that
+                styles parts of the draft rather than the whole line.
+            body: Style the row is drawn with unless a piece says otherwise.
+        """
+        return (Span(line, body),)
+
+    def backspace(self) -> None:
+        """Remove what one Backspace press should remove: one character."""
+        if self.position:
+            self._delete(self.position - 1, self.position)
 
     def clear(self) -> None:
         """Reset the draft and every transient editing mode."""
@@ -162,6 +204,7 @@ class TextArea(Widget):
         first_visible = max(0, cursor_row - inner_height + 1)
         body_style = Style(foreground=theme.text, background=background)
         prompt_style = Style(foreground=theme.accent_bright, background=background, bold=True)
+        row_starts = self._row_starts(lines)
         for local_row, line in enumerate(lines[first_visible : first_visible + inner_height]):
             source_row = first_visible + local_row
             x = self.rect.x + inset + (self.prompt_width if source_row == 0 else 0)
@@ -178,15 +221,30 @@ class TextArea(Widget):
                     max_width=max(0, inner_width - self.prompt_width),
                 )
                 continue
-            canvas.draw_text(
+            room = max(0, inner_width - (self.prompt_width if source_row == 0 else 0))
+            canvas.draw_spans(
                 x,
                 self.rect.y + top + local_row,
-                line,
-                body_style,
-                max_width=max(0, inner_width - (self.prompt_width if source_row == 0 else 0)),
+                self.spans_for(line, row_starts[source_row], body_style),
+                max_width=room,
             )
         cursor_x = self.rect.x + inset + (self.prompt_width if cursor_row == 0 else 0) + cursor_column
         self._cursor_screen = Point(cursor_x, self.rect.y + top + cursor_row - first_visible)
+
+    def _row_starts(self, lines: Sequence[str]) -> list[int]:
+        """Return the draft index each wrapped row begins at.
+
+        A row break is a newline when the draft has one there and a wrap
+        otherwise, which is how a row keeps its place as the draft changes.
+        """
+        starts: list[int] = []
+        offset = 0
+        for line in lines:
+            starts.append(offset)
+            offset += len(line)
+            if offset < len(self.text) and self.text[offset] == "\n":
+                offset += 1
+        return starts
 
     def cursor(self) -> Point | None:
         """Show the cursor only while this editor actually has focus."""
@@ -201,7 +259,10 @@ class TextArea(Widget):
             return False
         if host.focused_widget() is not self:
             return False
-        if isinstance(event, (TextEvent, PasteEvent)):
+        if isinstance(event, PasteEvent):
+            self.paste(event.text)
+            return True
+        if isinstance(event, TextEvent):
             self._insert(event.text)
             return True
         if not isinstance(event, KeyEvent):
@@ -243,8 +304,7 @@ class TextArea(Widget):
             case "ctrl_n":
                 self._move_history(1)
             case "backspace":
-                if self.position:
-                    self._delete(self.position - 1, self.position)
+                self.backspace()
             case "delete" | "ctrl_d":
                 if self.position < len(self.text):
                     self._delete(self.position, self.position + 1)
@@ -275,7 +335,7 @@ class TextArea(Widget):
 
     def _submit(self) -> None:
         """Offer the trimmed draft to the submit hook, recording it when accepted."""
-        value = self.text.strip()
+        value = self.value.strip()
         if not value:
             return
         if self.on_submit is not None and self.on_submit(value) is False:
@@ -394,14 +454,12 @@ class TextArea(Widget):
         else:
             next_index = self._history_index + direction
             if next_index >= len(self._history):
-                self.text = self._history_draft
-                self.position = len(self.text)
+                self.show(self._history_draft)
                 self._history_index = None
                 self._changed()
                 return
             self._history_index = max(0, next_index)
-        self.text = self._history[self._history_index]
-        self.position = len(self.text)
+        self.show(self._history[self._history_index])
         self._changed()
 
     def _leave_history(self) -> None:

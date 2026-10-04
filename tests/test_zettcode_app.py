@@ -17,11 +17,13 @@ from zett_agent import (
     AgentRunContext,
     AgentState,
     AssistantMessage,
+    ImageContent,
     MessageTiming,
     ModelRequest,
     ModelUsage,
     ReasoningEffort,
     SystemMessage,
+    TextContent,
     TodoItem,
     TodoStatus,
     TodoWriteResult,
@@ -84,11 +86,13 @@ class FakeClient:
         self.models: list[object] = []
         self.configs: list[object] = []
         self.efforts: list[object] = []
+        self.messages: list[object] = []
 
     async def stream(self, message, *, config=None, model=None, reasoning_effort=None):
         self.models.append(model)
         self.configs.append(config)
         self.efforts.append(reasoning_effort)
+        self.messages.append(message)
         if self.event_dispatcher is not None:
             self.event_dispatcher.begin_turn(message)
         for event in self.events:
@@ -246,7 +250,7 @@ async def test_agent_stream_uses_selected_session_and_model():
     agent.use_session("session-0003")
     agent.use_model("GPT-4o")
 
-    async for _ in agent.stream("hello"):
+    async for _ in agent.stream(("hello",)):
         pass
 
     assert runtime.client.configs[-1].session_id == "session-0003"
@@ -654,6 +658,93 @@ def test_the_terminal_title_follows_the_session():
     app._session_title = "Fix the parser crash"
 
     assert app.app.title() == "Fix the parser crash"
+
+
+async def test_ctrl_v_attaches_the_clipboard_image_to_the_prompt(monkeypatch):
+    app = build_app()
+    app.agent.runtime.active_model = app.agent.runtime.config.models[1]  # GPT-4o takes images
+    harness = _harness(app)
+    monkeypatch.setattr(app_module, "read_image", lambda: (b"png-bytes", "image/png"))
+
+    harness.write("what is wrong here?")
+    harness.press("ctrl_v")
+
+    assert app.composer.text == "what is wrong here?[image #1]"
+    assert harness.render().text.count("[image #1]") >= 1
+
+    harness.press("enter")
+    await asyncio.sleep(0.05)
+
+    message = app.agent.runtime.client.messages[-1]
+    assert isinstance(message, UserMessage)
+    assert message.text == "what is wrong here?[image #1]"
+    assert len(message.parts) == 2
+    assert message.parts[1].source.data == b"png-bytes"
+
+
+async def test_a_prompt_keeps_images_where_the_chips_were_written(monkeypatch):
+    app = build_app()
+    app.agent.runtime.active_model = app.agent.runtime.config.models[1]
+    harness = _harness(app)
+    monkeypatch.setattr(app_module, "read_image", lambda: (b"png-bytes", "image/png"))
+
+    harness.write("this ")
+    harness.press("ctrl_v")
+    harness.write(" is broken")
+    harness.press("enter")
+    await asyncio.sleep(0.05)
+
+    message = app.agent.runtime.client.messages[-1]
+    assert isinstance(message, UserMessage)
+    assert [part.text if isinstance(part, TextContent) else "image" for part in message.parts] == [
+        "this [image #1]",
+        "image",
+        " is broken",
+    ]
+
+
+async def test_a_second_ctrl_v_adds_a_second_image(monkeypatch):
+    app = build_app()
+    app.agent.runtime.active_model = app.agent.runtime.config.models[1]
+    harness = _harness(app)
+    pending = [(b"first", "image/png"), (b"second", "image/png")]
+    monkeypatch.setattr(app_module, "read_image", lambda: pending.pop(0))
+
+    harness.press("ctrl_v")
+    harness.press("ctrl_v")
+    harness.write("compare")
+    harness.press("enter")
+    await asyncio.sleep(0.05)
+
+    message = app.agent.runtime.client.messages[-1]
+    assert isinstance(message, UserMessage)
+    assert [part.source.data for part in message.parts if isinstance(part, ImageContent)] == [
+        b"first",
+        b"second",
+    ]
+
+
+async def test_attaching_says_so_when_there_is_nothing_to_attach(monkeypatch):
+    app = build_app()
+    app.agent.runtime.active_model = app.agent.runtime.config.models[1]
+    harness = _harness(app)
+    monkeypatch.setattr(app_module, "read_image", lambda: None)
+
+    harness.press("ctrl_v")
+
+    assert app.composer.text == ""
+    assert any("no image on the clipboard" in getattr(entry, "text", "") for entry in app.transcript.entries)
+
+
+async def test_a_model_without_image_input_refuses_an_attachment(monkeypatch):
+    app = build_app()  # the default model is text-only
+    harness = _harness(app)
+    monkeypatch.setattr(app_module, "read_image", lambda: (b"png-bytes", "image/png"))
+
+    harness.press("ctrl_v")
+
+    assert app.composer.text == ""
+    assert any("does not take images" in getattr(entry, "text", "") for entry in app.transcript.entries)
 
 
 async def test_the_title_command_names_the_session(tmp_path):

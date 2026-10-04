@@ -8,6 +8,7 @@ reusable framework they are built from.
 
 from .approval_page import ApprovalChoice, ApprovalPage
 from .completer import CommandCompleter, help_text
+from .composer import Composer
 from .context_page import ContextPage
 from .model_page import ModelPage
 from .panel import bottom_panel
@@ -20,6 +21,7 @@ __all__ = [
     "ApprovalChoice",
     "ApprovalPage",
     "CommandCompleter",
+    "Composer",
     "ContextPage",
     "ModelPage",
     "SessionsPage",

@@ -8,6 +8,7 @@ widgets themselves live in :mod:`zettcode.app.ui.widgets`.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Sequence
 from contextlib import aclosing
 from pathlib import Path
 from time import monotonic
@@ -26,7 +27,6 @@ from ...tui import (
     Screen,
     StatusBar,
     TaskPanel,
-    TextArea,
     Theme,
     Toast,
     TuiApp,
@@ -36,13 +36,23 @@ from ...tui import (
 from ...tui.layout import Slot
 from ...tui.render import display_width
 from ...tui.widgets import Rule, Text
-from ..agent.agent import ZettCodeAgent
+from ..agent.agent import PromptPart, ZettCodeAgent
 from ..agent.projection import TranscriptProjector
 from ..agent.transcript import Transcript, activity_glyph, clock_text, elapsed_text
 from ..agent.usage import UsageSnapshot, usage_text
 from ..commands import CommandResult
+from .clipboard import read_image
 from .commands import ShellCommands
-from .widgets import WELCOME, ApprovalChoice, ApprovalPage, CommandCompleter, TranscriptView, ZettCodeRoot, bottom_panel
+from .widgets import (
+    WELCOME,
+    ApprovalChoice,
+    ApprovalPage,
+    CommandCompleter,
+    Composer,
+    TranscriptView,
+    ZettCodeRoot,
+    bottom_panel,
+)
 
 #: Screen name used for a page a command presented; the shell checks it to know
 #: that Ctrl-C and Ctrl-D belong to the page rather than the composer.
@@ -78,7 +88,7 @@ class ZettCodeApp:
         self.commands = ShellCommands(self).build(agent.commands)
 
         self.view = TranscriptView(self.transcript, theme=theme)
-        self.composer = TextArea(
+        self.composer = Composer(
             prompt="\u203a ",
             placeholder="Ask ZettCode to do anything",
             completer=CommandCompleter(self.commands),
@@ -145,6 +155,7 @@ class ZettCodeApp:
         self.app.commands.add("scroll_up", lambda event, host: (self.view.scroll_by(-3), True)[1])
         self.app.commands.add("scroll_down", lambda event, host: (self.view.scroll_by(3), True)[1])
         self.app.commands.add("scroll_end", self._scroll_end)
+        self.app.commands.add("attach_image", self._attach_image)
         self.app.commands.add("quit", lambda event, host: (host.exit(), True)[1])
         self.app.commands.add("complete_next", self._complete_next)
         self.app.commands.add("complete_previous", self._complete_previous)
@@ -166,6 +177,8 @@ class ZettCodeApp:
         # Escape is the keyboard twin of the transcript's return badge; capture
         # priority lets it win, because the composer would otherwise swallow Esc.
         self.app.keymap.bind("escape", "scroll_end", priority="capture", when=self._transcript_scrolled_up)
+        # The terminal cannot deliver a pasted image, so this asks the desktop.
+        self.app.keymap.bind("ctrl_v", "attach_image", priority="capture")
         # Capture priority is what lets the menu win the keys it needs: the
         # composer would otherwise read Up and Down as history navigation and
         # would treat Tab as its own inline completion.
@@ -186,6 +199,23 @@ class ZettCodeApp:
     def _scroll_end(self, event: KeyEvent, host: Host) -> bool:
         """Follow the newest line again, as the transcript's return badge does."""
         self.view.scroll_end()
+        return True
+
+    def _attach_image(self, event: KeyEvent, host: Host) -> bool:
+        """Attach the clipboard's image to the draft, or say there is none.
+
+        Ctrl-V rather than the terminal's paste key: an image never reaches the
+        program as input, so the shell has to go and look for it.
+        """
+        image = read_image()
+        if image is None:
+            self.transcript.notice("no image on the clipboard")
+        elif not self.agent.active_model.multimodal:
+            self.transcript.notice(f"{self.agent.active_model.shown_name} does not take images")
+        else:
+            label = self.composer.attach_image(*image)
+            self._status = f"attached {label}"
+        host.request_layout()
         return True
 
     def _accept_on_enter(self) -> bool:
@@ -279,11 +309,20 @@ class ZettCodeApp:
         if value.startswith("/"):
             self._task = asyncio.create_task(self._run_command(value))
         else:
-            self._task = asyncio.create_task(self._run_prompt(value))
+            # The parts are taken before the composer is cleared, and keep the
+            # order the chips sit in, so text and pictures stay interleaved.
+            self._task = asyncio.create_task(self._run_prompt(value, self.composer.parts()))
         return True
 
-    async def _run_prompt(self, prompt: str) -> None:
-        """Stream one agent turn, keeping the task panel and transcript current."""
+    async def _run_prompt(self, prompt: str, parts: Sequence[PromptPart] = ()) -> None:
+        """Stream one agent turn, keeping the task panel and transcript current.
+
+        Args:
+            prompt: What the user typed, image chips included, as it is echoed
+                into the transcript.
+            parts: The same turn as ordered text and image parts; an empty
+                sequence falls back to the prompt alone.
+        """
         self.projector.begin_turn(prompt)
         started = monotonic()
         self._busy = True
@@ -292,7 +331,7 @@ class ZettCodeApp:
         self.app.invalidate()
         try:
             self._refresh_tasks()
-            async with aclosing(self.agent.stream(prompt)) as events:
+            async with aclosing(self.agent.stream(parts or (prompt,))) as events:
                 async for _event in events:
                     self._refresh_tasks()
                     self.app.invalidate()

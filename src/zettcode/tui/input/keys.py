@@ -50,6 +50,7 @@ CONTROL_KEYS: dict[int, str] = {
     0x12: "ctrl_r",
     0x14: "ctrl_t",
     0x15: "ctrl_u",
+    0x16: "ctrl_v",
     0x17: "ctrl_w",
     0x19: "ctrl_y",
     0x1A: "ctrl_z",
