@@ -204,7 +204,7 @@ def test_load_theme_reads_the_documented_example(tmp_path):
     theme = load_theme(path)
 
     assert theme.code.keyword == "#e58fa8"
-    assert theme.accent == "#79b88b"
+    assert theme.accent == "#a7c080"
 
 
 def test_load_theme_reports_a_missing_file(tmp_path):
