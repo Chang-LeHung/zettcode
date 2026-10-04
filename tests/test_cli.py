@@ -1,5 +1,7 @@
 """The command line only picks the workspace; settings come from the config file."""
 
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -43,3 +45,25 @@ def test_resolve_config_reports_a_bad_config_file(tmp_path: Path, monkeypatch):
         resolve_config([str(tmp_path)])
 
     assert "Unknown config keys" in str(exit_info.value.code)
+
+
+def test_the_help_flag_builds_nothing():
+    """`-h` explains the program; it must not load the agent to do it."""
+    script = "\n".join(
+        [
+            "import sys",
+            "sys.argv = ['zettcode', '--help']",
+            "import zettcode.cli",
+            "try:",
+            "    zettcode.cli.main()",
+            "except SystemExit:",
+            "    pass",
+            "print('zett_agent' in sys.modules, 'zettcode.app.ui.app' in sys.modules)",
+        ]
+    )
+
+    result = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stderr
+    # The help text shares stdout with the probe, so only its last line is read.
+    assert result.stdout.strip().splitlines()[-1] == "False False"

@@ -84,6 +84,13 @@ nothing under `tui` knows the application exists. `app/__init__.py` is the
 facade over both halves, so callers keep writing `from zettcode.app import
 ZettCodeApp`.
 
+The facades are lazy: each `__init__.py` maps its public names to the module
+they live in and imports one on first use (`__getattr__`, PEP 562), so asking
+for a single widget does not load the Markdown parser, the diff viewer, and the
+syntax scanners with it. `zettcode --help` imports nothing beyond the standard
+library for the same reason — the flag that explains the program should not
+build the runtime.
+
 Inside the framework:
 
 ```

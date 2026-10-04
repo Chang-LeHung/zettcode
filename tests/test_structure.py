@@ -7,8 +7,11 @@ that live inside functions — the ones a test run never executes.
 from __future__ import annotations
 
 import ast
+import importlib
 import importlib.util
 import pathlib
+import subprocess
+import sys
 
 import zettcode
 
@@ -17,6 +20,17 @@ import zettcode
 LAYERS = (
     ("zettcode.tui", ("zettcode.app", "zettcode.cli", "zettcode.config")),
     ("zettcode.app.agent", ("zettcode.app.ui",)),
+)
+
+#: Packages that re-export their subpackages lazily through ``__getattr__``.
+FACADES = (
+    "zettcode",
+    "zettcode.app",
+    "zettcode.app.agent",
+    "zettcode.app.ui",
+    "zettcode.app.ui.widgets",
+    "zettcode.tui",
+    "zettcode.tui.widgets",
 )
 
 
@@ -82,3 +96,27 @@ def test_layers_only_import_downwards():
                     violations.append(f"{module}:{line} imports {target}")
 
     assert violations == []
+
+
+def test_every_facade_publishes_what_it_promises():
+    """A lazy re-export is easy to get wrong, so every name has to resolve."""
+    missing: list[str] = []
+    for name in FACADES:
+        module = importlib.import_module(name)
+        for attribute in module.__all__:
+            try:
+                getattr(module, attribute)
+            except AttributeError as error:
+                missing.append(f"{name}.{attribute}: {error}")
+
+    assert missing == []
+
+
+def test_importing_the_package_does_not_build_the_application():
+    """Names are imported on use: ``import zettcode`` must not load the runtime."""
+    script = "import zettcode, sys; print('zett_agent' in sys.modules, 'zettcode.app.ui' in sys.modules)"
+
+    result = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "False False"

@@ -38,8 +38,7 @@ from zettcode.app import Transcript, TranscriptSource, TranscriptView, ZettCodeA
 from zettcode.app.agent.agent import ZettCodeAgent
 from zettcode.app.agent.context import ContextExtension, Tokenizer
 from zettcode.app.agent.projection import TranscriptProjector
-from zettcode.app.agent.storage import SessionInfo, SessionStore
-from zettcode.app.agent.transcript import (
+from zettcode.app.agent.rows import (
     BLINK_FRAMES,
     SWEEP_FRAMES,
     activity_glyph,
@@ -49,6 +48,7 @@ from zettcode.app.agent.transcript import (
     sweep_step,
     terminal_safe,
 )
+from zettcode.app.agent.storage import SessionInfo, SessionStore
 from zettcode.app.agent.usage import USAGE_EVENT_NAME, UsageExtension, UsageSnapshot
 from zettcode.app.commands import Command, CommandResult
 from zettcode.app.ui import app as app_module

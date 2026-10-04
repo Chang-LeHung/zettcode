@@ -44,7 +44,8 @@ from ...tui.widgets import Rule, Text
 from ..agent.agent import UNTITLED_SESSION, PromptPart, ZettCodeAgent
 from ..agent.projection import TranscriptProjector
 from ..agent.runtime import describe_error
-from ..agent.transcript import Transcript, activity_glyph, clock_text, elapsed_text
+from ..agent.rows import activity_glyph, clock_text, elapsed_text
+from ..agent.transcript import Transcript
 from ..agent.usage import UsageSnapshot, usage_text
 from ..commands import CommandResult
 from .clipboard import read_image
