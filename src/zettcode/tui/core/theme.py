@@ -42,9 +42,9 @@ class Theme:
     """
 
     name: str = "dark"
-    background: str = "#0f1412"
-    surface: str = "#161c18"
-    surface_alt: str = "#2b3230"
+    background: str = "#232a2e"
+    surface: str = "#2d353b"
+    surface_alt: str = "#343f44"
     text: str = "#f2f5f3"
     muted: str = "#7a8478"
     subtle: str = "#9da9a0"
@@ -54,7 +54,7 @@ class Theme:
     error: str = "#e67e80"
     border: str = "#3d484d"
     focus: str = "#83c092"
-    selection: str = "#3a5145"
+    selection: str = "#4a5f52"
     code: CodeTheme = CodeTheme()
 
 
@@ -98,3 +98,8 @@ def theme_named(name: str) -> Theme:
     if name == LIGHT.name:
         return LIGHT
     raise ValueError(f"Unknown theme: {name!r}")
+
+
+def theme_names() -> tuple[str, ...]:
+    """Return the built-in palette keys, in the order a picker should list them."""
+    return (DARK.name, LIGHT.name)

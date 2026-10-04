@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from datetime import UTC, datetime, timedelta
 from math import ceil
 from pathlib import Path
@@ -45,7 +45,7 @@ from zettcode.app.ui import demo
 from zettcode.app.ui.app import compact_path
 from zettcode.app.ui.widgets import WELCOME, ApprovalChoice, ApprovalPage, SessionsPage, bottom_panel, format_ago
 from zettcode.config import ModelConfig
-from zettcode.tui import DARK, LIGHT, ListItem, ListPage, Rect, Text, walk
+from zettcode.tui import DARK, LIGHT, Canvas, ListItem, ListPage, Rect, Text, walk
 from zettcode.tui.render import display_width
 from zettcode.tui.testing import Harness, render_block
 
@@ -593,6 +593,96 @@ async def test_app_refuses_a_second_prompt_and_ctrl_c_stops_the_first():
 
     assert app.busy is False
     assert any("stopped" in entry.text for entry in app.transcript.entries if entry.kind == "notice")
+
+
+def _palette(theme) -> set[str]:
+    """Return every colour one palette can paint, code tokens included."""
+    values = {getattr(theme, attribute.name) for attribute in fields(theme) if attribute.name != "code"}
+    values |= {getattr(theme.code, attribute.name) for attribute in fields(theme.code)}
+    return {value for value in values if isinstance(value, str)}
+
+
+async def test_the_theme_command_opens_a_panel_and_applies_the_choice():
+    app = build_app()
+    harness = _harness(app)
+
+    harness.write("/theme")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    page = next(widget for widget in walk(app.app.screens.top.widget) if isinstance(widget, ListPage))
+    assert app.app.screens.top.name == "page"
+    assert [item.value for item in page.list.items] == ["dark", "light"]
+    assert page.list.current.value == "dark"  # the active palette is highlighted
+    assert harness.render().text.count("green-leaning") == 2
+
+    harness.press("down")
+    harness.press("enter")
+
+    assert app.app.theme is LIGHT
+    assert app.app.screens.top.name == "main"
+    assert app.app.focused_widget() is app.composer
+
+
+async def test_switching_the_theme_repaints_every_view():
+    """No view keeps a cached colour from the palette that was active before."""
+    app = build_app()
+    harness = _harness(app)
+    app.transcript.notice("hello")
+    app.transcript.begin_turn("a question")
+    app.transcript.append_answer("## Title\n\nbody with `code`")
+
+    harness.write("/theme light")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+    while len(app.app.screens) > 1:
+        app.app.pop_screen()  # the success toast is its own screen
+    harness.render()
+
+    canvas = Canvas(app.app.width, app.app.height)
+    app.app.screens.top.widget.render(canvas)
+    painted = {
+        colour
+        for row in canvas.cells
+        for cell in row
+        for colour in (cell.style.foreground, cell.style.background)
+        if colour is not None
+    }
+
+    assert app.app.theme is LIGHT
+    assert not painted & (_palette(DARK) - _palette(LIGHT))
+
+
+async def test_no_cell_falls_through_to_the_terminal_background():
+    """Every painted cell names a background.
+
+    The page is filled with ``Theme.background`` first, and a foreground-only
+    span keeps the background already in its cell. Without that, the glyphs a
+    widget draws would expose the terminal's own background: harmless in a dark
+    palette on a dark terminal, a field of black patches in a light one.
+    """
+    app = build_app()
+    harness = _harness(app)
+    app.transcript.begin_turn("a question")
+    app.transcript.start_thinking()
+    app.transcript.append_thinking("looking around")
+    app.transcript.complete_thinking()
+    app.transcript.start_tool("1", "read_file", {"path": "app.py"})
+    app.transcript.complete_tool("1", "line one\nline two")
+    app.transcript.append_answer("## Title\n\nprose with `code` and a [link](https://x.dev)")
+    app.transcript.notice("Processed 1.0s")
+    app.transcript.model_changed("gpt-5-mini", "deepseek")
+    app._notify("toast over the page", level="success")
+    harness.render()
+
+    for theme in (DARK, LIGHT):
+        app.app.theme = theme
+        harness.render()
+        canvas = app.app.render()
+        missing = [
+            (y, x) for y, row in enumerate(canvas.cells) for x, cell in enumerate(row) if cell.style.background is None
+        ]
+        assert not missing, (theme.name, missing[:5])
 
 
 async def test_app_slash_commands_change_theme_sessions_and_exit():

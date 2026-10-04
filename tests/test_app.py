@@ -19,6 +19,7 @@ from zettcode.tui import (
     Screen,
     Size,
     Style,
+    Text,
     TextEvent,
     Theme,
     TuiApp,
@@ -178,6 +179,25 @@ def test_theme_tokens_are_semantic_and_named_lookup_works():
 
     with pytest.raises(ValueError, match="Unknown theme"):
         theme_named("solarized")
+
+
+def test_switching_the_theme_repaints_the_whole_frame():
+    """A palette switch drops the previous frame instead of diffing against it.
+
+    Widgets read the theme while painting, but the differential renderer still
+    holds the cells it wrote last; repainting the whole screen is what keeps a
+    switch from leaving the parts that happen to match in the old palette.
+    """
+    from zettcode.tui.testing import Harness
+
+    app = TuiApp(Text("hello"), width=20, height=3, theme=DARK)
+    harness = Harness(app=app)
+    harness.render()
+
+    app.theme = LIGHT
+    harness.render()
+
+    assert harness.last_frame.startswith("\x1b[2J")
 
 
 def test_scheduler_frames_repaints_and_animation_budget():

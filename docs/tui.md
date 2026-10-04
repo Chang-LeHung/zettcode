@@ -244,7 +244,7 @@ passing `selectable=True`.
 
 | Widget | Role |
 |---|---|
-| `ListView` | Selectable rows with a scrolling window and disabled-row skipping |
+| `ListView` | Selectable rows with a scrolling window, aligned description column, and disabled-row skipping |
 | `TextArea` | Multi-line editor: Readline editing, undo, kill/yank, history, completion |
 | `Dialog` | Bordered body plus selectable actions, meant for a modal screen |
 | `Table` | Columns with alignment and truncation that fit the rectangle |
@@ -376,6 +376,11 @@ the pickers wrap their page in `app/ui/widgets/bottom_panel`, which frames it
 and anchors it to the bottom edge — so panel-versus-full-screen is a decision
 made in the command, not a hint the presenting code has to interpret.
 
+Every frame starts as a canvas filled with `Theme.background`, so a palette switch
+repaints the page itself rather than only the widgets that draw their own
+surface: a light palette on a dark terminal would otherwise leave the unpainted
+cells behind.
+
 `app/ui/app.py` assembles the header, transcript, composer, and status line,
 and owns the keymap, the slash commands, the approval panel, and the toasts.
 Model switches produce a centered transcript row; switching sessions rebuilds
@@ -398,7 +403,8 @@ before the composer sees the key, while `page_up` and `page_down` are bubble
 bindings that only run because the composer declines them.
 
 The status line, transcript chrome, and every widget read colors from
-`Theme` tokens, which is why `/theme dark|light` is a data change rather than a
+`Theme` tokens, which is why `/theme` (a picker) and `/theme dark|light` are data
+changes rather than a
 repaint of hardcoded constants.
 
 Code is highlighted but never filled: fenced blocks and inline code use a

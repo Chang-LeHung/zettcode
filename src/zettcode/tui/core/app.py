@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from time import monotonic
 
-from ..render import Canvas
+from ..render import Canvas, Style
 from .events import AnyEvent, MouseEvent, ResizeEvent
 from .focus import FocusManager, walk
 from .geometry import Point, Rect
@@ -59,7 +59,7 @@ class TuiApp(Host):
         self.root = root
         self.width = max(1, width)
         self.height = max(1, height)
-        self.theme = theme or DARK
+        self._theme = theme or DARK
         self.clock = clock
         self.max_fps = max_fps
         self.keymap = keymap or Keymap()
@@ -74,6 +74,26 @@ class TuiApp(Host):
         self._on_copy = on_copy
         self._layout_dirty = True
         self._mounted = False
+
+    @property
+    def theme(self) -> Theme:
+        """Return the palette every widget reads while painting."""
+        return self._theme
+
+    @theme.setter
+    def theme(self, value: Theme) -> None:
+        """Adopt a new palette, forcing the next frame to repaint from scratch.
+
+        Widgets read ``theme`` at paint time, but their caches and the
+        differential renderer may still hold the previous colours; dropping the
+        previous frame is what guarantees a switch cannot leave half the screen
+        in the old palette.
+        """
+        if value == self._theme:
+            return
+        self._theme = value
+        self.refreshed = True
+        self.scheduler.request_repaint()
 
     # -- lifecycle ----------------------------------------------------------
     def mount(self) -> None:
@@ -219,10 +239,17 @@ class TuiApp(Host):
         self._layout_dirty = False
 
     def render(self) -> Canvas:
-        """Paint every screen in order into one fresh canvas."""
+        """Paint every screen in order into one fresh canvas.
+
+        The canvas starts filled with the palette's page colour, because the
+        terminal's own background belongs to the user's profile: without the
+        fill, switching to a light palette would leave every unpainted cell
+        dark and only the widgets that draw their own surface would change.
+        """
         if self._layout_dirty:
             self.layout()
         canvas = Canvas(self.width, self.height)
+        canvas.fill(0, 0, self.width, self.height, Style(background=self.theme.background))
         for screen in self.screens:
             screen.widget.render(canvas)
         return canvas

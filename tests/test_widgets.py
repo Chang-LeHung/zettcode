@@ -91,17 +91,29 @@ def test_list_view_navigates_wraps_and_activates():
     assert chosen == ["item-0"]
 
 
-def test_list_view_places_a_description_by_display_width():
-    # A wide label is twice as wide as it is long, so the description has to
-    # start after the columns the label draws, not after its code points.
+def test_list_view_aligns_descriptions_by_display_width():
+    """One column for every label, measured in cells rather than code points.
+
+    A wide label is twice as wide as it is long, so counting code points would
+    pull the column left; a shorter label in the same list has to line up with
+    the longest one rather than starting right after its own text.
+    """
     items = [ListItem("a", label="汉字", description="first"), ListItem("b", label="ascii", description="second")]
     rows = Harness(ListView(items, wrap=False), width=20, height=2).render().text.splitlines()
 
     def column_of(row: str, needle: str) -> int:
         return display_width(row[: row.index(needle)])
 
-    assert column_of(rows[0], "first") == 2 + 4 + 1  # marker, wide label, gap
-    assert column_of(rows[1], "second") == 2 + 5 + 1
+    assert column_of(rows[0], "first") == 2 + 5 + 2  # marker, widest label, gap
+    assert column_of(rows[1], "second") == 2 + 5 + 2
+
+
+def test_list_view_tucks_a_description_behind_its_label_when_space_runs_out():
+    """A row too narrow for a column of its own keeps the description inline."""
+    items = [ListItem("a", label="abcdef", description="note")]
+    rows = Harness(ListView(items, wrap=False), width=13, height=1).render().text.splitlines()
+
+    assert rows[0].startswith("\u25b8 abcdef note")
 
 
 def test_task_panel_measures_wide_labels_by_display_width():

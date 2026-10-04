@@ -26,8 +26,12 @@ LIST_INDENT = 2
 _BLANK = re.compile(r"\n[ \t]*\n")
 # Underscore emphasis needs a word boundary on both sides, as CommonMark does:
 # otherwise ``replace_in_file`` would lose the underscores that spell it.
+# A code span is opened by a run of backticks and closed by the same run, so
+# ````` `a`-`b` ````` can hold backticks of its own; the run must not touch a
+# longer run on either side, which is what the lookarounds check.
 _INLINE = re.compile(
-    r"(\*\*.+?\*\*|__.+?__|`[^`]+`|\[[^]]+\]\([^)]+\)|(?<!\*)\*[^*]+\*(?!\*)|(?<![\w_])_[^_\n]+_(?![\w_]))"
+    r"(`+)(?!`)(.+?)(?<!`)\1(?!`)"
+    r"|(\*\*.+?\*\*|__.+?__|\[[^]]+\]\([^)]+\)|(?<!\*)\*[^*]+\*(?!\*)|(?<![\w_])_[^_\n]+_(?![\w_]))"
 )
 _HEADING = re.compile(r"^(#{1,3})\s+(.+)$")
 _BULLET = re.compile(r"^(\s*)[-+*]\s+(.+)$")
@@ -179,11 +183,15 @@ def inline_markdown(value: str, *, base: Style | None = None, theme: Theme = DAR
         if match.start() > position:
             fragments.append(Span(value[position : match.start()], base_style))
         token = match.group(0)
-        if token.startswith(("**", "__")):
+        if match.group(1) is not None:
+            # CommonMark strips one space on each side of the run, and only when
+            # the span is not all spaces, so `` ` ` `` keeps its single space.
+            content = match.group(2)
+            if content.startswith(" ") and content.endswith(" ") and content.strip():
+                content = content[1:-1]
+            fragments.append(Span(content, Style(foreground=theme.code.inline)))
+        elif token.startswith(("**", "__")):
             fragments.append(Span(token[2:-2], replace(base_style, bold=True)))
-        elif token.startswith("`"):
-            # Colour only: a background block reads as a filled box in a terminal.
-            fragments.append(Span(token[1:-1], Style(foreground=theme.code.inline)))
         elif token.startswith("["):
             label, _, target = token[1:].partition("](")
             fragments.append(Span(label, Style(foreground=theme.accent_bright)))
@@ -391,7 +399,8 @@ class Markdown:
         self._stable: list[TextLine] = []
         self._tail: list[TextLine] = []
         self._width = 0
-        self._tail_key: tuple[int, int, int] | None = None
+        self._theme = theme
+        self._tail_key: tuple[int, int, int, Theme] | None = None
         if text:
             self.append(text)
 
@@ -439,9 +448,15 @@ class Markdown:
         return len(self._stable)
 
     def _sync(self, width: int) -> None:
-        """Re-render only what changed since the last call at this width."""
-        if width != self._width:
+        """Re-render only what changed since the last call at this width and theme.
+
+        The palette is part of the cache key: switching themes keeps the same
+        text and width, so a cache that ignored it would keep painting the old
+        colours until the document changed.
+        """
+        if width != self._width or self.theme != self._theme:
             self._width = width
+            self._theme = self.theme
             self._stable = []
             self._stable_source = 0
             self._tail_key = None
@@ -451,7 +466,7 @@ class Markdown:
             self._stable.extend(render_markdown(tail, self._width, self.theme))
             self._stable_source += cut
             self._tail_key = None
-        key = (len(self._text), self._stable_source, self._width)
+        key = (len(self._text), self._stable_source, self._width, self.theme)
         if key != self._tail_key:
             self._tail = render_markdown(self._text[self._stable_source :], self._width, self.theme)
             self._tail_key = key

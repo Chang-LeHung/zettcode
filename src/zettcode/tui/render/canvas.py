@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from .style import DEFAULT_STYLE, Cell, Span, Style
 from .text import cell_glyph
@@ -22,7 +22,13 @@ class Canvas:
         self.cells = [[Cell() for _ in range(self.width)] for _ in range(self.height)]
 
     def set_cell(self, x: int, y: int, character: str, style: Style = DEFAULT_STYLE) -> int:
-        """Draw one printable glyph and return its display width."""
+        """Draw one printable glyph and return its display width.
+
+        A style that names no background keeps the one already in the cell, so a
+        foreground-only span cannot punch a hole through the page fill or the
+        panel band it is drawn on top of. ``Canvas.fill`` writes cells verbatim
+        and stays the way to clear a region on purpose.
+        """
         glyph, width = cell_glyph(character)
         if not (0 <= y < self.height) or x >= self.width:
             return width
@@ -33,10 +39,18 @@ class Canvas:
             return 0
         if x < 0 or x + width > self.width:
             return width
+        style = self._keep_background(x, y, style)
         self.cells[y][x] = Cell(glyph, style)
         for offset in range(1, width):
             self.cells[y][x + offset] = Cell("", style, continuation=True)
         return width
+
+    def _keep_background(self, x: int, y: int, style: Style) -> Style:
+        """Return ``style`` with the cell's existing background when it names none."""
+        if style.background is not None:
+            return style
+        existing = self.cells[y][x].style.background
+        return style if existing is None else replace(style, background=existing)
 
     def draw_text(
         self,
