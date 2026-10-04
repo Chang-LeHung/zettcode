@@ -13,6 +13,7 @@ from zett_agent import (
     AnyMessage,
     AssistantMessage,
     ExternalEvent,
+    ReasoningEffort,
     SystemMessage,
     ToolMessage,
     UserMessage,
@@ -100,6 +101,20 @@ class ZettCodeAgent:
         return self.runtime.config.models
 
     @property
+    def effort(self) -> str:
+        """Return the reasoning effort the next request will ask for."""
+        return self.runtime.effort.value
+
+    @property
+    def efforts(self) -> tuple[str, ...]:
+        """Return the reasoning levels the runtime accepts, cheapest first."""
+        return tuple(level.value for level in ReasoningEffort)
+
+    def use_effort(self, name: str) -> str:
+        """Select a reasoning level for later requests and return its value."""
+        return self.runtime.use_effort(name).value
+
+    @property
     def commands(self) -> tuple[Command, ...]:
         """Return the conversation commands the agent owns.
 
@@ -121,11 +136,12 @@ class ZettCodeAgent:
         self.runtime.client.event_dispatcher = dispatcher
 
     def stream(self, prompt: str) -> AsyncIterator[AgentEvent]:
-        """Run one turn with the selected session and model."""
+        """Run one turn with the selected session, model, and reasoning effort."""
         return self.runtime.client.stream(
             prompt,
             config=AgentRunConfig(session_id=self.session_id),
             model=self.runtime.model,
+            reasoning_effort=self.runtime.effort,
         )
 
     def tasks(self) -> tuple[tuple[str, str], ...]:

@@ -406,6 +406,23 @@ class ZettCodeApp:
         self.app.invalidate()
         return renamed
 
+    def select_effort(self, name: str) -> None:
+        """Apply the reasoning level picked in the panel and return to the composer."""
+        try:
+            self.change_effort(name)
+        except ValueError as error:
+            self.transcript.notice(str(error))
+        self.close_page()
+        self.app.request_layout()
+
+    def change_effort(self, name: str) -> str:
+        """Switch reasoning effort and announce the change in the transcript."""
+        previous = self.agent.effort
+        selected = self.agent.use_effort(name)
+        if selected != previous:
+            self.transcript.effort_changed(previous, selected)
+        return selected
+
     def apply_theme(self, name: str) -> Theme:
         """Switch the palette and repaint.
 
@@ -541,8 +558,8 @@ class ZettCodeApp:
         return f"  \u25c8 zettcode  {compact_path(self.agent.workspace)}"
 
     def _header_right(self) -> str:
-        """Show the model the agent is configured to use."""
-        return f"{self.agent.active_model.shown_name}  "
+        """Show the model and the reasoning effort the next request will use."""
+        return f"{self.agent.active_model.shown_name} \u00b7 {self.agent.effort}  "
 
     def _status_left(self) -> str:
         """Show the activity glyph, status word, mode, session title, and token use."""

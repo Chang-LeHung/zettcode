@@ -236,9 +236,17 @@ class Transcript:
         """Append a muted one-off status line."""
         self._add(TextEntry(id=self._next_id, kind="notice", text=text))
 
+    def announce(self, text: str) -> None:
+        """Announce a change as one centered line between horizontal rules."""
+        self._add(TextEntry(id=self._next_id, kind="announcement", text=text))
+
     def model_changed(self, previous: str, current: str) -> None:
-        """Announce a model change as a centered line in the conversation."""
-        self._add(TextEntry(id=self._next_id, kind="model_change", text=f"Model changed from {previous} to {current}."))
+        """Announce a model change in the conversation."""
+        self.announce(f"Model changed from {previous} to {current}.")
+
+    def effort_changed(self, previous: str, current: str) -> None:
+        """Announce a reasoning-effort change the way a model change is shown."""
+        self.announce(f"Reasoning effort changed from {previous} to {current}.")
 
     def markdown(self, text: str) -> None:
         """Append a Markdown block, parsed and rendered like an answer.

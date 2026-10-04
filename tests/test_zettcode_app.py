@@ -20,6 +20,7 @@ from zett_agent import (
     MessageTiming,
     ModelRequest,
     ModelUsage,
+    ReasoningEffort,
     SystemMessage,
     TodoItem,
     TodoStatus,
@@ -82,10 +83,12 @@ class FakeClient:
         self.event_dispatcher = None
         self.models: list[object] = []
         self.configs: list[object] = []
+        self.efforts: list[object] = []
 
-    async def stream(self, message, *, config=None, model=None):
+    async def stream(self, message, *, config=None, model=None, reasoning_effort=None):
         self.models.append(model)
         self.configs.append(config)
+        self.efforts.append(reasoning_effort)
         if self.event_dispatcher is not None:
             self.event_dispatcher.begin_turn(message)
         for event in self.events:
@@ -149,6 +152,7 @@ class FakeRuntime:
     todos: FakeTodos = field(default_factory=FakeTodos)
     usage: UsageExtension = field(default_factory=UsageExtension)
     context: ContextExtension = field(default_factory=ContextExtension)
+    effort: ReasoningEffort = ReasoningEffort.MEDIUM
     # A zero deadline keeps the fake offline: the estimate stands in for tiktoken.
     tokenizer: Tokenizer = field(default_factory=lambda: Tokenizer(deadline=0.0))
     config: FakeConfig = field(default_factory=FakeConfig)
@@ -184,6 +188,14 @@ class FakeRuntime:
 
     def approve_all_shell_commands(self) -> None:
         self.auto_approved = True
+
+    def use_effort(self, name):
+        try:
+            self.effort = ReasoningEffort(name.strip().lower())
+        except ValueError:
+            levels = ", ".join(level.value for level in ReasoningEffort)
+            raise ValueError(f"Unknown reasoning effort: {name}. Try one of: {levels}") from None
+        return self.effort
 
 
 def build_app(events: list[AgentEvent] | None = None, *, block: bool = False) -> ZettCodeApp:
@@ -729,6 +741,71 @@ async def test_resuming_a_session_makes_it_measurable_before_the_next_reply(tmp_
     assert "notes and tools pending" in harness.render().text
 
 
+async def test_the_effort_command_sets_the_level_the_next_request_carries():
+    app = build_app()
+    harness = _harness(app)
+
+    harness.write("/effort XHIGH")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    assert app.agent.effort == "xhigh"
+    assert app._header_right().strip() == "gpt-5-mini \u00b7 xhigh"  # the header carries it
+
+    harness.write("go")
+    harness.press("enter")
+    await asyncio.sleep(0.05)
+    assert app.agent.runtime.client.efforts[-1] is ReasoningEffort.XHIGH
+
+    harness.write("/effort faster")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+    assert any("Unknown reasoning effort: faster" in getattr(entry, "text", "") for entry in app.transcript.entries)
+    assert app.agent.effort == "xhigh"  # a refused level leaves the current one alone
+
+
+async def test_switching_effort_announces_it_in_the_conversation():
+    app = build_app()
+    harness = _harness(app)
+
+    harness.write("/effort high")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    assert any(
+        entry.kind == "announcement" and entry.text == "Reasoning effort changed from medium to high."
+        for entry in app.transcript.entries
+    )
+
+    # Picking the level already in force adds no second row.
+    harness.write("/effort HIGH")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    assert [entry.text for entry in app.transcript.entries if entry.kind == "announcement"] == [
+        "Reasoning effort changed from medium to high."
+    ]
+
+
+async def test_the_effort_command_opens_a_picker_over_the_levels():
+    app = build_app()
+    harness = _harness(app)
+
+    harness.write("/effort")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    page = next(widget for widget in walk(app.app.screens.top.widget) if isinstance(widget, ListPage))
+    assert [item.value for item in page.list.items] == list(app.agent.efforts)
+    assert page.list.current.value == "medium"  # the level in force is highlighted
+
+    harness.press("down")  # medium -> high
+    harness.press("enter")
+
+    assert app.agent.effort == "high"
+    assert app.app.screens.top.name == "main"
+
+
 async def test_the_theme_command_opens_a_panel_and_applies_the_choice():
     app = build_app()
     harness = _harness(app)
@@ -863,7 +940,7 @@ async def test_model_command_lists_and_switches_models_for_the_next_request():
     harness.press("down")
     harness.press("enter")
     assert app.agent.active_model.model == "gpt-4o"
-    assert app._header_right() == "GPT-4o  "
+    assert app._header_right() == "GPT-4o \u00b7 medium  "
     assert app.app._layout_dirty is True
     rendered = harness.render().text
     assert "Model changed from gpt-5-mini to GPT-4o." in rendered
@@ -962,7 +1039,7 @@ async def test_reselecting_the_current_model_adds_no_change_row():
     harness.press("enter")
     await asyncio.wait_for(app.task, 2.0)
 
-    assert not any(entry.kind == "model_change" for entry in app.transcript.entries)
+    assert not any(entry.kind == "announcement" for entry in app.transcript.entries)
 
 
 def test_blank_row_replaces_the_rule_above_completions():
