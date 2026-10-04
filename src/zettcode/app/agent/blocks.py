@@ -27,6 +27,7 @@ TOOL_ROLES = {
     "delete_file": "delete",
     "run_shell": "shell",
     "todo_write": "plan",
+    "read_skill": "read",
 }
 
 
@@ -76,7 +77,11 @@ class WelcomeProcessor(EntryProcessor):
 
 
 class NoticeProcessor(EntryProcessor):
-    """Draw muted notices aligned with the answer above them."""
+    """Draw notices aligned with the answer above them.
+
+    A notice is a remark; one a caller marked as an error is a failure, and
+    failure is what the palette's error colour is for.
+    """
 
     def supports(self, entry: Entry) -> bool:
         """Claim notices."""
@@ -84,7 +89,8 @@ class NoticeProcessor(EntryProcessor):
 
     def lines(self, entry: TextEntry, width: int, theme: Theme, frame: int) -> list[TextLine]:
         """Leave a blank separator and let the transcript gutter add the inset."""
-        return [TextLine(), *self.text_lines(entry.text, width, Style(foreground=theme.muted))]
+        colour = theme.error if entry.level == "error" else theme.muted
+        return [TextLine(), *self.text_lines(entry.text, width, Style(foreground=colour))]
 
 
 class AnnouncementProcessor(EntryProcessor):

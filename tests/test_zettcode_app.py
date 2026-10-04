@@ -552,6 +552,31 @@ async def test_app_streams_a_prompt_into_the_transcript():
     assert app.busy is False
 
 
+async def test_a_failed_request_shows_the_reason_not_the_task_group():
+    """An MCP server that is down fails the turn inside a task group."""
+    app = build_app()
+    harness = _harness(app)
+
+    async def failing(parts):
+        raise ExceptionGroup(
+            "unhandled errors in a TaskGroup",
+            [ExceptionGroup("unhandled errors in a TaskGroup", [ConnectionError("All connection attempts failed")])],
+        )
+        yield  # pragma: no cover - unreachable, and what makes this a generator
+
+    app.agent.stream = failing
+
+    harness.write("你有哪些 skill")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    notices = [entry.text for entry in app.transcript.entries if entry.kind == "notice"]
+    assert any(text == "error: All connection attempts failed" for text in notices)
+    assert not any("TaskGroup" in text for text in notices)
+    failed = [entry for entry in app.transcript.entries if entry.kind == "notice" and entry.level == "error"]
+    assert any(entry.text.startswith("error: ") for entry in failed)
+
+
 def test_elapsed_text_shows_hours_minutes_and_seconds():
     assert elapsed_text(0.4) == "0s"
     assert elapsed_text(3.2) == "3s"

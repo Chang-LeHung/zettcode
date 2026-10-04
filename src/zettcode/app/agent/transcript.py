@@ -236,6 +236,10 @@ class Transcript:
         """Append a muted one-off status line."""
         self._add(TextEntry(id=self._next_id, kind="notice", text=text))
 
+    def error(self, text: str) -> None:
+        """Append a one-off failure line, painted as an error."""
+        self._add(TextEntry(id=self._next_id, kind="notice", text=text, level="error"))
+
     def announce(self, text: str) -> None:
         """Announce a change as one centered line between horizontal rules."""
         self._add(TextEntry(id=self._next_id, kind="announcement", text=text))

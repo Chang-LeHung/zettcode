@@ -7,23 +7,28 @@ import platform
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 
 from zett_agent import (
     AgentClient,
+    AgentExtension,
     AgentRunConfig,
+    AgentRunContext,
     CodingExtension,
     CompactionExtension,
+    McpExtension,
     OpenAIProvider,
     ReasoningEffort,
     ShellApprovalExtension,
     ShellApprovalMode,
+    SkillExtension,
     TodoWriteExtension,
     ToolGuidelinesExtension,
     create_agent,
     new_uuid7,
 )
 
-from ...config import ModelConfig, ZettCodeConfig
+from ...config import DEFAULT_MCP_CONFIG, ModelConfig, ZettCodeConfig
 from .context import ContextExtension, Tokenizer
 from .storage import SessionStore
 from .usage import UsageExtension
@@ -60,6 +65,77 @@ Runtime environment:
 
 Treat the workspace as the current working directory. Prefer relative paths in tool
 calls. Verify mutable facts with tools instead of assuming this startup snapshot is current."""
+
+
+def integration_extensions(config: ZettCodeConfig) -> tuple[AgentExtension, ...]:
+    """Return the optional skills and MCP extensions this configuration asks for.
+
+    Both live outside the model loop, so they are built here and handed to
+    :func:`create_agent` with the rest. MCP is skipped when there is no server
+    file to read: an unconfigured run then carries no MCP instructions at all,
+    rather than a system message saying there is nothing to load.
+
+    Args:
+        config: Settings naming the skill roots and the MCP server file.
+
+    Returns:
+        The extensions to add, most specific first.
+    """
+    extensions: list[AgentExtension] = []
+    if config.skills_enabled:
+        extensions.append(SkillExtension(config.skill_search_roots()))
+    if config.mcp_enabled:
+        path = config.mcp_config or DEFAULT_MCP_CONFIG
+        if Path(path).expanduser().is_file():
+            extensions.append(ReportingMcpExtension(config_path=path))
+    return tuple(extensions)
+
+
+def describe_error(error: BaseException) -> str:
+    """Return the reasons an exception carries, not the group that wraps them.
+
+    A failure inside a task group arrives as an ``ExceptionGroup`` whose own
+    text says nothing — "unhandled errors in a TaskGroup (1 sub-exception)" —
+    and a server refusing a connection is reported exactly that way. The reasons
+    are the leaves, so that is what a row shows, each one once, however deeply
+    the groups nest.
+
+    Args:
+        error: The exception a request failed with.
+
+    Returns:
+        The leaf reasons joined by ``"; "``, or the class name when a reason has
+        no text of its own.
+    """
+    reasons: list[str] = []
+    pending: list[BaseException] = [error]
+    while pending:
+        current = pending.pop(0)
+        if isinstance(current, BaseExceptionGroup):
+            pending[:0] = list(current.exceptions)
+            continue
+        text = str(current).strip() or type(current).__name__
+        if text not in reasons:
+            reasons.append(text)
+    return "; ".join(reasons)
+
+
+class ReportingMcpExtension(McpExtension):
+    """An MCP extension whose failures say which servers the request tried.
+
+    One server that is not running fails the whole turn, and the failure arrives
+    as a task-group exception naming nothing at all. Adding the configured names
+    is the difference between "unhandled errors in a TaskGroup" and knowing that
+    the server is simply not up.
+    """
+
+    async def on_tool(self, context: AgentRunContext) -> None:
+        """Register remote tools, or fail with the server names in the text."""
+        try:
+            await super().on_tool(context)
+        except BaseException as error:
+            names = ", ".join(server.name for server in self.servers)
+            raise RuntimeError(f"MCP unavailable ({names}): {describe_error(error)}") from error
 
 
 @dataclass(slots=True)
@@ -110,6 +186,7 @@ class ZettCodeRuntime:
                     usage,
                     context,
                     ToolGuidelinesExtension(),
+                    *integration_extensions(config),
                     CompactionExtension(
                         None,
                         max_tokens=config.compaction_max_tokens,

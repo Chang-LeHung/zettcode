@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from zettcode.config import ModelConfig, ZettCodeConfig, load_config
+from zettcode.config import DEFAULT_MCP_CONFIG, ModelConfig, ZettCodeConfig, load_config
 
 
 @pytest.fixture(autouse=True)
@@ -115,6 +115,53 @@ def test_load_config_defaults_to_the_first_model(tmp_path: Path):
 
     assert config.models[0].model == "m"
     assert config.store == (Path.home() / ".zettcode" / "sessions").resolve()
+    assert config.skills_enabled is True
+    assert config.skill_roots == ()
+    assert config.mcp_enabled is True
+    assert config.mcp_config is None
+    assert DEFAULT_MCP_CONFIG == (Path.home() / ".zettcode" / "mcp.json")
+
+
+def test_skill_roots_are_searched_before_the_default_directory(tmp_path: Path):
+    path = tmp_path / "config.toml"
+    path.write_text(
+        '[[models]]\nmodel = "m"\ntoken = "t"\n\n[skills]\nroots = ["~/team-skills", ".agent/skills"]\n',
+        encoding="utf-8",
+    )
+
+    config = load_config(tmp_path, path=path)
+    home = Path.home()
+
+    assert config.skill_search_roots() == (
+        (home / "team-skills").resolve(),
+        (tmp_path / ".agent" / "skills").resolve(),
+        (home / ".zettcode" / "skills").resolve(),
+    )
+
+
+def test_load_config_reads_the_mcp_server_file(tmp_path: Path):
+    path = tmp_path / "config.toml"
+    path.write_text(
+        '[[models]]\nmodel = "m"\ntoken = "t"\n\n[mcp]\nconfig = "~/elsewhere/mcp.json"\n',
+        encoding="utf-8",
+    )
+
+    config = load_config(tmp_path, path=path)
+
+    assert config.mcp_config == (Path.home() / "elsewhere" / "mcp.json").resolve()
+
+
+def test_skills_and_mcp_can_be_turned_off(tmp_path: Path):
+    path = tmp_path / "config.toml"
+    path.write_text(
+        '[[models]]\nmodel = "m"\ntoken = "t"\n\n[skills]\nenabled = false\n\n[mcp]\nenabled = false\n',
+        encoding="utf-8",
+    )
+
+    config = load_config(tmp_path, path=path)
+
+    assert config.skills_enabled is False
+    assert config.mcp_enabled is False
 
 
 @pytest.mark.parametrize("setting", ['store = "elsewhere"', 'session = "s1"', 'model = "m"'])
@@ -161,6 +208,15 @@ def test_load_config_requires_at_least_one_model(tmp_path: Path):
         ("models = []\n", "No models configured"),
         ('[[models]]\nmodel = "m"\nmultimodal = "yes"\ntoken = "t"\n', "must be bool"),
         ('[[models]]\nmodel = 7\ntoken = "t"\n', "must be str"),
+        (
+            '[[models]]\nmodel = "m"\ntoken = "t"\n[skills]\nrotos = ["."]\n',
+            "Unknown config keys in the \\[skills\\] table",
+        ),
+        ('[[models]]\nmodel = "m"\ntoken = "t"\n[skills]\nroots = "~/.skills"\n', "must be an array of strings"),
+        ('[[models]]\nmodel = "m"\ntoken = "t"\n[skills]\nroots = [7]\n', "must be an array of strings"),
+        ('[[models]]\nmodel = "m"\ntoken = "t"\n[skills]\nenabled = "yes"\n', "must be bool"),
+        ('mcp = "off"\n[[models]]\nmodel = "m"\ntoken = "t"\n', "must be a table"),
+        ('[[models]]\nmodel = "m"\ntoken = "t"\n[mcp]\nconfig = 7\n', "must be str"),
     ],
 )
 def test_load_config_reports_configuration_errors(tmp_path: Path, text, message):

@@ -15,7 +15,7 @@ from time import monotonic
 
 from zett_agent import AgentEvent
 
-from ...config import ModelConfig
+from ...config import DEFAULT_LOG, ModelConfig
 from ...tui import (
     DARK,
     Anchor,
@@ -38,6 +38,7 @@ from ...tui.render import display_width
 from ...tui.widgets import Rule, Text
 from ..agent.agent import PromptPart, ZettCodeAgent
 from ..agent.projection import TranscriptProjector
+from ..agent.runtime import describe_error
 from ..agent.transcript import Transcript, activity_glyph, clock_text, elapsed_text
 from ..agent.usage import UsageSnapshot, usage_text
 from ..commands import CommandResult
@@ -139,10 +140,10 @@ class ZettCodeApp:
 
     async def run(self) -> None:
         """Own the terminal until the application exits."""
-        from ...tui import TerminalRunner
+        from ...tui import Terminal, TerminalRunner
 
         try:
-            await TerminalRunner(self.app).run()
+            await TerminalRunner(self.app, terminal=Terminal(diagnostics=DEFAULT_LOG)).run()
         finally:
             await self._stop_title_task()
 
@@ -340,7 +341,7 @@ class ZettCodeApp:
             self.transcript.notice("stopped")
         except Exception as error:
             self.transcript.complete_thinking()
-            self.transcript.notice(f"error: {error}")
+            self.transcript.error(f"error: {describe_error(error)}")
         else:
             self._title_session_later(self.agent.session_id)
         finally:
@@ -365,7 +366,7 @@ class ZettCodeApp:
         previous_session = self.agent.session_id
         command = next((item for item in self.commands if item.name == name), None)
         if command is None:
-            self.transcript.notice(f"Unknown command: {name}. Try /help.")
+            self.transcript.error(f"Unknown command: {name}. Try /help.")
         else:
             try:
                 result = await command.handler(argument)
@@ -383,7 +384,7 @@ class ZettCodeApp:
             except ValueError as error:
                 if name == "/use" and self.agent.session_id != previous_session:
                     self.agent.use_session(previous_session)
-                self.transcript.notice(str(error))
+                self.transcript.error(str(error))
             else:
                 self._apply_result(result)
         self._status = "ready"
@@ -415,7 +416,7 @@ class ZettCodeApp:
         try:
             self.change_model(name)
         except ValueError as error:
-            self.transcript.notice(str(error))
+            self.transcript.error(str(error))
         self.close_page()
 
     def change_model(self, name: ModelConfig | str) -> ModelConfig:
@@ -432,7 +433,7 @@ class ZettCodeApp:
         try:
             self.apply_theme(name)
         except ValueError as error:
-            self.transcript.notice(str(error))
+            self.transcript.error(str(error))
         self.close_page()
 
     async def rename_session(self, title: str) -> str:
@@ -455,7 +456,7 @@ class ZettCodeApp:
         try:
             self.change_effort(name)
         except ValueError as error:
-            self.transcript.notice(str(error))
+            self.transcript.error(str(error))
         self.close_page()
         self.app.request_layout()
 
@@ -484,7 +485,7 @@ class ZettCodeApp:
         try:
             self.restore_session(session_id)
         except ValueError as error:
-            self.transcript.notice(str(error))
+            self.transcript.error(str(error))
             self.close_page()
             return
         # Close the panel first: the toast is its own screen, and closing it
@@ -574,7 +575,7 @@ class ZettCodeApp:
         try:
             self.agent.respond_approval(session_id, call_id, decision, remember)
         except Exception as error:
-            self.transcript.notice(f"approval failed: {error}")
+            self.transcript.error(f"approval failed: {error}")
         else:
             if choice is ApprovalChoice.RUN_AUTO:
                 self.agent.approve_all_shell_commands()

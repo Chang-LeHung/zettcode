@@ -2,6 +2,7 @@
 
 import builtins
 import importlib
+import os
 import sys
 from io import StringIO
 
@@ -70,6 +71,22 @@ def test_terminal_modes_follow_the_declared_capabilities() -> None:
     )
     assert plain._enter_sequences() == "\x1b[?1049h\x1b[?7l\x1b[?25l"
     assert plain._exit_sequences() == "\x1b[0m\x1b[?25h\x1b[?7h\x1b[?1049l"
+
+
+def test_the_terminal_keeps_stderr_out_of_the_frame(tmp_path) -> None:
+    """A child process printing a banner must not paint over the conversation."""
+    from zettcode.tui import terminal as terminal_module
+
+    log = tmp_path / "log" / "tui.log"
+    terminal = terminal_module.Terminal(input_fd=0, output=StringIO(), diagnostics=log)
+
+    terminal._capture_stderr()
+    try:
+        os.write(2, b"chrome-devtools-mcp banner\n")
+    finally:
+        terminal._release_stderr()
+
+    assert log.read_text() == "chrome-devtools-mcp banner\n"
 
 
 def test_input_decoder_handles_fragmented_utf8_keys_mouse_and_paste():

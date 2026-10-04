@@ -2,7 +2,8 @@
 
 ``~/.zettcode/config.toml`` (or ``$ZETTCODE_CONFIG``) lists OpenAI-compatible
 models. The first model is active at startup; ``/model`` selects another for
-later requests. Session storage and other runtime settings keep code defaults.
+later requests. The same file says where skills live and which MCP server file
+to read, and session storage and other runtime settings keep code defaults.
 """
 
 from __future__ import annotations
@@ -20,11 +21,31 @@ CONFIG_FILE = Path.home() / ".zettcode" / "config.toml"
 #: Session storage is an application default, not a model setting.
 DEFAULT_STORE = Path.home() / ".zettcode" / "sessions"
 
+#: MCP servers are ZettCode's own file, so they are configured independently of
+#: whatever other zett tools read.
+DEFAULT_MCP_CONFIG = Path.home() / ".zettcode" / "mcp.json"
+
+#: Anything written to stderr while the TUI owns the screen is kept here: a
+#: child process — an MCP server announcing itself, say — cannot know that the
+#: frame is the interface, and the renderer only repaints what it changed.
+DEFAULT_LOG = Path.home() / ".zettcode" / "log" / "tui.log"
+
 #: Top-level keys the config file may set; anything else is a typo.
-CONFIGURABLE = frozenset({"models"})
+CONFIGURABLE = frozenset({"models", "skills", "mcp"})
 
 #: Keys one ``[[models]]`` entry may set.
 MODEL_KEYS = frozenset({"model", "display_model", "token", "base_url", "responses_api", "multimodal"})
+
+#: Keys the ``[skills]`` table may set.
+SKILL_KEYS = frozenset({"enabled", "roots"})
+
+#: Keys the ``[mcp]`` table may set.
+MCP_KEYS = frozenset({"enabled", "config"})
+
+#: Where ZettCode's own skills live, searched after any ``[skills] roots``. A
+#: project-local directory is a configured root, not a default: only what the
+#: user asks for is scanned.
+DEFAULT_SKILL_ROOT = "~/.zettcode/skills"
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,6 +101,14 @@ class ZettCodeConfig:
         compaction_max_tokens: Context size at which compaction triggers.
         compaction_keep_tokens: Tokens preserved verbatim by compaction; must be
             smaller than ``compaction_max_tokens``.
+        skills_enabled: Discover local skills and advertise them to the model.
+        skill_roots: Extra skill directories, searched before
+            ``~/.zettcode/skills``; a relative entry is resolved against the
+            workspace, which is how a project ships skills in
+            ``.zettcode/skills``.
+        mcp_enabled: Load MCP servers from :attr:`mcp_config`.
+        mcp_config: JSON file naming MCP servers; ``None`` uses
+            ``~/.zettcode/mcp.json``.
     """
 
     workspace: Path
@@ -93,6 +122,10 @@ class ZettCodeConfig:
     max_iterations: int = 360
     compaction_max_tokens: int = 128_000
     compaction_keep_tokens: int = 32_000
+    skills_enabled: bool = True
+    skill_roots: tuple[Path, ...] = ()
+    mcp_enabled: bool = True
+    mcp_config: Path | None = None
 
     def __post_init__(self) -> None:
         """Normalize the paths and reject settings that cannot build a runtime."""
@@ -110,8 +143,25 @@ class ZettCodeConfig:
             raise ValueError("compaction_max_tokens must be greater than compaction_keep_tokens")
         object.__setattr__(self, "workspace", workspace)
         object.__setattr__(self, "store", store)
+        object.__setattr__(
+            self,
+            "skill_roots",
+            tuple(_resolve_root(root, workspace) for root in self.skill_roots),
+        )
         if self.theme_file is not None:
             object.__setattr__(self, "theme_file", self.theme_file.expanduser().resolve())
+        if self.mcp_config is not None:
+            object.__setattr__(self, "mcp_config", self.mcp_config.expanduser().resolve())
+
+    def skill_search_roots(self) -> tuple[Path, ...]:
+        """Return every skill directory to scan, most specific first.
+
+        The configured roots come first so a run can point at a team directory
+        or at a project-local one, then the user's own skills. A name declared
+        twice belongs to the earlier directory.
+        """
+        default = _resolve_root(DEFAULT_SKILL_ROOT, self.workspace)
+        return (*self.skill_roots, default)
 
 
 def config_path(path: str | Path | None = None) -> Path:
@@ -135,6 +185,12 @@ def _typed(value: object, where: str, expected: type) -> object:
     if not isinstance(value, expected):
         raise ValueError(f"{where} must be {expected.__name__}")
     return value
+
+
+def _resolve_root(root: str | Path, workspace: Path) -> Path:
+    """Return one configured directory: ``~`` expanded, a relative path against the workspace."""
+    expanded = Path(root).expanduser()
+    return (expanded if expanded.is_absolute() else workspace / expanded).resolve()
 
 
 def _setting(data: dict[str, object], key: str, expected: type, default: object) -> object:
@@ -179,6 +235,34 @@ def _read_models(raw: object, source: Path) -> tuple[ModelConfig, ...]:
     return tuple(models)
 
 
+def _read_table(raw: object, key: str, source: Path, allowed: frozenset[str]) -> dict[str, object]:
+    """Return one optional config table, rejecting unknown keys and wrong shapes."""
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise ValueError(f"Config key {key!r} must be a table ([{key}])")
+    unknown = sorted(set(raw) - allowed)
+    if unknown:
+        raise ValueError(f"Unknown config keys in the [{key}] table of {source}: {', '.join(unknown)}")
+    return raw
+
+
+def _read_skill_roots(raw: object, source: Path) -> tuple[Path, ...]:
+    """Return the extra skill directories, requiring strings in an array."""
+    if raw is None:
+        return ()
+    if not isinstance(raw, list) or any(not isinstance(entry, str) for entry in raw):
+        raise ValueError(f"Config key 'skills.roots' in {source} must be an array of strings")
+    return tuple(Path(entry) for entry in raw)
+
+
+def _read_mcp_config(raw: object, source: Path) -> Path | None:
+    """Return the MCP server file the config points at, if it points at one."""
+    if raw is None:
+        return None
+    return Path(_typed(raw, f"Config key 'mcp.config' in {source}", str))
+
+
 def load_config(
     workspace: str | Path,
     *,
@@ -210,9 +294,16 @@ def load_config(
         if unknown:
             raise ValueError(f"Unknown config keys in {source}: {', '.join(unknown)}")
 
+    skills = _read_table(data.get("skills"), "skills", source, SKILL_KEYS)
+    mcp = _read_table(data.get("mcp"), "mcp", source, MCP_KEYS)
+
     return ZettCodeConfig(
         workspace=Path(workspace),
         models=_read_models(data.get("models"), source),
         theme_file=_default_theme_file(),
         reduced_motion=reduced_motion_default,
+        skills_enabled=bool(_setting(skills, "enabled", bool, True)),
+        skill_roots=_read_skill_roots(skills.get("roots"), source),
+        mcp_enabled=bool(_setting(mcp, "enabled", bool, True)),
+        mcp_config=_read_mcp_config(mcp.get("config"), source),
     )
