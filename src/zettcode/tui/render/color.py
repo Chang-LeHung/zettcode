@@ -128,6 +128,8 @@ def encode_style(style: Style, depth: ColorDepth = ColorDepth.TRUECOLOR) -> str:
         codes.append("2")  # SGR 2: faint
     if style.italic:
         codes.append("3")  # SGR 3: italic
+    if style.strike:
+        codes.append("9")  # SGR 9: crossed out
     if style.reverse:
         codes.append("7")  # SGR 7: reverse video, used for text selection
     if depth is not ColorDepth.MONO:

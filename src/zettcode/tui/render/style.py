@@ -15,6 +15,7 @@ class Style:
         bold: Emit the bold attribute.
         italic: Emit the italic attribute.
         dim: Emit the faint attribute, used for de-emphasised structure.
+        strike: Emit the crossed-out attribute, used for text a writer removed.
         reverse: Swap foreground and background; a text selection is painted
             this way so it works over any colour underneath.
     """
@@ -24,6 +25,7 @@ class Style:
     bold: bool = False
     italic: bool = False
     dim: bool = False
+    strike: bool = False
     reverse: bool = False
 
 

@@ -33,7 +33,9 @@ _CODE = re.compile(r"(`+)(?!`)(.+?)(?<!`)\1(?!`)")
 #: Inline markup other than code; code spans are matched first and hidden from
 #: this pattern, so ``**a `b` c**`` keeps its code span instead of letting the
 #: emphasis delimiters swallow the backticks.
-_INLINE = re.compile(r"(\*\*.+?\*\*|__.+?__|\[[^]]+\]\([^)]+\)|(?<!\*)\*[^*]+\*(?!\*)|(?<![\w_])_[^_\n]+_(?![\w_]))")
+_INLINE = re.compile(
+    r"(~~.+?~~|\*\*.+?\*\*|__.+?__|\[[^]]+\]\([^)]+\)|(?<!\*)\*[^*]+\*(?!\*)|(?<![\w_])_[^_\n]+_(?![\w_]))"
+)
 #: Stands in for one code span while the rest of the line is matched.
 _CODE_MARK_TEXT = "\x00code{}\x00"
 _CODE_MARK = re.compile(r"\x00code(\d+)\x00")
@@ -204,18 +206,38 @@ def inline_markdown(value: str, *, base: Style | None = None, theme: Theme = DAR
         if match.start() > position:
             fragments.append(Span(masked[position : match.start()], base_style))
         token = match.group(0)
-        if token.startswith(("**", "__")):
-            fragments.append(Span(token[2:-2], replace(base_style, bold=True)))
+        if token.startswith("~~"):
+            fragments.extend(nested(token[2:-2], replace(base_style, strike=True), theme, code))
+        elif token.startswith(("**", "__")):
+            fragments.extend(nested(token[2:-2], replace(base_style, bold=True), theme, code))
         elif token.startswith("["):
             label, _, target = token[1:].partition("](")
-            fragments.append(Span(label, Style(foreground=theme.accent_bright)))
+            fragments.extend(nested(label, Style(foreground=theme.accent_bright), theme, code))
             fragments.append(Span(f" <{target[:-1]}>", Style(foreground=theme.muted)))
         else:
-            fragments.append(Span(token[1:-1], replace(base_style, italic=True)))
+            fragments.extend(nested(token[1:-1], replace(base_style, italic=True), theme, code))
         position = match.end()
     if position < len(masked) or not fragments:
         fragments.append(Span(masked[position:], base_style))
     return reveal(fragments, code)
+
+
+def nested(text: str, base: Style, theme: Theme, code: Sequence[Span]) -> list[Span]:
+    """Render the inside of one inline token, so markup can nest.
+
+    The content is always two characters shorter than the token it came from,
+    which is what keeps this recursion finite. A code span inside the token
+    already stands behind a placeholder, so it is put back here and never
+    reaches the nested call, which knows nothing of this line's code spans.
+    """
+    pieces: list[Span] = []
+    cursor = 0
+    for match in _CODE_MARK.finditer(text):
+        pieces.extend(inline_markdown(text[cursor : match.start()], base=base, theme=theme))
+        pieces.append(code[int(match.group(1))])
+        cursor = match.end()
+    pieces.extend(inline_markdown(text[cursor:], base=base, theme=theme))
+    return pieces
 
 
 def reveal(fragments: Sequence[Span], code: Sequence[Span]) -> list[Span]:

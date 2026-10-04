@@ -198,6 +198,7 @@ turn ends the transcript closes with a muted summary of the wall time it took:
 `Processed 2h 5m 7s · 18:30`.
 
 Assistant text renders common terminal-friendly Markdown: bold and emphasis,
+strikethrough,
 headings, inline and fenced code, links, quotes, bullet and numbered lists —
 inset one level from the prose and wrapped under their own text — and GFM-style
 tables. Code is highlighted by colour only, never by a background
