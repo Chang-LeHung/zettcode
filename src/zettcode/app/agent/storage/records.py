@@ -33,9 +33,10 @@ from enum import StrEnum
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, TypeAdapter, field_serializer, field_validator
-from zett_agent import AnyMessage, MessageTiming, ModelUsage
 from zett_agent.extensions.compaction import CompactedMessage
-from zett_agent.storage import decode_messages, encode_messages
+from zett_agent.extensions.events import MessageTiming
+from zett_agent.messages import AnyMessage
+from zett_agent.model import ModelUsage
 
 STORE_FILE = "data.jsonl"
 STORE_VERSION = 1
@@ -67,14 +68,25 @@ def _load_messages(value: object) -> object:
     The runtime's decoder owns the kind-to-type union, so this module never
     restates the message schema. A value that already holds decoded messages —
     when a caller re-validates a line this process just built — passes through.
+
+    The import is inside the call on purpose: the runtime's storage module
+    builds on SQLAlchemy, and a session that is only being listed should not pay
+    for the engine that writes one.
     """
+    from zett_agent.storage import decode_messages
+
     if isinstance(value, (tuple, list)) and (not value or not isinstance(value[0], dict)):
         return value
     return tuple(decode_messages(json.dumps(list(value))))
 
 
 def _dump_messages(messages: Sequence[AnyMessage]) -> list[dict[str, object]]:
-    """Encode runtime messages into the stored envelope form."""
+    """Encode runtime messages into the stored envelope form.
+
+    Imported here for the same reason as :func:`_load_messages`.
+    """
+    from zett_agent.storage import encode_messages
+
     return json.loads(encode_messages(list(messages)))
 
 

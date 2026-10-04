@@ -5,12 +5,10 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 
-from zett_agent import (
-    SHELL_APPROVAL_EVENT_NAME,
-    AgentEvent,
-    AgentEventDispatcher,
-    ToolMessage,
-)
+from zett_agent.dispatcher import AgentEventDispatcher
+from zett_agent.events import AgentEvent
+from zett_agent.extensions.shell_approval import SHELL_APPROVAL_EVENT_NAME
+from zett_agent.messages import ToolMessage
 
 from ...tui import ELLIPSIS
 from .entries import EntryStatus

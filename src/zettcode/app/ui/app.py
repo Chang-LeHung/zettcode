@@ -13,7 +13,7 @@ from contextlib import aclosing
 from pathlib import Path
 from time import monotonic
 
-from zett_agent import AgentEvent
+from zett_agent.events import AgentEvent
 
 from ...config import DEFAULT_LOG, ModelConfig
 from ...tui import (
@@ -43,8 +43,8 @@ from ...tui.render import display_width
 from ...tui.widgets import Rule, Text
 from ..agent.agent import UNTITLED_SESSION, PromptPart, ZettCodeAgent
 from ..agent.projection import TranscriptProjector
-from ..agent.runtime import describe_error
 from ..agent.rows import activity_glyph, clock_text, elapsed_text
+from ..agent.runtime import describe_error
 from ..agent.transcript import Transcript
 from ..agent.usage import UsageSnapshot, usage_text
 from ..commands import CommandResult

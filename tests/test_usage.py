@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import pytest
-from zett_agent import AgentEvent, AgentEventType, AssistantMessage, ModelResponse, ModelUsage
+from zett_agent.events import AgentEvent, AgentEventType
+from zett_agent.messages import AssistantMessage
+from zett_agent.model import ModelResponse, ModelUsage
 
 from zettcode.app.agent.usage import (
     USAGE_EVENT_NAME,

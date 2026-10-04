@@ -19,17 +19,11 @@ import json
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
-from zett_agent import (
-    AgentExtension,
-    AgentRunContext,
-    AnyMessage,
-    AssistantMessage,
-    ModelRequest,
-    SystemMessage,
-    ToolDefinition,
-    ToolMessage,
-)
+from zett_agent.agent import AgentRunContext
+from zett_agent.extensions.base import AgentExtension
 from zett_agent.extensions.compaction import CompactedMessage
+from zett_agent.messages import AnyMessage, AssistantMessage, SystemMessage, ToolMessage
+from zett_agent.model import ModelRequest, ToolDefinition
 
 #: Tokens per character when no tokenizer is available. The rule of thumb is
 #: close for English prose and low for CJK, which is why the report names the

@@ -5,22 +5,22 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Sequence
 from pathlib import Path
 
-from zett_agent import (
-    SHELL_APPROVAL_RESPONSE_EVENT_NAME,
-    AgentEvent,
-    AgentEventDispatcher,
-    AgentRunConfig,
+from zett_agent.agent import AgentRunConfig
+from zett_agent.dispatcher import AgentEventDispatcher
+from zett_agent.events import AgentEvent
+from zett_agent.extensions.external import ExternalEvent
+from zett_agent.extensions.shell_approval import SHELL_APPROVAL_RESPONSE_EVENT_NAME
+from zett_agent.messages import (
     AnyMessage,
     AssistantMessage,
-    ExternalEvent,
     ImageBytesSource,
     ImageContent,
-    ReasoningEffort,
     SystemMessage,
     TextContent,
     ToolMessage,
     UserMessage,
 )
+from zett_agent.model import ReasoningEffort
 
 from ...config import ModelConfig, ZettCodeConfig
 from ..commands import Command, CommandResult

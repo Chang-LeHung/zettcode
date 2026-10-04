@@ -9,26 +9,22 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from zett_agent import (
-    AgentClient,
-    AgentExtension,
-    AgentRunConfig,
-    AgentRunContext,
-    CodingExtension,
-    CompactionExtension,
-    McpExtension,
-    OpenAIProvider,
-    ReasoningEffort,
-    ShellApprovalExtension,
-    ShellApprovalMode,
-    SkillExtension,
-    TodoWriteExtension,
-    ToolGuidelinesExtension,
-    create_agent,
-    new_uuid7,
-)
+from zett_agent.agent import AgentRunConfig, AgentRunContext
+from zett_agent.client import AgentClient, create_agent
+from zett_agent.extensions.base import AgentExtension
+from zett_agent.extensions.coding import CodingExtension
+from zett_agent.extensions.compaction import CompactionExtension
+from zett_agent.extensions.mcp import McpExtension
+from zett_agent.extensions.shell_approval import ShellApprovalExtension, ShellApprovalMode
+from zett_agent.extensions.skill import SkillExtension
+from zett_agent.extensions.todo import TodoWriteExtension
+from zett_agent.extensions.tool_guidelines import ToolGuidelinesExtension
+from zett_agent.ids import new_uuid7
+from zett_agent.model import ReasoningEffort
+from zett_agent.providers.openai import OpenAIProvider
 
 from ...config import DEFAULT_MCP_CONFIG, ModelConfig, ZettCodeConfig
+from .approval import ShellApprovalMemory
 from .context import ContextExtension, Tokenizer
 from .storage import SessionStore
 from .usage import UsageExtension
@@ -171,7 +167,10 @@ class ZettCodeRuntime:
             response=selected.responses_api,
         )
         todos = TodoWriteExtension()
-        approval = ShellApprovalExtension(enabled=config.shell_approval is ShellApprovalMode.REVIEW)
+        approval = ShellApprovalExtension(
+            ShellApprovalMemory(),
+            enabled=config.shell_approval is ShellApprovalMode.REVIEW,
+        )
         usage = UsageExtension()
         context = ContextExtension()
         compaction = CompactionExtension(
