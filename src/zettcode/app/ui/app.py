@@ -103,6 +103,8 @@ class ZettCodeApp:
         )
         self.root = ZettCodeRoot(self, body)
         self.app = TuiApp(self.root, theme=theme, reduced_motion=agent.reduced_motion)
+        # The terminal tab says what this session is about, like any editor tab.
+        self.app.title = self._terminal_title
         self._task: asyncio.Task[None] | None = None
         self._title_task: asyncio.Task[None] | None = None
         self._busy = False
@@ -553,6 +555,10 @@ class ZettCodeApp:
         self.app.push_screen(Screen(overlay, name="toast"))
 
     # -- chrome -------------------------------------------------------------
+    def _terminal_title(self) -> str:
+        """Return what the terminal's window or tab should say this is."""
+        return self._session_title or f"zettcode \u00b7 {self.agent.workspace.name}"
+
     def _header_left(self) -> str:
         """Label the app and the workspace it is running in."""
         return f"  \u25c8 zettcode  {compact_path(self.agent.workspace)}"

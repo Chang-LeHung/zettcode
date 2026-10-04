@@ -13,6 +13,7 @@ from zettcode.tui import (
     TextEvent,
     TuiApp,
     Widget,
+    title_sequence,
 )
 from zettcode.tui.runner import TerminalRunner, run_app
 
@@ -173,3 +174,45 @@ async def test_the_runner_class_owns_the_loop_and_releases_it():
     assert "ok" in "".join(cell.character for cell in app.render().cells[0] if not cell.continuation)
     assert runner.reader is None
     assert app.scheduler.on_request is None
+
+
+def test_the_runner_names_the_terminal_after_the_app_and_hands_it_back():
+    """A tab or window title follows the app, and is released on shutdown."""
+    read_fd, write_fd = os.pipe()
+    terminal = StubTerminal(read_fd)
+    app = TuiApp(Editor(), width=40, height=6, title="zettcode · first")
+    runner = TerminalRunner(app, terminal=terminal)
+
+    try:
+        runner.paint()
+        assert terminal.output.getvalue().startswith(title_sequence("zettcode · first"))
+
+        # An unchanged title is not written again on the next frame.
+        terminal.output.seek(0)
+        terminal.output.truncate(0)
+        runner.paint()
+        assert title_sequence("zettcode") not in terminal.output.getvalue()
+
+        app.title = lambda: "Fix the parser crash"
+        runner.paint()
+
+        assert title_sequence("Fix the parser crash") in terminal.output.getvalue()
+    finally:
+        os.close(read_fd)
+        os.close(write_fd)
+
+
+async def test_shutdown_hands_the_terminal_title_back():
+    read_fd, write_fd = os.pipe()
+    terminal = StubTerminal(read_fd)
+    app = TuiApp(Editor(), width=40, height=6, title="zettcode · first")
+    runner = TerminalRunner(app, terminal=terminal)
+
+    try:
+        runner.paint()
+        await runner._shutdown()
+
+        assert terminal.output.getvalue().endswith(title_sequence(""))
+    finally:
+        os.close(read_fd)
+        os.close(write_fd)

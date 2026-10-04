@@ -160,7 +160,7 @@ understands; `unicode` is advisory until widgets grow ASCII glyph fallbacks.
 
 ## Runtime
 
-`core/app.py` owns one tree: screens, focus, keymap, scheduler, theme, layout,
+`core/app.py` owns one tree: screens, focus, keymap, scheduler, theme, title, layout,
 and painting. `TuiApp` is the only `Host`, so widgets reach the outside world
 only through it. It never touches a terminal, which is what lets the same tree
 run under a TTY or headlessly.

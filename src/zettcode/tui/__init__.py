@@ -58,7 +58,7 @@ from .layout import (
 )
 from .render import Canvas, ColorDepth, DifferentialRenderer, Span, Style, TextLine
 from .runner import TerminalRunner, run_app
-from .terminal import Terminal
+from .terminal import Terminal, title_sequence
 from .theme_file import EXAMPLE, ThemeFileError, load_theme, theme_from_toml
 from .widgets import (
     Collapsible,
@@ -187,6 +187,7 @@ __all__ = [
     "resolve_tracks",
     "run_app",
     "theme_named",
+    "title_sequence",
     "ToolTheme",
     "theme_names",
     "theme_from_toml",
