@@ -36,7 +36,7 @@ from ...tui import (
 from ...tui.layout import Slot
 from ...tui.render import display_width
 from ...tui.widgets import Rule, Text
-from ..agent.agent import PromptPart, ZettCodeAgent
+from ..agent.agent import UNTITLED_SESSION, PromptPart, ZettCodeAgent
 from ..agent.projection import TranscriptProjector
 from ..agent.runtime import describe_error
 from ..agent.transcript import Transcript, activity_glyph, clock_text, elapsed_text
@@ -625,7 +625,7 @@ class ZettCodeApp:
         # The mode sits before the title because the right-hand hint wins
         # the space fight, truncating the tail of this segment.
         mode = " \u00b7 auto" if self._auto_shell else ""
-        title = f"  {self._session_title}" if self._session_title else ""
+        title = f"  {self._session_title or UNTITLED_SESSION}"
         return f"  {icon} {self._status}{mode}{title}{usage_text(self._usage)}"
 
     def _status_right(self) -> str:

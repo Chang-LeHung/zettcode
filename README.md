@@ -103,7 +103,8 @@ their title and how long ago they last changed; `Enter` resumes the highlighted
 one, replacing the visible transcript with that session's active branch.
 `/use <id>` and `/sessions <id>` also restore the selected conversation directly;
 `/new` clears the visible conversation. The status line names the active session
-once it has a title, in place of its short id. Sessions are not selected in the
+— `New session` until the agent titles it, its title afterwards — in place of
+its short id. Sessions are not selected in the
 config file.
 
 The same line carries the session's token use: `↑22.0k ↓600 · 77% cached ·
