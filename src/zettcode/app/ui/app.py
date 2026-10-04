@@ -31,6 +31,7 @@ from ...tui import (
     Toast,
     TuiApp,
     VBox,
+    theme_named,
 )
 from ...tui.layout import Slot
 from ...tui.render import display_width
@@ -381,6 +382,26 @@ class ZettCodeApp:
             self.transcript.model_changed(previous.shown_name, selected.shown_name)
         self.app.request_layout()
         return selected
+
+    def select_theme(self, name: str) -> None:
+        """Apply the palette picked in the panel and return to the composer."""
+        try:
+            self.apply_theme(name)
+        except ValueError as error:
+            self.transcript.notice(str(error))
+        self.close_page()
+
+    def apply_theme(self, name: str) -> Theme:
+        """Switch the palette and repaint.
+
+        Widgets read ``theme`` while painting, so nothing has to be rebuilt;
+        the invalidate is what makes the new colours land, and the re-layout
+        covers the caches a size-only change would have missed.
+        """
+        theme = theme_named(name)
+        self.app.theme = theme
+        self.app.request_layout()
+        return theme
 
     def select_session(self, session_id: str) -> None:
         """Switch to the session picked in the panel and return to the composer."""

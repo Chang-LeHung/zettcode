@@ -12,7 +12,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
-from ...tui import Widget, theme_named
+from ...tui import ListItem, ListPage, Widget, theme_names
 from ..commands import Command, CommandResult
 from .widgets import ModelPage, SessionsPage, bottom_panel, help_text
 
@@ -20,6 +20,12 @@ from .widgets import ModelPage, SessionsPage, bottom_panel, help_text
 #: list, and the footer hint. The handler owns the number; nothing in the
 #: framework reads it.
 PICKER_ROWS = 14
+
+#: One-line description per built-in palette, shown next to its name.
+THEME_NOTES = {
+    "dark": "green-leaning palette for dark terminals",
+    "light": "green-leaning palette for light terminals",
+}
 
 if TYPE_CHECKING:  # pragma: no cover - only needed for the annotation
     from .app import ZettCodeApp
@@ -39,7 +45,7 @@ class ShellCommands:
             *agent_commands,
             Command("/sessions", "browse recent sessions", "app", self.sessions),
             Command("/model", "choose a model", "app", self.model),
-            Command("/theme", "switch the palette: /theme dark|light", "app", self.theme),
+            Command("/theme", "choose the palette (or /theme dark|light)", "app", self.theme),
             Command("/clear", "clear the transcript", "app", self.clear),
             Command("/quit", "exit", "app", self.quit),
             Command("/exit", "exit, same as /quit", "app", self.quit),
@@ -81,15 +87,25 @@ class ShellCommands:
         return bottom_panel(page, rows=PICKER_ROWS, color=self.shell.app.theme.border)
 
     async def theme(self, name: str) -> CommandResult:
-        """Select a theme without changing agent settings."""
-        if not name:
-            return CommandResult(message="Usage: `/theme dark|light`")
-        try:
-            theme = theme_named(name)
-        except ValueError:
-            return CommandResult(message=f"Unknown theme: {name}. Try dark or light.")
-        self.shell.app.theme = theme
-        return CommandResult(message=f"theme: {theme.name}", relayout=True)
+        """Open the theme picker, or switch straight to a named palette.
+
+        The built-in palettes are a tiny fixed list, so the picker is a plain
+        :class:`ListPage`; a named argument keeps the direct `/theme light` path
+        working the same way `/model <name>` does.
+        """
+        if name:
+            self.shell.apply_theme(name)
+            return CommandResult(relayout=True)
+        current = self.shell.app.theme.name
+        names = theme_names()
+        page = ListPage(
+            [ListItem(item, item, THEME_NOTES.get(item, "")) for item in names],
+            title="Theme",
+            on_select=lambda item: self.shell.select_theme(str(item.value)),
+            on_cancel=self.shell.close_page,
+            selected=names.index(current) if current in names else 0,
+        )
+        return CommandResult(widget=self._panel(page))
 
     async def clear(self, argument: str) -> CommandResult:
         """Clear visible conversation entries."""

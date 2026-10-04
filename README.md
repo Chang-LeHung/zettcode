@@ -111,7 +111,8 @@ inline = "#9bddad"
 ```
 
 Unknown keys and malformed colours are reported instead of silently ignored.
-`/theme dark|light` still switches the base palette at runtime. The built-in
+`/theme` opens a picker over the conversation; `/theme dark|light` still switches the
+base palette in one step. The built-in
 palettes take their accents from Everforest, so reasoning rows use the aqua
 token while tool rows keep the green one and timings stay grey, instead of one
 green for every row.
@@ -198,6 +199,6 @@ right alignment, account for wide CJK characters, and wrap a cell that does not
 fit instead of cutting its text.
 
 Use `/help` inside the application to see session commands; `/new`, `/sessions`,
-`/use`, `/model`, `/theme dark|light`, `/clear`, and `/quit` are available.
+`/use`, `/model`, `/theme`, `/clear`, and `/quit` are available.
 The composer command menu identifies each command as `app` or `agent`, shows
 its description, and scrolls when there are more matches than visible rows.

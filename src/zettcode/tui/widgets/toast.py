@@ -8,7 +8,7 @@ from time import monotonic
 from ..core.focus import walk
 from ..core.geometry import Constraints, Size
 from ..core.widget import Widget
-from ..render import DEFAULT_STYLE, Canvas, Style, truncate
+from ..render import Canvas, Style, truncate
 from ..render.text import display_width
 
 LEVELS = ("info", "success", "warning", "error")
@@ -99,7 +99,17 @@ class Toast(Widget):
         if self.rect.empty:
             return
         theme = self.theme
-        canvas.fill(self.rect.x, self.rect.y, self.rect.width, self.rect.height, DEFAULT_STYLE, " ")
+        # Clear to the page colour rather than to the terminal's default: the
+        # toast floats over the shell, so "no style" would punch a hole through
+        # whatever palette is active.
+        canvas.fill(
+            self.rect.x,
+            self.rect.y,
+            self.rect.width,
+            self.rect.height,
+            Style(background=theme.background),
+            " ",
+        )
         color = {
             "info": theme.text,
             "success": theme.accent,

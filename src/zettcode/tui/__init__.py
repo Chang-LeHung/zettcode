@@ -35,6 +35,7 @@ from .core import (
     key_id,
     normalize_key,
     theme_named,
+    theme_names,
     walk,
 )
 from .input import AsyncInput, EventType, InputDecoder, InputEvent
@@ -185,6 +186,7 @@ __all__ = [
     "resolve_tracks",
     "run_app",
     "theme_named",
+    "theme_names",
     "theme_from_toml",
     "walk",
     "word_diff",
