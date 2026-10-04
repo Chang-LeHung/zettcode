@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+from typing import TYPE_CHECKING
 
 #: Where each public name lives; read by :func:`__getattr__` on first use.
 _EXPORTS = {
@@ -11,6 +12,12 @@ _EXPORTS = {
     "ZettCodeConfig": ".config",
     "ZettCodeRuntime": ".app.agent.runtime",
 }
+
+
+if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
+    from .app.agent.agent import ZettCodeAgent
+    from .app.agent.runtime import ZettCodeRuntime
+    from .config import ModelConfig, ZettCodeConfig
 
 
 def __getattr__(name: str) -> object:

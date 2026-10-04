@@ -9,6 +9,7 @@ reusable framework they are built from.
 from __future__ import annotations
 
 import importlib
+from typing import TYPE_CHECKING
 
 #: Where each public name lives; read by :func:`__getattr__` on first use.
 _EXPORTS = {
@@ -27,6 +28,19 @@ _EXPORTS = {
     "format_ago": ".sessions_page",
     "help_text": ".completer",
 }
+
+
+if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
+    from .approval_page import ApprovalChoice, ApprovalPage
+    from .completer import CommandCompleter, help_text
+    from .composer import Composer
+    from .context_page import ContextPage
+    from .model_page import ModelPage
+    from .panel import bottom_panel
+    from .root import ZettCodeRoot
+    from .sessions_page import SessionsPage, format_ago
+    from .transcript import TranscriptSource, TranscriptView
+    from .welcome import WELCOME
 
 
 def __getattr__(name: str) -> object:
