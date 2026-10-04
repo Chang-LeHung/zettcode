@@ -645,6 +645,17 @@ def _run_context(session_id: str = "session-0001") -> AgentRunContext:
     return AgentRunContext(AgentRunConfig(session_id=session_id), AgentState(), {})
 
 
+def test_the_terminal_title_follows_the_session():
+    """The tab says what the session is about, like an editor tab does."""
+    app = build_app()
+
+    assert app.app.title() == "zettcode \u00b7 workspace"  # no session title yet
+
+    app._session_title = "Fix the parser crash"
+
+    assert app.app.title() == "Fix the parser crash"
+
+
 async def test_the_title_command_names_the_session(tmp_path):
     store = SessionStore(tmp_path)
     app = build_app()

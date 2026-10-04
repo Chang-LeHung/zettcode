@@ -214,6 +214,12 @@ per column so the gaps between columns stay visible; they keep left, center, and
 right alignment, account for wide CJK characters, and wrap a cell that does not
 fit instead of cutting its text.
 
+The terminal's window or tab name follows the session: it is the session title
+once there is one, and `zettcode · <workspace>` before that. It is released when
+the shell exits, so a prompt that sets its own title takes over again. VS Code
+only lends the tab name to processes it recognises, so add `${sequence}` to
+`terminal.integrated.tabs.title` there; iTerm2 needs no setting.
+
 Use `/help` inside the application to see session commands; `/new`, `/sessions`,
 `/use`, `/title`, `/model`, `/effort`, `/theme`, `/context`, `/clear`, and `/quit` are
 available.

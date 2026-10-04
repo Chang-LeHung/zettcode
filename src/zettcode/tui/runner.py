@@ -58,7 +58,7 @@ from .core.app import TuiApp
 from .core.events import ResizeEvent
 from .input import AsyncInput, InputEvent, translate
 from .render import DifferentialRenderer
-from .terminal import Terminal
+from .terminal import Terminal, title_sequence
 
 
 class TerminalRunner:
@@ -81,6 +81,7 @@ class TerminalRunner:
         self.wakeup = asyncio.Event()
         self.reader: AsyncInput | None = None
         self._input: asyncio.Task[InputEvent] | None = None
+        self._title = ""
 
     async def run(self) -> None:
         """Enter raw mode and loop until the application exits."""
@@ -116,9 +117,22 @@ class TerminalRunner:
             self.app.refreshed = False
             self.renderer.reset()
         self.app.tick()
+        self._sync_title()
         canvas = self.app.render()
         cursor = self.app.cursor()
         self.renderer.render(canvas, cursor=None if cursor is None else (cursor.x, cursor.y))
+
+    def _sync_title(self) -> None:
+        """Name the terminal window after what the app is working on.
+
+        The name is written once per change and handed back on shutdown, so a
+        tabbed terminal shows the session instead of the command that started it.
+        """
+        wanted = self.app.title() if callable(self.app.title) else self.app.title
+        if wanted == self._title:
+            return
+        self._title = wanted
+        self.terminal.write(title_sequence(wanted))
 
     def deliver(self, raw: InputEvent) -> None:
         """Translate one decoded terminal event and hand it to the app."""
@@ -155,6 +169,8 @@ class TerminalRunner:
         if self.reader is not None:
             self.reader.close()
             self.reader = None
+        self._title = ""
+        self.terminal.write(title_sequence(""))
         self.app.close()
 
 

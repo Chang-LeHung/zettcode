@@ -33,6 +33,7 @@ class TuiApp(Host):
         width: int = 80,
         height: int = 24,
         theme: Theme | None = None,
+        title: str | Callable[[], str] = "",
         clock: Callable[[], float] = monotonic,
         max_fps: float = 60.0,
         keymap: Keymap | None = None,
@@ -49,6 +50,9 @@ class TuiApp(Host):
                 overwrites it through ``resize``.
             height: Initial height in cells, floored at 1.
             theme: Active palette; defaults to ``DARK``.
+            title: Text the terminal shows in its window or tab name; a callable
+                is read once per frame, so a title that changes with the session
+                needs no extra plumbing
             clock: Time source shared with the scheduler and the widgets.
             max_fps: Ceiling for animation frames, enforced by the scheduler.
             keymap: Bindings to use; a fresh empty one is created when omitted.
@@ -60,6 +64,7 @@ class TuiApp(Host):
         self.width = max(1, width)
         self.height = max(1, height)
         self._theme = theme or DARK
+        self.title = title
         self.clock = clock
         self.max_fps = max_fps
         self.keymap = keymap or Keymap()
