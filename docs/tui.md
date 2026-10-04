@@ -397,8 +397,9 @@ the two rows a border would cost and keeps the conversation above visible.
 Every frame starts as a canvas filled with `Theme.background` when the palette
 names one, so a palette switch repaints the page itself rather than only the
 widgets that draw their own surface: a light palette on a dark terminal would
-otherwise leave the unpainted cells behind. The dark palette names none, which
-hands the page back to the terminal and keeps the shell blending in.
+otherwise leave the unpainted cells behind. Neither built-in palette names one,
+which hands the page back to the terminal and keeps the shell blending into the
+profile it was started in.
 
 `app/ui/app.py` assembles the header, transcript, composer, and status line,
 and owns the keymap, the slash commands, the approval panel, and the toasts.
