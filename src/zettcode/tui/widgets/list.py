@@ -39,19 +39,24 @@ class ListView(Widget):
     Shape::
 
         > alpha  first                    <- selected: marker, bold, selection band
-          beta   second                   <- description one gap after the label
+          beta   second                   <- descriptions share one column
           gamma                           <- disabled: dim, no marker, refuses Enter
           delta  fourth
 
     Only ``rect.height`` rows are drawn, starting at ``top``; the marker is part
     of the label (U+25B8 selected, two spaces otherwise) and the muted
     description keeps the row's background so the selection band stays
-    continuous. A description is placed one cell after the label *it belongs to*,
-    measured in columns, so a page that wants one description column pads its
-    labels to a common width first (as the session picker does).
+    continuous. Descriptions start in one column, the width of the widest label
+    plus a gap, measured in cells so a CJK label counts double; when the row is
+    too narrow for that column the description falls back to sitting one cell
+    after its own label, and a label with a description is truncated to the
+    column so the two can never collide.
     """
 
     MARKERS = ("\u25b8 ", "  ")
+    #: Cells the marker column occupies, and the gap before the description column.
+    MARKER_WIDTH = 2
+    COLUMN_GAP = 2
 
     def __init__(
         self,
@@ -149,12 +154,13 @@ class ListView(Widget):
         return True
 
     def measure(self, constraints: Constraints) -> Size:
-        """Ask for the widest row plus marker, and one cell per row."""
-        widest = max(
-            (display_width(item.label) + display_width(item.description) + 2 for item in self._items),
-            default=0,
-        )
-        return constraints.constrain(Size(widest + 2, len(self._items)))
+        """Ask for the label column, the gap, the widest description, and a row each."""
+        column = max((display_width(item.label) for item in self._items), default=0)
+        description = max((display_width(item.description) for item in self._items), default=0)
+        width = self.MARKER_WIDTH + column
+        if description:
+            width += self.COLUMN_GAP + description
+        return constraints.constrain(Size(width, len(self._items)))
 
     def render(self, canvas: Canvas) -> None:
         """Scroll the selection into view, then paint the visible rows."""
@@ -162,6 +168,9 @@ class ListView(Widget):
             return
         self._ensure_visible()
         theme = self.theme
+        # One column for every label, so descriptions line up down the list
+        # instead of starting wherever each label happens to end.
+        column = max((display_width(item.label) for item in self._items), default=0)
         for row in range(self.rect.height):
             index = self.top + row
             if index >= len(self._items):
@@ -177,18 +186,24 @@ class ListView(Widget):
                 style = Style(foreground=theme.text, background=theme.surface_alt if self.band else None)
             if selected and self.band:
                 canvas.fill(self.rect.x, self.rect.y + row, self.rect.width, 1, style)
-            label = truncate(marker + item.label, max(0, self.rect.width))
+            aligned = self.MARKER_WIDTH + column + self.COLUMN_GAP
+            room = self.rect.width - aligned
+            # Without room for a second column, the description falls back to
+            # one space after the label, as it did before the column existed.
+            inline = display_width(marker + item.label) + 1
+            start = aligned if room > 3 else inline
+            limit = self.rect.width if not item.description else max(0, start - 1)
+            label = truncate(marker + item.label, limit)
             canvas.draw_text(self.rect.x, self.rect.y + row, label, style, max_width=self.rect.width)
             if item.description:
                 # Columns, not code points: a label of CJK characters is twice
                 # as wide as it is long, and counting its length would pull the
                 # description left by one column per wide glyph.
-                used = display_width(marker + item.label) + 1
-                room = self.rect.width - used
+                room = self.rect.width - start
                 if room > 3:
                     text = truncate(item.description, room)
                     canvas.draw_text(
-                        self.rect.x + used,
+                        self.rect.x + start,
                         self.rect.y + row,
                         text,
                         Style(foreground=theme.muted, background=style.background),

@@ -40,9 +40,10 @@ class SessionsPage(ListPage):
     A session without a title keeps that column empty rather than inventing a
     placeholder, so the age is what identifies it; the short id still lets an
     untitled session be told apart from its neighbours. Rows commit the session
-    id, which the shell turns into ``use_session``. Ages are right-aligned in
-    their own column, because ``3h ago`` is a column narrower than ``17m ago``
-    and the id after it would otherwise step in and out of line.
+    id, which the shell turns into ``use_session``. The title column is aligned
+    by the list itself, and the ages are padded inside the description, because
+    ``3h ago`` is a column narrower than ``17m ago`` and the id after it would
+    otherwise step in and out of line.
 
     Args:
         sessions: Metadata rows to show, newest first, as returned by the store.
@@ -62,14 +63,12 @@ class SessionsPage(ListPage):
     ) -> None:
         """Map each session to a row, padding titles and right-aligning ages."""
         titles = [session.title or "" for session in sessions]
-        # Two extra columns keep a gap between the longest title and its age.
-        column = max((display_width(title) for title in titles), default=0) + 2
         ages = [format_ago(session.updated_at, now=now) for session in sessions]
         age_column = max((display_width(age) for age in ages), default=0)
         items = [
             ListItem(
                 session.session_id,
-                title + " " * max(0, column - display_width(title)),
+                title,
                 f"{' ' * max(0, age_column - display_width(age))}{age} \u00b7 {session.session_id[:8]}",
             )
             for session, title, age in zip(sessions, titles, ages, strict=True)
