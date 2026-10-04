@@ -337,6 +337,14 @@ in the framework instead of being duplicated in `transcript.py`. `Span` and
 together in `render/style.py`, while the reusable width-aware algorithms stay
 in `render/text.py` and `render/rich_text.py`.
 
+`app/agent/context.py` measures one assembled request: an extension remembers the
+messages and tool schemas `before_model` saw, and `/context` tokenizes them by
+source (instructions, tool schemas, user turns, model turns, tool output,
+compaction summaries) against the compaction budget. Counting prefers `tiktoken`
+and falls back to a characters-per-token estimate when its vocabulary cannot be
+opened offline; the page names the counter it used rather than passing an
+estimate off as exact.
+
 `projection.py` maps `zett-agent` callbacks onto transcript blocks. Every
 callback returns immediately, including the approval one: the agent is already
 suspended waiting for the response the UI emits later, so a callback that

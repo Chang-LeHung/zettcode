@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 
 from ...tui import ListItem, ListPage, Widget, theme_names
 from ..commands import Command, CommandResult
-from .widgets import ModelPage, SessionsPage, bottom_panel, help_text
+from .widgets import ContextPage, ModelPage, SessionsPage, bottom_panel, help_text
 
 #: Rows the picker panels take from the bottom of the screen: the title, the
 #: list, and the footer hint. The handler owns the number; nothing in the
@@ -46,6 +46,7 @@ class ShellCommands:
             Command("/sessions", "browse recent sessions", "app", self.sessions),
             Command("/model", "choose a model", "app", self.model),
             Command("/theme", "choose the palette (or /theme dark|light)", "app", self.theme),
+            Command("/context", "what is filling the context window", "app", self.context),
             Command("/clear", "clear the transcript", "app", self.clear),
             Command("/quit", "exit", "app", self.quit),
             Command("/exit", "exit, same as /quit", "app", self.quit),
@@ -106,6 +107,20 @@ class ShellCommands:
             selected=names.index(current) if current in names else 0,
         )
         return CommandResult(widget=self._panel(page))
+
+    async def context(self, argument: str) -> CommandResult:
+        """Show what the next request carries, by source and token share.
+
+        The breakdown comes from the request the runtime assembled for the last
+        model call, so it needs one turn before it exists: before that there is
+        nothing measured to show, and the panel would be a page of zeroes.
+        """
+        report = await self.shell.agent.context_report()
+        if report is None:
+            return CommandResult(
+                message="No request yet \u2014 send one (or resume a session), then `/context` shows the breakdown."
+            )
+        return CommandResult(widget=self._panel(ContextPage(report, on_cancel=self.shell.close_page)))
 
     async def clear(self, argument: str) -> CommandResult:
         """Clear visible conversation entries."""
