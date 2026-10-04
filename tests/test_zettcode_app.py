@@ -1226,7 +1226,8 @@ async def test_app_mirrors_the_agent_plan_into_the_panel():
 
     assert app.panel.tasks[0] == ("completed", "inspect the repo")
     assert app.panel.tasks[1][0] == "processing"
-    assert app.panel.preferred_height() == 4
+    # Three tasks: a separator row, the frame, and the rows themselves.
+    assert app.panel.preferred_height() == 6
 
     text = harness.render().text
 
