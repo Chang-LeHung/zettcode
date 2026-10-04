@@ -2,7 +2,7 @@
 
 import pytest
 
-from zettcode.tui import Canvas, Constraints, Rect, Size, Span, TextLine, Widget
+from zettcode.tui import Canvas, Constraints, Rect, Size, Span, Text, TextLine, Widget
 from zettcode.tui.layout import (
     Anchor,
     Border,
@@ -286,7 +286,42 @@ def test_scroll_view_shift_click_extends_an_existing_selection():
     assert view.selected_text() == "alpha\nbeta\ngam"
 
 
-def test_a_view_that_is_not_selectable_ignores_drags():
+def test_a_double_click_that_keeps_moving_extends_the_selection():
+    """The second press picks the line; dragging on from there keeps going."""
+    ticks = iter([1.0, 1.1, 1.2, 1.3])
+    source = RecordingSource(["alpha", "beta", "gamma"])
+    view = ScrollView(source, selectable=True, clock=lambda: next(ticks))
+    harness = Harness(view, width=20, height=3)
+    harness.render()
+
+    harness.mouse_down(2, 1)
+    harness.mouse_up(2, 1)
+    harness.mouse_down(2, 1)
+    harness.mouse_move(3, 2)
+    harness.mouse_up(3, 2)
+
+    assert view.selected_text() == "beta\ngam"
+
+
+def test_a_drag_that_leaves_the_view_still_extends_and_copies():
+    """The press owns the drag: leaving the rectangle must not drop the release."""
+    source = RecordingSource(["alpha", "beta", "gamma"])
+    view = ScrollView(source, selectable=True)
+    other = Text("elsewhere")
+    page = VBox([Slot(view, flex=1), Slot(other, size=1)])
+    harness = Harness(page, width=20, height=4)
+    harness.render()
+
+    harness.mouse_down(1, 0)
+    harness.mouse_move(3, 3)  # over the other widget, below the view
+    harness.mouse_up(3, 3)
+
+    assert view.selected_text() == "lpha\nbeta\ngam"
+    assert harness.clipboard == "lpha\nbeta\ngam"
+
+
+def test_a_view_that_is_not_selectable_leaves_the_drag_to_the_frame():
+    """The widget keeps no selection of its own; the application copies the cells."""
     source = RecordingSource(["alpha", "beta"])
     view = ScrollView(source)
     harness = Harness(view, width=20, height=2)
@@ -297,4 +332,4 @@ def test_a_view_that_is_not_selectable_ignores_drags():
     harness.mouse_up(3, 1)
 
     assert view.selected_text() == ""
-    assert harness.clipboard == ""
+    assert harness.clipboard == "lpha\nbet"

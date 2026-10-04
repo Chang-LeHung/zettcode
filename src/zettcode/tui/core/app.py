@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import replace
 from time import monotonic
 
 from ..render import Canvas, Style
-from .events import AnyEvent, MouseEvent, ResizeEvent
+from .events import AnyEvent, MouseAction, MouseEvent, ResizeEvent
 from .focus import FocusManager, walk
 from .geometry import Point, Rect
 from .host import Host
@@ -81,6 +82,10 @@ class TuiApp(Host):
         self.running = True
         self.reduced_motion = reduced_motion
         self._on_copy = on_copy
+        self._mouse_capture: Widget | None = None
+        self._frame: Canvas | None = None
+        self._select_anchor: tuple[int, int] | None = None
+        self._select_head: tuple[int, int] | None = None
         self._layout_dirty = True
         self._mounted = False
 
@@ -263,7 +268,20 @@ class TuiApp(Host):
             canvas.fill(0, 0, self.width, self.height, Style(background=self.theme.background))
         for screen in self.screens:
             screen.widget.render(canvas)
+        self._frame = canvas
+        self._paint_selection(canvas)
         return canvas
+
+    def _paint_selection(self, canvas: Canvas) -> None:
+        """Mark the cells a screen selection covers, leaving their glyphs alone."""
+        if self._select_anchor is None or self._select_head is None:
+            return
+        (first_x, first_y), (last_x, last_y) = sorted((self._select_anchor, self._select_head))
+        for y in range(first_y, last_y + 1):
+            left = first_x if y == first_y else 0
+            right = last_x if y == last_y else canvas.width
+            if right > left:
+                canvas.restyle(left, y, right - left, _invert)
 
     def cursor(self) -> Point | None:
         """Return the cursor the focused widget wants, if any."""
@@ -300,6 +318,10 @@ class TuiApp(Host):
             return False
         path = self._path(target)
 
+        if isinstance(event, MouseEvent):
+            self._track_mouse(event, target)
+            self._track_selection(event, path)
+
         for widget in path:
             if widget.capture_event(event, self):
                 self.invalidate()
@@ -321,6 +343,79 @@ class TuiApp(Host):
                 return True
         return False
 
+    def _track_mouse(self, event: MouseEvent, target: Widget) -> None:
+        """Keep a drag with the widget that started it, until the button is up.
+
+        A pointer that leaves the widget mid-drag — over the composer, past the
+        edge of a list — would otherwise hand every later movement, and the
+        release, to whatever is under it: the drag stops extending and the copy
+        that happens on release never runs. The press names the owner and the
+        release ends it.
+        """
+        if event.action is MouseAction.DOWN:
+            self._mouse_capture = target
+        elif event.action is MouseAction.UP:
+            self._mouse_capture = None
+
+    def _track_selection(self, event: MouseEvent, path: list[Widget]) -> None:
+        """Select the painted frame when a drag starts on text no widget owns.
+
+        Panels, the header, and the status line draw text without modelling it,
+        so the frame is the source: the drag marks cells, and the characters
+        they hold are copied on release. A widget that selects its own text —
+        the transcript — keeps the drag and this stays out of the way.
+        """
+        if event.action is MouseAction.DOWN:
+            if any(widget.selects_text for widget in path):
+                self._select_anchor = None
+                self._select_head = None
+            else:
+                self._select_anchor = (event.x, event.y)
+                self._select_head = (event.x, event.y)
+        elif event.action is MouseAction.MOVE and self._select_anchor is not None:
+            self._select_head = self._clamp_to_screen(event.x, event.y)
+            # The mark has to follow the pointer; nothing else will ask for a
+            # frame while the button is held.
+            self.invalidate()
+        elif event.action is MouseAction.UP and self._select_anchor is not None:
+            selected = self.screen_selection_text()
+            if selected:
+                self.copy(selected)
+                # The mark stays, the way a terminal keeps its selection: it is
+                # the only sign of what was just copied, and Ctrl-C clears it.
+                self.invalidate()
+
+    def _clamp_to_screen(self, x: int, y: int) -> tuple[int, int]:
+        """Return one cell of the frame, however far outside the pointer went."""
+        return min(max(0, x), self.width - 1), min(max(0, y), self.height - 1)
+
+    def screen_selection_text(self) -> str:
+        """Return the frame text the current drag covers, or an empty string."""
+        frame = self._frame
+        if frame is None or self._select_anchor is None or self._select_head is None:
+            return ""
+        (first_x, first_y), (last_x, last_y) = sorted((self._select_anchor, self._select_head))
+        rows: list[str] = []
+        for y in range(first_y, last_y + 1):
+            left = first_x if y == first_y else 0
+            # The head cell is the one under the pointer, and a selection names
+            # the text it was dragged over, so the row ends before it.
+            right = last_x if y == last_y else frame.width
+            rows.append(_frame_row(frame, y, left, right).rstrip())
+        while rows and not rows[0]:
+            rows.pop(0)
+        while rows and not rows[-1]:
+            rows.pop()
+        return "\n".join(rows)
+
+    def clear_screen_selection(self) -> None:
+        """Drop the frame selection and repaint without its mark."""
+        if self._select_anchor is None and self._select_head is None:
+            return
+        self._select_anchor = None
+        self._select_head = None
+        self.invalidate()
+
     def _run_binding(self, event: AnyEvent, priority: str) -> bool:
         """Run the command bound to this event at one priority, if any."""
         command = self.keymap.resolve(event, priority=priority)
@@ -341,9 +436,23 @@ class TuiApp(Host):
     def _target(self, event: AnyEvent) -> Widget | None:
         """Return the widget an event is addressed to before any bubbling."""
         if isinstance(event, MouseEvent):
+            if event.action in (MouseAction.MOVE, MouseAction.UP):
+                captured = self._captured_widget()
+                if captured is not None:
+                    return captured
             return self._hit(event.x, event.y)
         focused = self.focus_manager.focused
         return focused if focused is not None else self.screens.top.widget
+
+    def _captured_widget(self) -> Widget | None:
+        """Return the widget holding the mouse, dropping it once its screen is gone."""
+        widget = self._mouse_capture
+        if widget is None:
+            return None
+        if any(_holds(screen.widget, widget) for screen in self._routable()):
+            return widget
+        self._mouse_capture = None
+        return None
 
     def _hit(self, x: int, y: int) -> Widget:
         """Return the topmost widget under one cell, skipping covered screens."""
@@ -369,6 +478,26 @@ class TuiApp(Host):
         """Mount the tree on first use so callers need not mount it themselves."""
         if not self._mounted:
             self.mount()
+
+
+def _invert(style: Style) -> Style:
+    """Flip reverse video, which is how a selection marks a cell."""
+    return replace(style, reverse=not style.reverse)
+
+
+def _frame_row(frame: Canvas, y: int, left: int, right: int) -> str:
+    """Return the characters one frame row holds between two columns."""
+    return "".join(cell.character for cell in frame.cells[y][max(0, left) : right])
+
+
+def _holds(root: Widget, widget: Widget) -> bool:
+    """Return whether ``widget`` is ``root`` or one of its descendants."""
+    node: Widget | None = widget
+    while node is not None:
+        if node is root:
+            return True
+        node = node.parent
+    return False
 
 
 def _hit_test(widget: Widget, x: int, y: int) -> Widget | None:

@@ -239,8 +239,18 @@ same line-and-column space the window already works in. A drag records two
 corners, rendering flips reverse video on the covered cells through
 `Canvas.restyle`, and the copied text is sliced from the line sources with
 `slice_columns`. Double-click selects a whole line, shift-click extends, and
-dragging past an edge scrolls. Any widget over a `LineSource` gets this by
-passing `selectable=True`.
+dragging past an edge scrolls, because the press owns the drag: `TuiApp` routes
+every later movement and the release to the widget that took it, so leaving the
+rectangle mid-drag neither stops the selection nor loses the copy. Any widget
+over a `LineSource` gets this by passing `selectable=True`.
+
+Everything else is selectable too, from the frame rather than from a widget: a
+panel, a list, the header, or the status line paints text nobody models, so a
+drag that starts on a widget whose `selects_text` is false records two cells,
+flips reverse video on the painted cells, and copies the characters the frame
+holds between them — including the padding a terminal selection would take.
+A widget that does select its own text, such as the transcript's `ScrollView`,
+keeps the drag and the frame selection stays out of the way.
 
 ## Widgets
 

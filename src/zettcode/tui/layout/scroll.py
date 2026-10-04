@@ -114,6 +114,11 @@ class ScrollView(Widget):
         return self._focusable
 
     @property
+    def selects_text(self) -> bool:
+        """Keep the drag: this view selects its own lines rather than the frame."""
+        return self.selectable
+
+    @property
     def line_width(self) -> int:
         """Return the width lines are wrapped to, never below one column."""
         return max(1, self.rect.width)
@@ -219,7 +224,12 @@ class ScrollView(Widget):
                 self._selection_end = point
                 self._dragging = True
             return True
-        if event.action is MouseAction.MOVE and self._dragging:
+        if event.action is MouseAction.MOVE and (self._dragging or self._double_click):
+            # A double click that keeps moving is a drag: the second press
+            # selected the whole line, and carrying on from there extends it
+            # instead of leaving the reader stuck with that one row.
+            self._double_click = False
+            self._dragging = True
             if event.y < self.rect.y:
                 self.scroll_by(-1)
             elif event.y >= self.rect.y + self.rect.height:

@@ -268,15 +268,16 @@ class ZettCodeApp:
 
     def _interrupt(self, event: KeyEvent, host: Host) -> bool:
         """Copy a selection, otherwise stop the running turn or clear the draft."""
-        if self.app.screens.top.name == PAGE_SCREEN:
-            self.close_page()
-            host.invalidate()
-            return True
-        selected = self.view.selected_text()
+        selected = self.view.selected_text() or host.screen_selection_text()
         if selected:
             host.copy(selected)
             self.view.clear_selection()
+            host.clear_screen_selection()
             self._status = f"copied {len(selected)} characters"
+            host.invalidate()
+            return True
+        if self.app.screens.top.name == PAGE_SCREEN:
+            self.close_page()
             host.invalidate()
             return True
         if self._busy and self._task is not None and not self._task.done():
