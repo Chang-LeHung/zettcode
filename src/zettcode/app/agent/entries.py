@@ -57,7 +57,7 @@ class BaseEntry:
 class TextEntry(BaseEntry):
     """Welcome banner, user message, or muted notice."""
 
-    kind: Literal["welcome", "notice", "user", "model_change"]
+    kind: Literal["welcome", "notice", "user", "announcement"]
     text: str
 
     def render_state(self, frame: int) -> object:

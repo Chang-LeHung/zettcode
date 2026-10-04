@@ -4,9 +4,9 @@ from dataclasses import replace
 
 from zettcode.app.agent.blocks import (
     DEFAULT_PROCESSORS,
+    AnnouncementProcessor,
     EntryProcessor,
     EntryProcessors,
-    ModelChangeProcessor,
     NoticeProcessor,
     PlainProcessor,
     ProcessingProcessor,
@@ -35,7 +35,7 @@ def test_every_agent_entry_has_a_presentation_component():
     entries = (
         (TextEntry(id=1, kind="welcome", text="hello"), WelcomeProcessor),
         (TextEntry(id=2, kind="notice", text="saved"), NoticeProcessor),
-        (TextEntry(id=8, kind="model_change", text="Model changed from A to B."), ModelChangeProcessor),
+        (TextEntry(id=8, kind="announcement", text="Model changed from A to B."), AnnouncementProcessor),
         (TextEntry(id=3, kind="user", text="hello"), UserProcessor),
         (ProcessingEntry(id=4, started_at=0.0), ProcessingProcessor),
         (ThinkingEntry(id=5, text="reasoning", expanded=True), ThinkingProcessor),
@@ -71,8 +71,8 @@ def test_the_first_supporting_processor_wins():
     assert source.line(1, 40).text.strip() == "handled"
 
 
-def test_model_change_is_centered_between_rules_and_clipped_on_small_screens():
-    entry = TextEntry(id=1, kind="model_change", text="Model changed from GPT6-Sol to DeepSeek-Flash.")
+def test_an_announcement_is_centered_between_rules_and_clipped_on_small_screens():
+    entry = TextEntry(id=1, kind="announcement", text="Model changed from GPT6-Sol to DeepSeek-Flash.")
     for width in (1, 2, 3, 8, 60):
         rows = render_entry(entry, width, DARK, 0)
         assert len(rows) == 3

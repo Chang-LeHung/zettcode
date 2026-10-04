@@ -27,6 +27,16 @@ THEME_NOTES = {
     "light": "green-leaning palette for light terminals",
 }
 
+#: One-line note per reasoning level, shown next to its name in the picker.
+EFFORT_NOTES = {
+    "off": "no deliberate reasoning",
+    "minimal": "a token of thought, fastest",
+    "low": "quick answers",
+    "medium": "the default balance",
+    "high": "more thought on hard problems",
+    "xhigh": "the deepest the runtime asks for",
+}
+
 if TYPE_CHECKING:  # pragma: no cover - only needed for the annotation
     from .app import ZettCodeApp
 
@@ -48,6 +58,7 @@ class ShellCommands:
             Command("/theme", "choose the palette (or /theme dark|light)", "app", self.theme),
             Command("/context", "what is filling the context window", "app", self.context),
             Command("/title", "name this session: /title <name>", "app", self.title),
+            Command("/effort", "how much the model reasons: /effort high", "app", self.effort),
             Command("/clear", "clear the transcript", "app", self.clear),
             Command("/quit", "exit", "app", self.quit),
             Command("/exit", "exit, same as /quit", "app", self.quit),
@@ -140,6 +151,29 @@ class ShellCommands:
         except ValueError as error:
             return CommandResult(message=str(error))
         return CommandResult(notification=f"renamed to {renamed}", relayout=True)
+
+    async def effort(self, name: str) -> CommandResult:
+        """Open the reasoning picker, or switch straight to a named level.
+
+        The levels are the runtime's own, so the picker lists what the provider
+        adapters can actually send rather than a hand-written list.
+        """
+        if name:
+            try:
+                self.shell.change_effort(name)
+            except ValueError as error:
+                return CommandResult(message=str(error))
+            return CommandResult(relayout=True)
+        levels = self.shell.agent.efforts
+        current = self.shell.agent.effort
+        page = ListPage(
+            [ListItem(level, level, EFFORT_NOTES.get(level, "")) for level in levels],
+            title="Reasoning effort",
+            on_select=lambda item: self.shell.select_effort(str(item.value)),
+            on_cancel=self.shell.close_page,
+            selected=levels.index(current) if current in levels else 0,
+        )
+        return CommandResult(widget=self._panel(page))
 
     async def clear(self, argument: str) -> CommandResult:
         """Clear visible conversation entries."""

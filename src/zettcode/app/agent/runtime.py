@@ -14,6 +14,7 @@ from zett_agent import (
     CodingExtension,
     CompactionExtension,
     OpenAIProvider,
+    ReasoningEffort,
     ShellApprovalExtension,
     ShellApprovalMode,
     TodoWriteExtension,
@@ -73,6 +74,7 @@ class ZettCodeRuntime:
     usage: UsageExtension
     context: ContextExtension
     tokenizer: Tokenizer
+    effort: ReasoningEffort
     model: OpenAIProvider
     session_id: str
     active_model: ModelConfig
@@ -131,6 +133,7 @@ class ZettCodeRuntime:
             usage,
             context,
             Tokenizer(),
+            config.reasoning_effort,
             model,
             session_id,
             selected,
@@ -145,6 +148,26 @@ class ZettCodeRuntime:
         shell opens on launch.
         """
         self.approval.enabled = False
+
+    def use_effort(self, name: str | ReasoningEffort) -> ReasoningEffort:
+        """Select how much reasoning the model may spend on later requests.
+
+        Args:
+            name: One of zett-agent's levels, by value (``"high"``) or as the
+                enum itself; case and surrounding space are ignored.
+
+        Returns:
+            The level now in force.
+        """
+        if isinstance(name, ReasoningEffort):
+            self.effort = name
+            return name
+        try:
+            self.effort = ReasoningEffort(name.strip().lower())
+        except ValueError:
+            levels = ", ".join(level.value for level in ReasoningEffort)
+            raise ValueError(f"Unknown reasoning effort: {name}. Try one of: {levels}") from None
+        return self.effort
 
     def use_model(self, name: str | ModelConfig) -> ModelConfig:
         """Select a configured model for subsequent requests without changing sessions."""

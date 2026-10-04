@@ -215,9 +215,16 @@ right alignment, account for wide CJK characters, and wrap a cell that does not
 fit instead of cutting its text.
 
 Use `/help` inside the application to see session commands; `/new`, `/sessions`,
-`/use`, `/title`, `/model`, `/theme`, `/context`, `/clear`, and `/quit` are available.
+`/use`, `/title`, `/model`, `/effort`, `/theme`, `/context`, `/clear`, and `/quit` are
+available.
 The composer command menu identifies each command as `app` or `agent`, shows
 its description, and scrolls when there are more matches than visible rows.
+
+`/effort` sets how much the model reasons before it answers, either directly
+(`/effort high`) or through a picker that lists zett-agent's own levels: `off`,
+`minimal`, `low`, `medium`, `high`, `xhigh` (`xhigh` is what the Responses API
+clamps to `high`). The level is per process, not per session, the header shows the one in force beside the model name, and a
+change is announced in the transcript between rules, the way a model switch is.
 
 `/context` opens a panel that breaks the next request down by who fills it:
 

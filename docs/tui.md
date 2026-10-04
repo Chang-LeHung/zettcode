@@ -395,7 +395,8 @@ cells behind.
 
 `app/ui/app.py` assembles the header, transcript, composer, and status line,
 and owns the keymap, the slash commands, the approval panel, and the toasts.
-Model switches produce a centered transcript row; switching sessions rebuilds
+Model and reasoning-effort switches produce a centered transcript row — one
+`AnnouncementProcessor` draws both; switching sessions rebuilds
 the visible conversation from the JSONL active branch, including tool results,
 and clears the old view. The row before command completions is empty space,
 not a rule. Scrolling away from the newest line floats a `↓ back to bottom`
@@ -417,8 +418,9 @@ bindings that only run because the composer declines them.
 The status line, transcript chrome, and every widget read colors from
 `Theme` tokens — the UI roles, the per-tool hues, and the code palette — which is
 why `/theme` (a picker) and `/theme dark|light` are data
-changes rather than a
-repaint of hardcoded constants.
+changes rather than a repaint of hardcoded constants. The same holds for the
+reasoning effort: `/effort` lists zett-agent's own levels and passes the chosen
+one to every later request, so the app never keeps a second copy of the scale.
 
 Code is highlighted but never filled: fenced blocks and inline code use a
 foreground colour only, because a background block reads as a solid rectangle in

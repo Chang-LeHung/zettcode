@@ -87,12 +87,12 @@ class NoticeProcessor(EntryProcessor):
         return [TextLine(), *self.text_lines(entry.text, width, Style(foreground=theme.muted))]
 
 
-class ModelChangeProcessor(EntryProcessor):
-    """Center a model-change announcement between horizontal rules."""
+class AnnouncementProcessor(EntryProcessor):
+    """Center an announcement — a model or effort change — between rules."""
 
     def supports(self, entry: Entry) -> bool:
-        """Claim model-change announcements."""
-        return isinstance(entry, TextEntry) and entry.kind == "model_change"
+        """Claim announcements."""
+        return isinstance(entry, TextEntry) and entry.kind == "announcement"
 
     def lines(self, entry: TextEntry, width: int, theme: Theme, frame: int) -> list[TextLine]:
         """Center the label inside the padded content box.
@@ -279,7 +279,7 @@ DEFAULT_PROCESSORS = EntryProcessors(
     (
         WelcomeProcessor(),
         NoticeProcessor(),
-        ModelChangeProcessor(),
+        AnnouncementProcessor(),
         UserProcessor(),
         ProcessingProcessor(),
         ThinkingProcessor(),
