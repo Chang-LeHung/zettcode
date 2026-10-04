@@ -156,10 +156,30 @@ class FakeRuntime:
     active_model: ModelConfig = field(init=False)
     model: object = field(init=False)
     auto_approved: bool = field(default=False, init=False)
+    start_calls: int = field(default=0, init=False)
 
     def __post_init__(self) -> None:
         self.active_model = self.config.models[0]
         self.model = self.active_model.model
+
+    async def start(self) -> FakeRuntime:
+        """A real runtime builds its provider and client here; this one is ready."""
+        self.start_calls += 1
+        return self
+
+    @property
+    def started(self) -> object:
+        """Mirror the real runtime's client accessor."""
+        return self.client
+
+    @property
+    def provider(self) -> object:
+        """Mirror the real runtime's provider accessor."""
+        return self.model
+
+    def set_event_dispatcher(self, dispatcher: object) -> None:
+        """Mirror the real runtime's dispatcher seam."""
+        self.client.event_dispatcher = dispatcher
 
     def use_model(self, name: str | ModelConfig) -> ModelConfig:
         entry = next(
@@ -543,6 +563,21 @@ async def test_app_streams_a_prompt_into_the_transcript():
     assert "bold finding" in text
     assert "Processed for " in text
     assert app.busy is False
+
+
+async def test_the_runtime_starts_with_the_first_turn_not_before():
+    """The shell paints from the preview; the provider waits for a message."""
+    app = build_app()
+    harness = _harness(app)
+    runtime = app.agent.runtime
+
+    assert runtime.start_calls == 0
+
+    harness.write("hello")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    assert runtime.start_calls == 1
 
 
 async def test_a_failed_request_shows_the_reason_not_the_task_group():

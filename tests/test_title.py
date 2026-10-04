@@ -36,6 +36,15 @@ class FakeRuntime:
     persistence: SessionStore
     model: FakeModel
 
+    async def start(self) -> FakeRuntime:
+        """A real runtime builds its provider here; this one already has it."""
+        return self
+
+    @property
+    def provider(self) -> FakeModel:
+        """Mirror the real runtime's provider accessor."""
+        return self.model
+
 
 @pytest.mark.parametrize(
     ("reply", "expected"),

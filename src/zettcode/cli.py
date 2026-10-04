@@ -46,7 +46,12 @@ def resolve_config(argv: list[str] | None = None) -> ZettCodeConfig:
 
 
 async def async_main(config: ZettCodeConfig) -> None:
-    """Own runtime lifecycle around the full-screen application."""
+    """Own runtime lifecycle around the full-screen application.
+
+    The runtime is built by the first turn, not here: ``preview`` has
+    everything the shell paints with, and the provider SDK is imported while
+    the reader is looking at the first frame.
+    """
     from .app import ZettCodeApp
     from .app.agent.agent import ZettCodeAgent
     from .tui import DARK, ThemeFileError, load_theme
@@ -55,7 +60,7 @@ async def async_main(config: ZettCodeConfig) -> None:
         theme = load_theme(config.theme_file) if config.theme_file is not None else DARK
     except ThemeFileError as error:
         raise SystemExit(f"zettcode: {error}") from error
-    agent = await ZettCodeAgent.create(config)
+    agent = ZettCodeAgent.preview(config)
     try:
         await ZettCodeApp(agent, theme=theme, auto_theme=config.theme_file is None).run()
     finally:

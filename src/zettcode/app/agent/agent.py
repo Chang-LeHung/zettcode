@@ -57,6 +57,18 @@ class ZettCodeAgent:
         """Build the runtime and wrap it in the application agent."""
         return cls(await ZettCodeRuntime.create(config))
 
+    @classmethod
+    def preview(cls, config: ZettCodeConfig) -> ZettCodeAgent:
+        """Wrap a runtime that still has to start, so a shell can paint first.
+
+        The runtime here holds the session and this application's own
+        extensions; the provider SDK and the client are built by the first
+        :meth:`runtime.start`, which a turn or a command awaits. Everything the
+        shell reads per frame — the model, the effort, the session, the usage —
+        is answered from that preview.
+        """
+        return cls(ZettCodeRuntime.preview(config))
+
     @property
     def workspace(self) -> Path:
         """Return the workspace displayed in the header."""
@@ -154,9 +166,9 @@ class ZettCodeAgent:
 
     def set_event_dispatcher(self, dispatcher: AgentEventDispatcher) -> None:
         """Send streamed agent events to the application's transcript projector."""
-        self.runtime.client.event_dispatcher = dispatcher
+        self.runtime.set_event_dispatcher(dispatcher)
 
-    def stream(self, parts: Sequence[PromptPart]) -> AsyncIterator[AgentEvent]:
+    async def stream(self, parts: Sequence[PromptPart]) -> AsyncIterator[AgentEvent]:
         """Run one turn with the selected session, model, and reasoning effort.
 
         Args:
@@ -164,12 +176,15 @@ class ZettCodeAgent:
                 images the composer interleaved with them. A turn without
                 images is simply one text part.
         """
-        return self.runtime.client.stream(
+        await self.runtime.start()
+        client = self.runtime.started
+        async for event in client.stream(
             self.request(parts),
             config=AgentRunConfig(session_id=self.session_id),
-            model=self.runtime.model,
+            model=self.runtime.provider,
             reasoning_effort=self.runtime.effort,
-        )
+        ):
+            yield event
 
     @staticmethod
     def request(parts: Sequence[PromptPart]) -> str | UserMessage:
@@ -295,7 +310,8 @@ class ZettCodeAgent:
         )
         if not question or not answer:
             return None
-        title = await summarize_title(self.runtime.model, question=question, answer=answer)
+        await self.runtime.start()
+        title = await summarize_title(self.runtime.provider, question=question, answer=answer)
         if title is None:
             return None
         await self.runtime.persistence.set_title(session_id, title)
@@ -323,7 +339,7 @@ class ZettCodeAgent:
 
     def respond_approval(self, session_id: str, call_id: str, decision: str, remember: bool) -> None:
         """Answer a pending shell approval for the originating session."""
-        self.runtime.client.agent.emit_external_event(
+        self.runtime.started.agent.emit_external_event(
             ExternalEvent(
                 name=SHELL_APPROVAL_RESPONSE_EVENT_NAME,
                 payload={"tool_call_id": call_id, "decision": decision, "remember": remember},

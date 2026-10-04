@@ -1,5 +1,7 @@
 """Model switching uses the configured OpenAI-compatible endpoint per request."""
 
+import subprocess
+import sys
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -91,6 +93,68 @@ def test_skills_and_mcp_can_be_disabled(tmp_path):
     assert extensions == ()
 
 
+def test_the_runtime_module_costs_nothing_until_it_starts(tmp_path):
+    """The provider and MCP SDKs must not be in the import graph the shell pays for."""
+    script = "\n".join(
+        [
+            "import sys",
+            "from pathlib import Path",
+            "import zettcode.app.agent.runtime as runtime_module",
+            "from zettcode.config import ModelConfig, ZettCodeConfig",
+            "config = ZettCodeConfig(",
+            "    workspace=Path(sys.argv[1]),",
+            "    models=(ModelConfig(model='m', token='t'),),",
+            "    store=Path(sys.argv[1]),",
+            ")",
+            "runtime_module.ZettCodeRuntime.preview(config)",
+            "print(*(name in sys.modules for name in ('openai', 'mcp')))",
+        ]
+    )
+
+    result = subprocess.run([sys.executable, "-c", script, str(tmp_path)], capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "False False"
+
+
+async def test_a_preview_runtime_starts_once_and_only_then(tmp_path, monkeypatch):
+    """The shell paints from the preview; the provider appears on the first turn."""
+    created: list[object] = []
+
+    class FakeProvider:
+        def __init__(self, model, token, *, base_url, response):
+            self.closed = False
+            created.append(self)
+
+        async def aclose(self):
+            self.closed = True
+
+    async def fake_create_agent(model, **kwargs):
+        return type("FakeClient", (), {"event_dispatcher": None})()
+
+    monkeypatch.setattr("zett_agent.providers.openai.OpenAIProvider", FakeProvider)
+    monkeypatch.setattr("zett_agent.client.create_agent", fake_create_agent)
+    monkeypatch.setattr(runtime_module.os, "chdir", lambda path: None)
+
+    runtime = runtime_module.ZettCodeRuntime.preview(_config_with(tmp_path))
+
+    assert runtime.client is None and runtime.model is None and runtime.compaction is None
+    with pytest.raises(RuntimeError, match="has not started"):
+        _ = runtime.provider
+    assert created == []
+
+    first = runtime.start()
+    assert runtime.start() is first
+    await first
+
+    assert len(created) == 1
+    assert runtime.started is runtime.client
+    assert runtime.provider is created[0]
+    assert runtime.compaction is not None
+    await runtime.aclose()
+    assert created[0].closed is True
+
+
 async def test_the_approval_memory_remembers_exact_commands_for_the_run():
     """The prompt promises one exact command for this run, not an allowlist."""
     from zett_agent.extensions.shell_approval import ShellApprovalMode
@@ -169,10 +233,12 @@ async def test_runtime_switches_models_and_closes_every_provider(tmp_path, monke
     async def fake_create_agent(model, **kwargs):
         captured["model"] = model
         captured.update(kwargs)
-        return object()
+        return type("FakeClient", (), {"event_dispatcher": None})()
 
-    monkeypatch.setattr(runtime_module, "OpenAIProvider", FakeProvider)
-    monkeypatch.setattr(runtime_module, "create_agent", fake_create_agent)
+    # The provider and the client are imported when the runtime starts, so the
+    # doubles replace them where that import reads from.
+    monkeypatch.setattr("zett_agent.providers.openai.OpenAIProvider", FakeProvider)
+    monkeypatch.setattr("zett_agent.client.create_agent", fake_create_agent)
     monkeypatch.setattr(runtime_module.os, "chdir", lambda path: None)
     # A developer's own ~/.zettcode/mcp.json must not decide what this test sees.
     monkeypatch.setattr(runtime_module, "DEFAULT_MCP_CONFIG", tmp_path / "absent-mcp.json")

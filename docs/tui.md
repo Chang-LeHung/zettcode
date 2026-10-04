@@ -91,6 +91,13 @@ syntax scanners with it. `zettcode --help` imports nothing beyond the standard
 library for the same reason — the flag that explains the program should not
 build the runtime.
 
+The application runtime is lazy in the same way, one level up:
+`ZettCodeRuntime.preview` assembles the settings, the session store, and the
+extensions ZettCode owns, and `ZettCodeRuntime.start` imports the provider SDK,
+the MCP client, and the compaction tokenizer to build the agent client. The
+shell paints from the preview and the first turn awaits the start, which is
+what keeps a few hundred milliseconds of imports out of time-to-first-frame.
+
 Inside the framework:
 
 ```
