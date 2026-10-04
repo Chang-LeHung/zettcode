@@ -47,6 +47,7 @@ class ShellCommands:
             Command("/model", "choose a model", "app", self.model),
             Command("/theme", "choose the palette (or /theme dark|light)", "app", self.theme),
             Command("/context", "what is filling the context window", "app", self.context),
+            Command("/title", "name this session: /title <name>", "app", self.title),
             Command("/clear", "clear the transcript", "app", self.clear),
             Command("/quit", "exit", "app", self.quit),
             Command("/exit", "exit, same as /quit", "app", self.quit),
@@ -121,6 +122,24 @@ class ShellCommands:
                 message="No request yet \u2014 send one (or resume a session), then `/context` shows the breakdown."
             )
         return CommandResult(widget=self._panel(ContextPage(report, on_cancel=self.shell.close_page)))
+
+    async def title(self, argument: str) -> CommandResult:
+        """Rename the active session, or report the name it already has.
+
+        The name lives in the session metadata beside the title the agent
+        summarizes, so `/sessions` shows it and a later automatic naming step
+        leaves it alone.
+        """
+        if not argument:
+            current = self.shell.agent.session_title
+            if current is None:
+                return CommandResult(message="This session has no title yet. Use `/title <name>`.")
+            return CommandResult(message=f"Title: **{current}**")
+        try:
+            renamed = await self.shell.rename_session(argument)
+        except ValueError as error:
+            return CommandResult(message=str(error))
+        return CommandResult(notification=f"renamed to {renamed}", relayout=True)
 
     async def clear(self, argument: str) -> CommandResult:
         """Clear visible conversation entries."""

@@ -123,13 +123,25 @@ async def test_set_title_updates_the_index_and_the_newest_one_wins(tmp_path):
     assert store.read("alpha-3").message_count == 1
 
 
-async def test_set_title_rejects_a_missing_session_and_a_bad_title(tmp_path):
+async def test_set_title_rejects_a_bad_title(tmp_path):
     store = SessionStore(tmp_path)
     await store.append("alpha-4", "req", UserMessage(content="hi"))
 
-    with pytest.raises(ValueError, match="not been written"):
-        await store.set_title("alpha-5", "Fix the parser crash")
     with pytest.raises(ValueError, match="between 1 and"):
         await store.set_title("alpha-4", "   ")
     with pytest.raises(ValueError, match="between 1 and"):
         await store.set_title("alpha-4", "x" * (MAX_TITLE + 1))
+
+
+async def test_naming_a_session_that_has_not_been_used_creates_it(tmp_path):
+    """Typing `/title` before the first message names a session, not a stray."""
+    store = SessionStore(tmp_path)
+
+    await store.set_title("alpha-5", "  Fix the parser crash  ")
+
+    assert store.session_title("alpha-5") == "Fix the parser crash"
+    # It is a real session now: it has a header and lists like any other, with
+    # no conversation in it yet.
+    assert store.read("alpha-5").header is not None
+    assert store.read("alpha-5").message_count == 0
+    assert [info.session_id for info in await store.list_sessions()] == ["alpha-5"]

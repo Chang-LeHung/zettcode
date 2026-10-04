@@ -391,6 +391,21 @@ class ZettCodeApp:
             self.transcript.notice(str(error))
         self.close_page()
 
+    async def rename_session(self, title: str) -> str:
+        """Name the active session and show it in the status line.
+
+        Args:
+            title: Name the user typed; the store rejects a blank or over-long
+                one, which the command turns into a notice.
+
+        Returns:
+            The stored title, so the command can confirm it.
+        """
+        renamed = await self.agent.rename_session(title)
+        self._session_title = renamed
+        self.app.invalidate()
+        return renamed
+
     def apply_theme(self, name: str) -> Theme:
         """Switch the palette and repaint.
 

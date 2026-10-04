@@ -62,7 +62,10 @@ and a compaction adds a summary node the active context is cut at. Each workspac
 folder also holds `metadata.jsonl`, a small append-only log of titles and activity
 times that is folded on read, so listing sessions never parses a conversation.
 After the first reply the agent names the session with one small model call and
-appends a title line. `/sessions` opens a picker panel listing recent sessions with
+appends a title line. `/title <name>` names it by hand instead — before the first
+message if you like — and that name wins: the background call never renames a
+session that already has a title, and `/title` on its own reports the current
+one. `/sessions` opens a picker panel listing recent sessions with
 their title and how long ago they last changed; `Enter` resumes the highlighted
 one, replacing the visible transcript with that session's active branch.
 `/use <id>` and `/sessions <id>` also restore the selected conversation directly;
@@ -212,7 +215,7 @@ right alignment, account for wide CJK characters, and wrap a cell that does not
 fit instead of cutting its text.
 
 Use `/help` inside the application to see session commands; `/new`, `/sessions`,
-`/use`, `/model`, `/theme`, `/context`, `/clear`, and `/quit` are available.
+`/use`, `/title`, `/model`, `/theme`, `/context`, `/clear`, and `/quit` are available.
 The composer command menu identifies each command as `app` or `agent`, shows
 its description, and scrolls when there are more matches than visible rows.
 

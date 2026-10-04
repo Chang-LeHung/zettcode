@@ -110,7 +110,14 @@ class FakePersistence:
         return self.store.read(session_id)
 
     def session_title(self, session_id: str) -> str | None:
+        if self.store is not None:
+            return self.store.session_title(session_id)
         return next((info.title for info in self.sessions if info.session_id == session_id), None)
+
+    async def set_title(self, session_id: str, title: str) -> None:
+        if self.store is None:
+            raise ValueError(f"Unknown session: {session_id}")
+        await self.store.set_title(session_id, title)
 
 
 class FakeTodos:
@@ -626,6 +633,36 @@ def _run_context(session_id: str = "session-0001") -> AgentRunContext:
     return AgentRunContext(AgentRunConfig(session_id=session_id), AgentState(), {})
 
 
+async def test_the_title_command_names_the_session(tmp_path):
+    store = SessionStore(tmp_path)
+    app = build_app()
+    app.agent.runtime.persistence.store = store
+    harness = _harness(app)
+
+    harness.write("/title")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+    assert any("no title yet" in entry.text for entry in app.transcript.entries)
+
+    harness.write("/title  Fix the parser crash  ")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    # Trimmed, stored, and shown without waiting for the next turn.
+    assert store.session_title("session-0001") == "Fix the parser crash"
+    assert "Fix the parser crash" in app._status_left()
+
+    harness.write("/title")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+    assert any("Fix the parser crash" in entry.text for entry in app.transcript.entries)
+
+    harness.write("/title " + "x" * 300)
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+    assert any("between 1 and" in entry.text for entry in app.transcript.entries)
+
+
 async def test_the_context_command_reports_what_the_request_carries():
     app = build_app()
     harness = _harness(app)
@@ -666,6 +703,7 @@ async def test_the_context_command_reports_what_the_request_carries():
 
 
 async def test_resuming_a_session_makes_it_measurable_before_the_next_reply(tmp_path):
+    """`/context` answers for a restored session, not just one that ran here."""
     """`/context` answers for a restored session, not just one that ran here."""
     store = SessionStore(tmp_path)
     await store.append("previous", "req", UserMessage(content="an earlier question"))

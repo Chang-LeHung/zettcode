@@ -373,8 +373,10 @@ can appear.
 request with no tools, whose reply is reduced to a single line and written into
 the workspace's `metadata.jsonl`, so renaming appends a line to the index and
 never enters the conversation log. The shell schedules that call in the
-background once a turn ends, which keeps the composer responsive, and `/sessions` presents the
-result as another bottom panel — one row per session, with the title padded into
+background once a turn ends, which keeps the composer responsive. `/title <name>`
+writes the same metadata line by hand, creating the session first when it has no
+conversation yet, and the background call leaves a session that already has a
+title alone. `/sessions` presents the result as another bottom panel — one row per session, with the title padded into
 a column, the age of the last change, and the short id so an untitled session is
 still identifiable.
 
