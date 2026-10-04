@@ -120,3 +120,34 @@ def test_importing_the_package_does_not_build_the_application():
 
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "False False"
+
+
+def test_a_facade_maps_every_name_to_the_module_it_statically_imports():
+    """The runtime map and the static imports a checker reads must agree.
+
+    A lazy ``__getattr__`` is invisible to a type checker, so each facade also
+    imports its names under ``TYPE_CHECKING``. Nothing at runtime notices when
+    the two drift apart — a reader's editor does — so they are compared here.
+    """
+    drifted: list[str] = []
+    for name in FACADES:
+        module = importlib.import_module(name)
+        tree = ast.parse(pathlib.Path(module.__file__).read_text(encoding="utf-8"))
+        mapping = next(
+            ast.literal_eval(node.value)
+            for node in tree.body
+            if isinstance(node, ast.Assign) and getattr(node.targets[0], "id", "") == "_EXPORTS"
+        )
+        static: dict[str, str] = {}
+        for node in tree.body:
+            if not (isinstance(node, ast.If) and isinstance(node.test, ast.Name) and node.test.id == "TYPE_CHECKING"):
+                continue
+            for child in ast.walk(node):
+                if isinstance(child, ast.ImportFrom):
+                    target = "." * child.level + (child.module or "")
+                    for alias in child.names:
+                        static[alias.asname or alias.name] = target
+        if static != mapping:
+            drifted.append(f"{name}: static {sorted(static)} vs map {sorted(mapping)}")
+
+    assert drifted == []

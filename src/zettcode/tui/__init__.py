@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+from typing import TYPE_CHECKING
 
 #: Where each public name lives; read by :func:`__getattr__` on first use.
 _EXPORTS = {
@@ -127,6 +128,121 @@ _EXPORTS = {
     "walk": ".core",
     "word_diff": ".widgets",
 }
+
+
+if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
+    from .capabilities import TerminalCapabilities, detect_capabilities, detect_reduced_motion
+    from .core import (
+        DARK,
+        LIGHT,
+        AnyEvent,
+        Binding,
+        Command,
+        CommandRegistry,
+        Constraints,
+        EdgeInsets,
+        Event,
+        EventKind,
+        FocusEvent,
+        FocusManager,
+        Host,
+        KeyEvent,
+        Keymap,
+        MouseAction,
+        MouseEvent,
+        PasteEvent,
+        Point,
+        Rect,
+        ResizeEvent,
+        Scheduler,
+        Screen,
+        ScreenStack,
+        Size,
+        TextEvent,
+        Theme,
+        ToolTheme,
+        TuiApp,
+        Widget,
+        event_key,
+        key_id,
+        normalize_key,
+        scheme_named,
+        theme_named,
+        theme_names,
+        walk,
+    )
+    from .glyphs import (
+        ARROW_DOWN,
+        ARROW_UP,
+        BAR_EMPTY,
+        BAR_FULL,
+        DONE,
+        ELLIPSIS,
+        EXPANDED,
+        FAILED,
+        HEADER,
+        MARKER,
+        PENDING,
+        PROMPT,
+        RULE,
+        RUNNING,
+        SEPARATOR,
+        SKIPPED,
+        SPINNER,
+        STATUS,
+    )
+    from .input import AsyncInput, EventType, InputDecoder, InputEvent
+    from .layout import (
+        Anchor,
+        Border,
+        HBox,
+        LineSource,
+        Overlay,
+        OverlaySlot,
+        Padding,
+        ScrollView,
+        Slot,
+        StaticLines,
+        Track,
+        VBox,
+        centered,
+        resolve_tracks,
+    )
+    from .render import Canvas, ColorDepth, DifferentialRenderer, Span, Style, TextLine
+    from .runner import TerminalRunner, run_app
+    from .terminal import Terminal, parse_background, title_sequence
+    from .theme_file import EXAMPLE, ThemeFileError, load_theme, theme_from_toml
+    from .widgets import (
+        Collapsible,
+        Column,
+        Completer,
+        CompletionItem,
+        CompletionPopup,
+        Dialog,
+        DialogAction,
+        DiffLine,
+        DiffSegment,
+        DiffView,
+        ListItem,
+        ListPage,
+        ListView,
+        Markdown,
+        MarkdownSource,
+        MarkdownView,
+        ProgressBar,
+        RichText,
+        Rule,
+        Spinner,
+        StatusBar,
+        Table,
+        TaskPanel,
+        Text,
+        TextArea,
+        Toast,
+        build_unified,
+        parse_unified,
+        word_diff,
+    )
 
 
 def __getattr__(name: str) -> object:

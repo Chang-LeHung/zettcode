@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+from typing import TYPE_CHECKING
 
 #: Where each public name lives; read by :func:`__getattr__` on first use.
 _EXPORTS = {
@@ -15,6 +16,19 @@ _EXPORTS = {
     "ZettCodeRoot": ".widgets",
     "help_text": ".widgets",
 }
+
+
+if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
+    from .app import ZettCodeApp
+    from .widgets import (
+        WELCOME,
+        CommandCompleter,
+        ModelPage,
+        TranscriptSource,
+        TranscriptView,
+        ZettCodeRoot,
+        help_text,
+    )
 
 
 def __getattr__(name: str) -> object:

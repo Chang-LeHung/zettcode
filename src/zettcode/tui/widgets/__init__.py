@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+from typing import TYPE_CHECKING
 
 #: Where each public name lives; read by :func:`__getattr__` on first use.
 _EXPORTS = {
@@ -40,6 +41,24 @@ _EXPORTS = {
     "render_markdown": ".markdown",
     "word_diff": ".diff",
 }
+
+
+if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
+    from .collapsible import Collapsible
+    from .completion import Completer, CompletionItem, CompletionPopup
+    from .dialog import Dialog, DialogAction
+    from .diff import DiffLine, DiffSegment, DiffView, build_unified, parse_unified, word_diff
+    from .list import ListItem, ListView
+    from .list_page import ListPage
+    from .markdown import Markdown, MarkdownSource, MarkdownView, render_markdown
+    from .progress import ProgressBar, Spinner
+    from .rich_text import RichText
+    from .status import StatusBar
+    from .table import Column, Table
+    from .tasks import TaskPanel
+    from .text import Rule, Text
+    from .textarea import TextArea, layout_input, next_word, previous_word
+    from .toast import Toast
 
 
 def __getattr__(name: str) -> object:
