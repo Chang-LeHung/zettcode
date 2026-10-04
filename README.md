@@ -203,8 +203,8 @@ followed by another model call, and `Processing` comes back below the rows it
 belongs to until that call answers. Rows that are still running show the same
 elapsed timer, and when the
 turn ends the transcript closes with a muted summary of the wall time it took:
-`Processed 51s · 09:41`, `Processed 22m 30s · 14:05`, or
-`Processed 2h 5m 7s · 18:30`.
+`Processed for 51s · 09:41`, `Processed for 22m 30s · 14:05`, or
+`Processed for 2h 5m 7s · 18:30`.
 
 Assistant text renders common terminal-friendly Markdown: bold and emphasis,
 strikethrough,

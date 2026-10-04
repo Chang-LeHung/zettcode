@@ -306,7 +306,7 @@ class ZettCodeApp:
             self._title_session_later(self.agent.session_id)
         finally:
             took = elapsed_text(monotonic() - started)
-            self.transcript.notice(f"Processed {took} \u00b7 {clock_text()}")
+            self.transcript.notice(f"Processed for {took} \u00b7 {clock_text()}")
             self._busy = False
             self._status = "ready"
             self.app.scheduler.animate("stream", active=False)

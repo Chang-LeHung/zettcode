@@ -544,7 +544,7 @@ async def test_app_streams_a_prompt_into_the_transcript():
     assert any(entry.kind == "user" and entry.text == "find the bug" for entry in app.transcript.entries)
     assert "Result" in text
     assert "bold finding" in text
-    assert "Processed " in text
+    assert "Processed for " in text
     assert app.busy is False
 
 
@@ -607,9 +607,9 @@ async def test_each_turn_reports_how_long_it_took(monkeypatch):
     await asyncio.wait_for(app.task, 2.0)
 
     assert any(
-        entry.kind == "notice" and entry.text == "Processed 32s \u00b7 13:14" for entry in app.transcript.entries
+        entry.kind == "notice" and entry.text == "Processed for 32s \u00b7 13:14" for entry in app.transcript.entries
     )
-    assert "Processed 32s \u00b7 13:14" in harness.render().text
+    assert "Processed for 32s \u00b7 13:14" in harness.render().text
 
 
 async def test_app_refuses_a_second_prompt_and_ctrl_c_stops_the_first():
