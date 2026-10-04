@@ -268,6 +268,16 @@ class TodoTool(ToolHandler):
         return ToolRow(f"Updated {count} todo{'' if count == 1 else 's'}")
 
 
+class SkillTool(ToolHandler):
+    """``read_skill``: the skill whose instructions the call loads."""
+
+    names = frozenset({"read_skill"})
+
+    def describe(self, name: str, arguments: Mapping[str, object]) -> ToolRow:
+        """Show which skill is being read, as the catalog named it."""
+        return ToolRow(f"Read skill {argument(arguments, 'name', '(unknown skill)')}")
+
+
 class FallbackTool(ToolHandler):
     """Anything no other link claims: its name and flat arguments, never JSON."""
 
@@ -276,8 +286,15 @@ class FallbackTool(ToolHandler):
         return kind == TOOL
 
     def describe(self, name: str, arguments: Mapping[str, object]) -> ToolRow:
-        """Show ``name key=value`` so an unknown tool still reads as a sentence."""
-        return ToolRow(f"{name} {summarise(arguments)}".rstrip())
+        """Show ``name key=value`` so an unknown tool still reads as a sentence.
+
+        An MCP tool is namespaced ``<server>__<tool>``; the server is worth
+        keeping because it says where the capability comes from, but it reads
+        better after the tool than in front of it.
+        """
+        server, _, tool = name.partition("__")
+        label = f"{tool} (via {server})" if tool else name
+        return ToolRow(f"{label} {summarise(arguments)}".rstrip())
 
 
 class ReasoningHandler(RenderHandler):
@@ -330,6 +347,7 @@ DEFAULT_RENDERERS = Renderers(
         ShellTool(),
         SearchTool(),
         TodoTool(),
+        SkillTool(),
         FallbackTool(),
         ReasoningHandler(),
         AnswerHandler(),

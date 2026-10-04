@@ -124,6 +124,15 @@ def test_blocks_use_theme_styles_and_preserve_user_surface():
     assert dark_notice[1].spans[0].style.foreground == DARK.muted
 
 
+def test_a_failure_notice_is_painted_as_an_error():
+    """A notice is a remark; one the caller marked as an error is a failure."""
+    failure = TextEntry(id=1, kind="notice", text="error: MCP unavailable (docs)", level="error")
+
+    rows = render_entry(failure, 40, DARK, 0)
+
+    assert rows[1].spans[0].style.foreground == DARK.error
+
+
 def test_tool_component_keeps_code_colours_and_bounded_preview():
     entry = ToolEntry(
         id=1,

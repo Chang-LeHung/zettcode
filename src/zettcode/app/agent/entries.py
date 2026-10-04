@@ -59,10 +59,11 @@ class TextEntry(BaseEntry):
 
     kind: Literal["welcome", "notice", "user", "announcement"]
     text: str
+    level: Literal["info", "error"] = "info"
 
     def render_state(self, frame: int) -> object:
         """Include the text so replacing it cannot reuse stale rendered lines."""
-        return self.text
+        return (self.text, self.level)
 
 
 @dataclass(slots=True, kw_only=True)

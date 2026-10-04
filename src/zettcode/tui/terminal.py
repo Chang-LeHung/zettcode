@@ -7,6 +7,7 @@ import re
 import select
 import shutil
 import sys
+from pathlib import Path
 from time import monotonic
 from types import TracebackType
 from typing import TextIO
@@ -69,6 +70,7 @@ class Terminal:
         input_fd: int | None = None,
         output: TextIO | None = None,
         capabilities: TerminalCapabilities | None = None,
+        diagnostics: str | Path | None = None,
     ) -> None:
         """Adopt the input and output handles together with the detected capabilities.
 
@@ -77,11 +79,18 @@ class Terminal:
             output: Stream to write ANSI to; defaults to stdout.
             capabilities: What the terminal can render; probed from the
                 environment when omitted.
+            diagnostics: File that collects anything written to stderr while the
+                app owns the screen; ``None`` discards it. A child process
+                cannot know that the frame is the interface, so its banner or
+                warning would otherwise land in the middle of it.
         """
         self.input_fd = sys.stdin.fileno() if input_fd is None else input_fd
         self.output = sys.stdout if output is None else output
         self.capabilities = capabilities or detect_capabilities()
+        self.diagnostics = None if diagnostics is None else Path(diagnostics)
         self._attributes: list | None = None
+        self._stderr: int | None = None
+        self._stderr_sink: int | None = None
 
     @property
     def size(self) -> tuple[int, int]:
@@ -100,6 +109,7 @@ class Terminal:
             raise RuntimeError("ZettCode TUI requires an interactive terminal")
         self._attributes = termios.tcgetattr(self.input_fd)
         tty.setraw(self.input_fd)
+        self._capture_stderr()
         self.write(self._enter_sequences())
         return self
 
@@ -110,12 +120,44 @@ class Terminal:
         traceback: TracebackType | None,
     ) -> None:
         """Restore the screen, the mouse modes, and the saved termios attributes."""
+        self._release_stderr()
         self.write(self._exit_sequences())
         if self._attributes is not None:
             import termios
 
             termios.tcsetattr(self.input_fd, termios.TCSADRAIN, self._attributes)
             self._attributes = None
+
+    def _capture_stderr(self) -> None:
+        """Point fd 2 at the diagnostics file for as long as the frame is the interface.
+
+        A stdio MCP server prints its banner on every start, and a C library can
+        warn at any moment; neither knows the screen belongs to the renderer,
+        which only repaints cells it believes changed. Keeping the descriptor in
+        a file means the noise is readable afterwards instead of painted over
+        the conversation.
+        """
+        self._stderr = os.dup(2)
+        try:
+            if self.diagnostics is None:
+                self._stderr_sink = os.open(os.devnull, os.O_WRONLY)
+            else:
+                self.diagnostics.parent.mkdir(parents=True, exist_ok=True)
+                self._stderr_sink = os.open(self.diagnostics, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        except OSError:
+            self._stderr_sink = os.open(os.devnull, os.O_WRONLY)
+        os.dup2(self._stderr_sink, 2)
+
+    def _release_stderr(self) -> None:
+        """Give stderr back to the process, closing whatever held it."""
+        if self._stderr is None:
+            return
+        os.dup2(self._stderr, 2)
+        os.close(self._stderr)
+        self._stderr = None
+        if self._stderr_sink is not None:
+            os.close(self._stderr_sink)
+            self._stderr_sink = None
 
     def background(self, *, timeout: float = 0.25) -> str | None:
         """Ask the terminal for its background colour, or None when it stays quiet.

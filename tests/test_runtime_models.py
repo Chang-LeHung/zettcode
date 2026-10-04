@@ -3,7 +3,7 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from zett_agent import UserMessage
+from zett_agent import McpExtension, SkillExtension, UserMessage
 
 from zettcode.app.agent import runtime as runtime_module
 from zettcode.app.agent.storage import SessionStore
@@ -26,6 +26,103 @@ def test_the_system_prompt_head_changes_only_by_the_day(tmp_path):
     assert "- Today: 2026-10-04" in prompt
     assert prompt == runtime_module.build_system_prompt(config, now=late)
     assert prompt != runtime_module.build_system_prompt(config, now=late + timedelta(days=1))
+
+
+def _config_with(tmp_path, **changes) -> ZettCodeConfig:
+    """Return a minimal config, with one workspace-local change applied.
+
+    The MCP file defaults to one that does not exist, so a developer's own
+    ``~/.zettcode/mcp.json`` cannot decide what a test sees.
+    """
+    defaults = {"mcp_config": tmp_path / "absent-mcp.json", **changes}
+    return ZettCodeConfig(
+        workspace=tmp_path,
+        models=(ModelConfig(model="m", token="t"),),
+        store=tmp_path / "sessions",
+        **defaults,
+    )
+
+
+def test_configured_skill_roots_are_discovered_and_advertised(tmp_path):
+    skill = tmp_path / "skills" / "review"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text(
+        "---\nname: review\ndescription: Review a diff with the team checklist\n---\n\nRead the diff twice.\n",
+        encoding="utf-8",
+    )
+
+    config = _config_with(tmp_path, skill_roots=(tmp_path / "skills",))
+    (extension,) = runtime_module.integration_extensions(config)
+
+    assert isinstance(extension, SkillExtension)
+    catalog = {item.name: item for item in extension.skills}
+    assert catalog["review"].description == "Review a diff with the team checklist"
+    assert catalog["review"].path == (skill / "SKILL.md").resolve()
+
+
+def test_mcp_is_loaded_only_when_a_server_file_exists(tmp_path):
+    servers = tmp_path / "mcp.json"
+    servers.write_text(
+        '{"servers": {"docs": {"type": "streamable-http", "url": "http://127.0.0.1:9/mcp"}}}',
+        encoding="utf-8",
+    )
+
+    loaded = runtime_module.integration_extensions(_config_with(tmp_path, mcp_config=servers))
+    missing = runtime_module.integration_extensions(_config_with(tmp_path, mcp_config=tmp_path / "absent.json"))
+
+    assert [isinstance(extension, McpExtension) for extension in loaded] == [False, True]
+    assert isinstance(loaded[0], SkillExtension)
+    assert [server.name for server in loaded[1].servers] == ["docs"]
+    # With no server file there is nothing to load, so no MCP instructions are
+    # added to the request at all.
+    assert all(isinstance(extension, SkillExtension) for extension in missing)
+
+
+def test_skills_and_mcp_can_be_disabled(tmp_path):
+    servers = tmp_path / "mcp.json"
+    servers.write_text('{"servers": {}}', encoding="utf-8")
+
+    extensions = runtime_module.integration_extensions(
+        _config_with(tmp_path, skills_enabled=False, mcp_enabled=False, mcp_config=servers)
+    )
+
+    assert extensions == ()
+
+
+def test_error_reasons_are_unwrapped_from_their_groups_and_deduplicated():
+    """A task-group failure says nothing; the reasons are its leaves."""
+    grouped = ExceptionGroup(
+        "unhandled errors in a TaskGroup",
+        [
+            ExceptionGroup("unhandled errors in a TaskGroup", [ConnectionError("All connection attempts failed")]),
+            ConnectionError("All connection attempts failed"),
+            ValueError("bad config"),
+            KeyError("silent"),
+        ],
+    )
+
+    assert runtime_module.describe_error(grouped) == "All connection attempts failed; bad config; 'silent'"
+    assert runtime_module.describe_error(ValueError("plain")) == "plain"
+
+
+async def test_a_dead_mcp_server_is_named_in_the_failure(tmp_path, monkeypatch):
+    from zett_agent import McpExtension
+
+    servers = tmp_path / "mcp.json"
+    servers.write_text(
+        '{"servers": {"docs": {"type": "streamable-http", "url": "http://127.0.0.1:1/mcp"}}}',
+        encoding="utf-8",
+    )
+    config = _config_with(tmp_path, skills_enabled=False, mcp_config=servers)
+    (extension,) = runtime_module.integration_extensions(config)
+
+    async def failing(self, context):
+        raise ExceptionGroup("unhandled errors in a TaskGroup", [ConnectionError("All connection attempts failed")])
+
+    monkeypatch.setattr(McpExtension, "on_tool", failing)
+
+    with pytest.raises(RuntimeError, match=r"MCP unavailable \(docs\): All connection attempts failed"):
+        await extension.on_tool(object())
 
 
 async def test_runtime_switches_models_and_closes_every_provider(tmp_path, monkeypatch):
@@ -52,6 +149,8 @@ async def test_runtime_switches_models_and_closes_every_provider(tmp_path, monke
     monkeypatch.setattr(runtime_module, "OpenAIProvider", FakeProvider)
     monkeypatch.setattr(runtime_module, "create_agent", fake_create_agent)
     monkeypatch.setattr(runtime_module.os, "chdir", lambda path: None)
+    # A developer's own ~/.zettcode/mcp.json must not decide what this test sees.
+    monkeypatch.setattr(runtime_module, "DEFAULT_MCP_CONFIG", tmp_path / "absent-mcp.json")
     first = ModelConfig(model="shared-id", display_model="First", token="first", base_url="http://first.test")
     second = ModelConfig(model="shared-id", display_model="Second", token="second", base_url="http://tds.com:8787")
     config = ZettCodeConfig(workspace=tmp_path, models=(first, second), store=tmp_path / "sessions")
@@ -65,6 +164,8 @@ async def test_runtime_switches_models_and_closes_every_provider(tmp_path, monke
     assert runtime.active_model is first
     assert captured["model"] is created[0]
     assert captured["extensions"][-1].model is None
+    assert any(isinstance(extension, SkillExtension) for extension in captured["extensions"])
+    assert not any(isinstance(extension, McpExtension) for extension in captured["extensions"])
 
     selected = runtime.use_model("Second")
     assert selected is second

@@ -109,6 +109,38 @@ mirrors them without polling; resuming a session seeds the totals from the
 usage stored on its branch. The rate is a session average, not an instant
 reading.
 
+## Skills and MCP
+
+Two optional capabilities come from the same config file. Both are on by
+default and both add nothing to a request until there is something to load.
+
+Skill discovery looks at `[skills] roots` first and then at
+`~/.zettcode/skills`; a name declared twice belongs to the earlier directory.
+A skill is one directory holding a `SKILL.md` whose front matter declares
+`name` and `description`; only that catalog enters the prompt, and a body
+arrives when the model calls `read_skill`. A project that ships its own skills
+lists them explicitly — `roots = [".zettcode/skills"]` resolves against the
+workspace — and `[skills] enabled = false` turns discovery off.
+
+`[mcp] config` points at a JSON file — `~/.zettcode/mcp.json` by default — whose
+`servers` (or `mcpServers`) object maps a name to a Streamable HTTP `url` or a
+stdio `command`, with optional `args`, `env`, and `cwd`, and `headers` for
+HTTP. Their tools are registered as `<server>__<tool>`. No file means no MCP
+instructions at all, and `[mcp] enabled = false` turns the extension off.
+
+A stdio server's own output cannot reach the frame: while the app owns the
+screen, anything written to stderr — `chrome-devtools-mcp` prints a
+banner and a proxy warning on every start — is appended to
+`~/.zettcode/log/tui.log` instead of being painted over the conversation.
+
+```toml
+[skills]
+roots = ["~/team-skills"]      # searched before ~/.zettcode/skills
+
+[mcp]
+config = "~/.zettcode/mcp.json"
+```
+
 ## Approvals
 
 `run_shell` asks for confirmation before it executes anything. The prompt offers

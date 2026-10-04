@@ -31,6 +31,14 @@ def test_the_chain_phrases_the_coding_tools():
     assert describe("run_shell", command="pwd && ls -la") == "Ran pwd && ls -la"
     assert describe("glob", pattern="**/*.py") == "Listed **/*.py"
     assert describe("grep", pattern="TODO", path="src") == "Searched TODO in src"
+    # ``name`` is both the helper's parameter and the tool's argument, so this
+    # one goes through the chain directly.
+    assert DEFAULT_RENDERERS.describe("read_skill", {"name": "code-review"}).title == "Read skill code-review"
+
+
+def test_a_namespaced_mcp_tool_keeps_its_server_after_the_tool_name():
+    assert describe("docs__search", query="fix parser") == "search (via docs) query=fix parser"
+    assert describe("search", query="fix parser") == "search query=fix parser"
 
 
 def test_a_missing_or_unusable_argument_degrades_to_a_placeholder():
