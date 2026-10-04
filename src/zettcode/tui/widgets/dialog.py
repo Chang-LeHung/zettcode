@@ -53,7 +53,7 @@ class _ActionRow(Widget):
             label = f" {action.label} "
             selected = index == self.dialog.action_index
             style = (
-                Style(foreground=theme.background, background=theme.accent, bold=True)
+                Style(foreground=theme.surface, background=theme.accent, bold=True)
                 if selected
                 else Style(foreground=theme.muted)
             )

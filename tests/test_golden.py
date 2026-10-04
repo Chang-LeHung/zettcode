@@ -27,7 +27,7 @@ from zettcode.tui.widgets.diff import DiffView, build_unified
 
 def test_golden_status_bar():
     assert render_block(StatusBar("left", "right"), width=16, height=1, theme=DARK) == (
-        "left       right\n-- styles --\n0:0-4 fg#7a8478,bg#232a2e\n0:4-11 bg#232a2e\n0:11-16 fg#7a8478,bg#232a2e"
+        "left       right\n-- styles --\n0:0-4 fg#7a8478\n0:11-16 fg#7a8478"
     )
 
 
@@ -35,15 +35,7 @@ def test_golden_list_view():
     view = ListView([ListItem("a", label="alpha"), ListItem("b", label="beta")])
 
     assert render_block(view, width=16, height=3, theme=DARK) == (
-        "▸ alpha\n"
-        "  beta\n"
-        "\n"
-        "-- styles --\n"
-        "0:0-7 b,fg#f2f5f3,bg#4a5f52\n"
-        "0:7-16 bg#232a2e\n"
-        "1:0-6 fg#f2f5f3,bg#232a2e\n"
-        "1:6-16 bg#232a2e\n"
-        "2:0-16 bg#232a2e"
+        "▸ alpha\n  beta\n\n-- styles --\n0:0-7 b,fg#f2f5f3,bg#4a5f52\n1:0-6 fg#f2f5f3"
     )
 
 
@@ -57,17 +49,12 @@ def test_golden_table():
         "─────   ────\n"
         "\n"
         "-- styles --\n"
-        "0:0-4 fg#f2f5f3,bg#232a2e\n"
-        "0:4-11 b,fg#f2f5f3,bg#232a2e\n"
-        "0:11-12 fg#f2f5f3,bg#232a2e\n"
-        "0:12-18 bg#232a2e\n"
-        "1:0-12 fg#9da9a0,bg#232a2e\n"
-        "1:12-18 bg#232a2e\n"
-        "2:0-12 fg#f2f5f3,bg#232a2e\n"
-        "2:12-18 bg#232a2e\n"
-        "3:0-12 fg#9da9a0,bg#232a2e\n"
-        "3:12-18 bg#232a2e\n"
-        "4:0-18 bg#232a2e"
+        "0:0-4 fg#f2f5f3\n"
+        "0:4-11 b,fg#f2f5f3\n"
+        "0:11-12 fg#f2f5f3\n"
+        "1:0-12 fg#9da9a0\n"
+        "2:0-12 fg#f2f5f3\n"
+        "3:0-12 fg#9da9a0"
     )
 
 
@@ -89,14 +76,14 @@ def test_golden_dialog():
         "└──────────────────────┘\n"
         "-- styles --\n"
         "1:1-13 fg#f2f5f3\n"
-        "6:1-6 b,fg#232a2e,bg#a7c080\n"
+        "6:1-6 b,fg#2d353b,bg#a7c080\n"
         "6:7-14 fg#7a8478"
     )
 
 
 def test_golden_collapsible():
     assert render_block(Collapsible("Steps", Text("body")), width=16, height=3, theme=DARK) == (
-        "▸ Steps\n\n\n-- styles --\n0:0-7 b,fg#a7c080,bg#232a2e\n0:7-16 bg#232a2e\n1:0-16 bg#232a2e\n2:0-16 bg#232a2e"
+        "▸ Steps\n\n\n-- styles --\n0:0-7 b,fg#a7c080"
     )
 
 
@@ -111,16 +98,10 @@ def test_golden_markdown():
         "  · two\n"
         "\n"
         "-- styles --\n"
-        "0:0-5 b,fg#f2f5f3,bg#232a2e\n"
-        "0:5-24 bg#232a2e\n"
-        "1:0-24 bg#232a2e\n"
-        "2:0-24 bg#232a2e\n"
-        "3:0-7 fg#f2f5f3,bg#232a2e\n"
-        "3:7-24 bg#232a2e\n"
-        "4:0-4 fg#f2f5f3,bg#232a2e\n"
-        "4:4-7 b,fg#f2f5f3,bg#232a2e\n"
-        "4:7-24 bg#232a2e\n"
-        "5:0-24 bg#232a2e"
+        "0:0-5 b,fg#f2f5f3\n"
+        "3:0-7 fg#f2f5f3\n"
+        "4:0-4 fg#f2f5f3\n"
+        "4:4-7 b,fg#f2f5f3"
     )
 
 
@@ -137,28 +118,20 @@ def test_golden_diff_gutter_and_word_emphasis():
         "   3    3  c\n"
         "\n"
         "-- styles --\n"
-        "0:0-16 d,fg#7a8478,bg#232a2e\n"
-        "0:16-30 bg#232a2e\n"
-        "1:0-16 d,fg#7a8478,bg#232a2e\n"
-        "1:16-30 bg#232a2e\n"
-        "2:0-10 d,fg#7a8478,bg#232a2e\n"
-        "2:10-26 d,fg#83c092,bg#232a2e\n"
-        "2:26-30 bg#232a2e\n"
-        "3:0-10 d,fg#7a8478,bg#232a2e\n"
-        "3:10-12 fg#9da9a0,bg#232a2e\n"
-        "3:12-30 bg#232a2e\n"
-        "4:0-10 d,fg#7a8478,bg#232a2e\n"
-        "4:10-11 b,fg#e67e80,bg#232a2e\n"
+        "0:0-16 d,fg#7a8478\n"
+        "1:0-16 d,fg#7a8478\n"
+        "2:0-10 d,fg#7a8478\n"
+        "2:10-26 d,fg#83c092\n"
+        "3:0-10 d,fg#7a8478\n"
+        "3:10-12 fg#9da9a0\n"
+        "4:0-10 d,fg#7a8478\n"
+        "4:10-11 b,fg#e67e80\n"
         "4:11-12 b,fg#e67e80,bg#4a5f52\n"
-        "4:12-30 bg#232a2e\n"
-        "5:0-10 d,fg#7a8478,bg#232a2e\n"
-        "5:10-11 b,fg#a7c080,bg#232a2e\n"
+        "5:0-10 d,fg#7a8478\n"
+        "5:10-11 b,fg#a7c080\n"
         "5:11-12 b,fg#a7c080,bg#4a5f52\n"
-        "5:12-30 bg#232a2e\n"
-        "6:0-10 d,fg#7a8478,bg#232a2e\n"
-        "6:10-12 fg#9da9a0,bg#232a2e\n"
-        "6:12-30 bg#232a2e\n"
-        "7:0-30 bg#232a2e"
+        "6:0-10 d,fg#7a8478\n"
+        "6:10-12 fg#9da9a0"
     )
 
 
@@ -193,36 +166,21 @@ def test_golden_transcript_blocks():
         "\n"
         "\n"
         "-- styles --\n"
-        "0:0-4 fg#9da9a0,bg#232a2e\n"
-        "0:4-44 bg#232a2e\n"
-        "1:0-44 bg#232a2e\n"
+        "0:0-4 fg#9da9a0\n"
         "2:0-44 fg#f2f5f3,bg#343f44\n"
         "3:0-44 fg#f2f5f3,bg#343f44\n"
         "4:0-44 fg#f2f5f3,bg#343f44\n"
-        "5:0-44 bg#232a2e\n"
-        "6:0-19 fg#83c092,bg#232a2e\n"
-        "6:19-44 bg#232a2e\n"
-        "7:0-44 bg#232a2e\n"
-        "8:0-15 fg#b8a6e0,bg#232a2e\n"
-        "8:15-24 fg#7a8478,bg#232a2e\n"
-        "8:24-44 bg#232a2e\n"
-        "9:0-8 fg#7a8478,bg#232a2e\n"
-        "9:8-16 fg#f2f5f3,bg#232a2e\n"
-        "9:16-44 bg#232a2e\n"
-        "10:0-8 fg#7a8478,bg#232a2e\n"
-        "10:8-16 fg#f2f5f3,bg#232a2e\n"
-        "10:16-44 bg#232a2e\n"
-        "11:0-44 bg#232a2e\n"
-        "12:0-8 b,fg#f2f5f3,bg#232a2e\n"
-        "12:8-44 bg#232a2e\n"
-        "13:0-44 bg#232a2e\n"
-        "14:0-44 bg#232a2e\n"
-        "15:0-8 fg#f2f5f3,bg#232a2e\n"
-        "15:8-13 fg#9bddad,bg#232a2e\n"
-        "15:13-14 fg#f2f5f3,bg#232a2e\n"
-        "15:14-44 bg#232a2e\n"
-        "16:0-44 bg#232a2e\n"
-        "17:0-44 bg#232a2e"
+        "6:0-19 fg#83c092\n"
+        "8:0-15 fg#b8a6e0\n"
+        "8:15-24 fg#7a8478\n"
+        "9:0-8 fg#7a8478\n"
+        "9:8-16 fg#f2f5f3\n"
+        "10:0-8 fg#7a8478\n"
+        "10:8-16 fg#f2f5f3\n"
+        "12:0-8 b,fg#f2f5f3\n"
+        "15:0-8 fg#f2f5f3\n"
+        "15:8-13 fg#9bddad\n"
+        "15:13-14 fg#f2f5f3"
     )
 
 
@@ -256,10 +214,6 @@ def test_golden_completion_popup():
         "0:0-7 b,fg#f2f5f3,bg#4a5f52\n"
         "0:7-28 fg#7a8478,bg#4a5f52\n"
         "0:28-44 b,fg#f2f5f3,bg#4a5f52\n"
-        "1:0-5 fg#f2f5f3,bg#232a2e\n"
-        "1:5-7 bg#232a2e\n"
-        "1:7-37 fg#7a8478,bg#232a2e\n"
-        "1:37-44 bg#232a2e\n"
-        "2:0-44 bg#232a2e\n"
-        "3:0-44 bg#232a2e"
+        "1:0-5 fg#f2f5f3\n"
+        "1:7-37 fg#7a8478"
     )
