@@ -10,3 +10,6 @@ dist/
 .zett-tool-output/
 .env
 .DS_Store
+
+# viztracer writes its trace here by default.
+/result.json
