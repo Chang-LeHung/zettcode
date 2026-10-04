@@ -9,7 +9,20 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from ...tui import Span, Style, TextLine, Theme
+from ...tui import (
+    DONE,
+    ELLIPSIS,
+    EXPANDED,
+    FAILED,
+    MARKER,
+    PROMPT,
+    SKIPPED,
+    STATUS,
+    Span,
+    Style,
+    TextLine,
+    Theme,
+)
 from ...tui.render import SweepSpan, display_width, highlight, inset_line, layout_rich_lines, sweep_spans, truncate
 from . import transcript as model
 from .entries import Entry, EntryStatus, PlainEntry, ProcessingEntry, TextEntry, ThinkingEntry, ToolEntry
@@ -144,7 +157,7 @@ class UserProcessor(EntryProcessor):
         background = TextLine((Span(" " * width, style),))
         lines = [TextLine(), background]
         for index, row in enumerate(prompt):
-            prefix = "\u203a "[:margin] if index == 0 else " " * margin
+            prefix = f"{PROMPT} "[:margin] if index == 0 else " " * margin
             body = truncate(f"{prefix}{row.text}", width)
             padding = " " * max(0, width - display_width(body))
             lines.append(TextLine((Span(body + padding, style),)))
@@ -181,11 +194,11 @@ class ThinkingProcessor(EntryProcessor):
         if entry.status is EntryStatus.RUNNING:
             heading = _running_label(f"Thinking  {timing}", theme, frame)
         else:
-            marker = "\u25be" if entry.expanded else "\u25b8"
+            marker = EXPANDED if entry.expanded else MARKER
             heading = (Span(f"{marker} ", header), Span(f"Thinking  {timing}", header))
         lines = [TextLine(), layout_rich_lines((TextLine(heading),), width, wrap=False)[0]]
         if entry.expanded:
-            source = "\n".join(entry.text.splitlines()) if entry.text else "Waiting for reasoning\u2026"
+            source = "\n".join(entry.text.splitlines()) if entry.text else f"Waiting for reasoning{ELLIPSIS}"
             lines.extend(self.text_lines(source, width, Style(foreground=theme.subtle), indent=4))
         return lines
 
@@ -209,10 +222,10 @@ class ToolProcessor(EntryProcessor):
             model.RUNNING_GLYPHS[0]
             if running
             else {
-                EntryStatus.COMPLETED: "\u2713",
-                EntryStatus.FAILED: "\u00d7",
-                EntryStatus.SKIPPED: "\u2013",
-            }.get(entry.status, "\u25cf")
+                EntryStatus.COMPLETED: DONE,
+                EntryStatus.FAILED: FAILED,
+                EntryStatus.SKIPPED: SKIPPED,
+            }.get(entry.status, STATUS)
         )
         hue = tool_color(entry.tool, theme)
         colour = theme.error if entry.status is EntryStatus.FAILED else hue
@@ -220,7 +233,7 @@ class ToolProcessor(EntryProcessor):
         label = Style(foreground=colour)
         muted = Style(foreground=theme.muted)
         timing = f"  {model.duration_text(entry.duration)}" if entry.duration is not None else ""
-        disclosure = "" if running or not entry.text else (" \u25be" if entry.expanded else " \u25b8")
+        disclosure = "" if running or not entry.text else (f" {EXPANDED}" if entry.expanded else f" {MARKER}")
         room = max(1, width - display_width(f"{symbol} {timing}{disclosure}"))
         title = truncate(entry.title, room)
         heading: list[Span] = [Span(f"{symbol} ", marker)]
@@ -234,7 +247,7 @@ class ToolProcessor(EntryProcessor):
         if disclosure:
             heading.append(Span(disclosure, muted))
         lines = [TextLine(), TextLine(tuple(heading))]
-        output = "Running\u2026" if running else entry.text
+        output = f"Running{ELLIPSIS}" if running else entry.text
         if output:
             limit = model.TOOL_EXPANDED_ROWS if entry.expanded else model.TOOL_PREVIEW_ROWS
             rows, omitted = model.bounded_rows(output, max(1, width - 6), limit)
@@ -243,7 +256,7 @@ class ToolProcessor(EntryProcessor):
                 lead = "    \u2514 " if index == 0 else "      "
                 lines.append(self._body_line(lead, row, detail, entry.language, theme))
             if omitted:
-                lines.append(TextLine((Span(f"      \u2026 {omitted} more rows", muted),)))
+                lines.append(TextLine((Span(f"      {ELLIPSIS} {omitted} more rows", muted),)))
         return [layout_rich_lines((line,), width, wrap=False)[0] if line.spans else line for line in lines]
 
     @staticmethod

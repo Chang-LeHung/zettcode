@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ...tui import RULE
 from ..core.geometry import Constraints, EdgeInsets, Point, Rect, Size
 from ..core.widget import Widget
 from ..render import DEFAULT_STYLE, Canvas, Style
@@ -74,7 +75,7 @@ class Border(Widget):
     without letting it show through; a border with no child still draws.
     """
 
-    HORIZONTAL = "\u2500"
+    HORIZONTAL = RULE
     VERTICAL = "\u2502"
 
     def __init__(self, child: Widget | None = None, *, style: Style = DEFAULT_STYLE, title: str = "") -> None:

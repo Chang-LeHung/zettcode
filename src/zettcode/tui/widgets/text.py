@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from ...tui import RULE
 from ..core.geometry import Constraints, Size
 from ..core.widget import Widget
 from ..render import Canvas, Span, Style, TextLine
@@ -77,7 +78,7 @@ class Rule(Widget):
     between two regions.
     """
 
-    def __init__(self, character: str = "\u2500") -> None:
+    def __init__(self, character: str = RULE) -> None:
         """Set the glyph the rule repeats across its width.
 
         Args:

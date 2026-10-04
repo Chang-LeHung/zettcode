@@ -198,6 +198,19 @@ def test_a_frame_selection_drag_asks_for_the_next_frame():
     assert harness.app.scheduler.poll(now=1.0) is True
 
 
+def test_every_glyph_the_interface_draws_is_one_cell_wide():
+    """The layout maths assume one cell per glyph, so a wide one would shift rows."""
+    from zettcode.tui import glyphs
+    from zettcode.tui.render import display_width
+
+    drawn = [value for name, value in vars(glyphs).items() if name.isupper() and isinstance(value, str)]
+    drawn += [*glyphs.SPINNER, *glyphs.RUNNING]
+
+    assert drawn
+    for glyph in drawn:
+        assert display_width(glyph) == 1, f"{glyph!r} is not one cell wide"
+
+
 def test_constraints_clamp_measurements_and_deflate():
     assert Constraints.tight(Size(10, 5)).constrain(Size(3, 3)) == Size(10, 5)
     assert Constraints.loose(Size(10, 5)).constrain(Size(100, 100)) == Size(10, 5)

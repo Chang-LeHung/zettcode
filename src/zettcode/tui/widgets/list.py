@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
+from ...tui import MARKER
 from ..core.events import KeyEvent, MouseAction, MouseEvent
 from ..core.geometry import Constraints, Size
 from ..core.host import Host
@@ -53,7 +54,7 @@ class ListView(Widget):
     column so the two can never collide.
     """
 
-    MARKERS = ("\u25b8 ", "  ")
+    MARKERS = (f"{MARKER} ", "  ")
     #: Cells the marker column occupies, and the gap before the description column.
     MARKER_WIDTH = 2
     COLUMN_GAP = 2

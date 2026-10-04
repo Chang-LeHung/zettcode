@@ -10,14 +10,28 @@ from __future__ import annotations
 from bisect import bisect_right
 from collections.abc import Callable
 
-from ....tui import Canvas, Host, LineSource, MouseAction, MouseEvent, Rect, ScrollView, Span, Style, TextLine, Theme
+from ....tui import (
+    ARROW_DOWN,
+    SEPARATOR,
+    Canvas,
+    Host,
+    LineSource,
+    MouseAction,
+    MouseEvent,
+    Rect,
+    ScrollView,
+    Span,
+    Style,
+    TextLine,
+    Theme,
+)
 from ....tui.render import display_width
 from ...agent.transcript import Entry, Transcript
 
 #: Badge shown once the reader scrolls away from the newest line. It names the
 #: shortcut so the mouse and the keyboard offer the same way back.
-BADGE_ARROW = "\u2193"
-BADGE_LABEL = " back to bottom \u00b7 Esc"
+BADGE_ARROW = ARROW_DOWN
+BADGE_LABEL = f" back to bottom {SEPARATOR} Esc"
 BACK_TO_BOTTOM = BADGE_ARROW + BADGE_LABEL
 
 

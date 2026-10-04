@@ -26,6 +26,8 @@ from zett_agent import (
     ModelUsage,
 )
 
+from ...tui import ARROW_DOWN, ARROW_UP, SEPARATOR
+
 #: Custom event name for one cumulative usage update; its payload is
 #: :meth:`UsageSnapshot.to_payload`.
 USAGE_EVENT_NAME = "session_usage"
@@ -134,14 +136,14 @@ def usage_text(snapshot: UsageSnapshot) -> str:
     """Render the status-line summary, or an empty string before the first call."""
     if not snapshot.requests:
         return ""
-    parts = [f"\u2191{compact_tokens(snapshot.input_tokens)} \u2193{compact_tokens(snapshot.output_tokens)}"]
+    parts = [f"{ARROW_UP}{compact_tokens(snapshot.input_tokens)} {ARROW_DOWN}{compact_tokens(snapshot.output_tokens)}"]
     rate = snapshot.cache_hit_rate
     if rate is not None:
         parts.append(f"{rate * 100:.0f}% cached")
     speed = snapshot.output_rate
     if speed is not None:
         parts.append(f"{speed:.0f} tok/s" if speed >= 10 else f"{speed:.1f} tok/s")
-    return "  " + " \u00b7 ".join(parts)
+    return "  " + f" {SEPARATOR} ".join(parts)
 
 
 class UsageExtension(AgentExtension):

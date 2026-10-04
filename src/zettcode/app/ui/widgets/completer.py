@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from ....tui import Completer, CompletionItem
+from ....tui import SEPARATOR, Completer, CompletionItem
 from ...commands import Command
 
 KEY_HELP = (
-    "  Enter send \u00b7 Alt-Enter newline \u00b7 Ctrl-C stop or clear\n"
-    "  Ctrl-T thinking \u00b7 PgUp/PgDn scroll \u00b7 Ctrl-L redraw \u00b7 Ctrl-D exit"
+    f"  Enter send {SEPARATOR} Alt-Enter newline {SEPARATOR} Ctrl-C stop or clear\n"
+    f"  Ctrl-T thinking {SEPARATOR} PgUp/PgDn scroll {SEPARATOR} Ctrl-L redraw {SEPARATOR} Ctrl-D exit"
 )
 
 

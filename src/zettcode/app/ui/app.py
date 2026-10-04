@@ -18,6 +18,11 @@ from zett_agent import AgentEvent
 from ...config import DEFAULT_LOG, ModelConfig
 from ...tui import (
     DARK,
+    ELLIPSIS,
+    HEADER,
+    PROMPT,
+    SEPARATOR,
+    STATUS,
     Anchor,
     CompletionPopup,
     Host,
@@ -90,7 +95,7 @@ class ZettCodeApp:
 
         self.view = TranscriptView(self.transcript, theme=theme)
         self.composer = Composer(
-            prompt="\u203a ",
+            prompt=f"{PROMPT} ",
             placeholder="Ask ZettCode to do anything",
             completer=CommandCompleter(self.commands),
             max_height=8,
@@ -355,7 +360,7 @@ class ZettCodeApp:
             self._title_session_later(self.agent.session_id)
         finally:
             took = elapsed_text(monotonic() - started)
-            self.transcript.notice(f"Processed for {took} \u00b7 {clock_text()}")
+            self.transcript.notice(f"Processed for {took} {SEPARATOR} {clock_text()}")
             self._busy = False
             self._status = "ready"
             self.app.scheduler.animate("stream", active=False)
@@ -371,7 +376,7 @@ class ZettCodeApp:
         """Execute the matching command's handler and present its result."""
         name, _, argument = value.partition(" ")
         argument = argument.strip()
-        self._status = f"{name} \u2026"
+        self._status = f"{name} {ELLIPSIS}"
         previous_session = self.agent.session_id
         command = next((item for item in self.commands if item.name == name), None)
         if command is None:
@@ -609,22 +614,22 @@ class ZettCodeApp:
     # -- chrome -------------------------------------------------------------
     def _terminal_title(self) -> str:
         """Return what the terminal's window or tab should say this is."""
-        return self._session_title or f"zettcode \u00b7 {self.agent.workspace.name}"
+        return self._session_title or f"zettcode {SEPARATOR} {self.agent.workspace.name}"
 
     def _header_left(self) -> str:
         """Label the app and the workspace it is running in."""
-        return f"  \u25c8 zettcode  {compact_path(self.agent.workspace)}"
+        return f"  {HEADER} zettcode  {compact_path(self.agent.workspace)}"
 
     def _header_right(self) -> str:
         """Show the model and the reasoning effort the next request will use."""
-        return f"{self.agent.active_model.shown_name} \u00b7 {self.agent.effort}  "
+        return f"{self.agent.active_model.shown_name} {SEPARATOR} {self.agent.effort}  "
 
     def _status_left(self) -> str:
         """Show the activity glyph, status word, mode, session title, and token use."""
-        icon = activity_glyph(self.transcript.frame) if self._busy else "\u25cf"
+        icon = activity_glyph(self.transcript.frame) if self._busy else STATUS
         # The mode sits before the title because the right-hand hint wins
         # the space fight, truncating the tail of this segment.
-        mode = " \u00b7 auto" if self._auto_shell else ""
+        mode = f" {SEPARATOR} auto" if self._auto_shell else ""
         title = f"  {self._session_title or UNTITLED_SESSION}"
         return f"  {icon} {self._status}{mode}{title}{usage_text(self._usage)}"
 
@@ -664,4 +669,4 @@ def compact_path(path: Path, *, limit: int = 38) -> str:
             break
         tail = character + tail
         budget -= display_width(character)
-    return "\u2026" + tail
+    return ELLIPSIS + tail

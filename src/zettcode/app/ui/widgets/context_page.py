@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ....tui import ListItem, ListPage
+from ....tui import SEPARATOR, ListItem, ListPage
 from ...agent.context import ContextReport
 
 
@@ -54,7 +54,7 @@ class ContextPage(ListPage):
         super().__init__(
             [head, *items],
             title=title,
-            footer=" \u00b7 ".join(_footer(report)),
+            footer=f" {SEPARATOR} ".join(_footer(report)),
             on_cancel=on_cancel,
             selected=1,
             visible_rows=max(1, len(items) + 1),
