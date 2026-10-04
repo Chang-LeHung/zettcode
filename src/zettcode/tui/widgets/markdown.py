@@ -29,10 +29,14 @@ _BLANK = re.compile(r"\n[ \t]*\n")
 # A code span is opened by a run of backticks and closed by the same run, so
 # ````` `a`-`b` ````` can hold backticks of its own; the run must not touch a
 # longer run on either side, which is what the lookarounds check.
-_INLINE = re.compile(
-    r"(`+)(?!`)(.+?)(?<!`)\1(?!`)"
-    r"|(\*\*.+?\*\*|__.+?__|\[[^]]+\]\([^)]+\)|(?<!\*)\*[^*]+\*(?!\*)|(?<![\w_])_[^_\n]+_(?![\w_]))"
-)
+_CODE = re.compile(r"(`+)(?!`)(.+?)(?<!`)\1(?!`)")
+#: Inline markup other than code; code spans are matched first and hidden from
+#: this pattern, so ``**a `b` c**`` keeps its code span instead of letting the
+#: emphasis delimiters swallow the backticks.
+_INLINE = re.compile(r"(\*\*.+?\*\*|__.+?__|\[[^]]+\]\([^)]+\)|(?<!\*)\*[^*]+\*(?!\*)|(?<![\w_])_[^_\n]+_(?![\w_]))")
+#: Stands in for one code span while the rest of the line is matched.
+_CODE_MARK_TEXT = "\x00code{}\x00"
+_CODE_MARK = re.compile(r"\x00code(\d+)\x00")
 _HEADING = re.compile(r"^(#{1,3})\s+(.+)$")
 _BULLET = re.compile(r"^(\s*)[-+*]\s+(.+)$")
 _ORDERED = re.compile(r"^(\s*)(\d{1,3})[.)]\s+(.+)$")
@@ -171,26 +175,36 @@ def list_item(marker: str, body: str, *, theme: Theme) -> TextLine:
 def inline_markdown(value: str, *, base: Style | None = None, theme: Theme = DARK) -> list[Span]:
     """Render inline emphasis, code, and links.
 
+    Code spans are recognised before anything else and stand in for themselves
+    while emphasis and links are matched, which is the order CommonMark
+    resolves them in: a code span is atomic, so the delimiters around it cannot
+    reach inside.
+
     Args:
         value: One logical line of inline Markdown.
         base: Style for unmarked text; defaults to the theme's body colour.
         theme: Palette used for the synthesized spans.
     """
     base_style = base if base is not None else Style(foreground=theme.text)
+    code: list[Span] = []
+
+    def hide(match: re.Match[str]) -> str:
+        # CommonMark strips one space on each side of the run, and only when the
+        # span is not all spaces, so `` ` ` `` keeps its single space.
+        content = match.group(2)
+        if content.startswith(" ") and content.endswith(" ") and content.strip():
+            content = content[1:-1]
+        code.append(Span(content, Style(foreground=theme.code.inline)))
+        return _CODE_MARK_TEXT.format(len(code) - 1)
+
+    masked = _CODE.sub(hide, value)
     fragments: list[Span] = []
     position = 0
-    for match in _INLINE.finditer(value):
+    for match in _INLINE.finditer(masked):
         if match.start() > position:
-            fragments.append(Span(value[position : match.start()], base_style))
+            fragments.append(Span(masked[position : match.start()], base_style))
         token = match.group(0)
-        if match.group(1) is not None:
-            # CommonMark strips one space on each side of the run, and only when
-            # the span is not all spaces, so `` ` ` `` keeps its single space.
-            content = match.group(2)
-            if content.startswith(" ") and content.endswith(" ") and content.strip():
-                content = content[1:-1]
-            fragments.append(Span(content, Style(foreground=theme.code.inline)))
-        elif token.startswith(("**", "__")):
+        if token.startswith(("**", "__")):
             fragments.append(Span(token[2:-2], replace(base_style, bold=True)))
         elif token.startswith("["):
             label, _, target = token[1:].partition("](")
@@ -199,9 +213,28 @@ def inline_markdown(value: str, *, base: Style | None = None, theme: Theme = DAR
         else:
             fragments.append(Span(token[1:-1], replace(base_style, italic=True)))
         position = match.end()
-    if position < len(value) or not fragments:
-        fragments.append(Span(value[position:], base_style))
-    return fragments
+    if position < len(masked) or not fragments:
+        fragments.append(Span(masked[position:], base_style))
+    return reveal(fragments, code)
+
+
+def reveal(fragments: Sequence[Span], code: Sequence[Span]) -> list[Span]:
+    """Put the code spans back where their placeholders ended up.
+
+    A placeholder can sit inside bold or italic text, so the host span is split
+    around it and keeps its own style; the code span keeps the code colour.
+    """
+    revealed: list[Span] = []
+    for fragment in fragments:
+        cursor = 0
+        for match in _CODE_MARK.finditer(fragment.text):
+            if match.start() > cursor:
+                revealed.append(Span(fragment.text[cursor : match.start()], fragment.style))
+            revealed.append(code[int(match.group(1))])
+            cursor = match.end()
+        if cursor < len(fragment.text):
+            revealed.append(Span(fragment.text[cursor:], fragment.style))
+    return revealed
 
 
 def split_table_row(value: str) -> list[str] | None:
