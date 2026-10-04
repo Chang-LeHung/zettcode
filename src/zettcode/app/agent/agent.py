@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from pathlib import Path
 
 from zett_agent import (
@@ -13,8 +13,11 @@ from zett_agent import (
     AnyMessage,
     AssistantMessage,
     ExternalEvent,
+    ImageBytesSource,
+    ImageContent,
     ReasoningEffort,
     SystemMessage,
+    TextContent,
     ToolMessage,
     UserMessage,
 )
@@ -28,6 +31,10 @@ from .storage import SessionInfo
 from .title import summarize_title
 from .transcript import Transcript
 from .usage import UsageSnapshot
+
+#: One piece of a user turn, in the order it was written: a run of text, or the
+#: encoded bytes and media type of an image placed where that run ends.
+PromptPart = str | tuple[bytes, str]
 
 
 class ZettCodeAgent:
@@ -135,14 +142,40 @@ class ZettCodeAgent:
         """Send streamed agent events to the application's transcript projector."""
         self.runtime.client.event_dispatcher = dispatcher
 
-    def stream(self, prompt: str) -> AsyncIterator[AgentEvent]:
-        """Run one turn with the selected session, model, and reasoning effort."""
+    def stream(self, parts: Sequence[PromptPart]) -> AsyncIterator[AgentEvent]:
+        """Run one turn with the selected session, model, and reasoning effort.
+
+        Args:
+            parts: The user turn in the order it was written: text runs and the
+                images the composer interleaved with them. A turn without
+                images is simply one text part.
+        """
         return self.runtime.client.stream(
-            prompt,
+            self.request(parts),
             config=AgentRunConfig(session_id=self.session_id),
             model=self.runtime.model,
             reasoning_effort=self.runtime.effort,
         )
+
+    @staticmethod
+    def request(parts: Sequence[PromptPart]) -> str | UserMessage:
+        """Return the user turn those ordered parts make up.
+
+        Text and images keep the order they were written in inside one
+        ``UserMessage``, so a picture is read where its writer placed it rather
+        than after the whole prompt. A turn with no image stays a plain string.
+        """
+        if all(isinstance(part, str) for part in parts):
+            return "".join(part for part in parts if isinstance(part, str))
+        content: list[TextContent | ImageContent] = []
+        for part in parts:
+            if isinstance(part, str):
+                if part:
+                    content.append(TextContent(part))
+                continue
+            data, media_type = part
+            content.append(ImageContent(source=ImageBytesSource(data=data, media_type=media_type)))
+        return UserMessage(content=content)
 
     def tasks(self) -> tuple[tuple[str, str], ...]:
         """Return the current session's plan as display-ready status/content pairs."""

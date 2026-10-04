@@ -52,9 +52,36 @@ its scrolling list, `Enter` selects for future requests, and `Esc` closes the
 panel and returns to the composer. Switching models adds a centered
 `Model changed from … to …` line between horizontal rules in the transcript.
 `/model GPT-4o` still switches directly by display name or model id.
-`multimodal` records whether a model accepts images; it does not itself add
-image input to the composer. Unknown keys and wrong types are reported, not
-ignored.
+`multimodal` records whether a model accepts images; attaching one to a model
+that does not is refused with a notice rather than failing the request. Unknown
+keys and wrong types are reported, not ignored.
+
+`Ctrl-V` attaches an image from the desktop clipboard. A terminal cannot hand
+an application the bytes of a pasted image, so the shell reads the clipboard
+itself — the pasteboard in-process on macOS, with `osascript` as the fallback
+that can coerce a format the pasteboard does not store directly, and `wl-paste`
+or `xclip` on Linux, which read the type the clipboard advertises, so PNG,
+JPEG, WebP, and GIF all arrive as themselves — and inserts an `[image #N]` chip
+into the composer. The chip is text: `Backspace` deletes it in one press,
+`Ctrl-Z` puts it back, and the picture is sent as a multimodal part
+in the place its chip holds, so text and images keep the order they were
+written in and the model reads each picture where the writer put it. Nothing is
+written to the workspace: because only the chip is text, a restored session
+shows the placeholder where the picture was and does not re-send it.
+
+`Ctrl-V` is the image key and nothing else: every other paste still goes through
+the terminal's own paste key (`Cmd-V` on macOS, `Ctrl-Shift-V` or `Alt-V`
+elsewhere), which is how text pastes in and where a long one becomes the chip
+described below. A terminal that pastes a picture as text instead is recognised
+too. VS Code's integrated terminal converts a clipboard image into base64,
+warns about the size, and sends the characters; a pasted `data:image/…;base64,`
+URI, or bare base64 that decodes to a known image format, becomes the same
+`[image #N]` chip rather than a wall of characters standing in for a picture.
+
+Large pastes are handled the same way: a paste longer than 512 characters, or
+one taller than the composer grows, becomes a `[pasted text 6012 chars]` chip
+instead of pushing the rest of the draft out of view. The full text is restored
+when the draft is submitted.
 
 Sessions live in `~/.zettcode/sessions/<base64 workspace path>/`, one append-only
 JSONL file per session: every record carries a parent id, so a session is a tree,
@@ -164,6 +191,8 @@ uv run zettcode /path/to/project
 - `Ctrl-R`: search backward through submitted input history
 - `Ctrl-L`: redraw the terminal
 - `Ctrl-T`: expand or collapse the latest thinking block
+- `Ctrl-V`: attach an image from the system clipboard; text pastes keep using
+  the terminal's own paste key
 - `Page Up` / `Page Down`: scroll history while keeping the composer focused
 - `Esc` or the `↓ back to bottom` badge: jump to the newest line once scrolled up
 - Mouse wheel: scroll history

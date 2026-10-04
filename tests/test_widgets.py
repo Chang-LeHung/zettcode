@@ -545,3 +545,13 @@ def test_text_area_cycles_completions_and_layouts_wrapped_input():
     assert area.text == "/clear"
 
     assert layout_input("123", 3, 5, 2) == (["123", ""], (1, 0))
+
+
+def test_a_plain_text_area_pastes_literally():
+    """The editor itself has no opinion about where text came from."""
+    area = TextArea()
+
+    Harness(area, width=60, height=6).paste("x" * 5000)
+
+    assert area.text == "x" * 5000
+    assert area.value == area.text

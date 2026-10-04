@@ -12,6 +12,22 @@ from .keys import CONTROL_KEYS, KEY_SEQUENCES
 # Coordinates arrive 1-based, so the decoder subtracts one from each.
 _MOUSE = re.compile(rb"^\x1b\[<(\d+);(\d+);(\d+)([Mm])")
 
+#: Control characters a paste may keep: tab indents code and newline separates
+#: it. Everything else — the carriage return a clipboard adds per line, a stray
+#: escape, a bell — would be drawn as a broken line or walked over silently.
+_PASTE_KEEP = {"\t", "\n"}
+
+
+def _paste_text(payload: bytes) -> str:
+    """Decode one bracketed-paste payload into text an editor can hold.
+
+    Clipboard line endings are normalised to ``\\n`` and control characters
+    other than tab and newline are dropped, so pasted code cannot depend on the
+    terminal it came from.
+    """
+    text = payload.decode("utf-8", "replace").replace("\r\n", "\n").replace("\r", "\n")
+    return "".join(character for character in text if character in _PASTE_KEEP or character.isprintable())
+
 
 class InputDecoder:
     """Decode fragmented UTF-8, keyboard, paste, and SGR mouse input."""
@@ -63,7 +79,11 @@ class InputDecoder:
             end = data.find(b"\x1b[201~", 6)
             if end < 0:
                 return None, 0, True
-            return InputEvent(EventType.PASTE, text=data[6:end].decode("utf-8", "replace")), end + 6, False
+            return (
+                InputEvent(EventType.PASTE, text=_paste_text(data[6:end])),
+                end + 6,
+                False,
+            )
 
         mouse = _MOUSE.match(data)
         if mouse:

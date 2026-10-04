@@ -73,7 +73,9 @@ src/zettcode/
                      layout, the JSONL conversation tree, metadata.jsonl, and
                      the persistence plugin)
     ui/              app.py (shell, keymap, commands), transcript.py (the
-                     virtualized view over the model)
+                     virtualized view over the model), clipboard.py (reading a
+                     desktop image), widgets/ (shell-specific widgets such as
+                     the Composer)
   tui/               the reusable, agent-agnostic framework
 ```
 
@@ -278,6 +280,19 @@ the golden tests share one definition.
 `TextArea` and `CompletionPopup` are deliberately split: the popup never takes
 focus, so Tab and Enter keep belonging to the text being typed while the popup
 only renders the candidates the editor reports.
+
+`TextArea` also exposes a few overridable seams, each with a default that keeps
+plain editing literal: `show(value)` replaces the whole draft (so subclasses
+see history rollback and `set_text` alike), `value` is what `_submit` reads,
+`paste(text)` receives a decoded paste, `spans_for(line, start, body)` decides
+how one wrapped row is painted, and `backspace()` removes what the cursor sits
+after. The shell's `Composer` uses them to stand a large paste or a clipboard
+image in for a single amber chip that one `Backspace` deletes; its `value`
+restores the pasted text on submit, and its `parts()` hands the shell the draft
+as ordered text and image pieces — a picture sits where its chip sits — dropping
+any chip that was deleted before the turn was sent. A paste that carries an
+image as text — VS Code's terminal sends a clipboard image as base64 — is
+decoded back into a picture chip instead of being filed as a huge text paste.
 
 ## Rich content
 

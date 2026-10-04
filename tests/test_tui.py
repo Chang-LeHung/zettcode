@@ -87,6 +87,28 @@ def test_input_decoder_handles_fragmented_utf8_keys_mouse_and_paste():
     assert paste_event.text == "one\ntwo"
 
 
+def test_input_decoder_normalises_a_paste_into_editable_text():
+    """A terminal hands back the clipboard's own line endings and control bytes.
+
+    xterm.js — VS Code's terminal — spells every newline inside a paste as a
+    carriage return, so pasted code arrived as one long line with CRs in it.
+    """
+    decoder = InputDecoder()
+
+    paste_event = decoder.feed(b"\x1b[200~def f():\r\n\treturn 1\r\n\x1b[201~")[0]
+    noisy = InputDecoder().feed(b"\x1b[200~a\x07b\x1bc\x1b[201~")[0]
+
+    assert paste_event.text == "def f():\n\treturn 1\n"
+    assert noisy.text == "abc"
+
+
+def test_input_decoder_reports_ctrl_v_to_the_keymap():
+    """Ctrl-V is an image binding, and an unmapped control byte never arrives."""
+    event = InputDecoder().feed(b"\x16")[0]
+
+    assert event.key == "ctrl_v"
+
+
 def test_input_decoder_resolves_standalone_escape_explicitly():
     decoder = InputDecoder()
 
