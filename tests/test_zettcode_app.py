@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field, fields, replace
 from datetime import UTC, datetime, timedelta
 from math import ceil
 from pathlib import Path
@@ -868,12 +868,13 @@ async def test_switching_the_theme_repaints_every_view():
     assert not painted & (_palette(DARK) - _palette(LIGHT))
 
 
-async def test_the_page_is_filled_only_when_the_palette_names_a_colour():
-    """A palette either paints its own page or leaves the terminal's alone.
+async def test_the_page_is_left_to_the_terminal_and_only_surfaces_are_painted():
+    """A palette that names no page colour must not paint one.
 
     Mixing the two is what leaves patches: a filled page with foreground-only
-    glyphs on top shows the terminal through them, and a palette that names no
-    page colour must not fill anything, or the two backgrounds fight.
+    glyphs on top shows the terminal through them. Both built-in palettes leave
+    the page to the terminal, so the only backgrounds on screen are the surfaces
+    the shell means to raise; a palette that does name a page fills everything.
     """
     app = build_app()
     harness = _harness(app)
@@ -890,14 +891,16 @@ async def test_the_page_is_filled_only_when_the_palette_names_a_colour():
         harness.render()
         canvas = app.app.render()
         backgrounds = {cell.style.background for row in canvas.cells for cell in row}
-        if theme.background is None:
-            # The dark palette leaves the page to the terminal; only the
-            # surfaces a widget draws carry a colour.
-            assert None in backgrounds
-            assert theme.surface_alt in backgrounds  # the composer band
-        else:
-            assert None not in backgrounds
-            assert backgrounds == {theme.background, theme.surface_alt}
+
+        assert theme.background is None
+        assert backgrounds == {None, theme.surface_alt}
+
+        # A theme file may name a page, and then it is painted everywhere.
+        app.app.theme = replace(theme, background="#123456")
+        harness.render()
+        painted = {cell.style.background for row in app.app.render().cells for cell in row}
+
+        assert painted == {"#123456", theme.surface_alt}
 
 
 async def test_app_slash_commands_change_theme_sessions_and_exit():

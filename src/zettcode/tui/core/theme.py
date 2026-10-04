@@ -46,7 +46,7 @@ class Theme:
     Widgets read roles such as ``accent`` or ``muted`` so a new palette is a
     data change rather than a search-and-replace through every component.
 
-    The built-in dark palette leaves the page to the terminal and follows
+    The built-in palettes leave the page to the terminal and follow
     Everforest's green-leaning accents
     (``#A7C080`` green, ``#83C092`` aqua, ``#DBBC7F`` yellow, ``#E67E80`` red)
     over the neutral greys, so a transcript can tell reasoning from tool output
@@ -54,8 +54,9 @@ class Theme:
 
     Attributes:
         name: Palette key used by ``/theme`` and by ``base =`` in a theme file.
-        background: Page fill behind everything; ``None`` leaves the terminal's
-            own background in place, which is what a dark terminal wants.
+        background: Page fill behind everything; ``None`` — what both built-in
+            palettes use — leaves the terminal's own background in place, so the
+            shell blends into the profile it was started in.
         surface: Raised panel fill.
         surface_alt: Fill shared by the composer and submitted user messages.
         text: Body text.
@@ -98,7 +99,7 @@ DARK = Theme()
 
 LIGHT = Theme(
     name="light",
-    background="#f7f8f7",
+    background=None,
     surface="#ffffff",
     surface_alt="#eceeec",
     text="#1b211d",

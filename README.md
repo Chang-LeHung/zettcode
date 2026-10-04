@@ -220,12 +220,12 @@ per column so the gaps between columns stay visible; they keep left, center, and
 right alignment, account for wide CJK characters, and wrap a cell that does not
 fit instead of cutting its text.
 
-The dark palette does not paint a page at all: it leaves those cells to the
-terminal's own background, so the shell blends into whatever profile you run,
-and only the surfaces it means to raise — the composer band, a user message, the
-plan box — carry a colour. The light palette paints its own page, because a light
-theme on a dark terminal has to. `[ui] background = "#232a2e"` in a theme file
-makes the dark palette paint one too.
+Neither built-in palette paints a page: those cells are left to the terminal's
+own background, so the shell blends into whatever profile you run, and only the
+surfaces it means to raise — the composer band, a user message, the plan box —
+carry a colour. That is also why the startup detection matters: a light palette
+on a light terminal is what keeps the text readable when nobody paints a page.
+`[ui] background = "#232a2e"` in a theme file makes a palette paint one.
 
 The terminal's window or tab name follows the session: it is the session title
 once there is one, and `zettcode · <workspace>` before that. It is released when
