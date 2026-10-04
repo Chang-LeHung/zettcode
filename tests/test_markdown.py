@@ -54,6 +54,29 @@ def test_backtick_runs_open_one_code_span():
     ]
 
 
+def test_emphasis_can_wrap_a_code_span():
+    """A code span is atomic, so the delimiters around it cannot reach inside.
+
+    Matching every inline rule in one pass let ``**...**`` swallow the
+    backticks, so the span inside bold text leaked as literal characters.
+    """
+    spans = inline_markdown("**bold `code` bold**", theme=DARK)
+
+    assert [(span.text, span.style.bold, span.style.foreground) for span in spans] == [
+        ("bold ", True, DARK.text),
+        ("code", False, DARK.code.inline),
+        (" bold", True, DARK.text),
+    ]
+
+
+def test_emphasis_inside_a_code_span_stays_literal():
+    spans = inline_markdown("`**not bold**`", theme=DARK)
+
+    assert [(span.text, span.style.bold, span.style.foreground) for span in spans] == [
+        ("**not bold**", False, DARK.code.inline)
+    ]
+
+
 def test_markdown_wraps_paragraphs_inside_the_width():
     lines = render_markdown("word " * 30, 20, DARK)
 
