@@ -84,7 +84,7 @@ class ShellCommands:
 
     def _panel(self, page: Widget) -> Widget:
         """Wrap one picker in the bottom panel the shell's own commands use."""
-        return bottom_panel(page, rows=PICKER_ROWS, color=self.shell.app.theme.border)
+        return bottom_panel(page, rows=PICKER_ROWS)
 
     async def theme(self, name: str) -> CommandResult:
         """Open the theme picker, or switch straight to a named palette.

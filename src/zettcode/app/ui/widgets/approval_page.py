@@ -183,9 +183,16 @@ class ApprovalPage(Widget):
         if self.rect.empty:
             return
         theme = self.theme
-        # Clear with no fill colour: the panel floats on the terminal's own
-        # background instead of tinting itself like a raised surface.
-        canvas.fill(self.rect.x, self.rect.y, self.rect.width, self.rect.height, Style())
+        # Fill the panel like every other page: it is a screen of its own over
+        # the conversation, so leaving the cells unstyled would let the
+        # terminal's background through instead of the palette's.
+        canvas.fill(
+            self.rect.x,
+            self.rect.y,
+            self.rect.width,
+            self.rect.height,
+            Style(background=theme.surface_alt),
+        )
         x = self.rect.x + 2
         room = max(0, self.rect.width - 4)
         heading = Style(foreground=theme.text, bold=True)

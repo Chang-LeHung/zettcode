@@ -372,9 +372,11 @@ still identifiable.
 
 Commands never paint: a handler returns a `CommandResult` carrying a widget, and
 the shell pushes it as a screen. The handler composes the presentation itself —
-the pickers wrap their page in `app/ui/widgets/bottom_panel`, which frames it
-and anchors it to the bottom edge — so panel-versus-full-screen is a decision
-made in the command, not a hint the presenting code has to interpret.
+the pickers wrap their page in `app/ui/widgets/bottom_panel`, which anchors it
+to the bottom edge — so panel-versus-full-screen is a decision made in the
+command, not a hint the presenting code has to interpret. Panels carry no
+frame: each page fills its own rectangle with the raised surface, which keeps
+the two rows a border would cost and keeps the conversation above visible.
 
 Every frame starts as a canvas filled with `Theme.background`, so a palette switch
 repaints the page itself rather than only the widgets that draw their own
