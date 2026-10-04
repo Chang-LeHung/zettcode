@@ -24,8 +24,16 @@ from ...tui import (
     Theme,
 )
 from ...tui.render import SweepSpan, display_width, highlight, inset_line, layout_rich_lines, sweep_spans, truncate
-from . import transcript as model
 from .entries import Entry, EntryStatus, PlainEntry, ProcessingEntry, TextEntry, ThinkingEntry, ToolEntry
+from .rows import (
+    CONTENT_INDENT,
+    RUNNING_GLYPHS,
+    TOOL_EXPANDED_ROWS,
+    TOOL_PREVIEW_ROWS,
+    bounded_rows,
+    duration_text,
+    sweep_step,
+)
 
 #: Palette role that paints a tool, by the action it performs. The built-in
 #: palettes give every role the same violet; a theme file can separate them. A
@@ -120,7 +128,7 @@ class AnnouncementProcessor(EntryProcessor):
         keeps the same two cells free on the right; the header, the status bar,
         and the composer all pad both edges by that amount.
         """
-        margin = min(model.CONTENT_INDENT, max(0, width - 1))
+        margin = min(CONTENT_INDENT, max(0, width - 1))
         available = max(1, width - margin)
         if available <= 2:
             return [TextLine(), TextLine((Span("─" * available, Style(foreground=theme.border)),)), TextLine()]
@@ -152,7 +160,7 @@ class UserProcessor(EntryProcessor):
     def lines(self, entry: TextEntry, width: int, theme: Theme, frame: int) -> list[TextLine]:
         """Wrap the message and fill each row to the edge of the surface."""
         style = Style(foreground=theme.text, background=theme.surface_alt)
-        margin = min(model.CONTENT_INDENT, max(0, width - 1))
+        margin = min(CONTENT_INDENT, max(0, width - 1))
         prompt = self.text_lines(entry.text, max(1, width - margin), style)
         background = TextLine((Span(" " * width, style),))
         lines = [TextLine(), background]
@@ -176,7 +184,7 @@ class ProcessingProcessor(EntryProcessor):
         """Show the sweeping label below a blank separator."""
         label = entry.title
         if entry.duration is not None:
-            label += f"  {model.duration_text(entry.duration)}"
+            label += f"  {duration_text(entry.duration)}"
         return [TextLine(), layout_rich_lines((TextLine(_running_label(label, theme, frame)),), width, wrap=False)[0]]
 
 
@@ -189,7 +197,7 @@ class ThinkingProcessor(EntryProcessor):
 
     def lines(self, entry: ThinkingEntry, width: int, theme: Theme, frame: int) -> list[TextLine]:
         """Show the heading, plus the indented body when expanded."""
-        timing = model.duration_text(entry.duration) if entry.duration is not None else "working"
+        timing = duration_text(entry.duration) if entry.duration is not None else "working"
         header = Style(foreground=theme.accent_bright)
         if entry.status is EntryStatus.RUNNING:
             heading = _running_label(f"Thinking  {timing}", theme, frame)
@@ -219,7 +227,7 @@ class ToolProcessor(EntryProcessor):
         """Show the call, elapsed time, and optional syntax-highlighted output."""
         running = entry.status is EntryStatus.RUNNING
         symbol = (
-            model.RUNNING_GLYPHS[0]
+            RUNNING_GLYPHS[0]
             if running
             else {
                 EntryStatus.COMPLETED: DONE,
@@ -232,14 +240,14 @@ class ToolProcessor(EntryProcessor):
         marker = Style(foreground=colour)
         label = Style(foreground=colour)
         muted = Style(foreground=theme.muted)
-        timing = f"  {model.duration_text(entry.duration)}" if entry.duration is not None else ""
+        timing = f"  {duration_text(entry.duration)}" if entry.duration is not None else ""
         disclosure = "" if running or not entry.text else (f" {EXPANDED}" if entry.expanded else f" {MARKER}")
         room = max(1, width - display_width(f"{symbol} {timing}{disclosure}"))
         title = truncate(entry.title, room)
         heading: list[Span] = [Span(f"{symbol} ", marker)]
         if running:
             travel = SweepSpan(title, label, peak=Style(foreground=theme.text), ramp=3)
-            heading.extend(sweep_spans(travel, model.sweep_step(frame)))
+            heading.extend(sweep_spans(travel, sweep_step(frame)))
         else:
             heading.append(Span(title, label))
         if timing:
@@ -249,8 +257,8 @@ class ToolProcessor(EntryProcessor):
         lines = [TextLine(), TextLine(tuple(heading))]
         output = f"Running{ELLIPSIS}" if running else entry.text
         if output:
-            limit = model.TOOL_EXPANDED_ROWS if entry.expanded else model.TOOL_PREVIEW_ROWS
-            rows, omitted = model.bounded_rows(output, max(1, width - 6), limit)
+            limit = TOOL_EXPANDED_ROWS if entry.expanded else TOOL_PREVIEW_ROWS
+            rows, omitted = bounded_rows(output, max(1, width - 6), limit)
             detail = Style(foreground=theme.subtle)
             for index, row in enumerate(rows):
                 lead = "    \u2514 " if index == 0 else "      "
@@ -319,4 +327,4 @@ def _running_label(text: str, theme: Theme, frame: int) -> tuple[Span, ...]:
     """Keep the marker still while the highlight travels through the wording."""
     resting = Style(foreground=theme.accent_bright)
     label = SweepSpan(text, resting, peak=Style(foreground=theme.text), ramp=3)
-    return (Span(f"{model.RUNNING_GLYPHS[0]} ", resting), *sweep_spans(label, model.sweep_step(frame)))
+    return (Span(f"{RUNNING_GLYPHS[0]} ", resting), *sweep_spans(label, sweep_step(frame)))

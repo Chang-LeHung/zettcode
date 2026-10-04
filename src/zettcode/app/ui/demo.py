@@ -15,14 +15,14 @@ import asyncio
 
 from ...tui import DARK, ELLIPSIS, SEPARATOR, Slot, Text, TuiApp, VBox, Widget, run_app
 from ...tui.widgets import Rule
-from ..agent import transcript as transcript_module
+from ..agent import rows as rows_module
 from ..agent.transcript import Transcript
 from .widgets import TranscriptView
 
 
 def hint() -> str:
     """Return the key hint, including the pace the sweep is running at."""
-    per_column = transcript_module.SWEEP_FRAMES * transcript_module.ANIMATION_SECONDS * 1000
+    per_column = rows_module.SWEEP_FRAMES * rows_module.ANIMATION_SECONDS * 1000
     return f"  q / Esc quit {SEPARATOR} [ slower {SEPARATOR} ] faster {SEPARATOR} {per_column:.0f} ms per column"
 
 
@@ -33,7 +33,7 @@ def nudge_pace(delta: float) -> None:
         delta: Frames per column to add; the pace is kept between one frame and
             ten, which spans "a flicker" to "almost stationary".
     """
-    transcript_module.SWEEP_FRAMES = min(10.0, max(1.0, round(transcript_module.SWEEP_FRAMES + delta, 1)))
+    rows_module.SWEEP_FRAMES = min(10.0, max(1.0, round(rows_module.SWEEP_FRAMES + delta, 1)))
 
 
 class Blinking(Widget):
