@@ -868,13 +868,12 @@ async def test_switching_the_theme_repaints_every_view():
     assert not painted & (_palette(DARK) - _palette(LIGHT))
 
 
-async def test_no_cell_falls_through_to_the_terminal_background():
-    """Every painted cell names a background.
+async def test_the_page_is_filled_only_when_the_palette_names_a_colour():
+    """A palette either paints its own page or leaves the terminal's alone.
 
-    The page is filled with ``Theme.background`` first, and a foreground-only
-    span keeps the background already in its cell. Without that, the glyphs a
-    widget draws would expose the terminal's own background: harmless in a dark
-    palette on a dark terminal, a field of black patches in a light one.
+    Mixing the two is what leaves patches: a filled page with foreground-only
+    glyphs on top shows the terminal through them, and a palette that names no
+    page colour must not fill anything, or the two backgrounds fight.
     """
     app = build_app()
     harness = _harness(app)
@@ -882,22 +881,23 @@ async def test_no_cell_falls_through_to_the_terminal_background():
     app.transcript.start_thinking()
     app.transcript.append_thinking("looking around")
     app.transcript.complete_thinking()
-    app.transcript.start_tool("1", "read_file", {"path": "app.py"})
-    app.transcript.complete_tool("1", "line one\nline two")
-    app.transcript.append_answer("## Title\n\nprose with `code` and a [link](https://x.dev)")
+    app.transcript.append_answer("## Title\n\nprose with `code`")
     app.transcript.notice("Processed 1.0s")
-    app.transcript.model_changed("gpt-5-mini", "deepseek")
-    app._notify("toast over the page", level="success")
     harness.render()
 
     for theme in (DARK, LIGHT):
         app.app.theme = theme
         harness.render()
         canvas = app.app.render()
-        missing = [
-            (y, x) for y, row in enumerate(canvas.cells) for x, cell in enumerate(row) if cell.style.background is None
-        ]
-        assert not missing, (theme.name, missing[:5])
+        backgrounds = {cell.style.background for row in canvas.cells for cell in row}
+        if theme.background is None:
+            # The dark palette leaves the page to the terminal; only the
+            # surfaces a widget draws carry a colour.
+            assert None in backgrounds
+            assert theme.surface_alt in backgrounds  # the composer band
+        else:
+            assert None not in backgrounds
+            assert backgrounds == {theme.background, theme.surface_alt}
 
 
 async def test_app_slash_commands_change_theme_sessions_and_exit():

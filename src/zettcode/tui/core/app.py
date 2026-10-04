@@ -246,15 +246,17 @@ class TuiApp(Host):
     def render(self) -> Canvas:
         """Paint every screen in order into one fresh canvas.
 
-        The canvas starts filled with the palette's page colour, because the
-        terminal's own background belongs to the user's profile: without the
-        fill, switching to a light palette would leave every unpainted cell
-        dark and only the widgets that draw their own surface would change.
+        The canvas starts filled with the palette's page colour when it names
+        one, because a light palette has to paint its own page: the terminal's
+        background is somebody else's dark. A palette with no page colour —
+        the dark one — leaves those cells to the terminal, so only the widgets
+        that draw a surface of their own change what is underneath.
         """
         if self._layout_dirty:
             self.layout()
         canvas = Canvas(self.width, self.height)
-        canvas.fill(0, 0, self.width, self.height, Style(background=self.theme.background))
+        if self.theme.background is not None:
+            canvas.fill(0, 0, self.width, self.height, Style(background=self.theme.background))
         for screen in self.screens:
             screen.widget.render(canvas)
         return canvas
