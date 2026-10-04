@@ -89,6 +89,14 @@ def test_color_depth_encodes_truecolor_256_16_and_mono():
     assert encode_style(Style(foreground="#ffffff"), ColorDepth.ANSI16) == "\x1b[0;97m"
 
 
+def test_attributes_are_encoded_with_their_own_codes():
+    """Every attribute a Style carries has an SGR code, strike included."""
+    styled = Style(foreground="#ff0000", bold=True, italic=True, dim=True, strike=True, reverse=True)
+
+    assert encode_style(styled, ColorDepth.TRUECOLOR) == "\x1b[0;1;2;3;9;7;38;2;255;0;0m"
+    assert encode_style(Style(strike=True), ColorDepth.MONO) == "\x1b[0;9m"
+
+
 def test_palette_lookup_picks_the_nearest_index():
     assert parse_hex("#ff0000") == (255, 0, 0)
     assert parse_hex("bogus") is None

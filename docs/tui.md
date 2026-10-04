@@ -256,7 +256,7 @@ passing `selectable=True`.
 | `DiffView` | Unified diff with a line-number gutter and word-level emphasis |
 | `Markdown` / `MarkdownView` | Streamed Markdown with incremental parsing |
 | `Text` / `Rule` | Label and horizontal separator |
-| `TaskPanel` | Ordered tasks with one in progress; empty panels take no rows |
+| `TaskPanel` | Framed plan with one task in progress, completed rows struck out; empty panels take no rows |
 
 Two conventions make these cooperate with the runtime. A widget that changes
 its own layout calls `host.request_layout()`, because the app only re-runs
@@ -439,6 +439,9 @@ The plan panel above the composer is a `TaskPanel` with no framework knowledge
 of tasks: the application polls `TodoWriteExtension.todos(session)` after every
 streamed event and hands the panel a list of `(state, label)` pairs. An empty
 panel measures zero rows, so it costs nothing until the agent publishes a plan.
+A visible panel draws its own frame with the heading in the top edge, strikes
+out the rows it finished, and keeps one blank row above the frame so the plan
+never sits flush against the transcript.
 
 `begin_turn` also inserts a placeholder entry. A model can take seconds to emit
 its first token, and an empty transcript reads as a hung application, so the

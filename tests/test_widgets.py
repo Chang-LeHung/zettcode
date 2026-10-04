@@ -120,7 +120,45 @@ def test_task_panel_measures_wide_labels_by_display_width():
     panel = TaskPanel()
     panel.set_tasks([("processing", "汉字")])
 
+    # Marker, space, and the two frame columns around the label.
     assert panel.measure(Constraints.loose(Size(40, 10))).width == 4 + 4
+    # A separator row above the frame, the frame itself, and one row per task.
+    assert panel.preferred_height() == 4
+
+
+def test_task_panel_frames_the_plan_and_keeps_a_row_above_it():
+    panel = TaskPanel()
+    panel.set_tasks([("processing", "preview widgets"), ("pending", "run make check")])
+    rows = Harness(panel, width=40, height=panel.preferred_height()).render().text.splitlines()
+
+    assert rows[0].strip() == ""  # a blank row separates it from the transcript
+    assert rows[1] == "\u250c Plan " + "\u2500" * 32 + "\u2510"
+    assert rows[2].startswith("\u2502 \u25b8 preview widgets")
+    assert rows[2].endswith("\u2502")
+    assert rows[4].startswith("\u2514")
+    assert rows[4].endswith("\u2518")
+
+
+def test_task_panel_drops_the_frame_when_it_is_too_narrow():
+    panel = TaskPanel()
+    panel.set_tasks([("pending", "a label far too wide for this box")])
+    rows = Harness(panel, width=8, height=panel.preferred_height()).render().text.splitlines()
+
+    assert rows[0].strip() == ""
+    assert rows[1].startswith("  \u00b7 a")
+    assert "\u250c" not in "".join(rows)
+
+
+def test_task_panel_strikes_out_a_completed_row():
+    panel = TaskPanel()
+    panel.set_tasks([("completed", "read the renderer"), ("pending", "run make check")])
+
+    styled = Harness(panel, width=40, height=panel.preferred_height()).render().styled
+    done = next(span for span in styled[2] if "read the renderer" in span.text)
+    todo = next(span for span in styled[3] if "run make check" in span.text)
+
+    assert done.style.strike is True
+    assert todo.style.strike is False
 
 
 def test_rich_text_widget_paints_styled_spans_and_respects_height():

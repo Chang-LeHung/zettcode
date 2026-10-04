@@ -77,6 +77,27 @@ def test_emphasis_inside_a_code_span_stays_literal():
     ]
 
 
+def test_strikethrough_wraps_text_and_nests_with_emphasis():
+    spans = inline_markdown("~~gone~~ and ~~**bold struck**~~", theme=DARK)
+
+    assert [(span.text, span.style.strike, span.style.bold) for span in spans] == [
+        ("gone", True, False),
+        (" and ", False, False),
+        ("bold struck", True, True),
+    ]
+
+
+def test_a_code_span_inside_strikethrough_stays_code():
+    """The strike wraps the prose around it, not the code span itself."""
+    spans = inline_markdown("~~a `x` b~~", theme=DARK)
+
+    assert [(span.text, span.style.strike, span.style.foreground) for span in spans] == [
+        ("a ", True, DARK.text),
+        ("x", False, DARK.code.inline),
+        (" b", True, DARK.text),
+    ]
+
+
 def test_markdown_wraps_paragraphs_inside_the_width():
     lines = render_markdown("word " * 30, 20, DARK)
 
