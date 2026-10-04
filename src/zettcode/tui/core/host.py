@@ -42,6 +42,21 @@ class Host(ABC):
     def copy(self, text: str) -> None:
         """Place text on the clipboard."""
 
+    def screen_selection_text(self) -> str:
+        """Return the text a drag has marked on the frame, if any.
+
+        The default is nothing: a host that does not select the frame itself
+        still answers, so a widget can ask without knowing which host it has.
+        """
+        return ""
+
+    def clear_screen_selection(self) -> None:
+        """Drop the frame selection a drag left behind, if the host keeps one.
+
+        The default does nothing, which suits a host that never had one.
+        """
+        return None
+
     @abstractmethod
     def refresh(self) -> None:
         """Repaint from scratch, discarding any retained frame."""

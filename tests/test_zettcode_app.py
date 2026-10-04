@@ -1464,6 +1464,44 @@ async def test_ctrl_c_copies_the_transcript_selection():
     assert app.composer.text == ""
 
 
+async def test_a_drag_over_a_panel_copies_the_rows_it_covered():
+    """Panels draw text without owning it, so the drag copies the painted cells."""
+    app = build_app()
+    harness = _harness(app)
+    harness.write("/model")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+    page = _presented_page(app)
+    harness.render()
+    first = page.list.rect
+
+    harness.mouse_down(first.x, first.y)
+    harness.mouse_move(first.x + 24, first.y + 1)
+    harness.mouse_up(first.x + 24, first.y + 1)
+
+    assert "gpt-5-mini" in harness.clipboard
+    assert "GPT-4o" in harness.clipboard
+
+
+async def test_ctrl_c_copies_a_panel_selection_instead_of_closing_the_page():
+    app = build_app()
+    harness = _harness(app)
+    harness.write("/model")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+    page = _presented_page(app)
+    harness.render()
+    first = page.list.rect
+
+    # The drag never reports a release, as when the pointer leaves the terminal.
+    harness.mouse_down(first.x, first.y)
+    harness.mouse_move(first.x + 24, first.y)
+    harness.press("ctrl_c")
+
+    assert "gpt-5-mini" in harness.clipboard
+    assert _presented_page(app) is page
+
+
 async def test_app_mirrors_the_agent_plan_into_the_panel():
     app = build_app(
         [

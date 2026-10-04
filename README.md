@@ -235,10 +235,14 @@ uv run zettcode /path/to/project
 - `Esc` or the `↓ back to bottom` badge: jump to the newest line once scrolled up
 - Mouse wheel: scroll history
 - Click a Thinking or Tool row to expand or collapse it
-- Drag in the transcript to select text; the selection is copied on release
+- Drag in the transcript to select text; the selection is copied on release,
+  and moving past its edge keeps extending it instead of dropping the drag
+- Drag anywhere else — a panel, a list, the header, the status line — to copy
+  the text painted there; those surfaces never had selectable text of their own
 - Double-click a transcript row to select the whole line
 - `Shift`-click to extend the existing selection
-- `Ctrl-C` copies the current selection and clears it
+- `Ctrl-C` copies the current selection — transcript or panel — and clears it;
+  on a panel it copies rather than closing the page while a selection is live
 - Type `/` to open the command menu: `Up` / `Down` choose a command,
   `Enter` or `Tab` fills it in, and `Esc` closes the menu
 - `Tab` / `Shift-Tab`: complete slash commands without the menu

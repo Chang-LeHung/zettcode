@@ -43,6 +43,16 @@ class Widget:
         """Return whether Tab traversal may land on this widget."""
         return False
 
+    @property
+    def selects_text(self) -> bool:
+        """Return whether a drag over this widget selects its own text.
+
+        A widget that does not — a list, a panel, the header — hands the drag
+        to the application's screen selection instead, which copies the cells
+        the frame actually paints.
+        """
+        return False
+
     # -- tree ---------------------------------------------------------------
     @property
     def children(self) -> Sequence[Widget]:

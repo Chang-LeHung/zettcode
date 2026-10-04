@@ -137,6 +137,67 @@ def test_line_source_and_completer_are_abstract_too():
         Completer()
 
 
+class Panel(Widget):
+    """Widget painting text it does not model, the way a page does."""
+
+    def render(self, canvas) -> None:
+        canvas.draw_text(2, 0, "Select Model", max_width=canvas.width)
+        canvas.draw_text(2, 1, "1. GPT-4o", max_width=canvas.width)
+        canvas.draw_text(2, 2, "2. DeepSeek", max_width=canvas.width)
+
+
+def test_a_drag_over_text_no_widget_owns_copies_it_from_the_frame():
+    """A panel paints text without modelling it, so the frame is the source."""
+    harness = Harness(Panel(), width=20, height=4)
+    harness.render()
+
+    harness.mouse_down(2, 1)
+    harness.mouse_move(8, 2)
+    harness.mouse_up(8, 2)
+
+    # The first row runs to the frame edge; the second starts at column zero,
+    # so it carries the panel's own left padding the way a terminal does.
+    assert harness.clipboard == "1. GPT-4o\n  2. Dee"
+
+
+def test_a_click_that_is_not_a_drag_copies_nothing():
+    harness = Harness(Panel(), width=20, height=4)
+    harness.render()
+
+    harness.mouse_down(4, 1)
+    harness.mouse_up(4, 1)
+
+    assert harness.clipboard == ""
+
+
+def test_the_frame_selection_stays_marked_until_it_is_cleared():
+    """The mark is the sign of what was copied, like a terminal's selection."""
+    harness = Harness(Panel(), width=20, height=4)
+    harness.render()
+    harness.mouse_down(2, 1)
+    harness.mouse_move(8, 1)
+    harness.mouse_up(8, 1)
+
+    marked = [cell.style.reverse for cell in harness.app.render().cells[1][2:8]]
+    assert any(marked)
+
+    harness.app.clear_screen_selection()
+
+    assert not any(cell.style.reverse for cell in harness.app.render().cells[1][2:8])
+
+
+def test_a_frame_selection_drag_asks_for_the_next_frame():
+    """Nothing else repaints while the button is held, so the mark must ask."""
+    harness = Harness(Panel(), width=20, height=4)
+    harness.render()
+    harness.app.scheduler.poll(now=0.0)
+
+    harness.mouse_down(2, 1)
+    harness.mouse_move(8, 1)
+
+    assert harness.app.scheduler.poll(now=1.0) is True
+
+
 def test_constraints_clamp_measurements_and_deflate():
     assert Constraints.tight(Size(10, 5)).constrain(Size(3, 3)) == Size(10, 5)
     assert Constraints.loose(Size(10, 5)).constrain(Size(100, 100)) == Size(10, 5)
