@@ -12,7 +12,7 @@ from collections.abc import Callable, Mapping
 from datetime import datetime
 from time import monotonic
 
-from ...tui import LineSource, TextLine
+from ...tui import ELLIPSIS, RUNNING, LineSource, TextLine
 from ...tui.render import inset_line, wrap_columns
 from .blocks import DEFAULT_PROCESSORS, EntryProcessors
 from .entries import Entry, EntryStatus, MarkdownEntry, ProcessingEntry, TextEntry, ThinkingEntry, ToolEntry
@@ -91,7 +91,7 @@ def limit_output(value: str) -> str:
         return value
     half = MAX_TOOL_OUTPUT // 2
     omitted = len(value) - half * 2
-    return f"{value[:half]}\n\u2026 {omitted:,} characters omitted \u2026\n{value[-half:]}"
+    return f"{value[:half]}\n{ELLIPSIS} {omitted:,} characters omitted {ELLIPSIS}\n{value[-half:]}"
 
 
 def duration_text(seconds: float | None) -> str:
@@ -495,7 +495,7 @@ class Indented(LineSource):
 
 #: The running marker's two states: the sparkle, then a dot of the same width so
 #: the label after it never shifts as the marker blinks.
-RUNNING_GLYPHS = ("\u2726", "\u00b7")
+RUNNING_GLYPHS = RUNNING
 
 #: Steps per half-blink: 2.7 steps is the quarter second a marker holds each of
 #: its two states, so a running row blinks about twice a second.

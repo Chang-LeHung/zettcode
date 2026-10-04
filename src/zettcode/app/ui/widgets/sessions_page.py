@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 
-from ....tui import ListItem, ListPage
+from ....tui import SEPARATOR, ListItem, ListPage
 from ....tui.render import display_width
 from ...agent.agent import UNTITLED_SESSION
 from ...agent.storage import SessionInfo
@@ -70,14 +70,14 @@ class SessionsPage(ListPage):
             ListItem(
                 session.session_id,
                 title,
-                f"{' ' * max(0, age_column - display_width(age))}{age} \u00b7 {session.session_id[:8]}",
+                f"{' ' * max(0, age_column - display_width(age))}{age} {SEPARATOR} {session.session_id[:8]}",
             )
             for session, title, age in zip(sessions, titles, ages, strict=True)
         ]
         super().__init__(
             items,
             title="Sessions",
-            footer="enter open \u00b7 esc back",
+            footer=f"enter open {SEPARATOR} esc back",
             on_select=lambda item: on_select(str(item.value)),
             on_cancel=on_cancel,
         )

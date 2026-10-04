@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from ....config import ModelConfig
-from ....tui import ListItem, ListPage
+from ....tui import SEPARATOR, ListItem, ListPage
 from ...agent.agent import ZettCodeAgent
 
 
@@ -43,7 +43,7 @@ class ModelPage(ListPage):
                 ListItem(
                     entry,
                     f"{index}. {entry.shown_name}{' (current)' if entry is agent.active_model else ''}",
-                    f"{entry.model} \u00b7 {'multimodal' if entry.multimodal else 'text'}",
+                    f"{entry.model} {SEPARATOR} {'multimodal' if entry.multimodal else 'text'}",
                 )
                 for index, entry in enumerate(agent.models, start=1)
             ],

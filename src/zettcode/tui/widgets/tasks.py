@@ -4,15 +4,16 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
+from ...tui import DONE, MARKER, PENDING, RULE
 from ..core.geometry import Constraints, Size
 from ..core.widget import Widget
 from ..render import Canvas, Style, truncate
 from ..render.text import display_width
 
 MARKERS = {
-    "completed": "\u2713",
-    "processing": "\u25b8",
-    "pending": "\u00b7",
+    "completed": DONE,
+    "processing": MARKER,
+    "pending": PENDING,
 }
 
 
@@ -39,7 +40,7 @@ class TaskPanel(Widget):
 
     #: Frame glyphs; the title rides in the top edge to save a row.
     TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT = "\u250c", "\u2510", "\u2514", "\u2518"
-    HORIZONTAL, VERTICAL = "\u2500", "\u2502"
+    HORIZONTAL, VERTICAL = RULE, "\u2502"
     #: Cells of frame around the rows, and the blank row above the frame.
     FRAME_COLUMNS = 4
     SEPARATOR_ROWS = 1
@@ -105,7 +106,7 @@ class TaskPanel(Widget):
             row = top + offset + (1 if framed else 0)
             if row >= self.rect.y + self.rect.height:
                 return
-            marker = MARKERS.get(state, "\u00b7")
+            marker = MARKERS.get(state, PENDING)
             if state == "completed":
                 # A finished task is struck out as well as dimmed, so a long
                 # plan shows what is left at a glance.

@@ -28,6 +28,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from ...tui import ELLIPSIS
 from ...tui.render import GENERIC, language_for
 
 #: Output kinds the chain shapes; a link claims one or more of them.
@@ -158,7 +159,7 @@ def summarise(arguments: Mapping[str, object], *, limit: int = 48) -> str:
     parts: list[str] = []
     for key, value in arguments.items():
         collapsed = " ".join(_value_text(value).split())
-        parts.append(f"{key}={collapsed if len(collapsed) <= limit else collapsed[: limit - 1] + '\u2026'}")
+        parts.append(f"{key}={collapsed if len(collapsed) <= limit else collapsed[: limit - 1] + ELLIPSIS}")
     return " ".join(parts)
 
 

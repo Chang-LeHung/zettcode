@@ -27,6 +27,7 @@ from .core.host import Host
 from .core.screen import Screen
 from .core.theme import DARK, Theme
 from .core.widget import Widget
+from .glyphs import PROMPT, SEPARATOR
 from .layout import Anchor, Border, HBox, Overlay, OverlaySlot, Padding, ScrollView, Slot, StaticLines, VBox
 from .render import Canvas, ColorDepth, Span, Style, TextLine, encode_style
 from .widgets import (
@@ -107,7 +108,7 @@ class GalleryEntry:
 
 def _textarea() -> TextArea:
     """Return the composer sample, pre-filled so wrapping and the prompt show."""
-    area = TextArea(prompt="\u203a ", placeholder="ask anything", completions=("/clear", "/quit"))
+    area = TextArea(prompt=f"{PROMPT} ", placeholder="ask anything", completions=("/clear", "/quit"))
     area.set_text("explain the diff widget\nand keep it short")
     return area
 
@@ -508,7 +509,7 @@ class GalleryBrowser:
 
     def _hint(self) -> str:
         """List the keys worth knowing while the index has focus."""
-        return "  up/down browse \u00b7 enter interact \u00b7 esc back \u00b7 q quit  "
+        return f"  up/down browse {SEPARATOR} enter interact {SEPARATOR} esc back {SEPARATOR} q quit  "
 
     def _show_preview(self, item: ListItem | None) -> None:
         """Replace the preview layer with the newly highlighted component.

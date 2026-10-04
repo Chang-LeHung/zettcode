@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from ...tui import EXPANDED, MARKER
 from ..core.events import KeyEvent, MouseAction, MouseEvent
 from ..core.geometry import Constraints, Rect, Size
 from ..core.host import Host
@@ -25,7 +26,7 @@ class Collapsible(Widget):
     which keeps it out of layout and hit testing when collapsed.
     """
 
-    MARKERS = ("\u25b8", "\u25be")
+    MARKERS = (MARKER, EXPANDED)
 
     def __init__(
         self,

@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 
-from ....tui import Canvas, Host, KeyEvent, MouseAction, MouseEvent, Widget
+from ....tui import MARKER, Canvas, Host, KeyEvent, MouseAction, MouseEvent, Widget
 from ....tui.render import ELLIPSIS, SHELL, Span, Style, highlight, wrap_spans
 
 
@@ -236,7 +236,7 @@ class ApprovalPage(Widget):
             canvas.fill(self.rect.x + 1, y, max(0, self.rect.width - 2), 1, style)
         else:
             style = Style(foreground=theme.text)
-        marker = "\u25b8 " if selected else "  "
+        marker = f"{MARKER} " if selected else "  "
         hint = f" ({_KEY_HINTS.get(option.key, option.key)})"
         text = f"{index + 1}. {option.label}{hint}"
         canvas.draw_text(self.rect.x + 2, y, marker + text, style, max_width=max(0, self.rect.width - 4))

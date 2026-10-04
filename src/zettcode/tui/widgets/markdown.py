@@ -11,6 +11,7 @@ import re
 from collections.abc import Sequence
 from dataclasses import replace
 
+from ...tui import ELLIPSIS, RULE, SEPARATOR
 from ..core.theme import DARK, Theme
 from ..layout.scroll import LineSource, ScrollView
 from ..render import Canvas, Span, Style, TextLine, highlight, layout_rich_lines, wrap_spans
@@ -126,7 +127,7 @@ def rule_spans(width: int, theme: Theme) -> tuple[Span, ...]:
     A rule is chrome, but it has to stay readable: ``muted`` draws it clearly
     while still holding it below the body text, which is what a rule is for.
     """
-    return (Span("\u2500" * max(1, width), Style(foreground=theme.muted)),)
+    return (Span(RULE * max(1, width), Style(foreground=theme.muted)),)
 
 
 def markdown_line(line: str, *, theme: Theme) -> TextLine | None:
@@ -145,7 +146,7 @@ def markdown_line(line: str, *, theme: Theme) -> TextLine | None:
 
     bullet = _BULLET.match(line)
     if bullet:
-        return list_item(f"{bullet.group(1)}\u00b7 ", bullet.group(2), theme=theme)
+        return list_item(f"{bullet.group(1)}{SEPARATOR} ", bullet.group(2), theme=theme)
 
     ordered = _ORDERED.match(line)
     if ordered:
@@ -340,8 +341,8 @@ def render_table(
     alignments = alignments[:columns]
     rows = [row[:columns] for row in rows]
     if dropped:
-        header[-1] = "\u2026"
-        rows = [row[:-1] + ["\u2026"] for row in rows]
+        header[-1] = ELLIPSIS
+        rows = [row[:-1] + [ELLIPSIS] for row in rows]
 
     widths = table_widths(header, rows)
     for index, value in enumerate((fixed or [])[:columns]):
@@ -377,7 +378,7 @@ def table_rule(widths: Sequence[int], theme: Theme) -> TextLine:
     only separates sections. Every row is closed by one, so wrapped cells never
     look like they belong to the row above.
     """
-    segments = (" " * TABLE_GAP).join("\u2500" * width for width in widths)
+    segments = (" " * TABLE_GAP).join(RULE * width for width in widths)
     return TextLine((Span(segments, Style(foreground=theme.subtle)),))
 
 

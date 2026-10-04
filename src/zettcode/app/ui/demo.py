@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import asyncio
 
-from ...tui import DARK, Slot, Text, TuiApp, VBox, Widget, run_app
+from ...tui import DARK, ELLIPSIS, SEPARATOR, Slot, Text, TuiApp, VBox, Widget, run_app
 from ...tui.widgets import Rule
 from ..agent import transcript as transcript_module
 from ..agent.transcript import Transcript
@@ -23,7 +23,7 @@ from .widgets import TranscriptView
 def hint() -> str:
     """Return the key hint, including the pace the sweep is running at."""
     per_column = transcript_module.SWEEP_FRAMES * transcript_module.ANIMATION_SECONDS * 1000
-    return f"  q / Esc quit \u00b7 [ slower \u00b7 ] faster \u00b7 {per_column:.0f} ms per column"
+    return f"  q / Esc quit {SEPARATOR} [ slower {SEPARATOR} ] faster {SEPARATOR} {per_column:.0f} ms per column"
 
 
 def nudge_pace(delta: float) -> None:
@@ -111,7 +111,7 @@ async def script(transcript: Transcript) -> None:
         transcript.begin_turn("演示：请求已发出，等模型开口")
         await asyncio.sleep(2.0)
         transcript.start_thinking()
-        for line in ("先看清问题\u2026", "再看相关文件\u2026", "最后给出答案\u2026"):
+        for line in (f"先看清问题{ELLIPSIS}", f"再看相关文件{ELLIPSIS}", f"最后给出答案{ELLIPSIS}"):
             transcript.append_thinking(line)
             await asyncio.sleep(1.2)
         transcript.start_tool("call-1", "read_file", {"path": "src/zettcode/app/ui/app.py"})

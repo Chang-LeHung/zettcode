@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from time import monotonic
 
+from ...tui import RULE
 from ..core.focus import walk
 from ..core.geometry import Constraints, Size
 from ..core.widget import Widget
@@ -117,7 +118,7 @@ class Toast(Widget):
             "error": theme.error,
         }[self.level]
         width = self.rect.width
-        rule = "\u2500" * max(0, width - 2)
+        rule = RULE * max(0, width - 2)
         canvas.draw_text(self.rect.x, self.rect.y, f"\u250c{rule}\u2510", Style(foreground=color))
         canvas.draw_text(self.rect.x, self.rect.y + 1, "\u2502", Style(foreground=color))
         canvas.draw_text(

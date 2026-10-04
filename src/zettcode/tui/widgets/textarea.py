@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 
+from ...tui import PROMPT
 from ..core.events import KeyEvent, MouseAction, MouseEvent, PasteEvent, TextEvent
 from ..core.geometry import Constraints, Point, Size
 from ..core.host import Host
@@ -39,7 +40,7 @@ class TextArea(Widget):
     def __init__(
         self,
         *,
-        prompt: str = "\u203a ",
+        prompt: str = f"{PROMPT} ",
         placeholder: str = "",
         max_height: int = 7,
         completions: Sequence[str] = (),

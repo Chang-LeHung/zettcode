@@ -7,10 +7,11 @@ from time import monotonic
 
 from ..core.geometry import Constraints, Size
 from ..core.widget import Widget
+from ..glyphs import BAR_EMPTY, BAR_FULL, SPINNER
 from ..render import Canvas, Style
 from ..render.text import display_width, truncate
 
-DEFAULT_FRAMES = ("\u280b", "\u2819", "\u2839", "\u2838", "\u283c", "\u2834", "\u2826", "\u2827", "\u2807", "\u280f")
+DEFAULT_FRAMES = SPINNER
 
 
 class Spinner(Widget):
@@ -119,7 +120,7 @@ class ProgressBar(Widget):
     if nothing is left, only the label is drawn.
     """
 
-    def __init__(self, value: float = 0.0, *, label: str = "", filled: str = "\u2588", empty: str = "\u2591") -> None:
+    def __init__(self, value: float = 0.0, *, label: str = "", filled: str = BAR_FULL, empty: str = BAR_EMPTY) -> None:
         """Store the value and the glyphs used for the filled and empty parts.
 
         Args:

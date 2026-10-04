@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 
+from ...tui import SEPARATOR
 from ..core.events import KeyEvent
 from ..core.geometry import Rect
 from ..core.host import Host
@@ -49,7 +50,7 @@ class ListPage(Widget):
         items: Sequence[ListItem],
         *,
         title: str,
-        footer: str = "enter select \u00b7 esc back",
+        footer: str = f"enter select {SEPARATOR} esc back",
         on_select: Callable[[ListItem], None] | None = None,
         on_cancel: Callable[[], None] | None = None,
         selected: int = 0,

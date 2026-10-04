@@ -89,6 +89,7 @@ Inside the framework:
 ```
 tui/
   capabilities.py   environment-derived terminal capabilities
+  glyphs.py         the non-ASCII vocabulary every widget draws with
   terminal.py       raw mode, alternate screen, size
   runner.py         terminal-backed async loop over a TuiApp
   input/            events.py, keys.py, decoder.py, reader.py, bridge.py
