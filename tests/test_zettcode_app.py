@@ -2001,6 +2001,31 @@ async def test_the_first_reply_names_the_session_in_the_background():
     assert "session-0001" not in app._status_left()
 
 
+async def test_an_unnamed_session_reads_as_a_new_session(tmp_path):
+    """A fresh session has no title yet, and a blank status line reads like a bug."""
+    app = build_app()
+    app.agent.runtime.persistence.store = SessionStore(tmp_path)
+    harness = _harness(app)
+
+    assert "New session" in app._status_left()
+
+    harness.write("/title  Fix the parser crash  ")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    assert "Fix the parser crash" in app._status_left()
+    assert "New session" not in app._status_left()
+
+
+def test_the_sessions_panel_names_an_untitled_session():
+    now = datetime(2026, 10, 3, 12, 0, tzinfo=UTC)
+    sessions = [SessionInfo("01a1010f", None, now - timedelta(minutes=17), now - timedelta(minutes=17))]
+
+    page = SessionsPage(sessions, on_select=lambda _: None, on_cancel=lambda: None, now=now)
+
+    assert [item.label for item in page.list.items] == ["New session"]
+
+
 async def test_the_status_line_mirrors_the_usage_extension():
     app = build_app()
     payload = UsageSnapshot(

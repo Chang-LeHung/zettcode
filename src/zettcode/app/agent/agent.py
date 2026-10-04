@@ -37,6 +37,10 @@ from .usage import UsageSnapshot
 PromptPart = str | tuple[bytes, str]
 
 
+#: The name a session shows before the agent has given it a title.
+UNTITLED_SESSION = "New session"
+
+
 class ZettCodeAgent:
     """Expose agent operations without leaking runtime resources to the UI.
 
@@ -76,6 +80,16 @@ class ZettCodeAgent:
         often should cache the result instead of asking once per frame.
         """
         return self.runtime.persistence.session_title(self.session_id)
+
+    @property
+    def session_name(self) -> str:
+        """Return the name to show for the active session.
+
+        A session is named after its first reply; until then the store has no
+        title, and a status line or list row that shows nothing at all reads
+        like a bug rather than like a fresh session.
+        """
+        return self.session_title or UNTITLED_SESSION
 
     @property
     def usage(self) -> UsageSnapshot:

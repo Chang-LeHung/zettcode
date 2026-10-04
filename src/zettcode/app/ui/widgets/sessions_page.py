@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 
 from ....tui import ListItem, ListPage
 from ....tui.render import display_width
+from ...agent.agent import UNTITLED_SESSION
 from ...agent.storage import SessionInfo
 
 
@@ -34,16 +35,16 @@ class SessionsPage(ListPage):
 
         Sessions
           \u25b8 Fix the parser crash  3m ago \u00b7 1a2b3c4d
-                                17h ago \u00b7 9f8e7d6c   <- untitled: title column empty
+          New session            17h ago \u00b7 9f8e7d6c   <- still unnamed
         enter open \u00b7 esc back
 
-    A session without a title keeps that column empty rather than inventing a
-    placeholder, so the age is what identifies it; the short id still lets an
-    untitled session be told apart from its neighbours. Rows commit the session
-    id, which the shell turns into ``use_session``. The title column is aligned
-    by the list itself, and the ages are padded inside the description, because
-    ``3h ago`` is a column narrower than ``17m ago`` and the id after it would
-    otherwise step in and out of line.
+    A session without a title reads as ``New session``, the same name the
+    status line shows, and the short id after the age is what tells two of them
+    apart. Rows commit the session id, which the shell turns into
+    ``use_session``. The title column is aligned by the list itself, and the
+    ages are padded inside the description, because ``3h ago`` is a column
+    narrower than ``17m ago`` and the id after it would otherwise step in and
+    out of line.
 
     Args:
         sessions: Metadata rows to show, newest first, as returned by the store.
@@ -62,7 +63,7 @@ class SessionsPage(ListPage):
         now: datetime | None = None,
     ) -> None:
         """Map each session to a row, padding titles and right-aligning ages."""
-        titles = [session.title or "" for session in sessions]
+        titles = [session.title or UNTITLED_SESSION for session in sessions]
         ages = [format_ago(session.updated_at, now=now) for session in sessions]
         age_column = max((display_width(age) for age in ages), default=0)
         items = [
