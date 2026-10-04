@@ -117,6 +117,12 @@ builtin = "#b8a6e0"
 inline = "#9bddad"
 ```
 
+At startup the shell asks the terminal for its background colour (a single
+OSC 11 query, answered before anything else reads the keyboard) and picks `dark`
+or `light` to match, so it follows whatever profile the window was opened with.
+`~/.zettcode/theme.toml` turns that off: a palette file is a choice, so it is
+used as written, and `/theme` overrides either way for the rest of the run.
+
 Unknown keys and malformed colours are reported instead of silently ignored.
 Tool rows are painted by what the tool did, but every role ships the same
 violet — the colour the code palette already uses for ``print`` and

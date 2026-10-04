@@ -19,7 +19,7 @@ from .host import Host
 from .keymap import Binding, Command, CommandRegistry, Keymap, event_key, key_id, normalize_key
 from .scheduler import Scheduler
 from .screen import Screen, ScreenStack
-from .theme import DARK, LIGHT, Theme, ToolTheme, theme_named, theme_names
+from .theme import DARK, LIGHT, Theme, ToolTheme, scheme_named, theme_named, theme_names
 from .widget import Widget
 
 __all__ = [
@@ -56,6 +56,7 @@ __all__ = [
     "key_id",
     "normalize_key",
     "theme_named",
+    "scheme_named",
     "ToolTheme",
     "theme_names",
     "walk",

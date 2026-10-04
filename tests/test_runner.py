@@ -9,6 +9,7 @@ from zettcode.tui import (
     ColorDepth,
     Host,
     KeyEvent,
+    Terminal,
     TerminalCapabilities,
     TextEvent,
     TuiApp,
@@ -18,13 +19,20 @@ from zettcode.tui import (
 from zettcode.tui.runner import TerminalRunner, run_app
 
 
-class StubTerminal:
-    """Stand-in for a TTY that reads from a pipe and writes to a buffer."""
+class StubTerminal(Terminal):
+    """Stand-in for a TTY that reads from a pipe and writes to a buffer.
+
+    It inherits the real terminal's control sequences, so the parts that talk to
+    the terminal — asking for its background, naming its title — are exercised
+    as written instead of being faked.
+    """
 
     def __init__(self, input_fd: int, *, width: int = 40, height: int = 6) -> None:
-        self.input_fd = input_fd
-        self.output = StringIO()
-        self.capabilities = TerminalCapabilities(color_depth=ColorDepth.ANSI256, width=width, height=height)
+        super().__init__(
+            input_fd=input_fd,
+            output=StringIO(),
+            capabilities=TerminalCapabilities(color_depth=ColorDepth.ANSI256, width=width, height=height),
+        )
         self._size = (width, height)
 
     @property
@@ -216,3 +224,56 @@ async def test_shutdown_hands_the_terminal_title_back():
     finally:
         os.close(read_fd)
         os.close(write_fd)
+
+
+def test_the_runner_adopts_the_scheme_the_terminal_reports():
+    """A white terminal gets the light palette, a black one stays dark."""
+    from zettcode.tui import LIGHT, scheme_named
+    from zettcode.tui.terminal import parse_background
+
+    for reply, expected in ((b"\x1b]11;rgb:ffff/ffff/ffff\x07", LIGHT), (b"\x1b]11;rgb:0000/0000/0000\x07", None)):
+        read_fd, write_fd = os.pipe()
+        terminal = StubTerminal(read_fd)
+        app = TuiApp(Editor(), width=40, height=6, auto_theme=True)
+        runner = TerminalRunner(app, terminal=terminal)
+        try:
+            os.write(write_fd, reply)
+            runner._adopt_terminal_scheme()
+            assert terminal.output.getvalue().startswith("\x1b]11;?\x07")
+            if expected is None:
+                assert app.theme is not LIGHT  # a dark terminal keeps the palette it started with
+                assert scheme_named(parse_background(reply.decode())) == "dark"
+            else:
+                assert app.theme is expected
+        finally:
+            os.close(read_fd)
+            os.close(write_fd)
+
+
+def test_a_terminal_that_does_not_answer_keeps_the_palette():
+    read_fd, write_fd = os.pipe()
+    terminal = StubTerminal(read_fd)
+    app = TuiApp(Editor(), width=40, height=6, auto_theme=True)
+    runner = TerminalRunner(app, terminal=terminal)
+    original = app.theme
+
+    try:
+        runner._adopt_terminal_scheme()  # nothing is written to the pipe, so it times out
+
+        assert app.theme is original
+    finally:
+        os.close(read_fd)
+        os.close(write_fd)
+
+
+def test_parse_background_reads_the_two_spellings_terminals_use():
+    from zettcode.tui import parse_background, scheme_named
+
+    assert parse_background("\x1b]11;rgb:1e1e/1e1e/1e1e\x1b\\") == "#1e1e1e"  # iTerm2, four digits
+    assert parse_background("\x1b]11;rgb:ff/ff/ff\x07") == "#ffffff"  # xterm, two digits
+    assert parse_background("") is None
+    assert parse_background("\x1b]11;?\x07") is None
+
+    assert scheme_named("#f7f8f7") == "light"
+    assert scheme_named("#101214") == "dark"
+    assert scheme_named(None) is None

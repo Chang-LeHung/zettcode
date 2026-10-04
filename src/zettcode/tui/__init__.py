@@ -35,6 +35,7 @@ from .core import (
     event_key,
     key_id,
     normalize_key,
+    scheme_named,
     theme_named,
     theme_names,
     walk,
@@ -58,7 +59,7 @@ from .layout import (
 )
 from .render import Canvas, ColorDepth, DifferentialRenderer, Span, Style, TextLine
 from .runner import TerminalRunner, run_app
-from .terminal import Terminal, title_sequence
+from .terminal import Terminal, parse_background, title_sequence
 from .theme_file import EXAMPLE, ThemeFileError, load_theme, theme_from_toml
 from .widgets import (
     Collapsible,
@@ -188,6 +189,8 @@ __all__ = [
     "run_app",
     "theme_named",
     "title_sequence",
+    "scheme_named",
+    "parse_background",
     "ToolTheme",
     "theme_names",
     "theme_from_toml",

@@ -56,6 +56,7 @@ import pyperclip
 
 from .core.app import TuiApp
 from .core.events import ResizeEvent
+from .core.theme import scheme_named, theme_named
 from .input import AsyncInput, InputEvent, translate
 from .render import DifferentialRenderer
 from .terminal import Terminal, title_sequence
@@ -89,6 +90,9 @@ class TerminalRunner:
         with self.terminal:
             app.resize(*self.terminal.size)
             app.set_copy_handler(clipboard_writer(self.terminal))
+            # Before the reader owns the descriptor: the answer to the query
+            # arrives on the same side the keys do.
+            self._adopt_terminal_scheme()
             self.reader = AsyncInput(self.terminal, self.queue.put_nowait)
             self.reader.start()
             app.mount()
@@ -121,6 +125,21 @@ class TerminalRunner:
         canvas = self.app.render()
         cursor = self.app.cursor()
         self.renderer.render(canvas, cursor=None if cursor is None else (cursor.x, cursor.y))
+
+    def _adopt_terminal_scheme(self) -> None:
+        """Take the palette the terminal's own background asks for, when allowed.
+
+        A terminal that does not answer leaves the app on the palette it was
+        built with, which is why this is a best-effort step rather than a
+        requirement.
+        """
+        if not self.app.auto_theme:
+            return
+        scheme = scheme_named(self.terminal.background())
+        if scheme is None:
+            return
+        self.app.theme = theme_named(scheme)
+        self.renderer.reset()
 
     def _sync_title(self) -> None:
         """Name the terminal window after what the app is working on.
