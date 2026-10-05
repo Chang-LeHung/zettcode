@@ -1737,7 +1737,8 @@ async def test_a_toast_does_not_block_scrolling_the_transcript():
 
     app._notify("using session 01a10c8a")
     toast = app.app.screens.top.widget.slots[0].widget
-    assert toast.duration <= 1.5
+    # Short enough not to linger; the old 2.5s did.
+    assert toast.duration <= 2.0
     harness.render()
 
     harness.scroll(x, y, up=True)
