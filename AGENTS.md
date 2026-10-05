@@ -22,9 +22,13 @@
 ## Tooling
 
 - Python 3.14+ and `uv` for dependency management; Ruff for formatting and
-  linting with `line-length = 120`.
-- Run `make check` (Ruff plus pytest) before handing work over, and `make smoke`
-  when packaging changes so the console script is exercised from the built wheel.
+  linting with `line-length = 120`, and mypy for the shipped code under `src`.
+- Run `make check` (Ruff, mypy, and pytest) before handing work over, and
+  `make smoke` when packaging changes so the console script is exercised from
+  the built wheel.
+- Run `make hooks` once per checkout: the installed pre-commit hook runs mypy
+  and refuses a commit that does not type-check. Keep `make check` green rather
+  than bypassing the hook.
 - Tests must never write into the checkout or into `~/.zettcode`. Use temporary
   directories and pass them explicitly.
 - Keep the terminal layer importable off POSIX: `termios`/`tty` imports stay

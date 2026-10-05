@@ -1,0 +1,11 @@
+#!/bin/sh
+# Refuse a commit whose working tree does not type-check.
+#
+# Installed by `make hooks` into .git/hooks/pre-commit, which the user's global
+# core.hooksPath delegator runs. Only mypy runs here: it is the check that
+# catches a broken annotation or an implicit type alias, and it is fast enough
+# to sit in front of every commit. `make check` still runs lint and tests.
+set -e
+
+cd "$(git rev-parse --show-toplevel)"
+exec uv run mypy
