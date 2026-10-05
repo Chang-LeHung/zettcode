@@ -1,6 +1,6 @@
 UV ?= uv
 
-.PHONY: help install lint typecheck test build smoke check hooks demo demo-all demos demo-thinking FORCE
+.PHONY: help install lint typecheck test build smoke check hooks demo demo-all demos demo-thinking perf perf-scaling perf-store perf-profile FORCE
 
 DEMOS := text status_bar spinner progress_bar list table diff markdown textarea completion dialog collapsible toast tasks scroll layout
 
@@ -19,13 +19,17 @@ help:
 	@echo "  make demos    List the widget names"
 	@echo "  make demo-x   Print one widget preview ($(DEMOS))"
 	@echo "  make demo-thinking  Watch a live turn's running rows blink"
+	@echo "  make perf     Break one frame into stages at 200 turns"
+	@echo "  make perf-scaling   Cost per interaction against transcript size"
+	@echo "  make perf-store     Session append/read cost against log size"
+	@echo "  make perf-profile   cProfile the streaming scenario"
 
 install:
 	$(UV) sync
 
 lint:
-	$(UV) run ruff format --check src tests
-	$(UV) run ruff check src tests
+	$(UV) run ruff format --check src tests perf
+	$(UV) run ruff check src tests perf
 
 typecheck:
 	$(UV) run mypy
@@ -67,3 +71,16 @@ demo-all:
 
 demo-%: FORCE
 	$(UV) run python -m zettcode.tui.gallery $*
+
+# Performance probes; see perf/README.md for flags and methodology.
+perf:
+	$(UV) run python -m perf.frame_stages
+
+perf-scaling:
+	$(UV) run python -m perf.scaling
+
+perf-store:
+	$(UV) run python -m perf.store
+
+perf-profile:
+	$(UV) run python -m perf.profile --scenario stream
