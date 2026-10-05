@@ -38,6 +38,9 @@ build:
 
 smoke: build
 	$(UV) run --no-project --python 3.14 --with ./dist/*.whl zettcode --help
+	@# The HTML trace ships as package data: a packaging change that drops the
+	@# template, its stylesheet, or its script has to fail here, not at export time.
+	$(UV) run --no-project --python 3.14 --with ./dist/*.whl python -c "from importlib.resources import files; names = sorted(p.name for p in files('zettcode.app.agent').joinpath('trace').iterdir()); assert names == ['script.js', 'style.css', 'template.html'], names; print('trace assets:', names)"
 
 check: lint typecheck test
 

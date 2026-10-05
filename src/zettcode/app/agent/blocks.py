@@ -203,14 +203,16 @@ class ThinkingProcessor(EntryProcessor[ThinkingEntry]):
 
     def lines(self, entry: ThinkingEntry, width: int, theme: Theme, frame: int) -> list[TextLine]:
         """Show the heading, plus the indented body when expanded."""
-        timing = duration_text(entry.duration) if entry.duration is not None else "working"
-        label = f"{entry.title}  {timing}"
         header = Style(foreground=theme.accent_bright)
         if entry.status is EntryStatus.RUNNING:
-            heading = _running_label(label, theme, frame)
+            timing = duration_text(entry.duration) if entry.duration is not None else "working"
+            heading = _running_label(f"{entry.title}  {timing}", theme, frame)
         else:
+            # A finished row whose duration was never recorded says nothing about
+            # time; calling it "working" would claim a run that has already ended.
+            timing = f"  {duration_text(entry.duration)}" if entry.duration is not None else ""
             marker = EXPANDED if entry.expanded else MARKER
-            heading = (Span(f"{marker} ", header), Span(label, header))
+            heading = (Span(f"{marker} ", header), Span(f"{entry.title}{timing}", header))
         lines = [TextLine(), layout_rich_lines((TextLine(heading),), width, wrap=False)[0]]
         if entry.expanded:
             waiting = "summary" if entry.title == COMPACTING_LABEL else "reasoning"

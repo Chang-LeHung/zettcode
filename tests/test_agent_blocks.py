@@ -144,6 +144,18 @@ def test_a_compaction_row_carries_its_own_label_and_sweep():
     assert brightness(5) != brightness(9)
 
 
+def test_a_finished_row_without_a_recorded_duration_claims_no_time():
+    """A restored row that lost its timing dropped the clock, not the run."""
+    done = ThinkingEntry(id=1, title="Thinking", text="checked it", status=EntryStatus.COMPLETED)
+    running = ThinkingEntry(id=2, title="Thinking", text="", started_at=0.0)
+
+    heading = render_entry(done, 40, DARK, 0)[1].text
+
+    assert "Thinking" in heading
+    assert "working" not in heading and "0.0 s" not in heading
+    assert "working" in render_entry(running, 40, DARK, 0)[1].text
+
+
 def test_a_failure_notice_is_painted_as_an_error():
     """A notice is a remark; one the caller marked as an error is a failure."""
     failure = TextEntry(id=1, kind="notice", text="error: MCP unavailable (docs)", level="error")
