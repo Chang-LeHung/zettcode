@@ -146,11 +146,31 @@ def test_load_config_defaults_to_the_first_model(tmp_path: Path):
 
     assert config.models[0].model == "m"
     assert config.store == (Path.home() / ".zettcode" / "sessions").resolve()
+    assert config.transcript_max_entries == 1024
     assert config.skills_enabled is True
     assert config.skill_roots == ()
     assert config.mcp_enabled is True
     assert config.mcp_config is None
     assert DEFAULT_MCP_CONFIG == (Path.home() / ".zettcode" / "mcp.json")
+
+
+def test_transcript_max_entries_comes_from_its_table(tmp_path: Path):
+    path = tmp_path / "config.toml"
+    path.write_text(
+        '[[models]]\nmodel = "m"\ntoken = "t"\n\n[transcript]\nmax_entries = 64\n',
+        encoding="utf-8",
+    )
+
+    assert load_config(tmp_path, path=path).transcript_max_entries == 64
+
+
+def test_a_non_positive_transcript_cap_is_rejected(tmp_path: Path):
+    with pytest.raises(ValueError, match="transcript_max_entries must be positive"):
+        ZettCodeConfig(
+            workspace=tmp_path,
+            models=(_model(),),
+            transcript_max_entries=0,
+        )
 
 
 def test_skill_roots_are_searched_before_the_default_directory(tmp_path: Path):
@@ -252,6 +272,14 @@ def test_load_config_requires_at_least_one_model(tmp_path: Path):
         ('[[models]]\nmodel = "m"\ntoken = "t"\n[skills]\nenabled = "yes"\n', "must be bool"),
         ('mcp = "off"\n[[models]]\nmodel = "m"\ntoken = "t"\n', "must be a table"),
         ('[[models]]\nmodel = "m"\ntoken = "t"\n[mcp]\nconfig = 7\n', "must be str"),
+        (
+            '[[models]]\nmodel = "m"\ntoken = "t"\n[transcript]\nmax_entries = true\n',
+            "transcript.max_entries'.*must be int",
+        ),
+        (
+            '[[models]]\nmodel = "m"\ntoken = "t"\n[transcript]\nmax = 64\n',
+            "Unknown config keys in the \\[transcript\\] table",
+        ),
     ],
 )
 def test_load_config_reports_configuration_errors(tmp_path: Path, text, message):

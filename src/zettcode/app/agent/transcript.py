@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from time import monotonic
 
+from ...config import DEFAULT_TRANSCRIPT_MAX_ENTRIES
 from ...tui import LineSource, TextLine
 from ...tui.render import inset_line
 from .blocks import DEFAULT_PROCESSORS, EntryProcessors
@@ -23,6 +24,15 @@ from .rows import (
     limit_output,
 )
 
+#: Smallest batch a trim drops, so the list shift and the view rebuild that
+#: follow a trim are paid once per several appends instead of per append. The
+#: real batch is a share of the cap, so a large cap trims off more at a time.
+MIN_TRIM_SLACK = 8
+
+#: Share of the cap the list may grow past before a trim: 1/32 of it. Small caps
+#: keep a proportionally small overrun, large caps trim fewer times.
+TRIM_SLACK_SHARE = 32
+
 
 class Transcript:
     """Own the conversation entries and their rendered block boundaries."""
@@ -33,6 +43,7 @@ class Transcript:
         clock: Callable[[], float] = monotonic,
         renderers: Renderers = DEFAULT_RENDERERS,
         processors: EntryProcessors = DEFAULT_PROCESSORS,
+        max_entries: int = DEFAULT_TRANSCRIPT_MAX_ENTRIES,
     ) -> None:
         """Start an empty transcript whose elapsed times come from ``clock``.
 
@@ -41,21 +52,74 @@ class Transcript:
             renderers: Chain that phrases tool rows; tests can pass their own to
                 pin the wording a row would show.
             processors: Chain that produces presentation lines for entries.
+            max_entries: Conversation entries kept for display; older ones are
+                dropped, while the session file keeps the whole tree. Must be
+                positive.
         """
+        if max_entries < 1:
+            raise ValueError("max_entries must be positive")
         self.renderers = renderers
         self.processors = processors
         self.entries: list[Entry] = []
         self.clock = clock
+        self.max_entries = max_entries
+        self._trim_threshold = max_entries + max(MIN_TRIM_SLACK, max_entries // TRIM_SLACK_SHARE)
         self.version = 0
         self.frame = 0
         self._next_id = 1
+        # Earliest entry touched since the view last took the mark, so it can
+        # re-measure only the changed suffix instead of the whole transcript.
+        self._dirty_from: int | None = None
+
+    def take_dirty(self) -> int | None:
+        """Return the earliest changed entry index and reset the mark.
+
+        A view calls this once per version and rebuilds its line boundaries
+        from that index on; everything before it is unchanged and can be kept.
+        The mark is consumed rather than merely read so a later append starts
+        from the new tail instead of the oldest edit ever made. ``None`` means
+        no precise mark is available and the caller should rebuild in full.
+        """
+        dirty = self._dirty_from
+        self._dirty_from = None
+        return dirty
+
+    def _touch(self, index: int) -> None:
+        """Record that the entry at ``index`` changed, keeping the earliest one."""
+        self._dirty_from = index if self._dirty_from is None else min(self._dirty_from, index)
+
+    def _touch_entry(self, entry: Entry) -> None:
+        """Mark one entry changed, checking the tail before searching the list."""
+        last = len(self.entries) - 1
+        if last >= 0 and self.entries[last] is entry:
+            self._touch(last)
+            return
+        index = next((index for index, item in enumerate(self.entries) if item is entry), None)
+        if index is not None:
+            self._touch(index)
 
     def _add[T: Entry](self, entry: T) -> T:
         """Append a typed entry and invalidate the transcript's line boundaries."""
         self._next_id += 1
+        self._touch(len(self.entries))
         self.entries.append(entry)
+        self._trim()
         self.version += 1
         return entry
+
+    def _trim(self) -> None:
+        """Drop the oldest entries once the display cap is well past.
+
+        Trimming from the front shifts every remaining index, so the render
+        view is told to rebuild its boundaries from zero. That rebuild is cheap
+        at an unchanged width — cached blocks only re-key — and it happens once
+        per trim batch, so the amortized cost per new entry stays flat. The
+        store keeps the full conversation; this bounds what is shown.
+        """
+        if len(self.entries) <= self._trim_threshold:
+            return
+        del self.entries[: len(self.entries) - self.max_entries]
+        self._dirty_from = 0
 
     def _last[T: Entry](self, entry_type: type[T]) -> T | None:
         """Return the newest entry of one type, or None when there is none."""
@@ -68,12 +132,15 @@ class Transcript:
     def clear(self) -> None:
         """Drop every entry, for instance when starting a new session."""
         self.entries.clear()
+        self._dirty_from = 0
         self.version += 1
 
     def replace(self, entries: list[Entry]) -> None:
         """Replace visible entries with the chosen session's rebuilt history."""
         self.entries[:] = entries
         self._next_id = max((entry.id for entry in entries), default=0) + 1
+        self._trim()
+        self._dirty_from = 0
         self.version += 1
 
     def user_message(self, text: str) -> None:
@@ -94,10 +161,11 @@ class Transcript:
 
     def finish_restored_tools(self) -> None:
         """Mark tool calls without stored results as interrupted, not running."""
-        for entry in self.entries:
+        for index, entry in enumerate(self.entries):
             if isinstance(entry, ToolEntry) and entry.status is EntryStatus.RUNNING:
                 entry.status = EntryStatus.SKIPPED
                 entry.text = "Result unavailable (session interrupted)"
+                self._touch(index)
                 self.version += 1
 
     def advance_frame(self) -> None:
@@ -107,17 +175,32 @@ class Transcript:
         :data:`ANIMATION_SECONDS`, rather than counted in terminal ticks: the
         renderers pace their sweep and blink with it, so a terminal repainting
         ten times a second and one repainting sixty times a second look the
-        same. Ticks that fall inside one step leave the counter where it is.
+        same. A tick that falls inside the step it already sits on changes
+        nothing, and says so: every version bump makes the transcript view
+        measure every entry again, so the frame rate a busy shell paints at
+        must not decide how much work that is.
         """
-        self.frame = int(self.clock() / ANIMATION_SECONDS)
-        for entry in self.entries:
-            if (
-                isinstance(entry, (ProcessingEntry, ThinkingEntry, ToolEntry))
-                and entry.status is EntryStatus.RUNNING
-                and entry.started_at is not None
-            ):
+        frame = int(self.clock() / ANIMATION_SECONDS)
+        if frame == self.frame:
+            return
+        self.frame = frame
+        changed = False
+        # Running rows are the tail: each opener appends, and a result closes
+        # the row it answers before anything new lands. Walking back from the
+        # end stops at the first settled row instead of scanning the whole
+        # transcript, whose length must not decide the animation's cost.
+        for index in range(len(self.entries) - 1, -1, -1):
+            entry = self.entries[index]
+            if not isinstance(entry, (ProcessingEntry, ThinkingEntry, ToolEntry)):
+                break
+            if entry.status is not EntryStatus.RUNNING:
+                break
+            if entry.started_at is not None:
                 entry.duration = self.clock() - entry.started_at
-        self.version += 1
+            self._touch(index)
+            changed = True
+        if changed:
+            self.version += 1
 
     def notice(self, text: str) -> None:
         """Append a muted one-off status line."""
@@ -186,7 +269,9 @@ class Transcript:
         if pending is not None:
             # The placeholder turned out to be reasoning: replace the same row,
             # retaining its id and position for hit-testing and focus.
-            self.entries[self.entries.index(pending)] = thinking
+            index = self.entries.index(pending)
+            self.entries[index] = thinking
+            self._touch(index)
             self.version += 1
             return thinking
         return self._add(thinking)
@@ -209,7 +294,9 @@ class Transcript:
             started_at=self.clock(),
         )
         if pending is not None:
-            self.entries[self.entries.index(pending)] = row
+            index = self.entries.index(pending)
+            self.entries[index] = row
+            self._touch(index)
             self.version += 1
             return row
         return self._add(row)
@@ -218,6 +305,7 @@ class Transcript:
         """Append one summary fragment to the running compaction row."""
         row = self.start_compaction()
         row.text += delta
+        self._touch_entry(row)
         self.version += 1
 
     def complete_compaction(self) -> None:
@@ -228,11 +316,13 @@ class Transcript:
         row.status = EntryStatus.COMPLETED
         if row.started_at is not None:
             row.duration = self.clock() - row.started_at
+        self._touch_entry(row)
         self.version += 1
 
     def drop_pending(self) -> bool:
         """Remove the placeholder once real output has started."""
         if self.entries and isinstance(self.entries[-1], ProcessingEntry):
+            self._touch(len(self.entries) - 1)
             self.entries.pop()
             self.version += 1
             return True
@@ -242,6 +332,7 @@ class Transcript:
         """Append a reasoning delta to the running thinking block."""
         entry = self.start_thinking()
         entry.text += self.renderers.text(THINKING, delta, opening=not entry.text)
+        self._touch_entry(entry)
         self.version += 1
 
     def complete_thinking(self) -> None:
@@ -253,6 +344,7 @@ class Transcript:
         entry.status = EntryStatus.COMPLETED
         if entry.started_at is not None:
             entry.duration = self.clock() - entry.started_at
+        self._touch_entry(entry)
         self.version += 1
 
     def append_answer(self, delta: str) -> None:
@@ -265,6 +357,7 @@ class Transcript:
         delta = self.renderers.text(ANSWER, delta, opening=not current.text)
         current.markdown.append(delta)
         current.text += delta
+        self._touch_entry(current)
         self.version += 1
 
     def start_tool(self, call_id: str, name: str, arguments: Mapping[str, object]) -> None:
@@ -310,6 +403,7 @@ class Transcript:
         entry.status = outcome
         if entry.started_at is not None:
             entry.duration = self.clock() - entry.started_at
+        self._touch_entry(entry)
         self.version += 1
         # The loop calls the model again once the batch has produced its
         # results, so the reader is told that work continues.
@@ -329,6 +423,7 @@ class Transcript:
         if isinstance(entry, ToolEntry) and (entry.status is EntryStatus.RUNNING or not entry.text):
             return False
         entry.expanded = not entry.expanded
+        self._touch_entry(entry)
         self.version += 1
         return True
 
@@ -338,6 +433,7 @@ class Transcript:
         if entry is None:
             return False
         entry.expanded = not entry.expanded
+        self._touch_entry(entry)
         self.version += 1
         return True
 
@@ -348,9 +444,10 @@ class Transcript:
             entry_id: Block to leave expanded, or ``None`` to collapse them all.
         """
         changed = False
-        for entry in self.entries:
+        for index, entry in enumerate(self.entries):
             if isinstance(entry, ThinkingEntry) and entry.expanded and entry.id != entry_id:
                 entry.expanded = False
+                self._touch(index)
                 changed = True
         if changed:
             self.version += 1

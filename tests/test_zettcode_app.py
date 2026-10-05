@@ -161,6 +161,7 @@ class FakeConfig:
     )
     reduced_motion: bool = False
     compaction_max_tokens: int = 128_000
+    transcript_max_entries: int = 1024
     plugins_enabled: bool = True
     disabled_plugins: tuple[str, ...] = ()
 
@@ -557,6 +558,9 @@ def test_a_running_wording_carries_a_travelling_highlight(thinking, needle, labe
 
 def test_the_blink_demo_keeps_frames_coming_and_advances_the_blink():
     transcript = Transcript(clock=lambda: 12.34)
+    # A running row is what the blink belongs to; without one the frame may
+    # still advance but nothing needs repainting, so the version stays put.
+    transcript.begin_turn("prompt")
     app = demo.build(transcript)
     root = app.screens.top.widget
 

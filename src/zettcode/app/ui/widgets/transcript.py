@@ -58,6 +58,7 @@ class TranscriptSource(LineSource):
         self._starts: list[int] = []
         self._blocks: list[LineSource] = []
         self._count = 0
+        self._entry_count = 0
 
     def count(self, width: int) -> int:
         """Return how many terminal lines the transcript occupies at ``width``."""
@@ -83,7 +84,13 @@ class TranscriptSource(LineSource):
         return self.transcript.entries[position]
 
     def _sync(self, width: int) -> None:
-        """Rebuild the block boundaries when the width or the transcript changed."""
+        """Rebuild the block boundaries when the width or the transcript changed.
+
+        Only the entries the model marked dirty are re-measured. Streaming one
+        answer dirties a single index, so a token lands in O(1) work instead of
+        re-walking every entry ever written; a width, theme, or processor change
+        still rebuilds the whole list because it invalidates every block.
+        """
         if (
             width == self._width
             and self.transcript.version == self._version
@@ -91,22 +98,35 @@ class TranscriptSource(LineSource):
             and self._processors is self.transcript.processors
         ):
             return
+        entries = self.transcript.entries
+        rebuild_all = (
+            width != self._width or self._theme != self.theme or self._processors is not self.transcript.processors
+        )
+        dirty = None if rebuild_all else self.transcript.take_dirty()
+        if dirty is None:
+            start = 0
+        else:
+            start = min(dirty, self._entry_count, len(entries))
         self._width = width
         self._version = self.transcript.version
         self._theme = self.theme
         self._processors = self.transcript.processors
         frame = self.frame()
-        starts: list[int] = []
-        blocks: list[LineSource] = []
-        total = 0
-        for entry in self.transcript.entries:
-            starts.append(total)
+        if start == 0:
+            self._starts = []
+            self._blocks = []
+            total = 0
+        else:
+            total = self._starts[start] if start < len(self._starts) else self._count
+            del self._starts[start:]
+            del self._blocks[start:]
+        for entry in entries[start:]:
+            self._starts.append(total)
             block = entry.block_for(width, self.theme, frame, processors=self.transcript.processors)
-            blocks.append(block)
+            self._blocks.append(block)
             total += block.count(width)
-        self._starts = starts
-        self._blocks = blocks
         self._count = total
+        self._entry_count = len(entries)
 
 
 class TranscriptView(ScrollView):

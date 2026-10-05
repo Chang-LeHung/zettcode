@@ -161,6 +161,11 @@ class TuiApp(Host):
         self._layout_dirty = True
         self.scheduler.request_repaint()
 
+    @property
+    def layout_pending(self) -> bool:
+        """Return whether the next frame must re-measure the widget tree."""
+        return self._layout_dirty
+
     def copy(self, text: str) -> None:
         """Store text on the clipboard and mirror it to the copy handler.
 

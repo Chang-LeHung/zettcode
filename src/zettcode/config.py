@@ -2,8 +2,9 @@
 
 ``~/.zettcode/config.toml`` (or ``$ZETTCODE_CONFIG``) lists OpenAI-compatible
 models. The first model is active at startup; ``/model`` selects another for
-later requests. The same file says where skills live and which MCP server file
-to read, and session storage and other runtime settings keep code defaults.
+later requests. The same file says where skills live, which MCP server file to
+read, and how much transcript to keep on screen; session storage and other
+runtime settings keep code defaults.
 """
 
 from __future__ import annotations
@@ -33,12 +34,15 @@ DEFAULT_MCP_CONFIG = Path.home() / ".zettcode" / "mcp.json"
 DEFAULT_LOG = Path.home() / ".zettcode" / "log" / "tui.log"
 
 #: Top-level keys the config file may set; anything else is a typo.
-CONFIGURABLE = frozenset({"models", "skills", "mcp", "plugins"})
+CONFIGURABLE = frozenset({"models", "transcript", "skills", "mcp", "plugins"})
 
 #: Keys one ``[[models]]`` entry may set.
 MODEL_KEYS = frozenset(
     {"model", "display_model", "token", "base_url", "responses_api", "multimodal", "context_window", "compact_percent"}
 )
+
+#: Keys the ``[transcript]`` table may set.
+TRANSCRIPT_KEYS = frozenset({"max_entries"})
 
 #: Keys the ``[skills]`` table may set.
 SKILL_KEYS = frozenset({"enabled", "roots"})
@@ -59,6 +63,10 @@ DEFAULT_SKILL_ROOT = "~/.zettcode/skills"
 DEFAULT_CONTEXT_WINDOW = 128_000
 DEFAULT_COMPACT_PERCENT = 80.0
 KEEP_SHARE = 4
+
+#: Conversation entries kept on screen before the oldest are dropped. The
+#: session file keeps the whole tree, so this bounds scrollback, not history.
+DEFAULT_TRANSCRIPT_MAX_ENTRIES = 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,6 +139,9 @@ class ZettCodeConfig:
         reduced_motion: Suppress decorative animation.
         parallel_tool_call: Let the agent issue tool calls in parallel.
         max_iterations: Tool-call rounds allowed in one turn.
+        transcript_max_entries: Conversation entries the shell keeps on screen;
+            older ones are dropped from the display while the session file
+            keeps the whole tree.
         skills_enabled: Discover local skills and advertise them to the model.
         skill_roots: Extra skill directories, searched before
             ``~/.zettcode/skills``; a relative entry is resolved against the
@@ -156,6 +167,7 @@ class ZettCodeConfig:
     reduced_motion: bool = False
     parallel_tool_call: bool = True
     max_iterations: int = 360
+    transcript_max_entries: int = DEFAULT_TRANSCRIPT_MAX_ENTRIES
     skills_enabled: bool = True
     skill_roots: tuple[Path, ...] = ()
     mcp_enabled: bool = True
@@ -173,6 +185,8 @@ class ZettCodeConfig:
             raise ValueError("At least one model must be configured")
         if self.max_iterations < 1:
             raise ValueError("max_iterations must be positive")
+        if self.transcript_max_entries < 1:
+            raise ValueError("transcript_max_entries must be positive")
         object.__setattr__(self, "workspace", workspace)
         object.__setattr__(self, "store", store)
         object.__setattr__(
@@ -359,12 +373,18 @@ def load_config(
     skills = _read_table(data.get("skills"), "skills", source, SKILL_KEYS)
     mcp = _read_table(data.get("mcp"), "mcp", source, MCP_KEYS)
     plugins = _read_table(data.get("plugins"), "plugins", source, PLUGIN_KEYS)
+    transcript = _read_table(data.get("transcript"), "transcript", source, TRANSCRIPT_KEYS)
 
     return ZettCodeConfig(
         workspace=Path(workspace),
         models=_read_models(data.get("models"), source),
         theme_file=_default_theme_file(),
         reduced_motion=reduced_motion_default,
+        transcript_max_entries=_typed(
+            transcript.get("max_entries", DEFAULT_TRANSCRIPT_MAX_ENTRIES),
+            f"Config key 'transcript.max_entries' in {source}",
+            int,
+        ),
         skills_enabled=bool(_setting(skills, "enabled", bool, True)),
         skill_roots=_read_skill_roots(skills.get("roots"), source),
         mcp_enabled=bool(_setting(mcp, "enabled", bool, True)),
