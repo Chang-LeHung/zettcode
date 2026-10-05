@@ -161,7 +161,7 @@ class TranscriptView(ScrollView):
 
         The badge is anchored to the bottom-right corner with the same two-cell
         margin the header, the status bar, and the composer keep, so it lines up
-        with the rest of the chrome instead of touching the frame.
+        with the rest of the frame instead of the edge.
         """
         if not self.scrolled_up or self.rect.empty:
             return None

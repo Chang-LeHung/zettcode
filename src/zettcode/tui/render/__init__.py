@@ -16,6 +16,7 @@ from .text import (
     expand_tabs,
     slice_columns,
     truncate,
+    truncate_spans,
     wrap_columns,
     wrap_spans,
 )
@@ -56,6 +57,7 @@ __all__ = [
     "slice_columns",
     "sweep_spans",
     "truncate",
+    "truncate_spans",
     "wrap_columns",
     "wrap_spans",
 ]

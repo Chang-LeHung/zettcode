@@ -10,20 +10,18 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Sequence
 from contextlib import aclosing
-from pathlib import Path
 from time import monotonic
 from typing import TYPE_CHECKING, cast
 
 from zett_agent.events import AgentEvent
 
 from ...config import DEFAULT_LOG, ModelConfig
+from ...plugins import ActivityState, DisplayState, ModelState, SessionState, ShellContext, UiRegion, UiRow, UiSide
 from ...tui import (
     DARK,
     ELLIPSIS,
-    HEADER,
     PROMPT,
     SEPARATOR,
-    STATUS,
     Anchor,
     AnyEvent,
     CompletionPopup,
@@ -31,8 +29,11 @@ from ...tui import (
     Overlay,
     OverlaySlot,
     Screen,
+    Span,
     StatusBar,
+    Style,
     TaskPanel,
+    TextLine,
     Theme,
     Toast,
     TuiApp,
@@ -40,18 +41,16 @@ from ...tui import (
     theme_named,
 )
 from ...tui.layout import Slot
-from ...tui.render import display_width
 from ...tui.widgets import Rule, Text
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from collections.abc import AsyncGenerator
-
 from ..agent.agent import UNTITLED_SESSION, PromptPart, ZettCodeAgent
 from ..agent.projection import TranscriptProjector
-from ..agent.rows import activity_glyph, clock_text, elapsed_text
+from ..agent.rows import clock_text, elapsed_text
 from ..agent.runtime import describe_error
 from ..agent.transcript import Transcript
-from ..agent.usage import UsageSnapshot, usage_text
+from ..agent.usage import UsageSnapshot
 from ..commands import CommandResult
 from .clipboard import read_image
 from .commands import ShellCommands
@@ -89,15 +88,18 @@ class ZettCodeApp:
                 passes ``False``, because then the palette was a choice.
         """
         self.agent = agent
+        self._plugin_rows: tuple[UiRow, ...] = agent.plugin_rows
         self.transcript = Transcript()
         self.transcript.welcome(WELCOME)
+        for failure in agent.plugin_failures:
+            self.transcript.error(f"plugin: {failure}")
         self.projector = TranscriptProjector(
             self.transcript,
             on_approval=self._approval_requested,
             on_usage=self._usage_updated,
         )
         self.agent.set_event_dispatcher(self.projector)
-        self.commands = ShellCommands(self).build(agent.commands)
+        self.commands = ShellCommands(self).build(agent.commands, agent.plugin_commands)
 
         self.view = TranscriptView(self.transcript, theme=theme)
         self.composer = Composer(
@@ -667,62 +669,95 @@ class ZettCodeApp:
         overlay = Overlay([OverlaySlot(toast, Anchor(horizontal="end", vertical="end", offset_x=-1, offset_y=-1))])
         self.app.push_screen(Screen(overlay, name="toast"))
 
-    # -- chrome -------------------------------------------------------------
+    # -- rows ---------------------------------------------------------------
     def _terminal_title(self) -> str:
         """Return what the terminal's window or tab should say this is."""
         return self._session_title or f"zettcode {SEPARATOR} {self.agent.workspace.name}"
 
-    def _header_left(self) -> str:
-        """Label the app and the workspace it is running in."""
-        return f"  {HEADER} zettcode  {compact_path(self.agent.workspace)}"
+    def _header_left(self) -> TextLine:
+        """Return the header's left side, whatever the plugins put there."""
+        return self._side("header", "left")
 
-    def _header_right(self) -> str:
-        """Show the model and the reasoning effort the next request will use."""
-        return f"{self.agent.active_model.shown_name} {SEPARATOR} {self.agent.effort}  "
+    def _header_right(self) -> TextLine:
+        """Return the header's right side, whatever the plugins put there."""
+        return self._side("header", "right")
 
-    def _status_left(self) -> str:
-        """Show the activity glyph, status word, mode, session title, and token use."""
-        icon = activity_glyph(self.transcript.frame) if self._busy else STATUS
-        # The mode sits before the title because the right-hand hint wins
-        # the space fight, truncating the tail of this segment.
-        mode = f" {SEPARATOR} auto" if self._auto_shell else ""
-        title = f"  {self._session_title or UNTITLED_SESSION}"
-        return f"  {icon} {self._status}{mode}{title}{usage_text(self._usage)}"
+    def _status_left(self) -> TextLine:
+        """Return the status line's left side, whatever the plugins put there."""
+        return self._side("status", "left")
 
-    def _status_right(self) -> str:
-        """List the keys worth remembering while the composer has focus."""
-        return "  ^C stop  ^T thinking  ^D exit  "
+    def _status_right(self) -> TextLine:
+        """Return the status line's right side, whatever the plugins put there."""
+        return self._side("status", "right")
+
+    def _side(self, region: UiRegion, side: UiSide) -> TextLine:
+        """Paint one side of one row from the segments the plugins registered.
+
+        The shell owns only this loop: the builtin rows are a plugin like any
+        other, and a plugin that overrode one of its slots already sits in its
+        place. A segment that returns nothing is skipped, one that raises is
+        dropped for that frame only, and one that returns ``(line, True)`` takes
+        the side over — the segments painted before it are dropped.
+        """
+        row = next((row for row in self._plugin_rows if row.region == region), None)
+        segments = () if row is None else (row.left if side == "left" else row.right)
+        style = Style(foreground=self.app.theme.muted)
+        spans: list[Span] = []
+        context: ShellContext | None = None
+        for segment in segments:
+            if context is None:
+                context = self._shell_context()
+            try:
+                value = segment.builder(context)
+            except Exception:
+                continue
+            overrides = False
+            if isinstance(value, tuple):
+                value, overrides = value
+            line = value if isinstance(value, TextLine) else TextLine((Span(str(value)),)) if value else None
+            if overrides:
+                spans.clear()
+            if line is None or not line.width:
+                continue
+            if spans:
+                spans.append(Span(f" {SEPARATOR} ", style))
+            spans.extend(line.spans)
+        return TextLine(tuple(spans))
+
+    def _shell_context(self) -> ShellContext:
+        """Snapshot what a plugin's segment builder reads, rebuilt for one paint."""
+        return ShellContext(
+            config=self.agent.runtime.config,
+            session=SessionState(
+                id=self.agent.session_id,
+                title=self._session_title,
+                name=self._session_title or UNTITLED_SESSION,
+                workspace=self.agent.workspace,
+            ),
+            model=ModelState(
+                config=self.agent.active_model,
+                name=self.agent.active_model.shown_name,
+                effort=self.agent.effort,
+                efforts=self.agent.efforts,
+            ),
+            activity=ActivityState(
+                busy=self._busy,
+                status=self._status,
+                auto_shell=self._auto_shell,
+                usage=self._usage,
+                tasks=self.agent.tasks(),
+                frame=self.transcript.frame,
+            ),
+            display=DisplayState(
+                theme=self.app.theme,
+                width=self.app.width,
+                height=self.app.height,
+                screen=self.app.screens.top.name,
+                scrolled_up=self.view.scrolled_up,
+            ),
+        )
 
 
 def carries_image(parts: Sequence[PromptPart]) -> bool:
     """Return whether one turn holds an image beside its text."""
     return any(not isinstance(part, str) for part in parts)
-
-
-def compact_path(path: Path, *, limit: int = 38) -> str:
-    """Shorten a workspace path for the header.
-
-    Args:
-        path: Absolute path to display.
-        limit: Most columns to keep; the home directory collapses to ``~``, and
-            anything longer keeps a leading ellipsis plus its tail. The budget
-            counts display columns, so a path with wide characters is measured
-            the way the header draws it.
-    """
-    value = str(path)
-    home = str(Path.home())
-    if value == home or value.startswith(home + "/"):
-        value = "~" + value[len(home) :]
-    width = display_width(value)
-    if width <= limit:
-        return value
-    # Count the tail from the end so a wide glyph is dropped whole rather than
-    # overhanging the budget, which the ellipsis also has to fit inside.
-    budget = limit - 1
-    tail = ""
-    for character in reversed(value):
-        if display_width(character) > budget:
-            break
-        tail = character + tail
-        budget -= display_width(character)
-    return ELLIPSIS + tail

@@ -72,6 +72,40 @@ def truncate(text: str, width: int, *, ellipsis: str = ELLIPSIS) -> str:
     return slice_columns(text, 0, width - display_width(suffix)) + suffix
 
 
+def truncate_spans(spans: Sequence[Span], width: int) -> tuple[Span, ...]:
+    """Clamp styled fragments to a column budget, marking overflow with an ellipsis.
+
+    The styles travel with the characters they were attached to, so a clipped
+    line keeps every colour it had up to the cut and the ellipsis wears the last
+    surviving style.
+
+    Args:
+        spans: Fragments in paint order.
+        width: Column budget; the ellipsis is carved out of it.
+    """
+    if width <= 0:
+        return ()
+    if sum(span.width for span in spans) <= width:
+        return tuple(spans)
+    remaining = max(0, width - 1)
+    clipped: list[Span] = []
+    for span in spans:
+        text = ""
+        for character in span.text:
+            size = character_width(character)
+            if size > remaining:
+                break
+            text += character
+            remaining -= size
+        if text:
+            clipped.append(Span(text, span.style))
+        if remaining == 0 or len(text) < len(span.text):
+            break
+    style = clipped[-1].style if clipped else spans[0].style if spans else Style()
+    clipped.append(Span(ELLIPSIS, style))
+    return tuple(clipped)
+
+
 def wrap_columns(text: str, width: int) -> list[str]:
     """Hard-wrap one logical line at a column budget, never mid-character.
 

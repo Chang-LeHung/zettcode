@@ -23,7 +23,7 @@ class ListPage(Widget):
             row two
         enter select \u00b7 esc back                 <- footer, on the bottom row
 
-    The page owns the chrome so a caller only maps data to rows: it fills its
+    The page owns the frame so a caller only maps data to rows: it fills its
     rectangle with ``surface_alt`` so whatever is underneath cannot show
     through, bounds the list to ``visible_rows``, and turns Escape into
     ``on_cancel`` before the list can consume the key. It composes

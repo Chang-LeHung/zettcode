@@ -124,7 +124,7 @@ def code_spans(line: str, language: str, theme: Theme) -> list[Span]:
 def rule_spans(width: int, theme: Theme) -> tuple[Span, ...]:
     """Return one horizontal rule across ``width`` cells.
 
-    A rule is chrome, but it has to stay readable: ``muted`` draws it clearly
+    A rule is decoration, but it has to stay readable: ``muted`` draws it clearly
     while still holding it below the body text, which is what a rule is for.
     """
     return (Span(RULE * max(1, width), Style(foreground=theme.muted)),)

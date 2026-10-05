@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 from zett_agent.agent import AgentRunConfig, AgentRunContext, AgentState
 from zett_agent.events import AgentEvent, AgentEventType
+from zett_agent.extensions.compaction import CompactedMessage
 from zett_agent.extensions.events import MessageTiming
 from zett_agent.extensions.shell_approval import SHELL_APPROVAL_EVENT_NAME
 from zett_agent.extensions.todo import TodoItem, TodoStatus, TodoWriteResult
@@ -35,6 +36,7 @@ from zettcode.app.agent.rows import (
     SWEEP_FRAMES,
     activity_glyph,
     clock_text,
+    compact_path,
     duration_text,
     elapsed_text,
     sweep_step,
@@ -45,7 +47,6 @@ from zettcode.app.agent.usage import USAGE_EVENT_NAME, UsageExtension, UsageSnap
 from zettcode.app.commands import Command, CommandResult
 from zettcode.app.ui import app as app_module
 from zettcode.app.ui import demo
-from zettcode.app.ui.app import compact_path
 from zettcode.app.ui.widgets import (
     WELCOME,
     ApprovalChoice,
@@ -54,9 +55,11 @@ from zettcode.app.ui.widgets import (
     SessionsPage,
     bottom_panel,
     format_ago,
+    help_text,
 )
 from zettcode.config import ModelConfig
-from zettcode.tui import DARK, LIGHT, Canvas, ListItem, ListPage, Rect, Text, walk
+from zettcode.plugins import BUILTIN_PLUGINS, PluginContainer, Plugins, ShellContext, UiBuilder
+from zettcode.tui import DARK, LIGHT, Canvas, ListItem, ListPage, Rect, Span, Style, Text, TextLine, walk
 from zettcode.tui.render import display_width
 from zettcode.tui.testing import Harness, render_block
 
@@ -158,6 +161,8 @@ class FakeConfig:
     )
     reduced_motion: bool = False
     compaction_max_tokens: int = 128_000
+    plugins_enabled: bool = True
+    disabled_plugins: tuple[str, ...] = ()
 
 
 @dataclass
@@ -172,6 +177,7 @@ class FakeRuntime:
     # A zero deadline keeps the fake offline: the estimate stands in for tiktoken.
     tokenizer: Tokenizer = field(default_factory=lambda: Tokenizer(deadline=0.0))
     config: FakeConfig = field(default_factory=FakeConfig)
+    plugins: Plugins = field(default_factory=Plugins)
     active_model: ModelConfig = field(init=False)
     model: object = field(init=False)
     auto_approved: bool = field(default=False, init=False)
@@ -234,8 +240,40 @@ class FakeRuntime:
         return self.effort
 
 
-def build_app(events: list[AgentEvent] | None = None, *, block: bool = False) -> ZettCodeApp:
-    app = ZettCodeApp(ZettCodeAgent(FakeRuntime(FakeClient(events, block=block))))
+def rows_and_commands(
+    *,
+    extra: tuple[tuple[str, str, UiBuilder], ...] = (),
+    override: tuple[tuple[str, str, str, UiBuilder], ...] = (),
+    commands: tuple[Command, ...] = (),
+    failures: tuple[str, ...] = (),
+) -> Plugins:
+    """The shell's builtin rows plus the segments and commands one test adds.
+
+    ``extra`` appends a segment to a side; ``override`` registers under a name
+    the builtin already uses, which replaces it in place — the same merge the
+    loader performs when a plugin loads after the builtins.
+    """
+    container = PluginContainer(FakeConfig())
+    for plugin in BUILTIN_PLUGINS:
+        plugin.activate(container)
+        for region, side, name, builder in plugin.ui_slots():
+            container.slots.add(region, side, name, builder)
+    for region, side, builder in extra:
+        getattr(container, f"register_{region}_{side}")(builder)
+    for region, side, name, builder in override:
+        container.slots.add(region, side, name, builder)
+    return Plugins(commands=commands, rows=container.rows, failures=failures)
+
+
+def build_app(
+    events: list[AgentEvent] | None = None,
+    *,
+    block: bool = False,
+    plugins: Plugins | None = None,
+) -> ZettCodeApp:
+    app = ZettCodeApp(
+        ZettCodeAgent(FakeRuntime(FakeClient(events, block=block), plugins=plugins or rows_and_commands()))
+    )
     app.app.resize(60, 14)
     app.app.mount()
     return app
@@ -599,6 +637,114 @@ async def test_the_runtime_starts_with_the_first_turn_not_before():
     assert runtime.start_calls == 1
 
 
+async def test_plugin_commands_join_the_shell_and_run():
+    """A command a plugin registered is offered last and handled like any other."""
+
+    async def greet(argument: str) -> CommandResult:
+        return CommandResult(notification=f"hello {argument}".strip())
+
+    plugins = rows_and_commands(commands=(Command("/greet", "say hello", "plugin", greet),))
+    app = build_app(plugins=plugins)
+    harness = _harness(app)
+
+    assert app.commands[-1].name == "/greet"
+    assert "- `/greet` — say hello (`plugin`)" in help_text(app.commands)
+
+    harness.write("/greet world")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    assert "hello world" in harness.render().text
+
+
+async def test_plugin_load_failures_are_shown_at_startup():
+    """A plugin that cannot load is reported instead of disappearing silently."""
+    app = build_app(plugins=rows_and_commands(failures=("greeter: bad config",)))
+
+    assert any(entry.text == "plugin: greeter: bad config" for entry in app.transcript.entries)
+
+
+async def test_plugin_segments_join_the_header_and_status_rows():
+    """A segment is drawn where it asked to be, and reads the current state."""
+    seen: list[ShellContext] = []
+
+    def header(context: ShellContext) -> str:
+        seen.append(context)
+        return "plug-header"
+
+    def status(context: ShellContext) -> TextLine:
+        muted = Style(foreground=context.display.theme.muted, bold=True)
+        return TextLine((Span("plug-status", muted),))
+
+    plugins = rows_and_commands(extra=(("header", "right", header), ("status", "right", status)))
+    app = build_app(plugins=plugins)
+    text = _harness(app).render().text
+    status_line = app._status_right().text
+
+    assert "plug-header" in text
+    # A plugin segment follows the built-in content of its row.
+    assert text.index("gpt-5-mini") < text.index("plug-header")
+    assert status_line.index("^C stop") < status_line.index("plug-status")
+    context = seen[0]
+    assert context.model.name == "gpt-5-mini" and context.model.config.model == "gpt-5-mini"
+    assert context.session.workspace == app.agent.workspace
+    assert context.session.name == "New session" and context.session.title is None
+    assert context.display.theme is app.app.theme
+    assert context.model.efforts and context.model.effort in context.model.efforts
+    assert context.activity.auto_shell is False and context.activity.busy is False
+    assert context.activity.status == "ready" and context.activity.tasks == ()
+    assert context.display.scrolled_up is False
+    assert (context.display.width, context.display.height) == (60, 14)
+    assert context.display.screen == "main"
+    assert context.config is app.agent.runtime.config
+
+
+async def test_a_broken_plugin_segment_only_drops_itself():
+    """A builder that raises loses its own segment, not the frame."""
+
+    def boom(context: ShellContext) -> str:
+        raise RuntimeError("nope")
+
+    plugins = rows_and_commands(extra=(("status", "right", boom), ("status", "right", lambda context: "still here")))
+    app = build_app(plugins=plugins)
+
+    assert "still here" in _harness(app).render().text
+
+
+async def test_a_segment_that_returns_nothing_leaves_the_row_untouched():
+    """None or an empty string draws no separator either."""
+    plugins = rows_and_commands(extra=(("header", "right", lambda context: None),))
+    decorated = build_app(plugins=plugins)._header_left()
+    plain = build_app()._header_left()
+
+    assert decorated.text == plain.text
+    assert decorated.spans == plain.spans
+
+
+async def test_a_plugin_can_take_a_builtin_row_side_over():
+    """Registering under the builtin's slot name replaces it, side by side."""
+    plugins = rows_and_commands(override=(("status", "left", "status_left", lambda context: "mine"),))
+    app = build_app(plugins=plugins)
+
+    assert app._status_left().text == "mine"
+    # The slots it did not touch keep their builtin content.
+    assert "gpt-5-mini" in app._header_right().text
+    assert "^C stop" in app._status_right().text
+
+
+async def test_a_declared_builder_can_take_the_side_over():
+    """Returning ``(line, True)`` drops what the segments before it painted."""
+
+    def drawn(context: ShellContext) -> tuple[str, bool]:
+        return "mine", True
+
+    plugins = rows_and_commands(extra=(("status", "left", drawn), ("status", "left", lambda context: "beside")))
+    app = build_app(plugins=plugins)
+
+    assert app._status_left().text == "mine · beside"
+    assert "New session" not in app._status_left().text  # the builtin segment went away
+
+
 async def test_the_compact_command_compacts_now():
     """`/compact` asks the client for one pass, and the pass keeps out of the session."""
     app = build_app()
@@ -618,6 +764,25 @@ async def test_the_compact_command_compacts_now():
     # It is not a turn: nothing was echoed as a user message.
     assert not any(entry.kind == "user" for entry in app.transcript.entries)
     assert runtime.client.messages == []
+
+
+async def test_a_second_compact_without_a_new_message_is_refused(tmp_path):
+    """Nothing new since the checkpoint: the command reports it instead of running."""
+    store = SessionStore(tmp_path)
+    node = await store.append("session-0001", "request-1", UserMessage(content="the parser crashes"))
+    await store.checkpoint("session-0001", CompactedMessage(content="summary"), node, 0)
+
+    app = build_app()
+    app.agent.runtime.persistence.store = store
+    harness = _harness(app)
+
+    harness.write("/compact")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    errors = [entry for entry in app.transcript.entries if entry.kind == "notice" and entry.text.startswith("Already")]
+    assert [entry.text for entry in errors] == ["Already compacted; send a message before compacting again"]
+    assert app.agent.runtime.client.compactions == []  # the pass never ran
 
 
 async def test_busy_work_keeps_the_frames_coming():
@@ -911,7 +1076,7 @@ async def test_the_title_command_names_the_session(tmp_path):
 
     # Trimmed, stored, and shown without waiting for the next turn.
     assert store.session_title("session-0001") == "Fix the parser crash"
-    assert "Fix the parser crash" in app._status_left()
+    assert "Fix the parser crash" in app._status_left().text
 
     harness.write("/title")
     harness.press("enter")
@@ -1014,7 +1179,7 @@ async def test_the_effort_command_sets_the_level_the_next_request_carries():
     await asyncio.wait_for(app.task, 2.0)
 
     assert app.agent.effort == "xhigh"
-    assert app._header_right().strip() == "gpt-5-mini \u00b7 xhigh"  # the header carries it
+    assert app._header_right().text.strip() == "gpt-5-mini \u00b7 xhigh"  # the header carries it
 
     harness.write("go")
     harness.press("enter")
@@ -1207,7 +1372,7 @@ async def test_model_command_lists_and_switches_models_for_the_next_request():
     harness.press("down")
     harness.press("enter")
     assert app.agent.active_model.model == "gpt-4o"
-    assert app._header_right() == "GPT-4o \u00b7 medium  "
+    assert app._header_right().text == "GPT-4o \u00b7 medium  "
     assert app.app._layout_dirty is True
     rendered = harness.render().text
     assert "Model changed from gpt-5-mini to GPT-4o." in rendered
@@ -2067,7 +2232,7 @@ async def test_sessions_command_opens_a_panel_with_titles_and_ages(tmp_path):
     assert app.agent.session_id == "alpha-1"
     assert app.app.screens.top.name != "page"
     # Resuming a session puts its stored title, not its id, in the status line.
-    assert "Fix the parser crash" in app._status_left()
+    assert "Fix the parser crash" in app._status_left().text
 
 
 async def test_sessions_command_reports_an_empty_store():
@@ -2101,8 +2266,8 @@ async def test_the_first_reply_names_the_session_in_the_background():
     assert calls == ["session-0001"]
     # Naming stays out of the transcript: the status line is where the title lands.
     assert not any("Fix the parser crash" in getattr(entry, "text", "") for entry in app.transcript.entries)
-    assert "Fix the parser crash" in app._status_left()
-    assert "session-0001" not in app._status_left()
+    assert "Fix the parser crash" in app._status_left().text
+    assert "session-0001" not in app._status_left().text
 
 
 async def test_an_unnamed_session_reads_as_a_new_session(tmp_path):
@@ -2111,14 +2276,14 @@ async def test_an_unnamed_session_reads_as_a_new_session(tmp_path):
     app.agent.runtime.persistence.store = SessionStore(tmp_path)
     harness = _harness(app)
 
-    assert "New session" in app._status_left()
+    assert "New session" in app._status_left().text
 
     harness.write("/title  Fix the parser crash  ")
     harness.press("enter")
     await asyncio.wait_for(app.task, 2.0)
 
-    assert "Fix the parser crash" in app._status_left()
-    assert "New session" not in app._status_left()
+    assert "Fix the parser crash" in app._status_left().text
+    assert "New session" not in app._status_left().text
 
 
 def test_the_sessions_panel_names_an_untitled_session():
@@ -2149,7 +2314,7 @@ async def test_the_status_line_mirrors_the_usage_extension():
         )
     )
 
-    status = app._status_left()
+    status = app._status_left().text
     assert "\u219122.0k \u2193600" in status
     assert "77% cached" in status
     assert "100 tok/s" in status
@@ -2173,7 +2338,7 @@ async def test_resuming_a_session_restores_its_token_totals(tmp_path):
     harness.press("enter")
     await asyncio.wait_for(app.task, 2.0)
 
-    status = app._status_left()
+    status = app._status_left().text
     assert "\u219110.0k \u2193500" in status
     assert "80% cached" in status
     assert "250 tok/s" in status
@@ -2189,7 +2354,7 @@ async def test_a_new_session_starts_the_token_totals_over():
     await asyncio.wait_for(app.task, 2.0)
 
     assert app.agent.session_id != "session-0001"
-    assert "\u2191" not in app._status_left()
+    assert "\u2191" not in app._status_left().text
 
 
 def _harness(app: ZettCodeApp) -> Harness:

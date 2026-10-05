@@ -385,6 +385,40 @@ and falls back to a characters-per-token estimate when its vocabulary cannot be
 opened offline; the page names the counter it used rather than passing an
 estimate off as exact.
 
+`plugins/` is the application's own extension point, independent of
+`zett-agent`: a distribution publishes a `Plugin` subclass under the
+`zettcode.plugins` entry-point group. The package is split by role:
+`state.py` (the `ShellContext` snapshot, `UiRow`, and the segment types),
+`mixins.py` (the hook groups), `container.py` (what activation receives and
+registers through, plus the named-slot registry), `plugin.py` (the base class
+and the loaded bundle), `builtins.py` (the shell's own rows, written as an
+ordinary plugin), `loader.py` (entry-point discovery, merging the builtins in
+first), and `extension.py` (the host `AgentExtension` that fans every hook out
+in plugin-priority order). The agent therefore sees a single extension, and
+plugin-wide behaviour — ordering, shared state, loading later — has one place to
+live. Plugins register slash commands through the `PluginContainer` they are
+activated with; those commands reach the shell after the built-ins
+(`app/agent/agent.py::plugin_commands`), so a plugin cannot shadow one.
+`PluginContainer` imports `app.commands`, which is why the plugin package is
+part of the application layer rather than the framework.
+
+The shell's rows are a plugin too. `PluginUiMixin` names the four slots — the
+header's and the status line's left and right sides — and `ShellRows` fills
+them with the defaults; `app/ui/app.py::_side` is the one renderer, joining the
+segments the merged bundle put on a side and letting `StatusBar` settle the row.
+A segment registers under a name: reusing a name already in the row replaces it
+in place, which is how overriding a builder takes a builtin slot over, a new
+name appends after the segments already in its side, and ``override=True``
+clears the side so the segment stands alone there; a declared builder takes the
+same shortcut by returning ``(line, True)``, which drops what the earlier
+segments painted. A builder reads one
+`ShellContext`, a snapshot grouped into `session`, `model`, `activity`, and
+`display` so the parts of the shell's state stay labelled. The plugin hooks are
+declared as mixin groups — `PluginAgentMixin` for the agent flow, mirroring
+`zett-agent`'s setup/run/turn/model/tool/maintenance/event/middleware groups,
+and `PluginUiMixin` for the rows — so the base class stays scannable and the
+two surfaces can be documented and imported separately.
+
 `projection.py` maps `zett-agent` callbacks onto transcript blocks. Every
 callback returns immediately, including the approval one: the agent is already
 suspended waiting for the response the UI emits later, so a callback that
@@ -463,7 +497,7 @@ bindings show why the framework distinguishes capture from bubble priority:
 before the composer sees the key, while `page_up` and `page_down` are bubble
 bindings that only run because the composer declines them.
 
-The status line, transcript chrome, and every widget read colors from
+The status line, the transcript's frame, and every widget read colors from
 `Theme` tokens — the UI roles, the per-tool hues, and the code palette — which is
 why `/theme` (a picker) and `/theme dark|light` are data
 changes rather than a repaint of hardcoded constants. The same holds for the
@@ -473,7 +507,7 @@ one to every later request, so the app never keeps a second copy of the scale.
 Code is highlighted but never filled: fenced blocks and inline code use a
 foreground colour only, because a background block reads as a solid rectangle in
 a terminal and fights the text. Inline code takes the palette's highlight green,
-so `` `file.py` `` reads the same colour as the accent chrome around it.
+so `` `file.py` `` reads the same colour as the accent frame around it.
 `render/code.py` owns a small line tokenizer whose languages are data.
 `_scanner` compiles one scanner from a description — comment markers, block
 comments, quotes — and the language table pairs it with a keyword list, so
