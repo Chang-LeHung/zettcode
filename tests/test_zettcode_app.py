@@ -296,23 +296,29 @@ def _sessions_page(app: ZettCodeApp) -> SessionsPage:
 
 
 def test_welcome_mark_is_compact_and_readable_in_both_themes():
-    assert len(WELCOME.splitlines()) == 5
-    assert WELCOME.splitlines()[0].strip() == "╭─────┬─────╮"
-    assert WELCOME.splitlines()[2].split("╯", 1)[0].strip() + "╯" == "╰─────┴─────╯"
+    assert len(WELCOME.splitlines()) == 6
+    # The mark is pixel art, drawn entirely from block glyphs.
+    assert WELCOME.splitlines()[0].strip() == "▄███████▄"
+    assert WELCOME.splitlines()[3].strip() == "▀███████▀"
     for theme in (DARK, LIGHT):
         transcript = Transcript()
         transcript.welcome(WELCOME)
         source = TranscriptSource(transcript, theme=theme)
-        logo = source.line(0, 60)
+        mark = source.line(0, 60)
         title = source.line(1, 60)
         subtitle = source.line(2, 60)
 
-        assert "✦" in title.text
+        assert "█" in title.text
+        assert "✦" in subtitle.text
         assert title.text.index("ZettCode") == subtitle.text.index("A focused")
-        assert logo.spans[0].style.foreground == theme.accent
-        assert title.spans[0].style.foreground == theme.accent
+        assert mark.spans[0].style.foreground == theme.accent_bright
+        assert title.spans[0].style.foreground == theme.accent_bright
         assert title.spans[1].style.foreground == theme.text
-        assert subtitle.spans[1].style.foreground == theme.subtle
+        assert subtitle.spans[0].style.foreground == theme.accent
+        assert subtitle.spans[-1].style.foreground == theme.subtle
+        spark = next(span for span in subtitle.spans if span.text == "✦")
+        assert spark.style.foreground == theme.text
+        assert spark.style.bold
 
 
 async def test_agent_stream_uses_selected_session_and_model():

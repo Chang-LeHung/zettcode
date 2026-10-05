@@ -7,6 +7,7 @@ retains only typed entries and a cached line source, and remains virtualized.
 
 from __future__ import annotations
 
+import re
 from abc import ABC, abstractmethod
 from typing import Any
 
@@ -82,25 +83,61 @@ class EntryProcessor[E](ABC):
         return [inset_line(row, margin) for row in layout_rich_lines(source, max(1, width - margin))]
 
 
+#: Block glyphs the welcome mark is drawn from; a line starting with one is
+#: part of the icon rather than a label or the hint.
+_MARK_GLYPHS = frozenset("\u2580\u2584\u2588\u258c\u2590\u2591\u2592\u2593")
+#: The sparkle the mark carries in its face, kept bright against the blocks.
+_SPARK = "\u2726"
+#: The gap between the mark and its label: three or more spaces before a word.
+#: Requiring a letter stops the mark's own gaps (around the sparkle) matching.
+_LABEL_GAP = re.compile(r"(?<=\S) {3,}(?=[A-Za-z])")
+
+
 class WelcomeProcessor(EntryProcessor[TextEntry]):
-    """Draw the welcome mark and its title with separate palette roles."""
+    """Draw the welcome's pixel mark and its labels with separate palette roles.
+
+    The mark's rows are shaded top-down, half in ``accent_bright`` and half in
+    ``accent``, so the icon reads as lit rather than flat; the sparkle in its
+    face stays bright so it keeps shining. The first label is the title and
+    gets body text in bold; the rest are subtitles.
+    """
 
     def supports(self, entry: Entry) -> bool:
         """Claim welcome banners."""
         return isinstance(entry, TextEntry) and entry.kind == "welcome"
 
     def lines(self, entry: TextEntry, width: int, theme: Theme, frame: int) -> list[TextLine]:
-        """Colour the logo, title, and subtitle without altering their text."""
+        """Colour the mark, title, and subtitle without altering their text."""
+        source = entry.text.split("\n")
+        mark_rows = [index for index, line in enumerate(source) if line.lstrip()[:1] in _MARK_GLYPHS]
+        upper = set(mark_rows[: max(1, len(mark_rows) // 2)])
         lines: list[TextLine] = []
-        for index, line in enumerate(entry.text.split("\n")):
-            if index in (1, 2) and "   " in line and any(glyph in line for glyph in "│╰"):
-                logo, spacing, label = line.rpartition("   ")
-                label_style = Style(foreground=theme.text, bold=True) if index == 1 else Style(foreground=theme.subtle)
-                lines.append(TextLine((Span(logo + spacing, Style(foreground=theme.accent)), Span(label, label_style))))
+        titled = False
+        for index, line in enumerate(source):
+            match = _LABEL_GAP.search(line)
+            if match is not None:
+                mark, label = line[: match.end()], line[match.end() :]
+                title = not titled
+                titled = True
+                label_style = Style(foreground=theme.text, bold=True) if title else Style(foreground=theme.subtle)
+                spans = [*self._mark_spans(mark, upper=index in upper, theme=theme), Span(label, label_style)]
+                lines.append(TextLine(tuple(spans)))
+            elif index in mark_rows:
+                lines.append(TextLine(tuple(self._mark_spans(line, upper=index in upper, theme=theme))))
             else:
-                color = theme.accent if index == 0 and "╭" in line else theme.subtle
-                lines.append(TextLine((Span(line, Style(foreground=color)),)))
+                lines.append(TextLine((Span(line, Style(foreground=theme.subtle)),)))
         return lines
+
+    @staticmethod
+    def _mark_spans(text: str, *, upper: bool, theme: Theme) -> list[Span]:
+        """Return the mark's spans, brightening the sparkle it carries."""
+        color = theme.accent_bright if upper else theme.accent
+        if _SPARK not in text:
+            return [Span(text, Style(foreground=color))]
+        before, _, after = text.partition(_SPARK)
+        spans = [Span(part, Style(foreground=color)) for part in (before, after) if part]
+        spans.insert(1 if before else 0, Span(_SPARK, Style(foreground=theme.text, bold=True)))
+        return spans
 
 
 class NoticeProcessor(EntryProcessor[TextEntry]):
