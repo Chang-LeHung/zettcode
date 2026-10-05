@@ -34,6 +34,16 @@
 - Keep the terminal layer importable off POSIX: `termios`/`tty` imports stay
   inside the raw-mode methods and report a clear error elsewhere.
 
+## Merging pull requests
+
+- A one-commit pull request lands with
+  `gh pr merge <n> --squash --delete-branch`: GitHub appends ` (#<n>)` to the
+  generated subject, which is the `… (#28)` style the history is written in.
+- A multi-commit pull request lands with `--rebase`. Rebase merge never adds the
+  number, so before merging append ` (#<n>)` to the tip commit's subject (amend
+  it and force-push the branch with `--force-with-lease`) to keep the pull
+  request named in `git log`.
+
 ## Releases
 
 - The version lives in `pyproject.toml`; a release is a commit that sets the
