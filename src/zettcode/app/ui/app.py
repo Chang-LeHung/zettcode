@@ -681,9 +681,11 @@ class ZettCodeApp:
         """
         while len(self.app.screens) > 1 and self.app.screens.top.name == "toast":
             self.app.pop_screen()
-        toast = Toast(message, level=level, duration=2.5)
+        toast = Toast(message, level=level, duration=1.2)
         overlay = Overlay([OverlaySlot(toast, Anchor(horizontal="end", vertical="end", offset_x=-1, offset_y=-1))])
-        self.app.push_screen(Screen(overlay, name="toast"))
+        # A paint-only layer: the toast shows over the shell but must not take
+        # input, or scrolling the transcript under it would stop working.
+        self.app.push_screen(Screen(overlay, name="toast", interactive=False))
 
     # -- rows ---------------------------------------------------------------
     def _terminal_title(self) -> str:

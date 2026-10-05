@@ -412,6 +412,23 @@ def test_mouse_routing_uses_paint_order_and_resize_updates_geometry():
     assert bottom.rect == Rect(0, 4, 30, 4)
 
 
+def test_a_non_interactive_screen_lets_input_reach_the_layer_below():
+    log: list[str] = []
+    base_leaf = Pane("base_leaf", log, focusable=True)
+    base = Pane("base", log, kids=(base_leaf,))
+    overlay = Overlay([OverlaySlot(Pane("toast", log), Anchor(horizontal="end", vertical="end", width=5, height=1))])
+    app = TuiApp(base, width=20, height=4)
+    app.mount()
+    app.push_screen(Screen(overlay, name="toast", interactive=False))
+
+    log.clear()
+    app.dispatch(MouseEvent(x=1, y=1, action=MouseAction.SCROLL_UP))
+
+    # The full-rect overlay would otherwise be the hit for every cell and
+    # swallow the wheel event, since it has no handler of its own.
+    assert log == ["capture:base", "capture:base_leaf", "handle:base_leaf", "bubble:base"]
+
+
 def test_widgets_see_the_app_theme_and_unhandled_events_return_false():
     log: list[str] = []
     root = Pane("root", log)
