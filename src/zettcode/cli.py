@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import shlex
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -24,7 +25,22 @@ if TYPE_CHECKING:
     from .config import ZettCodeConfig
 
 
-def parse_args(argv: list[str] | None = None) -> tuple[Path, str | None]:
+@dataclass(frozen=True, slots=True)
+class Options:
+    """What the command line asked for.
+
+    Attributes:
+        workspace: Directory the agent works in; the current one by default.
+        resume: Stored session to open instead of a fresh one, if named.
+        dry_run: Run the startup and exit instead of taking the terminal.
+    """
+
+    workspace: Path
+    resume: str | None = None
+    dry_run: bool = False
+
+
+def parse_args(argv: list[str] | None = None) -> Options:
     """Return the workspace to run in and the session to resume, if any.
 
     Args:
@@ -49,13 +65,18 @@ def parse_args(argv: list[str] | None = None) -> tuple[Path, str | None]:
         default=None,
         help="open a stored session by id instead of starting a new one",
     )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="run the startup, paint one frame, and exit quietly (for profiling)",
+    )
     args = parser.parse_args(argv)
-    return args.workspace, args.resume
+    return Options(workspace=args.workspace, resume=args.resume, dry_run=args.dry_run)
 
 
 def workspace_from_args(argv: list[str] | None = None) -> Path:
-    """Return the workspace positional, defaulting to the current directory."""
-    return parse_args(argv)[0]
+    """Return the workspace the arguments name, defaulting to the current directory."""
+    return parse_args(argv).workspace
 
 
 def resume_command(session_id: str, workspace: Path) -> str:
@@ -77,7 +98,7 @@ def resolve_config(argv: list[str] | None = None) -> ZettCodeConfig:
     would be absurd for the flag that explains the program to load the agent
     runtime on the way out.
     """
-    workspace, _ = parse_args(argv)
+    workspace = parse_args(argv).workspace
     from .config import load_config
     from .tui.capabilities import detect_reduced_motion
 
@@ -87,7 +108,7 @@ def resolve_config(argv: list[str] | None = None) -> ZettCodeConfig:
         raise SystemExit(f"zettcode: {error}") from error
 
 
-async def async_main(config: ZettCodeConfig, *, resume: str | None = None) -> None:
+async def async_main(config: ZettCodeConfig, *, resume: str | None = None, dry_run: bool = False) -> None:
     """Own runtime lifecycle around the full-screen application.
 
     The runtime is built by the first turn, not here: ``preview`` has
@@ -98,6 +119,8 @@ async def async_main(config: ZettCodeConfig, *, resume: str | None = None) -> No
         config: Settings loaded from the config file.
         resume: Stored session to open instead of a fresh one; an id the store
             does not hold is reported before the terminal is taken over.
+        dry_run: Run the startup and exit without taking the terminal and
+            without printing anything, so a profiler's output stands alone.
     """
     from .app import ZettCodeApp
     from .app.agent.agent import ZettCodeAgent
@@ -113,6 +136,14 @@ async def async_main(config: ZettCodeConfig, *, resume: str | None = None) -> No
     app = ZettCodeApp(agent, theme=theme, auto_theme=config.theme_file is None)
     if resume is not None:
         app.restore_session(resume)
+    if dry_run:
+        # Nothing is printed: a profiler's own output is the report, and a line
+        # of ours would only mix into it.
+        try:
+            await app.dry_run()
+        finally:
+            await agent.aclose()
+        return
     try:
         await app.run()
     finally:
@@ -123,8 +154,8 @@ async def async_main(config: ZettCodeConfig, *, resume: str | None = None) -> No
 
 def main() -> None:
     """Installed console-script entry point."""
-    _, resume = parse_args()
-    asyncio.run(async_main(resolve_config(), resume=resume))
+    options = parse_args()
+    asyncio.run(async_main(resolve_config(), resume=options.resume, dry_run=options.dry_run))
 
 
 if __name__ == "__main__":

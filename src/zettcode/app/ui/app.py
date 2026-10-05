@@ -169,6 +169,26 @@ class ZettCodeApp:
             # reason to keep the process alive or to raise on the way out.
             await asyncio.gather(warm, return_exceptions=True)
 
+    async def dry_run(self, *, width: int = 120, height: int = 40) -> None:
+        """Run the whole start, paint one frame, and return.
+
+        Profiling the shell means paying for everything the first frame pays
+        for — the widget tree, the keymap, the runtime warming in the
+        background, and one paint — without a terminal to sit in. The frame
+        goes to a canvas that is thrown away; nothing reaches the screen.
+
+        Args:
+            width: Columns to lay the discarded frame out at.
+            height: Rows to lay the discarded frame out at.
+        """
+        warm = self.agent.runtime.start()
+        self.app.resize(width, height)
+        self.app.mount()
+        self.app.render()
+        # A warm-up that failed is the first turn's to report, exactly as it is
+        # when the shell really runs.
+        await asyncio.gather(warm, return_exceptions=True)
+
     # -- commands -----------------------------------------------------------
     def _install_keymap(self) -> None:
         """Register the global commands and their key bindings."""

@@ -37,7 +37,7 @@ class TuiApp(Host):
         title: str | Callable[[], str] = "",
         auto_theme: bool = False,
         clock: Callable[[], float] = monotonic,
-        max_fps: float = 60.0,
+        max_fps: float = 120.0,
         keymap: Keymap | None = None,
         commands: CommandRegistry | None = None,
         on_copy: Callable[[str], None] | None = None,
