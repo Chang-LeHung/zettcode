@@ -8,7 +8,15 @@ from pathlib import Path
 
 import pytest
 
-from zettcode.cli import async_main, parse_args, resolve_config, resume_command, session_exists, workspace_from_args
+from zettcode.cli import (
+    Options,
+    async_main,
+    parse_args,
+    resolve_config,
+    resume_command,
+    session_exists,
+    workspace_from_args,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -28,11 +36,16 @@ def test_workspace_comes_from_the_flag(tmp_path: Path):
     assert workspace_from_args(["--workspace", str(tmp_path)]) == tmp_path
 
 
+def test_the_dry_run_flag_asks_for_startup_only(tmp_path: Path):
+    assert parse_args(["-w", str(tmp_path)]).dry_run is False
+    assert parse_args(["-w", str(tmp_path), "--dry-run"]).dry_run is True
+
+
 def test_the_resume_flag_picks_the_session(tmp_path: Path):
     """`-r` and `--resume` are the same flag, and a run without one starts fresh."""
-    assert parse_args(["-w", str(tmp_path)]) == (tmp_path, None)
-    assert parse_args(["-w", str(tmp_path), "-r", "abc"]) == (tmp_path, "abc")
-    assert parse_args(["--resume", "abc", "--workspace", str(tmp_path)]) == (tmp_path, "abc")
+    assert parse_args(["-w", str(tmp_path)]) == Options(workspace=tmp_path)
+    assert parse_args(["-w", str(tmp_path), "-r", "abc"]) == Options(workspace=tmp_path, resume="abc")
+    assert parse_args(["--resume", "abc", "--workspace", str(tmp_path)]) == Options(workspace=tmp_path, resume="abc")
 
 
 def test_the_resume_command_survives_a_workspace_with_spaces(tmp_path: Path):
@@ -115,6 +128,27 @@ def test_a_resumed_run_reports_the_command_that_reopens_it(tmp_path: Path, monke
 
     assert resumed == ["stored"]
     assert f"zettcode --resume stored --workspace {config.workspace}" in capsys.readouterr().out
+
+
+def test_a_dry_run_starts_everything_and_exits(tmp_path: Path, monkeypatch, capsys):
+    """The flag profiling needs: the whole start, no terminal, no output of its own."""
+    from dataclasses import replace
+
+    from zettcode.app.agent.storage import SessionStore
+
+    path = tmp_path / "config.toml"
+    path.write_text(
+        '[[models]]\nmodel = "m"\ntoken = "t"\n\n[skills]\nenabled = false\n\n[mcp]\nenabled = false\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ZETTCODE_CONFIG", str(path))
+    config = replace(resolve_config(["-w", str(tmp_path)]), store=tmp_path / "sessions")
+
+    asyncio.run(async_main(config, dry_run=True))
+
+    assert capsys.readouterr().out == ""  # a profiler's output is the only report
+    # A dry run only reads: the fresh session id never reaches the store.
+    assert asyncio.run(SessionStore(config.store, config.workspace).list_sessions()) == []
 
 
 def test_resolve_config_reads_the_config_file(tmp_path: Path, monkeypatch):
