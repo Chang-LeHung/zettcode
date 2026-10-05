@@ -12,6 +12,7 @@ from zettcode.app.agent.usage import (
     UsageExtension,
     UsageSnapshot,
     compact_tokens,
+    context_text,
     usage_text,
 )
 
@@ -68,6 +69,7 @@ async def test_the_extension_accumulates_each_call_and_publishes_the_total():
     assert snapshot.cache_read_tokens == 2_100
     assert snapshot.requests == 2
     assert snapshot.seconds == pytest.approx(4.5)
+    assert snapshot.context_tokens == 2_000  # the newest call's prompt, not the sum
     assert snapshot.cache_hit_rate == pytest.approx(0.7)
     assert snapshot.output_rate == pytest.approx(400 / 4.5)
 
@@ -76,6 +78,16 @@ async def test_the_extension_accumulates_each_call_and_publishes_the_total():
     assert event.name == USAGE_EVENT_NAME
     assert event.payload == snapshot.to_payload()
     assert UsageSnapshot.from_payload(event.payload) == snapshot
+
+
+def test_the_context_fragment_reports_the_newest_call_against_the_window():
+    """The status line only claims a share once a request has been measured."""
+    assert context_text(UsageSnapshot(), 128_000) == ""
+    measured = UsageSnapshot(context_tokens=64_000, requests=1)
+
+    assert context_text(measured, 128_000) == " \u00b7 ctx 50.0%"
+    assert context_text(measured, 0) == ""  # a model without a declared window
+    assert context_text(measured, 32_000) == " \u00b7 ctx 100.0%"  # never claims more than the window
 
 
 async def test_each_session_keeps_its_own_totals():
@@ -123,7 +135,7 @@ def test_usage_text_reports_totals_cache_share_and_rate():
         requests=2,
     )
 
-    assert usage_text(snapshot) == "  \u219122.0k \u2193600 \u00b7 77% cached \u00b7 100 tok/s"
+    assert usage_text(snapshot) == "  \u219122.0k \u2193600 \u00b7 77.3% cached \u00b7 100 tok/s"
 
 
 def test_compact_tokens_rounds_into_the_next_unit():

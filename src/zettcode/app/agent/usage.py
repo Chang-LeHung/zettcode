@@ -41,6 +41,8 @@ class UsageSnapshot:
         reasoning_tokens: Reasoning subset of ``output_tokens``.
         seconds: Wall time spent inside model calls, the rate denominator.
         requests: Model calls counted, zero before the first answer.
+        context_tokens: Input tokens the newest call carried, which is how full
+            the context is right now; zero before the first answer.
     """
 
     input_tokens: int = 0
@@ -50,6 +52,7 @@ class UsageSnapshot:
     reasoning_tokens: int = 0
     seconds: float = 0.0
     requests: int = 0
+    context_tokens: int = 0
 
     @property
     def total_tokens(self) -> int:
@@ -82,6 +85,7 @@ class UsageSnapshot:
             reasoning_tokens=self.reasoning_tokens + usage.reasoning_tokens,
             seconds=self.seconds + max(0.0, seconds),
             requests=self.requests + 1,
+            context_tokens=usage.input_tokens,
         )
 
     def to_payload(self) -> dict[str, int | float]:
@@ -94,6 +98,7 @@ class UsageSnapshot:
             "reasoning_tokens": self.reasoning_tokens,
             "seconds": self.seconds,
             "requests": self.requests,
+            "context_tokens": self.context_tokens,
         }
 
     @classmethod
@@ -116,6 +121,7 @@ class UsageSnapshot:
             reasoning_tokens=count("reasoning_tokens"),
             seconds=seconds("seconds"),
             requests=count("requests"),
+            context_tokens=count("context_tokens"),
         )
 
 
@@ -135,11 +141,30 @@ def usage_text(snapshot: UsageSnapshot) -> str:
     parts = [f"{ARROW_UP}{compact_tokens(snapshot.input_tokens)} {ARROW_DOWN}{compact_tokens(snapshot.output_tokens)}"]
     rate = snapshot.cache_hit_rate
     if rate is not None:
-        parts.append(f"{rate * 100:.0f}% cached")
+        parts.append(f"{rate * 100:.1f}% cached")
     speed = snapshot.output_rate
     if speed is not None:
         parts.append(f"{speed:.0f} tok/s" if speed >= 10 else f"{speed:.1f} tok/s")
     return "  " + f" {SEPARATOR} ".join(parts)
+
+
+def context_text(snapshot: UsageSnapshot, window: int) -> str:
+    """Render how much of the model's window the newest request filled.
+
+    Args:
+        snapshot: Session counters; only the newest call's input matters here.
+        window: Tokens the model can carry, from its configuration.
+
+    Returns:
+        A short ``"· ctx 34.0%"`` fragment, or ``""`` before any request has been
+        measured or when the model does not declare a window. The leading
+        separator is part of the fragment, so it joins the usage counters the
+        same way they join each other.
+    """
+    if not snapshot.requests or window < 1 or snapshot.context_tokens < 1:
+        return ""
+    share = min(100.0, snapshot.context_tokens * 100 / window)
+    return f" {SEPARATOR} ctx {share:.1f}%"
 
 
 class UsageExtension(AgentExtension):

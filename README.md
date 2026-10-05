@@ -114,9 +114,11 @@ one, replacing the visible transcript with that session's active branch.
 its short id. Sessions are not selected in the
 config file.
 
-The same line carries the session's token use: `↑22.0k ↓600 · 77% cached ·
-100 tok/s` reads as cumulative input, cumulative output, the share of input the
-provider served from cache, and generated tokens per second of model time. The
+The same line carries the session's token use: `↑22.0k ↓600 · 77.3% cached ·
+100 tok/s · ctx 34.0%` reads as cumulative input, cumulative output, the share
+of input the provider served from cache, generated tokens per second of model
+time, and the share of the model's declared window the newest request filled.
+The
 numbers come from a usage extension that accumulates the provider's own counters
 and publishes them as a custom event after every model call, so the shell
 mirrors them without polling; resuming a session seeds the totals from the
