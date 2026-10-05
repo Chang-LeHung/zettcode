@@ -13,6 +13,7 @@ from zett_agent.events import AgentEvent
 from zett_agent.extensions.events import CompactionEvent
 from zett_agent.extensions.external import ExternalEvent
 from zett_agent.extensions.shell_approval import SHELL_APPROVAL_RESPONSE_EVENT_NAME
+from zett_agent.extensions.steering import STEERING_MESSAGE_EVENT_NAME
 from zett_agent.messages import (
     AnyMessage,
     AssistantMessage,
@@ -471,6 +472,30 @@ class ZettCodeAgent:
             ),
             config=AgentRunConfig(session_id=session_id),
         )
+
+    def steer(self, text: str) -> bool:
+        """Queue an urgent user message for the request that is running.
+
+        The agent adopts it at the next model or tool boundary and drops the
+        rest of the current task, so the shell offers this only while a turn is
+        in flight. Returns whether a running request accepted the message, which
+        is what tells the shell it may show the message as queued.
+
+        Args:
+            text: What the user typed; blank text is refused without asking the
+                agent, and a request that is not running refuses it here.
+        """
+        if not text.strip():
+            return False
+        try:
+            agent = self.runtime.started.agent
+        except RuntimeError:
+            return False
+        accepted = agent.emit_external_event(
+            ExternalEvent(name=STEERING_MESSAGE_EVENT_NAME, payload={"content": text}),
+            config=AgentRunConfig(session_id=self.session_id),
+        )
+        return bool(accepted)
 
     async def aclose(self) -> None:
         """Release the underlying runtime resources."""

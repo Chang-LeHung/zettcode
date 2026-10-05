@@ -31,6 +31,12 @@ def serialize(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, indent=2, default=str)
 
 
+def steering_text(event: AgentEvent) -> str:
+    """Return the text of a steering event, or an empty string when it has none."""
+    message = event.steering_message
+    return message.text if message is not None else ""
+
+
 class TranscriptProjector(AgentEventDispatcher):
     """Turn AgentClient callbacks into transcript blocks.
 
@@ -45,6 +51,8 @@ class TranscriptProjector(AgentEventDispatcher):
         *,
         on_approval: Callable[[AgentEvent], None] | None = None,
         on_usage: Callable[[AgentEvent], None] | None = None,
+        on_steering_started: Callable[[str], None] | None = None,
+        on_steering_interrupted: Callable[[str], None] | None = None,
     ) -> None:
         """Send projected events to ``transcript``; approvals go to ``on_approval``.
 
@@ -55,10 +63,17 @@ class TranscriptProjector(AgentEventDispatcher):
                 UI emits its response later.
             on_usage: Called synchronously with each cumulative usage update, so
                 the shell can refresh the status line without polling the store.
+            on_steering_started: Called with the text of a queued steering
+                message the agent just adopted, so the shell can drop it from
+                the pending queue before the row is echoed.
+            on_steering_interrupted: Called with the text of a steering message
+                a newer one superseded, so the shell can drop it too.
         """
         self.transcript = transcript
         self.on_approval = on_approval
         self.on_usage = on_usage
+        self.on_steering_started = on_steering_started
+        self.on_steering_interrupted = on_steering_interrupted
 
     def begin_turn(self, prompt: str) -> None:
         """Echo the prompt into the transcript before the run starts."""
@@ -94,6 +109,25 @@ class TranscriptProjector(AgentEventDispatcher):
         """Close reasoning before the first answer token lands in the transcript."""
         self.transcript.complete_thinking()
         self.transcript.append_answer(event.delta)
+
+    async def on_steering_started_event(self, event: AgentEvent) -> None:
+        """Echo an urgent user message the agent adopted as its new input."""
+        text = steering_text(event)
+        if self.on_steering_started is not None:
+            self.on_steering_started(text)
+        self.transcript.begin_turn(text)
+
+    async def on_steering_completed_event(self, event: AgentEvent) -> None:
+        """Close the row a steered turn left open when its answer arrived."""
+        self.transcript.complete_thinking()
+
+    async def on_steering_interrupted_event(self, event: AgentEvent) -> None:
+        """Drop a steering message a newer one superseded, and say so."""
+        text = steering_text(event)
+        if self.on_steering_interrupted is not None:
+            self.on_steering_interrupted(text)
+        self.transcript.complete_thinking()
+        self.transcript.notice("steering superseded by a newer message")
 
     async def on_tool_started_event(self, event: AgentEvent) -> None:
         """Open one running row per tool call in the batch."""

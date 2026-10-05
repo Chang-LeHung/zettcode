@@ -53,6 +53,7 @@ from zettcode.app.ui.widgets import (
     ApprovalPage,
     ContextPage,
     SessionsPage,
+    SteeringQueue,
     bottom_panel,
     format_ago,
     help_text,
@@ -955,7 +956,7 @@ async def test_each_turn_reports_how_long_it_took(monkeypatch):
     assert "Processed for 32s \u00b7 13:14" in harness.render().text
 
 
-async def test_app_refuses_a_second_prompt_and_ctrl_c_stops_the_first():
+async def test_app_steers_a_second_prompt_and_ctrl_c_stops_the_first():
     app = build_app(block=True)
     harness = _harness(app)
 
@@ -967,13 +968,98 @@ async def test_app_refuses_a_second_prompt_and_ctrl_c_stops_the_first():
     await asyncio.sleep(0)
 
     assert app.busy is True
-    assert any("busy" in entry.text for entry in app.transcript.entries if entry.kind == "notice")
+    # A second prompt while busy is queued to steer the running turn, so it is
+    # shown in the queue rather than refused with a notice.
+    assert app.steering.messages == ("second",)
+    assert not any("busy" in entry.text for entry in app.transcript.entries if entry.kind == "notice")
 
     harness.press("ctrl_c")
     await asyncio.wait_for(app.task, 2.0)
 
     assert app.busy is False
     assert any("stopped" in entry.text for entry in app.transcript.entries if entry.kind == "notice")
+    assert app.steering.messages == ()
+
+
+async def test_a_steering_message_is_echoed_when_the_agent_adopts_it():
+    app = build_app(block=True)
+    harness = _harness(app)
+    harness.write("first")
+    harness.press("enter")
+    await asyncio.sleep(0)
+    harness.write("second")
+    harness.press("enter")
+    await asyncio.sleep(0)
+    assert app.steering.messages == ("second",)
+
+    await app.projector.on_steering_started_event(
+        AgentEvent(AgentEventType.STEERING_STARTED, "session-0001", steering_message=UserMessage(content="second"))
+    )
+
+    assert app.steering.messages == ()
+    assert any(entry.kind == "user" and entry.text == "second" for entry in app.transcript.entries)
+
+    app.task.cancel()
+    await asyncio.gather(app.task, return_exceptions=True)
+
+
+async def test_steering_emits_the_external_event_the_agent_listens_for():
+    runtime = FakeRuntime(FakeClient())
+    agent = ZettCodeAgent(runtime)
+
+    assert agent.steer("   ") is False
+    assert agent.steer("stop and explain") is True
+
+    event, _config = runtime.client.agent.emitted[-1]
+    assert event.name == "steering_message"
+    assert event.payload == {"content": "stop and explain"}
+
+
+async def test_steering_stops_at_the_limit():
+    app = build_app(block=True)
+    harness = _harness(app)
+    harness.write("first")
+    harness.press("enter")
+    await asyncio.sleep(0)
+
+    queued = tuple(f"steer {index}" for index in range(app_module.MAX_STEERING))
+    for message in queued:
+        harness.write(message)
+        harness.press("enter")
+        await asyncio.sleep(0)
+
+    assert app.steering.messages == queued
+
+    harness.write("one too many")
+    harness.press("enter")
+    await asyncio.sleep(0)
+
+    assert app.steering.messages == queued
+    assert app._steering_sent == app_module.MAX_STEERING
+    assert any(
+        entry.kind == "notice" and entry.level == "error" and "steering limit reached" in entry.text
+        for entry in app.transcript.entries
+    )
+
+    app.task.cancel()
+    await asyncio.gather(app.task, return_exceptions=True)
+
+
+def test_the_steering_queue_shows_pending_messages_and_collapses_when_empty():
+    queue = SteeringQueue()
+    assert queue.preferred_height() == 0
+    assert queue.set_messages(["stop editing", "then explain"]) is True
+    assert queue.set_messages(["stop editing", "then explain"]) is False
+
+    lines = Harness(queue, width=60, height=3).text().splitlines()
+
+    assert lines[0].lstrip().startswith("\u21b3 stop editing")
+    assert lines[1].lstrip().startswith("\u21b3 then explain")
+    # The right-aligned badge names each row as a steering message.
+    assert lines[0].endswith("steer")
+    assert lines[1].endswith("steer")
+    # The note says when the agent will actually adopt them.
+    assert "sent when the running tool call or assistant message ends" in lines[2]
 
 
 def _palette(theme) -> set[str]:

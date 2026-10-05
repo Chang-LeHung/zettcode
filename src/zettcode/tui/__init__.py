@@ -80,6 +80,7 @@ _EXPORTS = {
     "SKIPPED": ".glyphs",
     "SPINNER": ".glyphs",
     "STATUS": ".glyphs",
+    "STEERING": ".glyphs",
     "Scheduler": ".core",
     "Screen": ".core",
     "ScreenStack": ".core",
@@ -190,6 +191,7 @@ if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
         SKIPPED,
         SPINNER,
         STATUS,
+        STEERING,
     )
     from .input import AsyncInput, EventType, InputDecoder, InputEvent
     from .layout import (
@@ -285,6 +287,7 @@ __all__ = [
     "SKIPPED",
     "SPINNER",
     "STATUS",
+    "STEERING",
     "Anchor",
     "AsyncInput",
     "TuiApp",
