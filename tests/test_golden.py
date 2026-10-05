@@ -16,9 +16,12 @@ from zettcode.tui import (
     DialogAction,
     ListItem,
     ListView,
+    Span,
     StatusBar,
+    Style,
     Table,
     Text,
+    TextLine,
 )
 from zettcode.tui.testing import render_block
 from zettcode.tui.widgets import Collapsible, MarkdownView
@@ -28,6 +31,15 @@ from zettcode.tui.widgets.diff import DiffView, build_unified
 def test_golden_status_bar():
     assert render_block(StatusBar("left", "right"), width=16, height=1, theme=DARK) == (
         "left       right\n-- styles --\n0:0-4 fg#7a8478\n0:11-16 fg#7a8478"
+    )
+
+
+def test_golden_status_bar_keeps_plugin_styles():
+    """A styled segment keeps its colours; a bare span inherits the bar style."""
+    left = TextLine((Span("L", Style(foreground="#ff0000", bold=True)), Span("x")))
+
+    assert render_block(StatusBar(left, "R"), width=6, height=1, theme=DARK) == (
+        "Lx   R\n-- styles --\n0:0-1 b,fg#ff0000\n0:1-2 fg#7a8478\n0:5-6 fg#7a8478"
     )
 
 

@@ -155,6 +155,122 @@ roots = ["~/team-skills"]      # searched before ~/.zettcode/skills
 config = "~/.zettcode/mcp.json"
 ```
 
+## Plugins
+
+A plugin is a Python distribution that publishes a class under the
+`zettcode.plugins` entry-point group. Installing it is the opt-in; the class
+subclasses `zettcode.plugins.Plugin` and takes part in the agent exactly like
+the extensions ZettCode ships. `Plugin` composes two groups of hooks:
+`PluginAgentMixin` carries the whole model/tool lifecycle — setup, run, turn,
+model, tool, compaction, external events, and the model/tool middleware, the
+same grouping `zett-agent`'s extension mixins use — and `PluginUiMixin` fills
+the shell's four row slots. A plugin overrides only the stages it cares
+about, and also registers the slash commands the shell then offers and runs.
+
+```toml
+[project.entry-points."zettcode.plugins"]
+greeter = "my_package:Greeter"
+```
+
+```python
+from zettcode.plugins import CommandResult, Plugin, PluginContainer
+
+
+class Greeter(Plugin):
+    name = "greeter"
+
+    def activate(self, container: PluginContainer) -> None:
+        container.register_command("greet", "say hello", self.greet)
+
+    async def greet(self, argument: str) -> CommandResult:
+        return CommandResult(notification=f"hello {argument}".strip())
+```
+
+The hooks receive the same values an extension does — `AgentRunContext`,
+`ModelRequest`, `ToolCall`, and so on — so a plugin can register tools, rewrite
+the messages sent to the model, transform tool results, or observe a finished
+run; returning a `CommandResult` is enough for a command to add Markdown, a
+toast, or a widget over the conversation. Plugin commands are listed last, so a
+plugin cannot shadow a built-in such as `/model`.
+
+Plugins also own the shell's rows. The header and the status line are each
+split into a left and a right side, and every side is drawn from the segments
+the merged bundle registered: the builtin `ShellRows` plugin supplies the
+defaults, and `ZettCodeApp` only joins what it finds. A plugin takes a slot
+over by overriding the builder for it, because the method name is the segment
+name the override registers under. Returning ``(line, True)`` is the stronger
+form: it drops whatever the segments before it painted on that side, so the
+plugin does not have to know the builtin's names at all.
+
+```python
+from zettcode.plugins import Plugin, ShellContext
+
+
+class Branch(Plugin):
+    name = "branch"
+
+    def render_header_right(self, context: ShellContext) -> str:
+        return f"main {context.model.name}  "
+```
+
+A plugin that wants a segment of its own beside the defaults registers it into
+one of the four slots; reusing a name that already exists in the row replaces
+that segment in place, while a new name appends after the segments already in
+its side. ``override=True`` clears the side first, leaving the plugin's segment
+as the only one there — the safe way to take a side over without depending on
+the builtin's names. Every call returns ``(segment, displaced)``, where
+``displaced`` says whether it took an existing segment's place:
+
+```python
+from zettcode.plugins import Plugin, PluginContainer, ShellContext, Span, Style, TextLine
+
+
+class Tokens(Plugin):
+    name = "tokens"
+
+    def activate(self, container: PluginContainer) -> None:
+        container.register_status_right(self.draw, name="tokens")
+
+    def draw(self, context: ShellContext) -> TextLine:
+        muted = Style(foreground=context.display.theme.muted)
+        word = "working" if context.activity.busy else context.session.name
+        return TextLine((Span(f" {context.model.name} {word}", muted),))
+```
+
+The builder runs once per paint with a `ShellContext` carrying everything the
+shell's own rows read, grouped by what it describes:
+
+- `session` — id, title, display name, workspace;
+- `model` — the active `ModelConfig`, its display name, the effort in force and
+  the levels available;
+- `activity` — busy flag, status word, auto-approval mode, token counters, the
+  current plan, and the animation frame;
+- `display` — active theme, terminal size, topmost screen name, and whether the
+  transcript is scrolled up;
+- plus the resolved `config` at the top level.
+
+It returns a `str`, a styled `TextLine`, or `None` to draw nothing. A span with
+no style of its own inherits the row's muted style, so a plugin blends in by
+default and opts into colour when it wants it.
+
+Plugins are discovered at startup and activated in entry-point name order. One
+that cannot be imported or activated is skipped, not fatal: the shell shows a
+`plugin: …` line in the transcript and keeps the rest of the session working.
+Every plugin rides in one host extension, in priority order, so the agent sees
+a single extension while plugin-wide behaviour keeps one place to live. A
+plugin is identified by the `name` it declares and otherwise by its entry-point
+name; two plugins may not share an identity, and the second one to claim a
+command name is skipped rather than silently shadowed. The builtin rows are a
+plugin too, so it always loads; the `[plugins]` table only governs the
+distributions, switching them all off or holding one back by its entry-point
+name.
+
+```toml
+[plugins]
+enabled = true
+disable = ["greeter"]          # entry-point names not to load
+```
+
 ## Approvals
 
 `run_shell` asks for confirmation before it executes anything. The prompt offers

@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
-TrackSize = int | Callable[[int], int] | None
+type TrackSize = int | Callable[[int], int] | None
 
 
 @dataclass(frozen=True, slots=True)

@@ -24,6 +24,7 @@ from zett_agent.messages import (
 from zett_agent.model import ReasoningEffort
 
 from ...config import ModelConfig, ZettCodeConfig
+from ...plugins import UiRow
 from ..commands import Command, CommandResult
 from .context import ContextReport
 from .entries import EntryStatus
@@ -35,7 +36,7 @@ from .usage import UsageSnapshot
 
 #: One piece of a user turn, in the order it was written: a run of text, or the
 #: encoded bytes and media type of an image placed where that run ends.
-PromptPart = str | tuple[bytes, str]
+type PromptPart = str | tuple[bytes, str]
 
 
 #: The name a session shows before the agent has given it a title.
@@ -160,6 +161,26 @@ class ZettCodeAgent:
             Command("/use", "switch to a session: /use <id>", "agent", self._command_use),
             Command("/compact", "summarize the context now", "agent", self._command_compact),
         )
+
+    @property
+    def plugin_commands(self) -> tuple[Command, ...]:
+        """Return the commands the installed plugins registered.
+
+        The shell keeps them after its own commands, so a plugin cannot take
+        over a built-in name; plugin-versus-plugin duplicates are rejected when
+        the plugins load.
+        """
+        return self.runtime.plugins.commands
+
+    @property
+    def plugin_failures(self) -> tuple[str, ...]:
+        """Return one message per plugin that could not be loaded or activated."""
+        return self.runtime.plugins.failures
+
+    @property
+    def plugin_rows(self) -> tuple[UiRow, ...]:
+        """Return the header and status rows plugins asked the shell to draw."""
+        return self.runtime.plugins.rows
 
     @property
     def active_model(self) -> ModelConfig:
@@ -338,12 +359,37 @@ class ZettCodeAgent:
         Returns:
             The checkpoint that was stored, or ``None`` when there was nothing
             worth replacing.
+
+        Raises:
+            ValueError: When the newest checkpoint already covers the branch —
+                a second pass would summarize nothing but the checkpoint.
         """
+        if self._compacted_at_the_head():
+            raise ValueError("Already compacted; send a message before compacting again")
         await self.runtime.start()
         return await self.runtime.started.compact(
             config=AgentRunConfig(session_id=self.session_id),
             model=self.runtime.provider,
         )
+
+    def _compacted_at_the_head(self) -> bool:
+        """Return whether nothing has been appended since the newest checkpoint.
+
+        Messages and checkpoints both carry ``created_at``, so the last message
+        being older than the last checkpoint is what says the branch has not
+        moved since it was summarized — no matter which session is active or
+        whether the transcript in this process ever showed that compaction.
+        """
+        try:
+            session = self.runtime.persistence.read(self.session_id)
+        except ValueError:
+            # A runtime without a store to read: no checkpoint can cover it.
+            return False
+        latest = session.latest_compaction
+        if latest is None or session.head_id is None:
+            return False
+        head = session.message(session.head_id)
+        return head is not None and head.created_at <= latest.created_at
 
     async def _command_new(self, argument: str) -> CommandResult:
         """Start a fresh session."""

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import TYPE_CHECKING, ClassVar, Literal
+from typing import TYPE_CHECKING, ClassVar, Literal, cast
 
 from ...tui import LineSource, Markdown, StaticLines, Theme
 from ...tui.widgets.markdown import MarkdownSource
@@ -44,7 +44,9 @@ class BaseEntry:
         if self.block is None or self.block_key != key:
             margin = min(CONTENT_INDENT, max(0, width - 1))
             content_width = width if isinstance(self, TextEntry) and self.kind == "user" else max(1, width - margin)
-            rendered = StaticLines(render_entry(self, content_width, theme, frame, processors=chosen))
+            # Only the union members below are ever instantiated; the base class
+            # exists to share this cache, so the cast is exact at runtime.
+            rendered = StaticLines(render_entry(cast(Entry, self), content_width, theme, frame, processors=chosen))
             self.block = rendered if isinstance(self, TextEntry) and self.kind == "user" else Indented(rendered)
             self.block_key = key
         return self.block
@@ -91,7 +93,9 @@ class MarkdownEntry(BaseEntry):
 class ProcessingEntry(BaseEntry):
     """Placeholder shown while waiting for a model response."""
 
-    kind: ClassVar[Literal["pending"]] = "pending"
+    # mypy cannot model a dataclass field re-declared as a fixed class
+    # value; the runtime drops it from __init__, which the test pins.
+    kind: ClassVar[Literal["pending"]] = "pending"  # type: ignore[misc]
     title: str = "Processing"
     status: EntryStatus = EntryStatus.RUNNING
     started_at: float
@@ -115,7 +119,7 @@ class ThinkingEntry(BaseEntry):
     rather than something the renderer decides.
     """
 
-    kind: ClassVar[Literal["thinking"]] = "thinking"
+    kind: ClassVar[Literal["thinking"]] = "thinking"  # type: ignore[misc]
     title: str = THINKING_LABEL
     text: str = ""
     expanded: bool = False
@@ -143,7 +147,7 @@ class ThinkingEntry(BaseEntry):
 class ToolEntry(BaseEntry):
     """Expandable tool invocation and bounded result."""
 
-    kind: ClassVar[Literal["tool"]] = "tool"
+    kind: ClassVar[Literal["tool"]] = "tool"  # type: ignore[misc]
     call_id: str
     tool: str
     title: str

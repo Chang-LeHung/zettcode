@@ -84,7 +84,7 @@ class Transcript:
         """Append completed reasoning from one stored assistant response."""
         duration = duration_ns / 1_000_000_000 if duration_ns is not None else None
         self._add(
-            ThinkingEntry(
+            ThinkingEntry(  # type: ignore[call-arg]  # kind is a fixed class value; see entries.py
                 id=self._next_id,
                 text=self.renderers.text(THINKING, text, opening=True),
                 status=EntryStatus.COMPLETED,
@@ -173,7 +173,7 @@ class Transcript:
         pending = self._last(ProcessingEntry)
         if pending is not None and pending.status is EntryStatus.RUNNING:
             return False
-        self._add(ProcessingEntry(id=self._next_id, title=PROCESSING, started_at=self.clock()))
+        self._add(ProcessingEntry(id=self._next_id, title=PROCESSING, started_at=self.clock()))  # type: ignore[call-arg]  # kind is a fixed class value; see entries.py
         return True
 
     def start_thinking(self) -> ThinkingEntry:
@@ -182,7 +182,7 @@ class Transcript:
         if current is not None and current.status is EntryStatus.RUNNING:
             return current
         pending = self._last(ProcessingEntry)
-        thinking = ThinkingEntry(id=pending.id if pending is not None else self._next_id, started_at=self.clock())
+        thinking = ThinkingEntry(id=pending.id if pending is not None else self._next_id, started_at=self.clock())  # type: ignore[call-arg]  # kind is a fixed class value; see entries.py
         if pending is not None:
             # The placeholder turned out to be reasoning: replace the same row,
             # retaining its id and position for hit-testing and focus.
@@ -203,7 +203,7 @@ class Transcript:
         if current is not None and current.status is EntryStatus.RUNNING and current.title == COMPACTING_LABEL:
             return current
         pending = self._last(ProcessingEntry)
-        row = ThinkingEntry(
+        row = ThinkingEntry(  # type: ignore[call-arg]  # kind is a fixed class value; see entries.py
             id=pending.id if pending is not None else self._next_id,
             title=COMPACTING_LABEL,
             started_at=self.clock(),
@@ -279,7 +279,7 @@ class Transcript:
         self.drop_pending()
         row = self.renderers.describe(name, arguments)
         self._add(
-            ToolEntry(
+            ToolEntry(  # type: ignore[call-arg]  # kind is a fixed class value; see entries.py
                 id=self._next_id,
                 call_id=call_id,
                 tool=name,

@@ -65,8 +65,8 @@ class SessionTitle(BaseModel):
     title: str
 
 
-MetadataRecord = Annotated[SessionStarted | SessionActivity | SessionTitle, Field(discriminator="kind")]
-METADATA = TypeAdapter(MetadataRecord)
+type MetadataRecord = Annotated[SessionStarted | SessionActivity | SessionTitle, Field(discriminator="kind")]
+METADATA: TypeAdapter[SessionStarted | SessionActivity | SessionTitle] = TypeAdapter(MetadataRecord)
 
 
 @dataclass(frozen=True, slots=True)

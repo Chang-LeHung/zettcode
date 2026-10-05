@@ -11,9 +11,10 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
+from pathlib import Path
 
 from ...tui import ELLIPSIS, RUNNING
-from ...tui.render import wrap_columns
+from ...tui.render import display_width, wrap_columns
 
 #: Left margin of every transcript row: the width of the composer's ``\u203a ``
 #: prompt, so text lines up under what the user types and never starts left of
@@ -183,3 +184,32 @@ def activity_glyph(frame: int) -> str:
 def blinking(frame: int) -> bool:
     """Say whether a running row is in the bright half of its blink."""
     return int(frame / BLINK_FRAMES) % 2 == 0
+
+
+def compact_path(path: Path, *, limit: int = 38) -> str:
+    """Shorten a workspace path for the header.
+
+    Args:
+        path: Absolute path to display.
+        limit: Most columns to keep; the home directory collapses to ``~``, and
+            anything longer keeps a leading ellipsis plus its tail. The budget
+            counts display columns, so a path with wide characters is measured
+            the way the header draws it.
+    """
+    value = str(path)
+    home = str(Path.home())
+    if value == home or value.startswith(home + "/"):
+        value = "~" + value[len(home) :]
+    width = display_width(value)
+    if width <= limit:
+        return value
+    # Count the tail from the end so a wide glyph is dropped whole rather than
+    # overhanging the budget, which the ellipsis also has to fit inside.
+    budget = limit - 1
+    tail = ""
+    for character in reversed(value):
+        if display_width(character) > budget:
+            break
+        tail = character + tail
+        budget -= display_width(character)
+    return ELLIPSIS + tail

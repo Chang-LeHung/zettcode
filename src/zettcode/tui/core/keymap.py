@@ -9,8 +9,8 @@ from dataclasses import dataclass
 from .events import AnyEvent, KeyEvent, TextEvent
 from .host import Host
 
-CommandRun = Callable[[AnyEvent, Host], bool]
-BindingPriority = str
+type CommandRun = Callable[[AnyEvent, Host], bool]
+type BindingPriority = str
 
 _PRIORITIES = ("capture", "bubble")
 _SEPARATORS = re.compile(r"[-+\s]+")

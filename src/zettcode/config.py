@@ -12,6 +12,7 @@ import os
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+from typing import overload
 
 from zett_agent.extensions.shell_approval import ShellApprovalMode
 from zett_agent.model import ReasoningEffort
@@ -32,7 +33,7 @@ DEFAULT_MCP_CONFIG = Path.home() / ".zettcode" / "mcp.json"
 DEFAULT_LOG = Path.home() / ".zettcode" / "log" / "tui.log"
 
 #: Top-level keys the config file may set; anything else is a typo.
-CONFIGURABLE = frozenset({"models", "skills", "mcp"})
+CONFIGURABLE = frozenset({"models", "skills", "mcp", "plugins"})
 
 #: Keys one ``[[models]]`` entry may set.
 MODEL_KEYS = frozenset(
@@ -44,6 +45,9 @@ SKILL_KEYS = frozenset({"enabled", "roots"})
 
 #: Keys the ``[mcp]`` table may set.
 MCP_KEYS = frozenset({"enabled", "config"})
+
+#: Keys the ``[plugins]`` table may set.
+PLUGIN_KEYS = frozenset({"enabled", "disable"})
 
 #: Where ZettCode's own skills live, searched after any ``[skills] roots``. A
 #: project-local directory is a configured root, not a default: only what the
@@ -135,6 +139,12 @@ class ZettCodeConfig:
         mcp_enabled: Load MCP servers from :attr:`mcp_config`.
         mcp_config: JSON file naming MCP servers; ``None`` uses
             ``~/.zettcode/mcp.json``.
+        plugins_enabled: Load third-party plugins published under the
+            ``zettcode.plugins`` entry-point group. The builtin rows always
+            load, so switching this off leaves the shell looking the same.
+        disabled_plugins: Entry-point names not to load when
+            :attr:`plugins_enabled` is true; a way to switch off one plugin
+            without uninstalling it.
     """
 
     workspace: Path
@@ -150,6 +160,8 @@ class ZettCodeConfig:
     skill_roots: tuple[Path, ...] = ()
     mcp_enabled: bool = True
     mcp_config: Path | None = None
+    plugins_enabled: bool = True
+    disabled_plugins: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         """Normalize the paths and reject settings that cannot build a runtime."""
@@ -198,7 +210,7 @@ def _default_theme_file() -> Path | None:
     return candidate if candidate.is_file() else None
 
 
-def _typed(value: object, where: str, expected: type) -> object:
+def _typed[T](value: object, where: str, expected: type[T]) -> T:
     """Return one value, rejecting a wrong type with a located message."""
     if expected is int and isinstance(value, bool):
         raise ValueError(f"{where} must be int")
@@ -220,7 +232,15 @@ def _resolve_root(root: str | Path, workspace: Path) -> Path:
     return (expanded if expanded.is_absolute() else workspace / expanded).resolve()
 
 
-def _setting(data: dict[str, object], key: str, expected: type, default: object) -> object:
+@overload
+def _setting[T](data: dict[str, object], key: str, expected: type[T], default: T) -> T: ...
+
+
+@overload
+def _setting[T](data: dict[str, object], key: str, expected: type[T], default: None = None) -> T | None: ...
+
+
+def _setting(data: dict[str, object], key: str, expected: type, default: object = None) -> object:
     """Return one model setting, rejecting a wrong type."""
     value = data.get(key, default)
     if value is None:
@@ -296,6 +316,15 @@ def _read_mcp_config(raw: object, source: Path) -> Path | None:
     return Path(_typed(raw, f"Config key 'mcp.config' in {source}", str))
 
 
+def _read_disabled_plugins(raw: object, source: Path) -> tuple[str, ...]:
+    """Return the entry-point names the ``[plugins]`` table switches off."""
+    if raw is None:
+        return ()
+    if not isinstance(raw, list) or any(not isinstance(entry, str) or not entry.strip() for entry in raw):
+        raise ValueError(f"Config key 'plugins.disable' in {source} must be an array of non-empty strings")
+    return tuple(entry.strip() for entry in raw)
+
+
 def load_config(
     workspace: str | Path,
     *,
@@ -329,6 +358,7 @@ def load_config(
 
     skills = _read_table(data.get("skills"), "skills", source, SKILL_KEYS)
     mcp = _read_table(data.get("mcp"), "mcp", source, MCP_KEYS)
+    plugins = _read_table(data.get("plugins"), "plugins", source, PLUGIN_KEYS)
 
     return ZettCodeConfig(
         workspace=Path(workspace),
@@ -339,4 +369,6 @@ def load_config(
         skill_roots=_read_skill_roots(skills.get("roots"), source),
         mcp_enabled=bool(_setting(mcp, "enabled", bool, True)),
         mcp_config=_read_mcp_config(mcp.get("config"), source),
+        plugins_enabled=bool(_setting(plugins, "enabled", bool, True)),
+        disabled_plugins=_read_disabled_plugins(plugins.get("disable"), source),
     )

@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:  # pragma: no cover - annotations only, avoids an import cycle
+    from .rich_text import Alignment
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,7 +79,7 @@ class TextLine:
         """Return the displayed column width of this line."""
         return sum(span.width for span in self.spans)
 
-    def layout(self, width: int, *, wrap: bool = True, align: str = "left") -> tuple[TextLine, ...]:
+    def layout(self, width: int, *, wrap: bool = True, align: Alignment = "left") -> tuple[TextLine, ...]:
         """Lay out this line using the same rules as a RichText widget."""
         from .rich_text import layout_rich_lines
 

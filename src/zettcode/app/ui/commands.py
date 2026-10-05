@@ -48,8 +48,13 @@ class ShellCommands:
         """Keep the shell the handlers act on; ``shell.app`` is its ``TuiApp``."""
         self.shell = shell
 
-    def build(self, agent_commands: Sequence[Command]) -> tuple[Command, ...]:
-        """Return every command, leaving the agent's own in their order."""
+    def build(self, agent_commands: Sequence[Command], plugin_commands: Sequence[Command] = ()) -> tuple[Command, ...]:
+        """Return every command: shell, agent, then plugins.
+
+        Plugin commands come last on purpose. Command lookup takes the first
+        match, so a built-in name always wins and a plugin cannot shadow
+        ``/model`` or ``/quit`` by accident.
+        """
         return (
             Command("/help", "show the commands and the keys", "app", self.help),
             *agent_commands,
@@ -62,6 +67,7 @@ class ShellCommands:
             Command("/clear", "clear the transcript", "app", self.clear),
             Command("/quit", "exit", "app", self.quit),
             Command("/exit", "exit, same as /quit", "app", self.quit),
+            *plugin_commands,
         )
 
     async def help(self, argument: str) -> CommandResult:

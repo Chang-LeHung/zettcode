@@ -10,8 +10,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Literal
 
-from .style import Span, Style, TextLine
-from .text import character_width, wrap_spans
+from .style import Span, TextLine
+from .text import truncate_spans, wrap_spans
 
 type Alignment = Literal["left", "center", "right"]
 
@@ -50,40 +50,17 @@ def layout_rich_lines(
                 remainder = tuple(span for row in rows[1:] for span in row)
                 rows = [rows[0], *wrap_spans(remainder, max(1, width - min(indent, width - 1)))]
         else:
-            rows = (_truncate_spans(line.spans, width),)
+            rows = [truncate_spans(line.spans, width)]
         for position, spans in enumerate(rows):
             row = TextLine(tuple(spans))
             if wrap and position and indent:
                 row = inset_line(row, min(indent, width - 1))
             used = row.width
             if used > width:
-                row = TextLine(_truncate_spans(row.spans, width))
+                row = TextLine(truncate_spans(row.spans, width))
                 used = row.width
             if align != "left" and used < width and row.spans:
                 gap = (width - used) // 2 if align == "center" else width - used
                 row = inset_line(row, gap)
             laid_out.append(row)
     return tuple(laid_out)
-
-
-def _truncate_spans(spans: Sequence[Span], width: int) -> tuple[Span, ...]:
-    """Clip coloured text to ``width`` columns and mark an overflow with …."""
-    if sum(span.width for span in spans) <= width:
-        return tuple(spans)
-    remaining = max(0, width - 1)
-    clipped: list[Span] = []
-    for span in spans:
-        text = ""
-        for character in span.text:
-            size = character_width(character)
-            if size > remaining:
-                break
-            text += character
-            remaining -= size
-        if text:
-            clipped.append(Span(text, span.style))
-        if remaining == 0 or len(text) < len(span.text):
-            break
-    style = clipped[-1].style if clipped else spans[0].style if spans else Style()
-    clipped.append(Span("…", style))
-    return tuple(clipped)

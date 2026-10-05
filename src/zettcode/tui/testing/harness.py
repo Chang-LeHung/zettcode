@@ -18,7 +18,7 @@ from ..core.events import AnyEvent, KeyEvent, MouseAction, MouseEvent, PasteEven
 from ..core.geometry import Point
 from ..core.theme import Theme
 from ..core.widget import Widget
-from ..render import Canvas, DifferentialRenderer, Span
+from ..render import Canvas, DifferentialRenderer, Span, Style
 
 
 @dataclass(frozen=True, slots=True)
@@ -203,7 +203,7 @@ def _snapshot(canvas: Canvas, cursor: Point | None) -> Snapshot:
     for row in canvas.cells:
         spans: list[Span] = []
         buffer = ""
-        style = None
+        style: Style = Style()
         for cell in row:
             if cell.continuation:
                 continue

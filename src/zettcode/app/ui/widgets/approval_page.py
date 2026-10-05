@@ -68,7 +68,7 @@ class ApprovalPage(Widget):
 
     It owns no fill colour: the page clears its rectangle and paints text
     straight onto the terminal's own background, with the surrounding border as
-    the only chrome. Only the highlighted option bands a row, so the prompt
+    the only frame. Only the highlighted option bands a row, so the prompt
     never reads as a second surface stacked on the conversation.
 
     It paints into whatever rectangle it is given; the shell puts it in a

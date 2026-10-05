@@ -6,6 +6,7 @@ import asyncio
 import os
 import signal
 from collections.abc import Callable
+from typing import Any
 
 from ..terminal import Terminal
 from .decoder import InputDecoder
@@ -27,7 +28,7 @@ class AsyncInput:
         self.publish = publish
         self.decoder = InputDecoder()
         self.loop: asyncio.AbstractEventLoop | None = None
-        self._previous_resize_handler = None
+        self._previous_resize_handler: Any = None
         self._escape_handle: asyncio.TimerHandle | None = None
 
     def start(self) -> None:

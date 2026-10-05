@@ -39,6 +39,7 @@ include = ["/src", "/README.md", "/LICENSE", "/pyproject.toml"]
 
 [dependency-groups]
 dev = [
+  "mypy>=1.14,<2",
   "pytest>=8,<9",
   "pytest-asyncio>=0.26,<2",
   "ruff>=0.11,<1",
@@ -48,6 +49,20 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+
+[tool.mypy]
+python_version = "3.14"
+files = ["src"]
+# Check the pydantic storage models as models, not as plain classes.
+plugins = ["pydantic.mypy"]
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+
+[[tool.mypy.overrides]]
+# Ships no stubs; the runner only calls the two documented functions.
+module = ["pyperclip"]
+ignore_missing_imports = true
 
 [tool.ruff]
 line-length = 120

@@ -12,8 +12,9 @@ It is a demo, not a second entry point: nothing here is imported by the shell.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 
-from ...tui import DARK, ELLIPSIS, SEPARATOR, Slot, Text, TuiApp, VBox, Widget, run_app
+from ...tui import DARK, ELLIPSIS, SEPARATOR, AnyEvent, Host, Slot, Text, TuiApp, VBox, Widget, run_app
 from ...tui.widgets import Rule
 from ..agent import rows as rows_module
 from ..agent.transcript import Transcript
@@ -79,6 +80,23 @@ class Blinking(Widget):
         self.transcript.advance_frame()
 
 
+def _quit(event: AnyEvent, host: Host) -> bool:
+    """Leave the demo."""
+    host.exit()
+    return True
+
+
+def _pace(delta: float) -> Callable[[AnyEvent, Host], bool]:
+    """Return a binding that nudges the blink interval by ``delta`` seconds."""
+
+    def run(event: AnyEvent, host: Host) -> bool:
+        nudge_pace(delta)
+        host.invalidate()
+        return True
+
+    return run
+
+
 def build(transcript: Transcript | None = None) -> TuiApp:
     """Build the demo application around an empty transcript."""
     transcript = Transcript() if transcript is None else transcript
@@ -91,9 +109,9 @@ def build(transcript: Transcript | None = None) -> TuiApp:
         ]
     )
     app = TuiApp(Blinking(transcript, body), theme=DARK)
-    app.commands.add("quit", lambda event, host: (host.exit(), True)[1])
-    app.commands.add("slower", lambda event, host: (nudge_pace(0.5), host.invalidate(), True)[2])
-    app.commands.add("faster", lambda event, host: (nudge_pace(-0.5), host.invalidate(), True)[2])
+    app.commands.add("quit", _quit)
+    app.commands.add("slower", _pace(0.5))
+    app.commands.add("faster", _pace(-0.5))
     for key in ("q", "escape", "ctrl_c"):
         app.keymap.bind(key, "quit", priority="capture")
     app.keymap.bind("[", "slower", priority="capture")

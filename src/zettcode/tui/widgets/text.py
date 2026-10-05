@@ -10,7 +10,7 @@ from ..core.widget import Widget
 from ..render import Canvas, Span, Style, TextLine
 from .rich_text import RichText
 
-Value = str | Callable[[], str]
+type Value = str | Callable[[], str]
 
 
 class Text(RichText):
@@ -26,6 +26,9 @@ class Text(RichText):
     It uses the same styled-line layout as :class:`RichText`; the label never
     grows past the rectangle it was given, it just writes fewer rows.
     """
+
+    #: The label resolves to text only, never to styled fragments.
+    value: Value
 
     def __init__(
         self,

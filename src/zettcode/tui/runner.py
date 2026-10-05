@@ -169,8 +169,9 @@ class TerminalRunner:
         waker = asyncio.ensure_future(self.wakeup.wait())
         self.wakeup.clear()
         try:
+            pending = {waker} if self._input is None else {self._input, waker}
             await asyncio.wait(
-                {self._input, waker},
+                pending,
                 timeout=self.app.scheduler.delay(now=self.app.clock()),
                 return_when=asyncio.FIRST_COMPLETED,
             )

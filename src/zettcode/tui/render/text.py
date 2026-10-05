@@ -6,7 +6,7 @@ from collections.abc import Sequence
 
 from wcwidth import wcwidth
 
-from .style import Span
+from .style import Span, Style
 
 ELLIPSIS = "…"
 
@@ -70,6 +70,40 @@ def truncate(text: str, width: int, *, ellipsis: str = ELLIPSIS) -> str:
         return text
     suffix = ellipsis if display_width(ellipsis) <= width else ""
     return slice_columns(text, 0, width - display_width(suffix)) + suffix
+
+
+def truncate_spans(spans: Sequence[Span], width: int) -> tuple[Span, ...]:
+    """Clamp styled fragments to a column budget, marking overflow with an ellipsis.
+
+    The styles travel with the characters they were attached to, so a clipped
+    line keeps every colour it had up to the cut and the ellipsis wears the last
+    surviving style.
+
+    Args:
+        spans: Fragments in paint order.
+        width: Column budget; the ellipsis is carved out of it.
+    """
+    if width <= 0:
+        return ()
+    if sum(span.width for span in spans) <= width:
+        return tuple(spans)
+    remaining = max(0, width - 1)
+    clipped: list[Span] = []
+    for span in spans:
+        text = ""
+        for character in span.text:
+            size = character_width(character)
+            if size > remaining:
+                break
+            text += character
+            remaining -= size
+        if text:
+            clipped.append(Span(text, span.style))
+        if remaining == 0 or len(text) < len(span.text):
+            break
+    style = clipped[-1].style if clipped else spans[0].style if spans else Style()
+    clipped.append(Span(ELLIPSIS, style))
+    return tuple(clipped)
 
 
 def wrap_columns(text: str, width: int) -> list[str]:
@@ -159,7 +193,7 @@ def wrap_spans(spans: Sequence[Span], width: int) -> list[tuple[Span, ...]]:
     rows: list[tuple[Span, ...]] = []
     row: list[Span] = []
     chunk = ""
-    chunk_style = None
+    chunk_style: Style = Style()
     used = 0
     for span in spans:
         for character in span.text:

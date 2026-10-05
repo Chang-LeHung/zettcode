@@ -28,9 +28,10 @@ from ctypes import c_char_p, c_ulong, c_void_p
 from functools import lru_cache
 from pathlib import Path
 from subprocess import CompletedProcess
+from typing import Any
 
 #: What one clipboard command looks like: argv in, its result out.
-Runner = Callable[[Sequence[str]], "CompletedProcess[bytes]"]
+type Runner = Callable[[Sequence[str]], CompletedProcess[bytes]]
 
 #: Media type of an image the desktop path had to normalise: PNG is what both
 #: platforms write, and the conversion on macOS exists to keep that true.
@@ -208,8 +209,8 @@ def _pasteboard_reader() -> Callable[[], bytes | None] | None:
         return None
 
     def send(
-        receiver: object, selector: bytes, *args: object, restype: object = c_void_p, argtypes: tuple = ()
-    ) -> object:
+        receiver: Any, selector: bytes, *args: Any, restype: Any = c_void_p, argtypes: tuple[Any, ...] = ()
+    ) -> Any:
         """Send one Objective-C message with the signature that call needs."""
         runtime.objc_msgSend.restype = restype
         runtime.objc_msgSend.argtypes = (c_void_p, c_void_p, *argtypes)

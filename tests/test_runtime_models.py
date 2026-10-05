@@ -10,6 +10,7 @@ from zett_agent.extensions.skill import SkillExtension
 from zett_agent.messages import UserMessage
 
 from zettcode.app.agent import runtime as runtime_module
+from zettcode.app.agent.compaction import OnDemandCompaction
 from zettcode.app.agent.storage import SessionStore
 from zettcode.config import ModelConfig, ZettCodeConfig
 
@@ -333,7 +334,8 @@ async def test_runtime_switches_models_and_closes_every_provider(tmp_path, monke
     assert captured["config"].session_id == runtime.session_id
     assert runtime.active_model is first
     assert captured["model"] is created[0]
-    assert captured["extensions"][-1].model is None
+    compaction = next(extension for extension in captured["extensions"] if isinstance(extension, OnDemandCompaction))
+    assert compaction.model is None
     assert any(isinstance(extension, SkillExtension) for extension in captured["extensions"])
     assert not any(isinstance(extension, McpExtension) for extension in captured["extensions"])
     # The tool list follows the model, so the capability filter is part of the run.

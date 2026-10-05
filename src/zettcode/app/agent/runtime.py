@@ -32,6 +32,7 @@ from zett_agent.ids import new_uuid7
 from zett_agent.model import ReasoningEffort
 
 from ...config import DEFAULT_MCP_CONFIG, ModelConfig, ZettCodeConfig
+from ...plugins import Plugins, load_plugins
 from .approval import ShellApprovalMemory
 from .capabilities import ModelCapabilities
 from .compaction import OnDemandCompaction
@@ -154,6 +155,7 @@ class ZettCodeRuntime:
     session_id: str
     active_model: ModelConfig
     compaction: OnDemandCompaction
+    plugins: Plugins = field(default_factory=Plugins)
     event_dispatcher: AgentEventDispatcher | None = None
     client: AgentClient | None = None
     model: OpenAIProvider | None = None
@@ -192,6 +194,7 @@ class ZettCodeRuntime:
                 max_tokens=selected.compaction_max_tokens,
                 keep_recent_tokens=selected.compaction_keep_tokens,
             ),
+            plugins=load_plugins(config),
         )
 
     def start(self) -> asyncio.Task[ZettCodeRuntime]:
@@ -225,6 +228,10 @@ class ZettCodeRuntime:
                 ToolGuidelinesExtension(),
                 *integration_extensions(self.config),
                 self.compaction,
+                # One host drives every plugin, so the agent sees one
+                # extension; the host places itself at the earliest priority
+                # any plugin asked for.
+                *self.plugins.extensions,
             ],
             reasoning_effort=self.config.reasoning_effort,
             parallel_tool_call=self.config.parallel_tool_call,

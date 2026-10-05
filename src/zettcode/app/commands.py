@@ -48,7 +48,9 @@ class Command:
         type: Which layer owns the command. ``"app"`` is a local UI action such
             as ``/theme`` or ``/quit``; ``"agent"`` acts on the conversation,
             its sessions, or the model, and is handled by
-            :class:`~zettcode.app.agent.ZettCodeAgent`.
+            :class:`~zettcode.app.agent.ZettCodeAgent`; ``"plugin"`` comes from
+            an installed plugin, registered through
+            :class:`~zettcode.plugins.PluginContainer`.
         handler: Runs the command, receiving the trimmed text after the name
             (``""`` when the user typed none) and returning a
             :class:`CommandResult` describing what to show next. Raising
@@ -57,5 +59,5 @@ class Command:
 
     name: str
     description: str
-    type: Literal["app", "agent"]
+    type: Literal["app", "agent", "plugin"]
     handler: Callable[[str], Awaitable[CommandResult]]
