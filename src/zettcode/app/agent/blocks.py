@@ -26,6 +26,7 @@ from ...tui import (
 from ...tui.render import SweepSpan, display_width, highlight, inset_line, layout_rich_lines, sweep_spans, truncate
 from .entries import Entry, EntryStatus, PlainEntry, ProcessingEntry, TextEntry, ThinkingEntry, ToolEntry
 from .rows import (
+    COMPACTING_LABEL,
     CONTENT_INDENT,
     RUNNING_GLYPHS,
     TOOL_EXPANDED_ROWS,
@@ -198,15 +199,17 @@ class ThinkingProcessor(EntryProcessor):
     def lines(self, entry: ThinkingEntry, width: int, theme: Theme, frame: int) -> list[TextLine]:
         """Show the heading, plus the indented body when expanded."""
         timing = duration_text(entry.duration) if entry.duration is not None else "working"
+        label = f"{entry.title}  {timing}"
         header = Style(foreground=theme.accent_bright)
         if entry.status is EntryStatus.RUNNING:
-            heading = _running_label(f"Thinking  {timing}", theme, frame)
+            heading = _running_label(label, theme, frame)
         else:
             marker = EXPANDED if entry.expanded else MARKER
-            heading = (Span(f"{marker} ", header), Span(f"Thinking  {timing}", header))
+            heading = (Span(f"{marker} ", header), Span(label, header))
         lines = [TextLine(), layout_rich_lines((TextLine(heading),), width, wrap=False)[0]]
         if entry.expanded:
-            source = "\n".join(entry.text.splitlines()) if entry.text else f"Waiting for reasoning{ELLIPSIS}"
+            waiting = "summary" if entry.title == COMPACTING_LABEL else "reasoning"
+            source = "\n".join(entry.text.splitlines()) if entry.text else f"Waiting for {waiting}{ELLIPSIS}"
             lines.extend(self.text_lines(source, width, Style(foreground=theme.subtle), indent=4))
         return lines
 

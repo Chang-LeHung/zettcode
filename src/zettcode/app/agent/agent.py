@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Sequence
+from contextlib import aclosing
 from pathlib import Path
 
 from zett_agent.agent import AgentRunConfig
 from zett_agent.dispatcher import AgentEventDispatcher
-from zett_agent.events import AgentEvent
+from zett_agent.events import AgentEvent, AgentEventType
 from zett_agent.extensions.external import ExternalEvent
 from zett_agent.extensions.shell_approval import SHELL_APPROVAL_RESPONSE_EVENT_NAME
 from zett_agent.messages import (
@@ -39,6 +40,11 @@ PromptPart = str | tuple[bytes, str]
 
 #: The name a session shows before the agent has given it a title.
 UNTITLED_SESSION = "New session"
+
+#: What a compaction run sends. zett-agent only summarizes inside a request, so
+#: asking for one on demand means making a request; this is its message, and the
+#: message is never stored (``persist=False``) and never shown.
+COMPACT_REQUEST = "Summarize this conversation so far."
 
 
 class ZettCodeAgent:
@@ -157,6 +163,7 @@ class ZettCodeAgent:
         return (
             Command("/new", "start a fresh session", "agent", self._command_new),
             Command("/use", "switch to a session: /use <id>", "agent", self._command_use),
+            Command("/compact", "summarize the context with the next request", "agent", self._command_compact),
         )
 
     @property
@@ -325,6 +332,36 @@ class ZettCodeAgent:
         """Approve every shell command for the rest of this run, without asking."""
         self.runtime.approve_all_shell_commands()
 
+    def request_compaction(self) -> None:
+        """Ask the next turn to compact the context, whatever its size."""
+        self.runtime.request_compaction()
+
+    async def compact(self) -> None:
+        """Summarize the conversation now, without adding a turn to it.
+
+        zett-agent owns the cutoff, the summary prompt, and the checkpoint, and
+        it runs them inside a request — so this makes one. The request's message
+        is never stored (``persist=False``), and the run is dropped as soon as
+        the checkpoint event arrives, which is before the primary model call is
+        made: the conversation is left exactly as it was, only shorter.
+        """
+        await self.runtime.start()
+        self.request_compaction()
+        client = self.runtime.started
+        async with aclosing(
+            client.stream(
+                UserMessage(content=COMPACT_REQUEST, persist=False),
+                config=AgentRunConfig(session_id=self.session_id),
+                model=self.runtime.provider,
+                reasoning_effort=self.runtime.effort,
+            )
+        ) as events:
+            async for event in events:
+                # The checkpoint is stored by the event, so the run has done its
+                # work; anything after it is an answer nobody asked for.
+                if event.type in {AgentEventType.COMPACTION_COMPLETED, AgentEventType.RUN_COMPLETED}:
+                    break
+
     async def _command_new(self, argument: str) -> CommandResult:
         """Start a fresh session."""
         session_id = self.new_session()
@@ -336,6 +373,17 @@ class ZettCodeAgent:
             return CommandResult(message="Usage: `/use <session-id>`")
         self.use_session(argument)
         return CommandResult(notification=f"using session {self.session_id[:8]}")
+
+    async def _command_compact(self, argument: str) -> CommandResult:
+        """Summarize the conversation now, whatever its size.
+
+        The row and the outcome notice arrive while this await runs: the run
+        streams through the same event dispatcher a turn does, so the transcript
+        animates ``Compacting`` and ends with ``Context compaction applied`` (or
+        ``skipped`` when the summary would not be smaller).
+        """
+        await self.compact()
+        return CommandResult()
 
     def respond_approval(self, session_id: str, call_id: str, decision: str, remember: bool) -> None:
         """Answer a pending shell approval for the originating session."""

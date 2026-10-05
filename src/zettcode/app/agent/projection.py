@@ -10,7 +10,6 @@ from zett_agent.events import AgentEvent
 from zett_agent.extensions.shell_approval import SHELL_APPROVAL_EVENT_NAME
 from zett_agent.messages import ToolMessage
 
-from ...tui import ELLIPSIS
 from .entries import EntryStatus
 from .transcript import Transcript
 from .usage import USAGE_EVENT_NAME
@@ -66,11 +65,16 @@ class TranscriptProjector(AgentEventDispatcher):
         self.transcript.begin_turn(prompt)
 
     async def on_compaction_started_event(self, event: AgentEvent) -> None:
-        """Announce compaction; the run keeps streaming underneath it."""
-        self.transcript.notice(f"Compacting context{ELLIPSIS}")
+        """Open the compaction row; the summary streams into it as it arrives."""
+        self.transcript.start_compaction()
+
+    async def on_compaction_text_delta_event(self, event: AgentEvent) -> None:
+        """Append one summary fragment to the row the started event opened."""
+        self.transcript.append_compaction(event.delta or "")
 
     async def on_compaction_completed_event(self, event: AgentEvent) -> None:
         """Report whether the agent applied or skipped the compaction."""
+        self.transcript.complete_compaction()
         state = "applied" if event.applied else "skipped"
         self.transcript.notice(f"Context compaction {state}")
 

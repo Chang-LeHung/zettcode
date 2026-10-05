@@ -86,7 +86,9 @@ class FakeClient:
         self.configs.append(config)
         self.efforts.append(reasoning_effort)
         self.messages.append(message)
-        if self.event_dispatcher is not None:
+        # The real client does not echo turns; the projector does, and only for
+        # the prompts a reader typed. A compaction run's message is not one.
+        if self.event_dispatcher is not None and isinstance(message, str):
             self.event_dispatcher.begin_turn(message)
         for event in self.events:
             if self.event_dispatcher is not None:
@@ -157,6 +159,7 @@ class FakeRuntime:
     model: object = field(init=False)
     auto_approved: bool = field(default=False, init=False)
     start_calls: int = field(default=0, init=False)
+    compaction_requested: bool = field(default=False, init=False)
 
     def __post_init__(self) -> None:
         self.active_model = self.config.models[0]
@@ -205,6 +208,9 @@ class FakeRuntime:
 
     def approve_all_shell_commands(self) -> None:
         self.auto_approved = True
+
+    def request_compaction(self) -> None:
+        self.compaction_requested = True
 
     def use_effort(self, name):
         try:
@@ -578,6 +584,61 @@ async def test_the_runtime_starts_with_the_first_turn_not_before():
     await asyncio.wait_for(app.task, 2.0)
 
     assert runtime.start_calls == 1
+
+
+async def test_the_compact_command_compacts_now():
+    """`/compact` sends the summarizer at once, and the run keeps out of the session."""
+    app = build_app()
+    harness = _harness(app)
+
+    harness.write("/compact")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    message = app.agent.runtime.client.messages[-1]
+    assert isinstance(message, UserMessage)
+    assert message.persist is False  # the store keeps the compaction run out of the branch
+    assert app.agent.runtime.compaction_requested is True  # armed for that one run
+    assert app.agent.runtime.start_calls == 1
+    # It is not a turn: nothing was echoed as a user message.
+    assert not any(entry.kind == "user" for entry in app.transcript.entries)
+
+
+async def test_busy_work_keeps_the_frames_coming():
+    """A waiting row animates from the frame counter, so work holds the token."""
+    app = build_app(block=True)
+    harness = _harness(app)
+
+    harness.write("/compact")
+    harness.press("enter")
+    await asyncio.sleep(0)
+
+    assert "activity" in app.app.scheduler.animations
+
+    app.task.cancel()
+    await asyncio.gather(app.task, return_exceptions=True)
+
+    assert app.app.scheduler.animations == ()
+
+
+async def test_the_projector_streams_a_compaction_into_its_own_row():
+    """Compaction events drive a row like reasoning, plus the outcome notice."""
+    app = build_app()
+
+    await app.projector.dispatch(AgentEvent(AgentEventType.COMPACTION_STARTED, "session-0001"))
+    await app.projector.dispatch(
+        AgentEvent(AgentEventType.COMPACTION_TEXT_DELTA, "session-0001", delta="the parser was fixed")
+    )
+    await app.projector.dispatch(AgentEvent(AgentEventType.COMPACTION_COMPLETED, "session-0001", applied=True))
+
+    rows = [entry for entry in app.transcript.entries if entry.kind == "thinking"]
+    assert [row.title for row in rows] == ["Compacting"]
+    assert rows[0].text == "the parser was fixed"
+    assert rows[0].status == "completed"
+    assert rows[0].duration is not None
+    assert any(
+        entry.kind == "notice" and "Context compaction applied" in entry.text for entry in app.transcript.entries
+    )
 
 
 async def test_a_failed_request_shows_the_reason_not_the_task_group():

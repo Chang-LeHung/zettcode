@@ -33,12 +33,12 @@ from zett_agent.model import ReasoningEffort
 
 from ...config import DEFAULT_MCP_CONFIG, ModelConfig, ZettCodeConfig
 from .approval import ShellApprovalMemory
+from .compaction import OnDemandCompaction
 from .context import ContextExtension, Tokenizer
 from .storage import SessionStore
 from .usage import UsageExtension
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only; the imports are the cost
-    from zett_agent.extensions.compaction import CompactionExtension
     from zett_agent.providers.openai import OpenAIProvider
 
 
@@ -136,10 +136,10 @@ def describe_error(error: BaseException) -> str:
 class ZettCodeRuntime:
     """Own the model, the persistence and approval extensions, the client, and the active session.
 
-    Before :meth:`start` runs, ``client``, ``model``, and ``compaction`` are
-    ``None``: everything that does not need a provider is already here, which is
-    what lets the shell paint. :attr:`started` and :attr:`provider` are the
-    readers that insist the runtime is ready.
+    Before :meth:`start` runs, ``client`` and ``model`` are ``None``: everything
+    that does not need a provider is already here, which is what lets the shell
+    paint. :attr:`started` and :attr:`provider` are the readers that insist the
+    runtime is ready.
     """
 
     config: ZettCodeConfig
@@ -152,10 +152,10 @@ class ZettCodeRuntime:
     effort: ReasoningEffort
     session_id: str
     active_model: ModelConfig
+    compaction: OnDemandCompaction
     event_dispatcher: AgentEventDispatcher | None = None
     client: AgentClient | None = None
     model: OpenAIProvider | None = None
-    compaction: CompactionExtension | None = None
     _starting: asyncio.Task[ZettCodeRuntime] | None = field(default=None, repr=False)
     _models: dict[ModelConfig, OpenAIProvider] = field(default_factory=dict)
 
@@ -186,6 +186,11 @@ class ZettCodeRuntime:
             effort=config.reasoning_effort,
             session_id=new_uuid7(),
             active_model=selected,
+            compaction=OnDemandCompaction(
+                None,
+                max_tokens=selected.compaction_max_tokens,
+                keep_recent_tokens=selected.compaction_keep_tokens,
+            ),
         )
 
     def start(self) -> asyncio.Task[ZettCodeRuntime]:
@@ -201,15 +206,9 @@ class ZettCodeRuntime:
     async def _build(self) -> ZettCodeRuntime:
         """Import what a provider needs, then hand the client its extensions."""
         from zett_agent.client import create_agent
-        from zett_agent.extensions.compaction import CompactionExtension
 
         selected = self.active_model
         model = self._provider(selected)
-        compaction = CompactionExtension(
-            None,
-            max_tokens=selected.compaction_max_tokens,
-            keep_recent_tokens=selected.compaction_keep_tokens,
-        )
         client = await create_agent(
             model,
             config=AgentRunConfig(session_id=self.session_id),
@@ -223,7 +222,7 @@ class ZettCodeRuntime:
                 self.context,
                 ToolGuidelinesExtension(),
                 *integration_extensions(self.config),
-                compaction,
+                self.compaction,
             ],
             reasoning_effort=self.config.reasoning_effort,
             parallel_tool_call=self.config.parallel_tool_call,
@@ -231,7 +230,6 @@ class ZettCodeRuntime:
         )
         client.event_dispatcher = self.event_dispatcher
         self.model = model
-        self.compaction = compaction
         self.client = client
         return self
 
@@ -320,16 +318,19 @@ class ZettCodeRuntime:
                 raise ValueError(f"Ambiguous model: {name}; use a unique display_model")
             chosen = matches[0]
         self.active_model = chosen
-        # A preview runtime has no provider and no compaction budget yet; the
-        # model it names is what :meth:`_build` starts from.
+        # A preview runtime has no provider yet; the model it names is what
+        # :meth:`_build` starts from.
         if self.client is not None:
             self.model = self._provider(chosen)
-        if self.compaction is not None:
-            # Context size is a property of the model, so switching models moves
-            # the point at which a request is compacted with it.
-            self.compaction.max_tokens = chosen.compaction_max_tokens
-            self.compaction.keep_recent_tokens = chosen.compaction_keep_tokens
+        # Context size is a property of the model, so switching models moves
+        # the point at which a request is compacted with it.
+        self.compaction.max_tokens = chosen.compaction_max_tokens
+        self.compaction.keep_recent_tokens = chosen.compaction_keep_tokens
         return chosen
+
+    def request_compaction(self) -> None:
+        """Ask the next request to compact the context, however small it is."""
+        self.compaction.request()
 
     def new_session(self) -> str:
         """Switch future requests to a fresh session identity."""
