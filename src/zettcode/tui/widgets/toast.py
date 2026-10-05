@@ -21,8 +21,11 @@ class Toast(Widget):
     Shape::
 
         +-----------------------+
-        | saved to disk         |  <- frame and text in the level's colour
+        | saved to disk         |  <- frame in the level's colour
         +-----------------------+
+
+    The frame carries the level's colour; the message stays in the primary
+    foreground so a one-line notice reads as text rather than as a warning.
 
     Mount registers a scheduler token so the frame loop keeps running for the
     countdown; ``on_tick`` dismisses it once the deadline passes, either by
@@ -125,7 +128,7 @@ class Toast(Widget):
             self.rect.x + 2,
             self.rect.y + 1,
             truncate(self.message, max(0, width - 4)),
-            Style(foreground=color, bold=True),
+            Style(foreground=theme.text),
             max_width=max(0, width - 4),
         )
         canvas.draw_text(self.rect.x + width - 1, self.rect.y + 1, "\u2502", Style(foreground=color))
