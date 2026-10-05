@@ -33,6 +33,7 @@ from zett_agent.model import ReasoningEffort
 
 from ...config import DEFAULT_MCP_CONFIG, ModelConfig, ZettCodeConfig
 from .approval import ShellApprovalMemory
+from .capabilities import ModelCapabilities
 from .compaction import OnDemandCompaction
 from .context import ContextExtension, Tokenizer
 from .storage import SessionStore
@@ -215,6 +216,7 @@ class ZettCodeRuntime:
             system_prompt=build_system_prompt(self.config),
             extensions=[
                 CodingExtension(),
+                ModelCapabilities(self._models),
                 self.approval,
                 self.persistence,
                 self.todos,
