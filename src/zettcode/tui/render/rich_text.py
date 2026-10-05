@@ -50,7 +50,7 @@ def layout_rich_lines(
                 remainder = tuple(span for row in rows[1:] for span in row)
                 rows = [rows[0], *wrap_spans(remainder, max(1, width - min(indent, width - 1)))]
         else:
-            rows = (_truncate_spans(line.spans, width),)
+            rows = [_truncate_spans(line.spans, width)]
         for position, spans in enumerate(rows):
             row = TextLine(tuple(spans))
             if wrap and position and indent:

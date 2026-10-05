@@ -26,6 +26,7 @@ from ....tui import (
     Theme,
 )
 from ....tui.render import display_width
+from ...agent.blocks import EntryProcessors
 from ...agent.transcript import Entry, Transcript
 
 #: Badge shown once the reader scrolls away from the newest line. It names the
@@ -53,9 +54,9 @@ class TranscriptSource(LineSource):
         self._width = 0
         self._version = -1
         self._theme: Theme | None = None
-        self._processors = None
+        self._processors: EntryProcessors | None = None
         self._starts: list[int] = []
-        self._blocks: list[object] = []
+        self._blocks: list[LineSource] = []
         self._count = 0
 
     def count(self, width: int) -> int:
@@ -96,7 +97,7 @@ class TranscriptSource(LineSource):
         self._processors = self.transcript.processors
         frame = self.frame()
         starts: list[int] = []
-        blocks: list[object] = []
+        blocks: list[LineSource] = []
         total = 0
         for entry in self.transcript.entries:
             starts.append(total)

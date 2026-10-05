@@ -6,7 +6,7 @@ from collections.abc import Sequence
 
 from wcwidth import wcwidth
 
-from .style import Span
+from .style import Span, Style
 
 ELLIPSIS = "…"
 
@@ -159,7 +159,7 @@ def wrap_spans(spans: Sequence[Span], width: int) -> list[tuple[Span, ...]]:
     rows: list[tuple[Span, ...]] = []
     row: list[Span] = []
     chunk = ""
-    chunk_style = None
+    chunk_style: Style = Style()
     used = 0
     for span in spans:
         for character in span.text:

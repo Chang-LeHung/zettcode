@@ -13,7 +13,7 @@ from ..render import Canvas, Span, Style, truncate
 from ..render.text import character_width, display_width
 from .completion import Completer, CompletionItem
 
-Submit = Callable[[str], bool | None]
+type Submit = Callable[[str], bool | None]
 
 
 class TextArea(Widget):

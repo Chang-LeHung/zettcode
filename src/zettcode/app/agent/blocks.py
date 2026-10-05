@@ -8,6 +8,7 @@ retains only typed entries and a cached line source, and remains virtualized.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import Any
 
 from ...tui import (
     DONE,
@@ -58,15 +59,19 @@ def tool_color(tool: str, theme: Theme) -> str:
     return getattr(theme.tools, TOOL_ROLES.get(tool, ""), theme.accent)
 
 
-class EntryProcessor(ABC):
-    """One link that claims entries and presents them as already-laid-out lines."""
+class EntryProcessor[E](ABC):
+    """One link that claims entries and presents them as already-laid-out lines.
+
+    The type parameter is the entry the processor handles; the chain dispatches
+    on :meth:`supports`, so ``lines`` receives exactly that entry.
+    """
 
     @abstractmethod
     def supports(self, entry: Entry) -> bool:
         """Return whether this processor can render the entry."""
 
     @abstractmethod
-    def lines(self, entry: Entry, width: int, theme: Theme, frame: int) -> list[TextLine]:
+    def lines(self, entry: E, width: int, theme: Theme, frame: int) -> list[TextLine]:
         """Return the rows this entry paints at the available width."""
 
     @staticmethod
@@ -77,7 +82,7 @@ class EntryProcessor(ABC):
         return [inset_line(row, margin) for row in layout_rich_lines(source, max(1, width - margin))]
 
 
-class WelcomeProcessor(EntryProcessor):
+class WelcomeProcessor(EntryProcessor[TextEntry]):
     """Draw the welcome mark and its title with separate palette roles."""
 
     def supports(self, entry: Entry) -> bool:
@@ -98,7 +103,7 @@ class WelcomeProcessor(EntryProcessor):
         return lines
 
 
-class NoticeProcessor(EntryProcessor):
+class NoticeProcessor(EntryProcessor[TextEntry]):
     """Draw notices aligned with the answer above them.
 
     A notice is a remark; one a caller marked as an error is a failure, and
@@ -115,7 +120,7 @@ class NoticeProcessor(EntryProcessor):
         return [TextLine(), *self.text_lines(entry.text, width, Style(foreground=colour))]
 
 
-class AnnouncementProcessor(EntryProcessor):
+class AnnouncementProcessor(EntryProcessor[TextEntry]):
     """Center an announcement — a model or effort change — between rules."""
 
     def supports(self, entry: Entry) -> bool:
@@ -151,7 +156,7 @@ class AnnouncementProcessor(EntryProcessor):
         return [TextLine(), line, TextLine()]
 
 
-class UserProcessor(EntryProcessor):
+class UserProcessor(EntryProcessor[TextEntry]):
     """Paint a full-width message surface with its arrow flush left."""
 
     def supports(self, entry: Entry) -> bool:
@@ -174,7 +179,7 @@ class UserProcessor(EntryProcessor):
         return lines
 
 
-class ProcessingProcessor(EntryProcessor):
+class ProcessingProcessor(EntryProcessor[ProcessingEntry]):
     """Draw the live ``Processing`` row and its elapsed time."""
 
     def supports(self, entry: Entry) -> bool:
@@ -189,7 +194,7 @@ class ProcessingProcessor(EntryProcessor):
         return [TextLine(), layout_rich_lines((TextLine(_running_label(label, theme, frame)),), width, wrap=False)[0]]
 
 
-class ThinkingProcessor(EntryProcessor):
+class ThinkingProcessor(EntryProcessor[ThinkingEntry]):
     """Draw reasoning in the "model" hue, apart from the tool rows' green."""
 
     def supports(self, entry: Entry) -> bool:
@@ -214,7 +219,7 @@ class ThinkingProcessor(EntryProcessor):
         return lines
 
 
-class ToolProcessor(EntryProcessor):
+class ToolProcessor(EntryProcessor[ToolEntry]):
     """Draw a tool heading and a bounded preview of its result.
 
     A row is painted in the hue of the tool that ran, so a transcript reads by
@@ -279,7 +284,7 @@ class ToolProcessor(EntryProcessor):
         return TextLine((Span(lead, gutter), *highlight(text, language, theme.code)))
 
 
-class PlainProcessor(EntryProcessor):
+class PlainProcessor(EntryProcessor[PlainEntry]):
     """Fallback presentation for an unfamiliar entry kind."""
 
     def supports(self, entry: Entry) -> bool:
@@ -294,7 +299,7 @@ class PlainProcessor(EntryProcessor):
 class EntryProcessors:
     """Ordered processor chain; the first processor accepting an entry wins."""
 
-    def __init__(self, processors: tuple[EntryProcessor, ...]) -> None:
+    def __init__(self, processors: tuple[EntryProcessor[Any], ...]) -> None:
         self.processors = processors
 
     def lines(self, entry: Entry, width: int, theme: Theme, frame: int) -> list[TextLine]:

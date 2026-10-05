@@ -30,7 +30,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Annotated, Literal
+from typing import Annotated, Literal, cast
 
 from pydantic import BaseModel, Field, TypeAdapter, field_serializer, field_validator
 from zett_agent.extensions.compaction import CompactedMessage
@@ -77,7 +77,7 @@ def _load_messages(value: object) -> object:
 
     if isinstance(value, (tuple, list)) and (not value or not isinstance(value[0], dict)):
         return value
-    return tuple(decode_messages(json.dumps(list(value))))
+    return tuple(decode_messages(json.dumps(list(cast("Sequence[object]", value)))))
 
 
 def _dump_messages(messages: Sequence[AnyMessage]) -> list[dict[str, object]]:
@@ -150,8 +150,8 @@ class CompactionLine(BaseModel):
         return _dump_messages(value)
 
 
-Line = Annotated[SessionLine | MessageLine | CompactionLine, Field(discriminator="kind")]
-LINES = TypeAdapter(Line)
+type Line = Annotated[SessionLine | MessageLine | CompactionLine, Field(discriminator="kind")]
+LINES: TypeAdapter[SessionLine | MessageLine | CompactionLine] = TypeAdapter(Line)
 
 
 @dataclass(frozen=True, slots=True)
@@ -255,7 +255,7 @@ class Session:
     @property
     def updated_at(self) -> datetime:
         """Return the time of the newest record, falling back to the header."""
-        stamps = [*self.messages, *self.compactions]
+        stamps: list[MessageLine | CompactionLine] = [*self.messages, *self.compactions]
         if stamps:
             return max(line.created_at for line in stamps)
         assert self.header is not None  # a file always starts with its header

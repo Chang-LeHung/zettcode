@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from typing import TextIO
 
 from .core.app import TuiApp
-from .core.events import KeyEvent
+from .core.events import AnyEvent
 from .core.geometry import Point, Rect, Size
 from .core.host import Host
 from .core.screen import Screen
@@ -346,12 +346,12 @@ def row_text(canvas: Canvas, index: int, *, color: bool = True, depth: ColorDept
     for cell in cells:
         if len(pending) >= len(plain):
             break
-        if cell.style != style and pending:
+        if cell.style != style and pending and style is not None:
             parts.append(encode_style(style, depth) + pending)
             pending = ""
         style = cell.style
         pending += cell.character or " "
-    if pending:
+    if pending and style is not None:
         parts.append(encode_style(style, depth) + pending)
     # SGR 0 closes each row so a colour cannot leak into the next line.
     return "".join(parts) + "\x1b[0m"
@@ -474,7 +474,7 @@ class GalleryBrowser:
 
     def _install_keymap(self) -> None:
         """Bind the browser keys: Ctrl-C and q quit, Escape steps back."""
-        self.app.commands.add("quit", lambda event, host: (host.exit(), True)[1])
+        self.app.commands.add("quit", self._quit)
         self.app.commands.add("leave_preview", self._leave_preview)
         self.app.keymap.bind("ctrl_c", "quit", priority="capture")
         # q only quits from the index: inside a preview it belongs to the widget
@@ -490,7 +490,12 @@ class GalleryBrowser:
         """Return whether the keyboard is inside a preview widget."""
         return self.preview_screen is not None and not self._at_index()
 
-    def _leave_preview(self, event: KeyEvent, host: Host) -> bool:
+    def _quit(self, event: AnyEvent, host: Host) -> bool:
+        """Leave the gallery."""
+        host.exit()
+        return True
+
+    def _leave_preview(self, event: AnyEvent, host: Host) -> bool:
         """Hand the keyboard back to the index."""
         self.app.focus(self.list)
         return True

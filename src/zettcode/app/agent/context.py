@@ -18,6 +18,7 @@ import asyncio
 import json
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from typing import cast
 
 from zett_agent.agent import AgentRunContext
 from zett_agent.extensions.base import AgentExtension
@@ -254,7 +255,9 @@ class ContextExtension(AgentExtension):
 
     async def before_model(self, context: AgentRunContext, request: ModelRequest) -> None:
         """Keep the request that is about to leave, replacing the previous one."""
-        self._requests[context.config.session_id] = (tuple(request.messages), tuple(request.tools))
+        # The runtime replaces an empty session_id before hooks run.
+        session_id = cast(str, context.config.session_id)
+        self._requests[session_id] = (tuple(request.messages), tuple(request.tools))
         self._template = (tuple(request.messages), tuple(request.tools))
 
     @property

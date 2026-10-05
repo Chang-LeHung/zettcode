@@ -12,6 +12,7 @@ from collections.abc import Sequence
 from contextlib import aclosing
 from pathlib import Path
 from time import monotonic
+from typing import TYPE_CHECKING, cast
 
 from zett_agent.events import AgentEvent
 
@@ -24,9 +25,9 @@ from ...tui import (
     SEPARATOR,
     STATUS,
     Anchor,
+    AnyEvent,
     CompletionPopup,
     Host,
-    KeyEvent,
     Overlay,
     OverlaySlot,
     Screen,
@@ -41,6 +42,10 @@ from ...tui import (
 from ...tui.layout import Slot
 from ...tui.render import display_width
 from ...tui.widgets import Rule, Text
+
+if TYPE_CHECKING:  # pragma: no cover - annotations only
+    from collections.abc import AsyncGenerator
+
 from ..agent.agent import UNTITLED_SESSION, PromptPart, ZettCodeAgent
 from ..agent.projection import TranscriptProjector
 from ..agent.rows import activity_glyph, clock_text, elapsed_text
@@ -166,13 +171,13 @@ class ZettCodeApp:
     def _install_keymap(self) -> None:
         """Register the global commands and their key bindings."""
         self.app.commands.add("interrupt", self._interrupt)
-        self.app.commands.add("redraw", lambda event, host: (host.refresh(), True)[1])
+        self.app.commands.add("redraw", self._redraw)
         self.app.commands.add("toggle_thinking", self._toggle_thinking)
-        self.app.commands.add("scroll_up", lambda event, host: (self.view.scroll_by(-3), True)[1])
-        self.app.commands.add("scroll_down", lambda event, host: (self.view.scroll_by(3), True)[1])
+        self.app.commands.add("scroll_up", self._scroll_up)
+        self.app.commands.add("scroll_down", self._scroll_down)
         self.app.commands.add("scroll_end", self._scroll_end)
         self.app.commands.add("attach_image", self._attach_image)
-        self.app.commands.add("quit", lambda event, host: (host.exit(), True)[1])
+        self.app.commands.add("quit", self._quit)
         self.app.commands.add("complete_next", self._complete_next)
         self.app.commands.add("complete_previous", self._complete_previous)
         self.app.commands.add("complete_accept", self._complete_accept)
@@ -212,12 +217,32 @@ class ZettCodeApp:
         """Return whether Escape should jump the conversation back to its tail."""
         return self.app.screens.top.name != PAGE_SCREEN and self.view.scrolled_up
 
-    def _scroll_end(self, event: KeyEvent, host: Host) -> bool:
+    def _scroll_end(self, event: AnyEvent, host: Host) -> bool:
         """Follow the newest line again, as the transcript's return badge does."""
         self.view.scroll_end()
         return True
 
-    def _attach_image(self, event: KeyEvent, host: Host) -> bool:
+    def _redraw(self, event: AnyEvent, host: Host) -> bool:
+        """Repaint the frame, for a terminal that lost its contents."""
+        host.refresh()
+        return True
+
+    def _scroll_up(self, event: AnyEvent, host: Host) -> bool:
+        """Move the transcript one page toward older lines."""
+        self.view.scroll_by(-3)
+        return True
+
+    def _scroll_down(self, event: AnyEvent, host: Host) -> bool:
+        """Move the transcript one page toward newer lines."""
+        self.view.scroll_by(3)
+        return True
+
+    def _quit(self, event: AnyEvent, host: Host) -> bool:
+        """Leave the application."""
+        host.exit()
+        return True
+
+    def _attach_image(self, event: AnyEvent, host: Host) -> bool:
         """Attach the clipboard's image to the draft, or say there is none.
 
         Ctrl-V rather than the terminal's paste key: an image never reaches the
@@ -252,19 +277,19 @@ class ZettCodeApp:
         self.completions.set_items(candidates, selected=0)
         self.app.request_layout()
 
-    def _complete_next(self, event: KeyEvent, host: Host) -> bool:
+    def _complete_next(self, event: AnyEvent, host: Host) -> bool:
         """Highlight the next command."""
         self.completions.move(1)
         host.invalidate()
         return True
 
-    def _complete_previous(self, event: KeyEvent, host: Host) -> bool:
+    def _complete_previous(self, event: AnyEvent, host: Host) -> bool:
         """Highlight the previous command."""
         self.completions.move(-1)
         host.invalidate()
         return True
 
-    def _complete_accept(self, event: KeyEvent, host: Host) -> bool:
+    def _complete_accept(self, event: AnyEvent, host: Host) -> bool:
         """Drop the highlighted command into the composer and close the menu."""
         item = self.completions.current
         if item is None:
@@ -275,13 +300,13 @@ class ZettCodeApp:
         host.request_layout()
         return True
 
-    def _complete_dismiss(self, event: KeyEvent, host: Host) -> bool:
+    def _complete_dismiss(self, event: AnyEvent, host: Host) -> bool:
         """Hide the menu until the draft changes again."""
         self.completions.set_items(())
         host.request_layout()
         return True
 
-    def _interrupt(self, event: KeyEvent, host: Host) -> bool:
+    def _interrupt(self, event: AnyEvent, host: Host) -> bool:
         """Copy a selection, otherwise stop the running turn or clear the draft."""
         selected = self.view.selected_text() or host.screen_selection_text()
         if selected:
@@ -302,7 +327,7 @@ class ZettCodeApp:
         host.invalidate()
         return True
 
-    def _toggle_thinking(self, event: KeyEvent, host: Host) -> bool:
+    def _toggle_thinking(self, event: AnyEvent, host: Host) -> bool:
         """Show or hide the newest reasoning block."""
         if self.transcript.toggle_latest_thinking():
             host.invalidate()
@@ -355,7 +380,10 @@ class ZettCodeApp:
         self.app.invalidate()
         try:
             self._refresh_tasks()
-            async with aclosing(self.agent.stream(parts or (prompt,))) as events:
+            # The agent's stream is an async generator; the cast lets aclosing
+            # close it when the turn is cancelled.
+            stream = cast("AsyncGenerator[AgentEvent]", self.agent.stream(parts or (prompt,)))
+            async with aclosing(stream) as events:
                 async for _event in events:
                     self._refresh_tasks()
                     self.app.invalidate()

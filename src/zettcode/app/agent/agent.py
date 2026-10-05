@@ -35,7 +35,7 @@ from .usage import UsageSnapshot
 
 #: One piece of a user turn, in the order it was written: a run of text, or the
 #: encoded bytes and media type of an image placed where that run ends.
-PromptPart = str | tuple[bytes, str]
+type PromptPart = str | tuple[bytes, str]
 
 
 #: The name a session shows before the agent has given it a title.

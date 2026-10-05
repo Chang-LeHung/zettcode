@@ -15,6 +15,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from time import monotonic
+from typing import cast
 
 from zett_agent.agent import AgentRunContext
 from zett_agent.events import AgentEvent, AgentEventType
@@ -165,11 +166,12 @@ class UsageExtension(AgentExtension):
 
     async def before_model(self, context: AgentRunContext, request: ModelRequest) -> None:
         """Stamp the clock that turns the next answer into a token rate."""
-        self._started[context.config.session_id] = self.clock()
+        # The runtime replaces an empty session_id before hooks run.
+        self._started[cast(str, context.config.session_id)] = self.clock()
 
     async def after_model(self, context: AgentRunContext, response: ModelResponse) -> None:
         """Add this call's counters and publish the new totals as a custom event."""
-        session_id = context.config.session_id
+        session_id = cast(str, context.config.session_id)
         started = self._started.pop(session_id, None)
         seconds = self.clock() - started if started is not None else 0.0
         totals = self.snapshot(session_id).with_usage(response.usage, seconds)

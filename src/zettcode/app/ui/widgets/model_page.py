@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import cast
 
 from ....config import ModelConfig
 from ....tui import SEPARATOR, ListItem, ListPage
@@ -48,7 +49,7 @@ class ModelPage(ListPage):
                 for index, entry in enumerate(agent.models, start=1)
             ],
             title="Select Model",
-            on_select=lambda item: on_select(item.value),
+            on_select=lambda item: on_select(cast(ModelConfig, item.value)),
             on_cancel=on_cancel,
             selected=agent.models.index(agent.active_model),
         )

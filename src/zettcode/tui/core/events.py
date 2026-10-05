@@ -130,4 +130,4 @@ class FocusEvent(Event):
     focused: bool = True
 
 
-AnyEvent = KeyEvent | TextEvent | PasteEvent | MouseEvent | ResizeEvent | FocusEvent
+type AnyEvent = KeyEvent | TextEvent | PasteEvent | MouseEvent | ResizeEvent | FocusEvent

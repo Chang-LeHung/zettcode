@@ -12,6 +12,7 @@ import os
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+from typing import overload
 
 from zett_agent.extensions.shell_approval import ShellApprovalMode
 from zett_agent.model import ReasoningEffort
@@ -198,7 +199,7 @@ def _default_theme_file() -> Path | None:
     return candidate if candidate.is_file() else None
 
 
-def _typed(value: object, where: str, expected: type) -> object:
+def _typed[T](value: object, where: str, expected: type[T]) -> T:
     """Return one value, rejecting a wrong type with a located message."""
     if expected is int and isinstance(value, bool):
         raise ValueError(f"{where} must be int")
@@ -220,7 +221,15 @@ def _resolve_root(root: str | Path, workspace: Path) -> Path:
     return (expanded if expanded.is_absolute() else workspace / expanded).resolve()
 
 
-def _setting(data: dict[str, object], key: str, expected: type, default: object) -> object:
+@overload
+def _setting[T](data: dict[str, object], key: str, expected: type[T], default: T) -> T: ...
+
+
+@overload
+def _setting[T](data: dict[str, object], key: str, expected: type[T], default: None = None) -> T | None: ...
+
+
+def _setting(data: dict[str, object], key: str, expected: type, default: object = None) -> object:
     """Return one model setting, rejecting a wrong type."""
     value = data.get(key, default)
     if value is None:

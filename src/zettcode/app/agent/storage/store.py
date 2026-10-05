@@ -34,6 +34,7 @@ from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from typing import cast
 from weakref import WeakKeyDictionary
 
 from pydantic import ValidationError
@@ -68,6 +69,7 @@ from .records import (
     STORE_FILE,
     STORE_VERSION,
     CompactionLine,
+    JsonValue,
     Line,
     MessageLine,
     Session,
@@ -97,7 +99,7 @@ def workspace_key(workspace: str | Path) -> str:
 
 def message_context(
     value: Mapping[str, object] | None, *, field: str, nonempty_keys: bool = False
-) -> dict[str, object]:
+) -> dict[str, JsonValue]:
     """Validate one metadata or tags object before it reaches the log."""
     if value is None:
         return {}
@@ -108,7 +110,9 @@ def message_context(
         if nonempty_keys and not key.strip():
             raise ValueError(f"{field} keys cannot be empty")
         encoded[key] = item
-    return encoded
+    # Pydantic validates the value when the line is built; this only tells the
+    # checker what the runtime already guarantees.
+    return cast("dict[str, JsonValue]", encoded)
 
 
 @dataclass(slots=True)
@@ -216,13 +220,14 @@ class SessionPersistenceMixin:
         the file was edited or truncated in the middle; failing here beats
         silently reading a broken history.
         """
-        known = {line.id for line in [*messages, *compactions]}
+        lines: list[MessageLine | CompactionLine] = [*messages, *compactions]
+        known = {line.id for line in lines}
         for line in messages:
             if line.parent is not None and line.parent not in known:
                 raise ValueError(f"Unknown parent {line.parent!r} in {path.name}")
-        for line in compactions:
-            if line.parent not in known:
-                raise ValueError(f"Unknown boundary {line.parent!r} in {path.name}")
+        for boundary in compactions:
+            if boundary.parent not in known:
+                raise ValueError(f"Unknown boundary {boundary.parent!r} in {path.name}")
 
     def _append_line(self, session_id: str, line: Line) -> None:
         """Append one validated line, flushing so a reader sees whole records."""
@@ -303,7 +308,8 @@ class SessionPersistenceMixin:
             raise ValueError("Checkpoint boundary must identify an existing message")
         if latest is not None:
             previous = session.index(latest.parent)
-            if previous is not None and session.index(boundary_id) <= previous:
+            position = session.index(boundary_id)
+            if previous is not None and position is not None and position <= previous:
                 raise ValueError("Checkpoint boundary must advance beyond the previous one")
         line = CompactionLine(
             id=new_uuid7(),
@@ -439,7 +445,7 @@ class SessionStore(SessionPersistenceMixin, AgentExtension):
                 node_id: str | None = None
                 if message.persist:
                     node_id = await self.append(
-                        context.config.session_id,
+                        cast(str, context.config.session_id),
                         request.request_id,
                         message,
                         timing,
@@ -463,7 +469,7 @@ class SessionStore(SessionPersistenceMixin, AgentExtension):
 
     async def _restore(self, context: AgentRunContext) -> tuple[CompactionLine | None, tuple[MessageLine, ...]]:
         """Load the conversation and merge it with the current configuration."""
-        session = self.read(context.config.session_id)
+        session = self.read(cast(str, context.config.session_id))
         stored_parent = session.parent_session_id
         configured_parent = context.state.parent_session_id
         session_exists = session.header is not None and bool(session.messages)
@@ -471,7 +477,7 @@ class SessionStore(SessionPersistenceMixin, AgentExtension):
             raise ValueError("Stored session belongs to a different parent session")
         context.state.parent_session_id = stored_parent or configured_parent
         checkpoint, tail = session.active()
-        stored = [checkpoint.message[0]] if checkpoint is not None else []
+        stored: list[AnyMessage] = [checkpoint.message[0]] if checkpoint is not None else []
         # Instructions come from the current configuration; stored context
         # contributes dialogue and checkpoints only, which is what the runtime's
         # own ``include_in_messages`` flag means. Re-adding a persisted
@@ -508,8 +514,8 @@ class SessionStore(SessionPersistenceMixin, AgentExtension):
                 continue
             tool_messages: list[ToolMessage] = []
             cursor = index + 1
-            while cursor < len(messages) and isinstance(messages[cursor], ToolMessage):
-                tool_messages.append(messages[cursor])
+            while cursor < len(messages) and isinstance(current := messages[cursor], ToolMessage):
+                tool_messages.append(current)
                 cursor += 1
             expected = Counter(call.id for call in message.tool_calls)
             observed = Counter(result.tool_call_id for result in tool_messages)
@@ -532,7 +538,7 @@ class SessionStore(SessionPersistenceMixin, AgentExtension):
             raise ValueError("Compaction must represent at least one stored message")
         boundary_id = compacted[-1]
         line = await self.checkpoint(
-            context.config.session_id,
+            cast(str, context.config.session_id),
             CompactedMessage(content=event.summary),
             boundary_id,
             request.checkpoint_version,

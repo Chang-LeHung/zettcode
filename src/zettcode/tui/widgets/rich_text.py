@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from typing import cast
 
 from ..core.geometry import Constraints, Size
 from ..core.widget import Widget
@@ -53,16 +54,16 @@ class RichText(Widget):
             return (TextLine((value,)),)
         if isinstance(value, TextLine):
             return (value,)
-        items = tuple(value)
+        items: tuple[Span | TextLine, ...] = tuple(value)
         if not items:
             return ()
         if isinstance(items[0], TextLine):
             if not all(isinstance(item, TextLine) for item in items):
                 raise TypeError("RichText content cannot mix TextLine and Span")
-            return items
+            return cast(tuple[TextLine, ...], items)
         if not all(isinstance(item, Span) for item in items):
             raise TypeError("RichText content must be Span or TextLine values")
-        return (TextLine(items),)
+        return (TextLine(cast(tuple[Span, ...], items)),)
 
     def measure(self, constraints: Constraints) -> Size:
         """Measure the text by visible columns and wrapped line count."""
