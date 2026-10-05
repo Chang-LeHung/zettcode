@@ -20,6 +20,13 @@ from ...tui.render import wrap_columns
 #: the caret in an empty composer.
 CONTENT_INDENT = 2
 
+#: Label of the row that shows a reasoning span while it streams.
+THINKING_LABEL = "Thinking"
+
+#: Label of the row that shows the summarizer working: the same kind of row, so
+#: it blinks, sweeps, and times like reasoning does.
+COMPACTING_LABEL = "Compacting"
+
 #: Wall-clock length of one animation step. ``Transcript.frame`` counts these
 #: steps rather than terminal ticks, so the pace of the sweep and the running
 #: marker does not depend on how often the terminal happens to repaint.

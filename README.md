@@ -311,8 +311,8 @@ only lends the tab name to processes it recognises, so add `${sequence}` to
 `terminal.integrated.tabs.title` there; iTerm2 needs no setting.
 
 Use `/help` inside the application to see session commands; `/new`, `/sessions`,
-`/use`, `/title`, `/model`, `/effort`, `/theme`, `/context`, `/clear`, and `/quit` are
-available.
+`/use`, `/title`, `/model`, `/effort`, `/theme`, `/context`, `/compact`, `/clear`, and
+`/quit` are available.
 The composer command menu identifies each command as `app` or `agent`, shows
 its description, and scrolls when there are more matches than visible rows.
 
@@ -342,3 +342,19 @@ four-characters-per-token estimate otherwise — the footer always names the
 counter that produced them. A row's percentage is its share of the context in
 use, so the rows add up to 100%; the title compares the total against the
 model's `context_window`, not against the point at which compaction fires.
+
+`/compact` summarizes the conversation there and then, instead of waiting for
+the context to grow past that point. The work is the runtime's own — the same
+cutoff, the same summary call, the same checkpoint — with two differences: a
+manual pass keeps only the last turn verbatim where an automatic one leaves a
+quarter of the trigger behind, and it is driven by a run the conversation never
+sees. zett-agent summarizes inside a request and only there, so the command
+makes one: its message is marked `persist=False`, so the session does not keep
+it, and the run is dropped once the checkpoint lands, so no answer to it is
+ever asked for or stored.
+
+The summarizer gets its own animated row — the same blink, sweep, and timer a
+Thinking row has, labelled `Compacting`, with the summary streaming under it —
+followed by `Context compaction applied` or `Context compaction skipped` when
+the summary would not be smaller. The checkpoint is stored on the session's
+branch, so a later `/use` resumes from it.

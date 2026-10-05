@@ -350,9 +350,8 @@ class ZettCodeApp:
         """
         self.projector.begin_turn(prompt)
         started = monotonic()
-        self._busy = True
+        self._set_busy(True)
         self._status = "running"
-        self.app.scheduler.animate("stream")
         self.app.invalidate()
         try:
             self._refresh_tasks()
@@ -371,11 +370,22 @@ class ZettCodeApp:
         finally:
             took = elapsed_text(monotonic() - started)
             self.transcript.notice(f"Processed for {took} {SEPARATOR} {clock_text()}")
-            self._busy = False
+            self._set_busy(False)
             self._status = "ready"
-            self.app.scheduler.animate("stream", active=False)
             self._refresh_tasks()
             self.app.invalidate()
+
+    def _set_busy(self, busy: bool) -> None:
+        """Track in-flight work and keep the frame loop alive while it runs.
+
+        Rows that are still waiting animate from the frame counter: the sweep
+        travels through their label and the status dot blinks. Frames only
+        arrive while something asks for them, and work can be started by a plain
+        command — `/compact` summarizes for seconds before its row is done — so
+        the flag that says "busy" is what holds the animation token.
+        """
+        self._busy = busy
+        self.app.scheduler.animate("activity", active=busy)
 
     def _refresh_tasks(self) -> None:
         """Mirror the agent's current plan into the panel above the composer."""
@@ -387,32 +397,40 @@ class ZettCodeApp:
         name, _, argument = value.partition(" ")
         argument = argument.strip()
         self._status = f"{name} {ELLIPSIS}"
-        previous_session = self.agent.session_id
-        command = next((item for item in self.commands if item.name == name), None)
-        if command is None:
-            self.transcript.error(f"Unknown command: {name}. Try /help.")
-        else:
-            try:
-                result = await command.handler(argument)
-                if name == "/use" and self.agent.session_id != previous_session:
-                    self.restore_session(self.agent.session_id)
-                elif name == "/new" and self.agent.session_id != previous_session:
-                    self.transcript.clear()
-                    self.transcript.welcome(WELCOME)
-                    self.view.scroll_end()
-                    self.view.clear_selection()
-                    self._remember_session_title()
-                    self._usage = self.agent.usage
-                    self._refresh_tasks()
-                    self.app.request_layout()
-            except ValueError as error:
-                if name == "/use" and self.agent.session_id != previous_session:
-                    self.agent.use_session(previous_session)
-                self.transcript.error(str(error))
-            else:
-                self._apply_result(result)
-        self._status = "ready"
+        # A command may take a while — `/compact` summarizes the conversation —
+        # so it holds the same busy flag a turn does: the status glyph spins,
+        # another submit is refused, and Ctrl-C cancels what is running.
+        self._set_busy(True)
         self.app.invalidate()
+        try:
+            previous_session = self.agent.session_id
+            command = next((item for item in self.commands if item.name == name), None)
+            if command is None:
+                self.transcript.error(f"Unknown command: {name}. Try /help.")
+            else:
+                try:
+                    result = await command.handler(argument)
+                    if name == "/use" and self.agent.session_id != previous_session:
+                        self.restore_session(self.agent.session_id)
+                    elif name == "/new" and self.agent.session_id != previous_session:
+                        self.transcript.clear()
+                        self.transcript.welcome(WELCOME)
+                        self.view.scroll_end()
+                        self.view.clear_selection()
+                        self._remember_session_title()
+                        self._usage = self.agent.usage
+                        self._refresh_tasks()
+                        self.app.request_layout()
+                except ValueError as error:
+                    if name == "/use" and self.agent.session_id != previous_session:
+                        self.agent.use_session(previous_session)
+                    self.transcript.error(str(error))
+                else:
+                    self._apply_result(result)
+        finally:
+            self._set_busy(False)
+            self._status = "ready"
+            self.app.invalidate()
 
     def _apply_result(self, result: CommandResult) -> None:
         """Show what a command returned: Markdown, a toast, a widget, a re-layout.

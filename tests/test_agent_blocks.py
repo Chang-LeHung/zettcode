@@ -25,6 +25,7 @@ from zettcode.app.agent.entries import (
     ThinkingEntry,
     ToolEntry,
 )
+from zettcode.app.agent.rows import COMPACTING_LABEL
 from zettcode.app.agent.transcript import Transcript
 from zettcode.app.ui.widgets.transcript import TranscriptSource
 from zettcode.tui import DARK, LIGHT, TextLine
@@ -122,6 +123,25 @@ def test_blocks_use_theme_styles_and_preserve_user_surface():
     assert dark_user[2].spans[0].style.background == DARK.surface_alt
     assert light_user[2].spans[0].style.background == LIGHT.surface_alt
     assert dark_notice[1].spans[0].style.foreground == DARK.muted
+
+
+def test_a_compaction_row_carries_its_own_label_and_sweep():
+    """The summarizer's row animates like reasoning, under the label it was given."""
+    running = ThinkingEntry(id=1, title=COMPACTING_LABEL, text="checkpoint", started_at=0.0)
+    done = ThinkingEntry(id=2, title=COMPACTING_LABEL, text="checkpoint", expanded=True, duration=1.5)
+
+    heading = render_entry(running, 40, DARK, 5)[1].text
+    collapsed = render_entry(done, 40, DARK, 0)[1].text
+
+    assert "Compacting" in heading and "working" in heading
+    assert "Compacting" in collapsed and "1.5 s" in collapsed
+    assert "Thinking" not in heading
+
+    # The highlight travels: the same row at another frame is lit elsewhere.
+    def brightness(frame: int) -> list[str]:
+        return [span.style.foreground for span in render_entry(running, 40, DARK, frame)[1].spans]
+
+    assert brightness(5) != brightness(9)
 
 
 def test_a_failure_notice_is_painted_as_an_error():

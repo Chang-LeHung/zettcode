@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, ClassVar, Literal
 
 from ...tui import LineSource, Markdown, StaticLines, Theme
 from ...tui.widgets.markdown import MarkdownSource
+from .rows import THINKING_LABEL
 
 if TYPE_CHECKING:
     from .blocks import EntryProcessors
@@ -107,9 +108,15 @@ class ProcessingEntry(BaseEntry):
 
 @dataclass(slots=True, kw_only=True)
 class ThinkingEntry(BaseEntry):
-    """Expandable reasoning with its own clock and completion state."""
+    """Expandable reasoning with its own clock and completion state.
+
+    The same row carries a compaction: the summarizer is a model call whose
+    progress deserves the same animation, so the label is part of the entry
+    rather than something the renderer decides.
+    """
 
     kind: ClassVar[Literal["thinking"]] = "thinking"
+    title: str = THINKING_LABEL
     text: str = ""
     expanded: bool = False
     status: EntryStatus = EntryStatus.RUNNING
@@ -123,6 +130,7 @@ class ThinkingEntry(BaseEntry):
     def render_state(self, frame: int) -> object:
         """Expansion, reasoning text, and running animation affect presentation."""
         return (
+            self.title,
             self.expanded,
             self.text,
             self.status,

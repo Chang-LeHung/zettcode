@@ -17,6 +17,7 @@ from .entries import Entry, EntryStatus, MarkdownEntry, ProcessingEntry, TextEnt
 from .rendering import ANSWER, DEFAULT_RENDERERS, THINKING, Renderers
 from .rows import (
     ANIMATION_SECONDS,
+    COMPACTING_LABEL,
     CONTENT_INDENT,
     PROCESSING,
     limit_output,
@@ -189,6 +190,45 @@ class Transcript:
             self.version += 1
             return thinking
         return self._add(thinking)
+
+    def start_compaction(self) -> ThinkingEntry:
+        """Open the row that shows the summarizer working.
+
+        A compaction is a model call streamed back like any other, so it gets
+        the same row as reasoning — blinking, sweep, and timer included — under
+        its own label. The two never borrow each other's row: a compaction that
+        happens between reasoning spans keeps its text out of the thinking one.
+        """
+        current = self._last(ThinkingEntry)
+        if current is not None and current.status is EntryStatus.RUNNING and current.title == COMPACTING_LABEL:
+            return current
+        pending = self._last(ProcessingEntry)
+        row = ThinkingEntry(
+            id=pending.id if pending is not None else self._next_id,
+            title=COMPACTING_LABEL,
+            started_at=self.clock(),
+        )
+        if pending is not None:
+            self.entries[self.entries.index(pending)] = row
+            self.version += 1
+            return row
+        return self._add(row)
+
+    def append_compaction(self, delta: str) -> None:
+        """Append one summary fragment to the running compaction row."""
+        row = self.start_compaction()
+        row.text += delta
+        self.version += 1
+
+    def complete_compaction(self) -> None:
+        """Close the running compaction row and stamp its elapsed time."""
+        row = self._last(ThinkingEntry)
+        if row is None or row.title != COMPACTING_LABEL or row.status is not EntryStatus.RUNNING:
+            return
+        row.status = EntryStatus.COMPLETED
+        if row.started_at is not None:
+            row.duration = self.clock() - row.started_at
+        self.version += 1
 
     def drop_pending(self) -> bool:
         """Remove the placeholder once real output has started."""

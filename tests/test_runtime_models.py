@@ -138,7 +138,13 @@ async def test_a_preview_runtime_starts_once_and_only_then(tmp_path, monkeypatch
 
     runtime = runtime_module.ZettCodeRuntime.preview(_config_with(tmp_path))
 
-    assert runtime.client is None and runtime.model is None and runtime.compaction is None
+    assert runtime.client is None and runtime.model is None
+    # Compaction is armed from the preview: the budget belongs to the model, and
+    # `/compact` must be able to ask for a pass before the first turn.
+    assert runtime.compaction.max_tokens == 102_400
+    # `/compact` can be the very first command: arming is not gated on a client.
+    runtime.request_compaction()
+    assert runtime.compaction.requested is True
     with pytest.raises(RuntimeError, match="has not started"):
         _ = runtime.provider
     assert created == []
@@ -150,7 +156,6 @@ async def test_a_preview_runtime_starts_once_and_only_then(tmp_path, monkeypatch
     assert len(created) == 1
     assert runtime.started is runtime.client
     assert runtime.provider is created[0]
-    assert runtime.compaction is not None
     await runtime.aclose()
     assert created[0].closed is True
 
