@@ -54,6 +54,9 @@ ARROW_DOWN = "\u2193"
 #: In front of the application name in the header: "\u25c8".
 HEADER = "\u25c8"
 
+#: In front of a message queued to steer the running request: "\u21b3".
+STEERING = "\u21b3"
+
 #: What :class:`~zettcode.tui.widgets.text.Rule` repeats into a line: "\u2500".
 RULE = "\u2500"
 

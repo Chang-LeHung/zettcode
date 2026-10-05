@@ -20,6 +20,7 @@ _EXPORTS = {
     "ContextPage": ".context_page",
     "ModelPage": ".model_page",
     "SessionsPage": ".sessions_page",
+    "SteeringQueue": ".steering",
     "TranscriptSource": ".transcript",
     "TranscriptView": ".transcript",
     "WELCOME": ".welcome",
@@ -39,6 +40,7 @@ if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
     from .panel import bottom_panel
     from .root import ZettCodeRoot
     from .sessions_page import SessionsPage, format_ago
+    from .steering import SteeringQueue
     from .transcript import TranscriptSource, TranscriptView
     from .welcome import WELCOME
 
@@ -71,6 +73,7 @@ __all__ = [
     "ContextPage",
     "ModelPage",
     "SessionsPage",
+    "SteeringQueue",
     "TranscriptSource",
     "TranscriptView",
     "WELCOME",

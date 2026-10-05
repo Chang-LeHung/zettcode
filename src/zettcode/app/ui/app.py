@@ -60,6 +60,7 @@ from .widgets import (
     ApprovalPage,
     CommandCompleter,
     Composer,
+    SteeringQueue,
     TranscriptView,
     ZettCodeRoot,
     bottom_panel,
@@ -72,6 +73,11 @@ PAGE_SCREEN = "page"
 #: Rows the approval panel takes from the bottom of the screen: the question,
 #: up to three lines of command, and the numbered choices.
 APPROVAL_ROWS = 16
+
+#: Steering messages one run accepts. The agent's inbox is unbounded, so the
+#: shell is what stops a reader from queueing more urgents than the run can
+#: reasonably answer; the count resets when a new run starts.
+MAX_STEERING = 8
 
 
 class ZettCodeApp:
@@ -97,6 +103,8 @@ class ZettCodeApp:
             self.transcript,
             on_approval=self._approval_requested,
             on_usage=self._usage_updated,
+            on_steering_started=self._steering_started,
+            on_steering_interrupted=self._steering_interrupted,
         )
         self.agent.set_event_dispatcher(self.projector)
         self.commands = ShellCommands(self).build(agent.commands, agent.plugin_commands)
@@ -112,6 +120,7 @@ class ZettCodeApp:
             surface=True,
         )
         self.completions = CompletionPopup(max_height=6)
+        self.steering = SteeringQueue()
         self.header = StatusBar(self._header_left, self._header_right)
         self.status = StatusBar(self._status_left, self._status_right)
         self.panel = TaskPanel()
@@ -124,6 +133,7 @@ class ZettCodeApp:
                 Slot(self.panel, size=lambda width: self.panel.preferred_height()),
                 Slot(Text(""), size=1),
                 Slot(self.completions, size=lambda available: self.completions.visible_height),
+                Slot(self.steering, size=lambda width: self.steering.preferred_height()),
                 Slot(self.composer, size=lambda width: self.composer.preferred_height(width)),
                 Slot(self.status, size=1),
             ]
@@ -135,6 +145,8 @@ class ZettCodeApp:
         self._task: asyncio.Task[None] | None = None
         self._title_task: asyncio.Task[None] | None = None
         self._busy = False
+        self._steering: list[str] = []
+        self._steering_sent = 0
         self._status = "ready"
         self._auto_shell = False
         self._session_title: str | None = None
@@ -356,19 +368,37 @@ class ZettCodeApp:
         return True
 
     def submit(self, value: str) -> bool | None:
-        """Start a turn or a slash command, refusing while one is running.
+        """Start a turn or a slash command, steering while one is running.
+
+        Plain text typed during a turn is not refused: it is queued as a
+        steering message, which the agent adopts at its next model or tool
+        boundary and which the queue widget shows until then. A slash command
+        still waits, because there is no running request to steer.
 
         Args:
             value: Draft text from the composer; a leading ``/`` selects the
                 slash-command branch.
 
         Returns:
-            False when the draft was refused because a request is in flight;
-            returning a true value also clears the composer.
+            False when the draft was refused; returning a true value also
+            clears the composer.
         """
         if self._busy:
-            self.transcript.notice("busy \u2014 Ctrl-C stops the current request")
-            self.app.invalidate()
+            if value.startswith("/") or not value.strip():
+                self._refuse_busy()
+                return False
+            if carries_image(self.composer.parts()):
+                self.transcript.error("steering takes text only")
+                self.app.invalidate()
+                return False
+            if self._steering_sent >= MAX_STEERING:
+                self.transcript.error(f"steering limit reached ({MAX_STEERING}) \u2014 wait for this reply")
+                self.app.invalidate()
+                return False
+            if self.agent.steer(value):
+                self._queue_steering(value)
+                return True
+            self._refuse_busy()
             return False
         if value.startswith("/"):
             self._task = asyncio.create_task(self._run_command(value))
@@ -385,6 +415,44 @@ class ZettCodeApp:
                 return False
             self._task = asyncio.create_task(self._run_prompt(value, parts))
         return True
+
+    def _queue_steering(self, value: str) -> None:
+        """Show one message waiting for the agent to adopt it."""
+        self._steering.append(value)
+        self._steering_sent += 1
+        self.steering.set_messages(self._steering)
+        self.app.request_layout()
+        self.app.invalidate()
+
+    def _refuse_busy(self) -> None:
+        """Tell the reader a draft cannot be taken while a request runs."""
+        self.transcript.notice("busy \u2014 Ctrl-C stops the current request")
+        self.app.invalidate()
+
+    def _clear_steering(self) -> None:
+        """Drop the queue, for instance when the turn it belonged to ended."""
+        self._steering_sent = 0
+        if not self._steering:
+            return
+        self._steering.clear()
+        self.steering.set_messages(())
+        self.app.request_layout()
+
+    def _steering_started(self, text: str) -> None:
+        """Drop a message the agent just adopted; the projector echoes its row."""
+        if text in self._steering:
+            self._steering.remove(text)
+            self.steering.set_messages(self._steering)
+            self.app.request_layout()
+        self.app.invalidate()
+
+    def _steering_interrupted(self, text: str) -> None:
+        """Drop a queued message a newer steering message superseded."""
+        if text in self._steering:
+            self._steering.remove(text)
+            self.steering.set_messages(self._steering)
+            self.app.request_layout()
+        self.app.invalidate()
 
     async def _run_prompt(self, prompt: str, parts: Sequence[PromptPart] = ()) -> None:
         """Stream one agent turn, keeping the task panel and transcript current.
@@ -420,6 +488,7 @@ class ZettCodeApp:
         finally:
             took = elapsed_text(monotonic() - started)
             self.transcript.notice(f"Processed for {took} {SEPARATOR} {clock_text()}")
+            self._clear_steering()
             self._set_busy(False)
             self._status = "ready"
             self._refresh_tasks()
