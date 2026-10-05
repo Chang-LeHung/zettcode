@@ -14,6 +14,10 @@ from ..core.widget import Widget
 from ..render import Canvas, TextLine
 from ..render.text import display_width, slice_columns
 
+#: Lines one wheel notch scrolls. One line per notch matches a mouse wheel's
+#: own resolution instead of jumping a page's worth of the window.
+WHEEL_STEP = 1
+
 
 class LineSource(ABC):
     """Supplies already-wrapped lines without materializing the whole list.
@@ -146,10 +150,10 @@ class ScrollView(Widget):
             return self._handle_pointer(event, host)
         if isinstance(event, MouseEvent) and self.rect.contains(event.x, event.y):
             if event.action is MouseAction.SCROLL_UP:
-                self.scroll_by(-3)
+                self.scroll_by(-WHEEL_STEP)
                 return True
             if event.action is MouseAction.SCROLL_DOWN:
-                self.scroll_by(3)
+                self.scroll_by(WHEEL_STEP)
                 return True
             return False
         if not isinstance(event, KeyEvent) or host.focused_widget() is not self:
@@ -202,10 +206,10 @@ class ScrollView(Widget):
         """Implement click, drag, and double-click selection for the mouse."""
         inside = self.rect.contains(event.x, event.y)
         if event.action is MouseAction.SCROLL_UP and inside:
-            self.scroll_by(-3)
+            self.scroll_by(-WHEEL_STEP)
             return True
         if event.action is MouseAction.SCROLL_DOWN and inside:
-            self.scroll_by(3)
+            self.scroll_by(WHEEL_STEP)
             return True
         if event.action is MouseAction.DOWN and inside:
             point = self._point(event.x, event.y)
