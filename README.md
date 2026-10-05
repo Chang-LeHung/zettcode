@@ -29,6 +29,7 @@ names the workspace and, optionally, the session to open:
 zettcode                                    # the workspace defaults to the cwd
 zettcode -w /path/to/project                # work somewhere else
 zettcode --resume <session-id> [-w DIR]     # open a stored session
+zettcode --dry-run                          # run the startup and exit (profiling)
 ```
 
 ```toml
@@ -61,10 +62,24 @@ panel and returns to the composer. Switching models adds a centered
 with an error when it does not, so a text-only model is never sent one, and it
 is not offered `view_image` either: the tool is dropped from the request, so the
 model cannot call something that would fail on the way back.
+`--dry-run` runs everything the first frame runs — the widget tree, the keymap,
+the runtime warming in the background, and one painted frame — prints how long
+that took, and exits without taking the terminal. It is the handle to reach for
+when profiling startup.
+
 `context_window` is the model's own budget, and `compact_percent` is the share
 of it at which a request is compacted; the last quarter of that trigger is kept
 verbatim, and `/context` measures against the window. Both default to
 `128000` and `80`. Unknown keys and wrong types are reported, not ignored.
+
+```toml
+[transcript]
+max_entries = 1024                     # conversation rows kept on screen
+```
+
+`max_entries` bounds the scrollback, not the conversation: once a session
+outgrows it the oldest rows stop being drawn, while `data.jsonl` keeps the whole
+tree and the model still gets the full active branch. It defaults to `1024`.
 
 The window comes up before the agent does. The runtime is built in two steps —
 settings and session first, the provider SDK and its client when the first
