@@ -38,6 +38,7 @@ from .capabilities import ModelCapabilities
 from .compaction import OnDemandCompaction
 from .context import ContextExtension, Tokenizer
 from .storage import SessionStore
+from .subagents import ZettCodeSubAgents
 from .usage import UsageExtension
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only; the imports are the cost
@@ -213,13 +214,21 @@ class ZettCodeRuntime:
 
         selected = self.active_model
         model = self._provider(selected)
+        capabilities = ModelCapabilities(self._models)
         client = await create_agent(
             model,
             config=AgentRunConfig(session_id=self.session_id),
             system_prompt=build_system_prompt(self.config),
             extensions=[
                 CodingExtension(),
-                ModelCapabilities(self._models),
+                capabilities,
+                # Before ToolGuidelinesExtension, so the task tool's own
+                # guidance reaches the prompt it is registered for.
+                ZettCodeSubAgents(
+                    model=model,
+                    persistence=self.persistence,
+                    capabilities=capabilities,
+                ),
                 self.approval,
                 self.persistence,
                 self.todos,
