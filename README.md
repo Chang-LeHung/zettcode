@@ -22,11 +22,13 @@ pip install zettcode
 ## Configure
 
 ZettCode reads `~/.zettcode/config.toml` (override the path with
-`ZETTCODE_CONFIG`). The file lists available models; the command line just
-takes a workspace:
+`ZETTCODE_CONFIG`). The file lists available models; the command line only
+names the workspace and, optionally, the session to open:
 
 ```bash
-zettcode /path/to/project     # the workspace defaults to the current directory
+zettcode                                    # the workspace defaults to the cwd
+zettcode -w /path/to/project                # work somewhere else
+zettcode --resume <session-id> [-w DIR]     # open a stored session
 ```
 
 ```toml
@@ -105,14 +107,16 @@ After the first reply the agent names the session with one small model call and
 appends a title line. `/title <name>` names it by hand instead — before the first
 message if you like — and that name wins: the background call never renames a
 session that already has a title, and `/title` on its own reports the current
-one. `/sessions` opens a picker panel listing recent sessions with
-their title and how long ago they last changed; `Enter` resumes the highlighted
-one, replacing the visible transcript with that session's active branch.
-`/use <id>` and `/sessions <id>` also restore the selected conversation directly;
-`/new` clears the visible conversation. The status line names the active session
-— `New session` until the agent titles it, its title afterwards — in place of
-its short id. Sessions are not selected in the
-config file.
+one. `/resume` opens a picker panel listing recent sessions with their title and
+how long ago they last changed; `Enter` resumes the highlighted one, replacing
+the visible transcript with that session's active branch, and
+`/resume <id>` restores one directly. The same session can be opened before the
+shell starts: `zettcode --resume <id> [-w DIR]`. `/new` clears the visible
+conversation. The status line names the active session — `New session` until the
+agent titles it, its title afterwards — in place of its short id. Sessions are
+not selected in the config file: when the shell exits it prints the
+`zettcode --resume …` line for the session that was open, so leaving and coming
+back is one copy and paste.
 
 The same line carries the session's token use: `↑22.0k ↓600 · 77.3% cached ·
 100 tok/s · ctx 34.0%` reads as cumulative input, cumulative output, the share
@@ -333,7 +337,7 @@ From a source checkout, run it through `uv`:
 
 ```bash
 uv sync
-uv run zettcode /path/to/project
+uv run zettcode -w /path/to/project
 ```
 
 ## Keys
@@ -430,8 +434,8 @@ the shell exits, so a prompt that sets its own title takes over again. VS Code
 only lends the tab name to processes it recognises, so add `${sequence}` to
 `terminal.integrated.tabs.title` there; iTerm2 needs no setting.
 
-Use `/help` inside the application to see session commands; `/new`, `/sessions`,
-`/use`, `/title`, `/model`, `/effort`, `/theme`, `/context`, `/compact`, `/export`,
+Use `/help` inside the application to see session commands; `/new`, `/resume`,
+`/title`, `/model`, `/effort`, `/theme`, `/context`, `/compact`, `/export`,
 `/clear`, and `/quit` are available.
 The composer command menu identifies each command as `app` or `agent`, shows
 its description, and scrolls when there are more matches than visible rows.
@@ -487,4 +491,4 @@ The summarizer gets its own animated row — the same blink, sweep, and timer a
 Thinking row has, labelled `Compacting`, with the summary streaming under it —
 followed by `Context compaction applied` or `Context compaction skipped` when
 the summary would not be smaller. The checkpoint is stored on the session's
-branch, so a later `/use` resumes from it.
+branch, so a later `/resume` picks the session up from it.
