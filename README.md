@@ -431,10 +431,21 @@ only lends the tab name to processes it recognises, so add `${sequence}` to
 `terminal.integrated.tabs.title` there; iTerm2 needs no setting.
 
 Use `/help` inside the application to see session commands; `/new`, `/sessions`,
-`/use`, `/title`, `/model`, `/effort`, `/theme`, `/context`, `/compact`, `/clear`, and
-`/quit` are available.
+`/use`, `/title`, `/model`, `/effort`, `/theme`, `/context`, `/compact`, `/export`,
+`/clear`, and `/quit` are available.
 The composer command menu identifies each command as `app` or `agent`, shows
 its description, and scrolls when there are more matches than visible rows.
+
+`/export [path]` writes the session — and the request the next turn would send —
+to one self-contained HTML file: a sidebar of turns, the selected turn's events
+on the right, each event carrying the raw text it was written with, the time it
+was written, and what it cost. Long text — the system prompt, a wall of tool
+output — starts collapsed and opens into a block that scrolls instead of
+stretching the page. The last entry in the sidebar is the current
+context, so the file answers both "what was said" and "what the model is
+carrying now"; a compacted session shows the checkpoint there, and a repeated
+system instruction is pointed at rather than printed again. Without a path the
+file lands in the workspace as `zettcode-<session-id>.html`.
 
 `/effort` sets how much the model reasons before it answers, either directly
 (`/effort high`) or through a picker that lists zett-agent's own levels: `off`,

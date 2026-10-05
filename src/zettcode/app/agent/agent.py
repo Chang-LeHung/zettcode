@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Sequence
+from dataclasses import replace
+from datetime import datetime
 from pathlib import Path
 
 from zett_agent.agent import AgentRunConfig
@@ -18,18 +20,18 @@ from zett_agent.messages import (
     ImageContent,
     SystemMessage,
     TextContent,
-    ToolMessage,
     UserMessage,
 )
-from zett_agent.model import ReasoningEffort
+from zett_agent.model import ReasoningEffort, ToolDefinition
 
 from ...config import ModelConfig, ZettCodeConfig
 from ...plugins import UiRow
 from ..commands import Command, CommandResult
 from .context import ContextReport
-from .entries import EntryStatus
+from .export import build_trace, render_html, write_export
+from .replay import replay
 from .runtime import ZettCodeRuntime, build_system_prompt
-from .storage import SessionInfo
+from .storage import Session, SessionInfo
 from .title import summarize_title
 from .transcript import Transcript
 from .usage import UsageSnapshot
@@ -160,6 +162,7 @@ class ZettCodeAgent:
             Command("/new", "start a fresh session", "agent", self._command_new),
             Command("/use", "switch to a session: /use <id>", "agent", self._command_use),
             Command("/compact", "summarize the context now", "agent", self._command_compact),
+            Command("/export", "write this session to an HTML file: /export [path]", "agent", self._command_export),
         )
 
     @property
@@ -247,45 +250,21 @@ class ZettCodeAgent:
         session = self.runtime.persistence.read(session_id)
         if session.header is None:
             raise ValueError(f"Unknown session: {session_id}")
-        restored = Transcript(renderers=transcript.renderers, processors=transcript.processors)
-        restored.frame = transcript.frame
-        usage = UsageSnapshot()
-        history: list[AnyMessage] = []
-        for line in session.branch():
-            if line.usage is not None:
-                # Assistant lines are the ones that consumed a model response;
-                # their duration is the generation time the rate divides by.
-                usage = usage.with_usage(line.usage, line.timing.duration_ns / 1_000_000_000)
-            message = line.message[0]
-            if message.include_in_messages and not isinstance(message, SystemMessage):
-                # The same slice a request would restore, so `/context` can
-                # measure a session that has not run in this process yet.
-                history.append(message)
-            match message:
-                case UserMessage():
-                    restored.user_message(message.text)
-                case AssistantMessage():
-                    if message.reasoning:
-                        restored.restore_thinking(message.reasoning, line.timing.reasoning_duration_ns)
-                    if message.content:
-                        restored.append_answer(message.content)
-                    for call in message.tool_calls:
-                        restored.start_tool(call.id, call.name, call.arguments)
-                case ToolMessage():
-                    status = EntryStatus.COMPLETED if message.success else EntryStatus.FAILED
-                    restored.complete_tool(message.tool_call_id, message.text, status=status, wait=False)
-                case _:
-                    continue
-        restored.finish_restored_tools()
-        transcript.replace(restored.entries)
-        self.runtime.usage.seed(session_id, usage)
+        replayed = replay(
+            session,
+            renderers=transcript.renderers,
+            processors=transcript.processors,
+            frame=transcript.frame,
+        )
+        transcript.replace(replayed.transcript.entries)
+        self.runtime.usage.seed(session_id, replayed.usage)
         # The instructions come from a request this process already assembled, or
         # from the prompt the runtime would build; the environment and tool notes
         # only exist inside a request, which the report admits.
         instructions = self.runtime.context.instructions or (
             SystemMessage(content=build_system_prompt(self.runtime.config)),
         )
-        self.runtime.context.remember(session_id, [*instructions, *history])
+        self.runtime.context.remember(session_id, [*instructions, *replayed.history])
         self.use_session(session_id)
 
     async def list_sessions(self, *, limit: int = 20) -> list[SessionInfo]:
@@ -402,6 +381,83 @@ class ZettCodeAgent:
             return CommandResult(message="Usage: `/use <session-id>`")
         self.use_session(argument)
         return CommandResult(notification=f"using session {self.session_id[:8]}")
+
+    async def export_session(self, path: str | Path | None = None) -> Path:
+        """Write the active session, and the context it now carries, to HTML.
+
+        The conversation is rendered with the same processors the shell paints,
+        and the request the next turn would send is included beside it, so a
+        reader sees both the history and what the model is down to.
+
+        Args:
+            path: File to write; ``None`` puts ``zettcode-<id8>.html`` in the
+                workspace. A relative path is taken from the working directory.
+
+        Returns:
+            The absolute path that was written.
+
+        Raises:
+            ValueError: When the session has no stored header, so there is
+                nothing to export yet.
+        """
+        session = self.runtime.persistence.read(self.session_id)
+        if session.header is None:
+            raise ValueError("Nothing to export: this session has not been stored yet")
+        report = await self.context_report()
+        messages, tools = self._context_request(session)
+        trace = build_trace(
+            session,
+            title=self.session_name,
+            subtitle=f"Session {self.session_id} · {self.workspace}",
+            meta=self._export_meta(session),
+            tags=(self.runtime.active_model.shown_name, self.effort),
+            context_messages=messages,
+            tools=tuple(tool.name for tool in tools),
+            report=report,
+        )
+        trace = replace(trace, exported_at=datetime.now().astimezone().strftime("%Y-%m-%d %H:%M"))
+        target = path if path is not None else self.workspace / f"zettcode-{self.session_id[:8]}.html"
+        return write_export(target, render_html(trace))
+
+    def _context_request(self, session: Session) -> tuple[tuple[AnyMessage, ...], tuple[ToolDefinition, ...]]:
+        """Return the messages and tools the next turn would send.
+
+        The request this process assembled is the honest answer; before one has
+        run — a session restored into a fresh process — the instructions and the
+        active branch stand in for it, which is all that can be known there.
+        """
+        assembled = self.runtime.context.assembled(self.session_id)
+        if assembled is not None:
+            messages, tools = assembled
+            return tuple(messages), tuple(tools)
+        instructions = self.runtime.context.instructions or (
+            SystemMessage(content=build_system_prompt(self.runtime.config)),
+        )
+        checkpoint, tail = session.active()
+        stored: list[AnyMessage] = [checkpoint.message[0]] if checkpoint is not None else []
+        stored.extend(line.message[0] for line in tail if line.message[0].include_in_messages)
+        return (*(instructions or ()), *stored), self.runtime.context.tools
+
+    def _export_meta(self, session: Session) -> tuple[tuple[str, str], ...]:
+        """Return the label/value pairs the exported page's sidebar carries."""
+        model = self.runtime.active_model
+        return (
+            ("Workspace", str(self.workspace)),
+            ("Model", f"{model.shown_name} ({model.model})"),
+            ("Effort", self.effort),
+            ("Created", session.created_at.astimezone().strftime("%Y-%m-%d %H:%M")),
+            ("Updated", session.updated_at.astimezone().strftime("%Y-%m-%d %H:%M")),
+            ("Messages", f"{session.message_count}"),
+        )
+
+    async def _command_export(self, argument: str) -> CommandResult:
+        """Write the session and its context to one HTML file.
+
+        The path argument is optional; without it the file lands in the
+        workspace, named after the session, and the result says where.
+        """
+        path = await self.export_session(argument.strip() or None)
+        return CommandResult(message=f"Exported to `{path}`")
 
     async def _command_compact(self, argument: str) -> CommandResult:
         """Summarize the conversation now, whatever its size.

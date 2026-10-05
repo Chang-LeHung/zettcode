@@ -785,6 +785,40 @@ async def test_a_second_compact_without_a_new_message_is_refused(tmp_path):
     assert app.agent.runtime.client.compactions == []  # the pass never ran
 
 
+async def test_the_export_command_writes_an_html_file(tmp_path):
+    """`/export <path>` writes the session and says where it landed."""
+    store = SessionStore(tmp_path)
+    timing = MessageTiming(started_at=datetime.now(UTC), completed_at=datetime.now(UTC), duration_ns=2_000_000_000)
+    await store.append("session-0001", "r1", UserMessage(content="fix <the> parser"), timing=timing)
+    await store.append("session-0001", "r1", AssistantMessage(content="Fixed it."), timing=timing)
+
+    app = build_app()
+    app.agent.runtime.persistence.store = store
+    harness = _harness(app)
+    target = tmp_path / "session.html"
+
+    harness.write(f"/export {target}")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    page = target.read_text(encoding="utf-8")
+    assert "<!doctype html>" in page
+    assert "LLM interaction trace" in page and "Turn 1" in page and "Current request" in page
+    assert "fix &lt;the&gt; parser" in page  # the message is escaped, not markup
+    assert str(target.resolve()) in app.transcript.entries[-1].text  # the path is reported
+
+
+async def test_export_refuses_a_session_that_was_never_stored(tmp_path):
+    app = build_app()
+    app.agent.runtime.persistence.store = SessionStore(tmp_path / "empty")
+    target = tmp_path / "never.html"
+
+    with pytest.raises(ValueError, match="Nothing to export"):
+        await app.agent.export_session(target)
+
+    assert not target.exists()  # the file is only written once the page exists
+
+
 async def test_busy_work_keeps_the_frames_coming():
     """A waiting row animates from the frame counter, so work holds the token."""
     app = build_app(block=True)
