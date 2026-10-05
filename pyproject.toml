@@ -52,7 +52,7 @@ asyncio_mode = "auto"
 
 [tool.mypy]
 python_version = "3.14"
-files = ["src"]
+files = ["src", "perf"]
 # Check the pydantic storage models as models, not as plain classes.
 plugins = ["pydantic.mypy"]
 warn_unused_ignores = true
@@ -67,7 +67,7 @@ ignore_missing_imports = true
 [tool.ruff]
 line-length = 120
 target-version = "py314"
-src = ["src", "tests"]
+src = ["src", "tests", "perf"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
