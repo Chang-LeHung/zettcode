@@ -347,13 +347,12 @@ model's `context_window`, not against the point at which compaction fires.
 
 `/compact` summarizes the conversation there and then, instead of waiting for
 the context to grow past that point. The work is the runtime's own — the same
-cutoff, the same summary call, the same checkpoint — with two differences: a
+cutoff, the same summary call, the same checkpoint — with one difference: a
 manual pass keeps only the last turn verbatim where an automatic one leaves a
-quarter of the trigger behind, and it is driven by a run the conversation never
-sees. zett-agent summarizes inside a request and only there, so the command
-makes one: its message is marked `persist=False`, so the session does not keep
-it, and the run is dropped once the checkpoint lands, so no answer to it is
-ever asked for or stored.
+quarter of the trigger behind. The command calls `AgentClient.compact`, which
+restores the session, runs the pass, and dispatches its events; no message is
+appended for it and no primary model call is made, so the conversation is left
+exactly as it was, only shorter.
 
 The summarizer gets its own animated row — the same blink, sweep, and timer a
 Thinking row has, labelled `Compacting`, with the summary streaming under it —

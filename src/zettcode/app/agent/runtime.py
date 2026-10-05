@@ -330,10 +330,6 @@ class ZettCodeRuntime:
         self.compaction.keep_recent_tokens = chosen.compaction_keep_tokens
         return chosen
 
-    def request_compaction(self) -> None:
-        """Ask the next request to compact the context, however small it is."""
-        self.compaction.request()
-
     def new_session(self) -> str:
         """Switch future requests to a fresh session identity."""
         self.session_id = new_uuid7()

@@ -1,4 +1,4 @@
-"""``/compact``: the same compaction the runtime does, asked for on demand."""
+"""``/compact``: the runtime's own compaction, asked for on demand."""
 
 from __future__ import annotations
 
@@ -67,13 +67,13 @@ def _dialogue() -> list[object]:
 
 
 async def test_a_forced_pass_compacts_a_context_the_threshold_would_ignore():
+    """``on_compact`` runs whatever the size; ``before_model`` waits for the budget."""
     # A real budget: the automatic policy would keep a tail far larger than this
-    # whole conversation, so only the forced pass can compact it.
+    # whole conversation, so only the manual pass can compact it.
     extension = OnDemandCompaction(None, max_tokens=1_000_000, keep_recent_tokens=200_000)
     context = FakeContext(_dialogue(), FakeModel())
 
-    # The runtime reaches this through ``before_model``; the pass itself is the
-    # public ``compact`` the extension now exposes.
+    # The automatic path the runtime uses is a no-op this far below the budget.
     await extension.before_model(context, request=None)
 
     assert [message.content for message in context.state.messages] == [
@@ -84,13 +84,10 @@ async def test_a_forced_pass_compacts_a_context_the_threshold_would_ignore():
         "yes, all green",
     ]
 
-    extension.request()
+    # ``Agent.compact`` reaches the manual pass through the ``on_compact`` hook;
+    # it forces what the threshold would have skipped and keeps just one turn.
+    await extension.on_compact(context)
 
-    assert extension.requested is True
-    checkpoint = await extension.compact(context)
-
-    assert extension.requested is False
-    assert checkpoint is not None
     # The system instructions stay, the older dialogue is one checkpoint, and
     # the tail the policy keeps is still verbatim.
     messages = context.state.messages
@@ -101,7 +98,7 @@ async def test_a_forced_pass_compacts_a_context_the_threshold_would_ignore():
     # for: the extension never splits a turn from the question that opened it.
     assert [message.content for message in messages[2:]] == ["does the suite pass?", "yes, all green"]
     assert context.published  # the checkpoint the persistence extension stores
-    # Both budgets come back: the pass lent them to the parent, it did not keep them.
+    # The pass lent the one-turn tail to the manual call; the budget is back.
     assert (extension.max_tokens, extension.keep_recent_tokens) == (1_000_000, 200_000)
 
 
@@ -109,12 +106,11 @@ async def test_a_forced_pass_that_has_nothing_to_summarize_is_a_no_op():
     extension = OnDemandCompaction(None, max_tokens=1_000_000, keep_recent_tokens=32_000)
     context = FakeContext([UserMessage(content="hello")], FakeModel())
 
-    extension.request()
-    await extension.before_model(context, request=None)
+    await extension.on_compact(context)
 
     assert [message.content for message in context.state.messages] == ["hello"]
-    assert extension.requested is False
     assert (extension.max_tokens, extension.keep_recent_tokens) == (1_000_000, 32_000)
+    assert context.emitted == []
 
 
 def test_the_summarizer_gets_its_own_animated_row():

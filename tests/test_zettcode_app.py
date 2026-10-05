@@ -80,6 +80,7 @@ class FakeClient:
         self.configs: list[object] = []
         self.efforts: list[object] = []
         self.messages: list[object] = []
+        self.compactions: list[tuple[object, object]] = []
 
     async def stream(self, message, *, config=None, model=None, reasoning_effort=None):
         self.models.append(model)
@@ -96,6 +97,22 @@ class FakeClient:
             yield event
         if self.block:
             await asyncio.sleep(3600)
+
+    async def compact(self, *, config=None, model=None, metadata=None, tags=None):
+        """Mirror ``AgentClient.compact``: one pass, its events dispatched in order."""
+        self.compactions.append((config, model))
+        session_id = config.session_id if config is not None else "session-0001"
+        if self.event_dispatcher is not None:
+            await self.event_dispatcher.dispatch(AgentEvent(AgentEventType.COMPACTION_STARTED, session_id))
+            await self.event_dispatcher.dispatch(
+                AgentEvent(AgentEventType.COMPACTION_TEXT_DELTA, session_id, delta="the parser was fixed")
+            )
+            await self.event_dispatcher.dispatch(
+                AgentEvent(AgentEventType.COMPACTION_COMPLETED, session_id, applied=True)
+            )
+        if self.block:
+            await asyncio.sleep(3600)
+        return None
 
 
 class FakePersistence:
@@ -159,7 +176,6 @@ class FakeRuntime:
     model: object = field(init=False)
     auto_approved: bool = field(default=False, init=False)
     start_calls: int = field(default=0, init=False)
-    compaction_requested: bool = field(default=False, init=False)
 
     def __post_init__(self) -> None:
         self.active_model = self.config.models[0]
@@ -208,9 +224,6 @@ class FakeRuntime:
 
     def approve_all_shell_commands(self) -> None:
         self.auto_approved = True
-
-    def request_compaction(self) -> None:
-        self.compaction_requested = True
 
     def use_effort(self, name):
         try:
@@ -587,7 +600,7 @@ async def test_the_runtime_starts_with_the_first_turn_not_before():
 
 
 async def test_the_compact_command_compacts_now():
-    """`/compact` sends the summarizer at once, and the run keeps out of the session."""
+    """`/compact` asks the client for one pass, and the pass keeps out of the session."""
     app = build_app()
     harness = _harness(app)
 
@@ -595,13 +608,16 @@ async def test_the_compact_command_compacts_now():
     harness.press("enter")
     await asyncio.wait_for(app.task, 2.0)
 
-    message = app.agent.runtime.client.messages[-1]
-    assert isinstance(message, UserMessage)
-    assert message.persist is False  # the store keeps the compaction run out of the branch
-    assert app.agent.runtime.compaction_requested is True  # armed for that one run
-    assert app.agent.runtime.start_calls == 1
+    runtime = app.agent.runtime
+    ((config, model),) = runtime.client.compactions
+    assert config.session_id == app.agent.session_id  # the pass runs on the active session
+    assert model is runtime.provider
+    assert runtime.start_calls == 1
+    # The pass dispatches its own events, so the row animates like every other run.
+    assert any(entry.kind == "thinking" and entry.text == "the parser was fixed" for entry in app.transcript.entries)
     # It is not a turn: nothing was echoed as a user message.
     assert not any(entry.kind == "user" for entry in app.transcript.entries)
+    assert runtime.client.messages == []
 
 
 async def test_busy_work_keeps_the_frames_coming():
