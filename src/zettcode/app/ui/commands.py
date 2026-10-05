@@ -58,7 +58,7 @@ class ShellCommands:
         return (
             Command("/help", "show the commands and the keys", "app", self.help),
             *agent_commands,
-            Command("/sessions", "browse recent sessions", "app", self.sessions),
+            Command("/resume", "resume a session: /resume [id]", "app", self.resume),
             Command("/model", "choose a model", "app", self.model),
             Command("/theme", "choose the palette (or /theme dark|light)", "app", self.theme),
             Command("/context", "what is filling the context window", "app", self.context),
@@ -86,15 +86,16 @@ class ShellCommands:
         page = ModelPage(self.shell.agent, on_select=self.shell.select_model, on_cancel=self.shell.close_page)
         return CommandResult(widget=self._panel(page))
 
-    async def sessions(self, name: str) -> CommandResult:
-        """Open the recent-session picker, or switch straight to a named session.
+    async def resume(self, name: str) -> CommandResult:
+        """Open the stored sessions, or resume the one named in the argument.
 
         The picker is a widget, so the command lives with the shell: the agent
-        owns the stored sessions, the shell owns the widget that browses them.
+        owns the stored sessions, the shell owns the widget that browses them —
+        and the same call opens the session `--resume` names on the command line.
         """
         if name:
             self.shell.restore_session(name)
-            return CommandResult(notification=f"using session {name[:8]}", relayout=True)
+            return CommandResult(notification=f"resumed session {name[:8]}", relayout=True)
         sessions = await self.shell.agent.list_sessions(limit=20)
         if not sessions:
             return CommandResult(message="No persisted sessions.")

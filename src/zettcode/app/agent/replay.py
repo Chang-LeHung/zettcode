@@ -1,4 +1,4 @@
-"""Rebuild a transcript from a stored branch, the way ``/use`` restores one.
+"""Rebuild a transcript from a stored branch, the way ``/resume`` restores one.
 
 One walk over the branch serves both readers: the shell installs the entries it
 produces, and the exporter renders them into a file. Keeping the walk here means

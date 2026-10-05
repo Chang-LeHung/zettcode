@@ -160,7 +160,6 @@ class ZettCodeAgent:
         """
         return (
             Command("/new", "start a fresh session", "agent", self._command_new),
-            Command("/use", "switch to a session: /use <id>", "agent", self._command_use),
             Command("/compact", "summarize the context now", "agent", self._command_compact),
             Command("/export", "write this session to an HTML file: /export [path]", "agent", self._command_export),
         )
@@ -374,13 +373,6 @@ class ZettCodeAgent:
         """Start a fresh session."""
         session_id = self.new_session()
         return CommandResult(notification=f"started session {session_id[:8]}")
-
-    async def _command_use(self, argument: str) -> CommandResult:
-        """Switch to the requested session."""
-        if not argument:
-            return CommandResult(message="Usage: `/use <session-id>`")
-        self.use_session(argument)
-        return CommandResult(notification=f"using session {self.session_id[:8]}")
 
     async def export_session(self, path: str | Path | None = None) -> Path:
         """Write the active session, and the context it now carries, to HTML.

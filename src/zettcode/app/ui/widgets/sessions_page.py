@@ -1,4 +1,4 @@
-"""The bottom-panel list of recent sessions opened by ``/sessions``."""
+"""The bottom-panel list of recent sessions opened by ``/resume``."""
 
 from __future__ import annotations
 

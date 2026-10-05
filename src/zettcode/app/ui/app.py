@@ -440,9 +440,7 @@ class ZettCodeApp:
             else:
                 try:
                     result = await command.handler(argument)
-                    if name == "/use" and self.agent.session_id != previous_session:
-                        self.restore_session(self.agent.session_id)
-                    elif name == "/new" and self.agent.session_id != previous_session:
+                    if name == "/new" and self.agent.session_id != previous_session:
                         self.transcript.clear()
                         self.transcript.welcome(WELCOME)
                         self.view.scroll_end()
@@ -452,8 +450,6 @@ class ZettCodeApp:
                         self._refresh_tasks()
                         self.app.request_layout()
                 except ValueError as error:
-                    if name == "/use" and self.agent.session_id != previous_session:
-                        self.agent.use_session(previous_session)
                     self.transcript.error(str(error))
                 else:
                     self._apply_result(result)
