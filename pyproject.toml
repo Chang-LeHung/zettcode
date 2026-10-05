@@ -17,7 +17,7 @@ classifiers = [
 dependencies = [
   "pyperclip>=1.9,<2",
   "wcwidth>=0.2,<1",
-  "zett-agent==0.1.7",
+  "zett-agent==0.1.8",
 ]
 
 [project.scripts]
