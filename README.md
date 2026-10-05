@@ -56,7 +56,9 @@ panel and returns to the composer. Switching models adds a centered
 `/model GPT-4o` still switches directly by display name or model id.
 `multimodal` records whether a model accepts images: attaching one — with
 `Ctrl-V`, or by pasting a picture the terminal sends as base64 — is refused
-with an error when it does not, so a text-only model is never sent one.
+with an error when it does not, so a text-only model is never sent one, and it
+is not offered `view_image` either: the tool is dropped from the request, so the
+model cannot call something that would fail on the way back.
 `context_window` is the model's own budget, and `compact_percent` is the share
 of it at which a request is compacted; the last quarter of that trigger is kept
 verbatim, and `/context` measures against the window. Both default to

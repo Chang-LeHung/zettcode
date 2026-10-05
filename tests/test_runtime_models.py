@@ -160,6 +160,76 @@ async def test_a_preview_runtime_starts_once_and_only_then(tmp_path, monkeypatch
     assert created[0].closed is True
 
 
+async def test_a_text_only_model_is_not_offered_the_image_tool():
+    """`view_image` reads a picture; a model that cannot take one is not offered it."""
+    from zett_agent.agent import Agent, AgentRunConfig
+    from zett_agent.events import AgentEventType
+    from zett_agent.extensions.base import AgentExtension
+    from zett_agent.extensions.coding import CodingExtension
+    from zett_agent.messages import AssistantMessage
+    from zett_agent.model import ModelEvent, ModelResponse, RetryOptions
+    from zett_agent.tools.images import view_image
+
+    from zettcode.app.agent.capabilities import ModelCapabilities
+
+    class Context:
+        """The two things the filter reads."""
+
+        def __init__(self, model: object) -> None:
+            self.model = model
+            self.tools = {view_image.name: view_image, "read_file": object()}
+
+    text_only = ModelConfig(model="text", token="t")
+    takes_images = ModelConfig(model="vision", token="t", multimodal=True)
+
+    class Model:
+        retry = RetryOptions(max_retries=0)
+
+        async def stream(self, request):
+            yield ModelEvent.completed(ModelResponse(AssistantMessage(content="ok")))
+
+    model = Model()
+    providers = {text_only: model, takes_images: object()}
+    capabilities = ModelCapabilities(providers)
+
+    gated = Context(providers[text_only])
+    await capabilities.on_tool(gated)
+    assert view_image.name not in gated.tools and "read_file" in gated.tools
+
+    allowed = Context(providers[takes_images])
+    await capabilities.on_tool(allowed)
+    assert view_image.name in allowed.tools
+
+    # A request whose model this runtime did not build keeps the tools it has.
+    unknown = Context(object())
+    await capabilities.on_tool(unknown)
+    assert view_image.name in unknown.tools
+
+    # Through the real hooks the filter runs after the bundle that registers the
+    # tool, which is the ordering the whole thing depends on.
+    class Probe(AgentExtension):
+        priority = 200
+
+        def __init__(self) -> None:
+            self.offered: list[list[str]] = []
+
+        async def on_tool(self, context) -> None:
+            self.offered.append(sorted(context.tools))
+
+    probe = Probe()
+    agent = await Agent.create(
+        model,
+        config=AgentRunConfig(session_id="test"),
+        extensions=[CodingExtension(), capabilities, probe],
+    )
+
+    streamed = [event async for event in agent.stream("hello", config=AgentRunConfig(session_id="test"))]
+
+    assert streamed[-1].type is AgentEventType.RUN_COMPLETED
+    assert view_image.name not in probe.offered[0]
+    assert "read_file" in probe.offered[0]
+
+
 async def test_the_approval_memory_remembers_exact_commands_for_the_run():
     """The prompt promises one exact command for this run, not an allowlist."""
     from zett_agent.extensions.shell_approval import ShellApprovalMode
@@ -269,6 +339,10 @@ async def test_runtime_switches_models_and_closes_every_provider(tmp_path, monke
     assert captured["extensions"][-1].model is None
     assert any(isinstance(extension, SkillExtension) for extension in captured["extensions"])
     assert not any(isinstance(extension, McpExtension) for extension in captured["extensions"])
+    # The tool list follows the model, so the capability filter is part of the run.
+    from zettcode.app.agent.capabilities import ModelCapabilities
+
+    assert any(isinstance(extension, ModelCapabilities) for extension in captured["extensions"])
     # The prompt can offer "always allow" only because the runtime hands the
     # extension something to remember the command in.
     assert runtime.approval.storage is not None
