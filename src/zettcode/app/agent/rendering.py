@@ -22,13 +22,14 @@ only place a chat preamble such as ``Assistant:`` can appear.
 
 from __future__ import annotations
 
+import json
 import re
 from abc import ABC, abstractmethod
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from ...tui import ELLIPSIS
+from ...tui import ELLIPSIS, SEPARATOR
 from ...tui.render import GENERIC, language_for
 
 #: Output kinds the chain shapes; a link claims one or more of them.
@@ -279,6 +280,29 @@ class SkillTool(ToolHandler):
         return ToolRow(f"Read skill {argument(arguments, 'name', '(unknown skill)')}")
 
 
+class TaskTool(ToolHandler):
+    """``task``: work handed to a subagent, named by the profile that runs it."""
+
+    names = frozenset({"task"})
+
+    def describe(self, name: str, arguments: Mapping[str, object]) -> ToolRow:
+        """Say which subagent was chosen, and what it was asked to do."""
+        profile = argument(arguments, "subagent_type", "(unknown)")
+        summary = argument(arguments, "description")
+        title = f"Subagent {profile}"
+        return ToolRow(f"{title} {SEPARATOR} {summary}" if summary else title)
+
+    def body(self, name: str, output: str) -> str:
+        """Show the child's report, not the envelope that carried it back."""
+        try:
+            payload = json.loads(output)
+        except TypeError, ValueError:
+            return output
+        if isinstance(payload, Mapping) and isinstance(payload.get("content"), str):
+            return payload["content"]
+        return output
+
+
 class FallbackTool(ToolHandler):
     """Anything no other link claims: its name and flat arguments, never JSON."""
 
@@ -349,6 +373,7 @@ DEFAULT_RENDERERS = Renderers(
         SearchTool(),
         TodoTool(),
         SkillTool(),
+        TaskTool(),
         FallbackTool(),
         ReasoningHandler(),
         AnswerHandler(),

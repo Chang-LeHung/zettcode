@@ -41,6 +41,18 @@ def test_a_namespaced_mcp_tool_keeps_its_server_after_the_tool_name():
     assert describe("search", query="fix parser") == "search query=fix parser"
 
 
+def test_the_task_tool_reads_as_a_subagent_not_as_raw_arguments():
+    assert describe("task", subagent_type="explore", description="survey the project") == (
+        "Subagent explore \u00b7 survey the project"
+    )
+    assert describe("task", subagent_type="explore") == "Subagent explore"
+    assert describe("task") == "Subagent (unknown)"
+    # The expanded body is the child's report, not the envelope around it.
+    report = '{"session_id": "s", "parent_session_id": "p", "subagent_type": "explore", "content": "## Overview"}'
+    assert DEFAULT_RENDERERS.body("task", report) == "## Overview"
+    assert DEFAULT_RENDERERS.body("task", "not json") == "not json"
+
+
 def test_a_missing_or_unusable_argument_degrades_to_a_placeholder():
     assert describe("read_file") == "Read (unknown file)"
     assert describe("read_file", path=7) == "Read (unknown file)"

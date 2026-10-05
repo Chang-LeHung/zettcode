@@ -28,6 +28,8 @@ class ToolTheme:
         delete: Removing a path; deliberately the same hue as a failure.
         shell: Running a command in the workspace.
         plan: Recording the task list.
+        subagent: Delegating work to an isolated child agent, which is its own
+            family rather than a file operation.
     """
 
     read: str = "#b8a6e0"
@@ -37,6 +39,7 @@ class ToolTheme:
     delete: str = "#b8a6e0"
     shell: str = "#b8a6e0"
     plan: str = "#b8a6e0"
+    subagent: str = "#8fcfc6"
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,6 +123,7 @@ LIGHT = Theme(
         delete="#5b3fa8",
         shell="#5b3fa8",
         plan="#5b3fa8",
+        subagent="#1e7f76",
     ),
     code=CodeTheme(
         name="light",

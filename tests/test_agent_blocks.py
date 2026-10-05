@@ -208,6 +208,9 @@ def test_tool_rows_share_one_hue_until_a_palette_separates_them():
     assert DARK.tools.read == DARK.tools.search == DARK.tools.shell == DARK.code.builtin
     # Roles stay separate so one of them can be overridden on its own.
     assert tool_color("write_file", DARK) == tool_color("replace_in_file", DARK) == DARK.tools.write
+    # A delegated task is its own family, not a file operation.
+    assert tool_color("task", DARK) == DARK.tools.subagent
+    assert DARK.tools.subagent != DARK.tools.read
     # An unfamiliar tool still gets a colour rather than no style at all.
     assert tool_color("mcp__something", DARK) == DARK.accent
 
