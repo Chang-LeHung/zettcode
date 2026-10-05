@@ -430,8 +430,12 @@ class TuiApp(Host):
         return True
 
     def _routable(self) -> list[Screen]:
-        """Return screens that may receive input, topmost first."""
-        screens = list(self.screens)
+        """Return screens that may receive input, topmost first.
+
+        Paint-only layers are skipped, so a toast drawn over the shell never
+        swallows a wheel notch or a keystroke meant for what is underneath.
+        """
+        screens = [screen for screen in self.screens if screen.interactive]
         for index in range(len(screens) - 1, -1, -1):
             if screens[index].modal:
                 screens = screens[index:]
