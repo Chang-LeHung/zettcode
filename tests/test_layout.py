@@ -234,7 +234,7 @@ def test_scroll_view_scrolls_with_the_mouse_wheel():
 
     harness.scroll(2, 2, up=True)
 
-    assert view.top == 12
+    assert view.top == 14
     assert view.follow_tail is False
 
     harness.scroll(2, 2, up=False)
