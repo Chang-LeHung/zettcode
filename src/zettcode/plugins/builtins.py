@@ -11,7 +11,7 @@ second segment beside it.
 from __future__ import annotations
 
 from ..app.agent.rows import activity_glyph, compact_path
-from ..app.agent.usage import usage_text
+from ..app.agent.usage import context_text, usage_text
 from ..tui import HEADER, SEPARATOR, STATUS
 from .plugin import Plugin
 from .state import ShellContext
@@ -38,7 +38,8 @@ class ShellRows(Plugin):
         activity = context.activity
         icon = activity_glyph(activity.frame) if activity.busy else STATUS
         mode = f" {SEPARATOR} auto" if activity.auto_shell else ""
-        return f"  {icon} {activity.status}{mode}  {context.session.name}{usage_text(activity.usage)}"
+        used = context_text(activity.usage, context.model.config.context_window)
+        return f"  {icon} {activity.status}{mode}  {context.session.name}{usage_text(activity.usage)}{used}"
 
     def render_status_right(self, context: ShellContext) -> str:
         """List the keys worth remembering."""

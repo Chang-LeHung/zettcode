@@ -2303,6 +2303,7 @@ async def test_the_status_line_mirrors_the_usage_extension():
         cache_read_tokens=17_000,
         seconds=6.0,
         requests=2,
+        context_tokens=64_000,  # half of the 128k window the fake model declares
     ).to_payload()
 
     await app.projector.on_custom_event(
@@ -2316,8 +2317,9 @@ async def test_the_status_line_mirrors_the_usage_extension():
 
     status = app._status_left().text
     assert "\u219122.0k \u2193600" in status
-    assert "77% cached" in status
+    assert "77.3% cached" in status
     assert "100 tok/s" in status
+    assert "\u00b7 ctx 50.0%" in status
 
 
 async def test_resuming_a_session_restores_its_token_totals(tmp_path):
@@ -2340,7 +2342,7 @@ async def test_resuming_a_session_restores_its_token_totals(tmp_path):
 
     status = app._status_left().text
     assert "\u219110.0k \u2193500" in status
-    assert "80% cached" in status
+    assert "80.0% cached" in status
     assert "250 tok/s" in status
 
 
