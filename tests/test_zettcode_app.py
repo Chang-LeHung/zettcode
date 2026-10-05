@@ -1186,7 +1186,7 @@ async def test_resuming_a_session_makes_it_measurable_before_the_next_reply(tmp_
     app.agent.runtime.persistence.store = store
     harness = _harness(app)
 
-    harness.write("/use previous")
+    harness.write("/resume previous")
     harness.press("enter")
     await asyncio.wait_for(app.task, 2.0)
     harness.write("/context")
@@ -1372,7 +1372,7 @@ async def test_app_slash_commands_change_theme_sessions_and_exit():
     harness.write("/help")
     harness.press("enter")
     await asyncio.wait_for(app.task, 2.0)
-    assert any(entry.kind == "message" and "/sessions" in entry.text for entry in app.transcript.entries)
+    assert any(entry.kind == "message" and "/resume" in entry.text for entry in app.transcript.entries)
 
     harness.press("ctrl_d")
     assert app.app.running is False
@@ -1860,7 +1860,7 @@ async def test_the_slash_menu_lists_and_filters_commands():
 
     harness.write("/")
 
-    assert [item.value for item in app.completions.items][:3] == ["/help", "/new", "/use"]
+    assert [item.value for item in app.completions.items][:3] == ["/help", "/new", "/compact"]
     assert "show the commands and the keys" in harness.text()
     assert "[app]" in harness.text() and "[agent]" in harness.text()
     assert app.completions.items[0].type == "app"
@@ -1883,7 +1883,7 @@ async def test_app_and_agent_commands_are_routed_to_their_owners():
     assert [(item.name, item.type) for item in app.commands[:3]] == [
         ("/help", "app"),
         ("/new", "agent"),
-        ("/use", "agent"),
+        ("/compact", "agent"),
     ]
 
     harness.write("/new")
@@ -2003,12 +2003,12 @@ async def test_enter_completes_the_highlighted_command_once_then_runs_it():
     app = build_app()
     harness = _harness(app)
 
-    harness.write("/se")
-    assert [item.value for item in app.completions.items] == ["/sessions"]
+    harness.write("/re")
+    assert [item.value for item in app.completions.items] == ["/resume"]
 
     harness.press("enter")
 
-    assert app.composer.text == "/sessions "
+    assert app.composer.text == "/resume "
     assert app.completions.visible is False
 
     harness.press("enter")
@@ -2028,7 +2028,7 @@ async def test_enter_runs_a_fully_typed_command_instead_of_completing_it():
     harness.press("enter")
     await asyncio.wait_for(app.task, 2.0)
 
-    assert any(entry.kind == "message" and "/sessions" in entry.text for entry in app.transcript.entries)
+    assert any(entry.kind == "message" and "/resume" in entry.text for entry in app.transcript.entries)
     assert app.composer.text == ""
     assert app.completions.visible is False
 
@@ -2116,7 +2116,7 @@ async def test_switching_sessions_replaces_the_transcript_with_stored_history(tm
     app.transcript.notice("from the current session")
     harness = _harness(app)
 
-    harness.write("/sessions")
+    harness.write("/resume")
     harness.press("enter")
     await asyncio.wait_for(app.task, 2.0)
     page = _sessions_page(app)
@@ -2207,14 +2207,14 @@ async def test_use_command_restores_history_and_rejects_missing_session(tmp_path
     app.agent.runtime.persistence.store = store
     harness = _harness(app)
 
-    harness.write("/use previous")
+    harness.write("/resume previous")
     harness.press("enter")
     await asyncio.wait_for(app.task, 2.0)
 
     assert app.agent.session_id == "previous"
     assert any(entry.kind == "user" and entry.text == "saved question" for entry in app.transcript.entries)
 
-    harness.write("/use missing")
+    harness.write("/resume missing")
     harness.press("enter")
     await asyncio.wait_for(app.task, 2.0)
 
@@ -2229,7 +2229,7 @@ async def test_sessions_argument_restores_the_selected_history(tmp_path):
     app.agent.runtime.persistence.store = store
     harness = _harness(app)
 
-    harness.write("/sessions previous")
+    harness.write("/resume previous")
     harness.press("enter")
     await asyncio.wait_for(app.task, 2.0)
 
@@ -2247,7 +2247,7 @@ async def test_sessions_command_opens_a_panel_with_titles_and_ages(tmp_path):
     app.agent.runtime.persistence.store = store
     harness = _harness(app)
 
-    harness.write("/sessions")
+    harness.write("/resume")
     harness.press("enter")
     await asyncio.wait_for(app.task, 2.0)
 
@@ -2273,7 +2273,7 @@ async def test_sessions_command_reports_an_empty_store():
     app = build_app()
     harness = _harness(app)
 
-    harness.write("/sessions")
+    harness.write("/resume")
     harness.press("enter")
     await asyncio.wait_for(app.task, 2.0)
 
@@ -2370,7 +2370,7 @@ async def test_resuming_a_session_restores_its_token_totals(tmp_path):
     app.agent.runtime.persistence.store = store
     harness = _harness(app)
 
-    harness.write("/use previous")
+    harness.write("/resume previous")
     harness.press("enter")
     await asyncio.wait_for(app.task, 2.0)
 

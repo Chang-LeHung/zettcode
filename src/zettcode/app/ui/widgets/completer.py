@@ -16,7 +16,7 @@ KEY_HELP = (
 class CommandCompleter(Completer):
     """Complete the slash commands matching the line the cursor sits on.
 
-    A space ends the suggestion: ``/use abc`` has moved on to a session id, so
+    A space ends the suggestion: ``/resume abc`` has moved on to a session id, so
     the menu steps aside instead of filtering the commands down to nothing.
     """
 

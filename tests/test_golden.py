@@ -213,19 +213,19 @@ def test_golden_completion_popup():
     popup = CompletionPopup(
         [
             CompletionItem("/new", description="start a fresh session"),
-            CompletionItem("/use", description="switch to a session: /use <id>"),
+            CompletionItem("/resume", description="resume a session: /resume [id]"),
         ]
     )
 
     assert render_block(popup, width=44, height=4, theme=DARK) == (
-        " /new  start a fresh session\n"
-        " /use  switch to a session: /use <id>\n"
+        " /new     start a fresh session\n"
+        " /resume  resume a session: /resume [id]\n"
         "\n"
         "\n"
         "-- styles --\n"
-        "0:0-7 b,fg#f2f5f3,bg#4a5f52\n"
-        "0:7-28 fg#7a8478,bg#4a5f52\n"
-        "0:28-44 b,fg#f2f5f3,bg#4a5f52\n"
-        "1:0-5 fg#f2f5f3\n"
-        "1:7-37 fg#7a8478"
+        "0:0-10 b,fg#f2f5f3,bg#4a5f52\n"
+        "0:10-31 fg#7a8478,bg#4a5f52\n"
+        "0:31-44 b,fg#f2f5f3,bg#4a5f52\n"
+        "1:0-8 fg#f2f5f3\n"
+        "1:10-40 fg#7a8478"
     )
