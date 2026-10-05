@@ -52,6 +52,7 @@ TOOL_ROLES = {
     "run_shell": "shell",
     "todo_write": "plan",
     "read_skill": "read",
+    "task": "subagent",
 }
 
 
