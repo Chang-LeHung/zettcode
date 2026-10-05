@@ -16,6 +16,9 @@ class Screen:
         widget: Root of this layer's subtree.
         name: Debug label such as ``"approval"``; the base layer is ``"main"``.
         modal: Block input from every layer below this one.
+        interactive: Whether the layer may receive input at all. A paint-only
+            layer (a toast, a status flash) still draws over the shell but lets
+            clicks, wheel, and keys fall through to the layer below.
         remembered_focus: Focus to restore when this layer is uncovered again;
             the app writes it when a new layer is pushed on top.
     """
@@ -23,6 +26,7 @@ class Screen:
     widget: Widget
     name: str = ""
     modal: bool = False
+    interactive: bool = True
     remembered_focus: Widget | None = field(default=None)
 
 

@@ -1723,6 +1723,29 @@ async def test_the_transcript_scrolls_with_the_mouse_wheel():
     assert view.follow_tail is True
 
 
+async def test_a_toast_does_not_block_scrolling_the_transcript():
+    """A toast is a paint-only layer: the wheel must still reach the transcript."""
+    app = build_app()
+    harness = _harness(app)
+    for index in range(60):
+        app.transcript.notice(f"line {index}")
+    harness.render()
+    view = app.view
+    x = view.rect.x + 1
+    y = view.rect.y + 1
+    tail = view.top
+
+    app._notify("using session 01a10c8a")
+    toast = app.app.screens.top.widget.slots[0].widget
+    assert toast.duration <= 1.5
+    harness.render()
+
+    harness.scroll(x, y, up=True)
+
+    assert view.top < tail
+    assert view.follow_tail is False
+
+
 async def test_a_scrolled_transcript_offers_back_to_bottom_by_click_and_escape():
     app = build_app()
     harness = _harness(app)
