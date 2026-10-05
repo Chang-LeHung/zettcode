@@ -16,6 +16,19 @@ from zettcode.app.agent.transcript import Transcript
 from zettcode.tui import DARK, LIGHT, LineSource
 
 
+def test_the_transcript_drops_the_oldest_entries_at_the_display_cap():
+    """A long session keeps a bounded scrollback, without losing the newest rows."""
+    transcript = Transcript(clock=lambda: 0.0, max_entries=32)
+
+    for index in range(100):
+        transcript.notice(f"line {index}")
+
+    texts = [entry.text for entry in transcript.entries]
+    assert texts[-1] == "line 99"
+    assert "line 0" not in texts
+    assert len(texts) <= 32 + max(8, 32 // 32)
+
+
 def test_processing_becomes_thinking_without_losing_its_identity():
     transcript = Transcript(clock=lambda: 0.0)
     transcript.begin_turn("question")

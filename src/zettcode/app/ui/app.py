@@ -89,7 +89,7 @@ class ZettCodeApp:
         """
         self.agent = agent
         self._plugin_rows: tuple[UiRow, ...] = agent.plugin_rows
-        self.transcript = Transcript()
+        self.transcript = Transcript(max_entries=agent.runtime.config.transcript_max_entries)
         self.transcript.welcome(WELCOME)
         for failure in agent.plugin_failures:
             self.transcript.error(f"plugin: {failure}")
