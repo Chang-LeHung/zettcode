@@ -253,6 +253,51 @@ async def test_each_message_links_to_the_one_before_it(tmp_path: Path):
     ]
 
 
+def test_a_session_is_parsed_once_and_then_served_from_the_cache(tmp_path: Path, monkeypatch):
+    """Reading twice must not re-parse the log; that is what keeps append O(1)."""
+    store = SessionStore(tmp_path)
+    store._append_line("s1", _header("s1"))
+    store._append_line("s1", _stored_message("s1", id="m1", parent=None))
+    path = store.session_path("s1")
+    reads: list[Path] = []
+    original = Path.read_text
+
+    def spy(self: Path, *args, **kwargs):
+        reads.append(self)
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", spy)
+
+    first = store.read("s1")
+    second = store.read("s1")
+
+    assert first is second
+    assert reads.count(path) == 1
+
+
+async def test_appending_does_not_reparse_the_whole_file(tmp_path: Path, monkeypatch):
+    """A new message folds into the parsed cache instead of re-reading it."""
+    store = SessionStore(tmp_path)
+    first = await store.append("s1", "req", UserMessage(content="hello"))
+    store.read("s1")
+    path = store.session_path("s1")
+    reads: list[Path] = []
+    original = Path.read_text
+
+    def spy(self: Path, *args, **kwargs):
+        reads.append(self)
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", spy)
+
+    second = await store.append("s1", "req", AssistantMessage(content="hi"))
+    session = store.read("s1")
+
+    assert [line.id for line in session.messages] == [first, second]
+    assert session.head_id == second
+    assert path not in reads
+
+
 async def test_the_context_cuts_at_the_latest_checkpoint(tmp_path: Path):
     store = SessionStore(tmp_path)
     ids = [await store.append("s1", "req", UserMessage(content=f"m{index + 1}")) for index in range(4)]

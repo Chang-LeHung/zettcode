@@ -31,7 +31,7 @@ import hashlib
 import json
 from collections import Counter
 from collections.abc import Iterator, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 from typing import cast
@@ -156,6 +156,10 @@ class SessionPersistenceMixin:
         self.workspace_dir = self.root / workspace_key(self.workspace)
         self.metadata_path = self.workspace_dir / METADATA_FILE
         self.workspace_dir.mkdir(parents=True, exist_ok=True)
+        # Parsed sessions, keyed by the file stamp that produced them. Appending
+        # is the hot path — one call per message — so it must not re-parse the
+        # whole log; the cache makes a read O(1) and a write a tuple copy.
+        self._sessions: dict[str, tuple[tuple[int, int] | None, Session]] = {}
         super().__init__()
 
     def _record_activity(self, session_id: str, updated_at: datetime) -> None:
@@ -184,7 +188,13 @@ class SessionPersistenceMixin:
         """Parse one session file, tolerating a half-written final line."""
         path = self.session_path(session_id)
         if not path.is_file():
-            return Session(header=None, messages=(), compactions=(), head_id=None)
+            session = Session(header=None, messages=(), compactions=(), head_id=None)
+            self._sessions[session_id] = (None, session)
+            return session
+        stamp = self._stamp(path)
+        cached = self._sessions.get(session_id)
+        if cached is not None and cached[0] == stamp:
+            return cached[1]
         lines = path.read_text(encoding="utf-8").splitlines()
         header: SessionLine | None = None
         messages: list[MessageLine] = []
@@ -210,7 +220,15 @@ class SessionPersistenceMixin:
                 case other:
                     raise ValueError(f"Unknown session record: {type(other).__name__}")
         self._check_links(path, messages, compactions)
-        return Session(header=header, messages=tuple(messages), compactions=tuple(compactions), head_id=head_id)
+        session = Session(header=header, messages=tuple(messages), compactions=tuple(compactions), head_id=head_id)
+        self._sessions[session_id] = (stamp, session)
+        return session
+
+    @staticmethod
+    def _stamp(path: Path) -> tuple[int, int]:
+        """Return the file's identity as mtime and size, the cache's validity key."""
+        stat = path.stat()
+        return (stat.st_mtime_ns, stat.st_size)
 
     @staticmethod
     def _check_links(path: Path, messages: list[MessageLine], compactions: list[CompactionLine]) -> None:
@@ -233,9 +251,32 @@ class SessionPersistenceMixin:
         """Append one validated line, flushing so a reader sees whole records."""
         text = json.dumps(line.model_dump(mode="json"), ensure_ascii=False, allow_nan=False, sort_keys=True)
         self.session_dir(session_id).mkdir(parents=True, exist_ok=True)
-        with self.session_path(session_id).open("a", encoding="utf-8") as handle:
+        path = self.session_path(session_id)
+        with path.open("a", encoding="utf-8") as handle:
             handle.write(text + "\n")
             handle.flush()
+        self._remember(session_id, line)
+
+    def _remember(self, session_id: str, line: Line) -> None:
+        """Fold a line this process just wrote into the cache, without re-reading.
+
+        A session that was never read has no entry to update, and the next read
+        parses the file once; when there is one, the new line is spliced into the
+        parsed model and the stamp refreshed, so the append that just happened
+        never pays for the parse the cache exists to avoid.
+        """
+        cached = self._sessions.get(session_id)
+        if cached is None:
+            return
+        _, session = cached
+        match line:
+            case SessionLine():
+                session = replace(session, header=line)
+            case MessageLine():
+                session = replace(session, messages=(*session.messages, line), head_id=line.id)
+            case CompactionLine():
+                session = replace(session, compactions=(*session.compactions, line))
+        self._sessions[session_id] = (self._stamp(self.session_path(session_id)), session)
 
     # -- the store API ------------------------------------------------------
     async def append(
