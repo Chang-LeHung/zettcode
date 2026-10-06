@@ -48,6 +48,7 @@ from zettcode.app.agent.usage import USAGE_EVENT_NAME, UsageExtension, UsageSnap
 from zettcode.app.commands import Command, CommandResult
 from zettcode.app.ui import app as app_module
 from zettcode.app.ui import demo
+from zettcode.app.ui import keys as keys_module
 from zettcode.app.ui.widgets import (
     WELCOME,
     ApprovalChoice,
@@ -1160,7 +1161,7 @@ async def test_ctrl_v_attaches_the_clipboard_image_to_the_prompt(monkeypatch):
     app = build_app()
     app.agent.runtime.active_model = app.agent.runtime.config.models[1]  # GPT-4o takes images
     harness = _harness(app)
-    monkeypatch.setattr(app_module, "read_image", lambda: (b"png-bytes", "image/png"))
+    monkeypatch.setattr(keys_module, "read_image", lambda: (b"png-bytes", "image/png"))
 
     harness.write("what is wrong here?")
     harness.press("ctrl_v")
@@ -1182,7 +1183,7 @@ async def test_a_prompt_keeps_images_where_the_chips_were_written(monkeypatch):
     app = build_app()
     app.agent.runtime.active_model = app.agent.runtime.config.models[1]
     harness = _harness(app)
-    monkeypatch.setattr(app_module, "read_image", lambda: (b"png-bytes", "image/png"))
+    monkeypatch.setattr(keys_module, "read_image", lambda: (b"png-bytes", "image/png"))
 
     harness.write("this ")
     harness.press("ctrl_v")
@@ -1204,7 +1205,7 @@ async def test_a_second_ctrl_v_adds_a_second_image(monkeypatch):
     app.agent.runtime.active_model = app.agent.runtime.config.models[1]
     harness = _harness(app)
     pending = [(b"first", "image/png"), (b"second", "image/png")]
-    monkeypatch.setattr(app_module, "read_image", lambda: pending.pop(0))
+    monkeypatch.setattr(keys_module, "read_image", lambda: pending.pop(0))
 
     harness.press("ctrl_v")
     harness.press("ctrl_v")
@@ -1224,7 +1225,7 @@ async def test_attaching_says_so_when_there_is_nothing_to_attach(monkeypatch):
     app = build_app()
     app.agent.runtime.active_model = app.agent.runtime.config.models[1]
     harness = _harness(app)
-    monkeypatch.setattr(app_module, "read_image", lambda: None)
+    monkeypatch.setattr(keys_module, "read_image", lambda: None)
 
     harness.press("ctrl_v")
 
@@ -1235,7 +1236,7 @@ async def test_attaching_says_so_when_there_is_nothing_to_attach(monkeypatch):
 async def test_a_model_without_image_input_refuses_an_attachment(monkeypatch):
     app = build_app()  # the default model is text-only
     harness = _harness(app)
-    monkeypatch.setattr(app_module, "read_image", lambda: (b"png-bytes", "image/png"))
+    monkeypatch.setattr(keys_module, "read_image", lambda: (b"png-bytes", "image/png"))
 
     harness.press("ctrl_v")
 
