@@ -1,0 +1,153 @@
+/**
+ * The guide wears the agent's own palette: the Everforest accents the built-in
+ * themes use, so the site and the terminal look like one product.
+ */
+
+:root {
+  --vp-c-brand-1: #7fa968;
+  --vp-c-brand-2: #8fbb74;
+  --vp-c-brand-3: #a7c080;
+  --vp-c-brand-soft: rgba(167, 192, 128, 0.16);
+
+  --vp-c-tip-1: var(--vp-c-brand-1);
+  --vp-c-tip-2: var(--vp-c-brand-2);
+  --vp-c-tip-3: var(--vp-c-brand-3);
+  --vp-c-tip-soft: var(--vp-c-brand-soft);
+
+  --vp-home-hero-name-color: var(--vp-c-brand-1);
+  --vp-home-hero-name-background: transparent;
+  --vp-code-line-height: 1.6;
+
+  --vh-term-bg: #232a2e;
+  --vh-term-text: #d3c6aa;
+  --vh-term-muted: #6d7a70;
+  --vh-term-accent: #a7c080;
+  --vh-term-bright: #83c092;
+  --vh-term-aqua: #7fbbb3;
+  --vh-term-violet: #b8a6e0;
+  --vh-term-red: #e67e80;
+  --vh-term-yellow: #d8b46a;
+}
+
+.dark {
+  --vh-term-bg: #1e2428;
+}
+
+/* The terminal window the home page and the interface page show. */
+.term {
+  margin: 32px auto 0;
+  max-width: 860px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--vh-term-bg);
+  border: 1px solid var(--vp-c-divider);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
+  text-align: left;
+}
+
+.term-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.term-bar span {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #4b565b;
+}
+
+.term-bar em {
+  margin-left: 8px;
+  font-size: 12px;
+  font-style: normal;
+  color: var(--vh-term-muted);
+}
+
+.term-body {
+  margin: 0;
+  padding: 18px 20px 20px;
+  font-family: var(--vp-font-family-mono);
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--vh-term-text);
+  overflow-x: auto;
+}
+
+.term-body code {
+  font-family: inherit;
+  background: none;
+  padding: 0;
+  color: inherit;
+}
+
+.term-body b {
+  font-weight: 600;
+  color: var(--vh-term-text);
+}
+
+.t-dim {
+  color: var(--vh-term-muted);
+}
+
+.t-acc {
+  color: var(--vh-term-accent);
+}
+
+.t-bright {
+  color: var(--vh-term-bright);
+}
+
+.t-aqua {
+  color: var(--vh-term-aqua);
+}
+
+.t-violet {
+  color: var(--vh-term-violet);
+}
+
+.t-yellow {
+  color: var(--vh-term-yellow);
+}
+
+.t-red {
+  color: var(--vh-term-red);
+}
+
+.t-band {
+  background: rgba(167, 192, 128, 0.14);
+  border-radius: 3px;
+}
+
+/* Feature cards on the home page keep the walkthrough close to the fold. */
+.VPFeature {
+  border-radius: 10px;
+}
+
+.VPFeature .icon {
+  font-size: 20px;
+}
+
+.vp-doc h2 {
+  border-top: 1px solid var(--vp-c-divider);
+  padding-top: 24px;
+}
+
+.vp-doc table {
+  display: table;
+  width: 100%;
+}
+
+.vp-doc kbd {
+  border: 1px solid var(--vp-c-divider);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 0.85em;
+  font-family: var(--vp-font-family-mono);
+  background: var(--vp-c-bg-soft);
+}
