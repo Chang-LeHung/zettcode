@@ -21,8 +21,11 @@
 
 ## Tooling
 
-- Python 3.14+ and `uv` for dependency management; Ruff for formatting and
+- Python 3.10+ and `uv` for dependency management; Ruff for formatting and
   linting with `line-length = 120`, and mypy for the shipped code under `src`.
+  Both tools target 3.10 and CI runs 3.10 through 3.14, so keep the source free
+  of newer syntax and standard-library APIs; the version shims live in
+  `src/zettcode/_compat.py`.
 - Run `make check` (Ruff, mypy, and pytest) before handing work over, and
   `make smoke` when packaging changes so the console script is exercised from
   the built wheel.

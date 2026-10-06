@@ -34,14 +34,20 @@ jobs:
         run: uv run --no-sync ruff check src tests
 
   test:
-    name: Tests (Python 3.14)
+    name: Tests (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Every claimed version, starting at the floor: a construct or a stdlib
+        # name the oldest runtime lacks only fails there.
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v7
 
       - uses: astral-sh/setup-uv@v10.2.0
         with:
-          python-version: "3.14"
+          python-version: ${{ matrix.python-version }}
           enable-cache: true
 
       - name: Sync dependencies
@@ -51,14 +57,20 @@ jobs:
         run: uv run --no-sync pytest
 
   test-windows:
-    name: Tests (Windows)
+    name: Tests (Windows, Python ${{ matrix.python-version }})
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.10 is the version that also installs the ``exceptiongroup`` and
+        # ``tomli`` backports, so the old path is exercised here as well.
+        python-version: ["3.10", "3.14"]
     steps:
       - uses: actions/checkout@v7
 
       - uses: astral-sh/setup-uv@v10.2.0
         with:
-          python-version: "3.14"
+          python-version: ${{ matrix.python-version }}
           enable-cache: true
 
       - name: Sync dependencies

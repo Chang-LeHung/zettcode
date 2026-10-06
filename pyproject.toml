@@ -3,7 +3,7 @@ name = "zettcode"
 version = "0.1.0"
 description = "A focused terminal coding agent powered by zett-agent"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.10"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{name = "Chang-LeHung"}]
@@ -14,11 +14,18 @@ classifiers = [
   "Operating System :: MacOS",
   "Operating System :: Microsoft :: Windows :: Windows 10",
   "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
   "Typing :: Typed",
 ]
 dependencies = [
+  # The stdlib gained both of these in 3.11; older runtimes take the backports.
+  "exceptiongroup>=1.2,<2; python_version < '3.11'",
   "pyperclip>=1.9,<2",
+  "tomli>=2,<3; python_version < '3.11'",
   "wcwidth>=0.2,<1",
   "zett-agent==0.1.9",
 ]
@@ -42,11 +49,15 @@ include = ["/src", "/README.md", "/LICENSE", "/pyproject.toml"]
 
 [dependency-groups]
 dev = [
+  # Unlike the conditional runtime deps, these are installed on every
+  # interpreter so mypy can check the 3.10 branch of ``_compat`` for real.
+  "exceptiongroup>=1.2,<2",
   "mypy>=1.14,<2",
   "pytest>=8,<9",
   "pytest-asyncio>=0.26,<2",
   "pytest-cov>=7.1.0",
   "ruff>=0.11,<1",
+  "tomli>=2,<3",
   "viztracer>=1.1.1",
 ]
 
@@ -55,7 +66,7 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 
 [tool.mypy]
-python_version = "3.14"
+python_version = "3.10"
 files = ["src", "perf"]
 # Check the pydantic storage models as models, not as plain classes.
 plugins = ["pydantic.mypy"]
@@ -70,7 +81,7 @@ ignore_missing_imports = true
 
 [tool.ruff]
 line-length = 120
-target-version = "py314"
+target-version = "py310"
 src = ["src", "tests", "perf"]
 
 [tool.ruff.lint]
