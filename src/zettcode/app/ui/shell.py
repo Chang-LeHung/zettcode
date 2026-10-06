@@ -94,7 +94,7 @@ class ShellState:
     def submit(self, value: str) -> bool | None:
         """Start a turn, steer the running one, or run a slash command."""
 
-    def _notify(self, message: str, *, level: str = "info") -> None:
+    def notify(self, message: str, *, level: str = "info") -> None:
         """Show a one-line toast."""
 
     def _refresh_tasks(self) -> None:

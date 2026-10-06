@@ -45,7 +45,7 @@ class SessionMixin(ShellState):
         # Close the panel first: the toast is its own screen, and closing it
         # instead of the panel would leave the picker on top.
         self.close_page()
-        self._notify(f"using session {session_id[:8]}", level="success")
+        self.notify(f"using session {session_id[:8]}", level="success")
 
     def restore_session(self, session_id: str) -> None:
         """Replace the visible history with the chosen persisted branch."""

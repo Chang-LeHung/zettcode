@@ -13,7 +13,7 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from ...tui import ListItem, ListPage, Widget, theme_names
-from ..commands import Command, CommandProvider, CommandResult
+from ..commands import Command, CommandContext, CommandProvider, CommandResult
 from .widgets import ContextPage, ModelPage, SessionsPage, bottom_panel, help_text
 
 #: Rows the picker panels take from the bottom of the screen: the title, the
@@ -71,32 +71,32 @@ class ShellCommands(CommandProvider):
             Command("/exit", "exit, same as /quit", "app", self.quit),
         )
 
-    async def help(self, argument: str) -> CommandResult:
+    async def help(self, context: CommandContext) -> CommandResult:
         """Describe commands from both the shell and the agent."""
         return CommandResult(message=help_text(self.shell.commands))
 
-    async def model(self, name: str) -> CommandResult:
+    async def model(self, context: CommandContext) -> CommandResult:
         """Open the model picker, or switch directly to a named model.
 
         The picker is a widget, so the command lives with the shell: the agent
         owns the models, the shell owns the widget that chooses between them.
         """
-        if name:
-            self.shell.change_model(name)
+        if context.argument:
+            self.shell.change_model(context.argument)
             return CommandResult(relayout=True)
         page = ModelPage(self.shell.agent, on_select=self.shell.select_model, on_cancel=self.shell.close_page)
         return CommandResult(widget=self._panel(page))
 
-    async def resume(self, name: str) -> CommandResult:
+    async def resume(self, context: CommandContext) -> CommandResult:
         """Open the stored sessions, or resume the one named in the argument.
 
         The picker is a widget, so the command lives with the shell: the agent
         owns the stored sessions, the shell owns the widget that browses them —
         and the same call opens the session `--resume` names on the command line.
         """
-        if name:
-            self.shell.restore_session(name)
-            return CommandResult(notification=f"resumed session {name[:8]}", relayout=True)
+        if context.argument:
+            self.shell.restore_session(context.argument)
+            return CommandResult(notification=f"resumed session {context.argument[:8]}", relayout=True)
         sessions = await self.shell.agent.list_sessions(limit=20)
         if not sessions:
             return CommandResult(message="No persisted sessions.")
@@ -107,15 +107,15 @@ class ShellCommands(CommandProvider):
         """Wrap one picker in the bottom panel the shell's own commands use."""
         return bottom_panel(page, rows=PICKER_ROWS)
 
-    async def theme(self, name: str) -> CommandResult:
+    async def theme(self, context: CommandContext) -> CommandResult:
         """Open the theme picker, or switch straight to a named palette.
 
         The built-in palettes are a tiny fixed list, so the picker is a plain
         :class:`ListPage`; a named argument keeps the direct `/theme light` path
         working the same way `/model <name>` does.
         """
-        if name:
-            self.shell.apply_theme(name)
+        if context.argument:
+            self.shell.apply_theme(context.argument)
             return CommandResult(relayout=True)
         current = self.shell.app.theme.name
         names = theme_names()
@@ -128,7 +128,7 @@ class ShellCommands(CommandProvider):
         )
         return CommandResult(widget=self._panel(page))
 
-    async def context(self, argument: str) -> CommandResult:
+    async def context(self, context: CommandContext) -> CommandResult:
         """Show what the next request carries, by source and token share.
 
         The breakdown comes from the request the runtime assembled for the last
@@ -142,33 +142,33 @@ class ShellCommands(CommandProvider):
             )
         return CommandResult(widget=self._panel(ContextPage(report, on_cancel=self.shell.close_page)))
 
-    async def title(self, argument: str) -> CommandResult:
+    async def title(self, context: CommandContext) -> CommandResult:
         """Rename the active session, or report the name it already has.
 
         The name lives in the session metadata beside the title the agent
         summarizes, so `/sessions` shows it and a later automatic naming step
         leaves it alone.
         """
-        if not argument:
+        if not context.argument:
             current = self.shell.agent.session_title
             if current is None:
                 return CommandResult(message="This session has no title yet. Use `/title <name>`.")
             return CommandResult(message=f"Title: **{current}**")
         try:
-            renamed = await self.shell.rename_session(argument)
+            renamed = await self.shell.rename_session(context.argument)
         except ValueError as error:
             return CommandResult(message=str(error))
         return CommandResult(notification=f"renamed to {renamed}", relayout=True)
 
-    async def effort(self, name: str) -> CommandResult:
+    async def effort(self, context: CommandContext) -> CommandResult:
         """Open the reasoning picker, or switch straight to a named level.
 
         The levels are the runtime's own, so the picker lists what the provider
         adapters can actually send rather than a hand-written list.
         """
-        if name:
+        if context.argument:
             try:
-                self.shell.change_effort(name)
+                self.shell.change_effort(context.argument)
             except ValueError as error:
                 return CommandResult(message=str(error))
             return CommandResult(relayout=True)
@@ -183,12 +183,12 @@ class ShellCommands(CommandProvider):
         )
         return CommandResult(widget=self._panel(page))
 
-    async def clear(self, argument: str) -> CommandResult:
+    async def clear(self, context: CommandContext) -> CommandResult:
         """Clear visible conversation entries."""
         self.shell.transcript.clear()
         return CommandResult()
 
-    async def quit(self, argument: str) -> CommandResult:
+    async def quit(self, context: CommandContext) -> CommandResult:
         """Exit the terminal application."""
         self.shell.app.exit()
         return CommandResult()

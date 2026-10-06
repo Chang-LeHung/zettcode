@@ -1,11 +1,56 @@
 """Slash commands shared by the application and coding agent."""
 
+from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
 from ..tui import Widget
 from .registry import Provider
+
+
+class CommandUi(ABC):
+    """The surfaces a command may write to while it runs.
+
+    A handler used to describe everything it wanted to show in the
+    :class:`CommandResult` it returned, which meant a long command could not say
+    anything until it finished. With this it can report as it goes — a heading
+    before the slow part, a failure the moment one happens — and still return a
+    result for whatever is left to do (a page to open, a re-layout).
+    """
+
+    @abstractmethod
+    def markdown(self, text: str) -> None:
+        """Append Markdown to the transcript, parsed like an answer."""
+
+    @abstractmethod
+    def notice(self, text: str) -> None:
+        """Append a muted one-line remark."""
+
+    @abstractmethod
+    def error(self, text: str) -> None:
+        """Append a one-line failure, painted as an error."""
+
+    @abstractmethod
+    def notify(self, text: str, *, level: str = "info") -> None:
+        """Show a one-off toast, replacing any that is still on screen."""
+
+
+@dataclass(frozen=True, slots=True)
+class CommandContext:
+    """What one command handler is handed.
+
+    Attributes:
+        argument: Trimmed text after the command name; ``""`` when none.
+        ui: Surfaces the command may write to while it runs.
+    """
+
+    argument: str
+    ui: CommandUi
+
+
+#: Signature of a slash-command handler: its context in, what to show next out.
+type CommandHandler = Callable[[CommandContext], Awaitable["CommandResult"]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,16 +97,17 @@ class Command:
             :class:`~zettcode.app.agent.ZettCodeAgent`; ``"plugin"`` comes from
             an installed plugin, registered through
             :class:`~zettcode.plugins.PluginContainer`.
-        handler: Runs the command, receiving the trimmed text after the name
-            (``""`` when the user typed none) and returning a
-            :class:`CommandResult` describing what to show next. Raising
-            ``ValueError`` reports a usage error instead of changing state.
+        handler: Runs the command with a :class:`CommandContext` — the trimmed
+            argument and the UI surfaces it may write to while it works — and
+            returns a :class:`CommandResult` describing anything left to show.
+            Raising ``ValueError`` reports a usage error instead of changing
+            state.
     """
 
     name: str
     description: str
     type: Literal["app", "agent", "plugin"]
-    handler: Callable[[str], Awaitable[CommandResult]]
+    handler: CommandHandler
 
 
 class CommandProvider(Provider[Command]):

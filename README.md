@@ -194,7 +194,7 @@ greeter = "my_package:Greeter"
 ```
 
 ```python
-from zettcode.plugins import CommandResult, Plugin, PluginContainer
+from zettcode.plugins import CommandContext, CommandResult, Plugin, PluginContainer
 
 
 class Greeter(Plugin):
@@ -203,16 +203,20 @@ class Greeter(Plugin):
     def activate(self, container: PluginContainer) -> None:
         container.register_command("greet", "say hello", self.greet)
 
-    async def greet(self, argument: str) -> CommandResult:
-        return CommandResult(notification=f"hello {argument}".strip())
+    async def greet(self, context: CommandContext) -> CommandResult:
+        return CommandResult(notification=f"hello {context.argument}".strip())
 ```
 
 The hooks receive the same values an extension does — `AgentRunContext`,
 `ModelRequest`, `ToolCall`, and so on — so a plugin can register tools, rewrite
 the messages sent to the model, transform tool results, or observe a finished
-run; returning a `CommandResult` is enough for a command to add Markdown, a
-toast, or a widget over the conversation. Plugin commands are listed last, so a
-plugin cannot shadow a built-in such as `/model`.
+run. A command is handed a `CommandContext`: `context.argument` is the trimmed
+text after the name, and `context.ui` writes while the command runs —
+`ui.markdown` appends Markdown to the conversation, `ui.notice` and `ui.error`
+add a line, `ui.notify` raises a toast — so a slow command can report its
+progress instead of waiting to describe everything in its `CommandResult`.
+Plugin commands are listed last, so a plugin cannot shadow a built-in such as
+`/model`.
 
 Plugins also own the shell's rows. The header and the status line are each
 split into a left and a right side, and every side is drawn from the segments
