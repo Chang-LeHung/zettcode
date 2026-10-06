@@ -31,6 +31,10 @@
   than bypassing the hook.
 - Tests must never write into the checkout or into `~/.zettcode`. Use temporary
   directories and pass them explicitly.
+- `docs/invariants.md` lists the rules the code depends on but types do not
+  enforce, each marked done with the test that pins it or todo with what is
+  missing. Adding a load-bearing rule means adding a row and a test; breaking
+  one means the cited test fails, so keep the marks honest.
 - Keep the terminal layer importable off POSIX: `termios`/`tty` imports stay
   inside the raw-mode methods and report a clear error elsewhere.
 

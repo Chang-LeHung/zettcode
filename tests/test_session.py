@@ -275,6 +275,37 @@ def test_a_session_is_parsed_once_and_then_served_from_the_cache(tmp_path: Path,
     assert reads.count(path) == 1
 
 
+async def test_an_external_write_is_not_hidden_by_the_parse_cache(tmp_path: Path):
+    """The cache is keyed on the file, so another writer's line must show up."""
+    store = SessionStore(tmp_path)
+    first = await store.append("s1", "req", UserMessage(content="hello"))
+    assert [line.id for line in store.read("s1").messages] == [first]
+
+    path = store.session_path("s1")
+    extra = _stored_message("s1", id="m-extra", parent=first)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(extra.model_dump_json() + "\n")
+
+    assert [line.id for line in store.read("s1").messages] == [first, "m-extra"]
+
+
+async def test_per_message_attributes_survive_the_round_trip(tmp_path: Path):
+    """The ``@`` original prompt rides on the message and must come back."""
+    store = SessionStore(tmp_path)
+    await store.append(
+        "s1",
+        "req",
+        UserMessage(content="expanded @skill", attributes={"prompt": "typed @skill"}),
+    )
+
+    (line,) = store.read("s1").messages
+    stored = line.message[0]
+
+    assert isinstance(stored, UserMessage)
+    assert stored.content == "expanded @skill"
+    assert stored.attributes == {"prompt": "typed @skill"}
+
+
 async def test_appending_does_not_reparse_the_whole_file(tmp_path: Path, monkeypatch):
     """A new message folds into the parsed cache instead of re-reading it."""
     store = SessionStore(tmp_path)
