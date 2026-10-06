@@ -171,8 +171,31 @@ class TextArea(Widget):
         return tuple(CompletionItem(value=value) for value in self.completions if value.startswith(token))
 
     def token_start(self) -> int:
-        """Return the index where the line under the cursor begins."""
-        return self.text.rfind("\n", 0, self.position) + 1
+        """Return where the word under the cursor begins.
+
+        A completion token is a run of non-space characters, not a whole line:
+        a slash command fills the line, but an ``@`` resource can sit inside a
+        sentence, and accepting it must leave the rest of the draft alone.
+        """
+        start = self.position
+        while start > 0 and not self.text[start - 1].isspace():
+            start -= 1
+        return start
+
+    def replace_token(self, value: str, *, suffix: str = "") -> None:
+        """Replace the token under the cursor and land after ``suffix``.
+
+        Used when a completion is accepted. The word under the cursor gives way
+        to the finished command name or resource, and the cursor ends after the
+        suffix so the menu closes and the next word can be typed straight away.
+        """
+        start = self.token_start()
+        self._remember_undo()
+        inserted = f"{value}{suffix}"
+        self.text = self.text[:start] + inserted + self.text[self.position :]
+        self.position = start + len(inserted)
+        self._completion_state = None
+        self._changed()
 
     def preferred_height(self, width: int) -> int:
         """Return the rows the draft needs, capped at ``max_height``."""
@@ -501,7 +524,7 @@ class TextArea(Widget):
             state = (token, candidates, -1 if direction > 0 else 0)
         original, candidates, index = state
         index = (index + direction) % len(candidates)
-        start = self.text.rfind("\n", 0, self.position) + 1
+        start = self.token_start()
         current = self.text[start : self.position]
         self._remember_undo()
         value = candidates[index].value

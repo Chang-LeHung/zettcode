@@ -1,10 +1,11 @@
 """Slash commands shared by the application and coding agent."""
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
 from ..tui import Widget
+from .registry import Provider
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,3 +62,25 @@ class Command:
     description: str
     type: Literal["app", "agent", "plugin"]
     handler: Callable[[str], Awaitable[CommandResult]]
+
+
+class CommandProvider(Provider[Command]):
+    """One source of slash commands, merged with the others by the shell."""
+
+    @property
+    def commands(self) -> tuple[Command, ...]:
+        """Return this source's commands, in display order."""
+        return tuple(self.items)
+
+
+class CommandList(CommandProvider):
+    """A provider over commands that already exist."""
+
+    def __init__(self, commands: Sequence[Command] = ()) -> None:
+        """Keep the commands exactly as given, order included."""
+        self._commands = tuple(commands)
+
+    @property
+    def items(self) -> Sequence[Command]:
+        """Return the stored commands."""
+        return self._commands

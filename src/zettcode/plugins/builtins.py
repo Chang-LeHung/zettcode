@@ -10,9 +10,11 @@ second segment beside it.
 
 from __future__ import annotations
 
+from ..app.agent.mentions import SkillMentions
 from ..app.agent.rows import activity_glyph, compact_path
 from ..app.agent.usage import context_text, usage_text
 from ..tui import HEADER, SEPARATOR, STATUS
+from .container import PluginContainer
 from .plugin import Plugin
 from .state import ShellContext
 
@@ -39,12 +41,28 @@ class ShellRows(Plugin):
         icon = activity_glyph(activity.frame) if activity.busy else STATUS
         mode = f" {SEPARATOR} auto" if activity.auto_shell else ""
         used = context_text(activity.usage, context.model.config.context_window)
-        return f"  {icon} {activity.status}{mode}  {context.session.name}{usage_text(activity.usage)}{used}"
+        return f"  {icon} {activity.label}{mode}  {context.session.name}{usage_text(activity.usage)}{used}"
 
     def render_status_right(self, context: ShellContext) -> str:
         """List the keys worth remembering."""
         return f"  {KEY_HINTS}  "
 
 
+class SkillResources(Plugin):
+    """The builtin ``@`` resource provider: the skills on this machine.
+
+    Registering it here rather than inside the shell keeps the shell generic: it
+    merges whatever providers the bundle holds, and the skills are simply the
+    one the repository ships.
+    """
+
+    name = "skills"
+
+    def activate(self, container: PluginContainer) -> None:
+        """Offer the discovered skills as ``@`` resources, when skills are on."""
+        if container.config.skills_enabled:
+            container.register_mention(SkillMentions(container.config))
+
+
 #: Plugins loaded from the repository itself, never from a distribution.
-BUILTIN_PLUGINS: tuple[Plugin, ...] = (ShellRows(),)
+BUILTIN_PLUGINS: tuple[Plugin, ...] = (ShellRows(), SkillResources())

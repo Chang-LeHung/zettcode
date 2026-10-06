@@ -55,13 +55,15 @@ from ...tui.widgets import Rule, Text
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from collections.abc import AsyncGenerator
-from ..agent.agent import UNTITLED_SESSION, PromptPart, ZettCodeAgent
+from ..agent.agent import UNTITLED_SESSION, PromptPart, ZettCodeAgent, carries_image, mention_hint
+from ..agent.mentions import MentionRegistry
 from ..agent.projection import TranscriptProjector
 from ..agent.rows import clock_text, elapsed_text
 from ..agent.runtime import describe_error
 from ..agent.transcript import Transcript
 from ..agent.usage import UsageSnapshot
-from ..commands import CommandResult
+from ..commands import CommandList, CommandResult
+from ..registry import Registry
 from .clipboard import read_image
 from .commands import ShellCommands
 from .widgets import (
@@ -105,6 +107,14 @@ class ZettCodeApp:
         """
         self.agent = agent
         self._plugin_rows: tuple[UiRow, ...] = agent.plugin_rows
+        self.commands = Registry(
+            [
+                ShellCommands(self),
+                CommandList(agent.commands),
+                CommandList(agent.plugin_commands),
+            ]
+        ).items()
+        self.mentions = MentionRegistry(agent.plugin_mentions)
         self.transcript = Transcript(max_entries=agent.runtime.config.transcript_max_entries)
         self.transcript.welcome(WELCOME)
         for failure in agent.plugin_failures:
@@ -117,13 +127,11 @@ class ZettCodeApp:
             on_steering_interrupted=self._steering_interrupted,
         )
         self.agent.set_event_dispatcher(self.projector)
-        self.commands = ShellCommands(self).build(agent.commands, agent.plugin_commands)
-
         self.view = TranscriptView(self.transcript, theme=theme)
         self.composer = Composer(
             prompt=f"{PROMPT} ",
             placeholder="Ask ZettCode to do anything",
-            completer=CommandCompleter(self.commands),
+            completer=CommandCompleter(self.commands, self.mentions),
             max_height=8,
             on_submit=self.submit,
             on_change=self._refresh_completions,
@@ -341,7 +349,7 @@ class ZettCodeApp:
             return False
         # The trailing space is what closes the menu: the draft is no longer a
         # bare command token, so the next Enter runs the command.
-        self.composer.set_text(f"{item.value} ")
+        self.composer.replace_token(item.value, suffix=" ")
         host.request_layout()
         return True
 
@@ -424,7 +432,7 @@ class ZettCodeApp:
                 self.transcript.error(f"{self.agent.active_model.shown_name} does not take images")
                 self.app.invalidate()
                 return False
-            self._task = asyncio.create_task(self._run_prompt(value, parts))
+            self._task = asyncio.create_task(self._run_prompt(value, parts, mention_hint(parts, self.mentions)))
         return True
 
     def _queue_steering(self, value: str) -> None:
@@ -465,7 +473,7 @@ class ZettCodeApp:
             self.app.request_layout()
         self.app.invalidate()
 
-    async def _run_prompt(self, prompt: str, parts: Sequence[PromptPart] = ()) -> None:
+    async def _run_prompt(self, prompt: str, parts: Sequence[PromptPart] = (), hint: str | None = None) -> None:
         """Stream one agent turn, keeping the task panel and transcript current.
 
         Args:
@@ -863,8 +871,3 @@ class ZettCodeApp:
                 scrolled_up=self.view.scrolled_up,
             ),
         )
-
-
-def carries_image(parts: Sequence[PromptPart]) -> bool:
-    """Return whether one turn holds an image beside its text."""
-    return any(not isinstance(part, str) for part in parts)

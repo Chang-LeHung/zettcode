@@ -4,14 +4,44 @@ from __future__ import annotations
 
 import base64
 
+from zettcode.app.agent.agent import MentionPart
 from zettcode.app.ui.widgets import Composer
-from zettcode.tui import DARK
+from zettcode.tui import DARK, Style
 from zettcode.tui.testing import Harness
 
 
 def _block(lines: int = 30) -> str:
     """Return a paste big enough to become a chip."""
     return "\n".join(f"line {index}" for index in range(lines))
+
+
+def test_a_draft_is_split_at_its_mentions():
+    composer = Composer()
+    composer.set_text("please @note this /help")
+
+    assert composer.parts() == ("please ", MentionPart(token="@note"), " this /help")
+
+
+def test_the_composer_paints_mentions_and_commands_apart_from_the_body():
+    composer = Composer()
+    Harness(composer, width=30, height=3, theme=DARK)
+    composer.set_text("@note /help")
+
+    styles = {span.text: span.style.foreground for span in composer.spans_for("@note /help", 0, Style())}
+
+    assert styles["@note"] == DARK.accent_bright
+    assert styles["/help"] == DARK.accent
+
+
+def test_backspace_removes_a_whole_mention_or_command():
+    for text, expected in (("你好 @apple-style", "你好 "), ("/help", ""), ("abc", "ab")):
+        composer = Composer()
+        harness = Harness(composer, width=40, height=4)
+        harness.write(text)
+
+        harness.press("backspace")
+
+        assert composer.text == expected, text
 
 
 def test_a_paste_over_the_character_limit_becomes_one_chip():

@@ -1,10 +1,11 @@
-"""Completion for the composer's slash commands, and their help text."""
+"""Completion for the composer's slash commands and ``@`` resources."""
 
 from __future__ import annotations
 
 from collections.abc import Sequence
 
 from ....tui import SEPARATOR, Completer, CompletionItem
+from ...agent.mentions import MentionRegistry
 from ...commands import Command
 
 KEY_HELP = (
@@ -14,15 +15,18 @@ KEY_HELP = (
 
 
 class CommandCompleter(Completer):
-    """Complete the slash commands matching the line the cursor sits on.
+    """Complete the slash commands and ``@`` resources on the cursor's line.
 
-    A space ends the suggestion: ``/resume abc`` has moved on to a session id, so
-    the menu steps aside instead of filtering the commands down to nothing.
+    A leading ``/`` filters the commands; a leading ``@`` filters the resources
+    the mention providers offer, skills among them. A space ends the suggestion:
+    ``/resume abc`` has moved on to a session id, so the menu steps aside
+    instead of filtering the commands down to nothing.
     """
 
-    def __init__(self, commands: Sequence[Command]) -> None:
+    def __init__(self, commands: Sequence[Command], mentions: MentionRegistry | None = None) -> None:
         """Keep the commands to offer; the shell builds them once at startup."""
         self.commands = tuple(commands)
+        self.mentions = mentions
 
     def __call__(self, text: str, position: int) -> tuple[CompletionItem, ...]:
         """Return the matching commands for the token ending at ``position``.
@@ -31,8 +35,19 @@ class CommandCompleter(Completer):
             text: Full draft, newlines included.
             position: Cursor as a code-point index into ``text``.
         """
-        start = text.rfind("\n", 0, position) + 1
+        # The token is the run of non-space characters under the cursor, so an
+        # ``@`` resource is still offered when it sits inside a sentence.
+        start = position
+        while start > 0 and not text[start - 1].isspace():
+            start -= 1
         token = text[start:position]
+        if token.startswith("@"):
+            if self.mentions is None or any(character.isspace() for character in token):
+                return ()
+            return tuple(
+                CompletionItem(mention.token, description=mention.description, type=mention.kind)
+                for mention in self.mentions.candidates(token[1:])
+            )
         if not token.startswith("/") or any(character.isspace() for character in token):
             return ()
         return tuple(

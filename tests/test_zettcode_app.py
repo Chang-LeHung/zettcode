@@ -30,6 +30,7 @@ from zett_agent.model import ModelRequest, ModelUsage, ReasoningEffort, ToolDefi
 from zettcode.app import Transcript, TranscriptSource, TranscriptView, ZettCodeApp
 from zettcode.app.agent.agent import ZettCodeAgent
 from zettcode.app.agent.context import ContextExtension, Tokenizer
+from zettcode.app.agent.mentions import Mention, MentionProvider, MentionRegistry
 from zettcode.app.agent.projection import TranscriptProjector
 from zettcode.app.agent.rows import (
     BLINK_FRAMES,
@@ -51,6 +52,7 @@ from zettcode.app.ui.widgets import (
     WELCOME,
     ApprovalChoice,
     ApprovalPage,
+    CommandCompleter,
     ContextPage,
     SessionsPage,
     SteeringQueue,
@@ -153,6 +155,25 @@ class FakeTodos:
         return self.result
 
 
+class MapMentions(MentionProvider):
+    """A ``@`` provider over a fixed name-to-text table."""
+
+    kind = "note"
+
+    def __init__(self, entries: dict[str, str]) -> None:
+        self.entries = entries
+
+    def candidates(self, query: str) -> tuple[Mention, ...]:
+        return tuple(
+            Mention(token=f"@{name}", kind=self.kind, name=name, description="")
+            for name in self.entries
+            if name.startswith(query)
+        )
+
+    def expand(self, name: str) -> str | None:
+        return self.entries.get(name)
+
+
 @dataclass
 class FakeConfig:
     workspace: Path = Path("/tmp/workspace")
@@ -163,8 +184,13 @@ class FakeConfig:
     reduced_motion: bool = False
     compaction_max_tokens: int = 128_000
     transcript_max_entries: int = 1024
+    skills_enabled: bool = False
     plugins_enabled: bool = True
     disabled_plugins: tuple[str, ...] = ()
+
+    def skill_search_roots(self) -> tuple[Path, ...]:
+        """Return no roots: the fake runs without a skills directory."""
+        return ()
 
 
 @dataclass
@@ -1013,6 +1039,51 @@ async def test_steering_emits_the_external_event_the_agent_listens_for():
     event, _config = runtime.client.agent.emitted[-1]
     assert event.name == "steering_message"
     assert event.payload == {"content": "stop and explain"}
+
+
+async def test_a_mention_expands_for_the_model_but_the_transcript_keeps_the_typed_text():
+    app = build_app()
+    harness = _harness(app)
+    app.mentions = MentionRegistry([MapMentions({"note": "The injected note."})])
+    harness.write("@note fix the parser")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    sent = app.agent.runtime.client.messages[-1]
+    assert isinstance(sent, UserMessage)
+    assert "The injected note." in sent.text
+    assert sent.attributes["prompt"] == "@note fix the parser"
+    assert any(entry.kind == "user" and entry.text == "@note fix the parser" for entry in app.transcript.entries)
+
+
+def test_accepting_a_mention_keeps_the_rest_of_the_draft():
+    app = build_app()
+    app.mentions = MentionRegistry([MapMentions({"note": "The injected note."})])
+    app.composer.completer = CommandCompleter(app.commands, app.mentions)
+    harness = _harness(app)
+    harness.write("你好 @no")
+    harness.render()
+    assert [item.value for item in app.completions.items] == ["@note"]
+
+    harness.press("enter")
+
+    assert app.composer.text == "你好 @note "
+
+
+async def test_a_mention_also_applies_to_a_turn_that_carries_an_image():
+    app = build_app()
+    app.agent.runtime.use_model("GPT-4o")
+    harness = _harness(app)
+    app.mentions = MentionRegistry([MapMentions({"note": "The injected note."})])
+    app.composer.attach_image(b"png-bytes", "image/png")
+    harness.write("@note look at this")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    sent = app.agent.runtime.client.messages[-1]
+    assert isinstance(sent, UserMessage)
+    assert "The injected note." in sent.text
+    assert "@note" in sent.attributes["prompt"]
 
 
 async def test_steering_stops_at_the_limit():
@@ -1980,11 +2051,11 @@ async def test_the_slash_menu_lists_and_filters_commands():
 
     harness.write("/")
 
-    assert [item.value for item in app.completions.items][:3] == ["/help", "/new", "/compact"]
+    assert [item.value for item in app.completions.items][:3] == ["/help", "/resume", "/model"]
     assert "show the commands and the keys" in harness.text()
-    assert "[app]" in harness.text() and "[agent]" in harness.text()
+    assert "[app]" in harness.text()
     assert app.completions.items[0].type == "app"
-    assert app.completions.items[1].type == "agent"
+    assert {item.type for item in app.completions.items} == {"app", "agent"}
 
     harness.write("cl")
 
@@ -2000,11 +2071,11 @@ async def test_the_slash_menu_lists_and_filters_commands():
 async def test_app_and_agent_commands_are_routed_to_their_owners():
     app = build_app()
     harness = _harness(app)
-    assert [(item.name, item.type) for item in app.commands[:3]] == [
-        ("/help", "app"),
-        ("/new", "agent"),
-        ("/compact", "agent"),
-    ]
+    owners = {item.name: item.type for item in app.commands}
+    assert owners["/help"] == "app"
+    assert owners["/model"] == "app"
+    assert owners["/new"] == "agent"
+    assert owners["/compact"] == "agent"
 
     harness.write("/new")
     harness.press("enter")
@@ -2108,7 +2179,7 @@ async def test_the_slash_menu_answers_to_arrows_and_escape():
 
     harness.write("/")
     harness.press("down")
-    assert app.completions.current.value == "/new"
+    assert app.completions.current.value == "/resume"
 
     harness.press("up")
     assert app.completions.current.value == "/help"

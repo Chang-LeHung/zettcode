@@ -17,10 +17,11 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
-from ..app.commands import Command, CommandResult
+from ..app.commands import Command, CommandList, CommandProvider, CommandResult
 from .state import UiRow, UiSegment
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay lazy
+    from ..app.agent.mentions import MentionProvider
     from ..config import ZettCodeConfig
     from .state import UiBuilder, UiRegion, UiSide
 
@@ -131,18 +132,29 @@ class PluginContainer:
         """Keep the resolved settings and open an empty command list."""
         self.config = config
         self.workspace = config.workspace
-        self._commands: list[Command] = []
+        self._command_providers: list[CommandProvider] = []
+        self._mentions: list[MentionProvider] = []
         self._slots = UiSlots()
 
     @property
     def commands(self) -> tuple[Command, ...]:
         """Return the commands registered so far, in registration order."""
-        return tuple(self._commands)
+        return tuple(command for provider in self._command_providers for command in provider.items)
+
+    @property
+    def command_providers(self) -> tuple[CommandProvider, ...]:
+        """Return the command sources registered so far, in registration order."""
+        return tuple(self._command_providers)
 
     @property
     def slots(self) -> UiSlots:
         """Return the slot registry, so the loader can merge declared segments in."""
         return self._slots
+
+    @property
+    def mentions(self) -> tuple[MentionProvider, ...]:
+        """Return the ``@`` resource providers registered so far."""
+        return tuple(self._mentions)
 
     @property
     def rows(self) -> tuple[UiRow, ...]:
@@ -215,13 +227,68 @@ class PluginContainer:
         if not name or name == "/":
             raise ValueError("Command name cannot be empty")
         name = name if name.startswith("/") else f"/{name}"
-        if any(command.name == name for command in self._commands):
+        if any(command.name == name for command in self.commands):
             raise ValueError(f"Command already registered: {name}")
-        command = Command(
-            name=name,
-            description=description,
-            type="plugin",
-            handler=handler,
-        )
-        self._commands.append(command)
-        return command
+        return self.register_command_provider(
+            CommandList(
+                (
+                    Command(
+                        name=name,
+                        description=description,
+                        type="plugin",
+                        handler=handler,
+                    ),
+                )
+            )
+        ).items[0]
+
+    def register_command_provider(self, provider: CommandProvider) -> CommandProvider:
+        """Register one source of slash commands.
+
+        The singular :meth:`register_command` is the common case; a plugin that
+        builds its commands together registers them as one provider instead.
+
+        Args:
+            provider: Source whose commands the shell will offer and run.
+
+        Returns:
+            The registered provider, in case the plugin wants to keep it.
+
+        Raises:
+            ValueError: When a command name is blank, or already registered by
+                this plugin.
+        """
+        registered = {command.name for command in self.commands}
+        for command in provider.items:
+            if not command.name.strip() or command.name == "/":
+                raise ValueError("Command name cannot be empty")
+            if command.name in registered:
+                raise ValueError(f"Command already registered: {command.name}")
+        self._command_providers.append(provider)
+        return provider
+
+    def register_mention(self, provider: MentionProvider) -> MentionProvider:
+        """Register one kind of ``@`` resource the composer can offer.
+
+        A provider lists candidates for the completion menu and expands a
+        token into the text the model sees; the builtin provider offers skills,
+        and a plugin adds its own kind the same way it adds a command.
+
+        Args:
+            provider: Provider that owns one resource kind. Its ``kind`` must be
+                unique across the application, because a token has no prefix to
+                say which provider should resolve it.
+
+        Returns:
+            The registered provider, in case the plugin wants to keep it.
+
+        Raises:
+            ValueError: When the kind is blank or already registered.
+        """
+        kind = getattr(provider, "kind", "").strip()
+        if not kind:
+            raise ValueError("Mention provider kind cannot be empty")
+        if kind in {existing.kind for existing in self._mentions}:
+            raise ValueError(f"Mention provider already registered: {kind}")
+        self._mentions.append(provider)
+        return provider
