@@ -6,6 +6,7 @@ from pathlib import Path
 
 from zett_agent.agent import Agent, AgentRunConfig
 from zett_agent.extensions.file_system import FileSystemExtension
+from zett_agent.extensions.subagent import SubAgentExtension
 from zett_agent.extensions.tool_guidelines import ToolGuidelinesExtension
 from zett_agent.messages import AssistantMessage, ToolCall, ToolMessage
 from zett_agent.model import ModelEvent, ModelRequest, ModelResponse, RetryOptions
@@ -52,6 +53,18 @@ def test_subagent_profiles_split_the_tools_by_what_a_child_may_touch(tmp_path):
     # Every child writes its own log into this application's store.
     for definition in definitions:
         assert store in definition.extensions
+
+
+def test_no_subagent_profile_can_delegate_to_another(tmp_path):
+    """A child has no ``task`` tool, so delegation cannot recurse."""
+    definitions = build_subagents(
+        model=_StubModel(),
+        persistence=_store(tmp_path),
+        capabilities=ModelCapabilities({}),
+    )
+
+    for definition in definitions:
+        assert not any(isinstance(extension, SubAgentExtension) for extension in definition.extensions)
 
 
 class _ParentModel:

@@ -6,9 +6,11 @@ import pytest
 
 from zettcode.app.agent.entries import (
     BaseEntry,
+    Entry,
     EntryStatus,
     MarkdownEntry,
     ProcessingEntry,
+    TextEntry,
     ThinkingEntry,
     ToolEntry,
 )
@@ -104,3 +106,114 @@ def test_static_entry_cache_does_not_rebuild_on_animation_frames():
     assert isinstance(first, LineSource)
     assert notice.block_for(20, DARK, frame=100) is first
     assert notice.block_for(20, LIGHT, frame=100) is not first
+
+
+def _painted(entry: Entry, *, frame: int = 0, width: int = 48) -> list[str]:
+    """Return the entry's rendered rows, styles included, at one frame."""
+    block = entry.block_for(width, DARK, frame=frame)
+    return [repr(block.line(index, width)) for index in range(block.count(width))]
+
+
+def test_a_text_row_rebuilds_when_its_text_or_level_changes():
+    """The cache key holds every field the notice renderer reads."""
+    entry = TextEntry(id=1, kind="notice", text="ready")
+    before = _painted(entry)
+    entry.text = "done"
+    assert _painted(entry) != before
+
+    entry = TextEntry(id=2, kind="notice", text="failed")
+    before = _painted(entry)
+    entry.level = "error"
+    assert _painted(entry) != before
+
+
+def test_a_processing_row_rebuilds_for_its_title_timer_and_frame():
+    """A waiting row must repaint for the label, the timer, and the sweep."""
+    entry = ProcessingEntry(id=1, started_at=0.0, duration=1.0)
+    before = _painted(entry)
+    entry.title = "Waiting"
+    assert _painted(entry) != before
+
+    entry = ProcessingEntry(id=2, started_at=0.0, duration=1.0)
+    before = _painted(entry)
+    entry.duration = 2.0
+    assert _painted(entry) != before
+
+    entry = ProcessingEntry(id=3, started_at=0.0)
+    assert _painted(entry, frame=1) != _painted(entry, frame=0)
+
+
+def test_a_thinking_row_rebuilds_for_expansion_text_status_timer_and_frame():
+    """Reasoning is collapsible, timed, and animated, so all of it is keyed."""
+    entry = ThinkingEntry(id=1, text="reasoning", started_at=0.0, duration=1.0)
+    before = _painted(entry)
+    entry.expanded = True
+    assert _painted(entry) != before
+
+    entry = ThinkingEntry(id=2, text="reasoning", expanded=True)
+    before = _painted(entry)
+    entry.text = "more reasoning"
+    assert _painted(entry) != before
+
+    entry = ThinkingEntry(id=3, text="reasoning", started_at=0.0, duration=1.0)
+    before = _painted(entry)
+    entry.status = EntryStatus.COMPLETED
+    assert _painted(entry) != before
+
+    entry = ThinkingEntry(id=4, text="reasoning", started_at=0.0)
+    assert _painted(entry, frame=1) != _painted(entry, frame=0)
+
+
+def test_a_tool_row_rebuilds_for_every_field_the_renderer_reads():
+    """The tool row's words, body, state, language, and sweep are all keyed."""
+    entry = ToolEntry(id=1, call_id="c1", tool="read_file", title="Read app.py")
+    before = _painted(entry)
+    entry.title = "Read main.py"
+    assert _painted(entry) != before
+
+    # A running row refuses to open, so expansion is observed on a settled row.
+    entry = ToolEntry(
+        id=2,
+        call_id="c2",
+        tool="read_file",
+        title="Read app.py",
+        text="print(1)",
+        status=EntryStatus.COMPLETED,
+    )
+    before = _painted(entry)
+    entry.expanded = True
+    assert _painted(entry) != before
+
+    entry = ToolEntry(
+        id=3,
+        call_id="c3",
+        tool="read_file",
+        title="Read app.py",
+        expanded=True,
+        status=EntryStatus.COMPLETED,
+    )
+    before = _painted(entry)
+    entry.text = "print(2)"
+    assert _painted(entry) != before
+
+    entry = ToolEntry(id=4, call_id="c4", tool="read_file", title="Read app.py", started_at=0.0, duration=1.0)
+    before = _painted(entry)
+    entry.status = EntryStatus.COMPLETED
+    assert _painted(entry) != before
+
+    entry = ToolEntry(
+        id=5,
+        call_id="c5",
+        tool="read_file",
+        title="Read app.py",
+        text="x = 1",
+        expanded=True,
+        language="python",
+        status=EntryStatus.COMPLETED,
+    )
+    before = _painted(entry)
+    entry.language = None
+    assert _painted(entry) != before
+
+    entry = ToolEntry(id=6, call_id="c6", tool="read_file", title="Read app.py", started_at=0.0)
+    assert _painted(entry, frame=1) != _painted(entry, frame=0)

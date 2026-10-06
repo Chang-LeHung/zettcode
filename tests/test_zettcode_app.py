@@ -2585,6 +2585,44 @@ async def test_a_new_session_starts_the_token_totals_over():
     assert "\u2191" not in app._status_left().text
 
 
+def test_a_segment_that_raises_is_dropped_for_that_frame_only():
+    """A failing builder loses its frame, not its slot: the neighbours still paint."""
+    calls: list[int] = []
+
+    def sometimes(context: ShellContext) -> str:
+        calls.append(1)
+        if len(calls) == 1:
+            raise RuntimeError("nope")
+        return "recovered"
+
+    def stable(context: ShellContext) -> str:
+        return "still here"
+
+    plugins = rows_and_commands(extra=(("status", "left", sometimes), ("status", "left", stable)))
+    app = build_app(plugins=plugins)
+
+    first = app._status_left().text
+    assert "still here" in first
+    assert "recovered" not in first
+
+    second = app._status_left().text
+    assert "recovered" in second
+    assert "still here" in second
+
+
+def test_a_command_result_is_applied_in_order():
+    """Message, then toast, then page: a page never covers its own announcement."""
+    app = build_app()
+    pushed: list[str] = []
+    original = app.app.push_screen
+    app.app.push_screen = lambda screen: (pushed.append(screen.name), original(screen))[1]  # type: ignore[method-assign]
+
+    app._apply_result(CommandResult(message="the note", notification="saved", widget=Text("page")))
+
+    assert pushed == ["toast", "page"]
+    assert any(entry.kind == "message" and entry.text == "the note" for entry in app.transcript.entries)
+
+
 def _harness(app: ZettCodeApp) -> Harness:
     return Harness(app=app.app)
 
