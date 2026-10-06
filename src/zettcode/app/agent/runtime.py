@@ -80,24 +80,31 @@ calls. Verify mutable facts with tools instead of assuming this startup snapshot
 
 
 def integration_extensions(config: ZettCodeConfig) -> tuple[AgentExtension, ...]:
-    """Return the optional skills and MCP extensions this configuration asks for.
+    """Return the optional project-instruction, skill, and MCP extensions.
 
-    Both live outside the model loop, so they are built here and handed to
+    All three live outside the model loop, so they are built here and handed to
     :func:`create_agent` with the rest. MCP is skipped when there is no server
     file to read: an unconfigured run then carries no MCP instructions at all,
-    rather than a system message saying there is nothing to load.
+    rather than a system message saying there is nothing to load. The project
+    instructions are the workspace's ``AGENTS.md`` files: the extension reads
+    them again on every request, so an edit applies to the next turn, and its
+    priority keeps them ahead of the tool and skill guidance below.
 
     Args:
-        config: Settings naming the skill roots and the MCP server file.
+        config: Settings naming the workspace, the skill roots, and the MCP
+            server file.
 
     Returns:
-        The extensions to add, most specific first.
+        The extensions to add, in the order they lead the request.
     """
+    from zett_agent.extensions.agents_md import AgentsMdExtension
     from zett_agent.extensions.skill import SkillExtension
 
     from .mcp import ReportingMcpExtension
 
     extensions: list[AgentExtension] = []
+    if config.agents_md_enabled:
+        extensions.append(AgentsMdExtension(config.workspace))
     if config.skills_enabled:
         extensions.append(SkillExtension(config.skill_search_roots()))
     if config.mcp_enabled:

@@ -102,6 +102,7 @@ invariant breaks, not merely that the code is exercised.
 | P5 | A plugin hook fan-out keeps priority order, and every plugin sees an external event even after one accepts it. | done | `test_plugins.py::test_hooks_fan_out_in_priority_order_and_the_host_rises_with_them`, `test_every_plugin_sees_an_external_event_even_after_one_accepts` |
 | C1 | The config rejects unknown keys and wrong types, resolves paths, and falls back to `OPENAI_API_KEY`. | done | `test_config.py::test_load_config_*` |
 | C2 | A theme file overrides only the roles it names; everything else keeps the palette default. | done | `test_theme_config.py` |
+| C3 | Project instructions are composed by default, pointed at the workspace rather than the process directory, inserted behind the system prompt and ahead of the guidance that runs later, and re-read on every request — a misdirected or stale `AGENTS.md` silently changes what the model is told the project wants. | done | `test_agents_md.py::test_the_workspace_instructions_are_composed_by_default`, `test_the_workspace_instructions_land_behind_the_system_prompt`, `test_an_edited_instruction_file_applies_to_the_next_request` |
 
 ## Subagents
 

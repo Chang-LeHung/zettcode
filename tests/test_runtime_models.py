@@ -5,6 +5,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from zett_agent.extensions.agents_md import AgentsMdExtension
 from zett_agent.extensions.mcp import McpExtension
 from zett_agent.extensions.skill import SkillExtension
 from zett_agent.messages import UserMessage
@@ -38,9 +39,12 @@ def _config_with(tmp_path, **changes) -> ZettCodeConfig:
     """Return a minimal config, with one workspace-local change applied.
 
     The MCP file defaults to one that does not exist, so a developer's own
-    ``~/.zettcode/mcp.json`` cannot decide what a test sees.
+    ``~/.zettcode/mcp.json`` cannot decide what a test sees, and project
+    instructions are off unless the test asks for them: each of these tests
+    asserts the tuple its own integration contributes, and ``test_agents_md.py``
+    covers the instructions that are on by default.
     """
-    defaults = {"mcp_config": tmp_path / "absent-mcp.json", **changes}
+    defaults = {"mcp_config": tmp_path / "absent-mcp.json", "agents_md_enabled": False, **changes}
     return ZettCodeConfig(
         workspace=tmp_path,
         models=(ModelConfig(model="m", token="t"),),
@@ -84,12 +88,18 @@ def test_mcp_is_loaded_only_when_a_server_file_exists(tmp_path):
     assert all(isinstance(extension, SkillExtension) for extension in missing)
 
 
-def test_skills_and_mcp_can_be_disabled(tmp_path):
+def test_the_optional_integrations_can_be_disabled(tmp_path):
     servers = tmp_path / "mcp.json"
     servers.write_text('{"servers": {}}', encoding="utf-8")
 
     extensions = runtime_module.integration_extensions(
-        _config_with(tmp_path, skills_enabled=False, mcp_enabled=False, mcp_config=servers)
+        _config_with(
+            tmp_path,
+            agents_md_enabled=False,
+            skills_enabled=False,
+            mcp_enabled=False,
+            mcp_config=servers,
+        )
     )
 
     assert extensions == ()
@@ -337,6 +347,8 @@ async def test_runtime_switches_models_and_closes_every_provider(tmp_path, monke
     assert captured["model"] is created[0]
     compaction = next(extension for extension in captured["extensions"] if isinstance(extension, OnDemandCompaction))
     assert compaction.model is None
+    instructions = next(extension for extension in captured["extensions"] if isinstance(extension, AgentsMdExtension))
+    assert instructions.directory == config.workspace
     assert any(isinstance(extension, SkillExtension) for extension in captured["extensions"])
     assert not any(isinstance(extension, McpExtension) for extension in captured["extensions"])
     # The tool list follows the model, so the capability filter is part of the run.

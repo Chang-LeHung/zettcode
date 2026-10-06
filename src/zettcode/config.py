@@ -2,9 +2,10 @@
 
 ``~/.zettcode/config.toml`` (or ``$ZETTCODE_CONFIG``) lists OpenAI-compatible
 models. The first model is active at startup; ``/model`` selects another for
-later requests. The same file says where skills live, which MCP server file to
-read, and how much transcript to keep on screen; session storage and other
-runtime settings keep code defaults.
+later requests. The same file says whether project ``AGENTS.md`` files are
+read, where skills live, which MCP server file to read, and how much
+transcript to keep on screen; session storage and other runtime settings keep
+code defaults.
 """
 
 from __future__ import annotations
@@ -38,7 +39,7 @@ DEFAULT_MCP_CONFIG = Path.home() / ".zettcode" / "mcp.json"
 DEFAULT_LOG = Path.home() / ".zettcode" / "log" / "tui.log"
 
 #: Top-level keys the config file may set; anything else is a typo.
-CONFIGURABLE = frozenset({"models", "transcript", "skills", "mcp", "plugins"})
+CONFIGURABLE = frozenset({"models", "transcript", "agents_md", "skills", "mcp", "plugins"})
 
 #: Keys one ``[[models]]`` entry may set.
 MODEL_KEYS = frozenset(
@@ -47,6 +48,9 @@ MODEL_KEYS = frozenset(
 
 #: Keys the ``[transcript]`` table may set.
 TRANSCRIPT_KEYS = frozenset({"max_entries"})
+
+#: Keys the ``[agents_md]`` table may set.
+AGENTS_MD_KEYS = frozenset({"enabled"})
 
 #: Keys the ``[skills]`` table may set.
 SKILL_KEYS = frozenset({"enabled", "roots"})
@@ -146,6 +150,8 @@ class ZettCodeConfig:
         transcript_max_entries: Conversation entries the shell keeps on screen;
             older ones are dropped from the display while the session file
             keeps the whole tree.
+        agents_md_enabled: Read the ``AGENTS.md`` files that apply to the
+            workspace and give them to the model as project instructions.
         skills_enabled: Discover local skills and advertise them to the model.
         skill_roots: Extra skill directories, searched before
             ``~/.zettcode/skills``; a relative entry is resolved against the
@@ -172,6 +178,7 @@ class ZettCodeConfig:
     parallel_tool_call: bool = True
     max_iterations: int = 360
     transcript_max_entries: int = DEFAULT_TRANSCRIPT_MAX_ENTRIES
+    agents_md_enabled: bool = True
     skills_enabled: bool = True
     skill_roots: tuple[Path, ...] = ()
     mcp_enabled: bool = True
@@ -374,6 +381,7 @@ def load_config(
         if unknown:
             raise ValueError(f"Unknown config keys in {source}: {', '.join(unknown)}")
 
+    agents_md = _read_table(data.get("agents_md"), "agents_md", source, AGENTS_MD_KEYS)
     skills = _read_table(data.get("skills"), "skills", source, SKILL_KEYS)
     mcp = _read_table(data.get("mcp"), "mcp", source, MCP_KEYS)
     plugins = _read_table(data.get("plugins"), "plugins", source, PLUGIN_KEYS)
@@ -389,6 +397,7 @@ def load_config(
             f"Config key 'transcript.max_entries' in {source}",
             int,
         ),
+        agents_md_enabled=bool(_setting(agents_md, "enabled", bool, True)),
         skills_enabled=bool(_setting(skills, "enabled", bool, True)),
         skill_roots=_read_skill_roots(skills.get("roots"), source),
         mcp_enabled=bool(_setting(mcp, "enabled", bool, True)),

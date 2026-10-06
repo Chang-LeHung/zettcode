@@ -27,7 +27,7 @@ dependencies = [
   "pyperclip>=1.9,<2",
   "tomli>=2,<3; python_version < '3.11'",
   "wcwidth>=0.2,<1",
-  "zett-agent==0.1.9",
+  "zett-agent==0.1.10",
 ]
 
 [project.scripts]
