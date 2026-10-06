@@ -8,9 +8,12 @@ from pathlib import Path
 import pytest
 
 from zettcode.app.agent import runtime as runtime_module
+from zettcode.app.agent.usage import UsageSnapshot
 from zettcode.app.commands import CommandResult
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.plugins import (
+    Activity,
+    ActivityState,
     Plugin,
     PluginAgentMixin,
     PluginContainer,
@@ -30,6 +33,21 @@ from zettcode.plugins import (
 )
 from zettcode.plugins import loader as loader_module
 from zettcode.tui import Span, TextLine
+
+
+def test_the_activity_label_prefers_its_note_over_the_state_word():
+    state = ActivityState(
+        busy=False,
+        status=Activity.READY,
+        note=None,
+        auto_shell=False,
+        usage=UsageSnapshot(),
+        tasks=(),
+        frame=0,
+    )
+
+    assert state.label == "ready"
+    assert replace(state, status=Activity.RUNNING, note="/model \u2026").label == "/model \u2026"
 
 
 class FakeEntryPoint:

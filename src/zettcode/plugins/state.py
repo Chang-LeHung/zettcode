@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay lazy
@@ -77,14 +78,23 @@ class ModelState:
     efforts: tuple[str, ...]
 
 
+class Activity(StrEnum):
+    """What the shell is doing between requests, as the status line words it."""
+
+    READY = "ready"
+    RUNNING = "running"
+
+
 @dataclass(frozen=True, slots=True)
 class ActivityState:
     """What the agent is doing right now, and what it has spent.
 
     Attributes:
         busy: Whether a turn or a command is in flight.
-        status: The status word shown next to the activity glyph, such as
-            ``"ready"`` or ``"/compact …"``.
+        status: The shell's own state next to the activity glyph.
+        note: One-off text that takes the status word's place, such as the
+            running command's name or ``"copied 12 characters"``; ``None``
+            shows the status word itself.
         auto_shell: Whether shell commands are approved for the rest of the run.
         usage: Cumulative token counters for the active session.
         tasks: The session's plan as ``(status, content)`` pairs, empty when the
@@ -94,11 +104,17 @@ class ActivityState:
     """
 
     busy: bool
-    status: str
+    status: Activity
+    note: str | None
     auto_shell: bool
     usage: UsageSnapshot
     tasks: tuple[tuple[str, str], ...]
     frame: int
+
+    @property
+    def label(self) -> str:
+        """Return the word the status line shows: the note, else the state."""
+        return self.note or self.status
 
 
 @dataclass(frozen=True, slots=True)
