@@ -42,7 +42,8 @@ class ListPage(Widget):
             pass through untouched.
         selected: Index highlighted first, clamped into range.
         visible_rows: Most rows shown at once; the list scrolls when there are
-            more.
+            more. ``None`` fills the rectangle the page is given, which is what
+            a panel wants: its height already bounds the list.
     """
 
     def __init__(
@@ -54,14 +55,14 @@ class ListPage(Widget):
         on_select: Callable[[ListItem], None] | None = None,
         on_cancel: Callable[[], None] | None = None,
         selected: int = 0,
-        visible_rows: int = 6,
+        visible_rows: int | None = None,
     ) -> None:
         """Build the page and its list, highlighting ``selected`` without notifying."""
         super().__init__()
         self.title = title
         self.footer = footer
         self.on_cancel = on_cancel
-        self.visible_rows = max(1, visible_rows)
+        self.visible_rows = None if visible_rows is None else max(1, visible_rows)
         self.list = ListView(items, on_select=on_select, wrap=False, band=True)
         if items:
             self.list.select(selected, notify=False)
@@ -74,7 +75,8 @@ class ListPage(Widget):
     def layout(self, rect: Rect) -> None:
         """Inset the list under the title, capped to the visible rows."""
         super().layout(rect)
-        height = min(self.visible_rows, max(0, rect.height - 5))
+        room = max(0, rect.height - 5)
+        height = room if self.visible_rows is None else min(self.visible_rows, room)
         self.list.layout(Rect(rect.x + 2, rect.y + 3, max(0, rect.width - 4), height))
 
     def render(self, canvas: Canvas) -> None:
