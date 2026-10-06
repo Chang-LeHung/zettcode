@@ -35,8 +35,13 @@
   enforce, each marked done with the test that pins it or todo with what is
   missing. Adding a load-bearing rule means adding a row and a test; breaking
   one means the cited test fails, so keep the marks honest.
-- Keep the terminal layer importable off POSIX: `termios`/`tty` imports stay
-  inside the raw-mode methods and report a clear error elsewhere.
+- The terminal layer runs on POSIX and on Windows. The platform split lives in
+  `tui/console.py`: `PosixConsole` uses `termios`/`tty`, `WindowsConsole` clears
+  the console's cooked input flags and turns on virtual-terminal input, so the
+  decoder and renderer stay platform-free. Keep the `termios`/`tty` imports
+  inside the POSIX methods, keep the module importable on a machine with no
+  console, and remember that a Windows console handle cannot be watched with
+  `add_reader` — `AsyncInput` falls back to a reader thread there.
 
 ## Merging pull requests
 

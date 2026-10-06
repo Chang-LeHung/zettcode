@@ -22,7 +22,8 @@ invariant breaks, not merely that the code is exercised.
 | T4 | After a palette change the next frame repaints every cell (a diff against the old colours would leave the old theme on screen). | done | `test_app.py::test_switching_the_theme_repaints_the_whole_frame` |
 | T5 | Every glyph the interface draws is exactly one cell wide (a two-cell glyph would shift everything after it). | done | `test_framework_core.py::test_every_glyph_the_interface_draws_is_one_cell_wide` |
 | T6 | A partial escape, UTF-8 byte, or paste sequence is never emitted as keys; a lone `ESC` is held and then reported as Escape. | done | `test_tui.py::test_input_decoder_handles_fragmented_utf8_keys_mouse_and_paste`, `test_input_decoder_resolves_standalone_escape_explicitly` |
-| T7 | The terminal layer imports where `termios`/`tty` are missing and reports a clear error instead of failing at import. | done | `test_tui.py::test_tui_imports_where_termios_is_unavailable`, `test_terminal_refuses_platforms_without_posix_raw_mode` |
+| T7 | The terminal layer imports where `termios`/`tty` are missing and reports a clear error instead of failing at import. | done | `test_tui.py::test_tui_imports_where_termios_is_unavailable`, `test_terminal_requires_an_interactive_descriptor` |
+| T8 | The console seam keeps the platform split in one place: the Windows path turns virtual-terminal input and output on and restores the console's modes, and a platform without `SIGWINCH` publishes exactly one resize per size change. | done | `test_console.py` |
 
 ## Layout and widgets
 
