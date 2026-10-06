@@ -10,9 +10,13 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
+from typing import Generic, TypeVar
+
+#: The kind of item a registry holds, such as a slash command.
+Item = TypeVar("Item")
 
 
-class Provider[Item](ABC):
+class Provider(Generic[Item], ABC):
     """One source of named items a registry merges."""
 
     @property
@@ -21,7 +25,7 @@ class Provider[Item](ABC):
         """Return the items this provider contributes, in display order."""
 
 
-class Registry[Item]:
+class Registry(Generic[Item]):
     """Merge providers in order; the first provider to claim a name owns it."""
 
     def __init__(self, providers: Sequence[Provider[Item]] = ()) -> None:

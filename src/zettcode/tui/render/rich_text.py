@@ -8,12 +8,12 @@ scrolling and focus stay with the widget that presents them.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Literal
+from typing import Literal, TypeAlias
 
 from .style import Span, TextLine
 from .text import truncate_spans, wrap_spans
 
-type Alignment = Literal["left", "center", "right"]
+Alignment: TypeAlias = Literal["left", "center", "right"]
 
 
 def inset_line(line: TextLine, columns: int) -> TextLine:

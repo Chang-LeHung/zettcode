@@ -58,7 +58,7 @@ def test_the_resume_command_survives_a_workspace_with_spaces(tmp_path: Path):
 
 
 def test_session_exists_finds_a_stored_session(tmp_path: Path, monkeypatch):
-    from datetime import UTC, datetime
+    from datetime import datetime, timezone
 
     from zett_agent.extensions.events import MessageTiming
     from zett_agent.messages import UserMessage
@@ -69,7 +69,7 @@ def test_session_exists_finds_a_stored_session(tmp_path: Path, monkeypatch):
     path.write_text('[[models]]\nmodel = "m"\ntoken = "t"\n', encoding="utf-8")
     monkeypatch.setenv("ZETTCODE_CONFIG", str(path))
     config = resolve_config(["-w", str(tmp_path)])
-    moment = datetime.now(UTC)
+    moment = datetime.now(timezone.utc)
     timing = MessageTiming(started_at=moment, completed_at=moment, duration_ns=1)
     store = SessionStore(config.store, config.workspace)
     asyncio.run(store.append("stored", "r", UserMessage(content="hi"), timing=timing))
@@ -92,7 +92,7 @@ def test_an_unknown_session_is_refused_before_the_terminal_is_taken(tmp_path: Pa
 
 def test_a_resumed_run_reports_the_command_that_reopens_it(tmp_path: Path, monkeypatch, capsys):
     """Leaving the shell prints the way back in, for the session that was open."""
-    from datetime import UTC, datetime
+    from datetime import datetime, timezone
 
     from zett_agent.extensions.events import MessageTiming
     from zett_agent.messages import UserMessage
@@ -103,7 +103,7 @@ def test_a_resumed_run_reports_the_command_that_reopens_it(tmp_path: Path, monke
     path.write_text('[[models]]\nmodel = "m"\ntoken = "t"\n', encoding="utf-8")
     monkeypatch.setenv("ZETTCODE_CONFIG", str(path))
     config = resolve_config(["-w", str(tmp_path)])
-    moment = datetime.now(UTC)
+    moment = datetime.now(timezone.utc)
     timing = MessageTiming(started_at=moment, completed_at=moment, duration_ns=1)
     asyncio.run(
         SessionStore(config.store, config.workspace).append("stored", "r", UserMessage(content="hi"), timing=timing)

@@ -6,6 +6,7 @@ from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
+from typing import TypeAlias
 
 from zett_agent.agent import AgentRunConfig
 from zett_agent.dispatcher import AgentEventDispatcher
@@ -52,7 +53,7 @@ class MentionPart:
     token: str
 
 
-type PromptPart = str | MentionPart | tuple[bytes, str]
+PromptPart: TypeAlias = str | MentionPart | tuple[bytes, str]
 
 
 def plain_text_part(part: PromptPart) -> str:

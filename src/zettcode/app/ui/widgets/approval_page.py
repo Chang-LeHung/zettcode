@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from enum import StrEnum
 
+from ...._compat import StrEnum
 from ....tui import MARKER, Canvas, Host, KeyEvent, MouseAction, MouseEvent, Widget
 from ....tui.render import ELLIPSIS, SHELL, Span, Style, highlight, wrap_spans
 

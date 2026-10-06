@@ -1,5 +1,7 @@
 """End-to-end test of the terminal loop, driven through a real pipe."""
 
+from __future__ import annotations
+
 import asyncio
 import os
 from io import StringIO
@@ -107,9 +109,13 @@ class LatePainter(Widget):
 
 
 async def _wait_for(predicate, *, timeout: float = 3.0) -> None:
-    async with asyncio.timeout(timeout):
-        while not predicate():
-            await asyncio.sleep(0.01)
+    """Spin until the predicate holds, or fail the test once the wait expires."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    while not predicate():
+        if loop.time() >= deadline:
+            raise AssertionError(f"{predicate} did not become true within {timeout}s")
+        await asyncio.sleep(0.01)
 
 
 async def test_runner_decodes_pipe_bytes_and_paints_until_exit():

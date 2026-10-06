@@ -10,13 +10,17 @@ runtime settings keep code defaults.
 from __future__ import annotations
 
 import os
-import tomllib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import overload
+from typing import TypeVar, overload
 
 from zett_agent.extensions.shell_approval import ShellApprovalMode
 from zett_agent.model import ReasoningEffort
+
+from ._compat import tomllib
+
+#: The concrete type :func:`_typed` verifies a raw config value against.
+T = TypeVar("T")
 
 #: The conventional config file, read when the user has created one.
 CONFIG_FILE = Path.home() / ".zettcode" / "config.toml"
@@ -224,7 +228,7 @@ def _default_theme_file() -> Path | None:
     return candidate if candidate.is_file() else None
 
 
-def _typed[T](value: object, where: str, expected: type[T]) -> T:
+def _typed(value: object, where: str, expected: type[T]) -> T:
     """Return one value, rejecting a wrong type with a located message."""
     if expected is int and isinstance(value, bool):
         raise ValueError(f"{where} must be int")
@@ -247,11 +251,11 @@ def _resolve_root(root: str | Path, workspace: Path) -> Path:
 
 
 @overload
-def _setting[T](data: dict[str, object], key: str, expected: type[T], default: T) -> T: ...
+def _setting(data: dict[str, object], key: str, expected: type[T], default: T) -> T: ...
 
 
 @overload
-def _setting[T](data: dict[str, object], key: str, expected: type[T], default: None = None) -> T | None: ...
+def _setting(data: dict[str, object], key: str, expected: type[T], default: None = None) -> T | None: ...
 
 
 def _setting(data: dict[str, object], key: str, expected: type, default: object = None) -> object:

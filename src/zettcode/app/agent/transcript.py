@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from time import monotonic
+from typing import TypeVar
 
 from ...config import DEFAULT_TRANSCRIPT_MAX_ENTRIES
 from ...tui import LineSource, TextLine
@@ -23,6 +24,9 @@ from .rows import (
     PROCESSING,
     limit_output,
 )
+
+#: The entry subtype an add/look-up call works with, pinned by the caller.
+E = TypeVar("E", bound=Entry)
 
 #: Smallest batch a trim drops, so the list shift and the view rebuild that
 #: follow a trim are paid once per several appends instead of per append. The
@@ -98,7 +102,7 @@ class Transcript:
         if index is not None:
             self._touch(index)
 
-    def _add[T: Entry](self, entry: T) -> T:
+    def _add(self, entry: E) -> E:
         """Append a typed entry and invalidate the transcript's line boundaries."""
         self._next_id += 1
         self._touch(len(self.entries))
@@ -121,7 +125,7 @@ class Transcript:
         del self.entries[: len(self.entries) - self.max_entries]
         self._dirty_from = 0
 
-    def _last[T: Entry](self, entry_type: type[T]) -> T | None:
+    def _last(self, entry_type: type[E]) -> E | None:
         """Return the newest entry of one type, or None when there is none."""
         return next((entry for entry in reversed(self.entries) if isinstance(entry, entry_type)), None)
 

@@ -296,7 +296,7 @@ class TaskTool(ToolHandler):
         """Show the child's report, not the envelope that carried it back."""
         try:
             payload = json.loads(output)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             return output
         if isinstance(payload, Mapping) and isinstance(payload.get("content"), str):
             return payload["content"]

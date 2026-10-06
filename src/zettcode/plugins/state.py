@@ -11,8 +11,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from enum import StrEnum
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, TypeAlias
+
+from .._compat import StrEnum
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay lazy
     from pathlib import Path
@@ -24,23 +25,25 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
 
 #: Which row a plugin draws into: the header above the transcript, or the
 #: status line under the composer.
-type UiRegion = Literal["header", "status"]
+UiRegion: TypeAlias = Literal["header", "status"]
 
 #: Which side of a row a segment gathers on. A plugin never chooses it: the
 #: registration method it calls, or the builtin segment it replaces, does.
-type UiSide = Literal["left", "right"]
+UiSide: TypeAlias = Literal["left", "right"]
 
-#: What one segment paints: a styled line, a plain string, or nothing.
-type UiSegmentValue = TextLine | str | None
+#: What one segment paints: a styled line, a plain string, or nothing. The
+#: alias quotes its members because :class:`TextLine` is imported only for the
+#: checker; an alias evaluates eagerly, so the names must stay strings.
+UiSegmentValue: TypeAlias = "TextLine | str | None"
 
 #: What a builder returns: a value, or ``(value, override)`` when the segment
 #: wants its side to itself. With ``override`` the segments registered before it
 #: are dropped for that paint, so the side shows this segment (and anything
 #: registered after it) instead of what the builtins put there.
-type UiBuilderResult = UiSegmentValue | tuple[UiSegmentValue, bool]
+UiBuilderResult: TypeAlias = "UiSegmentValue | tuple[UiSegmentValue, bool]"
 
 #: One plugin-drawn segment: the callable that paints it.
-type UiBuilder = Callable[["ShellContext"], UiBuilderResult]
+UiBuilder: TypeAlias = Callable[["ShellContext"], UiBuilderResult]
 
 
 @dataclass(frozen=True, slots=True)

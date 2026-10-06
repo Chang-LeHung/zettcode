@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from typing import TypeAlias
 
 from ...tui import PROMPT
 from ..core.events import KeyEvent, MouseAction, MouseEvent, PasteEvent, TextEvent
@@ -13,7 +14,7 @@ from ..render import Canvas, Span, Style, truncate
 from ..render.text import character_width, display_width
 from .completion import Completer, CompletionItem
 
-type Submit = Callable[[str], bool | None]
+Submit: TypeAlias = Callable[[str], bool | None]
 
 
 class TextArea(Widget):

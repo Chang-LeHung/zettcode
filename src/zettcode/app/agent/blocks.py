@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Generic, TypeVar
 
 from ...tui import (
     DONE,
@@ -38,6 +38,9 @@ from .rows import (
     sweep_step,
 )
 
+#: The entry a processor accepts; each subclass pins it to one entry type.
+E = TypeVar("E")
+
 #: Palette role that paints a tool, by the action it performs. The built-in
 #: palettes give every role the same violet; a theme file can separate them. A
 #: tool this table has never seen falls back to the generic accent.
@@ -61,7 +64,7 @@ def tool_color(tool: str, theme: Theme) -> str:
     return getattr(theme.tools, TOOL_ROLES.get(tool, ""), theme.accent)
 
 
-class EntryProcessor[E](ABC):
+class EntryProcessor(Generic[E], ABC):
     """One link that claims entries and presents them as already-laid-out lines.
 
     The type parameter is the entry the processor handles; the chain dispatches

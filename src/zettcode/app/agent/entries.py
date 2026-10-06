@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import StrEnum
-from typing import TYPE_CHECKING, ClassVar, Literal, cast
+from typing import TYPE_CHECKING, ClassVar, Literal, TypeAlias, cast
 
+from ..._compat import StrEnum
 from ...tui import LineSource, Markdown, StaticLines, Theme
 from ...tui.widgets.markdown import MarkdownSource
 from .rows import THINKING_LABEL
@@ -186,4 +186,4 @@ class PlainEntry(BaseEntry):
         return self.text
 
 
-type Entry = TextEntry | MarkdownEntry | ProcessingEntry | ThinkingEntry | ToolEntry | PlainEntry
+Entry: TypeAlias = TextEntry | MarkdownEntry | ProcessingEntry | ThinkingEntry | ToolEntry | PlainEntry
