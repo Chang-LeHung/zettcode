@@ -127,7 +127,8 @@ def test_a_resumed_run_reports_the_command_that_reopens_it(tmp_path: Path, monke
     asyncio.run(async_main(config, resume="stored"))
 
     assert resumed == ["stored"]
-    assert f"zettcode --resume stored --workspace {config.workspace}" in capsys.readouterr().out
+    # Quoted the way the shell needs it, which differs with the path's separators.
+    assert resume_command("stored", config.workspace) in capsys.readouterr().out
 
 
 def test_a_dry_run_starts_everything_and_exits(tmp_path: Path, monkeypatch, capsys):
