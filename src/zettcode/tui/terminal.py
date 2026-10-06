@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import os
 import re
-import select
-import shutil
 import sys
 from pathlib import Path
 from time import monotonic
@@ -13,10 +11,11 @@ from types import TracebackType
 from typing import TextIO
 
 from .capabilities import TerminalCapabilities, detect_capabilities
+from .console import Console, console_for
 
-# Raw-mode input, SIGWINCH, and add_reader on stdin are POSIX-only. Keep the
-# import safe on Windows so the rest of ZettCode still loads, and fail with a
-# clear message when a TUI is actually requested there.
+#: Whether this process is on a POSIX platform, for callers that branch on it.
+#: The console itself is chosen by :func:`zettcode.tui.console.console_for`, which
+#: owns the Windows path.
 POSIX = os.name == "posix"
 
 
@@ -88,27 +87,18 @@ class Terminal:
         self.output = sys.stdout if output is None else output
         self.capabilities = capabilities or detect_capabilities()
         self.diagnostics = None if diagnostics is None else Path(diagnostics)
-        self._attributes: list | None = None
+        self.console: Console = console_for(self.input_fd, self.output)
         self._stderr: int | None = None
         self._stderr_sink: int | None = None
 
     @property
     def size(self) -> tuple[int, int]:
         """Return the current terminal size, clamped to a usable minimum."""
-        size = shutil.get_terminal_size((80, 24))
-        return max(20, size.columns), max(8, size.lines)
+        return self.console.size
 
     def __enter__(self) -> Terminal:
         """Enter raw mode on the alternate screen, remembering the old settings."""
-        if not POSIX:
-            raise RuntimeError("ZettCode TUI requires a POSIX terminal")
-        import termios
-        import tty
-
-        if not os.isatty(self.input_fd) or not self.output.isatty():
-            raise RuntimeError("ZettCode TUI requires an interactive terminal")
-        self._attributes = termios.tcgetattr(self.input_fd)
-        tty.setraw(self.input_fd)
+        self.console.enter()
         self._capture_stderr()
         self.write(self._enter_sequences())
         return self
@@ -122,11 +112,7 @@ class Terminal:
         """Restore the screen, the mouse modes, and the saved termios attributes."""
         self._release_stderr()
         self.write(self._exit_sequences())
-        if self._attributes is not None:
-            import termios
-
-            termios.tcsetattr(self.input_fd, termios.TCSADRAIN, self._attributes)
-            self._attributes = None
+        self.console.leave()
 
     def _capture_stderr(self) -> None:
         """Point fd 2 at the diagnostics file for as long as the frame is the interface.
@@ -175,9 +161,9 @@ class Terminal:
         reply = ""
         while True:
             remaining = deadline - monotonic()
-            if remaining <= 0 or not select.select([self.input_fd], [], [], remaining)[0]:
+            if remaining <= 0 or not self.console.wait_readable(remaining):
                 return parse_background(reply)
-            chunk = os.read(self.input_fd, 128)
+            chunk = self.console.read(128)
             if not chunk:
                 return parse_background(reply)
             reply += chunk.decode("utf-8", "replace")

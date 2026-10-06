@@ -17,7 +17,9 @@ Lifecycle and steady state:
          |                    |<-- mount() ---------|  attach + focus first Tab stop  |
          |                    |<-- on_request = wakeup.set              |             |
          |                    |                     |-- start() ------->| add_reader  |
-         |                    |                     |                   | (SIGWINCH)  |
+         |                    |                     |                   | (SIGWINCH;  |
+         |                    |                     |                   |  a thread on|
+         |                    |                     |                   |  Windows)   |
     -----+--------------------+---------------------+-------------------+-------------+----- frame
          |                    |<-- poll(now) -------|                   |             |
          |                    |--- due ------------>|                   |             |

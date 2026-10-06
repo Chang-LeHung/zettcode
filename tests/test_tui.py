@@ -45,12 +45,15 @@ def test_tui_imports_where_termios_is_unavailable(monkeypatch) -> None:
                 sys.modules[module_name] = saved
 
 
-def test_terminal_refuses_platforms_without_posix_raw_mode(monkeypatch) -> None:
+def test_terminal_requires_an_interactive_descriptor() -> None:
+    """A console that is not a terminal cannot be put in raw mode on any platform.
+
+    POSIX says so through the descriptor check; Windows discovers it when the
+    console mode cannot be read, which is the same refusal worded for that API.
+    """
     from zettcode.tui import terminal as terminal_module
 
-    monkeypatch.setattr(terminal_module, "POSIX", False)
-
-    with pytest.raises(RuntimeError, match="POSIX terminal"):
+    with pytest.raises(RuntimeError, match="interactive terminal|Windows console"):
         with terminal_module.Terminal(input_fd=0, output=StringIO()):
             pass
 

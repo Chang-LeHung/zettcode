@@ -4,6 +4,8 @@ import asyncio
 import os
 from io import StringIO
 
+import pytest
+
 from zettcode.tui import (
     AnyEvent,
     ColorDepth,
@@ -17,6 +19,12 @@ from zettcode.tui import (
     title_sequence,
 )
 from zettcode.tui.runner import TerminalRunner, run_app
+
+#: The loop is driven through a POSIX pipe the event loop can watch with
+#: ``add_reader``. Windows has no such reader for a pipe, and its real path — a
+#: console handle read from a thread, with the size polled — is covered by
+#: ``test_console.py`` instead.
+pytestmark = pytest.mark.skipif(os.name != "posix", reason="the runner tests drive a POSIX pipe")
 
 
 class StubTerminal(Terminal):

@@ -11,6 +11,9 @@ keywords = ["agent", "llm", "tui", "terminal", "coding-agent"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Environment :: Console",
+  "Operating System :: MacOS",
+  "Operating System :: Microsoft :: Windows :: Windows 10",
+  "Operating System :: POSIX :: Linux",
   "Programming Language :: Python :: 3.14",
   "Typing :: Typed",
 ]
