@@ -32,6 +32,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
     from collections.abc import Iterable, Sequence
     from importlib.metadata import EntryPoint
 
+    from ..app.agent.mentions import MentionProvider
     from ..app.commands import Command
     from ..config import ZettCodeConfig
 
@@ -104,9 +105,11 @@ class _Loader:
         self.slots = UiSlots()
         self.plugins: list[Plugin] = []
         self.commands: list[Command] = []
+        self.mentions: list[MentionProvider] = []
         self.failures: list[str] = []
         self._identities: set[str] = set()
         self._claimed: set[str] = set()
+        self._mention_kinds: set[str] = set()
 
     def fail(self, origin: str, error: BaseException) -> None:
         """Record one plugin that could not be prepared."""
@@ -138,9 +141,20 @@ class _Loader:
         if clash is not None:
             self.failures.append(f"{origin}: command {clash} is already registered by another plugin")
             return
+        # A mention token has no prefix naming its provider, so two providers
+        # with the same kind would make resolution ambiguous. Reject the plugin.
+        mention_clash = next(
+            (provider.kind for provider in container.mentions if provider.kind in self._mention_kinds),
+            None,
+        )
+        if mention_clash is not None:
+            self.failures.append(f"{origin}: mention kind {mention_clash} is already registered")
+            return
         self._identities.add(name)
         self._claimed.update(command.name for command in container.commands)
+        self._mention_kinds.update(provider.kind for provider in container.mentions)
         self.commands.extend(container.commands)
+        self.mentions.extend(container.mentions)
         self.slots = container.slots
         self.plugins.append(plugin)
 
@@ -150,6 +164,7 @@ class _Loader:
         return Plugins(
             host=host,
             commands=tuple(self.commands),
+            mentions=tuple(self.mentions),
             rows=self.slots.rows(),
             failures=tuple(self.failures),
         )

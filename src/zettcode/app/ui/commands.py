@@ -13,7 +13,7 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from ...tui import ListItem, ListPage, Widget, theme_names
-from ..commands import Command, CommandResult
+from ..commands import Command, CommandProvider, CommandResult
 from .widgets import ContextPage, ModelPage, SessionsPage, bottom_panel, help_text
 
 #: Rows the picker panels take from the bottom of the screen: the title, the
@@ -41,23 +41,23 @@ if TYPE_CHECKING:  # pragma: no cover - only needed for the annotation
     from .app import ZettCodeApp
 
 
-class ShellCommands:
-    """Build the commands the shell adds around the agent's own."""
+class ShellCommands(CommandProvider):
+    """The commands the shell adds around the agent's own.
+
+    It is one provider among several: the shell merges it with the agent's
+    commands and the plugins' through a registry, so every source of commands is
+    the same shape and the first to claim a name wins.
+    """
 
     def __init__(self, shell: ZettCodeApp) -> None:
         """Keep the shell the handlers act on; ``shell.app`` is its ``TuiApp``."""
         self.shell = shell
 
-    def build(self, agent_commands: Sequence[Command], plugin_commands: Sequence[Command] = ()) -> tuple[Command, ...]:
-        """Return every command: shell, agent, then plugins.
-
-        Plugin commands come last on purpose. Command lookup takes the first
-        match, so a built-in name always wins and a plugin cannot shadow
-        ``/model`` or ``/quit`` by accident.
-        """
+    @property
+    def items(self) -> Sequence[Command]:
+        """Return the shell's own commands, in the order ``/help`` lists them."""
         return (
             Command("/help", "show the commands and the keys", "app", self.help),
-            *agent_commands,
             Command("/resume", "resume a session: /resume [id]", "app", self.resume),
             Command("/model", "choose a model", "app", self.model),
             Command("/theme", "choose the palette (or /theme dark|light)", "app", self.theme),
@@ -67,7 +67,6 @@ class ShellCommands:
             Command("/clear", "clear the transcript", "app", self.clear),
             Command("/quit", "exit", "app", self.quit),
             Command("/exit", "exit, same as /quit", "app", self.quit),
-            *plugin_commands,
         )
 
     async def help(self, argument: str) -> CommandResult:

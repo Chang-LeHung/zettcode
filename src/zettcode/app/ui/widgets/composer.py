@@ -9,11 +9,38 @@ and that is put back when the draft is submitted.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 
 from ....tui import Span, Style, TextArea
-from ...agent.agent import PromptPart
+from ...agent.agent import MentionPart, PromptPart
+from ...agent.mentions import MENTION
 from ..clipboard import image_from_paste
+
+#: A slash command as typed: a leading ``/`` at a word boundary, then a name.
+#: The lookbehind keeps a path such as ``src/foo`` from matching.
+COMMAND = re.compile(r"(?<![\w/])/[a-z][a-z0-9_-]*")
+#: The same tokens, anchored to the end of the text before the cursor.
+MENTION_END = re.compile(MENTION.pattern + r"\Z")
+COMMAND_END = re.compile(COMMAND.pattern + r"\Z")
+
+
+def _split_mentions(parts: Sequence[PromptPart]) -> tuple[PromptPart, ...]:
+    """Split every text run at its ``@`` tokens, keeping the order intact."""
+    split: list[PromptPart] = []
+    for part in parts:
+        if not isinstance(part, str):
+            split.append(part)
+            continue
+        cursor = 0
+        for match in MENTION.finditer(part):
+            if match.start() > cursor:
+                split.append(part[cursor : match.start()])
+            split.append(MentionPart(match.group(0)))
+            cursor = match.end()
+        if cursor < len(part):
+            split.append(part[cursor:])
+    return tuple(split)
 
 
 class Composer(TextArea):
@@ -117,7 +144,7 @@ class Composer(TextArea):
         run += self.text[cursor:]
         if run:
             parts.append(run)
-        return tuple(parts)
+        return _split_mentions(parts)
 
     def attach_image(self, data: bytes, media_type: str) -> str:
         """Stand one clipboard image in for itself and return its chip label.
@@ -135,17 +162,53 @@ class Composer(TextArea):
         return label
 
     def spans_for(self, line: str, start: int, body: Style) -> tuple[Span, ...]:
-        """Paint the chips a wrapped row covers in their own colour."""
+        """Paint the chips, ``@`` resources, and slash commands on a row.
+
+        The tokens are found in the draft, so a chip that was edited away simply
+        stops being painted, and a mention or command is styled wherever it sits.
+        """
         chip = Style(foreground=self.theme.warning, background=body.background, bold=True)
-        return self._row_spans(line, start, body, chip, self._paste_ranges())
+        mention = Style(foreground=self.theme.accent_bright, background=body.background)
+        command = Style(foreground=self.theme.accent, background=body.background)
+        ranges = [(begin, end, chip) for begin, end, _ in self._chip_ranges()]
+        ranges += [(match.start(), match.end(), mention) for match in MENTION.finditer(self.text)]
+        ranges += [(match.start(), match.end(), command) for match in COMMAND.finditer(self.text)]
+        return self._row_spans(line, start, body, self._first_wins(ranges))
+
+    @staticmethod
+    def _first_wins(ranges: Sequence[tuple[int, int, Style]]) -> list[tuple[int, int, Style]]:
+        """Drop overlaid ranges, keeping the earliest and widest of each start."""
+        ordered = sorted(ranges, key=lambda item: (item[0], -(item[1] - item[0])))
+        kept: list[tuple[int, int, Style]] = []
+        cursor = 0
+        for item in ordered:
+            if item[0] < cursor:
+                continue
+            kept.append(item)
+            cursor = item[1]
+        return kept
 
     def backspace(self) -> None:
-        """Remove a whole chip — a paste or an image — when the cursor follows one."""
+        """Remove a whole chip, ``@`` reference, or command when the cursor follows one.
+
+        These stand for something larger than their characters — a chip for a
+        paste or a picture, a token for a resource or a command — so one press
+        takes the whole thing instead of peeling it apart.
+        """
         chip = self._chip_before(self.position)
         if chip is None:
-            super().backspace()
-            return
+            token = self._token_before()
+            if token is None:
+                super().backspace()
+                return
+            chip = token
         self._delete(self.position - len(chip), self.position)
+
+    def _token_before(self) -> str | None:
+        """Return the ``@`` reference or slash command ending at the cursor, if any."""
+        tail = self.text[: self.position]
+        match = MENTION_END.search(tail) or COMMAND_END.search(tail)
+        return match.group(0) if match is not None else None
 
     def show(self, value: str) -> None:
         """Replace the draft, chipping a value too large to show plainly."""
@@ -213,24 +276,23 @@ class Composer(TextArea):
         line: str,
         start: int,
         body: Style,
-        chip: Style,
-        ranges: Sequence[tuple[int, int]],
+        ranges: Sequence[tuple[int, int, Style]],
     ) -> tuple[Span, ...]:
-        """Split one wrapped row into body text and the chips it covers.
+        """Split one wrapped row into body text and the styled ranges it covers.
 
-        A chip wider than the row is painted on each row it reaches, so a
-        wrapped one still reads as a single aside.
+        A range wider than the row is painted on each row it reaches, so a
+        wrapped chip still reads as a single aside.
         """
         end = start + len(line)
         spans: list[Span] = []
         cursor = start
-        for chip_start, chip_end in ranges:
-            if chip_end <= start or chip_start >= end:
+        for range_start, range_end, style in ranges:
+            if range_end <= start or range_start >= end:
                 continue
-            if chip_start > cursor:
-                spans.append(Span(self.text[cursor:chip_start], body))
-            overlap = (max(chip_start, start), min(chip_end, end))
-            spans.append(Span(self.text[overlap[0] : overlap[1]], chip))
+            if range_start > cursor:
+                spans.append(Span(self.text[cursor:range_start], body))
+            overlap = (max(range_start, start), min(range_end, end))
+            spans.append(Span(self.text[overlap[0] : overlap[1]], style))
             cursor = overlap[1]
         if cursor < end:
             spans.append(Span(self.text[cursor:end], body))

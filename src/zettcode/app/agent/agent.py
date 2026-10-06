@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Sequence
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 
@@ -30,6 +30,7 @@ from ...plugins import UiRow
 from ..commands import Command, CommandResult
 from .context import ContextReport
 from .export import build_trace, render_html, write_export
+from .mentions import MentionProvider, MentionRegistry
 from .replay import replay
 from .runtime import ZettCodeRuntime, build_system_prompt
 from .storage import Session, SessionInfo
@@ -37,9 +38,59 @@ from .title import summarize_title
 from .transcript import Transcript
 from .usage import UsageSnapshot
 
+
 #: One piece of a user turn, in the order it was written: a run of text, or the
 #: encoded bytes and media type of an image placed where that run ends.
-type PromptPart = str | tuple[bytes, str]
+@dataclass(frozen=True, slots=True)
+class MentionPart:
+    """One ``@`` reference in a turn, kept as typed.
+
+    The composer splits a draft at these tokens, so the shell resolves them
+    without re-parsing the text and the editor can style them where they sit.
+    """
+
+    token: str
+
+
+type PromptPart = str | MentionPart | tuple[bytes, str]
+
+
+def plain_text_part(part: PromptPart) -> str:
+    """Return the text one part contributes; an image contributes nothing."""
+    if isinstance(part, str):
+        return part
+    if isinstance(part, MentionPart):
+        return part.token
+    return ""
+
+
+def plain_text(parts: Sequence[PromptPart]) -> str:
+    """Return a turn as the reader typed it, with its ``@`` tokens back in place."""
+    return "".join(plain_text_part(part) for part in parts)
+
+
+def carries_image(parts: Sequence[PromptPart]) -> bool:
+    """Return whether one turn holds an image beside its text."""
+    return any(not isinstance(part, (str, MentionPart)) for part in parts)
+
+
+def mention_hint(parts: Sequence[PromptPart], mentions: MentionRegistry) -> str | None:
+    """Return the instructions a turn's ``@`` references contribute, if any.
+
+    ``None`` means nothing is appended: no provider is registered, the draft has
+    no reference, or every token is unknown — the model then reads exactly what
+    was typed. Each reference that resolves contributes one block, in the order
+    the tokens appear.
+    """
+    if not mentions.providers:
+        return None
+    hints = [
+        hint
+        for part in parts
+        if isinstance(part, MentionPart)
+        if (hint := mentions.expand_token(part.token)) is not None
+    ]
+    return "\n\n".join(hints) if hints else None
 
 
 #: The name a session shows before the agent has given it a title.
@@ -176,6 +227,11 @@ class ZettCodeAgent:
         return self.runtime.plugins.commands
 
     @property
+    def plugin_mentions(self) -> tuple[MentionProvider, ...]:
+        """Return the ``@`` resource providers the installed plugins registered."""
+        return self.runtime.plugins.mentions
+
+    @property
     def plugin_failures(self) -> tuple[str, ...]:
         """Return one message per plugin that could not be loaded or activated."""
         return self.runtime.plugins.failures
@@ -194,18 +250,27 @@ class ZettCodeAgent:
         """Send streamed agent events to the application's transcript projector."""
         self.runtime.set_event_dispatcher(dispatcher)
 
-    async def stream(self, parts: Sequence[PromptPart]) -> AsyncIterator[AgentEvent]:
+    async def stream(
+        self,
+        parts: Sequence[PromptPart],
+        *,
+        hint: str | None = None,
+    ) -> AsyncIterator[AgentEvent]:
         """Run one turn with the selected session, model, and reasoning effort.
 
         Args:
             parts: The user turn in the order it was written: text runs and the
                 images the composer interleaved with them. A turn without
                 images is simply one text part.
+            hint: Text appended after the turn, for the instructions a ``@``
+                reference contributes. The text the user typed then rides along
+                as the message's ``prompt`` attribute, so the stored message is
+                what was typed and a restored session shows it.
         """
         await self.runtime.start()
         client = self.runtime.started
         async for event in client.stream(
-            self.request(parts),
+            self.request(parts, hint=hint),
             config=AgentRunConfig(session_id=self.session_id),
             model=self.runtime.provider,
             reasoning_effort=self.runtime.effort,
@@ -213,24 +278,36 @@ class ZettCodeAgent:
             yield event
 
     @staticmethod
-    def request(parts: Sequence[PromptPart]) -> str | UserMessage:
+    def request(parts: Sequence[PromptPart], *, hint: str | None = None) -> str | UserMessage:
         """Return the user turn those ordered parts make up.
 
         Text and images keep the order they were written in inside one
         ``UserMessage``, so a picture is read where its writer placed it rather
         than after the whole prompt. A turn with no image stays a plain string.
+        ``hint`` is appended last — as a trailing part when an image is in the
+        turn — and the typed text then rides along as the message's ``prompt``
+        attribute, so storage and a restored session keep it.
         """
-        if all(isinstance(part, str) for part in parts):
-            return "".join(part for part in parts if isinstance(part, str))
+        if not carries_image(parts):
+            text = plain_text(parts)
+            if hint is None:
+                return text
+            return UserMessage(content=f"{text}\n\n{hint}", attributes={"prompt": text})
         content: list[TextContent | ImageContent] = []
         for part in parts:
-            if isinstance(part, str):
-                if part:
-                    content.append(TextContent(part))
+            if isinstance(part, (str, MentionPart)):
+                text = plain_text_part(part)
+                if text:
+                    content.append(TextContent(text))
                 continue
             data, media_type = part
             content.append(ImageContent(source=ImageBytesSource(data=data, media_type=media_type)))
-        return UserMessage(content=content)
+        if hint is not None:
+            content.append(TextContent(hint))
+        message = UserMessage(content=content)
+        if hint is not None:
+            message.attributes["prompt"] = plain_text(parts)
+        return message
 
     def tasks(self) -> tuple[tuple[str, str], ...]:
         """Return the current session's plan as display-ready status/content pairs."""

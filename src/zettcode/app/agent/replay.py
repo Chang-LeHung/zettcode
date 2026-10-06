@@ -58,7 +58,11 @@ def replay(
             history.append(message)
         match message:
             case UserMessage():
-                transcript.user_message(message.text)
+                # A message whose ``@`` references expanded carries the text the
+                # reader typed as an attribute; the row restores that, while
+                # ``history`` keeps the text the model was given.
+                original = message.attributes.get("prompt")
+                transcript.user_message(original if isinstance(original, str) and original else message.text)
             case AssistantMessage():
                 if message.reasoning:
                     transcript.restore_thinking(message.reasoning, line.timing.reasoning_duration_ns)

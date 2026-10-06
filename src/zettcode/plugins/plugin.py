@@ -16,6 +16,7 @@ from .mixins import PluginAgentMixin, PluginUiMixin
 from .state import UiRow
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay lazy
+    from ..app.agent.mentions import MentionProvider
     from ..app.commands import Command
     from .container import PluginContainer
     from .extension import PluginExtension
@@ -71,6 +72,8 @@ class Plugins:
             plugin, so plugin-wide behaviour has one place to live.
         commands: Commands the plugins registered, in load and registration
             order, each typed ``"plugin"``.
+        mentions: ``@`` resource providers the plugins registered, in load and
+            registration order; the shell merges them with the builtin skills.
         rows: The header and status rows the plugins fill, each with its left
             and right segments in paint order. The builtin rows are merged in
             first, so an overridden segment keeps its place.
@@ -81,6 +84,7 @@ class Plugins:
 
     host: PluginExtension | None = None
     commands: tuple[Command, ...] = ()
+    mentions: tuple[MentionProvider, ...] = ()
     rows: tuple[UiRow, ...] = ()
     failures: tuple[str, ...] = ()
 
