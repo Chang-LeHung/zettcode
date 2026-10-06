@@ -45,7 +45,7 @@ build-backend = "hatchling.build"
 packages = ["src/zettcode"]
 
 [tool.hatch.build.targets.sdist]
-include = ["/src", "/README.md", "/LICENSE", "/pyproject.toml"]
+include = ["/src", "/README.md", "/README.zh-CN.md", "/LICENSE", "/pyproject.toml"]
 
 [dependency-groups]
 dev = [

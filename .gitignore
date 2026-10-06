@@ -13,3 +13,9 @@ dist/
 
 # viztracer writes its trace here by default.
 /result.json
+
+# The docs site: dependencies, build output, and VitePress' cache.
+node_modules/
+docs/.vitepress/dist/
+docs/.vitepress/cache/
+docs/.vitepress/.temp/
