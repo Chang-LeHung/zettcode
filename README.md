@@ -11,7 +11,7 @@ only the terminal client.
 
 ## Install
 
-ZettCode needs Python 3.14 or newer and is published on PyPI as `zettcode`:
+ZettCode needs Python 3.10 or newer and is published on PyPI as `zettcode`:
 
 ```bash
 uv tool install zettcode

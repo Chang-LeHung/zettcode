@@ -110,6 +110,12 @@ invariant breaks, not merely that the code is exercised.
 | A1 | A subagent profile is a tool boundary: exploration is read-only, coding may edit but gets no shell, and no child gets a `task` tool of its own. | done | `test_subagents.py::test_subagent_profiles_split_the_tools_by_what_a_child_may_touch`, `test_no_subagent_profile_can_delegate_to_another` |
 | A2 | A child session lands in the store with `parent_session_id` set to the calling session. | done | `test_subagents.py::test_the_task_tool_runs_an_explore_child_and_links_its_session` |
 
+## Portability
+
+| # | Invariant (what breaks) | Status | Test |
+| --- | --- | --- | --- |
+| X1 | Every module parses on the oldest supported interpreter, and the shims cover what the standard library only grew later: a 3.12-only construct, an unshimmed `tomllib`/`ExceptionGroup`, or a `StrEnum` that stringifies as `Activity.READY` installs fine and then fails — or draws the member name — on 3.10. | done | `test_compat.py::test_every_module_parses_as_the_oldest_supported_python`, `test_the_str_enum_shim_reads_like_the_value_it_carries`, `test_the_toml_reader_parses_what_the_config_and_theme_files_hold` |
+
 ## Adding a row
 
 Every row above is marked **done**, so the list is only worth keeping if new
