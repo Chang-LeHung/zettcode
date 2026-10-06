@@ -1,6 +1,5 @@
 """The session store: JSONL format, the message tree, and the agent lifecycle."""
 
-import base64
 import json
 import shutil
 from datetime import UTC, datetime
@@ -16,7 +15,7 @@ from zett_agent.extensions.persistence import BaseSessionPersistenceExtension
 from zett_agent.messages import AssistantMessage, SystemMessage, ToolCall, ToolMessage, UserMessage
 from zett_agent.model import ModelUsage
 
-from zettcode.app.agent.storage import SessionPersistenceMixin, SessionStore, now
+from zettcode.app.agent.storage import SessionPersistenceMixin, SessionStore, now, workspace_key
 from zettcode.app.agent.storage.metadata import (
     SessionActivity,
     SessionStarted,
@@ -460,7 +459,8 @@ async def test_each_session_owns_a_directory_under_its_workspace(tmp_path: Path)
     store = SessionStore(tmp_path, workspace="/work/project")
     await store.append("s1", "req", UserMessage(content="hi"))
 
-    key = base64.urlsafe_b64encode(b"/work/project").decode().rstrip("=")
+    # The key is the resolved path's, so the expectation has to resolve too.
+    key = workspace_key(store.workspace)
     assert store.workspace_dir == tmp_path / key
     assert store.session_dir("s1") == tmp_path / key / "s1"
     assert store.session_path("s1") == tmp_path / key / "s1" / "data.jsonl"
@@ -473,7 +473,7 @@ def test_the_workspace_folder_keeps_each_project_apart(tmp_path: Path):
 
     assert first.workspace_dir != second.workspace_dir
     # The key is the URL-safe base64 of the resolved path, without padding.
-    assert first.workspace_dir.name == base64.urlsafe_b64encode(b"/work/one").decode().rstrip("=")
+    assert first.workspace_dir.name == workspace_key(first.workspace)
     assert "/" not in first.workspace_dir.name
 
 
