@@ -45,7 +45,7 @@ from zettcode.app.agent.rows import (
 )
 from zettcode.app.agent.storage import SessionInfo, SessionStore
 from zettcode.app.agent.usage import USAGE_EVENT_NAME, UsageExtension, UsageSnapshot
-from zettcode.app.commands import Command, CommandResult
+from zettcode.app.commands import Command, CommandContext, CommandResult
 from zettcode.app.ui import app as app_module
 from zettcode.app.ui import demo
 from zettcode.app.ui import keys as keys_module
@@ -63,7 +63,7 @@ from zettcode.app.ui.widgets import (
 )
 from zettcode.config import ModelConfig
 from zettcode.plugins import BUILTIN_PLUGINS, PluginContainer, Plugins, ShellContext, UiBuilder
-from zettcode.tui import DARK, LIGHT, Canvas, ListItem, ListPage, Rect, Span, Style, Text, TextLine, walk
+from zettcode.tui import DARK, LIGHT, Canvas, ListItem, ListPage, Rect, Span, Style, Text, TextLine, Toast, walk
 from zettcode.tui.render import display_width
 from zettcode.tui.testing import Harness, render_block
 
@@ -678,8 +678,8 @@ async def test_the_runtime_starts_with_the_first_turn_not_before():
 async def test_plugin_commands_join_the_shell_and_run():
     """A command a plugin registered is offered last and handled like any other."""
 
-    async def greet(argument: str) -> CommandResult:
-        return CommandResult(notification=f"hello {argument}".strip())
+    async def greet(context: CommandContext) -> CommandResult:
+        return CommandResult(notification=f"hello {context.argument}".strip())
 
     plugins = rows_and_commands(commands=(Command("/greet", "say hello", "plugin", greet),))
     app = build_app(plugins=plugins)
@@ -1653,7 +1653,7 @@ async def test_a_command_can_compose_its_own_panel():
     app = build_app()
     harness = _harness(app)
 
-    async def show(argument: str) -> CommandResult:
+    async def show(context: CommandContext) -> CommandResult:
         page = ListPage([ListItem("a", "alpha")], title="Panel", on_cancel=app.close_page)
         return CommandResult(widget=bottom_panel(page, rows=6))
 
@@ -1938,7 +1938,7 @@ async def test_a_toast_does_not_block_scrolling_the_transcript():
     y = view.rect.y + 1
     tail = view.top
 
-    app._notify("using session 01a10c8a")
+    app.notify("using session 01a10c8a")
     toast = app.app.screens.top.widget.slots[0].widget
     # Short enough not to linger; the old 2.5s did.
     assert toast.duration <= 2.0
@@ -2132,7 +2132,7 @@ async def test_app_and_agent_commands_are_routed_to_their_owners():
 def test_slash_menu_caps_rows_and_scrolls_many_commands():
     app = build_app()
 
-    async def no_op(argument: str) -> CommandResult:
+    async def no_op(context: CommandContext) -> CommandResult:
         return CommandResult()
 
     extra = tuple(Command(f"/agent-{index}", f"action {index}", "agent", no_op) for index in range(15))
@@ -2158,9 +2158,9 @@ async def test_a_registered_command_runs_its_own_handler():
     harness = _harness(app)
     arguments: list[str] = []
 
-    async def custom_handler(argument: str) -> CommandResult:
-        arguments.append(argument)
-        return CommandResult(message=f"custom: {argument}", relayout=True)
+    async def custom_handler(context: CommandContext) -> CommandResult:
+        arguments.append(context.argument)
+        return CommandResult(message=f"custom: {context.argument}", relayout=True)
 
     app.commands = (*app.commands, Command("/custom", "run a custom action", "app", custom_handler))
     app.composer.completer = type(app.composer.completer)(app.commands)
@@ -2194,7 +2194,7 @@ async def test_a_command_can_present_its_own_widget():
     app = build_app()
     harness = _harness(app)
 
-    async def show_page(argument: str) -> CommandResult:
+    async def show_page(context: CommandContext) -> CommandResult:
         page = ListPage([ListItem("a", "alpha")], title="Custom Page", on_cancel=app.close_page)
         return CommandResult(widget=page)
 
@@ -2676,6 +2676,30 @@ def test_a_command_result_is_applied_in_order():
 
     assert pushed == ["toast", "page"]
     assert any(entry.kind == "message" and entry.text == "the note" for entry in app.transcript.entries)
+
+
+async def test_a_command_reports_through_its_context_while_it_runs():
+    """``context.ui`` writes land during the command, not in its result."""
+    app = build_app()
+    harness = _harness(app)
+
+    async def noisy(context: CommandContext) -> CommandResult:
+        context.ui.markdown("### working")
+        context.ui.error("it broke")
+        context.ui.notify("done", level="success")
+        return CommandResult()
+
+    app.commands = (*app.commands, Command("/noisy", "report as it goes", "app", noisy))
+    harness.write("/noisy")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    # Nothing came back in the result, so these rows can only have been written
+    # by the handler itself.
+    rows = [(entry.kind, getattr(entry, "text", "")) for entry in app.transcript.entries]
+    assert ("message", "### working") in rows
+    assert ("notice", "it broke") in rows
+    assert any(isinstance(widget, Toast) for screen in app.app.screens for widget in walk(screen.widget))
 
 
 def _harness(app: ZettCodeApp) -> Harness:

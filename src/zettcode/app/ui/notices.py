@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 from ...tui import Anchor, Overlay, OverlaySlot, Screen, Toast
 from ..agent.usage import UsageSnapshot
+from ..commands import CommandUi
 from .shell import APPROVAL_ROWS, PAGE_SCREEN, ShellState
 from .widgets import ApprovalChoice, ApprovalPage, bottom_panel
 
@@ -19,7 +20,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zett_agent.events import AgentEvent
 
 
-class NoticesMixin(ShellState):
+class NoticesMixin(CommandUi, ShellState):
     """Show approvals, toasts, and the usage counters."""
 
     def _usage_updated(self, event: AgentEvent) -> None:
@@ -69,7 +70,7 @@ class NoticesMixin(ShellState):
                 self.transcript.notice("auto mode on: approving every shell command this run")
         self.app.invalidate()
 
-    def _notify(self, message: str, *, level: str = "info") -> None:
+    def notify(self, message: str, *, level: str = "info") -> None:
         """Show a toast, replacing any toast that is still on screen.
 
         Args:
@@ -83,3 +84,15 @@ class NoticesMixin(ShellState):
         # A paint-only layer: the toast shows over the shell but must not take
         # input, or scrolling the transcript under it would stop working.
         self.app.push_screen(Screen(overlay, name="toast", interactive=False))
+
+    def markdown(self, text: str) -> None:
+        """Append Markdown to the transcript, parsed like an answer."""
+        self.transcript.markdown(text)
+
+    def notice(self, text: str) -> None:
+        """Append a muted one-line remark."""
+        self.transcript.notice(text)
+
+    def error(self, text: str) -> None:
+        """Append a one-line failure, painted as an error."""
+        self.transcript.error(text)

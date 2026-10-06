@@ -27,7 +27,7 @@ from zett_agent.model import ReasoningEffort, ToolDefinition
 
 from ...config import ModelConfig, ZettCodeConfig
 from ...plugins import UiRow
-from ..commands import Command, CommandResult
+from ..commands import Command, CommandContext, CommandResult
 from .context import ContextReport
 from .export import build_trace, render_html, write_export
 from .mentions import MentionProvider, MentionRegistry
@@ -447,7 +447,7 @@ class ZettCodeAgent:
         head = session.message(session.head_id)
         return head is not None and head.created_at <= latest.created_at
 
-    async def _command_new(self, argument: str) -> CommandResult:
+    async def _command_new(self, context: CommandContext) -> CommandResult:
         """Start a fresh session."""
         session_id = self.new_session()
         return CommandResult(notification=f"started session {session_id[:8]}")
@@ -520,16 +520,16 @@ class ZettCodeAgent:
             ("Messages", f"{session.message_count}"),
         )
 
-    async def _command_export(self, argument: str) -> CommandResult:
+    async def _command_export(self, context: CommandContext) -> CommandResult:
         """Write the session and its context to one HTML file.
 
         The path argument is optional; without it the file lands in the
         workspace, named after the session, and the result says where.
         """
-        path = await self.export_session(argument.strip() or None)
+        path = await self.export_session(context.argument.strip() or None)
         return CommandResult(message=f"Exported to `{path}`")
 
-    async def _command_compact(self, argument: str) -> CommandResult:
+    async def _command_compact(self, context: CommandContext) -> CommandResult:
         """Summarize the conversation now, whatever its size.
 
         The row and the outcome notice arrive while this await runs: the pass

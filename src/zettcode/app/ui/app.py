@@ -45,7 +45,7 @@ from ..agent.rows import clock_text, elapsed_text
 from ..agent.runtime import describe_error
 from ..agent.transcript import Transcript
 from ..agent.usage import UsageSnapshot
-from ..commands import CommandList, CommandResult
+from ..commands import CommandContext, CommandList, CommandResult
 from ..registry import Registry
 from .commands import ShellCommands
 from .keys import KeysMixin
@@ -361,7 +361,7 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
                 self.transcript.error(f"Unknown command: {name}. Try /help.")
             else:
                 try:
-                    result = await command.handler(argument)
+                    result = await command.handler(CommandContext(argument=argument, ui=self))
                     if name == "/new" and self.agent.session_id != previous_session:
                         self.transcript.clear()
                         self.transcript.welcome(WELCOME)
@@ -391,7 +391,7 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
         if result.message:
             self.transcript.markdown(result.message)
         if result.notification:
-            self._notify(result.notification, level="success")
+            self.notify(result.notification, level="success")
         if result.widget is not None:
             self.app.push_screen(Screen(result.widget, name=PAGE_SCREEN, modal=True))
         if result.relayout:

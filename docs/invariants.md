@@ -88,6 +88,7 @@ invariant breaks, not merely that the code is exercised.
 | U4 | A command result is applied in order — transcript message, toast, page, relayout — so a page never covers the toast it was announced with. | done | `test_zettcode_app.py::test_a_command_result_is_applied_in_order` |
 | U5 | The status line shows the one-off note when there is one, else the state word. | done | `test_plugins.py::test_the_activity_label_prefers_its_note_over_the_state_word` |
 | U6 | Sending a mention keeps the rest of the draft, whatever the cursor position. | done | `test_zettcode_app.py::test_accepting_a_mention_keeps_the_rest_of_the_draft` |
+| U7 | A command's `context.ui` writes reach the screen during the run; they are not deferred to the result, or a long command could not report progress. | done | `test_zettcode_app.py::test_a_command_reports_through_its_context_while_it_runs` |
 
 ## Plugins and configuration
 

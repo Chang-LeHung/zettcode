@@ -6,13 +6,13 @@ from pathlib import Path
 
 import pytest
 
-from zettcode.app.commands import Command, CommandList, CommandResult
+from zettcode.app.commands import Command, CommandContext, CommandList, CommandResult
 from zettcode.app.registry import Registry
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.plugins import PluginContainer
 
 
-async def _no_op(argument: str) -> CommandResult:
+async def _no_op(context: CommandContext) -> CommandResult:
     """A handler the registry tests never run."""
     return CommandResult()
 

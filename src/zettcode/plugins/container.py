@@ -14,10 +14,9 @@ reusing its segment names is what taking a slot over means.
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
-from ..app.commands import Command, CommandList, CommandProvider, CommandResult
+from ..app.commands import Command, CommandHandler, CommandList, CommandProvider
 from .state import UiRow, UiSegment
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay lazy
@@ -25,10 +24,6 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
     from ..config import ZettCodeConfig
     from .state import UiBuilder, UiRegion, UiSide
 
-
-#: Signature of a slash-command handler: the trimmed argument text in, the
-#: result the application should present out.
-type CommandHandler = Callable[[str], Awaitable[CommandResult]]
 
 #: Rows and sides in paint order; the shell's frame, fixed by the application.
 UI_REGIONS: tuple[UiRegion, ...] = ("header", "status")
@@ -206,15 +201,20 @@ class PluginContainer:
 
         The leading slash is optional, so ``"deploy"`` and ``"/deploy"`` are the
         same command. ``description`` is the one line shown by the completion
-        menu and ``/help``; ``handler`` receives the trimmed text after the
-        command name and returns a :class:`~zettcode.app.commands.CommandResult`
-        describing what to display. Raising ``ValueError`` reports a usage error
-        instead of changing state.
+        menu and ``/help``. ``handler`` is handed a
+        :class:`~zettcode.app.commands.CommandContext`: the trimmed argument and
+        the UI surfaces it may write to while it works
+        (``context.ui.markdown``, ``.notice``, ``.error``, ``.notify``). It
+        returns a :class:`~zettcode.app.commands.CommandResult` for anything left
+        to show — a page to open, a re-layout. Raising ``ValueError`` reports a
+        usage error instead of changing state.
 
         Args:
             name: Command as typed; a leading ``/`` is added when missing.
             description: One-line summary shown in the menu and in ``/help``.
-            handler: Coroutine taking the argument text and returning the result.
+            handler: Coroutine taking a
+                :class:`~zettcode.app.commands.CommandContext` and returning the
+                result.
 
         Returns:
             The registered command, in case the plugin wants to keep it.
