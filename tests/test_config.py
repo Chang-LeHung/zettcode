@@ -202,17 +202,27 @@ def test_load_config_reads_the_mcp_server_file(tmp_path: Path):
     assert config.mcp_config == (Path.home() / "elsewhere" / "mcp.json").resolve()
 
 
-def test_skills_and_mcp_can_be_turned_off(tmp_path: Path):
+def test_project_instructions_skills_and_mcp_can_be_turned_off(tmp_path: Path):
     path = tmp_path / "config.toml"
     path.write_text(
-        '[[models]]\nmodel = "m"\ntoken = "t"\n\n[skills]\nenabled = false\n\n[mcp]\nenabled = false\n',
+        '[[models]]\nmodel = "m"\ntoken = "t"\n\n[agents_md]\nenabled = false\n'
+        "\n[skills]\nenabled = false\n\n[mcp]\nenabled = false\n",
         encoding="utf-8",
     )
 
     config = load_config(tmp_path, path=path)
 
+    assert config.agents_md_enabled is False
     assert config.skills_enabled is False
     assert config.mcp_enabled is False
+
+
+def test_project_instructions_are_read_unless_the_config_turns_them_off(tmp_path: Path):
+    """AGENTS.md is the one integration a project cannot opt into by accident."""
+    path = tmp_path / "config.toml"
+    path.write_text('[[models]]\nmodel = "m"\ntoken = "t"\n', encoding="utf-8")
+
+    assert load_config(tmp_path, path=path).agents_md_enabled is True
 
 
 @pytest.mark.parametrize("setting", ['store = "elsewhere"', 'session = "s1"', 'model = "m"'])
@@ -280,6 +290,11 @@ def test_load_config_requires_at_least_one_model(tmp_path: Path):
             '[[models]]\nmodel = "m"\ntoken = "t"\n[transcript]\nmax = 64\n',
             "Unknown config keys in the \\[transcript\\] table",
         ),
+        (
+            '[[models]]\nmodel = "m"\ntoken = "t"\n[agents_md]\nfile = "CLAUDE.md"\n',
+            "Unknown config keys in the \\[agents_md\\] table",
+        ),
+        ('[[models]]\nmodel = "m"\ntoken = "t"\n[agents_md]\nenabled = "yes"\n', "must be bool"),
     ],
 )
 def test_load_config_reports_configuration_errors(tmp_path: Path, text, message):

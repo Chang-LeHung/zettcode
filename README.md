@@ -144,10 +144,21 @@ mirrors them without polling; resuming a session seeds the totals from the
 usage stored on its branch. The rate is a session average, not an instant
 reading.
 
-## Skills and MCP
+## Project instructions, skills, and MCP
 
-Two optional capabilities come from the same config file. Both are on by
-default and both add nothing to a request until there is something to load.
+Three optional capabilities come from the same config file. All are on by
+default and all add nothing to a request until there is something to load.
+
+The `AGENTS.md` files that apply to the workspace go to the model as project
+instructions: the one in the working directory and then each parent up to the
+filesystem root, outermost first, so a repository root and a nested package can
+both contribute and the most specific rules end up closest to the conversation.
+Every request re-reads them, so an edited file applies to the next turn, and a
+file longer than 32 000 characters is truncated with a marker instead of being
+dropped. They are guidance, not authorization — the file is workspace content
+and can neither grant permissions the approval prompt would otherwise ask for
+nor override ZettCode's own instructions. `[agents_md] enabled = false` turns
+them off.
 
 Skill discovery looks at `[skills] roots` first and then at
 `~/.zettcode/skills`; a name declared twice belongs to the earlier directory.
@@ -169,6 +180,9 @@ banner and a proxy warning on every start — is appended to
 `~/.zettcode/log/tui.log` instead of being painted over the conversation.
 
 ```toml
+[agents_md]
+enabled = true                 # read AGENTS.md from the workspace upwards
+
 [skills]
 roots = ["~/team-skills"]      # searched before ~/.zettcode/skills
 
