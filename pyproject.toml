@@ -1,9 +1,9 @@
 [project]
 name = "zettcode"
-version = "0.1.0"
 description = "A focused terminal coding agent powered by zett-agent"
 readme = "README.md"
 requires-python = ">=3.10"
+dynamic = ["version"]
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{name = "Chang-LeHung"}]
@@ -40,6 +40,10 @@ Issues = "https://github.com/Chang-LeHung/zettcode/issues"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+# Single source of truth: the version is written once, in the package.
+path = "src/zettcode/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/zettcode"]

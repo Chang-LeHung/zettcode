@@ -25,12 +25,20 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         run: |
           python3 - <<'PY'
+          import ast
           import os
-          import tomllib
+          import pathlib
 
           tag = os.environ["GITHUB_REF_NAME"]
-          with open("pyproject.toml", "rb") as handle:
-              version = tomllib.load(handle)["project"]["version"]
+          # The version is written once, in the package; pyproject asks hatchling
+          # to read the same file, so this is what the built distribution carries.
+          tree = ast.parse(pathlib.Path("src/zettcode/__init__.py").read_text(encoding="utf-8"))
+          version = next(
+              node.value.value
+              for node in tree.body
+              if isinstance(node, ast.Assign)
+              and getattr(node.targets[0], "id", "") == "__version__"
+          )
           expected = f"v{version}"
           if tag != expected:
               raise SystemExit(f"tag {tag!r} does not match project version {version!r}; expected {expected!r}")

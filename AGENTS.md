@@ -62,9 +62,10 @@
 
 ## Releases
 
-- The version lives in `pyproject.toml`; a release is a commit that sets the
-  final version plus a `v<version>` tag. The release workflow refuses to publish
-  when the tag and the project version disagree.
+- The version lives in `src/zettcode/__init__.py`; `pyproject.toml` asks
+  hatchling to read it from there, and a release is a commit that sets it plus a
+  `v<version>` tag. The release workflow reads the same file and refuses to
+  publish when the tag and it disagree.
 - Publishing requires the `PYPI_API_TOKEN` repository secret; see `RELEASING.md`.
 - When `zett-agent` is released, bump the pinned `zett-agent==` dependency in the
   same change, re-lock, and run `make check` before tagging.

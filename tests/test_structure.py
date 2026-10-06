@@ -8,12 +8,17 @@ from __future__ import annotations
 
 import ast
 import importlib
+import importlib.metadata
 import importlib.util
 import pathlib
 import subprocess
 import sys
 
 import zettcode
+from zettcode._compat import tomllib
+
+#: Repository root, three levels above the package's ``__init__.py``.
+ROOT = pathlib.Path(zettcode.__file__).resolve().parent.parent.parent
 
 # A module under one of these prefixes may not import anything under the others:
 # the framework stays standalone, and the agent side never reaches into the ui.
@@ -120,6 +125,23 @@ def test_importing_the_package_does_not_build_the_application():
 
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "False False"
+
+
+def test_the_version_is_written_once_and_the_distribution_carries_it():
+    """A copy of the version in ``pyproject`` would drift from the tag check.
+
+    The installed metadata is compared as well, because it is what
+    ``importlib.metadata`` reports to plugins and what a release actually
+    publishes. Bumping ``__version__`` without rebuilding the editable install
+    fails here until ``uv sync --reinstall-package zettcode`` runs; CI installs
+    from scratch, so there the two always agree.
+    """
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+
+    assert project["project"]["dynamic"] == ["version"]
+    assert project["tool"]["hatch"]["version"]["path"] == "src/zettcode/__init__.py"
+    assert project["project"]["name"] == zettcode.__name__
+    assert zettcode.__version__ == importlib.metadata.version("zettcode")
 
 
 def test_a_facade_maps_every_name_to_the_module_it_statically_imports():

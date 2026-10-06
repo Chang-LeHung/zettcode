@@ -5,6 +5,10 @@ from __future__ import annotations
 import importlib
 from typing import TYPE_CHECKING
 
+#: The one place the version is written. ``pyproject.toml`` reads it from here
+#: and the release workflow checks the tag against it, so a bump is one edit.
+__version__ = "0.1.0"
+
 #: Where each public name lives; read by :func:`__getattr__` on first use.
 _EXPORTS = {
     "ModelConfig": ".config",

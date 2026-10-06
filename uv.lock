@@ -2510,7 +2510,6 @@ wheels = [
 
 [[package]]
 name = "zettcode"
-version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "exceptiongroup", marker = "python_full_version < '3.11'" },
