@@ -34,10 +34,14 @@
   than bypassing the hook.
 - Tests must never write into the checkout or into `~/.zettcode`. Use temporary
   directories and pass them explicitly.
-- `docs/invariants.md` lists the rules the code depends on but types do not
-  enforce, each marked done with the test that pins it or todo with what is
+- `docs/internal/invariants.md` lists the rules the code depends on but types do
+  not enforce, each marked done with the test that pins it or todo with what is
   missing. Adding a load-bearing rule means adding a row and a test; breaking
   one means the cited test fails, so keep the marks honest.
+- `docs/` is the published user guide (VitePress, English at `/` and Chinese at
+  `/zh/`); `docs/internal/` is ours and is excluded from the site. Keep
+  implementation detail in `docs/internal/`, and write the guide for someone
+  using the program.
 - The terminal layer runs on POSIX and on Windows. The platform split lives in
   `tui/console.py`: `PosixConsole` uses `termios`/`tty`, `WindowsConsole` clears
   the console's cooked input flags and turns on virtual-terminal input, so the
