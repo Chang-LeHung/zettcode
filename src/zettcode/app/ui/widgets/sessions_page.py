@@ -34,17 +34,17 @@ class SessionsPage(ListPage):
     Shape::
 
         Sessions
-          \u25b8 Fix the parser crash  3m ago \u00b7 1a2b3c4d
-          New session            17h ago \u00b7 9f8e7d6c   <- still unnamed
+          \u25b8 1. Fix the parser crash  3m ago \u00b7 1a2b3c4d
+            2. New session            17h ago \u00b7 9f8e7d6c   <- still unnamed
         enter open \u00b7 esc back
 
-    A session without a title reads as ``New session``, the same name the
-    status line shows, and the short id after the age is what tells two of them
-    apart. Rows commit the session id, which the shell turns into
-    ``use_session``. The title column is aligned by the list itself, and the
-    ages are padded inside the description, because ``3h ago`` is a column
-    narrower than ``17m ago`` and the id after it would otherwise step in and
-    out of line.
+    Each row is numbered so a long list can be counted at a glance, and a
+    session without a title reads as ``New session``, the same name the status
+    line shows; the short id after the age is what tells two of them apart.
+    Rows commit the session id, which the shell turns into ``use_session``. The
+    title column is aligned by the list itself, and the ages are padded inside
+    the description, because ``3h ago`` is a column narrower than ``17m ago``
+    and the id after it would otherwise step in and out of line.
 
     Args:
         sessions: Metadata rows to show, newest first, as returned by the store.
@@ -66,13 +66,14 @@ class SessionsPage(ListPage):
         titles = [session.title or UNTITLED_SESSION for session in sessions]
         ages = [format_ago(session.updated_at, now=now) for session in sessions]
         age_column = max((display_width(age) for age in ages), default=0)
+        digits = len(str(len(sessions))) if sessions else 1
         items = [
             ListItem(
                 session.session_id,
-                title,
+                f"{index:>{digits}}. {title}",
                 f"{' ' * max(0, age_column - display_width(age))}{age} {SEPARATOR} {session.session_id[:8]}",
             )
-            for session, title, age in zip(sessions, titles, ages, strict=True)
+            for index, (session, title, age) in enumerate(zip(sessions, titles, ages, strict=True), start=1)
         ]
         super().__init__(
             items,

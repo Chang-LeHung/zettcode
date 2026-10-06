@@ -1703,7 +1703,8 @@ async def test_model_page_scrolls_many_entries_and_selects_offscreen_one():
     await asyncio.wait_for(app.task, 2.0)
     page = _presented_page(app)
     harness.render()
-    assert page.list.rect.height == 6
+    # The panel is 14 rows tall, so the list fills the nine it has room for.
+    assert page.list.rect.height == 9
     for _ in range(12):
         harness.press("down")
     assert page.list.selected == 12
@@ -2518,7 +2519,23 @@ def test_the_sessions_panel_names_an_untitled_session():
 
     page = SessionsPage(sessions, on_select=lambda _: None, on_cancel=lambda: None, now=now)
 
-    assert [item.label for item in page.list.items] == ["New session"]
+    assert [item.label for item in page.list.items] == ["1. New session"]
+
+
+def test_the_sessions_panel_numbers_its_rows_and_fills_the_panel():
+    now = datetime(2026, 10, 3, 12, 0, tzinfo=UTC)
+    sessions = [SessionInfo(f"01a1010{index}", f"session {index}", now, now) for index in range(12)]
+    page = SessionsPage(sessions, on_select=lambda _: None, on_cancel=lambda: None, now=now)
+
+    # Numbers are right-aligned in the width of the widest one, so the titles
+    # stay in a single column once the list passes nine.
+    assert [item.label for item in page.list.items][:2] == [" 1. session 0", " 2. session 1"]
+    assert page.list.items[9].label == "10. session 9"
+
+    # The list fills the panel it is given rather than stopping at six rows.
+    page.layout(Rect(0, 0, 40, 14))
+
+    assert page.list.rect.height == 9
 
 
 async def test_the_status_line_mirrors_the_usage_extension():
