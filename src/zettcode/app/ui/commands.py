@@ -34,7 +34,9 @@ EFFORT_NOTES = {
     "low": "quick answers",
     "medium": "the default balance",
     "high": "more thought on hard problems",
-    "xhigh": "the deepest the runtime asks for",
+    "xhigh": "a long think on hard problems",
+    "max": "the highest budget the provider takes",
+    "ultra": "above max; a provider maps it down when it must",
 }
 
 if TYPE_CHECKING:  # pragma: no cover - only needed for the annotation
