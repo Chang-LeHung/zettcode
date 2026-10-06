@@ -45,6 +45,7 @@ from .mixins import (
 )
 from .plugin import Plugin, Plugins
 from .state import (
+    Activity,
     ActivityState,
     DisplayState,
     ModelState,
@@ -59,6 +60,7 @@ from .state import (
 
 __all__ = [
     "PLUGIN_ENTRY_POINT_GROUP",
+    "Activity",
     "ActivityState",
     "BUILTIN_PLUGINS",
     "UiBuilder",

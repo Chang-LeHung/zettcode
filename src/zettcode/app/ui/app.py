@@ -16,7 +16,17 @@ from typing import TYPE_CHECKING, cast
 from zett_agent.events import AgentEvent
 
 from ...config import DEFAULT_LOG, ModelConfig
-from ...plugins import ActivityState, DisplayState, ModelState, SessionState, ShellContext, UiRegion, UiRow, UiSide
+from ...plugins import (
+    Activity,
+    ActivityState,
+    DisplayState,
+    ModelState,
+    SessionState,
+    ShellContext,
+    UiRegion,
+    UiRow,
+    UiSide,
+)
 from ...tui import (
     DARK,
     ELLIPSIS,
@@ -147,7 +157,8 @@ class ZettCodeApp:
         self._busy = False
         self._steering: list[str] = []
         self._steering_sent = 0
-        self._status = "ready"
+        self._activity = Activity.READY
+        self._note: str | None = None
         self._auto_shell = False
         self._session_title: str | None = None
         self._usage = UsageSnapshot()
@@ -289,7 +300,7 @@ class ZettCodeApp:
             self.transcript.error(f"{self.agent.active_model.shown_name} does not take images")
         else:
             label = self.composer.attach_image(*image)
-            self._status = f"attached {label}"
+            self._note = f"attached {label}"
         host.request_layout()
         return True
 
@@ -347,7 +358,7 @@ class ZettCodeApp:
             host.copy(selected)
             self.view.clear_selection()
             host.clear_screen_selection()
-            self._status = f"copied {len(selected)} characters"
+            self._note = f"copied {len(selected)} characters"
             host.invalidate()
             return True
         if self.app.screens.top.name == PAGE_SCREEN:
@@ -462,18 +473,23 @@ class ZettCodeApp:
                 into the transcript.
             parts: The same turn as ordered text and image parts; an empty
                 sequence falls back to the prompt alone.
+            hint: Instructions the draft's ``@`` references contribute; the
+                stored message keeps ``prompt``.
         """
         self.projector.begin_turn(prompt)
         started = monotonic()
         self._set_busy(True)
-        self._status = "running"
+        self._activity = Activity.RUNNING
+        self._note = None
         self.app.invalidate()
         try:
             self._refresh_tasks()
-            # The agent's stream is an async generator; the cast lets aclosing
-            # close it when the turn is cancelled.
-            stream = cast("AsyncGenerator[AgentEvent]", self.agent.stream(parts or (prompt,)))
-            async with aclosing(stream) as events:
+            # A turn without ``@`` references is sent exactly as it was written,
+            # without the keyword argument a reference-carrying turn adds; the
+            # cast lets aclosing close the stream when the turn is cancelled.
+            turn = parts or (prompt,)
+            stream = self.agent.stream(turn) if hint is None else self.agent.stream(turn, hint=hint)
+            async with aclosing(cast("AsyncGenerator[AgentEvent]", stream)) as events:
                 async for _event in events:
                     self._refresh_tasks()
                     self.app.invalidate()
@@ -490,7 +506,8 @@ class ZettCodeApp:
             self.transcript.notice(f"Processed for {took} {SEPARATOR} {clock_text()}")
             self._clear_steering()
             self._set_busy(False)
-            self._status = "ready"
+            self._activity = Activity.READY
+            self._note = None
             self._refresh_tasks()
             self.app.invalidate()
 
@@ -515,7 +532,8 @@ class ZettCodeApp:
         """Execute the matching command's handler and present its result."""
         name, _, argument = value.partition(" ")
         argument = argument.strip()
-        self._status = f"{name} {ELLIPSIS}"
+        self._activity = Activity.RUNNING
+        self._note = f"{name} {ELLIPSIS}"
         # A command may take a while — `/compact` summarizes the conversation —
         # so it holds the same busy flag a turn does: the status glyph spins,
         # another submit is refused, and Ctrl-C cancels what is running.
@@ -544,7 +562,8 @@ class ZettCodeApp:
                     self._apply_result(result)
         finally:
             self._set_busy(False)
-            self._status = "ready"
+            self._activity = Activity.READY
+            self._note = None
             self.app.invalidate()
 
     def _apply_result(self, result: CommandResult) -> None:
@@ -829,7 +848,8 @@ class ZettCodeApp:
             ),
             activity=ActivityState(
                 busy=self._busy,
-                status=self._status,
+                status=self._activity,
+                note=self._note,
                 auto_shell=self._auto_shell,
                 usage=self._usage,
                 tasks=self.agent.tasks(),
