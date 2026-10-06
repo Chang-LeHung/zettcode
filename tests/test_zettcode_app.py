@@ -1395,6 +1395,44 @@ async def test_the_effort_command_sets_the_level_the_next_request_carries():
     assert app.agent.effort == "xhigh"  # a refused level leaves the current one alone
 
 
+async def test_the_top_effort_levels_are_offered_and_sent():
+    """The runtime's ladder ends at max and ultra; both must reach the request."""
+    app = build_app()
+    harness = _harness(app)
+
+    harness.write("/effort ULTRA")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    assert app.agent.effort == "ultra"
+    assert app._header_right().text.strip() == "gpt-5-mini \u00b7 ultra"
+
+    harness.write("go")
+    harness.press("enter")
+    await asyncio.sleep(0.05)
+    assert app.agent.runtime.client.efforts[-1] is ReasoningEffort.ULTRA
+
+
+def test_the_effort_picker_lists_every_level_the_runtime_knows():
+    """A hand-written list would drift; the picker reads the runtime's own."""
+    app = build_app()
+
+    assert list(app.agent.efforts) == [level.value for level in ReasoningEffort]
+    assert list(app.agent.efforts)[-2:] == ["max", "ultra"]
+
+
+async def test_the_effort_panel_offers_max_and_ultra():
+    app = build_app()
+    harness = _harness(app)
+
+    harness.write("/effort")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+    page = _presented_page(app)
+
+    assert [item.value for item in page.list.items] == [level.value for level in ReasoningEffort]
+
+
 async def test_switching_effort_announces_it_in_the_conversation():
     app = build_app()
     harness = _harness(app)

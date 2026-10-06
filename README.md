@@ -468,9 +468,11 @@ file lands in the workspace as `zettcode-<session-id>.html`.
 
 `/effort` sets how much the model reasons before it answers, either directly
 (`/effort high`) or through a picker that lists zett-agent's own levels: `off`,
-`minimal`, `low`, `medium`, `high`, `xhigh` (`xhigh` is what the Responses API
-clamps to `high`). The level is per process, not per session, the header shows the one in force beside the model name, and a
-change is announced in the transcript between rules, the way a model switch is.
+`minimal`, `low`, `medium`, `high`, `xhigh`, `max`, and `ultra`. A provider maps
+a level it cannot express onto its closest supported value, so the deepest
+levels degrade rather than fail. The level is per process, not per session, the
+header shows the one in force beside the model name, and a change is announced
+in the transcript between rules, the way a model switch is.
 
 `/context` opens a panel that breaks the next request down by who fills it:
 
