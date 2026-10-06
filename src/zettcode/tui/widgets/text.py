@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import TypeAlias
 
 from ...tui import RULE
 from ..core.geometry import Constraints, Size
@@ -10,7 +11,7 @@ from ..core.widget import Widget
 from ..render import Canvas, Span, Style, TextLine
 from .rich_text import RichText
 
-type Value = str | Callable[[], str]
+Value: TypeAlias = str | Callable[[], str]
 
 
 class Text(RichText):

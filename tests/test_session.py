@@ -2,7 +2,7 @@
 
 import json
 import shutil
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -155,7 +155,7 @@ def test_reading_and_writing_leave_other_files_alone(tmp_path: Path):
     assert sidecar.read_text(encoding="utf-8") == "mine"
     (raw,) = _of_kind(store, "s1", "message")
     assert raw["parent"] is None
-    assert raw["created_at"] >= datetime(2020, 1, 1, tzinfo=UTC).isoformat()
+    assert raw["created_at"] >= datetime(2020, 1, 1, tzinfo=timezone.utc).isoformat()
 
 
 def test_an_absent_session_reads_as_empty(tmp_path: Path):
@@ -512,7 +512,7 @@ async def test_the_metadata_log_records_the_session_lifecycle(tmp_path: Path):
 
 def test_the_metadata_log_folds_to_the_newest_record_of_each_kind(tmp_path: Path):
     path = tmp_path / "metadata.jsonl"
-    start = datetime(2026, 10, 3, 12, 0, tzinfo=UTC)
+    start = datetime(2026, 10, 3, 12, 0, tzinfo=timezone.utc)
     append_metadata(path, SessionStarted(session_id="s1", created_at=start))
     append_metadata(path, SessionTitle(session_id="s1", title="First name"))
     append_metadata(path, SessionActivity(session_id="s1", updated_at=start))
@@ -529,7 +529,7 @@ def test_the_metadata_log_folds_to_the_newest_record_of_each_kind(tmp_path: Path
 
 def test_a_torn_final_metadata_line_is_ignored(tmp_path: Path):
     path = tmp_path / "metadata.jsonl"
-    start = datetime(2026, 10, 3, 12, 0, tzinfo=UTC)
+    start = datetime(2026, 10, 3, 12, 0, tzinfo=timezone.utc)
     append_metadata(path, SessionStarted(session_id="s1", created_at=start))
     with path.open("a", encoding="utf-8") as handle:
         handle.write('{"kind": "title", "session_id": "s1"')
@@ -662,7 +662,7 @@ async def test_cancelling_drops_the_bookkeeping_so_late_events_are_ignored(tmp_p
 
     await store.on_event(
         ctx,
-        RunCancelledEvent(previous_phase=ctx.state.phase, occurred_at=datetime.now(UTC), monotonic_ns=0),
+        RunCancelledEvent(previous_phase=ctx.state.phase, occurred_at=datetime.now(timezone.utc), monotonic_ns=0),
     )
     await store.on_event(ctx, appended(UserMessage(content="too late")))
 

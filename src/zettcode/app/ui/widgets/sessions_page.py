@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from ....tui import SEPARATOR, ListItem, ListPage
 from ....tui.render import display_width
@@ -18,7 +18,7 @@ def format_ago(moment: datetime, *, now: datetime | None = None) -> str:
         moment: When the session last changed; stored times are UTC.
         now: Current time, injected by tests; defaults to the real clock.
     """
-    seconds = max(0, int(((now or datetime.now(UTC)) - moment).total_seconds()))
+    seconds = max(0, int(((now or datetime.now(timezone.utc)) - moment).total_seconds()))
     if seconds < 60:
         return "just now"
     if seconds < 3600:

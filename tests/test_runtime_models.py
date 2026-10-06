@@ -2,13 +2,14 @@
 
 import subprocess
 import sys
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from zett_agent.extensions.mcp import McpExtension
 from zett_agent.extensions.skill import SkillExtension
 from zett_agent.messages import UserMessage
 
+from zettcode._compat import ExceptionGroup
 from zettcode.app.agent import runtime as runtime_module
 from zettcode.app.agent.compaction import OnDemandCompaction
 from zettcode.app.agent.storage import SessionStore
@@ -23,8 +24,8 @@ def test_the_system_prompt_head_changes_only_by_the_day(tmp_path):
     while still telling the model what today is.
     """
     config = ZettCodeConfig(workspace=tmp_path, models=(ModelConfig(model="m", token="t"),), store=tmp_path / "s")
-    morning = datetime(2026, 10, 4, 9, 15, 3, tzinfo=UTC)
-    late = datetime(2026, 10, 4, 23, 59, 59, tzinfo=UTC)
+    morning = datetime(2026, 10, 4, 9, 15, 3, tzinfo=timezone.utc)
+    late = datetime(2026, 10, 4, 23, 59, 59, tzinfo=timezone.utc)
 
     prompt = runtime_module.build_system_prompt(config, now=morning)
 

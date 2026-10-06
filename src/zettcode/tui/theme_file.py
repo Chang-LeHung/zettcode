@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import tomllib
 from dataclasses import fields, replace
 from pathlib import Path
 
+from .._compat import tomllib
 from .core.theme import DARK, Theme, ToolTheme, theme_named
 from .render.code import CodeTheme
 from .render.color import parse_hex

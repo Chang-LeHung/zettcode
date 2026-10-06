@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, TypeAlias
 
 from ..tui import Widget
 from .registry import Provider
@@ -50,7 +50,7 @@ class CommandContext:
 
 
 #: Signature of a slash-command handler: its context in, what to show next out.
-type CommandHandler = Callable[[CommandContext], Awaitable["CommandResult"]]
+CommandHandler: TypeAlias = Callable[[CommandContext], Awaitable["CommandResult"]]
 
 
 @dataclass(frozen=True, slots=True)

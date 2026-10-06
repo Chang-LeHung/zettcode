@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import StrEnum
-from typing import ClassVar
+from typing import ClassVar, TypeAlias
+
+from ..._compat import StrEnum
 
 
 class EventKind(StrEnum):
@@ -130,4 +131,4 @@ class FocusEvent(Event):
     focused: bool = True
 
 
-type AnyEvent = KeyEvent | TextEvent | PasteEvent | MouseEvent | ResizeEvent | FocusEvent
+AnyEvent: TypeAlias = KeyEvent | TextEvent | PasteEvent | MouseEvent | ResizeEvent | FocusEvent

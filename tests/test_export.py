@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from zett_agent.extensions.events import MessageTiming
@@ -13,7 +13,7 @@ from zettcode.app.agent.export import COLLAPSE_AFTER, build_trace, render_html
 from zettcode.app.agent.storage import SessionStore
 
 #: One call's timing: two seconds, ten seconds after the session opened.
-STARTED = datetime(2026, 10, 5, 10, 0, tzinfo=UTC)
+STARTED = datetime(2026, 10, 5, 10, 0, tzinfo=timezone.utc)
 TIMING = MessageTiming(started_at=STARTED, completed_at=STARTED + timedelta(seconds=2), duration_ns=2_000_000_000)
 
 

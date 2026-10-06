@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from typing import TypeAlias
 
-type TrackSize = int | Callable[[int], int] | None
+TrackSize: TypeAlias = int | Callable[[int], int] | None
 
 
 @dataclass(frozen=True, slots=True)

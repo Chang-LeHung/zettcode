@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import base64
 from dataclasses import dataclass, field, fields, replace
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from math import ceil
 from pathlib import Path
 
@@ -27,6 +27,7 @@ from zett_agent.messages import (
 )
 from zett_agent.model import ModelRequest, ModelUsage, ReasoningEffort, ToolDefinition
 
+from zettcode._compat import ExceptionGroup
 from zettcode.app import Transcript, TranscriptSource, TranscriptView, ZettCodeApp
 from zettcode.app.agent.agent import ZettCodeAgent
 from zettcode.app.agent.context import ContextExtension, Tokenizer
@@ -826,7 +827,9 @@ async def test_a_second_compact_without_a_new_message_is_refused(tmp_path):
 async def test_the_export_command_writes_an_html_file(tmp_path):
     """`/export <path>` writes the session and says where it landed."""
     store = SessionStore(tmp_path)
-    timing = MessageTiming(started_at=datetime.now(UTC), completed_at=datetime.now(UTC), duration_ns=2_000_000_000)
+    timing = MessageTiming(
+        started_at=datetime.now(timezone.utc), completed_at=datetime.now(timezone.utc), duration_ns=2_000_000_000
+    )
     await store.append("session-0001", "r1", UserMessage(content="fix <the> parser"), timing=timing)
     await store.append("session-0001", "r1", AssistantMessage(content="Fixed it."), timing=timing)
 
@@ -2298,7 +2301,7 @@ async def test_a_wrapping_draft_grows_the_composer_and_shrinks_the_transcript():
 
 
 def test_format_ago_uses_the_coarsest_unit_that_fits():
-    now = datetime(2026, 10, 3, 12, 0, tzinfo=UTC)
+    now = datetime(2026, 10, 3, 12, 0, tzinfo=timezone.utc)
 
     assert format_ago(now - timedelta(seconds=5), now=now) == "just now"
     assert format_ago(now - timedelta(seconds=90), now=now) == "1m ago"
@@ -2316,7 +2319,7 @@ def test_the_header_trims_a_wide_path_by_display_width():
 
 
 def test_the_sessions_panel_lines_wide_titles_up_in_one_column():
-    now = datetime(2026, 10, 3, 12, 0, tzinfo=UTC)
+    now = datetime(2026, 10, 3, 12, 0, tzinfo=timezone.utc)
     sessions = [
         SessionInfo("01a1010f", "Flask 实现 Python 服务器", now - timedelta(minutes=17), now - timedelta(minutes=17)),
         SessionInfo(
@@ -2552,7 +2555,7 @@ async def test_an_unnamed_session_reads_as_a_new_session(tmp_path):
 
 
 def test_the_sessions_panel_names_an_untitled_session():
-    now = datetime(2026, 10, 3, 12, 0, tzinfo=UTC)
+    now = datetime(2026, 10, 3, 12, 0, tzinfo=timezone.utc)
     sessions = [SessionInfo("01a1010f", None, now - timedelta(minutes=17), now - timedelta(minutes=17))]
 
     page = SessionsPage(sessions, on_select=lambda _: None, on_cancel=lambda: None, now=now)
@@ -2561,7 +2564,7 @@ def test_the_sessions_panel_names_an_untitled_session():
 
 
 def test_the_sessions_panel_numbers_its_rows_and_fills_the_panel():
-    now = datetime(2026, 10, 3, 12, 0, tzinfo=UTC)
+    now = datetime(2026, 10, 3, 12, 0, tzinfo=timezone.utc)
     sessions = [SessionInfo(f"01a1010{index}", f"session {index}", now, now) for index in range(12)]
     page = SessionsPage(sessions, on_select=lambda _: None, on_cancel=lambda: None, now=now)
 
@@ -2605,7 +2608,9 @@ async def test_the_status_line_mirrors_the_usage_extension():
 
 async def test_resuming_a_session_restores_its_token_totals(tmp_path):
     store = SessionStore(tmp_path)
-    timing = MessageTiming(started_at=datetime.now(UTC), completed_at=datetime.now(UTC), duration_ns=2_000_000_000)
+    timing = MessageTiming(
+        started_at=datetime.now(timezone.utc), completed_at=datetime.now(timezone.utc), duration_ns=2_000_000_000
+    )
     await store.append(
         "previous",
         "req",

@@ -22,11 +22,12 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, replace
 from datetime import datetime
-from enum import StrEnum
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Literal, TypeAlias
 
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
+
+from ...._compat import StrEnum
 
 #: File name of the metadata log, inside the workspace folder.
 METADATA_FILE = "metadata.jsonl"
@@ -65,7 +66,7 @@ class SessionTitle(BaseModel):
     title: str
 
 
-type MetadataRecord = Annotated[SessionStarted | SessionActivity | SessionTitle, Field(discriminator="kind")]
+MetadataRecord: TypeAlias = Annotated[SessionStarted | SessionActivity | SessionTitle, Field(discriminator="kind")]
 METADATA: TypeAdapter[SessionStarted | SessionActivity | SessionTitle] = TypeAdapter(MetadataRecord)
 
 

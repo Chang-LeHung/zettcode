@@ -5,12 +5,13 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import TypeAlias
 
 from .events import AnyEvent, KeyEvent, TextEvent
 from .host import Host
 
-type CommandRun = Callable[[AnyEvent, Host], bool]
-type BindingPriority = str
+CommandRun: TypeAlias = Callable[[AnyEvent, Host], bool]
+BindingPriority: TypeAlias = str
 
 _PRIORITIES = ("capture", "bubble")
 _SEPARATORS = re.compile(r"[-+\s]+")

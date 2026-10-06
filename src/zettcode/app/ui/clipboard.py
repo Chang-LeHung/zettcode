@@ -28,10 +28,10 @@ from ctypes import c_char_p, c_ulong, c_void_p
 from functools import lru_cache
 from pathlib import Path
 from subprocess import CompletedProcess
-from typing import Any
+from typing import Any, TypeAlias
 
 #: What one clipboard command looks like: argv in, its result out.
-type Runner = Callable[[Sequence[str]], CompletedProcess[bytes]]
+Runner: TypeAlias = Callable[[Sequence[str]], CompletedProcess[bytes]]
 
 #: Media type of an image the desktop path had to normalise: PNG is what both
 #: platforms write, and the conversion on macOS exists to keep that true.
@@ -205,7 +205,7 @@ def _pasteboard_reader() -> Callable[[], bytes | None] | None:
         runtime.objc_autoreleasePoolPush.argtypes = []
         runtime.objc_autoreleasePoolPop.restype = None
         runtime.objc_autoreleasePoolPop.argtypes = [c_void_p]
-    except AttributeError, OSError:
+    except (AttributeError, OSError):
         return None
 
     def send(
@@ -299,7 +299,7 @@ def image_from_paste(text: str) -> tuple[bytes, str] | None:
         return None
     try:
         data = base64.b64decode(payload, validate=True)
-    except binascii.Error, ValueError:
+    except (binascii.Error, ValueError):
         return None
     return _sniff(data)
 

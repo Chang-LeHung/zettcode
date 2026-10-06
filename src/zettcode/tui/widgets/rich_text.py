@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from typing import cast
+from typing import TypeAlias, cast
 
 from ..core.geometry import Constraints, Size
 from ..core.widget import Widget
@@ -11,8 +11,8 @@ from ..render import Canvas, Span, Style, TextLine
 from ..render.rich_text import Alignment, layout_rich_lines
 from ..render.text import display_width
 
-type RichContent = str | Span | TextLine | Sequence[Span] | Sequence[TextLine]
-type RichValue = RichContent | Callable[[], RichContent]
+RichContent: TypeAlias = str | Span | TextLine | Sequence[Span] | Sequence[TextLine]
+RichValue: TypeAlias = RichContent | Callable[[], RichContent]
 
 
 class RichText(Widget):

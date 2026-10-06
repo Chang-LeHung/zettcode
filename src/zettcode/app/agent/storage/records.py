@@ -28,15 +28,16 @@ import json
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
-from enum import StrEnum
-from typing import Annotated, Literal, cast
+from datetime import datetime, timezone
+from typing import Annotated, Any, Literal, TypeAlias, cast
 
 from pydantic import BaseModel, Field, TypeAdapter, field_serializer, field_validator
 from zett_agent.extensions.compaction import CompactedMessage
 from zett_agent.extensions.events import MessageTiming
 from zett_agent.messages import AnyMessage
 from zett_agent.model import ModelUsage
+
+from ...._compat import StrEnum
 
 STORE_FILE = "data.jsonl"
 STORE_VERSION = 1
@@ -45,13 +46,16 @@ MAX_AGENT_NAME = 64
 # Session ids become directory names, so they may not escape the store root.
 SAFE_SESSION_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
-#: A JSON value, as the stored metadata and tags can contain.
-type JsonValue = str | int | float | bool | None | list[JsonValue] | dict[str, JsonValue]
+#: A JSON value, as the stored metadata and tags can contain. Containers hold
+#: ``Any`` rather than naming this alias again: a recursive alias needs the
+#: ``type`` statement, and pydantic only builds a schema for that spelling,
+#: which Python 3.10 does not have.
+JsonValue: TypeAlias = str | int | float | bool | None | list[Any] | dict[str, Any]
 
 
 def now() -> datetime:
     """Return the current UTC time, so every writer stamps records the same way."""
-    return datetime.now(UTC)
+    return datetime.now(timezone.utc)
 
 
 class LineKind(StrEnum):
@@ -150,7 +154,7 @@ class CompactionLine(BaseModel):
         return _dump_messages(value)
 
 
-type Line = Annotated[SessionLine | MessageLine | CompactionLine, Field(discriminator="kind")]
+Line: TypeAlias = Annotated[SessionLine | MessageLine | CompactionLine, Field(discriminator="kind")]
 LINES: TypeAdapter[SessionLine | MessageLine | CompactionLine] = TypeAdapter(Line)
 
 

@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import TypeAlias
 
 from ..core.geometry import Constraints, Size
 from ..core.widget import Widget
 from ..render import DEFAULT_STYLE, Canvas, Span, Style, TextLine, truncate_spans
 
-type Text = str | TextLine | Callable[[], str | TextLine]
+Text: TypeAlias = str | TextLine | Callable[[], str | TextLine]
 
 
 class StatusBar(Widget):
