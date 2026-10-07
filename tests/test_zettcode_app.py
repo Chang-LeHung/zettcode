@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 from zett_agent.agent import AgentRunConfig, AgentRunContext, AgentState
 from zett_agent.events import AgentEvent, AgentEventType
+from zett_agent.extensions.ask_user import ASK_USER_EVENT_NAME
 from zett_agent.extensions.compaction import CompactedMessage
 from zett_agent.extensions.events import MessageTiming
 from zett_agent.extensions.shell_approval import SHELL_APPROVAL_EVENT_NAME
@@ -58,6 +59,7 @@ from zettcode.app.ui.widgets import (
     WELCOME,
     ApprovalChoice,
     ApprovalPage,
+    AskUserPage,
     CommandCompleter,
     ContextPage,
     SessionsPage,
@@ -1914,6 +1916,328 @@ async def test_escape_aborts_the_pending_command():
 
     event, _ = app.agent.runtime.client.agent.emitted[0]
     assert event.payload == {"tool_call_id": "call-1", "decision": "abort", "remember": False}
+    assert app.app.screens.top.name == "main"
+
+
+def _ask_event(
+    question: str = "Which format?",
+    *,
+    options: tuple[str, ...] = ("Markdown", "Plain text"),
+    allow_multiple: bool = False,
+    call_id: str = "call-9",
+) -> AgentEvent:
+    """Build the CUSTOM event the ask_user extension emits for one question."""
+    return AgentEvent(
+        AgentEventType.CUSTOM,
+        "session-0001",
+        name=ASK_USER_EVENT_NAME,
+        payload={
+            "session_id": "session-0001",
+            "tool_call_id": call_id,
+            "question": question,
+            "options": list(options),
+            "allow_multiple": allow_multiple,
+            "response_event": "ask_user_response",
+        },
+    )
+
+
+def _ask_page(app: ZettCodeApp) -> AskUserPage:
+    """Return the question panel on top of the stack."""
+    return next(widget for widget in walk(app.app.screens.top.widget) if isinstance(widget, AskUserPage))
+
+
+async def test_a_question_from_the_model_opens_a_panel():
+    app = build_app()
+    harness = _harness(app)
+
+    await app.projector.dispatch(_ask_event())
+
+    page = _ask_page(app)
+    text = harness.render().text
+    assert app.app.screens.top.name == "ask"
+    # A panel, not a page: the conversation stays visible above the question.
+    assert page.rect.bottom == app.app.height
+    assert "Which format?" in text
+    assert "1. Markdown" in text
+    assert "2. Plain text" in text
+    # The panel is as tall as its content, not a fixed slab.
+    assert page.rect.height == page.preferred_height(page.rect.width)
+    # The answer line has the focus, so typing lands in it.
+    assert app.app.focused_widget() is page.answer
+
+
+async def test_typing_an_answer_sends_it_to_the_suspended_call():
+    app = build_app()
+    harness = _harness(app)
+    await app.projector.dispatch(_ask_event())
+
+    harness.write("Markdown, but keep the tables")
+    harness.press("enter")
+
+    event, config = app.agent.runtime.client.agent.emitted[0]
+    assert event.name == "ask_user_response"
+    assert event.payload == {"tool_call_id": "call-9", "answer": "Markdown, but keep the tables"}
+    assert config.session_id == "session-0001"
+    assert app.app.screens.top.name == "main"
+
+
+async def test_enter_on_a_row_sends_that_choice():
+    """A single-choice question works like every other picker in the shell."""
+    app = build_app()
+    harness = _harness(app)
+    await app.projector.dispatch(_ask_event())
+
+    harness.press("down")
+    harness.press("enter")
+
+    event, _ = app.agent.runtime.client.agent.emitted[0]
+    assert event.payload == {"tool_call_id": "call-9", "answer": "Plain text"}
+    assert app.app.screens.top.name == "main"
+
+
+async def test_replacing_a_written_answer_asks_first():
+    """One answer only: say so before throwing away what the reader typed."""
+    app = build_app()
+    harness = _harness(app)
+    await app.projector.dispatch(_ask_event())
+
+    harness.write("something of my own")
+    harness.press("down")  # moving back to the choices leaves the text in place
+    harness.press("enter")
+
+    assert "one answer only" in harness.render().text
+    assert app.agent.runtime.client.agent.emitted == []
+
+    harness.press("enter")
+
+    event, _ = app.agent.runtime.client.agent.emitted[0]
+    assert event.payload == {"tool_call_id": "call-9", "answer": "Plain text"}
+
+
+async def test_several_choices_are_ticked_and_unticked():
+    app = build_app()
+    harness = _harness(app)
+    app.app.resize(80, 22)
+    await app.projector.dispatch(_ask_event(options=("Markdown", "Plain text"), allow_multiple=True))
+    page = _ask_page(app)
+
+    harness.press("enter")
+    harness.press("down")
+    harness.press("enter")
+
+    assert page.chosen == ["Markdown", "Plain text"]
+    text = harness.render().text
+    assert "✓  1. Markdown" in text
+    assert "✓  2. Plain text" in text
+    assert "send (2 chosen)" in text
+    # The answer line is there too: its text is added to the ticks.
+    assert page.answer in page.children
+
+    # Ticking it again takes it back out.
+    harness.press("enter")
+
+    assert page.chosen == ["Markdown"]
+    assert "✓  2. Plain text" not in harness.render().text
+
+
+async def test_typing_folds_the_choices_away_and_marks_the_line():
+    """Both kinds of question look the same while the reader is writing."""
+    for allow_multiple in (False, True):
+        app = build_app()
+        harness = _harness(app)
+        app.app.resize(80, 22)
+        await app.projector.dispatch(_ask_event(options=("Markdown", "Plain text"), allow_multiple=allow_multiple))
+
+        harness.write("my own words")
+        text = harness.render().text
+        page = _ask_page(app)
+
+        assert "1. Markdown" not in text
+        assert "2. Plain text" not in text
+        assert "my own words" in text
+        assert page.answer.prompt.startswith("▸")
+
+        # Arrows bring the choices back, with the text still in the line.
+        harness.press("up")
+        text = harness.render().text
+        assert "1. Markdown" in text
+        assert "my own words" in text
+
+
+async def test_a_multiple_choice_answer_is_its_ticks_and_the_typed_text():
+    app = build_app()
+    harness = _harness(app)
+    app.app.resize(80, 22)
+    await app.projector.dispatch(_ask_event(options=("Markdown", "Plain text"), allow_multiple=True))
+
+    harness.press("enter")
+    harness.write("and a note")
+    harness.press("enter")  # typing, so this sends
+
+    event, _ = app.agent.runtime.client.agent.emitted[0]
+    assert event.payload == {"tool_call_id": "call-9", "answer": "Markdown, and a note"}
+
+
+async def test_ticks_written_first_or_afterwards_make_the_same_answer():
+    """The ticks lead the answer and the typed words follow, whatever the order."""
+    for actions in (
+        (("press", "enter"), ("press", "down"), ("press", "enter"), ("write", "and a note")),
+        (("write", "and a note"), ("press", "up"), ("press", "enter"), ("press", "down"), ("press", "enter")),
+    ):
+        app = build_app()
+        harness = _harness(app)
+        app.app.resize(80, 22)
+        await app.projector.dispatch(_ask_event(options=("Markdown", "Plain text"), allow_multiple=True))
+        for action, value in actions:
+            harness.press(value) if action == "press" else harness.write(value)
+
+        harness.press("down")  # back to the choices
+        harness.press("down")  # past them, onto the send row
+        harness.press("enter")
+
+        event, _ = app.agent.runtime.client.agent.emitted[0]
+        assert event.payload["answer"] == "Markdown, Plain text, and a note"
+
+
+async def test_a_word_typed_that_is_already_ticked_is_not_repeated():
+    app = build_app()
+    harness = _harness(app)
+    app.app.resize(80, 22)
+    await app.projector.dispatch(_ask_event(options=("Markdown", "Plain text"), allow_multiple=True))
+
+    harness.press("enter")
+    harness.write("Markdown")
+    harness.press("enter")
+
+    event, _ = app.agent.runtime.client.agent.emitted[0]
+    assert event.payload["answer"] == "Markdown"
+
+
+async def test_a_written_answer_leaves_no_row_marked():
+    """The reader must be able to tell what the answer is: their words, not a row."""
+    app = build_app()
+    harness = _harness(app)
+    app.app.resize(80, 22)
+    await app.projector.dispatch(_ask_event(options=("Markdown", "Plain text")))
+
+    harness.write("something of my own")
+    text = harness.render().text
+
+    assert "✓" not in text
+    assert "something of my own" in text
+
+
+async def test_a_multiple_choice_question_finishes_on_its_send_row():
+    app = build_app()
+    harness = _harness(app)
+    app.app.resize(80, 22)
+    await app.projector.dispatch(_ask_event(options=("Markdown", "Plain text"), allow_multiple=True))
+
+    harness.press("enter")
+    harness.press("down")
+    harness.press("down")  # past the choices, onto "send"
+    text = harness.render().text
+    assert "\u27a4 send (1 chosen)" in text
+
+    harness.press("enter")
+
+    event, _ = app.agent.runtime.client.agent.emitted[0]
+    assert event.payload == {"tool_call_id": "call-9", "answer": "Markdown"}
+    assert app.app.screens.top.name == "main"
+
+
+async def test_a_long_option_list_windows_around_the_highlight():
+    """The model may offer twenty options; the panel can only show a few."""
+    app = build_app()
+    harness = _harness(app)
+    app.app.resize(80, 20)
+    await app.projector.dispatch(_ask_event("Pick:", options=tuple(f"choice {n}" for n in range(1, 10))))
+
+    for _ in range(7):
+        harness.press("down")
+    text = harness.render().text
+
+    assert "▸ ✓  8. choice 8" in text
+    assert "… 2 above" in text
+    assert "… 1 below" in text
+    assert "1. choice 1" not in text
+
+
+async def test_an_empty_answer_is_refused():
+    app = build_app()
+    harness = _harness(app)
+    # A question with no options has only the answer line, so Enter tries to
+    # send it and has nothing to send.
+    await app.projector.dispatch(_ask_event(options=()))
+
+    harness.press("enter")
+
+    assert app.app.screens.top.name == "ask"
+    assert app.agent.runtime.client.agent.emitted == []
+
+
+async def test_escape_declines_the_question_so_the_model_can_carry_on():
+    app = build_app()
+    harness = _harness(app)
+    await app.projector.dispatch(_ask_event())
+
+    harness.press("escape")
+
+    event, _ = app.agent.runtime.client.agent.emitted[0]
+    assert event.name == "ask_user_response"
+    assert event.payload["declined"] is True
+    assert event.payload["answer"] is None
+    assert app.app.screens.top.name == "main"
+    assert any("question declined" in entry.text for entry in app.transcript.entries)
+
+
+async def test_ctrl_c_declines_instead_of_leaving_the_call_suspended():
+    app = build_app()
+    harness = _harness(app)
+    await app.projector.dispatch(_ask_event())
+
+    harness.press("ctrl_c")
+
+    event, _ = app.agent.runtime.client.agent.emitted[0]
+    assert event.payload["declined"] is True
+    assert app.app.screens.top.name == "main"
+
+
+async def test_a_finished_run_closes_a_question_that_was_left_open():
+    app = build_app()
+    _harness(app)
+    await app.projector.dispatch(_ask_event())
+
+    app._drop_ask()
+
+    assert app.app.screens.top.name == "main"
+    assert app.agent.runtime.client.agent.emitted == []
+
+
+async def test_questions_from_one_response_are_asked_one_after_another():
+    """The model may ask several in a turn; each suspends the same run."""
+    app = build_app()
+    harness = _harness(app)
+    await app.projector.dispatch(_ask_event("First?", call_id="call-1"))
+    await app.projector.dispatch(_ask_event("Second?", call_id="call-2"))
+
+    first = harness.render().text
+    assert "1 of 2" in first
+    assert "First?" in first
+    harness.write("one")
+    harness.press("enter")
+
+    second = harness.render().text
+    assert "2 of 2" in second
+    assert "Second?" in second
+    harness.write("two")
+    harness.press("enter")
+
+    answered = [
+        (event.payload["tool_call_id"], event.payload["answer"]) for event, _ in app.agent.runtime.client.agent.emitted
+    ]
+    assert answered == [("call-1", "one"), ("call-2", "two")]
     assert app.app.screens.top.name == "main"
 
 

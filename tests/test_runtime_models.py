@@ -53,6 +53,11 @@ def _config_with(tmp_path, **changes) -> ZettCodeConfig:
     )
 
 
+def _mcp(extensions) -> McpExtension:
+    """Return the composed MCP extension, wherever the tuple puts it."""
+    return next(extension for extension in extensions if isinstance(extension, McpExtension))
+
+
 def test_configured_skill_roots_are_discovered_and_advertised(tmp_path):
     skill = tmp_path / "skills" / "review"
     skill.mkdir(parents=True)
@@ -62,9 +67,8 @@ def test_configured_skill_roots_are_discovered_and_advertised(tmp_path):
     )
 
     config = _config_with(tmp_path, skill_roots=(tmp_path / "skills",))
-    (extension,) = runtime_module.integration_extensions(config)
+    extension = next(item for item in runtime_module.integration_extensions(config) if isinstance(item, SkillExtension))
 
-    assert isinstance(extension, SkillExtension)
     catalog = {item.name: item for item in extension.skills}
     assert catalog["review"].description == "Review a diff with the team checklist"
     assert catalog["review"].path == (skill / "SKILL.md").resolve()
@@ -80,12 +84,10 @@ def test_mcp_is_loaded_only_when_a_server_file_exists(tmp_path):
     loaded = runtime_module.integration_extensions(_config_with(tmp_path, mcp_config=servers))
     missing = runtime_module.integration_extensions(_config_with(tmp_path, mcp_config=tmp_path / "absent.json"))
 
-    assert [isinstance(extension, McpExtension) for extension in loaded] == [False, True]
-    assert isinstance(loaded[0], SkillExtension)
-    assert [server.name for server in loaded[1].servers] == ["docs"]
+    assert [server.name for server in _mcp(loaded).servers] == ["docs"]
     # With no server file there is nothing to load, so no MCP instructions are
     # added to the request at all.
-    assert all(isinstance(extension, SkillExtension) for extension in missing)
+    assert not any(isinstance(extension, McpExtension) for extension in missing)
 
 
 def test_the_optional_integrations_can_be_disabled(tmp_path):
@@ -96,6 +98,7 @@ def test_the_optional_integrations_can_be_disabled(tmp_path):
         _config_with(
             tmp_path,
             agents_md_enabled=False,
+            ask_user_enabled=False,
             skills_enabled=False,
             mcp_enabled=False,
             mcp_config=servers,
@@ -287,7 +290,7 @@ async def test_a_dead_mcp_server_is_named_in_the_failure(tmp_path, monkeypatch):
         encoding="utf-8",
     )
     config = _config_with(tmp_path, skills_enabled=False, mcp_config=servers)
-    (extension,) = runtime_module.integration_extensions(config)
+    extension = _mcp(runtime_module.integration_extensions(config))
 
     async def failing(self, context):
         raise ExceptionGroup("unhandled errors in a TaskGroup", [ConnectionError("All connection attempts failed")])

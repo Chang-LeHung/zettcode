@@ -206,6 +206,7 @@ def test_project_instructions_skills_and_mcp_can_be_turned_off(tmp_path: Path):
     path = tmp_path / "config.toml"
     path.write_text(
         '[[models]]\nmodel = "m"\ntoken = "t"\n\n[agents_md]\nenabled = false\n'
+        "\n[ask_user]\nenabled = false\n"
         "\n[skills]\nenabled = false\n\n[mcp]\nenabled = false\n\n[update]\nenabled = false\n",
         encoding="utf-8",
     )
@@ -213,6 +214,7 @@ def test_project_instructions_skills_and_mcp_can_be_turned_off(tmp_path: Path):
     config = load_config(tmp_path, path=path)
 
     assert config.agents_md_enabled is False
+    assert config.ask_user_enabled is False
     assert config.skills_enabled is False
     assert config.mcp_enabled is False
     assert config.update_enabled is False
@@ -306,6 +308,11 @@ def test_load_config_requires_at_least_one_model(tmp_path: Path):
             "Unknown config keys in the \\[agents_md\\] table",
         ),
         ('[[models]]\nmodel = "m"\ntoken = "t"\n[agents_md]\nenabled = "yes"\n', "must be bool"),
+        (
+            '[[models]]\nmodel = "m"\ntoken = "t"\n[ask_user]\nask = "sometimes"\n',
+            "Unknown config keys in the \\[ask_user\\] table",
+        ),
+        ('[[models]]\nmodel = "m"\ntoken = "t"\n[ask_user]\nenabled = "yes"\n', "must be bool"),
         (
             '[[models]]\nmodel = "m"\ntoken = "t"\n[update]\ninterval = "daily"\n',
             "Unknown config keys in the \\[update\\] table",

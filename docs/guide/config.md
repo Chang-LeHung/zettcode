@@ -51,6 +51,9 @@ max_entries = 1024             # conversation rows kept on screen
 [agents_md]
 enabled = true                 # read AGENTS.md from the workspace upwards
 
+[ask_user]
+enabled = true                 # let the model ask a question mid-turn
+
 [skills]
 enabled = true
 roots = ["~/team-skills"]      # searched before ~/.zettcode/skills
@@ -71,6 +74,7 @@ enabled = true                 # look for a newer release in the background
 | --- | --- | --- | --- |
 | `transcript` | `max_entries` | `1024` | Bounds the scrollback only; the session keeps everything. |
 | `agents_md` | `enabled` | `true` | See [Project instructions](/guide/instructions). |
+| `ask_user` | `enabled` | `true` | Give the model the `ask_user` tool, so it can pause a turn and ask. |
 | `skills` | `enabled` | `true` | See [Skills and MCP](/guide/skills-and-mcp). |
 | `skills` | `roots` | `[]` | A relative root resolves against the workspace. |
 | `mcp` | `enabled` | `true` | See [Skills and MCP](/guide/skills-and-mcp). |

@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING
 from zett_agent.agent import AgentRunConfig
 from zett_agent.client import AgentClient
 from zett_agent.dispatcher import AgentEventDispatcher
+from zett_agent.extensions.ask_user import AskUserExtension
 from zett_agent.extensions.base import AgentExtension
 from zett_agent.extensions.coding import CodingExtension
 from zett_agent.extensions.shell_approval import ShellApprovalExtension, ShellApprovalMode
@@ -80,19 +81,21 @@ calls. Verify mutable facts with tools instead of assuming this startup snapshot
 
 
 def integration_extensions(config: ZettCodeConfig) -> tuple[AgentExtension, ...]:
-    """Return the optional project-instruction, skill, and MCP extensions.
+    """Return the optional extensions this configuration asks for.
 
-    All three live outside the model loop, so they are built here and handed to
-    :func:`create_agent` with the rest. MCP is skipped when there is no server
-    file to read: an unconfigured run then carries no MCP instructions at all,
-    rather than a system message saying there is nothing to load. The project
-    instructions are the workspace's ``AGENTS.md`` files: the extension reads
-    them again on every request, so an edit applies to the next turn, and its
-    priority keeps them ahead of the tool and skill guidance below.
+    They live outside the model loop, so they are built here and handed to
+    :func:`create_agent` with the rest: the ``ask_user`` tool the model asks its
+    questions through, the project instructions, the skills, and MCP. MCP is
+    skipped when there is no server file to read, so an unconfigured run carries
+    no MCP instructions at all rather than a system message saying there is
+    nothing to load. The project instructions are the workspace's ``AGENTS.md``
+    files: the extension reads them again on every request, so an edit applies to
+    the next turn, and its priority keeps them ahead of the tool and skill
+    guidance below.
 
     Args:
-        config: Settings naming the workspace, the skill roots, and the MCP
-            server file.
+        config: Settings naming the workspace, what may ask questions, the skill
+            roots, and the MCP server file.
 
     Returns:
         The extensions to add, in the order they lead the request.
@@ -103,6 +106,8 @@ def integration_extensions(config: ZettCodeConfig) -> tuple[AgentExtension, ...]
     from .mcp import ReportingMcpExtension
 
     extensions: list[AgentExtension] = []
+    if config.ask_user_enabled:
+        extensions.append(AskUserExtension())
     if config.agents_md_enabled:
         extensions.append(AgentsMdExtension(config.workspace))
     if config.skills_enabled:

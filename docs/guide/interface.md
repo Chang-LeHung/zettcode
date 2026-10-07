@@ -94,6 +94,60 @@ offers:
 | `p` | Run it, and remember this exact command for the session. |
 | `Esc` | Refuse. The agent is told the command failed, and can react. |
 
+## When the model asks you a question
+
+Some decisions are not the model's to guess — which format, which of two files,
+whether to keep going. It can ask, and the turn waits for you. The panel is only
+as tall as the question needs, and it says which kind of answer it wants:
+
+```
+  Which format should I write the summary in?
+       1. Markdown
+   ▸ ✓ 2. Plain text
+  › up/down choose, enter sends · or type an answer · esc cancels
+```
+
+- `Up` / `Down` move through the choices, and `Enter` acts on the highlighted
+  row. A one-answer question sends it straight away, the way `/model` and
+  `/resume` work; the `✓` marks the row `Enter` would pick.
+- A question that allows several choices ticks instead, and grows a `send` row
+  to finish with:
+
+  ```
+     ✓ 1. Summary
+     ✓ 2. Diff
+       3. Tests
+     ➤ send (2 chosen)
+  ```
+
+  `Enter` on a ticked row unticks it, and `➤ send` answers with everything
+  ticked.
+- Under the choices sits the answer line, with no label of its own: it shows the
+  keys until you type, and what you type from then on. So you can pick a choice
+  or answer in your own words — and a question with no choices is nothing but
+  that line. A multiple-choice answer is its ticks *plus* whatever you type
+  beside them, in that order however you wrote them, and a word that is already
+  ticked is not repeated.
+- Typing takes the panel over: the choices fold away, and the `▸` marker and the
+  band move to the answer line, because that is where the cursor is. `Up`/`Down`
+  bring the choices back with your text still in the line — and on a one-answer
+  question no row is marked then, since the answer is what you wrote.
+- A chosen row keeps a raised background and an accent-coloured `✓`, so what you
+  have picked is visible at a glance; the row your cursor is on is banded more
+  strongly still.
+- On a one-answer question, choosing after typing asks first: the note
+  `one answer only` appears beside the question, and a second `Enter` replaces
+  what you wrote.
+- The header counts the questions when the model asked several in one turn, and
+  each is asked in turn: answer the one on screen, and the next appears.
+- `Esc`, or `Ctrl-C`, declines the question. The model is told the question was
+  cancelled and carries on rather than waiting for an answer that is not coming.
+
+The panel sits over the conversation like the approval prompt, and the run stays
+suspended until it is answered. `[ask_user] enabled = false` takes the tool away
+altogether, and then the model answers from what it already knows instead of
+asking.
+
 ## Pictures and pastes
 
 A terminal cannot hand a program the bytes of a pasted image, so **Ctrl-V** reads

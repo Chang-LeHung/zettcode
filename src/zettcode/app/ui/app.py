@@ -39,6 +39,7 @@ from ...tui.widgets import Rule, Text
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from collections.abc import AsyncGenerator
 from ..agent.agent import PromptPart, ZettCodeAgent, carries_image, mention_hint
+from ..agent.ask import AskUserQuestion
 from ..agent.mentions import MentionRegistry
 from ..agent.projection import TranscriptProjector
 from ..agent.rows import clock_text, elapsed_text
@@ -95,6 +96,7 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
         self.projector = TranscriptProjector(
             self.transcript,
             on_approval=self._approval_requested,
+            on_ask=self._ask_requested,
             on_usage=self._usage_updated,
             on_steering_started=self._steering_started,
             on_steering_interrupted=self._steering_interrupted,
@@ -138,6 +140,8 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
         self._busy = False
         self._steering: list[str] = []
         self._steering_sent = 0
+        self._asks: list[AskUserQuestion] = []
+        self._ask_total = 0
         self._activity = Activity.READY
         self._note: str | None = None
         self._auto_shell = False
@@ -326,6 +330,7 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
         finally:
             took = elapsed_text(monotonic() - started)
             self.transcript.notice(f"Processed for {took} {SEPARATOR} {clock_text()}")
+            self._drop_ask()
             self._clear_steering()
             self._set_busy(False)
             self._activity = Activity.READY
