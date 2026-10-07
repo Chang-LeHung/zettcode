@@ -7,7 +7,6 @@ retains only typed entries and a cached line source, and remains virtualized.
 
 from __future__ import annotations
 
-import re
 from abc import ABC, abstractmethod
 from typing import Any, Generic, TypeVar
 
@@ -26,6 +25,7 @@ from ...tui import (
     Theme,
 )
 from ...tui.render import SweepSpan, display_width, highlight, inset_line, layout_rich_lines, sweep_spans, truncate
+from ..brand import LOGO_LINES
 from .entries import Entry, EntryStatus, PlainEntry, ProcessingEntry, TextEntry, ThinkingEntry, ToolEntry
 from .rows import (
     COMPACTING_LABEL,
@@ -87,62 +87,39 @@ class EntryProcessor(Generic[E], ABC):
         return [inset_line(row, margin) for row in layout_rich_lines(source, max(1, width - margin))]
 
 
-#: Block glyphs the welcome mark is drawn from; a line starting with one is
-#: part of the icon rather than a label or the hint.
-_MARK_GLYPHS = frozenset("\u2580\u2584\u2588\u258c\u2590\u2591\u2592\u2593")
-#: Two rows of block glyphs form the welcome mark's warm pixel heart.
-_HEART_PIXELS = ("▄ ▄", "▀█▀")
-#: The gap between the mark and its label: three or more spaces before a word.
-#: Requiring a letter stops the mark's own gaps (around the heart) matching.
-_LABEL_GAP = re.compile(r"(?<=\S) {3,}(?=[A-Za-z])")
-
-
 class WelcomeProcessor(EntryProcessor[TextEntry]):
-    """Draw the welcome's pixel mark and its labels with separate palette roles.
-
-    The mark's rows are shaded top-down, half in ``accent_bright`` and half in
-    ``accent``, so the icon reads as lit rather than flat; the pixel heart in its
-    face uses the warm ``warning`` accent. The first label is the title and
-    gets body text in bold; the rest are subtitles.
-    """
+    """Draw the shared brand pixels unchanged, with themed title and hint text."""
 
     def supports(self, entry: Entry) -> bool:
         """Claim welcome banners."""
         return isinstance(entry, TextEntry) and entry.kind == "welcome"
 
     def lines(self, entry: TextEntry, width: int, theme: Theme, frame: int) -> list[TextLine]:
-        """Colour the mark, title, and subtitle without altering their text."""
-        source = entry.text.split("\n")
-        mark_rows = [index for index, line in enumerate(source) if line.lstrip()[:1] in _MARK_GLYPHS]
-        upper = set(mark_rows[: max(1, len(mark_rows) // 2)])
+        """Keep labels beside the mark, stacking them when the window is narrow."""
+        if width <= 0:
+            return []
         lines: list[TextLine] = []
+        marks: list[TextLine] = []
+        labels: list[TextLine] = []
         titled = False
-        for index, line in enumerate(source):
-            match = _LABEL_GAP.search(line)
-            if match is not None:
-                mark, label = line[: match.end()], line[match.end() :]
-                title = not titled
-                titled = True
-                label_style = Style(foreground=theme.text, bold=True) if title else Style(foreground=theme.subtle)
-                spans = [*self._mark_spans(mark, upper=index in upper, theme=theme), Span(label, label_style)]
+        for index, line in enumerate(entry.text.split("\n")):
+            mark = LOGO_LINES[index] if index < len(LOGO_LINES) else None
+            if mark is not None and line.startswith(f"  {mark.text}"):
+                spans = [Span("  "), *mark.spans]
+                marks.append(TextLine(tuple(spans)))
+                label = line[2 + len(mark.text) :]
+                if label:
+                    style = Style(foreground=theme.subtle) if titled else Style(foreground=theme.text, bold=True)
+                    spans.append(Span(label, style))
+                    labels.append(TextLine((Span(label.lstrip(), style),)))
+                    titled = True
                 lines.append(TextLine(tuple(spans)))
-            elif index in mark_rows:
-                lines.append(TextLine(tuple(self._mark_spans(line, upper=index in upper, theme=theme))))
             else:
                 lines.append(TextLine((Span(line, Style(foreground=theme.subtle)),)))
+        if marks and any(line.width > width for line in lines):
+            stacked = [*marks, TextLine(), *(inset_line(label, 2) for label in labels)]
+            return list(layout_rich_lines(stacked, width, wrap=False))
         return lines
-
-    @staticmethod
-    def _mark_spans(text: str, *, upper: bool, theme: Theme) -> list[Span]:
-        """Colour the frame green and the two rows of its pixel heart warm."""
-        color = theme.accent_bright if upper else theme.accent
-        heart = next((pixels for pixels in _HEART_PIXELS if pixels in text), None)
-        if heart is None:
-            return [Span(text, Style(foreground=color))]
-        before, _, after = text.partition(heart)
-        spans = [Span(part, Style(foreground=color)) for part in (before, after) if part]
-        spans.insert(1 if before else 0, Span(heart, Style(foreground=theme.warning)))
-        return spans
 
 
 class NoticeProcessor(EntryProcessor[TextEntry]):

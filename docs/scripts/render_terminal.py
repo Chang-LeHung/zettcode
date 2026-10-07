@@ -16,6 +16,7 @@ from pathlib import Path
 
 from zettcode.app.agent.agent import ZettCodeAgent
 from zettcode.app.agent.runtime import ZettCodeRuntime
+from zettcode.app.brand import LOGO_PALETTE, LOGO_PIXELS
 from zettcode.app.ui.app import ZettCodeApp
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.plugins.builtins import ShellRows
@@ -124,13 +125,40 @@ def svg(canvas: Canvas) -> str:
     return "\n".join(parts) + "\n"
 
 
+def logo_svg() -> str:
+    """Serialize the same square pixels as the terminal, with transparent margins."""
+    parts = [
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" shape-rendering="crispEdges">',
+        "<title>ZettCode pixel robot</title>",
+    ]
+    for pixel, colour in LOGO_PALETTE.items():
+        paths: list[str] = []
+        for row, pixels in enumerate(LOGO_PIXELS):
+            column = 0
+            while column < len(pixels):
+                if pixels[column] != pixel:
+                    column += 1
+                    continue
+                start = column
+                while column < len(pixels) and pixels[column] == pixel:
+                    column += 1
+                length = column - start
+                paths.append(f"M{start + 1} {row + 6}h{length}v1h-{length}Z")
+        parts.append(f'<path d="{"".join(paths)}" fill="{colour}"/>')
+    parts.append("</svg>")
+    return "\n".join(parts) + "\n"
+
+
 def main() -> None:
-    """Write the preview only to the explicitly selected documentation asset."""
+    """Write the preview and optional logo only to the selected asset paths."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=Path("docs/public/terminal.svg"))
+    parser.add_argument("--logo-output", type=Path, help="also regenerate the logo from the shared terminal pixel map")
     args = parser.parse_args()
     canvas = preview()
     args.output.write_text(svg(canvas), encoding="utf-8")
+    if args.logo_output is not None:
+        args.logo_output.write_text(logo_svg(), encoding="utf-8")
 
 
 if __name__ == "__main__":

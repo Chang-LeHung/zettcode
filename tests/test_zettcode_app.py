@@ -51,6 +51,7 @@ from zettcode.app.agent.rows import (
 from zettcode.app.agent.side import SideQuestions
 from zettcode.app.agent.storage import SessionInfo, SessionStore
 from zettcode.app.agent.usage import USAGE_EVENT_NAME, UsageExtension, UsageSnapshot
+from zettcode.app.brand import LOGO_LINES, LOGO_PALETTE, LOGO_PIXELS, TERMINAL_PIXELS
 from zettcode.app.commands import Command, CommandContext, CommandResult
 from zettcode.app.ui import app as app_module
 from zettcode.app.ui import demo
@@ -351,45 +352,92 @@ def _offer_update(app: ZettCodeApp, tmp_path: Path, latest: str = "99.0.0") -> P
 
 
 def test_welcome_mark_is_compact_and_readable_in_both_themes():
-    assert len(WELCOME.splitlines()) == 7
-    # The mark is pixel art, drawn entirely from block glyphs.
-    assert WELCOME.splitlines()[0].strip() == "▄███████████▄"
-    assert WELCOME.splitlines()[4].strip() == "▀███████████▀"
-    assert WELCOME.splitlines()[2].strip().startswith("▐█    ▄ ▄    █▌")
-    assert WELCOME.splitlines()[3].strip() == "█    ▀█▀    █"
+    assert len(WELCOME.splitlines()) == 5
     for theme in (DARK, LIGHT):
         transcript = Transcript()
         transcript.welcome(WELCOME)
         source = TranscriptSource(transcript, theme=theme)
-        mark = source.line(0, 60)
         title = source.line(1, 60)
         subtitle = source.line(2, 60)
-
-        assert "█" in title.text
-        assert "▄ ▄" in subtitle.text
+        hint = source.line(4, 60)
         assert title.text.index("ZettCode") == subtitle.text.index("A focused")
-        assert mark.spans[0].style.foreground == theme.accent_bright
-        assert title.spans[0].style.foreground == theme.accent_bright
-        assert title.spans[1].style.foreground == theme.text
-        assert subtitle.spans[0].style.foreground == theme.accent
+        assert title.text.index("ZettCode") == hint.text.index("Type a task")
+        assert title.spans[-1].style.foreground == theme.text
+        assert title.spans[-1].style.bold
         assert subtitle.spans[-1].style.foreground == theme.subtle
-        heart = next(span for span in subtitle.spans if span.text == "▄ ▄")
-        assert heart.style.foreground == theme.warning
-        assert not heart.style.bold
-        heart_tip = source.line(3, 60)
-        assert next(span for span in heart_tip.spans if span.text == "▀█▀").style.foreground == theme.warning
+        for index, mark in enumerate(LOGO_LINES):
+            rendered = source.line(index, 60)
+            assert rendered.text.startswith(f"    {mark.text}")
+            assert rendered.spans[0] == Span("    ")
+            assert rendered.spans[1 : 1 + len(mark.spans)] == mark.spans
+            assert all(not span.style.bold for span in mark.spans)
+        assert hint.spans[-1].style.foreground == theme.subtle
+        assert "Type a task, or /help for commands." in hint.text
 
 
 def test_welcome_mark_is_wide_and_mirror_symmetric_with_a_centered_heart():
-    rows = [row[2:].split("   ZettCode", 1)[0].split("   A focused", 1)[0].rstrip() for row in WELCOME.splitlines()[:5]]
-    width = max(map(len, rows))
-    assert width == 15
-    mirror = str.maketrans("▌▐", "▐▌")
-    for row in rows:
-        padded = row.ljust(width)
-        assert padded == padded[::-1].translate(mirror)
-    for row, heart in zip(rows[2:4], ("▄ ▄", "▀█▀"), strict=True):
-        assert row.index(heart) * 2 + len(heart) == width
+    assert len(LOGO_PIXELS) == 20
+    assert len(LOGO_LINES) == 5
+    for row in LOGO_PIXELS:
+        assert len(row) == 30
+        assert row == row[::-1]
+        if "H" in row:
+            assert row.index("H") + row.rindex("H") == 29
+    assert all(line.width == 15 for line in LOGO_LINES)
+    assert [row[0] for row in LOGO_PIXELS] == ["."] * 5 + ["E"] * 10 + ["."] * 5
+    assert [row.count("H") for row in LOGO_PIXELS[10:16]] == [6, 6, 8, 8, 4, 2]
+    assert len(TERMINAL_PIXELS) == 10
+    assert len(TERMINAL_PIXELS[0]) * len(LOGO_PIXELS) == len(LOGO_PIXELS[0]) * len(TERMINAL_PIXELS)
+    for row in TERMINAL_PIXELS:
+        assert len(row) == 15
+        assert row == row[::-1]
+        if "H" in row:
+            assert row.index("H") + row.rindex("H") == 14
+    assert {pixel for row in TERMINAL_PIXELS for pixel in row} == {".", *LOGO_PALETTE}
+    assert [row.count("H") for row in TERMINAL_PIXELS[5:8]] == [4, 5, 1]
+    assert TERMINAL_PIXELS[2].count("I") == TERMINAL_PIXELS[3].count("I") == 4
+
+
+@pytest.mark.parametrize("width", [1, 8, 19, 32, 40, 60])
+def test_welcome_labels_stack_without_overflow_on_narrow_windows(width):
+    from zettcode.app.agent.blocks import WelcomeProcessor
+    from zettcode.app.agent.entries import TextEntry
+
+    rows = WelcomeProcessor().lines(TextEntry(id=0, kind="welcome", text=WELCOME), width, DARK, 0)
+    assert all(row.width <= width for row in rows)
+    if width >= 60:
+        assert len(rows) == len(LOGO_LINES)
+    else:
+        assert len(rows) == len(LOGO_LINES) + 4
+        assert rows[len(LOGO_LINES)].text == ""
+        if width >= 40:
+            assert rows[-1].text == "  Type a task, or /help for commands."
+
+
+def test_welcome_half_blocks_preserve_every_brand_pixel_and_transparent_margin():
+    colours = {colour: pixel for pixel, colour in LOGO_PALETTE.items()}
+    decoded = []
+    for line in LOGO_LINES:
+        upper, lower = [], []
+        for span in line.spans:
+            foreground = colours.get(span.style.foreground, ".")
+            background = colours.get(span.style.background, ".")
+            for character in span.text:
+                if character == "█":
+                    upper.append(foreground)
+                    lower.append(foreground)
+                elif character == "▀":
+                    upper.append(foreground)
+                    lower.append(background)
+                elif character == "▄":
+                    upper.append(background)
+                    lower.append(foreground)
+                else:
+                    assert character == " "
+                    upper.append(background)
+                    lower.append(background)
+        decoded.extend(("".join(upper), "".join(lower)))
+    assert tuple(decoded) == TERMINAL_PIXELS
 
 
 async def test_agent_stream_uses_selected_session_and_model():
@@ -1669,9 +1717,10 @@ async def test_model_command_lists_and_switches_models_for_the_next_request():
     assert app.agent.runtime.client.models[-1] == "gpt-4o"
 
 
-async def test_model_page_esc_restores_composer_without_selecting():
+@pytest.mark.parametrize("height", [24, 32])
+async def test_model_page_esc_restores_composer_without_selecting(height):
     app = build_app()
-    app.app.resize(60, 24)
+    app.app.resize(60, height)
     harness = _harness(app)
 
     harness.write("/model")
@@ -1683,7 +1732,9 @@ async def test_model_page_esc_restores_composer_without_selecting():
     # The panel sits at the bottom, so the conversation above it stays visible.
     text = harness.render().text
     assert page.rect.y > 0
-    assert "Type a task below, or /help for commands." in text
+    assert "ZettCode" in text
+    if height == 32:
+        assert "Type a task, or /help for commands." in text
     assert "Select Model" in text
 
     harness.press("down")
