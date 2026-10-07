@@ -15,6 +15,7 @@ from zett_agent.messages import AnyMessage, AssistantMessage, SystemMessage, Too
 from .blocks import DEFAULT_PROCESSORS, EntryProcessors
 from .entries import EntryStatus
 from .rendering import DEFAULT_RENDERERS, Renderers
+from .side import is_side_line
 from .storage import Session
 from .transcript import Transcript
 from .usage import UsageSnapshot
@@ -49,12 +50,16 @@ def replay(
     usage = UsageSnapshot()
     history: list[AnyMessage] = []
     for line in session.branch():
+        # A side question is shown again — the reader saw it, so restoring the
+        # session restores the transcript they were looking at — while staying
+        # out of ``history``, which is what the next request would carry.
+        side = is_side_line(line)
         if line.usage is not None:
             # Assistant lines are the ones that consumed a model response; their
             # duration is the generation time the rate divides by.
             usage = usage.with_usage(line.usage, line.timing.duration_ns / 1_000_000_000)
         message = line.message[0]
-        if message.include_in_messages and not isinstance(message, SystemMessage):
+        if not side and message.include_in_messages and not isinstance(message, SystemMessage):
             history.append(message)
         match message:
             case UserMessage():
@@ -62,7 +67,7 @@ def replay(
                 # reader typed as an attribute; the row restores that, while
                 # ``history`` keeps the text the model was given.
                 original = message.attributes.get("prompt")
-                transcript.user_message(original if isinstance(original, str) and original else message.text)
+                transcript.user_message(original if isinstance(original, str) and original else message.text, side=side)
             case AssistantMessage():
                 if message.reasoning:
                     transcript.restore_thinking(message.reasoning, line.timing.reasoning_duration_ns)

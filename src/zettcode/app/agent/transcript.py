@@ -147,9 +147,14 @@ class Transcript:
         self._dirty_from = 0
         self.version += 1
 
-    def user_message(self, text: str) -> None:
-        """Append a historical user message without opening a live wait row."""
-        self._add(TextEntry(id=self._next_id, kind="user", text=text))
+    def user_message(self, text: str, *, side: bool = False) -> None:
+        """Append a historical user message without opening a live wait row.
+
+        Args:
+            text: What the reader asked.
+            side: The message was a side question, which the row shows as such.
+        """
+        self._add(TextEntry(id=self._next_id, kind="user", text=text, side=side))
 
     def restore_thinking(self, text: str, duration_ns: int | None) -> None:
         """Append completed reasoning from one stored assistant response."""
@@ -241,9 +246,15 @@ class Transcript:
         """Append the banner shown once at startup."""
         self._add(TextEntry(id=self._next_id, kind="welcome", text=text))
 
-    def begin_turn(self, prompt: str) -> None:
-        """Record the user prompt and open the first wait row for the reply."""
-        self._add(TextEntry(id=self._next_id, kind="user", text=prompt))
+    def begin_turn(self, prompt: str, *, side: bool = False) -> None:
+        """Record the user prompt and open the first wait row for the reply.
+
+        Args:
+            prompt: What the reader asked, as it should appear in the transcript.
+            side: The question is a side one: answered here, never part of the
+                conversation the model carries afterwards.
+        """
+        self._add(TextEntry(id=self._next_id, kind="user", text=prompt, side=side))
         self.wait_for_model()
 
     def wait_for_model(self) -> bool:

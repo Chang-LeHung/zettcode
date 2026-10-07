@@ -10,6 +10,9 @@ from __future__ import annotations
 
 from zett_agent.agent import AgentRunContext
 from zett_agent.extensions.compaction import CompactionExtension
+from zett_agent.model import ModelRequest
+
+from .side import is_side_run
 
 
 class OnDemandCompaction(CompactionExtension):
@@ -22,6 +25,17 @@ class OnDemandCompaction(CompactionExtension):
     the context small, not merely smaller, so that pass keeps one turn verbatim
     and summarizes everything before it.
     """
+
+    async def before_model(self, context: AgentRunContext, request: ModelRequest) -> None:
+        """Leave a side question's context alone.
+
+        Compacting there would summarize a branch the question is not part of,
+        and store a checkpoint whose boundary ignores that the exchange is a side
+        one. Automatic compaction waits for the next ordinary turn instead.
+        """
+        if is_side_run(context):
+            return
+        await super().before_model(context, request)
 
     async def on_compact(self, context: AgentRunContext) -> None:
         """Compact now, keeping only the turn the reader is still in."""

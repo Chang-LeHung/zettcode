@@ -207,12 +207,20 @@ class UserProcessor(EntryProcessor[TextEntry]):
     def lines(self, entry: TextEntry, width: int, theme: Theme, frame: int) -> list[TextLine]:
         """Wrap the message and fill each row to the edge of the surface."""
         style = Style(foreground=theme.text, background=theme.surface_alt)
+        marker = PROMPT
+        if entry.side:
+            # A side question is answered on screen and nowhere else: it keeps a
+            # surface of its own, so the row reads as a note beside the
+            # conversation rather than as one of its turns.
+            style = Style(foreground=theme.subtle, background=theme.surface_side)
+            marker = f"btw {PROMPT}"
         margin = min(CONTENT_INDENT, max(0, width - 1))
         prompt = self.text_lines(entry.text, max(1, width - margin), style)
         background = TextLine((Span(" " * width, style),))
         lines = [TextLine(), background]
+        pad = " " * display_width(marker)
         for index, row in enumerate(prompt):
-            prefix = f"{PROMPT} "[:margin] if index == 0 else " " * margin
+            prefix = f"{marker} " if index == 0 else f"{pad} "
             body = truncate(f"{prefix}{row.text}", width)
             padding = " " * max(0, width - display_width(body))
             lines.append(TextLine((Span(body + padding, style),)))

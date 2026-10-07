@@ -16,6 +16,7 @@ base = "dark"                 # dark | light
 [ui]
 accent = "#a7c080"
 error = "#e67e80"
+surface_side = "#393a44"
 
 [tools]
 read = "#a7c080"

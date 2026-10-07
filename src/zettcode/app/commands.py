@@ -52,6 +52,14 @@ class CommandContext:
 #: Signature of a slash-command handler: its context in, what to show next out.
 CommandHandler: TypeAlias = Callable[[CommandContext], Awaitable["CommandResult"]]
 
+#: What the shell does with a command typed while a request is in flight.
+#:
+#: ``"refuse"`` is the default: the draft is turned away, exactly as a prompt
+#: that cannot steer is. ``"queue"`` takes the draft and runs it the moment the
+#: request in flight finishes — for a command whose whole point is to be usable
+#: mid-reply, such as ``/btw``.
+BusyPolicy: TypeAlias = Literal["refuse", "queue"]
+
 
 @dataclass(frozen=True, slots=True)
 class CommandResult:
@@ -102,12 +110,16 @@ class Command:
             returns a :class:`CommandResult` describing anything left to show.
             Raising ``ValueError`` reports a usage error instead of changing
             state.
+        when_busy: What the shell does when the command is typed while a
+            request is in flight: ``"refuse"`` (the default) turns the draft
+            away, ``"queue"`` holds it and runs it as soon as that request ends.
     """
 
     name: str
     description: str
     type: Literal["app", "agent", "plugin"]
     handler: CommandHandler
+    when_busy: BusyPolicy = "refuse"
 
 
 class CommandProvider(Provider[Command]):

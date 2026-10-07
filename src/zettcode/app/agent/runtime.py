@@ -39,6 +39,7 @@ from .approval import ShellApprovalMemory
 from .capabilities import ModelCapabilities
 from .compaction import OnDemandCompaction
 from .context import ContextExtension, Tokenizer
+from .side import SideQuestions
 from .storage import SessionStore
 from .subagents import ZettCodeSubAgents
 from .usage import UsageExtension
@@ -169,6 +170,9 @@ class ZettCodeRuntime:
     session_id: str
     active_model: ModelConfig
     compaction: OnDemandCompaction
+    #: The read-only boundary a side question runs behind; the shell keeps it to
+    #: mark the run it is about to start.
+    sides: SideQuestions = field(default_factory=SideQuestions)
     plugins: Plugins = field(default_factory=Plugins)
     event_dispatcher: AgentEventDispatcher | None = None
     client: AgentClient | None = None
@@ -247,6 +251,7 @@ class ZettCodeRuntime:
                 self.todos,
                 self.usage,
                 self.context,
+                self.sides,
                 ToolGuidelinesExtension(),
                 *integration_extensions(self.config),
                 self.compaction,
