@@ -121,6 +121,13 @@ invariant breaks, not merely that the code is exercised.
 | --- | --- | --- | --- |
 | X1 | Every module parses on the oldest supported interpreter, and the shims cover what the standard library only grew later: a 3.12-only construct, an unshimmed `tomllib`/`ExceptionGroup`, or a `StrEnum` that stringifies as `Activity.READY` installs fine and then fails — or draws the member name — on 3.10. | done | `test_compat.py::test_every_module_parses_as_the_oldest_supported_python`, `test_the_str_enum_shim_reads_like_the_value_it_carries`, `test_the_toml_reader_parses_what_the_config_and_theme_files_hold` |
 
+## Terminal identity
+
+| # | Invariant (what breaks) | Status | Test |
+| --- | --- | --- | --- |
+| I1 | Process naming runs only after flag parsing and before the application starts; help never imports the native helper, Windows skips POSIX naming, and unsupported native APIs cannot block startup. | done | `test_cli.py::test_help_never_imports_the_process_naming_helper`, `test_startup_names_the_process_before_entering_the_application`, `test_process_naming_uses_zettcode_instead_of_the_interpreter`, `test_process_naming_failure_does_not_block_startup`, `test_windows_does_not_try_to_rename_the_executable` |
+| I2 | A session title never replaces the brand prefix; the current session's name is pulled on every paint, unchanged titles emit no OSC, and shutdown clears it. Nonprintable characters cannot inject terminal controls. | done | `test_zettcode_app.py::test_the_terminal_title_follows_the_session`, `test_runner.py::test_the_runner_names_the_terminal_after_the_app_and_hands_it_back`, `test_shutdown_hands_the_terminal_title_back`, `test_console.py::test_terminal_title_preserves_the_marker_and_session_without_control_injection` |
+
 ## Documentation
 
 | # | Invariant (what breaks) | Status | Test |
