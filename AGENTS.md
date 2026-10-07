@@ -67,5 +67,7 @@
   `v<version>` tag. The release workflow reads the same file and refuses to
   publish when the tag and it disagree.
 - Publishing requires the `PYPI_API_TOKEN` repository secret; see `RELEASING.md`.
-- When `zett-agent` is released, bump the pinned `zett-agent==` dependency in the
-  same change, re-lock, and run `make check` before tagging.
+- When `zett-agent` is released, raise the `zett-agent` floor in the same change
+  — the dependency is a range (`>=0.1.10,<0.2`), never an exact pin, because
+  zettcode shares that dependency with other tools — re-lock, and run
+  `make check` before tagging.
