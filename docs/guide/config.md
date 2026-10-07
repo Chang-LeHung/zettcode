@@ -100,6 +100,7 @@ base = "dark"                  # dark | light — what to start from
 accent = "#a7c080"
 accent_bright = "#83c092"
 background = "#232a2e"         # omit to use the terminal's own background
+surface_side = "#393a44"       # fill of the `/btw` row, which is not a turn
 
 [tools]                        # every role ships the same violet
 read = "#b8a6e0"

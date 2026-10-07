@@ -148,6 +148,29 @@ suspended until it is answered. `[ask_user] enabled = false` takes the tool away
 altogether, and then the model answers from what it already knows instead of
 asking.
 
+## Side questions
+
+`/btw <question>` asks something the model should answer from what it already
+knows — "what does this function do?", "which of these two is faster?" — and the
+answer appears here like any other turn, marked `btw ›` on a tinted surface of
+its own, so the aside stands out from the turns around it (the
+[`surface_side`](/guide/config#colours) role, if you want to recolour it).
+
+What makes it *side* is what is not kept:
+
+- The exchange is written into the session file, but never replayed into the
+  model's context, so later turns do not know it happened.
+- It *is* replayed into the transcript when the session is resumed, marked
+  `btw ›` like it was when you asked it — you saw that answer, so it comes back —
+  but it is not in an [export](/guide/sessions#exporting).
+- Only the reading tools are offered. An edit made while asking would be
+  invisible to the conversation that continues afterwards, so the model would
+  carry on with a false picture of the workspace.
+
+Ask one while a turn is running and it waits for that turn instead of being
+refused; its tokens still count in the status line, and it does not trigger
+automatic compaction or naming.
+
 ## Pictures and pastes
 
 A terminal cannot hand a program the bytes of a pasted image, so **Ctrl-V** reads
