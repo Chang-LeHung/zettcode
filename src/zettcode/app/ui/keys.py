@@ -163,6 +163,13 @@ class KeysMixin(ShellState):
             self._note = f"copied {len(selected)} characters"
             host.invalidate()
             return True
+        # A question the model is waiting on is answered or declined here: Ctrl-C
+        # means the same thing Escape does on that panel, never a silent close
+        # that would leave the tool call suspended.
+        if self._asks:
+            self._cancel_ask(self._asks[0])
+            host.invalidate()
+            return True
         if self.app.screens.top.name == PAGE_SCREEN:
             self.close_page()
             host.invalidate()

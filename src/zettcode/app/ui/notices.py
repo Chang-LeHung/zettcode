@@ -13,11 +13,13 @@ from typing import TYPE_CHECKING
 from ...tui import Anchor, Overlay, OverlaySlot, Screen, Toast
 from ..agent.usage import UsageSnapshot
 from ..commands import CommandUi
-from .shell import APPROVAL_ROWS, PAGE_SCREEN, ShellState
-from .widgets import ApprovalChoice, ApprovalPage, bottom_panel
+from .shell import APPROVAL_ROWS, ASK_SCREEN, PAGE_SCREEN, ShellState
+from .widgets import ApprovalChoice, ApprovalPage, AskUserPage, bottom_panel
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zett_agent.events import AgentEvent
+
+    from ..agent.ask import AskUserQuestion
 
 
 class NoticesMixin(CommandUi, ShellState):
@@ -69,6 +71,83 @@ class NoticesMixin(CommandUi, ShellState):
                 self._auto_shell = True
                 self.transcript.notice("auto mode on: approving every shell command this run")
         self.app.invalidate()
+
+    # -- questions from the model -------------------------------------------
+    def _ask_requested(self, question: AskUserQuestion) -> None:
+        """Show the panel for one question the model is waiting on.
+
+        The run is suspended until the panel answers, so this is a modal layer
+        like the approval prompt: the question, its options, and the answer line
+        stay on screen while the conversation above them is read. One response
+        may carry several questions; they queue behind the one on screen and are
+        asked in turn, because each suspends the same run.
+        """
+        if not self._asks:
+            self._ask_total = 0
+        self._asks.append(question)
+        self._ask_total += 1
+        if len(self._asks) == 1:
+            self._show_ask()
+        else:
+            self.transcript.notice(f"the model asked another question; {len(self._asks) - 1} waiting behind this one")
+
+    def _show_ask(self) -> None:
+        """Put the question at the head of the queue on screen."""
+        question = self._asks[0]
+        page = AskUserPage(
+            question,
+            on_answer=lambda answer: self._answer_ask(question, answer),
+            on_cancel=lambda: self._cancel_ask(question),
+            position=lambda: (self._ask_total - len(self._asks) + 1, self._ask_total),
+        )
+        panel = bottom_panel(page, rows=min(page.preferred_height(self.app.width), max(5, self.app.height - 6)))
+        self.app.push_screen(Screen(panel, name=ASK_SCREEN, modal=True))
+        self.app.invalidate()
+
+    def _answer_ask(self, question: AskUserQuestion, answer: str) -> None:
+        """Send the reader's answer to the suspended tool call, then ask the next."""
+        self._forget_ask(question)
+        self.close_page()
+        try:
+            self.agent.answer_ask(question, answer)
+        except Exception as error:
+            self.transcript.error(f"answer failed: {error}")
+        self._next_ask()
+
+    def _cancel_ask(self, question: AskUserQuestion) -> None:
+        """Decline the question, closing the panel that asked it."""
+        self._forget_ask(question)
+        self.close_page()
+        try:
+            self.agent.decline_ask(question)
+        except Exception as error:
+            self.transcript.error(f"cancel failed: {error}")
+        else:
+            self.transcript.notice("question declined; the model was told")
+        self._next_ask()
+
+    def _forget_ask(self, question: AskUserQuestion) -> None:
+        """Drop one question from the pending list, if it is still in it."""
+        if question in self._asks:
+            self._asks.remove(question)
+
+    def _next_ask(self) -> None:
+        """Show the question that was waiting behind the one just answered."""
+        if self._asks:
+            self._show_ask()
+        else:
+            self._ask_total = 0
+
+    def _drop_ask(self) -> None:
+        """Close the question panels a finished run left behind, with no answer.
+
+        Nothing is emitted: the request that asked is already over, and the
+        runtime has dropped its pending route, so an answer would go nowhere.
+        """
+        self._asks.clear()
+        self._ask_total = 0
+        while self.app.screens.top.name == ASK_SCREEN:
+            self.app.pop_screen()
 
     def notify(self, message: str, *, level: str = "info") -> None:
         """Show a toast, replacing any toast that is still on screen.

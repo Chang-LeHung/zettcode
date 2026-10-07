@@ -10,6 +10,7 @@ from zett_agent.events import AgentEvent
 from zett_agent.extensions.shell_approval import SHELL_APPROVAL_EVENT_NAME
 from zett_agent.messages import ToolMessage
 
+from .ask import AskUserQuestion, question_from
 from .entries import EntryStatus
 from .transcript import Transcript
 from .usage import USAGE_EVENT_NAME
@@ -50,6 +51,7 @@ class TranscriptProjector(AgentEventDispatcher):
         transcript: Transcript,
         *,
         on_approval: Callable[[AgentEvent], None] | None = None,
+        on_ask: Callable[[AskUserQuestion], None] | None = None,
         on_usage: Callable[[AgentEvent], None] | None = None,
         on_steering_started: Callable[[str], None] | None = None,
         on_steering_interrupted: Callable[[str], None] | None = None,
@@ -61,6 +63,8 @@ class TranscriptProjector(AgentEventDispatcher):
             on_approval: Called synchronously for a shell approval request; the
                 callback must not await, because the agent is suspended until the
                 UI emits its response later.
+            on_ask: Called synchronously with a parsed ``ask_user`` question; the
+                callback must not await, for the same reason.
             on_usage: Called synchronously with each cumulative usage update, so
                 the shell can refresh the status line without polling the store.
             on_steering_started: Called with the text of a queued steering
@@ -71,6 +75,7 @@ class TranscriptProjector(AgentEventDispatcher):
         """
         self.transcript = transcript
         self.on_approval = on_approval
+        self.on_ask = on_ask
         self.on_usage = on_usage
         self.on_steering_started = on_steering_started
         self.on_steering_interrupted = on_steering_interrupted
@@ -177,8 +182,12 @@ class TranscriptProjector(AgentEventDispatcher):
         self.transcript.complete_thinking()
 
     async def on_custom_event(self, event: AgentEvent) -> None:
-        """Route extension events: approvals to the prompt, usage to the status line."""
+        """Route extension events: questions and approvals to the shell, usage to the rows."""
         if event.name == SHELL_APPROVAL_EVENT_NAME and self.on_approval is not None:
             self.on_approval(event)
         elif event.name == USAGE_EVENT_NAME and self.on_usage is not None:
             self.on_usage(event)
+        elif self.on_ask is not None:
+            question = question_from(event)
+            if question is not None:
+                self.on_ask(question)

@@ -3,9 +3,9 @@
 ``~/.zettcode/config.toml`` (or ``$ZETTCODE_CONFIG``) lists OpenAI-compatible
 models. The first model is active at startup; ``/model`` selects another for
 later requests. The same file says whether project ``AGENTS.md`` files are
-read, where skills live, which MCP server file to read, and how much
-transcript to keep on screen, and whether to look for a newer release;
-session storage and other runtime settings keep code defaults.
+read, whether the model may ask questions, where skills live, which MCP server
+file to read, how much transcript to keep on screen, and whether to look for a
+newer release; session storage and other runtime settings keep code defaults.
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ DEFAULT_UPDATE_FILE = Path.home() / ".zettcode" / "update.json"
 DEFAULT_LOG = Path.home() / ".zettcode" / "log" / "tui.log"
 
 #: Top-level keys the config file may set; anything else is a typo.
-CONFIGURABLE = frozenset({"models", "transcript", "agents_md", "skills", "mcp", "plugins", "update"})
+CONFIGURABLE = frozenset({"models", "transcript", "agents_md", "ask_user", "skills", "mcp", "plugins", "update"})
 
 #: Keys one ``[[models]]`` entry may set.
 MODEL_KEYS = frozenset(
@@ -55,6 +55,9 @@ TRANSCRIPT_KEYS = frozenset({"max_entries"})
 
 #: Keys the ``[agents_md]`` table may set.
 AGENTS_MD_KEYS = frozenset({"enabled"})
+
+#: Keys the ``[ask_user]`` table may set.
+ASK_USER_KEYS = frozenset({"enabled"})
 
 #: Keys the ``[skills]`` table may set.
 SKILL_KEYS = frozenset({"enabled", "roots"})
@@ -159,6 +162,8 @@ class ZettCodeConfig:
             keeps the whole tree.
         agents_md_enabled: Read the ``AGENTS.md`` files that apply to the
             workspace and give them to the model as project instructions.
+        ask_user_enabled: Give the model the ``ask_user`` tool, which pauses a
+            turn until the reader answers a question in the shell.
         skills_enabled: Discover local skills and advertise them to the model.
         skill_roots: Extra skill directories, searched before
             ``~/.zettcode/skills``; a relative entry is resolved against the
@@ -189,6 +194,7 @@ class ZettCodeConfig:
     max_iterations: int = 360
     transcript_max_entries: int = DEFAULT_TRANSCRIPT_MAX_ENTRIES
     agents_md_enabled: bool = True
+    ask_user_enabled: bool = True
     skills_enabled: bool = True
     skill_roots: tuple[Path, ...] = ()
     mcp_enabled: bool = True
@@ -395,6 +401,7 @@ def load_config(
             raise ValueError(f"Unknown config keys in {source}: {', '.join(unknown)}")
 
     agents_md = _read_table(data.get("agents_md"), "agents_md", source, AGENTS_MD_KEYS)
+    ask_user = _read_table(data.get("ask_user"), "ask_user", source, ASK_USER_KEYS)
     skills = _read_table(data.get("skills"), "skills", source, SKILL_KEYS)
     mcp = _read_table(data.get("mcp"), "mcp", source, MCP_KEYS)
     plugins = _read_table(data.get("plugins"), "plugins", source, PLUGIN_KEYS)
@@ -412,6 +419,7 @@ def load_config(
             int,
         ),
         agents_md_enabled=bool(_setting(agents_md, "enabled", bool, True)),
+        ask_user_enabled=bool(_setting(ask_user, "enabled", bool, True)),
         skills_enabled=bool(_setting(skills, "enabled", bool, True)),
         skill_roots=_read_skill_roots(skills.get("roots"), source),
         mcp_enabled=bool(_setting(mcp, "enabled", bool, True)),

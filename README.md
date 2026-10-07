@@ -57,7 +57,9 @@ leaving prints the command that brings the session back.
   arrive as rows in order; tool output reads like a log — `Read src/app.py`,
   `Ran pytest -q` — never raw JSON.
 - **Asks before it acts.** Every shell command is confirmed first, with
-  `a` to allow the rest of the run and `p` to remember one command.
+  `a` to allow the rest of the run and `p` to remember one command — and when
+  the model needs a decision it cannot guess, it asks you a question in a panel
+  and waits, with options to pick from and a line to answer in your own words.
 - **Keeps the context honest.** The status line shows tokens, cache hit rate,
   and how full the window is; `/context` breaks the request down, and compaction
   summarizes before the window overflows.

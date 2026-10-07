@@ -31,6 +31,11 @@ def _config(tmp_path: Path, **changes) -> ZettCodeConfig:
     )
 
 
+def _instructions(config: ZettCodeConfig) -> AgentsMdExtension:
+    """Return the composed AGENTS.md extension, wherever the tuple puts it."""
+    return next(item for item in runtime_module.integration_extensions(config) if isinstance(item, AgentsMdExtension))
+
+
 def _context() -> AgentRunContext:
     """Return a run context whose only message is the application's prompt."""
     state = AgentState()
@@ -39,13 +44,13 @@ def _context() -> AgentRunContext:
 
 
 def test_the_workspace_instructions_are_composed_by_default(tmp_path):
-    (extension, *rest) = runtime_module.integration_extensions(_config(tmp_path))
+    extensions = runtime_module.integration_extensions(_config(tmp_path))
+    extension = _instructions(_config(tmp_path))
 
-    assert isinstance(extension, AgentsMdExtension)
     assert extension.directory == tmp_path
     # A workspace without the file contributes nothing to the request.
     assert extension.instructions() == ""
-    assert not any(isinstance(item, AgentsMdExtension) for item in rest)
+    assert sum(isinstance(item, AgentsMdExtension) for item in extensions) == 1
 
 
 def test_turning_the_instructions_off_leaves_them_out(tmp_path):
@@ -57,7 +62,7 @@ def test_turning_the_instructions_off_leaves_them_out(tmp_path):
 async def test_the_workspace_instructions_land_behind_the_system_prompt(tmp_path):
     """Project rules are inserted after the prompt and keep leading later guidance."""
     (tmp_path / "AGENTS.md").write_text(INSTRUCTIONS, encoding="utf-8")
-    (extension, *_) = runtime_module.integration_extensions(_config(tmp_path))
+    extension = _instructions(_config(tmp_path))
     context = _context()
 
     await extension.on_state(context)
@@ -74,7 +79,7 @@ async def test_an_edited_instruction_file_applies_to_the_next_request(tmp_path):
     """The file is re-read per request, so a mid-session edit is not stale."""
     path = tmp_path / "AGENTS.md"
     path.write_text(INSTRUCTIONS, encoding="utf-8")
-    (extension, *_) = runtime_module.integration_extensions(_config(tmp_path))
+    extension = _instructions(_config(tmp_path))
 
     before = _context()
     await extension.on_state(before)
@@ -93,7 +98,7 @@ async def test_an_instruction_file_at_the_workspace_root_leads_a_nested_one(tmp_
     nested.mkdir()
     (tmp_path / "AGENTS.md").write_text("Root rules.\n", encoding="utf-8")
     (nested / "AGENTS.md").write_text("Nested rules.\n", encoding="utf-8")
-    (extension, *_) = runtime_module.integration_extensions(_config(nested))
+    extension = _instructions(_config(nested))
     context = _context()
 
     await extension.on_state(context)

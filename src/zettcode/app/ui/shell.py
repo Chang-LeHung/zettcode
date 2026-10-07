@@ -16,6 +16,11 @@ from typing import TYPE_CHECKING
 #: that Ctrl-C and Ctrl-D belong to the page rather than the composer.
 PAGE_SCREEN = "page"
 
+#: Screen name of a question panel. It has its own name because the questions
+#: stack: the model may ask several in one response, and each has to be answered
+#: before the run continues, so the shell needs to tell them from other pages.
+ASK_SCREEN = "ask"
+
 #: Rows the approval panel takes from the bottom of the screen: the question,
 #: up to three lines of command, and the numbered choices.
 APPROVAL_ROWS = 16
@@ -35,6 +40,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
     from ...tui import CompletionPopup, StatusBar, TuiApp
     from ...update import UpdateState
     from ..agent.agent import ZettCodeAgent
+    from ..agent.ask import AskUserQuestion
     from ..agent.mentions import MentionRegistry
     from ..agent.projection import TranscriptProjector
     from ..agent.transcript import Transcript
@@ -92,6 +98,8 @@ class ShellState:
     _title_task: asyncio.Task[None] | None
     #: The in-flight release check or upgrade, if any.
     _update_task: asyncio.Task[None] | None
+    #: The question the model is waiting on, while its panel is up.
+    _asks: list[AskUserQuestion]
     #: The turn or command currently in flight, if any.
     _task: asyncio.Task[None] | None
 
@@ -103,6 +111,9 @@ class ShellState:
 
     def notify(self, message: str, *, level: str = "info") -> None:
         """Show a one-line toast."""
+
+    def _cancel_ask(self, question: AskUserQuestion) -> None:
+        """Decline one question the model is waiting on, and close its panel."""
 
     def start_update_check(self) -> asyncio.Task[None] | None:
         """Ask the index about newer releases in the background."""

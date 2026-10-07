@@ -47,6 +47,9 @@ max_entries = 1024             # 屏幕上保留的对话行数
 [agents_md]
 enabled = true                 # 从工作区向上读取 AGENTS.md
 
+[ask_user]
+enabled = true                 # 允许模型在一轮中向你提问
+
 [skills]
 enabled = true
 roots = ["~/team-skills"]      # 先于 ~/.zettcode/skills 搜索
@@ -67,6 +70,7 @@ enabled = true                 # 后台检查是否有新版本
 | --- | --- | --- | --- |
 | `transcript` | `max_entries` | `1024` | 只限制屏幕上的回看深度，会话文件保留全部内容。 |
 | `agents_md` | `enabled` | `true` | 见[项目指令](/zh/guide/instructions)。 |
+| `ask_user` | `enabled` | `true` | 给模型 `ask_user` 工具，让它能暂停当前轮向你提问。 |
 | `skills` | `enabled` | `true` | 见[Skills 与 MCP](/zh/guide/skills-and-mcp)。 |
 | `skills` | `roots` | `[]` | 相对路径按工作区解析。 |
 | `mcp` | `enabled` | `true` | 见[Skills 与 MCP](/zh/guide/skills-and-mcp)。 |

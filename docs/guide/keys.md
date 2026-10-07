@@ -40,6 +40,17 @@ already know. The shell adds the keys that need the whole screen.
 | <kbd>Esc</kbd> | Jump back to the newest line when scrolled up; close a panel; close the command menu. |
 | <kbd>Tab</kbd> | Accept the highlighted row in a panel or the command menu. |
 
+## Answering a question
+
+While the model waits on a question, these belong to its panel:
+
+| Key | What it does |
+| --- | --- |
+| <kbd>Up</kbd> / <kbd>Down</kbd> | Move through the choices the model offered. |
+| <kbd>Enter</kbd> | Act on the highlighted row: choose it (a one-answer question sends it), tick or untick it, or — on the `send` row — finish a multiple-choice answer. When you have typed instead, it sends what you typed. |
+| Anything you type | Edits the answer line, which is what the model receives; the choices fold away for as long as you type, and `Up`/`Down` bring them back. |
+| <kbd>Esc</kbd>, <kbd>Ctrl</kbd>+<kbd>C</kbd> | Decline: the model is told the question was cancelled. |
+
 ## Mouse
 
 | Action | What it does |
