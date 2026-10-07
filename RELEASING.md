@@ -17,9 +17,10 @@ requests `id-token: write`.
 
 ## Cutting a release
 
-1. Make sure the pinned `zett-agent==` dependency points at a released version,
-   then set the final version in `pyproject.toml` (for example `0.1.1`) and
-   commit it.
+1. Make sure the `zett-agent` range in `pyproject.toml` still covers the release
+   you depend on — raise its floor when a newer zett-agent is what you built
+   against — then set the final version in `src/zettcode/__init__.py` (for
+   example `0.1.1`) and commit it.
 2. Tag and push:
 
    ```bash

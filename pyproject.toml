@@ -29,7 +29,11 @@ dependencies = [
   # The system trust store, so the release check works behind a proxy.
   "truststore>=0.10,<1",
   "wcwidth>=0.2,<1",
-  "zett-agent==0.1.10",
+  # A range, not a pin: 0.1.10 is the oldest runtime with the APIs this client
+  # uses (``AgentsMdExtension`` among them), and an exact pin makes zettcode
+  # fight every other tool that shares the dependency — including an upgrade of
+  # zett-agent itself, which pip would downgrade to satisfy it.
+  "zett-agent>=0.1.10,<0.2",
 ]
 
 [project.scripts]
