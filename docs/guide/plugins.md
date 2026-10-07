@@ -14,7 +14,8 @@ greeter = "my_package:Greeter"
 ```
 
 ```python
-from zettcode.plugins import CommandContext, CommandResult, Plugin, PluginContainer
+from zettcode.app.commands import CommandContext
+from zettcode.plugins import CommandResult, Plugin, PluginContainer
 
 
 class Greeter(Plugin):
@@ -28,9 +29,46 @@ class Greeter(Plugin):
         return CommandResult(notification=f"hello {context.argument}".strip())
 ```
 
-Then `pip install` it and start ZettCode: the command appears in the `/` menu
-after the built-in ones. `[plugins] enabled = false` turns them all off, and
-`disable = ["greeter"]` holds one back without uninstalling it.
+Install the plugin into the **same Python environment as ZettCode**, then
+restart. The command appears in the `/` menu after the built-in ones.
+Installing it into an unrelated virtual environment does not make it available
+to a `uv tool` installation.
+
+For example, if you have a local plugin project at `/path/to/greeter`:
+
+::: code-group
+
+```bash [uv tool]
+uv tool install --force --with /path/to/greeter zettcode
+```
+
+```bash [pip in the ZettCode environment]
+python -m pip install /path/to/greeter
+```
+
+:::
+
+The local project needs its own `pyproject.toml`, an installable Python module,
+and the entry point shown above. For a published plugin, use its actual package
+name instead of the path. Inside ZettCode, `/greet Ada` then shows a toast saying
+`hello Ada`.
+
+To skip it without uninstalling, add this to `config.toml` and restart:
+
+```toml
+[plugins]
+enabled = true
+disable = ["greeter"]
+```
+
+`greeter` here is the entry-point name, which can differ from the package name.
+`enabled = false` disables all third-party plugins, not the built-in UI.
+
+::: warning Install only trusted plugins
+Plugins run Python code in the ZettCode process and can affect both the model
+workflow and your local files. They are not sandboxed; review their source and
+dependencies before installing them.
+:::
 
 ## What a plugin can take part in
 
@@ -48,13 +86,13 @@ needs:
 from zettcode.plugins import Plugin, ShellContext
 
 
-class Branch(Plugin):
-    """Show the current git branch in the header."""
+class WorkspaceLabel(Plugin):
+    """Replace the header's right segment with a model/workspace label."""
 
-    name = "branch"
+    name = "workspace-label"
 
     def render_header_right(self, context: ShellContext) -> str:
-        return f"main {context.model.name}  "
+        return f"{context.model.name} · {context.session.workspace.name}"
 ```
 
 Returning a `str`, a styled `TextLine`, or `None` (draw nothing). A span with no
@@ -84,6 +122,22 @@ everything at the end.
 
 Plugin commands are listed last and cannot shadow a built-in, so `/model`,
 `/resume` and the rest always do what [Commands](/guide/commands) says.
+
+For example, a command can report progress or render a Markdown result:
+
+```python
+async def greet(self, context: CommandContext) -> CommandResult:
+    if not context.argument:
+        context.ui.error("Usage: /greet <name>")
+        return CommandResult()
+    context.ui.notice("Preparing a greeting…")
+    return CommandResult(message=f"## Hello\n\nWelcome, {context.argument}.")
+```
+
+Use this method in place of `Greeter.greet` above. The UI error/notice/result
+are displayed in the transcript; they are not a user message submitted to the
+model. Prefer the command UI methods to `print()`, which writes outside the
+terminal interface.
 
 ## When something goes wrong
 

@@ -1,98 +1,105 @@
-# ZettCode
+<p align="center">
+  <img src="docs/public/logo.svg" width="88" height="88" alt="ZettCode 像素机器人，中间是一颗暖色的心" />
+</p>
+<h1 align="center">ZettCode</h1>
+<p align="center"><strong>你的终端。你的编码伙伴。</strong></p>
+<p align="center">专注的编码智能体：读懂项目、展示过程，把决定权留给你。</p>
+<p align="center">
+  <a href="README.md">English</a> · <strong>简体中文</strong><br />
+  <a href="https://chang-lehung.github.io/zettcode/zh/guide/getting-started">快速开始</a> ·
+  <a href="https://chang-lehung.github.io/zettcode/zh/">使用文档</a> ·
+  <a href="https://chang-lehung.github.io/zettcode/zh/guide/commands">命令参考</a>
+</p>
 
-[English](README.md) · **简体中文**
+<p align="center">
+  <img src="docs/public/terminal.svg" width="1000" alt="ZettCode 依次展示任务、思考、读文件、改代码、通过的测试和 Markdown 回答" />
+</p>
+<p align="center"><sub>示例对话由 ZettCode 的实际终端组件渲染。</sub></p>
 
-一个专注的终端编码智能体。指向一个工作区，说清楚要改什么，然后看着它把活干出来 —— 读文件、
-等你批准命令、改代码、跑测试 —— 整个过程是一段可以滚动、选中、复制的对话。
+## 先跑起来
 
-终端界面就是本仓库；模型循环在
-[`zett-agent`](https://github.com/Chang-LeHung/zett-agent)，单独发布。
+需要 **Python 3.10+**、支持 UTF-8 的终端和 **OpenAI 兼容接口**。
+支持 macOS、Linux 和 Windows（请使用 Windows Terminal）。
 
-## 安装
-
-需要 Python 3.10 或更新版本，PyPI 包名是 `zettcode`：
+### 1. 安装
 
 ```bash
 uv tool install zettcode
-# 或者
-pip install zettcode
+# 或者：pip install zettcode
 ```
 
-## 配置
+### 2. 连接模型
 
-除了工作区，其他设置都在 `~/.zettcode/config.toml`。至少要有一个模型，第一张表在启动时生效：
+创建 `~/.zettcode/config.toml`（以及父目录），先配置一个模型：
 
 ```toml
 [[models]]
-model = "gpt-4o"
-token = "sk-..."                       # 也可以设置 OPENAI_API_KEY
-base_url = "http://localhost:8787/v1"  # 任何 OpenAI 兼容的接入点
-context_window = 200000                # 这个模型能装多少 token
-multimodal = true                      # 除文本外还接受图片
+model = "deepseek-v4-pro"             # 发给 DeepSeek 的模型 id
+display_model = "DeepSeek Pro"        # ZettCode 界面中显示的名字
+token = "sk-..."                      # 替换成你的 DeepSeek API key
+base_url = "https://api.deepseek.com"  # DeepSeek 的 OpenAI 兼容接口根地址
+context_window = 1000000               # 以接入点当前公布的实际限制为准
+multimodal = false                    # 这个模型接受文本，不接受图片
 ```
 
-项目里的 `AGENTS.md`、[skills](https://chang-lehung.github.io/zettcode/zh/guide/skills-and-mcp)、
-MCP 服务器、插件、配色等等都在同一个文件里，完整的键见
-[配置文件](https://chang-lehung.github.io/zettcode/zh/guide/config)。
+在 [DeepSeek 开放平台](https://platform.deepseek.com/)创建 API key，不是聊天网页的登录信息。
+也可以省略 `token`，改用 `OPENAI_API_KEY` 环境变量保存这个 key。
+添加更多 `[[models]]`，就能用 `/model` 切换；启动时默认选择第一项。
+完整示例、默认值和排错步骤见[配置参考](https://chang-lehung.github.io/zettcode/zh/guide/config)。
 
-## 运行
+### 3. 发出任务
 
 ```bash
-cd ~/projects/api
-zettcode                                    # 工作区默认是当前目录
-zettcode -w /path/to/project                # 在别处工作
-zettcode --resume <session-id>              # 重新打开一个已保存的会话
-zettcode --dry-run                          # 只测启动耗时后退出
+cd /path/to/project
+zettcode
+# 或者：zettcode --workspace /path/to/project
 ```
 
-输入任务并按 **Enter**。`/` 打开命令菜单，`@` 引用 skill，`Ctrl-C` 停止请求，输入框为空时
-`Ctrl-D` 退出 —— 退出时会打印把会话找回来的命令。
+描述要改什么，按 **Enter**。`/` 打开命令菜单，`@` 引用 skill，**Ctrl-C** 停止请求。
+输入框为空时按 **Ctrl-D** 退出，终端会打印恢复当前会话的命令。
 
-## 它能做什么
-
-- **流式地呈现对话，而不是丢一堆数据。** 思考、回答、工具调用按顺序各占一行；工具输出读起来像
-  日志 —— `Read src/app.py`、`Ran pytest -q` —— 永远不会甩出原始 JSON。
-- **动手之前先问你。** 每条 shell 命令都要先确认，`a` 放行本轮剩余命令，`p` 记住某一条；
-  当模型需要它猜不出的决定时，会弹面板向你提问并等待 —— 既能选选项，也能用自己的话回答。
-- **把上下文讲清楚。** 状态行显示 token、缓存命中率和窗口占用；`/context` 拆开当前请求，
-  压缩会在窗口溢出之前完成。
-- **记住项目。** 从工作区逐级向上的 `AGENTS.md` 会变成项目指令；skills 和 MCP 服务器扩展模型
-  能做的事。
-- **尊重终端。** 鼠标选中与滚动、用面板做选择、粘贴图片、`Ctrl-L`，以及跟随终端背景的配色 ——
-  也可以用你自己的 `theme.toml`。
-
-## 文档
-
-用户指南发布在 **<https://chang-lehung.github.io/zettcode/zh/>**（
-[English](https://chang-lehung.github.io/zettcode/) 与之并列）：
+## 按你的方式工作
 
 | | |
 | --- | --- |
-| [快速开始](https://chang-lehung.github.io/zettcode/zh/guide/getting-started) | 安装、第一个任务、第一次审批。 |
-| [界面](https://chang-lehung.github.io/zettcode/zh/guide/interface) | 屏幕上每一行在说什么。 |
-| [快捷键与鼠标](https://chang-lehung.github.io/zettcode/zh/guide/keys) | 完整对照表。 |
-| [命令](https://chang-lehung.github.io/zettcode/zh/guide/commands) | 所有 `/命令` 与 `@资源`。 |
-| [会话](https://chang-lehung.github.io/zettcode/zh/guide/sessions) | 恢复、命名、导出。 |
-| [配置文件](https://chang-lehung.github.io/zettcode/zh/guide/config) | 一个文件，所有键。 |
-| [模型与上下文](https://chang-lehung.github.io/zettcode/zh/guide/models) | 推理档位、压缩、缓存、图片。 |
-| [项目指令](https://chang-lehung.github.io/zettcode/zh/guide/instructions) | 怎么写出好用的 `AGENTS.md`。 |
-| [Skills 与 MCP](https://chang-lehung.github.io/zettcode/zh/guide/skills-and-mcp) | 接入你自己的工具。 |
-| [插件](https://chang-lehung.github.io/zettcode/zh/guide/plugins) | 用 Python 添加命令和界面行。 |
-| [常见问题](https://chang-lehung.github.io/zettcode/zh/guide/faq) | 出问题的时候。 |
+| **看清每一步** | 思考、回答和工具调用实时呈现为可读的行，不是原始 JSON。 |
+| **决定权在你手上** | 执行 shell 命令前先审阅；智能体需要你的决定时，可以选选项，也可以打字回答。 |
+| **工作不中断** | 回复过程中发送 steering（引导）消息；用 `/btw` 问一句，不让它进入后续上下文。 |
+| **随时接着做** | `/resume` 恢复对话，`/export` 导出便于阅读的 HTML。 |
+| **看懂上下文** | 查看 token 与缓存统计，用 `/context` 检查占用，在需要时压缩。 |
+| **接入你的工具** | 使用项目 `AGENTS.md` 指令、skills、MCP 服务器和 Python 插件。 |
+
+主题跟随终端背景，也可以使用你自己的 `theme.toml`。
+选中复制文字、滚动查看回答；模型支持多模态时，还能粘贴图片。
+
+## 找到你的下一步
+
+**[用户指南](https://chang-lehung.github.io/zettcode/zh/guide/overview)** 提供简体中文与
+[English](https://chang-lehung.github.io/zettcode/guide/overview) 两个版本。
+
+| 第一次使用 | 日常使用 | 配置与扩展 |
+| --- | --- | --- |
+| [快速开始](https://chang-lehung.github.io/zettcode/zh/guide/getting-started) | [快捷键与鼠标](https://chang-lehung.github.io/zettcode/zh/guide/keys) | [配置参考](https://chang-lehung.github.io/zettcode/zh/guide/config) |
+| [认识界面](https://chang-lehung.github.io/zettcode/zh/guide/interface) | [命令参考](https://chang-lehung.github.io/zettcode/zh/guide/commands) | [模型与上下文](https://chang-lehung.github.io/zettcode/zh/guide/models) |
+| [常见问题](https://chang-lehung.github.io/zettcode/zh/guide/faq) | [会话管理](https://chang-lehung.github.io/zettcode/zh/guide/sessions) | [项目指令](https://chang-lehung.github.io/zettcode/zh/guide/instructions) |
+| | | [Skills 与 MCP](https://chang-lehung.github.io/zettcode/zh/guide/skills-and-mcp) · [插件](https://chang-lehung.github.io/zettcode/zh/guide/plugins) |
 
 ## 开发
 
 ```bash
-uv sync                       # 安装环境
-make check                    # ruff、mypy、pytest
-make hooks                    # 每次提交前跑 mypy
-make demo                     # 交互式浏览所有组件
-uv run zettcode -w .          # 用源码运行
+uv sync                         # 安装依赖
+make check                      # Ruff、mypy 与测试
+make hooks                      # 每次提交前强制检查 mypy
+make demo                       # 浏览终端组件
+make docs                       # 本地预览使用文档
+uv run zettcode --workspace .    # 从源码运行
 ```
 
-仓库内部的约定 —— 分层、不变量清单、平台适配 —— 见 [`AGENTS.md`](AGENTS.md) 和
-[`docs/internal/`](docs/internal/)。文档站在 `docs/`，构建命令是
-`npm ci --prefix docs && npm run docs:build --prefix docs`。
+ZettCode 提供终端应用，智能体运行时来自
+[`zett-agent`](https://github.com/Chang-LeHung/zett-agent)。贡献者约定和不变量放在
+[`AGENTS.md`](AGENTS.md) 与 [`docs/internal/`](docs/internal/)，不进入用户指南。
+本地预览、重新生成效果图的方法见
+[`docs/internal/site-design.md`](docs/internal/site-design.md)。
 
 ## 许可证
 

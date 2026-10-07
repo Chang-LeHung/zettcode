@@ -13,7 +13,8 @@ greeter = "my_package:Greeter"
 ```
 
 ```python
-from zettcode.plugins import CommandContext, CommandResult, Plugin, PluginContainer
+from zettcode.app.commands import CommandContext
+from zettcode.plugins import CommandResult, Plugin, PluginContainer
 
 
 class Greeter(Plugin):
@@ -27,8 +28,42 @@ class Greeter(Plugin):
         return CommandResult(notification=f"hello {context.argument}".strip())
 ```
 
-`pip install` 之后启动 ZettCode，命令就会出现在 `/` 菜单里（排在内置命令之后）。
-`[plugins] enabled = false` 关掉全部插件，`disable = ["greeter"]` 只按住其中一个而不用卸载。
+把插件安装到 **ZettCode 使用的同一个 Python 环境**，再重启，命令就会出现在 `/` 菜单里，
+排在内置命令之后。安装到另一个虚拟环境，不会让 `uv tool` 安装的 ZettCode 自动发现它。
+
+例如，本地已有一个插件项目 `/path/to/greeter`，可以这样安装：
+
+::: code-group
+
+```bash [uv tool]
+uv tool install --force --with /path/to/greeter zettcode
+```
+
+```bash [ZettCode 所在环境的 pip]
+python -m pip install /path/to/greeter
+```
+
+:::
+
+本地项目需要自己的 `pyproject.toml`、可安装的 Python 模块，以及上面的 entry point。
+已经发布的插件则把路径换成它实际的包名。进入 ZettCode 输入 `/greet Ada`，就会看到
+`hello Ada` 的通知。
+
+不卸载但暂时停用，可以把下面的段落加到 `config.toml`，然后重启：
+
+```toml
+[plugins]
+enabled = true
+disable = ["greeter"]
+```
+
+这里的 `greeter` 是 entry-point 名称，不一定等于包名。
+`enabled = false` 关闭全部第三方插件，不会关闭内置 UI。
+
+::: warning 只安装可信插件
+插件在 ZettCode 进程里执行 Python 代码，能影响模型流程和本地文件，没有沙箱隔离。
+安装前应检查来源、代码和依赖。
+:::
 
 ## 插件能参与什么
 
@@ -43,13 +78,13 @@ class Greeter(Plugin):
 from zettcode.plugins import Plugin, ShellContext
 
 
-class Branch(Plugin):
-    """在头部显示当前 git 分支。"""
+class WorkspaceLabel(Plugin):
+    """用模型和工作区标签替换头部右侧片段。"""
 
-    name = "branch"
+    name = "workspace-label"
 
     def render_header_right(self, context: ShellContext) -> str:
-        return f"main {context.model.name}  "
+        return f"{context.model.name} · {context.session.workspace.name}"
 ```
 
 返回 `str`、带样式的 `TextLine`，或者 `None`（什么都不画）。没有自带样式的片段会继承这一行的
@@ -75,6 +110,20 @@ class Branch(Plugin):
 
 插件命令排在最后，也不能顶掉内置命令，所以 `/model`、`/resume` 等等永远和
 [命令](/zh/guide/commands)里写的一致。
+
+例如，一个命令可以汇报进度，也可以返回 Markdown 内容：
+
+```python
+async def greet(self, context: CommandContext) -> CommandResult:
+    if not context.argument:
+        context.ui.error("Usage: /greet <name>")
+        return CommandResult()
+    context.ui.notice("Preparing a greeting…")
+    return CommandResult(message=f"## Hello\n\nWelcome, {context.argument}.")
+```
+
+用这个方法替换前面 `Greeter.greet` 即可。错误、提示和 Markdown 结果只展示在 transcript，
+不是发送给模型的用户消息。用 command UI 方法输出，不要用会绕过终端界面的 `print()`。
 
 ## 出问题的时候
 

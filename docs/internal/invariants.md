@@ -121,6 +121,16 @@ invariant breaks, not merely that the code is exercised.
 | --- | --- | --- | --- |
 | X1 | Every module parses on the oldest supported interpreter, and the shims cover what the standard library only grew later: a 3.12-only construct, an unshimmed `tomllib`/`ExceptionGroup`, or a `StrEnum` that stringifies as `Activity.READY` installs fine and then fails — or draws the member name — on 3.10. | done | `test_compat.py::test_every_module_parses_as_the_oldest_supported_python`, `test_the_str_enum_shim_reads_like_the_value_it_carries`, `test_the_toml_reader_parses_what_the_config_and_theme_files_hold` |
 
+## Documentation
+
+| # | Invariant (what breaks) | Status | Test |
+| --- | --- | --- | --- |
+| D1 | Every English guide page has a Chinese page with the same slug; otherwise corresponding-page language switching sends readers to a missing page. | done | `test_docs.py::test_every_english_guide_page_has_a_chinese_counterpart` |
+| D2 | Generating the terminal illustration never starts a model, leaks a temporary workspace path, or leaves the process in its temporary directory, even on failure; the same sample produces the same asset. | done | `test_docs.py::test_the_terminal_preview_is_offline_deterministic_and_leaves_no_workspace`, `test_a_failed_preview_restores_the_working_directory` |
+| D3 | The SVG illustration escapes transcript text and emits wide glyphs once rather than turning text into executable markup or duplicating continuation cells. | done | `test_docs.py::test_the_terminal_svg_escapes_text_and_does_not_duplicate_wide_glyphs` |
+| D4 | README and bilingual config, MCP, and plugin examples use supported keys and real APIs; copied examples must not silently drift into invalid config or unimportable commands. Tests load examples offline, never start servers or models, and write config files only in temporary directories. | done | `test_docs.py::test_documented_config_examples_load_with_the_real_parser`, `test_documented_mcp_examples_parse_without_starting_servers`, `test_documented_plugin_registers_and_runs_its_command` |
+| D5 | The terminal welcome mark keeps a wide five-row silhouette with mirrored edges and a centered heart; adding a label or changing one row must not shift its symmetry axis. | done | `test_zettcode_app.py::test_welcome_mark_is_wide_and_mirror_symmetric_with_a_centered_heart`, `test_welcome_mark_is_compact_and_readable_in_both_themes` |
+
 ## Adding a row
 
 Every row above is marked **done**, so the list is only worth keeping if new

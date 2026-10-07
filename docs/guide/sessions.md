@@ -1,8 +1,8 @@
 # Sessions
 
 A session is a conversation with a workspace: what was asked, what was answered,
-which tools ran. ZettCode writes each one down as it happens, so leaving is never
-losing work.
+which tools ran. ZettCode saves conversation events as they arrive. A normal
+exit does not delete the saved session.
 
 ## Where they live
 
@@ -48,6 +48,29 @@ workspace, newest first, each with its title and how long ago it changed;
 only empties the screen; the session keeps going, and the model still remembers
 the turns.
 
+### Example: continue yesterday's work
+
+Start in the same workspace, then choose a session:
+
+```bash
+zettcode -w ~/projects/api
+```
+
+Inside ZettCode, type `/resume`, use `Up` / `Down` to highlight the conversation,
+and press `Enter`. Its earlier messages replace the current transcript; you can
+then send "Continue from the last failing test."
+
+If you already have the id, skip the picker:
+
+```bash
+zettcode --workspace ~/projects/api --resume 01a10b75
+```
+
+Replace both the path and id with your own. A plain `zettcode` always starts a
+new session; it does not silently reopen the last one. If the id is not found,
+check the workspace first: two checkouts have separate session lists even when
+their files are identical.
+
 ## Titles
 
 After the first reply, the agent asks a small model call for a four-or-five word
@@ -57,6 +80,10 @@ status line show.
 `/title users endpoint` names it yourself, and the name sticks: the automatic
 naming never overwrites a session that already has a title, so a name you chose
 before the first message survives it.
+
+For example, type `/title Fix users pagination`. Type `/title` without an
+argument to report the current title. An untitled session is displayed as
+`New session`; naming it makes a long list easier to scan.
 
 ## Exporting
 
@@ -76,3 +103,21 @@ checkpoint there, and a system instruction that repeats is pointed at rather
 than printed again.
 
 The exported page needs no network and no server: styles and script are inlined.
+
+### Example: save and share a report
+
+Type `/export review.html` inside ZettCode, then open the reported file from
+your file manager or browser. A relative path is relative to the workspace;
+an absolute path lets you choose a different directory. Parent directories
+are created when needed.
+
+`/btw` exchanges are not included in either the exported history or exported
+model context, although they do reappear in the transcript when you resume.
+The export is a snapshot; it does not update when you continue the session.
+It also is not a session backup you can import through `/resume`.
+
+::: warning Review before sharing
+An export can contain source code, prompts, file paths, and tool output with
+private information. Inspect it before sending it to someone else. To back up
+resumable sessions, copy the workspace's session-store directory instead.
+:::

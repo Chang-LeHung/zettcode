@@ -4,7 +4,7 @@
 
 **`zettcode: Config key ... must be str` / `Unknown config keys ...`** — the
 message names the key that is wrong. Typos are rejected rather than ignored, so
-the fix is usually the spelling. `/guide/config` has the full list.
+the fix is usually the spelling. [Configuration](/guide/config) has the full list.
 
 **`zettcode: No models configured`** — `~/.zettcode/config.toml` needs at least
 one `[[models]]` table. Start from the example in
@@ -18,18 +18,21 @@ to pick from the list.
 ## It starts but nothing works
 
 **The first request fails with a connection error.** The `base_url` is the
-OpenAI-compatible *root*, usually ending in `/v1`; a URL pointing at a web page
-or missing the version segment is the common mistake. Check that the endpoint
-answers a plain chat-completions request with the same token.
+OpenAI-compatible API *root*, not the chat website or full completion route.
+DeepSeek uses `https://api.deepseek.com`; other endpoints may require `/v1`.
+Use the [connection test](/guide/config#checking-the-connection) with the same
+model and key, and check API balance, permissions, and proxy settings.
 
 **The model name is rejected.** Use the id the endpoint expects, not the name
 you see in a UI — `display_model` is what the header shows, and it is free text.
 
-**It is slow to show the first frame.** It should not be: settings and the
-session are ready before the provider SDK is even imported, and the status line
-says `ready`. If the window takes longer than a moment, the terminal itself is
-usually the reason — a large scrollback or a remote connection. `zettcode
---dry-run` times the startup without taking the screen.
+**It is slow to show the first frame.** The model client is created lazily, but
+local config, storage, and plugin loading still happen at startup. Try
+`time zettcode --dry-run` on macOS/Linux, or
+`Measure-Command { zettcode --dry-run }` in PowerShell, to measure the local
+startup path. It paints a frame and exits; it does not test the API connection.
+Compare with third-party plugins disabled before attributing the delay to the
+model or terminal.
 
 ## The screen
 
@@ -77,14 +80,16 @@ tool output. `/compact` summarizes now instead of waiting for the trigger.
 
 **The cache hit rate is low.** The provider caches a prefix, so anything that
 changes early in the request breaks it — a different system prompt, a different
-set of tools, a different model. Switching models mid-session, editing
-`AGENTS.md`, or changing the skills on disk all reset it; a steady rate in the
-seventies is normal for a session with tools.
+set of tools, a different model. Model switches, compaction, and changed
+instructions can lower it, and cache lifetime depends on the provider. There
+is no universal expected percentage. See the
+[calculation and examples](/guide/models#reading-the-numbers).
 
-**A command ran that I did not want.** It cannot have: `run_shell` always asks
-unless you pressed `a`, which allows the rest of that run only. `p` remembers
-one exact command for the session, and `Esc` refuses. Approval state is per run
-and never persists to the next one.
+**A command ran that I did not want.** Review any previous approval choices:
+`a` grants a wider allowance, while `p` remembers an exact command for the
+current process. Restarting clears that memory. This approval applies to the
+built-in shell tool, not every file-editing or MCP tool. ZettCode does not
+sandbox tools; use version control and review the diff.
 
 ## Skills, MCP, and plugins
 
