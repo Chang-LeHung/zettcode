@@ -1,153 +1,122 @@
-/**
- * The guide wears the agent's own palette: the Everforest accents the built-in
- * themes use, so the site and the terminal look like one product.
- */
+@import "./home.css";
 
 :root {
-  --vp-c-brand-1: #7fa968;
-  --vp-c-brand-2: #8fbb74;
-  --vp-c-brand-3: #a7c080;
-  --vp-c-brand-soft: rgba(167, 192, 128, 0.16);
-
+  --vp-c-brand-1: #397750;
+  --vp-c-brand-2: #46885c;
+  --vp-c-brand-3: #397750;
+  --vp-c-brand-soft: rgba(70, 136, 92, 0.1);
+  --vp-c-bg: #fafbf8;
+  --vp-c-bg-alt: #f2f4ee;
+  --vp-c-bg-soft: #eff2eb;
+  --vp-c-bg-elv: #ffffff;
+  --vp-c-text-1: #203128;
+  --vp-c-text-2: #526158;
+  --vp-c-text-3: #6a786f;
+  --vp-c-divider: #dfe5dc;
+  --vp-c-gutter: #e5eae1;
   --vp-c-tip-1: var(--vp-c-brand-1);
   --vp-c-tip-2: var(--vp-c-brand-2);
   --vp-c-tip-3: var(--vp-c-brand-3);
   --vp-c-tip-soft: var(--vp-c-brand-soft);
-
-  --vp-home-hero-name-color: var(--vp-c-brand-1);
-  --vp-home-hero-name-background: transparent;
-  --vp-code-line-height: 1.6;
-
+  --vp-font-family-base: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --vp-font-family-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --vp-code-line-height: 1.7;
+  --vp-layout-max-width: 1440px;
+  --zc-stage: #edf2e9;
+  --zc-stage-grid: rgba(57, 119, 80, 0.07);
   --vh-term-bg: #232a2e;
-  --vh-term-text: #d3c6aa;
-  --vh-term-muted: #6d7a70;
+  --vh-term-text: #f2f5f3;
+  --vh-term-muted: #9da9a0;
   --vh-term-accent: #a7c080;
   --vh-term-bright: #83c092;
   --vh-term-aqua: #7fbbb3;
   --vh-term-violet: #b8a6e0;
   --vh-term-red: #e67e80;
-  --vh-term-yellow: #d8b46a;
+  --vh-term-yellow: #dbbc7f;
 }
 
 .dark {
-  --vh-term-bg: #1e2428;
+  --vp-c-brand-1: #a8d0a1;
+  --vp-c-brand-2: #8fbe89;
+  --vp-c-brand-3: #44865c;
+  --vp-c-brand-soft: rgba(168, 208, 161, 0.1);
+  --vp-c-bg: #191f1c;
+  --vp-c-bg-alt: #151a17;
+  --vp-c-bg-soft: #232c25;
+  --vp-c-bg-elv: #232c25;
+  --vp-c-text-1: #e8efe5;
+  --vp-c-text-2: #adbcaf;
+  --vp-c-text-3: #94a598;
+  --vp-c-divider: #303c32;
+  --vp-c-gutter: #303c32;
+  --zc-stage: #202c23;
+  --zc-stage-grid: rgba(168, 208, 161, 0.06);
 }
 
-/* The terminal window the home page and the interface page show. */
+.VPNavBarTitle .logo { width: 32px; height: 32px; }
+.VPNavBarTitle .title { font-weight: 700; letter-spacing: -0.04em; }
+.VPSidebarItem.level-0 > .item > .text { letter-spacing: 0.02em; }
+.VPSidebarItem.is-active > .item { border-radius: 6px; background: var(--vp-c-brand-soft); }
+.vp-doc { line-height: 1.85; }
+.vp-doc h1 { font-size: clamp(30px, 4vw, 40px); line-height: 1.25; letter-spacing: -0.035em; }
+.vp-doc h2 { padding-top: 28px; margin-top: 44px; letter-spacing: -0.025em; }
+.vp-doc p, .vp-doc li { color: var(--vp-c-text-2); }
+.vp-doc strong { color: var(--vp-c-text-1); }
+.vp-doc a { text-underline-offset: 4px; }
+.vp-doc table { display: block; width: 100%; overflow-x: auto; }
+.vp-doc th { white-space: nowrap; }
+.vp-doc div[class*="language-"] { border: 1px solid var(--vp-c-divider); border-radius: 10px; }
+.vp-doc kbd {
+  padding: 2px 6px;
+  border: 1px solid var(--vp-c-divider);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--vp-c-bg-soft);
+  font: 0.85em var(--vp-font-family-mono);
+}
+.vp-doc .custom-block { border: 1px solid var(--vp-c-divider); border-radius: 10px; }
+.vp-doc .custom-block.tip { border-color: transparent; }
+
 .term {
   margin: 32px auto 0;
   max-width: 860px;
-  border-radius: 12px;
   overflow: hidden;
-  background: var(--vh-term-bg);
   border: 1px solid var(--vp-c-divider);
-  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
+  border-radius: 12px;
+  background: var(--vh-term-bg);
   text-align: left;
 }
-
 .term-bar {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 14px;
+  padding: 12px 16px;
   background: rgba(255, 255, 255, 0.04);
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
-
-.term-bar span {
-  width: 11px;
-  height: 11px;
-  border-radius: 50%;
-  background: #4b565b;
-}
-
-.term-bar em {
-  margin-left: 8px;
-  font-size: 12px;
-  font-style: normal;
-  color: var(--vh-term-muted);
-}
-
+.term-bar span { width: 9px; height: 9px; border-radius: 50%; background: #65726a; }
+.term-bar em { margin-left: 8px; color: var(--vh-term-muted); font-size: 12px; font-style: normal; }
 .term-body {
   margin: 0;
   padding: 18px 20px 20px;
-  font-family: var(--vp-font-family-mono);
-  font-size: 13px;
-  line-height: 1.65;
-  color: var(--vh-term-text);
   overflow-x: auto;
-}
-
-.term-body code {
-  font-family: inherit;
-  background: none;
-  padding: 0;
-  color: inherit;
-}
-
-.term-body b {
-  font-weight: 600;
   color: var(--vh-term-text);
+  font: 13px/1.7 var(--vp-font-family-mono);
 }
+.term-body code { padding: 0; background: none; color: inherit; font-family: inherit; }
+.term-body b { color: var(--vh-term-text); font-weight: 600; }
+.t-text { color: var(--vh-term-text); }
+.t-dim { color: var(--vh-term-muted); }
+.t-acc { color: var(--vh-term-accent); }
+.t-bright { color: var(--vh-term-bright); }
+.t-aqua { color: var(--vh-term-aqua); }
+.t-violet { color: var(--vh-term-violet); }
+.t-yellow { color: var(--vh-term-yellow); }
+.t-red { color: var(--vh-term-red); }
+.t-band { border-radius: 3px; background: rgba(167, 192, 128, 0.14); }
 
-.t-dim {
-  color: var(--vh-term-muted);
-}
-
-.t-acc {
-  color: var(--vh-term-accent);
-}
-
-.t-bright {
-  color: var(--vh-term-bright);
-}
-
-.t-aqua {
-  color: var(--vh-term-aqua);
-}
-
-.t-violet {
-  color: var(--vh-term-violet);
-}
-
-.t-yellow {
-  color: var(--vh-term-yellow);
-}
-
-.t-red {
-  color: var(--vh-term-red);
-}
-
-.t-band {
-  background: rgba(167, 192, 128, 0.14);
-  border-radius: 3px;
-}
-
-/* Feature cards on the home page keep the walkthrough close to the fold. */
-.VPFeature {
-  border-radius: 10px;
-}
-
-.VPFeature .icon {
-  font-size: 20px;
-}
-
-.vp-doc h2 {
-  border-top: 1px solid var(--vp-c-divider);
-  padding-top: 24px;
-}
-
-.vp-doc table {
-  display: table;
-  width: 100%;
-}
-
-.vp-doc kbd {
-  border: 1px solid var(--vp-c-divider);
-  border-bottom-width: 2px;
-  border-radius: 4px;
-  padding: 1px 6px;
-  font-size: 0.85em;
-  font-family: var(--vp-font-family-mono);
-  background: var(--vp-c-bg-soft);
+:focus-visible { outline: 2px solid var(--vp-c-brand-1); outline-offset: 4px; }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { transition-duration: 0s !important; animation-duration: 0s !important; }
 }
