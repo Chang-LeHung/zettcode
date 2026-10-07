@@ -22,6 +22,11 @@ to the conversation:
 Every request re-reads them, so editing the file applies to the very next turn —
 no restart, no reload command.
 
+The last file above applies when you start with
+`zettcode -w ~/projects/api/service`. Starting at `~/projects/api` does not
+recursively load every `AGENTS.md` in its subdirectories. Choose the workspace
+that matches the part of the project you want to work on.
+
 ## What to put in it
 
 Write it the way you would brief a new teammate:
@@ -47,6 +52,23 @@ Two rules of thumb:
   actionable; "write good code" is not.
 - **Say what to avoid.** The files or directories that are off limits save more
   time than any style note.
+
+### Example: give the project its own rules
+
+Save the example as `<project>/AGENTS.md`, replacing the paths and commands
+with ones that actually exist in your repository. Then run:
+
+```bash
+zettcode -w /path/to/project
+```
+
+Send a bounded task such as:
+
+> Add a regression test for an empty response. Follow AGENTS.md and run the project checks.
+
+The instructions are guidance to the model, not proof that it obeyed them.
+Check the tool output for the requested command and inspect the resulting diff.
+Keep secrets out of `AGENTS.md`: its contents are sent to your model endpoint.
 
 ## What it is not
 

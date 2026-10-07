@@ -1,11 +1,11 @@
 # The interface
 
-The screen is a fixed frame around a scrolling conversation. Nothing overlaps
-and nothing floats: every row has one job, and the conversation in the middle
-grows or shrinks into whatever space is left.
+The screen is a fixed frame around a scrolling conversation. The composer
+stays near the bottom while the conversation uses the remaining space; command
+panels temporarily cover the lower part of it.
 
 ```
-  ▐ zettcode  ~/projects/api              gpt-4o · high    ← header
+  ▐ zettcode  ~/projects/api          DeepSeek Pro · high  ← header
  ─────────────────────────────────────────────────────────
    ● Read src/api/users.py                                ← transcript
    ● Edited src/api/users.py (2 edits)                      (scrolls)
@@ -70,6 +70,13 @@ Up to eight can be queued; the shell says so if you try more.
 Steering is for direction, not for interruption: `Ctrl-C` is how you stop a
 request you no longer want.
 
+For example, while a pagination change is running, send:
+
+> Keep the current API response format; only add the pagination fields.
+
+This is a new instruction for the **same** task. It does not undo edits already
+made. If you need the agent to stop immediately, press `Ctrl-C` instead.
+
 ## Panels
 
 Commands that need a choice open a panel over the conversation instead of
@@ -93,6 +100,12 @@ offers:
 | `a` | Run it, and allow every later command this run. |
 | `p` | Run it, and remember this exact command for the session. |
 | `Esc` | Refuse. The agent is told the command failed, and can react. |
+
+For a command such as `pytest tests/test_users.py`, choose `y` if you want to
+review the next command separately. Choose `p` only when you want that exact
+command remembered for the current process. `a` grants a wider allowance; do
+not choose it merely to dismiss the panel. Approval memory is not saved across
+program restarts, and the tools run locally rather than in a ZettCode sandbox.
 
 ## When the model asks you a question
 
@@ -170,6 +183,16 @@ What makes it *side* is what is not kept:
 Ask one while a turn is running and it waits for that turn instead of being
 refused; its tokens still count in the status line, and it does not trigger
 automatic compaction or naming.
+
+For example, during a task to update an API endpoint:
+
+```text
+/btw What is the difference between offset and cursor pagination?
+```
+
+Use a normal message instead if that answer should guide the continuing task.
+If a normal request is still running, the side question waits for it to finish;
+it is not a second simultaneous writer to the workspace.
 
 ## Pictures and pastes
 

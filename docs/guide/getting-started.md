@@ -2,8 +2,10 @@
 
 ZettCode is a terminal program. It reads and writes the files of one
 **workspace**, runs commands there, and paints the conversation on the screen it
-was started in. Nothing is uploaded except what a request needs, and nothing is
-written to your project without your approval.
+was started in. Messages and tool results needed for a request are sent to your
+configured model endpoint. Shell commands ask for approval; file-editing tools
+can change the workspace as part of a task, so use version control and review
+the diff before accepting the work.
 
 ## What you need
 
@@ -47,22 +49,56 @@ uv run zettcode -w /path/to/project
 
 Everything except the workspace lives in `~/.zettcode/config.toml`. The only
 required section is a list of models — one table each, and the first one is
-active at startup:
+active at startup. Create the directory before opening the file:
+
+::: code-group
+
+```bash [macOS / Linux]
+mkdir -p ~/.zettcode
+```
+
+```powershell [Windows]
+New-Item -ItemType Directory -Force "$HOME/.zettcode"
+```
+
+:::
+
+This example connects to **DeepSeek**, which exposes an OpenAI-compatible API.
+Create an API key on the [DeepSeek platform](https://platform.deepseek.com/),
+then save the following in `~/.zettcode/config.toml`. Replace `sk-...` with your
+key; it is a placeholder, not a working credential.
 
 ```toml
 # ~/.zettcode/config.toml
 [[models]]
-model = "gpt-4o"                       # the id sent to the endpoint
-display_model = "GPT-4o"               # optional; what the header shows
-token = "sk-..."                       # or set OPENAI_API_KEY
-base_url = "http://localhost:8787/v1"  # OpenAI-compatible API root
-context_window = 200000                # tokens this model can carry
-multimodal = true                      # accepts images as well as text
+model = "deepseek-v4-pro"             # the id sent to DeepSeek
+display_model = "DeepSeek Pro"        # optional; what the header shows
+token = "sk-..."                      # your DeepSeek API key
+base_url = "https://api.deepseek.com"  # API root, not the chat website
+responses_api = false                 # use Chat Completions
+context_window = 1000000               # tokens; check the endpoint's current limits
+compact_percent = 80                  # summarize before the context fills up
+multimodal = false                    # DeepSeek Pro does not accept images
 ```
 
-The full list of keys, and the rest of the file, is in
-[Configuration](/guide/config). A missing or malformed file is reported on
-startup with the line that is wrong, not swallowed.
+Three details matter here:
+
+- `model` is the API's model id; `display_model` is only a label in the UI.
+- `base_url` is the API root. Do not use `https://chat.deepseek.com` or append
+  `/chat/completions` to it.
+- `multimodal = false` keeps image input disabled for this text-only model. If
+  you want to paste screenshots, configure a model that accepts images.
+
+DeepSeek's model names and capabilities change over time. This example follows
+its [current model reference](https://api-docs.deepseek.com/quick_start/pricing);
+if you use a gateway, use the ids and limits advertised by that gateway.
+
+Prefer not to keep a key in a file? Omit the `token` line and set
+`OPENAI_API_KEY` instead, even when the key belongs to DeepSeek. See
+[the environment-variable example](/guide/config#keeping-the-key-out-of-the-file).
+The [configuration reference](/guide/config) covers multiple models and all
+optional sections. Startup errors name a missing setting or invalid key; TOML
+syntax errors include the parser's location information.
 
 ## Send the first task
 
@@ -78,6 +114,18 @@ provider SDK is — and the status line reads `ready`. Type a task and press
 **Enter**:
 
 > add a limit/offset window to GET /users, and cover it with a test
+
+For a safer first look at an unfamiliar repository, start with a read-only
+request:
+
+> Explain this project's entry point and how to run its tests. Do not edit files.
+
+Then give it a bounded change:
+
+> Add a test for an empty users response. Change only tests/test_users.py.
+
+Use real paths from your project. Specific scope and a way to verify the result
+make a task easier to review than "improve this project".
 
 ## What happens next
 
@@ -102,6 +150,21 @@ that reopens that session, so the way back is one copy and paste:
 ```
 resume this session: zettcode --resume 01a10b75 --workspace ~/projects/api
 ```
+
+## Check the result
+
+Read the answer and expand tool output if needed. In a Git workspace, inspect
+the changes from another terminal:
+
+```bash
+git diff --stat
+git diff
+```
+
+Run the project's tests before keeping the changes. ZettCode works on the local
+workspace; a successful-looking answer is not a substitute for reviewing files.
+If the first request fails, follow the
+[connection checks](/guide/config#checking-the-connection).
 
 Next: [The interface](/guide/interface) explains every row on the screen, or go
 straight to [Keys and mouse](/guide/keys) if you would rather try it first.

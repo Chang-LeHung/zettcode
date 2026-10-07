@@ -1,7 +1,7 @@
 # 会话
 
 一个会话就是你和某个工作区的一段对话：问了什么、答了什么、跑了哪些工具。ZettCode 边跑边写，
-所以离开从来不会丢东西。
+正常退出不会删除已经保存的会话。
 
 ## 存在哪里
 
@@ -40,6 +40,26 @@ resume this session: zettcode --resume 01a10b75 --workspace ~/projects/api
 
 `/new` 开一个新会话，当前对话留在磁盘上。`/clear` 只是清屏，会话继续，模型仍然记得之前的轮次。
 
+### 例子：接着昨天的工作做
+
+在同一个工作区启动，然后选择之前的会话：
+
+```bash
+zettcode -w ~/projects/api
+```
+
+在输入框中输入 `/resume`，用 `↑` / `↓` 选中目标对话，再按 `Enter`。
+之前的消息会替换当前 transcript，接着就可以说“从上次失败的测试继续”。
+
+已经知道 id 时，可以跳过列表：
+
+```bash
+zettcode --workspace ~/projects/api --resume 01a10b75
+```
+
+把路径和 id 换成自己的。直接运行 `zettcode` 默认开始新会话，不会自动恢复上一条。
+如果找不到 id，先检查工作区：即使文件相同，两份 checkout 的会话列表也是分开的。
+
 ## 标题
 
 第一次回答之后，代理会用一次很小的模型调用生成一个四五个词的标题，追加到 `metadata.jsonl`。
@@ -47,6 +67,9 @@ resume this session: zettcode --resume 01a10b75 --workspace ~/projects/api
 
 `/title users endpoint` 可以自己命名，而且这个名字会保留：自动命名永远不会覆盖已经有标题的
 会话，所以你在第一条消息之前起的名字不会被冲掉。
+
+例如，输入 `/title 修复 users 分页`。不带参数的 `/title` 会报告当前标题。
+没有标题的会话显示为 `New session`，及时起名能让较长的列表更容易查找。
 
 ## 导出
 
@@ -60,3 +83,16 @@ resume this session: zettcode --resume 01a10b75 --workspace ~/projects/api
 压缩过的会话会在那里显示 checkpoint，重复出现的系统指令只做指向而不再重复打印。
 
 导出的页面不需要网络也不需要服务器：样式和脚本都内联在里面。
+
+### 例子：保存并分享报告
+
+在 ZettCode 内输入 `/export review.html`，再从文件管理器或浏览器打开提示中的文件。
+相对路径以工作区为基准；绝对路径可以保存到其他目录，必要时会创建父目录。
+
+`/btw` 交流不会进入导出的历史或模型上下文，但恢复会话时仍会显示在 transcript 中。
+HTML 是当时的快照，之后继续对话不会自动更新它，也不能用 `/resume` 把 HTML 导入成会话。
+
+::: warning 分享前先检查
+导出可能包含源码、提示词、文件路径和带有私人信息的工具输出，发给别人前应先检查。
+如果想备份可恢复的会话，应复制这个工作区对应的会话存储目录。
+:::
