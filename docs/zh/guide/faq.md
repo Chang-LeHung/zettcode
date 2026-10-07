@@ -83,8 +83,9 @@ chat-completions 验证。
 
 - **Upgrade now**：按当前安装方式执行升级 —— `uv tool upgrade zettcode`，或
   `pip install --upgrade zettcode` —— 在后台跑。当前窗口用的还是启动时的代码，升级后需要重启。
-- **Skip this version**（或 `Esc`）：把版本记进 `~/.zettcode/update.json`，这个版本不再提示，
-  再往后的新版本会重新提示。
+- **Skip this version**：把版本记进 `~/.zettcode/update.json`，这个版本不再提示，再往后的
+  新版本会重新提示。
+- **Not now**（或 `Esc`）：什么都不写，下次启动还会就同一个版本再问一次。
 
 提示来自那个文件而不是网络，所以离线机器不会看到任何版本相关的打扰。
 

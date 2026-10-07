@@ -1931,6 +1931,8 @@ async def test_a_stored_newer_release_is_offered_in_a_bottom_panel(tmp_path):
     assert "ZettCode 99.0.0 is available, you have" in text
     assert "Upgrade now" in text
     assert "Skip this version" in text
+    assert "Not now" in text
+    assert "esc not now" in text
     # The command is shown before it can run, in the form a reader would type.
     assert display_command(updating_module.upgrade_command()) in text
 
@@ -1940,13 +1942,28 @@ async def test_skipping_a_release_is_remembered_until_the_next_one(tmp_path):
     harness = _harness(app)
     path = _offer_update(app, tmp_path, latest="99.0.0")
 
-    harness.press("escape")
+    harness.press("down")  # the panel opens on "Upgrade now"
+    harness.press("enter")
 
     assert app.app.screens.top.name == "main"
     assert read_state(path).skipped == "99.0.0"
     assert any("skipping ZettCode 99.0.0" in entry.text for entry in app.transcript.entries)
     # Asking again in the same run says nothing: the skip is on disk now.
     assert app.offer_update() is None
+
+
+async def test_dismissing_for_now_asks_again_on_the_next_start(tmp_path):
+    """``Esc`` is the gentler no: it writes nothing, so the offer comes back."""
+    app = build_app()
+    harness = _harness(app)
+    path = _offer_update(app, tmp_path, latest="99.0.0")
+    before = read_state(path)
+
+    harness.press("escape")
+
+    assert app.app.screens.top.name == "main"
+    assert read_state(path) == before
+    assert app.offer_update() is not None
 
 
 async def test_the_offer_disappears_once_the_running_version_is_the_newest(tmp_path):
