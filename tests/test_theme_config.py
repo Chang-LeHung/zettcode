@@ -174,12 +174,14 @@ def test_a_custom_palette_changes_the_rendered_colours():
 
 
 def test_theme_file_overrides_ui_and_code_colours():
-    text = 'base = "light"\n\n[ui]\naccent = "#123456"\n\n[code]\nkeyword = "#abcdef"\n'
+    text = 'base = "light"\n\n[ui]\naccent = "#123456"\nsurface_side = "#0f1e14"\n\n[code]\nkeyword = "#abcdef"\n'
 
     theme = theme_from_toml(text)
 
     assert theme.name == "light"
     assert theme.accent == "#123456"
+    assert theme.surface_side == "#0f1e14"
+    assert theme.surface_alt == LIGHT.surface_alt  # the roles it did not name stay
     assert theme.code.keyword == "#abcdef"
     assert theme.code.string == LIGHT.code.string
 
@@ -222,3 +224,31 @@ def test_a_theme_file_can_recolour_one_tool_family(tmp_path):
 def test_load_theme_reports_a_missing_file(tmp_path):
     with pytest.raises(ThemeFileError, match="Cannot read"):
         load_theme(tmp_path / "missing.toml")
+
+
+def _contrast(first: str, second: str) -> float:
+    """Return the WCAG contrast ratio between two ``#rrggbb`` colours."""
+
+    def luminance(value: str) -> float:
+        channels = []
+        for index in (1, 3, 5):
+            channel = int(value[index : index + 2], 16) / 255
+            channels.append(channel / 12.92 if channel <= 0.04045 else ((channel + 0.055) / 1.055) ** 2.4)
+        return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
+
+    lighter, darker = sorted((luminance(first), luminance(second)), reverse=True)
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+def test_a_side_question_stays_readable_on_its_own_surface():
+    """The side surface is a background, and the muted ink must survive on it.
+
+    ``surface_side`` is the one surface that leans a different way from the
+    green-toned neutrals, so a palette — or a theme file — that pushes it too
+    close to the ink would leave the row unreadable.
+    """
+    for theme in (DARK, LIGHT):
+        assert _contrast(theme.subtle, theme.surface_side) >= 4.5, theme.name
+
+    washed = theme_from_toml('[ui]\nsurface_side = "#7f8a86"\n')
+    assert _contrast(washed.subtle, washed.surface_side) < 4.5  # the pinned pair is not accidental

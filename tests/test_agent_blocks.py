@@ -113,15 +113,26 @@ def test_agent_components_keep_every_line_within_narrow_bounds():
 
 def test_blocks_use_theme_styles_and_preserve_user_surface():
     user = TextEntry(id=1, kind="user", text="hello")
+    side = TextEntry(id=3, kind="user", text="what does parse() do?", side=True)
     notice = TextEntry(id=2, kind="notice", text="done")
 
     dark_user = render_entry(user, 20, DARK, 0)
     light_user = render_entry(user, 20, LIGHT, 0)
+    dark_side = render_entry(side, 40, DARK, 0)
+    light_side = render_entry(side, 40, LIGHT, 0)
     dark_notice = render_entry(notice, 20, DARK, 0)
 
     assert dark_user[2].text.startswith("› hello")
     assert dark_user[2].spans[0].style.background == DARK.surface_alt
     assert light_user[2].spans[0].style.background == LIGHT.surface_alt
+    # A side question keeps a surface of its own, so the row reads as a note
+    # beside the conversation rather than as one of its turns.
+    assert dark_side[2].text.startswith("btw › what does parse() do?")
+    assert dark_side[2].spans[0].style.background == DARK.surface_side
+    assert light_side[2].spans[0].style.background == LIGHT.surface_side
+    assert dark_side[2].spans[0].style.foreground == DARK.subtle
+    assert light_side[2].spans[0].style.foreground == LIGHT.subtle
+    assert DARK.surface_side != DARK.surface_alt and LIGHT.surface_side != LIGHT.surface_alt
     assert dark_notice[1].spans[0].style.foreground == DARK.muted
 
 

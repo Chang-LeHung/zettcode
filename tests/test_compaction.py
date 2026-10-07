@@ -10,6 +10,7 @@ from zett_agent.model import ModelEvent, ModelResponse, RetryOptions
 from zettcode.app.agent.compaction import OnDemandCompaction
 from zettcode.app.agent.entries import EntryStatus, ThinkingEntry
 from zettcode.app.agent.rows import COMPACTING_LABEL
+from zettcode.app.agent.side import question
 from zettcode.app.agent.transcript import Transcript
 
 
@@ -64,6 +65,28 @@ def _dialogue() -> list[object]:
         UserMessage(content="does the suite pass?"),
         AssistantMessage(content="yes, all green"),
     ]
+
+
+async def test_a_side_question_is_never_compacted():
+    """Compacting there would summarize a branch the question is not part of.
+
+    The pass would also store a checkpoint whose boundary ignores that the
+    exchange is a side one, so automatic compaction waits for an ordinary turn.
+    """
+    extension = OnDemandCompaction(None, max_tokens=1, keep_recent_tokens=1)
+    context = FakeContext(_dialogue(), FakeModel())
+    context.input_message = question("what does parse() do?")
+    before = list(context.state.messages)
+
+    await extension.before_model(context, request=None)
+
+    assert context.state.messages == before
+
+    # The control: the same budget compacts a turn that is not a side question.
+    ordinary = FakeContext(_dialogue(), FakeModel())
+    await extension.before_model(ordinary, request=None)
+
+    assert len(ordinary.state.messages) < len(before)
 
 
 async def test_a_forced_pass_compacts_a_context_the_threshold_would_ignore():
