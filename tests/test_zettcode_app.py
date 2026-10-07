@@ -48,6 +48,7 @@ from zettcode.app.agent.rows import (
     sweep_step,
     terminal_safe,
 )
+from zettcode.app.agent.side import SideQuestions
 from zettcode.app.agent.storage import SessionInfo, SessionStore
 from zettcode.app.agent.usage import USAGE_EVENT_NAME, UsageExtension, UsageSnapshot
 from zettcode.app.commands import Command, CommandContext, CommandResult
@@ -213,6 +214,7 @@ class FakeRuntime:
     todos: FakeTodos = field(default_factory=FakeTodos)
     usage: UsageExtension = field(default_factory=UsageExtension)
     context: ContextExtension = field(default_factory=ContextExtension)
+    sides: SideQuestions = field(default_factory=SideQuestions)
     effort: ReasoningEffort = ReasoningEffort.MEDIUM
     # A zero deadline keeps the fake offline: the estimate stands in for tiktoken.
     tokenizer: Tokenizer = field(default_factory=lambda: Tokenizer(deadline=0.0))
@@ -2239,6 +2241,173 @@ async def test_questions_from_one_response_are_asked_one_after_another():
     ]
     assert answered == [("call-1", "one"), ("call-2", "two")]
     assert app.app.screens.top.name == "main"
+
+
+async def test_btw_asks_a_side_question_and_marks_it():
+    """The answer shows up, but the exchange is not part of the conversation."""
+    app = build_app()
+    harness = _harness(app)
+
+    harness.write("/btw what does parse() do?")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    message = app.agent.runtime.client.messages[-1]
+    assert isinstance(message, UserMessage)
+    assert message.attributes.get("side") is True
+    assert message.include_in_messages is False
+
+    side_entries = [entry for entry in app.transcript.entries if getattr(entry, "side", False)]
+    assert [entry.text for entry in side_entries] == ["what does parse() do?"]
+    assert "btw" in harness.render().text
+
+
+async def test_a_side_question_does_not_name_the_session():
+    """Naming uses the conversation the question is not part of."""
+    app = build_app()
+    harness = _harness(app)
+    calls: list[str] = []
+
+    async def fake_title(session_id: str) -> str | None:
+        calls.append(session_id)
+        return "should not happen"
+
+    app.agent.title_session = fake_title
+    harness.write("/btw what does parse() do?")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    assert app._title_task is None
+    assert calls == []
+
+
+async def test_btw_without_a_question_says_how_to_ask_one():
+    app = build_app()
+    harness = _harness(app)
+
+    harness.write("/btw")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    assert any("ask something: /btw <question>" in entry.text for entry in app.transcript.entries)
+    assert app.agent.runtime.client.messages == []
+
+
+async def test_a_btw_question_waits_for_the_reply_in_flight():
+    app = build_app(block=True)
+    harness = _harness(app)
+
+    harness.write("a long task")
+    harness.press("enter")
+    await asyncio.sleep(0)
+    harness.write("/btw what does parse() do?")
+    harness.press("enter")
+
+    assert app._pending == ["/btw what does parse() do?"]
+    assert any(
+        "queued for after this request" in entry.text for entry in app.transcript.entries if entry.kind == "notice"
+    )
+
+    app.task.cancel()
+    await asyncio.gather(app.task, return_exceptions=True)
+
+    # The turn it waited for is over, so the question runs now.
+    message = app.agent.runtime.client.messages[-1]
+    assert isinstance(message, UserMessage)
+    assert message.attributes.get("side") is True
+    assert app._pending == []
+
+    app.task.cancel()
+    await asyncio.gather(app.task, return_exceptions=True)
+
+
+async def test_typing_during_a_side_question_keeps_the_draft():
+    """Steering would fold into the side request, whose messages are dropped."""
+    app = build_app(block=True)
+    harness = _harness(app)
+
+    harness.write("/btw what does parse() do?")
+    harness.press("enter")
+    await asyncio.sleep(0)
+
+    harness.write("and change it")
+    harness.press("enter")
+
+    assert app.composer.text == "and change it"
+    assert any(
+        "btw question is being answered" in entry.text for entry in app.transcript.entries if entry.kind == "notice"
+    )
+
+    app.task.cancel()
+    await asyncio.gather(app.task, return_exceptions=True)
+
+
+async def test_a_slash_command_runs_through_the_handler_its_name_resolves_to():
+    """Nothing is special-cased by name: the registry decides what a draft runs."""
+    app = build_app()
+    harness = _harness(app)
+    arguments: list[str] = []
+
+    async def spy(context: CommandContext) -> CommandResult:
+        arguments.append(context.argument)
+        return CommandResult()
+
+    app.commands = tuple(
+        replace(command, handler=spy) if command.name == "/btw" else command for command in app.commands
+    )
+    harness.write("/btw what does parse() do?")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    assert arguments == ["what does parse() do?"]
+    # The spy replaced the real handler, so nothing reached the agent: had the
+    # shell matched the name instead, the side question would have run anyway.
+    assert app.agent.runtime.client.messages == []
+
+
+async def test_a_command_declaring_itself_queued_runs_when_the_reply_ends():
+    app = build_app(block=True)
+    harness = _harness(app)
+    ran: list[str] = []
+
+    async def queued(context: CommandContext) -> CommandResult:
+        ran.append(context.argument)
+        return CommandResult()
+
+    app.commands = (*app.commands, Command("/later", "run after the reply", "app", queued, when_busy="queue"))
+    harness.write("a long task")
+    harness.press("enter")
+    await asyncio.sleep(0)
+
+    harness.write("/later now")
+    harness.press("enter")
+    assert app._pending == ["/later now"]
+    assert ran == []
+
+    app.task.cancel()
+    await asyncio.gather(app.task, return_exceptions=True)
+    # The turn it waited for is over, so it runs as the next request.
+    await asyncio.wait_for(app.task, 2.0)
+
+    assert ran == ["now"]
+    assert app._pending == []
+
+
+async def test_a_command_without_the_queue_policy_is_refused_while_busy():
+    app = build_app(block=True)
+    harness = _harness(app)
+
+    harness.write("a long task")
+    harness.press("enter")
+    await asyncio.sleep(0)
+    harness.write("/help")
+    harness.press("enter")
+
+    assert app._pending == []
+    assert any("busy" in entry.text for entry in app.transcript.entries if entry.kind == "notice")
+
+    app.task.cancel()
+    await asyncio.gather(app.task, return_exceptions=True)
 
 
 async def test_a_stored_newer_release_is_offered_in_a_bottom_panel(tmp_path):
