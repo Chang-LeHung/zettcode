@@ -94,6 +94,7 @@ base = "dark"                  # dark | light —— 从哪套配色出发
 accent = "#a7c080"
 accent_bright = "#83c092"
 background = "#232a2e"         # 不写就用终端自己的背景色
+surface_side = "#393a44"       # `/btw` 那一行的底色：它不是一轮对话
 
 [tools]                        # 所有角色默认同一种紫色
 read = "#b8a6e0"

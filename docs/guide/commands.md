@@ -12,6 +12,7 @@ the highlighted name. A command with an argument takes it after a space —
 | `/resume` | Pick a recent session from a panel; `/resume <id>` opens one directly. |
 | `/model` | Pick the model for later requests from a panel. |
 | `/effort` | Pick how much the model reasons: `/effort high`. |
+| `/btw` | Ask something that is answered here but never joins the conversation: `/btw <question>`. |
 | `/theme` | Pick a palette from a panel; `/theme dark` or `/theme light` switches in one step. |
 | `/context` | Show what is filling the context window right now. |
 | `/compact` | Summarize the conversation now, instead of waiting for the window to fill. |
