@@ -102,6 +102,22 @@ wrong or unreachable is the usual cause.
 ZettCode reports the plugin name and keeps the session going. Two plugins cannot
 share a name, and none can take a command name that already exists.
 
+## New versions
+
+**It offered me an upgrade.** Once a day ZettCode asks PyPI, in the background,
+whether a newer release exists. No start waits for that request, and
+`[update] enabled = false` turns it off entirely. When the answer names a newer
+version, the next start shows a panel over the conversation:
+
+- **Upgrade now** runs the upgrade for the install it came from — `uv tool
+  upgrade zettcode`, or `pip install --upgrade zettcode` — in the background.
+  The window keeps the code it started with, so restart to use the new version.
+- **Skip this version** (or `Esc`) remembers it in `~/.zettcode/update.json`.
+  That one is never offered again; a later release is.
+
+The offer comes from that file, never from the network, so a machine that is
+offline simply hears nothing about versions.
+
 ## Leaving
 
 **How do I exit?** `/quit`, or `Ctrl-D` on an empty composer. **Ctrl-C** stops

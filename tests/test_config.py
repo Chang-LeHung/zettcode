@@ -206,7 +206,7 @@ def test_project_instructions_skills_and_mcp_can_be_turned_off(tmp_path: Path):
     path = tmp_path / "config.toml"
     path.write_text(
         '[[models]]\nmodel = "m"\ntoken = "t"\n\n[agents_md]\nenabled = false\n'
-        "\n[skills]\nenabled = false\n\n[mcp]\nenabled = false\n",
+        "\n[skills]\nenabled = false\n\n[mcp]\nenabled = false\n\n[update]\nenabled = false\n",
         encoding="utf-8",
     )
 
@@ -215,6 +215,17 @@ def test_project_instructions_skills_and_mcp_can_be_turned_off(tmp_path: Path):
     assert config.agents_md_enabled is False
     assert config.skills_enabled is False
     assert config.mcp_enabled is False
+    assert config.update_enabled is False
+
+
+def test_the_release_check_is_on_unless_the_config_turns_it_off(tmp_path: Path):
+    path = tmp_path / "config.toml"
+    path.write_text('[[models]]\nmodel = "m"\ntoken = "t"\n', encoding="utf-8")
+
+    config = load_config(tmp_path, path=path)
+
+    assert config.update_enabled is True
+    assert config.update_file == (Path.home() / ".zettcode" / "update.json").resolve()
 
 
 def test_project_instructions_are_read_unless_the_config_turns_them_off(tmp_path: Path):
@@ -295,6 +306,11 @@ def test_load_config_requires_at_least_one_model(tmp_path: Path):
             "Unknown config keys in the \\[agents_md\\] table",
         ),
         ('[[models]]\nmodel = "m"\ntoken = "t"\n[agents_md]\nenabled = "yes"\n', "must be bool"),
+        (
+            '[[models]]\nmodel = "m"\ntoken = "t"\n[update]\ninterval = "daily"\n',
+            "Unknown config keys in the \\[update\\] table",
+        ),
+        ('[[models]]\nmodel = "m"\ntoken = "t"\n[update]\nenabled = "yes"\n', "must be bool"),
     ],
 )
 def test_load_config_reports_configuration_errors(tmp_path: Path, text, message):

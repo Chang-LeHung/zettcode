@@ -4,8 +4,8 @@
 models. The first model is active at startup; ``/model`` selects another for
 later requests. The same file says whether project ``AGENTS.md`` files are
 read, where skills live, which MCP server file to read, and how much
-transcript to keep on screen; session storage and other runtime settings keep
-code defaults.
+transcript to keep on screen, and whether to look for a newer release;
+session storage and other runtime settings keep code defaults.
 """
 
 from __future__ import annotations
@@ -33,13 +33,17 @@ DEFAULT_STORE = Path.home() / ".zettcode" / "sessions"
 #: whatever other zett tools read.
 DEFAULT_MCP_CONFIG = Path.home() / ".zettcode" / "mcp.json"
 
+#: What the background release check leaves behind: the newest version it saw
+#: and the version the reader asked not to hear about again.
+DEFAULT_UPDATE_FILE = Path.home() / ".zettcode" / "update.json"
+
 #: Anything written to stderr while the TUI owns the screen is kept here: a
 #: child process — an MCP server announcing itself, say — cannot know that the
 #: frame is the interface, and the renderer only repaints what it changed.
 DEFAULT_LOG = Path.home() / ".zettcode" / "log" / "tui.log"
 
 #: Top-level keys the config file may set; anything else is a typo.
-CONFIGURABLE = frozenset({"models", "transcript", "agents_md", "skills", "mcp", "plugins"})
+CONFIGURABLE = frozenset({"models", "transcript", "agents_md", "skills", "mcp", "plugins", "update"})
 
 #: Keys one ``[[models]]`` entry may set.
 MODEL_KEYS = frozenset(
@@ -60,6 +64,9 @@ MCP_KEYS = frozenset({"enabled", "config"})
 
 #: Keys the ``[plugins]`` table may set.
 PLUGIN_KEYS = frozenset({"enabled", "disable"})
+
+#: Keys the ``[update]`` table may set.
+UPDATE_KEYS = frozenset({"enabled"})
 
 #: Where ZettCode's own skills live, searched after any ``[skills] roots``. A
 #: project-local directory is a configured root, not a default: only what the
@@ -166,6 +173,9 @@ class ZettCodeConfig:
         disabled_plugins: Entry-point names not to load when
             :attr:`plugins_enabled` is true; a way to switch off one plugin
             without uninstalling it.
+        update_enabled: Ask PyPI, in the background, whether a newer release
+            exists, and offer it on a later start.
+        update_file: Where that check leaves what it found; one small JSON file.
     """
 
     workspace: Path
@@ -185,6 +195,8 @@ class ZettCodeConfig:
     mcp_config: Path | None = None
     plugins_enabled: bool = True
     disabled_plugins: tuple[str, ...] = ()
+    update_enabled: bool = True
+    update_file: Path = DEFAULT_UPDATE_FILE
 
     def __post_init__(self) -> None:
         """Normalize the paths and reject settings that cannot build a runtime."""
@@ -209,6 +221,7 @@ class ZettCodeConfig:
             object.__setattr__(self, "theme_file", self.theme_file.expanduser().resolve())
         if self.mcp_config is not None:
             object.__setattr__(self, "mcp_config", self.mcp_config.expanduser().resolve())
+        object.__setattr__(self, "update_file", self.update_file.expanduser().resolve())
 
     def skill_search_roots(self) -> tuple[Path, ...]:
         """Return every skill directory to scan, most specific first.
@@ -386,6 +399,7 @@ def load_config(
     mcp = _read_table(data.get("mcp"), "mcp", source, MCP_KEYS)
     plugins = _read_table(data.get("plugins"), "plugins", source, PLUGIN_KEYS)
     transcript = _read_table(data.get("transcript"), "transcript", source, TRANSCRIPT_KEYS)
+    update = _read_table(data.get("update"), "update", source, UPDATE_KEYS)
 
     return ZettCodeConfig(
         workspace=Path(workspace),
@@ -404,4 +418,5 @@ def load_config(
         mcp_config=_read_mcp_config(mcp.get("config"), source),
         plugins_enabled=bool(_setting(plugins, "enabled", bool, True)),
         disabled_plugins=_read_disabled_plugins(plugins.get("disable"), source),
+        update_enabled=bool(_setting(update, "enabled", bool, True)),
     )

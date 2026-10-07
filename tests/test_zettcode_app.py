@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import sys
+import threading
+import time
 from dataclasses import dataclass, field, fields, replace
 from datetime import datetime, timedelta, timezone
 from math import ceil
@@ -50,6 +53,7 @@ from zettcode.app.commands import Command, CommandContext, CommandResult
 from zettcode.app.ui import app as app_module
 from zettcode.app.ui import demo
 from zettcode.app.ui import keys as keys_module
+from zettcode.app.ui import updating as updating_module
 from zettcode.app.ui.widgets import (
     WELCOME,
     ApprovalChoice,
@@ -58,6 +62,7 @@ from zettcode.app.ui.widgets import (
     ContextPage,
     SessionsPage,
     SteeringQueue,
+    UpdatePage,
     bottom_panel,
     format_ago,
     help_text,
@@ -67,6 +72,7 @@ from zettcode.plugins import BUILTIN_PLUGINS, PluginContainer, Plugins, ShellCon
 from zettcode.tui import DARK, LIGHT, Canvas, ListItem, ListPage, Rect, Span, Style, Text, TextLine, Toast, walk
 from zettcode.tui.render import display_width
 from zettcode.tui.testing import Harness, render_block
+from zettcode.update import UpdateState, display_command, in_background, read_state, write_state
 
 
 class FakeAgent:
@@ -189,6 +195,8 @@ class FakeConfig:
     skills_enabled: bool = False
     plugins_enabled: bool = True
     disabled_plugins: tuple[str, ...] = ()
+    update_enabled: bool = True
+    update_file: Path = Path("/tmp/zettcode-update.json")
 
     def skill_search_roots(self) -> tuple[Path, ...]:
         """Return no roots: the fake runs without a skills directory."""
@@ -322,6 +330,20 @@ def _approval_page(app: ZettCodeApp) -> ApprovalPage:
 def _sessions_page(app: ZettCodeApp) -> SessionsPage:
     """Return the session panel on top of the stack."""
     return next(widget for widget in walk(app.app.screens.top.widget) if isinstance(widget, SessionsPage))
+
+
+def _update_page(app: ZettCodeApp) -> UpdatePage:
+    """Return the newer-release panel on top of the stack."""
+    return next(widget for widget in walk(app.app.screens.top.widget) if isinstance(widget, UpdatePage))
+
+
+def _offer_update(app: ZettCodeApp, tmp_path: Path, latest: str = "99.0.0") -> Path:
+    """Store a newer release where the shell reads it, and offer it."""
+    path = tmp_path / "update.json"
+    app.agent.runtime.config.update_file = path
+    write_state(UpdateState(checked_at=datetime.now(timezone.utc), latest=latest), path)
+    assert app.offer_update() is not None
+    return path
 
 
 def test_welcome_mark_is_compact_and_readable_in_both_themes():
@@ -1893,6 +1915,116 @@ async def test_escape_aborts_the_pending_command():
     event, _ = app.agent.runtime.client.agent.emitted[0]
     assert event.payload == {"tool_call_id": "call-1", "decision": "abort", "remember": False}
     assert app.app.screens.top.name == "main"
+
+
+async def test_a_stored_newer_release_is_offered_in_a_bottom_panel(tmp_path):
+    app = build_app()
+    harness = _harness(app)
+
+    _offer_update(app, tmp_path, latest="99.0.0")
+
+    page = _update_page(app)
+    text = harness.render().text
+    assert app.app.screens.top.name == "page"
+    # A panel, not a page: the conversation stays visible above it.
+    assert page.rect.bottom == app.app.height
+    assert "ZettCode 99.0.0 is available, you have" in text
+    assert "Upgrade now" in text
+    assert "Skip this version" in text
+    # The command is shown before it can run, in the form a reader would type.
+    assert display_command(updating_module.upgrade_command()) in text
+
+
+async def test_skipping_a_release_is_remembered_until_the_next_one(tmp_path):
+    app = build_app()
+    harness = _harness(app)
+    path = _offer_update(app, tmp_path, latest="99.0.0")
+
+    harness.press("escape")
+
+    assert app.app.screens.top.name == "main"
+    assert read_state(path).skipped == "99.0.0"
+    assert any("skipping ZettCode 99.0.0" in entry.text for entry in app.transcript.entries)
+    # Asking again in the same run says nothing: the skip is on disk now.
+    assert app.offer_update() is None
+
+
+async def test_the_offer_disappears_once_the_running_version_is_the_newest(tmp_path):
+    app = build_app()
+    path = tmp_path / "update.json"
+    app.agent.runtime.config.update_file = path
+    write_state(UpdateState(checked_at=datetime.now(timezone.utc), latest="0.0.1"), path)
+
+    assert app.offer_update() is None
+    assert app.app.screens.top.name == "main"
+
+
+async def test_choosing_upgrade_runs_the_command_and_reports_it(tmp_path, monkeypatch):
+    app = build_app()
+    harness = _harness(app)
+    _offer_update(app, tmp_path)
+    monkeypatch.setattr(
+        updating_module, "upgrade_command", lambda: (sys.executable, "-c", "print('installed zettcode')")
+    )
+
+    harness.press("enter")
+    await app._update_task
+
+    # The panel is gone and the confirmation is a toast, not another page.
+    assert not any(isinstance(widget, UpdatePage) for widget in walk(app.app.screens.top.widget))
+    assert any(isinstance(widget, Toast) for screen in app.app.screens for widget in walk(screen.widget))
+    assert any("ZettCode 99.0.0 installed" in entry.text for entry in app.transcript.entries)
+
+
+async def test_a_failed_upgrade_is_reported_with_the_command_to_run(tmp_path, monkeypatch):
+    app = build_app()
+    harness = _harness(app)
+    _offer_update(app, tmp_path)
+    monkeypatch.setattr(
+        updating_module,
+        "upgrade_command",
+        lambda: (sys.executable, "-c", "import sys; sys.stderr.write('no space left'); sys.exit(1)"),
+    )
+
+    harness.press("enter")
+    await app._update_task
+
+    assert any("upgrade failed: no space left" in entry.text for entry in app.transcript.entries)
+    assert any("run it yourself" in entry.text for entry in app.transcript.entries)
+
+
+async def test_the_check_and_the_offer_both_answer_to_the_configuration(tmp_path):
+    app = build_app()
+    app.agent.runtime.config.update_enabled = False
+    app.agent.runtime.config.update_file = tmp_path / "update.json"
+
+    assert app.start_update_check() is None
+    assert app.offer_update() is None
+    assert app.app.screens.top.name == "main"
+
+
+async def test_a_quit_does_not_wait_for_a_check_still_in_flight(tmp_path, monkeypatch):
+    app = build_app()
+    app.agent.runtime.config.update_file = tmp_path / "update.json"
+    started = threading.Event()
+
+    def slow() -> str:
+        started.set()
+        time.sleep(5.0)
+        return "0.1.3"
+
+    monkeypatch.setattr(updating_module, "check_for_update", lambda path: in_background(slow))
+    task = app.start_update_check()
+    assert task is not None
+    await asyncio.sleep(0)  # let the task reach the thread it waits on
+    assert started.wait(2.0)
+
+    began = time.monotonic()
+    await app._stop_update_task()
+
+    assert task.cancelled()
+    # The request is still in its thread; the quit does not wait for it.
+    assert time.monotonic() - began < 1.0
 
 
 async def test_ctrl_c_clears_the_composer_when_idle():

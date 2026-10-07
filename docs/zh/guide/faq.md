@@ -76,6 +76,18 @@ chat-completions 验证。
 **插件被跳过了。** 在普通 Python 里 import 它就能看到真正的报错；ZettCode 会报出插件名并让
 会话继续。两个插件不能重名，也不能占用已存在的命令名。
 
+## 新版本
+
+**它提示我升级。** ZettCode 每天会在后台向 PyPI 问一次有没有新版本；启动从不等待这个请求，
+`[update] enabled = false` 可以完全关掉。查到更新的版本后，下一次启动会在对话之上弹出面板：
+
+- **Upgrade now**：按当前安装方式执行升级 —— `uv tool upgrade zettcode`，或
+  `pip install --upgrade zettcode` —— 在后台跑。当前窗口用的还是启动时的代码，升级后需要重启。
+- **Skip this version**（或 `Esc`）：把版本记进 `~/.zettcode/update.json`，这个版本不再提示，
+  再往后的新版本会重新提示。
+
+提示来自那个文件而不是网络，所以离线机器不会看到任何版本相关的打扰。
+
 ## 退出
 
 **怎么退出？** `/quit`，或者在输入框为空时按 `Ctrl-D`。**Ctrl-C** 是停止正在跑的请求、请求为

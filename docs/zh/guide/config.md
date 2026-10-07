@@ -58,6 +58,9 @@ config = "~/.zettcode/mcp.json"
 [plugins]
 enabled = true
 disable = ["greeter"]          # 不加载的 entry point 名
+
+[update]
+enabled = true                 # 后台检查是否有新版本
 ```
 
 | 段落 | 键 | 默认值 | 说明 |
@@ -70,6 +73,7 @@ disable = ["greeter"]          # 不加载的 entry point 名
 | `mcp` | `config` | `~/.zettcode/mcp.json` | 描述服务器的 JSON 文件。 |
 | `plugins` | `enabled` | `true` | 见[插件](/zh/guide/plugins)。 |
 | `plugins` | `disable` | `[]` | 不卸载也能关掉某个插件。 |
+| `update` | `enabled` | `true` | 在后台向 PyPI 查询新版本，并在之后启动时提示。 |
 
 会话存储刻意**不**做成可配置的：会话属于写下它的那个工作区，`~/.zettcode/sessions` 是所有
 工作区共同查找的地方。
@@ -124,6 +128,7 @@ inline = "#9bddad"
 | `~/.zettcode/log/tui.log` | 界面占用屏幕期间，任何写到 stderr 的内容。 |
 | `~/.zettcode/skills/` | skills，一个目录一个。 |
 | `~/.zettcode/mcp.json` | MCP 服务器（除非你指向别处）。 |
+| `~/.zettcode/update.json` | 版本检查的结果，以及你选择跳过的版本。 |
 
 那个日志文件存在的原因是：子进程（比如一个自报家门的 MCP 服务器）不可能知道屏幕已经被占用，
 直接画上去会把画面弄坏，所以它的输出进文件。

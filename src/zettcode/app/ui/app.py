@@ -54,6 +54,7 @@ from .rows import RowsMixin
 from .sessions import SessionMixin
 from .settings import SettingsMixin
 from .shell import MAX_STEERING, PAGE_SCREEN
+from .updating import UpdateMixin
 from .widgets import (
     WELCOME,
     CommandCompleter,
@@ -64,7 +65,7 @@ from .widgets import (
 )
 
 
-class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixin):
+class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixin, UpdateMixin):
     """Own the application agent, widget tree, keymap, and slash commands."""
 
     def __init__(self, agent: ZettCodeAgent, *, theme: Theme = DARK, auto_theme: bool = True) -> None:
@@ -159,15 +160,21 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
 
         The runtime is started in the background as the first frame appears:
         its provider SDK costs a few hundred milliseconds, nothing on screen
-        waits for it, and the first turn awaits the same task.
+        waits for it, and the first turn awaits the same task. The release
+        check is a background task for the same reason, and the panel it may
+        deserve is drawn from the file the *last* check left, so no start waits
+        on the network.
         """
         from ...tui import Terminal, TerminalRunner
 
         warm = self.agent.runtime.start()
+        self.start_update_check()
+        self.offer_update()
         try:
             await TerminalRunner(self.app, terminal=Terminal(diagnostics=DEFAULT_LOG)).run()
         finally:
             await self._stop_title_task()
+            await self._stop_update_task()
             # A start that failed is the first turn's error to report, not a
             # reason to keep the process alive or to raise on the way out.
             await asyncio.gather(warm, return_exceptions=True)

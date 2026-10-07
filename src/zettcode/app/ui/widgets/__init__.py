@@ -23,6 +23,7 @@ _EXPORTS = {
     "SteeringQueue": ".steering",
     "TranscriptSource": ".transcript",
     "TranscriptView": ".transcript",
+    "UpdatePage": ".update_page",
     "WELCOME": ".welcome",
     "ZettCodeRoot": ".root",
     "bottom_panel": ".panel",
@@ -42,6 +43,7 @@ if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
     from .sessions_page import SessionsPage, format_ago
     from .steering import SteeringQueue
     from .transcript import TranscriptSource, TranscriptView
+    from .update_page import UpdatePage
     from .welcome import WELCOME
 
 
@@ -76,6 +78,7 @@ __all__ = [
     "SteeringQueue",
     "TranscriptSource",
     "TranscriptView",
+    "UpdatePage",
     "WELCOME",
     "ZettCodeRoot",
     "bottom_panel",
