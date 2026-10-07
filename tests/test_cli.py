@@ -1,13 +1,16 @@
 """The command line picks the workspace and the session to resume; settings come from the config file."""
 
 import asyncio
+import os
 import shlex
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from zettcode import cli
 from zettcode.cli import (
     Options,
     async_main,
@@ -23,6 +26,81 @@ from zettcode.cli import (
 def isolate_environment(monkeypatch):
     for name in ("OPENAI_API_KEY", "ZETTCODE_CONFIG"):
         monkeypatch.delenv(name, raising=False)
+
+
+def test_help_never_imports_the_process_naming_helper(monkeypatch):
+    def refuse_naming():
+        raise AssertionError("--help must exit before importing a native helper")
+
+    monkeypatch.setattr(sys, "argv", ["zettcode", "--help"])
+    monkeypatch.setattr(cli, "_name_process", refuse_naming)
+    with pytest.raises(SystemExit) as result:
+        cli.main()
+    assert result.value.code == 0
+
+
+def test_startup_names_the_process_before_entering_the_application(monkeypatch):
+    calls = []
+
+    async def run_app(config, **kwargs):
+        calls.append("run")
+
+    monkeypatch.setattr(cli, "parse_args", lambda: Options(workspace=Path.cwd()))
+    monkeypatch.setattr(cli, "resolve_config", lambda: None)
+    monkeypatch.setattr(cli, "_name_process", lambda: calls.append("name"))
+    monkeypatch.setattr(cli, "async_main", run_app)
+    cli.main()
+    assert calls == ["name", "run"]
+
+
+def test_process_naming_uses_zettcode_instead_of_the_interpreter(monkeypatch):
+    names = []
+    monkeypatch.setattr(cli.os, "name", "posix")
+    monkeypatch.setitem(sys.modules, "setproctitle", SimpleNamespace(setproctitle=names.append))
+    cli._name_process()
+    assert names == ["zettcode"]
+
+
+@pytest.mark.skipif(os.name != "posix", reason="Windows cannot rename a foreground executable")
+def test_process_naming_changes_the_real_title_without_changing_python_arguments():
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; from zettcode.cli import _name_process; from setproctitle import getproctitle; "
+            "arguments = sys.argv[:]; _name_process(); "
+            "assert sys.argv == arguments; print(getproctitle())",
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert result.stdout.strip() == "zettcode"
+
+
+@pytest.mark.parametrize("error", [ImportError("missing"), OSError("unavailable"), RuntimeError("unsupported")])
+def test_process_naming_failure_does_not_block_startup(monkeypatch, error):
+    def fail(name):
+        raise error
+
+    monkeypatch.setattr(cli.os, "name", "posix")
+    monkeypatch.setitem(sys.modules, "setproctitle", SimpleNamespace(setproctitle=fail))
+    cli._name_process()
+
+
+def test_a_missing_process_naming_helper_does_not_block_startup(monkeypatch):
+    monkeypatch.setattr(cli.os, "name", "posix")
+    monkeypatch.setitem(sys.modules, "setproctitle", None)
+    cli._name_process()
+
+
+def test_windows_does_not_try_to_rename_the_executable(monkeypatch):
+    def refuse(name):
+        raise AssertionError("Windows uses the terminal title, not POSIX process naming")
+
+    monkeypatch.setattr(cli.os, "name", "nt")
+    monkeypatch.setitem(sys.modules, "setproctitle", SimpleNamespace(setproctitle=refuse))
+    cli._name_process()
 
 
 def test_workspace_defaults_to_the_current_directory(monkeypatch, tmp_path: Path):

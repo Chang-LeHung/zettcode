@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import shlex
 from dataclasses import dataclass
 from pathlib import Path
@@ -152,9 +153,29 @@ async def async_main(config: ZettCodeConfig, *, resume: str | None = None, dry_r
         print(f"\nresume this session: {resume_command(agent.session_id, config.workspace)}\n")
 
 
+def _name_process() -> None:
+    """Name the foreground process, independently of the terminal's OSC title.
+
+    iTerm2's job label and VS Code's default tab template inspect the process
+    name, so changing the window title alone leaves them saying ``python3``.
+    Import the native helper only after parsing flags; help never needs it.
+    Windows cannot rename an executable this way and uses the OSC title instead.
+    Failure to name a process must not prevent the application from starting.
+    """
+    if os.name != "posix":
+        return
+    try:
+        from setproctitle import setproctitle
+
+        setproctitle("zettcode")
+    except (ImportError, OSError, RuntimeError):
+        return
+
+
 def main() -> None:
     """Installed console-script entry point."""
     options = parse_args()
+    _name_process()
     asyncio.run(async_main(resolve_config(), resume=options.resume, dry_run=options.dry_run))
 
 
