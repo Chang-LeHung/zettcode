@@ -10,10 +10,14 @@ from xml.etree import ElementTree
 import pytest
 
 import zettcode
+from zettcode.app.agent.blocks import WelcomeProcessor
+from zettcode.app.agent.entries import TextEntry
+from zettcode.app.brand import LOGO_LINES
 from zettcode.app.commands import CommandContext, CommandUi
+from zettcode.app.ui.widgets.welcome import WELCOME
 from zettcode.config import ModelConfig, ZettCodeConfig, load_config
 from zettcode.plugins import PluginContainer
-from zettcode.tui import Canvas, Style
+from zettcode.tui import DARK, Canvas, Style
 from zettcode.tui.theme_file import theme_from_toml
 
 ROOT = Path(zettcode.__file__).resolve().parents[2]
@@ -165,9 +169,21 @@ def test_the_terminal_preview_is_offline_deterministic_and_leaves_no_workspace(r
     text = "\n".join("".join(cell.character for cell in row) for row in first.cells)
     assert "~/projects/api" in text
     assert "ZettCode" in text
-    assert "▄ ▄" in text and "▀█▀" in text
+    assert all(line.text in text for line in LOGO_LINES)
     assert "example-token" not in text
     assert "zettcode-docs-" not in text
+
+
+def test_published_brand_assets_match_the_shared_terminal_pixels(render_terminal):
+    assert (ROOT / "docs/public/logo.svg").read_text(encoding="utf-8") == render_terminal.logo_svg()
+    canvas = render_terminal.preview()
+    assert (ROOT / "docs/public/terminal.svg").read_text(encoding="utf-8") == render_terminal.svg(canvas)
+    lines = WelcomeProcessor().lines(TextEntry(id=0, kind="welcome", text=WELCOME), 60, DARK, 0)
+    for index, line in enumerate(lines[: len(LOGO_LINES)]):
+        expected = Canvas(line.width, 1)
+        expected.fill(0, 0, line.width, 1, style=Style(background="#232a2e"))
+        expected.draw_spans(0, 0, line.spans)
+        assert canvas.cells[index + 2][2 : 2 + line.width] == expected.cells[0]
 
 
 def test_a_failed_preview_restores_the_working_directory(render_terminal, monkeypatch):

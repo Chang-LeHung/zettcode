@@ -1,19 +1,21 @@
 """The banner the shell writes into the transcript on startup.
 
-It is data, not a widget: ``app.agent.transcript`` styles the mark and the
-labels when it renders the ``welcome`` entry, so the text stays here and the
-painting stays on the projector side.
+It is data, not a widget: ``WelcomeProcessor`` combines the shared pixel mark
+with themed labels when it renders the ``welcome`` entry.
 
-The mark shares the website's silhouette: a small robot with two square eyes,
-side ears, and a warm pixel heart. Block glyphs keep it sharp in a terminal.
+The compact mark retains the website's solid face, square eyes, side ears, and
+warm heart. Its labels form one block next to it, instead of leaving the hint
+detached underneath. Half blocks keep the pixels square in tall terminal cells.
 """
 
-WELCOME = (
-    "   ▄███████████▄\n"
-    "  ▐█  ██   ██  █▌   ZettCode\n"
-    "  ▐█    ▄ ▄    █▌   A focused coding agent\n"
-    "   █    ▀█▀    █\n"
-    "   ▀███████████▀\n"
-    "\n"
-    "  Type a task below, or /help for commands."
+from ...brand import LOGO_LINES
+
+WELCOME = "\n".join(
+    f"  {line.text}"
+    + {
+        1: "   ZettCode",
+        2: "   A focused coding agent",
+        4: "   Type a task, or /help for commands.",
+    }.get(index, "")
+    for index, line in enumerate(LOGO_LINES)
 )

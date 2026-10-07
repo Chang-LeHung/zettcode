@@ -12,13 +12,18 @@ publishes them from `main`. Internal notes in this directory remain excluded.
 
 ## Design responsibilities
 
-- `docs/public/logo.svg` is the language-independent mark: a green pixel robot
+- `src/zettcode/app/brand.py` holds the reference pixel map, its hand-hinted
+  terminal version, and the shared fixed brand palette.
+  `docs/public/logo.svg` is generated from it: a green pixel robot
   with square eyes, side ears, and a warm heart. The navigation, favicon, and
   README use the same asset. Keep the silhouette recognizable at 16 and 32 px.
 - `src/zettcode/app/ui/widgets/welcome.py` is the terminal interpretation.
-  Its five-row, fifteen-column mark compensates for tall terminal cells; the
-  silhouette, eyes, and heart stay horizontally symmetric. `WelcomeProcessor`
-  styles its heart with the palette's warm `warning` role.
+  Its five-row, fifteen-column mark is half the reference size, with square
+  eyes and a heart tapering to a single pixel rather than a blunt stem. It packs
+  two square pixels per cell and keeps the reference's proportions and colours.
+  `WelcomeProcessor` groups the title, subtitle, and help hint beside the icon;
+  narrow windows stack the labels underneath instead of clipping the icon's
+  right edge. Both themes use the same mark; its margins stay transparent.
 - `docs/.vitepress/navigation.ts` defines page order once, with English and
   Chinese labels. VitePress provides corresponding-page language switching.
 - `docs/.vitepress/theme/home.ts` holds both translations of the homepage;
@@ -50,7 +55,7 @@ usage measurements as benchmarks.
 Regenerate it after changing the welcome or the transcript presentation:
 
 ```bash
-uv run python docs/scripts/render_terminal.py
+uv run python docs/scripts/render_terminal.py --logo-output docs/public/logo.svg
 ```
 
 The script builds an offline `ZettCodeApp`, uses temporary workspace/session
@@ -58,7 +63,9 @@ directories, labels the header with an illustrative path, seeds a fixed
 conversation, paints the actual widgets, and
 serializes the canvas. It never starts a provider or reads a user's sessions.
 Pass `--output /path/to/terminal.svg` to write somewhere else. The working
-directory is restored even if rendering fails.
+directory is restored even if rendering fails. `--logo-output` regenerates the
+navigation/README logo as well; tests compare both committed assets with their
+generated output, so a terminal change cannot silently leave stale docs art.
 
 ## Review checklist
 
