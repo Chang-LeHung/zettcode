@@ -47,14 +47,15 @@ def parse_background(reply: str) -> str | None:
 def title_sequence(text: str) -> str:
     """Return the sequence that names the terminal window, and so its tab.
 
-    OSC 0 sets the icon name and the window title together; tabbed terminals —
-    VS Code, iTerm2, tmux — show that as the tab or pane name, which is how a
-    running application says what it is working on.
+    OSC 0 sets the textual icon name and window title together, not an image
+    icon or the operating system's process name. Tabbed terminals can show
+    this as a tab or pane name; VS Code's tab template must use ``${sequence}``
+    rather than its default ``${process}`` to include a session title.
 
     Args:
         text: Title to show. Control characters are dropped, so a title taken
             from a session name cannot smuggle a sequence of its own; an empty
-            string hands the title back to whatever set it before.
+            string clears this title so a shell can set its own again.
     """
     clean = "".join(character for character in text if character.isprintable())
     return f"\x1b]0;{clean}\x07"  # OSC 0 ; text BEL

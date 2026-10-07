@@ -1195,11 +1195,17 @@ def test_the_terminal_title_follows_the_session():
     """The tab says what the session is about, like an editor tab does."""
     app = build_app()
 
-    assert app.app.title() == "zettcode \u00b7 workspace"  # no session title yet
+    assert app.app.title() == "◈ zettcode · New session"
 
     app._session_title = "Fix the parser crash"
 
-    assert app.app.title() == "Fix the parser crash"
+    assert app.app.title() == "◈ zettcode · Fix the parser crash"
+
+    app._session_title = "修复解析器"
+    assert app.app.title() == "◈ zettcode · 修复解析器"
+
+    app._session_title = None
+    assert app.app.title() == "◈ zettcode · New session"
 
 
 async def test_ctrl_v_attaches_the_clipboard_image_to_the_prompt(monkeypatch):
@@ -1324,6 +1330,7 @@ async def test_the_title_command_names_the_session(tmp_path):
     # Trimmed, stored, and shown without waiting for the next turn.
     assert store.session_title("session-0001") == "Fix the parser crash"
     assert "Fix the parser crash" in app._status_left().text
+    assert app.app.title() == "◈ zettcode · Fix the parser crash"
 
     harness.write("/title")
     harness.press("enter")
@@ -3159,6 +3166,7 @@ async def test_sessions_command_opens_a_panel_with_titles_and_ages(tmp_path):
     assert app.app.screens.top.name != "page"
     # Resuming a session puts its stored title, not its id, in the status line.
     assert "Fix the parser crash" in app._status_left().text
+    assert app.app.title() == "◈ zettcode · Fix the parser crash"
 
 
 async def test_sessions_command_reports_an_empty_store():
@@ -3194,6 +3202,7 @@ async def test_the_first_reply_names_the_session_in_the_background():
     assert not any("Fix the parser crash" in getattr(entry, "text", "") for entry in app.transcript.entries)
     assert "Fix the parser crash" in app._status_left().text
     assert "session-0001" not in app._status_left().text
+    assert app.app.title() == "◈ zettcode · Fix the parser crash"
 
 
 async def test_an_unnamed_session_reads_as_a_new_session(tmp_path):

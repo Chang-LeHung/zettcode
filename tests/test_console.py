@@ -9,6 +9,13 @@ import pytest
 from zettcode.tui.console import WindowsConsole
 from zettcode.tui.input import AsyncInput
 from zettcode.tui.input.events import EventType
+from zettcode.tui.terminal import title_sequence
+
+
+def test_terminal_title_preserves_the_marker_and_session_without_control_injection():
+    assert title_sequence("◈ zettcode · 修复解析器") == "\x1b]0;◈ zettcode · 修复解析器\x07"
+    assert title_sequence("\x1b\x07\n\r\t\x00Session") == "\x1b]0;Session\x07"
+    assert title_sequence("") == "\x1b]0;\x07"
 
 
 class _FakeKernel32:

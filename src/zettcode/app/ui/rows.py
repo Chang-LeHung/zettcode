@@ -16,7 +16,7 @@ from ...plugins import (
     UiRegion,
     UiSide,
 )
-from ...tui import SEPARATOR, Span, Style, TextLine
+from ...tui import HEADER, SEPARATOR, Span, Style, TextLine
 from ..agent.agent import UNTITLED_SESSION
 from .shell import ShellState
 
@@ -25,8 +25,8 @@ class RowsMixin(ShellState):
     """Paint each row side from the segments the plugins registered."""
 
     def _terminal_title(self) -> str:
-        """Return what the terminal's window or tab should say this is."""
-        return self._session_title or f"zettcode {SEPARATOR} {self.agent.workspace.name}"
+        """Keep the brand marker and app name when the active session changes."""
+        return f"{HEADER} zettcode {SEPARATOR} {self._session_title or UNTITLED_SESSION}"
 
     def _header_left(self) -> TextLine:
         """Return the header's left side, whatever the plugins put there."""

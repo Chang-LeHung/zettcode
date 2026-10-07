@@ -22,6 +22,29 @@
 左侧是程序名和工作区（路径会压缩到最有用的末尾部分）；右侧是**下一次**请求会用的模型和推理
 档位，所以切换模型在发送之前就能看到。
 
+## 终端标签
+
+启动时窗口标题是 `◈ zettcode · New session`，会话有标题后会自动替换
+`New session`。使用 `/title` 重命名、恢复其他会话或新建会话时都会更新。
+macOS 和 Linux 的前台进程名也会显示为 `zettcode`，不再是 `python3`；
+iTerm2 标签里括号中的任务名读取的就是这个进程名。
+
+VS Code 默认显示的是**进程名**，不是程序设置的窗口标题。要显示 ZettCode
+标记和会话名，打开命令面板的 **Preferences: Open User Settings (JSON)**，
+把下面两项加到已有配置对象中：
+
+```json
+{
+  "terminal.integrated.tabs.title": "${sequence}",
+  "terminal.integrated.tabs.description": "${process}"
+}
+```
+
+这会影响所有集成终端。手动重命名的标签优先级更高；如果仍显示旧名字，
+可以通过终端的 **Rename** 操作重置名称。ZettCode 不会自动改你的编辑器配置。
+`◈` 是文字形式的品牌标记；终端输出无法把 VS Code 左侧的独立图标替换成
+我们的像素 SVG，真正的自定义图片图标需要编辑器扩展支持。
+
 ## 对话区
 
 每种输出都有自己的行，按发生顺序排列：

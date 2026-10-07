@@ -25,6 +25,31 @@ useful part of the path. The right side names the model and the reasoning effort
 that the **next** request will use, so a switch is visible before you send
 anything.
 
+## Terminal tabs
+
+ZettCode sets its window title to `◈ zettcode · New session`, then replaces
+`New session` with the active session's title. Naming a session with `/title`,
+resuming another one, or starting a new one updates the title automatically.
+On macOS and Linux, the foreground process is also named `zettcode` rather
+than `python3`, including iTerm2's job label.
+
+VS Code's default terminal tab shows the **process**, not the title a program
+sets. To show the ZettCode marker and session name, open **Preferences: Open
+User Settings (JSON)** and add these keys to the existing object:
+
+```json
+{
+  "terminal.integrated.tabs.title": "${sequence}",
+  "terminal.integrated.tabs.description": "${process}"
+}
+```
+
+This applies to all integrated terminals. A manually renamed tab takes
+precedence; reset its name through the terminal's **Rename** action if needed.
+ZettCode does not modify your editor settings. The `◈` is a text brand marker:
+VS Code's separate tab icon cannot be replaced with our pixel SVG by terminal
+output; a custom image icon requires an editor extension.
+
 ## The transcript
 
 Every kind of output has its own row, in the order it happened:

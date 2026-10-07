@@ -213,7 +213,7 @@ def test_the_runner_names_the_terminal_after_the_app_and_hands_it_back():
         terminal.output.seek(0)
         terminal.output.truncate(0)
         runner.paint()
-        assert title_sequence("zettcode") not in terminal.output.getvalue()
+        assert title_sequence("zettcode · first") not in terminal.output.getvalue()
 
         app.title = lambda: "Fix the parser crash"
         runner.paint()
