@@ -80,9 +80,14 @@ class TranscriptProjector(AgentEventDispatcher):
         self.on_steering_started = on_steering_started
         self.on_steering_interrupted = on_steering_interrupted
 
-    def begin_turn(self, prompt: str) -> None:
-        """Echo the prompt into the transcript before the run starts."""
-        self.transcript.begin_turn(prompt)
+    def begin_turn(self, prompt: str, *, side: bool = False) -> None:
+        """Echo the prompt into the transcript before the run starts.
+
+        Args:
+            prompt: What the reader asked.
+            side: The question is a side one, which the transcript shows as such.
+        """
+        self.transcript.begin_turn(prompt, side=side)
 
     async def on_compaction_started_event(self, event: AgentEvent) -> None:
         """Open the compaction row; the summary streams into it as it arrives."""

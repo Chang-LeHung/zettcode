@@ -46,7 +46,7 @@ from ..agent.rows import clock_text, elapsed_text
 from ..agent.runtime import describe_error
 from ..agent.transcript import Transcript
 from ..agent.usage import UsageSnapshot
-from ..commands import CommandContext, CommandList, CommandResult
+from ..commands import Command, CommandContext, CommandList, CommandResult
 from ..registry import Registry
 from .commands import ShellCommands
 from .keys import KeysMixin
@@ -142,6 +142,9 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
         self._steering_sent = 0
         self._asks: list[AskUserQuestion] = []
         self._ask_total = 0
+        #: Drafts typed while a request was in flight, in arrival order: only
+        #: commands that declare ``when_busy="queue"`` land here.
+        self._pending: list[str] = []
         self._activity = Activity.READY
         self._note: str | None = None
         self._auto_shell = False
@@ -204,13 +207,78 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
         await asyncio.gather(warm, return_exceptions=True)
 
     # -- commands -----------------------------------------------------------
+    async def run_side_question(self, question: str) -> None:
+        """Stream one ``/btw`` question, marking it in the transcript as one.
+
+        The run needs the whole conversation to be useful, so it goes through
+        the same session; it is the store that keeps the exchange out of the
+        context afterwards (see :mod:`zettcode.app.agent.side`). The side
+        mechanics are the extension's, started and ended around this stream;
+        what the shell adds is the marker on the turn, so the rows read as a
+        question of the reader's rather than as part of the conversation.
+
+        This is a run, not a query: the handler that owns ``/btw`` awaits it, so
+        the busy flag, the request slot, and Ctrl-C are the command path's — a
+        second ``/btw`` waits its turn like any queued command.
+        """
+        question = question.strip()
+        if not question:
+            self.transcript.notice("ask something: /btw <question>")
+            return
+        self.projector.begin_turn(question, side=True)
+        started = monotonic()
+        self.app.invalidate()
+        self.agent.runtime.sides.begin()
+        try:
+            async with aclosing(
+                cast("AsyncGenerator[AgentEvent]", self.agent.stream((question,), side=True))
+            ) as events:
+                async for _event in events:
+                    self.app.invalidate()
+        except asyncio.CancelledError:
+            self.transcript.complete_thinking()
+            self.transcript.notice("stopped the side question")
+            raise
+        except Exception as error:
+            self.transcript.complete_thinking()
+            self.transcript.error(f"error: {describe_error(error)}")
+        else:
+            took = elapsed_text(monotonic() - started)
+            self.transcript.notice(f"btw answered for {took} {SEPARATOR} {clock_text()}")
+        finally:
+            self.agent.runtime.sides.end()
+
+    def _lookup(self, value: str) -> tuple[Command | None, str]:
+        """Split a typed line into the command it names and its argument.
+
+        The one place a draft is cut apart, so the composer, the router, and the
+        queue all agree on what ``/name argument`` means. An unknown name answers
+        ``None`` and the whole tail as the argument.
+        """
+        name, _, argument = value.partition(" ")
+        return next((item for item in self.commands if item.name == name), None), argument.strip()
+
+    def _queue_command(self, value: str) -> None:
+        """Hold one typed command until the request in flight is done."""
+        self._pending.append(value)
+        self.transcript.notice(f"queued for after this request ({len(self._pending)} waiting)")
+        self.app.invalidate()
+
+    def _start_next_command(self) -> None:
+        """Run the command that was typed while the finished request was busy."""
+        if not self._pending or self._busy:
+            return
+        self._task = asyncio.create_task(self._run_command(self._pending.pop(0)))
+
     def submit(self, value: str) -> bool | None:
         """Start a turn or a slash command, steering while one is running.
 
         Plain text typed during a turn is not refused: it is queued as a
         steering message, which the agent adopts at its next model or tool
-        boundary and which the queue widget shows until then. A slash command
-        still waits, because there is no running request to steer.
+        boundary and which the queue widget shows until then. A slash command is
+        refused while one runs, because there is no running request to steer —
+        unless the command itself declares ``when_busy="queue"``, which holds the
+        draft and runs it the moment the request in flight ends.
 
         Args:
             value: Draft text from the composer; a leading ``/`` selects the
@@ -221,8 +289,26 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
             clears the composer.
         """
         if self._busy:
-            if value.startswith("/") or not value.strip():
+            if value.startswith("/"):
+                # Which commands are taken mid-request is the command's own
+                # decision, not a name the shell knows: a queued one runs the
+                # moment the request in flight ends.
+                command, _ = self._lookup(value)
+                if command is None or command.when_busy == "refuse":
+                    self._refuse_busy()
+                    return False
+                self._queue_command(value)
+                return True
+            if not value.strip():
                 self._refuse_busy()
+                return False
+            if self._side_question_running:
+                # Steering folds into the running request, and a side question's
+                # messages are recorded but never replayed — so a steered message
+                # sent now would disappear from the conversation. The draft is
+                # left in the composer instead.
+                self.transcript.notice("a btw question is being answered; send that when it finishes")
+                self.app.invalidate()
                 return False
             if carries_image(self.composer.parts()):
                 self.transcript.error("steering takes text only")
@@ -252,6 +338,12 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
                 return False
             self._task = asyncio.create_task(self._run_prompt(value, parts, mention_hint(parts, self.mentions)))
         return True
+
+    @property
+    def _side_question_running(self) -> bool:
+        """Return whether the request in flight is a side question."""
+        task = self._task
+        return bool(task is not None and not task.done() and self.agent.runtime.sides.pending)
 
     def _queue_steering(self, value: str) -> None:
         """Show one message waiting for the agent to adopt it."""
@@ -337,6 +429,7 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
             self._note = None
             self._refresh_tasks()
             self.app.invalidate()
+            self._start_next_command()
 
     def _set_busy(self, busy: bool) -> None:
         """Track in-flight work and keep the frame loop alive while it runs.
@@ -357,8 +450,10 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
 
     async def _run_command(self, value: str) -> None:
         """Execute the matching command's handler and present its result."""
-        name, _, argument = value.partition(" ")
-        argument = argument.strip()
+        command, argument = self._lookup(value)
+        # An unknown name still needs one for the status note and the error, and
+        # there is no command to borrow it from.
+        name = command.name if command is not None else value.partition(" ")[0]
         self._activity = Activity.RUNNING
         self._note = f"{name} {ELLIPSIS}"
         # A command may take a while — `/compact` summarizes the conversation —
@@ -368,7 +463,6 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
         self.app.invalidate()
         try:
             previous_session = self.agent.session_id
-            command = next((item for item in self.commands if item.name == name), None)
             if command is None:
                 self.transcript.error(f"Unknown command: {name}. Try /help.")
             else:
@@ -392,6 +486,9 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
             self._activity = Activity.READY
             self._note = None
             self.app.invalidate()
+            # A queued command waited for whatever was running; with the busy
+            # flag down again, this is where it starts.
+            self._start_next_command()
 
     def _apply_result(self, result: CommandResult) -> None:
         """Show what a command returned: Markdown, a toast, a widget, a re-layout.

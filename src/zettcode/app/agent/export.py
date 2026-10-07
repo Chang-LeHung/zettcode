@@ -26,6 +26,7 @@ from string import Template
 from zett_agent.messages import AnyMessage, AssistantMessage, SystemMessage, ToolMessage, UserMessage
 
 from .context import ContextReport
+from .side import is_side_line
 from .storage import MessageLine, Session
 
 #: Characters a block keeps inline before it collapses. The system prompt and
@@ -104,6 +105,10 @@ def build_trace(
     events: list[Event] = []
     seen: dict[str, int] = {}
     for line in session.branch():
+        if is_side_line(line):
+            # A side question never joined the conversation, so it is not part of
+            # the record a reader is handed either.
+            continue
         event = _event(len(events) + 1, line)
         if event.text:
             first = seen.setdefault(event.text, event.number)

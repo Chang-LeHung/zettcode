@@ -63,10 +63,12 @@ class TextEntry(BaseEntry):
     kind: Literal["welcome", "notice", "user", "announcement"]
     text: str
     level: Literal["info", "error"] = "info"
+    #: Side question: an answer that never joined the conversation.
+    side: bool = False
 
     def render_state(self, frame: int) -> object:
         """Include the text so replacing it cannot reuse stale rendered lines."""
-        return (self.text, self.level)
+        return (self.text, self.level, self.side)
 
 
 @dataclass(slots=True, kw_only=True)

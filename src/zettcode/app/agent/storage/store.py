@@ -52,6 +52,7 @@ from zett_agent.ids import new_uuid7
 from zett_agent.messages import AnyMessage, AssistantMessage, SystemMessage, ToolMessage
 from zett_agent.model import ModelUsage
 
+from ..side import SIDE, is_side
 from .metadata import (
     MAX_TITLE,
     METADATA_FILE,
@@ -121,6 +122,9 @@ class _Request:
 
     request_id: str
     checkpoint_version: int = 0
+    #: Whether this request is a side question (see ``app.agent.side``): its
+    #: messages are written for the record but never replayed into a context.
+    side: bool = False
     #: One stored message id for each replayable non-system context position.
     #: ``None`` marks a context-only message the store was told to skip. The
     #: checkpoint's own position is represented by its boundary message id, so
@@ -483,6 +487,14 @@ class SessionStore(SessionPersistenceMixin, AgentExtension):
             return
         match event:
             case MessageAppendedEvent(message=message, timing=timing, usage=usage):
+                if is_side(message):
+                    request.side = True
+                if request.side:
+                    # A side question is recorded, never replayed: the same flag
+                    # the runtime uses for a message that must not re-enter a
+                    # context. The live transcript is untouched — this is the
+                    # store's own copy of the message.
+                    message = replace(message, include_in_messages=False)
                 node_id: str | None = None
                 if message.persist:
                     node_id = await self.append(
@@ -492,7 +504,10 @@ class SessionStore(SessionPersistenceMixin, AgentExtension):
                         timing,
                         parent_session_id=context.state.parent_session_id,
                         metadata=context.metadata,
-                        tags=context.tags,
+                        # A side question's lines are tagged as well as flagged:
+                        # the tag is what a replay or an export reads, since the
+                        # flag alone would also match an instruction.
+                        tags={**context.tags, SIDE: True} if request.side else context.tags,
                         usage=usage,
                     )
                 if message.include_in_messages and not isinstance(message, SystemMessage):

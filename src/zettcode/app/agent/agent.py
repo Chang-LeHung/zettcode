@@ -35,6 +35,7 @@ from .export import build_trace, render_html, write_export
 from .mentions import MentionProvider, MentionRegistry
 from .replay import replay
 from .runtime import ZettCodeRuntime, build_system_prompt
+from .side import SIDE, question
 from .storage import Session, SessionInfo
 from .title import summarize_title
 from .transcript import Transcript
@@ -257,6 +258,7 @@ class ZettCodeAgent:
         parts: Sequence[PromptPart],
         *,
         hint: str | None = None,
+        side: bool = False,
     ) -> AsyncIterator[AgentEvent]:
         """Run one turn with the selected session, model, and reasoning effort.
 
@@ -268,11 +270,13 @@ class ZettCodeAgent:
                 reference contributes. The text the user typed then rides along
                 as the message's ``prompt`` attribute, so the stored message is
                 what was typed and a restored session shows it.
+            side: Ask without letting the exchange join the conversation; see
+                :mod:`zettcode.app.agent.side`.
         """
         await self.runtime.start()
         client = self.runtime.started
         async for event in client.stream(
-            self.request(parts, hint=hint),
+            self.request(parts, hint=hint, side=side),
             config=AgentRunConfig(session_id=self.session_id),
             model=self.runtime.provider,
             reasoning_effort=self.runtime.effort,
@@ -280,7 +284,7 @@ class ZettCodeAgent:
             yield event
 
     @staticmethod
-    def request(parts: Sequence[PromptPart], *, hint: str | None = None) -> str | UserMessage:
+    def request(parts: Sequence[PromptPart], *, hint: str | None = None, side: bool = False) -> str | UserMessage:
         """Return the user turn those ordered parts make up.
 
         Text and images keep the order they were written in inside one
@@ -289,7 +293,23 @@ class ZettCodeAgent:
         ``hint`` is appended last — as a trailing part when an image is in the
         turn — and the typed text then rides along as the message's ``prompt``
         attribute, so storage and a restored session keep it.
+
+        Args:
+            parts: The turn in the order it was written.
+            hint: Instructions a ``@`` reference contributes.
+            side: Mark the turn as a side question, which the store records but
+                never replays.
         """
+        message = ZettCodeAgent.turn(parts, hint=hint)
+        if not side:
+            return message
+        if isinstance(message, UserMessage):
+            return replace(message, attributes={**message.attributes, SIDE: True}, include_in_messages=False)
+        return question(message)
+
+    @staticmethod
+    def turn(parts: Sequence[PromptPart], *, hint: str | None = None) -> str | UserMessage:
+        """Return the message those parts make up, before any side marking."""
         if not carries_image(parts):
             text = plain_text(parts)
             if hint is None:

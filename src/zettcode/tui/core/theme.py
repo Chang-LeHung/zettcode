@@ -62,6 +62,12 @@ class Theme:
             shell blends into the profile it was started in.
         surface: Raised panel fill.
         surface_alt: Fill shared by the composer and submitted user messages.
+        surface_side: Fill of a side question, which is answered on screen and
+            deliberately kept out of the conversation. It stays as quiet as any
+            other background — the muted body colour has to remain readable on
+            it — but it leans a different way from the green-toned neutrals, a
+            soft slate, so an aside reads as a note beside the conversation
+            rather than as one of its turns.
         text: Body text.
         muted: Lowest-emphasis text (hints, timestamps, disabled rows).
         subtle: Secondary body text that must stay readable, such as a reasoning
@@ -84,6 +90,7 @@ class Theme:
     background: str | None = None
     surface: str = "#2d353b"
     surface_alt: str = "#343f44"
+    surface_side: str = "#393a44"
     text: str = "#f2f5f3"
     muted: str = "#7a8478"
     subtle: str = "#9da9a0"
@@ -105,6 +112,7 @@ LIGHT = Theme(
     background=None,
     surface="#ffffff",
     surface_alt="#eceeec",
+    surface_side="#e5e6ee",
     text="#1b211d",
     muted="#68736c",
     subtle="#4c554e",

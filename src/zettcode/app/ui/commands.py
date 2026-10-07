@@ -66,6 +66,15 @@ class ShellCommands(CommandProvider):
             Command("/context", "what is filling the context window", "app", self.context),
             Command("/title", "name this session: /title <name>", "app", self.title),
             Command("/effort", "how much the model reasons: /effort high", "app", self.effort),
+            Command(
+                "/btw",
+                "ask something that will not join the conversation: /btw <question>",
+                "app",
+                self.btw,
+                # The one command worth taking mid-reply: it is how a reader
+                # asks about what is on screen while it is still arriving.
+                when_busy="queue",
+            ),
             Command("/clear", "clear the transcript", "app", self.clear),
             Command("/quit", "exit", "app", self.quit),
             Command("/exit", "exit, same as /quit", "app", self.quit),
@@ -186,6 +195,18 @@ class ShellCommands(CommandProvider):
     async def clear(self, context: CommandContext) -> CommandResult:
         """Clear visible conversation entries."""
         self.shell.transcript.clear()
+        return CommandResult()
+
+    async def btw(self, context: CommandContext) -> CommandResult:
+        """Ask a side question: answered here, and kept out of the conversation.
+
+        The answer is shown in the transcript like any other, but the store
+        records the exchange as one the model is never given back, and the tools
+        are the reading ones — see :mod:`zettcode.app.agent.side`. Declaring
+        itself queue-worthy is what lets the command be typed during a reply:
+        the answer then waits its turn like any other request.
+        """
+        await self.shell.run_side_question(context.argument)
         return CommandResult()
 
     async def quit(self, context: CommandContext) -> CommandResult:
