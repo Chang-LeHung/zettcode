@@ -90,6 +90,7 @@ invariant breaks, not merely that the code is exercised.
 | U5 | The status line shows the one-off note when there is one, else the state word. | done | `test_plugins.py::test_the_activity_label_prefers_its_note_over_the_state_word` |
 | U6 | Sending a mention keeps the rest of the draft, whatever the cursor position. | done | `test_zettcode_app.py::test_accepting_a_mention_keeps_the_rest_of_the_draft` |
 | U7 | A command's `context.ui` writes reach the screen during the run; they are not deferred to the result, or a long command could not report progress. | done | `test_zettcode_app.py::test_a_command_reports_through_its_context_while_it_runs` |
+| U8 | The release check never delays or fails a start: it runs as a background task, a failure reads as "no news" and leaves the stored answer alone, and a version the reader skipped is not offered again until a newer one lands. | done | `test_update.py::test_a_check_that_fails_says_nothing_and_changes_nothing`, `test_update.py::test_a_fresh_answer_does_not_ask_the_index_again`, `test_zettcode_app.py::test_skipping_a_release_is_remembered_until_the_next_one`, `test_zettcode_app.py::test_the_check_and_the_offer_both_answer_to_the_configuration` |
 
 ## Plugins and configuration
 

@@ -2515,6 +2515,7 @@ dependencies = [
     { name = "exceptiongroup", marker = "python_full_version < '3.11'" },
     { name = "pyperclip" },
     { name = "tomli", marker = "python_full_version < '3.11'" },
+    { name = "truststore" },
     { name = "wcwidth" },
     { name = "zett-agent" },
 ]
@@ -2536,6 +2537,7 @@ requires-dist = [
     { name = "exceptiongroup", marker = "python_full_version < '3.11'", specifier = ">=1.2,<2" },
     { name = "pyperclip", specifier = ">=1.9,<2" },
     { name = "tomli", marker = "python_full_version < '3.11'", specifier = ">=2,<3" },
+    { name = "truststore", specifier = ">=0.10,<1" },
     { name = "wcwidth", specifier = ">=0.2,<1" },
     { name = "zett-agent", specifier = "==0.1.10" },
 ]

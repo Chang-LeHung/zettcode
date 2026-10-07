@@ -20,6 +20,10 @@ PAGE_SCREEN = "page"
 #: up to three lines of command, and the numbered choices.
 APPROVAL_ROWS = 16
 
+#: Rows the "a newer release is out" panel takes: the title, its two rows, and
+#: the hint under them.
+UPDATE_ROWS = 8
+
 #: Steering messages one run accepts; the shell caps what a reader can queue
 #: for a single request, and the count resets when a new run starts.
 MAX_STEERING = 8
@@ -29,6 +33,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
 
     from ...plugins import Activity, UiRow
     from ...tui import CompletionPopup, StatusBar, TuiApp
+    from ...update import UpdateState
     from ..agent.agent import ZettCodeAgent
     from ..agent.mentions import MentionRegistry
     from ..agent.projection import TranscriptProjector
@@ -85,6 +90,8 @@ class ShellState:
     _steering_sent: int
     #: The in-flight request that names a session, if any.
     _title_task: asyncio.Task[None] | None
+    #: The in-flight release check or upgrade, if any.
+    _update_task: asyncio.Task[None] | None
     #: The turn or command currently in flight, if any.
     _task: asyncio.Task[None] | None
 
@@ -96,6 +103,12 @@ class ShellState:
 
     def notify(self, message: str, *, level: str = "info") -> None:
         """Show a one-line toast."""
+
+    def start_update_check(self) -> asyncio.Task[None] | None:
+        """Ask the index about newer releases in the background."""
+
+    def offer_update(self) -> UpdateState | None:
+        """Show the panel a stored newer version asks for, if there is one."""
 
     def _refresh_tasks(self) -> None:
         """Mirror the agent's plan into the panel above the composer."""

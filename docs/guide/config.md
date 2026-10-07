@@ -62,6 +62,9 @@ config = "~/.zettcode/mcp.json"
 [plugins]
 enabled = true
 disable = ["greeter"]          # entry-point names not to load
+
+[update]
+enabled = true                 # look for a newer release in the background
 ```
 
 | Table | Key | Default | Notes |
@@ -74,6 +77,7 @@ disable = ["greeter"]          # entry-point names not to load
 | `mcp` | `config` | `~/.zettcode/mcp.json` | JSON file naming the servers. |
 | `plugins` | `enabled` | `true` | See [Plugins](/guide/plugins). |
 | `plugins` | `disable` | `[]` | Switch one distribution off without uninstalling. |
+| `update` | `enabled` | `true` | Ask PyPI for a newer release in the background, and offer it on a later start. |
 
 Session storage is deliberately **not** configurable: a session belongs to the
 workspace it was written in, and `~/.zettcode/sessions` is where every workspace
@@ -131,6 +135,7 @@ turns that off: choosing colours is a decision, and the file is used as written.
 | `~/.zettcode/log/tui.log` | Anything written to stderr while the frame owns the screen. |
 | `~/.zettcode/skills/` | Skills, one directory each. |
 | `~/.zettcode/mcp.json` | MCP servers, when you do not point elsewhere. |
+| `~/.zettcode/update.json` | What the release check found, and the version you skipped. |
 
 That log file exists because a child process — an MCP server announcing itself,
 say — cannot know the screen is taken, and painting over the interface would

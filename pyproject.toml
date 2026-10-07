@@ -26,6 +26,8 @@ dependencies = [
   "exceptiongroup>=1.2,<2; python_version < '3.11'",
   "pyperclip>=1.9,<2",
   "tomli>=2,<3; python_version < '3.11'",
+  # The system trust store, so the release check works behind a proxy.
+  "truststore>=0.10,<1",
   "wcwidth>=0.2,<1",
   "zett-agent==0.1.10",
 ]
