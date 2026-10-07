@@ -90,10 +90,10 @@ class EntryProcessor(Generic[E], ABC):
 #: Block glyphs the welcome mark is drawn from; a line starting with one is
 #: part of the icon rather than a label or the hint.
 _MARK_GLYPHS = frozenset("\u2580\u2584\u2588\u258c\u2590\u2591\u2592\u2593")
-#: The sparkle the mark carries in its face, kept bright against the blocks.
-_SPARK = "\u2726"
+#: Two rows of block glyphs form the welcome mark's warm pixel heart.
+_HEART_PIXELS = ("▄ ▄", "▀█▀")
 #: The gap between the mark and its label: three or more spaces before a word.
-#: Requiring a letter stops the mark's own gaps (around the sparkle) matching.
+#: Requiring a letter stops the mark's own gaps (around the heart) matching.
 _LABEL_GAP = re.compile(r"(?<=\S) {3,}(?=[A-Za-z])")
 
 
@@ -101,8 +101,8 @@ class WelcomeProcessor(EntryProcessor[TextEntry]):
     """Draw the welcome's pixel mark and its labels with separate palette roles.
 
     The mark's rows are shaded top-down, half in ``accent_bright`` and half in
-    ``accent``, so the icon reads as lit rather than flat; the sparkle in its
-    face stays bright so it keeps shining. The first label is the title and
+    ``accent``, so the icon reads as lit rather than flat; the pixel heart in its
+    face uses the warm ``warning`` accent. The first label is the title and
     gets body text in bold; the rest are subtitles.
     """
 
@@ -134,13 +134,14 @@ class WelcomeProcessor(EntryProcessor[TextEntry]):
 
     @staticmethod
     def _mark_spans(text: str, *, upper: bool, theme: Theme) -> list[Span]:
-        """Return the mark's spans, brightening the sparkle it carries."""
+        """Colour the frame green and the two rows of its pixel heart warm."""
         color = theme.accent_bright if upper else theme.accent
-        if _SPARK not in text:
+        heart = next((pixels for pixels in _HEART_PIXELS if pixels in text), None)
+        if heart is None:
             return [Span(text, Style(foreground=color))]
-        before, _, after = text.partition(_SPARK)
+        before, _, after = text.partition(heart)
         spans = [Span(part, Style(foreground=color)) for part in (before, after) if part]
-        spans.insert(1 if before else 0, Span(_SPARK, Style(foreground=theme.text, bold=True)))
+        spans.insert(1 if before else 0, Span(heart, Style(foreground=theme.warning)))
         return spans
 
 

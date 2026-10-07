@@ -351,10 +351,12 @@ def _offer_update(app: ZettCodeApp, tmp_path: Path, latest: str = "99.0.0") -> P
 
 
 def test_welcome_mark_is_compact_and_readable_in_both_themes():
-    assert len(WELCOME.splitlines()) == 6
+    assert len(WELCOME.splitlines()) == 7
     # The mark is pixel art, drawn entirely from block glyphs.
-    assert WELCOME.splitlines()[0].strip() == "▄███████▄"
-    assert WELCOME.splitlines()[3].strip() == "▀███████▀"
+    assert WELCOME.splitlines()[0].strip() == "▄███████████▄"
+    assert WELCOME.splitlines()[4].strip() == "▀███████████▀"
+    assert WELCOME.splitlines()[2].strip().startswith("▐█    ▄ ▄    █▌")
+    assert WELCOME.splitlines()[3].strip() == "█    ▀█▀    █"
     for theme in (DARK, LIGHT):
         transcript = Transcript()
         transcript.welcome(WELCOME)
@@ -364,16 +366,30 @@ def test_welcome_mark_is_compact_and_readable_in_both_themes():
         subtitle = source.line(2, 60)
 
         assert "█" in title.text
-        assert "✦" in subtitle.text
+        assert "▄ ▄" in subtitle.text
         assert title.text.index("ZettCode") == subtitle.text.index("A focused")
         assert mark.spans[0].style.foreground == theme.accent_bright
         assert title.spans[0].style.foreground == theme.accent_bright
         assert title.spans[1].style.foreground == theme.text
         assert subtitle.spans[0].style.foreground == theme.accent
         assert subtitle.spans[-1].style.foreground == theme.subtle
-        spark = next(span for span in subtitle.spans if span.text == "✦")
-        assert spark.style.foreground == theme.text
-        assert spark.style.bold
+        heart = next(span for span in subtitle.spans if span.text == "▄ ▄")
+        assert heart.style.foreground == theme.warning
+        assert not heart.style.bold
+        heart_tip = source.line(3, 60)
+        assert next(span for span in heart_tip.spans if span.text == "▀█▀").style.foreground == theme.warning
+
+
+def test_welcome_mark_is_wide_and_mirror_symmetric_with_a_centered_heart():
+    rows = [row[2:].split("   ZettCode", 1)[0].split("   A focused", 1)[0].rstrip() for row in WELCOME.splitlines()[:5]]
+    width = max(map(len, rows))
+    assert width == 15
+    mirror = str.maketrans("▌▐", "▐▌")
+    for row in rows:
+        padded = row.ljust(width)
+        assert padded == padded[::-1].translate(mirror)
+    for row, heart in zip(rows[2:4], ("▄ ▄", "▀█▀"), strict=True):
+        assert row.index(heart) * 2 + len(heart) == width
 
 
 async def test_agent_stream_uses_selected_session_and_model():
