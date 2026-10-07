@@ -12,9 +12,16 @@ from dataclasses import replace
 
 from ... import __version__
 from ...tui import Screen
-from ...update import UpdateState, check_for_update, read_state, run_upgrade, upgrade_command, write_state
+from ...update import (
+    UpdateState,
+    check_for_update,
+    read_state,
+    run_upgrade,
+    upgrade_command,
+    write_state,
+)
 from .shell import PAGE_SCREEN, UPDATE_ROWS, ShellState
-from .widgets import UpdatePage, bottom_panel
+from .widgets import LATER, UPGRADE, UpdatePage, bottom_panel
 
 
 class UpdateMixin(ShellState):
@@ -46,10 +53,14 @@ class UpdateMixin(ShellState):
         return state
 
     def _answer_update(self, choice: str, latest: str) -> None:
-        """Act on the panel: run the upgrade, or remember the version to skip."""
+        """Act on the panel: upgrade, forget this version, or ask again later."""
         self.close_page()
-        if choice == "upgrade":
+        if choice == UPGRADE:
             self._update_task = asyncio.ensure_future(self._run_upgrade(latest))
+            return
+        if choice == LATER:
+            # Nothing is written: the next start reads the same file and asks
+            # again, which is the whole difference between this and skipping.
             return
         path = self.agent.runtime.config.update_file
         write_state(replace(read_state(path), skipped=latest), path)

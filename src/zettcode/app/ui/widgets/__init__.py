@@ -18,11 +18,14 @@ _EXPORTS = {
     "CommandCompleter": ".completer",
     "Composer": ".composer",
     "ContextPage": ".context_page",
+    "LATER": ".update_page",
     "ModelPage": ".model_page",
+    "SKIP": ".update_page",
     "SessionsPage": ".sessions_page",
     "SteeringQueue": ".steering",
     "TranscriptSource": ".transcript",
     "TranscriptView": ".transcript",
+    "UPGRADE": ".update_page",
     "UpdatePage": ".update_page",
     "WELCOME": ".welcome",
     "ZettCodeRoot": ".root",
@@ -43,7 +46,7 @@ if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
     from .sessions_page import SessionsPage, format_ago
     from .steering import SteeringQueue
     from .transcript import TranscriptSource, TranscriptView
-    from .update_page import UpdatePage
+    from .update_page import LATER, SKIP, UPGRADE, UpdatePage
     from .welcome import WELCOME
 
 
@@ -73,11 +76,14 @@ __all__ = [
     "CommandCompleter",
     "Composer",
     "ContextPage",
+    "LATER",
     "ModelPage",
+    "SKIP",
     "SessionsPage",
     "SteeringQueue",
     "TranscriptSource",
     "TranscriptView",
+    "UPGRADE",
     "UpdatePage",
     "WELCOME",
     "ZettCodeRoot",

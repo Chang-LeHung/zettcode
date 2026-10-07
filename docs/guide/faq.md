@@ -112,8 +112,10 @@ version, the next start shows a panel over the conversation:
 - **Upgrade now** runs the upgrade for the install it came from — `uv tool
   upgrade zettcode`, or `pip install --upgrade zettcode` — in the background.
   The window keeps the code it started with, so restart to use the new version.
-- **Skip this version** (or `Esc`) remembers it in `~/.zettcode/update.json`.
-  That one is never offered again; a later release is.
+- **Skip this version** remembers it in `~/.zettcode/update.json`. That one is
+  never offered again; a later release is.
+- **Not now** (or `Esc`) writes nothing, so the next start asks again about the
+  same version.
 
 The offer comes from that file, never from the network, so a machine that is
 offline simply hears nothing about versions.
