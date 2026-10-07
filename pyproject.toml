@@ -25,6 +25,7 @@ dependencies = [
   # The stdlib gained both of these in 3.11; older runtimes take the backports.
   "exceptiongroup>=1.2,<2; python_version < '3.11'",
   "pyperclip>=1.9,<2",
+  "setproctitle>=1.3.7,<2; os_name == 'posix'",
   "tomli>=2,<3; python_version < '3.11'",
   # The system trust store, so the release check works behind a proxy.
   "truststore>=0.10,<1",
