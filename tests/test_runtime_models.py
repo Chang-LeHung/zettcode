@@ -109,7 +109,12 @@ def test_the_optional_integrations_can_be_disabled(tmp_path):
 
 
 def test_the_runtime_module_costs_nothing_until_it_starts(tmp_path):
-    """The provider and MCP SDKs must not be in the import graph the shell pays for."""
+    """The provider, MCP, and subagent SDKs must not be in the graph the shell pays for.
+
+    The subagent extension imports its SQLite store, which imports SQLAlchemy —
+    a database nothing here uses. It is built with the runtime, behind the first
+    frame, so a module-level import of it would quietly cost every launch.
+    """
     script = "\n".join(
         [
             "import sys",
@@ -122,14 +127,15 @@ def test_the_runtime_module_costs_nothing_until_it_starts(tmp_path):
             "    store=Path(sys.argv[1]),",
             ")",
             "runtime_module.ZettCodeRuntime.preview(config)",
-            "print(*(name in sys.modules for name in ('openai', 'mcp')))",
+            "heavy = ('openai', 'mcp', 'sqlalchemy', 'zett_agent.extensions.subagent')",
+            "print(*(name in sys.modules for name in heavy))",
         ]
     )
 
     result = subprocess.run([sys.executable, "-c", script, str(tmp_path)], capture_output=True, text=True)
 
     assert result.returncode == 0, result.stderr
-    assert result.stdout.strip() == "False False"
+    assert result.stdout.strip() == "False False False False"
 
 
 async def test_a_preview_runtime_starts_once_and_only_then(tmp_path, monkeypatch):

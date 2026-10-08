@@ -41,7 +41,6 @@ from .compaction import OnDemandCompaction
 from .context import ContextExtension, Tokenizer
 from .side import SideQuestions
 from .storage import SessionStore
-from .subagents import ZettCodeSubAgents
 from .usage import UsageExtension
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only; the imports are the cost
@@ -229,6 +228,11 @@ class ZettCodeRuntime:
         """Import what a provider needs, then hand the client its extensions."""
         from zett_agent.client import create_agent
 
+        # Imported with the runtime, not with the module: the subagent extension
+        # pulls in its SQLite store and SQLAlchemy, which a launch that never
+        # runs a child should not pay for on the way to the first frame.
+        from .subagents import subagent_extension
+
         selected = self.active_model
         model = self._provider(selected)
         capabilities = ModelCapabilities(self._models)
@@ -241,7 +245,7 @@ class ZettCodeRuntime:
                 capabilities,
                 # Before ToolGuidelinesExtension, so the task tool's own
                 # guidance reaches the prompt it is registered for.
-                ZettCodeSubAgents(
+                subagent_extension(
                     model=model,
                     persistence=self.persistence,
                     capabilities=capabilities,
