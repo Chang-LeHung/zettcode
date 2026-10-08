@@ -87,7 +87,8 @@ def svg(canvas: Canvas) -> str:
     cell_width, cell_height = 10, 20
     width, height = canvas.width * cell_width, canvas.height * cell_height
     parts = [
-        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" role="img">',
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" role="img" '
+        'shape-rendering="crispEdges">',
         "<title>ZettCode — illustrative conversation rendered with the actual terminal widgets</title>",
         f'<rect width="{width}" height="{height}" fill="#232a2e"/>',
         '<g font-family="SFMono-Regular,Consolas,Liberation Mono,monospace" font-size="16" xml:space="preserve">',
@@ -127,6 +128,9 @@ def svg(canvas: Canvas) -> str:
 
 def logo_svg() -> str:
     """Serialize the same square pixels as the terminal, with transparent margins."""
+    pixel_size = 2
+    offset_x = (32 - len(LOGO_PIXELS[0]) * pixel_size) // 2
+    offset_y = (32 - len(LOGO_PIXELS) * pixel_size) // 2
     parts = [
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" shape-rendering="crispEdges">',
         "<title>ZettCode pixel robot</title>",
@@ -142,8 +146,10 @@ def logo_svg() -> str:
                 start = column
                 while column < len(pixels) and pixels[column] == pixel:
                     column += 1
-                length = column - start
-                paths.append(f"M{start + 1} {row + 6}h{length}v1h-{length}Z")
+                length = (column - start) * pixel_size
+                paths.append(
+                    f"M{offset_x + start * pixel_size} {offset_y + row * pixel_size}h{length}v{pixel_size}h-{length}Z"
+                )
         parts.append(f'<path d="{"".join(paths)}" fill="{colour}"/>')
     parts.append("</svg>")
     return "\n".join(parts) + "\n"

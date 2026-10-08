@@ -51,7 +51,7 @@ from zettcode.app.agent.rows import (
 from zettcode.app.agent.side import SideQuestions
 from zettcode.app.agent.storage import SessionInfo, SessionStore
 from zettcode.app.agent.usage import USAGE_EVENT_NAME, UsageExtension, UsageSnapshot
-from zettcode.app.brand import LOGO_LINES, LOGO_PALETTE, LOGO_PIXELS, TERMINAL_PIXELS
+from zettcode.app.brand import LOGO_LINES, LOGO_PALETTE, LOGO_PIXELS
 from zettcode.app.commands import Command, CommandContext, CommandResult
 from zettcode.app.ui import app as app_module
 from zettcode.app.ui import demo
@@ -376,26 +376,18 @@ def test_welcome_mark_is_compact_and_readable_in_both_themes():
 
 
 def test_welcome_mark_is_wide_and_mirror_symmetric_with_a_centered_heart():
-    assert len(LOGO_PIXELS) == 20
+    assert len(LOGO_PIXELS) == 10
     assert len(LOGO_LINES) == 5
     for row in LOGO_PIXELS:
-        assert len(row) == 30
-        assert row == row[::-1]
-        if "H" in row:
-            assert row.index("H") + row.rindex("H") == 29
-    assert all(line.width == 15 for line in LOGO_LINES)
-    assert [row[0] for row in LOGO_PIXELS] == ["."] * 5 + ["E"] * 10 + ["."] * 5
-    assert [row.count("H") for row in LOGO_PIXELS[10:16]] == [6, 6, 8, 8, 4, 2]
-    assert len(TERMINAL_PIXELS) == 10
-    assert len(TERMINAL_PIXELS[0]) * len(LOGO_PIXELS) == len(LOGO_PIXELS[0]) * len(TERMINAL_PIXELS)
-    for row in TERMINAL_PIXELS:
         assert len(row) == 15
         assert row == row[::-1]
         if "H" in row:
             assert row.index("H") + row.rindex("H") == 14
-    assert {pixel for row in TERMINAL_PIXELS for pixel in row} == {".", *LOGO_PALETTE}
-    assert [row.count("H") for row in TERMINAL_PIXELS[5:8]] == [4, 5, 1]
-    assert TERMINAL_PIXELS[2].count("I") == TERMINAL_PIXELS[3].count("I") == 4
+    assert all(line.width == 15 for line in LOGO_LINES)
+    assert [row[0] for row in LOGO_PIXELS] == ["."] * 2 + ["E"] * 6 + ["."] * 2
+    assert {pixel for row in LOGO_PIXELS for pixel in row} == {".", *LOGO_PALETTE}
+    assert [row.count("H") for row in LOGO_PIXELS[5:8]] == [4, 5, 1]
+    assert LOGO_PIXELS[2].count("I") == LOGO_PIXELS[3].count("I") == 4
 
 
 @pytest.mark.parametrize("width", [1, 8, 19, 32, 40, 60])
@@ -437,7 +429,7 @@ def test_welcome_half_blocks_preserve_every_brand_pixel_and_transparent_margin()
                     upper.append(background)
                     lower.append(background)
         decoded.extend(("".join(upper), "".join(lower)))
-    assert tuple(decoded) == TERMINAL_PIXELS
+    assert tuple(decoded) == LOGO_PIXELS
 
 
 async def test_agent_stream_uses_selected_session_and_model():
