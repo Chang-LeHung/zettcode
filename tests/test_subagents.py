@@ -13,7 +13,7 @@ from zett_agent.model import ModelEvent, ModelRequest, ModelResponse, RetryOptio
 
 from zettcode.app.agent.capabilities import ModelCapabilities
 from zettcode.app.agent.storage import SessionStore
-from zettcode.app.agent.subagents import ZettCodeSubAgents, build_subagents
+from zettcode.app.agent.subagents import build_subagents, subagent_extension
 
 
 class _StubModel:
@@ -108,7 +108,7 @@ class _ChildModel:
 
 async def test_the_task_tool_runs_an_explore_child_and_links_its_session(tmp_path):
     store = _store(tmp_path)
-    extension = ZettCodeSubAgents(
+    extension = subagent_extension(
         model=_ChildModel(),
         persistence=store,
         capabilities=ModelCapabilities({}),

@@ -115,6 +115,12 @@ invariant breaks, not merely that the code is exercised.
 | A1 | A subagent profile is a tool boundary: exploration is read-only, coding may edit but gets no shell, and no child gets a `task` tool of its own. | done | `test_subagents.py::test_subagent_profiles_split_the_tools_by_what_a_child_may_touch`, `test_no_subagent_profile_can_delegate_to_another` |
 | A2 | A child session lands in the store with `parent_session_id` set to the calling session. | done | `test_subagents.py::test_the_task_tool_runs_an_explore_child_and_links_its_session` |
 
+## Startup
+
+| # | Invariant (what breaks) | Status | Test |
+| --- | --- | --- | --- |
+| S1 | A launch imports only what the first frame needs: the provider, MCP, and subagent SDKs — the last of which drags in its SQLite store and SQLAlchemy, measured at ~98 ms of the shell's import graph — stay behind the first frame, or every launch pays for a model call and a database it has not made yet. | done | `test_runtime_models.py::test_the_runtime_module_costs_nothing_until_it_starts` |
+
 ## Portability
 
 | # | Invariant (what breaks) | Status | Test |
