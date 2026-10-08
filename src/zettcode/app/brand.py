@@ -1,10 +1,9 @@
 """The pixel robot shared by the terminal banner and documentation assets.
 
 Each character is one square pixel: frame, ear, dark face, eye, or heart;
-``.`` is transparent. The terminal uses a hand-hinted, half-size version and
-holds two vertically stacked pixels per cell for a fifteen-column, five-row
-mark. At this size, square eyes and a pointed heart need explicit pixel choices
-rather than nearest-neighbour sampling, which can erase their symmetry.
+``.`` is transparent. One fifteen-by-ten map drives every rendering; the
+terminal holds two vertically stacked pixels per cell for a five-row mark,
+and the documentation scales those same pixels without resampling them.
 The brand colours stay fixed in both themes; only the surrounding text follows
 the reader's palette.
 """
@@ -22,29 +21,6 @@ LOGO_PALETTE: dict[str, str] = {
 }
 
 LOGO_PIXELS: tuple[str, ...] = (
-    ".....FFFFFFFFFFFFFFFFFFFF.....",
-    ".....FFFFFFFFFFFFFFFFFFFF.....",
-    "...FFFFFFFFFFFFFFFFFFFFFFFF...",
-    "...FFFFFFFFFFFFFFFFFFFFFFFF...",
-    "...FFFFDDDDDDDDDDDDDDDDFFFF...",
-    "EEEFFFFDIIIIDDDDDDIIIIDFFFFEEE",
-    "EEEFFFFDIIIIDDDDDDIIIIDFFFFEEE",
-    "EEEFFFFDIIIIDDDDDDIIIIDFFFFEEE",
-    "EEEFFFFDDDDDDDDDDDDDDDDFFFFEEE",
-    "EEEFFFFDDDDDDDDDDDDDDDDFFFFEEE",
-    "EEEFFFFDDDDHHHDDHHHDDDDFFFFEEE",
-    "EEEFFFFDDDDHHHDDHHHDDDDFFFFEEE",
-    "EEEFFFFDDDDHHHHHHHHDDDDFFFFEEE",
-    "EEEFFFFDDDDHHHHHHHHDDDDFFFFEEE",
-    "EEEFFFFDDDDDDHHHHDDDDDDFFFFEEE",
-    "...FFFFDDDDDDDHHDDDDDDDFFFF...",
-    "...FFFFFFFFFFFFFFFFFFFFFFFF...",
-    "...FFFFFFFFFFFFFFFFFFFFFFFF...",
-    ".....FFFFFFFFFFFFFFFFFFFF.....",
-    ".....FFFFFFFFFFFFFFFFFFFF.....",
-)
-
-TERMINAL_PIXELS: tuple[str, ...] = (
     "..FFFFFFFFFFF..",
     ".FFFFFFFFFFFFF.",
     "EFFDIIDDDIIDFFE",
@@ -67,9 +43,9 @@ def logo_lines() -> tuple[TextLine, ...]:
     colour rather than drawing a rectangle around the mark.
     """
     lines: list[TextLine] = []
-    for index in range(0, len(TERMINAL_PIXELS), 2):
+    for index in range(0, len(LOGO_PIXELS), 2):
         spans: list[Span] = []
-        for upper, lower in zip(TERMINAL_PIXELS[index], TERMINAL_PIXELS[index + 1], strict=True):
+        for upper, lower in zip(LOGO_PIXELS[index], LOGO_PIXELS[index + 1], strict=True):
             if upper == lower:
                 span = Span(" " if upper == "." else "█", Style(foreground=LOGO_PALETTE.get(upper)))
             elif upper == ".":

@@ -12,7 +12,7 @@ import pytest
 import zettcode
 from zettcode.app.agent.blocks import WelcomeProcessor
 from zettcode.app.agent.entries import TextEntry
-from zettcode.app.brand import LOGO_LINES
+from zettcode.app.brand import LOGO_LINES, LOGO_PALETTE, LOGO_PIXELS
 from zettcode.app.commands import CommandContext, CommandUi
 from zettcode.app.ui.widgets.welcome import WELCOME
 from zettcode.config import ModelConfig, ZettCodeConfig, load_config
@@ -184,6 +184,51 @@ def test_published_brand_assets_match_the_shared_terminal_pixels(render_terminal
         expected.fill(0, 0, line.width, 1, style=Style(background="#232a2e"))
         expected.draw_spans(0, 0, line.spans)
         assert canvas.cells[index + 2][2 : 2 + line.width] == expected.cells[0]
+
+
+def test_logo_svg_preserves_every_shared_pixel(render_terminal):
+    root = ElementTree.fromstring(render_terminal.logo_svg())
+    assert root.attrib["viewBox"] == "0 0 32 32"
+    assert root.attrib["shape-rendering"] == "crispEdges"
+    pixels = [["."] * 32 for _ in range(32)]
+    palette = {colour: pixel for pixel, colour in LOGO_PALETTE.items()}
+    for path in root.findall("{http://www.w3.org/2000/svg}path"):
+        commands = re.findall(r"M(\d+) (\d+)h(\d+)v(\d+)h-(\d+)Z", path.attrib["d"])
+        assert (
+            "".join(f"M{left} {top}h{width}v{height}h-{back}Z" for left, top, width, height, back in commands)
+            == path.attrib["d"]
+        )
+        for left, top, width, height, back in commands:
+            assert width == back
+            for row in range(int(top), int(top) + int(height)):
+                for column in range(int(left), int(left) + int(width)):
+                    assert pixels[row][column] == ".", "Brand pixels must never overlap or hide another colour"
+                    pixels[row][column] = palette[path.attrib["fill"]]
+    expected = ["." * 32] * 6
+    for row in LOGO_PIXELS:
+        expected.extend(["." + "".join(pixel * 2 for pixel in row) + "."] * 2)
+    expected.extend(["." * 32] * 6)
+    assert ["".join(row) for row in pixels] == expected
+
+
+def test_terminal_svg_preserves_every_welcome_pixel_without_scaling_seams(render_terminal):
+    root = ElementTree.fromstring(render_terminal.svg(render_terminal.preview()))
+    assert root.attrib["shape-rendering"] == "crispEdges"
+    left, top, width, height = 40, 40, 150, 100
+    pixels = [["."] * width for _ in range(height)]
+    palette = {colour: pixel for pixel, colour in LOGO_PALETTE.items()}
+    for rect in root.iter("{http://www.w3.org/2000/svg}rect"):
+        rect_left, rect_top = int(rect.get("x", "0")), int(rect.get("y", "0"))
+        start_x, start_y = max(left, rect_left), max(top, rect_top)
+        end_x = min(left + width, rect_left + int(rect.attrib["width"]))
+        end_y = min(top + height, rect_top + int(rect.attrib["height"]))
+        if start_x >= end_x or start_y >= end_y:
+            continue
+        pixel = palette.get(rect.attrib["fill"], ".")
+        for row in range(start_y - top, end_y - top):
+            pixels[row][start_x - left : end_x - left] = [pixel] * (end_x - start_x)
+    expected = ["".join(pixel * 10 for pixel in row) for row in LOGO_PIXELS for _ in range(10)]
+    assert ["".join(row) for row in pixels] == expected
 
 
 def test_a_failed_preview_restores_the_working_directory(render_terminal, monkeypatch):

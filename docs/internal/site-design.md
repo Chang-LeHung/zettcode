@@ -12,15 +12,17 @@ publishes them from `main`. Internal notes in this directory remain excluded.
 
 ## Design responsibilities
 
-- `src/zettcode/app/brand.py` holds the reference pixel map, its hand-hinted
-  terminal version, and the shared fixed brand palette.
+- `src/zettcode/app/brand.py` holds the single 15×10 pixel map and fixed brand
+  palette used by every surface. There is no separate website interpretation.
   `docs/public/logo.svg` is generated from it: a green pixel robot
   with square eyes, side ears, and a warm heart. The navigation, favicon, and
   README use the same asset. Keep the silhouette recognizable at 16 and 32 px.
 - `src/zettcode/app/ui/widgets/welcome.py` is the terminal interpretation.
-  Its five-row, fifteen-column mark is half the reference size, with square
+  Its five-row, fifteen-column mark uses the same pixels as the website, with square
   eyes and a heart tapering to a single pixel rather than a blunt stem. It packs
-  two square pixels per cell and keeps the reference's proportions and colours.
+  two pixels per cell without resampling the eyes, ears, or heart. Terminal
+  fonts determine the physical cell proportions; the SVG preview uses 10×20
+  cells and draws block glyphs as crisp-edged rectangles rather than font outlines.
   `WelcomeProcessor` groups the title, subtitle, and help hint beside the icon;
   narrow windows stack the labels underneath instead of clipping the icon's
   right edge. Both themes use the same mark; its margins stay transparent.
