@@ -92,13 +92,19 @@ class TerminalRunner:
         with self.terminal:
             app.resize(*self.terminal.size)
             app.set_copy_handler(clipboard_writer(self.terminal))
+            app.mount()
+            app.scheduler.on_request = self.wakeup.set
+            # The interface goes up before the terminal is asked anything. A
+            # terminal that does not answer the background query — multiplexers
+            # and editors commonly do not — costs a full timeout, and that wait
+            # must not be the blank screen a reader stares at. Adopting a scheme
+            # afterwards repaints every cell, so the palette still lands.
+            self.paint()
             # Before the reader owns the descriptor: the answer to the query
             # arrives on the same side the keys do.
             self._adopt_terminal_scheme()
             self.reader = AsyncInput(self.terminal, self.queue.put_nowait)
             self.reader.start()
-            app.mount()
-            app.scheduler.on_request = self.wakeup.set
             # One long-lived reader task: cancelling a pending queue.get() can
             # drop an item, so the loop keeps the same task and replaces it only
             # after it delivers.

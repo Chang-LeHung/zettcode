@@ -169,6 +169,33 @@ async def test_runner_wakes_up_for_a_repaint_requested_while_idle():
     assert painter.text == "painted"
 
 
+async def test_the_first_frame_lands_before_the_terminal_is_asked_for_its_background():
+    """A terminal that never answers the OSC 11 query must not delay the frame.
+
+    Multiplexers and editors commonly do not implement it, so the runner would
+    otherwise hold a blank screen for the whole timeout before painting
+    anything. The stub's ``__enter__`` writes nothing, so every byte before the
+    query is a frame the reader can already see.
+    """
+    read_fd, write_fd = os.pipe()
+    terminal = StubTerminal(read_fd)
+    app = TuiApp(Editor(), width=40, height=6, auto_theme=True)
+    runner = TerminalRunner(app, terminal=terminal)
+    query = "\x1b]11;?\x07"
+
+    task = asyncio.create_task(runner.run())
+    try:
+        await _wait_for(lambda: query in terminal.output.getvalue())
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        os.close(read_fd)
+        os.close(write_fd)
+
+    output = terminal.output.getvalue()
+    assert output[: output.index(query)].strip(), "the interface was not painted before the query"
+
+
 async def test_the_runner_class_owns_the_loop_and_releases_it():
     read_fd, write_fd = os.pipe()
     terminal = StubTerminal(read_fd, width=24, height=3)
