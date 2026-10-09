@@ -31,26 +31,57 @@ def test_the_transcript_drops_the_oldest_entries_at_the_display_cap():
     assert len(texts) <= 32 + max(8, 32 // 32)
 
 
-def test_processing_becomes_thinking_without_losing_its_identity():
+def test_the_wait_row_is_pinned_under_every_row_the_reply_produces():
+    """Reasoning, tools, and the answer land above it; the row itself stays put.
+
+    It is the last entry for as long as the request runs, and nothing promotes
+    it into the reasoning row or drops it when the answer starts: the one line
+    that says work is going on has to stay where the reader is looking.
+    """
     transcript = Transcript(clock=lambda: 0.0)
     transcript.begin_turn("question")
     pending = transcript.entries[-1]
 
     assert isinstance(pending, ProcessingEntry)
-    transcript.start_thinking()
-    thinking = transcript.entries[-1]
+    thinking = transcript.start_thinking()
 
-    assert isinstance(thinking, ThinkingEntry)
-    assert thinking.id == pending.id
-    assert thinking is transcript.entry(pending.id)
-    assert transcript.start_thinking() is thinking
+    assert isinstance(thinking, ThinkingEntry) and thinking is not pending
+    assert transcript.entries[-1] is pending
+    assert [entry.kind for entry in transcript.entries] == ["user", "thinking", "pending"]
+
+    transcript.start_tool("call-1", "read_file", {"path": "app.py"})
+    transcript.append_answer("an answer")
+
+    assert [entry.kind for entry in transcript.entries] == ["user", "thinking", "tool", "answer", "pending"]
+    assert transcript.entries[-1] is pending
+    assert pending.status is EntryStatus.RUNNING
+
+
+def test_settling_the_wait_row_writes_the_line_the_request_ended_on():
+    """It keeps its place, takes the elapsed time it measured, and stops running."""
+    now = [0.0]
+    transcript = Transcript(clock=lambda: now[0])
+    transcript.begin_turn("question")
+    transcript.append_answer("an answer")
+    now[0] = 12.5
+
+    assert transcript.settle_wait("Processed for 12s · 09:41") is True
+
+    row = transcript.entries[-1]
+    assert isinstance(row, ProcessingEntry)
+    assert row.status is EntryStatus.COMPLETED
+    assert row.text == "Processed for 12s · 09:41"
+    assert row.duration == 12.5
+    # Settling is once per request: there is nothing left to settle.
+    assert transcript.settle_wait("again") is False
 
 
 def test_markdown_entry_reuses_its_line_source_while_streaming():
     transcript = Transcript(clock=lambda: 0.0)
     transcript.begin_turn("question")
     transcript.append_answer("first")
-    answer = transcript.entries[-1]
+    # The answer is the entry above the pinned wait row, which stays last.
+    answer = transcript.entries[-2]
     assert isinstance(answer, MarkdownEntry)
 
     source = answer.block_for(24, DARK, frame=0)
@@ -66,8 +97,7 @@ def test_tool_statuses_are_enum_values_and_validate_before_mutating():
     transcript = Transcript(clock=lambda: 0.0)
     transcript.begin_turn("question")
     transcript.start_tool("call-1", "read_file", {"path": "app.py"})
-    tool = transcript.entries[-1]
-    assert isinstance(tool, ToolEntry)
+    tool = next(entry for entry in transcript.entries if isinstance(entry, ToolEntry))
     assert tool.status is EntryStatus.RUNNING
 
     with pytest.raises(ValueError):

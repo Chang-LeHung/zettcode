@@ -51,4 +51,8 @@ async def test_replay_builds_the_rows_the_live_events_built(tmp_path: Path):
 
     replayed = replay(store.read("s"))
 
-    assert _rows(replayed.transcript) == _rows(live)
+    # The live transcript still holds its pinned wait row — a request is open
+    # there — while a replayed one has no request in flight, so the turn's own
+    # rows are what the two paths must agree on.
+    assert _rows(live)[:-1] == _rows(replayed.transcript)
+    assert live.entries[-1].kind == "pending"

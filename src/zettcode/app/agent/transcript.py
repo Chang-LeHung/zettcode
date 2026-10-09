@@ -71,6 +71,11 @@ class Transcript:
         self.version = 0
         self.frame = 0
         self._next_id = 1
+        # Where the current request's own rows begin: the wait row is opened
+        # against the content already there, and everything above it until the
+        # next request is this request's work. The animation walks this range
+        # and no further, so a step's cost follows the request, not the session.
+        self._turn_from = 0
         # Earliest entry touched since the view last took the mark, so it can
         # re-measure only the changed suffix instead of the whole transcript.
         self._dirty_from: int | None = None
@@ -102,11 +107,38 @@ class Transcript:
         if index is not None:
             self._touch(index)
 
+    def _open_wait(self) -> ProcessingEntry | None:
+        """Return the wait row while it is open, which is what keeps it pinned.
+
+        The row is the last entry for as long as the request runs, so "open"
+        and "at the tail" are the same thing: anything that lands below it would
+        be something the reader is still waiting for.
+        """
+        last = self.entries[-1] if self.entries else None
+        if isinstance(last, ProcessingEntry) and last.status is EntryStatus.RUNNING:
+            return last
+        return None
+
+    def _add_index(self) -> int:
+        """Return where a new entry belongs: above the pinned wait row, or at the end.
+
+        The one place the pin is written down as an index, so the add path and
+        the answer path cannot disagree about where the row sits.
+        """
+        return len(self.entries) - 1 if self._open_wait() is not None else len(self.entries)
+
     def _add(self, entry: E) -> E:
-        """Append a typed entry and invalidate the transcript's line boundaries."""
+        """Add a typed entry above the wait row, or append it when none is open.
+
+        The wait row is pinned to the bottom of the transcript while the request
+        runs: reasoning, tool calls, and the answer all land above it, so the one
+        line that says work is going on stays where the reader is already
+        looking instead of scrolling off with the reply that replaced it.
+        """
         self._next_id += 1
-        self._touch(len(self.entries))
-        self.entries.append(entry)
+        index = self._add_index()
+        self._touch(index)
+        self.entries.insert(index, entry)
         self._trim()
         self.version += 1
         return entry
@@ -122,7 +154,10 @@ class Transcript:
         """
         if len(self.entries) <= self._trim_threshold:
             return
-        del self.entries[: len(self.entries) - self.max_entries]
+        dropped = len(self.entries) - self.max_entries
+        del self.entries[:dropped]
+        # Every index the transcript is holding on to moves with the list.
+        self._turn_from = max(0, self._turn_from - dropped)
         self._dirty_from = 0
 
     def _last(self, entry_type: type[E]) -> E | None:
@@ -136,6 +171,7 @@ class Transcript:
     def clear(self) -> None:
         """Drop every entry, for instance when starting a new session."""
         self.entries.clear()
+        self._turn_from = 0
         self._dirty_from = 0
         self.version += 1
 
@@ -143,6 +179,9 @@ class Transcript:
         """Replace visible entries with the chosen session's rebuilt history."""
         self.entries[:] = entries
         self._next_id = max((entry.id for entry in entries), default=0) + 1
+        # A rebuilt history is all in the past: no request is open in it, so the
+        # animation has no range of its own to walk.
+        self._turn_from = len(self.entries)
         self._trim()
         self._dirty_from = 0
         self.version += 1
@@ -170,15 +209,47 @@ class Transcript:
 
     def finish_restored_tools(self) -> None:
         """Mark tool calls without stored results as interrupted, not running."""
+        self.finish_running_rows("Result unavailable (session interrupted)")
+
+    def finish_running_rows(self, note: str) -> None:
+        """Close every row a finished run left open, and say why.
+
+        A request that ends mid-call — stopped, failed, or restored from a
+        session whose turn never completed — leaves rows whose result will never
+        arrive. They keep their own timer up to the moment the request ended and
+        are marked skipped, so the transcript holds no row that still claims to
+        be working after nothing is. The wait row is not one of them: the shell
+        settles that one with the line the request ended on.
+
+        Args:
+            note: What the body of an unfinished tool row is replaced with.
+        """
+        changed = False
         for index, entry in enumerate(self.entries):
-            if isinstance(entry, ToolEntry) and entry.status is EntryStatus.RUNNING:
-                entry.status = EntryStatus.SKIPPED
-                entry.text = "Result unavailable (session interrupted)"
-                self._touch(index)
-                self.version += 1
+            if not isinstance(entry, (ThinkingEntry, ToolEntry)) or entry.status is not EntryStatus.RUNNING:
+                continue
+            entry.status = EntryStatus.SKIPPED
+            if isinstance(entry, ToolEntry) and not entry.text:
+                entry.text = note
+            if entry.started_at is not None:
+                entry.duration = self.clock() - entry.started_at
+            self._touch(index)
+            changed = True
+        if changed:
+            self.version += 1
 
     def advance_frame(self) -> None:
-        """Move the activity animation on so running rows repaint.
+        """Move the activity animation on, and bring every running timer up.
+
+        The waiting row is the one row that sweeps; a reasoning or tool row
+        above it is painted flat, so a step rebuilds it only because its timer
+        moved.
+
+        The walk covers the request's own rows and no more: a row that is not a
+        row at all can sit between two running ones — an approval or a command
+        notice lands beside the call it answered, and a batch's results can
+        arrive out of order — so every running row in the range is brought up,
+        and the range bounds the cost instead of the length of the session.
 
         The counter is derived from the clock, one step per
         :data:`ANIMATION_SECONDS`, rather than counted in terminal ticks: the
@@ -194,16 +265,12 @@ class Transcript:
             return
         self.frame = frame
         changed = False
-        # Running rows are the tail: each opener appends, and a result closes
-        # the row it answers before anything new lands. Walking back from the
-        # end stops at the first settled row instead of scanning the whole
-        # transcript, whose length must not decide the animation's cost.
-        for index in range(len(self.entries) - 1, -1, -1):
+        for index in range(self._turn_from, len(self.entries)):
             entry = self.entries[index]
             if not isinstance(entry, (ProcessingEntry, ThinkingEntry, ToolEntry)):
-                break
+                continue
             if entry.status is not EntryStatus.RUNNING:
-                break
+                continue
             if entry.started_at is not None:
                 entry.duration = self.clock() - entry.started_at
             self._touch(index)
@@ -258,63 +325,82 @@ class Transcript:
         self.wait_for_model()
 
     def wait_for_model(self) -> bool:
-        """Open a wait row for the next model call, and report whether it opened.
+        """Open the pinned wait row for a request, and report whether it opened.
 
         Nothing is known about the response yet, and a call can take seconds, so
-        the row goes up as soon as the call starts. It is opened again after a
-        tool batch, because the loop then calls the model a second time; a wait
-        is not repeated while a tool is still running, and never while a wait is
-        already open.
+        the row goes up as soon as the request starts and stays for all of it:
+        the loop calls the model again after every tool batch, and one row that
+        has been counting the whole time says more than a row per batch would.
         """
-        if any(isinstance(entry, ToolEntry) and entry.status is EntryStatus.RUNNING for entry in self.entries):
+        if self._open_wait() is not None:
             return False
-        pending = self._last(ProcessingEntry)
-        if pending is not None and pending.status is EntryStatus.RUNNING:
+        # A row an interrupted request left running is one more reason not to
+        # open a second: the transcript already says work is in progress, and
+        # the animation walks only the rows a request opens, so a stray row
+        # behind that range would never be brought up. The request's own end
+        # closes them (:meth:`finish_running_rows`), which is what keeps the
+        # range the whole truth; this is the backstop that depends on it.
+        if any(
+            isinstance(entry, (ThinkingEntry, ToolEntry)) and entry.status is EntryStatus.RUNNING
+            for entry in self.entries
+        ):
             return False
+        self._turn_from = len(self.entries)
         self._add(ProcessingEntry(id=self._next_id, title=PROCESSING, started_at=self.clock()))  # type: ignore[call-arg]  # kind is a fixed class value; see entries.py
         return True
 
+    def settle_wait(self, text: str) -> bool:
+        """Close the pinned wait row with the line its request ended on.
+
+        The row is what the reader watched for the whole request, so it is where
+        the outcome belongs: it keeps its place at the bottom of the transcript
+        and its own timer becomes the elapsed time it reports. A row left running
+        — or removed, as one used to be as soon as the answer started — is how a
+        stopped request reads as one that said nothing at all.
+
+        Args:
+            text: The line to leave in its place, such as
+                ``Processed for 12s · 22:53``.
+        """
+        row = self._open_wait()
+        if row is None:
+            return False
+        row.status = EntryStatus.COMPLETED
+        row.text = text
+        row.duration = self.clock() - row.started_at
+        self._touch_entry(row)
+        self.version += 1
+        return True
+
     def start_thinking(self) -> ThinkingEntry:
-        """Return the open thinking block, promoting the placeholder when it fits."""
+        """Open a reasoning row, which lands above the wait row below it.
+
+        The wait row is not turned into this one: it stays where it is, saying
+        that a model call is still running, and the reasoning grows above it.
+        """
         current = self._last(ThinkingEntry)
         if current is not None and current.status is EntryStatus.RUNNING:
             return current
-        pending = self._last(ProcessingEntry)
-        thinking = ThinkingEntry(id=pending.id if pending is not None else self._next_id, started_at=self.clock())  # type: ignore[call-arg]  # kind is a fixed class value; see entries.py
-        if pending is not None:
-            # The placeholder turned out to be reasoning: replace the same row,
-            # retaining its id and position for hit-testing and focus.
-            index = self.entries.index(pending)
-            self.entries[index] = thinking
-            self._touch(index)
-            self.version += 1
-            return thinking
-        return self._add(thinking)
+        return self._add(ThinkingEntry(id=self._next_id, started_at=self.clock()))  # type: ignore[call-arg]  # kind is a fixed class value; see entries.py
 
     def start_compaction(self) -> ThinkingEntry:
         """Open the row that shows the summarizer working.
 
         A compaction is a model call streamed back like any other, so it gets
-        the same row as reasoning — blinking, sweep, and timer included — under
-        its own label. The two never borrow each other's row: a compaction that
-        happens between reasoning spans keeps its text out of the thinking one.
+        the same row as reasoning — marker, and timer included — under its own
+        label. The two never borrow each other's row: a compaction that happens
+        between reasoning spans keeps its text out of the thinking one.
         """
         current = self._last(ThinkingEntry)
         if current is not None and current.status is EntryStatus.RUNNING and current.title == COMPACTING_LABEL:
             return current
-        pending = self._last(ProcessingEntry)
-        row = ThinkingEntry(  # type: ignore[call-arg]  # kind is a fixed class value; see entries.py
-            id=pending.id if pending is not None else self._next_id,
-            title=COMPACTING_LABEL,
-            started_at=self.clock(),
+        return self._add(
+            ThinkingEntry(  # type: ignore[call-arg]  # kind is a fixed class value; see entries.py
+                id=self._next_id,
+                title=COMPACTING_LABEL,
+                started_at=self.clock(),
+            )
         )
-        if pending is not None:
-            index = self.entries.index(pending)
-            self.entries[index] = row
-            self._touch(index)
-            self.version += 1
-            return row
-        return self._add(row)
 
     def append_compaction(self, delta: str) -> None:
         """Append one summary fragment to the running compaction row."""
@@ -334,15 +420,6 @@ class Transcript:
         self._touch_entry(row)
         self.version += 1
 
-    def drop_pending(self) -> bool:
-        """Remove the placeholder once real output has started."""
-        if self.entries and isinstance(self.entries[-1], ProcessingEntry):
-            self._touch(len(self.entries) - 1)
-            self.entries.pop()
-            self.version += 1
-            return True
-        return False
-
     def append_thinking(self, delta: str) -> None:
         """Append a reasoning delta to the running thinking block."""
         entry = self.start_thinking()
@@ -354,7 +431,6 @@ class Transcript:
         """Close the running thinking block and stamp its elapsed time."""
         entry = self._last(ThinkingEntry)
         if entry is None or entry.status is not EntryStatus.RUNNING:
-            self.drop_pending()
             return
         entry.status = EntryStatus.COMPLETED
         if entry.started_at is not None:
@@ -363,9 +439,15 @@ class Transcript:
         self.version += 1
 
     def append_answer(self, delta: str) -> None:
-        """Stream a delta into the trailing answer block, opening one if needed."""
-        self.drop_pending()
-        current = self.entries[-1] if self.entries else None
+        """Stream a delta into the answer block, opening one if needed.
+
+        The wait row stays open below it: the answer is being written, not
+        finished, and the pinned row is how that still reads while it streams.
+        """
+        # The answer is the entry the reply is writing into: the tail, or the
+        # one the pinned wait row sits under.
+        index = self._add_index() - 1
+        current = self.entries[index] if index >= 0 else None
         if not isinstance(current, MarkdownEntry) or current.kind != "answer":
             current = MarkdownEntry(id=self._next_id, kind="answer")
             self._add(current)
@@ -376,7 +458,7 @@ class Transcript:
         self.version += 1
 
     def start_tool(self, call_id: str, name: str, arguments: Mapping[str, object]) -> None:
-        """Open a tool row, closing any reasoning or placeholder row first.
+        """Open a tool row, closing the reasoning span it interrupts.
 
         Args:
             call_id: Identifier the matching result will carry.
@@ -384,7 +466,6 @@ class Transcript:
             arguments: Arguments the chain reads to phrase the call.
         """
         self.complete_thinking()
-        self.drop_pending()
         row = self.renderers.describe(name, arguments)
         self._add(
             ToolEntry(  # type: ignore[call-arg]  # kind is a fixed class value; see entries.py

@@ -69,7 +69,7 @@ class Blinking(Widget):
         return self.body.cursor()
 
     def on_tick(self) -> None:
-        """Ask for the next frame, then advance the blink.
+        """Ask for the next frame, then advance the animation.
 
         Re-registering the animation token on every tick is what keeps the loop
         alive: the scheduler stops waiting once nothing is animating, and unlike

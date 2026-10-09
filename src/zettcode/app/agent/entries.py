@@ -93,7 +93,13 @@ class MarkdownEntry(BaseEntry):
 
 @dataclass(slots=True, kw_only=True)
 class ProcessingEntry(BaseEntry):
-    """Placeholder shown while waiting for a model response."""
+    """The pinned wait row: a model call is running, and how long it has taken.
+
+    It is the last entry of the transcript for as long as the request runs, and
+    the first one written when the request is over: the line it is settled with
+    says what happened — ``Processed for 12s · 22:53`` — so a stopped request
+    leaves a record instead of an empty place where a row used to be.
+    """
 
     # mypy cannot model a dataclass field re-declared as a fixed class
     # value; the runtime drops it from __init__, which the test pins.
@@ -102,14 +108,22 @@ class ProcessingEntry(BaseEntry):
     status: EntryStatus = EntryStatus.RUNNING
     started_at: float
     duration: float | None = None
+    #: The line the request ended on, written when the row is settled.
+    text: str = ""
 
     def __post_init__(self) -> None:
         """Keep externally constructed entries on the same status enum as the transcript."""
         self.status = EntryStatus(self.status)
 
     def render_state(self, frame: int) -> object:
-        """The waiting row advances its sweep and timer while running."""
-        return (self.title, frame, self.duration)
+        """The waiting row advances its sweep and timer; the settled one is a line."""
+        return (
+            self.title,
+            self.text,
+            self.status,
+            frame if self.status is EntryStatus.RUNNING else 0,
+            self.duration,
+        )
 
 
 @dataclass(slots=True, kw_only=True)
@@ -117,7 +131,7 @@ class ThinkingEntry(BaseEntry):
     """Expandable reasoning with its own clock and completion state.
 
     The same row carries a compaction: the summarizer is a model call whose
-    progress deserves the same animation, so the label is part of the entry
+    progress deserves the same row and timer, so the label is part of the entry
     rather than something the renderer decides.
     """
 

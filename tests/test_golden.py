@@ -157,6 +157,7 @@ def test_golden_transcript_blocks():
     transcript.start_tool("1", "read_file", {"path": "app.py"})
     transcript.complete_tool("1", "line one\nline two")
     transcript.append_answer("# Result\n\nFixed `parse`.")
+    transcript.settle_wait("Processed for 1.2 s \u00b7 09:41")
 
     assert render_block(TranscriptView(transcript, theme=DARK), width=44, height=18, theme=DARK) == (
         "  hi\n"
@@ -176,7 +177,7 @@ def test_golden_transcript_blocks():
         "\n"
         "  Fixed parse.\n"
         "\n"
-        "\n"
+        "  Processed for 1.2 s \u00b7 09:41\n"
         "-- styles --\n"
         "0:0-4 fg#9da9a0\n"
         "2:0-44 fg#f2f5f3,bg#343f44\n"
@@ -192,7 +193,8 @@ def test_golden_transcript_blocks():
         "12:0-8 b,fg#f2f5f3\n"
         "15:0-8 fg#f2f5f3\n"
         "15:8-13 fg#9bddad\n"
-        "15:13-14 fg#f2f5f3"
+        "15:13-14 fg#f2f5f3\n"
+        "17:0-29 fg#7a8478"
     )
 
 

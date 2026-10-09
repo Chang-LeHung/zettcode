@@ -272,6 +272,7 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
         started = monotonic()
         self.app.invalidate()
         self.agent.runtime.sides.begin()
+        outcome = ""
         try:
             async with aclosing(
                 cast("AsyncGenerator[AgentEvent]", self.agent.stream((question,), side=True))
@@ -280,15 +281,24 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
                     self.app.invalidate()
         except asyncio.CancelledError:
             self.transcript.complete_thinking()
-            self.transcript.notice("stopped the side question")
+            took = elapsed_text(monotonic() - started)
+            outcome = f"btw stopped after {took} {SEPARATOR} {clock_text()}"
             raise
         except Exception as error:
             self.transcript.complete_thinking()
             self.transcript.error(f"error: {describe_error(error)}")
+            took = elapsed_text(monotonic() - started)
+            outcome = f"btw failed after {took} {SEPARATOR} {clock_text()}"
         else:
             took = elapsed_text(monotonic() - started)
-            self.transcript.notice(f"btw answered for {took} {SEPARATOR} {clock_text()}")
+            outcome = f"btw answered for {took} {SEPARATOR} {clock_text()}"
         finally:
+            # The same order as a turn: close what the run left open, then write
+            # the line it ended on. A ``BaseException`` that is not caught above
+            # leaves the outcome unset, and the running rows are still closed.
+            self._close_run()
+            if outcome:
+                self._settle_wait(outcome)
             self.agent.runtime.sides.end()
 
     def _lookup(self, value: str) -> tuple[Command | None, str]:
@@ -401,6 +411,29 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
         self.transcript.notice("busy \u2014 Ctrl-C stops the current request")
         self.app.invalidate()
 
+    def _close_run(self) -> None:
+        """Close any row the request left open when it ended.
+
+        A tool call whose result never arrives — the reader stopped the request,
+        or it failed — would otherwise keep saying ``Running…`` for the rest of
+        the session, with a timer an animation step keeps bringing up.
+        """
+        self.transcript.finish_running_rows("Result unavailable (request ended)")
+
+    def _settle_wait(self, text: str) -> None:
+        """Leave the line a request ended on in the pinned row, or as a notice.
+
+        The wait row is the last line of the transcript while the request runs,
+        so it is where a reader looks for the outcome, and it is settled whether
+        the run answered, failed, or was stopped. A run that never opened one —
+        a command working on its own — still gets the line, as a notice.
+
+        Args:
+            text: The line to leave behind, such as ``Processed for 12s · 22:53``.
+        """
+        if not self.transcript.settle_wait(text):
+            self.transcript.notice(text)
+
     def _clear_steering(self) -> None:
         """Drop the queue, for instance when the turn it belonged to ended."""
         self._steering_sent = 0
@@ -464,7 +497,8 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
             self._title_session_later(self.agent.session_id)
         finally:
             took = elapsed_text(monotonic() - started)
-            self.transcript.notice(f"Processed for {took} {SEPARATOR} {clock_text()}")
+            self._close_run()
+            self._settle_wait(f"Processed for {took} {SEPARATOR} {clock_text()}")
             self._drop_ask()
             self._clear_steering()
             self._set_busy(False)

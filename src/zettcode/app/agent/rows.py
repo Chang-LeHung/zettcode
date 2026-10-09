@@ -100,20 +100,33 @@ def limit_output(value: str) -> str:
 
 
 def duration_text(seconds: float | None) -> str:
-    """Format an elapsed time for a row header, to a tenth of a second.
+    """Format an elapsed time for a row header, in the unit a reader wants.
 
     Args:
         seconds: Elapsed time, or ``None`` for a row that has already finished
             without a recorded duration.
 
-    Milliseconds are deliberately not shown: the tenth is enough to see a row
-    move, and three digits would change width on every repaint. A whole
-    request's wall time is a different question, so it goes through
-    :func:`elapsed_text` instead.
+    Under a minute the time is shown to the tenth of a second, because that is
+    what makes a live row look alive and milliseconds would change the column's
+    width on every repaint. Past a minute the tenth is noise — ``134.5 s`` is a
+    number a reader has to divide before it means anything — so the row switches
+    to minutes and seconds, and to hours and minutes past an hour. That column
+    changes width as the units change: it narrows at each boundary — ``1m 0s``
+    is a column narrower than ``59.9 s``, ``1h 0m`` two narrower than
+    ``59m 59s`` — and widens as the count climbs inside one, so a running tool
+    row's title is truncated again whenever it does. A whole request's wall time
+    is a different question, so it goes through :func:`elapsed_text` instead.
     """
     if seconds is None:
         return "done"
-    return f"{max(0.0, seconds):.1f} s"
+    total = max(0.0, seconds)
+    if round(total, 1) < 60:
+        return f"{total:.1f} s"
+    minutes, remainder = divmod(round(total), 60)
+    if minutes < 60:
+        return f"{minutes}m {remainder}s"
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours}h {minutes}m"
 
 
 def elapsed_text(seconds: float) -> str:

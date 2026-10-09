@@ -35,6 +35,7 @@ from zettcode._compat import ExceptionGroup
 from zettcode.app import Transcript, TranscriptSource, TranscriptView, ZettCodeApp
 from zettcode.app.agent.agent import ZettCodeAgent
 from zettcode.app.agent.context import ContextExtension, Tokenizer
+from zettcode.app.agent.entries import EntryStatus
 from zettcode.app.agent.mentions import Mention, MentionProvider, MentionRegistry
 from zettcode.app.agent.projection import TranscriptProjector
 from zettcode.app.agent.rows import (
@@ -468,7 +469,7 @@ async def test_projector_maps_events_into_ordered_blocks():
     )
     await projector.dispatch(AgentEvent(AgentEventType.TEXT_DELTA, "s", delta="done"))
 
-    assert [entry.kind for entry in transcript.entries] == ["user", "thinking", "tool", "tool", "answer"]
+    assert [entry.kind for entry in transcript.entries] == ["user", "thinking", "tool", "tool", "answer", "pending"]
 
     collapsed = "\n".join(_rendered(transcript, 40))
 
@@ -495,64 +496,78 @@ def test_a_placeholder_is_shown_before_anything_is_known():
     thinking = transcript.start_thinking()
     transcript.append_thinking("now it is reasoning")
 
-    assert [entry.kind for entry in transcript.entries] == ["user", "thinking"]
+    # The reasoning joins the wait row rather than replacing it.
+    assert [entry.kind for entry in transcript.entries] == ["user", "thinking", "pending"]
     assert thinking.kind == "thinking"
 
     assert transcript.toggle_latest_thinking()
     assert "now it is reasoning" in "\n".join(_rendered(transcript, 40))
 
 
-def test_the_placeholder_is_removed_once_output_starts():
+def test_the_wait_row_stays_pinned_until_the_request_is_settled():
     transcript = Transcript(clock=lambda: 0.0)
     transcript.begin_turn("question")
     transcript.append_answer("an answer")
 
-    assert [entry.kind for entry in transcript.entries] == ["user", "answer"]
-    assert "Processing" not in "\n".join(_rendered(transcript, 40))
+    # Streaming an answer does not end the request, so the row stays: removing
+    # it here is what made a stopped request look like it had never run.
+    assert [entry.kind for entry in transcript.entries] == ["user", "answer", "pending"]
+    assert "Processing" in "\n".join(_rendered(transcript, 40))
 
-    finished = Transcript(clock=lambda: 0.0)
-    finished.begin_turn("question")
-    finished.complete_thinking()
+    assert transcript.settle_wait("Processed for 3.2 s \u00b7 09:41")
+    rendered = "\n".join(_rendered(transcript, 40))
 
-    assert [entry.kind for entry in finished.entries] == ["user"]
+    assert [entry.kind for entry in transcript.entries] == ["user", "answer", "pending"]
+    assert "Processed for 3.2 s \u00b7 09:41" in rendered
+    assert "Processing" not in rendered
+
+    # A run that never reasoned through a row of its own still leaves one line.
+    quiet = Transcript(clock=lambda: 0.0)
+    quiet.begin_turn("question")
+    quiet.complete_thinking()
+    assert quiet.settle_wait("Processed for 0s \u00b7 09:41")
+    assert [entry.kind for entry in quiet.entries] == ["user", "pending"]
 
 
-def test_a_request_waits_again_after_every_tool_batch():
+def test_one_wait_row_spans_the_whole_request():
+    """A tool batch does not open a second row; the pinned one already says so."""
     transcript = Transcript(clock=lambda: 0.0)
     transcript.begin_turn("question")
+    pending = transcript.entries[-1]
+
     transcript.start_tool("1", "read_file", {"path": "a.py"})
-    assert [entry.kind for entry in transcript.entries] == ["user", "tool"]
+    assert [entry.kind for entry in transcript.entries] == ["user", "tool", "pending"]
 
     transcript.complete_tool("1", "content")
 
-    # The loop calls the model again once the batch has results, so the wait row
-    # comes back below the rows it belongs to.
-    assert [(entry.kind, getattr(entry, "title", "")) for entry in transcript.entries] == [
-        ("user", ""),
-        ("tool", "Read a.py"),
-        ("pending", "Processing"),
-    ]
-    assert transcript.entries[-1].status == "running"
+    # The loop calls the model again once the batch has results, and the row it
+    # would open is the same one, still below the rows it belongs to.
+    assert [entry.kind for entry in transcript.entries] == ["user", "tool", "pending"]
+    assert transcript.entries[-1] is pending
+    assert pending.status is EntryStatus.RUNNING
 
     transcript.append_answer("done")
 
-    assert [entry.kind for entry in transcript.entries] == ["user", "tool", "answer"]
+    assert [entry.kind for entry in transcript.entries] == ["user", "tool", "answer", "pending"]
 
 
 def test_a_wait_row_waits_for_the_whole_tool_batch():
     transcript = Transcript(clock=lambda: 0.0)
     transcript.begin_turn("question")
+    pending = transcript.entries[-1]
     transcript.start_tool("1", "read_file", {"path": "a.py"})
     transcript.start_tool("2", "read_file", {"path": "b.py"})
 
     transcript.complete_tool("1", "content")
 
-    # One result is not the batch: the model is not called until they all land.
-    assert [entry.kind for entry in transcript.entries] == ["user", "tool", "tool"]
+    # One result is not the batch: the model is not called until they all land,
+    # and the pinned row has been saying so the whole time.
+    assert [entry.kind for entry in transcript.entries] == ["user", "tool", "tool", "pending"]
 
     transcript.complete_tool("2", "content")
 
     assert [entry.kind for entry in transcript.entries] == ["user", "tool", "tool", "pending"]
+    assert transcript.entries[-1] is pending
 
 
 def test_terminal_safe_normalises_line_endings_before_replacing_controls():
@@ -1016,12 +1031,13 @@ def test_elapsed_text_shows_hours_minutes_and_seconds():
     assert elapsed_text(-5) == "0s"
 
 
-def test_row_durations_count_tenths_of_a_second():
+def test_row_durations_count_tenths_of_a_second_under_a_minute():
     # A tenth is enough to see a row move, and milliseconds would change the
     # column's width on every repaint.
     assert duration_text(0.0) == "0.0 s"
     assert duration_text(0.34) == "0.3 s"
     assert duration_text(12.36) == "12.4 s"
+    assert duration_text(59.94) == "59.9 s"
     assert duration_text(None) == "done"
 
     now = [0.0]
@@ -1047,9 +1063,49 @@ def test_row_durations_count_tenths_of_a_second():
     assert "Thinking  1.2 s" in "\n".join(_rendered(thinking, 40))
 
 
+def test_a_row_switches_to_minutes_once_a_minute_is_past():
+    """Nobody reads 134.5 s: past a minute the row counts in minutes and hours."""
+    assert duration_text(60.0) == "1m 0s"
+    assert duration_text(100.4) == "1m 40s"
+    assert duration_text(134.5) == "2m 14s"
+    assert duration_text(59 * 60 + 59.4) == "59m 59s"
+    assert duration_text(3600) == "1h 0m"
+    assert duration_text(2 * 3600 + 5 * 60 + 7) == "2h 5m"
+    # The tenth that would round up to a minute is the minute, not "60.0 s".
+    assert duration_text(59.96) == "1m 0s"
+
+    # The pinned row is read the same way while it runs.
+    now = [0.0]
+    transcript = Transcript(clock=lambda: now[0])
+    transcript.begin_turn("question")
+    now[0] = 100.4
+    transcript.advance_frame()
+
+    assert "Processing  1m 40s" in "\n".join(_rendered(transcript, 40))
+
+
 def test_clock_text_formats_a_local_reading():
     assert clock_text(datetime(2026, 10, 3, 9, 5)) == "09:05"
     assert clock_text(datetime(2026, 10, 3, 23, 59)) == "23:59"
+
+
+async def test_a_stopped_request_closes_the_rows_it_left_running():
+    """A tool whose result never comes stops with the request, not hours later."""
+    events = [AgentEvent(AgentEventType.TOOL_STARTED, "s", tool_calls=(ToolCall("1", "read_file", {"path": "a.py"}),))]
+    app = build_app(events, block=True)
+    harness = _harness(app)
+    harness.write("read it")
+    harness.press("enter")
+    await asyncio.sleep(0)
+
+    harness.press("ctrl_c")
+    await asyncio.wait_for(app.task, 2.0)
+
+    tool = next(entry for entry in app.transcript.entries if entry.kind == "tool")
+    assert tool.status is EntryStatus.SKIPPED
+    assert tool.text == "Result unavailable (request ended)"
+    assert not [entry for entry in app.transcript.entries if getattr(entry, "status", None) is EntryStatus.RUNNING]
+    assert "Running" not in harness.render().text
 
 
 async def test_each_turn_reports_how_long_it_took(monkeypatch):
@@ -1062,9 +1118,9 @@ async def test_each_turn_reports_how_long_it_took(monkeypatch):
     harness.press("enter")
     await asyncio.wait_for(app.task, 2.0)
 
-    assert any(
-        entry.kind == "notice" and entry.text == "Processed for 32s \u00b7 13:14" for entry in app.transcript.entries
-    )
+    settled = app.transcript.entries[-1]
+    assert settled.kind == "pending" and settled.status is EntryStatus.COMPLETED
+    assert settled.text == "Processed for 32s \u00b7 13:14"
     assert "Processed for 32s \u00b7 13:14" in harness.render().text
 
 
@@ -1091,6 +1147,14 @@ async def test_app_steers_a_second_prompt_and_ctrl_c_stops_the_first():
     assert app.busy is False
     assert any("stopped" in entry.text for entry in app.transcript.entries if entry.kind == "notice")
     assert app.steering.messages == ()
+
+    # The pinned row is settled, not left running and not removed: a stopped
+    # request still says how long it ran and where it stopped, which is what a
+    # reader looks for after interrupting one.
+    settled = app.transcript.entries[-1]
+    assert settled.kind == "pending" and settled.status is EntryStatus.COMPLETED
+    assert settled.text.startswith("Processed for ")
+    assert not any(getattr(entry, "status", None) is EntryStatus.RUNNING for entry in app.transcript.entries)
 
 
 async def test_a_steering_message_is_echoed_when_the_agent_adopts_it():

@@ -20,7 +20,7 @@ help:
 	@echo "  make demo-all Print every widget preview"
 	@echo "  make demos    List the widget names"
 	@echo "  make demo-x   Print one widget preview ($(DEMOS))"
-	@echo "  make demo-thinking  Watch a live turn's running rows blink"
+	@echo "  make demo-thinking  Watch a live turn's waiting row sweep"
 	@echo "  make perf     Break one frame into stages at 200 turns"
 	@echo "  make perf-scaling   Cost per interaction against transcript size"
 	@echo "  make perf-store     Session append/read cost against log size"
