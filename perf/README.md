@@ -29,6 +29,7 @@ after every change instead of trusted.
 | `uv run python -m perf.profile --scenario stream` | Which function dominates a scenario, by cProfile self time. |
 | `uv run python -m perf.store` | Is a session append or read O(N) in the log length? The columns must stay flat. |
 | `uv run python -m perf.startup` | What a launch spends before the first frame: the stages, the slowest imports, and (with `--pty`) the time to the first byte and to the first painted frame. |
+| `uv run python -m perf.imports` | What deferring one import would actually save, as opposed to what its cumulative cost suggests. |
 
 Common flags: `--turns` (transcript size), `--frames` (samples to average),
 `--width`/`--height` (synthetic terminal size; default `120x40`).
