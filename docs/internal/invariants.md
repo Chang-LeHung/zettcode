@@ -119,7 +119,9 @@ invariant breaks, not merely that the code is exercised.
 
 | # | Invariant (what breaks) | Status | Test |
 | --- | --- | --- | --- |
-| S1 | A launch imports only what the first frame needs: the provider, MCP, and subagent SDKs — the last of which drags in its SQLite store and SQLAlchemy, measured at ~98 ms of the shell's import graph — stay behind the first frame, or every launch pays for a model call and a database it has not made yet. | done | `test_runtime_models.py::test_the_runtime_module_costs_nothing_until_it_starts` |
+| S1 | A launch imports only what the first frame needs: the provider, MCP, and subagent SDKs stay behind the first frame, or every launch pays for a model call — and, until zett-agent 0.1.11 deferred it, a database — it has not made yet. | done | `test_runtime_models.py::test_the_runtime_module_costs_nothing_until_it_starts` |
+| S2 | The runtime warms off the event loop: importing the OpenAI SDK and the subagent chain blocks for ~250 ms, and running that on the loop freezes the interface — no keystroke echo, no repaint — for the whole warm-up right after the first frame. | done | `test_runtime_models.py::test_the_warm_up_never_blocks_the_event_loop` |
+| S3 | The first frame is painted before the terminal is asked for its background: an OSC 11 query costs its whole 250 ms timeout on the multiplexers and editors that never answer it, and asking first is a blank screen for exactly that long. | done | `test_runner.py::test_the_first_frame_lands_before_the_terminal_is_asked_for_its_background` |
 
 ## Portability
 
