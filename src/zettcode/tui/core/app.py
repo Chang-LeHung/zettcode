@@ -76,7 +76,8 @@ class TuiApp(Host):
         self.commands = commands or CommandRegistry()
         self.focus_manager = FocusManager()
         self.scheduler = Scheduler(max_fps=max_fps, clock=clock)
-        self.screens = ScreenStack(Screen(root, name="main"))
+        self._main = Screen(root, name="main")
+        self.screens = ScreenStack(self._main)
         self.clipboard = ""
         self.refreshed = False
         self.running = True
@@ -131,6 +132,30 @@ class TuiApp(Host):
         for screen in self.screens:
             screen.widget.unmount()
         self._mounted = False
+
+    def set_root(self, root: Widget) -> None:
+        """Replace the base widget, mounting the new tree where the old one stood.
+
+        A shell can put something cheap up first — the composer, while the
+        application's own modules are still loading — and then hand this running
+        app the real tree. Focus moves into the new tree and every cell is
+        repainted, so a swap cannot leave a mixture of the two on screen.
+
+        Args:
+            root: Widget to install as the base of the ``"main"`` screen.
+        """
+        previous = self._main.widget
+        self.root = root
+        self._main.widget = root
+        if not self._mounted:
+            return
+        self._attach(root)
+        root.mount()
+        if previous is not None:
+            previous.unmount()
+        candidates = self.focus_manager.focusables(root)
+        self.focus_manager.focus(candidates[0] if candidates else None)
+        self.refresh()
 
     def _attach(self, widget: Widget) -> None:
         """Give every widget in the subtree a back reference to this app."""

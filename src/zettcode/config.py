@@ -19,28 +19,10 @@ from zett_agent.extensions.shell_approval import ShellApprovalMode
 from zett_agent.model import ReasoningEffort
 
 from ._compat import tomllib
+from .paths import CONFIG_FILE, DEFAULT_STORE, DEFAULT_UPDATE_FILE
 
 #: The concrete type :func:`_typed` verifies a raw config value against.
 T = TypeVar("T")
-
-#: The conventional config file, read when the user has created one.
-CONFIG_FILE = Path.home() / ".zettcode" / "config.toml"
-
-#: Session storage is an application default, not a model setting.
-DEFAULT_STORE = Path.home() / ".zettcode" / "sessions"
-
-#: MCP servers are ZettCode's own file, so they are configured independently of
-#: whatever other zett tools read.
-DEFAULT_MCP_CONFIG = Path.home() / ".zettcode" / "mcp.json"
-
-#: What the background release check leaves behind: the newest version it saw
-#: and the version the reader asked not to hear about again.
-DEFAULT_UPDATE_FILE = Path.home() / ".zettcode" / "update.json"
-
-#: Anything written to stderr while the TUI owns the screen is kept here: a
-#: child process — an MCP server announcing itself, say — cannot know that the
-#: frame is the interface, and the renderer only repaints what it changed.
-DEFAULT_LOG = Path.home() / ".zettcode" / "log" / "tui.log"
 
 #: Top-level keys the config file may set; anything else is a typo.
 CONFIGURABLE = frozenset({"models", "transcript", "agents_md", "ask_user", "skills", "mcp", "plugins", "update"})

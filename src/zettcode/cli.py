@@ -23,6 +23,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from .app.agent.agent import ZettCodeAgent
+    from .app.ui.app import ZettCodeApp
     from .config import ZettCodeConfig
 
 
@@ -92,6 +94,25 @@ def session_exists(config: ZettCodeConfig, session_id: str) -> bool:
     return SessionStore(config.store, config.workspace).read(session_id).header is not None
 
 
+def resume_hint(agent: ZettCodeAgent) -> str | None:
+    """Return the command that reopens this session, or None if there is nothing to reopen.
+
+    A session the reader never sent anything to was never stored, so naming its
+    id would hand them a command that fails. The line is only worth printing
+    when the store has something to open.
+    """
+    if not session_exists(agent.runtime.config, agent.session_id):
+        return None
+    return resume_command(agent.session_id, agent.workspace)
+
+
+def report_resume(agent: ZettCodeAgent) -> None:
+    """Print one line naming the way back into the session that just ended."""
+    hint = resume_hint(agent)
+    if hint is not None:
+        print(f"\nresume this session: {hint}\n")
+
+
 def resolve_config(argv: list[str] | None = None) -> ZettCodeConfig:
     """Build the settings from the config file, reporting a bad file as a clean exit.
 
@@ -149,8 +170,7 @@ async def async_main(config: ZettCodeConfig, *, resume: str | None = None, dry_r
         await app.run()
     finally:
         await agent.aclose()
-        # The reader leaves the shell; the way back in is worth one line.
-        print(f"\nresume this session: {resume_command(agent.session_id, config.workspace)}\n")
+        report_resume(agent)
 
 
 def _name_process() -> None:
@@ -172,11 +192,101 @@ def _name_process() -> None:
         return
 
 
+def build_application(options: Options) -> ZettCodeApp:
+    """Read the settings and build the application, off the event loop.
+
+    Runs in a worker thread: the config read, the shell's imports, and the
+    runtime preview together cost about 130 ms, and the composer is already on
+    screen taking the reader's keys while this happens.
+    """
+    from .app import ZettCodeApp
+    from .app.agent.agent import ZettCodeAgent
+    from .tui import DARK, ThemeFileError, load_theme
+
+    config = resolve_config()
+    if options.resume is not None and not session_exists(config, options.resume):
+        raise SystemExit(f"zettcode: no session {options.resume} in {config.store}")
+    try:
+        theme = load_theme(config.theme_file) if config.theme_file is not None else DARK
+    except ThemeFileError as error:
+        raise SystemExit(f"zettcode: {error}") from error
+    agent = ZettCodeAgent.preview(config)
+    app = ZettCodeApp(agent, theme=theme, auto_theme=config.theme_file is None)
+    if options.resume is not None:
+        app.restore_session(options.resume)
+    return app
+
+
+async def launch(options: Options) -> None:
+    """Put the composer on screen, then build the application behind it.
+
+    Nothing the first frame shows needs the config, the runtime, or the widget
+    library, so the terminal is taken with a frame drawn from the framework
+    alone, the application is built in a worker thread, and the running app is
+    handed the real tree as soon as it exists.
+
+    Two lanes run at once and meet at the swap. The times are this machine's
+    medians from ``python -m perf.startup``; the order is what the tests pin —
+    the frame before the terminal is asked anything, and nothing on it that the
+    shell does not draw in the same cell.
+
+    .. code-block:: text
+
+        main thread: the frame             worker thread: the application
+        ------------------------------     ------------------------------------
+        import the boot frame   ~50 ms
+        TuiApp(boot_tree(...))
+        runner.run()
+          enter alternate screen
+          mount(), paint()      ~65 ms --> the reader sees the composer
+          query_background()    ......    its answer returns as input, not a wait
+          start the reader
+                                           resolve_config()           ~60 ms
+                                           import ZettCodeApp         ~57 ms
+                                           ZettCodeAgent.preview()     ~2 ms
+                                           ZettCodeApp(agent, ...)
+                                           restore_session()   (--resume only)
+        app.adopt(tui)         <--------- the build returns
+        tui.set_root(...)     ~160 ms --> the real tree replaces it, whole frame
+                                           start_background(): warm the runtime,
+                                           check for a release
+
+    Args:
+        options: What the command line asked for.
+    """
+    from .app.ui.boot import boot_tree
+    from .paths import DEFAULT_LOG
+    from .tui import DARK, Terminal, TerminalRunner, TuiApp
+
+    tui = TuiApp(
+        boot_tree(Path(options.workspace).expanduser().resolve(), resuming=options.resume is not None),
+        theme=DARK,
+        auto_theme=True,
+    )
+    runner = TerminalRunner(tui, terminal=Terminal(diagnostics=DEFAULT_LOG))
+    running = asyncio.ensure_future(runner.run())
+    app: ZettCodeApp | None = None
+    try:
+        app = await asyncio.to_thread(build_application, options)
+        app.adopt(tui)
+        app.start_background()
+        await running
+    finally:
+        if app is not None:
+            await app.stop_background()
+        tui.exit()
+        await asyncio.gather(running, return_exceptions=True)
+    report_resume(app.agent)
+
+
 def main() -> None:
     """Installed console-script entry point."""
     options = parse_args()
     _name_process()
-    asyncio.run(async_main(resolve_config(), resume=options.resume, dry_run=options.dry_run))
+    if options.dry_run:
+        asyncio.run(async_main(resolve_config(), resume=options.resume, dry_run=True))
+        return
+    asyncio.run(launch(options))
 
 
 if __name__ == "__main__":
