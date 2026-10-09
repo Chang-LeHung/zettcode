@@ -180,6 +180,39 @@ async def test_a_preview_runtime_starts_once_and_only_then(tmp_path, monkeypatch
     assert created[0].closed is True
 
 
+async def test_the_harness_switches_choose_the_tools_the_model_may_use(tmp_path, monkeypatch):
+    """``task`` and ``todo_write`` are the two the config owns; the defaults show."""
+    from zett_agent.extensions.subagent import SubAgentExtension
+    from zett_agent.extensions.todo import TodoWriteExtension
+
+    given: list[list[object]] = []
+
+    class FakeProvider:
+        def __init__(self, model, token, *, base_url, response):
+            self.closed = False
+
+        async def aclose(self):
+            self.closed = True
+
+    async def fake_create_agent(model, **kwargs):
+        given.append(list(kwargs["extensions"]))
+        return type("FakeClient", (), {"event_dispatcher": None})()
+
+    monkeypatch.setattr("zett_agent.providers.openai.OpenAIProvider", FakeProvider)
+    monkeypatch.setattr("zett_agent.client.create_agent", fake_create_agent)
+    monkeypatch.setattr(runtime_module.os, "chdir", lambda path: None)
+
+    cases = ((True, False), (False, True))
+    for subagent, todowrite in cases:
+        config = _config_with(tmp_path, subagent_enabled=subagent, todowrite_enabled=todowrite)
+        await runtime_module.ZettCodeRuntime.preview(config).start()
+
+    for (subagent, todowrite), extensions in zip(cases, given, strict=True):
+        kinds = [type(extension) for extension in extensions]
+        assert (SubAgentExtension in kinds) is subagent
+        assert (TodoWriteExtension in kinds) is todowrite
+
+
 async def test_the_warm_up_never_blocks_the_event_loop(tmp_path, monkeypatch):
     """Importing the SDKs blocks for hundreds of milliseconds; the loop must turn.
 

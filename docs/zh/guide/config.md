@@ -197,6 +197,10 @@ disable = []                   # 要跳过的 entry-point 名称
 
 [update]
 enabled = true                 # 后台检查 PyPI 新版本
+
+[harness]
+subagent = true                # 提供 task 工具及其子 agent 档位
+todowrite = false              # 提供 todo_write，界面会画出计划面板
 ```
 
 这些顶层段落应该像示例一样放在模型表之外。TOML 的键属于最近的表头：如果直接在
@@ -216,6 +220,8 @@ enabled = true                 # 后台检查 PyPI 新版本
 | `plugins.enabled` | `true` | 加载已安装的第三方插件；关闭后内置 UI 功能仍可使用。 |
 | `plugins.disable` | `[]` | 要跳过的插件 **entry-point 名称**数组，不一定等于 pip 包名。 |
 | `update.enabled` | `true` | 后台检查 PyPI，并在之后启动时提示新版本，不会自动安装。 |
+| `harness.subagent` | `true` | 提供 `task` 工具：模型可以把任务交给带独立上下文和会话日志的子 agent。 |
+| `harness.todowrite` | `false` | 提供 `todo_write`，清单由界面画在计划面板里。维护计划要花轮次，所以默认关闭。 |
 
 例如，减少回看内容、添加项目内 skills，再关闭远程工具服务器：
 
