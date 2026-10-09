@@ -42,13 +42,12 @@ def test_help_never_imports_the_process_naming_helper(monkeypatch):
 def test_startup_names_the_process_before_entering_the_application(monkeypatch):
     calls = []
 
-    async def run_app(config, **kwargs):
+    async def run_app(options, **kwargs):
         calls.append("run")
 
     monkeypatch.setattr(cli, "parse_args", lambda: Options(workspace=Path.cwd()))
-    monkeypatch.setattr(cli, "resolve_config", lambda: None)
     monkeypatch.setattr(cli, "_name_process", lambda: calls.append("name"))
-    monkeypatch.setattr(cli, "async_main", run_app)
+    monkeypatch.setattr(cli, "launch", run_app)
     cli.main()
     assert calls == ["name", "run"]
 
@@ -207,6 +206,25 @@ def test_a_resumed_run_reports_the_command_that_reopens_it(tmp_path: Path, monke
     assert resumed == ["stored"]
     # Quoted the way the shell needs it, which differs with the path's separators.
     assert resume_command("stored", config.workspace) in capsys.readouterr().out
+
+
+def test_an_empty_session_offers_no_resume_command(tmp_path: Path, monkeypatch, capsys):
+    """Nothing was stored, so the id would name a session the store never saw."""
+    from zettcode.cli import report_resume
+
+    path = tmp_path / "config.toml"
+    path.write_text('[[models]]\nmodel = "m"\ntoken = "t"\n', encoding="utf-8")
+    monkeypatch.setenv("ZETTCODE_CONFIG", str(path))
+    config = resolve_config(["-w", str(tmp_path)])
+    agent = SimpleNamespace(
+        runtime=SimpleNamespace(config=config),
+        session_id="never-stored",
+        workspace=tmp_path,
+    )
+
+    report_resume(agent)
+
+    assert capsys.readouterr().out == ""
 
 
 def test_a_dry_run_starts_everything_and_exits(tmp_path: Path, monkeypatch, capsys):

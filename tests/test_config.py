@@ -2,7 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from zettcode.config import DEFAULT_MCP_CONFIG, ModelConfig, ZettCodeConfig, load_config
+from zettcode.config import ModelConfig, ZettCodeConfig, load_config
+from zettcode.paths import DEFAULT_MCP_CONFIG
 
 
 @pytest.fixture(autouse=True)

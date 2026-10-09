@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, cast
 
 from zett_agent.events import AgentEvent
 
-from ...config import DEFAULT_LOG
+from ...paths import DEFAULT_LOG
 from ...plugins import (
     Activity,
     UiRow,
@@ -137,6 +137,8 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
         self.app.title = self._terminal_title
         self._task: asyncio.Task[None] | None = None
         self._title_task: asyncio.Task[None] | None = None
+        #: The runtime warm-up this shell started, released on the way out.
+        self._warm: asyncio.Task[object] | None = None
         self._busy = False
         self._steering: list[str] = []
         self._steering_sent = 0
@@ -174,17 +176,58 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
         """
         from ...tui import Terminal, TerminalRunner
 
-        warm = self.agent.runtime.start()
-        self.start_update_check()
-        self.offer_update()
+        self.start_background()
         try:
             await TerminalRunner(self.app, terminal=Terminal(diagnostics=DEFAULT_LOG)).run()
         finally:
-            await self._stop_title_task()
-            await self._stop_update_task()
+            await self.stop_background()
+
+    def start_background(self) -> None:
+        """Begin the work that belongs behind the first frame.
+
+        The runtime warms — its provider SDK costs a few hundred milliseconds —
+        and the release check runs, nothing on screen waits for either, and the
+        first turn awaits the same task. Called once the interface is up,
+        whether :meth:`run` put it there or the command line painted a frame
+        before this application existed.
+        """
+        self._warm = self.agent.runtime.start()
+        self.start_update_check()
+        self.offer_update()
+
+    async def stop_background(self) -> None:
+        """Release what :meth:`start_background` began."""
+        await self._stop_title_task()
+        await self._stop_update_task()
+        warm, self._warm = self._warm, None
+        if warm is not None:
             # A start that failed is the first turn's error to report, not a
             # reason to keep the process alive or to raise on the way out.
             await asyncio.gather(warm, return_exceptions=True)
+
+    def adopt(self, tui: TuiApp) -> None:
+        """Move this application's interface into a shell that is already running.
+
+        The command line paints the composer through a ``TuiApp`` it owns, then
+        hands that same app here: the tree, the keymap, the command registry,
+        and the title move over, so the widgets built here drive the terminal
+        that is already taken. The palette is left alone when this application
+        lets the terminal choose it, because the runner has already adopted the
+        one the terminal asked for.
+
+        Args:
+            tui: Running app whose placeholder this application replaces.
+        """
+        placeholder = self.app
+        self.app = tui
+        tui.commands = placeholder.commands
+        tui.keymap = placeholder.keymap
+        tui.title = self._terminal_title
+        tui.reduced_motion = placeholder.reduced_motion
+        tui.auto_theme = placeholder.auto_theme
+        if not placeholder.auto_theme:
+            tui.theme = placeholder.theme
+        tui.set_root(self.root)
 
     async def dry_run(self, *, width: int = 120, height: int = 40) -> None:
         """Run the whole start, paint one frame, and return.

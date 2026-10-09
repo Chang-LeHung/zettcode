@@ -34,7 +34,8 @@ from zett_agent.ids import new_uuid7
 from zett_agent.model import ReasoningEffort
 
 from ..._compat import BaseExceptionGroup
-from ...config import DEFAULT_MCP_CONFIG, ModelConfig, ZettCodeConfig
+from ...config import ModelConfig, ZettCodeConfig
+from ...paths import DEFAULT_MCP_CONFIG
 from ...plugins import Plugins, load_plugins
 from .approval import ShellApprovalMemory
 from .capabilities import ModelCapabilities
