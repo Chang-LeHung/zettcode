@@ -173,8 +173,8 @@ def test_a_processing_row_rebuilds_for_its_title_timer_and_frame():
     assert _painted(entry, frame=1) != _painted(entry, frame=0)
 
 
-def test_a_thinking_row_rebuilds_for_expansion_text_status_timer_and_frame():
-    """Reasoning is collapsible, timed, and animated, so all of it is keyed."""
+def test_a_thinking_row_rebuilds_for_expansion_text_status_and_timer():
+    """Reasoning is collapsible, timed, and still, so the frame is not keyed."""
     entry = ThinkingEntry(id=1, text="reasoning", started_at=0.0, duration=1.0)
     before = _painted(entry)
     entry.expanded = True
@@ -190,12 +190,113 @@ def test_a_thinking_row_rebuilds_for_expansion_text_status_timer_and_frame():
     entry.status = EntryStatus.COMPLETED
     assert _painted(entry) != before
 
+    # Only the waiting row sweeps, so a step through the transcript leaves a
+    # running reasoning row exactly as it was.
     entry = ThinkingEntry(id=4, text="reasoning", started_at=0.0)
-    assert _painted(entry, frame=1) != _painted(entry, frame=0)
+    assert _painted(entry, frame=1) == _painted(entry, frame=0)
+
+
+def test_a_running_reasoning_or_tool_row_is_not_rebuilt_by_an_animation_step():
+    """The frame is not in their key, because it is not in what they paint.
+
+    A reasoning row and a running tool row are painted flat, so a step that
+    moves only the waiting row must leave their cached block alone; the waiting
+    row itself has to rebuild, which is the half that keeps the sweep honest.
+    """
+    thinking = ThinkingEntry(id=1, text="reasoning", started_at=0.0, duration=1.0)
+    tool = ToolEntry(id=2, call_id="c1", tool="read_file", title="Read app.py", started_at=0.0, duration=1.0)
+    waiting = ProcessingEntry(id=3, started_at=0.0, duration=1.0)
+
+    thinking_block = thinking.block_for(48, DARK, frame=0)
+    tool_block = tool.block_for(48, DARK, frame=0)
+    waiting_block = waiting.block_for(48, DARK, frame=0)
+
+    assert thinking.block_for(48, DARK, frame=1) is thinking_block
+    assert tool.block_for(48, DARK, frame=1) is tool_block
+    assert waiting.block_for(48, DARK, frame=1) is not waiting_block
+
+
+def test_a_step_brings_up_every_running_row_even_around_a_notice():
+    """A notice lands beside the call it answered; it must not stop the walk.
+
+    An approval or a command notice is inserted between the rows that are still
+    running and the pinned wait row, and a batch's results can arrive out of
+    order, so a walk that stopped at the first entry that was not a running row
+    would leave a timer frozen at the moment the notice landed.
+    """
+    now = [0.0]
+    transcript = Transcript(clock=lambda: now[0])
+    transcript.begin_turn("question")
+    transcript.start_tool("1", "read_file", {"path": "a.py"})
+    transcript.start_tool("2", "read_file", {"path": "b.py"})
+    now[0] = 1.0
+    transcript.advance_frame()
+    tools = [entry for entry in transcript.entries if isinstance(entry, ToolEntry)]
+    assert [entry.duration for entry in tools] == [1.0, 1.0]
+
+    transcript.notice("auto mode on for this run")
+    transcript.complete_tool("2", "b content", wait=False)
+    now[0] = 6.0
+    transcript.advance_frame()
+
+    # The call whose result never came is still counting; the one that answered
+    # stays where it finished, and the pinned row counts the whole request.
+    assert [entry.duration for entry in tools] == [6.0, 1.0]
+    assert transcript.entries[-1].duration == 6.0
+
+
+class _CountedEntries(list):
+    """A transcript's entry list that records how many entries were read."""
+
+    def __init__(self, entries: list[Entry]) -> None:
+        super().__init__(entries)
+        self.reads = 0
+
+    def __getitem__(self, index):
+        self.reads += 1
+        return super().__getitem__(index)
+
+
+def test_an_animation_step_reads_only_the_rows_of_this_request():
+    """The walk is bounded by the request, so a step's cost is flat in the session.
+
+    No behavioural test can tell two bounds apart — skipping a notice reads the
+    same as never reaching it — so this counts what one step looks at: fifty
+    rows of history must not be re-read ten times a second.
+    """
+    now = [0.0]
+    transcript = Transcript(clock=lambda: now[0])
+    for index in range(50):
+        transcript.notice(f"line {index}")
+    transcript.begin_turn("question")
+    entries = _CountedEntries(transcript.entries)
+    transcript.entries = entries
+
+    now[0] = 1.0
+    transcript.advance_frame()
+
+    # One read of the list, which is the pinned row: the walk never reaches the
+    # fifty notices behind it. The count covers every read of the list, so a
+    # peek at the tail anywhere in a step would fail this too.
+    assert entries.reads == 1
+
+
+def test_a_settled_wait_row_is_not_rebuilt_by_an_animation_step():
+    """A settled row is dead text: the frame is not part of what it draws."""
+    row = ProcessingEntry(
+        id=1,
+        started_at=0.0,
+        duration=1.0,
+        text="Processed for 1.0 s \u00b7 09:41",
+        status=EntryStatus.COMPLETED,
+    )
+    first = row.block_for(48, DARK, frame=0)
+
+    assert row.block_for(48, DARK, frame=1) is first
 
 
 def test_a_tool_row_rebuilds_for_every_field_the_renderer_reads():
-    """The tool row's words, body, state, language, and sweep are all keyed."""
+    """The tool row's words, body, state, and language are all keyed."""
     entry = ToolEntry(id=1, call_id="c1", tool="read_file", title="Read app.py")
     before = _painted(entry)
     entry.title = "Read main.py"
@@ -246,4 +347,4 @@ def test_a_tool_row_rebuilds_for_every_field_the_renderer_reads():
     assert _painted(entry) != before
 
     entry = ToolEntry(id=6, call_id="c6", tool="read_file", title="Read app.py", started_at=0.0)
-    assert _painted(entry, frame=1) != _painted(entry, frame=0)
+    assert _painted(entry, frame=1) == _painted(entry, frame=0)

@@ -148,15 +148,12 @@ class ThinkingEntry(BaseEntry):
         self.status = EntryStatus(self.status)
 
     def render_state(self, frame: int) -> object:
-        """Expansion, reasoning text, and running animation affect presentation."""
-        return (
-            self.title,
-            self.expanded,
-            self.text,
-            self.status,
-            self.duration,
-            frame if self.status is EntryStatus.RUNNING else 0,
-        )
+        """Expansion, reasoning text, state, and timer affect presentation.
+
+        The frame is not part of it: only the waiting row paints the animation,
+        so a step through the transcript leaves a reasoning row as it is.
+        """
+        return (self.title, self.expanded, self.text, self.status, self.duration)
 
 
 @dataclass(slots=True, kw_only=True)
@@ -179,16 +176,12 @@ class ToolEntry(BaseEntry):
         self.status = EntryStatus(self.status)
 
     def render_state(self, frame: int) -> object:
-        """A tool body, expansion, and running label each affect its rendered rows."""
-        return (
-            self.title,
-            self.expanded,
-            self.text,
-            self.status,
-            self.duration,
-            self.language,
-            frame if self.status is EntryStatus.RUNNING else 0,
-        )
+        """A tool body, expansion, state, timer, and language each affect its rows.
+
+        The frame is not part of it, for the same reason a reasoning row's is
+        not: a running call is painted flat, and only its timer moves.
+        """
+        return (self.title, self.expanded, self.text, self.status, self.duration, self.language)
 
 
 @dataclass(slots=True, kw_only=True)

@@ -33,9 +33,10 @@ from .rows import (
     RUNNING_GLYPHS,
     TOOL_EXPANDED_ROWS,
     TOOL_PREVIEW_ROWS,
+    activity_glyph,
     bounded_rows,
     duration_text,
-    sweep_step,
+    sweep_column,
 )
 
 #: The entry a processor accepts; each subclass pins it to one entry type.
@@ -243,7 +244,10 @@ class ThinkingProcessor(EntryProcessor[ThinkingEntry]):
         header = Style(foreground=theme.accent_bright)
         if entry.status is EntryStatus.RUNNING:
             timing = duration_text(entry.duration) if entry.duration is not None else "working"
-            heading = _running_label(f"{entry.title}  {timing}", theme, frame)
+            # The marker is painted flat, like a settled row's: the waiting row
+            # is the one thing that sweeps, so a run with reasoning and tools in
+            # flight keeps one moving row instead of one per row on screen.
+            heading = (Span(f"{RUNNING_GLYPHS[0]} ", header), Span(f"{entry.title}  {timing}", header))
         else:
             # A finished row whose duration was never recorded says nothing about
             # time; calling it "working" would claim a run that has already ended.
@@ -291,12 +295,10 @@ class ToolProcessor(EntryProcessor[ToolEntry]):
         disclosure = "" if running or not entry.text else (f" {EXPANDED}" if entry.expanded else f" {MARKER}")
         room = max(1, width - display_width(f"{symbol} {timing}{disclosure}"))
         title = truncate(entry.title, room)
-        heading: list[Span] = [Span(f"{symbol} ", marker)]
-        if running:
-            travel = SweepSpan(title, label, peak=Style(foreground=theme.text), ramp=3)
-            heading.extend(sweep_spans(travel, sweep_step(frame)))
-        else:
-            heading.append(Span(title, label))
+        # A running title is painted flat, exactly as a settled one is: the
+        # waiting row owns the motion, and a row that does not move is a row an
+        # animation step never has to rebuild.
+        heading: list[Span] = [Span(f"{symbol} ", marker), Span(title, label)]
         if timing:
             heading.append(Span(timing, muted))
         if disclosure:
@@ -371,7 +373,16 @@ def render_entry(
 
 
 def _running_label(text: str, theme: Theme, frame: int) -> tuple[Span, ...]:
-    """Keep the marker still while the highlight travels through the wording."""
+    """Blink the marker, and cross the wording once a second, on one frame count.
+
+    Both halves of the blink are one column wide, so the label never shifts as
+    the marker turns over, and the marker reads the same frame as the status
+    bar's dot: the row and the icon blink in step. The highlight takes a whole
+    pass per second whatever the label's length, which is the point of pacing it
+    by time: a long row is not swept more slowly than a short one. Only the
+    waiting row is drawn with this, which is what makes it the one thing that
+    moves.
+    """
     resting = Style(foreground=theme.accent_bright)
     label = SweepSpan(text, resting, peak=Style(foreground=theme.text), ramp=3)
-    return (Span(f"{RUNNING_GLYPHS[0]} ", resting), *sweep_spans(label, sweep_step(frame)))
+    return (Span(f"{activity_glyph(frame)} ", resting), *sweep_spans(label, sweep_column(frame, label.travel)))

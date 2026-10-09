@@ -374,7 +374,10 @@ streamed answer linear rather than quadratic.
 `app/agent/blocks.py` owns the visual processors for agent entries: welcome,
 notice, user, processing, thinking, and tool each produce `TextLine` values.
 They form an ordered `EntryProcessors` chain: the first processor whose
-`supports(entry)` returns true renders the entry. `app/agent/entries.py`
+`supports(entry)` returns true renders the entry. Only the processing row
+sweeps: a reasoning or running tool row is painted flat, so the frame counter
+reaches the renderers without becoming part of what they draw, and the entries
+key their cache on it only where it changes the paint. `app/agent/entries.py`
 represents those records as a union of
 `TextEntry`, `MarkdownEntry`, `ProcessingEntry`, `ThinkingEntry`, and `ToolEntry`,
 with `EntryStatus` for running/completed/failed/skipped states. The common

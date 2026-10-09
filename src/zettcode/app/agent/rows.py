@@ -25,7 +25,7 @@ CONTENT_INDENT = 2
 THINKING_LABEL = "Thinking"
 
 #: Label of the row that shows the summarizer working: the same kind of row, so
-#: it blinks, sweeps, and times like reasoning does.
+#: it carries the same marker and timer as reasoning does.
 COMPACTING_LABEL = "Compacting"
 
 #: Wall-clock length of one animation step. ``Transcript.frame`` counts these
@@ -159,24 +159,29 @@ def clock_text(moment: datetime | None = None) -> str:
 #: the label after it never shifts as the marker blinks.
 RUNNING_GLYPHS = RUNNING
 
-#: Steps per half-blink: 2.7 steps is the quarter second a marker holds each of
-#: its two states, so a running row blinks about twice a second.
-BLINK_FRAMES = 2.7
+#: Seconds one blink takes, both halves: the marker holds each of its two states
+#: for half of it, so a waiting row blinks once a second.
+BLINK_SECONDS = 1.0
 
-#: Steps the highlight spends on one column, where a step is
-#: :data:`ANIMATION_SECONDS` of wall time: one step is the 100 ms a column stays
-#: lit, ten columns a second. The step, not the terminal frame, is what sets the
-#: pace, so a repaint at 60 fps and one at 10 look the same.
-SWEEP_FRAMES = 1.0
+#: Seconds one pass of the highlight takes, whatever the label's length.
+SWEEP_SECONDS = 1.0
+
+#: Frames those periods take, counted in animation steps: the pace is a period
+#: rather than a speed, so a long wait row is swept once a second like a short
+#: one instead of taking proportionally longer.
+BLINK_FRAMES = round(BLINK_SECONDS / ANIMATION_SECONDS)
+SWEEP_FRAMES = round(SWEEP_SECONDS / ANIMATION_SECONDS)
 
 
-def sweep_step(frame: int) -> int:
+def sweep_column(frame: int, travel: int) -> int:
     """Return the column the highlight has reached at one animation frame.
 
     Args:
         frame: Monotonic frame counter shared by the whole application.
+        travel: Columns one whole pass takes, ends included —
+            :attr:`~zettcode.tui.render.sweep.SweepSpan.travel`.
     """
-    return int(frame / SWEEP_FRAMES)
+    return frame % SWEEP_FRAMES * max(1, travel) // SWEEP_FRAMES
 
 
 def activity_glyph(frame: int) -> str:
@@ -195,8 +200,8 @@ def activity_glyph(frame: int) -> str:
 
 
 def blinking(frame: int) -> bool:
-    """Say whether a running row is in the bright half of its blink."""
-    return int(frame / BLINK_FRAMES) % 2 == 0
+    """Say whether a running row is in the lit half of its blink."""
+    return frame % BLINK_FRAMES < BLINK_FRAMES // 2
 
 
 def compact_path(path: Path, *, limit: int = 38) -> str:
