@@ -1,6 +1,6 @@
 UV ?= uv
 
-.PHONY: help install lint typecheck test build smoke check hooks docs docs-build docs-preview demo demo-all demos demo-thinking perf perf-scaling perf-store perf-profile perf-startup FORCE
+.PHONY: help install lint typecheck test build smoke check hooks docs docs-build docs-preview demo demo-all demos demo-thinking perf perf-scaling perf-store perf-profile perf-startup perf-imports FORCE
 
 DEMOS := text status_bar spinner progress_bar list table diff markdown textarea completion dialog collapsible toast tasks scroll layout
 
@@ -26,6 +26,7 @@ help:
 	@echo "  make perf-store     Session append/read cost against log size"
 	@echo "  make perf-profile   cProfile the streaming scenario"
 	@echo "  make perf-startup   Time a launch, stage by stage, up to the first frame"
+	@echo "  make perf-imports   Measure what each deferrable import would really save"
 
 install:
 	$(UV) sync
@@ -100,3 +101,6 @@ perf-profile:
 
 perf-startup:
 	$(UV) run python -m perf.startup --pty
+
+perf-imports:
+	$(UV) run python -m perf.imports
