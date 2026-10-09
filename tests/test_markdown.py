@@ -1,11 +1,19 @@
 """Tests for Markdown rendering and its incremental parse cache."""
 
+from html.entities import html5
+
 from zettcode.tui import LIGHT, Canvas, Markdown, MarkdownView, Rect
 from zettcode.tui.core.theme import DARK
 from zettcode.tui.render import display_width
 from zettcode.tui.testing import Harness
 from zettcode.tui.widgets import markdown
-from zettcode.tui.widgets.markdown import inline_markdown, render_markdown, stable_cut
+from zettcode.tui.widgets.markdown import (
+    _ENTITY,
+    decode_entities,
+    inline_markdown,
+    render_markdown,
+    stable_cut,
+)
 
 
 def test_markdown_renders_headings_lists_and_inline_markup():
@@ -176,6 +184,141 @@ def test_a_long_table_cell_wraps_instead_of_being_cut():
     assert "\u2026" not in text
     assert value.replace(" ", "") in compact
     assert all(display_width(line.text) <= 22 for line in lines)
+
+
+def test_entity_references_render_as_the_character_they_name():
+    """A model writes ``&nbsp;`` for the character it means, not for its six letters."""
+    lines = render_markdown("one&nbsp;two &amp; &copy;", 40, DARK)
+
+    assert lines[0].text == "one\u00a0two & \u00a9"
+
+
+def test_every_inline_path_decodes_its_entities():
+    """A heading, a list item, and a quote run the same inline rules as prose."""
+    document = "# A&nbsp;B\n\n- x&amp;y\n\n> q&nbsp;r"
+    texts = [line.text for line in render_markdown(document, 30, DARK) if line.text]
+
+    assert texts == ["A\u00a0B", "  \u00b7 x&y", "\u2502 q\u00a0r"]
+
+
+def test_an_indent_spelled_with_entities_keeps_its_cells():
+    """``&nbsp;&nbsp;`` is how a model indents a line, and the indent must measure.
+
+    The escape decodes to one cell, not to the six it is written with, so the
+    line starts two columns in and no column of it is lost.
+    """
+    lines = render_markdown("&nbsp;&nbsp;2.1 ①–⑬ 分阶段 µs 探针表", 40, DARK)
+
+    assert lines[0].text == "\u00a0\u00a02.1 ①–⑬ 分阶段 µs 探针表"
+    assert display_width(lines[0].text) == display_width("  2.1 ①–⑬ 分阶段 µs 探针表")
+
+
+def test_a_table_column_is_measured_after_its_entities_decode():
+    """Widths come from the visible cell, so a column of ``&nbsp;`` stays at the floor."""
+    lines = render_markdown("| A | B |\n| --- | --- |\n| &nbsp; | &amp; |", 30, DARK)
+
+    assert lines[1].text == "\u2500\u2500\u2500\u2500   \u2500\u2500\u2500\u2500"
+    assert lines[2].text.startswith("\u00a0")
+
+
+def test_numeric_references_decode_in_decimal_and_hexadecimal():
+    spans = inline_markdown("&#8212; &#x2014; &#X2014;", theme=DARK)
+
+    assert spans[0].text == "\u2014 \u2014 \u2014"
+
+
+def test_a_reference_longer_than_the_spec_allows_is_not_one():
+    """CommonMark reads at most seven decimal and six hexadecimal digits.
+
+    Leading zeros are digits like any other, so a seven-digit reference is
+    still a reference; an eighth digit makes it plain text instead.
+    """
+    spans = inline_markdown("&#12345678; &#x1234567; &#0008212;", theme=DARK)
+
+    assert spans[0].text == "&#12345678; &#x1234567; \u2014"
+
+
+def test_a_reference_can_name_a_character_beyond_the_basic_plane():
+    """An astral code point decodes, and is measured as the two cells it paints."""
+    line = render_markdown("&#x1F600;", 10, DARK)[0]
+
+    assert line.text == "\U0001f600"
+    assert display_width(line.text) == 2
+
+
+def test_every_name_the_html5_table_holds_matches_the_pattern():
+    """The name branch has to cover the whole table, or an entity is unreachable.
+
+    The shape bounds the name at 31 characters, which is the longest name the
+    HTML5 list holds; a name outside the pattern would be left as written by
+    the lookup that never got to run. The two odd shapes are pinned beside it:
+    a name ending in a digit, and one that is 31 characters long.
+    """
+    names = [name for name in html5 if name.endswith(";")]
+
+    assert names and all(_ENTITY.fullmatch(f"&{name}") for name in names)
+    assert max(len(name) for name in names) == 32  # 31 characters plus the semicolon
+    assert decode_entities("&frac12;") == "\u00bd"
+    assert decode_entities("&CounterClockwiseContourIntegral;") == "\u2233"
+
+
+def test_a_name_can_expand_to_more_than_one_character():
+    """Some HTML5 names are a base character with a combining mark."""
+    span = inline_markdown("&NotEqualTilde;", theme=DARK)[0]
+
+    assert span.text == "\u2242\u0338"
+    assert span.width == 1
+
+
+def test_a_pipe_spelled_as_an_entity_does_not_split_a_table_cell():
+    """Cells are split on the pipes the row is written with, then decoded."""
+    texts = [
+        line.text for line in render_markdown("| A | B |\n| --- | --- |\n| a &#124; b | c |", 30, DARK) if line.text
+    ]
+
+    assert texts[2] == "a | b   c"
+
+
+def test_a_reference_the_spec_does_not_recognise_is_left_as_written():
+    """A missing semicolon, an unknown name, and a bare ampersand all stay text."""
+    spans = inline_markdown("&nbsp &nope; & &; &#;", theme=DARK)
+
+    assert spans[0].text == "&nbsp &nope; & &; &#;"
+
+
+def test_an_escaped_escape_is_decoded_once():
+    """``&amp;nbsp;`` names an ampersand: one pass, never a second one over the result."""
+    spans = inline_markdown("&amp;nbsp; and &amp;amp;", theme=DARK)
+
+    assert spans[0].text == "&nbsp; and &amp;"
+
+
+def test_a_reference_to_no_character_becomes_the_replacement_glyph():
+    spans = inline_markdown("&#0; &#xD800; &#x110000;", theme=DARK)
+
+    assert spans[0].text == "\ufffd \ufffd \ufffd"
+
+
+def test_code_keeps_its_entity_references_literal():
+    """Code is shown as written: an escape inside it is part of the program."""
+    lines = render_markdown("`&nbsp;` and\n\n```\n&nbsp;\n```", 40, DARK)
+    text = "\n".join(line.text for line in lines)
+
+    assert text.count("&nbsp;") == 2
+
+
+def test_a_link_destination_decodes_its_entities():
+    spans = inline_markdown("[docs](https://x.dev/?a=1&amp;b=2)", theme=DARK)
+
+    assert spans[-1].text == " <https://x.dev/?a=1&b=2>"
+
+
+def test_an_entity_the_canvas_cannot_paint_is_neutralised_there():
+    """A control character spelled as an entity is decoded, then stopped like any other."""
+    frame = Harness(MarkdownView("&#27;[31mred\n"), width=20, height=2).render()
+
+    assert "\x1b" not in frame.text
+    assert "\ufffd" in frame.text
 
 
 def test_stable_cut_stops_at_unterminated_code_fences():
