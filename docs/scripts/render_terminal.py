@@ -73,7 +73,7 @@ def preview() -> Canvas:
                 "- The response includes the total, so clients can page without counting.\n\n"
                 "All six tests pass, including the new pagination checks."
             )
-            transcript.notice("Processed for 12s · 09:41")
+            transcript.settle_wait("Processed for 12s · 09:41")
             app._session_title = "Pagination for /users"
             app.app.resize(100, 40)
             app.app.mount()

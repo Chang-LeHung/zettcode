@@ -38,7 +38,12 @@ def test_only_new_entries_are_rendered_when_the_transcript_grows(monkeypatch):
     calls.clear()
     transcript.notice("four")
     source.count(40)
-    assert calls == [transcript.entries[-1].id]
+
+    # The notice lands above the pinned wait row, which shifts down one index.
+    # Only the notice is rendered: the view asks for the row again, and its
+    # unchanged block comes back from the cache.
+    assert transcript.entries[-1].kind == "pending"
+    assert calls == [transcript.entries[-2].id]
 
     calls.clear()
     source.count(40)
@@ -172,6 +177,7 @@ def test_an_animation_step_without_a_running_row_leaves_the_version_alone():
     transcript = Transcript(clock=lambda: now[0])
     transcript.begin_turn("prompt")
     transcript.append_answer("done")
+    transcript.settle_wait("Processed for 0s \u00b7 09:41")
     version = transcript.version
 
     now[0] = 1.0

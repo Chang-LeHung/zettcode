@@ -207,14 +207,24 @@ class UserProcessor(EntryProcessor[TextEntry]):
 
 
 class ProcessingProcessor(EntryProcessor[ProcessingEntry]):
-    """Draw the live ``Processing`` row and its elapsed time."""
+    """Draw the pinned wait row: a sweep while it runs, a line once it has ended.
+
+    It is the one row that animates, and it is settled rather than removed: a
+    request that was stopped still says how long it ran and when it stopped.
+    """
 
     def supports(self, entry: Entry) -> bool:
         """Claim pending model calls."""
         return isinstance(entry, ProcessingEntry)
 
     def lines(self, entry: ProcessingEntry, width: int, theme: Theme, frame: int) -> list[TextLine]:
-        """Show the sweeping label below a blank separator."""
+        """Sweep the label below a blank separator, or show the line it settled into."""
+        if entry.status is not EntryStatus.RUNNING:
+            settled = entry.text or f"Processed for {duration_text(entry.duration)}"
+            return [
+                TextLine(),
+                layout_rich_lines((TextLine((Span(settled, Style(foreground=theme.muted)),)),), width, wrap=False)[0],
+            ]
         label = entry.title
         if entry.duration is not None:
             label += f"  {duration_text(entry.duration)}"

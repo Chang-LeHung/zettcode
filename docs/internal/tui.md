@@ -539,14 +539,18 @@ A visible panel draws its own frame with the heading in the top edge, strikes
 out the rows it finished, and keeps one blank row above the frame so the plan
 never sits flush against the transcript.
 
-`begin_turn` also inserts a placeholder entry. A model can take seconds to emit
-its first token, and an empty transcript reads as a hung application, so the
-placeholder animates and counts up from the moment Enter is pressed. It is not a
-separate concept in the model: `start_thinking` converts it into the real
-thinking row in place, and `drop_pending` removes it when the answer or a tool
-call arrives first. Only rows whose status is `running` include the animation
-frame in their cache key, so a completed transcript is never re-rendered just
-because the clock moved.
+`begin_turn` also opens the wait row, which is pinned to the bottom of the
+transcript for the whole request. A model can take seconds to emit its first
+token, and an empty transcript reads as a hung application, so the row animates
+and counts up from the moment Enter is pressed. Every entry the reply produces —
+reasoning, tool calls, notices, the answer — is inserted above it, and nothing
+promotes or removes it: the shell settles it with the line the request ended on
+(`Processed for 12s · 09:41`), which is what a reader looks for after a request
+that was stopped. Only rows whose status is `running` include the animation
+frame in their cache key, and one step walks the current request's rows alone —
+`Transcript._turn_from` is where the wait row was opened, so a note landing
+between two running rows cannot freeze their timers and a step's cost does not
+follow the length of the session.
 
 ## Hardening
 
