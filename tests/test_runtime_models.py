@@ -1,7 +1,9 @@
 """Model switching uses the configured OpenAI-compatible endpoint per request."""
 
+import asyncio
 import subprocess
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -176,6 +178,53 @@ async def test_a_preview_runtime_starts_once_and_only_then(tmp_path, monkeypatch
     assert runtime.provider is created[0]
     await runtime.aclose()
     assert created[0].closed is True
+
+
+async def test_the_warm_up_never_blocks_the_event_loop(tmp_path, monkeypatch):
+    """Importing the SDKs blocks for hundreds of milliseconds; the loop must turn.
+
+    The shell is already taking the reader's keys when the runtime warms, so a
+    warm-up that runs on the loop freezes the interface for its whole duration —
+    no keystroke echoes and no frame repaints until the provider exists.
+    """
+    calls: list[str] = []
+    original = runtime_module.importlib.import_module
+
+    class SlowImports:
+        """Stand in for the imports the preload pays for, at a test's speed."""
+
+        def import_module(self, name: str, package: str | None = None) -> object:
+            calls.append(name)
+            time.sleep(0.2)
+            return original(name, package)
+
+    async def fake_create_agent(model, **kwargs):
+        return type("FakeClient", (), {"event_dispatcher": None})()
+
+    monkeypatch.setattr(runtime_module, "importlib", SlowImports())
+    monkeypatch.setattr("zett_agent.client.create_agent", fake_create_agent)
+    monkeypatch.setattr(runtime_module.os, "chdir", lambda path: None)
+    runtime = runtime_module.ZettCodeRuntime.preview(_config_with(tmp_path))
+
+    gaps: list[float] = []
+    state = {"last": time.perf_counter()}
+
+    async def tick() -> None:
+        while not warm.done():
+            await asyncio.sleep(0.001)
+            now = time.perf_counter()
+            gaps.append(now - state["last"])
+            state["last"] = now
+
+    warm = runtime.start()
+    ticker = asyncio.ensure_future(tick())
+    await asyncio.gather(warm, return_exceptions=True)
+    ticker.cancel()
+    await asyncio.gather(ticker, return_exceptions=True)
+
+    assert calls, "the runtime never preloaded the SDKs"
+    assert gaps, "the event loop never turned while the runtime warmed"
+    assert max(gaps) < 0.15
 
 
 async def test_a_text_only_model_is_not_offered_the_image_tool():

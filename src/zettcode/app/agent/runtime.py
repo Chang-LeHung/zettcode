@@ -12,6 +12,7 @@ stay out of the import graph until they are needed.
 from __future__ import annotations
 
 import asyncio
+import importlib
 import os
 import platform
 import sys
@@ -225,7 +226,16 @@ class ZettCodeRuntime:
         return self._starting
 
     async def _build(self) -> ZettCodeRuntime:
-        """Import what a provider needs, then hand the client its extensions."""
+        """Import what a provider needs, then hand the client its extensions.
+
+        The imports and the SDK client construction block for a few hundred
+        milliseconds — ``import openai`` alone is most of it on a cold cache —
+        and by the time this runs the shell is already on screen taking the
+        reader's keys. They happen in a worker thread so the event loop keeps
+        painting; everything the loop owns is still built on it.
+        """
+        await asyncio.to_thread(self._preload)
+
         from zett_agent.client import create_agent
 
         # Imported with the runtime, not with the module: the subagent extension
@@ -272,6 +282,18 @@ class ZettCodeRuntime:
         self.model = model
         self.client = client
         return self
+
+    def _preload(self) -> None:
+        """Import the modules a request needs, in a worker thread.
+
+        The blocker is the OpenAI SDK: zett-agent builds its compatible client
+        from it, so the import lands in a provider constructor rather than in a
+        module header, and it is a few hundred milliseconds of modules. The
+        subagent extension is cheap now that zett-agent loads its SQLite store
+        lazily; importing it here keeps that later import a cache hit too.
+        """
+        importlib.import_module("openai")
+        importlib.import_module("zett_agent.extensions.subagent")
 
     def _provider(self, selected: ModelConfig) -> OpenAIProvider:
         """Return the provider for one configured model, building it if needed."""
