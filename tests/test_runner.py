@@ -268,30 +268,33 @@ async def test_shutdown_hands_the_terminal_title_back():
 
 
 def test_the_runner_adopts_the_scheme_the_terminal_reports():
-    """A white terminal gets the light palette, a black one stays dark."""
-    from zettcode.tui import LIGHT, scheme_named
-    from zettcode.tui.terminal import parse_background
+    """A terminal's answer arrives as input and picks the palette."""
+    from zettcode.tui import LIGHT
+    from zettcode.tui.input import EventType, InputDecoder
 
-    for reply, expected in ((b"\x1b]11;rgb:ffff/ffff/ffff\x07", LIGHT), (b"\x1b]11;rgb:0000/0000/0000\x07", None)):
-        read_fd, write_fd = os.pipe()
+    replies = (
+        (b"\x1b]11;rgb:ffff/ffff/ffff\x07", LIGHT),
+        (b"\x1b]11;rgb:0000/0000/0000\x1b\\", LIGHT),
+    )
+    for reply, _ in replies:
+        read_fd = os.open(os.devnull, os.O_RDONLY)
         terminal = StubTerminal(read_fd)
         app = TuiApp(Editor(), width=40, height=6, auto_theme=True)
         runner = TerminalRunner(app, terminal=terminal)
         try:
-            os.write(write_fd, reply)
-            runner._adopt_terminal_scheme()
-            assert terminal.output.getvalue().startswith("\x1b]11;?\x07")
-            if expected is None:
-                assert app.theme is not LIGHT  # a dark terminal keeps the palette it started with
-                assert scheme_named(parse_background(reply.decode())) == "dark"
-            else:
-                assert app.theme is expected
+            events = InputDecoder().feed(reply)
+            assert [event.type for event in events] == [EventType.REPLY]
+            runner.deliver(events[0])
+            # The white answer in the first case is the one that changes it.
+            assert (app.theme is LIGHT) is reply.endswith(b"\x07")
         finally:
             os.close(read_fd)
-            os.close(write_fd)
 
 
-def test_a_terminal_that_does_not_answer_keeps_the_palette():
+def test_the_background_query_does_not_wait_for_an_answer():
+    """The runner asks and moves on, so a quiet terminal holds nothing up."""
+    from zettcode.tui.terminal import BACKGROUND_QUERY
+
     read_fd, write_fd = os.pipe()
     terminal = StubTerminal(read_fd)
     app = TuiApp(Editor(), width=40, height=6, auto_theme=True)
@@ -299,8 +302,9 @@ def test_a_terminal_that_does_not_answer_keeps_the_palette():
     original = app.theme
 
     try:
-        runner._adopt_terminal_scheme()  # nothing is written to the pipe, so it times out
+        runner._ask_terminal_scheme()  # nothing is written to the pipe, so nothing comes back
 
+        assert terminal.output.getvalue() == BACKGROUND_QUERY
         assert app.theme is original
     finally:
         os.close(read_fd)
