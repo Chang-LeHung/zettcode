@@ -211,6 +211,10 @@ disable = []                   # entry-point names to skip
 
 [update]
 enabled = true                 # background PyPI version checks
+
+[harness]
+subagent = true                # offer the `task` tool and its child profiles
+todowrite = false              # offer `todo_write`, which draws the plan panel
 ```
 
 Put these top-level sections outside the model table, as shown. In TOML, keys
@@ -231,6 +235,8 @@ belong to the most recent table heading; an `enabled` key immediately under
 | `plugins.enabled` | `true` | Load installed third-party plugins. Built-in UI functionality remains available when false. |
 | `plugins.disable` | `[]` | Array of plugin **entry-point names** to skip, not necessarily their pip package names. |
 | `update.enabled` | `true` | Check PyPI in the background and offer newer releases on a later start; does not automatically install them. |
+| `harness.subagent` | `true` | Offer the `task` tool, so the model can delegate to a child agent with its own context and session log. |
+| `harness.todowrite` | `false` | Offer `todo_write`, whose checklist the shell draws in its plan panel. Keeping a plan costs turns, so it is off unless asked for. |
 
 Example: keep less scrollback, add project-local skills, and disable remote
 tool servers for a run configured from this file:

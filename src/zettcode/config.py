@@ -25,7 +25,9 @@ from .paths import CONFIG_FILE, DEFAULT_STORE, DEFAULT_UPDATE_FILE
 T = TypeVar("T")
 
 #: Top-level keys the config file may set; anything else is a typo.
-CONFIGURABLE = frozenset({"models", "transcript", "agents_md", "ask_user", "skills", "mcp", "plugins", "update"})
+CONFIGURABLE = frozenset(
+    {"models", "transcript", "agents_md", "ask_user", "skills", "mcp", "plugins", "update", "harness"}
+)
 
 #: Keys one ``[[models]]`` entry may set.
 MODEL_KEYS = frozenset(
@@ -52,6 +54,9 @@ PLUGIN_KEYS = frozenset({"enabled", "disable"})
 
 #: Keys the ``[update]`` table may set.
 UPDATE_KEYS = frozenset({"enabled"})
+
+#: Keys the ``[harness]`` table may set.
+HARNESS_KEYS = frozenset({"subagent", "todowrite"})
 
 #: Where ZettCode's own skills live, searched after any ``[skills] roots``. A
 #: project-local directory is a configured root, not a default: only what the
@@ -160,6 +165,11 @@ class ZettCodeConfig:
         disabled_plugins: Entry-point names not to load when
             :attr:`plugins_enabled` is true; a way to switch off one plugin
             without uninstalling it.
+        subagent_enabled: Offer the ``task`` tool, whose profiles run a child
+            agent with its own context and session log.
+        todowrite_enabled: Offer the ``todo_write`` tool, whose list the shell
+            shows in its plan panel. Off by default: a plan is a turn spent
+            updating it, and not every session wants one.
         update_enabled: Ask PyPI, in the background, whether a newer release
             exists, and offer it on a later start.
         update_file: Where that check leaves what it found; one small JSON file.
@@ -183,6 +193,8 @@ class ZettCodeConfig:
     mcp_config: Path | None = None
     plugins_enabled: bool = True
     disabled_plugins: tuple[str, ...] = ()
+    subagent_enabled: bool = True
+    todowrite_enabled: bool = False
     update_enabled: bool = True
     update_file: Path = DEFAULT_UPDATE_FILE
 
@@ -389,6 +401,7 @@ def load_config(
     plugins = _read_table(data.get("plugins"), "plugins", source, PLUGIN_KEYS)
     transcript = _read_table(data.get("transcript"), "transcript", source, TRANSCRIPT_KEYS)
     update = _read_table(data.get("update"), "update", source, UPDATE_KEYS)
+    harness = _read_table(data.get("harness"), "harness", source, HARNESS_KEYS)
 
     return ZettCodeConfig(
         workspace=Path(workspace),
@@ -408,5 +421,7 @@ def load_config(
         mcp_config=_read_mcp_config(mcp.get("config"), source),
         plugins_enabled=bool(_setting(plugins, "enabled", bool, True)),
         disabled_plugins=_read_disabled_plugins(plugins.get("disable"), source),
+        subagent_enabled=bool(_setting(harness, "subagent", bool, True)),
+        todowrite_enabled=bool(_setting(harness, "todowrite", bool, False)),
         update_enabled=bool(_setting(update, "enabled", bool, True)),
     )

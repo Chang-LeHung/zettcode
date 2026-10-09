@@ -239,42 +239,41 @@ class ZettCodeRuntime:
 
         from zett_agent.client import create_agent
 
-        # Imported with the runtime, not with the module: the subagent extension
-        # pulls in its SQLite store and SQLAlchemy, which a launch that never
-        # runs a child should not pay for on the way to the first frame.
-        from .subagents import subagent_extension
-
         selected = self.active_model
         model = self._provider(selected)
         capabilities = ModelCapabilities(self._models)
-        client = await create_agent(
-            model,
-            config=AgentRunConfig(session_id=self.session_id),
-            system_prompt=build_system_prompt(self.config),
-            extensions=[
-                CodingExtension(),
-                capabilities,
-                # Before ToolGuidelinesExtension, so the task tool's own
-                # guidance reaches the prompt it is registered for.
-                subagent_extension(
-                    model=model,
-                    persistence=self.persistence,
-                    capabilities=capabilities,
-                ),
-                self.approval,
-                self.persistence,
-                self.todos,
+        extensions: list[AgentExtension] = [CodingExtension(), capabilities]
+        if self.config.subagent_enabled:
+            # Imported with the runtime, not with the module: the subagent
+            # extension pulls in its SQLite store and SQLAlchemy, which a launch
+            # that never runs a child should not pay for on the way to the first
+            # frame. Before ToolGuidelinesExtension, so the task tool's own
+            # guidance reaches the prompt it is registered for.
+            from .subagents import subagent_extension
+
+            extensions.append(subagent_extension(model=model, persistence=self.persistence, capabilities=capabilities))
+        extensions.extend([self.approval, self.persistence])
+        if self.config.todowrite_enabled:
+            extensions.append(self.todos)
+        extensions.extend(
+            [
                 self.usage,
                 self.context,
                 self.sides,
                 ToolGuidelinesExtension(),
                 *integration_extensions(self.config),
                 self.compaction,
-                # One host drives every plugin, so the agent sees one
-                # extension; the host places itself at the earliest priority
-                # any plugin asked for.
+                # One host drives every plugin, so the agent sees one extension;
+                # the host places itself at the earliest priority any plugin
+                # asked for.
                 *self.plugins.extensions,
-            ],
+            ]
+        )
+        client = await create_agent(
+            model,
+            config=AgentRunConfig(session_id=self.session_id),
+            system_prompt=build_system_prompt(self.config),
+            extensions=extensions,
             reasoning_effort=self.config.reasoning_effort,
             parallel_tool_call=self.config.parallel_tool_call,
             max_iterations=self.config.max_iterations,
@@ -294,7 +293,8 @@ class ZettCodeRuntime:
         lazily; importing it here keeps that later import a cache hit too.
         """
         importlib.import_module("openai")
-        importlib.import_module("zett_agent.extensions.subagent")
+        if self.config.subagent_enabled:
+            importlib.import_module("zett_agent.extensions.subagent")
 
     def _provider(self, selected: ModelConfig) -> OpenAIProvider:
         """Return the provider for one configured model, building it if needed."""

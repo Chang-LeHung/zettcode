@@ -221,6 +221,24 @@ def test_project_instructions_skills_and_mcp_can_be_turned_off(tmp_path: Path):
     assert config.update_enabled is False
 
 
+def test_the_harness_switches_default_to_a_task_tool_without_a_plan(tmp_path: Path):
+    """``task`` is on, ``todo_write`` is off, and the file may say either way."""
+    path = tmp_path / "config.toml"
+    path.write_text('[[models]]\nmodel = "m"\ntoken = "t"\n', encoding="utf-8")
+
+    defaults = load_config(tmp_path, path=path)
+    assert defaults.subagent_enabled is True
+    assert defaults.todowrite_enabled is False
+
+    path.write_text(
+        '[[models]]\nmodel = "m"\ntoken = "t"\n\n[harness]\nsubagent = false\ntodowrite = true\n',
+        encoding="utf-8",
+    )
+    configured = load_config(tmp_path, path=path)
+    assert configured.subagent_enabled is False
+    assert configured.todowrite_enabled is True
+
+
 def test_the_release_check_is_on_unless_the_config_turns_it_off(tmp_path: Path):
     path = tmp_path / "config.toml"
     path.write_text('[[models]]\nmodel = "m"\ntoken = "t"\n', encoding="utf-8")
