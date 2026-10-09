@@ -136,8 +136,8 @@ def test_blocks_use_theme_styles_and_preserve_user_surface():
     assert dark_notice[1].spans[0].style.foreground == DARK.muted
 
 
-def test_a_compaction_row_carries_its_own_label_and_sweep():
-    """The summarizer's row animates like reasoning, under the label it was given."""
+def test_a_compaction_row_carries_its_own_label_and_timer():
+    """The summarizer's row is a reasoning row under the label it was given."""
     running = ThinkingEntry(id=1, title=COMPACTING_LABEL, text="checkpoint", started_at=0.0)
     done = ThinkingEntry(id=2, title=COMPACTING_LABEL, text="checkpoint", expanded=True, duration=1.5)
 
@@ -148,11 +148,50 @@ def test_a_compaction_row_carries_its_own_label_and_sweep():
     assert "Compacting" in collapsed and "1.5 s" in collapsed
     assert "Thinking" not in heading
 
-    # The highlight travels: the same row at another frame is lit elsewhere.
-    def brightness(frame: int) -> list[str]:
+    # A reasoning row is painted flat, like every row but the waiting one: the
+    # same row at another frame is lit the same way.
+    def brightness(frame: int) -> list[str | None]:
         return [span.style.foreground for span in render_entry(running, 40, DARK, frame)[1].spans]
 
-    assert brightness(5) != brightness(9)
+    assert brightness(5) == brightness(9)
+
+
+def test_a_settled_wait_row_is_a_muted_line():
+    """Once the request is over the row stops sweeping and reads as a record."""
+    settled = ProcessingEntry(id=1, started_at=0.0, duration=12.3, text="Processed for 12s · 09:41")
+    settled.status = EntryStatus.COMPLETED
+
+    (blank, line) = render_entry(settled, 40, DARK, 0)
+
+    assert blank.spans == ()
+    assert line.text.strip() == "Processed for 12s · 09:41"
+    assert line.spans[0].style.foreground == DARK.muted
+
+    # A row that was settled without a line still reports the time it measured.
+    bare = ProcessingEntry(id=2, started_at=0.0, duration=12.3, status=EntryStatus.COMPLETED)
+    assert render_entry(bare, 40, DARK, 0)[1].text.strip() == "Processed for 12.3 s"
+
+
+def test_only_the_waiting_row_moves():
+    """The waiting row sweeps; a reasoning or running tool row paints flat.
+
+    One moving row is what keeps the transcript readable while reasoning and
+    tools are in flight at once, and it is also what keeps an animation step
+    from rebuilding rows nothing has changed in.
+    """
+    thinking = ThinkingEntry(id=1, text="weighing the options", started_at=0.0)
+    tool = ToolEntry(id=2, call_id="c1", tool="read_file", title="Read app.py", started_at=0.0)
+    waiting = ProcessingEntry(id=3, started_at=0.0)
+
+    def painted(entry, frame: int) -> list[tuple[str, tuple[object, ...]]]:
+        return [
+            (line.text, tuple((span.text, span.style) for span in line.spans))
+            for line in render_entry(entry, 40, DARK, frame)
+        ]
+
+    assert painted(thinking, 0) == painted(thinking, 7)
+    assert painted(tool, 0) == painted(tool, 7)
+    assert painted(waiting, 0) != painted(waiting, 7)
 
 
 def test_a_finished_row_without_a_recorded_duration_claims_no_time():

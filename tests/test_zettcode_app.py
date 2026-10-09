@@ -9,7 +9,6 @@ import threading
 import time
 from dataclasses import dataclass, field, fields, replace
 from datetime import datetime, timedelta, timezone
-from math import ceil
 from pathlib import Path
 
 import pytest
@@ -39,6 +38,7 @@ from zettcode.app.agent.entries import EntryStatus
 from zettcode.app.agent.mentions import Mention, MentionProvider, MentionRegistry
 from zettcode.app.agent.projection import TranscriptProjector
 from zettcode.app.agent.rows import (
+    ANIMATION_SECONDS,
     BLINK_FRAMES,
     SWEEP_FRAMES,
     activity_glyph,
@@ -46,7 +46,7 @@ from zettcode.app.agent.rows import (
     compact_path,
     duration_text,
     elapsed_text,
-    sweep_step,
+    sweep_column,
     terminal_safe,
 )
 from zettcode.app.agent.side import SideQuestions
@@ -628,36 +628,29 @@ async def test_a_waiting_row_appears_as_soon_as_a_turn_starts():
 
 def test_the_running_marker_blinks_between_two_glyphs():
     bright = activity_glyph(0)
-    faint = activity_glyph(BLINK_FRAMES)
+    faint = activity_glyph(BLINK_FRAMES // 2)
 
     assert bright != faint
-    # Each state holds for a whole half-blink, so the marker does not flicker at
-    # the tick rate, and both are one column wide: the label never shifts.
-    assert activity_glyph(BLINK_FRAMES - 1) == bright
-    assert activity_glyph(BLINK_FRAMES * 2 - 1) == faint
-    assert activity_glyph(BLINK_FRAMES * 2) == bright
+    # Each state holds for a whole half-blink — half a second at the animation's
+    # step — so the marker does not flicker at the tick rate, and both are one
+    # column wide: the label never shifts.
+    assert all(activity_glyph(frame) == bright for frame in range(BLINK_FRAMES // 2))
+    assert all(activity_glyph(BLINK_FRAMES // 2 + frame) == faint for frame in range(BLINK_FRAMES // 2))
+    assert activity_glyph(BLINK_FRAMES) == bright
     assert display_width(bright) == display_width(faint) == 1
 
 
-@pytest.mark.parametrize(
-    ("thinking", "needle", "label"),
-    [
-        (False, "Processing", "Processing"),
-        (True, "Thinking", "Thinking  working"),
-    ],
-)
-def test_a_running_wording_carries_a_travelling_highlight(thinking, needle, label):
+def test_the_waiting_wording_carries_a_travelling_highlight():
+    """The waiting row is the one row that moves, so its label is lit as it goes."""
     transcript = Transcript(clock=lambda: 0.0)
     transcript.begin_turn("question")
-    if thinking:
-        transcript.start_thinking()
     source = TranscriptView(transcript, theme=DARK).transcript_source
 
     def wording(frame: int) -> list:
         transcript.frame = frame
         transcript.version += 1
         rows = [source.line(index, 50) for index in range(source.count(50))]
-        row = next(row for row in rows if needle in row.text)
+        row = next(row for row in rows if "Processing" in row.text)
         # The first run is the left margin merged with the marker; the rest is
         # the wording, split into one run per brightness step.
         return list(row.spans[1:])
@@ -670,22 +663,84 @@ def test_a_running_wording_carries_a_travelling_highlight(thinking, needle, labe
             column += display_width(span.text)
         return -1
 
-    # The highlight arrives from the left and moves one column per step.
-    def frame_for(step: int) -> int:
-        """Return the first frame at which the highlight has reached ``step``."""
-        return ceil(step * SWEEP_FRAMES)
+    # The highlight arrives from the left, crosses the label, and comes round
+    # once a second: the pace is the period, not a speed per column.
+    # The highlight starts off the left edge, crosses the label, and comes round
+    # at the end of the period, so one pass takes the same time whatever the
+    # label's length.
+    columns = [peak_column(frame) for frame in range(SWEEP_FRAMES * 2)]
+    width = display_width("Processing")
 
-    assert sweep_step(frame_for(5)) == 5
-    assert peak_column(frame_for(5)) == 2
-    assert peak_column(frame_for(8)) == 5
+    assert columns[0] == -1  # the highlight is still off the left edge
+    assert max(columns[:SWEEP_FRAMES]) >= width - 2  # it reached the end of the label
+    assert columns[SWEEP_FRAMES:] == columns[:SWEEP_FRAMES]  # the next pass repeats it
 
     # Nothing ever goes dark: every run keeps a colour from the bright end of
     # the palette, and the text itself never changes or shifts.
-    for frame in (frame_for(step) for step in range(14)):
+    for frame in range(SWEEP_FRAMES * 2):
         runs = wording(frame)
         assert all(run.style.dim is False for run in runs)
         assert all(run.style.foreground != DARK.muted for run in runs)
-        assert "".join(run.text for run in runs) == label
+        assert "".join(run.text for run in runs) == "Processing"
+
+
+def test_a_sweep_crosses_the_label_once_a_period_whatever_its_width():
+    """A fixed period, not a fixed speed: a long row is not swept more slowly."""
+    narrow, wide = 10, 60
+
+    assert SWEEP_FRAMES == round(1.0 / ANIMATION_SECONDS)
+    assert sweep_column(0, narrow) == sweep_column(0, wide) == 0
+    assert sweep_column(SWEEP_FRAMES, wide) == 0  # wrapped: one pass is done
+    # One frame moves the highlight proportionally further across a wider row,
+    # which is what makes both take the same time to cross.
+    assert sweep_column(1, narrow) == 1 and sweep_column(1, wide) == 6
+    assert sweep_column(SWEEP_FRAMES // 2, wide) == wide // 2
+
+
+def test_the_waiting_row_marker_blinks_with_the_status_icon():
+    """The row's marker turns over on the same frames the status dot does."""
+    transcript = Transcript(clock=lambda: 0.0)
+    transcript.begin_turn("question")
+    source = TranscriptView(transcript, theme=DARK).transcript_source
+
+    def marker(frame: int) -> str:
+        transcript.frame = frame
+        transcript.version += 1
+        rows = [source.line(index, 50) for index in range(source.count(50))]
+        row = next(row for row in rows if "Processing" in row.text)
+        return row.text.strip()[0]
+
+    bright, faint = activity_glyph(0), activity_glyph(BLINK_FRAMES // 2)
+
+    assert bright != faint
+    assert marker(0) == bright
+    assert marker(BLINK_FRAMES // 2) == faint
+    # Both halves are one column wide, so the wording after the marker never
+    # shifts as it blinks.
+    assert display_width(bright) == display_width(faint) == 1
+
+
+def test_a_reasoning_row_is_painted_flat_at_every_frame():
+    """A reasoning row that is still running paints the same cells at any step.
+
+    Only the waiting row sweeps, so a step through the transcript leaves a live
+    reasoning row exactly as it was: nothing in it is lit in the body colour the
+    sweep peaks with, and no span changes.
+    """
+    transcript = Transcript(clock=lambda: 0.0)
+    transcript.begin_turn("question")
+    transcript.start_thinking()
+    source = TranscriptView(transcript, theme=DARK).transcript_source
+
+    def painted(frame: int) -> list[tuple[str, object]]:
+        transcript.frame = frame
+        transcript.version += 1
+        rows = [source.line(index, 50) for index in range(source.count(50))]
+        row = next(row for row in rows if "Thinking" in row.text)
+        return [(span.text, span.style) for span in row.spans]
+
+    assert painted(0) == painted(13)
+    assert all(style.foreground != DARK.text for _, style in painted(7))
 
 
 def test_the_blink_demo_keeps_frames_coming_and_advances_the_blink():
@@ -719,16 +774,16 @@ async def test_the_blink_demo_script_walks_a_turn():
 
 
 def test_the_blink_demo_can_be_slowed_down_while_it_runs(monkeypatch):
-    monkeypatch.setattr(demo.rows_module, "SWEEP_FRAMES", 4.0)
+    monkeypatch.setattr(demo.rows_module, "SWEEP_FRAMES", 10)
     harness = Harness(app=demo.build())
 
     harness.press("]")
-    assert demo.rows_module.SWEEP_FRAMES == 3.5
-    assert "350 ms per column" in harness.render().text
+    assert demo.rows_module.SWEEP_FRAMES == 5
+    assert "one pass per 0.5 s" in harness.render().text
 
     harness.press("[")
     harness.press("[")
-    assert demo.rows_module.SWEEP_FRAMES == 4.5
+    assert demo.rows_module.SWEEP_FRAMES == 15
 
 
 async def test_app_streams_a_prompt_into_the_transcript():

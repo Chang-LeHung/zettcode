@@ -1,10 +1,10 @@
-"""Watch a turn's running rows blink: ``make demo-thinking``.
+"""Watch a turn's waiting row sweep: ``make demo-thinking``.
 
-The pulse normally belongs to a live request, where it is easy to miss: the
+The sweep normally belongs to a live request, where it is easy to miss: the
 first token can arrive before the eye reaches the row. This module mounts the
 same machinery in a throwaway application and walks one turn after another —
-wait, then thinking, then a tool call — so every running row can be watched on
-its own.
+wait, then thinking, then a tool call — so the one row that moves can be watched
+beside the rows that stay still.
 
 It is a demo, not a second entry point: nothing here is imported by the shell.
 """
@@ -22,23 +22,24 @@ from .widgets import TranscriptView
 
 
 def hint() -> str:
-    """Return the key hint, including the pace the sweep is running at."""
-    per_column = rows_module.SWEEP_FRAMES * rows_module.ANIMATION_SECONDS * 1000
-    return f"  q / Esc quit {SEPARATOR} [ slower {SEPARATOR} ] faster {SEPARATOR} {per_column:.0f} ms per column"
+    """Return the key hint, including the pace one pass takes."""
+    seconds = rows_module.SWEEP_FRAMES * rows_module.ANIMATION_SECONDS
+    return f"  q / Esc quit {SEPARATOR} [ slower {SEPARATOR} ] faster {SEPARATOR} one pass per {seconds:.1f} s"
 
 
-def nudge_pace(delta: float) -> None:
+def nudge_pace(delta: int) -> None:
     """Change the sweep pace, so the effect can be judged without a rebuild.
 
     Args:
-        delta: Frames per column to add; the pace is kept between one frame and
-            ten, which spans "a flicker" to "almost stationary".
+        delta: Frames to add to one pass; the pace is kept between half a second
+            and five seconds per pass, which spans "too fast to follow" to
+            "almost stationary".
     """
-    rows_module.SWEEP_FRAMES = min(10.0, max(1.0, round(rows_module.SWEEP_FRAMES + delta, 1)))
+    rows_module.SWEEP_FRAMES = min(50, max(5, rows_module.SWEEP_FRAMES + delta))
 
 
 class Blinking(Widget):
-    """Root that keeps frames coming and moves the transcript's blink on.
+    """Root that keeps frames coming and moves the transcript's animation on.
 
     The real shell does this from its own root while a request runs; the demo
     needs it because no request ever ends here.
@@ -86,8 +87,8 @@ def _quit(event: AnyEvent, host: Host) -> bool:
     return True
 
 
-def _pace(delta: float) -> Callable[[AnyEvent, Host], bool]:
-    """Return a binding that nudges the blink interval by ``delta`` seconds."""
+def _pace(delta: int) -> Callable[[AnyEvent, Host], bool]:
+    """Return a binding that nudges the sweep period by ``delta`` frames."""
 
     def run(event: AnyEvent, host: Host) -> bool:
         nudge_pace(delta)
@@ -110,8 +111,8 @@ def build(transcript: Transcript | None = None) -> TuiApp:
     )
     app = TuiApp(Blinking(transcript, body), theme=DARK)
     app.commands.add("quit", _quit)
-    app.commands.add("slower", _pace(0.5))
-    app.commands.add("faster", _pace(-0.5))
+    app.commands.add("slower", _pace(5))
+    app.commands.add("faster", _pace(-5))
     for key in ("q", "escape", "ctrl_c"):
         app.keymap.bind(key, "quit", priority="capture")
     app.keymap.bind("[", "slower", priority="capture")
