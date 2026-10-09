@@ -12,6 +12,9 @@ from .keys import CONTROL_KEYS, KEY_SEQUENCES
 # Coordinates arrive 1-based, so the decoder subtracts one from each.
 _MOUSE = re.compile(rb"^\x1b\[<(\d+);(\d+);(\d+)([Mm])")
 
+#: An operating-system command, which is how a terminal answers a query.
+_OSC = b"\x1b]"
+
 #: Control characters a paste may keep: tab indents code and newline separates
 #: it. Everything else — the carriage return a clipboard adds per line, a stray
 #: escape, a bell — would be drawn as a broken line or walked over silently.
@@ -63,6 +66,11 @@ class InputDecoder:
             return None
         data = bytes(self.buffer)
         self.buffer.clear()
+        # A reply cut off mid-sequence is a terminal that stopped talking, not
+        # the Escape key followed by Alt-]: dropping it is the only reading that
+        # cannot type the answer into the reader's draft.
+        if data.startswith(_OSC):
+            return None
         # "ESC <printable>" is how a terminal spells Alt-<key>; anything else
         # left over is the Escape key on its own.
         if len(data) >= 2 and 0x20 <= data[1] < 0x7F:
@@ -84,6 +92,20 @@ class InputDecoder:
                 end + 6,
                 False,
             )
+
+        # Operating-system reply: ``ESC ]`` body, ended by BEL or by ST (ESC \).
+        # The body belongs to whoever asked the question — it is stripped of its
+        # framing and delivered as a REPLY, never decoded as keystrokes.
+        if data.startswith(_OSC):
+            bell = data.find(b"\x07", 2)
+            terminator = data.find(b"\x1b\\", 2)
+            if bell < 0 and terminator < 0:
+                return None, 0, True
+            if 0 <= bell and (terminator < 0 or bell < terminator):
+                end, length = bell, 1
+            else:
+                end, length = terminator, 2
+            return InputEvent(EventType.REPLY, text=data[2:end].decode("utf-8", "replace")), end + length, False
 
         mouse = _MOUSE.match(data)
         if mouse:

@@ -6,7 +6,6 @@ import os
 import re
 import sys
 from pathlib import Path
-from time import monotonic
 from types import TracebackType
 from typing import TextIO
 
@@ -146,28 +145,15 @@ class Terminal:
             os.close(self._stderr_sink)
             self._stderr_sink = None
 
-    def background(self, *, timeout: float = 0.25) -> str | None:
-        """Ask the terminal for its background colour, or None when it stays quiet.
+    def query_background(self) -> None:
+        """Ask the terminal for its background colour and return immediately.
 
-        The reply arrives on the input side, so this reads it here: call it while
-        raw mode is on and before any other reader owns the descriptor. A
-        terminal that does not implement OSC 11 sends nothing, and the deadline
-        is what keeps that from being a wait.
-
-        Args:
-            timeout: Seconds to wait for a reply.
+        The answer arrives on the input side, where the reader decodes it as a
+        ``REPLY`` event; waiting for it here would hand a terminal that never
+        answers the power to hold up whatever asked. A terminal that sends
+        nothing simply never changes the palette.
         """
         self.write(BACKGROUND_QUERY)
-        deadline = monotonic() + timeout
-        reply = ""
-        while True:
-            remaining = deadline - monotonic()
-            if remaining <= 0 or not self.console.wait_readable(remaining):
-                return parse_background(reply)
-            chunk = self.console.read(128)
-            if not chunk:
-                return parse_background(reply)
-            reply += chunk.decode("utf-8", "replace")
 
     def write(self, value: str) -> None:
         """Write and flush one control sequence."""

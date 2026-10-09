@@ -59,9 +59,9 @@ import pyperclip
 from .core.app import TuiApp
 from .core.events import ResizeEvent
 from .core.theme import scheme_named, theme_named
-from .input import AsyncInput, InputEvent, translate
+from .input import AsyncInput, EventType, InputEvent, translate
 from .render import DifferentialRenderer
-from .terminal import Terminal, title_sequence
+from .terminal import Terminal, parse_background, title_sequence
 
 
 class TerminalRunner:
@@ -100,9 +100,9 @@ class TerminalRunner:
             # must not be the blank screen a reader stares at. Adopting a scheme
             # afterwards repaints every cell, so the palette still lands.
             self.paint()
-            # Before the reader owns the descriptor: the answer to the query
-            # arrives on the same side the keys do.
-            self._adopt_terminal_scheme()
+            # The query goes out now and its answer comes back as input, so a
+            # terminal that never answers delays nothing on screen.
+            self._ask_terminal_scheme()
             self.reader = AsyncInput(self.terminal, self.queue.put_nowait)
             self.reader.start()
             # One long-lived reader task: cancelling a pending queue.get() can
@@ -134,19 +134,21 @@ class TerminalRunner:
         cursor = self.app.cursor()
         self.renderer.render(canvas, cursor=None if cursor is None else (cursor.x, cursor.y))
 
-    def _adopt_terminal_scheme(self) -> None:
-        """Take the palette the terminal's own background asks for, when allowed.
+    def _ask_terminal_scheme(self) -> None:
+        """Ask the terminal which palette its background calls for, when allowed."""
+        if self.app.auto_theme:
+            self.terminal.query_background()
 
-        A terminal that does not answer leaves the app on the palette it was
-        built with, which is why this is a best-effort step rather than a
+    def _adopt_terminal_scheme(self, reply: str) -> None:
+        """Take the palette the terminal's answer names, when it names one.
+
+        A terminal that answers something else, or nothing at all, leaves the
+        app on the palette it was built with: this is a preference, not a
         requirement.
         """
-        if not self.app.auto_theme:
-            return
-        scheme = scheme_named(self.terminal.background())
-        if scheme is None:
-            return
-        self.app.theme = theme_named(scheme)
+        scheme = scheme_named(parse_background(reply))
+        if scheme is not None:
+            self.app.theme = theme_named(scheme)
         self.renderer.reset()
 
     def _sync_title(self) -> None:
@@ -163,6 +165,9 @@ class TerminalRunner:
 
     def deliver(self, raw: InputEvent) -> None:
         """Translate one decoded terminal event and hand it to the app."""
+        if raw.type is EventType.REPLY:
+            self._adopt_terminal_scheme(raw.text)
+            return
         event = translate(raw)
         if isinstance(event, ResizeEvent):
             width, height = self.terminal.size

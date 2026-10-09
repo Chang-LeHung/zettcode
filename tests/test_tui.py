@@ -198,3 +198,23 @@ def test_canvas_expands_tabs_without_replacement_glyphs():
     assert "a   b" in output.getvalue()
     assert "\ufffd" not in output.getvalue()
     assert TextLine((Span("\tx"),)).text == "\tx"
+
+
+def test_the_input_decoder_reads_a_terminal_reply_without_typing_it():
+    """An OSC answer is input, but it is never the reader's keystrokes."""
+    from zettcode.tui.input import EventType, InputDecoder, InputEvent
+
+    assert InputDecoder().feed(b"\x1b]11;rgb:1e1e/1e1e/1e1e\x07") == [
+        InputEvent(EventType.REPLY, text="11;rgb:1e1e/1e1e/1e1e")
+    ]
+
+    # A read may split the answer anywhere, and either terminator ends it.
+    split = InputDecoder()
+    assert split.feed(b"\x1b]11;rgb:1e") == []
+    assert [event.type for event in split.feed(b"1e/1e1e/1e1e\x1b\\")] == [EventType.REPLY]
+
+    # An answer that stops mid-sequence is a terminal that stopped talking; it
+    # must not come back as Escape and Alt-] typed into the draft.
+    truncated = InputDecoder()
+    assert truncated.feed(b"\x1b]11;rgb:") == []
+    assert truncated.flush_escape() is None

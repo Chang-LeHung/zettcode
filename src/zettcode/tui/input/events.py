@@ -17,6 +17,9 @@ class EventType(StrEnum):
     MOUSE = "mouse"
     RESIZE = "resize"
     RENDER = "render"
+    #: An answer to a query the application sent, such as the terminal's own
+    #: background colour. It is input, but no widget ever sees it.
+    REPLY = "reply"
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,7 +33,8 @@ class InputEvent:
     Attributes:
         type: Which decoder branch produced this event.
         key: Canonical key name for ``KEY`` events.
-        text: Payload for ``TEXT`` and ``PASTE`` events.
+        text: Payload for ``TEXT``, ``PASTE``, and ``REPLY`` events; a reply
+            carries the sequence's body, without its introducer or terminator.
         x: Column for ``MOUSE`` events, zero-based.
         y: Row for ``MOUSE`` events, zero-based.
         button: Button index reported by the terminal.
