@@ -11,6 +11,7 @@ import importlib
 import importlib.metadata
 import importlib.util
 import pathlib
+import re
 import subprocess
 import sys
 
@@ -19,6 +20,50 @@ from zettcode._compat import tomllib
 
 #: Repository root, three levels above the package's ``__init__.py``.
 ROOT = pathlib.Path(zettcode.__file__).resolve().parent.parent.parent
+
+#: One piece of evidence in ``docs/internal/invariants.md``: a test file and,
+#: within the same row, the bare names that follow it.
+CITATION = re.compile(r"`([^`]+)`")
+PREFIXED = re.compile(r"(test_[a-z_]+)\.py::([A-Za-z_][A-Za-z0-9_]*)")
+BARE = re.compile(r"test_[a-z_]+")
+
+
+def test_every_invariant_cites_a_test_that_exists():
+    """A row's evidence has to be findable, or the mark cannot be trusted.
+
+    Every row points at the test that fails when the rule breaks, and a row
+    names the file once and then the rest of that row's tests by themselves, so
+    this reads a row the way a reader does: the first citation names the file,
+    the ones after it belong to it, and each has to exist there. A test renamed
+    without its citation, or a name written with no file in front of it, sends a
+    reader looking for evidence that is not where the row says it is.
+    """
+    document = (ROOT / "docs/internal/invariants.md").read_text(encoding="utf-8")
+    missing: list[str] = []
+    unqualified: list[str] = []
+    checked = 0
+    for line in document.splitlines():
+        current: str | None = None
+        for piece in CITATION.findall(line):
+            prefixed = PREFIXED.fullmatch(piece)
+            if prefixed:
+                current, name = prefixed.group(1), prefixed.group(2)
+            elif BARE.fullmatch(piece):
+                if current is None:
+                    unqualified.append(piece)
+                    continue
+                name = piece
+            else:
+                continue
+            checked += 1
+            source = (ROOT / "tests" / f"{current}.py").read_text(encoding="utf-8")
+            if not re.search(rf"^\s*(?:async )?def {re.escape(name)}\(", source, re.MULTILINE):
+                missing.append(f"{current}::{name}")
+
+    assert checked > 150, f"the citations stopped parsing: {checked} read"
+    assert unqualified == [], f"cite the file once in the row first: {unqualified}"
+    assert missing == []
+
 
 # A module under one of these prefixes may not import anything under the others:
 # the framework stays standalone, and the agent side never reaches into the ui.
