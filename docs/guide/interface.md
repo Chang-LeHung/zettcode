@@ -62,7 +62,9 @@ Every kind of output has its own row, in the order it happened:
   visible and the rest is behind a click; nothing is ever dumped as JSON.
 - **The answer** is rendered as Markdown: headings, lists, quotes, links,
   **bold**, *emphasis*, `inline code`, fenced code with syntax colours, and
-  tables drawn with per-column rules that survive wide CJK characters.
+  tables drawn with per-column rules that survive wide CJK characters. An HTML
+  entity is drawn as the character it names, so `&nbsp;` indents a line and
+  `&lt;` writes an angle bracket.
 - **Notices** — a copied selection, a refused command, an exported file — appear
   as muted one-liners.
 

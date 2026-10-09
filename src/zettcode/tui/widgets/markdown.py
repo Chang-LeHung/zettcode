@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 from dataclasses import replace
+from functools import lru_cache
 
 from ...tui import ELLIPSIS, RULE, SEPARATOR
 from ..core.theme import DARK, Theme
@@ -45,6 +46,61 @@ _BULLET = re.compile(r"^(\s*)[-+*]\s+(.+)$")
 _ORDERED = re.compile(r"^(\s*)(\d{1,3})[.)]\s+(.+)$")
 _QUOTE = re.compile(r"^\s*>\s?(.*)$")
 _RULE = re.compile(r"^\s{0,3}(?:-{3,}|\*{3,}|_{3,})\s*$")
+# An HTML entity or numeric character reference, in the forms CommonMark
+# recognises: a name from the HTML5 list, or a decimal or hexadecimal code
+# point, and always a semicolon. ``&amp`` is the four characters that spell it.
+_ENTITY = re.compile(r"&(?:#[0-9]{1,7}|#[xX][0-9a-fA-F]{1,6}|[a-zA-Z][a-zA-Z0-9]{1,31});")
+#: The highest code point Unicode assigns; a reference above it names nothing.
+_MAX_CODE_POINT = 0x10FFFF
+#: What a reference to no character becomes: U+FFFD, the same glyph the canvas
+#: uses for a control character it will not paint.
+_REPLACEMENT = "\ufffd"
+
+
+@lru_cache(maxsize=1)
+def entity_table() -> dict[str, str]:
+    """Return the HTML5 named entities, keyed without their semicolon.
+
+    The table ships with the interpreter, so it is the same list the Markdown
+    specification's reference implementation reads; only the named forms are
+    kept here, which are the ones a reference has to end with ``;``. It is
+    built on the first render that meets an ``&``, so a document without one
+    never pays for it.
+    """
+    from html.entities import html5
+
+    return {name[:-1]: value for name, value in html5.items() if name.endswith(";")}
+
+
+def decode_entities(text: str) -> str:
+    """Return text with its entity and numeric character references decoded.
+
+    A model writes ``&nbsp;`` for a character it must not lose — the indent in
+    front of a heading, or an angle bracket it is writing *about* — and the six
+    characters that spell the escape are not what it meant. Only the forms
+    CommonMark recognises are decoded: a missing semicolon or an unknown name is
+    left exactly as written, and a code point that is not a character becomes
+    U+FFFD. A control character spelled this way is decoded too, and stopped
+    where every other control character is, at the canvas.
+
+    Args:
+        text: One run of unmarked Markdown text; code spans and fenced code
+            never reach this function, because their escapes are literal.
+    """
+    if "&" not in text:
+        return text
+
+    def replace_reference(match: re.Match[str]) -> str:
+        token = match.group(0)
+        if not token.startswith("&#"):
+            return entity_table().get(token[1:-1], token)
+        digits = token[2:-1]
+        code = int(digits[1:], 16) if digits[:1] in ("x", "X") else int(digits)
+        if code == 0 or code > _MAX_CODE_POINT or 0xD800 <= code <= 0xDFFF:
+            return _REPLACEMENT
+        return chr(code)
+
+    return _ENTITY.sub(replace_reference, text)
 
 
 def stable_cut(text: str) -> int:
@@ -205,7 +261,7 @@ def inline_markdown(value: str, *, base: Style | None = None, theme: Theme = DAR
     position = 0
     for match in _INLINE.finditer(masked):
         if match.start() > position:
-            fragments.append(Span(masked[position : match.start()], base_style))
+            fragments.append(Span(decode_entities(masked[position : match.start()]), base_style))
         token = match.group(0)
         if token.startswith("~~"):
             fragments.extend(nested(token[2:-2], replace(base_style, strike=True), theme, code))
@@ -214,12 +270,14 @@ def inline_markdown(value: str, *, base: Style | None = None, theme: Theme = DAR
         elif token.startswith("["):
             label, _, target = token[1:].partition("](")
             fragments.extend(nested(label, Style(foreground=theme.accent_bright), theme, code))
-            fragments.append(Span(f" <{target[:-1]}>", Style(foreground=theme.muted)))
+            # An entity in a destination is decoded where the URL is displayed,
+            # as CommonMark decodes it before using the destination.
+            fragments.append(Span(f" <{decode_entities(target[:-1])}>", Style(foreground=theme.muted)))
         else:
             fragments.extend(nested(token[1:-1], replace(base_style, italic=True), theme, code))
         position = match.end()
     if position < len(masked) or not fragments:
-        fragments.append(Span(masked[position:], base_style))
+        fragments.append(Span(decode_entities(masked[position:]), base_style))
     return reveal(fragments, code)
 
 

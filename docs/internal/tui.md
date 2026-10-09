@@ -344,6 +344,16 @@ which is what keeps a streamed answer linear instead of quadratic in its own
 length. A single block with no blank line inside it still streams into the open
 tail, so it is re-rendered until it closes.
 
+Inline text decodes the HTML entity and numeric character references CommonMark
+recognises — ``&nbsp;`` and its hexadecimal spelling alike — because that is how
+a model writes a character the Markdown rules would otherwise eat or mangle, an
+indent in front of a heading being the common one. The table ships with the
+interpreter (``html.entities.html5``) and is built on the first render that meets
+an ``&``; the forms the spec does not recognise are left as written. Code spans
+and fenced blocks are not decoded, so an escape in code stays part of the
+program, and a control character spelled as an entity is stopped by the canvas
+like any other.
+
 `Markdown` doubles as a `LineSource` through `MarkdownSource`, so a document can
 live inside the virtualized `ScrollView`: `count` and `line` come from the
 cached prefix plus the open tail, and only the visible rows are ever built.
