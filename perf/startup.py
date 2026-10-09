@@ -2,7 +2,7 @@
 
 Four answers, one command: the stages a launch goes through, the modules the
 shell's import graph pays for, the slowest of those modules, and — under a real
-pseudo-terminal — the wall time until the interface first writes a byte. Every
+pseudo-terminal — the wall time until the interface is on screen. Every
 run uses a throwaway workspace and config, so nothing here touches the reader's
 sessions or their ``~/.zettcode``.
 
@@ -75,7 +75,26 @@ _PHASES = textwrap.dedent(
         app.app.mount()
         app.app.render()
         mark("mount + paint one frame", t)
+
+        # The longest gap between two turns of the loop while the runtime
+        # warms: this is the freeze a reader feels as keys that do not echo.
+        # The closing gap is measured too, because a loop blocked for the whole
+        # warm-up never lets the ticker record anything by itself.
+        state = {"last": perf_counter()}
+        gaps = []
+
+        async def tick():
+            while not warm.done():
+                await asyncio.sleep(0.001)
+                now = perf_counter()
+                gaps.append((now - state["last"]) * 1000)
+                state["last"] = now
+
+        ticker = asyncio.ensure_future(tick())
         await asyncio.gather(warm, return_exceptions=True)
+        gaps.append((perf_counter() - state["last"]) * 1000)
+        ticker.cancel()
+        marks.append(["  longest loop stall while warming", max(gaps)])
 
     asyncio.run(launch())
     t = mark("provider + client warm-up (behind the frame)", t)
@@ -89,6 +108,11 @@ _IMPORTS = "import zettcode.cli; import zettcode.app.ui.app"
 #: Cells the synthetic terminal is sized to, and the rows it starts on.
 _COLUMNS = 120
 _ROWS = 40
+
+#: Bytes a launch writes before the interface is on screen. The control
+#: sequences it enters the screen with and the background query it asks are
+#: dozens of bytes; a painted frame is hundreds, so this line separates the two.
+_FRAME_BYTES = 512
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -154,8 +178,14 @@ def slowest_imports(*, top: int) -> list[tuple[str, float]]:
     return rows[:top]
 
 
-def time_to_first_frame(root: Path, *, runs: int) -> list[float]:
-    """Return the milliseconds until the real command line writes its first byte."""
+def time_to_first_frame(root: Path, *, runs: int) -> list[tuple[float, float]]:
+    """Return, per run, the milliseconds to the first byte and to the first frame.
+
+    The two are not the same thing, and the difference is where a launch hides
+    its worst wait: the first bytes are the modes the runner enters and the
+    question it asks about the terminal's background, and a terminal that never
+    answers that question costs a whole timeout before anything is drawn.
+    """
     if os.name != "posix":
         return []
     import fcntl
@@ -165,7 +195,7 @@ def time_to_first_frame(root: Path, *, runs: int) -> list[float]:
     import termios
 
     command = _command()
-    samples: list[float] = []
+    samples: list[tuple[float, float]] = []
     for _ in range(runs):
         master, slave = pty.openpty()
         fcntl.ioctl(master, termios.TIOCSWINSZ, struct.pack("HHHH", _ROWS, _COLUMNS, 0, 0))
@@ -179,12 +209,26 @@ def time_to_first_frame(root: Path, *, runs: int) -> list[float]:
             cwd=str(root),
         )
         os.close(slave)
+        first_byte: float | None = None
+        first_frame: float | None = None
+        written = 0
         try:
             while time.perf_counter() - began < 20:
                 ready, _, _ = select.select([master], [], [], 0.02)
-                if ready and os.read(master, 65536):
-                    samples.append((time.perf_counter() - began) * 1000)
+                if not ready:
+                    continue
+                chunk = os.read(master, 65536)
+                if not chunk:
                     break
+                written += len(chunk)
+                elapsed = (time.perf_counter() - began) * 1000
+                if first_byte is None:
+                    first_byte = elapsed
+                if written >= _FRAME_BYTES:
+                    first_frame = elapsed
+                    break
+            if first_byte is not None and first_frame is not None:
+                samples.append((first_byte, first_frame))
         finally:
             process.terminate()
             process.wait(timeout=10)
@@ -220,8 +264,11 @@ def main() -> None:
         if not samples:
             print("time to first frame  not measurable on this platform")
         else:
-            shown = ", ".join(f"{value:.0f}" for value in samples)
-            print(f"time to first frame  {statistics.median(samples):.0f} ms  (samples: {shown})")
+            bytes_at = statistics.median(first for first, _ in samples)
+            frame_at = statistics.median(frame for _, frame in samples)
+            shown = ", ".join(f"{frame:.0f}" for _, frame in samples)
+            print(f"first byte written     {bytes_at:5.0f} ms")
+            print(f"first frame on screen  {frame_at:5.0f} ms  (samples: {shown})")
 
 
 if __name__ == "__main__":
