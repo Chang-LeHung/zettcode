@@ -7,9 +7,9 @@ panels temporarily cover the lower part of it.
 ```
   ▐ zettcode  ~/projects/api          DeepSeek Pro · high  ← header
  ─────────────────────────────────────────────────────────
-   ● Read src/api/users.py                                ← transcript
-   ● Edited src/api/users.py (2 edits)                      (scrolls)
-   ● Ran pytest tests/test_users.py
+ ● Read src/api/users.py                                ← transcript
+ ● Edited src/api/users.py (2 edits)                      (scrolls)
+ ● Ran pytest tests/test_users.py
  ─────────────────────────────────────────────────────────
    ▸ panels open here: model, context, sessions           ← panel
  ─────────────────────────────────────────────────────────
