@@ -1,9 +1,10 @@
-"""Model switching uses the configured OpenAI-compatible endpoint per request."""
+"""Model switching uses the configured endpoint and API per request."""
 
 import asyncio
 import subprocess
 import sys
 import time
+import types
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -129,7 +130,7 @@ def test_the_runtime_module_costs_nothing_until_it_starts(tmp_path):
             "    store=Path(sys.argv[1]),",
             ")",
             "runtime_module.ZettCodeRuntime.preview(config)",
-            "heavy = ('openai', 'mcp', 'sqlalchemy', 'zett_agent.extensions.subagent')",
+            "heavy = ('anthropic', 'openai', 'mcp', 'sqlalchemy', 'zett_agent.extensions.subagent')",
             "print(*(name in sys.modules for name in heavy))",
         ]
     )
@@ -137,7 +138,113 @@ def test_the_runtime_module_costs_nothing_until_it_starts(tmp_path):
     result = subprocess.run([sys.executable, "-c", script, str(tmp_path)], capture_output=True, text=True)
 
     assert result.returncode == 0, result.stderr
-    assert result.stdout.strip() == "False False False False"
+    assert result.stdout.strip() == "False False False False False"
+
+
+@pytest.mark.parametrize(("anthropic", "subagent"), [(False, True), (True, True), (True, False)])
+def test_the_warm_up_imports_both_provider_sdks(tmp_path, monkeypatch, anthropic, subagent):
+    """Both SDKs are warmed, not only the active model's, and nothing else is.
+
+    ``/model`` can select an entry that speaks the other API, and the adapter
+    built for it imports its SDK in the constructor: doing that on the event
+    loop, in the middle of a turn, is the freeze this warm-up exists to avoid.
+    """
+    imported: list[str] = []
+    monkeypatch.setattr(runtime_module, "importlib", types.SimpleNamespace(import_module=imported.append))
+    monkeypatch.setattr(runtime_module.os, "chdir", lambda path: None)
+    config = ZettCodeConfig(
+        workspace=tmp_path,
+        models=(ModelConfig(model="m", token="t", anthropic=anthropic),),
+        store=tmp_path / "sessions",
+        subagent_enabled=subagent,
+        mcp_config=tmp_path / "absent-mcp.json",
+    )
+
+    runtime_module.ZettCodeRuntime.preview(config)._preload()
+
+    expected = ["anthropic", "openai", *(["zett_agent.extensions.subagent"] if subagent else [])]
+    assert imported == expected
+
+
+async def test_an_anthropic_model_builds_the_messages_adapter(tmp_path, monkeypatch):
+    """``anthropic = true`` reaches zett-agent's Messages adapter, and only it.
+
+    The two adapters take different constructor arguments — the OpenAI one is
+    told which protocol to speak, the Anthropic one has no Responses mode to
+    pick — so the branch is what decides which request shape leaves the process.
+    """
+    built: list[dict[str, object]] = []
+
+    class FakeAnthropic:
+        def __init__(self, model, token, *, base_url):
+            built.append({"model": model, "token": token, "base_url": base_url})
+
+        async def aclose(self):
+            pass
+
+    class FakeOpenAI:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError("an Anthropic entry must not build the OpenAI adapter")
+
+    async def fake_create_agent(model, **kwargs):
+        return type("FakeClient", (), {"event_dispatcher": None})()
+
+    monkeypatch.setattr("zett_agent.providers.anthropic.AnthropicProvider", FakeAnthropic)
+    monkeypatch.setattr("zett_agent.providers.openai.OpenAIProvider", FakeOpenAI)
+    monkeypatch.setattr("zett_agent.client.create_agent", fake_create_agent)
+    monkeypatch.setattr(runtime_module.os, "chdir", lambda path: None)
+    monkeypatch.setattr(runtime_module, "DEFAULT_MCP_CONFIG", tmp_path / "absent-mcp.json")
+    config = ZettCodeConfig(
+        workspace=tmp_path,
+        models=(ModelConfig(model="claude-sonnet-4-5", token="anthropic-key", anthropic=True),),
+        store=tmp_path / "sessions",
+    )
+
+    runtime = await runtime_module.ZettCodeRuntime.create(config)
+
+    # The Messages API lives at the Anthropic root itself, so an entry that
+    # names no base_url is called there rather than at an OpenAI default.
+    assert built == [{"model": "claude-sonnet-4-5", "token": "anthropic-key", "base_url": "https://api.anthropic.com"}]
+    assert runtime.active_model.api == "anthropic"
+    await runtime.aclose()
+
+
+@pytest.mark.parametrize(
+    ("written", "called"),
+    [
+        # The route the client appends is removed, the prefix in front of it stays.
+        ("https://gw.example/anthropic/v1/messages", "https://gw.example/anthropic"),
+        ("https://gw.example/anthropic", "https://gw.example/anthropic"),
+    ],
+)
+async def test_an_anthropic_entry_hands_the_adapter_the_corrected_base_url(tmp_path, monkeypatch, written, called):
+    """The entry is corrected once, at the config, and the adapter is built with that."""
+    built: list[str] = []
+
+    class FakeAnthropic:
+        def __init__(self, model, token, *, base_url):
+            built.append(base_url)
+
+        async def aclose(self):
+            pass
+
+    async def fake_create_agent(model, **kwargs):
+        return type("FakeClient", (), {"event_dispatcher": None})()
+
+    monkeypatch.setattr("zett_agent.providers.anthropic.AnthropicProvider", FakeAnthropic)
+    monkeypatch.setattr("zett_agent.client.create_agent", fake_create_agent)
+    monkeypatch.setattr(runtime_module.os, "chdir", lambda path: None)
+    monkeypatch.setattr(runtime_module, "DEFAULT_MCP_CONFIG", tmp_path / "absent-mcp.json")
+    config = ZettCodeConfig(
+        workspace=tmp_path,
+        models=(ModelConfig(model="claude", token="t", anthropic=True, base_url=written),),
+        store=tmp_path / "sessions",
+    )
+
+    runtime = await runtime_module.ZettCodeRuntime.create(config)
+
+    assert built == [called]
+    await runtime.aclose()
 
 
 async def test_a_preview_runtime_starts_once_and_only_then(tmp_path, monkeypatch):

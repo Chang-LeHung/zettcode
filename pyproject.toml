@@ -36,13 +36,17 @@ dependencies = [
   # The system trust store, so the release check works behind a proxy.
   "truststore>=0.10,<1",
   "wcwidth>=0.2,<1",
-  # A range, not a pin: 0.1.12 is the oldest runtime whose shell tool is called
-  # ``bash``, which is the name this client's phrasing, colours, and approval
-  # path are keyed on, and it defers SQLAlchemy, tiktoken, and httpx behind their
-  # first use, so warming a runtime costs less than it did. An exact pin would
-  # make zettcode fight every other tool that shares the dependency — including
-  # an upgrade of zett-agent itself, which pip would downgrade to satisfy it.
-  "zett-agent>=0.1.12,<0.2",
+  # A range, not a pin: 0.1.13 is the oldest runtime whose tool argument schemas
+  # are self-contained — Pydantic's ``$defs``/``$ref`` are expanded when the
+  # schema is built — and a gateway that refuses to resolve a pointer otherwise
+  # answers 400 to every request on its Messages route. It also keeps the two
+  # the floor below it was raised for: the shell tool called ``bash``, which this
+  # client's phrasing, colours, and approval path are keyed on, and SQLAlchemy,
+  # tiktoken, and httpx behind their first use, so warming a runtime costs less
+  # than it did. An exact pin would make zettcode fight every other tool that
+  # shares the dependency — including an upgrade of zett-agent itself, which pip
+  # would downgrade to satisfy it.
+  "zett-agent>=0.1.13,<0.2",
 ]
 
 [project.scripts]

@@ -16,16 +16,19 @@ class ModelPage(ListPage):
     Shape::
 
         Select Model
-          > 1. GPT-4o (current)   gpt-4o \u00b7 multimodal
-            2. DeepSeek Chat      deepseek-chat \u00b7 text
+          > 1. GPT-4o (current)    gpt-4o \u00b7 chat \u00b7 multimodal
+            2. DeepSeek Chat       deepseek-chat \u00b7 chat \u00b7 text
+            3. Claude Sonnet 4.5   claude-sonnet-4-5 \u00b7 anthropic \u00b7 text
         enter select \u00b7 esc back
 
     The page only maps models to rows; the title, background, bounded scrolling,
     and Escape handling come from the base class. Each row carries the
     :class:`ModelConfig` itself, because the same model id can be configured
     twice against different endpoints and the chosen entry, not its name, is
-    what the shell applies. The command wraps it in a bottom panel, so the
-    conversation stays visible while the model is chosen.
+    what the shell applies. A row names the API its entry speaks as well,
+    which is the one thing about a model a reader cannot infer from its name.
+    The command wraps it in a bottom panel, so the conversation stays visible
+    while the model is chosen.
     """
 
     def __init__(
@@ -44,7 +47,7 @@ class ModelPage(ListPage):
                 ListItem(
                     entry,
                     f"{index}. {entry.shown_name}{' (current)' if entry is agent.active_model else ''}",
-                    f"{entry.model} {SEPARATOR} {'multimodal' if entry.multimodal else 'text'}",
+                    f"{entry.model} {SEPARATOR} {entry.api} {SEPARATOR} {'multimodal' if entry.multimodal else 'text'}",
                 )
                 for index, entry in enumerate(agent.models, start=1)
             ],

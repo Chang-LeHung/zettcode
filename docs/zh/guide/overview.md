@@ -6,7 +6,7 @@ ZettCode 在终端里工作，操作当前工作区中的文件。这份指南�
 ## 第一次使用？
 
 1. **[安装并连接模型](/zh/guide/getting-started)。** 需要 Python 3.10+、一个终端和
-   OpenAI 兼容接口。快速开始带你从安装走到第一个任务。
+   OpenAI 兼容接口（或 Anthropic 的 Messages API）。快速开始带你从安装走到第一个任务。
 2. **[认识界面](/zh/guide/interface)。** 看懂思考、工具输出、输入框和状态行。
 3. **[记住常用操作](/zh/guide/keys)。** Enter 发送，Ctrl-C 停止请求，输入框为空时
    Ctrl-D 退出。

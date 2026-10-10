@@ -8,7 +8,7 @@ from zettcode.paths import DEFAULT_MCP_CONFIG
 
 @pytest.fixture(autouse=True)
 def isolate_environment(monkeypatch):
-    for name in ("OPENAI_API_KEY", "ZETTCODE_CONFIG"):
+    for name in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "ZETTCODE_CONFIG"):
         monkeypatch.delenv(name, raising=False)
 
 
@@ -46,11 +46,60 @@ def test_shown_model_falls_back_to_the_model_id(tmp_path: Path):
     [
         ({"model": ""}, "Model cannot be empty"),
         ({"token": ""}, "Missing token"),
+        ({"anthropic": True, "token": ""}, "ANTHROPIC_API_KEY"),
+        ({"anthropic": True, "responses_api": True}, "cannot use both APIs"),
     ],
 )
 def test_model_config_rejects_invalid_values(changes, message):
     with pytest.raises(ValueError, match=message):
         ModelConfig(**{"model": "m", "token": "t", **changes})
+
+
+@pytest.mark.parametrize(
+    ("written", "called_at"),
+    [
+        ("http://gw.test:8787/v1/messages", "http://gw.test:8787"),
+        ("http://gw.test:8787/v1/messages/", "http://gw.test:8787"),
+        ("https://api.openai.com/v1/responses", "https://api.openai.com/v1"),
+        ("https://gw.test/v1/chat/completions", "https://gw.test/v1"),
+        # Only the route goes: a prefix the API lives under stays where it is.
+        ("https://gw.example/anthropic/v1/messages", "https://gw.example/anthropic"),
+        ("https://gw.example/api/openai/v1/chat/completions", "https://gw.example/api/openai/v1"),
+    ],
+)
+def test_a_base_url_that_carries_the_route_has_just_that_part_removed(written, called_at):
+    """The client appends the route, so an entry that writes it out loses only the route.
+
+    Writing the route out is a common enough reading of "the address the client
+    calls" that the entry is corrected rather than refused; every request would
+    otherwise go to a doubled path and come back as a 404 about an unknown
+    route.
+    """
+    assert ModelConfig(model="m", token="t", base_url=written, anthropic=True).base_url == called_at
+
+
+@pytest.mark.parametrize(
+    "address",
+    [
+        "https://api.anthropic.com",
+        "https://gw.test/anthropic",
+        "https://gw.test/openai/v1",
+        "http://localhost:11434/v1",
+        "https://gw.test/messages",
+    ],
+)
+def test_a_base_url_without_the_route_is_kept_as_written(address):
+    """Only a value that ends with the route itself is trimmed, and it is trimmed."""
+    assert ModelConfig(model="m", token="t", base_url=address, anthropic=True).base_url == address
+
+
+@pytest.mark.parametrize(
+    ("changes", "api"),
+    [({}, "chat"), ({"responses_api": True}, "responses"), ({"anthropic": True}, "anthropic")],
+)
+def test_a_model_names_the_api_it_speaks(changes, api):
+    """Three protocols are reachable, and one entry picks exactly one of them."""
+    assert _model(**changes).api == api
 
 
 @pytest.mark.parametrize(
@@ -274,6 +323,35 @@ def test_load_config_falls_back_to_the_environment_token(tmp_path: Path, monkeyp
     assert load_config(tmp_path, path=path).models[0].token == "from-environment"
 
 
+def test_an_anthropic_model_takes_the_key_named_after_its_api(tmp_path: Path, monkeypatch):
+    """An Anthropic entry reads ``ANTHROPIC_API_KEY``, not an OpenAI-named variable."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "from-anthropic")
+    monkeypatch.setenv("OPENAI_API_KEY", "from-openai")
+    path = tmp_path / "config.toml"
+    path.write_text('[[models]]\nmodel = "claude-sonnet-4-5"\nanthropic = true\n', encoding="utf-8")
+
+    model = load_config(tmp_path, path=path).models[0]
+
+    assert model.token == "from-anthropic"
+    assert model.anthropic is True
+    assert model.responses_api is False
+    assert model.api == "anthropic"
+
+
+def test_load_config_removes_the_route_a_base_url_writes_out(tmp_path: Path):
+    """A file may write the route out; the route is what the client adds itself."""
+    path = tmp_path / "config.toml"
+    path.write_text(
+        '[[models]]\nmodel = "claude-sonnet-4-5"\nanthropic = true\nbase_url = "http://gw.test:8787/v1/messages"\ntoken = "t"\n',
+        encoding="utf-8",
+    )
+
+    model = load_config(tmp_path, path=path).models[0]
+
+    assert model.base_url == "http://gw.test:8787"
+    assert model.api == "anthropic"
+
+
 def test_load_config_reads_the_env_override_path(tmp_path: Path, monkeypatch):
     path = tmp_path / "custom.toml"
     path.write_text('[[models]]\nmodel = "m"\ntoken = "t"\n', encoding="utf-8")
@@ -300,6 +378,11 @@ def test_load_config_requires_at_least_one_model(tmp_path: Path):
         ('[[models]]\ntoken = "t"\n', "missing 'model'"),
         ("models = []\n", "No models configured"),
         ('[[models]]\nmodel = "m"\nmultimodal = "yes"\ntoken = "t"\n', "must be bool"),
+        ('[[models]]\nmodel = "m"\nanthropic = "yes"\ntoken = "t"\n', "must be bool"),
+        (
+            '[[models]]\nmodel = "m"\nanthropic = true\nresponses_api = true\ntoken = "t"\n',
+            "cannot use both APIs",
+        ),
         ('[[models]]\nmodel = 7\ntoken = "t"\n', "must be str"),
         ('[[models]]\nmodel = "m"\ncontext_window = 1.5\ntoken = "t"\n', "context_window' must be int"),
         ('[[models]]\nmodel = "m"\ncontext_window = true\ntoken = "t"\n', "context_window' must be int"),

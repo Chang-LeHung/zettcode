@@ -18,7 +18,8 @@
 
 ## Get running
 
-You need **Python 3.10+**, a UTF-8 terminal, and an **OpenAI-compatible API**.
+You need **Python 3.10+**, a UTF-8 terminal, and an **OpenAI-compatible API**
+(or Anthropic's **Messages API**).
 Works on macOS, Linux, and Windows (use Windows Terminal).
 
 ### 1. Install

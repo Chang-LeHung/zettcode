@@ -1,11 +1,13 @@
 """Validated settings for the ZettCode runtime, and the file they come from.
 
-``~/.zettcode/config.toml`` (or ``$ZETTCODE_CONFIG``) lists OpenAI-compatible
-models. The first model is active at startup; ``/model`` selects another for
-later requests. The same file says whether project ``AGENTS.md`` files are
-read, whether the model may ask questions, where skills live, which MCP server
-file to read, how much transcript to keep on screen, and whether to look for a
-newer release; session storage and other runtime settings keep code defaults.
+``~/.zettcode/config.toml`` (or ``$ZETTCODE_CONFIG``) lists the models ZettCode
+may call: an OpenAI-compatible chat-completions or Responses endpoint, or
+Anthropic's Messages API, one entry each. The first model is active at startup;
+``/model`` selects another for later requests. The same file says whether
+project ``AGENTS.md`` files are read, whether the model may ask questions, where
+skills live, which MCP server file to read, how much transcript to keep on
+screen, and whether to look for a newer release; session storage and other
+runtime settings keep code defaults.
 """
 
 from __future__ import annotations
@@ -31,7 +33,17 @@ CONFIGURABLE = frozenset(
 
 #: Keys one ``[[models]]`` entry may set.
 MODEL_KEYS = frozenset(
-    {"model", "display_model", "token", "base_url", "responses_api", "multimodal", "context_window", "compact_percent"}
+    {
+        "model",
+        "display_model",
+        "token",
+        "base_url",
+        "anthropic",
+        "responses_api",
+        "multimodal",
+        "context_window",
+        "compact_percent",
+    }
 )
 
 #: Keys the ``[transcript]`` table may set.
@@ -63,6 +75,17 @@ HARNESS_KEYS = frozenset({"subagent", "todowrite"})
 #: user asks for is scanned.
 DEFAULT_SKILL_ROOT = "~/.zettcode/skills"
 
+#: API root of an Anthropic model whose entry names no ``base_url``. The
+#: Messages API lives at the root itself, not under ``/v1``.
+DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com"
+
+#: Routes a client appends to ``base_url`` itself. Writing one out is a common
+#: reading of "the API address", and keeping it would double the path —
+#: ``…/v1/messages/v1/messages``, which a gateway answers with 404 for a route it
+#: does not serve — so the trailing route is removed and whatever comes before it
+#: is kept as written.
+CLIENT_ROUTES = ("/chat/completions", "/v1/messages", "/responses")
+
 #: Tokens per model a request may carry before it is compacted, when the config
 #: does not say otherwise; and the share of the trigger kept verbatim.
 DEFAULT_CONTEXT_WINDOW = 128_000
@@ -76,15 +99,26 @@ DEFAULT_TRANSCRIPT_MAX_ENTRIES = 1024
 
 @dataclass(frozen=True, slots=True)
 class ModelConfig:
-    """One OpenAI-compatible model: what to call, where, and with which token.
+    """One configured model: what to call, where, with which token, over which API.
+
+    Three request protocols are reachable from one entry. The default is an
+    OpenAI-compatible chat-completions endpoint; ``responses_api`` chooses the
+    Responses protocol on such an endpoint; ``anthropic`` chooses Anthropic's
+    Messages API, which is not OpenAI-compatible and is served by its own
+    adapter. The last two are alternatives, not layers.
 
     Attributes:
         model: Model id sent to the endpoint; must not be blank.
         token: Credential for the endpoint; must not be blank.
         display_model: Name shown in the UI; ``None`` shows :attr:`model`.
-        base_url: Endpoint of an OpenAI-compatible gateway; ``None`` uses the
-            client's default.
-        responses_api: Use the Responses API rather than chat completions.
+        base_url: Address the client appends its route to; a trailing route the
+            entry wrote out is dropped. ``None`` uses the client's default,
+            which is the Anthropic address for an Anthropic model and the
+            vendor's own for an OpenAI-compatible one.
+        anthropic: Speak Anthropic's Messages API instead of an
+            OpenAI-compatible one.
+        responses_api: Use the Responses API rather than chat completions, on
+            an OpenAI-compatible endpoint.
         multimodal: Whether the model accepts images as well as text.
         context_window: Tokens the model can carry, which is what ``/context``
             measures against.
@@ -96,6 +130,7 @@ class ModelConfig:
     token: str
     display_model: str | None = None
     base_url: str | None = None
+    anthropic: bool = False
     responses_api: bool = False
     multimodal: bool = False
     context_window: int = DEFAULT_CONTEXT_WINDOW
@@ -105,8 +140,18 @@ class ModelConfig:
         """Reject a model that cannot be called."""
         if not self.model.strip():
             raise ValueError("Model cannot be empty")
+        if self.anthropic and self.responses_api:
+            raise ValueError(
+                f"Model {self.model!r} cannot use both APIs: the Responses API is OpenAI-compatible only, "
+                "so clear 'responses_api' or 'anthropic'"
+            )
         if not self.token.strip():
-            raise ValueError(f"Missing token for model {self.model!r}; set 'token' or OPENAI_API_KEY")
+            variable = "ANTHROPIC_API_KEY" if self.anthropic else "OPENAI_API_KEY"
+            raise ValueError(f"Missing token for model {self.model!r}; set 'token' or {variable}")
+        if self.base_url is not None:
+            root = _without_client_route(self.base_url)
+            if root != self.base_url:
+                object.__setattr__(self, "base_url", root)
         if self.context_window < 1:
             raise ValueError(f"context_window must be positive for model {self.model!r}")
         if not 0 < self.compact_percent <= 100:
@@ -116,6 +161,18 @@ class ModelConfig:
     def shown_name(self) -> str:
         """Return the name to display for the model."""
         return self.display_model or self.model
+
+    @property
+    def api(self) -> str:
+        """Return which API this model speaks: ``anthropic``, ``responses``, or ``chat``.
+
+        Named for the picker and for messages: the three are one model entry's
+        whole choice of protocol, and a reader needs to see at a glance which
+        one an entry they wrote actually selected.
+        """
+        if self.anthropic:
+            return "anthropic"
+        return "responses" if self.responses_api else "chat"
 
     @property
     def compaction_max_tokens(self) -> int:
@@ -248,6 +305,26 @@ def _default_theme_file() -> Path | None:
     return candidate if candidate.is_file() else None
 
 
+def _without_client_route(base_url: str) -> str:
+    """Return ``base_url`` without a trailing route the client appends itself.
+
+    ``http://gw.test:8787/v1/messages`` is what a reader writes when they mean
+    the Messages route, and the client adds that part; keeping it would send
+    every request to ``…/v1/messages/v1/messages``, which a gateway answers with
+    a 404 for a path it does not serve — a message about the request that gives
+    no hint about the line of configuration behind it. Only the route goes: a
+    prefix in front of it is part of where the API lives and stays. A value that
+    is nothing but the route is left alone, having nothing in front of it to
+    keep, so the request fails where the reader can see it.
+    """
+    stripped = base_url.rstrip("/")
+    for route in CLIENT_ROUTES:
+        prefix = stripped[: -len(route)]
+        if stripped.endswith(route) and prefix:
+            return prefix
+    return base_url
+
+
 def _typed(value: object, where: str, expected: type[T]) -> T:
     """Return one value, rejecting a wrong type with a located message."""
     if expected is int and isinstance(value, bool):
@@ -295,21 +372,31 @@ def _entry_model(entry: dict[str, object], index: int) -> ModelConfig:
     model = entry.get("model")
     if model is None:
         raise ValueError(f"{label} is missing 'model'")
-    token = entry.get("token") or os.getenv("OPENAI_API_KEY", "")
-    return ModelConfig(
-        model=_typed(model, f"{label} key 'model'", str),
-        token=_typed(token, f"{label} key 'token'", str),
-        display_model=_setting(entry, "display_model", str, None),
-        base_url=_setting(entry, "base_url", str, None),
-        responses_api=_setting(entry, "responses_api", bool, False),
-        multimodal=_setting(entry, "multimodal", bool, False),
-        context_window=_typed(
-            entry.get("context_window", DEFAULT_CONTEXT_WINDOW), f"{label} key 'context_window'", int
-        ),
-        compact_percent=_number(
-            entry.get("compact_percent", DEFAULT_COMPACT_PERCENT), f"{label} key 'compact_percent'"
-        ),
-    )
+    anthropic = _setting(entry, "anthropic", bool, False)
+    # The conventional variable for the API this entry speaks, so an Anthropic
+    # model does not have to borrow a key named after OpenAI.
+    variable = "ANTHROPIC_API_KEY" if anthropic else "OPENAI_API_KEY"
+    token = entry.get("token") or os.getenv(variable, "")
+    try:
+        return ModelConfig(
+            model=_typed(model, f"{label} key 'model'", str),
+            token=_typed(token, f"{label} key 'token'", str),
+            display_model=_setting(entry, "display_model", str, None),
+            base_url=_setting(entry, "base_url", str, None),
+            anthropic=anthropic,
+            responses_api=_setting(entry, "responses_api", bool, False),
+            multimodal=_setting(entry, "multimodal", bool, False),
+            context_window=_typed(
+                entry.get("context_window", DEFAULT_CONTEXT_WINDOW), f"{label} key 'context_window'", int
+            ),
+            compact_percent=_number(
+                entry.get("compact_percent", DEFAULT_COMPACT_PERCENT), f"{label} key 'compact_percent'"
+            ),
+        )
+    except ValueError as error:
+        # The same model id can be configured twice against different endpoints,
+        # so which entry a rule refused has to be in the message.
+        raise ValueError(f"{label}: {error}") from error
 
 
 def _read_models(raw: object, source: Path) -> tuple[ModelConfig, ...]:

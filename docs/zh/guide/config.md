@@ -3,7 +3,8 @@
 先配好一个能工作的模型，再按需要添加其他设置。ZettCode 启动时读取
 `~/.zettcode/config.toml`，不需要把所有段落都写出来：省略的可选项会使用默认值。
 
-这篇用 DeepSeek 举例。连接仍然走 **OpenAI 兼容 API**，不需要也不支持 `provider` 设置。
+这篇用 DeepSeek 举例。默认走 **OpenAI 兼容 API**；如果某一项写了 `anthropic = true`，
+它就走 Anthropic 的 **Messages API**。两种情况下都不需要也不支持 `provider` 设置。
 
 ## 文件分别管什么，什么时候生效
 
@@ -73,20 +74,51 @@ compact_percent = 80                  # 达到窗口的 80% 时压缩
 | --- | --- | --- | --- |
 | `model` | 字符串 | 必填 | API 支持的精确模型 id，例如 `deepseek-v4-pro`，不能为空。 |
 | `display_model` | 字符串 | 模型 id | 自己起的易读名称，例如 `DeepSeek Pro`。不会作为模型 id 发给 API。 |
-| `token` | 字符串 | `OPENAI_API_KEY` | 这个接入点的 API key。文件中的非空值优先于环境变量。 |
-| `base_url` | 字符串 | `https://api.openai.com/v1` | API 根地址。使用 DeepSeek 或其他非 OpenAI 接口时应显式填写。 |
-| `responses_api` | 布尔值 | `false` | `false` 使用 Chat Completions；`true` 使用 Responses。选择接入点支持的协议。 |
+| `token` | 字符串 | `OPENAI_API_KEY` | 这个接入点的 API key。文件中的非空值优先于环境变量；`anthropic` 项读的是 `ANTHROPIC_API_KEY`。 |
+| `base_url` | 字符串 | 供应商给出的地址 | 客户端在这个地址后拼接口路径。使用 DeepSeek 或其他非 OpenAI 接口时应显式填写。默认是 `https://api.openai.com/v1`，`anthropic` 项则是 `https://api.anthropic.com`。 |
+| `anthropic` | 布尔值 | `false` | `true` 表示调用 Anthropic 的 Messages API，而不是 OpenAI 兼容接口。不能与 `responses_api` 同时开启。 |
+| `responses_api` | 布尔值 | `false` | `false` 使用 Chat Completions；`true` 使用 Responses。选择接入点支持的协议。`anthropic` 项没有这个选项。 |
 | `multimodal` | 布尔值 | `false` | 只有模型和接口都支持图片输入时才开启。 |
 | `context_window` | 整数 | `128000` | 正整数，表示上下文窗口的 token 数，不是字符数，也不是最大输出长度。 |
 | `compact_percent` | 数值 | `80` | 自动压缩触发百分比，大于 `0` 且不超过 `100`。支持 `75.5` 这样的小数。 |
 
-`base_url` 后面不要加 `/chat/completions` 或 `/responses`，客户端会自动加接口路径。
-示例中的 DeepSeek 根地址不需要 `/v1`，但其他服务可能需要。按供应商示例填写 **API 根地址**，
+`base_url` 是客户端拼接口路径的那个地址：`/chat/completions`、`/responses`，
+`anthropic` 项则是 `/v1/messages`——路由本身不属于它。把路由一起写进来是很常见的误解，
+所以末尾那段会被自动去掉：两种写法请求到的都是 `…/v1/messages`，只拼一次，不会变成两遍。
+路由之前的路径原样保留，把 API 挂在某个前缀下的网关（例如 `https://gw.example/anthropic`）照常可用。
+示例中的 DeepSeek 地址不需要 `/v1`，但其他服务可能需要。按供应商说的 **API 根地址**填，
 不要根据聊天网页的 URL 猜。
 
 `multimodal = false` 时，提交图片会在本地被拒绝并显示错误，模型也不会拿到 `view_image`
 工具。把它改成 `true` 不会让纯文本模型获得视觉能力。
 具体操作见[图片与粘贴](/zh/guide/interface#图片与粘贴)。
+
+### Anthropic 模型
+
+`anthropic = true` 表示这个模型走 Anthropic 的 Messages API，而不是 OpenAI 兼容接口。
+其余参数含义不变，`/model` 选择页会在每一行标出它用的是哪个 API：
+
+```toml
+[[models]]
+model = "claude-sonnet-4-5"              # API 的模型 id，不是显示名
+display_model = "Claude Sonnet 4.5"      # 顶部和 /model 选单里显示的名字
+token = "sk-ant-..."                     # 换成你自己的 Anthropic API key
+anthropic = true                         # Messages API，走 Anthropic 官方 SDK
+# base_url = "https://api.anthropic.com"  # 用网关或代理时取消注释
+context_window = 200000                  # 该模型的窗口，以模型页公布为准
+compact_percent = 80                     # 达到窗口的 80% 时压缩
+multimodal = true                        # Claude 支持图片
+```
+
+`base_url` 默认是 `https://api.anthropic.com`；`token` 缺省时读 `ANTHROPIC_API_KEY`，
+而不是 `OPENAI_API_KEY`。如果网关说的是 Messages 协议但地址不同，就要自己填根地址。
+
+`anthropic` 和 `responses_api` 不是叠加关系：Responses 属于 OpenAI 兼容接入点，
+Messages API 没有这种模式。两项同时写上的配置会在启动时直接报错，
+而不是默默选一个。
+
+`/effort` 会变成 Anthropic 的思考预算：`medium` 及以上会在回答前先推理，`off` 则关闭。
+和其他模型一样，窗口大小和 key 是否正确属于接入点的事，ZettCode 不会在第一次请求前替你验证。
 
 ### 用环境变量保存密钥 {#keeping-the-key-out-of-the-file}
 
@@ -107,7 +139,8 @@ zettcode
 :::
 
 即使连接的是 DeepSeek，变量名也叫 `OPENAI_API_KEY`。ZettCode 不读取 `DEEPSEEK_API_KEY`，
-也不会展开 TOML 字符串中的 `${VARIABLE}`。上面的设置只影响当前终端及其启动的进程，
+也不会展开 TOML 字符串中的 `${VARIABLE}`；唯一例外是 `anthropic` 项，它读的是
+`ANTHROPIC_API_KEY`。上面的设置只影响当前终端及其启动的进程，
 不会自动影响之后打开的其他终端。这些命令也可能被 shell 历史记录保存，在共享机器上应使用
 自己习惯的安全密钥管理方式。
 
@@ -169,6 +202,7 @@ model = "deepseek-v4-pro"
 display_model = "DeepSeek Pro"
 token = "sk-..."
 base_url = "https://api.deepseek.com"
+anthropic = false              # true 表示调用 Anthropic 的 Messages API
 responses_api = false
 multimodal = false
 context_window = 1000000
@@ -290,6 +324,7 @@ inline = "#9bddad"            # Markdown `行内代码`
 | --- | --- |
 | `ZETTCODE_CONFIG` | 选择另一份完整配置文件。 |
 | `OPENAI_API_KEY` | 模型没有非空 `token` 时使用的 key。 |
+| `ANTHROPIC_API_KEY` | `anthropic` 项没有非空 `token` 时使用的 key。 |
 | `ZETTCODE_REDUCED_MOTION` | 设置为 `1`，抑制装饰性的扫光动画。 |
 | `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY` | 模型 HTTP 客户端使用的标准代理设置。 |
 
@@ -339,11 +374,12 @@ Invoke-RestMethod -Uri "https://api.deepseek.com/chat/completions" `
 | 现象 | 检查什么 |
 | --- | --- |
 | `No models configured` | 创建实际选中的配置文件，并添加至少一项 `[[models]]`。 |
-| `Missing token for model ...` | 填写 `token` 或在启动终端中设置 `OPENAI_API_KEY`。占位符是非空字符串，通常要到 API 调用时才会报错。 |
+| `Missing token for model ...` | 填写 `token`，或在启动终端中设置该 API 对应的变量：`OPENAI_API_KEY`，`anthropic` 项则是 `ANTHROPIC_API_KEY`。占位符是非空字符串，通常要到 API 调用时才会报错。 |
 | `Unknown config keys ...` | 只使用本页列出的键，例如 `model_name` 应该改成 `model`。 |
 | `must be bool` / `must be int` | 用 `true` 而不是 `"true"`；用 `1000000` 而不是 `"1000000"`。 |
 | `Invalid config file ...` | 检查引号、表头和重复键。TOML 语法错误会包含解析器的位置信息。 |
-| API 拒绝模型或协议 | 检查模型 id 和 `responses_api`，显示标签不是 API id。 |
+| `cannot use both APIs` | 同一项同时写了 `anthropic` 和 `responses_api`。只能留一个：它们是两种不同的协议，不是同一件事的两半。 |
+| API 拒绝模型或协议 | 检查模型 id 和协议开关：OpenAI 兼容接口看 `responses_api`，Messages API 看 `anthropic`。显示标签不是 API id。 |
 | 图片输入被拒绝 | 选择支持图片的模型，并且只为对应项启用 `multimodal`。 |
 
 修改 `config.toml` 后重启。如果是会话、显示或 MCP 问题，继续看[常见问题](/zh/guide/faq)。

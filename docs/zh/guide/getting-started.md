@@ -8,7 +8,7 @@ ZettCode 是一个终端程序：它读写一个**工作区**里的文件，在�
 
 - Python 3.10 或更新版本，macOS / Linux / Windows 都可以。
 - 支持 UTF-8、至少 256 色的终端。Windows 上请用 Windows Terminal，老的 console host 不够用。
-- 一个 OpenAI 兼容的接入点（云上的 API 或本地起的服务）以及它的 token。
+- 一个 OpenAI 兼容的接入点（云上的 API 或本地起的服务）或 Anthropic 的 Messages API，以及它的 token。
 
 ## 安装
 

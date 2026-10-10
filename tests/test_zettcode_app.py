@@ -1874,6 +1874,26 @@ async def test_model_command_lists_and_switches_models_for_the_next_request():
     assert app.agent.runtime.client.models[-1] == "gpt-4o"
 
 
+async def test_the_model_picker_names_the_api_of_every_entry():
+    """A row says which protocol its entry speaks, which its name cannot tell you."""
+    app = build_app()
+    harness = _harness(app)
+    claude = ModelConfig(model="claude-sonnet-4-5", display_model="Claude", token="test-token", anthropic=True)
+    runtime = app.agent.runtime
+    runtime.config.models = (runtime.config.models[0], claude)
+    runtime.active_model = claude
+
+    harness.write("/model")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    text = harness.render().text
+    assert "gpt-5-mini \u00b7 chat \u00b7 text" in text
+    # The panel is 60 columns wide, so a long id clips its last segment; the API
+    # comes before that one, which is where a reader comparing rows looks.
+    assert "claude-sonnet-4-5 \u00b7 anthropic \u00b7" in text
+
+
 @pytest.mark.parametrize("height", [24, 32])
 async def test_model_page_esc_restores_composer_without_selecting(height):
     app = build_app()

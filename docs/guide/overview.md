@@ -7,8 +7,8 @@ moving, or set up the tools and models that suit your project.
 ## First time here?
 
 1. **[Install and connect a model](/guide/getting-started).** You need Python
-   3.10+, a terminal, and an OpenAI-compatible API. The quickstart takes you from
-   installation to your first task.
+   3.10+, a terminal, and an OpenAI-compatible API (or Anthropic's Messages
+   API). The quickstart takes you from installation to your first task.
 2. **[Get to know the screen](/guide/interface).** Understand thinking, tool
    output, the composer, and the status line.
 3. **[Keep the essentials handy](/guide/keys).** Enter submits, Ctrl-C stops a
