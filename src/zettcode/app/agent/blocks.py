@@ -187,7 +187,12 @@ class UserProcessor(EntryProcessor[TextEntry]):
         return isinstance(entry, TextEntry) and entry.kind == "user"
 
     def lines(self, entry: TextEntry, width: int, theme: Theme, frame: int) -> list[TextLine]:
-        """Wrap the message and fill each row to the edge of the surface."""
+        """Wrap the message and fill each row to the edge of the surface.
+
+        The arrow sits flush left, in the column the composer's prompt is drawn in,
+        so the message the reader sent lines up under the draft they are typing —
+        arrow over arrow, text over text.
+        """
         style = Style(foreground=theme.text, background=theme.surface_alt)
         marker = PROMPT
         if entry.side:
@@ -196,6 +201,7 @@ class UserProcessor(EntryProcessor[TextEntry]):
             # conversation rather than as one of its turns.
             style = Style(foreground=theme.subtle, background=theme.surface_side)
             marker = f"btw {PROMPT}"
+        # Room kept free on the right, so no row runs into the edge of the surface.
         margin = min(CONTENT_INDENT, max(0, width - 1))
         prompt = self.text_lines(entry.text, max(1, width - margin), style)
         background = TextLine((Span(" " * width, style),))

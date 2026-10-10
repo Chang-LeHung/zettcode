@@ -465,15 +465,17 @@ def test_text_area_edits_wraps_and_reports_the_cursor():
     assert area.preferred_height(20) == 2
 
 
-def test_text_area_surface_paints_a_padded_input_band():
+def test_text_area_surface_paints_a_band_with_its_prompt_flush_left():
     area = TextArea(prompt="\u203a ", placeholder="Ask anything", surface=True)
     harness = Harness(area, width=24, height=3)
     canvas = harness.app.render()
 
     assert area.preferred_height(24) == 3
     assert {cell.style.background for row in canvas.cells for cell in row} == {DARK.surface_alt}
-    assert canvas.cells[1][2].character == "\u203a"
-    assert area.cursor() == Point(4, 1)
+    # The prompt sits in the band's first cell — the column a transcript's own
+    # arrows are drawn in — so the draft starts one prompt further in.
+    assert canvas.cells[1][0].character == "\u203a"
+    assert area.cursor() == Point(2, 1)
 
     harness.write("hello")
     canvas = harness.app.render()

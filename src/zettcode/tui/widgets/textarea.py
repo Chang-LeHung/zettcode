@@ -67,8 +67,10 @@ class TextArea(Widget):
             on_submit: Receives the trimmed draft on Enter; returning ``False``
                 rejects it, which leaves the draft and the history untouched.
             on_change: Called after every edit that changes the draft.
-            surface: Paint a padded, theme-coloured input band; the default
-                leaves the editor's existing compact rendering unchanged.
+            surface: Paint a theme-coloured input band: a blank row above and
+                below the draft, and the prompt flush with the band's left edge,
+                in the column the transcript's own arrows are drawn in. The
+                default leaves the editor's existing compact rendering unchanged.
         """
         super().__init__()
         self.prompt = prompt
@@ -200,8 +202,7 @@ class TextArea(Widget):
 
     def preferred_height(self, width: int) -> int:
         """Return the rows the draft needs, capped at ``max_height``."""
-        inset = min(2, max(0, (width - self.prompt_width - 1) // 2)) if self.surface else 0
-        lines, _ = layout_input(self.text, self.position, max(1, width - 2 * inset), self.prompt_width)
+        lines, _ = layout_input(self.text, self.position, max(1, width), self.prompt_width)
         return min(self.max_height, max(1, len(lines) + (2 if self.surface else 0)))
 
     @property
@@ -218,8 +219,7 @@ class TextArea(Widget):
     def render(self, canvas: Canvas) -> None:
         """Paint the visible rows and remember the cell the cursor belongs on."""
         theme = self.theme
-        inset = min(2, max(0, (self.rect.width - self.prompt_width - 1) // 2)) if self.surface else 0
-        inner_width = max(1, self.rect.width - 2 * inset)
+        inner_width = max(1, self.rect.width)
         inner_height = max(1, self.rect.height - (2 if self.surface and self.rect.height >= 3 else 0))
         top = 1 if self.surface and self.rect.height >= 3 else 0
         background = theme.surface_alt if self.surface else None
@@ -232,10 +232,10 @@ class TextArea(Widget):
         row_starts = self._row_starts(lines)
         for local_row, line in enumerate(lines[first_visible : first_visible + inner_height]):
             source_row = first_visible + local_row
-            x = self.rect.x + inset + (self.prompt_width if source_row == 0 else 0)
+            x = self.rect.x + (self.prompt_width if source_row == 0 else 0)
             if source_row == 0 and self.prompt:
                 canvas.draw_text(
-                    self.rect.x + inset, self.rect.y + top + local_row, self.prompt, prompt_style, max_width=inner_width
+                    self.rect.x, self.rect.y + top + local_row, self.prompt, prompt_style, max_width=inner_width
                 )
             if not self.text and source_row == 0 and self.placeholder:
                 canvas.draw_text(
@@ -253,7 +253,7 @@ class TextArea(Widget):
                 self.spans_for(line, row_starts[source_row], body_style),
                 max_width=room,
             )
-        cursor_x = self.rect.x + inset + (self.prompt_width if cursor_row == 0 else 0) + cursor_column
+        cursor_x = self.rect.x + (self.prompt_width if cursor_row == 0 else 0) + cursor_column
         self._cursor_screen = Point(cursor_x, self.rect.y + top + cursor_row - first_visible)
 
     def _row_starts(self, lines: Sequence[str]) -> list[int]:

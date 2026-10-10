@@ -122,6 +122,8 @@ def test_blocks_use_theme_styles_and_preserve_user_surface():
     light_side = render_entry(side, 40, LIGHT, 0)
     dark_notice = render_entry(notice, 20, DARK, 0)
 
+    # The arrow sits flush left, in the column the composer's prompt is drawn in,
+    # so the message lines up under the draft the reader is typing.
     assert dark_user[2].text.startswith("› hello")
     assert dark_user[2].spans[0].style.background == DARK.surface_alt
     assert light_user[2].spans[0].style.background == LIGHT.surface_alt
