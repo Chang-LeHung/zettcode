@@ -61,7 +61,7 @@ def preview() -> Canvas:
             for call_id, tool, arguments, output in (
                 ("read", "read_file", {"path": "src/api/users.py"}, ""),
                 ("edit", "replace_in_file", {"path": "src/api/users.py"}, ""),
-                ("test", "run_shell", {"command": "pytest tests/test_users.py -q"}, "6 passed in 0.24s"),
+                ("test", "bash", {"command": "pytest tests/test_users.py -q"}, "6 passed in 0.24s"),
             ):
                 transcript.start_tool(call_id, tool, arguments)
                 clock[0] += 1.0

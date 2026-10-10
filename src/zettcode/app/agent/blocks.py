@@ -56,7 +56,7 @@ TOOL_ROLES = {
     "write_file": "write",
     "replace_in_file": "write",
     "delete_file": "delete",
-    "run_shell": "shell",
+    "bash": "shell",
     "todo_write": "plan",
     "read_skill": "read",
     "task": "subagent",

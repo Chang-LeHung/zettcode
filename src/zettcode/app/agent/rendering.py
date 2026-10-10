@@ -233,9 +233,9 @@ class DeleteTool(ToolHandler):
 
 
 class ShellTool(ToolHandler):
-    """``run_shell``: the command itself, which is the whole story."""
+    """``bash``: the command itself, which is the whole story."""
 
-    names = frozenset({"run_shell"})
+    names = frozenset({"bash"})
 
     def describe(self, name: str, arguments: Mapping[str, object]) -> ToolRow:
         """Show the command, not a JSON copy of it."""

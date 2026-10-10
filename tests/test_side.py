@@ -116,7 +116,7 @@ async def test_a_side_question_only_gets_the_reading_tools():
     extension = SideQuestions()
     context = _context()
     context.input_message = question("what does parse() do?")
-    context.tools.update({"read_file": object(), "grep": object(), "write_file": object(), "run_shell": object()})
+    context.tools.update({"read_file": object(), "grep": object(), "write_file": object(), "bash": object()})
 
     await extension.before_turn(context)
 
@@ -142,8 +142,8 @@ async def test_an_ordinary_turn_keeps_every_tool():
     extension = SideQuestions()
     context = _context()
     context.input_message = UserMessage(content="change it")
-    context.tools.update({"read_file": object(), "write_file": object(), "run_shell": object()})
+    context.tools.update({"read_file": object(), "write_file": object(), "bash": object()})
 
     await extension.before_turn(context)
 
-    assert set(context.tools) == {"read_file", "write_file", "run_shell"}
+    assert set(context.tools) == {"read_file", "write_file", "bash"}
