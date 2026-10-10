@@ -23,19 +23,18 @@ from .widgets import TranscriptView
 
 def hint() -> str:
     """Return the key hint, including the pace one pass takes."""
-    seconds = rows_module.SWEEP_FRAMES * rows_module.ANIMATION_SECONDS
+    seconds = rows_module.move_frames() * rows_module.ANIMATION_SECONDS
     return f"  q / Esc quit {SEPARATOR} [ slower {SEPARATOR} ] faster {SEPARATOR} one pass per {seconds:.1f} s"
 
 
 def nudge_pace(delta: int) -> None:
-    """Change the sweep pace, so the effect can be judged without a rebuild.
+    """Change the pulse pace, so the effect can be judged without a rebuild.
 
     Args:
-        delta: Frames to add to one pass; the pace is kept between half a second
-            and five seconds per pass, which spans "too fast to follow" to
-            "almost stationary".
+        delta: Frames to add to one pulse; the pace is kept between one second
+            and five, which spans "too fast to follow" to "almost stationary".
     """
-    rows_module.SWEEP_FRAMES = min(50, max(5, rows_module.SWEEP_FRAMES + delta))
+    rows_module.PULSE_FRAMES = min(50, max(10, rows_module.PULSE_FRAMES + delta))
 
 
 class Blinking(Widget):

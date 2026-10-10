@@ -43,6 +43,10 @@ TOOL_EXPANDED_ROWS = 40
 #: else on screen to say work is still going on.
 PROCESSING = "Processing"
 
+#: What the reader can press to stop the request, shown beside its clock. The
+#: status row builds its own hint from this, so the two cannot drift apart.
+STOP_HINT = "^C stop"
+
 # Matches both escape families a tool can smuggle into its output: CSI
 # (``ESC [`` parameters and a final byte) and OSC (``ESC ]`` up to BEL or ST).
 # Stripping them keeps a coloured compiler message from repainting the canvas.
@@ -156,52 +160,69 @@ def clock_text(moment: datetime | None = None) -> str:
 
 
 #: The running marker's two states: the sparkle, then a dot of the same width so
-#: the label after it never shifts as the marker blinks.
+#: the label after it never shifts as the row pulses.
 RUNNING_GLYPHS = RUNNING
 
-#: Seconds one blink takes, both halves: the marker holds each of its two states
-#: for half of it, so a waiting row blinks once a second.
-BLINK_SECONDS = 1.0
+#: Seconds one pulse of the waiting row takes: it moves for a second and a half,
+#: then rests for a second before it moves again. The marker and the highlight
+#: share the period, so the row reads as one thing breathing instead of two
+#: effects on clocks of their own.
+MOVE_SECONDS = 1.5
+REST_SECONDS = 1.0
 
-#: Seconds one pass of the highlight takes, whatever the label's length.
-SWEEP_SECONDS = 1.0
+#: Share of a pulse spent moving, and the frames one takes, counted in animation
+#: steps: the pace is a period rather than a speed, so a long wait row is crossed
+#: in the same time as a short one and the pulse does not depend on how often the
+#: terminal happens to repaint. The share is what the demo's pace keys scale, so
+#: changing the period keeps the two phases in proportion.
+MOVE_SHARE = MOVE_SECONDS / (MOVE_SECONDS + REST_SECONDS)
+PULSE_FRAMES = round((MOVE_SECONDS + REST_SECONDS) / ANIMATION_SECONDS)
 
-#: Frames those periods take, counted in animation steps: the pace is a period
-#: rather than a speed, so a long wait row is swept once a second like a short
-#: one instead of taking proportionally longer.
-BLINK_FRAMES = round(BLINK_SECONDS / ANIMATION_SECONDS)
-SWEEP_FRAMES = round(SWEEP_SECONDS / ANIMATION_SECONDS)
+#: Seconds one blink of the status bar's icon takes. The icon is a small thing on
+#: a line of its own, so it turns over on a period of its own — no rest to sit
+#: through, unlike the waiting row it reports on.
+STATUS_BLINK_SECONDS = 1.5
+STATUS_BLINK_FRAMES = round(STATUS_BLINK_SECONDS / ANIMATION_SECONDS)
+
+
+def move_frames() -> int:
+    """Return the frames of one pulse the waiting row spends moving."""
+    return max(1, round(PULSE_FRAMES * MOVE_SHARE))
+
+
+def moving(frame: int) -> bool:
+    """Say whether the waiting row is in the moving part of its pulse."""
+    return frame % PULSE_FRAMES < move_frames()
 
 
 def sweep_column(frame: int, travel: int) -> int:
     """Return the column the highlight has reached at one animation frame.
+
+    One pass takes the moving part of the pulse, so the highlight arrives at the
+    end of the label as the row rests and sets off again when it moves.
 
     Args:
         frame: Monotonic frame counter shared by the whole application.
         travel: Columns one whole pass takes, ends included —
             :attr:`~zettcode.tui.render.sweep.SweepSpan.travel`.
     """
-    return frame % SWEEP_FRAMES * max(1, travel) // SWEEP_FRAMES
+    return frame % PULSE_FRAMES * max(1, travel) // move_frames()
 
 
 def activity_glyph(frame: int) -> str:
-    """Return the marker shared by every running row, which blinks in place.
+    """Return the marker the status bar shows while work is in progress.
 
-    The marker keeps one column and alternates between its two states instead of
-    cycling through different symbols: a row that blinks reads as "still
-    working" the way a terminal spinner does, while a rotating glyph just looks
-    like noise. Every running row is drawn with the same ``frame``, so the
-    transcript and the status bar icon blink in step.
+    The marker keeps one column and holds each of its two states instead of
+    cycling through different symbols, which is what makes it read as an icon
+    rather than as a spinner. It alternates on a period of its own, with no rest
+    between blinks, because a small icon can turn over faster than the row it
+    reports on; both read the same frame counter, so neither depends on how often
+    the terminal repaints.
 
     Args:
         frame: Monotonic frame counter shared by the whole application.
     """
-    return RUNNING_GLYPHS[0 if blinking(frame) else 1]
-
-
-def blinking(frame: int) -> bool:
-    """Say whether a running row is in the lit half of its blink."""
-    return frame % BLINK_FRAMES < BLINK_FRAMES // 2
+    return RUNNING_GLYPHS[0 if frame % STATUS_BLINK_FRAMES < STATUS_BLINK_FRAMES // 2 else 1]
 
 
 def compact_path(path: Path, *, limit: int = 38) -> str:

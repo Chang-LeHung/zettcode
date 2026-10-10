@@ -66,11 +66,13 @@ Every kind of output has its own row, in the order it happened:
   entity is drawn as the character it names, so `&nbsp;` indents a line and
   `&lt;` writes an angle bracket.
 - **The running request** is one row pinned to the bottom of the transcript:
-  `✦ Processing 8.4 s`. Reasoning, tool calls, and the answer all appear above
-  it, and when the request ends — answered, failed, or stopped — that same row
-  becomes `Processed for 12s · 22:53`. It is the only row that moves: its marker
-  blinks with the status dot and a highlight sweeps through its label, and its
-  time counts tenths of a second until it switches to minutes and hours.
+  `✦ Processing (8s · ^C stop)`. Reasoning, tool calls, and the answer all appear
+  above it, and when the request ends — answered, failed, or stopped — that same
+  row becomes `Processed for 12s · 22:53`. It is the only row that moves: its
+  marker and the highlight crossing the word pulse together — a second and a half
+  of movement, then a second at rest — while the clock and the stop key stand
+  beside it in parentheses, in the quiet ink a notice uses, counting whole
+  seconds and minutes.
 - **Notices** — a copied selection, a refused command, an exported file — appear
   as muted one-liners.
 

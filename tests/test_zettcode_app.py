@@ -39,13 +39,16 @@ from zettcode.app.agent.mentions import Mention, MentionProvider, MentionRegistr
 from zettcode.app.agent.projection import TranscriptProjector
 from zettcode.app.agent.rows import (
     ANIMATION_SECONDS,
-    BLINK_FRAMES,
-    SWEEP_FRAMES,
+    PULSE_FRAMES,
+    RUNNING_GLYPHS,
+    STATUS_BLINK_FRAMES,
+    STOP_HINT,
     activity_glyph,
     clock_text,
     compact_path,
     duration_text,
     elapsed_text,
+    move_frames,
     sweep_column,
     terminal_safe,
 )
@@ -74,7 +77,21 @@ from zettcode.app.ui.widgets import (
 )
 from zettcode.config import ModelConfig
 from zettcode.plugins import BUILTIN_PLUGINS, PluginContainer, Plugins, ShellContext, UiBuilder
-from zettcode.tui import DARK, LIGHT, Canvas, ListItem, ListPage, Rect, Span, Style, Text, TextLine, Toast, walk
+from zettcode.tui import (
+    DARK,
+    LIGHT,
+    SEPARATOR,
+    Canvas,
+    ListItem,
+    ListPage,
+    Rect,
+    Span,
+    Style,
+    Text,
+    TextLine,
+    Toast,
+    walk,
+)
 from zettcode.tui.render import display_width
 from zettcode.tui.testing import Harness, render_block
 from zettcode.update import UpdateState, display_command, in_background, read_state, write_state
@@ -626,17 +643,19 @@ async def test_a_waiting_row_appears_as_soon_as_a_turn_starts():
     assert "running" in text
 
 
-def test_the_running_marker_blinks_between_two_glyphs():
+def test_the_status_icon_blinks_on_a_period_of_its_own():
+    """The icon alternates every second and a half, with no rest to sit through."""
     bright = activity_glyph(0)
-    faint = activity_glyph(BLINK_FRAMES // 2)
+    faint = activity_glyph(STATUS_BLINK_FRAMES // 2)
 
+    assert (STATUS_BLINK_FRAMES, STATUS_BLINK_FRAMES * ANIMATION_SECONDS) == (15, 1.5)
     assert bright != faint
-    # Each state holds for a whole half-blink — half a second at the animation's
-    # step — so the marker does not flicker at the tick rate, and both are one
-    # column wide: the label never shifts.
-    assert all(activity_glyph(frame) == bright for frame in range(BLINK_FRAMES // 2))
-    assert all(activity_glyph(BLINK_FRAMES // 2 + frame) == faint for frame in range(BLINK_FRAMES // 2))
-    assert activity_glyph(BLINK_FRAMES) == bright
+    assert all(activity_glyph(frame) == bright for frame in range(STATUS_BLINK_FRAMES // 2))
+    assert all(
+        activity_glyph(STATUS_BLINK_FRAMES // 2 + frame) == faint
+        for frame in range(STATUS_BLINK_FRAMES - STATUS_BLINK_FRAMES // 2)
+    )
+    assert activity_glyph(STATUS_BLINK_FRAMES) == bright
     assert display_width(bright) == display_width(faint) == 1
 
 
@@ -663,61 +682,62 @@ def test_the_waiting_wording_carries_a_travelling_highlight():
             column += display_width(span.text)
         return -1
 
-    # The highlight arrives from the left, crosses the label, and comes round
-    # once a second: the pace is the period, not a speed per column.
-    # The highlight starts off the left edge, crosses the label, and comes round
-    # at the end of the period, so one pass takes the same time whatever the
-    # label's length.
-    columns = [peak_column(frame) for frame in range(SWEEP_FRAMES * 2)]
+    # The highlight sets off from the left edge, crosses the label while the row
+    # moves, and stands still while it rests, so one pass takes the moving part of
+    # a pulse whatever the label's length.
+    columns = [peak_column(frame) for frame in range(PULSE_FRAMES * 2)]
     width = display_width("Processing")
 
     assert columns[0] == -1  # the highlight is still off the left edge
-    assert max(columns[:SWEEP_FRAMES]) >= width - 2  # it reached the end of the label
-    assert columns[SWEEP_FRAMES:] == columns[:SWEEP_FRAMES]  # the next pass repeats it
+    assert max(columns[: move_frames()]) >= width - 2  # it reached the end of the label
+    assert all(column == -1 for column in columns[move_frames() : PULSE_FRAMES])  # and rests there
+    assert columns[PULSE_FRAMES:] == columns[:PULSE_FRAMES]  # the next pulse repeats it
 
     # Nothing ever goes dark: every run keeps a colour from the bright end of
     # the palette, and the text itself never changes or shifts.
-    for frame in range(SWEEP_FRAMES * 2):
+    for frame in range(PULSE_FRAMES * 2):
         runs = wording(frame)
         assert all(run.style.dim is False for run in runs)
         assert all(run.style.foreground != DARK.muted for run in runs)
         assert "".join(run.text for run in runs) == "Processing"
 
 
-def test_a_sweep_crosses_the_label_once_a_period_whatever_its_width():
-    """A fixed period, not a fixed speed: a long row is not swept more slowly."""
+def test_a_pass_crosses_the_label_in_the_moving_part_of_the_pulse():
+    """A fixed period, not a fixed speed: a long row is not crossed more slowly."""
     narrow, wide = 10, 60
 
-    assert SWEEP_FRAMES == round(1.0 / ANIMATION_SECONDS)
+    assert move_frames() == 15
+    # A second and a half of movement and a second of rest, in seconds.
+    assert move_frames() * ANIMATION_SECONDS == 1.5
+    assert PULSE_FRAMES * ANIMATION_SECONDS == 2.5
     assert sweep_column(0, narrow) == sweep_column(0, wide) == 0
-    assert sweep_column(SWEEP_FRAMES, wide) == 0  # wrapped: one pass is done
-    # One frame moves the highlight proportionally further across a wider row,
-    # which is what makes both take the same time to cross.
-    assert sweep_column(1, narrow) == 1 and sweep_column(1, wide) == 6
-    assert sweep_column(SWEEP_FRAMES // 2, wide) == wide // 2
+    assert sweep_column(PULSE_FRAMES, wide) == 0  # the next pulse starts over
+    # A frame moves the highlight the same fraction of either row — sixty columns
+    # is six times ten — which is what makes both take the pulse to cross.
+    assert sweep_column(3, wide) == 6 * sweep_column(3, narrow)
+    assert sweep_column(move_frames() - 1, narrow) >= narrow - 2
+    assert sweep_column(move_frames() - 1, wide) >= wide - 4
 
 
-def test_the_waiting_row_marker_blinks_with_the_status_icon():
-    """The row's marker turns over on the same frames the status dot does."""
+def test_the_waiting_row_marker_moves_and_rests_with_its_highlight():
+    """The row's own marker holds the sparkle while it moves and rests quiet."""
     transcript = Transcript(clock=lambda: 0.0)
     transcript.begin_turn("question")
     source = TranscriptView(transcript, theme=DARK).transcript_source
 
-    def marker(frame: int) -> str:
+    def marker(frame: int) -> tuple[str, str | None]:
         transcript.frame = frame
         transcript.version += 1
         rows = [source.line(index, 50) for index in range(source.count(50))]
         row = next(row for row in rows if "Processing" in row.text)
-        return row.text.strip()[0]
+        return row.text.strip()[0], row.spans[0].style.foreground
 
-    bright, faint = activity_glyph(0), activity_glyph(BLINK_FRAMES // 2)
-
-    assert bright != faint
-    assert marker(0) == bright
-    assert marker(BLINK_FRAMES // 2) == faint
-    # Both halves are one column wide, so the wording after the marker never
-    # shifts as it blinks.
-    assert display_width(bright) == display_width(faint) == 1
+    # Moving: the sparkle in the row's ink. Resting: the dot in the quiet ink, so
+    # the pause reads as one instead of as another blink.
+    assert marker(0) == (RUNNING_GLYPHS[0], DARK.accent_bright)
+    assert marker(move_frames()) == (RUNNING_GLYPHS[1], DARK.muted)
+    assert marker(PULSE_FRAMES) == marker(0)
+    assert display_width(RUNNING_GLYPHS[0]) == display_width(RUNNING_GLYPHS[1]) == 1
 
 
 def test_a_reasoning_row_is_painted_flat_at_every_frame():
@@ -774,16 +794,16 @@ async def test_the_blink_demo_script_walks_a_turn():
 
 
 def test_the_blink_demo_can_be_slowed_down_while_it_runs(monkeypatch):
-    monkeypatch.setattr(demo.rows_module, "SWEEP_FRAMES", 10)
+    monkeypatch.setattr(demo.rows_module, "PULSE_FRAMES", 20)
     harness = Harness(app=demo.build())
 
     harness.press("]")
-    assert demo.rows_module.SWEEP_FRAMES == 5
-    assert "one pass per 0.5 s" in harness.render().text
+    assert demo.rows_module.PULSE_FRAMES == 15
+    assert "one pass per 0.9 s" in harness.render().text
 
     harness.press("[")
     harness.press("[")
-    assert demo.rows_module.SWEEP_FRAMES == 15
+    assert demo.rows_module.PULSE_FRAMES == 25
 
 
 async def test_app_streams_a_prompt_into_the_transcript():
@@ -1101,7 +1121,7 @@ def test_row_durations_count_tenths_of_a_second_under_a_minute():
     now[0] = 1.25
     transcript.advance_frame()
 
-    assert "Processing  1.2 s" in "\n".join(_rendered(transcript, 40))
+    assert f"Processing (1s {SEPARATOR} {STOP_HINT})" in "\n".join(_rendered(transcript, 40))
 
     # The reasoning row is read the same way, running or finished.
     now[0] = 0.0
@@ -1136,7 +1156,7 @@ def test_a_row_switches_to_minutes_once_a_minute_is_past():
     now[0] = 100.4
     transcript.advance_frame()
 
-    assert "Processing  1m 40s" in "\n".join(_rendered(transcript, 40))
+    assert f"Processing (1m 40s {SEPARATOR} {STOP_HINT})" in "\n".join(_rendered(transcript, 40))
 
 
 def test_clock_text_formats_a_local_reading():
