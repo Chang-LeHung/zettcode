@@ -15,9 +15,10 @@ from pathlib import Path
 
 from ...tui import ELLIPSIS, HEADER, SEPARATOR, STATUS
 from ...tui.render import display_width
+from ..agent.rows import STOP_HINT
 
 #: The keys worth remembering, shown at the right of the status row.
-KEY_HINTS = "^C stop  ^D exit"
+KEY_HINTS = f"{STOP_HINT}  ^D exit"
 
 
 def compact_path(path: Path, *, limit: int = 38) -> str:

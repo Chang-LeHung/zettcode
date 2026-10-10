@@ -25,10 +25,10 @@ from zettcode.app.agent.entries import (
     ThinkingEntry,
     ToolEntry,
 )
-from zettcode.app.agent.rows import COMPACTING_LABEL
+from zettcode.app.agent.rows import COMPACTING_LABEL, PULSE_FRAMES, STOP_HINT
 from zettcode.app.agent.transcript import Transcript
 from zettcode.app.ui.widgets.transcript import TranscriptSource
-from zettcode.tui import DARK, LIGHT, TextLine
+from zettcode.tui import DARK, LIGHT, SEPARATOR, TextLine
 from zettcode.tui.render import display_width
 
 
@@ -156,6 +156,26 @@ def test_a_compaction_row_carries_its_own_label_and_timer():
     assert brightness(5) == brightness(9)
 
 
+def test_the_waiting_row_puts_its_clock_and_the_stop_key_beside_the_word():
+    """The aside is quiet ink the highlight never crosses, counted in whole seconds."""
+    entry = ProcessingEntry(id=1, started_at=0.0, duration=3.4)
+
+    line = render_entry(entry, 46, DARK, 0)[1]
+
+    assert line.text.strip() == f"✦ Processing (3s {SEPARATOR} {STOP_HINT})"
+    assert line.spans[-1].text == f" (3s {SEPARATOR} {STOP_HINT})"
+    # Quiet ink, the same a notice uses, and no tenths of a second.
+    assert line.spans[-1].style.foreground == DARK.muted
+    for frame in range(PULSE_FRAMES):
+        spans = render_entry(entry, 46, DARK, frame)[1].spans
+        assert spans[-1] == line.spans[-1]
+        assert all(span.style.foreground != DARK.text for span in spans[-1:])
+
+    # Past a minute the same clock reads in minutes.
+    later = ProcessingEntry(id=2, started_at=0.0, duration=100.4)
+    assert render_entry(later, 46, DARK, 0)[1].text.strip().endswith(f"(1m 40s {SEPARATOR} {STOP_HINT})")
+
+
 def test_a_settled_wait_row_is_a_muted_line():
     """Once the request is over the row stops sweeping and reads as a record."""
     settled = ProcessingEntry(id=1, started_at=0.0, duration=12.3, text="Processed for 12s · 09:41")
@@ -169,7 +189,7 @@ def test_a_settled_wait_row_is_a_muted_line():
 
     # A row that was settled without a line still reports the time it measured.
     bare = ProcessingEntry(id=2, started_at=0.0, duration=12.3, status=EntryStatus.COMPLETED)
-    assert render_entry(bare, 40, DARK, 0)[1].text.strip() == "Processed for 12.3 s"
+    assert render_entry(bare, 40, DARK, 0)[1].text.strip() == "Processed for 12s"
 
 
 def test_only_the_waiting_row_moves():

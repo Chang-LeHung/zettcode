@@ -17,6 +17,7 @@ from ...tui import (
     FAILED,
     MARKER,
     PROMPT,
+    SEPARATOR,
     SKIPPED,
     STATUS,
     Span,
@@ -31,11 +32,13 @@ from .rows import (
     COMPACTING_LABEL,
     CONTENT_INDENT,
     RUNNING_GLYPHS,
+    STOP_HINT,
     TOOL_EXPANDED_ROWS,
     TOOL_PREVIEW_ROWS,
-    activity_glyph,
     bounded_rows,
     duration_text,
+    elapsed_text,
+    moving,
     sweep_column,
 )
 
@@ -219,17 +222,25 @@ class ProcessingProcessor(EntryProcessor[ProcessingEntry]):
         return isinstance(entry, ProcessingEntry)
 
     def lines(self, entry: ProcessingEntry, width: int, theme: Theme, frame: int) -> list[TextLine]:
-        """Sweep the label below a blank separator, or show the line it settled into."""
+        """Pulse the word below a blank separator, or show the line it settled into.
+
+        The clock and the key that stops the request stand beside the word in
+        parentheses, in the same quiet ink a notice uses, so they read as one
+        aside rather than as part of the row's business — and the highlight crosses
+        the word alone, never the aside. The clock counts whole seconds: tenths of
+        a second are more detail than a reader waiting on a request wants.
+        """
         if entry.status is not EntryStatus.RUNNING:
-            settled = entry.text or f"Processed for {duration_text(entry.duration)}"
+            settled = entry.text or f"Processed for {elapsed_text(entry.duration or 0.0)}"
             return [
                 TextLine(),
                 layout_rich_lines((TextLine((Span(settled, Style(foreground=theme.muted)),)),), width, wrap=False)[0],
             ]
-        label = entry.title
+        spans = list(_running_label(entry.title, theme, frame))
         if entry.duration is not None:
-            label += f"  {duration_text(entry.duration)}"
-        return [TextLine(), layout_rich_lines((TextLine(_running_label(label, theme, frame)),), width, wrap=False)[0]]
+            aside = f" ({elapsed_text(entry.duration)} {SEPARATOR} {STOP_HINT})"
+            spans.append(Span(aside, Style(foreground=theme.muted)))
+        return [TextLine(), layout_rich_lines((TextLine(tuple(spans)),), width, wrap=False)[0]]
 
 
 class ThinkingProcessor(EntryProcessor[ThinkingEntry]):
@@ -373,16 +384,18 @@ def render_entry(
 
 
 def _running_label(text: str, theme: Theme, frame: int) -> tuple[Span, ...]:
-    """Blink the marker, and cross the wording once a second, on one frame count.
+    """Pulse the waiting row: one frame count drives the marker and the highlight.
 
-    Both halves of the blink are one column wide, so the label never shifts as
-    the marker turns over, and the marker reads the same frame as the status
-    bar's dot: the row and the icon blink in step. The highlight takes a whole
-    pass per second whatever the label's length, which is the point of pacing it
-    by time: a long row is not swept more slowly than a short one. Only the
-    waiting row is drawn with this, which is what makes it the one thing that
-    moves.
+    The row moves for a second and a half — the marker lit, the highlight crossing
+    the label — and then rests for a second, in which neither moves: the marker is
+    the quiet ink's dot so the row keeps its shape without blinking, and the label
+    is painted flat. Both halves read the same frame counter, so neither depends
+    on how often the terminal repaints, and the marker is in step with the status
+    bar's icon. Only the waiting row is drawn with this, which is what makes it
+    the one thing that moves.
     """
     resting = Style(foreground=theme.accent_bright)
+    if not moving(frame):
+        return (Span(f"{RUNNING_GLYPHS[1]} ", Style(foreground=theme.muted)), Span(text, resting))
     label = SweepSpan(text, resting, peak=Style(foreground=theme.text), ramp=3)
-    return (Span(f"{activity_glyph(frame)} ", resting), *sweep_spans(label, sweep_column(frame, label.travel)))
+    return (Span(f"{RUNNING_GLYPHS[0]} ", resting), *sweep_spans(label, sweep_column(frame, label.travel)))
