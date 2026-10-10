@@ -28,7 +28,7 @@ def test_the_chain_phrases_the_coding_tools():
     assert describe("replace_in_file", path="app.py", edits=[{"old": "a"}]) == "Edited app.py (1 edit)"
     assert describe("replace_in_file", path="app.py") == "Edited app.py"
     assert describe("delete_file", path="99\u4e58\u6cd5\u8868.txt") == "Deleted 99\u4e58\u6cd5\u8868.txt"
-    assert describe("run_shell", command="pwd && ls -la") == "Ran pwd && ls -la"
+    assert describe("bash", command="pwd && ls -la") == "Ran pwd && ls -la"
     assert describe("glob", pattern="**/*.py") == "Listed **/*.py"
     assert describe("grep", pattern="TODO", path="src") == "Searched TODO in src"
     # ``name`` is both the helper's parameter and the tool's argument, so this
@@ -56,7 +56,7 @@ def test_the_task_tool_reads_as_a_subagent_not_as_raw_arguments():
 def test_a_missing_or_unusable_argument_degrades_to_a_placeholder():
     assert describe("read_file") == "Read (unknown file)"
     assert describe("read_file", path=7) == "Read (unknown file)"
-    assert describe("run_shell", command="   ") == "Ran (unknown command)"
+    assert describe("bash", command="   ") == "Ran (unknown command)"
     assert describe("glob") == "Listed files"
     assert describe("grep", pattern="x") == "Searched x"
 

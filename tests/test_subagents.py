@@ -49,7 +49,7 @@ def test_subagent_profiles_split_the_tools_by_what_a_child_may_touch(tmp_path):
     # Coding edits, but no child is offered shell; it has no approval channel.
     write = next(extension for extension in profiles["coding"].extensions if isinstance(extension, FileSystemExtension))
     assert write.read_only is False
-    assert "run_shell" not in {tool.name for tool in write.tools}
+    assert "bash" not in {tool.name for tool in write.tools}
     # Every child writes its own log into this application's store.
     for definition in definitions:
         assert store in definition.extensions

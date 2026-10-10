@@ -126,7 +126,7 @@ to the composer, and the transcript is untouched underneath:
 
 ## Approvals
 
-`run_shell` is the one tool that asks. The panel shows the exact command and
+`bash` is the one tool that asks. The panel shows the exact command and
 offers:
 
 | Key | Meaning |

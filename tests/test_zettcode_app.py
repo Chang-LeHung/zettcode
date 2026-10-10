@@ -603,7 +603,7 @@ def test_terminal_safe_normalises_line_endings_before_replacing_controls():
 def test_a_tool_row_prints_crlf_output_without_replacement_glyphs():
     transcript = Transcript(clock=lambda: 0.0)
     transcript.begin_turn("question")
-    transcript.start_tool("1", "run_shell", {"command": "curl -i localhost"})
+    transcript.start_tool("1", "bash", {"command": "curl -i localhost"})
     transcript.complete_tool("1", "HTTP/1.1 200 OK\r\nServer: ZettCode/1.0\r\n\r\nbody\r\n")
 
     rendered = "\n".join(_rendered(transcript, 60))

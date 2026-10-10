@@ -314,7 +314,7 @@ def test_tool_rows_share_one_hue_until_a_palette_separates_them():
     what the custom palette below checks, but the shipped look is one colour.
     """
     read = render_entry(_tool_entry("read_file"), 40, DARK, 0)
-    shell = render_entry(_tool_entry("run_shell"), 40, DARK, 0)
+    shell = render_entry(_tool_entry("bash"), 40, DARK, 0)
 
     def hue(lines) -> set[str]:
         return {span.style.foreground for line in lines for span in line.spans if span.text.strip()}
@@ -334,7 +334,7 @@ def test_tool_rows_share_one_hue_until_a_palette_separates_them():
 def test_a_palette_may_separate_the_tool_roles():
     separated = replace(DARK, tools=replace(DARK.tools, shell="#123456"))
 
-    assert tool_color("run_shell", separated) == "#123456"
+    assert tool_color("bash", separated) == "#123456"
     assert tool_color("read_file", separated) == DARK.tools.read
 
 

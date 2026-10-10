@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.10"
 resolution-markers = [
     "python_full_version >= '3.15'",
@@ -2570,7 +2570,7 @@ wheels = [
 
 [[package]]
 name = "zett-agent"
-version = "0.1.11"
+version = "0.1.12"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiosqlite" },
@@ -2593,9 +2593,9 @@ dependencies = [
     { name = "typing-extensions", marker = "python_full_version < '3.12'" },
     { name = "uuid6" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/51/8d/a0b65f711f6bae92f12a8c4394b10c714be6ceadba9a91e5ec5239e7cb99/zett_agent-0.1.11.tar.gz", hash = "sha256:bdc820829b0c8c8df3b3cf15b2dc3115e40ae537f0858fb8d38fbd8154774bd9", size = 156394, upload-time = "2026-10-08T17:06:19.07Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7a/44/d4bdeea2febd8b0ba4b240722cb962ce3667912b02e5303b9d1002d3a110/zett_agent-0.1.12.tar.gz", hash = "sha256:2f6241a9a0b971aa529fbbb92886f518eed7bd494a03a11de73924022cddd692", size = 158025, upload-time = "2026-10-10T13:24:08.561Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/da/77/8ed16656636aec3a5eb3743de1285b12ffc490b91f62ea5b6b339d272a38/zett_agent-0.1.11-py3-none-any.whl", hash = "sha256:12c6daad54a7a48650c8e852e63067f7006d03eeeea6cf14670b695612112152", size = 195412, upload-time = "2026-10-08T17:06:17.635Z" },
+    { url = "https://files.pythonhosted.org/packages/ed/f0/0c7cf48bbf25a06ba1395ecd0af24f336dabeab429f7e2456179339e3d85/zett_agent-0.1.12-py3-none-any.whl", hash = "sha256:e037235d2636af492bfdadeab3942e499c1432419f7b430a97ad49807d7bb596", size = 197923, upload-time = "2026-10-10T13:24:07.178Z" },
 ]
 
 [[package]]
@@ -2603,8 +2603,10 @@ name = "zettcode"
 source = { editable = "." }
 dependencies = [
     { name = "exceptiongroup", marker = "python_full_version < '3.11'" },
+    { name = "pydantic" },
     { name = "pyperclip" },
     { name = "setproctitle", marker = "os_name == 'posix'" },
+    { name = "tiktoken" },
     { name = "tomli", marker = "python_full_version < '3.11'" },
     { name = "truststore" },
     { name = "wcwidth" },
@@ -2626,12 +2628,14 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "exceptiongroup", marker = "python_full_version < '3.11'", specifier = ">=1.2,<2" },
+    { name = "pydantic", specifier = ">=2,<3" },
     { name = "pyperclip", specifier = ">=1.9,<2" },
     { name = "setproctitle", marker = "os_name == 'posix'", specifier = ">=1.3.7,<2" },
+    { name = "tiktoken", specifier = ">=0.12,<1" },
     { name = "tomli", marker = "python_full_version < '3.11'", specifier = ">=2,<3" },
     { name = "truststore", specifier = ">=0.10,<1" },
     { name = "wcwidth", specifier = ">=0.2,<1" },
-    { name = "zett-agent", specifier = ">=0.1.11,<0.2" },
+    { name = "zett-agent", specifier = ">=0.1.12,<0.2" },
 ]
 
 [package.metadata.requires-dev]
