@@ -93,8 +93,11 @@ jobs:
           python-version: "3.14"
           enable-cache: true
 
-      - name: Build
-        run: uv build
+      # The Makefile target owns the smoke test, so the thing a contributor runs
+      # is the thing CI runs. It builds into .smoke/ rather than dist/, so the
+      # wheel it installs cannot be one left over from an earlier build.
+      - name: Build and smoke-test the wheel
+        run: make smoke
 
       - name: Verify the wheel ships the TUI package
         run: |
@@ -102,13 +105,10 @@ jobs:
           import glob
           import zipfile
 
-          wheel = glob.glob("dist/*.whl")[0]
+          wheel = glob.glob(".smoke/*.whl")[0]
           names = zipfile.ZipFile(wheel).namelist()
           assert any(name.startswith("zettcode/") for name in names), names
           entry_points = [name for name in names if name.endswith("entry_points.txt")]
           assert entry_points, names
           print(f"{wheel}: {len(names)} files")
           PY
-
-      - name: Run the console script from the built wheel
-        run: uv run --no-project --python 3.14 --with ./dist/*.whl zettcode --help
