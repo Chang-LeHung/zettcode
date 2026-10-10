@@ -80,6 +80,7 @@ from zettcode.plugins import BUILTIN_PLUGINS, PluginContainer, Plugins, ShellCon
 from zettcode.tui import (
     DARK,
     LIGHT,
+    PROMPT,
     SEPARATOR,
     Canvas,
     ListItem,
@@ -1181,6 +1182,24 @@ async def test_a_stopped_request_closes_the_rows_it_left_running():
     assert tool.text == "Result unavailable (request ended)"
     assert not [entry for entry in app.transcript.entries if getattr(entry, "status", None) is EntryStatus.RUNNING]
     assert "Running" not in harness.render().text
+
+
+async def test_the_composer_prompt_lines_up_with_the_message_above_it():
+    """The arrow the reader types under sits in the column of the one they sent."""
+    app = build_app()
+    harness = _harness(app)
+    harness.write("fix the parser")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    frame = harness.render()
+    arrows = [row.index(PROMPT) for row in frame.lines if PROMPT in row]
+
+    assert len(arrows) == 2  # the message and the composer
+    assert arrows[0] == arrows[1]
+    # And the caret waits where that message's own text begins.
+    message = next(row for row in frame.lines if "fix the parser" in row)
+    assert frame.cursor is not None and frame.cursor.x == message.index("fix")
 
 
 async def test_each_turn_reports_how_long_it_took(monkeypatch):

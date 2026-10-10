@@ -240,7 +240,11 @@ class ProcessingProcessor(EntryProcessor[ProcessingEntry]):
             settled = entry.text or f"Processed for {elapsed_text(entry.duration or 0.0)}"
             return [
                 TextLine(),
-                layout_rich_lines((TextLine((Span(settled, Style(foreground=theme.muted)),)),), width, wrap=False)[0],
+                layout_rich_lines(
+                    (TextLine((Span(" " * CONTENT_INDENT + settled, Style(foreground=theme.muted)),)),),
+                    width,
+                    wrap=False,
+                )[0],
             ]
         spans = list(_running_label(entry.title, theme, frame))
         if entry.duration is not None:
@@ -275,7 +279,7 @@ class ThinkingProcessor(EntryProcessor[ThinkingEntry]):
         if entry.expanded:
             waiting = "summary" if entry.title == COMPACTING_LABEL else "reasoning"
             source = "\n".join(entry.text.splitlines()) if entry.text else f"Waiting for {waiting}{ELLIPSIS}"
-            lines.extend(self.text_lines(source, width, Style(foreground=theme.subtle), indent=4))
+            lines.extend(self.text_lines(source, width, Style(foreground=theme.subtle), indent=CONTENT_INDENT))
         return lines
 
 
@@ -324,13 +328,13 @@ class ToolProcessor(EntryProcessor[ToolEntry]):
         output = f"Running{ELLIPSIS}" if running else entry.text
         if output:
             limit = TOOL_EXPANDED_ROWS if entry.expanded else TOOL_PREVIEW_ROWS
-            rows, omitted = bounded_rows(output, max(1, width - 6), limit)
+            rows, omitted = bounded_rows(output, max(1, width - CONTENT_INDENT * 2), limit)
             detail = Style(foreground=theme.subtle)
             for index, row in enumerate(rows):
-                lead = "    \u2514 " if index == 0 else "      "
+                lead = f"{' ' * CONTENT_INDENT}\u2514 " if index == 0 else " " * (CONTENT_INDENT * 2)
                 lines.append(self._body_line(lead, row, detail, entry.language, theme))
             if omitted:
-                lines.append(TextLine((Span(f"      {ELLIPSIS} {omitted} more rows", muted),)))
+                lines.append(TextLine((Span(f"{' ' * (CONTENT_INDENT * 2)}{ELLIPSIS} {omitted} more rows", muted),)))
         return [layout_rich_lines((line,), width, wrap=False)[0] if line.spans else line for line in lines]
 
     @staticmethod

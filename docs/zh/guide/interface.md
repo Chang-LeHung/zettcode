@@ -6,9 +6,9 @@
 ```
   ▐ zettcode  ~/projects/api          DeepSeek Pro · high  ← 头部
  ─────────────────────────────────────────────────────────
-   ● Read src/api/users.py                                ← 对话区
-   ● Edited src/api/users.py (2 edits)                      （可滚动）
-   ● Ran pytest tests/test_users.py
+ ● Read src/api/users.py                                ← 对话区
+ ● Edited src/api/users.py (2 edits)                      （可滚动）
+ ● Ran pytest tests/test_users.py
  ─────────────────────────────────────────────────────────
    ▸ 弹窗出现在这里：模型 / 上下文 / 会话                  ← 面板
  ─────────────────────────────────────────────────────────

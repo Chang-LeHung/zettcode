@@ -32,6 +32,11 @@ from zettcode.tui import DARK, LIGHT, SEPARATOR, TextLine
 from zettcode.tui.render import display_width
 
 
+def _rows(source, width: int = 40) -> list[str]:
+    """Return the text of every line a line source holds."""
+    return [source.line(index, width).text for index in range(source.count(width))]
+
+
 def test_every_agent_entry_has_a_presentation_component():
     entries = (
         (TextEntry(id=1, kind="welcome", text="hello"), WelcomeProcessor),
@@ -176,6 +181,45 @@ def test_the_waiting_row_puts_its_clock_and_the_stop_key_beside_the_word():
     # Past a minute the same clock reads in minutes.
     later = ProcessingEntry(id=2, started_at=0.0, duration=100.4)
     assert render_entry(later, 46, DARK, 0)[1].text.strip().endswith(f"(1m 40s {SEPARATOR} {STOP_HINT})")
+
+
+def test_every_row_draws_its_marker_in_the_gutter_and_its_content_beside_it():
+    """Leading glyphs share one column, and every line of content shares the next.
+
+    The user's arrow, the waiting row's sparkle, a tool's outcome, and the
+    composer's prompt all sit in the gutter's first column, while a notice or an
+    answer starts in the second — the column the text after those markers uses.
+    """
+    cases = {
+        "user": (TextEntry(id=1, kind="user", text="hello"), True, "hello"),
+        "waiting": (ProcessingEntry(id=2, started_at=0.0, duration=1.0), True, "Processing"),
+        "settled": (
+            ProcessingEntry(
+                id=6,
+                started_at=0.0,
+                duration=1.0,
+                status=EntryStatus.COMPLETED,
+                text="Processed for 12s \u00b7 09:41",
+            ),
+            False,
+            "Processed",
+        ),
+        "thinking": (ThinkingEntry(id=3, text="weighing", started_at=0.0, duration=1.0), True, "Thinking"),
+        "tool": (
+            ToolEntry(id=4, call_id="c", tool="read_file", title="Read app.py", started_at=0.0),
+            True,
+            "Read",
+        ),
+        "notice": (TextEntry(id=5, kind="notice", text="done"), False, "done"),
+    }
+
+    for name, (entry, opens_with_a_marker, content) in cases.items():
+        source = entry.block_for(40, DARK, 0)
+        first = next(text for text in _rows(source) if text.strip())
+
+        assert (first[0] != " ") is opens_with_a_marker, (name, first)
+        assert first[1] == " ", (name, first)
+        assert first.index(content) == 2, (name, first)
 
 
 def test_a_settled_wait_row_is_a_muted_line():

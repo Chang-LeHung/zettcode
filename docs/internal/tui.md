@@ -326,9 +326,11 @@ columns: it wraps, aligns, clips, and keeps a list item's hanging indent under
 its text. `RichText` is the retained widget for short styled blocks, while
 `Text` uses that widget with a single style and `Markdown` uses the same layout
 function for parsed lines. The transcript keeps its `LineSource` so a long
-conversation still materializes only its visible rows; its gutter uses the
-same inset operation rather than mounting one widget per message. Try
-`make demo-rich_text` for a preview.
+conversation still materializes only its visible rows; its gutter is drawn per
+row — a row that opens with a marker puts that marker in the gutter's first
+column and its content in the second, and a row without one is inset past it —
+rather than mounting one widget per message. Try `make demo-rich_text` for a
+preview.
 
 `widgets/diff.py` parses unified diffs into typed rows and pairs each run of
 removals with the additions that follow it. Paired lines go through a token

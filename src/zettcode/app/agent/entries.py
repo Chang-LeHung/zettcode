@@ -42,12 +42,19 @@ class BaseEntry:
         chosen = DEFAULT_PROCESSORS if processors is None else processors
         key: tuple[object, ...] = (width, theme, chosen, self.kind, self.render_state(frame))
         if self.block is None or self.block_key != key:
+            # The rows that open with a marker — the user's arrow, the waiting row's
+            # sparkle, a tool's outcome — draw that marker in the gutter's own column,
+            # so every leading glyph sits in one column and every line of content in
+            # the next. Everything else is inset past the gutter.
+            marked = isinstance(self, (ProcessingEntry, ThinkingEntry, ToolEntry)) or (
+                isinstance(self, TextEntry) and self.kind == "user"
+            )
             margin = min(CONTENT_INDENT, max(0, width - 1))
-            content_width = width if isinstance(self, TextEntry) and self.kind == "user" else max(1, width - margin)
+            content_width = width if marked else max(1, width - margin)
             # Only the union members below are ever instantiated; the base class
             # exists to share this cache, so the cast is exact at runtime.
             rendered = StaticLines(render_entry(cast(Entry, self), content_width, theme, frame, processors=chosen))
-            self.block = rendered if isinstance(self, TextEntry) and self.kind == "user" else Indented(rendered)
+            self.block = rendered if marked else Indented(rendered)
             self.block_key = key
         return self.block
 
