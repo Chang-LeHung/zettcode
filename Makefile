@@ -1,5 +1,9 @@
 UV ?= uv
 
+# `make smoke` builds here rather than into dist/, so the wheel it installs is
+# the one it just built and not a release wheel left over from an earlier run.
+SMOKE_DIR := .smoke
+
 .PHONY: help install lint typecheck test build smoke check hooks docs docs-build docs-preview demo demo-all demos demo-thinking perf perf-scaling perf-store perf-profile perf-startup perf-imports FORCE
 
 DEMOS := text status_bar spinner progress_bar list table diff markdown textarea completion dialog collapsible toast tasks scroll layout
@@ -11,7 +15,7 @@ help:
 	@echo "  make typecheck Check the shipped code with mypy"
 	@echo "  make test     Run the test suite"
 	@echo "  make build    Build the sdist and wheel into dist/"
-	@echo "  make smoke    Install the built wheel and run 'zettcode --help'"
+	@echo "  make smoke    Build the wheel into $(SMOKE_DIR)/ and run 'zettcode --help' from it"
 	@echo "  make check    Run lint, typecheck, and tests"
 	@echo "  make hooks    Install the git hooks (blocks a commit that fails mypy)"
 	@echo "  make docs     Serve the user guide at http://localhost:5173"
@@ -44,11 +48,16 @@ test:
 build:
 	$(UV) build
 
-smoke: build
-	$(UV) run --no-project --python 3.14 --with ./dist/*.whl zettcode --help
+# The wheel is built, not found: a glob over dist/ would happily install an older
+# version that happens to be lying there, and a wheel that is not the one just
+# built proves nothing about the build.
+smoke:
+	rm -rf $(SMOKE_DIR)
+	$(UV) build --out-dir $(SMOKE_DIR)
+	$(UV) run --no-project --python 3.14 --with ./$(SMOKE_DIR)/*.whl zettcode --help
 	@# The HTML trace ships as package data: a packaging change that drops the
 	@# template, its stylesheet, or its script has to fail here, not at export time.
-	$(UV) run --no-project --python 3.14 --with ./dist/*.whl python -c "from importlib.resources import files; names = sorted(p.name for p in files('zettcode.app.agent').joinpath('trace').iterdir()); assert names == ['script.js', 'style.css', 'template.html'], names; print('trace assets:', names)"
+	$(UV) run --no-project --python 3.14 --with ./$(SMOKE_DIR)/*.whl python -c "from importlib.resources import files; names = sorted(p.name for p in files('zettcode.app.agent').joinpath('trace').iterdir()); assert names == ['script.js', 'style.css', 'template.html'], names; print('trace assets:', names)"
 
 check: lint typecheck test
 
