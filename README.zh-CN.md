@@ -18,7 +18,7 @@
 
 ## 先跑起来
 
-需要 **Python 3.10+**、支持 UTF-8 的终端和 **OpenAI 兼容接口**。
+需要 **Python 3.10+**、支持 UTF-8 的终端和 **OpenAI 兼容接口**（或 Anthropic 的 **Messages API**）。
 支持 macOS、Linux 和 Windows（请使用 Windows Terminal）。
 
 ### 1. 安装

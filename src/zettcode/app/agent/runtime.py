@@ -19,7 +19,7 @@ import sys
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeAlias
 
 from zett_agent.agent import AgentRunConfig
 from zett_agent.client import AgentClient
@@ -34,7 +34,7 @@ from zett_agent.ids import new_uuid7
 from zett_agent.model import ReasoningEffort
 
 from ..._compat import BaseExceptionGroup
-from ...config import ModelConfig, ZettCodeConfig
+from ...config import DEFAULT_ANTHROPIC_BASE_URL, ModelConfig, ZettCodeConfig
 from ...paths import DEFAULT_MCP_CONFIG
 from ...plugins import Plugins, load_plugins
 from .approval import ShellApprovalMemory
@@ -46,7 +46,12 @@ from .storage import SessionStore
 from .usage import UsageExtension
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only; the imports are the cost
+    from zett_agent.providers.anthropic import AnthropicProvider
     from zett_agent.providers.openai import OpenAIProvider
+
+    #: The adapters this runtime may own. Each is an ``AgentModel``; naming both
+    #: is what also says they can be closed, which the runtime does at shutdown.
+    Adapter: TypeAlias = OpenAIProvider | AnthropicProvider
 
 
 def build_system_prompt(config: ZettCodeConfig, *, now: datetime | None = None) -> str:
@@ -150,6 +155,31 @@ def describe_error(error: BaseException) -> str:
     return "; ".join(reasons)
 
 
+def _build_provider(selected: ModelConfig) -> Adapter:
+    """Build the adapter one model entry asks for, importing only its SDK.
+
+    The import lives in this function rather than at module level because it is
+    the cost the first frame may not pay; :meth:`ZettCodeRuntime._preload` warms
+    the same module off the event loop before this runs.
+    """
+    if selected.anthropic:
+        from zett_agent.providers.anthropic import AnthropicProvider
+
+        return AnthropicProvider(
+            selected.model,
+            selected.token,
+            base_url=selected.base_url or DEFAULT_ANTHROPIC_BASE_URL,
+        )
+    from zett_agent.providers.openai import OpenAIProvider
+
+    return OpenAIProvider(
+        selected.model,
+        selected.token,
+        base_url=selected.base_url,
+        response=selected.responses_api,
+    )
+
+
 @dataclass(slots=True)
 class ZettCodeRuntime:
     """Own the model, the persistence and approval extensions, the client, and the active session.
@@ -177,9 +207,9 @@ class ZettCodeRuntime:
     plugins: Plugins = field(default_factory=Plugins)
     event_dispatcher: AgentEventDispatcher | None = None
     client: AgentClient | None = None
-    model: OpenAIProvider | None = None
+    model: Adapter | None = None
     _starting: asyncio.Task[ZettCodeRuntime] | None = field(default=None, repr=False)
-    _models: dict[ModelConfig, OpenAIProvider] = field(default_factory=dict)
+    _models: dict[ModelConfig, Adapter] = field(default_factory=dict)
 
     @classmethod
     def preview(cls, config: ZettCodeConfig) -> ZettCodeRuntime:
@@ -230,8 +260,8 @@ class ZettCodeRuntime:
         """Import what a provider needs, then hand the client its extensions.
 
         The imports and the SDK client construction block for a few hundred
-        milliseconds — ``import openai`` alone is most of it on a cold cache —
-        and by the time this runs the shell is already on screen taking the
+        milliseconds — a model SDK alone is most of it on a cold cache — and by
+        the time this runs the shell is already on screen taking the
         reader's keys. They happen in a worker thread so the event loop keeps
         painting; everything the loop owns is still built on it.
         """
@@ -286,28 +316,33 @@ class ZettCodeRuntime:
     def _preload(self) -> None:
         """Import the modules a request needs, in a worker thread.
 
-        The blocker is the OpenAI SDK: zett-agent builds its compatible client
-        from it, so the import lands in a provider constructor rather than in a
-        module header, and it is a few hundred milliseconds of modules. The
-        subagent extension is cheap now that zett-agent loads its SQLite store
-        lazily; importing it here keeps that later import a cache hit too.
+        The blocker is a model SDK: zett-agent builds its client from the one
+        the entry speaks — the OpenAI SDK for a compatible endpoint, the
+        Anthropic one for the Messages API — inside a provider constructor
+        rather than in a module header, and it is a few hundred milliseconds of
+        modules. Both are imported, not only the active model's: ``/model`` may
+        select an entry that speaks the other API, and building its adapter
+        would otherwise import that SDK on the event loop in the middle of a
+        turn. The subagent extension is cheap now that zett-agent loads its
+        SQLite store lazily, so importing it here keeps that later import a
+        cache hit too.
         """
+        importlib.import_module("anthropic")
         importlib.import_module("openai")
         if self.config.subagent_enabled:
             importlib.import_module("zett_agent.extensions.subagent")
 
-    def _provider(self, selected: ModelConfig) -> OpenAIProvider:
-        """Return the provider for one configured model, building it if needed."""
-        from zett_agent.providers.openai import OpenAIProvider
+    def _provider(self, selected: ModelConfig) -> Adapter:
+        """Return the provider for one configured model, building it if needed.
 
+        Which adapter the entry gets is the entry's own choice: ``anthropic``
+        speaks the Messages API through its own SDK, and every other entry
+        speaks an OpenAI-compatible one, over chat completions or, when
+        ``responses_api`` is set, the Responses API.
+        """
         provider = self._models.get(selected)
         if provider is None:
-            provider = OpenAIProvider(
-                selected.model,
-                selected.token,
-                base_url=selected.base_url,
-                response=selected.responses_api,
-            )
+            provider = _build_provider(selected)
             self._models[selected] = provider
         return provider
 
@@ -319,7 +354,7 @@ class ZettCodeRuntime:
         return self.client
 
     @property
-    def provider(self) -> OpenAIProvider:
+    def provider(self) -> Adapter:
         """Return the provider for the active model, insisting the runtime started."""
         if self.model is None:
             raise RuntimeError("Runtime has not started; await start() first")

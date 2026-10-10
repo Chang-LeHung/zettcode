@@ -1,7 +1,8 @@
 # 模型与上下文
 
 ZettCode 能对接任何 OpenAI 兼容的接入点：云上的 API、把多家 provider 聚在一起的网关，或者跑在
-你自己机器上的模型。它需要知道的东西都在[配置参考](/zh/guide/config#models)里。
+你自己机器上的模型；写了 `anthropic = true` 的项则走 Anthropic 的 Messages API。它需要知道的东西都在
+[配置参考](/zh/guide/config#models)里。
 
 ## 切换
 

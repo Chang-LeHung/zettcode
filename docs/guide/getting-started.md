@@ -12,8 +12,8 @@ the diff before accepting the work.
 - Python 3.10 or newer, on macOS, Linux, or Windows.
 - A terminal that speaks UTF-8 and at least 256 colours. On Windows use Windows
   Terminal; the classic console host is not enough.
-- An OpenAI-compatible endpoint — a hosted API or a local server — and a token
-  for it.
+- An OpenAI-compatible endpoint — a hosted API or a local server — or
+  Anthropic's Messages API, and a token for it.
 
 ## Install
 

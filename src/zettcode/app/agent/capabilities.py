@@ -6,7 +6,7 @@ from collections.abc import Mapping
 
 from zett_agent.agent import AgentRunContext
 from zett_agent.extensions.base import AgentExtension
-from zett_agent.providers.openai import OpenAIProvider
+from zett_agent.model import AgentModel
 from zett_agent.tools.images import view_image
 
 from ...config import ModelConfig
@@ -29,7 +29,7 @@ class ModelCapabilities(AgentExtension):
     #: After the coding bundle, which is what registers the tool being filtered.
     priority = 110
 
-    def __init__(self, models: Mapping[ModelConfig, OpenAIProvider]) -> None:
+    def __init__(self, models: Mapping[ModelConfig, AgentModel]) -> None:
         """Remember the runtime's providers, keyed by the model each one serves.
 
         The mapping is the runtime's own and grows as models are selected, so

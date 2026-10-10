@@ -1,8 +1,9 @@
 # Models and context
 
 ZettCode talks to any OpenAI-compatible endpoint: a hosted API, a gateway in
-front of several providers, or a model running on your own machine. What it
-needs to know is in [Configuration](/guide/config#models).
+front of several providers, or a model running on your own machine. An entry can
+ask for Anthropic's Messages API instead with `anthropic = true`. What it needs
+to know is in [Configuration](/guide/config#models).
 
 ## Switching
 

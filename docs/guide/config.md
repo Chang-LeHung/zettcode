@@ -4,8 +4,10 @@ Start with one working model connection, then add only the settings you need.
 ZettCode reads `~/.zettcode/config.toml` at startup. You do not need to create
 every section: omitted optional settings keep their defaults.
 
-This page uses DeepSeek as a concrete example. ZettCode still connects through
-the **OpenAI-compatible API**; there is no `provider` setting.
+This page uses DeepSeek as a concrete example. By default ZettCode connects
+through the **OpenAI-compatible API**; an entry that sets `anthropic = true`
+uses Anthropic's **Messages API** instead. Either way there is no `provider`
+setting.
 
 ## Files and when they apply
 
@@ -78,21 +80,57 @@ is not an API key. On macOS/Linux you can restrict file access with
 | --- | --- | --- | --- |
 | `model` | string | Required | Exact model id accepted by the API, such as `deepseek-v4-pro`. Non-empty. |
 | `display_model` | string | Model id | Your readable label, such as `DeepSeek Pro`. It is not sent as the model id. |
-| `token` | string | `OPENAI_API_KEY` | API key for this endpoint. A non-empty file value takes precedence over the environment. |
-| `base_url` | string | `https://api.openai.com/v1` | API root. Set it explicitly for DeepSeek or another non-OpenAI endpoint. |
-| `responses_api` | boolean | `false` | `false` uses Chat Completions; `true` uses Responses. Choose a protocol the endpoint supports. |
+| `token` | string | `OPENAI_API_KEY` | API key for this endpoint. A non-empty file value takes precedence over the environment. An `anthropic` entry reads `ANTHROPIC_API_KEY` instead. |
+| `base_url` | string | The vendor's address | Where the client appends its route. Set it explicitly for DeepSeek or another non-OpenAI endpoint. Defaults to `https://api.openai.com/v1`, or to `https://api.anthropic.com` for an `anthropic` entry. |
+| `anthropic` | boolean | `false` | `true` calls Anthropic's Messages API instead of an OpenAI-compatible one. Cannot be combined with `responses_api`. |
+| `responses_api` | boolean | `false` | `false` uses Chat Completions; `true` uses Responses. Choose a protocol the endpoint supports. Not available for an `anthropic` entry. |
 | `multimodal` | boolean | `false` | Enable only for a model and endpoint that accept image input. |
 | `context_window` | integer | `128000` | Positive context-window size in tokens, not characters or the output limit. |
 | `compact_percent` | number | `80` | Automatic compaction threshold: greater than `0`, at most `100`. Decimals such as `75.5` are allowed. |
 
-`base_url` should not include `/chat/completions` or `/responses`: the client
-adds the route. DeepSeek's example root does not need `/v1`; other services
-often do. Copy the **API root** from your provider's instructions rather than
-guessing from its website URL.
+`base_url` is where the client appends its route — `/chat/completions`,
+`/responses`, or `/v1/messages` for an `anthropic` entry — so the route is not
+part of it. Writing the route out is a common reading, so an entry that ends
+with one has just that part removed: either way the request reaches
+`…/v1/messages` once, not twice. What precedes the route is kept as written, so
+a gateway that serves the API under a prefix keeps that prefix. DeepSeek's
+example does not need `/v1`; other services often do. Copy the address your
+provider calls the **API root** rather than guessing from its website URL.
 
 When `multimodal` is false, image submission is refused locally with an error,
 and the model is not offered the `view_image` tool. Setting it to true does not
 add vision to a text-only model. See [Pictures and pastes](/guide/interface#pictures-and-pastes).
+
+### Anthropic models
+
+`anthropic = true` calls Anthropic's Messages API rather than an
+OpenAI-compatible one. Everything else about an entry works the same, and the
+`/model` picker names the API each row speaks:
+
+```toml
+[[models]]
+model = "claude-sonnet-4-5"              # API model id, not a friendly label
+display_model = "Claude Sonnet 4.5"      # name in the header and /model picker
+token = "sk-ant-..."                     # replace with your Anthropic API key
+anthropic = true                         # Messages API, through Anthropic's SDK
+# base_url = "https://api.anthropic.com"  # uncomment for a gateway or proxy
+context_window = 200000                  # this model's window; check its model page
+compact_percent = 80                     # summarize at 80% of that limit
+multimodal = true                        # Claude accepts images
+```
+
+`base_url` defaults to `https://api.anthropic.com`, and `token` falls back to
+`ANTHROPIC_API_KEY` rather than `OPENAI_API_KEY`. A gateway that speaks the
+Messages protocol but lives elsewhere needs its own root here.
+
+`anthropic` and `responses_api` are not layers: the Responses API belongs to
+OpenAI-compatible endpoints, and the Messages API has no such mode. An entry
+that sets both is refused at startup instead of quietly picking one.
+
+`/effort` reaches Anthropic as a thinking budget, so `medium` and above buy
+reasoning before the answer; `off` disables it. As with any other model, this
+window and this key are the endpoint's business, not ZettCode's: it does not
+verify either before your first request.
 
 ### Keeping the key out of the file
 
@@ -114,10 +152,12 @@ zettcode
 :::
 
 The variable is named `OPENAI_API_KEY` even for DeepSeek. ZettCode does not read
-`DEEPSEEK_API_KEY` or expand `${VARIABLE}` inside TOML strings. An environment
-variable set this way applies to that terminal and its child processes, not to
-all future terminal windows. These commands can also enter your shell history;
-use your usual secret-management method on a shared machine.
+`DEEPSEEK_API_KEY` or expand `${VARIABLE}` inside TOML strings; the one entry
+that reads a differently named variable is an `anthropic` one, which falls back
+to `ANTHROPIC_API_KEY`. An environment variable set this way applies to that
+terminal and its child processes, not to all future terminal windows. These
+commands can also enter your shell history; use your usual secret-management
+method on a shared machine.
 
 If several model entries omit `token`, they all receive the same environment
 key. For endpoints with different credentials, give each entry its own `token`
@@ -183,6 +223,7 @@ model = "deepseek-v4-pro"
 display_model = "DeepSeek Pro"
 token = "sk-..."
 base_url = "https://api.deepseek.com"
+anthropic = false              # true would call Anthropic's Messages API
 responses_api = false
 multimodal = false
 context_window = 1000000
@@ -311,6 +352,7 @@ contrast after changing a surface colour.
 | --- | --- |
 | `ZETTCODE_CONFIG` | Select a different complete config file. |
 | `OPENAI_API_KEY` | Key for model entries without a non-empty `token`. |
+| `ANTHROPIC_API_KEY` | Key for `anthropic` entries without a non-empty `token`. |
 | `ZETTCODE_REDUCED_MOTION` | Set to `1` to suppress decorative sweep motion. |
 | `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY` | Standard proxy settings used by the model's HTTP client. |
 
@@ -365,11 +407,12 @@ or your shell history in an issue.
 | Symptom | What to check |
 | --- | --- |
 | `No models configured` | Create the selected config file and add at least one `[[models]]` entry. |
-| `Missing token for model ...` | Supply `token` or set `OPENAI_API_KEY` in the launching terminal. A placeholder is non-empty and only fails later at the API. |
+| `Missing token for model ...` | Supply `token`, or set the variable of that API in the launching terminal: `OPENAI_API_KEY`, or `ANTHROPIC_API_KEY` for an `anthropic` entry. A placeholder is non-empty and only fails later at the API. |
 | `Unknown config keys ...` | Use only the keys listed here. For example, `model_name` should be `model`. |
 | `must be bool` / `must be int` | Use `true`, not `"true"`; use `1000000`, not `"1000000"`. |
 | `Invalid config file ...` | Check quotes, table headings, and duplicate keys. TOML syntax errors include parser location information. |
-| API rejects the model or protocol | Check the endpoint's supported model ids and `responses_api`. The UI label is not the API id. |
+| `cannot use both APIs` | An entry set `anthropic` and `responses_api`. Keep one: they are different protocols, not two halves of one. |
+| API rejects the model or protocol | Check the endpoint's supported model ids and its protocol: `responses_api`, or `anthropic` for the Messages API. The UI label is not the API id. |
 | Image input is refused | Select a vision-capable model and enable `multimodal` only for that entry. |
 
 Restart after correcting `config.toml`. For session, display, and MCP problems,
