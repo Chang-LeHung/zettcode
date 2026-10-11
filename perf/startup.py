@@ -57,6 +57,13 @@ _PHASES = textwrap.dedent(
     start = perf_counter()
     import zettcode.cli
     t = mark("import zettcode.cli", start)
+    # The frame the command line paints names the model, which it reads from the
+    # config file rather than from the settings: this is what that costs, before
+    # the shell's own modules are imported.
+    from zettcode.app.ui.labels import model_name
+    from zettcode.paths import config_path
+    model = model_name(config_path())
+    t = mark("read the header labels (file + TOML)", t)
     config = zettcode.cli.resolve_config(["-w", sys.argv[1]])
     t = mark("resolve_config (file + terminal)", t)
     from zettcode.app import ZettCodeApp

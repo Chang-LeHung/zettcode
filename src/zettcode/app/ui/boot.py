@@ -39,20 +39,30 @@ IDLE_STATUS = "ready"
 UNTITLED = "New session"
 
 
-def boot_tree(workspace: Path, *, resuming: bool = False) -> VBox:
+def boot_tree(
+    workspace: Path,
+    *,
+    resuming: bool = False,
+    model: str | None = None,
+    effort: str = labels.DEFAULT_EFFORT,
+) -> VBox:
     """Return the frame drawn while the application is still loading.
 
     From the top: the header, its rule, the transcript, the blank row the shell
     keeps above the composer, the composer, and the status line. The header
-    knows the workspace from the command line and the composer needs nothing
-    else, so those two rows are the shell's own text; the transcript, the model
-    name, and the token counters arrive with the application.
+    knows the workspace from the command line, the model from the config file,
+    and the composer needs nothing else, so those rows are the shell's own text;
+    the transcript and the token counters arrive with the application.
 
     Args:
         workspace: Directory the session runs in, as the header will show it.
         resuming: A stored session is about to be loaded, so the transcript will
             hold a conversation rather than a banner; drawing the banner would
             only be taken away again a moment later.
+        model: Name to show at the right of the header, read from the config by
+            the caller — this frame draws before the settings are loaded. Without
+            one that side stays empty and the shell fills it in.
+        effort: Reasoning effort to show beside it.
     """
     composer = TextArea(
         prompt=f"{PROMPT} ",
@@ -62,7 +72,7 @@ def boot_tree(workspace: Path, *, resuming: bool = False) -> VBox:
     )
     return VBox(
         [
-            Slot(StatusBar(labels.header_left(workspace), ""), size=1),
+            Slot(StatusBar(labels.header_left(workspace), labels.header_right(model, effort) if model else ""), size=1),
             Slot(Rule(), size=1),
             Slot(Text("") if resuming else Welcome(), flex=1),
             Slot(Text(""), size=1),

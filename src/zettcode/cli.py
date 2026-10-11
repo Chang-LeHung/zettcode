@@ -255,12 +255,23 @@ async def launch(options: Options) -> None:
     Args:
         options: What the command line asked for.
     """
+    from .app.ui import labels
     from .app.ui.boot import boot_tree
-    from .paths import DEFAULT_LOG
+    from .paths import DEFAULT_LOG, config_path
     from .tui import DARK, Terminal, TerminalRunner, TuiApp
 
+    # The header's right side is a file read rather than a settings load: the
+    # frame that carries it is painted before any of this program's modules are
+    # imported, and a reader who has just started the shell should see which
+    # model and effort are about to answer, not an empty corner that fills in a
+    # tenth of a second later. A file that cannot be read leaves it empty and
+    # the application fills it in on the swap.
     tui = TuiApp(
-        boot_tree(Path(options.workspace).expanduser().resolve(), resuming=options.resume is not None),
+        boot_tree(
+            Path(options.workspace).expanduser().resolve(),
+            resuming=options.resume is not None,
+            model=labels.model_name(config_path()),
+        ),
         theme=DARK,
         auto_theme=True,
     )
