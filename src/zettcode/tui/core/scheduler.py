@@ -13,7 +13,7 @@ class Scheduler:
     interval so a busy widget cannot drive the loop at full speed.
     """
 
-    def __init__(self, *, max_fps: float = 30.0, clock: Callable[[], float] = monotonic) -> None:
+    def __init__(self, *, max_fps: float = 120.0, clock: Callable[[], float] = monotonic) -> None:
         """Configure the frame budget and the clock used to time frames.
 
         Args:
