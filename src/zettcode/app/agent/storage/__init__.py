@@ -13,12 +13,13 @@ behind one API: the persistence mixin and the :class:`SessionStore` plugin.
 """
 
 from .metadata import MAX_TITLE, SessionInfo
-from .records import MessageLine, Session, now
+from .records import STORE_FILE, MessageLine, Session, now
 from .store import SessionPersistenceMixin, SessionStore, workspace_key
 
 __all__ = [
     "MAX_TITLE",
     "MessageLine",
+    "STORE_FILE",
     "Session",
     "SessionInfo",
     "SessionPersistenceMixin",

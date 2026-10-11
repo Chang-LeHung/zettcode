@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from ....tui import SEPARATOR, ListItem, ListPage
 from ...agent.context import ContextReport
+from ..labels import compact_path
 
 
 class ContextPage(ListPage):
@@ -12,6 +15,7 @@ class ContextPage(ListPage):
     Shape::
 
         Context  25,926 / 128,000 tokens
+        ~/.zettcode/sessions/-Users-me-projects-api/0192f0a1-…/conversation.jsonl
           Source               Share    Count
           System prompt        1.0%    ( 1)     <- this application's instructions
           Environment notes    2.9%    ( 2)     <- cwd, tool snippets, guidelines
@@ -23,19 +27,25 @@ class ContextPage(ListPage):
 
     The percentage is a share of the context in use, not of the window: rows
     answer where the tokens went, and the title carries the absolute total
-    against the model's window. A disabled heading row names the columns, and
-    because the list aligns it like any other row its words sit exactly over
-    the numbers below them; the count column is as wide as the word, so the
-    heading fits the column it names. The footer names the counter that
-    produced the numbers: tiktoken when its encoding was available, a character
-    estimate when it was not.
+    against the model's window. Under the title sits the file this session is
+    stored in — the conversation itself, on disk, under the store root — which
+    is what a reader reaches for when the numbers ask for a closer look. A
+    disabled heading row names the columns, and because the list aligns it like
+    any other row its words sit exactly over the numbers below them; the count
+    column is as wide as the word, so the heading fits the column it names. The
+    footer names the counter that produced the numbers: tiktoken when its
+    encoding was available, a character estimate when it was not.
     """
 
-    def __init__(self, report: ContextReport, *, on_cancel=None) -> None:
+    def __init__(self, report: ContextReport, *, path: Path | None = None, on_cancel=None) -> None:
         """Map every source the request used to one row.
 
         Args:
             report: Breakdown to show, as produced by the context extension.
+            path: File this session is stored in. The home directory collapses to
+                ``~``; a line too long for the panel is cut by the page rather
+                than shortened here, so a narrow terminal loses the end of the
+                path and not which file it named.
             on_cancel: Called when the user presses Escape.
         """
         title = f"Context  {report.used:,} / {report.window:,} tokens"
@@ -54,6 +64,7 @@ class ContextPage(ListPage):
         super().__init__(
             [head, *items],
             title=title,
+            subtitle=compact_path(path, limit=None) if path is not None else None,
             footer=f" {SEPARATOR} ".join(_footer(report)),
             on_cancel=on_cancel,
             selected=1,

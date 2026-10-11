@@ -152,6 +152,15 @@ class ZettCodeAgent:
         """
         return self.runtime.persistence.session_title(self.session_id)
 
+    def session_path(self) -> Path:
+        """Return the file this session is stored in, under the store root.
+
+        The whole conversation, on disk: what ``/context`` shows beside the token
+        breakdown, and what a reader opens when they want the raw records rather
+        than a rendered transcript.
+        """
+        return self.runtime.persistence.session_path(self.session_id)
+
     @property
     def session_name(self) -> str:
         """Return the name to show for the active session.

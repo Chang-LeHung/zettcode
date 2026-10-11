@@ -149,7 +149,11 @@ class ShellCommands(CommandProvider):
             return CommandResult(
                 message="No request yet \u2014 send one (or resume a session), then `/context` shows the breakdown."
             )
-        return CommandResult(widget=self._panel(ContextPage(report, on_cancel=self.shell.close_page)))
+        return CommandResult(
+            widget=self._panel(
+                ContextPage(report, path=self.shell.agent.session_path(), on_cancel=self.shell.close_page)
+            )
+        )
 
     async def title(self, context: CommandContext) -> CommandResult:
         """Rename the active session, or report the name it already has.

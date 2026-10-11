@@ -15,8 +15,9 @@ from zett_agent.messages import UserMessage
 from zettcode._compat import ExceptionGroup
 from zettcode.app import pipeline as pipeline_module
 from zettcode.app.agent import runtime as runtime_module
+from zettcode.app.agent.agent import ZettCodeAgent
 from zettcode.app.agent.compaction import OnDemandCompaction
-from zettcode.app.agent.storage import SessionStore
+from zettcode.app.agent.storage import STORE_FILE, SessionStore
 from zettcode.config import ModelConfig, ZettCodeConfig
 
 
@@ -288,6 +289,22 @@ async def test_an_anthropic_entry_hands_the_adapter_the_corrected_base_url(tmp_p
 
     assert built == [called]
     await runtime.aclose()
+
+
+def test_the_agent_names_the_file_its_session_is_stored_in(tmp_path):
+    """`/context` shows it, so it has to be the store's own path and not a guess."""
+    config = ZettCodeConfig(
+        workspace=tmp_path,
+        models=(ModelConfig(model="m", token="t"),),
+        store=tmp_path / "sessions",
+    )
+    agent = ZettCodeAgent.preview(config)
+
+    path = agent.session_path()
+
+    assert path.parent.name == agent.session_id, "one directory per session"
+    assert path.name == STORE_FILE, "the conversation file the store appends to"
+    assert path.is_relative_to((tmp_path / "sessions").resolve())
 
 
 async def test_a_preview_runtime_starts_once_and_only_then(tmp_path, monkeypatch):

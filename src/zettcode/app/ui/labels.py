@@ -26,20 +26,22 @@ KEY_HINTS = f"{STOP_HINT}  ^D exit"
 DEFAULT_EFFORT = "medium"
 
 
-def compact_path(path: Path, *, limit: int = 38) -> str:
+def compact_path(path: Path, *, limit: int | None = 38) -> str:
     """Shorten a workspace path for the header.
 
     Args:
         path: Absolute path to display.
         limit: Most columns to keep; the home directory collapses to ``~``, and
-            anything longer keeps a leading ellipsis plus its tail. The budget
-            counts display columns, so a path with wide characters is measured
-            the way the header draws it.
+            anything longer keeps a leading ellipsis plus its tail. ``None``
+            keeps the whole path and collapses only the home directory, for a
+            line that has the room to show it.
     """
     value = str(path)
     home = str(Path.home())
     if value == home or value.startswith(home + "/"):
         value = "~" + value[len(home) :]
+    if limit is None:
+        return value
     width = display_width(value)
     if width <= limit:
         return value

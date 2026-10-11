@@ -304,6 +304,29 @@ def test_completion_popup_bands_the_selection_and_scrolls():
     assert popup.top == 1
 
 
+def test_list_page_draws_a_subtitle_and_gives_it_a_row_of_its_own():
+    """A page with a second fact to name spends one row on it, and the list moves down.
+
+    The context report is the caller: it names the file the session is stored in
+    under its title, which must not push the rows off the page or overlap them.
+    """
+    plain = ListPage([ListItem(f"item-{index}", f"row {index}") for index in range(4)], title="Title")
+    Harness(plain, width=44, height=12).render()
+    page = ListPage(
+        [ListItem(f"item-{index}", f"row {index}") for index in range(4)],
+        title="Title",
+        subtitle="~/.zettcode/sessions/api/0192/data.jsonl",
+    )
+    lines = Harness(page, width=44, height=12).render().text.splitlines()
+
+    assert page.subtitle in [line.strip() for line in lines]
+    assert lines.index(next(line for line in lines if "~/.zettcode" in line)) < lines.index(
+        next(line for line in lines if "row 0" in line)
+    )
+    assert page.list.rect.y == plain.list.rect.y + 1
+    assert page.list.rect.height == plain.list.rect.height - 1
+
+
 def test_list_page_shows_a_title_scrolls_and_keeps_a_bounded_list():
     page = ListPage(
         [ListItem(f"item-{index}", f"row {index}") for index in range(10)],

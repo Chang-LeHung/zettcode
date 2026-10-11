@@ -14,7 +14,7 @@ the highlighted name. A command with an argument takes it after a space —
 | `/effort` | Pick how much the model reasons: `/effort high`. |
 | `/btw` | Ask something that is answered here but never joins the conversation: `/btw <question>`. |
 | `/theme` | Pick a palette from a panel; `/theme dark` or `/theme light` switches in one step. |
-| `/context` | Show what is filling the context window right now. |
+| `/context` | Show what is filling the context window right now, and where this session is stored. |
 | `/compact` | Summarize the conversation now, instead of waiting for the window to fill. |
 | `/title` | Name this session: `/title users endpoint`. On its own, it reports the current name. |
 | `/export` | Write this session to a standalone HTML file: `/export [path]`. |
@@ -29,8 +29,10 @@ is already used, so `/model` always does what this page says.
 
 `/model`, `/resume`, `/theme`, and `/effort` open a picker. `Up` / `Down` move,
 `Enter` accepts, and `Esc` goes back without changing anything. `/context`
-opens a report rather than a choice: read it, then press `Esc` to close it.
-The conversation underneath stays visible.
+opens a report rather than a choice: read it, then press `Esc` to close it. The
+report names the file this conversation is written to under `~/.zettcode/sessions`,
+so a number that looks wrong leads somewhere you can look. The conversation
+underneath stays visible.
 
 Switching the model, the theme, or the effort re-lays out the screen: the header
 and the status line read from the same state the panels write to, so they show
