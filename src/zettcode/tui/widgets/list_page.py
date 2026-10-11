@@ -19,6 +19,7 @@ class ListPage(Widget):
     Shape::
 
         Title                                  <- one row below the top edge
+        Subtitle                               <- when there is one, over the rows
           > row one                            <- ListView: marker, band, scroll
             row two
         enter select \u00b7 esc back                 <- footer, on the bottom row
@@ -36,6 +37,9 @@ class ListPage(Widget):
     Args:
         items: Rows to show; the list scrolls past ``visible_rows``.
         title: Drawn one row below the page's top edge.
+        subtitle: Drawn under the title for a page with a second fact to name —
+            the file a report came from, say. It costs one row of the page's
+            height, and is left out of the layout entirely when absent.
         footer: Hint drawn on the bottom row.
         on_select: Receives the row committed with Enter.
         on_cancel: Called when the user presses Escape; ``None`` lets the key
@@ -51,6 +55,7 @@ class ListPage(Widget):
         items: Sequence[ListItem],
         *,
         title: str,
+        subtitle: str | None = None,
         footer: str = f"enter select {SEPARATOR} esc back",
         on_select: Callable[[ListItem], None] | None = None,
         on_cancel: Callable[[], None] | None = None,
@@ -60,6 +65,7 @@ class ListPage(Widget):
         """Build the page and its list, highlighting ``selected`` without notifying."""
         super().__init__()
         self.title = title
+        self.subtitle = subtitle
         self.footer = footer
         self.on_cancel = on_cancel
         self.visible_rows = None if visible_rows is None else max(1, visible_rows)
@@ -75,9 +81,10 @@ class ListPage(Widget):
     def layout(self, rect: Rect) -> None:
         """Inset the list under the title, capped to the visible rows."""
         super().layout(rect)
-        room = max(0, rect.height - 5)
+        over = 1 if self.subtitle is not None else 0
+        room = max(0, rect.height - 5 - over)
         height = room if self.visible_rows is None else min(self.visible_rows, room)
-        self.list.layout(Rect(rect.x + 2, rect.y + 3, max(0, rect.width - 4), height))
+        self.list.layout(Rect(rect.x + 2, rect.y + 3 + over, max(0, rect.width - 4), height))
 
     def render(self, canvas: Canvas) -> None:
         """Fill the page, then draw the title, the list, and the footer."""
@@ -89,6 +96,8 @@ class ListPage(Widget):
         hint = Style(foreground=theme.muted, background=theme.surface_alt)
         room = max(0, self.rect.width - 4)
         canvas.draw_text(self.rect.x + 2, self.rect.y + 1, self.title, heading, max_width=room)
+        if self.subtitle is not None:
+            canvas.draw_text(self.rect.x + 2, self.rect.y + 2, self.subtitle, hint, max_width=room)
         self.list.render(canvas)
         canvas.draw_text(self.rect.x + 2, self.rect.bottom - 1, self.footer, hint, max_width=room)
 

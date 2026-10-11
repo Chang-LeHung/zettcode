@@ -53,7 +53,7 @@ from zettcode.app.agent.rows import (
     terminal_safe,
 )
 from zettcode.app.agent.side import SideQuestions
-from zettcode.app.agent.storage import SessionInfo, SessionStore
+from zettcode.app.agent.storage import STORE_FILE, SessionInfo, SessionStore
 from zettcode.app.agent.usage import USAGE_EVENT_NAME, UsageExtension, UsageSnapshot
 from zettcode.app.brand import LOGO_LINES, LOGO_PALETTE, LOGO_PIXELS
 from zettcode.app.commands import Command, CommandContext, CommandResult
@@ -153,9 +153,19 @@ class FakeClient:
 
 
 class FakePersistence:
+    #: Store root the fake writes its session paths under; the real one is
+    #: ``~/.zettcode/sessions`` and the layout below it is the store's own.
+    root: Path = Path("/tmp/zettcode-sessions")
+
     def __init__(self) -> None:
         self.sessions: list[SessionInfo] = []
         self.store: SessionStore | None = None
+
+    def session_path(self, session_id: str) -> Path:
+        """Mirror the store's layout: one directory per session, one file in it."""
+        if self.store is not None:
+            return self.store.session_path(session_id)
+        return self.root / "workspace" / session_id / STORE_FILE
 
     async def list_sessions(self, limit: int | None = None):
         return self.sessions[:limit] if limit is not None else list(self.sessions)
@@ -1634,6 +1644,12 @@ async def test_the_context_command_reports_what_the_request_carries():
     assert "Context" in text and "tokens" in text
     # The title carries the window; the rows carry shares of the context.
     assert page.title.startswith("Context  ") and page.title.endswith(" / 128,000 tokens")
+    # Under it, the file this session is stored in: the reader's way from the
+    # numbers to the conversation on disk. The panel is narrower than the path,
+    # so what is on screen is its start and the whole thing is on the page.
+    assert page.subtitle == str(app.agent.session_path())
+    assert page.subtitle.endswith(STORE_FILE)
+    assert "/tmp/zettcode-sessions/workspace" in text
     # The window share is not repeated here; the rows carry the context shares,
     # which add up to the whole of what the next request would send.
     assert "%" not in page.title

@@ -156,7 +156,7 @@ def test_the_header_text_has_one_definition_per_layer():
     """
     long = Path("/tmp") / ("\u6df1" * 30)
     for path in (Path("/tmp"), Path.home() / "projects" / "api", long):
-        for limit in (10, 38):
+        for limit in (10, 38, None):
             assert compact_path(path, limit=limit) == agent_compact_path(path, limit=limit)
 
 
