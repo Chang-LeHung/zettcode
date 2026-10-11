@@ -8,7 +8,7 @@ panels temporarily cover the lower part of it.
   ▐ zettcode  ~/projects/api          DeepSeek Pro · high  ← header
  ─────────────────────────────────────────────────────────
  ● Read src/api/users.py                                ← transcript
- ● Edited src/api/users.py (2 edits)                      (scrolls)
+ ● Edited src/api/users.py (2 edits) +24 -6             (scrolls)
  ● Ran pytest tests/test_users.py
  ─────────────────────────────────────────────────────────
    ▸ panels open here: model, context, sessions           ← panel
@@ -58,8 +58,10 @@ Every kind of output has its own row, in the order it happened:
 - **Thinking** is collapsed to one row. `Ctrl-T` or a click opens the newest one;
   each block can be opened on its own.
 - **Tool calls** read like a log — `Read src/app.py`, `Ran pwd`, `Edited
-  app.py (2 edits)`, `Searched TODO in src`. The first five lines of output stay
-  visible and the rest is behind a click; nothing is ever dumped as JSON.
+  app.py (2 edits) +24 -6`, `Searched TODO in src`. An edit's added lines are
+  painted green and its removed ones red, whether the call is still running or
+  done. The first five lines of output stay visible and the rest is behind a
+  click; nothing is ever dumped as JSON.
 - **The answer** is rendered as Markdown: headings, lists, quotes, links,
   **bold**, *emphasis*, `inline code`, fenced code with syntax colours, and
   tables drawn with per-column rules that survive wide CJK characters. An HTML

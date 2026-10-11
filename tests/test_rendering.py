@@ -12,13 +12,19 @@ from zettcode.app.agent.rendering import (
     Renderers,
     ToolHandler,
     ToolRow,
+    edited_lines,
     language_for_path,
 )
 
 
 def describe(name: str, **arguments: object) -> str:
     """Return the row title the default chain renders for one call."""
-    return DEFAULT_RENDERERS.describe(name, arguments).title
+    return row(name, **arguments).title
+
+
+def row(name: str, **arguments: object) -> ToolRow:
+    """Return the whole row the default chain renders for one call."""
+    return DEFAULT_RENDERERS.describe(name, arguments)
 
 
 def test_the_chain_phrases_the_coding_tools():
@@ -34,6 +40,79 @@ def test_the_chain_phrases_the_coding_tools():
     # ``name`` is both the helper's parameter and the tool's argument, so this
     # one goes through the chain directly.
     assert DEFAULT_RENDERERS.describe("read_skill", {"name": "code-review"}).title == "Read skill code-review"
+
+
+def test_an_edit_row_counts_the_lines_it_changes():
+    """The row says how large the change is, not only how many edits it carries.
+
+    `Replaced 2 occurrences in app.py` is the tool's whole answer, and it reads the
+    same for a two-line fix and a two-hundred-line rewrite. The edits hold both
+    texts, so the difference is counted where the tool cannot be asked, and the
+    counts ride outside the title because they are drawn in their own colours.
+    """
+    twelve = "\n".join(f"line {index}" for index in range(12))
+
+    counted = row("replace_in_file", path="app.py", edits=[{"old_text": "a\nb\nc", "new_text": twelve}])
+
+    assert (counted.title, counted.added, counted.removed) == ("Edited app.py (1 edit)", 12, 3)
+
+    # A side stays at zero when nothing was added or removed: the renderer draws
+    # nothing for it, so there is no `-0` for a reader to decode.
+    added = row("replace_in_file", path="app.py", edits=[{"old_text": "one\ntwo", "new_text": "one\ntwo\nthree"}])
+    assert (added.title, added.added, added.removed) == ("Edited app.py (1 edit)", 1, 0)
+
+    removed = row("replace_in_file", path="app.py", edits=[{"old_text": "one\ntwo\nthree", "new_text": "one\nthree"}])
+    assert (removed.title, removed.added, removed.removed) == ("Edited app.py (1 edit)", 0, 1)
+
+    both = row(
+        "replace_in_file",
+        path="app.py",
+        edits=[{"old_text": "a", "new_text": "b"}, {"old_text": "c\nd", "new_text": "e"}],
+    )
+    assert (both.title, both.added, both.removed) == ("Edited app.py (2 edits)", 2, 3)
+
+
+def test_a_rewritten_line_counts_as_one_added_and_one_removed():
+    """The count is the difference, not the difference in length.
+
+    A replacement that keeps the lines around it and changes one of them is one
+    line added and one removed; subtracting the lengths would call it nothing.
+    """
+    rewritten = row(
+        "replace_in_file", path="app.py", edits=[{"old_text": "keep\nold\nkeep", "new_text": "keep\nnew\nkeep"}]
+    )
+
+    assert (rewritten.title, rewritten.added, rewritten.removed) == ("Edited app.py (1 edit)", 1, 1)
+
+
+def test_edits_that_carry_no_texts_are_not_guessed_at():
+    """An argument shape the counter does not recognise leaves the row as it was."""
+    assert describe("replace_in_file", path="app.py", edits=[{"old": "a"}]) == "Edited app.py (1 edit)"
+    assert describe("replace_in_file", path="app.py", edits="two edits, honest") == "Edited app.py"
+
+
+def test_the_counter_ignores_shapes_it_cannot_read():
+    """A count is never guessed from a shape the counter does not recognise.
+
+    The arguments arrive from the model, so anything can be in them; a row that
+    invented a number would be worse than a row that says less.
+    """
+    assert edited_lines("two edits, honest") == (0, 0)
+    assert edited_lines(None) == (0, 0)
+    assert edited_lines([]) == (0, 0)
+    assert edited_lines([{"old_text": "a"}, {"new_text": "b"}, "junk", 7]) == (0, 0)
+    assert edited_lines([{"old_text": "a", "new_text": "b"}]) == (1, 1)
+
+
+def test_an_edit_that_replaces_every_occurrence_counts_once():
+    """Only the file knows how many matches there are; the row does not guess.
+
+    `replace_all` may hit five occurrences or none, and the arguments cannot say
+    which — the tool's answer names the count, and the row counts the edit.
+    """
+    once = row("replace_in_file", path="app.py", edits=[{"old_text": "old", "new_text": "new", "replace_all": True}])
+
+    assert (once.title, once.added, once.removed) == ("Edited app.py (1 edit)", 1, 1)
 
 
 def test_a_namespaced_mcp_tool_keeps_its_server_after_the_tool_name():

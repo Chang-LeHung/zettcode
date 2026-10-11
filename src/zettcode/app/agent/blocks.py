@@ -320,6 +320,10 @@ class ToolProcessor(EntryProcessor[ToolEntry]):
         # waiting row owns the motion, and a row that does not move is a row an
         # animation step never has to rebuild.
         heading: list[Span] = [Span(f"{symbol} ", marker), Span(title, label)]
+        if entry.added:
+            heading.append(Span(f" +{entry.added}", Style(foreground=theme.accent)))
+        if entry.removed:
+            heading.append(Span(f" -{entry.removed}", Style(foreground=theme.error)))
         if timing:
             heading.append(Span(timing, muted))
         if disclosure:
