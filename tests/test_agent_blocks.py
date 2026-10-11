@@ -281,6 +281,38 @@ def test_a_failure_notice_is_painted_as_an_error():
     assert rows[1].spans[0].style.foreground == DARK.error
 
 
+def test_an_edit_row_paints_its_additions_and_deletions_in_their_own_colours():
+    """A reader scans a list of edits for size; colour answers that faster than words.
+
+    The counts sit outside the title for this reason: a row whose words are one
+    string is painted in one colour, and `+12 -3` in the green and red a diff
+    uses is the whole point of showing them.
+    """
+    entry = ToolEntry(
+        id=1,
+        call_id="call-1",
+        tool="replace_in_file",
+        title="Edited app.py (2 edits)",
+        added=12,
+        removed=3,
+        status=EntryStatus.COMPLETED,
+        text="Replaced 2 occurrences in app.py",
+    )
+
+    spans = [span for line in render_entry(entry, 80, DARK, 0) for span in line.spans]
+
+    assert (next(span for span in spans if "12" in span.text).text).strip() == "+12"
+    assert next(span for span in spans if "+12" in span.text).style.foreground == DARK.accent
+    assert next(span for span in spans if "-3" in span.text).style.foreground == DARK.error
+    # A row with nothing counted paints no fragment at all, in any colour.
+    plain = replace(entry, added=0, removed=0)
+    assert all(
+        "12" not in span.text and "-3" not in span.text
+        for line in render_entry(plain, 80, DARK, 0)
+        for span in line.spans
+    )
+
+
 def test_tool_component_keeps_code_colours_and_bounded_preview():
     entry = ToolEntry(
         id=1,

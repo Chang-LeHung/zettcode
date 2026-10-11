@@ -22,6 +22,7 @@ only place a chat preamble such as ``Assistant:`` can appear.
 
 from __future__ import annotations
 
+import difflib
 import json
 import re
 from abc import ABC, abstractmethod
@@ -59,10 +60,16 @@ class ToolRow:
         title: The row's words, e.g. ``Read src/app.py``.
         language: Scanner for the row's output when it is source code, so a
             ``read_file`` body is highlighted; ``None`` draws it plain.
+        added: Lines the call adds, drawn after the title in the colour an
+            addition gets; zero draws nothing.
+        removed: Lines the call removes, drawn after the title in the colour a
+            deletion gets; zero draws nothing.
     """
 
     title: str
     language: str | None = None
+    added: int = 0
+    removed: int = 0
 
 
 class RenderHandler(ABC):
@@ -150,6 +157,47 @@ def argument(arguments: Mapping[str, object], key: str, default: str = "") -> st
     return default
 
 
+def edited_lines(edits: object) -> tuple[int, int]:
+    """Return the lines a ``replace_in_file`` call adds and removes.
+
+    The tool answers ``Replaced 2 occurrences in app.py``, which says how many
+    edits landed but not how large they were: a two-line fix and a two-hundred-line
+    rewrite read the same. The edits carry both texts, so the difference is counted
+    here — with :class:`difflib.SequenceMatcher` rather than by subtracting lengths,
+    because a replacement that keeps the lines around it should not read as a
+    rewrite, and that is what a reader comparing two rows is looking at.
+
+    Args:
+        edits: The call's ``edits`` argument, as the model sent it: a sequence of
+            mappings with ``old_text`` and ``new_text``. Anything else is ignored
+            rather than guessed at.
+
+    Returns:
+        ``(added, removed)`` across every edit; ``(0, 0)`` when there is nothing
+        countable, which is also what a call with no edits at all answers.
+
+    An edit that replaces every occurrence counts once, not once per occurrence:
+    how many the file holds is something only the file knows, and the tool's own
+    answer is where that number appears.
+    """
+    if not isinstance(edits, Sequence) or isinstance(edits, str):
+        return (0, 0)
+    added = removed = 0
+    for edit in edits:
+        if not isinstance(edit, Mapping):
+            continue
+        old_text, new_text = edit.get("old_text"), edit.get("new_text")
+        if not isinstance(old_text, str) or not isinstance(new_text, str):
+            continue
+        matcher = difflib.SequenceMatcher(None, old_text.splitlines(), new_text.splitlines())
+        for tag, old_start, old_end, new_start, new_end in matcher.get_opcodes():
+            if tag in ("replace", "delete"):
+                removed += old_end - old_start
+            if tag in ("replace", "insert"):
+                added += new_end - new_start
+    return (added, removed)
+
+
 def summarise(arguments: Mapping[str, object], *, limit: int = 48) -> str:
     """Return ``key=value`` pairs for a tool no handler claims.
 
@@ -214,12 +262,20 @@ class EditTool(ToolHandler):
     names = frozenset({"replace_in_file"})
 
     def describe(self, name: str, arguments: Mapping[str, object]) -> ToolRow:
-        """Count the edits so a multi-edit call is visible before it lands."""
+        """Count the edits, and the lines they add and remove, before they land.
+
+        A multi-edit call and a one-line call are both worth seeing in advance, and
+        so is the size of the change: `+12 -3` beside the file says whether this is
+        a tweak or a rewrite, which is the question a reader asks the row.
+        """
         path = argument(arguments, "path", "(unknown file)")
         edits = arguments.get("edits")
         count = len(edits) if isinstance(edits, Sequence) and not isinstance(edits, str) else 0
+        added, removed = edited_lines(edits)
         suffix = f" ({count} edit{'' if count == 1 else 's'})" if count else ""
-        return ToolRow(f"Edited {path}{suffix}")
+        # The counts ride outside the title: they are drawn in the colours an
+        # addition and a deletion get, which a title made of one string cannot be.
+        return ToolRow(f"Edited {path}{suffix}", added=added, removed=removed)
 
 
 class DeleteTool(ToolHandler):

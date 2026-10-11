@@ -474,6 +474,8 @@ class Transcript:
                 tool=name,
                 title=row.title,
                 language=row.language,
+                added=row.added,
+                removed=row.removed,
                 started_at=self.clock(),
             )
         )

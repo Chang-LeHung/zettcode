@@ -18,6 +18,35 @@ def _rows(transcript: Transcript) -> list[tuple[str, str]]:
     return [(entry.kind, getattr(entry, "text", "")) for entry in transcript.entries]
 
 
+async def test_a_replayed_edit_row_keeps_the_counts_it_was_phrased_with(tmp_path: Path):
+    """The row is phrased from the call's arguments in both paths.
+
+    A live call and a stored one carry the same arguments, so a resumed session
+    must show the same `(1 edit, +1 -3)`. A row that counted the lines only while
+    the call was live would be exactly the difference the parity rule exists to
+    prevent.
+    """
+    edits = [{"old_text": "a\nb\nc", "new_text": "one"}]
+    store = SessionStore(tmp_path)
+    await store.append("s", "req", UserMessage(content="tighten the parser"))
+    await store.append(
+        "s",
+        "req",
+        AssistantMessage(tool_calls=(ToolCall("call-1", "replace_in_file", {"path": "app.py", "edits": edits}),)),
+    )
+    await store.append(
+        "s",
+        "req",
+        ToolMessage(tool_call_id="call-1", name="replace_in_file", content="Replaced 1 occurrence in app.py"),
+    )
+
+    replayed = replay(store.read("s"))
+
+    tool_rows = [entry for entry in replayed.transcript.entries if getattr(entry, "kind", None) == "tool"]
+
+    assert [(entry.title, entry.added, entry.removed) for entry in tool_rows] == [("Edited app.py (1 edit)", 1, 3)]
+
+
 async def test_replay_builds_the_rows_the_live_events_built(tmp_path: Path):
     """The two paths must agree, or a resumed session looks different from the run."""
     live = Transcript()

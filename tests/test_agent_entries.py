@@ -327,6 +327,11 @@ def test_a_tool_row_rebuilds_for_every_field_the_renderer_reads():
     entry.text = "print(2)"
     assert _painted(entry) != before
 
+    entry = ToolEntry(id=6, call_id="c6", tool="replace_in_file", title="Edited app.py", status=EntryStatus.COMPLETED)
+    before = _painted(entry)
+    entry.added, entry.removed = 12, 3
+    assert _painted(entry) != before, "the counts change what the row looks like"
+
     entry = ToolEntry(id=4, call_id="c4", tool="read_file", title="Read app.py", started_at=0.0, duration=1.0)
     before = _painted(entry)
     entry.status = EntryStatus.COMPLETED

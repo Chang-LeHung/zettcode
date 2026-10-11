@@ -7,7 +7,7 @@
   ▐ zettcode  ~/projects/api          DeepSeek Pro · high  ← 头部
  ─────────────────────────────────────────────────────────
  ● Read src/api/users.py                                ← 对话区
- ● Edited src/api/users.py (2 edits)                      （可滚动）
+ ● Edited src/api/users.py (2 edits) +24 -6             （可滚动）
  ● Ran pytest tests/test_users.py
  ─────────────────────────────────────────────────────────
    ▸ 弹窗出现在这里：模型 / 上下文 / 会话                  ← 面板
@@ -51,8 +51,9 @@ VS Code 默认显示的是**进程名**，不是程序设置的窗口标题。�
 
 - **你的消息**用 `›` 和一条底色标出。
 - **思考**默认折叠成一行，`Ctrl-T` 或单击展开最新的一段。
-- **工具调用**读起来像日志 —— `Read src/app.py`、`Ran pwd`、`Edited app.py (2 edits)`、
-  `Searched TODO in src`。输出默认显示前五行，其余点击展开；永远不会把 JSON 直接倒出来。
+- **工具调用**读起来像日志 —— `Read src/app.py`、`Ran pwd`、`Edited app.py (2 edits) +24 -6`、
+  `Searched TODO in src`。编辑新增的行画成绿色、删除的行画成红色（调用进行中或已结束都一样）。
+  输出默认显示前五行，其余点击展开；永远不会把 JSON 直接倒出来。
 - **回答**按 Markdown 渲染：标题、列表、引用、链接、**粗体**、*斜体*、`行内代码`、带语法
   高亮的代码块，以及没有外框、用逐列横线分隔、能正确处理中日韩宽字符的表格。HTML 实体按它
   所指的字符显示：`&nbsp;` 是一个缩进格，`&lt;` 就是一个尖括号。

@@ -172,6 +172,8 @@ class ToolEntry(BaseEntry):
     tool: str
     title: str
     language: str | None = None
+    added: int = 0
+    removed: int = 0
     text: str = ""
     expanded: bool = False
     status: EntryStatus = EntryStatus.RUNNING
@@ -188,7 +190,16 @@ class ToolEntry(BaseEntry):
         The frame is not part of it, for the same reason a reasoning row's is
         not: a running call is painted flat, and only its timer moves.
         """
-        return (self.title, self.expanded, self.text, self.status, self.duration, self.language)
+        return (
+            self.title,
+            self.expanded,
+            self.text,
+            self.status,
+            self.duration,
+            self.language,
+            self.added,
+            self.removed,
+        )
 
 
 @dataclass(slots=True, kw_only=True)
