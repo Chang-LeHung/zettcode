@@ -44,8 +44,11 @@ TOOL_EXPANDED_ROWS = 40
 PROCESSING = "Processing"
 
 #: What the reader can press to stop the request, shown beside its clock. The
-#: status row builds its own hint from this, so the two cannot drift apart.
-STOP_HINT = "^C stop"
+#: status row builds its own hint from this, so the two cannot drift apart, and
+#: both keys are named because both work: Escape stops a turn while one is in
+#: flight, and a reader should not have to remember which of the two the shell
+#: reserved for it.
+STOP_HINT = "^C/Esc to interrupt"
 
 # Matches both escape families a tool can smuggle into its output: CSI
 # (``ESC [`` parameters and a final byte) and OSC (``ESC ]`` up to BEL or ST).

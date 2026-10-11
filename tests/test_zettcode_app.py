@@ -88,6 +88,7 @@ from zettcode.tui import (
     ListItem,
     ListPage,
     Rect,
+    Screen,
     Span,
     Style,
     Text,
@@ -966,7 +967,7 @@ async def test_plugin_segments_join_the_header_and_status_rows():
     assert "plug-header" in text
     # A plugin segment follows the built-in content of its row.
     assert text.index("gpt-5-mini") < text.index("plug-header")
-    assert status_line.index("^C stop") < status_line.index("plug-status")
+    assert status_line.index("^C/Esc to interrupt") < status_line.index("plug-status")
     context = seen[0]
     assert context.model.name == "gpt-5-mini" and context.model.config.model == "gpt-5-mini"
     assert context.session.workspace == app.agent.workspace
@@ -1011,7 +1012,7 @@ async def test_a_plugin_can_take_a_builtin_row_side_over():
     assert app._status_left().text == "mine"
     # The slots it did not touch keep their builtin content.
     assert "gpt-5-mini" in app._header_right().text
-    assert "^C stop" in app._status_right().text
+    assert "^C/Esc to interrupt" in app._status_right().text
 
 
 async def test_a_declared_builder_can_take_the_side_over():
@@ -1227,7 +1228,8 @@ def test_a_row_switches_to_minutes_once_a_minute_is_past():
     now[0] = 100.4
     transcript.advance_frame()
 
-    assert f"Processing (1m 40s {SEPARATOR} {STOP_HINT})" in "\n".join(_rendered(transcript, 40))
+    # Wide enough for the aside, which names both keys that stop a run.
+    assert f"Processing (1m 40s {SEPARATOR} {STOP_HINT})" in "\n".join(_rendered(transcript, 48))
 
 
 def test_clock_text_formats_a_local_reading():
@@ -3300,6 +3302,58 @@ async def test_a_scrolled_transcript_offers_back_to_bottom_by_click_and_escape()
     harness.press("escape")
 
     assert view.follow_tail is True
+
+
+async def test_escape_stops_a_running_turn():
+    """The key that means "get me out of this" does not depend on which one it is.
+
+    Ctrl-C has always stopped a turn and the hint beside the clock says so; a
+    reader who reaches for Escape instead should get the same answer rather than a
+    jump to the tail of a conversation they are trying to leave.
+    """
+    app = build_app(block=True)
+    harness = _harness(app)
+    harness.write("a question that will take a while")
+    harness.press("enter")
+    await asyncio.sleep(0)
+    assert app.busy is True
+
+    harness.press("escape")
+
+    # The turn ends because Escape cancelled it: without the binding this would
+    # wait for a request the fake client never finishes.
+    await asyncio.wait_for(app.task, 1.0)
+
+    assert app.busy is False
+    assert any("stopped" in entry.text for entry in app.transcript.entries), "and the shell says so"
+
+
+async def test_escape_leaves_the_keys_other_jobs_alone_while_a_turn_runs():
+    """A panel, a scrolled transcript, and a selection keep Escape while they use it."""
+    app = build_app(block=True)
+    harness = _harness(app)
+    harness.write("a question that will take a while")
+    harness.press("enter")
+    await asyncio.sleep(0)
+    assert app.busy is True
+    # A panel is pushed the way the shell pushes one — for a command that needs
+    # approval, or a question the model is waiting on, both of which happen while
+    # a turn is in flight.
+    app.app.push_screen(
+        Screen(
+            ListPage([ListItem("a", "alpha")], title="Panel", on_cancel=app.close_page),
+            name=app_module.PAGE_SCREEN,
+            modal=True,
+        )
+    )
+    harness.render()
+
+    harness.press("escape")
+
+    assert app.app.screens.top.name != app_module.PAGE_SCREEN, "the panel took the key"
+    assert app.busy is True, "and the turn is still running"
+    app.task.cancel()
+    await app.task
 
 
 async def test_ctrl_c_copies_the_transcript_selection():
