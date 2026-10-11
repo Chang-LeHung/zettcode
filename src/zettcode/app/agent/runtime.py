@@ -12,7 +12,6 @@ stay out of the import graph until they are needed.
 from __future__ import annotations
 
 import asyncio
-import importlib
 import os
 import platform
 import sys
@@ -37,6 +36,7 @@ from ..._compat import BaseExceptionGroup
 from ...config import DEFAULT_ANTHROPIC_BASE_URL, ModelConfig, ZettCodeConfig
 from ...paths import DEFAULT_MCP_CONFIG
 from ...plugins import Plugins, load_plugins
+from ..pipeline import ImportPipeline
 from .approval import ShellApprovalMemory
 from .capabilities import ModelCapabilities
 from .compaction import OnDemandCompaction
@@ -52,6 +52,23 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only; the imports are the co
     #: The adapters this runtime may own. Each is an ``AgentModel``; naming both
     #: is what also says they can be closed, which the runtime does at shutdown.
     Adapter: TypeAlias = OpenAIProvider | AnthropicProvider
+
+
+#: Modules imported ahead of the code that needs them, in this order. The model
+#: SDKs are the cost — hundreds of milliseconds each, even with their bytecode
+#: cached — and the zett-agent module is what :meth:`ZettCodeRuntime._build`
+#: would otherwise import on the event loop. A name added here moves its import
+#: off the first turn and onto the pipeline's thread.
+WARM_MODULES = ("openai", "anthropic", "zett_agent.client")
+
+
+#: Modules a request needs only under the configuration that asks for them: each
+#: of these pulls its own machinery, and a run that has no use for one should not
+#: pay for it. The names are the ones :meth:`ZettCodeRuntime._build` imports.
+WARM_MODULES_WHEN = (
+    ("subagent_enabled", "zett_agent.extensions.subagent"),
+    ("mcp_enabled", "zett_agent.extensions.mcp"),
+)
 
 
 def build_system_prompt(config: ZettCodeConfig, *, now: datetime | None = None) -> str:
@@ -159,8 +176,8 @@ def _build_provider(selected: ModelConfig) -> Adapter:
     """Build the adapter one model entry asks for, importing only its SDK.
 
     The import lives in this function rather than at module level because it is
-    the cost the first frame may not pay; :meth:`ZettCodeRuntime._preload` warms
-    the same module off the event loop before this runs.
+    the cost the first frame may not pay; the runtime's import pipeline warms the
+    same module on its own thread before this runs.
     """
     if selected.anthropic:
         from zett_agent.providers.anthropic import AnthropicProvider
@@ -210,6 +227,10 @@ class ZettCodeRuntime:
     model: Adapter | None = None
     _starting: asyncio.Task[ZettCodeRuntime] | None = field(default=None, repr=False)
     _models: dict[ModelConfig, Adapter] = field(default_factory=dict)
+    #: The warm-up imports, running on a daemon thread, and the loop-side event
+    #: that releases whoever is waiting for them.
+    _imports: ImportPipeline | None = field(default=None, repr=False)
+    _ready: asyncio.Event | None = field(default=None, repr=False)
 
     @classmethod
     def preview(cls, config: ZettCodeConfig) -> ZettCodeRuntime:
@@ -250,22 +271,69 @@ class ZettCodeRuntime:
         """Build the provider and the client once, whoever asks first.
 
         The task is kept, so a background warm-up and the first turn cannot
-        build two clients, and every later caller gets the same answer.
+        build two clients, and every later caller gets the same answer. What the
+        build needs imported starts here as well, on a thread nobody waits for:
+        a launch that ends before its first turn ends without paying for them.
         """
         if self._starting is None:
+            self._begin_imports()
             self._starting = asyncio.ensure_future(self._build())
         return self._starting
 
-    async def _build(self) -> ZettCodeRuntime:
-        """Import what a provider needs, then hand the client its extensions.
+    def warm_modules(self) -> tuple[str, ...]:
+        """Return the modules to import ahead of the first turn, in order.
 
-        The imports and the SDK client construction block for a few hundred
-        milliseconds — a model SDK alone is most of it on a cold cache — and by
-        the time this runs the shell is already on screen taking the
-        reader's keys. They happen in a worker thread so the event loop keeps
-        painting; everything the loop owns is still built on it.
+        The shell calls :meth:`start` once the first frame is painted, so what
+        this list costs is paid while the reader reads that screen. A module
+        belongs here when a turn needs it on the way to its first request and
+        the first frame does not: the model SDKs, the zett-agent client, and the
+        extensions the configuration turns on.
         """
-        await asyncio.to_thread(self._preload)
+        config = self.config
+        optional = tuple(module for setting, module in WARM_MODULES_WHEN if getattr(config, setting, False))
+        return (*WARM_MODULES, *optional)
+
+    def _begin_imports(self) -> None:
+        """Start the import pipeline, and the loop-side signal that releases its waiters.
+
+        The signal is an :class:`asyncio.Event` set from the pipeline's thread,
+        so the build waits for the imports without occupying a thread of its
+        own: the default executor's threads are joined while the interpreter
+        shuts down, which is what would keep a launch that ends early alive for
+        the whole import.
+        """
+        loop = asyncio.get_running_loop()
+        self._ready = asyncio.Event()
+
+        def finished() -> None:
+            """Release the build, from whichever thread the pipeline reports on."""
+            loop.call_soon_threadsafe(self._imports_done)
+
+        self._imports = ImportPipeline(self.warm_modules())
+        self._imports.start(on_finish=finished)
+
+    def _imports_done(self) -> None:
+        """Release whoever waits on the imports; runs on the event loop."""
+        if self._ready is not None:
+            self._ready.set()
+
+    @property
+    def _waiting_for_imports(self) -> bool:
+        """Return whether a build is still parked on the import pipeline."""
+        return self._ready is not None and not self._ready.is_set()
+
+    async def _build(self) -> ZettCodeRuntime:
+        """Wait for the imports, then hand the client its extensions.
+
+        The imports block for a few hundred milliseconds — a model SDK alone is
+        most of it on a cold cache — and they are already running on the
+        pipeline's thread, so waiting here usually finds them finished and costs
+        nothing. The event loop keeps painting through it, and the provider
+        built at the end of the wait finds its SDK cached instead of importing
+        it here; everything the loop owns is still built on the loop.
+        """
+        if self._ready is not None:
+            await self._ready.wait()
 
         from zett_agent.client import create_agent
 
@@ -312,25 +380,6 @@ class ZettCodeRuntime:
         self.model = model
         self.client = client
         return self
-
-    def _preload(self) -> None:
-        """Import the modules a request needs, in a worker thread.
-
-        The blocker is a model SDK: zett-agent builds its client from the one
-        the entry speaks — the OpenAI SDK for a compatible endpoint, the
-        Anthropic one for the Messages API — inside a provider constructor
-        rather than in a module header, and it is a few hundred milliseconds of
-        modules. Both are imported, not only the active model's: ``/model`` may
-        select an entry that speaks the other API, and building its adapter
-        would otherwise import that SDK on the event loop in the middle of a
-        turn. The subagent extension is cheap now that zett-agent loads its
-        SQLite store lazily, so importing it here keeps that later import a
-        cache hit too.
-        """
-        importlib.import_module("anthropic")
-        importlib.import_module("openai")
-        if self.config.subagent_enabled:
-            importlib.import_module("zett_agent.extensions.subagent")
 
     def _provider(self, selected: ModelConfig) -> Adapter:
         """Return the provider for one configured model, building it if needed.
@@ -438,8 +487,20 @@ class ZettCodeRuntime:
         self.session_id = session_id.strip()
 
     async def aclose(self) -> None:
-        """Release all resources owned by this runtime."""
-        if self._starting is not None and not self._starting.done():
+        """Release all resources owned by this runtime.
+
+        A build that is still parked on its imports is cancelled rather than
+        awaited: those modules are for a turn that will not happen now, and the
+        thread importing them is a daemon this process does not wait for either.
+        A build that is past them is awaited, because it is already creating the
+        client this method has to close.
+        """
+        if self._waiting_for_imports and self._starting is not None:
+            self._starting.cancel()
+        if self._imports is not None:
+            # Whether or not a build is waiting, the imports have no reader left.
+            self._imports.stop()
+        if self._starting is not None:
             await asyncio.gather(self._starting, return_exceptions=True)
         for model in self._models.values():
             await model.aclose()

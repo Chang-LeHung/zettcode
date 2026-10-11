@@ -4,7 +4,6 @@ import asyncio
 import subprocess
 import sys
 import time
-import types
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -14,6 +13,7 @@ from zett_agent.extensions.skill import SkillExtension
 from zett_agent.messages import UserMessage
 
 from zettcode._compat import ExceptionGroup
+from zettcode.app import pipeline as pipeline_module
 from zettcode.app.agent import runtime as runtime_module
 from zettcode.app.agent.compaction import OnDemandCompaction
 from zettcode.app.agent.storage import SessionStore
@@ -141,29 +141,72 @@ def test_the_runtime_module_costs_nothing_until_it_starts(tmp_path):
     assert result.stdout.strip() == "False False False False False"
 
 
-@pytest.mark.parametrize(("anthropic", "subagent"), [(False, True), (True, True), (True, False)])
-def test_the_warm_up_imports_both_provider_sdks(tmp_path, monkeypatch, anthropic, subagent):
-    """Both SDKs are warmed, not only the active model's, and nothing else is.
+@pytest.mark.parametrize(
+    ("anthropic", "subagent", "mcp"),
+    [(False, True, True), (True, False, False), (True, True, True)],
+)
+def test_the_warm_up_names_every_module_a_request_needs(tmp_path, monkeypatch, anthropic, subagent, mcp):
+    """Both SDKs are warmed, not only the active model's, and the optional ones follow the config.
 
     ``/model`` can select an entry that speaks the other API, and the adapter
     built for it imports its SDK in the constructor: doing that on the event
     loop, in the middle of a turn, is the freeze this warm-up exists to avoid.
+    The extensions the configuration turns off are left out, so a run with no
+    MCP config never pays for the MCP client.
     """
-    imported: list[str] = []
-    monkeypatch.setattr(runtime_module, "importlib", types.SimpleNamespace(import_module=imported.append))
     monkeypatch.setattr(runtime_module.os, "chdir", lambda path: None)
     config = ZettCodeConfig(
         workspace=tmp_path,
         models=(ModelConfig(model="m", token="t", anthropic=anthropic),),
         store=tmp_path / "sessions",
         subagent_enabled=subagent,
+        mcp_enabled=mcp,
         mcp_config=tmp_path / "absent-mcp.json",
     )
 
-    runtime_module.ZettCodeRuntime.preview(config)._preload()
+    names = runtime_module.ZettCodeRuntime.preview(config).warm_modules()
 
-    expected = ["anthropic", "openai", *(["zett_agent.extensions.subagent"] if subagent else [])]
-    assert imported == expected
+    assert names == (
+        "openai",
+        "anthropic",
+        "zett_agent.client",
+        *(("zett_agent.extensions.subagent",) if subagent else ()),
+        *(("zett_agent.extensions.mcp",) if mcp else ()),
+    )
+
+
+async def test_a_close_while_the_imports_are_running_does_not_wait_for_them(tmp_path, monkeypatch):
+    """Leaving before the first turn must not wait for an import nobody needs any more."""
+    original = pipeline_module.importlib.import_module
+
+    class SlowImports:
+        """Stand in for a model SDK: slow enough that a close mid-import is visible."""
+
+        def import_module(self, name: str, package: str | None = None) -> object:
+            time.sleep(1.0)
+            return original(name, package)
+
+    async def fake_create_agent(model, **kwargs):
+        return type("FakeClient", (), {"event_dispatcher": None})()
+
+    monkeypatch.setattr(pipeline_module, "importlib", SlowImports())
+    monkeypatch.setattr("zett_agent.client.create_agent", fake_create_agent)
+    monkeypatch.setattr(runtime_module.os, "chdir", lambda path: None)
+    runtime = runtime_module.ZettCodeRuntime.preview(_config_with(tmp_path))
+    warm = runtime.start()
+    await asyncio.sleep(0)
+
+    started = time.perf_counter()
+    await asyncio.wait_for(runtime.aclose(), 2.0)
+    elapsed = time.perf_counter() - started
+
+    assert elapsed < 0.5, f"closing waited {elapsed:.2f}s for the imports"
+    assert warm.cancelled()
+    # Nothing was built, so there is no client to have closed and no second one
+    # to leak: the provider list is empty and the request never happened.
+    assert runtime.client is None
+    assert runtime._models == {}
+    assert runtime._imports is not None and runtime._imports.done
 
 
 async def test_an_anthropic_model_builds_the_messages_adapter(tmp_path, monkeypatch):
@@ -328,10 +371,10 @@ async def test_the_warm_up_never_blocks_the_event_loop(tmp_path, monkeypatch):
     no keystroke echoes and no frame repaints until the provider exists.
     """
     calls: list[str] = []
-    original = runtime_module.importlib.import_module
+    original = pipeline_module.importlib.import_module
 
     class SlowImports:
-        """Stand in for the imports the preload pays for, at a test's speed."""
+        """Stand in for the imports the warm-up pays for, at a test's speed."""
 
         def import_module(self, name: str, package: str | None = None) -> object:
             calls.append(name)
@@ -341,7 +384,7 @@ async def test_the_warm_up_never_blocks_the_event_loop(tmp_path, monkeypatch):
     async def fake_create_agent(model, **kwargs):
         return type("FakeClient", (), {"event_dispatcher": None})()
 
-    monkeypatch.setattr(runtime_module, "importlib", SlowImports())
+    monkeypatch.setattr(pipeline_module, "importlib", SlowImports())
     monkeypatch.setattr("zett_agent.client.create_agent", fake_create_agent)
     monkeypatch.setattr(runtime_module.os, "chdir", lambda path: None)
     runtime = runtime_module.ZettCodeRuntime.preview(_config_with(tmp_path))
@@ -362,7 +405,7 @@ async def test_the_warm_up_never_blocks_the_event_loop(tmp_path, monkeypatch):
     ticker.cancel()
     await asyncio.gather(ticker, return_exceptions=True)
 
-    assert calls, "the runtime never preloaded the SDKs"
+    assert calls, "the runtime never warmed the SDKs"
     assert gaps, "the event loop never turned while the runtime warmed"
     assert max(gaps) < 0.15
 

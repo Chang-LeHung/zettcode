@@ -196,14 +196,35 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
         self.offer_update()
 
     async def stop_background(self) -> None:
-        """Release what :meth:`start_background` began."""
+        """Release what :meth:`start_background` began, and end a request still in flight."""
         await self._stop_title_task()
         await self._stop_update_task()
+        await self._stop_turn()
         warm, self._warm = self._warm, None
         if warm is not None:
+            # A warm-up still in flight is not worth waiting for: it is a launch
+            # that ends before its first turn, and the imports it is running
+            # belong to that turn. Cancelling reaches the runtime's own shutdown,
+            # which asks the import thread to give up at its next module.
+            warm = asyncio.ensure_future(warm)
+            warm.cancel()
             # A start that failed is the first turn's error to report, not a
             # reason to keep the process alive or to raise on the way out.
             await asyncio.gather(warm, return_exceptions=True)
+
+    async def _stop_turn(self) -> None:
+        """End the turn in flight, if there is one, without waiting for the answer.
+
+        The shell exits when the reader says so, whether or not a request is still
+        streaming: that turn was for someone who has already left, and the session
+        keeps everything it had already written. Letting it run on is what makes
+        leaving feel like it did not work.
+        """
+        turn, self._task = self._task, None
+        if turn is not None and not turn.done():
+            turn.cancel()
+        if turn is not None:
+            await asyncio.gather(turn, return_exceptions=True)
 
     def adopt(self, tui: TuiApp) -> None:
         """Move this application's interface into a shell that is already running.

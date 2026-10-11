@@ -834,6 +834,57 @@ async def test_app_streams_a_prompt_into_the_transcript():
     assert app.busy is False
 
 
+async def test_leaving_before_the_warm_up_ends_does_not_wait_for_it(monkeypatch):
+    """A shell closed while the runtime is still warming must not sit through it.
+
+    The warm-up is the launch that never reached a turn: the imports it is
+    running belong to that turn, and the thread they run on is a daemon nothing
+    waits for either. Waiting here instead is what makes opening the shell and
+    closing it again cost the whole model SDK.
+    """
+    app = build_app()
+    never = asyncio.ensure_future(asyncio.Event().wait())
+    monkeypatch.setattr(type(app.agent.runtime), "start", lambda self: never)
+    app.start_background()
+
+    started = time.perf_counter()
+    await asyncio.wait_for(app.stop_background(), 2.0)
+    elapsed = time.perf_counter() - started
+
+    assert elapsed < 0.5, f"the shutdown waited {elapsed:.2f}s for the warm-up"
+    assert never.cancelled()
+
+
+async def test_ctrl_d_is_refused_while_a_request_is_running():
+    """A turn in flight is left alone: that refusal is the point, not an oversight.
+
+    Ctrl-D is bound to quit only when nothing is running and the draft is empty,
+    so muscle memory cannot end an answer mid-stream. The composer reads the key
+    as delete-forward on an empty draft, which is why nothing visible happens.
+    """
+    events = [AgentEvent(AgentEventType.TEXT_DELTA, "s", delta="working on it")]
+    app = build_app(events, block=True)
+    app.start_background()
+    harness = _harness(app)
+    harness.write("something long")
+    harness.press("enter")
+    await asyncio.sleep(0)
+    assert app.busy is True
+
+    harness.press("ctrl_d")
+
+    assert app.app.running is True, "the request must not be interrupted by that key"
+    assert app.busy is True
+    # Stopping the shell has to end the turn rather than wait for it: a terminal
+    # window closed under a streaming answer is the same code path.
+    started = time.perf_counter()
+    await asyncio.wait_for(app.stop_background(), 2.0)
+    elapsed = time.perf_counter() - started
+
+    assert elapsed < 0.5, f"stopping waited {elapsed:.2f}s for the answer"
+    assert app.busy is False and app.task is None
+
+
 async def test_the_runtime_starts_with_the_first_turn_not_before():
     """The shell paints from the preview; the provider waits for a message."""
     app = build_app()
