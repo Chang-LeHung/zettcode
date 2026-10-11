@@ -236,6 +236,11 @@ class FakeConfig:
         return ()
 
 
+def _no_encoder(name: str):
+    """Refuse to build an encoder, so the fake runtime always estimates."""
+    raise RuntimeError("the fake runtime has no tokenizer")
+
+
 @dataclass
 class FakeRuntime:
     client: object
@@ -246,8 +251,10 @@ class FakeRuntime:
     context: ContextExtension = field(default_factory=ContextExtension)
     sides: SideQuestions = field(default_factory=SideQuestions)
     effort: ReasoningEffort = ReasoningEffort.MEDIUM
-    # A zero deadline keeps the fake offline: the estimate stands in for tiktoken.
-    tokenizer: Tokenizer = field(default_factory=lambda: Tokenizer(deadline=0.0))
+    # The fake is offline and always estimating: a loader that refuses is what
+    # makes that true whatever the deadline does, now that a late answer is
+    # adopted and a zero deadline would race with it.
+    tokenizer: Tokenizer = field(default_factory=lambda: Tokenizer(deadline=0.0, loader=_no_encoder))
     config: FakeConfig = field(default_factory=FakeConfig)
     plugins: Plugins = field(default_factory=Plugins)
     active_model: ModelConfig = field(init=False)
@@ -842,6 +849,44 @@ async def test_app_streams_a_prompt_into_the_transcript():
     assert "bold finding" in text
     assert "Processed for " in text
     assert app.busy is False
+
+
+async def test_the_shell_warms_the_token_counter_behind_the_first_frame():
+    """`/context` must not start a download on the reader's keystroke.
+
+    The counter's vocabulary is fetched the first time a machine sees it, which
+    is seconds: done here, behind the frame, the panel opens at once and is exact
+    a moment later instead of waiting out the tokenizer's deadline.
+    """
+    loaded: list[str] = []
+
+    def loader(name: str):
+        loaded.append(name)
+        raise RuntimeError("no vocabulary in a test")
+
+    app = build_app()
+    app.agent.runtime.tokenizer = Tokenizer(deadline=5.0, loader=loader)
+
+    app.start_background()
+    await asyncio.wait_for(app._counter, 5.0)
+
+    assert loaded == [app.agent.runtime.tokenizer.encoding]
+    await app.stop_background()
+
+
+async def test_stopping_releases_a_counter_that_is_still_loading():
+    """A reader who leaves during the load is not kept waiting for it."""
+    app = build_app()
+    app.agent.runtime.tokenizer = Tokenizer(deadline=30.0, loader=lambda name: time.sleep(30.0))
+    app.start_background()
+    await asyncio.sleep(0.01)
+
+    started = time.perf_counter()
+    await asyncio.wait_for(app.stop_background(), 2.0)
+    elapsed = time.perf_counter() - started
+
+    assert elapsed < 0.5, f"stopping waited {elapsed:.2f}s for the counter"
+    assert app._counter is None
 
 
 async def test_leaving_before_the_warm_up_ends_does_not_wait_for_it(monkeypatch):
@@ -1600,6 +1645,42 @@ async def test_the_title_command_names_the_session(tmp_path):
     harness.press("enter")
     await asyncio.wait_for(app.task, 2.0)
     assert any("between 1 and" in entry.text for entry in app.transcript.entries)
+
+
+async def test_every_panel_shows_its_list_and_the_arrows_move_it():
+    """A panel's keys are only felt if its list has rows on screen to move through.
+
+    The failure this catches is a selection that moves while the list has no
+    height: the marker is somewhere, nothing on screen changes, and the panel
+    reads as one where Up and Down do nothing at all. Every picker the shell
+    builds is checked, the context report included, because it is the one that
+    spends a row of its own on the session's path.
+    """
+
+    def marked(harness) -> list[str]:
+        return [line.strip() for line in harness.render().text.splitlines() if "\u25b8" in line]
+
+    for command in ("/theme", "/model", "/context"):
+        app = build_app()
+        harness = _harness(app)
+        harness.render()
+        if command == "/context":
+            app.agent.runtime.context.remember(
+                app.agent.session_id,
+                (SystemMessage(content="You are ZettCode. " * 40), UserMessage(content="why is this slow?")),
+            )
+        harness.write(command)
+        harness.press("enter")
+        await asyncio.wait_for(app.task, 2.0)
+
+        page = _presented_page(app)
+        before = marked(harness)
+        assert page.list.rect.height > 0, f"{command}: the list was given no rows"
+        assert before, f"{command}: nothing on screen carries the selection"
+
+        harness.press("down")
+        assert marked(harness) != before, f"{command}: Down moved nothing on screen"
+        harness.press("escape")
 
 
 async def test_the_context_command_reports_what_the_request_carries():

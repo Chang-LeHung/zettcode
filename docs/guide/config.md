@@ -353,6 +353,7 @@ contrast after changing a surface colour.
 | `ZETTCODE_CONFIG` | Select a different complete config file. |
 | `OPENAI_API_KEY` | Key for model entries without a non-empty `token`. |
 | `ANTHROPIC_API_KEY` | Key for `anthropic` entries without a non-empty `token`. |
+| `TIKTOKEN_CACHE_DIR` | Where the token counter keeps the vocabulary it downloads once. Defaults to `~/.zettcode/cache/tiktoken`; the OS temp directory would be emptied sooner or later, and refilling it takes seconds. |
 | `ZETTCODE_REDUCED_MOTION` | Set to `1` to suppress decorative sweep motion. |
 | `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY` | Standard proxy settings used by the model's HTTP client. |
 

@@ -24,6 +24,12 @@ DEFAULT_MCP_CONFIG = Path.home() / ".zettcode" / "mcp.json"
 #: and the version the reader asked not to hear about again.
 DEFAULT_UPDATE_FILE = Path.home() / ".zettcode" / "update.json"
 
+#: Where tiktoken keeps the vocabulary it downloads once. Deliberately not the
+#: OS temp directory, which is cleaned whenever the system feels like it: a purge
+#: turns the next token count into a 1.7 MB download, and `/context` waits behind
+#: it. Under this program's own directory the fetch happens once.
+DEFAULT_TOKENIZER_CACHE = Path.home() / ".zettcode" / "cache" / "tiktoken"
+
 #: Anything written to stderr while the TUI owns the screen is kept here: a
 #: child process — an MCP server announcing itself, say — cannot know that the
 #: frame is the interface, and the renderer only repaints what it changed.

@@ -14,17 +14,20 @@ says which one it used.
 
 from __future__ import annotations
 
-import asyncio
 import json
-from collections.abc import Callable, Sequence
-from dataclasses import dataclass
-from typing import cast
+import os
+from collections.abc import Callable, MutableMapping, Sequence
+from dataclasses import dataclass, field
+from typing import TypeAlias, cast
 
 from zett_agent.agent import AgentRunContext
 from zett_agent.extensions.base import AgentExtension
 from zett_agent.extensions.compaction import CompactedMessage
 from zett_agent.messages import AnyMessage, AssistantMessage, SystemMessage, ToolMessage
 from zett_agent.model import ModelRequest, ToolDefinition
+
+from ...paths import DEFAULT_TOKENIZER_CACHE
+from ..pipeline import DaemonCall
 
 #: Tokens per character when no tokenizer is available. The rule of thumb is
 #: close for English prose and low for CJK, which is why the report names the
@@ -33,6 +36,40 @@ CHARS_PER_TOKEN = 4
 
 #: Seconds to wait for tiktoken's vocabulary before falling back.
 ENCODING_DEADLINE = 2.0
+
+
+@dataclass(frozen=True, slots=True)
+class Counted:
+    """What one message or tool cost the last time it was counted.
+
+    Attributes:
+        item: The message or tool the count belongs to. Holding it is what makes
+            the key sound: a cache keyed by ``id`` can only name a different
+            object once the one it named is gone, and this keeps that one alive.
+        tokens: What the counter said it was worth.
+    """
+
+    item: object
+    tokens: int
+
+
+#: Counts from an earlier measurement, keyed by ``id`` of the item they describe.
+Counts: TypeAlias = MutableMapping[int, Counted]
+
+
+@dataclass(slots=True)
+class SessionCounts:
+    """One session's counts, and the counter that produced them.
+
+    Attributes:
+        measured_by: The counter's label. Numbers from one counter are never
+            reused for another: the estimate and the encoder disagree by design.
+        counts: One entry per message or tool the last report measured.
+    """
+
+    measured_by: str
+    counts: Counts = field(default_factory=dict)
+
 
 #: One row per source, in the order the request is assembled.
 SOURCES = (
@@ -127,6 +164,7 @@ class Tokenizer:
         self._loader = loader or _tiktoken_encoder
         self._encode: Callable[[str], Sequence[int]] | None = None
         self._resolved = False
+        self._call: DaemonCall[Callable[[str], Sequence[int]]] | None = None
 
     @property
     def label(self) -> str:
@@ -149,21 +187,34 @@ class Tokenizer:
     async def prepare(self) -> None:
         """Load the encoder at most once, giving up after the deadline.
 
-        The load runs off the event loop because opening an encoding can talk to
-        the network; a failure or a timeout leaves the character estimate in
-        place rather than delaying the page.
+        The load runs on a daemon thread because opening an encoding may fetch
+        its vocabulary — seconds on a first run, and an executor's thread would
+        hold the process open for the rest of it if the shell left first. A
+        failure or a timeout leaves the character estimate in place rather than
+        delaying the page, and the load is left to finish on its own: a later
+        report adopts its answer instead of estimating for the whole session.
         """
         if self._resolved:
+            if self._encode is None and self._call is not None:
+                self._encode = self._call.peek()
             return
         self._resolved = True
-        try:
-            self._encode = await asyncio.wait_for(asyncio.to_thread(self._loader, self.encoding), self.deadline)
-        except Exception:
-            self._encode = None
+        self._call = DaemonCall(lambda: self._loader(self.encoding))
+        self._call.start()
+        self._encode = await self._call.wait(self.deadline)
 
 
 def _tiktoken_encoder(encoding: str) -> Callable[[str], Sequence[int]]:
-    """Return tiktoken's encoder, importing it lazily so startup stays cheap."""
+    """Return tiktoken's encoder, importing it lazily so startup stays cheap.
+
+    tiktoken caches the vocabulary it downloads in the OS temp directory, which
+    is cleaned whenever the system feels like it: a purge turns the next load
+    into a 1.7 MB fetch — five seconds, measured — behind the deadline above, so
+    the count would arrive as an estimate after a wait. This program's own cache
+    directory survives that, so the fetch happens once. An explicit
+    ``TIKTOKEN_CACHE_DIR`` wins, because that is the reader's own choice.
+    """
+    os.environ.setdefault("TIKTOKEN_CACHE_DIR", str(DEFAULT_TOKENIZER_CACHE))
     import tiktoken
 
     return tiktoken.get_encoding(encoding).encode
@@ -193,12 +244,39 @@ def tool_text(tool: ToolDefinition) -> str:
     return f"{tool.name}\n{tool.description}\n{parameters}"
 
 
+def count_one(item: object, text: str, tokenizer: Tokenizer, counts: Counts | None) -> int:
+    """Return the tokens in one counted item, reusing an earlier count of it.
+
+    Counting is the whole cost of a report — 25 ms for a session of 155 k tokens
+    — and the overwhelming majority of what a report walks was counted the last
+    time the panel was opened: a turn appends, it does not rewrite. The cache
+    turns that into a lookup, and only what arrived since is encoded.
+
+    Args:
+        item: The message or tool the text belongs to. Its identity is the key,
+            and the entry holds it, so a key can never name a different object.
+        text: What the tokenizer would count.
+        tokenizer: Counter to use when there is no entry.
+        counts: Earlier counts, updated in place; ``None`` counts everything.
+    """
+    if counts is None:
+        return tokenizer.count(text)
+    key = id(item)
+    entry = counts.get(key)
+    if entry is not None and entry.item is item:
+        return entry.tokens
+    tokens = tokenizer.count(text)
+    counts[key] = Counted(item, tokens)
+    return tokens
+
+
 def measure(
     messages: Sequence[AnyMessage],
     tools: Sequence[ToolDefinition],
     *,
     window: int,
     tokenizer: Tokenizer,
+    counts: Counts | None = None,
 ) -> ContextReport:
     """Break one assembled request into the sources that fill the budget.
 
@@ -209,9 +287,11 @@ def measure(
         tools: Tool schemas offered with the request.
         window: Token budget the shares are measured against.
         tokenizer: Counter to use; it may still be estimating.
+        counts: Counts from an earlier measurement of the same items, updated in
+            place as new ones are counted; ``None`` measures everything.
     """
     totals = dict.fromkeys(SOURCES, 0)
-    counts = dict.fromkeys(SOURCES, 0)
+    items = dict.fromkeys(SOURCES, 0)
     system_seen = False
     for message in messages:
         match message:
@@ -226,12 +306,12 @@ def measure(
                 source = "Tool output"
             case _:
                 source = "User messages"
-        totals[source] += tokenizer.count(message_text(message))
-        counts[source] += 1
+        totals[source] += count_one(message, message_text(message), tokenizer, counts)
+        items[source] += 1
     if tools:
-        totals["Tool schemas"] = sum(tokenizer.count(tool_text(tool)) for tool in tools)
-        counts["Tool schemas"] = len(tools)
-    shares = tuple(ContextShare(name, totals[name], counts[name]) for name in SOURCES if totals[name] or counts[name])
+        totals["Tool schemas"] = sum(count_one(tool, tool_text(tool), tokenizer, counts) for tool in tools)
+        items["Tool schemas"] = len(tools)
+    shares = tuple(ContextShare(name, totals[name], items[name]) for name in SOURCES if totals[name] or items[name])
     return ContextReport(window=max(1, window), measured_by=tokenizer.label, shares=shares, partial=not tools)
 
 
@@ -249,9 +329,11 @@ class ContextExtension(AgentExtension):
     """
 
     def __init__(self) -> None:
-        """Start with no captured request."""
+        """Start with no captured request and nothing counted."""
         self._requests: dict[str, tuple[tuple[AnyMessage, ...], tuple[ToolDefinition, ...]]] = {}
         self._template: tuple[tuple[AnyMessage, ...], tuple[ToolDefinition, ...]] | None = None
+        #: Per session, what the last report counted and which counter did it.
+        self._counts: dict[str, SessionCounts] = {}
 
     async def before_model(self, context: AgentRunContext, request: ModelRequest) -> None:
         """Keep the request that is about to leave, replacing the previous one."""
@@ -285,9 +367,25 @@ class ContextExtension(AgentExtension):
         return self._requests.get(session_id)
 
     def report(self, session_id: str, *, window: int, tokenizer: Tokenizer) -> ContextReport | None:
-        """Return the breakdown of the last assembled request, if there was one."""
+        """Return the breakdown of the last assembled request, if there was one.
+
+        What was counted for an earlier report is counted again only if the
+        counter changed: a turn appends to the context rather than rewriting it,
+        so a report spends its time on what arrived since the last one.
+        """
         assembled = self.assembled(session_id)
         if assembled is None:
             return None
         messages, tools = assembled
-        return measure(messages, tools, window=window, tokenizer=tokenizer)
+        label = tokenizer.label
+        cached = self._counts.get(session_id)
+        if cached is None or cached.measured_by != label:
+            cached = SessionCounts(measured_by=label)
+        counts = cached.counts
+        live = {id(message) for message in messages} | {id(tool) for tool in tools}
+        for key in [key for key in counts if key not in live]:
+            # The request stopped carrying this item, so its count has no reader
+            # and its key must not outlive the object it stands for.
+            del counts[key]
+        self._counts[session_id] = cached
+        return measure(messages, tools, window=window, tokenizer=tokenizer, counts=counts)

@@ -8,13 +8,14 @@ speed rather than a package's.
 
 from __future__ import annotations
 
+import asyncio
 import subprocess
 import sys
 import threading
 import time
 from pathlib import Path
 
-from zettcode.app.pipeline import ImportPipeline
+from zettcode.app.pipeline import DaemonCall, ImportPipeline
 
 #: ``time.sleep`` in the module body: an import that takes as long as we ask.
 SLOW = "import time\ntime.sleep({delay})\nVALUE = 1\n"
@@ -111,6 +112,58 @@ def test_a_finish_reported_to_a_closed_loop_is_not_an_error(capsys):
     assert capsys.readouterr().err == ""
 
 
+async def test_a_daemon_call_answers_and_can_be_left_behind():
+    """The three outcomes a caller has to be able to tell apart."""
+    quick = DaemonCall(lambda: "an answer")
+    quick.start()
+    assert await quick.wait(5) == "an answer"
+    assert quick.peek() == "an answer"
+
+    slow = DaemonCall(lambda: (time.sleep(0.5), "late")[1])
+    slow.start()
+    assert await slow.wait(0.01) is None, "the deadline is what a panel cannot wait past"
+    assert slow.peek() is None, "it has not answered yet"
+    await asyncio.sleep(0.6)
+    assert slow.peek() == "late", "and the answer is adopted rather than thrown away"
+
+    failing = DaemonCall(lambda: 1 / 0)
+    failing.start()
+    assert await failing.wait(5) is None, "a failure is an answer of None, not a raise"
+
+
+def test_a_process_does_not_wait_for_a_daemon_call_it_abandoned(tmp_path):
+    """The reason this class exists beside ``asyncio.to_thread``.
+
+    The default executor's threads are joined while the interpreter shuts down,
+    so a call still running when the shell leaves delays the exit by its whole
+    duration. A daemon thread is left behind, and the answer is nobody's.
+    """
+    slow = tmp_path / "slow_module.py"
+    slow.write_text("import time\ntime.sleep(1.5)\n", encoding="utf-8")
+    script = "\n".join(
+        [
+            "import asyncio, sys",
+            "sys.path.insert(0, sys.argv[1])",
+            "from zettcode.app.pipeline import DaemonCall",
+            "async def main():",
+            "    call = DaemonCall(lambda: __import__('slow_module'))",
+            "    call.start()",
+            "    await call.wait(0.01)",
+            "    print('gave up', flush=True)",
+            "asyncio.run(main())",
+        ]
+    )
+
+    started = time.perf_counter()
+    result = subprocess.run([sys.executable, "-c", script, str(tmp_path)], capture_output=True, text=True, timeout=20)
+    elapsed = time.perf_counter() - started
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "gave up"
+    assert elapsed < 1.0, f"the process waited {elapsed:.2f}s for a call it abandoned"
+    assert result.stderr == "", "leaving a call behind is not an error"
+
+
 def test_a_process_that_ends_mid_import_is_not_held_open(tmp_path):
     """A launch abandoned while warming exits at once, and without saying anything.
 
@@ -124,7 +177,7 @@ def test_a_process_that_ends_mid_import_is_not_held_open(tmp_path):
         [
             "import sys",
             "sys.path.insert(0, sys.argv[1])",
-            "from zettcode.app.pipeline import ImportPipeline",
+            "from zettcode.app.pipeline import DaemonCall, ImportPipeline",
             "ImportPipeline(('zettcode_pipeline_abandoned',)).start()",
         ]
     )
