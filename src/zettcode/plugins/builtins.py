@@ -37,7 +37,7 @@ class ShellRows(Plugin):
         """Show the activity glyph, status word, mode, session title, and token use."""
         activity = context.activity
         icon = activity_glyph(activity.frame) if activity.busy else STATUS
-        mode = f" {SEPARATOR} auto" if activity.auto_shell else ""
+        mode = f" {SEPARATOR} {activity.permission}" if activity.permission != "ask" else ""
         used = context_text(activity.usage, context.model.config.context_window)
         label = f"{activity.label}{mode}"
         return f"  {icon} {label}  {context.session.name}{usage_text(activity.usage)}{used}"

@@ -26,7 +26,7 @@ from zett_agent.dispatcher import AgentEventDispatcher
 from zett_agent.extensions.ask_user import AskUserExtension
 from zett_agent.extensions.base import AgentExtension
 from zett_agent.extensions.coding import CodingExtension
-from zett_agent.extensions.shell_approval import ShellApprovalExtension, ShellApprovalMode
+from zett_agent.extensions.shell_approval import ShellApprovalExtension
 from zett_agent.extensions.todo import TodoWriteExtension
 from zett_agent.extensions.tool_guidelines import ToolGuidelinesExtension
 from zett_agent.ids import new_uuid7
@@ -41,6 +41,7 @@ from .approval import ShellApprovalMemory
 from .capabilities import ModelCapabilities
 from .compaction import OnDemandCompaction
 from .context import ContextExtension, Tokenizer
+from .permission import Permission, ShellDenyExtension, ShellPolicy, parse_permission
 from .side import SideQuestions
 from .storage import SessionStore
 from .usage import UsageExtension
@@ -210,6 +211,8 @@ class ZettCodeRuntime:
     config: ZettCodeConfig
     persistence: SessionStore
     approval: ShellApprovalExtension
+    #: The permission level, shared with the approval memory and the deny extension.
+    policy: ShellPolicy
     todos: TodoWriteExtension
     usage: UsageExtension
     context: ContextExtension
@@ -246,13 +249,15 @@ class ZettCodeRuntime:
         """
         os.chdir(config.workspace)
         selected = config.models[0]
+        # One policy, read by everything that decides whether a command is asked
+        # about: the memory lets `safe` and `auto` through, the deny extension
+        # refuses for `deny`, and the shell changes it from `/permission`.
+        policy = ShellPolicy.from_mode(config.shell_approval, config.workspace)
         return cls(
             config=config,
             persistence=SessionStore(config.store, config.workspace),
-            approval=ShellApprovalExtension(
-                ShellApprovalMemory(),
-                enabled=config.shell_approval is ShellApprovalMode.REVIEW,
-            ),
+            approval=ShellApprovalExtension(ShellApprovalMemory(policy)),
+            policy=policy,
             todos=TodoWriteExtension(),
             usage=UsageExtension(),
             context=ContextExtension(),
@@ -358,7 +363,7 @@ class ZettCodeRuntime:
             from .subagents import subagent_extension
 
             extensions.append(subagent_extension(model=model, persistence=self.persistence, capabilities=capabilities))
-        extensions.extend([self.approval, self.persistence])
+        extensions.extend([ShellDenyExtension(self.policy), self.approval, self.persistence])
         if self.config.todowrite_enabled:
             extensions.append(self.todos)
         extensions.extend(
@@ -430,14 +435,31 @@ class ZettCodeRuntime:
         await runtime.start()
         return runtime
 
-    def approve_all_shell_commands(self) -> None:
-        """Stop asking for shell approval for the rest of this process.
+    @property
+    def permission(self) -> Permission:
+        """Return how much of the shell may run without asking, right now."""
+        return self.policy.level
 
-        Approval is a per-run policy and is deliberately not persisted: the
-        next start begins in review mode again, matching the fresh session the
-        shell opens on launch.
+    def use_permission(self, name: str | Permission) -> Permission:
+        """Set how much of the shell may run without asking, for the rest of this run.
+
+        Like the approval choices before it the level is a per-run policy and is
+        deliberately not persisted: the next start begins at ``ask`` again, which
+        matches the fresh session the shell opens on launch. It takes effect on
+        the next command, including one in the request that is running now.
+
+        Args:
+            name: A level, or its name; case and surrounding space do not matter.
+
+        Raises:
+            ValueError: The name is not one of the four levels.
         """
-        self.approval.enabled = False
+        self.policy.level = name if isinstance(name, Permission) else parse_permission(name)
+        return self.policy.level
+
+    def approve_all_shell_commands(self) -> None:
+        """Stop asking for shell approval for the rest of this process."""
+        self.use_permission(Permission.AUTO)
 
     def use_effort(self, name: str | ReasoningEffort) -> ReasoningEffort:
         """Select how much reasoning the model may spend on later requests.

@@ -125,27 +125,62 @@ to the composer, and the transcript is untouched underneath:
 
 - `/model` — pick the model for later requests.
 - `/resume` — pick a recent session, with its title and how long ago it changed.
-- `/theme` and `/effort` — pick a palette or a reasoning level.
+- `/theme`, `/effort`, and `/permission` — pick a palette, a reasoning level, or how much of the shell may run without asking.
 - `/context` — what is filling the context window right now.
 - **Approvals** — the panel that asks whether to run a shell command.
 
 ## Approvals
 
-`bash` is the one tool that asks. The panel shows the exact command and
-offers:
+`bash` is the one tool that asks. How often it asks is a setting with four
+levels, which `/permission` changes at any time between requests:
+
+| Level | What happens to a shell command |
+| --- | --- |
+| `deny` | None runs. The model is told the commands are off, and carries on with the file tools. |
+| `ask` | Each one waits for your answer. This is where every run starts. |
+| `safe` | Commands that only read run; anything else asks. |
+| `auto` | Every command runs without asking. |
+
+The level covers the shell only. File edits and MCP tools are not behind a
+prompt in ZettCode, so `deny` is not a read-only mode for your workspace. It is
+not saved across restarts either: the next run starts at `ask` again.
+
+At `ask` and `safe` the panel shows the exact command, the level it is asking
+at, and offers:
 
 | Key | Meaning |
 | --- | --- |
 | `y` | Run it this once. |
-| `a` | Run it, and allow every later command this run. |
 | `p` | Run it, and remember this exact command for the session. |
+| `s` | Run it, and stop asking for read-only commands (switches to `safe`). Not offered at `safe`, where it would change nothing. |
+| `a` | Run it, and stop asking for any command this run (switches to `auto`). |
 | `Esc` | Refuse. The agent is told the command failed, and can react. |
+
+`s` and `a` are the same change `/permission safe` and `/permission auto` make:
+the level, the line in the conversation, and the status line all agree whichever
+door you used. Mid-request they are the way to change it, because a typed
+command waits for the request to end.
 
 For a command such as `pytest tests/test_users.py`, choose `y` if you want to
 review the next command separately. Choose `p` only when you want that exact
 command remembered for the current process. `a` grants a wider allowance; do
 not choose it merely to dismiss the panel. Approval memory is not saved across
 program restarts, and the tools run locally rather than in a ZettCode sandbox.
+
+### What `safe` runs
+
+`safe` runs a command without asking only when it recognises every part of it
+as unable to change anything: a short list of reading programs (`ls`, `cat`,
+`grep`, `head`, `wc`, `diff`, …), `rg` and `find` without the options that run
+something or write a file, and `git status`, `log`, `diff`, `show`, and other
+read-only subcommands, optionally joined with `|`. Anything it does not know
+asks, including `;`, `&&`, redirects, `$(…)`, and every program not on the list.
+
+Two things it does not promise. A read-only command can still print a secret
+that sits in the workspace, so `safe` means *nothing will change*, not *nothing
+will be seen*. And `git` reads its own configuration, which can name programs to
+run: a repository whose config does is not trusted, and your global git
+configuration is not checked. If a workspace may hold such files, use `ask`.
 
 ## When the model asks you a question
 
@@ -275,7 +310,7 @@ half keeps the two keys worth remembering (`^C/Esc to interrupt`, `^D exit`) in 
 | --- | --- |
 | `●` / a blinking `✦` | The dot is idle; the blinking sparkle is work in progress. |
 | `ready`, `running` | The current state — or a one-off note, such as the command being run or a copied selection. |
-| `· auto` | Shell commands are approved for the rest of this run. |
+| `· deny`, `· safe`, `· auto` | The shell permission, when it is not the default `ask`. |
 | `New session` | The session's title, or `New session` before the agent names it. |
 | `↑18.4k ↓900` | Tokens sent to the model, and tokens it generated, this session. |
 | `71.2% cached` | The share of the input the provider served from its cache. |

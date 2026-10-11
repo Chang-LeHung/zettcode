@@ -174,7 +174,6 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
         self._pending: list[str] = []
         self._activity = Activity.READY
         self._note: str | None = None
-        self._auto_shell = False
         self._session_title: str | None = None
         self._usage = UsageSnapshot()
         self._install_keymap()

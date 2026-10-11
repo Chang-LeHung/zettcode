@@ -441,11 +441,21 @@ awaited the user would deadlock the stream. The approval callback opens a
 bottom panel that asks the question in the transcript's own voice: the exact
 command, shell-highlighted under a ``$`` prompt, above numbered choices that
 name their keys — run once (``y``), always allow this command (``p``, only when
-the runtime can remember one), auto mode (``a``, stop asking for the rest of
-the run), or abort (``esc``). Arrows, Enter, the number keys, and clicks all
-pick a row, and Escape aborts. Auto mode flips the runtime's approval extension
-off rather than persisting a session policy, so the next launch reviews
-commands again.
+the runtime can remember one), stop asking for read-only commands (``s``, only
+while the level is ``ask``), stop asking for any command (``a``), or abort
+(``esc``). Arrows, Enter, the number keys, and clicks all pick a row, and Escape
+aborts.
+
+The ``s`` and ``a`` rows are the ``/permission`` ladder seen from one command, and
+they are the same change: both go through ``change_permission``, so the level,
+the announcement in the transcript, and the status line are identical whichever
+door was used. The level is one ``ShellPolicy`` shared by the shell, the approval
+memory (whose ``is_allowed`` is what lets ``safe`` and ``auto`` skip the prompt),
+and ``ShellDenyExtension`` (which runs before the approval extension and refuses
+for ``deny``, since the approval extension can ask but cannot refuse on the
+reader's behalf). It is deliberately not persisted, so the next launch asks
+again. What ``safe`` may skip is decided by ``app/agent/readonly.py``, which is
+fail-closed: a command is read-only only when every part of it is recognised.
 
 `rendering.py` shapes every kind of agent output, as a chain of handlers: each
 link claims a kind — a tool family (reading, editing, deleting, shell, search,

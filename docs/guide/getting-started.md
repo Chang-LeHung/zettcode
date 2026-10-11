@@ -135,8 +135,9 @@ make a task easier to review than "improve this project".
 2. Reasoned text arrives collapsed under a `Thinking` row, and tool calls read
    like a log — `Read src/app.py`, `Ran pwd`.
 3. When the model asks for a shell command, a panel asks first — `y` runs it
-   once, `a` allows the rest of the run, `p` remembers that exact command,
-   `Esc` refuses.
+   once, `p` remembers that exact command, `s` stops asking for read-only
+   commands, `a` stops asking for any, `Esc` refuses. `/permission` sets the
+   same four levels directly.
 4. When the request ends — answered, failed, or stopped with `Ctrl-C` — that
    same row becomes the muted line that closes it: `Processed for 12s · 09:41`.
 

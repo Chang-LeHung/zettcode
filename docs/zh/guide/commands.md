@@ -11,6 +11,7 @@
 | `/resume` | 弹出面板选择最近的会话；`/resume <id>` 直接打开指定会话。 |
 | `/model` | 用面板选择后续请求使用的模型。 |
 | `/effort` | 选择模型的推理强度：`/effort high`。 |
+| `/permission` | 选择 shell 命令在多大范围内不用问：`/permission safe`。 |
 | `/btw` | 问一件只在当场回答、不进入对话的事：`/btw <问题>`。 |
 | `/theme` | 用面板选择配色；`/theme dark` 或 `/theme light` 一步切换。 |
 | `/context` | 查看当前上下文窗口被什么占着，以及这个会话存在哪里。 |
@@ -25,7 +26,7 @@
 
 ## 用面板，而不是参数
 
-`/model`、`/resume`、`/theme`、`/effort` 打开选择列表：`↑` / `↓` 移动，`Enter` 确认，
+`/model`、`/resume`、`/theme`、`/effort`、`/permission` 打开选择列表：`↑` / `↓` 移动，`Enter` 确认，
 `Esc` 不做修改直接返回。`/context` 打开的是报告，不需要选择，读完按 `Esc` 关闭即可；
 报告里会写明这段对话写在 `~/.zettcode/sessions` 下的哪个文件，数字不对时能顺藤摸瓜。
 标题里的总量是 provider 为上一次请求计费的数字，各行百分比则是本地测出来的——所以百分比加起来是

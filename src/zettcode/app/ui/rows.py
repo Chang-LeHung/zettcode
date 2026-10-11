@@ -19,6 +19,7 @@ from ...plugins import (
 from ...tui import HEADER, SEPARATOR, Span, Style, TextLine
 from ...tui.render import blend
 from ..agent.agent import UNTITLED_SESSION
+from ..agent.permission import Permission
 from .shell import ShellState
 
 
@@ -152,7 +153,8 @@ class RowsMixin(ShellState):
                 busy=self._busy,
                 status=self._activity,
                 note=self._note,
-                auto_shell=self._auto_shell,
+                auto_shell=self.agent.permission is Permission.AUTO,
+                permission=self.agent.permission.value,
                 usage=self._usage,
                 tasks=self.agent.tasks(),
                 frame=self.transcript.frame,
