@@ -17,6 +17,7 @@ from ...plugins import (
     UiSide,
 )
 from ...tui import HEADER, SEPARATOR, Span, Style, TextLine
+from ...tui.render import blend
 from ..agent.agent import UNTITLED_SESSION
 from .shell import ShellState
 
@@ -33,8 +34,61 @@ class RowsMixin(ShellState):
         return self._side("header", "left")
 
     def _header_right(self) -> TextLine:
-        """Return the header's right side, whatever the plugins put there."""
-        return self._side("header", "right")
+        """Return the header's right side: the plugins' segments, or the gauge.
+
+        A switch between effort levels owns this row for the second it animates:
+        the model and the gauge take the place of the segments a plugin
+        registered, which is a trade worth making for one second and the one
+        moment a reader changed something here.
+        """
+        gauge = self._effort_gauge()
+        if gauge is None:
+            return self._side("header", "right")
+        theme = self.app.theme
+        muted = Style(foreground=theme.muted)
+        # The rail is the border colour brought toward the background, so an
+        # unreached cell reads as a groove rather than as a dim line of text.
+        groove = blend(theme.muted, theme.surface, 0.55)
+        spans: list[Span] = [
+            Span(self.agent.active_model.shown_name, muted),
+            Span(f" {SEPARATOR} ", muted),
+        ]
+        away = 1.0 - gauge.presence
+        # The groove fades with the gauge, so the last thing to leave is not a rail
+        # standing alone in an otherwise plain header.
+        rail_colour = blend(groove, theme.surface, away)
+        rail = Style(foreground=rail_colour)
+        for cell in gauge.cells:
+            if cell.lit:
+                colour = blend(self._heat(cell.heat), theme.text, cell.glow * 0.8)
+                # What is missing of the gauge is made up by the groove it sits in,
+                # so it fades into the rail rather than into nothing.
+                spans.append(Span(cell.char, Style(foreground=blend(colour, rail_colour, away))))
+            else:
+                spans.append(Span(cell.char, rail))
+        word = self._heat(gauge.word_heat)
+        spans.append(Span(" ", muted))
+        for character, glow in zip(gauge.word, gauge.word_glow, strict=True):
+            colour = blend(word, theme.text, glow * 0.9)
+            # The word returns to the header's own grey, which is what it is
+            # when the gauge is gone: the last frame and the next are the same colour.
+            spans.append(Span(character, Style(foreground=blend(colour, theme.muted, away))))
+        return TextLine(tuple(spans))
+
+    def _heat(self, heat: float) -> str:
+        """Return the colour of a point on the effort scale, from cheap to dear.
+
+        The ramp runs through the theme's own accents — green, a brighter green,
+        amber, and the error colour — rather than through fixed hues, so the
+        gauge follows `/theme` and a light palette gets the darker ends of the
+        same story. Position on the scale is the only input: the same level is
+        the same colour whether it is being switched to or away from.
+        """
+        theme = self.app.theme
+        stops = (theme.accent, theme.accent_bright, theme.warning, theme.error)
+        scaled = min(max(heat, 0.0), 1.0) * (len(stops) - 1)
+        index = min(int(scaled), len(stops) - 2)
+        return blend(stops[index], stops[index + 1], scaled - index)
 
     def _status_left(self) -> TextLine:
         """Return the status line's left side, whatever the plugins put there."""

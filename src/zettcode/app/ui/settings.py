@@ -67,6 +67,7 @@ class SettingsMixin(ShellState):
         selected = self.agent.use_effort(name)
         if selected != previous:
             self.transcript.effort_changed(previous, selected)
+            self.start_effort_animation(previous, selected)
         return selected
 
     def select_effort(self, name: str) -> None:
