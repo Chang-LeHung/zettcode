@@ -382,7 +382,7 @@ class ZettCodeAgent:
         replayed = replay(
             session,
             renderers=transcript.renderers,
-            processors=transcript.processors,
+            presenters=transcript.presenters,
             frame=transcript.frame,
         )
         transcript.replace(replayed.transcript.entries)
@@ -523,7 +523,7 @@ class ZettCodeAgent:
     async def export_session(self, path: str | Path | None = None) -> Path:
         """Write the active session, and the context it now carries, to HTML.
 
-        The conversation is rendered with the same processors the shell paints,
+        The conversation is rendered with the same presenters the shell paints,
         and the request the next turn would send is included beside it, so a
         reader sees both the history and what the model is down to.
 

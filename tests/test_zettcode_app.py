@@ -442,10 +442,10 @@ def test_welcome_mark_is_wide_and_mirror_symmetric_with_a_centered_heart():
 
 @pytest.mark.parametrize("width", [1, 8, 19, 32, 40, 60])
 def test_welcome_labels_stack_without_overflow_on_narrow_windows(width):
-    from zettcode.app.agent.blocks import WelcomeProcessor
     from zettcode.app.agent.entries import TextEntry
+    from zettcode.app.agent.presenters import WelcomePresenter
 
-    rows = WelcomeProcessor().lines(TextEntry(id=0, kind="welcome", text=WELCOME), width, DARK, 0)
+    rows = WelcomePresenter().lines(TextEntry(id=0, kind="welcome", text=WELCOME), width, DARK, 0)
     assert all(row.width <= width for row in rows)
     if width >= 60:
         assert len(rows) == len(LOGO_LINES)
@@ -518,7 +518,7 @@ async def test_projector_maps_events_into_ordered_blocks():
     )
     await projector.dispatch(AgentEvent(AgentEventType.TEXT_DELTA, "s", delta="done"))
 
-    assert [entry.kind for entry in transcript.entries] == ["user", "thinking", "tool", "tool", "answer", "pending"]
+    assert [entry.kind for entry in transcript.entries] == ["user", "thinking", "tool", "tool", "answer", "wait"]
 
     collapsed = "\n".join(_rendered(transcript, 40))
 
@@ -539,14 +539,14 @@ def test_a_placeholder_is_shown_before_anything_is_known():
     transcript.begin_turn("slow question")
     rendered = "\n".join(_rendered(transcript, 40))
 
-    assert [entry.kind for entry in transcript.entries] == ["user", "pending"]
+    assert [entry.kind for entry in transcript.entries] == ["user", "wait"]
     assert "Processing" in rendered
 
     thinking = transcript.start_thinking()
     transcript.append_thinking("now it is reasoning")
 
     # The reasoning joins the wait row rather than replacing it.
-    assert [entry.kind for entry in transcript.entries] == ["user", "thinking", "pending"]
+    assert [entry.kind for entry in transcript.entries] == ["user", "thinking", "wait"]
     assert thinking.kind == "thinking"
 
     assert transcript.toggle_latest_thinking()
@@ -560,13 +560,13 @@ def test_the_wait_row_stays_pinned_until_the_request_is_settled():
 
     # Streaming an answer does not end the request, so the row stays: removing
     # it here is what made a stopped request look like it had never run.
-    assert [entry.kind for entry in transcript.entries] == ["user", "answer", "pending"]
+    assert [entry.kind for entry in transcript.entries] == ["user", "answer", "wait"]
     assert "Processing" in "\n".join(_rendered(transcript, 40))
 
     assert transcript.settle_wait("Processed for 3.2 s \u00b7 09:41")
     rendered = "\n".join(_rendered(transcript, 40))
 
-    assert [entry.kind for entry in transcript.entries] == ["user", "answer", "pending"]
+    assert [entry.kind for entry in transcript.entries] == ["user", "answer", "wait"]
     assert "Processed for 3.2 s \u00b7 09:41" in rendered
     assert "Processing" not in rendered
 
@@ -575,7 +575,7 @@ def test_the_wait_row_stays_pinned_until_the_request_is_settled():
     quiet.begin_turn("question")
     quiet.complete_thinking()
     assert quiet.settle_wait("Processed for 0s \u00b7 09:41")
-    assert [entry.kind for entry in quiet.entries] == ["user", "pending"]
+    assert [entry.kind for entry in quiet.entries] == ["user", "wait"]
 
 
 def test_one_wait_row_spans_the_whole_request():
@@ -585,19 +585,19 @@ def test_one_wait_row_spans_the_whole_request():
     pending = transcript.entries[-1]
 
     transcript.start_tool("1", "read_file", {"path": "a.py"})
-    assert [entry.kind for entry in transcript.entries] == ["user", "tool", "pending"]
+    assert [entry.kind for entry in transcript.entries] == ["user", "tool", "wait"]
 
     transcript.complete_tool("1", "content")
 
     # The loop calls the model again once the batch has results, and the row it
     # would open is the same one, still below the rows it belongs to.
-    assert [entry.kind for entry in transcript.entries] == ["user", "tool", "pending"]
+    assert [entry.kind for entry in transcript.entries] == ["user", "tool", "wait"]
     assert transcript.entries[-1] is pending
     assert pending.status is EntryStatus.RUNNING
 
     transcript.append_answer("done")
 
-    assert [entry.kind for entry in transcript.entries] == ["user", "tool", "answer", "pending"]
+    assert [entry.kind for entry in transcript.entries] == ["user", "tool", "answer", "wait"]
 
 
 def test_a_wait_row_waits_for_the_whole_tool_batch():
@@ -611,11 +611,11 @@ def test_a_wait_row_waits_for_the_whole_tool_batch():
 
     # One result is not the batch: the model is not called until they all land,
     # and the pinned row has been saying so the whole time.
-    assert [entry.kind for entry in transcript.entries] == ["user", "tool", "tool", "pending"]
+    assert [entry.kind for entry in transcript.entries] == ["user", "tool", "tool", "wait"]
 
     transcript.complete_tool("2", "content")
 
-    assert [entry.kind for entry in transcript.entries] == ["user", "tool", "tool", "pending"]
+    assert [entry.kind for entry in transcript.entries] == ["user", "tool", "tool", "wait"]
     assert transcript.entries[-1] is pending
 
 
@@ -818,7 +818,7 @@ async def test_the_blink_demo_script_walks_a_turn():
     turn = asyncio.create_task(demo.script(transcript))
     try:
         await asyncio.sleep(0)
-        assert [entry.kind for entry in transcript.entries] == ["user", "pending"]
+        assert [entry.kind for entry in transcript.entries] == ["user", "wait"]
         assert transcript.entries[-1].status == "running"
     finally:
         turn.cancel()
@@ -1296,7 +1296,7 @@ async def test_each_turn_reports_how_long_it_took(monkeypatch):
     await asyncio.wait_for(app.task, 2.0)
 
     settled = app.transcript.entries[-1]
-    assert settled.kind == "pending" and settled.status is EntryStatus.COMPLETED
+    assert settled.kind == "wait" and settled.status is EntryStatus.COMPLETED
     assert settled.text == "Processed for 32s \u00b7 13:14"
     assert "Processed for 32s \u00b7 13:14" in harness.render().text
 
@@ -1329,7 +1329,7 @@ async def test_app_steers_a_second_prompt_and_ctrl_c_stops_the_first():
     # request still says how long it ran and where it stopped, which is what a
     # reader looks for after interrupting one.
     settled = app.transcript.entries[-1]
-    assert settled.kind == "pending" and settled.status is EntryStatus.COMPLETED
+    assert settled.kind == "wait" and settled.status is EntryStatus.COMPLETED
     assert settled.text.startswith("Processed for ")
     assert not any(getattr(entry, "status", None) is EntryStatus.RUNNING for entry in app.transcript.entries)
 

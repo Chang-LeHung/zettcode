@@ -10,8 +10,8 @@ from xml.etree import ElementTree
 import pytest
 
 import zettcode
-from zettcode.app.agent.blocks import WelcomeProcessor
 from zettcode.app.agent.entries import TextEntry
+from zettcode.app.agent.presenters import WelcomePresenter
 from zettcode.app.brand import LOGO_LINES, LOGO_PALETTE, LOGO_PIXELS
 from zettcode.app.commands import CommandContext, CommandUi
 from zettcode.app.ui.widgets.welcome import WELCOME
@@ -178,7 +178,7 @@ def test_published_brand_assets_match_the_shared_terminal_pixels(render_terminal
     assert (ROOT / "docs/public/logo.svg").read_text(encoding="utf-8") == render_terminal.logo_svg()
     canvas = render_terminal.preview()
     assert (ROOT / "docs/public/terminal.svg").read_text(encoding="utf-8") == render_terminal.svg(canvas)
-    lines = WelcomeProcessor().lines(TextEntry(id=0, kind="welcome", text=WELCOME), 60, DARK, 0)
+    lines = WelcomePresenter().lines(TextEntry(id=0, kind="welcome", text=WELCOME), 60, DARK, 0)
     for index, line in enumerate(lines[: len(LOGO_LINES)]):
         expected = Canvas(line.width, 1)
         expected.fill(0, 0, line.width, 1, style=Style(background="#232a2e"))

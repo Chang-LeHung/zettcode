@@ -12,8 +12,8 @@ from dataclasses import dataclass
 
 from zett_agent.messages import AnyMessage, AssistantMessage, SystemMessage, ToolMessage, UserMessage
 
-from .blocks import DEFAULT_PROCESSORS, EntryProcessors
 from .entries import EntryStatus
+from .presenters import DEFAULT_PRESENTERS, Presenters
 from .rendering import DEFAULT_RENDERERS, Renderers
 from .side import is_side_line
 from .storage import Session
@@ -41,11 +41,11 @@ def replay(
     session: Session,
     *,
     renderers: Renderers = DEFAULT_RENDERERS,
-    processors: EntryProcessors = DEFAULT_PROCESSORS,
+    presenters: Presenters = DEFAULT_PRESENTERS,
     frame: int = 0,
 ) -> Replayed:
     """Rebuild a session's active branch into entries, totals, and messages."""
-    transcript = Transcript(renderers=renderers, processors=processors)
+    transcript = Transcript(renderers=renderers, presenters=presenters)
     transcript.frame = frame
     usage = UsageSnapshot()
     history: list[AnyMessage] = []

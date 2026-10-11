@@ -366,31 +366,45 @@ cached prefix plus the open tail, and only the visible rows are ever built.
 `src/zettcode/app/` is the only consumer of the framework, and the only place
 that knows about agents, sessions, and tools.
 
-`transcript.py` holds the semantic model. `TranscriptSource` is a `LineSource`
-over the entries that renders each entry at most once: every entry caches its
-rendered block against a key of width, theme, expansion, status, and text
-length, so an unchanged transcript costs nothing to repaint. Answer entries
-delegate to `Markdown` instead of caching a flat list, which is what keeps a
-streamed answer linear rather than quadratic.
+The conversation is four things, each in one place:
 
-`app/agent/blocks.py` owns the visual processors for agent entries: welcome,
-notice, user, processing, thinking, and tool each produce `TextLine` values.
-They form an ordered `EntryProcessors` chain: the first processor whose
-`supports(entry)` returns true renders the entry. Only the processing row
-sweeps: a reasoning or running tool row is painted flat, so the frame counter
-reaches the renderers without becoming part of what they draw, and the entries
-key their cache on it only where it changes the paint. `app/agent/entries.py`
-represents those records as a union of
-`TextEntry`, `MarkdownEntry`, `ProcessingEntry`, `ThinkingEntry`, and `ToolEntry`,
-with `EntryStatus` for running/completed/failed/skipped states. The common
-base holds identity and the width/theme-dependent line cache; Markdown retains
-its own streaming line source. The virtualized `TranscriptSource` still
-presents only visible rows. These components share `render/rich_text.py` with
-the `RichText` widget, so wrapping, indentation, alignment, and clipping live
-in the framework instead of being duplicated in `transcript.py`. `Span` and
-`TextLine` keep their data definitions and small width/layout entry points
-together in `render/style.py`, while the reusable width-aware algorithms stay
-in `render/text.py` and `render/rich_text.py`.
+| Concept | What it is | Where |
+| --- | --- | --- |
+| **Entry** | One item of the conversation: plain data, with an `EntryKind` that says which kind of row it is | `app/agent/entries.py` |
+| **Transcript** | The ordered list of entries, what changed since the view last looked, how many are kept, and the verbs the agent's events map onto (start a tool, stream an answer, settle the wait) | `app/agent/transcript.py` |
+| **Presenter** | Turns one kind of entry into styled rows; there is exactly one per `EntryKind`, held in a `Presenters` registry | `app/agent/presenters.py` |
+| **TranscriptSource** | Stacks every entry's cached *block* (an entry presented as rows) into the single `LineSource` the scrolling view reads | `app/ui/widgets/transcript.py` |
+
+Adding a kind of row is three things: a member of `EntryKind`, an entry class
+that declares it, and a presenter that names it. `test_every_kind_of_entry_has_exactly_one_presenter`
+checks the enum against the registry, so a kind that has no presenter fails there
+rather than on a user's screen.
+
+Entries are data. `Entry` carries an id, a kind, and two slots a presenter caches
+its rows in; `TimedEntry` adds a status, a start, and a duration for the rows that
+take time — `WaitEntry`, `ThinkingEntry`, `ToolEntry` — so the transcript asks one
+question (`running`) where it used to list those classes in several places. A
+`TextEntry` serves the welcome banner, user messages, notices, and announcements;
+a `MarkdownEntry` serves the streamed answer and Markdown command output.
+
+A presenter says three things about the kind it presents: the rows (`lines`), what
+those rows depend on (`look`), and whether it draws its own marker in the gutter
+(`gutter`). They are in one class because they are facts about the same code that
+reads the entry. `look` defaults to **every field of the entry**, so a field
+nobody told the cache about costs one extra render rather than showing a stale
+row; the wait presenter adds the animation step, which is the whole of what makes
+it the one row that moves. `block_for` keeps an entry's rows on the entry, keyed by
+width, theme, registry, and look, so an unchanged transcript costs nothing to
+repaint. Markdown presenters override that and hand back the entry's own
+streaming source, which is what keeps a streamed answer linear rather than
+quadratic.
+
+These components share `render/rich_text.py` with the `RichText` widget, so
+wrapping, indentation, alignment, and clipping live in the framework instead of
+being duplicated in `transcript.py`. `Span` and `TextLine` keep their data
+definitions and small width/layout entry points together in `render/style.py`,
+while the reusable width-aware algorithms stay in `render/text.py` and
+`render/rich_text.py`.
 
 `app/agent/context.py` measures one assembled request: an extension remembers the
 messages and tool schemas `before_model` saw, and `/context` tokenizes them by

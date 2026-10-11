@@ -21,8 +21,8 @@ from pathlib import Path
 
 from ...tui import PROMPT, Canvas, Constraints, Rule, Size, StatusBar, Text, TextArea, TextLine, VBox, Widget
 from ...tui.layout import Slot
-from ..agent.blocks import CONTENT_INDENT, WelcomeProcessor
-from ..agent.entries import TextEntry
+from ..agent.entries import EntryKind, TextEntry
+from ..agent.presenters import CONTENT_INDENT, WelcomePresenter
 from . import labels
 from .widgets.welcome import WELCOME
 
@@ -83,7 +83,7 @@ def boot_tree(
 
 
 class Welcome(Widget):
-    """The boot banner, drawn by the processor the transcript will use.
+    """The boot banner, drawn by the presenter the transcript will use.
 
     The mark, its colours, the title's weight, and the hint's colour are the
     transcript's decisions, so they are asked for here rather than rebuilt: a
@@ -93,8 +93,8 @@ class Welcome(Widget):
 
     def _lines(self, width: int) -> list[TextLine]:
         """Return the rows the banner paints at this width."""
-        entry = TextEntry(id=0, kind="welcome", text=WELCOME)
-        return WelcomeProcessor().lines(entry, max(1, width - CONTENT_INDENT), self.theme, 0)
+        entry = TextEntry(id=0, kind=EntryKind.WELCOME, text=WELCOME)
+        return WelcomePresenter().lines(entry, max(1, width - CONTENT_INDENT), self.theme, 0)
 
     def measure(self, constraints: Constraints) -> Size:
         """Ask for the rows the banner needs at the width it was offered."""

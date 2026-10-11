@@ -1,6 +1,6 @@
 """The banner the shell writes into the transcript on startup.
 
-It is data, not a widget: ``WelcomeProcessor`` combines the shared pixel mark
+It is data, not a widget: ``WelcomePresenter`` combines the shared pixel mark
 with themed labels when it renders the ``welcome`` entry.
 
 The compact mark retains the website's solid face, square eyes, side ears, and
