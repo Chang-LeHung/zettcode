@@ -325,6 +325,7 @@ inline = "#9bddad"            # Markdown `行内代码`
 | `ZETTCODE_CONFIG` | 选择另一份完整配置文件。 |
 | `OPENAI_API_KEY` | 模型没有非空 `token` 时使用的 key。 |
 | `ANTHROPIC_API_KEY` | `anthropic` 项没有非空 `token` 时使用的 key。 |
+| `TIKTOKEN_CACHE_DIR` | 分词器下载的词表缓存位置。默认 `~/.zettcode/cache/tiktoken`；放在系统临时目录里迟早会被清掉，而重新下载要好几秒。 |
 | `ZETTCODE_REDUCED_MOTION` | 设置为 `1`，抑制装饰性的扫光动画。 |
 | `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY` | 模型 HTTP 客户端使用的标准代理设置。 |
 

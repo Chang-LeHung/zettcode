@@ -2,13 +2,26 @@
 
 from __future__ import annotations
 
+import asyncio
+import os
+import sys
+import time
+
 import pytest
 from zett_agent.agent import AgentRunConfig
 from zett_agent.extensions.compaction import CompactedMessage
 from zett_agent.messages import AssistantMessage, SystemMessage, ToolCall, ToolMessage, UserMessage
 from zett_agent.model import ModelRequest, ToolDefinition
 
-from zettcode.app.agent.context import ContextExtension, Tokenizer, measure, message_text, tool_text
+from zettcode.app.agent.context import (
+    ContextExtension,
+    Tokenizer,
+    _tiktoken_encoder,
+    measure,
+    message_text,
+    tool_text,
+)
+from zettcode.paths import DEFAULT_TOKENIZER_CACHE
 
 
 class _Context:
@@ -21,6 +34,11 @@ class _Context:
 def _request(messages, tools=()) -> ModelRequest:
     """Build the provider-neutral request the runtime would assemble."""
     return ModelRequest(messages=messages, tools=tools)
+
+
+def _never_loads(_encoding: str):
+    """Refuse to build an encoder: the tokenizer stays on the estimate."""
+    raise OSError("no vocabulary, no network")
 
 
 def _counting_tokenizer(per_token: int = 4) -> Tokenizer:
@@ -118,6 +136,153 @@ def test_a_request_without_tools_is_reported_as_partial():
 
     assert without.partial is True
     assert with_tools.partial is False
+
+
+class _CountingEncoder:
+    """An encoder that records what it was asked to count."""
+
+    def __init__(self) -> None:
+        """Start with nothing counted."""
+        self.texts: list[str] = []
+
+    def encode(self, text: str) -> list[int]:
+        """Count one text, remembering it was counted."""
+        self.texts.append(text)
+        return list(range(len(text) // 4))
+
+
+async def test_a_report_counts_each_item_once_and_reuses_them_afterwards():
+    """`/context` measures what arrived since the last time it was opened.
+
+    Counting is the whole cost of a report, and a turn appends to the context
+    rather than rewriting it: what was counted before has not changed. This is
+    the difference between a panel that costs 25 ms on a long session every time
+    and one that costs what the last turn added.
+    """
+    encoder = _CountingEncoder()
+    tokenizer = Tokenizer(loader=lambda _name: encoder.encode)
+    await tokenizer.prepare()
+    extension = ContextExtension()
+    messages = [SystemMessage(content="You are ZettCode. " * 20)] + [
+        UserMessage(content=f"question {index} " * 4) for index in range(5)
+    ]
+    extension.remember("s-1", messages)
+
+    first = extension.report("s-1", window=100_000, tokenizer=tokenizer)
+    counted_first = len(encoder.texts)
+    encoder.texts.clear()
+    second = extension.report("s-1", window=100_000, tokenizer=tokenizer)
+
+    assert counted_first == len(messages), "the first report counts everything"
+    assert encoder.texts == [], "nothing had changed, so nothing is counted again"
+    assert second == first
+
+    extension.remember("s-1", [*messages, UserMessage(content="and one more?")])
+    encoder.texts.clear()
+    third = extension.report("s-1", window=100_000, tokenizer=tokenizer)
+
+    assert len(encoder.texts) == 1, "only the message that arrived is counted"
+    assert third.used > first.used
+
+
+async def test_a_count_belongs_to_the_counter_that_produced_it():
+    """The estimate and the encoder disagree by design, so they never mix."""
+    plain = Tokenizer(deadline=0.0, loader=_never_loads)
+    encoder = _CountingEncoder()
+    loaded = Tokenizer(loader=lambda _name: encoder.encode)
+    await loaded.prepare()
+    extension = ContextExtension()
+    extension.remember("s-1", (UserMessage(content="a question " * 20),))
+
+    estimated = extension.report("s-1", window=100_000, tokenizer=plain)
+    encoder.texts.clear()
+    counted = extension.report("s-1", window=100_000, tokenizer=loaded)
+
+    assert estimated.measured_by != counted.measured_by
+    assert len(encoder.texts) == 1, "the loaded counter redoes the work rather than trusting the estimate"
+
+
+async def test_a_count_is_never_reused_for_a_different_message():
+    """The key is identity: another message with the same words is counted again.
+
+    Reusing by text would make the report wrong the moment two messages differ
+    in something the text does not show, and the report is a measurement: it may
+    be slow, but it may not be a guess.
+    """
+    counted: list[str] = []
+
+    def encoder(text: str) -> list[int]:
+        counted.append(text)
+        return list(range(len(text) // 4))
+
+    tokenizer = Tokenizer(loader=lambda _name: encoder)
+    await tokenizer.prepare()
+    extension = ContextExtension()
+    extension.remember("s-1", (UserMessage(content="the same words"),))
+    extension.report("s-1", window=1_000, tokenizer=tokenizer)
+    counted.clear()
+
+    extension.remember("s-1", (UserMessage(content="the same words"),))
+    extension.report("s-1", window=1_000, tokenizer=tokenizer)
+
+    assert counted == ["the same words"], "a different message is counted on its own"
+
+
+def test_the_encoder_keeps_its_vocabulary_where_the_os_will_not_clean_it(monkeypatch):
+    """tiktoken's own cache is the temp directory, which is why this exists.
+
+    A purge there turns the next count into a 1.7 MB download — five seconds,
+    measured — behind the deadline below, so the panel would wait and then show
+    the estimate. The vocabulary belongs under this program's directory.
+    """
+    monkeypatch.delenv("TIKTOKEN_CACHE_DIR", raising=False)
+    asked: list[str] = []
+
+    class FakeTiktoken:
+        @staticmethod
+        def get_encoding(name: str):
+            asked.append(name)
+            return type("Encoder", (), {"encode": lambda self, text: [0] * len(text)})()
+
+    monkeypatch.setitem(sys.modules, "tiktoken", FakeTiktoken)
+
+    encoder = _tiktoken_encoder("cl100k_base")
+
+    assert asked == ["cl100k_base"]
+    assert os.environ["TIKTOKEN_CACHE_DIR"] == str(DEFAULT_TOKENIZER_CACHE)
+    assert encoder("abcd") == [0, 0, 0, 0]
+
+
+def test_an_explicit_cache_directory_wins(monkeypatch, tmp_path):
+    """The reader's own choice of cache directory is not ours to overwrite."""
+    monkeypatch.setenv("TIKTOKEN_CACHE_DIR", str(tmp_path / "yours"))
+
+    class FakeTiktoken:
+        @staticmethod
+        def get_encoding(name: str):
+            return type("Encoder", (), {"encode": lambda self, text: [0]})()
+
+    monkeypatch.setitem(sys.modules, "tiktoken", FakeTiktoken)
+
+    _tiktoken_encoder("cl100k_base")
+
+    assert os.environ["TIKTOKEN_CACHE_DIR"] == str(tmp_path / "yours")
+
+
+async def test_a_load_that_missed_its_deadline_is_adopted_when_it_arrives():
+    """The wait is over, but the answer is not thrown away with it."""
+    slow = Tokenizer(deadline=0.01, loader=lambda _name: (time.sleep(0.3), lambda text: [0] * len(text))[1])
+    await slow.prepare()
+
+    assert slow.prepared is False, "the deadline is what keeps a panel from waiting"
+
+    deadline = time.perf_counter() + 5.0
+    while not slow.prepared and time.perf_counter() < deadline:
+        await slow.prepare()
+        await asyncio.sleep(0.02)
+
+    assert slow.prepared is True, "a later report should not estimate for the rest of the session"
+    assert slow.label.startswith("tiktoken")
 
 
 async def test_priming_a_restored_session_makes_it_measurable():

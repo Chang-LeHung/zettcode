@@ -139,6 +139,7 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
         self._title_task: asyncio.Task[None] | None = None
         #: The runtime warm-up this shell started, released on the way out.
         self._warm: asyncio.Task[object] | None = None
+        self._counter: asyncio.Task[None] | None = None
         self._busy = False
         self._steering: list[str] = []
         self._steering_sent = 0
@@ -187,11 +188,15 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
 
         The runtime warms — its provider SDK costs a few hundred milliseconds —
         and the release check runs, nothing on screen waits for either, and the
-        first turn awaits the same task. Called once the interface is up,
-        whether :meth:`run` put it there or the command line painted a frame
-        before this application existed.
+        first turn awaits the same task. The token counter warms beside them: its
+        vocabulary is a download the first time a machine sees it and a file read
+        after that, and `/context` would otherwise start that download on the
+        reader's keystroke. Called once the interface is up, whether :meth:`run`
+        put it there or the command line painted a frame before this application
+        existed.
         """
         self._warm = self.agent.runtime.start()
+        self._counter = asyncio.ensure_future(self.agent.runtime.tokenizer.prepare())
         self.start_update_check()
         self.offer_update()
 
@@ -200,6 +205,13 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
         await self._stop_title_task()
         await self._stop_update_task()
         await self._stop_turn()
+        counter, self._counter = self._counter, None
+        if counter is not None:
+            # A counter load still running is the reader leaving before it
+            # answered: cancelling the wait leaves the load on its daemon thread,
+            # which this process does not wait for either.
+            counter.cancel()
+            await asyncio.gather(counter, return_exceptions=True)
         warm, self._warm = self._warm, None
         if warm is not None:
             # A warm-up still in flight is not worth waiting for: it is a launch
