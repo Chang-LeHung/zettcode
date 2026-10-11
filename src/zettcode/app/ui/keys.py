@@ -197,7 +197,6 @@ class KeysMixin(ShellState):
             host.copy(selected)
             self.view.clear_selection()
             host.clear_screen_selection()
-            self._note = f"copied {len(selected)} characters"
             host.invalidate()
             return True
         # A question the model is waiting on is answered or declined here: Ctrl-C

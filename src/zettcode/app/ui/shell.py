@@ -14,6 +14,11 @@ from typing import TYPE_CHECKING
 
 #: Screen name used for a page a command presented; the shell checks it to know
 #: that Ctrl-C and Ctrl-D belong to the page rather than the composer.
+#: How long a flash stays in the row above the composer: long enough to read a
+#: count of characters, short enough that the next thing typed is not typed into
+#: something the reader is still reading.
+FLASH_SECONDS = 1.5
+
 PAGE_SCREEN = "page"
 
 #: Screen name of a question panel. It has its own name because the questions
@@ -100,6 +105,9 @@ class ShellState:
     _measure_task: asyncio.Task[None] | None
     #: The in-flight release check or upgrade, if any.
     _update_task: asyncio.Task[None] | None
+    #: A short-lived message for the row above the composer: its text and the
+    #: moment it stops being true.
+    _flash: tuple[str, float] | None
     #: The question the model is waiting on, while its panel is up.
     _asks: list[AskUserQuestion]
     #: The turn or command currently in flight, if any.
@@ -110,6 +118,9 @@ class ShellState:
 
     def submit(self, value: str) -> bool | None:
         """Start a turn, steer the running one, or run a slash command."""
+
+    def flash(self, message: str, *, seconds: float = FLASH_SECONDS) -> None:
+        """Say something in the row above the composer, for a few seconds."""
 
     def notify(self, message: str, *, level: str = "info") -> None:
         """Show a one-line toast."""

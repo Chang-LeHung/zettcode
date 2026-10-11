@@ -8,7 +8,7 @@ from typing import TypeAlias
 from ...tui import RULE
 from ..core.geometry import Constraints, Size
 from ..core.widget import Widget
-from ..render import Canvas, Span, Style, TextLine
+from ..render import Alignment, Canvas, Span, Style, TextLine
 from .rich_text import RichText
 
 Value: TypeAlias = str | Callable[[], str]
@@ -35,7 +35,7 @@ class Text(RichText):
         self,
         value: Value = "",
         *,
-        align: str = "left",
+        align: Alignment = "left",
         bold: bool = False,
         muted: bool = False,
     ) -> None:
@@ -44,12 +44,14 @@ class Text(RichText):
         Args:
             value: Static text, or a callback re-evaluated on every paint so the
                 label can mirror live state without the owner calling invalidate.
-            align: ``"right"`` right-aligns within the widget rectangle; every
-                other value falls back to left alignment. Wrapping is unaffected.
+            align: ``"left"``, ``"center"``, or ``"right"`` within the widget
+                rectangle, as :func:`layout_rich_lines` implements them; a value
+                the layout does not know raises rather than falling back, so a
+                caller that misspells one hears about it. Wrapping is unaffected.
             bold: Draw every span bold.
             muted: Use the theme's muted colour instead of the body text colour.
         """
-        super().__init__(value, align="right" if align == "right" else "left")
+        super().__init__(value, align=align)
         self.value = value
         self.bold = bold
         self.muted = muted

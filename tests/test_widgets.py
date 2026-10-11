@@ -1,5 +1,7 @@
 """Tests for the M4 widget library."""
 
+import pytest
+
 from zettcode.tui import (
     DARK,
     Canvas,
@@ -25,6 +27,7 @@ from zettcode.tui import (
     Style,
     Table,
     TaskPanel,
+    Text,
     TextArea,
     TextLine,
     Toast,
@@ -325,6 +328,26 @@ def test_list_page_draws_a_subtitle_and_gives_it_a_row_of_its_own():
     )
     assert page.list.rect.y == plain.list.rect.y + 1
     assert page.list.rect.height == plain.list.rect.height - 1
+
+
+def test_a_label_honours_the_alignment_it_is_given():
+    """`Text` forwards the alignment the layout implements instead of narrowing it.
+
+    Every value but ``"right"`` used to fall back to left, so ``"center"`` — which
+    `layout_rich_lines` has always supported — was silently a left-aligned label.
+    A value the layout does not know raises, so a misspelling is not a surprise at
+    paint time either.
+    """
+    centring = Text("middle", align="center")
+    harness = Harness(centring, width=20, height=1)
+
+    line = harness.render().text.splitlines()[0]
+
+    assert line.strip() == "middle"
+    assert line.index("middle") == (20 - len("middle")) // 2, "centred by its left padding"
+
+    with pytest.raises(ValueError, match="alignment"):
+        Text("middle", align="middle")
 
 
 def test_list_page_shows_a_title_scrolls_and_keeps_a_bounded_list():
