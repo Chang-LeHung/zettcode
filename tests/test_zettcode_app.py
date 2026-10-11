@@ -1649,7 +1649,10 @@ async def test_the_context_command_reports_what_the_request_carries():
     # so what is on screen is its start and the whole thing is on the page.
     assert page.subtitle == str(app.agent.session_path())
     assert page.subtitle.endswith(STORE_FILE)
-    assert "/tmp/zettcode-sessions/workspace" in text
+    # The panel is narrower than the path, so what is on screen is its start. The
+    # fragment comes from the fake's own root, which is what keeps this assertion
+    # true wherever the platform puts its path separators.
+    assert str(FakePersistence.root / "workspace") in text
     # The window share is not repeated here; the rows carry the context shares,
     # which add up to the whole of what the next request would send.
     assert "%" not in page.title
