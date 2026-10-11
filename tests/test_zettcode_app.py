@@ -62,6 +62,7 @@ from zettcode.app.ui import app as app_module
 from zettcode.app.ui import demo
 from zettcode.app.ui import keys as keys_module
 from zettcode.app.ui import updating as updating_module
+from zettcode.app.ui.boot import boot_tree
 from zettcode.app.ui.commands import PICKER_ROWS
 from zettcode.app.ui.widgets import (
     WELCOME,
@@ -77,7 +78,7 @@ from zettcode.app.ui.widgets import (
     format_ago,
     help_text,
 )
-from zettcode.config import ModelConfig
+from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.plugins import BUILTIN_PLUGINS, PluginContainer, Plugins, ShellContext, UiBuilder
 from zettcode.tui import (
     DARK,
@@ -94,10 +95,11 @@ from zettcode.tui import (
     Text,
     TextLine,
     Toast,
+    TuiApp,
     walk,
 )
 from zettcode.tui.render import display_width
-from zettcode.tui.testing import Harness, render_block
+from zettcode.tui.testing import Harness, render_block, style_signature
 from zettcode.update import UpdateState, display_command, in_background, read_state, write_state
 
 
@@ -2426,8 +2428,8 @@ def test_blank_row_replaces_the_rule_above_completions():
     harness.render()
 
     spacer = app.root.body.slots[4].widget
-    assert isinstance(spacer, Text)
-    assert spacer.content == ""
+    # The row belongs to the shell rather than to a rule: it is the line a copy
+    # notice is written on, and blank the rest of the time.
     assert spacer.rect.height == 1
     assert app.completions.rect.y == spacer.rect.bottom
     assert harness.render().lines[spacer.rect.y].strip() == ""
@@ -4086,3 +4088,107 @@ def _harness(app: ZettCodeApp) -> Harness:
 def _rendered(transcript: Transcript, width: int) -> list[str]:
     source = TranscriptSource(transcript, theme=DARK)
     return [source.line(index, width).text for index in range(source.count(width))]
+
+
+async def test_the_copy_listener_survives_the_swap_into_the_boot_frame(tmp_path):
+    """The launch that runs is the boot frame's app, so the listener must move to it.
+
+    `cli.launch` paints a placeholder `TuiApp`, then hands the shell's tree to it.
+    A listener installed on the app the shell *built* is installed on an app nobody
+    runs: the copy is handled by the placeholder, so the flash never fired in the
+    real shell while every test — which builds the app directly — passed.
+    """
+    config = ZettCodeConfig(
+        workspace=tmp_path,
+        models=(ModelConfig(model="m", token="t"),),
+        store=tmp_path / "sessions",
+        plugins_enabled=False,
+        skills_enabled=False,
+        mcp_enabled=False,
+    )
+    app = ZettCodeApp(ZettCodeAgent.preview(config), auto_theme=False)
+    boot = TuiApp(boot_tree(tmp_path.resolve()), theme=DARK, auto_theme=True, width=100, height=30)
+    boot.mount()
+    app.adopt(boot)
+    harness = Harness(app=boot)
+    harness.render()
+
+    written: list[str] = []
+    boot.set_copy_handler(written.append)  # what the runner does, last
+    boot.copy("six chars")
+
+    assert written == ["six chars"], "the system clipboard still gets the text"
+    assert app._flash_text() == "copied 9 chars to clipboard"
+    assert "copied 9 chars to clipboard" in harness.render().text, "and the row says it"
+
+
+async def test_the_runners_clipboard_writer_does_not_silence_the_flash():
+    """The regression that made the flash invisible in the real shell.
+
+    `TerminalRunner.run` installs the writer that reaches the system clipboard
+    when it starts, which is after the shell installed its own sink — and a
+    handler that replaced rather than chained left the shell mute. The harness
+    has no runner, so only a test that installs one the same way catches it.
+    """
+    app = build_app()
+    copied: list[str] = []
+
+    app.app.set_copy_handler(copied.append)  # what the runner does, after the fact
+    app.app.copy("six chars")
+
+    assert copied == ["six chars"], "the system clipboard still gets the text"
+    assert app._flash_text() == "copied 9 chars to clipboard"
+
+
+async def test_every_copy_says_so_in_the_row_above_the_composer():
+    """A copy is announced wherever it came from, on the row above the composer.
+
+    The path a reader uses most is a drag: select, release, copied. The first
+    version of this announced only Ctrl-C, so dragging — the way the guide
+    teaches — copied silently. Both go through the host, and the host tells the
+    shell.
+    """
+    app = build_app()
+    harness = _harness(app)
+    for index in range(40):
+        app.transcript.notice(f"line {index}")
+    harness.render()
+    view = app.view
+    target = next(
+        index for index in range(view.line_count()) if view.source.line(index, view.line_width).text.strip() == "line 3"
+    )
+    view.scroll_to(target)
+    harness.render()
+
+    # The drag itself: down, release, copied.
+    harness.mouse_down(view.rect.x + 2, view.rect.y)
+    harness.mouse_up(view.rect.x + 8, view.rect.y)
+
+    message = "copied 6 chars to clipboard"
+    lines = harness.render().text.splitlines()
+    row = next((line for line in lines if message in line), None)
+    assert row is not None, f"the drag said nothing: {lines[-4:]}"
+    width = len(lines[0])
+    padding = len(row) - len(row.lstrip())
+    assert abs(padding - (width - len(message)) // 2) <= 1, f"centred: {padding} of {width}"
+    assert app.flash_line.rect.y == app.composer.rect.y - 1, "on the row the composer sits under"
+    painted = [
+        span
+        for spans in harness.render().styled[app.flash_line.rect.y : app.flash_line.rect.y + 1]
+        for span in spans
+        if message in span.text
+    ]
+    assert painted, "the frame paints the message"
+    assert style_signature(painted[0].style) == f"fg{app.app.theme.accent}", (
+        "in the accent, where the muted grey hints would not be noticed"
+    )
+
+    # And the key, with a selection of its own.
+    app.flash("", seconds=0.0)
+    harness.mouse_down(view.rect.x + 2, view.rect.y)
+    harness.mouse_up(view.rect.x + 8, view.rect.y)
+    harness.press("ctrl_c")
+    assert app._flash_text() == message, "Ctrl-C copies through the same door"
+
+    app.flash("gone", seconds=0.0)
+    assert "gone" not in harness.render().text, "a flash with no time left is not drawn"

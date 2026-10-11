@@ -43,6 +43,12 @@ class ZettCodeRoot(Widget):
         return self.body.cursor()
 
     def on_tick(self) -> None:
-        """Advance the activity frame while a request is running."""
+        """Advance the activity frame while a request is running.
+
+        A flash in the row above the composer asks for the next frame too: it
+        expires on the clock rather than on an event, so something has to keep
+        painting until it does.
+        """
+        self.controller.settle_flash()
         if self.controller.busy and (self.app is None or not self.app.reduced_motion):
             self.controller.transcript.advance_frame()

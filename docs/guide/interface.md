@@ -255,7 +255,9 @@ decodes to a known image, becomes the same chip instead of a wall of characters.
 
 ## Selecting and copying
 
-- Drag in the transcript to select; the selection is copied when you release.
+- Drag in the transcript to select; the selection is copied when you release, and
+  the row above the composer says so for a moment — `copied 42 chars to
+  clipboard` — before the next thing typed takes that row back.
 - Double-click selects a whole row; `Shift`-click extends.
 - Drag anywhere else — a panel, a list, the header — to copy the text painted
   there; those surfaces never had selectable text of their own.

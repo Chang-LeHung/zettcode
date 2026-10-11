@@ -205,8 +205,21 @@ class TuiApp(Host):
             self._on_copy(text)
 
     def set_copy_handler(self, handler: Callable[[str], None] | None) -> None:
-        """Install the sink that mirrors copied text to the system clipboard."""
-        self._on_copy = handler
+        """Add a sink for copied text, keeping the sinks already installed."""
+        if handler is None or self._on_copy is None or self._on_copy is handler:
+            self._on_copy = handler
+            return
+        # Handlers chain in the order they were installed: the runner installs the
+        # one that reaches the system clipboard, and a shell that wants to say what
+        # was copied installs its own — neither has to know about the other, and
+        # whichever installs last does not take the clipboard away from the first.
+        previous = self._on_copy
+
+        def chained(text: str) -> None:
+            previous(text)
+            handler(text)
+
+        self._on_copy = chained
 
     def refresh(self) -> None:
         """Repaint from scratch, discarding the renderer's previous frame."""

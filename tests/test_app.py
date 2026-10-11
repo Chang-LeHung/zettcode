@@ -442,3 +442,27 @@ def test_widgets_see_the_app_theme_and_unhandled_events_return_false():
     app.exit()
 
     assert app.running is False
+
+
+def test_the_copy_handler_chains_what_was_installed_before_it():
+    """Whichever sink installs last must not take the clipboard from the first.
+
+    The runner installs the writer that reaches the system clipboard when it
+    starts — after a shell has already installed one to react to a copy — so
+    replacing rather than chaining would silently disable the shell's.
+    """
+    app = TuiApp(Widget())
+    first: list[str] = []
+    second: list[str] = []
+    app.set_copy_handler(first.append)
+
+    app.set_copy_handler(second.append)
+    app.copy("hello")
+
+    assert first == ["hello"] and second == ["hello"]
+    assert app.clipboard == "hello"
+
+    app.set_copy_handler(None)
+    app.copy("again")
+
+    assert first == ["hello"] and second == ["hello"], "clearing clears"

@@ -26,15 +26,19 @@ from ...tui import (
     PROMPT,
     SEPARATOR,
     CompletionPopup,
+    RichText,
     Screen,
+    Span,
     StatusBar,
+    Style,
     TaskPanel,
+    TextLine,
     Theme,
     TuiApp,
     VBox,
 )
 from ...tui.layout import Slot
-from ...tui.widgets import Rule, Text
+from ...tui.widgets import Rule
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from collections.abc import AsyncGenerator
@@ -54,7 +58,7 @@ from .notices import NoticesMixin
 from .rows import RowsMixin
 from .sessions import SessionMixin
 from .settings import SettingsMixin
-from .shell import MAX_STEERING, PAGE_SCREEN
+from .shell import FLASH_SECONDS, MAX_STEERING, PAGE_SCREEN
 from .updating import UpdateMixin
 from .widgets import (
     WELCOME,
@@ -112,6 +116,9 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
             on_change=self._refresh_completions,
             surface=True,
         )
+        #: The row between the conversation and the composer: blank until something
+        #: the reader just did needs saying, then a centred line that expires.
+        self.flash_line = RichText(self._flash_line, align="center", wrap=False)
         self.completions = CompletionPopup(max_height=6)
         self.steering = SteeringQueue()
         self.header = StatusBar(self._header_left, self._header_right)
@@ -124,7 +131,7 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
                 Slot(Rule(), size=1),
                 Slot(self.view, flex=1),
                 Slot(self.panel, size=lambda width: self.panel.preferred_height()),
-                Slot(Text(""), size=1),
+                Slot(self.flash_line, size=1),
                 Slot(self.completions, size=lambda available: self.completions.visible_height),
                 Slot(self.steering, size=lambda width: self.steering.preferred_height()),
                 Slot(self.composer, size=lambda width: self.composer.preferred_height(width)),
@@ -132,11 +139,26 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
             ]
         )
         self.root = ZettCodeRoot(self, body)
-        self.app = TuiApp(self.root, theme=theme, reduced_motion=agent.reduced_motion, auto_theme=auto_theme)
+        # The listener is installed here for a shell that runs its own app, and
+        # again by :meth:`adopt` for one that hands its tree to the boot frame's:
+        # the copy is handled by whichever app ends up running. Installing it
+        # twice is a no-op, because a handler is not chained onto itself.
+        self.app = TuiApp(
+            self.root,
+            theme=theme,
+            reduced_motion=agent.reduced_motion,
+            auto_theme=auto_theme,
+            on_copy=self._copied,
+        )
         # The terminal tab says what this session is about, like any editor tab.
         self.app.title = self._terminal_title
         self._task: asyncio.Task[None] | None = None
         self._title_task: asyncio.Task[None] | None = None
+        #: A short-lived message for the row above the composer: the text and the
+        #: moment it stops being true. It lives here rather than in the status line
+        #: because the status line is a standing report of what the shell is doing,
+        #: while this answers something the reader just did.
+        self._flash: tuple[str, float] | None = None
         #: The context re-measure a restore started, replaced by the next restore.
         self._measure_task: asyncio.Task[None] | None = None
         #: The runtime warm-up this shell started, released on the way out.
@@ -183,6 +205,54 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
             await TerminalRunner(self.app, terminal=Terminal(diagnostics=DEFAULT_LOG)).run()
         finally:
             await self.stop_background()
+
+    def _copied(self, text: str) -> None:
+        """Say how much was copied, wherever the copy came from.
+
+        Every copy passes through the host: a drag that selects and releases, a
+        drag over a panel's painted cells, and Ctrl-C all end in ``copy``.
+        Announcing it from there is what keeps them from drifting — the first
+        version of this spoke only on the key, so a reader who dragged, which is
+        the way the guide teaches, saw nothing at all.
+        """
+        self.flash(f"copied {len(text)} chars to clipboard")
+
+    def flash(self, message: str, *, seconds: float = FLASH_SECONDS) -> None:
+        """Say something in the row above the composer, for a few seconds.
+
+        Args:
+            message: One line, drawn centred; the row is blank again when it ends.
+            seconds: How long it stays.
+        """
+        self._flash = (message, monotonic() + seconds)
+        self.app.request_layout()
+
+    def _flash_line(self) -> TextLine:
+        """Return the flash as a styled line, which is what that row paints.
+
+        The accent rather than the muted grey the hints use, and nothing more: this
+        is the shell saying that something the reader just did worked, which the
+        colour says on its own — bold would make the row shout for two seconds.
+        """
+        message = self._flash_text()
+        if not message:
+            return TextLine(())
+        return TextLine((Span(message, Style(foreground=self.app.theme.accent)),))
+
+    def _flash_text(self) -> str:
+        """Return the flash while it lasts, which is what that row paints."""
+        if self._flash is None:
+            return ""
+        message, expires = self._flash
+        if monotonic() >= expires:
+            self._flash = None
+            return ""
+        return message
+
+    def settle_flash(self) -> None:
+        """Ask for a repaint while a flash is alive, so it can expire on its own."""
+        if self._flash is not None and self._flash_text():
+            self.app.invalidate()
 
     def start_background(self) -> None:
         """Begin the work that belongs behind the first frame.
@@ -253,6 +323,10 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
         self.app = tui
         tui.commands = placeholder.commands
         tui.keymap = placeholder.keymap
+        # The copy listener travels too: this application installs one to say what
+        # was copied, the placeholder carries none, and a copy is handled by the
+        # app that ends up running rather than by the one that built the tree.
+        tui.set_copy_handler(self._copied)
         tui.title = self._terminal_title
         tui.reduced_motion = placeholder.reduced_motion
         tui.auto_theme = placeholder.auto_theme
