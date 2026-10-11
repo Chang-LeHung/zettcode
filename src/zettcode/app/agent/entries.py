@@ -1,21 +1,57 @@
-"""Typed transcript entries and their width-dependent render caches."""
+"""The conversation's entries: plain data, one class for each way a row can look.
+
+An entry says *what happened* — a user asked, a tool ran, the model is thinking —
+and nothing about how that is drawn. The drawing is ``presenters.py``, which looks
+an entry up by its :class:`EntryKind`; the list of entries, and what the agent
+does to it, is ``transcript.py``.
+
+Two base classes carry what the concrete ones share. :class:`Entry` is identity
+and a place for the presenter to leave its rendered rows; :class:`TimedEntry`
+is an entry that takes time — the wait row, a reasoning span, a tool call — and
+so has a status, a start, and a duration.
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, ClassVar, Literal, TypeAlias, cast
 
 from ..._compat import StrEnum
-from ...tui import LineSource, Markdown, StaticLines, Theme
-from ...tui.widgets.markdown import MarkdownSource
+from ...tui import LineSource, Markdown
 from .rows import THINKING_LABEL
 
-if TYPE_CHECKING:
-    from .blocks import EntryProcessors
+
+class EntryKind(StrEnum):
+    """What a row is, which is what picks the presenter that draws it.
+
+    The value is the word the rest of the application and its tests use for the
+    row, so an entry's ``kind`` still compares equal to the plain string.
+
+    Attributes:
+        WELCOME: The banner shown once at startup.
+        USER: A message the reader sent, or a side question.
+        NOTICE: A muted one-off status line, or an error.
+        ANNOUNCEMENT: A change worth a centred line between rules.
+        ANSWER: The model's reply, streamed in as it is written.
+        MESSAGE: Markdown that is not a reply, such as a command's output.
+        WAIT: The pinned row that says a request is running, and settles into
+            the line it ended on.
+        THINKING: Reasoning, or a compaction's summary, with its own clock.
+        TOOL: One tool call and its bounded result.
+    """
+
+    WELCOME = "welcome"
+    USER = "user"
+    NOTICE = "notice"
+    ANNOUNCEMENT = "announcement"
+    ANSWER = "answer"
+    MESSAGE = "message"
+    WAIT = "wait"
+    THINKING = "thinking"
+    TOOL = "tool"
 
 
 class EntryStatus(StrEnum):
-    """Lifecycle of a reasoning or tool row."""
+    """Lifecycle of a row that takes time: a wait, a reasoning span, a tool call."""
 
     RUNNING = "running"
     COMPLETED = "completed"
@@ -23,83 +59,100 @@ class EntryStatus(StrEnum):
     SKIPPED = "skipped"
 
 
+class NoticeLevel(StrEnum):
+    """How a notice is meant: a remark, or a failure."""
+
+    INFO = "info"
+    ERROR = "error"
+
+
 @dataclass(slots=True, kw_only=True)
-class BaseEntry:
-    """Identity and render cache shared by all transcript entries."""
+class Entry:
+    """Identity, a kind, and the slots a presenter caches its rendered rows in.
+
+    ``block`` and ``block_key`` belong to ``presenters.block_for``: it keeps the
+    rows it last produced here, with the key they were produced under, so a row
+    that has not changed is not rendered again. They live on the entry only
+    because an entry's lifetime is exactly the cache's; nothing else reads them.
+    """
 
     id: int
-    kind: str
+    kind: EntryKind
     block: LineSource | None = field(default=None, init=False, repr=False)
     block_key: tuple[object, ...] | None = field(default=None, init=False, repr=False)
 
-    def block_for(
-        self, width: int, theme: Theme, frame: int, *, processors: EntryProcessors | None = None
-    ) -> LineSource:
-        """Return cached presentation lines, rebuilding only when state changes."""
-        from .blocks import DEFAULT_PROCESSORS, render_entry
-        from .transcript import CONTENT_INDENT, Indented
+    def __post_init__(self) -> None:
+        """Accept a kind as its plain word, reject one that is not a kind."""
+        self.kind = EntryKind(self.kind)
+        self.validate()
 
-        chosen = DEFAULT_PROCESSORS if processors is None else processors
-        key: tuple[object, ...] = (width, theme, chosen, self.kind, self.render_state(frame))
-        if self.block is None or self.block_key != key:
-            # The rows that open with a marker — the user's arrow, the waiting row's
-            # sparkle, a tool's outcome — draw that marker in the gutter's own column,
-            # so every leading glyph sits in one column and every line of content in
-            # the next. Everything else is inset past the gutter.
-            marked = isinstance(self, (ProcessingEntry, ThinkingEntry, ToolEntry)) or (
-                isinstance(self, TextEntry) and self.kind == "user"
-            )
-            margin = min(CONTENT_INDENT, max(0, width - 1))
-            content_width = width if marked else max(1, width - margin)
-            # Only the union members below are ever instantiated; the base class
-            # exists to share this cache, so the cast is exact at runtime.
-            rendered = StaticLines(render_entry(cast(Entry, self), content_width, theme, frame, processors=chosen))
-            self.block = rendered if marked else Indented(rendered)
-            self.block_key = key
-        return self.block
-
-    def render_state(self, frame: int) -> object:
-        """Return state that changes how this entry looks when painted."""
-        return ()
+    def validate(self) -> None:
+        """Convert and check what a subclass adds; the base has nothing to check."""
 
 
 @dataclass(slots=True, kw_only=True)
-class TextEntry(BaseEntry):
-    """Welcome banner, user message, or muted notice."""
+class TimedEntry(Entry):
+    """An entry that takes time, and so has a status, a start, and a duration.
 
-    kind: Literal["welcome", "notice", "user", "announcement"]
+    ``started_at`` is the clock reading the row opened on and ``duration`` how long
+    it has run, which is what the row's timer shows: the transcript brings both up
+    while a row is :attr:`running` and stops when it is not.
+    """
+
+    status: EntryStatus = EntryStatus.RUNNING
+    started_at: float | None = None
+    duration: float | None = None
+
+    def validate(self) -> None:
+        """Accept a status as its plain word, reject one that is not a status."""
+        self.status = EntryStatus(self.status)
+
+    @property
+    def running(self) -> bool:
+        """Return whether the row is still going, which is what its timer follows."""
+        return self.status is EntryStatus.RUNNING
+
+
+_TEXT_KINDS = frozenset({EntryKind.WELCOME, EntryKind.USER, EntryKind.NOTICE, EntryKind.ANNOUNCEMENT})
+_MARKDOWN_KINDS = frozenset({EntryKind.ANSWER, EntryKind.MESSAGE})
+
+
+@dataclass(slots=True, kw_only=True)
+class TextEntry(Entry):
+    """A row of plain text: the welcome banner, a user message, a notice, an announcement."""
+
     text: str
-    level: Literal["info", "error"] = "info"
+    level: NoticeLevel = NoticeLevel.INFO
     #: Side question: an answer that never joined the conversation.
     side: bool = False
 
-    def render_state(self, frame: int) -> object:
-        """Include the text so replacing it cannot reuse stale rendered lines."""
-        return (self.text, self.level, self.side)
+    def validate(self) -> None:
+        """Keep the kind to the plain-text ones, and the level to a known one."""
+        if self.kind not in _TEXT_KINDS:
+            raise ValueError(f"A {self.kind.value} row is not plain text")
+        self.level = NoticeLevel(self.level)
 
 
 @dataclass(slots=True, kw_only=True)
-class MarkdownEntry(BaseEntry):
-    """Streaming assistant answer or Markdown command output."""
+class MarkdownEntry(Entry):
+    """The model's reply as it streams in, or Markdown command output.
 
-    kind: Literal["answer", "message"]
+    The parsed ``markdown`` is the row's own state: it is appended to as the reply
+    arrives and serves its lines incrementally, so a token landing costs one row's
+    work instead of a re-render of the answer.
+    """
+
     text: str = ""
     markdown: Markdown = field(default_factory=Markdown)
 
-    def block_for(
-        self, width: int, theme: Theme, frame: int, *, processors: EntryProcessors | None = None
-    ) -> LineSource:
-        """Keep streamed Markdown virtualized instead of re-rendering it per frame."""
-        from .transcript import Indented, LeadingGap
-
-        self.markdown.theme = theme
-        if self.block is None:
-            self.block = Indented(LeadingGap(MarkdownSource(self.markdown)))
-        return self.block
+    def validate(self) -> None:
+        """Keep the kind to the Markdown ones."""
+        if self.kind not in _MARKDOWN_KINDS:
+            raise ValueError(f"A {self.kind.value} row is not Markdown")
 
 
 @dataclass(slots=True, kw_only=True)
-class ProcessingEntry(BaseEntry):
+class WaitEntry(TimedEntry):
     """The pinned wait row: a model call is running, and how long it has taken.
 
     It is the last entry of the transcript for as long as the request runs, and
@@ -108,66 +161,38 @@ class ProcessingEntry(BaseEntry):
     leaves a record instead of an empty place where a row used to be.
     """
 
-    # mypy cannot model a dataclass field re-declared as a fixed class
-    # value; the runtime drops it from __init__, which the test pins.
-    kind: ClassVar[Literal["pending"]] = "pending"  # type: ignore[misc]
+    kind: EntryKind = field(default=EntryKind.WAIT, init=False)
     title: str = "Processing"
-    status: EntryStatus = EntryStatus.RUNNING
     started_at: float
-    duration: float | None = None
     #: The line the request ended on, written when the row is settled.
     text: str = ""
 
-    def __post_init__(self) -> None:
-        """Keep externally constructed entries on the same status enum as the transcript."""
-        self.status = EntryStatus(self.status)
-
-    def render_state(self, frame: int) -> object:
-        """The waiting row advances its sweep and timer; the settled one is a line."""
-        return (
-            self.title,
-            self.text,
-            self.status,
-            frame if self.status is EntryStatus.RUNNING else 0,
-            self.duration,
-        )
-
 
 @dataclass(slots=True, kw_only=True)
-class ThinkingEntry(BaseEntry):
+class ThinkingEntry(TimedEntry):
     """Expandable reasoning with its own clock and completion state.
 
     The same row carries a compaction: the summarizer is a model call whose
     progress deserves the same row and timer, so the label is part of the entry
-    rather than something the renderer decides.
+    rather than something the presenter decides.
     """
 
-    kind: ClassVar[Literal["thinking"]] = "thinking"  # type: ignore[misc]
+    kind: EntryKind = field(default=EntryKind.THINKING, init=False)
     title: str = THINKING_LABEL
     text: str = ""
     expanded: bool = False
-    status: EntryStatus = EntryStatus.RUNNING
-    started_at: float | None = None
-    duration: float | None = None
-
-    def __post_init__(self) -> None:
-        """Reject unknown reasoning states before a row reaches the renderer."""
-        self.status = EntryStatus(self.status)
-
-    def render_state(self, frame: int) -> object:
-        """Expansion, reasoning text, state, and timer affect presentation.
-
-        The frame is not part of it: only the waiting row paints the animation,
-        so a step through the transcript leaves a reasoning row as it is.
-        """
-        return (self.title, self.expanded, self.text, self.status, self.duration)
 
 
 @dataclass(slots=True, kw_only=True)
-class ToolEntry(BaseEntry):
-    """Expandable tool invocation and bounded result."""
+class ToolEntry(TimedEntry):
+    """Expandable tool invocation and bounded result.
 
-    kind: ClassVar[Literal["tool"]] = "tool"  # type: ignore[misc]
+    ``added`` and ``removed`` are the lines an edit changes, counted from the call's
+    arguments when the row opens; they ride beside the title because the presenter
+    paints them in colours of their own.
+    """
+
+    kind: EntryKind = field(default=EntryKind.TOOL, init=False)
     call_id: str
     tool: str
     title: str
@@ -176,41 +201,3 @@ class ToolEntry(BaseEntry):
     removed: int = 0
     text: str = ""
     expanded: bool = False
-    status: EntryStatus = EntryStatus.RUNNING
-    started_at: float | None = None
-    duration: float | None = None
-
-    def __post_init__(self) -> None:
-        """Reject unknown tool states before a row reaches the renderer."""
-        self.status = EntryStatus(self.status)
-
-    def render_state(self, frame: int) -> object:
-        """A tool body, expansion, state, timer, and language each affect its rows.
-
-        The frame is not part of it, for the same reason a reasoning row's is
-        not: a running call is painted flat, and only its timer moves.
-        """
-        return (
-            self.title,
-            self.expanded,
-            self.text,
-            self.status,
-            self.duration,
-            self.language,
-            self.added,
-            self.removed,
-        )
-
-
-@dataclass(slots=True, kw_only=True)
-class PlainEntry(BaseEntry):
-    """Fallback for entry kinds introduced outside the built-in UI."""
-
-    text: str
-
-    def render_state(self, frame: int) -> object:
-        """A fallback row changes only when its text changes."""
-        return self.text
-
-
-Entry: TypeAlias = TextEntry | MarkdownEntry | ProcessingEntry | ThinkingEntry | ToolEntry | PlainEntry

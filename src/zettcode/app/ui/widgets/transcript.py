@@ -26,8 +26,9 @@ from ....tui import (
     Theme,
 )
 from ....tui.render import display_width
-from ...agent.blocks import EntryProcessors
-from ...agent.transcript import Entry, Transcript
+from ...agent.entries import Entry
+from ...agent.presenters import Presenters, block_for
+from ...agent.transcript import Transcript
 
 #: Badge shown once the reader scrolls away from the newest line. It names the
 #: shortcut so the mouse and the keyboard offer the same way back.
@@ -37,14 +38,19 @@ BACK_TO_BOTTOM = BADGE_ARROW + BADGE_LABEL
 
 
 class TranscriptSource(LineSource):
-    """LineSource over the transcript, rendering each entry at most once."""
+    """LineSource over the transcript: every entry's block, stacked, rendered at most once.
+
+    A *block* is one entry presented as rows (``presenters.block_for``); this stacks
+    them into the single line source the scrolling view reads, remembering where each
+    one starts so a line index finds its entry without walking the list.
+    """
 
     def __init__(self, transcript: Transcript, *, theme: Theme, frame: Callable[[], int] = lambda: 0) -> None:
         """Serve ``transcript`` as lines, caching blocks per width and version.
 
         Args:
             transcript: Model to read; its ``version`` invalidates this cache.
-            theme: Palette handed to each entry's renderer.
+            theme: Palette handed to each entry's presenter.
             frame: Pulled lazily so the animation frame is only read for the
                 rows that are actually rendered.
         """
@@ -54,7 +60,7 @@ class TranscriptSource(LineSource):
         self._width = 0
         self._version = -1
         self._theme: Theme | None = None
-        self._processors: EntryProcessors | None = None
+        self._presenters: Presenters | None = None
         self._starts: list[int] = []
         self._blocks: list[LineSource] = []
         self._count = 0
@@ -70,9 +76,7 @@ class TranscriptSource(LineSource):
         self._sync(width)
         if not self._blocks:
             return TextLine()
-        # ``_starts`` holds the first line of every block, so the last start at or
-        # before ``index`` names the block that owns it.
-        position = min(max(0, bisect_right(self._starts, index) - 1), len(self._blocks) - 1)
+        position = self._owner(index)
         return self._blocks[position].line(index - self._starts[position], width)
 
     def entry_at(self, index: int, width: int) -> Entry | None:
@@ -80,27 +84,34 @@ class TranscriptSource(LineSource):
         self._sync(width)
         if not self._blocks:
             return None
-        position = min(max(0, bisect_right(self._starts, index) - 1), len(self._blocks) - 1)
-        return self.transcript.entries[position]
+        return self.transcript.entries[self._owner(index)]
+
+    def _owner(self, index: int) -> int:
+        """Return the position of the block that owns a line.
+
+        ``_starts`` holds the first line of every block, so the last start at or
+        before ``index`` names it.
+        """
+        return min(max(0, bisect_right(self._starts, index) - 1), len(self._blocks) - 1)
 
     def _sync(self, width: int) -> None:
         """Rebuild the block boundaries when the width or the transcript changed.
 
         Only the entries the model marked dirty are re-measured. Streaming one
         answer dirties a single index, so a token lands in O(1) work instead of
-        re-walking every entry ever written; a width, theme, or processor change
+        re-walking every entry ever written; a width, theme, or presenter change
         still rebuilds the whole list because it invalidates every block.
         """
         if (
             width == self._width
             and self.transcript.version == self._version
             and self._theme == self.theme
-            and self._processors is self.transcript.processors
+            and self._presenters is self.transcript.presenters
         ):
             return
         entries = self.transcript.entries
         rebuild_all = (
-            width != self._width or self._theme != self.theme or self._processors is not self.transcript.processors
+            width != self._width or self._theme != self.theme or self._presenters is not self.transcript.presenters
         )
         dirty = None if rebuild_all else self.transcript.take_dirty()
         if dirty is None:
@@ -110,7 +121,7 @@ class TranscriptSource(LineSource):
         self._width = width
         self._version = self.transcript.version
         self._theme = self.theme
-        self._processors = self.transcript.processors
+        self._presenters = self.transcript.presenters
         frame = self.frame()
         if start == 0:
             self._starts = []
@@ -122,7 +133,7 @@ class TranscriptSource(LineSource):
             del self._blocks[start:]
         for entry in entries[start:]:
             self._starts.append(total)
-            block = entry.block_for(width, self.theme, frame, processors=self.transcript.processors)
+            block = block_for(entry, width, self.theme, frame, presenters=self.transcript.presenters)
             self._blocks.append(block)
             total += block.count(width)
         self._count = total

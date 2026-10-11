@@ -1,26 +1,38 @@
-"""The conversation model: entries, their mutations, and their render cache.
+"""The conversation model: an ordered list of entries, and what the agent does to it.
 
 The projector writes into this model and the UI reads it, so it lives on the
-agent side of the application and never imports the shell. The scrollable view
-over these entries is ``app.ui.widgets.transcript``.
+agent side of the application and never imports the shell. The entries are plain
+data (``entries.py``); how one is drawn is its presenter's business
+(``presenters.py``); the scrollable view over the list is
+``app.ui.widgets.transcript``. What is left here is the list itself — where a new
+entry goes, what changed since the view last looked, how many are kept — and the
+verbs the agent's events map onto: start a tool, stream an answer, settle the wait.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from time import monotonic
-from typing import TypeVar
+from typing import TypeGuard, TypeVar
 
 from ...config import DEFAULT_TRANSCRIPT_MAX_ENTRIES
-from ...tui import LineSource, TextLine
-from ...tui.render import inset_line
-from .blocks import DEFAULT_PROCESSORS, EntryProcessors
-from .entries import Entry, EntryStatus, MarkdownEntry, ProcessingEntry, TextEntry, ThinkingEntry, ToolEntry
+from .entries import (
+    Entry,
+    EntryKind,
+    EntryStatus,
+    MarkdownEntry,
+    NoticeLevel,
+    TextEntry,
+    ThinkingEntry,
+    TimedEntry,
+    ToolEntry,
+    WaitEntry,
+)
+from .presenters import DEFAULT_PRESENTERS, Presenters
 from .rendering import ANSWER, DEFAULT_RENDERERS, THINKING, Renderers
 from .rows import (
     ANIMATION_SECONDS,
     COMPACTING_LABEL,
-    CONTENT_INDENT,
     PROCESSING,
     limit_output,
 )
@@ -46,7 +58,7 @@ class Transcript:
         *,
         clock: Callable[[], float] = monotonic,
         renderers: Renderers = DEFAULT_RENDERERS,
-        processors: EntryProcessors = DEFAULT_PROCESSORS,
+        presenters: Presenters = DEFAULT_PRESENTERS,
         max_entries: int = DEFAULT_TRANSCRIPT_MAX_ENTRIES,
     ) -> None:
         """Start an empty transcript whose elapsed times come from ``clock``.
@@ -55,7 +67,8 @@ class Transcript:
             clock: Time source for row durations, injectable for tests.
             renderers: Chain that phrases tool rows; tests can pass their own to
                 pin the wording a row would show.
-            processors: Chain that produces presentation lines for entries.
+            presenters: How each kind of entry is drawn; the view reads this so a
+                transcript given other presenters is drawn with them.
             max_entries: Conversation entries kept for display; older ones are
                 dropped, while the session file keeps the whole tree. Must be
                 positive.
@@ -63,7 +76,7 @@ class Transcript:
         if max_entries < 1:
             raise ValueError("max_entries must be positive")
         self.renderers = renderers
-        self.processors = processors
+        self.presenters = presenters
         self.entries: list[Entry] = []
         self.clock = clock
         self.max_entries = max_entries
@@ -107,7 +120,7 @@ class Transcript:
         if index is not None:
             self._touch(index)
 
-    def _open_wait(self) -> ProcessingEntry | None:
+    def _open_wait(self) -> WaitEntry | None:
         """Return the wait row while it is open, which is what keeps it pinned.
 
         The row is the last entry for as long as the request runs, so "open"
@@ -115,7 +128,7 @@ class Transcript:
         be something the reader is still waiting for.
         """
         last = self.entries[-1] if self.entries else None
-        if isinstance(last, ProcessingEntry) and last.status is EntryStatus.RUNNING:
+        if isinstance(last, WaitEntry) and last.running:
             return last
         return None
 
@@ -164,6 +177,16 @@ class Transcript:
         """Return the newest entry of one type, or None when there is none."""
         return next((entry for entry in reversed(self.entries) if isinstance(entry, entry_type)), None)
 
+    @staticmethod
+    def _is_open_row(entry: Entry) -> TypeGuard[ThinkingEntry | ToolEntry]:
+        """Return whether an entry is a reasoning or tool row that is still running.
+
+        These are the rows a request leaves open when it ends mid-call, and the
+        ones a new wait row must not be opened beside. The wait row itself is not
+        one of them: it is settled by the request's end, with the line it ended on.
+        """
+        return isinstance(entry, (ThinkingEntry, ToolEntry)) and entry.running
+
     def entry(self, entry_id: int) -> Entry | None:
         """Return the entry with this id, or None when it has been cleared."""
         return next((item for item in self.entries if item.id == entry_id), None)
@@ -193,13 +216,13 @@ class Transcript:
             text: What the reader asked.
             side: The message was a side question, which the row shows as such.
         """
-        self._add(TextEntry(id=self._next_id, kind="user", text=text, side=side))
+        self._add(TextEntry(id=self._next_id, kind=EntryKind.USER, text=text, side=side))
 
     def restore_thinking(self, text: str, duration_ns: int | None) -> None:
         """Append completed reasoning from one stored assistant response."""
         duration = duration_ns / 1_000_000_000 if duration_ns is not None else None
         self._add(
-            ThinkingEntry(  # type: ignore[call-arg]  # kind is a fixed class value; see entries.py
+            ThinkingEntry(
                 id=self._next_id,
                 text=self.renderers.text(THINKING, text, opening=True),
                 status=EntryStatus.COMPLETED,
@@ -226,7 +249,7 @@ class Transcript:
         """
         changed = False
         for index, entry in enumerate(self.entries):
-            if not isinstance(entry, (ThinkingEntry, ToolEntry)) or entry.status is not EntryStatus.RUNNING:
+            if not self._is_open_row(entry):
                 continue
             entry.status = EntryStatus.SKIPPED
             if isinstance(entry, ToolEntry) and not entry.text:
@@ -267,9 +290,7 @@ class Transcript:
         changed = False
         for index in range(self._turn_from, len(self.entries)):
             entry = self.entries[index]
-            if not isinstance(entry, (ProcessingEntry, ThinkingEntry, ToolEntry)):
-                continue
-            if entry.status is not EntryStatus.RUNNING:
+            if not isinstance(entry, TimedEntry) or not entry.running:
                 continue
             if entry.started_at is not None:
                 entry.duration = self.clock() - entry.started_at
@@ -280,15 +301,15 @@ class Transcript:
 
     def notice(self, text: str) -> None:
         """Append a muted one-off status line."""
-        self._add(TextEntry(id=self._next_id, kind="notice", text=text))
+        self._add(TextEntry(id=self._next_id, kind=EntryKind.NOTICE, text=text))
 
     def error(self, text: str) -> None:
         """Append a one-off failure line, painted as an error."""
-        self._add(TextEntry(id=self._next_id, kind="notice", text=text, level="error"))
+        self._add(TextEntry(id=self._next_id, kind=EntryKind.NOTICE, text=text, level=NoticeLevel.ERROR))
 
     def announce(self, text: str) -> None:
         """Announce a change as one centered line between horizontal rules."""
-        self._add(TextEntry(id=self._next_id, kind="announcement", text=text))
+        self._add(TextEntry(id=self._next_id, kind=EntryKind.ANNOUNCEMENT, text=text))
 
     def model_changed(self, previous: str, current: str) -> None:
         """Announce a model change in the conversation."""
@@ -308,14 +329,14 @@ class Transcript:
         Use it for command output, which is usually a list or a table; a notice
         is the terse alternative for one-line status such as ``stopped``.
         """
-        entry = MarkdownEntry(id=self._next_id, kind="message")
+        entry = MarkdownEntry(id=self._next_id, kind=EntryKind.MESSAGE)
         entry.markdown.append(text)
         entry.text = text
         self._add(entry)
 
     def welcome(self, text: str) -> None:
         """Append the banner shown once at startup."""
-        self._add(TextEntry(id=self._next_id, kind="welcome", text=text))
+        self._add(TextEntry(id=self._next_id, kind=EntryKind.WELCOME, text=text))
 
     def begin_turn(self, prompt: str, *, side: bool = False) -> None:
         """Record the user prompt and open the first wait row for the reply.
@@ -325,7 +346,7 @@ class Transcript:
             side: The question is a side one: answered here, never part of the
                 conversation the model carries afterwards.
         """
-        self._add(TextEntry(id=self._next_id, kind="user", text=prompt, side=side))
+        self._add(TextEntry(id=self._next_id, kind=EntryKind.USER, text=prompt, side=side))
         self.wait_for_model()
 
     def wait_for_model(self) -> bool:
@@ -344,13 +365,10 @@ class Transcript:
         # behind that range would never be brought up. The request's own end
         # closes them (:meth:`finish_running_rows`), which is what keeps the
         # range the whole truth; this is the backstop that depends on it.
-        if any(
-            isinstance(entry, (ThinkingEntry, ToolEntry)) and entry.status is EntryStatus.RUNNING
-            for entry in self.entries
-        ):
+        if any(self._is_open_row(entry) for entry in self.entries):
             return False
         self._turn_from = len(self.entries)
-        self._add(ProcessingEntry(id=self._next_id, title=PROCESSING, started_at=self.clock()))  # type: ignore[call-arg]  # kind is a fixed class value; see entries.py
+        self._add(WaitEntry(id=self._next_id, title=PROCESSING, started_at=self.clock()))
         return True
 
     def settle_wait(self, text: str) -> bool:
@@ -385,7 +403,7 @@ class Transcript:
         current = self._last(ThinkingEntry)
         if current is not None and current.status is EntryStatus.RUNNING:
             return current
-        return self._add(ThinkingEntry(id=self._next_id, started_at=self.clock()))  # type: ignore[call-arg]  # kind is a fixed class value; see entries.py
+        return self._add(ThinkingEntry(id=self._next_id, started_at=self.clock()))
 
     def start_compaction(self) -> ThinkingEntry:
         """Open the row that shows the summarizer working.
@@ -399,7 +417,7 @@ class Transcript:
         if current is not None and current.status is EntryStatus.RUNNING and current.title == COMPACTING_LABEL:
             return current
         return self._add(
-            ThinkingEntry(  # type: ignore[call-arg]  # kind is a fixed class value; see entries.py
+            ThinkingEntry(
                 id=self._next_id,
                 title=COMPACTING_LABEL,
                 started_at=self.clock(),
@@ -452,8 +470,8 @@ class Transcript:
         # one the pinned wait row sits under.
         index = self._add_index() - 1
         current = self.entries[index] if index >= 0 else None
-        if not isinstance(current, MarkdownEntry) or current.kind != "answer":
-            current = MarkdownEntry(id=self._next_id, kind="answer")
+        if not isinstance(current, MarkdownEntry) or current.kind is not EntryKind.ANSWER:
+            current = MarkdownEntry(id=self._next_id, kind=EntryKind.ANSWER)
             self._add(current)
         delta = self.renderers.text(ANSWER, delta, opening=not current.text)
         current.markdown.append(delta)
@@ -472,7 +490,7 @@ class Transcript:
         self.complete_thinking()
         row = self.renderers.describe(name, arguments)
         self._add(
-            ToolEntry(  # type: ignore[call-arg]  # kind is a fixed class value; see entries.py
+            ToolEntry(
                 id=self._next_id,
                 call_id=call_id,
                 tool=name,
@@ -522,7 +540,7 @@ class Transcript:
         entry = self.entry(entry_id)
         if not isinstance(entry, (ThinkingEntry, ToolEntry)):
             return False
-        if isinstance(entry, ToolEntry) and (entry.status is EntryStatus.RUNNING or not entry.text):
+        if isinstance(entry, ToolEntry) and (entry.running or not entry.text):
             return False
         entry.expanded = not entry.expanded
         self._touch_entry(entry)
@@ -554,65 +572,3 @@ class Transcript:
         if changed:
             self.version += 1
         return changed
-
-
-class LeadingGap(LineSource):
-    """LineSource that renders one blank row before a nested source.
-
-    Streamed answers are served by ``Markdown`` so their parsing stays
-    incremental, which means the separating blank line cannot come from the
-    generic entry renderer.
-    """
-
-    def __init__(self, source: LineSource) -> None:
-        """Wrap the nested line source.
-
-        Args:
-            source: Line source whose rows shift down by one; it is a
-                ``LineSource`` itself, so the wrapper stays composable.
-        """
-        self.source = source
-
-    def count(self, width: int) -> int:
-        """Return the nested line count plus the leading blank row."""
-        return self.source.count(width) + 1
-
-    def line(self, index: int, width: int) -> TextLine:
-        """Shift the index past the blank row and delegate to the nested source."""
-        if index == 0:
-            return TextLine()
-        return self.source.line(index - 1, width)
-
-
-class Indented(LineSource):
-    """LineSource that shifts every row right by a fixed margin.
-
-    The margin is drawn with the row's own leading style, so a line that carries
-    a background keeps it across the gutter. The nested source wraps at the
-    remaining width, which keeps long lines inside the window instead of
-    wrapping past its right edge.
-    """
-
-    def __init__(self, source: LineSource, columns: int = CONTENT_INDENT) -> None:
-        """Wrap ``source`` with ``columns`` cells of leading space.
-
-        Args:
-            source: Line source to shift right.
-            columns: Margin in cells; the nested source wraps that much narrower.
-        """
-        self.source = source
-        self.columns = max(0, columns)
-
-    def count(self, width: int) -> int:
-        """Return the nested row count, which the margin does not change."""
-        return self.source.count(max(1, width - self._margin(width)))
-
-    def line(self, index: int, width: int) -> TextLine:
-        """Draw the margin, then the nested row at the reduced width."""
-        margin = self._margin(width)
-        row = self.source.line(index, max(1, width - margin))
-        return inset_line(row, margin)
-
-    def _margin(self, width: int) -> int:
-        """Keep at least one column available for content on narrow screens."""
-        return min(self.columns, max(0, width - 1))

@@ -1,29 +1,32 @@
-"""Agent output components turn entries into styled, width-bound lines."""
+"""Presenters turn entries into styled, width-bound lines."""
 
 from dataclasses import replace
 
-from zettcode.app.agent.blocks import (
-    DEFAULT_PROCESSORS,
-    AnnouncementProcessor,
-    EntryProcessor,
-    EntryProcessors,
-    NoticeProcessor,
-    PlainProcessor,
-    ProcessingProcessor,
-    ThinkingProcessor,
-    ToolProcessor,
-    UserProcessor,
-    WelcomeProcessor,
-    render_entry,
-    tool_color,
-)
+import pytest
+
 from zettcode.app.agent.entries import (
+    EntryKind,
     EntryStatus,
-    PlainEntry,
-    ProcessingEntry,
+    MarkdownEntry,
     TextEntry,
     ThinkingEntry,
     ToolEntry,
+    WaitEntry,
+)
+from zettcode.app.agent.presenters import (
+    DEFAULT_PRESENTERS,
+    AnnouncementPresenter,
+    NoticePresenter,
+    Presenter,
+    Presenters,
+    ThinkingPresenter,
+    ToolPresenter,
+    UserPresenter,
+    WaitPresenter,
+    WelcomePresenter,
+    block_for,
+    render_entry,
+    tool_color,
 )
 from zettcode.app.agent.rows import COMPACTING_LABEL, PULSE_FRAMES, STOP_HINT
 from zettcode.app.agent.transcript import Transcript
@@ -37,44 +40,70 @@ def _rows(source, width: int = 40) -> list[str]:
     return [source.line(index, width).text for index in range(source.count(width))]
 
 
-def test_every_agent_entry_has_a_presentation_component():
+def test_every_kind_of_entry_has_exactly_one_presenter():
+    """The enum and the registry cannot drift apart: a new kind with no presenter fails here.
+
+    This is the whole of what "add a kind of row" asks of the registry — a member of
+    :class:`EntryKind` and a presenter that names it — and it is checked for the
+    enum rather than for a hand-written list of the kinds that existed on the day
+    the test was written.
+    """
+    presented = [presenter.kind for presenter in DEFAULT_PRESENTERS.presenters]
+
+    assert sorted(presented) == sorted(EntryKind), "every kind has a presenter, and no kind has two"
+    assert all(isinstance(presenter, Presenter) for presenter in DEFAULT_PRESENTERS.presenters)
+
+
+def test_each_entry_is_drawn_by_the_presenter_for_its_kind():
     entries = (
-        (TextEntry(id=1, kind="welcome", text="hello"), WelcomeProcessor),
-        (TextEntry(id=2, kind="notice", text="saved"), NoticeProcessor),
-        (TextEntry(id=8, kind="announcement", text="Model changed from A to B."), AnnouncementProcessor),
-        (TextEntry(id=3, kind="user", text="hello"), UserProcessor),
-        (ProcessingEntry(id=4, started_at=0.0), ProcessingProcessor),
-        (ThinkingEntry(id=5, text="reasoning", expanded=True), ThinkingProcessor),
-        (ToolEntry(id=6, call_id="call-1", tool="read_file", title="Read app.py", text="content"), ToolProcessor),
-        (PlainEntry(id=7, kind="other", text="fallback"), PlainProcessor),
+        (TextEntry(id=1, kind="welcome", text="hello"), WelcomePresenter),
+        (TextEntry(id=2, kind="notice", text="saved"), NoticePresenter),
+        (TextEntry(id=8, kind="announcement", text="Model changed from A to B."), AnnouncementPresenter),
+        (TextEntry(id=3, kind="user", text="hello"), UserPresenter),
+        (WaitEntry(id=4, started_at=0.0), WaitPresenter),
+        (ThinkingEntry(id=5, text="reasoning", expanded=True), ThinkingPresenter),
+        (ToolEntry(id=6, call_id="call-1", tool="read_file", title="Read app.py", text="content"), ToolPresenter),
     )
-    for entry, component in entries:
-        assert issubclass(component, EntryProcessor)
-        assert component().supports(entry)
+    for entry, presenter in entries:
+        assert type(DEFAULT_PRESENTERS.for_entry(entry)) is presenter, entry.kind
         assert render_entry(entry, 40, DARK, 0)
 
+    for kind in (EntryKind.ANSWER, EntryKind.MESSAGE):
+        markdown = MarkdownEntry(id=9, kind=kind)
+        markdown.markdown.append("# heading")
+        assert DEFAULT_PRESENTERS.for_entry(markdown).kind is kind
+        assert render_entry(markdown, 40, DARK, 0), "Markdown can also say all its rows at once"
 
-def test_the_first_supporting_processor_wins():
-    class CustomNotice(EntryProcessor):
-        def supports(self, entry) -> bool:
-            return isinstance(entry, TextEntry) and entry.kind == "notice"
+
+def test_a_later_presenter_for_a_kind_replaces_the_earlier_one():
+    """One presenter per kind, so overriding a kind is a replacement and not a chain to order."""
+
+    class CustomNotice(Presenter):
+        kind = EntryKind.NOTICE
 
         def lines(self, entry, width, theme, frame):
             return [TextLine()]
 
     notice = TextEntry(id=1, kind="notice", text="handled")
-    processors = EntryProcessors((CustomNotice(), *DEFAULT_PROCESSORS.processors))
-    assert processors.lines(notice, 40, DARK, 0) == [TextLine()]
+    presenters = DEFAULT_PRESENTERS.replacing(CustomNotice())
+    assert presenters.lines(notice, 40, DARK, 0) == [TextLine()]
+    assert len(presenters.presenters) == len(DEFAULT_PRESENTERS.presenters), "replaced, not added"
 
-    transcript = Transcript(processors=processors)
+    transcript = Transcript(presenters=presenters)
     transcript.notice("handled")
     source = TranscriptSource(transcript, theme=DARK)
     assert source.count(40) == 1
 
-    alternate = EntryProcessors((NoticeProcessor(), *DEFAULT_PROCESSORS.processors))
-    transcript.processors = alternate
+    transcript.presenters = DEFAULT_PRESENTERS
     assert source.count(40) == 2
     assert source.line(1, 40).text.strip() == "handled"
+
+
+def test_a_kind_with_no_presenter_is_named_rather_than_guessed_at():
+    nobody = Presenters(())
+
+    with pytest.raises(ValueError, match="No presenter for a notice row"):
+        nobody.lines(TextEntry(id=1, kind="notice", text="x"), 40, DARK, 0)
 
 
 def test_an_announcement_is_centered_between_rules_and_clipped_on_small_screens():
@@ -99,7 +128,7 @@ def test_agent_components_keep_every_line_within_narrow_bounds():
     entries = (
         TextEntry(id=1, kind="notice", text="中文后面还有更多文字"),
         TextEntry(id=2, kind="user", text="中文后面还有更多文字"),
-        ProcessingEntry(id=3, started_at=0.0, duration=12.3),
+        WaitEntry(id=3, started_at=0.0, duration=12.3),
         ThinkingEntry(id=4, text="中文后面还有更多文字", expanded=True, duration=12.3),
         ToolEntry(
             id=5,
@@ -165,7 +194,7 @@ def test_a_compaction_row_carries_its_own_label_and_timer():
 
 def test_the_waiting_row_puts_its_clock_and_the_stop_key_beside_the_word():
     """The aside is quiet ink the highlight never crosses, counted in whole seconds."""
-    entry = ProcessingEntry(id=1, started_at=0.0, duration=3.4)
+    entry = WaitEntry(id=1, started_at=0.0, duration=3.4)
 
     line = render_entry(entry, 46, DARK, 0)[1]
 
@@ -179,7 +208,7 @@ def test_the_waiting_row_puts_its_clock_and_the_stop_key_beside_the_word():
         assert all(span.style.foreground != DARK.text for span in spans[-1:])
 
     # Past a minute the same clock reads in minutes.
-    later = ProcessingEntry(id=2, started_at=0.0, duration=100.4)
+    later = WaitEntry(id=2, started_at=0.0, duration=100.4)
     assert render_entry(later, 46, DARK, 0)[1].text.strip().endswith(f"(1m 40s {SEPARATOR} {STOP_HINT})")
 
 
@@ -192,9 +221,9 @@ def test_every_row_draws_its_marker_in_the_gutter_and_its_content_beside_it():
     """
     cases = {
         "user": (TextEntry(id=1, kind="user", text="hello"), True, "hello"),
-        "waiting": (ProcessingEntry(id=2, started_at=0.0, duration=1.0), True, "Processing"),
+        "waiting": (WaitEntry(id=2, started_at=0.0, duration=1.0), True, "Processing"),
         "settled": (
-            ProcessingEntry(
+            WaitEntry(
                 id=6,
                 started_at=0.0,
                 duration=1.0,
@@ -214,7 +243,7 @@ def test_every_row_draws_its_marker_in_the_gutter_and_its_content_beside_it():
     }
 
     for name, (entry, opens_with_a_marker, content) in cases.items():
-        source = entry.block_for(40, DARK, 0)
+        source = block_for(entry, 40, DARK, 0)
         first = next(text for text in _rows(source) if text.strip())
 
         assert (first[0] != " ") is opens_with_a_marker, (name, first)
@@ -224,7 +253,7 @@ def test_every_row_draws_its_marker_in_the_gutter_and_its_content_beside_it():
 
 def test_a_settled_wait_row_is_a_muted_line():
     """Once the request is over the row stops sweeping and reads as a record."""
-    settled = ProcessingEntry(id=1, started_at=0.0, duration=12.3, text="Processed for 12s · 09:41")
+    settled = WaitEntry(id=1, started_at=0.0, duration=12.3, text="Processed for 12s · 09:41")
     settled.status = EntryStatus.COMPLETED
 
     (blank, line) = render_entry(settled, 40, DARK, 0)
@@ -234,7 +263,7 @@ def test_a_settled_wait_row_is_a_muted_line():
     assert line.spans[0].style.foreground == DARK.muted
 
     # A row that was settled without a line still reports the time it measured.
-    bare = ProcessingEntry(id=2, started_at=0.0, duration=12.3, status=EntryStatus.COMPLETED)
+    bare = WaitEntry(id=2, started_at=0.0, duration=12.3, status=EntryStatus.COMPLETED)
     assert render_entry(bare, 40, DARK, 0)[1].text.strip() == "Processed for 12s"
 
 
@@ -247,7 +276,7 @@ def test_only_the_waiting_row_moves():
     """
     thinking = ThinkingEntry(id=1, text="weighing the options", started_at=0.0)
     tool = ToolEntry(id=2, call_id="c1", tool="read_file", title="Read app.py", started_at=0.0)
-    waiting = ProcessingEntry(id=3, started_at=0.0)
+    waiting = WaitEntry(id=3, started_at=0.0)
 
     def painted(entry, frame: int) -> list[tuple[str, tuple[object, ...]]]:
         return [

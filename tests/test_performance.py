@@ -5,22 +5,27 @@ from __future__ import annotations
 from time import perf_counter
 
 from zettcode.app import Transcript, TranscriptSource
-from zettcode.app.agent import blocks as blocks_module
-from zettcode.app.agent.entries import ProcessingEntry
+from zettcode.app.agent.entries import WaitEntry
+from zettcode.app.agent.presenters import DEFAULT_PRESENTERS
 from zettcode.tui import DARK
 from zettcode.tui.widgets import markdown as markdown_module
 
 
 def spy_on_entries(monkeypatch) -> list[int]:
-    """Record which transcript entries get rendered."""
+    """Record which transcript entries get rendered.
+
+    A render is a presenter's ``lines`` call: that is the work the look-keyed cache
+    exists to avoid, so counting it is counting what the cache saved.
+    """
     calls: list[int] = []
-    real = blocks_module.render_entry
+    for presenter in DEFAULT_PRESENTERS.presenters:
+        owner = type(presenter)
 
-    def spy(entry, width, theme, frame, *, processors):
-        calls.append(entry.id)
-        return real(entry, width, theme, frame, processors=processors)
+        def spy(self, entry, width, theme, frame, _real=owner.lines):
+            calls.append(entry.id)
+            return _real(self, entry, width, theme, frame)
 
-    monkeypatch.setattr(blocks_module, "render_entry", spy)
+        monkeypatch.setattr(owner, "lines", spy)
     return calls
 
 
@@ -42,7 +47,7 @@ def test_only_new_entries_are_rendered_when_the_transcript_grows(monkeypatch):
     # The notice lands above the pinned wait row, which shifts down one index.
     # Only the notice is rendered: the view asks for the row again, and its
     # unchanged block comes back from the cache.
-    assert transcript.entries[-1].kind == "pending"
+    assert transcript.entries[-1].kind == "wait"
     assert calls == [transcript.entries[-2].id]
 
     calls.clear()
@@ -157,7 +162,7 @@ def test_crossing_an_animation_step_repaints_only_the_running_row(monkeypatch):
     transcript = Transcript(clock=lambda: now[0])
     transcript.begin_turn("prompt")
     running = transcript.entries[-1]
-    assert isinstance(running, ProcessingEntry)
+    assert isinstance(running, WaitEntry)
     source = TranscriptSource(transcript, theme=DARK)
     source.count(40)
 
