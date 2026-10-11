@@ -27,7 +27,11 @@ class ListPage(Widget):
     The page owns the frame so a caller only maps data to rows: it fills its
     rectangle with ``surface_alt`` so whatever is underneath cannot show
     through, bounds the list to ``visible_rows``, and turns Escape into
-    ``on_cancel`` before the list can consume the key. It composes
+    ``on_cancel`` before the list can consume the key. Its rows wrap, as the
+    slash menu's already do: a picker whose last row refuses Down reads as one
+    that ignores the key, and with four models the reader presses Up once to reach
+    the last instead of three times to reach nothing. Paging wraps with it, since
+    one flag governs every move. It composes
     :class:`ListView` rather than inheriting it, which keeps that list
     general-purpose.
 
@@ -69,7 +73,7 @@ class ListPage(Widget):
         self.footer = footer
         self.on_cancel = on_cancel
         self.visible_rows = None if visible_rows is None else max(1, visible_rows)
-        self.list = ListView(items, on_select=on_select, wrap=False, band=True)
+        self.list = ListView(items, on_select=on_select, wrap=True, band=True)
         if items:
             self.list.select(selected, notify=False)
 

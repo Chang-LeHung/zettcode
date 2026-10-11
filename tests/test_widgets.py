@@ -351,6 +351,49 @@ def test_list_page_shows_a_title_scrolls_and_keeps_a_bounded_list():
     assert "row 0" not in text
 
 
+def test_list_page_rows_wrap_so_a_key_always_moves_something():
+    """Down on the last row reaches the first, and Up on the first reaches the last.
+
+    A picker whose end refuses Down reads as one that ignores the key: the reader
+    cannot tell "nothing is below" from "the key did nothing". The slash menu's own
+    list has wrapped from the start, and one arrow press is also how a reader gets
+    from the first row to the last.
+    """
+    page = ListPage([ListItem(f"item-{index}", f"row {index}") for index in range(4)], title="Pick")
+    harness = Harness(page, width=30, height=12)
+    harness.render()
+
+    harness.press("end")
+    assert page.list.selected == 3
+
+    harness.press("down")
+    assert page.list.selected == 0, "past the last row comes the first"
+
+    harness.press("up")
+    assert page.list.selected == 3, "and above the first comes the last"
+
+
+def test_a_wrapped_move_lands_on_a_row_that_can_be_selected():
+    """Wrapping skips a disabled row, as any other move does.
+
+    The context report's list opens on such a row — its heading — so a wrap that
+    stopped there would leave the selection nowhere to be.
+    """
+    page = ListPage(
+        [ListItem(None, "heading", disabled=True), *[ListItem(index, f"row {index}") for index in range(3)]],
+        title="Pick",
+    )
+    harness = Harness(page, width=30, height=12)
+    harness.render()
+    harness.press("end")
+    assert page.list.selected == 3
+
+    harness.press("down")
+
+    assert page.list.selected == 1, "the disabled heading is stepped over"
+    assert page.list.current.disabled is False
+
+
 def test_list_page_commits_a_row_and_cancels_on_escape():
     chosen: list[ListItem] = []
     cancelled: list[bool] = []
