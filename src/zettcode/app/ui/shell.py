@@ -96,6 +96,10 @@ class ShellState:
     _steering_sent: int
     #: The in-flight request that names a session, if any.
     _title_task: asyncio.Task[None] | None
+    #: The in-flight re-measure of a context figure, if any.
+    _measure_task: asyncio.Task[None] | None
+    #: The tokenizer warm-up this shell started, which the re-measure waits for.
+    _counter: asyncio.Task[None] | None
     #: The in-flight release check or upgrade, if any.
     _update_task: asyncio.Task[None] | None
     #: The question the model is waiting on, while its panel is up.
@@ -111,6 +115,9 @@ class ShellState:
 
     def notify(self, message: str, *, level: str = "info") -> None:
         """Show a one-line toast."""
+
+    def _remeasure_context_later(self) -> None:
+        """Measure the context again, when a figure needs replacing."""
 
     def _cancel_ask(self, question: AskUserQuestion) -> None:
         """Decline one question the model is waiting on, and close its panel."""

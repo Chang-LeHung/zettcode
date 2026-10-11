@@ -112,6 +112,29 @@ async def test_measuring_groups_every_source_of_one_request():
     assert report.percent(report.used) == pytest.approx(report.used / 10)
 
 
+async def test_the_providers_total_carries_the_shares_the_tokenizer_measured():
+    """One request, two sources: the provider says how many, the counter says where.
+
+    A provider counts what it bills and never breaks a request down by source; a
+    tokenizer breaks it down but does not know how the provider counts. So the
+    total is the provider's and the rows are measured — and they still add up to
+    a hundred, because the shares divide by what the tokenizer counted.
+    """
+    extension = ContextExtension()
+    await extension.before_model(_Context("s-1"), _request((UserMessage(content="a question " * 20),)))
+    tokenizer = _counting_tokenizer()
+
+    without = extension.report("s-1", window=1_000_000, tokenizer=tokenizer)
+    reported = extension.report("s-1", window=1_000_000, tokenizer=tokenizer, reported=599_165)
+
+    assert without.from_provider is False and without.used == without.measured
+    assert reported.from_provider is True
+    assert reported.used == 599_165, "the provider's count is the request's size"
+    assert reported.measured == without.measured, "and the shares are still measured"
+    assert reported.share(sum(share.tokens for share in reported.shares)) == pytest.approx(100.0)
+    assert reported.free == 1_000_000 - 599_165, "what is left is measured against the provider's total"
+
+
 def test_a_full_window_never_reports_negative_room():
     report = measure(
         (UserMessage(content="x" * 4_000),),

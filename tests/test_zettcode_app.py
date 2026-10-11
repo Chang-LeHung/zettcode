@@ -54,7 +54,7 @@ from zettcode.app.agent.rows import (
 )
 from zettcode.app.agent.side import SideQuestions
 from zettcode.app.agent.storage import STORE_FILE, SessionInfo, SessionStore
-from zettcode.app.agent.usage import USAGE_EVENT_NAME, UsageExtension, UsageSnapshot
+from zettcode.app.agent.usage import USAGE_EVENT_NAME, UsageExtension, UsageSnapshot, context_text
 from zettcode.app.brand import LOGO_LINES, LOGO_PALETTE, LOGO_PIXELS
 from zettcode.app.commands import Command, CommandContext, CommandResult
 from zettcode.app.ui import app as app_module
@@ -1681,6 +1681,168 @@ async def test_every_panel_shows_its_list_and_the_arrows_move_it():
         harness.press("down")
         assert marked(harness) != before, f"{command}: Down moved nothing on screen"
         harness.press("escape")
+
+
+async def test_a_report_uses_the_providers_count_for_a_request_it_answered():
+    """`/context`'s title is what the provider billed for; the rows stay measured."""
+    app = build_app()
+    session_id = app.agent.session_id
+    # The same 1,000,000-token window the entry that reported this count declares:
+    # a count that reached the window would be refused as another request's.
+    app.agent.runtime.active_model = replace(app.agent.runtime.active_model, context_window=1_000_000)
+    app.agent.runtime.usage.seed(session_id, UsageSnapshot(input_tokens=598_606, context_tokens=599_165))
+    request = ModelRequest(
+        messages=[SystemMessage(content="You are ZettCode. " * 40), UserMessage(content="hi")],
+        tools=(ToolDefinition(name="read_file", description="read a file", parameters={"type": "object"}),),
+    )
+    await app.agent.runtime.context.before_model(
+        AgentRunContext(AgentRunConfig(session_id=session_id), AgentState(), {}), request
+    )
+
+    report = await app.agent.context_report()
+
+    assert report.from_provider is True
+    assert report.used == 599_165, "the total is the provider's count of this very request"
+    assert report.measured < report.used, "while the shares are the tokenizer's"
+
+
+async def test_another_sessions_counters_never_paint_this_status_line():
+    """A subagent works in a session of its own; its totals are not this one's.
+
+    The usage event says which session it belongs to, and a handler that dropped
+    that would put another conversation's context size on this status line — a
+    child that read a large tree reports a request this shell never sent.
+    """
+    app = build_app()
+    app._usage = UsageSnapshot(input_tokens=1_000, context_tokens=4_000, requests=1)
+    theirs = AgentEvent(
+        type=AgentEventType.CUSTOM,
+        session_id="a-child-session",
+        name=USAGE_EVENT_NAME,
+        payload=UsageSnapshot(input_tokens=5_000_000, context_tokens=1_200_000, requests=9).to_payload(),
+    )
+
+    app._usage_updated(theirs)
+
+    assert app._usage.requests == 1 and app._usage.context_tokens == 4_000
+    assert app._measure_task is None, "and nothing is re-measured for it either"
+
+
+async def test_a_billed_size_at_or_past_the_window_is_not_this_requests_size():
+    """A request cannot be larger than the window it is measured against.
+
+    A figure that reaches it describes something else — another call, or a
+    provider counting to a rule of its own — and reporting it as a share pins the
+    status line at a hundred: 1,050,000 against the 128,000 the entry declares is
+    exactly how `ctx 100%` appears next to a `/context` panel saying 24%.
+    """
+    app = build_app()
+    session_id = app.agent.session_id
+    window = app.agent.active_model.context_window
+    app.agent.runtime.usage.seed(
+        session_id, UsageSnapshot(input_tokens=window + 50_000, context_tokens=window + 50_000)
+    )
+    await app.agent.runtime.context.before_model(
+        AgentRunContext(AgentRunConfig(session_id=session_id), AgentState(), {}),
+        ModelRequest(messages=[UserMessage(content="hi")], tools=()),
+    )
+
+    report = await app.agent.context_report()
+
+    assert report.from_provider is False, "the count is refused, not reported"
+    assert report.used == report.measured < window, "so both figures are the measured request"
+
+    app._usage_updated(
+        AgentEvent(
+            type=AgentEventType.CUSTOM,
+            session_id=session_id,
+            name=USAGE_EVENT_NAME,
+            payload=UsageSnapshot(
+                input_tokens=window + 50_000, context_tokens=window + 50_000, requests=1
+            ).to_payload(),
+        )
+    )
+    assert app._measure_task is not None, "the status line asks for a measurement instead"
+    await app._measure_task
+    assert app._usage.context_tokens == report.used
+
+
+async def test_a_restored_session_takes_the_count_of_the_call_that_was_made():
+    """The stored usage counts a real request; a rebuilt list counts messages the
+    live request no longer carries.
+
+    On this machine's own session the rebuilt list measured 1.65 M tokens against
+    a provider that billed 326 k for the same conversation, so the stored count is
+    the total and the measurement only supplies the shares. `ContextReport` says
+    which is which, and only a count that reaches the window is refused.
+    """
+    app = build_app()
+    # The window the entry that made this call declares.
+    app.agent.runtime.active_model = replace(app.agent.runtime.active_model, context_window=1_000_000)
+    session_id = app.agent.session_id
+    app.agent.runtime.usage.seed(session_id, UsageSnapshot(input_tokens=326_277, context_tokens=326_277))
+    app.agent.runtime.context.remember(
+        session_id,
+        (SystemMessage(content="instructions " * 40), UserMessage(content="an earlier question " * 40)),
+    )
+
+    report = await app.agent.context_report()
+
+    assert report.from_provider is True, "the store holds a provider's count of a real request"
+    assert report.used == 326_277
+    assert report.measured != report.used, "and the rebuilt list is measured separately"
+    assert report.share(sum(share.tokens for share in report.shares)) == pytest.approx(100.0)
+
+
+async def test_a_restore_from_a_worker_thread_schedules_nothing(tmp_path):
+    """`--resume` reaches this from a thread with no loop, and it must not raise.
+
+    The command line builds the application on a worker thread to keep the first
+    frame moving. Reaching for a loop there — as a deferred measurement once did —
+    raises before the interface exists and leaves `--resume` broken entirely; the
+    figure a restore publishes is the provider's stored one, which needs no loop.
+    """
+    app = build_app()
+    store = SessionStore(tmp_path / "sessions")
+    app.agent.runtime.persistence.store = store
+    await store.append("session-0011", "r1", UserMessage(content="an earlier question " * 10))
+
+    await asyncio.to_thread(app.restore_session, "session-0011")
+
+    assert app.agent.session_id == "session-0011"
+    assert app._measure_task is None, "nothing is scheduled from a thread that has no loop"
+
+
+async def test_restoring_a_session_keeps_the_size_the_provider_billed(tmp_path):
+    """A rebuilt list is not the request, so the stored count stays the total.
+
+    Locally counting the messages a restore put together came to 1.65 M tokens on
+    this machine's own session, against a provider that billed 326 k for it: the
+    rebuilt list still holds messages the live request no longer carries. The
+    stored count belongs to a real request, so the status line and the panel's
+    title show it — the same number — and no measurement replaces it.
+    """
+    app = build_app()
+    # The window the entry that made this call declares. The fake's own 128,000
+    # would put the stored count past it, and a count past the window is refused.
+    app.agent.runtime.active_model = replace(app.agent.runtime.active_model, context_window=1_000_000)
+    store = SessionStore(tmp_path / "sessions")
+    app.agent.runtime.persistence.store = store
+    await store.append("session-0009", "r1", UserMessage(content="an earlier question " * 10))
+    await store.append(
+        "session-0009",
+        "r1",
+        AssistantMessage(content="an answer"),
+        usage=ModelUsage(input_tokens=326_277, output_tokens=20, cache_read_tokens=320_000),
+    )
+
+    app.restore_session("session-0009")
+    report = await app.agent.context_report()
+
+    assert app._measure_task is None, "a restore measures nothing"
+    assert report.from_provider is True
+    assert report.used == app.agent.usage.context_tokens == 326_277, "the call the session really made"
+    assert context_text(app._usage, app.agent.active_model.context_window), "the status line still reports"
 
 
 async def test_the_context_command_reports_what_the_request_carries():

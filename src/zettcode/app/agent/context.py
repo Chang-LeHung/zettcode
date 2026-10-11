@@ -102,25 +102,46 @@ class ContextShare:
 class ContextReport:
     """The budget as a whole: every source, the total, and what is left.
 
+    A request has two numbers, and they come from different places: how many
+    tokens it is, which only the provider knows because it counts what it bills,
+    and how that total divides between the sources, which only the tokenizer can
+    say because no provider reports a breakdown. The shares are always the
+    tokenizer's; the total is the provider's whenever it reported one for this
+    very request, and the tokenizer's sum when it did not — a session restored
+    from the store, where the stored figure belongs to a call that may predate a
+    compaction.
+
     Attributes:
         window: Tokens the budget is measured against.
-        measured_by: Which counter produced the numbers.
+        measured_by: Which counter produced the shares.
         shares: One entry per non-empty source, in :data:`SOURCES` order.
         partial: Whether a part the runtime would send is missing from the
             measurement, which is the case for a restored session measured
             before any reply in this process: its tool schemas are not knowable
             yet, and the page says so instead of reading low silently.
+        reported: Tokens the provider counted for this request, if it did.
     """
 
     window: int
     measured_by: str
     shares: tuple[ContextShare, ...]
     partial: bool = False
+    reported: int | None = None
+
+    @property
+    def measured(self) -> int:
+        """Return the tokens the tokenizer counted, which the shares add up to."""
+        return sum(share.tokens for share in self.shares)
 
     @property
     def used(self) -> int:
-        """Return the tokens every source adds up to."""
-        return sum(share.tokens for share in self.shares)
+        """Return the tokens this request carries: the provider's count if there is one."""
+        return self.reported if self.reported is not None else self.measured
+
+    @property
+    def from_provider(self) -> bool:
+        """Return whether the total is the provider's rather than the tokenizer's."""
+        return self.reported is not None
 
     @property
     def free(self) -> int:
@@ -135,9 +156,12 @@ class ContextReport:
         """Return ``tokens`` as a share of what the request is using, in percent.
 
         :meth:`percent` answers "how full is the model's window"; this answers
-        "where does the context go", which is the question a breakdown is for.
+        "where does the context go", which is the question a breakdown is for —
+        so it divides by what the tokenizer counted, never by a provider's total
+        for the same request, which would leave the rows short of a hundred.
         """
-        return tokens / self.used * 100 if self.used else 0.0
+        measured = self.measured
+        return tokens / measured * 100 if measured else 0.0
 
 
 class Tokenizer:
@@ -277,6 +301,7 @@ def measure(
     window: int,
     tokenizer: Tokenizer,
     counts: Counts | None = None,
+    reported: int | None = None,
 ) -> ContextReport:
     """Break one assembled request into the sources that fill the budget.
 
@@ -289,6 +314,8 @@ def measure(
         tokenizer: Counter to use; it may still be estimating.
         counts: Counts from an earlier measurement of the same items, updated in
             place as new ones are counted; ``None`` measures everything.
+        reported: Tokens the provider counted for this request, if it did; the
+            shares are still measured here, because it cannot break them down.
     """
     totals = dict.fromkeys(SOURCES, 0)
     items = dict.fromkeys(SOURCES, 0)
@@ -312,7 +339,13 @@ def measure(
         totals["Tool schemas"] = sum(count_one(tool, tool_text(tool), tokenizer, counts) for tool in tools)
         items["Tool schemas"] = len(tools)
     shares = tuple(ContextShare(name, totals[name], items[name]) for name in SOURCES if totals[name] or items[name])
-    return ContextReport(window=max(1, window), measured_by=tokenizer.label, shares=shares, partial=not tools)
+    return ContextReport(
+        window=max(1, window),
+        measured_by=tokenizer.label,
+        shares=shares,
+        partial=not tools,
+        reported=reported,
+    )
 
 
 class ContextExtension(AgentExtension):
@@ -332,6 +365,11 @@ class ContextExtension(AgentExtension):
         """Start with no captured request and nothing counted."""
         self._requests: dict[str, tuple[tuple[AnyMessage, ...], tuple[ToolDefinition, ...]]] = {}
         self._template: tuple[tuple[AnyMessage, ...], tuple[ToolDefinition, ...]] | None = None
+        #: Sessions whose request was primed from the store rather than assembled
+        #: for a call. The difference matters for the total: a provider reported a
+        #: number for one of them and for the other only the store remembers a
+        #: call, which may be older than the dialogue it is being compared with.
+        self._primed: set[str] = set()
         #: Per session, what the last report counted and which counter did it.
         self._counts: dict[str, SessionCounts] = {}
 
@@ -341,6 +379,7 @@ class ContextExtension(AgentExtension):
         session_id = cast(str, context.config.session_id)
         self._requests[session_id] = (tuple(request.messages), tuple(request.tools))
         self._template = (tuple(request.messages), tuple(request.tools))
+        self._primed.discard(session_id)
 
     @property
     def instructions(self) -> tuple[AnyMessage, ...]:
@@ -361,17 +400,41 @@ class ContextExtension(AgentExtension):
                 order a request would carry them.
         """
         self._requests[session_id] = (tuple(messages), self.tools)
+        self._primed.add(session_id)
+
+    def primed(self, session_id: str) -> bool:
+        """Return whether this session's request was rebuilt from the store.
+
+        A primed request has no provider figure of its own: the stored usage
+        belongs to the call that was made before the shell was restarted, which
+        for a session that was compacted since is a different, larger request.
+        """
+        return session_id in self._primed
 
     def assembled(self, session_id: str) -> tuple[tuple[AnyMessage, ...], tuple[ToolDefinition, ...]] | None:
         """Return the last assembled request, or None before the first call."""
         return self._requests.get(session_id)
 
-    def report(self, session_id: str, *, window: int, tokenizer: Tokenizer) -> ContextReport | None:
+    def report(
+        self,
+        session_id: str,
+        *,
+        window: int,
+        tokenizer: Tokenizer,
+        reported: int | None = None,
+    ) -> ContextReport | None:
         """Return the breakdown of the last assembled request, if there was one.
 
         What was counted for an earlier report is counted again only if the
         counter changed: a turn appends to the context rather than rewriting it,
         so a report spends its time on what arrived since the last one.
+
+        Args:
+            session_id: Session to report on.
+            window: Tokens the model can carry.
+            tokenizer: Counter that measures the shares.
+            reported: Tokens the provider counted for this request, if it counted
+                it; it becomes the report's total while the shares stay measured.
         """
         assembled = self.assembled(session_id)
         if assembled is None:
@@ -388,4 +451,4 @@ class ContextExtension(AgentExtension):
             # and its key must not outlive the object it stands for.
             del counts[key]
         self._counts[session_id] = cached
-        return measure(messages, tools, window=window, tokenizer=tokenizer, counts=counts)
+        return measure(messages, tools, window=window, tokenizer=tokenizer, counts=counts, reported=reported)

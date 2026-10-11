@@ -137,6 +137,8 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
         self.app.title = self._terminal_title
         self._task: asyncio.Task[None] | None = None
         self._title_task: asyncio.Task[None] | None = None
+        #: The context re-measure a restore started, replaced by the next restore.
+        self._measure_task: asyncio.Task[None] | None = None
         #: The runtime warm-up this shell started, released on the way out.
         self._warm: asyncio.Task[object] | None = None
         self._counter: asyncio.Task[None] | None = None
@@ -204,6 +206,13 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
         """Release what :meth:`start_background` began, and end a request still in flight."""
         await self._stop_title_task()
         await self._stop_update_task()
+        measure, self._measure_task = self._measure_task, None
+        if measure is not None:
+            # A re-measure still in flight is a wait for the counter, which S8
+            # says nothing on screen may pay for and nothing on the way out may
+            # hold on to.
+            measure.cancel()
+            await asyncio.gather(measure, return_exceptions=True)
         await self._stop_turn()
         counter, self._counter = self._counter, None
         if counter is not None:

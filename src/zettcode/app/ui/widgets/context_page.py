@@ -27,7 +27,12 @@ class ContextPage(ListPage):
 
     The percentage is a share of the context in use, not of the window: rows
     answer where the tokens went, and the title carries the absolute total
-    against the model's window. Under the title sits the file this session is
+    against the model's window. That total is the provider's own count of the
+    request whenever it made one, because it counts what it bills; the shares
+    under it are the tokenizer's, because no provider breaks a request down by
+    source — so the footer names both. A session restored from the store has no
+    provider count for the dialogue it was rebuilt from, and both are the
+    tokenizer's until the next answer. Under the title sits the file this session is
     stored in — the conversation itself, on disk, under the store root — which
     is what a reader reaches for when the numbers ask for a closer look. A
     disabled heading row names the columns, and because the list aligns it like
@@ -73,8 +78,13 @@ class ContextPage(ListPage):
 
 
 def _footer(report: ContextReport) -> tuple[str, ...]:
-    """Return the footer's parts: the counter, any caveat, and the key hint."""
-    parts = [report.measured_by]
+    """Return the footer's parts: what measured what, any caveat, and the key hint."""
+    if report.from_provider:
+        # Two sources in one panel: say which is which rather than let the reader
+        # assume the total and the shares came from the same counter.
+        parts = [f"{report.measured_by} shares", "provider total"]
+    else:
+        parts = [report.measured_by]
     if report.partial:
         parts.append("notes and tools pending")
     parts.append("esc back")
