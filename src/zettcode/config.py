@@ -21,7 +21,7 @@ from zett_agent.extensions.shell_approval import ShellApprovalMode
 from zett_agent.model import ReasoningEffort
 
 from ._compat import tomllib
-from .paths import CONFIG_FILE, DEFAULT_STORE, DEFAULT_UPDATE_FILE
+from .paths import DEFAULT_STORE, DEFAULT_UPDATE_FILE, config_path
 
 #: The concrete type :func:`_typed` verifies a raw config value against.
 T = TypeVar("T")
@@ -289,14 +289,6 @@ class ZettCodeConfig:
         """
         default = _resolve_root(DEFAULT_SKILL_ROOT, self.workspace)
         return (*self.skill_roots, default)
-
-
-def config_path(path: str | Path | None = None) -> Path:
-    """Return the config file to read: an explicit path, ``$ZETTCODE_CONFIG``, or the default."""
-    if path is not None:
-        return Path(path).expanduser()
-    override = os.getenv("ZETTCODE_CONFIG")
-    return Path(override).expanduser() if override else CONFIG_FILE
 
 
 def _default_theme_file() -> Path | None:

@@ -20,6 +20,11 @@ from ..agent.rows import STOP_HINT
 #: The keys worth remembering, shown at the right of the status row.
 KEY_HINTS = f"{STOP_HINT}  ^D exit"
 
+#: The reasoning effort a fresh launch shows until ``/effort`` changes it: the
+#: shell's own default, spelled the way the header spells it. The test that
+#: compares the two frames cell by cell fails if the two ever drift apart.
+DEFAULT_EFFORT = "medium"
+
 
 def compact_path(path: Path, *, limit: int = 38) -> str:
     """Shorten a workspace path for the header.
@@ -58,6 +63,37 @@ def header_left(workspace: Path) -> str:
 def header_right(model: str, effort: str) -> str:
     """Show the model and the reasoning effort the next request will use."""
     return f"{model} {SEPARATOR} {effort}  "
+
+
+def model_name(config_file: Path) -> str | None:
+    """Return the model the header will name, read from the config file alone.
+
+    The frame the command line paints is drawn before the settings module is
+    imported, and the name it will show is in that file: reading the one value
+    costs a file read, where importing the settings to ask for it costs their
+    whole import graph. The rule is the settings' own — the first ``[[models]]``
+    entry's ``display_model``, falling back to its id — but only that rule, so
+    anything unreadable answers ``None`` and leaves the header's right side for
+    the shell to fill in when it arrives.
+
+    Args:
+        config_file: The file the settings will be read from, which is
+            ``$ZETTCODE_CONFIG`` or the conventional path.
+    """
+    from ..._compat import tomllib
+
+    try:
+        settings = tomllib.loads(config_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    models = settings.get("models")
+    if not isinstance(models, list) or not models or not isinstance(models[0], dict):
+        return None
+    for key in ("display_model", "model"):
+        value = models[0].get(key)
+        if isinstance(value, str) and value.strip():
+            return value
+    return None
 
 
 def status_left(label: str, name: str) -> str:

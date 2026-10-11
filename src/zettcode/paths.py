@@ -7,6 +7,7 @@ read the config, so the paths cannot live behind that import.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 #: The conventional config file, read when the user has created one.
@@ -27,3 +28,15 @@ DEFAULT_UPDATE_FILE = Path.home() / ".zettcode" / "update.json"
 #: child process — an MCP server announcing itself, say — cannot know that the
 #: frame is the interface, and the renderer only repaints what it changed.
 DEFAULT_LOG = Path.home() / ".zettcode" / "log" / "tui.log"
+
+
+def config_path(path: str | Path | None = None) -> Path:
+    """Return the config file to read: an explicit path, ``$ZETTCODE_CONFIG``, or the default.
+
+    Here rather than beside the settings it loads because the frame drawn before
+    those settings are read needs to name the same file without importing them.
+    """
+    if path is not None:
+        return Path(path).expanduser()
+    override = os.getenv("ZETTCODE_CONFIG")
+    return Path(override).expanduser() if override else CONFIG_FILE
