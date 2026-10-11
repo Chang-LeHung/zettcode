@@ -66,7 +66,7 @@ Every kind of output has its own row, in the order it happened:
   entity is drawn as the character it names, so `&nbsp;` indents a line and
   `&lt;` writes an angle bracket.
 - **The running request** is one row pinned to the bottom of the transcript:
-  `✦ Processing (8s · ^C stop)`. Reasoning, tool calls, and the answer all appear
+  `✦ Processing (8s · ^C/Esc to interrupt)`. Reasoning, tool calls, and the answer all appear
   above it, and when the request ends — answered, failed, or stopped — that same
   row becomes `Processed for 12s · 22:53`. It is the only row that moves: its
   marker and the highlight crossing the word pulse together — a second and a half
@@ -77,7 +77,10 @@ Every kind of output has its own row, in the order it happened:
   as muted one-liners.
 
 `Page Up` / `Page Down` and the mouse wheel scroll. While you are scrolled up, a
-`↓ back to bottom` badge appears; `Esc` or the badge returns to the newest line,
+`↓ back to bottom` badge appears; `Esc` or the badge returns to the newest line.
+While a request is running, `Esc` stops it, exactly as `Ctrl-C` does: the key that
+means "get me out of this" should not depend on remembering which of the two the
+shell reserved for it.
 and the view starts following the tail again.
 
 ## The composer
@@ -262,7 +265,7 @@ decodes to a known image, becomes the same chip instead of a wall of characters.
 ## The status line
 
 The left half answers "what is happening, and how much has it cost"; the right
-half keeps the two keys worth remembering (`^C stop`, `^D exit`) in view.
+half keeps the two keys worth remembering (`^C/Esc to interrupt`, `^D exit`) in view.
 
 | Piece | Meaning |
 | --- | --- |

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from ...tui import AnyEvent, Host
 from .clipboard import read_image
-from .shell import PAGE_SCREEN, ShellState
+from .shell import ASK_SCREEN, PAGE_SCREEN, ShellState
 
 
 class KeysMixin(ShellState):
@@ -27,6 +27,7 @@ class KeysMixin(ShellState):
         self.app.commands.add("quit", self._quit)
         self.app.commands.add("complete_next", self._complete_next)
         self.app.commands.add("complete_previous", self._complete_previous)
+        self.app.commands.add("interrupt_run", self._interrupt_run)
         self.app.commands.add("complete_accept", self._complete_accept)
         self.app.commands.add("complete_dismiss", self._complete_dismiss)
         self.app.keymap.bind("ctrl_c", "interrupt", priority="capture")
@@ -40,6 +41,11 @@ class KeysMixin(ShellState):
             priority="capture",
             when=lambda: self.app.screens.top.name != PAGE_SCREEN and not self._busy and not self.composer.text,
         )
+        # Escape stops a running turn, above the uses below: a reader who wants the
+        # request stopped should not have to remember that Ctrl-C is the key for
+        # it, and a panel, a question, the menu, and a scrolled transcript keep
+        # their own claim on the key first.
+        self.app.keymap.bind("escape", "interrupt_run", priority="capture", when=self._escaping_a_run)
         self.app.keymap.bind("page_up", "scroll_up")
         self.app.keymap.bind("page_down", "scroll_down")
         # Escape is the keyboard twin of the transcript's return badge; capture
@@ -59,6 +65,37 @@ class KeysMixin(ShellState):
     def _menu_open(self) -> bool:
         """Return whether the slash-command menu is showing."""
         return self.app.screens.top.name != PAGE_SCREEN and self.completions.visible
+
+    def _escaping_a_run(self) -> bool:
+        """Return whether Escape means "stop the request" here.
+
+        The key has other jobs, and each of them is answered elsewhere: a panel
+        and the question the model is waiting on own Escape while they are up, the
+        menu asks for it to dismiss itself, a scrolled transcript takes it as
+        "back to the newest line", and a selection belongs to Ctrl-C, which
+        copies. What is left is the case this binding exists for: a turn is in
+        flight and Escape has nothing else to do.
+        """
+        if not self._busy or self._task is None or self._task.done():
+            return False
+        if self.app.screens.top.name in (PAGE_SCREEN, ASK_SCREEN):
+            return False
+        if self._menu_open() or self.view.selected_text():
+            return False
+        return not self._transcript_scrolled_up()
+
+    def _interrupt_run(self, event: AnyEvent, host: Host) -> bool:
+        """Stop the turn that is running, as Ctrl-C does and no more.
+
+        Ctrl-C does more than this — it copies a selection, declines a question,
+        closes a panel, and clears a draft — and this is only the part of it a
+        reader reaches for while the shell is busy.
+        """
+        if not self._busy or self._task is None or self._task.done():
+            return False
+        self._task.cancel()
+        host.invalidate()
+        return True
 
     def _transcript_scrolled_up(self) -> bool:
         """Return whether Escape should jump the conversation back to its tail."""
