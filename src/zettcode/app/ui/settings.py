@@ -70,6 +70,28 @@ class SettingsMixin(ShellState):
             self.start_effort_animation(previous, selected)
         return selected
 
+    def change_permission(self, name: str) -> str:
+        """Set how much of the shell may run unasked and announce the change.
+
+        Takes effect on the next command, including one in the request that is
+        running now, because the policy is read at each shell call rather than
+        when the request starts.
+        """
+        previous = self.agent.permission
+        selected = self.agent.use_permission(name)
+        if selected != previous:
+            self.transcript.permission_changed(previous.value, selected.value)
+        self.app.invalidate()
+        return selected.value
+
+    def select_permission(self, name: str) -> None:
+        """Apply the level picked in the panel and return to the composer."""
+        try:
+            self.change_permission(name)
+        except ValueError as error:
+            self.transcript.error(str(error))
+        self.close_page()
+
     def select_effort(self, name: str) -> None:
         """Apply the reasoning level picked in the panel and return to the composer."""
         try:

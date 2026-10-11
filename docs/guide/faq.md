@@ -85,10 +85,13 @@ instructions can lower it, and cache lifetime depends on the provider. There
 is no universal expected percentage. See the
 [calculation and examples](/guide/models#reading-the-numbers).
 
-**A command ran that I did not want.** Review any previous approval choices:
-`a` grants a wider allowance, while `p` remembers an exact command for the
-current process. Restarting clears that memory. This approval applies to the
-built-in shell tool, not every file-editing or MCP tool. ZettCode does not
+**A command ran that I did not want.** Check the level in the status line: `· auto`
+runs every command and `· safe` runs the ones it recognises as read-only, while
+no marker means `ask`. `/permission ask` puts the question back, and
+`/permission deny` stops shell commands altogether. Earlier approval choices
+matter too: `a` switched to `auto`, `s` to `safe`, and `p` remembers an exact
+command for the current process. Restarting clears all of it. The level applies
+to the built-in shell tool, not to file-editing or MCP tools. ZettCode does not
 sandbox tools; use version control and review the diff.
 
 ## Skills, MCP, and plugins

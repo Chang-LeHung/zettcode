@@ -294,6 +294,10 @@ class Transcript:
         """Announce a model change in the conversation."""
         self.announce(f"Model changed from {previous} to {current}.")
 
+    def permission_changed(self, previous: str, current: str) -> None:
+        """Announce a shell-permission change the way a model change is shown."""
+        self.announce(f"Shell permission changed from {previous} to {current}.")
+
     def effort_changed(self, previous: str, current: str) -> None:
         """Announce a reasoning-effort change the way a model change is shown."""
         self.announce(f"Reasoning effort changed from {previous} to {current}.")

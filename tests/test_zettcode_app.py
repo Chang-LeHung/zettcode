@@ -37,6 +37,7 @@ from zettcode.app.agent.agent import ZettCodeAgent
 from zettcode.app.agent.context import IMAGE_TOKENS, ContextExtension, Tokenizer
 from zettcode.app.agent.entries import EntryStatus
 from zettcode.app.agent.mentions import Mention, MentionProvider, MentionRegistry
+from zettcode.app.agent.permission import Permission, parse_permission
 from zettcode.app.agent.projection import TranscriptProjector
 from zettcode.app.agent.rows import (
     ANIMATION_SECONDS,
@@ -266,6 +267,7 @@ class FakeRuntime:
     active_model: ModelConfig = field(init=False)
     model: object = field(init=False)
     auto_approved: bool = field(default=False, init=False)
+    permission: Permission = field(default=Permission.ASK, init=False)
     start_calls: int = field(default=0, init=False)
 
     def __post_init__(self) -> None:
@@ -315,6 +317,12 @@ class FakeRuntime:
 
     def approve_all_shell_commands(self) -> None:
         self.auto_approved = True
+        self.permission = Permission.AUTO
+
+    def use_permission(self, name):
+        self.permission = name if isinstance(name, Permission) else parse_permission(name)
+        self.auto_approved = self.permission is Permission.AUTO
+        return self.permission
 
     def use_effort(self, name):
         try:
@@ -2241,6 +2249,167 @@ def test_the_effort_picker_lists_every_level_the_runtime_knows():
     assert list(app.agent.efforts)[-2:] == ["max", "ultra"]
 
 
+async def _type_command(app, harness, line: str) -> None:
+    """Type one slash command, run it, and wait for it to finish."""
+    harness.write(line)
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+
+def _announcements(app) -> list[str]:
+    return [entry.text for entry in app.transcript.entries if entry.kind == "announcement"]
+
+
+async def test_the_permission_command_sets_a_level_and_says_so():
+    """`/permission <name>` is the keyboard path to the same four levels as the picker."""
+    app = build_app()
+    harness = _harness(app)
+    assert app.agent.permission is Permission.ASK, "a run starts by asking"
+
+    await _type_command(app, harness, "/permission SAFE")
+
+    assert app.agent.permission is Permission.SAFE
+    assert _announcements(app) == ["Shell permission changed from ask to safe."]
+    assert "safe" in harness.render().text.strip().splitlines()[-1], "the status line names it"
+
+    # Naming the level already in force adds no second row.
+    await _type_command(app, harness, "/permission safe")
+    assert _announcements(app) == ["Shell permission changed from ask to safe."]
+
+
+async def test_a_wrong_permission_name_lists_the_right_ones_and_changes_nothing():
+    app = build_app()
+    harness = _harness(app)
+    await _type_command(app, harness, "/permission safe")
+
+    await _type_command(app, harness, "/permission yolo")
+
+    assert app.agent.permission is Permission.SAFE
+    assert any(
+        "Unknown permission: yolo. Try one of: deny, ask, safe, auto" in getattr(entry, "text", "")
+        for entry in app.transcript.entries
+    )
+
+
+async def test_the_permission_picker_lists_the_four_levels_with_the_current_one_selected():
+    app = build_app()
+    harness = _harness(app)
+    await _type_command(app, harness, "/permission safe")
+
+    await _type_command(app, harness, "/permission")
+    page = _presented_page(app)
+
+    assert [item.value for item in page.list.items] == ["deny", "ask", "safe", "auto"]
+    assert page.list.items[page.list.selected].value == "safe"
+    text = harness.render().text
+    assert "Shell permission" in text
+    assert "every command runs without asking" in text, "each row says what happens to a command"
+
+    harness.press("up")
+    harness.press("up")
+    harness.press("enter")
+
+    assert app.agent.permission is Permission.DENY
+    assert app.app.screens.top.name == "main", "choosing closes the picker"
+    assert _announcements(app)[-1] == "Shell permission changed from safe to deny."
+
+
+async def test_the_status_line_names_every_level_but_the_default():
+    app = build_app()
+    harness = _harness(app)
+
+    def status() -> str:
+        return harness.render().text.strip().splitlines()[-1]
+
+    assert all(word not in status() for word in ("deny", "safe", "auto")), "ask is the unmarked default"
+    for level in ("deny", "safe", "auto"):
+        app.agent.use_permission(level)
+        app.app.invalidate()
+        assert level in status(), level
+    app.agent.use_permission("ask")
+    app.app.invalidate()
+    assert all(word not in status() for word in ("deny", "safe", "auto"))
+
+
+async def test_the_prompt_says_which_level_it_is_asking_at():
+    app = build_app()
+    harness = _harness(app)
+    app.agent.use_permission("safe")
+
+    await app.projector.dispatch(_approval_event())
+
+    assert "Permission: safe" in harness.render().text
+
+
+async def test_the_prompts_s_row_moves_the_level_up_to_safe():
+    """Its rows are the `/permission` ladder seen from one command."""
+    app = build_app()
+    harness = _harness(app)
+
+    await app.projector.dispatch(_approval_event())
+    harness.press("s")
+
+    event, _ = app.agent.runtime.client.agent.emitted[0]
+    assert event.payload == {"tool_call_id": "call-1", "decision": "execute", "remember": False}
+    assert app.agent.permission is Permission.SAFE
+    assert _announcements(app) == ["Shell permission changed from ask to safe."]
+    assert app.app.screens.top.name == "main"
+
+
+async def test_the_prompt_leaves_out_the_rung_it_is_already_standing_on():
+    """At `safe` an `s` row would change nothing, and a row that does nothing misleads."""
+    app = build_app()
+    harness = _harness(app)
+    app.agent.use_permission("safe")
+
+    await app.projector.dispatch(_approval_event())
+
+    page = _approval_page(app)
+    assert [option.key for option in page.options] == ["y", "p", "a", "escape"]
+    harness.press("s")
+    assert app.agent.runtime.client.agent.emitted == [], "the key does nothing at this level"
+    harness.press("a")
+    assert app.agent.permission is Permission.AUTO
+
+
+@pytest.mark.parametrize(
+    ("key", "level"),
+    [("s", "safe"), ("a", "auto")],
+)
+async def test_a_prompt_choice_lands_where_the_command_of_that_name_does(key: str, level: str):
+    """The prompt and `/permission` are two doors to one setting.
+
+    Whatever the prompt's row leaves behind — the level, the announcement, the
+    status line — is exactly what typing the command would have left.
+    """
+    prompted = build_app()
+    await prompted.projector.dispatch(_approval_event())
+    _harness(prompted).press(key)
+
+    typed = build_app()
+    await _type_command(typed, _harness(typed), f"/permission {level}")
+
+    assert prompted.agent.permission is typed.agent.permission
+    assert _announcements(prompted) == _announcements(typed)
+
+
+async def test_a_permission_command_is_not_taken_while_a_request_runs():
+    """The prompt's rows are the way to change it mid-request; a typed command waits."""
+    app = build_app(block=True)
+    harness = _harness(app)
+    harness.write("a question")
+    harness.press("enter")
+    await asyncio.sleep(0)
+    assert app.busy is True
+
+    harness.write("/permission auto")
+    harness.press("enter")
+
+    assert app.agent.permission is Permission.ASK
+    app.task.cancel()
+    await app.task
+
+
 async def test_the_effort_panel_offers_max_and_ultra():
     app = build_app()
     harness = _harness(app)
@@ -2639,12 +2808,13 @@ async def test_app_asks_for_approval_in_a_bottom_panel():
     # The panel is anchored to the bottom edge of the screen.
     assert page.rect.bottom == app.app.height
     assert "Would you like to run the following command?" in text
-    assert "Environment: local" in text
+    assert "Environment: local \u00b7 Permission: ask" in text
     assert "$ rm -rf build" in text
     assert "1. Yes, proceed (y)" in text
     assert "2. Yes, and don't ask again for this command (p)" in text
-    assert "3. Yes, and stop asking for the rest of this run (a)" in text
-    assert "4. No, and say what to do differently (esc)" in text
+    assert "3. Yes, and stop asking for read-only commands (s)" in text
+    assert "4. Yes, and stop asking for any command this run (a)" in text
+    assert "5. No, and say what to do differently (esc)" in text
 
     harness.press("enter")
 
@@ -2679,7 +2849,7 @@ async def test_the_approval_panel_answers_to_arrows_numbers_and_letter_keys():
     harness.press("up")
     assert page.choice is ApprovalChoice.RUN
     harness.press("3")
-    assert page.choice is ApprovalChoice.RUN_AUTO
+    assert page.choice is ApprovalChoice.RUN_SAFE
 
 
 async def test_clicking_an_approval_option_answers_the_prompt():
@@ -2708,7 +2878,7 @@ async def test_auto_mode_approves_every_later_command():
     event, _ = app.agent.runtime.client.agent.emitted[0]
     assert event.payload == {"tool_call_id": "call-1", "decision": "execute", "remember": False}
     assert app.agent.runtime.auto_approved is True
-    assert any("auto mode" in entry.text for entry in app.transcript.entries)
+    assert any("permission changed from ask to auto" in entry.text for entry in app.transcript.entries)
     assert "auto" in harness.render().text.strip().splitlines()[-1]
 
 
@@ -2720,7 +2890,8 @@ async def test_the_approval_panel_hides_always_when_the_runtime_cannot_remember(
 
     text = harness.render().text
     assert "don't ask again for this command" not in text
-    assert "2. Yes, and stop asking for the rest of this run (a)" in text
+    assert "2. Yes, and stop asking for read-only commands (s)" in text
+    assert "3. Yes, and stop asking for any command this run (a)" in text
 
 
 async def test_escape_aborts_the_pending_command():

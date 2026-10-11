@@ -65,6 +65,7 @@ class NoticesMixin(CommandUi, ShellState):
             command,
             on_choice=lambda choice: self._respond(session_id, call_id, choice),
             remember_supported=bool(payload.get("remember_supported")),
+            permission=self.agent.permission.value,
         )
         panel = bottom_panel(page, rows=APPROVAL_ROWS)
         self.app.push_screen(Screen(panel, name=PAGE_SCREEN, modal=True))
@@ -75,8 +76,9 @@ class NoticesMixin(CommandUi, ShellState):
         Args:
             session_id: Session the approval belongs to, echoed back to the agent.
             call_id: Tool call the decision applies to.
-            choice: What the user picked; ``auto`` also silences every later
-                request this run.
+            choice: What the user picked; ``safe`` and ``auto`` also move the
+                permission level up a rung for the rest of the run, which is the
+                same change ``/permission`` makes.
         """
         decision = "abort" if choice is ApprovalChoice.ABORT else "execute"
         remember = choice is ApprovalChoice.ALWAYS
@@ -86,10 +88,10 @@ class NoticesMixin(CommandUi, ShellState):
         except Exception as error:
             self.transcript.error(f"approval failed: {error}")
         else:
-            if choice is ApprovalChoice.RUN_AUTO:
-                self.agent.approve_all_shell_commands()
-                self._auto_shell = True
-                self.transcript.notice("auto mode on: approving every shell command this run")
+            if choice is ApprovalChoice.RUN_SAFE:
+                self.change_permission("safe")
+            elif choice is ApprovalChoice.RUN_AUTO:
+                self.change_permission("auto")
         self.app.invalidate()
 
     # -- questions from the model -------------------------------------------

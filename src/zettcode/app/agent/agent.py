@@ -33,6 +33,7 @@ from .ask import ASK_USER_RESPONSE_EVENT_NAME, AskUserQuestion, answer_payload, 
 from .context import ContextReport
 from .export import build_trace, render_html, write_export
 from .mentions import MentionProvider, MentionRegistry
+from .permission import PERMISSION_LEVELS, Permission
 from .replay import replay
 from .runtime import ZettCodeRuntime, build_system_prompt
 from .side import SIDE, question
@@ -456,6 +457,20 @@ class ZettCodeAgent:
     def approve_all_shell_commands(self) -> None:
         """Approve every shell command for the rest of this run, without asking."""
         self.runtime.approve_all_shell_commands()
+
+    @property
+    def permission(self) -> Permission:
+        """Return how much of the shell may run without asking."""
+        return self.runtime.permission
+
+    @property
+    def permissions(self) -> tuple[str, ...]:
+        """Return the permission levels, strictest first."""
+        return tuple(level.value for level in PERMISSION_LEVELS)
+
+    def use_permission(self, name: str | Permission) -> Permission:
+        """Set how much of the shell may run without asking, for the rest of this run."""
+        return self.runtime.use_permission(name)
 
     async def compact(self) -> CompactionEvent | None:
         """Summarize the conversation now, without adding a turn to it.

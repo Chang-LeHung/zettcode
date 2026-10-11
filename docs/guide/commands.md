@@ -12,6 +12,7 @@ the highlighted name. A command with an argument takes it after a space —
 | `/resume` | Pick a recent session from a panel; `/resume <id>` opens one directly. |
 | `/model` | Pick the model for later requests from a panel. |
 | `/effort` | Pick how much the model reasons: `/effort high`. |
+| `/permission` | Pick how much of the shell may run without asking: `/permission safe`. |
 | `/btw` | Ask something that is answered here but never joins the conversation: `/btw <question>`. |
 | `/theme` | Pick a palette from a panel; `/theme dark` or `/theme light` switches in one step. |
 | `/context` | Show what is filling the context window right now, and where this session is stored. |
@@ -27,7 +28,7 @@ is already used, so `/model` always does what this page says.
 
 ## Panels, not arguments
 
-`/model`, `/resume`, `/theme`, and `/effort` open a picker. `Up` / `Down` move,
+`/model`, `/resume`, `/theme`, `/effort`, and `/permission` open a picker. `Up` / `Down` move,
 `Enter` accepts, and `Esc` goes back without changing anything. `/context`
 opens a report rather than a choice: read it, then press `Esc` to close it. The
 report names the file this conversation is written to under `~/.zettcode/sessions`,

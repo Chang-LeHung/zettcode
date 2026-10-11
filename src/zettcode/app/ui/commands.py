@@ -27,6 +27,16 @@ THEME_NOTES = {
     "light": "green-leaning palette for light terminals",
 }
 
+#: One-line note per shell-permission level, shown next to its name in the picker.
+#: They say what happens to a command, because the names alone do not: `safe` in
+#: particular is a promise about what a command can do, not about what it can read.
+PERMISSION_NOTES = {
+    "deny": "no shell commands run; the model is told and carries on without",
+    "ask": "each command waits for your answer (the default)",
+    "safe": "commands that only read run; anything else asks",
+    "auto": "every command runs without asking",
+}
+
 #: One-line note per reasoning level, shown next to its name in the picker.
 EFFORT_NOTES = {
     "off": "no deliberate reasoning",
@@ -66,6 +76,7 @@ class ShellCommands(CommandProvider):
             Command("/context", "what is filling the context window", "app", self.context),
             Command("/title", "name this session: /title <name>", "app", self.title),
             Command("/effort", "how much the model reasons: /effort high", "app", self.effort),
+            Command("/permission", "how much of the shell may run unasked: /permission safe", "app", self.permission),
             Command(
                 "/btw",
                 "ask something that will not join the conversation: /btw <question>",
@@ -191,6 +202,32 @@ class ShellCommands(CommandProvider):
             [ListItem(level, level, EFFORT_NOTES.get(level, "")) for level in levels],
             title="Reasoning effort",
             on_select=lambda item: self.shell.select_effort(str(item.value)),
+            on_cancel=self.shell.close_page,
+            selected=levels.index(current) if current in levels else 0,
+        )
+        return CommandResult(widget=self._panel(page))
+
+    async def permission(self, context: CommandContext) -> CommandResult:
+        """Open the permission picker, or set a named level straight away.
+
+        The picker lists the four levels strictest first with the current one
+        selected, and each row says what happens to a command rather than what
+        the level is called. The level governs the shell tool only; the file and
+        MCP tools are not behind a prompt in this application, which the title
+        says so that nobody reads ``deny`` as a read-only mode for the workspace.
+        """
+        if context.argument:
+            try:
+                self.shell.change_permission(context.argument)
+            except ValueError as error:
+                return CommandResult(message=str(error))
+            return CommandResult(relayout=True)
+        levels = self.shell.agent.permissions
+        current = self.shell.agent.permission.value
+        page = ListPage(
+            [ListItem(level, level, PERMISSION_NOTES.get(level, "")) for level in levels],
+            title="Shell permission",
+            on_select=lambda item: self.shell.select_permission(str(item.value)),
             on_cancel=self.shell.close_page,
             selected=levels.index(current) if current in levels else 0,
         )

@@ -684,3 +684,67 @@ async def test_runtime_switches_models_and_closes_every_provider(tmp_path, monke
 
     await runtime.aclose()
     assert all(provider.closed for provider in created)
+
+
+async def test_the_runtime_shares_one_permission_policy_with_the_layers_that_enforce_it(tmp_path, monkeypatch):
+    """The level is one object: the shell sets it, and the deny and approval layers read it.
+
+    A copy in either layer would let `/permission` change what the picker shows and
+    not what the agent does, so the test holds the runtime to a single instance and
+    to the order the layers need: deny before approval.
+    """
+    from zett_agent.extensions.shell_approval import ShellApprovalExtension
+
+    from zettcode.app.agent.permission import Permission, ShellDenyExtension
+
+    captured: dict[str, object] = {}
+
+    async def fake_create_agent(model, **kwargs):
+        captured["extensions"] = kwargs["extensions"]
+        return type("FakeClient", (), {"event_dispatcher": None})()
+
+    monkeypatch.setattr("zett_agent.client.create_agent", fake_create_agent)
+    monkeypatch.setattr(runtime_module.os, "chdir", lambda path: None)
+    monkeypatch.setattr(runtime_module, "DEFAULT_MCP_CONFIG", tmp_path / "absent-mcp.json")
+
+    runtime = await runtime_module.ZettCodeRuntime.create(_config_with(tmp_path))
+    extensions = captured["extensions"]
+    deny = next(item for item in extensions if isinstance(item, ShellDenyExtension))
+    approval = next(item for item in extensions if isinstance(item, ShellApprovalExtension))
+
+    assert deny._policy is runtime.policy
+    assert approval.storage._policy is runtime.policy
+    assert ordered(extensions).index(deny) < ordered(extensions).index(approval)
+    assert runtime.permission is Permission.ASK, "a run starts by asking"
+
+    assert runtime.use_permission(" SAFE ") is Permission.SAFE
+    assert runtime.policy.level is Permission.SAFE, "the level the layers read is the one that was set"
+    with pytest.raises(ValueError, match="Try one of: deny, ask, safe, auto"):
+        runtime.use_permission("yolo")
+    assert runtime.permission is Permission.SAFE, "a refused name leaves the level alone"
+
+    runtime.approve_all_shell_commands()
+    assert runtime.permission is Permission.AUTO, "the old entry point is the auto rung"
+    await runtime.aclose()
+
+
+def ordered(extensions):
+    """Return extensions in the order the agent invokes them: ascending priority, stable."""
+    return sorted(extensions, key=lambda extension: extension.priority)
+
+
+def test_the_configured_allow_all_mode_starts_a_run_at_auto(tmp_path, monkeypatch):
+    from zett_agent.extensions.shell_approval import ShellApprovalMode
+
+    from zettcode.app.agent.permission import Permission
+
+    monkeypatch.chdir(tmp_path)
+
+    default = runtime_module.ZettCodeRuntime.preview(_config_with(tmp_path))
+    allowing = runtime_module.ZettCodeRuntime.preview(
+        _config_with(tmp_path, shell_approval=ShellApprovalMode.ALLOW_ALL)
+    )
+
+    assert default.permission is Permission.ASK
+    assert allowing.permission is Permission.AUTO
+    assert default.policy.workspace == tmp_path, "git is judged against this workspace"

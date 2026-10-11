@@ -99,11 +99,15 @@ class ActivityState:
             running command's name or ``"copied 12 characters"``; ``None``
             shows the status word itself.
         auto_shell: Whether shell commands are approved for the rest of the run.
+            ``True`` exactly when ``permission`` is ``"auto"``; kept for plugins
+            written before the other levels existed.
         usage: Cumulative token counters for the active session.
         tasks: The session's plan as ``(status, content)`` pairs, empty when the
             model has not published one.
         frame: Animation frame counter; it advances only while something is
             busy, which is what a plugin animates against.
+        permission: How much of the shell may run unasked: ``"deny"``, ``"ask"``,
+            ``"safe"``, or ``"auto"``.
     """
 
     busy: bool
@@ -113,6 +117,7 @@ class ActivityState:
     usage: UsageSnapshot
     tasks: tuple[tuple[str, str], ...]
     frame: int
+    permission: str = "ask"
 
     @property
     def label(self) -> str:

@@ -93,8 +93,6 @@ class ShellState:
     #: What the status line shows: the shell's state and a one-off note.
     _activity: Activity
     _note: str | None
-    #: Whether shell commands are approved for the rest of the run.
-    _auto_shell: bool
     #: The active session's title, if the store has one.
     _session_title: str | None
     #: Cumulative token counters for the active session.
@@ -129,6 +127,10 @@ class ShellState:
 
     def flash(self, message: str, *, seconds: float = FLASH_SECONDS) -> None:
         """Say something in the row above the composer, for a few seconds."""
+
+    def change_permission(self, name: str) -> str:
+        """Set how much of the shell may run unasked, and announce the change."""
+        return name
 
     def start_effort_animation(self, previous: str, current: str) -> None:
         """Animate the effort slot of the header for a second."""

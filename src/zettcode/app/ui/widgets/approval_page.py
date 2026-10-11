@@ -6,21 +6,29 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from ...._compat import StrEnum
-from ....tui import MARKER, Canvas, Host, KeyEvent, MouseAction, MouseEvent, Widget
+from ....tui import MARKER, SEPARATOR, Canvas, Host, KeyEvent, MouseAction, MouseEvent, Widget
 from ....tui.render import ELLIPSIS, SHELL, Span, Style, highlight, wrap_spans
 
 
 class ApprovalChoice(StrEnum):
     """What the user wants done with one pending shell command.
 
+    The rows are the same ladder ``/permission`` offers, seen from one command: a
+    choice either leaves the level alone (``RUN``, ``ALWAYS``, ``ABORT``) or moves
+    it up a rung for the rest of the run (``RUN_SAFE`` to ``safe``, ``RUN_AUTO`` to
+    ``auto``). Neither ``deny`` nor ``auto`` ever shows the prompt, so there is no
+    row that goes down.
+
     Attributes:
         RUN: Execute this command once; the next one asks again.
+        RUN_SAFE: Execute it and stop asking for commands that only read.
         RUN_AUTO: Execute it and stop asking for any later command this run.
         ALWAYS: Execute it and remember this exact command for the session.
         ABORT: Do not execute it; the agent sees a normal tool failure.
     """
 
     RUN = "run"
+    RUN_SAFE = "run_safe"
     RUN_AUTO = "run_auto"
     ALWAYS = "always"
     ABORT = "abort"
@@ -58,8 +66,13 @@ class ApprovalPage(Widget):
 
         \u25b8 1. Yes, proceed (y)          <- selected row is banded
           2. Yes, and don't ask again for this command (p)
-          3. Yes, and stop asking for the rest of this run (a)
-          4. No, and say what to do differently (esc)
+          3. Yes, and stop asking for read-only commands (s)
+          4. Yes, and stop asking for any command this run (a)
+          5. No, and say what to do differently (esc)
+
+    The ``s`` row is offered only while the level is ``ask``: at ``safe`` it would
+    change nothing, and a row that does nothing is a row that teaches the wrong
+    thing about the ladder.
 
     The panel answers the question the agent is blocked on, so it names every
     option and its key instead of relying on the list conventions alone; the
@@ -81,6 +94,9 @@ class ApprovalPage(Widget):
             the default is ``"local"``.
         remember_supported: Whether to offer ``Always allow``; the runtime can
             only honour it when it has approval storage.
+        permission: The shell permission level in force, shown beside the
+            environment so the prompt says which rung it is on, and used to leave
+            out the rung it is already standing on.
     """
 
     QUESTION = "Would you like to run the following command?"
@@ -96,22 +112,30 @@ class ApprovalPage(Widget):
         on_choice: Callable[[ApprovalChoice], None],
         environment: str = "local",
         remember_supported: bool = True,
+        permission: str = "ask",
     ) -> None:
         """Build the numbered options and start the highlight on the first."""
         super().__init__()
         self.command = command
         self.on_choice = on_choice
         self.environment = environment
-        self.options = self._options(remember_supported)
+        self.permission = permission
+        self.options = self._options(remember_supported, permission)
         self.selected = 0
 
     @staticmethod
-    def _options(remember_supported: bool) -> tuple[ApprovalOption, ...]:
-        """Return the rows to show, dropping the one the runtime cannot honour."""
+    def _options(remember_supported: bool, permission: str = "ask") -> tuple[ApprovalOption, ...]:
+        """Return the rows to show, dropping the ones that would do nothing.
+
+        A row the runtime cannot honour (``Always`` without storage) or that would
+        move the level to where it already is (``safe`` at ``safe``) is left out.
+        """
         options = [ApprovalOption(ApprovalChoice.RUN, "y", "Yes, proceed")]
         if remember_supported:
             options.append(ApprovalOption(ApprovalChoice.ALWAYS, "p", "Yes, and don't ask again for this command"))
-        options.append(ApprovalOption(ApprovalChoice.RUN_AUTO, "a", "Yes, and stop asking for the rest of this run"))
+        if permission == "ask":
+            options.append(ApprovalOption(ApprovalChoice.RUN_SAFE, "s", "Yes, and stop asking for read-only commands"))
+        options.append(ApprovalOption(ApprovalChoice.RUN_AUTO, "a", "Yes, and stop asking for any command this run"))
         options.append(ApprovalOption(ApprovalChoice.ABORT, "escape", "No, and say what to do differently"))
         return tuple(options)
 
@@ -198,7 +222,13 @@ class ApprovalPage(Widget):
         heading = Style(foreground=theme.text, bold=True)
         hint = Style(foreground=theme.muted)
         canvas.draw_text(x, self.rect.y + 1, self.QUESTION, heading, max_width=room)
-        canvas.draw_text(x, self.rect.y + 3, f"Environment: {self.environment}", hint, max_width=room)
+        canvas.draw_text(
+            x,
+            self.rect.y + 3,
+            f"Environment: {self.environment} {SEPARATOR} Permission: {self.permission}",
+            hint,
+            max_width=room,
+        )
         rows = self._command_rows(room)
         for offset, spans in enumerate(rows):
             canvas.draw_spans(x, self.rect.y + 5 + offset, spans, max_width=room)
