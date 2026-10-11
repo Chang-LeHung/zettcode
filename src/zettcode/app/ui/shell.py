@@ -12,13 +12,17 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-#: Screen name used for a page a command presented; the shell checks it to know
-#: that Ctrl-C and Ctrl-D belong to the page rather than the composer.
+#: The animation token the effort gauge registers: one token, held for its second
+#: and released when the gauge is over, so the frame loop goes back to sleep.
+EFFORT_TOKEN = "effort"
+
 #: How long a flash stays in the row above the composer: long enough to read a
 #: count of characters, short enough that the next thing typed is not typed into
 #: something the reader is still reading.
 FLASH_SECONDS = 1.5
 
+#: Screen name used for a page a command presented; the shell checks it to know
+#: that Ctrl-C and Ctrl-D belong to the page rather than the composer.
 PAGE_SCREEN = "page"
 
 #: Screen name of a question panel. It has its own name because the questions
@@ -48,6 +52,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
     from ..agent.ask import AskUserQuestion
     from ..agent.mentions import MentionRegistry
     from ..agent.projection import TranscriptProjector
+    from ..agent.rows import EffortFrame
     from ..agent.transcript import Transcript
     from ..agent.usage import UsageSnapshot
     from ..commands import Command
@@ -108,6 +113,9 @@ class ShellState:
     #: A short-lived message for the row above the composer: its text and the
     #: moment it stops being true.
     _flash: tuple[str, float] | None
+    #: The effort switch being animated: the level it came from, the level it is
+    #: reaching, and the moment it started.
+    _effort_animation: tuple[str, str, float] | None
     #: The question the model is waiting on, while its panel is up.
     _asks: list[AskUserQuestion]
     #: The turn or command currently in flight, if any.
@@ -121,6 +129,15 @@ class ShellState:
 
     def flash(self, message: str, *, seconds: float = FLASH_SECONDS) -> None:
         """Say something in the row above the composer, for a few seconds."""
+
+    def start_effort_animation(self, previous: str, current: str) -> None:
+        """Animate the effort slot of the header for a second."""
+
+    def _effort_gauge(self) -> EffortFrame | None:
+        """Return the effort gauge for this paint, or None when the switch is over."""
+
+    def settle_effort_animation(self) -> None:
+        """Repaint while an effort switch animates, and release its token at the end."""
 
     def notify(self, message: str, *, level: str = "info") -> None:
         """Show a one-line toast."""

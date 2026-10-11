@@ -23,7 +23,7 @@ panels temporarily cover the lower part of it.
 The left side names the application and the workspace, shortened to the last
 useful part of the path. The right side names the model and the reasoning effort
 that the **next** request will use, so a switch is visible before you send
-anything.
+anything. Changing the effort plays an animation in that corner for a few seconds: a hairline gauge with one cell per level fills from the level you left to the level you chose, and a soft glow travels over it and then over the word. Colour is a position on the scale, not a state: the cheap end is your theme's accent and the dear end its error colour, with a smooth blend between, so `ultra` is the one that is red. The gauge fades in and out rather than cutting, and gives the corner back when it is done. It does not appear while a request runs (the waiting row is moving then) or under reduced motion, where the level still changes and the transcript still says so.
 
 ## Terminal tabs
 

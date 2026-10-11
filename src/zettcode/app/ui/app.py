@@ -46,7 +46,7 @@ from ..agent.agent import PromptPart, ZettCodeAgent, carries_image, mention_hint
 from ..agent.ask import AskUserQuestion
 from ..agent.mentions import MentionRegistry
 from ..agent.projection import TranscriptProjector
-from ..agent.rows import clock_text, elapsed_text
+from ..agent.rows import EFFORT_SECONDS, EffortFrame, clock_text, effort_frame, elapsed_text
 from ..agent.runtime import describe_error
 from ..agent.transcript import Transcript
 from ..agent.usage import UsageSnapshot
@@ -58,7 +58,7 @@ from .notices import NoticesMixin
 from .rows import RowsMixin
 from .sessions import SessionMixin
 from .settings import SettingsMixin
-from .shell import FLASH_SECONDS, MAX_STEERING, PAGE_SCREEN
+from .shell import EFFORT_TOKEN, FLASH_SECONDS, MAX_STEERING, PAGE_SCREEN
 from .updating import UpdateMixin
 from .widgets import (
     WELCOME,
@@ -159,6 +159,7 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
         #: because the status line is a standing report of what the shell is doing,
         #: while this answers something the reader just did.
         self._flash: tuple[str, float] | None = None
+        self._effort_animation: tuple[str, str, float] | None = None
         #: The context re-measure a restore started, replaced by the next restore.
         self._measure_task: asyncio.Task[None] | None = None
         #: The runtime warm-up this shell started, released on the way out.
@@ -217,6 +218,53 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
         """
         self.flash(f"copied {len(text)} chars to clipboard")
 
+    def start_effort_animation(self, previous: str, current: str) -> None:
+        """Animate the effort slot for a second, when the moment is right for it.
+
+        Skipped while a request runs, because the waiting row already owns the
+        motion — one row owns it in this shell — and skipped under reduced motion,
+        which asks for none at all. That flag is read from the running app rather
+        than from the config it came from, so this reads the same snapshot every
+        other animation in the tree reads; `adopt` is what keeps them in step. The
+        transcript's own row reports the change either way, so nothing is lost when
+        the gauge does not appear.
+        """
+        if self.app.reduced_motion or self._busy:
+            self._effort_animation = None
+            return
+        self._effort_animation = (previous, current, monotonic())
+        self.app.scheduler.animate(EFFORT_TOKEN, active=True)
+        self.app.request_layout()
+
+    def _effort_gauge(self) -> EffortFrame | None:
+        """Return the gauge for this paint, or None when the switch is over.
+
+        The clock and the state are read here, in the module that set them: an
+        animation whose start and whose frame come from two import sites is one
+        clock in a running shell and two in a test. Progress is a fraction of
+        elapsed time, not a frame count, so the motion is as smooth as the loop
+        that paints it and a slow terminal drops frames instead of slowing down.
+        """
+        animation = self._effort_animation
+        if animation is None:
+            return None
+        previous, current, started = animation
+        progress = (monotonic() - started) / EFFORT_SECONDS
+        return effort_frame(previous, current, self.agent.efforts, progress=progress)
+
+    def settle_effort_animation(self) -> None:
+        """Repaint while the switch animates, and release the token when it ends."""
+        if self._effort_animation is None:
+            return
+        if self._effort_gauge() is None:
+            # Past the last frame: the header goes back to the segments a plugin
+            # registered, and the token goes with the animation.
+            self._effort_animation = None
+            self.app.scheduler.animate(EFFORT_TOKEN, active=False)
+            self.app.request_layout()
+            return
+        self.app.invalidate()
+
     def flash(self, message: str, *, seconds: float = FLASH_SECONDS) -> None:
         """Say something in the row above the composer, for a few seconds.
 
@@ -272,6 +320,8 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
         """Release what :meth:`start_background` began, and end a request still in flight."""
         await self._stop_title_task()
         await self._stop_update_task()
+        self._effort_animation = None
+        self.app.scheduler.animate(EFFORT_TOKEN, active=False)
         measure, self._measure_task = self._measure_task, None
         if measure is not None:
             # A re-measure still in flight is a wait for the counter, which S8

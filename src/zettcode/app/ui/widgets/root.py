@@ -50,5 +50,6 @@ class ZettCodeRoot(Widget):
         painting until it does.
         """
         self.controller.settle_flash()
+        self.controller.settle_effort_animation()
         if self.controller.busy and (self.app is None or not self.app.reduced_motion):
             self.controller.transcript.advance_frame()

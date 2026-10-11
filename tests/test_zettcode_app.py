@@ -40,6 +40,7 @@ from zettcode.app.agent.mentions import Mention, MentionProvider, MentionRegistr
 from zettcode.app.agent.projection import TranscriptProjector
 from zettcode.app.agent.rows import (
     ANIMATION_SECONDS,
+    EFFORT_SECONDS,
     PULSE_FRAMES,
     RUNNING_GLYPHS,
     STATUS_BLINK_FRAMES,
@@ -2054,6 +2055,141 @@ async def test_the_model_picker_right_aligns_its_row_numbers():
     assert labels[0].startswith(" 1. Model 1"), labels[0]
     assert labels[9].startswith("10. Model 10"), labels[9]
     assert len({label.index(".") for label in labels}) == 1, "every number ends in the same column"
+
+
+def test_switching_effort_animates_the_header_while_the_gauge_runs(monkeypatch):
+    """The one thing a reader just changed gets the motion, and gives it back.
+
+    The header's right side is the plugins' for as long as the gauge runs, and the
+    animation registers one frame-loop token that it releases when its time is up —
+    a token left behind would keep the shell painting at the frame rate for nothing.
+    Progress is a fraction of elapsed time, so a slow terminal drops frames rather
+    than stretching the animation, and how long it lasts is `EFFORT_SECONDS`.
+    """
+    app = build_app()
+    harness = _harness(app)
+    harness.render()
+    clock = [1_000.0]
+    monkeypatch.setattr(app_module, "monotonic", lambda: clock[0])
+
+    app.change_effort("ultra")
+
+    assert app._effort_animation is not None
+    assert "effort" in app.app.scheduler.animations, "the frame loop is kept awake for it"
+
+    clock[0] += EFFORT_SECONDS * 0.4
+    middle = app._header_right().text
+    assert middle.count("\u2501") + middle.count("\u2578") >= 1, middle
+    assert middle.strip().endswith("ultra"), "the word is beside it"
+    assert app._effort_animation is not None, "well inside its time, it is still running"
+
+    clock[0] += EFFORT_SECONDS
+    app.settle_effort_animation()
+
+    assert app._effort_animation is None
+    assert "effort" not in app.app.scheduler.animations, "and the token is released"
+    assert app._header_right().text.strip().endswith("ultra"), "the header is the plugins' again"
+    assert "\u2501" not in app._header_right().text, "with no gauge left in it"
+    assert harness.render().text.strip() != "", "and the frame still paints"
+
+
+def test_the_effort_gauge_is_painted_in_a_ramp_that_follows_the_theme(monkeypatch):
+    """Colour is a position on the scale, taken from the theme and blended per cell.
+
+    A fixed hue would be wrong on half the palettes, and a stepped one would look
+    like a progress bar. The cheap end is the theme's accent, the dear end its error
+    colour, and every cell between is a blend — so a light palette gets the darker
+    ends of the same story and `/theme` changes the gauge with everything else.
+    """
+    app = build_app()
+    harness = _harness(app)
+    harness.render()
+    clock = [1_000.0]
+    monkeypatch.setattr(app_module, "monotonic", lambda: clock[0])
+    app.change_effort("medium")
+    clock[0] += 2.0
+    app.settle_effort_animation()
+    app.change_effort("ultra")
+    clock[0] += EFFORT_SECONDS * 0.5
+
+    colours = [span.style.foreground for span in app._header_right().spans if span.text in ("\u2501", "\u2578")]
+
+    assert len(set(colours)) >= len(colours) // 2, "a ramp, not two or three stops"
+    assert app._heat(0.0) == app.app.theme.accent
+    assert app._heat(1.0) == app.app.theme.error
+    assert app._heat(0.5) not in (app.app.theme.accent, app.app.theme.error)
+
+
+def test_the_effort_gauge_carries_a_travelling_glow(monkeypatch):
+    """A soft highlight moves over the gauge; a gauge that only filled would be a bar.
+
+    It costs one repaint of one row, because the header is a line of spans and the
+    glow is a different blend on each of them.
+    """
+    app = build_app()
+    harness = _harness(app)
+    harness.render()
+    clock = [1_000.0]
+    monkeypatch.setattr(app_module, "monotonic", lambda: clock[0])
+    app.change_effort("off")
+    clock[0] += EFFORT_SECONDS * 2
+    app.settle_effort_animation()
+    started = clock[0]
+    app.change_effort("ultra")
+
+    def brightest(fraction: float) -> int:
+        """Return the index of the span the glow is on at one moment of the animation."""
+        clock[0] = started + EFFORT_SECONDS * fraction
+        spans = [span for span in app._header_right().spans if span.text in ("\u2501", "\u2578")]
+        return max(
+            range(len(spans)),
+            key=lambda index: sum(int(spans[index].style.foreground[1:], 16) >> shift & 255 for shift in (0, 8, 16)),
+        )
+
+    first, later = brightest(0.2), brightest(0.5)
+
+    assert later > first, "the glow moves toward the dear end"
+
+
+def test_reduced_motion_asks_for_no_gauge(monkeypatch):
+    """Reduced motion is a request for no decorative movement, and it is honoured.
+
+    The level still changes and the transcript still records it: what the reader
+    asked for is that nothing moves, not that nothing happens. The flag is read
+    from the running app, which is the snapshot every animation in the tree reads.
+    """
+    app = build_app()
+    app.app.reduced_motion = True
+    monkeypatch.setattr(app_module, "monotonic", lambda: 1_000.0)
+
+    app.change_effort("ultra")
+
+    assert app._effort_animation is None
+    assert "effort" not in app.app.scheduler.animations, "no token, so no frames for it"
+    assert "ultra" in app._header_right().text, "the level still changes"
+
+
+async def test_a_running_request_owns_the_motion(monkeypatch):
+    """One row owns the motion: a switch mid-request leaves the gauge alone.
+
+    The waiting row is already moving there, and a second moving thing competes
+    for the eye — the switch is recorded in the transcript regardless.
+    """
+    app = build_app(block=True)
+    harness = _harness(app)
+    harness.write("a question")
+    harness.press("enter")
+    await asyncio.sleep(0)
+    assert app.busy is True
+    monkeypatch.setattr(app_module, "monotonic", lambda: 1_000.0)
+
+    app.change_effort("ultra")
+
+    assert app._effort_animation is None
+    assert "effort" not in app.app.scheduler.animations
+    assert "ultra" in app._header_right().text
+    app.task.cancel()
+    await app.task
 
 
 async def test_the_effort_command_sets_the_level_the_next_request_carries():
