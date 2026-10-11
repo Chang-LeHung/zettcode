@@ -5,6 +5,7 @@ import os
 import shlex
 import subprocess
 import sys
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -37,6 +38,50 @@ def test_help_never_imports_the_process_naming_helper(monkeypatch):
     with pytest.raises(SystemExit) as result:
         cli.main()
     assert result.value.code == 0
+
+
+def test_the_script_freezes_the_heap_so_the_last_collection_can_skip_it(tmp_path: Path):
+    """Holding the model SDKs costs ~150 ms *at exit*, almost all of it one GC pass.
+
+    The interpreter collects everything the process allocated on its way out,
+    and those libraries left a heap that takes a tenth of a second to walk. The
+    fix is to take it out of the collector's reach, not to leave without tidying
+    up: the child below still runs its ``atexit`` handlers and its own module
+    teardown, which is what makes this different from ending the process early.
+    """
+
+    def teardown_latency(freeze: bool) -> tuple[float, bool]:
+        stamp = tmp_path / f"stamp-{freeze}"
+        after = tmp_path / f"atexit-{freeze}"
+        script = "\n".join(
+            line
+            for line in [
+                "import atexit, time",
+                "import openai, anthropic",
+                f"atexit.register(lambda: open({str(after)!r}, 'w').close())",
+                "from zettcode.cli import freeze_heap" if freeze else "",
+                "freeze_heap()" if freeze else "",
+                # The stamp has to land before the exit, or the parent waits for a
+                # file the child never writes.
+                f"open({str(stamp)!r}, 'w').write(str(time.time()))",
+            ]
+            if line
+        )
+        child = subprocess.Popen([sys.executable, "-c", script], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        deadline = time.perf_counter() + 30.0
+        while not stamp.exists() and time.perf_counter() < deadline:
+            time.sleep(0.0005)
+        assert stamp.exists(), "the child never reached its exit"
+        decided = time.perf_counter()
+        child.wait(timeout=30)
+        return time.perf_counter() - decided, after.exists()
+
+    freezing, ran_hooks = teardown_latency(freeze=True)
+    walked, _ = teardown_latency(freeze=False)
+
+    assert ran_hooks, "freezing the heap must not skip the interpreter's own shutdown"
+    assert freezing < 0.05, f"the frozen exit took {freezing * 1000:.0f} ms"
+    assert walked > freezing + 0.02, f"the collection it skips measured {walked * 1000:.0f} ms"
 
 
 def test_startup_names_the_process_before_entering_the_application(monkeypatch):

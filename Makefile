@@ -4,7 +4,7 @@ UV ?= uv
 # the one it just built and not a release wheel left over from an earlier run.
 SMOKE_DIR := .smoke
 
-.PHONY: help install lint typecheck test build smoke check hooks docs docs-build docs-preview demo demo-all demos demo-thinking perf perf-scaling perf-store perf-profile perf-startup perf-imports FORCE
+.PHONY: help install lint typecheck test build smoke check hooks docs docs-build docs-preview demo demo-all demos demo-thinking perf perf-scaling perf-store perf-profile perf-startup perf-imports perf-exit FORCE
 
 DEMOS := text status_bar spinner progress_bar list table diff markdown textarea completion dialog collapsible toast tasks scroll layout
 
@@ -30,6 +30,7 @@ help:
 	@echo "  make perf-store     Session append/read cost against log size"
 	@echo "  make perf-profile   cProfile the streaming scenario"
 	@echo "  make perf-startup   Time a launch, stage by stage, up to the first frame"
+	@echo "  make perf-exit      Time a quit, and the interpreter teardown it pays for"
 	@echo "  make perf-imports   Measure what each deferrable import would really save"
 
 install:
@@ -110,6 +111,9 @@ perf-profile:
 
 perf-startup:
 	$(UV) run python -m perf.startup --pty
+
+perf-exit:
+	$(UV) run python -m perf.exit --pty
 
 perf-imports:
 	$(UV) run python -m perf.imports
