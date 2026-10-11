@@ -112,6 +112,21 @@ class TimedEntry(Entry):
         """Return whether the row is still going, which is what its timer follows."""
         return self.status is EntryStatus.RUNNING
 
+    def tick(self, now: float) -> None:
+        """Bring the duration up to ``now``; a row that never recorded a start has none."""
+        if self.started_at is not None:
+            self.duration = now - self.started_at
+
+    def finish(self, status: EntryStatus, now: float) -> None:
+        """End the row with an outcome, and stamp how long it ran.
+
+        Args:
+            status: How it ended: completed, failed, or skipped.
+            now: The clock reading it ended on.
+        """
+        self.status = status
+        self.tick(now)
+
 
 _TEXT_KINDS = frozenset({EntryKind.WELCOME, EntryKind.USER, EntryKind.NOTICE, EntryKind.ANNOUNCEMENT})
 _MARKDOWN_KINDS = frozenset({EntryKind.ANSWER, EntryKind.MESSAGE})

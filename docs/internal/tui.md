@@ -371,9 +371,27 @@ The conversation is four things, each in one place:
 | Concept | What it is | Where |
 | --- | --- | --- |
 | **Entry** | One item of the conversation: plain data, with an `EntryKind` that says which kind of row it is | `app/agent/entries.py` |
-| **Transcript** | The ordered list of entries, what changed since the view last looked, how many are kept, and the verbs the agent's events map onto (start a tool, stream an answer, settle the wait) | `app/agent/transcript.py` |
+| **Transcript** | The ordered list of entries, what changed since the view last looked, how many are kept, and the verbs the agent's events map onto (start a tool, stream an answer, settle the wait) | `app/agent/transcript/` |
 | **Presenter** | Turns one kind of entry into styled rows; there is exactly one per `EntryKind`, held in a `Presenters` registry | `app/agent/presenters.py` |
 | **TranscriptSource** | Stacks every entry's cached *block* (an entry presented as rows) into the single `LineSource` the scrolling view reads | `app/ui/widgets/transcript.py` |
+
+`Transcript` is split by responsibility the way the shell is: a state class and a
+mixin for each kind of thing done to it, each mixin inheriting the state class only
+to be type-checked against what it shares.
+
+| Part | Responsible for |
+| --- | --- |
+| `EntryLog` (`log.py`) | The list: where an entry goes (above the pinned wait row), how many are kept, what changed since the view last looked |
+| `TurnMixin` (`turn.py`) | A request's life: the reader's message, the wait row, the animation clock, closing what a request left open |
+| `StreamMixin` (`stream.py`) | What the model produces as it arrives: reasoning, a compaction, the answer, tool calls |
+| `OneOffMixin` (`oneoff.py`) | Rows written once and left alone: banner, notice, error, announcement, Markdown |
+| `FoldMixin` (`fold.py`) | Opening and closing reasoning and tool rows |
+
+`Transcript` itself is only the composition and the three things no part owns: the
+clock, the renderers that phrase tool rows, and the presenters the view draws with.
+Every verb that edits a row ends in `_changed`, so the dirty mark and the version
+cannot be moved one without the other, and a timed row ends with `finish`, so its
+status and its duration are stamped together.
 
 Adding a kind of row is three things: a member of `EntryKind`, an entry class
 that declares it, and a presenter that names it. `test_every_kind_of_entry_has_exactly_one_presenter`
