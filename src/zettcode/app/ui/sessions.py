@@ -7,6 +7,7 @@ and asks the agent to name a new session once, off the composer's critical path.
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from .shell import ShellState
@@ -57,6 +58,38 @@ class SessionMixin(ShellState):
         self._remember_session_title()
         self._usage = self.agent.usage
         self._refresh_tasks()
+        self.app.request_layout()
+
+    def _remeasure_context_later(self) -> None:
+        """Measure the context again, for a figure that cannot be true.
+
+        Only a billed size at or past the window is replaced this way: a request
+        cannot be larger than the window it is measured against, so the
+        measurement of the request this process assembled is the better answer.
+        A *restored* session is deliberately not measured here: its stored usage
+        is the provider's count of a real request, while a list rebuilt from the
+        store still holds messages the live request no longer carries — counting
+        those measured 1.65 M tokens against a provider's 326 k, which is how the
+        share came to sit at a hundred.
+
+        Nothing happens where no loop can carry it, since the command line builds
+        the application on a worker thread that has none; this figure is only ever
+        replaced while the interface is up.
+        """
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        if self._measure_task is not None and not self._measure_task.done():
+            self._measure_task.cancel()
+        self._measure_task = loop.create_task(self._remeasure_context())
+
+    async def _remeasure_context(self) -> None:
+        """Seed the status line's context figure with the measured request."""
+        report = await self.agent.context_report()
+        if report is None:
+            return
+        self._usage = replace(self._usage, context_tokens=report.used)
         self.app.request_layout()
 
     def _remember_session_title(self) -> None:

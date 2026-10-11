@@ -23,11 +23,30 @@ from typing import TypeAlias, cast
 from zett_agent.agent import AgentRunContext
 from zett_agent.extensions.base import AgentExtension
 from zett_agent.extensions.compaction import CompactedMessage
-from zett_agent.messages import AnyMessage, AssistantMessage, SystemMessage, ToolMessage
+from zett_agent.messages import (
+    AnyMessage,
+    AssistantMessage,
+    ImageContent,
+    SystemMessage,
+    TextContent,
+    ToolMessage,
+)
 from zett_agent.model import ModelRequest, ToolDefinition
 
 from ...paths import DEFAULT_TOKENIZER_CACHE
 from ..pipeline import DaemonCall
+
+#: What one image costs, whatever its encoded size. A provider bills an image by
+#: its dimensions and the detail asked for, so counting the bytes of a pasted
+#: screenshot — megabytes of base64 — overstates the context by orders of
+#: magnitude: it measured a request the provider counted at 326 k tokens as 1.74 M
+#: here, and spent 400 ms encoding a picture. The value matches the estimate
+#: zett-agent's compaction uses, so the panel and the compaction threshold do not
+#: disagree about the same image.
+IMAGE_TOKENS = 1_100
+
+#: What an image part contributes to the text, since it has no text of its own.
+IMAGE_MARKER = "[image]"
 
 #: Tokens per character when no tokenizer is available. The rule of thumb is
 #: close for English prose and low for CJK, which is why the report names the
@@ -102,25 +121,46 @@ class ContextShare:
 class ContextReport:
     """The budget as a whole: every source, the total, and what is left.
 
+    A request has two numbers, and they come from different places: how many
+    tokens it is, which only the provider knows because it counts what it bills,
+    and how that total divides between the sources, which only the tokenizer can
+    say because no provider reports a breakdown. The shares are always the
+    tokenizer's; the total is the provider's whenever it reported one for this
+    very request, and the tokenizer's sum when it did not — a session restored
+    from the store, where the stored figure belongs to a call that may predate a
+    compaction.
+
     Attributes:
         window: Tokens the budget is measured against.
-        measured_by: Which counter produced the numbers.
+        measured_by: Which counter produced the shares.
         shares: One entry per non-empty source, in :data:`SOURCES` order.
         partial: Whether a part the runtime would send is missing from the
             measurement, which is the case for a restored session measured
             before any reply in this process: its tool schemas are not knowable
             yet, and the page says so instead of reading low silently.
+        reported: Tokens the provider counted for this request, if it did.
     """
 
     window: int
     measured_by: str
     shares: tuple[ContextShare, ...]
     partial: bool = False
+    reported: int | None = None
+
+    @property
+    def measured(self) -> int:
+        """Return the tokens the tokenizer counted, which the shares add up to."""
+        return sum(share.tokens for share in self.shares)
 
     @property
     def used(self) -> int:
-        """Return the tokens every source adds up to."""
-        return sum(share.tokens for share in self.shares)
+        """Return the tokens this request carries: the provider's count if there is one."""
+        return self.reported if self.reported is not None else self.measured
+
+    @property
+    def from_provider(self) -> bool:
+        """Return whether the total is the provider's rather than the tokenizer's."""
+        return self.reported is not None
 
     @property
     def free(self) -> int:
@@ -135,9 +175,12 @@ class ContextReport:
         """Return ``tokens`` as a share of what the request is using, in percent.
 
         :meth:`percent` answers "how full is the model's window"; this answers
-        "where does the context go", which is the question a breakdown is for.
+        "where does the context go", which is the question a breakdown is for —
+        so it divides by what the tokenizer counted, never by a provider's total
+        for the same request, which would leave the rows short of a hundred.
         """
-        return tokens / self.used * 100 if self.used else 0.0
+        measured = self.measured
+        return tokens / measured * 100 if measured else 0.0
 
 
 class Tokenizer:
@@ -225,7 +268,8 @@ def message_text(message: AnyMessage) -> str:
 
     Args:
         message: Any context message. Tool calls are counted through their name
-            and arguments, and a tool result through the text it rendered.
+            and arguments, a tool result through the text it rendered, and an
+            image through :data:`IMAGE_MARKER` rather than its payload.
     """
     if isinstance(message, ToolMessage):
         return message.text
@@ -235,7 +279,39 @@ def message_text(message: AnyMessage) -> str:
             f"{call.name} {json.dumps(call.arguments, ensure_ascii=False, default=str)}" for call in message.tool_calls
         )
         return "\n".join(part for part in parts if part)
-    return str(getattr(message, "content", ""))
+    return content_text(getattr(message, "content", ""))
+
+
+def content_text(content: object) -> str:
+    """Return the text of a message's content, images standing in for themselves.
+
+    Content is a string or a sequence of parts. Turning the whole thing into a
+    string with ``str`` renders an image's encoded bytes — a pasted screenshot is
+    megabytes of base64 — which is what made a 326 k request measure 1.74 M.
+
+    Args:
+        content: The message's content, as the provider would take it.
+    """
+    if isinstance(content, str):
+        return content
+    if isinstance(content, Sequence):
+        return "\n".join(
+            part.text
+            if isinstance(part, TextContent)
+            else (part.alt_text or IMAGE_MARKER)
+            if isinstance(part, ImageContent)
+            else repr(part)
+            for part in content
+        )
+    return str(content)
+
+
+def image_count(message: AnyMessage) -> int:
+    """Return how many images one message carries, which are billed apart from its text."""
+    content = getattr(message, "content", "")
+    if isinstance(content, str) or not isinstance(content, Sequence):
+        return 0
+    return sum(1 for part in content if isinstance(part, ImageContent))
 
 
 def tool_text(tool: ToolDefinition) -> str:
@@ -244,7 +320,27 @@ def tool_text(tool: ToolDefinition) -> str:
     return f"{tool.name}\n{tool.description}\n{parameters}"
 
 
-def count_one(item: object, text: str, tokenizer: Tokenizer, counts: Counts | None) -> int:
+def count_message(message: AnyMessage, tokenizer: Tokenizer, counts: Counts | None) -> int:
+    """Return the tokens one message costs, reusing an earlier count of it.
+
+    Its text is measured; each image is not, because a provider bills an image by
+    its dimensions and detail rather than by the bytes a paste carries.
+
+    Args:
+        message: The message to count.
+        tokenizer: Counter for the text.
+        counts: Earlier counts, updated in place; ``None`` counts everything.
+    """
+    return count_one(
+        message,
+        message_text(message),
+        tokenizer,
+        counts,
+        extra=IMAGE_TOKENS * image_count(message),
+    )
+
+
+def count_one(item: object, text: str, tokenizer: Tokenizer, counts: Counts | None, *, extra: int = 0) -> int:
     """Return the tokens in one counted item, reusing an earlier count of it.
 
     Counting is the whole cost of a report — 25 ms for a session of 155 k tokens
@@ -258,14 +354,16 @@ def count_one(item: object, text: str, tokenizer: Tokenizer, counts: Counts | No
         text: What the tokenizer would count.
         tokenizer: Counter to use when there is no entry.
         counts: Earlier counts, updated in place; ``None`` counts everything.
+        extra: Tokens the text cannot express, an image's estimate say; they are
+            part of the cached number, so a hit returns the same answer.
     """
     if counts is None:
-        return tokenizer.count(text)
+        return tokenizer.count(text) + extra
     key = id(item)
     entry = counts.get(key)
     if entry is not None and entry.item is item:
         return entry.tokens
-    tokens = tokenizer.count(text)
+    tokens = tokenizer.count(text) + extra
     counts[key] = Counted(item, tokens)
     return tokens
 
@@ -277,6 +375,7 @@ def measure(
     window: int,
     tokenizer: Tokenizer,
     counts: Counts | None = None,
+    reported: int | None = None,
 ) -> ContextReport:
     """Break one assembled request into the sources that fill the budget.
 
@@ -289,6 +388,8 @@ def measure(
         tokenizer: Counter to use; it may still be estimating.
         counts: Counts from an earlier measurement of the same items, updated in
             place as new ones are counted; ``None`` measures everything.
+        reported: Tokens the provider counted for this request, if it did; the
+            shares are still measured here, because it cannot break them down.
     """
     totals = dict.fromkeys(SOURCES, 0)
     items = dict.fromkeys(SOURCES, 0)
@@ -306,13 +407,19 @@ def measure(
                 source = "Tool output"
             case _:
                 source = "User messages"
-        totals[source] += count_one(message, message_text(message), tokenizer, counts)
+        totals[source] += count_message(message, tokenizer, counts)
         items[source] += 1
     if tools:
         totals["Tool schemas"] = sum(count_one(tool, tool_text(tool), tokenizer, counts) for tool in tools)
         items["Tool schemas"] = len(tools)
     shares = tuple(ContextShare(name, totals[name], items[name]) for name in SOURCES if totals[name] or items[name])
-    return ContextReport(window=max(1, window), measured_by=tokenizer.label, shares=shares, partial=not tools)
+    return ContextReport(
+        window=max(1, window),
+        measured_by=tokenizer.label,
+        shares=shares,
+        partial=not tools,
+        reported=reported,
+    )
 
 
 class ContextExtension(AgentExtension):
@@ -332,7 +439,10 @@ class ContextExtension(AgentExtension):
         """Start with no captured request and nothing counted."""
         self._requests: dict[str, tuple[tuple[AnyMessage, ...], tuple[ToolDefinition, ...]]] = {}
         self._template: tuple[tuple[AnyMessage, ...], tuple[ToolDefinition, ...]] | None = None
-        #: Per session, what the last report counted and which counter did it.
+        #: Per session, the items the last report counted and the counter that
+        #: produced those numbers (see :class:`SessionCounts`). This is what makes
+        #: opening `/context` twice cost nothing the second time; it is dropped
+        #: when the counter changes, because the estimate and the encoder disagree.
         self._counts: dict[str, SessionCounts] = {}
 
     async def before_model(self, context: AgentRunContext, request: ModelRequest) -> None:
@@ -366,12 +476,26 @@ class ContextExtension(AgentExtension):
         """Return the last assembled request, or None before the first call."""
         return self._requests.get(session_id)
 
-    def report(self, session_id: str, *, window: int, tokenizer: Tokenizer) -> ContextReport | None:
+    def report(
+        self,
+        session_id: str,
+        *,
+        window: int,
+        tokenizer: Tokenizer,
+        reported: int | None = None,
+    ) -> ContextReport | None:
         """Return the breakdown of the last assembled request, if there was one.
 
         What was counted for an earlier report is counted again only if the
         counter changed: a turn appends to the context rather than rewriting it,
         so a report spends its time on what arrived since the last one.
+
+        Args:
+            session_id: Session to report on.
+            window: Tokens the model can carry.
+            tokenizer: Counter that measures the shares.
+            reported: Tokens the provider counted for this request, if it counted
+                it; it becomes the report's total while the shares stay measured.
         """
         assembled = self.assembled(session_id)
         if assembled is None:
@@ -388,4 +512,4 @@ class ContextExtension(AgentExtension):
             # and its key must not outlive the object it stands for.
             del counts[key]
         self._counts[session_id] = cached
-        return measure(messages, tools, window=window, tokenizer=tokenizer, counts=counts)
+        return measure(messages, tools, window=window, tokenizer=tokenizer, counts=counts, reported=reported)

@@ -31,7 +31,15 @@ is already used, so `/model` always does what this page says.
 `Enter` accepts, and `Esc` goes back without changing anything. `/context`
 opens a report rather than a choice: read it, then press `Esc` to close it. The
 report names the file this conversation is written to under `~/.zettcode/sessions`,
-so a number that looks wrong leads somewhere you can look. The conversation
+so a number that looks wrong leads somewhere you can look. Its total is what the
+provider billed for the last request and its percentages are measured locally, which
+is why the rows add up to a hundred while the total is the same figure the status
+line shows; a session restored from disk has no provider count for the dialogue it
+was rebuilt from, and then both are measured. Two rows — the environment notes
+and the tool schemas — only exist inside a request the runtime has assembled, so
+a report taken before the first turn of a session shows them as `pending` rather
+than leaving them out. An image is counted as an estimate rather than by the size of
+what was pasted, because a provider bills one by its dimensions and detail. The conversation
 underneath stays visible.
 
 Switching the model, the theme, or the effort re-lays out the screen: the header

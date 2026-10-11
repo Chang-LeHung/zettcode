@@ -112,6 +112,50 @@ def test_the_optional_integrations_can_be_disabled(tmp_path):
     assert extensions == ()
 
 
+async def test_the_runtime_starts_loading_its_token_counter_with_the_provider(tmp_path, monkeypatch):
+    """`/context` must not fetch a vocabulary on the reader's keystroke.
+
+    The counter belongs to the runtime, so its load begins where the provider's
+    does — behind the first frame — rather than the first time a panel asks for
+    it. Nothing waits for it there: the deadline still governs how long a report
+    will wait, and `aclose` releases the wait when the shell leaves first.
+    """
+    loaded: list[str] = []
+
+    def loader(name: str):
+        loaded.append(name)
+        return lambda text: [0] * len(text)
+
+    monkeypatch.setattr(runtime_module.os, "chdir", lambda path: None)
+    monkeypatch.setattr("zett_agent.client.create_agent", lambda model, **kwargs: type("C", (), {})())
+    runtime = runtime_module.ZettCodeRuntime.preview(_config_with(tmp_path))
+    runtime.tokenizer = runtime_module.Tokenizer(deadline=5.0, loader=loader)
+
+    runtime.start()
+    deadline = time.perf_counter() + 5.0
+    while not loaded and time.perf_counter() < deadline:
+        await asyncio.sleep(0.01)
+
+    assert loaded == [runtime.tokenizer.encoding], "the load begins with the runtime, not with the panel"
+    await runtime.aclose()
+
+
+async def test_closing_a_runtime_does_not_wait_for_a_counter_still_loading(tmp_path, monkeypatch):
+    """A vocabulary still downloading is nobody's answer once the shell has gone."""
+    monkeypatch.setattr(runtime_module.os, "chdir", lambda path: None)
+    monkeypatch.setattr("zett_agent.client.create_agent", lambda model, **kwargs: type("C", (), {})())
+    runtime = runtime_module.ZettCodeRuntime.preview(_config_with(tmp_path))
+    runtime.tokenizer = runtime_module.Tokenizer(deadline=30.0, loader=lambda name: time.sleep(30.0))
+    runtime.start()
+    await asyncio.sleep(0.02)
+
+    started = time.perf_counter()
+    await asyncio.wait_for(runtime.aclose(), 5.0)
+    elapsed = time.perf_counter() - started
+
+    assert elapsed < 1.0, f"closing waited {elapsed:.2f}s for a counter load"
+
+
 def test_the_runtime_module_costs_nothing_until_it_starts(tmp_path):
     """The provider, MCP, and subagent SDKs must not be in the graph the shell pays for.
 

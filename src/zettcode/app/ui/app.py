@@ -137,9 +137,10 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
         self.app.title = self._terminal_title
         self._task: asyncio.Task[None] | None = None
         self._title_task: asyncio.Task[None] | None = None
+        #: The context re-measure a restore started, replaced by the next restore.
+        self._measure_task: asyncio.Task[None] | None = None
         #: The runtime warm-up this shell started, released on the way out.
         self._warm: asyncio.Task[object] | None = None
-        self._counter: asyncio.Task[None] | None = None
         self._busy = False
         self._steering: list[str] = []
         self._steering_sent = 0
@@ -186,17 +187,14 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
     def start_background(self) -> None:
         """Begin the work that belongs behind the first frame.
 
-        The runtime warms — its provider SDK costs a few hundred milliseconds —
-        and the release check runs, nothing on screen waits for either, and the
-        first turn awaits the same task. The token counter warms beside them: its
-        vocabulary is a download the first time a machine sees it and a file read
-        after that, and `/context` would otherwise start that download on the
-        reader's keystroke. Called once the interface is up, whether :meth:`run`
-        put it there or the command line painted a frame before this application
+        The runtime warms — its provider SDK costs a few hundred milliseconds,
+        and it starts loading its token counter with it — and the release check
+        runs, nothing on screen waits for either, and the first turn awaits the
+        same task. Called once the interface is up, whether :meth:`run` put it
+        there or the command line painted a frame before this application
         existed.
         """
         self._warm = self.agent.runtime.start()
-        self._counter = asyncio.ensure_future(self.agent.runtime.tokenizer.prepare())
         self.start_update_check()
         self.offer_update()
 
@@ -204,14 +202,14 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
         """Release what :meth:`start_background` began, and end a request still in flight."""
         await self._stop_title_task()
         await self._stop_update_task()
+        measure, self._measure_task = self._measure_task, None
+        if measure is not None:
+            # A re-measure still in flight is a wait for the counter, which S8
+            # says nothing on screen may pay for and nothing on the way out may
+            # hold on to.
+            measure.cancel()
+            await asyncio.gather(measure, return_exceptions=True)
         await self._stop_turn()
-        counter, self._counter = self._counter, None
-        if counter is not None:
-            # A counter load still running is the reader leaving before it
-            # answered: cancelling the wait leaves the load on its daemon thread,
-            # which this process does not wait for either.
-            counter.cancel()
-            await asyncio.gather(counter, return_exceptions=True)
         warm, self._warm = self._warm, None
         if warm is not None:
             # A warm-up still in flight is not worth waiting for: it is a launch

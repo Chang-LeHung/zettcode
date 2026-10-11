@@ -195,6 +195,34 @@ def test_session_exists_finds_a_stored_session(tmp_path: Path, monkeypatch):
     assert session_exists(config, "missing") is False
 
 
+def test_resuming_builds_the_application_where_no_loop_is_running(tmp_path: Path, monkeypatch):
+    """`--resume` restores on a worker thread, so nothing there can be scheduled.
+
+    The command line hands `build_application` to `asyncio.to_thread` so the first
+    frame is not held up by the config, the runtime, or a store read. A restore
+    therefore runs with no running loop, and anything that reached for one there —
+    `asyncio.create_task`, say — would raise before the interface exists and leave
+    `--resume` broken. Nothing on the path may need a loop at all.
+    """
+    from zett_agent.messages import UserMessage
+
+    from zettcode.app.agent.storage import SessionStore
+    from zettcode.config import ModelConfig, ZettCodeConfig
+
+    root = tmp_path / "sessions"
+    asyncio.run(SessionStore(root, tmp_path).append("stored", "r", UserMessage(content="hi")))
+    monkeypatch.setattr(
+        cli,
+        "resolve_config",
+        lambda: ZettCodeConfig(workspace=tmp_path, models=(ModelConfig(model="m", token="t"),), store=root),
+    )
+
+    app = cli.build_application(Options(workspace=tmp_path, resume="stored"))
+
+    assert app.agent.session_id == "stored"
+    assert app._measure_task is None, "nothing on this path schedules anything"
+
+
 def test_an_unknown_session_is_refused_before_the_terminal_is_taken(tmp_path: Path, monkeypatch):
     path = tmp_path / "config.toml"
     path.write_text('[[models]]\nmodel = "m"\ntoken = "t"\n', encoding="utf-8")
