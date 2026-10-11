@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import gc
 import os
 import shlex
 from dataclasses import dataclass
@@ -279,14 +280,32 @@ async def launch(options: Options) -> None:
     report_resume(app.agent)
 
 
+def freeze_heap() -> None:
+    """Free the heap so the interpreter's last collection does not walk it.
+
+    A process that imported the model SDKs spends 150-300 ms dying — measured on
+    a bare ``import openai, anthropic``, so it is nothing this program does — and
+    almost all of it is the cyclic collector's final pass over everything those
+    libraries allocated. Moving the live heap into the permanent generation
+    takes it out of that pass: the same exit takes 5 ms, and it is still a
+    normal one, since ``gc`` is asked to skip work rather than the process told
+    to skip its shutdown. Nothing after a shell has left allocates anything that
+    wants collecting.
+    """
+    gc.freeze()
+
+
 def main() -> None:
     """Installed console-script entry point."""
     options = parse_args()
     _name_process()
-    if options.dry_run:
-        asyncio.run(async_main(resolve_config(), resume=options.resume, dry_run=True))
-        return
-    asyncio.run(launch(options))
+    try:
+        if options.dry_run:
+            asyncio.run(async_main(resolve_config(), resume=options.resume, dry_run=True))
+            return
+        asyncio.run(launch(options))
+    finally:
+        freeze_heap()
 
 
 if __name__ == "__main__":

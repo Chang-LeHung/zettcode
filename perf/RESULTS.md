@@ -61,6 +61,28 @@ Measured kept entries: 300 turns -> 1036, 2000 -> 1038, 5000 -> 1026 (the batch
 trim may hold up to `max_entries + max(8, max_entries // 32)` before dropping
 back). The session file is untouched, so this bounds scrollback only.
 
+## Exit
+
+`uv run python -m perf.exit --runs 3`
+
+Milliseconds from the process deciding to leave to the process being gone. The
+application's own share is two or three of those milliseconds; the rest is the
+interpreter's teardown, which is why the entry point freezes the heap once the
+shell is done.
+
+| what the exiting process holds | decide -> gone |
+| --- | ---: |
+| a process that imported nothing | 3.8 |
+| the modules a launch warms | 231.2 |
+| the same, heap frozen before leaving | 8.8 |
+| the same, collector switched off | 207.5 |
+
+`uv run python -m perf.exit --pty --runs 3 --idle 1.5`: **15 ms** from Ctrl-D to
+the process being gone, in a pseudo-terminal, against the installed command line
+(16, 15, 13). Before the heap was frozen the same measurement was 245-297 ms, and
+with a warm-up still running it was 464-662 ms of which 400 ms was the
+application waiting for the imports.
+
 ## Fixed regressions
 
 Kept here so the same mistakes are recognizable.
