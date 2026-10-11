@@ -184,16 +184,36 @@ class ZettCodeAgent:
     async def context_report(self) -> ContextReport | None:
         """Return what the next request carries by source, or None before the first call.
 
-        The tokenizer is prepared first: it prefers tiktoken and falls back to a
-        character estimate when that vocabulary cannot be opened, which the
-        report names so the numbers are not mistaken for exact ones.
+        The shares come from the tokenizer, which is prepared first: it prefers
+        tiktoken and falls back to a character estimate when that vocabulary
+        cannot be opened, which the report names so the numbers are not mistaken
+        for exact ones. The total comes from the provider when it counted this
+        very request — it counts what it bills — and from the tokenizer when the
+        request was primed from the store, whose stored figure belongs to a call
+        the dialogue may have outgrown.
         """
         tokenizer = self.runtime.tokenizer
         await tokenizer.prepare()
+        window = self.runtime.active_model.context_window
+        counted = self.runtime.usage.snapshot(self.session_id).context_tokens
+        # The provider's own count of this conversation is the total: what it
+        # billed for the request this process assembled, or — for a session
+        # rebuilt from the store, which has no call of its own yet — what it
+        # billed for the last call that session made. Locally counting a rebuilt
+        # request is not a substitute: on this machine's own session the rebuilt
+        # list measured 1.65 M tokens against a provider's 326 k, because a
+        # rebuilt list holds messages the live request no longer carries.
+        #
+        # A count that reaches the window is refused instead: a request cannot
+        # carry more than the window it is measured against, so a figure that does
+        # is about something else, and a share pinned at a hundred is worse than
+        # the measurement.
+        reported = counted if 0 < counted < window else None
         return self.runtime.context.report(
             self.session_id,
-            window=self.runtime.active_model.context_window,
+            window=window,
             tokenizer=tokenizer,
+            reported=reported,
         )
 
     @property
@@ -366,14 +386,16 @@ class ZettCodeAgent:
         )
         transcript.replace(replayed.transcript.entries)
         self.runtime.usage.seed(session_id, replayed.usage)
-        # The instructions come from a request this process already assembled, or
-        # from the prompt the runtime would build; the environment and tool notes
-        # only exist inside a request, which the report admits.
-        instructions = self.runtime.context.instructions or (
-            SystemMessage(content=build_system_prompt(self.runtime.config)),
-        )
-        self.runtime.context.remember(session_id, [*instructions, *replayed.history])
         self.use_session(session_id)
+        # Prime the report with what the next turn would send, not with what the
+        # transcript shows: the display keeps every message a compaction folded
+        # away, and measuring those claims a request several times the size of the
+        # real one — 2.9 M tokens against a context of 290 k, which is a share
+        # pinned at a hundred. `_context_request` is the one definition of that
+        # request; the environment and tool notes only exist inside a real one,
+        # which the report admits.
+        messages, _ = self._context_request(session)
+        self.runtime.context.remember(session_id, messages)
 
     async def list_sessions(self, *, limit: int = 20) -> list[SessionInfo]:
         """List persisted session metadata by recent activity."""

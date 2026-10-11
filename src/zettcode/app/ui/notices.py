@@ -8,6 +8,7 @@ screen, the status line, and the transcript.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from ...tui import Anchor, Overlay, OverlaySlot, Screen, Toast
@@ -26,8 +27,27 @@ class NoticesMixin(CommandUi, ShellState):
     """Show approvals, toasts, and the usage counters."""
 
     def _usage_updated(self, event: AgentEvent) -> None:
-        """Mirror the usage extension's cumulative counters into the status line."""
-        self._usage = UsageSnapshot.from_payload(event.payload or {})
+        """Mirror the usage extension's cumulative counters into the status line.
+
+        Only this session's: a subagent works in a session of its own, and its
+        totals describe a conversation this shell never sent. Painting them here
+        would show another context's size as this one's.
+        """
+        if event.session_id != self.agent.session_id:
+            return
+        snapshot = UsageSnapshot.from_payload(event.payload or {})
+        if snapshot.context_tokens >= self.agent.active_model.context_window:
+            # A request cannot carry more than the window it is measured against,
+            # so a figure that does is not this request's size: it belongs to
+            # another call or to a provider counting to a rule of its own, and
+            # painting it would pin the share at a hundred while the context has
+            # room to spare. The counters still move — they are cumulative and
+            # honest — but the size waits for a measurement to replace it, which
+            # is what the reader's next answer brings. The previous reading stands
+            # in the meantime rather than a number that cannot be true.
+            snapshot = replace(snapshot, context_tokens=self._usage.context_tokens)
+            self._remeasure_context_later()
+        self._usage = snapshot
         self.app.invalidate()
 
     def _approval_requested(self, event: AgentEvent) -> None:

@@ -226,6 +226,7 @@ class ZettCodeRuntime:
     client: AgentClient | None = None
     model: Adapter | None = None
     _starting: asyncio.Task[ZettCodeRuntime] | None = field(default=None, repr=False)
+    _counter: asyncio.Task[None] | None = field(default=None, repr=False)
     _models: dict[ModelConfig, Adapter] = field(default_factory=dict)
     #: The warm-up imports, running on a daemon thread, and the loop-side event
     #: that releases whoever is waiting for them.
@@ -274,10 +275,17 @@ class ZettCodeRuntime:
         build two clients, and every later caller gets the same answer. What the
         build needs imported starts here as well, on a thread nobody waits for:
         a launch that ends before its first turn ends without paying for them.
+
+        The token counter starts loading beside them, on the daemon thread its own
+        deadline allows, so the vocabulary is there by the time a reader asks for
+        `/context` instead of being fetched on that keystroke. Nothing waits for
+        it here either: the load belongs to this runtime rather than to whoever
+        needed it first, and :meth:`aclose` releases the wait.
         """
         if self._starting is None:
             self._begin_imports()
             self._starting = asyncio.ensure_future(self._build())
+            self._counter = asyncio.ensure_future(self.tokenizer.prepare())
         return self._starting
 
     def warm_modules(self) -> tuple[str, ...]:
@@ -502,6 +510,13 @@ class ZettCodeRuntime:
             self._imports.stop()
         if self._starting is not None:
             await asyncio.gather(self._starting, return_exceptions=True)
+        counter, self._counter = self._counter, None
+        if counter is not None:
+            # A counter load still running is this shell leaving before it
+            # answered: cancelling the wait leaves the load on its daemon thread,
+            # which this process does not wait for either.
+            counter.cancel()
+            await asyncio.gather(counter, return_exceptions=True)
         for model in self._models.values():
             await model.aclose()
         await self.persistence.close()

@@ -10,13 +10,25 @@ import time
 import pytest
 from zett_agent.agent import AgentRunConfig
 from zett_agent.extensions.compaction import CompactedMessage
-from zett_agent.messages import AssistantMessage, SystemMessage, ToolCall, ToolMessage, UserMessage
+from zett_agent.messages import (
+    AssistantMessage,
+    ImageContent,
+    ImageUrlSource,
+    SystemMessage,
+    TextContent,
+    ToolCall,
+    ToolMessage,
+    UserMessage,
+)
 from zett_agent.model import ModelRequest, ToolDefinition
 
 from zettcode.app.agent.context import (
+    IMAGE_TOKENS,
     ContextExtension,
     Tokenizer,
     _tiktoken_encoder,
+    count_message,
+    image_count,
     measure,
     message_text,
     tool_text,
@@ -112,6 +124,29 @@ async def test_measuring_groups_every_source_of_one_request():
     assert report.percent(report.used) == pytest.approx(report.used / 10)
 
 
+async def test_the_providers_total_carries_the_shares_the_tokenizer_measured():
+    """One request, two sources: the provider says how many, the counter says where.
+
+    A provider counts what it bills and never breaks a request down by source; a
+    tokenizer breaks it down but does not know how the provider counts. So the
+    total is the provider's and the rows are measured — and they still add up to
+    a hundred, because the shares divide by what the tokenizer counted.
+    """
+    extension = ContextExtension()
+    await extension.before_model(_Context("s-1"), _request((UserMessage(content="a question " * 20),)))
+    tokenizer = _counting_tokenizer()
+
+    without = extension.report("s-1", window=1_000_000, tokenizer=tokenizer)
+    reported = extension.report("s-1", window=1_000_000, tokenizer=tokenizer, reported=599_165)
+
+    assert without.from_provider is False and without.used == without.measured
+    assert reported.from_provider is True
+    assert reported.used == 599_165, "the provider's count is the request's size"
+    assert reported.measured == without.measured, "and the shares are still measured"
+    assert reported.share(sum(share.tokens for share in reported.shares)) == pytest.approx(100.0)
+    assert reported.free == 1_000_000 - 599_165, "what is left is measured against the provider's total"
+
+
 def test_a_full_window_never_reports_negative_room():
     report = measure(
         (UserMessage(content="x" * 4_000),),
@@ -149,6 +184,115 @@ class _CountingEncoder:
         """Count one text, remembering it was counted."""
         self.texts.append(text)
         return list(range(len(text) // 4))
+
+
+async def test_a_report_splits_a_known_request_into_the_expected_rows():
+    """Count a request by hand, and hold the panel to that number for every row.
+
+    The counter is one token per character, so each expectation below is the length
+    of a string in this test. The question is not whether the split looks
+    plausible; it is whether each source is counted exactly once, in the right row,
+    in the order the request carries them.
+    """
+    tokenizer = _counting_tokenizer(per_token=1)
+    await tokenizer.prepare()
+    instructions = SystemMessage(content="i" * 40)
+    notes = SystemMessage(content="n" * 25)
+    question = UserMessage(content="q" * 10)
+    answer = AssistantMessage(content="a" * 20, reasoning="r" * 5)
+    result = ToolMessage(tool_call_id="1", name="bash", content="t" * 30)
+    tools = (ToolDefinition(name="bash", description="run one command", parameters={"type": "object"}),)
+    extension = ContextExtension()
+    await extension.before_model(_Context("s-1"), _request((instructions, notes, question, answer, result), tools))
+
+    report = extension.report("s-1", window=10_000, tokenizer=tokenizer)
+
+    assert {share.name: share.tokens for share in report.shares} == {
+        "System prompt": 40,
+        "Environment notes": 25,
+        "Tool schemas": len(tool_text(tools[0])),
+        "User messages": 10,
+        "Assistant messages": 26,  # the answer and its reasoning, joined by a newline
+        "Tool output": 30,
+    }
+    # The order is the order a request carries them, not the order they were made.
+    assert [share.name for share in report.shares] == [
+        "System prompt",
+        "Environment notes",
+        "Tool schemas",
+        "User messages",
+        "Assistant messages",
+        "Tool output",
+    ]
+    assert [share.items for share in report.shares[:2]] == [1, 1]
+    assert report.measured == 40 + 25 + len(tool_text(tools[0])) + 10 + 26 + 30
+    assert report.used == report.measured, "no provider count was offered"
+    assert report.partial is False, "the tools were part of this request"
+    assert sum(report.share(share.tokens) for share in report.shares) == pytest.approx(100.0)
+
+
+async def test_a_picture_moves_its_own_row_and_no_other():
+    """An image is charged to the message that carries it, at its estimate.
+
+    The payload is half a megabyte of base64 and the difference between the two
+    reports is one marker plus the estimate: nothing else in the request moves
+    because a screenshot was pasted into it.
+    """
+    tokenizer = _counting_tokenizer(per_token=1)
+    await tokenizer.prepare()
+    plain = UserMessage(content="q" * 10)
+    pictured = UserMessage(
+        content=[
+            TextContent(text="q" * 10),
+            ImageContent(source=ImageUrlSource(url="data:image/png;base64," + "A" * 500_000)),
+        ]
+    )
+
+    without = measure((plain,), (), window=10_000, tokenizer=tokenizer)
+    with_image = measure((pictured,), (), window=10_000, tokenizer=tokenizer)
+
+    assert {share.name: share.tokens for share in without.shares} == {"User messages": 10}
+    marker = "\n[image]"  # the parts are joined by a newline, like any other text
+    assert {share.name: share.tokens for share in with_image.shares} == {
+        "User messages": 10 + len(marker) + IMAGE_TOKENS
+    }
+    assert with_image.measured - without.measured == len(marker) + IMAGE_TOKENS
+    assert with_image.used == with_image.measured
+    assert sum(with_image.share(share.tokens) for share in with_image.shares) == pytest.approx(100.0)
+
+
+async def test_pictures_count_beside_everything_else_and_survive_the_cache():
+    """A request with two images, counted row by row, twice.
+
+    The first pass counts; the second must return the same numbers from its cache,
+    which means the image estimates are part of what is cached and not something
+    added on the way out.
+    """
+    tokenizer = _counting_tokenizer(per_token=1)
+    await tokenizer.prepare()
+    instructions = SystemMessage(content="i" * 40)
+    tools = (ToolDefinition(name="bash", description="run one command", parameters={"type": "object"}),)
+    pictured = UserMessage(
+        content=[
+            TextContent(text="q" * 10),
+            ImageContent(source=ImageUrlSource(url="data:image/png;base64," + "A" * 300_000)),
+            TextContent(text="and this one"),
+            ImageContent(source=ImageUrlSource(url="data:image/png;base64," + "B" * 400_000)),
+        ]
+    )
+    extension = ContextExtension()
+    await extension.before_model(_Context("s-1"), _request((instructions, pictured), tools))
+
+    first = extension.report("s-1", window=10_000, tokenizer=tokenizer)
+    second = extension.report("s-1", window=10_000, tokenizer=tokenizer)
+
+    marker = "\n[image]"
+    assert {share.name: share.tokens for share in first.shares} == {
+        "System prompt": 40,
+        "Tool schemas": len(tool_text(tools[0])),
+        "User messages": 10 + len(marker) + IMAGE_TOKENS + len("\nand this one") + len(marker) + IMAGE_TOKENS,
+    }
+    assert first == second, "the cache holds the same number, images included"
 
 
 async def test_a_report_counts_each_item_once_and_reuses_them_afterwards():
@@ -294,6 +438,47 @@ async def test_priming_a_restored_session_makes_it_measurable():
     assert report is not None
     assert [share.name for share in report.shares] == ["User messages"]
     assert report.partial is True  # no request ran yet, so the tools are unknown
+
+
+async def test_an_image_is_an_estimate_rather_than_its_encoded_bytes():
+    """A pasted screenshot is megabytes of base64, and about a thousand tokens.
+
+    Counting the payload measured a request the provider billed at 326 k tokens as
+    1.74 M, and spent 400 ms encoding one picture. A provider bills an image by its
+    dimensions and the detail asked for, which is why the estimate exists.
+    """
+    pixels = "A" * 2_000_000
+    message = UserMessage(
+        content=[
+            TextContent(text="what is wrong with this screenshot?"),
+            ImageContent(source=ImageUrlSource(url="data:image/png;base64," + pixels)),
+        ]
+    )
+
+    text = message_text(message)
+    tokenizer = _counting_tokenizer(per_token=1)
+    await tokenizer.prepare()
+    counted = count_message(message, tokenizer, None)
+
+    assert "what is wrong with this screenshot?" in text, "the words around it still count"
+    assert pixels not in text and "base64" not in text, "the payload is not text"
+    assert counted == len(text) + IMAGE_TOKENS, "one image, one estimate"
+    assert counted < len(pixels) / 1_000, "which is nowhere near the payload"
+
+
+def test_an_image_with_alt_text_contributes_its_description():
+    """What a provider is sent for an image includes the words beside it."""
+    message = UserMessage(
+        content=[
+            ImageContent(
+                source=ImageUrlSource(url="https://example.test/shot.png"),
+                alt_text="a failing test run",
+            )
+        ]
+    )
+
+    assert message_text(message) == "a failing test run"
+    assert image_count(message) == 1
 
 
 def test_message_text_covers_content_reasoning_and_tool_calls():
