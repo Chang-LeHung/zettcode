@@ -51,6 +51,11 @@ when you release the drag, so the terminal's own selection is bypassed. If you
 prefer the terminal's, hold its selection modifier (<kbd>Shift</kbd> or
 <kbd>Option</kbd>) while dragging.
 
+**I use ZettCode over `ssh` and nothing reaches my clipboard.** Over `ssh` the copy is
+sent to your *terminal*, which has to be willing to take it — see
+[Copying over `ssh`](/guide/interface#copying-over-ssh) for the setting each terminal
+needs, and for `ZETTCODE_CLIPBOARD` when the guess about where you are is wrong.
+
 **A pasted image does nothing.** Image paste needs the desktop clipboard, so it
 works on macOS and on Linux with `wl-paste` or `xclip` installed, and is not
 available on Windows. A terminal that pastes an image *as text* (VS Code's, for

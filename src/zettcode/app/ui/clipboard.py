@@ -96,9 +96,32 @@ def read_image(*, runner: Runner | None = None, system: str | None = None) -> tu
     return None
 
 
+#: Seconds a clipboard tool may take. The read happens on the event loop, in a key handler, so a
+#: tool that never answers — ``xclip`` against a forwarded X display whose connection went away
+#: is the usual one — would freeze the whole interface; a few seconds is far longer than a
+#: working one needs.
+TOOL_TIMEOUT = 3.0
+
+
 def _run(argv: Sequence[str]) -> CompletedProcess[bytes]:
-    """Run one clipboard command, capturing its output and swallowing failures."""
-    return subprocess.run(list(argv), capture_output=True, check=False)
+    """Run one clipboard command, capturing its output; any failure is a nonzero result.
+
+    The callers read ``returncode`` and nothing else, and they cannot tell a tool that ran and
+    found nothing from a tool that could not run, so neither is an exception. That is not a
+    detail: ``subprocess.run`` reports a missing executable by *raising*, not by returning
+    nonzero, so a server with neither ``wl-paste`` nor ``xclip`` — most of them — used to take
+    the whole session down on the first Ctrl-V.
+
+    Returns:
+        The finished process; ``127`` when the program is not there or cannot be run, ``124``
+        when it did not answer in time (the codes a shell uses for the same two things).
+    """
+    try:
+        return subprocess.run(list(argv), capture_output=True, check=False, timeout=TOOL_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        return CompletedProcess(list(argv), 124, b"", b"timed out")
+    except OSError as error:
+        return CompletedProcess(list(argv), 127, b"", str(error).encode())
 
 
 def _macos_image(runner: Runner, *, native: bool) -> tuple[bytes, str] | None:

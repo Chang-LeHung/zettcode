@@ -288,3 +288,35 @@ def test_changed_bounds_reaches_forward_to_the_tail_of_a_wide_glyph():
     after.restyle(1, 0, 1, lambda style: replace(style, reverse=True))
 
     assert _changed_bounds(after.cells[0], before.cells[0]) == (1, 2)
+
+
+def test_an_aligned_line_keeps_its_margin_unstyled_so_a_filled_run_stays_a_pill():
+    """The margin of a centred or right-aligned line is empty, not a copy of the first run.
+
+    A continuation row wants the indent in its own style (it belongs to the list item), so
+    ``inset_line`` gives it that. Alignment is not that: a run with a background would drag the
+    fill across the whole margin and turn a pill into a stripe from the screen's edge.
+    """
+    from zettcode.tui.render import Span, Style, TextLine
+    from zettcode.tui.render.rich_text import layout_rich_lines
+
+    filled = Style(foreground="#ffffff", background="#4a5f52")
+    line = TextLine((Span(" ok ", filled),))
+
+    for align, margin in (("center", 8), ("right", 16)):
+        (row,) = layout_rich_lines([line], 20, align=align)
+        assert [span.text for span in row.spans] == [" " * margin, " ok "]
+        assert row.spans[0].style.background is None, f"the {align} margin has no fill"
+        assert row.spans[1].style == filled, "the run keeps its own"
+
+
+def test_a_continuation_row_still_takes_its_indent_in_the_style_of_its_run():
+    """What ``inset_line`` is for, and why alignment does not share it."""
+    from zettcode.tui.render import Span, Style, TextLine
+    from zettcode.tui.render.rich_text import inset_line
+
+    styled = Style(foreground="#aaaaaa", bold=True)
+
+    row = inset_line(TextLine((Span("item", styled),)), 2)
+
+    assert row.spans[0] == Span("  item", styled)

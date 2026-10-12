@@ -221,7 +221,7 @@ class FollowUpsMixin(ShellState):
         remaining = len(self._follow_ups)
         self._follow_up_selected = None if not remaining else min(index, remaining - 1)
         self._sync_follow_ups()
-        self.flash(f"removed follow-up: {truncate(one_line(removed.text), 40)}")
+        self.flash(f"removed follow-up: {truncate(one_line(removed.text), 40)}", level="success")
 
     def _edit_follow_up(self) -> bool:
         """Take the highlighted message out of the list and put it in the composer.

@@ -109,7 +109,7 @@ from zettcode.tui import (
 )
 from zettcode.tui.input import translate
 from zettcode.tui.render import display_width
-from zettcode.tui.testing import Harness, render_block, style_signature
+from zettcode.tui.testing import Harness, render_block
 from zettcode.update import UpdateState, display_command, in_background, read_state, write_state
 
 
@@ -4572,8 +4572,8 @@ async def test_every_copy_says_so_in_the_row_above_the_composer():
         if message in span.text
     ]
     assert painted, "the frame paints the message"
-    assert style_signature(painted[0].style) == f"fg{app.app.theme.accent}", (
-        "in the accent, where the muted grey hints would not be noticed"
+    assert painted[0].style.background == app.app.theme.selection, (
+        "on the emphasis fill, where the muted grey hints would not be noticed"
     )
 
     # And the key, with a selection of its own.
@@ -6079,3 +6079,182 @@ async def test_sending_an_edited_follow_up_while_idle_leaves_no_stale_slot_behin
 
     assert app.app.screens.top.name == "page", "a new message during a request is asked about again"
     await _stop(app)
+
+
+# -- the copy pill, and what it says about where the text went --------------------------------
+
+
+def _flash_row(app: ZettCodeApp, harness: Harness) -> tuple[str, tuple[Span, ...]]:
+    """Return the flash row as drawn: its text, and the styled pieces it is made of."""
+    snapshot = harness.render()
+    y = app.flash_line.rect.y
+    return snapshot.lines[y], snapshot.styled[y]
+
+
+@pytest.mark.parametrize("theme", [DARK, LIGHT], ids=["dark", "light"])
+async def test_a_copy_is_a_pill_on_the_themes_emphasis_fill_with_a_check_in_front(theme):
+    """A copy leaves nothing else on screen to show it happened, so it is seen: the words on
+    a fill, a check mark in front, the mark in the brighter accent."""
+    app = build_app()
+    app.app.theme = theme
+    harness = _harness(app)
+
+    app.app.copy("six chars")
+    line, spans = _flash_row(app, harness)
+
+    pieces = [span for span in spans if span.text.strip()]
+    assert [span.text.strip() for span in pieces] == ["\u2713", "copied 9 chars to clipboard"]
+    mark, words = pieces
+    assert mark.style.background == words.style.background == theme.selection
+    assert mark.style.foreground == theme.accent_bright and mark.style.bold
+    assert words.style.foreground == theme.text, "the words are the body colour, not the accent"
+    assert "\u2713 copied 9 chars to clipboard" in line
+
+
+async def test_the_pills_fill_covers_the_words_and_the_space_around_them_and_stops_there():
+    """A pill, not a stripe: the cells either side of it keep the terminal's own background."""
+    app = build_app()
+    harness = _harness(app)
+
+    app.app.copy("six chars")
+    line, spans = _flash_row(app, harness)
+    fill = app.app.theme.selection
+
+    painted = "".join(span.text for span in spans if span.style.background == fill)
+    assert painted == " \u2713 copied 9 chars to clipboard ", "one space of padding each side"
+    unpainted = "".join(span.text for span in spans if span.style.background != fill)
+    assert unpainted.strip() == "", "nothing else on the row has the fill"
+    assert line.index(painted) > 10 and line.rstrip().endswith("clipboard"), "and it is centred, not full width"
+
+
+async def test_a_pill_is_the_same_width_as_its_words_so_it_never_clips_a_narrow_row():
+    app = build_app()
+    app.app.resize(30, 14)
+    harness = _harness(app)
+
+    app.app.copy("six chars")
+    line, _ = _flash_row(app, harness)
+
+    assert "copied 9 chars" in line
+
+
+async def test_a_plain_flash_is_still_the_accents_text_without_a_fill():
+    """Only a success is a pill; a hint such as "finish the draft first" stays quiet."""
+    app = build_app()
+    harness = _harness(app)
+
+    app.flash("finish or clear the draft")
+    _, spans = _flash_row(app, harness)
+
+    shown = [span for span in spans if span.text.strip()]
+    assert [span.text for span in shown] == ["finish or clear the draft"]
+    assert shown[0].style.background is None and shown[0].style.foreground == app.app.theme.accent
+
+
+async def test_over_ssh_the_line_says_the_text_was_sent_to_your_terminal_not_that_it_was_copied(monkeypatch):
+    """The program is on another machine and a terminal may refuse, so "copied to clipboard"
+    would claim a result it cannot check on a machine it is not on."""
+    monkeypatch.setenv("SSH_CONNECTION", "10.0.0.2 51234 10.0.0.9 22")
+    app = build_app()
+    harness = _harness(app)
+
+    app.app.copy("six chars")
+
+    assert app._flash_text() == "sent 9 chars to your terminal's clipboard"
+    assert "\u2713 sent 9 chars to your terminal's clipboard" in _flash_row(app, harness)[0]
+
+
+async def test_the_override_decides_the_wording_as_well_as_the_route(monkeypatch):
+    monkeypatch.setenv("SSH_CONNECTION", "10.0.0.2 51234 10.0.0.9 22")
+    monkeypatch.setenv("ZETTCODE_CLIPBOARD", "system")
+    app = build_app()
+
+    app.app.copy("six chars")
+
+    assert app._flash_text() == "copied 9 chars to clipboard", "the line is about the route actually taken"
+
+
+async def test_removing_a_follow_up_uses_the_same_pill():
+    app, harness = await _running_with("a")
+    harness.press("alt_up")
+    harness.press("delete")
+
+    _, spans = _flash_row(app, harness)
+
+    assert any(span.style.background == app.app.theme.selection for span in spans)
+    await _stop(app)
+
+
+async def test_a_hint_flash_is_not_a_success():
+    """ "finish or clear the draft" is the shell asking for something, not something that worked."""
+    app, harness = await _running_with("a", "b")
+    harness.write("draft")
+    harness.press("alt_up")
+    harness.press("enter")
+
+    assert app._flash[2] == "info"
+    await _stop(app)
+
+
+async def test_over_ssh_ctrl_v_does_not_look_at_the_servers_clipboard_and_says_why(monkeypatch):
+    """The clipboard this process can read is the server's: an image copied on the reader's own
+    machine can never be there, and a server rarely has a clipboard tool. So it does not look —
+    which is also what keeps a missing tool, or a stuck one, from mattering."""
+    monkeypatch.setenv("SSH_CONNECTION", "10.0.0.2 51234 10.0.0.9 22")
+    looked: list[bool] = []
+    monkeypatch.setattr(keys_module, "read_image", lambda: looked.append(True))
+    app = build_app()
+    harness = _harness(app)
+
+    harness.press("ctrl_v")
+
+    assert looked == [], "the server's clipboard was not read"
+    notice = next(e.text for e in app.transcript.entries if e.kind == "notice")
+    assert "over ssh" in notice and "terminal carries text, not pictures" in notice
+    assert "by path" in notice and "ZETTCODE_CLIPBOARD=system" in notice, "and it says what to do instead"
+
+
+async def test_over_ssh_the_reader_can_still_ask_for_the_servers_clipboard(monkeypatch):
+    """An X display forwarded over ssh makes it the right one, and the reader can say so."""
+    monkeypatch.setenv("SSH_CONNECTION", "10.0.0.2 51234 10.0.0.9 22")
+    monkeypatch.setenv("ZETTCODE_CLIPBOARD", "system")
+    looked: list[bool] = []
+    monkeypatch.setattr(keys_module, "read_image", lambda: looked.append(True))
+    app = build_app()
+    harness = _harness(app)
+
+    harness.press("ctrl_v")
+
+    assert looked == [True]
+    assert [e.text for e in app.transcript.entries if e.kind == "notice"] == ["no image on the clipboard"]
+
+
+async def test_a_clipboard_read_that_fails_is_an_error_row_not_the_end_of_the_session(monkeypatch):
+    """The crash from a real session: the exception left the key handler, crossed the event
+    loop, and the program exited with a traceback — the reader's whole conversation with it."""
+
+    def broken():
+        raise FileNotFoundError(2, "No such file or directory", "wl-paste")
+
+    monkeypatch.setattr(keys_module, "read_image", broken)
+    app = build_app()
+    harness = _harness(app)
+
+    harness.press("ctrl_v")  # does not raise
+
+    errors = [e.text for e in app.transcript.entries if e.level == "error"]
+    assert len(errors) == 1 and errors[0].startswith("could not read the clipboard: ")
+    assert "wl-paste" in errors[0], "and it says what failed"
+    harness.write("still here")
+    assert app.composer.text == "still here", "the shell keeps working"
+    assert not harness.exited
+
+
+async def test_on_the_readers_own_machine_an_empty_image_paste_stays_short(monkeypatch):
+    monkeypatch.setattr(keys_module, "read_image", lambda: None)
+    app = build_app()
+    harness = _harness(app)
+
+    harness.press("ctrl_v")
+
+    assert [e.text for e in app.transcript.entries if e.kind == "notice"] == ["no image on the clipboard"]

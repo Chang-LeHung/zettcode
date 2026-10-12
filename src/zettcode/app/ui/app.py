@@ -22,6 +22,7 @@ from ...plugins import (
 )
 from ...tui import (
     DARK,
+    DONE,
     ELLIPSIS,
     PROMPT,
     SEPARATOR,
@@ -37,6 +38,7 @@ from ...tui import (
     TuiApp,
     VBox,
 )
+from ...tui.clipboard import copy_route
 from ...tui.layout import Slot
 from ...tui.widgets import Rule
 
@@ -163,7 +165,7 @@ class ZettCodeApp(RowsMixin, KeysMixin, FollowUpsMixin, NoticesMixin, SessionMix
         #: moment it stops being true. It lives here rather than in the status line
         #: because the status line is a standing report of what the shell is doing,
         #: while this answers something the reader just did.
-        self._flash: tuple[str, float] | None = None
+        self._flash: tuple[str, float, str] | None = None
         self._effort_animation: tuple[str, str, float] | None = None
         #: The context re-measure a restore started, replaced by the next restore.
         self._measure_task: asyncio.Task[None] | None = None
@@ -229,8 +231,18 @@ class ZettCodeApp(RowsMixin, KeysMixin, FollowUpsMixin, NoticesMixin, SessionMix
         Announcing it from there is what keeps them from drifting — the first
         version of this spoke only on the key, so a reader who dragged, which is
         the way the guide teaches, saw nothing at all.
+
+        Over ``ssh`` it says "sent", and to the terminal's clipboard, rather than
+        "copied": the text was handed to the terminal, which puts it on the clipboard
+        of the machine the reader is sitting at — and a terminal may refuse, which the
+        program cannot see. "Copied to clipboard" would be a claim about a machine this
+        program is not on and a result it cannot check; "sent" is only what it did.
         """
-        self.flash(f"copied {len(text)} chars to clipboard")
+        n = len(text)
+        if copy_route() == "terminal":
+            self.flash(f"sent {n} chars to your terminal's clipboard", level="success")
+        else:
+            self.flash(f"copied {n} chars to clipboard", level="success")
 
     def start_effort_animation(self, previous: str, current: str) -> None:
         """Animate the effort slot for a second, when the moment is right for it.
@@ -279,33 +291,50 @@ class ZettCodeApp(RowsMixin, KeysMixin, FollowUpsMixin, NoticesMixin, SessionMix
             return
         self.app.invalidate()
 
-    def flash(self, message: str, *, seconds: float = FLASH_SECONDS) -> None:
+    def flash(self, message: str, *, seconds: float = FLASH_SECONDS, level: str = "info") -> None:
         """Say something in the row above the composer, for a few seconds.
 
         Args:
             message: One line, drawn centred; the row is blank again when it ends.
             seconds: How long it stays.
+            level: ``"info"`` is plain accent text, the way a hint reads. ``"success"`` is a
+                pill — the text on a raised fill with a check in front — for the one kind of
+                message that answers something the reader just did and should be seen to
+                have worked.
         """
-        self._flash = (message, monotonic() + seconds)
+        self._flash = (message, monotonic() + seconds, level)
         self.app.request_layout()
 
     def _flash_line(self) -> TextLine:
         """Return the flash as a styled line, which is what that row paints.
 
-        The accent rather than the muted grey the hints use, and nothing more: this
-        is the shell saying that something the reader just did worked, which the
-        colour says on its own — bold would make the row shout for two seconds.
+        A plain flash is the accent rather than the muted grey the hints use, and
+        nothing more: bold would make the row shout for two seconds. A success is the
+        one that has to be *seen* — a copy leaves nothing else on screen to show it
+        happened — so it is a pill: the text on the theme's emphasis fill, with a check
+        in front. The row's width is the text's, so the fill covers the words and the
+        space around them and stops there, which is what makes it a pill rather than a
+        stripe across the screen.
         """
         message = self._flash_text()
         if not message:
             return TextLine(())
-        return TextLine((Span(message, Style(foreground=self.app.theme.accent)),))
+        theme = self.app.theme
+        if self._flash is not None and self._flash[2] == "success":
+            fill = theme.selection
+            return TextLine(
+                (
+                    Span(f" {DONE} ", Style(foreground=theme.accent_bright, background=fill, bold=True)),
+                    Span(f"{message} ", Style(foreground=theme.text, background=fill)),
+                )
+            )
+        return TextLine((Span(message, Style(foreground=theme.accent)),))
 
     def _flash_text(self) -> str:
         """Return the flash while it lasts, which is what that row paints."""
         if self._flash is None:
             return ""
-        message, expires = self._flash
+        message, expires, _ = self._flash
         if monotonic() >= expires:
             self._flash = None
             return ""

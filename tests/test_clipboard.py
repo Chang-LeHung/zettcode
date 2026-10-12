@@ -112,3 +112,70 @@ def test_the_in_process_pasteboard_reader_never_raises():
     reader = _pasteboard_reader()
 
     assert reader is None or reader() is None or isinstance(reader(), bytes)
+
+
+# -- a tool that is missing, broken or stuck is a failed read, never a crash or a hang -------------
+
+
+def test_a_server_with_no_clipboard_tool_has_no_image_and_does_not_raise(monkeypatch, tmp_path):
+    from zettcode.app.ui.clipboard import read_image
+
+    """The crash from a real session: Ctrl-V on a Linux server with neither wl-paste nor xclip.
+
+    ``subprocess.run`` reports a missing executable by raising ``FileNotFoundError``, not by
+    returning nonzero, so the first Ctrl-V took the whole session down. No injected runner here:
+    this is the real ``_run`` against a ``PATH`` that holds nothing.
+    """
+    monkeypatch.setenv("PATH", str(tmp_path))  # an empty directory: no wl-paste, no xclip
+
+    assert read_image(system="linux") is None
+
+
+def test_running_a_tool_that_does_not_exist_is_a_nonzero_result(tmp_path, monkeypatch):
+    from zettcode.app.ui import clipboard as clipboard_module
+
+    monkeypatch.setenv("PATH", str(tmp_path))
+
+    result = clipboard_module._run(["wl-paste", "--list-types"])
+
+    assert result.returncode == 127, "the shell's code for 'command not found'"
+    assert result.stdout == b""
+    assert b"wl-paste" in result.stderr, "and the reason is kept"
+
+
+def test_a_tool_that_cannot_be_executed_is_a_nonzero_result_too(tmp_path, monkeypatch):
+    from zettcode.app.ui import clipboard as clipboard_module
+
+    """Present but not runnable (no execute bit) raises PermissionError, another OSError."""
+    tool = tmp_path / "xclip"
+    tool.write_text("#!/bin/sh\necho image/png\n")
+    tool.chmod(0o644)
+    monkeypatch.setenv("PATH", str(tmp_path))
+
+    result = clipboard_module._run(["xclip", "-selection", "clipboard", "-o"])
+
+    assert result.returncode == 127
+
+
+def test_a_tool_that_never_answers_is_a_failed_read_not_a_frozen_interface(monkeypatch):
+    from zettcode.app.ui import clipboard as clipboard_module
+
+    """The read runs on the event loop in a key handler, so a stuck ``xclip`` — against a
+    forwarded X display whose connection went away — would freeze every key."""
+    import sys
+
+    monkeypatch.setattr(clipboard_module, "TOOL_TIMEOUT", 0.2)
+
+    result = clipboard_module._run([sys.executable, "-c", "import time; time.sleep(30)"])
+
+    assert result.returncode == 124, "the shell's code for 'timed out'"
+
+
+def test_a_tool_that_runs_is_still_read_normally():
+    import sys
+
+    from zettcode.app.ui import clipboard as clipboard_module
+
+    result = clipboard_module._run([sys.executable, "-c", "import sys; sys.stdout.write('image/png')"])
+
+    assert result.returncode == 0 and result.stdout == b"image/png"
