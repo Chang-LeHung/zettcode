@@ -365,6 +365,15 @@ class TextArea(Widget):
             return
         if self.on_submit is not None and self.on_submit(value) is False:
             return
+        self.commit(value)
+
+    def commit(self, value: str) -> None:
+        """Record ``value`` as submitted and empty the editor.
+
+        :meth:`_submit` does this when the hook accepts. A hook that has to ask the reader
+        something first — which kind of message this is — returns ``False`` so the draft stays
+        where it can still be changed, and calls this once the answer is in.
+        """
         if not self._history or self._history[-1] != value:
             self._history.append(value)
             del self._history[: -self.history_limit]

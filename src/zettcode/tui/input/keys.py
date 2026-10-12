@@ -143,6 +143,9 @@ def modifiers_of(parameter: bytes) -> tuple[bool, bool, bool, bool]:
     An empty parameter means one, which is "no modifiers": every terminal omits it
     rather than writing a one.
     """
+    # A terminal that reports event types writes "3:1" — the modifiers, then what the
+    # key did — and only the part before the colon says which modifiers are held.
+    parameter = parameter.split(b":")[0]
     try:
         value = int(parameter) if parameter else 1
     except ValueError:
@@ -187,6 +190,33 @@ def control_name(character: str) -> str:
     else:
         return f"ctrl_{character}"
     return CONTROL_KEYS.get(legacy, f"ctrl_{character}")
+
+
+#: Keys a terminal that sends Alt as a leading ESC can put Alt on: the cursor keys.
+META_KEYS = frozenset({"up", "down", "left", "right", "home", "end", "page_up", "page_down", "delete"})
+
+
+def meta_csi(data: bytes) -> tuple[str | None, int] | None:
+    """Read ``ESC ESC [ …``: how a terminal in "Option sends Esc+" mode spells Alt on a cursor key.
+
+    The same key without Alt is ``ESC [ A``, and with Alt the terminal puts one more ``ESC``
+    in front of it. Read as two keys that is *Escape, then Up* — and Escape stops a running
+    request, so an Alt-Up that was read that way would cancel the work it was pressed over.
+
+    Returns:
+        ``None`` when ``data`` is not this shape, ``(None, 0)`` while the sequence is still
+        arriving, and ``(key, length)`` once it is complete.
+    """
+    if not data.startswith(b"\x1b\x1b["):
+        return None
+    csi = split_csi(data[1:])
+    if csi is None:
+        return (None, 0)
+    parameters, final, length = csi
+    named, _ = csi_event(parameters, final)
+    if named not in META_KEYS:
+        return None
+    return (f"alt_{named}", length + 1)
 
 
 def csi_event(parameters: bytes, final: bytes) -> tuple[str | None, str | None]:

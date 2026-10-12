@@ -27,14 +27,33 @@ def hint() -> str:
     return f"  q / Esc quit {SEPARATOR} [ slower {SEPARATOR} ] faster {SEPARATOR} one pass per {seconds:.1f} s"
 
 
+def frames(seconds: float) -> int:
+    """Return how many animation steps a stretch of seconds is.
+
+    The pace is a period, so the keys and the limits are written in seconds and turned
+    into steps here: a step is a hundred-and-twentieth of a second, and "five of them"
+    would be a twitch of the dial, not a notch.
+    """
+    return round(seconds / rows_module.ANIMATION_SECONDS)
+
+
+#: How much one keypress changes the pulse by.
+PACE_STEP_SECONDS = 0.5
+
+#: The slowest and fastest pulse the keys reach: "too fast to follow" to "almost
+#: stationary".
+PACE_SECONDS = (1.0, 5.0)
+
+
 def nudge_pace(delta: int) -> None:
     """Change the pulse pace, so the effect can be judged without a rebuild.
 
     Args:
-        delta: Frames to add to one pulse; the pace is kept between one second
-            and five, which spans "too fast to follow" to "almost stationary".
+        delta: Animation steps to add to one pulse; the pace is kept between
+            :data:`PACE_SECONDS`.
     """
-    rows_module.PULSE_FRAMES = min(50, max(10, rows_module.PULSE_FRAMES + delta))
+    shortest, longest = frames(PACE_SECONDS[0]), frames(PACE_SECONDS[1])
+    rows_module.PULSE_FRAMES = min(longest, max(shortest, rows_module.PULSE_FRAMES + delta))
 
 
 class Blinking(Widget):
@@ -110,8 +129,8 @@ def build(transcript: Transcript | None = None) -> TuiApp:
     )
     app = TuiApp(Blinking(transcript, body), theme=DARK)
     app.commands.add("quit", _quit)
-    app.commands.add("slower", _pace(5))
-    app.commands.add("faster", _pace(-5))
+    app.commands.add("slower", _pace(frames(PACE_STEP_SECONDS)))
+    app.commands.add("faster", _pace(-frames(PACE_STEP_SECONDS)))
     for key in ("q", "escape", "ctrl_c"):
         app.keymap.bind(key, "quit", priority="capture")
     app.keymap.bind("[", "slower", priority="capture")

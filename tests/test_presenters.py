@@ -28,7 +28,7 @@ from zettcode.app.agent.conversation.presenters import (
     render_entry,
     tool_color,
 )
-from zettcode.app.agent.conversation.rows import COMPACTING_LABEL, PULSE_FRAMES, STOP_HINT
+from zettcode.app.agent.conversation.rows import COMPACTING_LABEL, PULSE_FRAMES, STOP_HINT, move_frames
 from zettcode.app.agent.conversation.transcript import Transcript
 from zettcode.app.ui.widgets.transcript import TranscriptSource
 from zettcode.tui import DARK, LIGHT, SEPARATOR, TextLine
@@ -284,9 +284,10 @@ def test_only_the_waiting_row_moves():
             for line in render_entry(entry, 40, DARK, frame)
         ]
 
-    assert painted(thinking, 0) == painted(thinking, 7)
-    assert painted(tool, 0) == painted(tool, 7)
-    assert painted(waiting, 0) != painted(waiting, 7)
+    halfway = move_frames() // 2
+    assert painted(thinking, 0) == painted(thinking, halfway)
+    assert painted(tool, 0) == painted(tool, halfway)
+    assert painted(waiting, 0) != painted(waiting, halfway)
 
 
 def test_a_finished_row_without_a_recorded_duration_claims_no_time():

@@ -23,10 +23,11 @@ moving, or set up the tools and models that suit your project.
 | Continue an earlier session or export it to HTML | [Sessions](/guide/sessions) |
 | Understand context usage, compaction, and caching | [Models & context](/guide/models) |
 
-Typing while the agent works sends a **steering message** that it picks up at
-the next tool or model boundary. Use `/btw <question>` instead when you want an
-answer that will not join the context of later requests. See
-[The interface](/guide/interface) for both.
+Typing while the agent works asks whether the message should **steer** the
+request — picked up at the next tool or model boundary — or **follow up** after it,
+as a message of its own that you can still edit and reorder. Use `/btw <question>`
+instead when you want an answer that will not join the context of later requests.
+See [The interface](/guide/interface) for all three.
 
 ## Make it yours
 

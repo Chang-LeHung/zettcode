@@ -6,7 +6,7 @@ import re
 
 from ..core.events import MouseAction
 from .events import EventType, InputEvent
-from .keys import CONTROL_KEYS, KEY_SEQUENCES, csi_event, split_csi
+from .keys import CONTROL_KEYS, KEY_SEQUENCES, csi_event, meta_csi, split_csi
 
 # SGR mouse report: CSI < Cb ; Cx ; Cy M (press or motion) or m (release).
 # Coordinates arrive 1-based, so the decoder subtracts one from each.
@@ -61,10 +61,19 @@ class InputDecoder:
         return events
 
     def flush_escape(self) -> InputEvent | None:
-        """Resolve a pending escape once the terminal's sequence timeout lapsed."""
+        """Resolve a pending escape once the terminal's sequence timeout lapsed.
+
+        One event at a time: a buffer holding several escapes gives one now, and the caller
+        asks again until nothing is left.
+        """
         if not self.buffer:
             return None
         data = bytes(self.buffer)
+        if data.startswith(b"\x1b\x1b"):
+            # Escape pressed more than once: the first is reported and the rest stays, so
+            # each press is its own event. The caller asks again while anything is left.
+            del self.buffer[:1]
+            return InputEvent(EventType.KEY, key="escape")
         self.buffer.clear()
         # A reply cut off mid-sequence is a terminal that stopped talking, not
         # the Escape key followed by Alt-]: dropping it is the only reading that
@@ -132,6 +141,21 @@ class InputDecoder:
                 return InputEvent(EventType.KEY, key=key), len(sequence), False
             if sequence.startswith(data):
                 return None, 0, True
+
+        # Two escapes may be Alt on a cursor key, which is spelled with a second ESC in front,
+        # so wait for the byte that says. Reading the first as Escape straight away would make
+        # the result depend on where the stream happened to be cut — and Escape stops a request.
+        if data == b"\x1b\x1b":
+            return None, 0, True
+
+        # Alt on a cursor key, before the general case below, which would read it as Escape
+        # followed by the bare key.
+        meta = meta_csi(data)
+        if meta is not None:
+            named, length = meta
+            if named is None:
+                return None, 0, True
+            return InputEvent(EventType.KEY, key=named), length, False
 
         # The modified encoding: the key a terminal can only report after being asked,
         # like Shift-Enter, and the keys whose names the fixed table does not spell.

@@ -54,24 +54,26 @@ from ..agent.extensions.usage import UsageSnapshot
 from ..commands import Command, CommandContext, CommandList, CommandResult
 from ..registry import Registry
 from .commands import ShellCommands
+from .followups import FollowUp, FollowUpsMixin
 from .keys import KeysMixin
 from .notices import NoticesMixin
 from .rows import RowsMixin
 from .sessions import SessionMixin
 from .settings import SettingsMixin
-from .shell import EFFORT_TOKEN, FLASH_SECONDS, MAX_STEERING, PAGE_SCREEN
+from .shell import EFFORT_TOKEN, FLASH_SECONDS, PAGE_SCREEN
 from .updating import UpdateMixin
 from .widgets import (
     WELCOME,
     CommandCompleter,
     Composer,
+    FollowUpQueue,
     SteeringQueue,
     TranscriptView,
     ZettCodeRoot,
 )
 
 
-class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixin, UpdateMixin):
+class ZettCodeApp(RowsMixin, KeysMixin, FollowUpsMixin, NoticesMixin, SessionMixin, SettingsMixin, UpdateMixin):
     """Own the application agent, widget tree, keymap, and slash commands."""
 
     def __init__(self, agent: ZettCodeAgent, *, theme: Theme = DARK, auto_theme: bool = True) -> None:
@@ -114,7 +116,7 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
             completer=CommandCompleter(self.commands, self.mentions),
             max_height=8,
             on_submit=self.submit,
-            on_change=self._refresh_completions,
+            on_change=self._composer_changed,
             surface=True,
         )
         #: The row between the conversation and the composer: blank until something
@@ -122,6 +124,7 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
         self.flash_line = RichText(self._flash_line, align="center", wrap=False)
         self.completions = CompletionPopup(max_height=6)
         self.steering = SteeringQueue()
+        self.follow_ups = FollowUpQueue()
         self.header = StatusBar(self._header_left, self._header_right)
         self.status = StatusBar(self._status_left, self._status_right)
         self.panel = TaskPanel()
@@ -135,6 +138,7 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
                 Slot(self.flash_line, size=1),
                 Slot(self.completions, size=lambda available: self.completions.visible_height),
                 Slot(self.steering, size=lambda width: self.steering.preferred_height()),
+                Slot(self.follow_ups, size=lambda width: self.follow_ups.preferred_height()),
                 Slot(self.composer, size=lambda width: self.composer.preferred_height(width)),
                 Slot(self.status, size=1),
             ]
@@ -173,6 +177,11 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
         self._busy = False
         self._steering: list[str] = []
         self._steering_sent = 0
+        self._follow_ups: list[FollowUp] = []
+        self._follow_up_selected: int | None = None
+        self._editing_slot: int | None = None
+        self._follow_ups_held = False
+        self._turn_running = False
         self._asks: list[AskUserQuestion] = []
         self._ask_total = 0
         #: Drafts typed while a request was in flight, in arrival order: only
@@ -478,20 +487,32 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
         self.app.invalidate()
 
     def _start_next_command(self) -> None:
-        """Run the command that was typed while the finished request was busy."""
-        if not self._pending or self._busy:
+        """Run what was typed while the finished request was busy: a command, then follow-ups.
+
+        A queued command goes first. It was typed as a command, and a command such as
+        ``/btw`` does not join the conversation, so it cannot put a follow-up's answer out of
+        order. Follow-ups then go out one at a time: each is a turn of its own, and the next
+        waits for that turn to end. They go out only while the list is not held: after a
+        request that was stopped or failed it is, and it stays so until a reply completes.
+        """
+        if self._busy:
             return
-        self._task = asyncio.create_task(self._run_command(self._pending.pop(0)))
+        if self._pending:
+            self._task = asyncio.create_task(self._run_command(self._pending.pop(0)))
+        elif self._follow_ups and not self._follow_ups_held:
+            self._start_follow_up()
 
     def submit(self, value: str) -> bool | None:
-        """Start a turn or a slash command, steering while one is running.
+        """Start a turn or a slash command, or take a message typed while one runs.
 
-        Plain text typed during a turn is not refused: it is queued as a
-        steering message, which the agent adopts at its next model or tool
-        boundary and which the queue widget shows until then. A slash command is
-        refused while one runs, because there is no running request to steer —
-        unless the command itself declares ``when_busy="queue"``, which holds the
-        draft and runs it the moment the request in flight ends.
+        Plain text typed during a request is not refused. The reader is asked
+        whether it should steer — handed to the agent now, adopted at its next
+        model or tool boundary — or follow up, held and sent as a turn of its own
+        when the request ends; either way a list above the composer shows it until
+        then. A slash command is refused while one runs, because there is no
+        running request to steer — unless the command itself declares
+        ``when_busy="queue"``, which holds the draft and runs it the moment the
+        request in flight ends.
 
         Args:
             value: Draft text from the composer; a leading ``/`` selects the
@@ -515,27 +536,9 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
             if not value.strip():
                 self._refuse_busy()
                 return False
-            if self._side_question_running:
-                # Steering folds into the running request, and a side question's
-                # messages are recorded but never replayed — so a steered message
-                # sent now would disappear from the conversation. The draft is
-                # left in the composer instead.
-                self.transcript.notice("a btw question is being answered; send that when it finishes")
-                self.app.invalidate()
-                return False
-            if carries_image(self.composer.parts()):
-                self.transcript.error("steering takes text only")
-                self.app.invalidate()
-                return False
-            if self._steering_sent >= MAX_STEERING:
-                self.transcript.error(f"steering limit reached ({MAX_STEERING}) \u2014 wait for this reply")
-                self.app.invalidate()
-                return False
-            if self.agent.steer(value):
-                self._queue_steering(value)
-                return True
-            self._refuse_busy()
-            return False
+            # Plain text during a request is one of two things, and the text does not say
+            # which: see :mod:`zettcode.app.ui.followups`.
+            return self._send_while_busy(value)
         if value.startswith("/"):
             self._task = asyncio.create_task(self._run_command(value))
         else:
@@ -551,12 +554,6 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
                 return False
             self._task = asyncio.create_task(self._run_prompt(value, parts, mention_hint(parts, self.mentions)))
         return True
-
-    @property
-    def _side_question_running(self) -> bool:
-        """Return whether the request in flight is a side question."""
-        task = self._task
-        return bool(task is not None and not task.done() and self.agent.runtime.sides.pending)
 
     def _queue_steering(self, value: str) -> None:
         """Show one message waiting for the agent to adopt it."""
@@ -632,6 +629,8 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
         """
         self.projector.begin_turn(prompt)
         started = monotonic()
+        completed = False
+        self._turn_running = True
         self._set_busy(True)
         self._activity = Activity.RUNNING
         self._note = None
@@ -654,13 +653,18 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
             self.transcript.complete_thinking()
             self.transcript.error(f"error: {describe_error(error)}")
         else:
+            completed = True
             self._title_session_later(self.agent.session_id)
         finally:
             took = elapsed_text(monotonic() - started)
+            # Before the pinned row is settled, not after: what happened to the waiting
+            # messages is part of how the request ended, and the line that says how long it
+            # ran stays the last thing in the transcript, where a reader looks for it.
+            self._settle_queues(completed, turn=True)
             self._close_run()
             self._settle_wait(f"Processed for {took} {SEPARATOR} {clock_text()}")
             self._drop_ask()
-            self._clear_steering()
+            self._turn_running = False
             self._set_busy(False)
             self._activity = Activity.READY
             self._note = None
@@ -679,6 +683,10 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
         """
         self._busy = busy
         self.app.scheduler.animate("activity", active=busy)
+        if self._follow_ups:
+            # The list's keys line says what it is waiting for, which is a different thing
+            # while a request runs and while none does.
+            self._sync_follow_ups()
 
     def _refresh_tasks(self) -> None:
         """Mirror the agent's current plan into the panel above the composer."""
@@ -698,6 +706,7 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
         # another submit is refused, and Ctrl-C cancels what is running.
         self._set_busy(True)
         self.app.invalidate()
+        completed = False
         try:
             previous_session = self.agent.session_id
             if command is None:
@@ -713,12 +722,17 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
                         self._remember_session_title()
                         self._usage = self.agent.usage
                         self._refresh_tasks()
+                        self._return_follow_ups_to_draft()
                         self.app.request_layout()
                 except ValueError as error:
                     self.transcript.error(str(error))
                 else:
                     self._apply_result(result)
+            completed = True
         finally:
+            # A command stopped part-way is stopped like a turn is: what was queued behind
+            # it was written for something that did not finish, and goes back to the draft.
+            self._settle_queues(completed, turn=False)
             self._set_busy(False)
             self._activity = Activity.READY
             self._note = None

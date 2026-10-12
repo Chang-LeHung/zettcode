@@ -7,6 +7,7 @@ from time import perf_counter
 from zettcode.app import Transcript, TranscriptSource
 from zettcode.app.agent.conversation.entries import WaitEntry
 from zettcode.app.agent.conversation.presenters import DEFAULT_PRESENTERS
+from zettcode.app.agent.conversation.rows import ANIMATION_SECONDS
 from zettcode.tui import DARK
 from zettcode.tui.widgets import markdown as markdown_module
 
@@ -146,8 +147,9 @@ def test_ticks_within_one_animation_step_do_not_invalidate_the_transcript(monkey
 
     calls.clear()
     version = transcript.version
+    # Fifty ticks that together stay inside the step the transcript already sits on.
     for _ in range(50):
-        now[0] += 0.001
+        now[0] += ANIMATION_SECONDS / 100
         transcript.advance_frame()
         source.count(40)
 
@@ -167,12 +169,12 @@ def test_crossing_an_animation_step_repaints_only_the_running_row(monkeypatch):
     source.count(40)
 
     calls.clear()
-    now[0] = 0.25
+    now[0] = 2.5 * ANIMATION_SECONDS
     transcript.advance_frame()
     source.count(40)
 
     assert transcript.frame == 2
-    assert running.duration == 0.25
+    assert running.duration == now[0]
     assert calls == [running.id]
 
 
@@ -185,7 +187,7 @@ def test_an_animation_step_without_a_running_row_leaves_the_version_alone():
     transcript.settle_wait("Processed for 0s \u00b7 09:41")
     version = transcript.version
 
-    now[0] = 1.0
+    now[0] = 10.5 * ANIMATION_SECONDS
     transcript.advance_frame()
 
     assert transcript.frame == 10

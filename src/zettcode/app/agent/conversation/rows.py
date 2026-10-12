@@ -31,10 +31,18 @@ THINKING_LABEL = "Thinking"
 #: it carries the same marker and timer as reasoning does.
 COMPACTING_LABEL = "Compacting"
 
+#: Animation steps per second: the rate the sweep, the running marker and the
+#: timers advance at, matching the frame loop's own ceiling. It used to be ten a
+#: second, which is a step the eye can see — the sweep moved in jumps — while the
+#: loop was repainting a hundred and twenty times a second to show the same
+#: picture twelve times over.
+ANIMATION_FPS = 120
+
 #: Wall-clock length of one animation step. ``Transcript.frame`` counts these
 #: steps rather than terminal ticks, so the pace of the sweep and the running
-#: marker does not depend on how often the terminal happens to repaint.
-ANIMATION_SECONDS = 0.1
+#: marker does not depend on how often the terminal happens to repaint: a period
+#: is a number of seconds, and a step is a share of it.
+ANIMATION_SECONDS = 1 / ANIMATION_FPS
 
 MAX_TOOL_OUTPUT = 64_000
 TOOL_PREVIEW_ROWS = 5

@@ -59,8 +59,29 @@ approval and question panels, read the hint printed at the bottom.
 | <kbd>Ctrl</kbd>+<kbd>T</kbd> | Expand or collapse the newest thinking block. |
 | <kbd>Ctrl</kbd>+<kbd>V</kbd> | Attach an image from the clipboard. |
 | <kbd>Page Up</kbd> / <kbd>Page Down</kbd> | Scroll the conversation, keeping the composer focused. |
-| <kbd>Esc</kbd> | Jump back to the newest line when scrolled up; close a panel; close the command menu. |
+| <kbd>Esc</kbd> | Stop the running request; or, first, jump back to the newest line when scrolled up, close a panel or the command menu, or let go of a highlighted follow-up. Stopping keeps your follow-ups. |
 | <kbd>Tab</kbd> | Accept the highlighted row in a panel or the command menu. |
+
+## While a request runs
+
+Typing during a request asks whether the message should steer it or follow up after it.
+The follow-ups wait in a list above the composer, and these keys work on them. The list
+prints the same keys under itself, so they are shown at the moment they are useful.
+`Option` is the `⌥` key on a Mac, and `Alt` on other keyboards.
+
+| Key | What it does |
+| --- | --- |
+| <kbd>Enter</kbd> | Ask what the typed message is. In the question: take the highlighted row. |
+| <kbd>F</kbd> / <kbd>S</kbd> | In the question: **f**ollow up or **s**teer, directly. `Esc` keeps the draft. |
+| <kbd>Option</kbd>+<kbd>Up</kbd> / <kbd>Option</kbd>+<kbd>Down</kbd> | With nothing highlighted: walk into the follow-up list. With a message highlighted: **move it** one place earlier or later. |
+| <kbd>Up</kbd> / <kbd>Down</kbd> | With a follow-up highlighted: move the highlight; `Down` past the last row returns to the composer. |
+| <kbd>Enter</kbd> | With a follow-up highlighted: take it into the composer to edit; sending it puts it back in its place. |
+| <kbd>Delete</kbd> / <kbd>Backspace</kbd> | With a follow-up highlighted: remove it. |
+| <kbd>Esc</kbd> | With a follow-up highlighted: let go. Without: stop the request — the follow-ups stay, held until your next reply completes. |
+
+A steering message cannot be changed once it is sent. See
+[Typing while a request runs](/guide/interface#typing-while-a-request-runs) for what the two
+kinds do and what happens to the list when a request is stopped.
 
 ## Answering a question
 

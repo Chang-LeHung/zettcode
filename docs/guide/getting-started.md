@@ -142,9 +142,9 @@ make a task easier to review than "improve this project".
 4. When the request ends — answered, failed, or stopped with `Ctrl-C` — that
    same row becomes the muted line that closes it: `Processed for 12s · 09:41`.
 
-Keep typing while it works and your message becomes a **steering** message: the
-agent finishes the tool batch it is in, then reads what you added. Everything is
-explained in [The interface](/guide/interface).
+Keep typing while it works and ZettCode asks whether your message should **steer**
+the request (the agent finishes the tool batch it is in, then reads it) or **follow
+up** once it is done. Everything is explained in [The interface](/guide/interface).
 
 ## Leaving and coming back
 

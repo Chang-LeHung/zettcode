@@ -6,8 +6,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from ...._compat import StrEnum
-from ....tui import MARKER, SEPARATOR, Canvas, Host, KeyEvent, MouseAction, MouseEvent, Widget
+from ....tui import MARKER, SEPARATOR, Canvas, Host, MouseAction, MouseEvent, Widget
 from ....tui.render import ELLIPSIS, SHELL, Span, Style, highlight, wrap_spans
+from .panel import pressed
 
 
 class ApprovalChoice(StrEnum):
@@ -159,12 +160,13 @@ class ApprovalPage(Widget):
 
     def capture_event(self, event, host: Host) -> bool:
         """Commit a keyed row, or abort on Escape, before anything else sees it."""
-        if not isinstance(event, KeyEvent):
+        key = pressed(event)
+        if key is None:
             return False
-        if event.key == "escape":
+        if key == "escape":
             self.on_choice(ApprovalChoice.ABORT)
             return True
-        option = next((item for item in self.options if item.key == event.key), None)
+        option = next((item for item in self.options if item.key == key), None)
         if option is None:
             return False
         self.on_choice(option.choice)
@@ -174,16 +176,17 @@ class ApprovalPage(Widget):
         """Move with the arrows, and commit with Enter, a row number, or a click."""
         if isinstance(event, MouseEvent):
             return self._handle_mouse(event)
-        if not isinstance(event, KeyEvent):
+        key = pressed(event)
+        if key is None:
             return False
-        match event.key:
+        match key:
             case "up":
                 self.move(-1)
             case "down":
                 self.move(1)
             case "enter":
                 self.activate()
-            case digit if digit.isdigit() and 1 <= int(digit) <= len(self.options):
+            case digit if digit.isascii() and digit.isdigit() and 1 <= int(digit) <= len(self.options):
                 self.selected = int(digit) - 1
                 self.activate()
             case _:

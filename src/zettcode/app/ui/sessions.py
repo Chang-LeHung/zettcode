@@ -171,6 +171,9 @@ class SessionMixin(ShellState):
         self._session_title = stored.title
         self._usage = self.agent.usage
         self._refresh_tasks()
+        # The held follow-ups continued the conversation being left; they are handed back
+        # as text, after the new transcript is up so the line that says so is in it.
+        self._return_follow_ups_to_draft()
         self.app.request_layout()
 
     def _remeasure_context_later(self) -> None:

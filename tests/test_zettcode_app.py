@@ -66,13 +66,18 @@ from zettcode.app.ui import keys as keys_module
 from zettcode.app.ui import updating as updating_module
 from zettcode.app.ui.boot import boot_tree
 from zettcode.app.ui.commands import PICKER_ROWS
+from zettcode.app.ui.shell import MAX_FOLLOW_UPS, MAX_STEERING
 from zettcode.app.ui.widgets import (
+    SEND_KIND_ROWS,
     WELCOME,
     ApprovalChoice,
     ApprovalPage,
     AskUserPage,
     CommandCompleter,
     ContextPage,
+    FollowUpQueue,
+    SendKind,
+    SendKindPage,
     SessionsPage,
     SteeringQueue,
     UpdatePage,
@@ -80,6 +85,7 @@ from zettcode.app.ui.widgets import (
     format_ago,
     help_text,
 )
+from zettcode.app.ui.widgets.follow_up import OPTION
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.plugins import BUILTIN_PLUGINS, PluginContainer, Plugins, ShellContext, UiBuilder
 from zettcode.tui import (
@@ -88,6 +94,7 @@ from zettcode.tui import (
     PROMPT,
     SEPARATOR,
     Canvas,
+    InputDecoder,
     ListItem,
     ListPage,
     Rect,
@@ -100,6 +107,7 @@ from zettcode.tui import (
     TuiApp,
     walk,
 )
+from zettcode.tui.input import translate
 from zettcode.tui.render import display_width
 from zettcode.tui.testing import Harness, render_block, style_signature
 from zettcode.update import UpdateState, display_command, in_background, read_state, write_state
@@ -115,10 +123,15 @@ class FakeAgent:
 
 
 class FakeClient:
-    def __init__(self, events: list[AgentEvent] | None = None, *, block: bool = False) -> None:
+    def __init__(self, events: list[AgentEvent] | None = None, *, block: bool = False, hold: bool = False) -> None:
         self.agent = FakeAgent()
         self.events = events or []
         self.block = block
+        #: With ``hold`` a run does not end until :attr:`released` is set, and every run after
+        #: that ends at once. ``block`` never ends and is for tests that cancel; this is for the
+        #: ones that need a request to finish, at a moment they choose.
+        self.hold = hold
+        self.released = asyncio.Event()
         self.event_dispatcher = None
         self.models: list[object] = []
         self.configs: list[object] = []
@@ -141,6 +154,8 @@ class FakeClient:
             yield event
         if self.block:
             await asyncio.sleep(3600)
+        if self.hold:
+            await self.released.wait()
 
     async def compact(self, *, config=None, model=None, metadata=None, tags=None):
         """Mirror ``AgentClient.compact``: one pass, its events dispatched in order."""
@@ -156,6 +171,8 @@ class FakeClient:
             )
         if self.block:
             await asyncio.sleep(3600)
+        if self.hold:
+            await self.released.wait()
         return None
 
 
@@ -368,10 +385,11 @@ def build_app(
     events: list[AgentEvent] | None = None,
     *,
     block: bool = False,
+    hold: bool = False,
     plugins: Plugins | None = None,
 ) -> ZettCodeApp:
     app = ZettCodeApp(
-        ZettCodeAgent(FakeRuntime(FakeClient(events, block=block), plugins=plugins or rows_and_commands()))
+        ZettCodeAgent(FakeRuntime(FakeClient(events, block=block, hold=hold), plugins=plugins or rows_and_commands()))
     )
     app.app.resize(60, 14)
     app.app.mount()
@@ -410,6 +428,19 @@ def _no_release_check(monkeypatch):
         return None
 
     monkeypatch.setattr(updating_module, "check_for_update", offline)
+
+
+async def _send_during_run(harness, text: str, kind: str = "s") -> None:
+    """Type a message while a request runs, press Enter, and answer the question it asks.
+
+    The kind is typed as a character, the way a terminal delivers it: ``s`` steers and ``f``
+    follows up. Every test that sends a message mid-request goes through here, so the question
+    is part of what each of them exercises rather than something they step around.
+    """
+    harness.write(text)
+    harness.press("enter")
+    harness.write(kind)
+    await asyncio.sleep(0)
 
 
 def _update_page(app: ZettCodeApp) -> UpdatePage:
@@ -705,7 +736,7 @@ def test_the_status_icon_blinks_on_a_period_of_its_own():
     bright = activity_glyph(0)
     faint = activity_glyph(STATUS_BLINK_FRAMES // 2)
 
-    assert (STATUS_BLINK_FRAMES, STATUS_BLINK_FRAMES * ANIMATION_SECONDS) == (15, 1.5)
+    assert STATUS_BLINK_FRAMES * ANIMATION_SECONDS == pytest.approx(1.5)
     assert bright != faint
     assert all(activity_glyph(frame) == bright for frame in range(STATUS_BLINK_FRAMES // 2))
     assert all(
@@ -763,15 +794,16 @@ def test_a_pass_crosses_the_label_in_the_moving_part_of_the_pulse():
     """A fixed period, not a fixed speed: a long row is not crossed more slowly."""
     narrow, wide = 10, 60
 
-    assert move_frames() == 15
     # A second and a half of movement and a second of rest, in seconds.
-    assert move_frames() * ANIMATION_SECONDS == 1.5
-    assert PULSE_FRAMES * ANIMATION_SECONDS == 2.5
+    assert move_frames() * ANIMATION_SECONDS == pytest.approx(1.5)
+    assert PULSE_FRAMES * ANIMATION_SECONDS == pytest.approx(2.5)
     assert sweep_column(0, narrow) == sweep_column(0, wide) == 0
     assert sweep_column(PULSE_FRAMES, wide) == 0  # the next pulse starts over
     # A frame moves the highlight the same fraction of either row — sixty columns
-    # is six times ten — which is what makes both take the pulse to cross.
-    assert sweep_column(3, wide) == 6 * sweep_column(3, narrow)
+    # is six times ten — which is what makes both take the pulse to cross. A fifth of
+    # the way in, so the highlight has left the first column on both.
+    fifth = move_frames() // 5
+    assert sweep_column(fifth, wide) == 6 * sweep_column(fifth, narrow)
     assert sweep_column(move_frames() - 1, narrow) >= narrow - 2
     assert sweep_column(move_frames() - 1, wide) >= wide - 4
 
@@ -834,7 +866,7 @@ def test_the_blink_demo_keeps_frames_coming_and_advances_the_blink():
 
     # The counter is derived from the clock, one step per ANIMATION_SECONDS,
     # rather than counted per tick: the pace cannot depend on the frame rate.
-    assert transcript.frame == 123
+    assert transcript.frame == int(12.34 / ANIMATION_SECONDS)
     assert transcript.version == before + 1
 
 
@@ -851,16 +883,43 @@ async def test_the_blink_demo_script_walks_a_turn():
 
 
 def test_the_blink_demo_can_be_slowed_down_while_it_runs(monkeypatch):
-    monkeypatch.setattr(demo.rows_module, "PULSE_FRAMES", 20)
+    # The pace is a period: a key is half a second, whatever the step is.
+    notch = demo.frames(demo.PACE_STEP_SECONDS)
+    monkeypatch.setattr(demo.rows_module, "PULSE_FRAMES", 4 * notch)
     harness = Harness(app=demo.build())
 
     harness.press("]")
-    assert demo.rows_module.PULSE_FRAMES == 15
+    assert demo.rows_module.PULSE_FRAMES == 3 * notch
     assert "one pass per 0.9 s" in harness.render().text
 
     harness.press("[")
     harness.press("[")
-    assert demo.rows_module.PULSE_FRAMES == 25
+    assert demo.rows_module.PULSE_FRAMES == 5 * notch
+
+
+def test_the_demo_keeps_the_pace_between_a_second_and_five(monkeypatch):
+    monkeypatch.setattr(demo.rows_module, "PULSE_FRAMES", demo.rows_module.PULSE_FRAMES)  # restored afterwards
+    notch = demo.frames(demo.PACE_STEP_SECONDS)
+    for _ in range(40):
+        demo.nudge_pace(-notch)
+    assert demo.rows_module.PULSE_FRAMES == demo.frames(1.0)
+    for _ in range(40):
+        demo.nudge_pace(notch)
+    assert demo.rows_module.PULSE_FRAMES == demo.frames(5.0)
+
+
+def test_the_animation_never_steps_faster_than_the_loop_can_paint_it():
+    """A step the loop cannot reach is skipped, not shown: the two rates have to agree.
+
+    The animation counter is derived from the clock, so a loop that paints less often than
+    the counter steps still keeps time — it just drops frames of the sweep. The ceiling of
+    the loop is the animation's rate, and this holds them together.
+    """
+    from zettcode.app.agent.conversation.rows import ANIMATION_FPS
+    from zettcode.tui.core.scheduler import Scheduler
+
+    assert 1 / ANIMATION_SECONDS == pytest.approx(ANIMATION_FPS)
+    assert Scheduler().max_fps >= ANIMATION_FPS
 
 
 async def test_app_streams_a_prompt_into_the_transcript():
@@ -1333,13 +1392,11 @@ async def test_app_steers_a_second_prompt_and_ctrl_c_stops_the_first():
     harness.write("first")
     harness.press("enter")
     await asyncio.sleep(0)
-    harness.write("second")
-    harness.press("enter")
-    await asyncio.sleep(0)
+    await _send_during_run(harness, "second")
 
     assert app.busy is True
-    # A second prompt while busy is queued to steer the running turn, so it is
-    # shown in the queue rather than refused with a notice.
+    # A second prompt while busy is queued to steer the running turn once the reader
+    # says that is what it is, so it is shown in the queue rather than refused.
     assert app.steering.messages == ("second",)
     assert not any("busy" in entry.text for entry in app.transcript.entries if entry.kind == "notice")
 
@@ -1349,6 +1406,8 @@ async def test_app_steers_a_second_prompt_and_ctrl_c_stops_the_first():
     assert app.busy is False
     assert any("stopped" in entry.text for entry in app.transcript.entries if entry.kind == "notice")
     assert app.steering.messages == ()
+    # The steering message the agent never adopted is not lost with the request.
+    assert app.composer.text == "second"
 
     # The pinned row is settled, not left running and not removed: a stopped
     # request still says how long it ran and where it stopped, which is what a
@@ -1365,9 +1424,7 @@ async def test_a_steering_message_is_echoed_when_the_agent_adopts_it():
     harness.write("first")
     harness.press("enter")
     await asyncio.sleep(0)
-    harness.write("second")
-    harness.press("enter")
-    await asyncio.sleep(0)
+    await _send_during_run(harness, "second")
     assert app.steering.messages == ("second",)
 
     await app.projector.on_steering_started_event(
@@ -1438,18 +1495,17 @@ async def test_a_mention_also_applies_to_a_turn_that_carries_an_image():
     assert "@note" in sent.attributes["prompt"]
 
 
-async def test_steering_stops_at_the_limit():
+async def test_steering_stops_at_the_limit_and_the_message_becomes_a_follow_up():
+    """The ninth steering message cannot be steered, and is not lost: it waits as a follow-up."""
     app = build_app(block=True)
     harness = _harness(app)
     harness.write("first")
     harness.press("enter")
     await asyncio.sleep(0)
 
-    queued = tuple(f"steer {index}" for index in range(app_module.MAX_STEERING))
+    queued = tuple(f"steer {index}" for index in range(MAX_STEERING))
     for message in queued:
-        harness.write(message)
-        harness.press("enter")
-        await asyncio.sleep(0)
+        await _send_during_run(harness, message)
 
     assert app.steering.messages == queued
 
@@ -1457,12 +1513,14 @@ async def test_steering_stops_at_the_limit():
     harness.press("enter")
     await asyncio.sleep(0)
 
-    assert app.steering.messages == queued
-    assert app._steering_sent == app_module.MAX_STEERING
+    assert app.steering.messages == queued, "nothing more was steered"
+    assert app._steering_sent == MAX_STEERING
+    assert app.follow_ups.messages == ("one too many",), "no question to ask: only a follow-up is possible"
     assert any(
-        entry.kind == "notice" and entry.level == "error" and "steering limit reached" in entry.text
+        entry.kind == "notice" and "steering limit reached" in entry.text and "follow-up" in entry.text
         for entry in app.transcript.entries
     )
+    assert app.composer.text == "", "the draft was taken"
 
     app.task.cancel()
     await asyncio.gather(app.task, return_exceptions=True)
@@ -3331,8 +3389,9 @@ async def test_a_btw_question_waits_for_the_reply_in_flight():
     await asyncio.gather(app.task, return_exceptions=True)
 
 
-async def test_typing_during_a_side_question_keeps_the_draft():
-    """Steering would fold into the side request, whose messages are dropped."""
+async def test_typing_during_a_side_question_is_held_as_a_follow_up():
+    """A side question cannot be steered — its messages are recorded, never replayed — so
+    a message typed meanwhile has one place to go, and goes there without asking."""
     app = build_app(block=True)
     harness = _harness(app)
 
@@ -3343,10 +3402,10 @@ async def test_typing_during_a_side_question_keeps_the_draft():
     harness.write("and change it")
     harness.press("enter")
 
-    assert app.composer.text == "and change it"
-    assert any(
-        "btw question is being answered" in entry.text for entry in app.transcript.entries if entry.kind == "notice"
-    )
+    assert app.app.screens.top.name == "main", "nothing to choose between, so nothing is asked"
+    assert app.follow_ups.messages == ("and change it",)
+    assert app.steering.messages == ()
+    assert app.composer.text == ""
 
     app.task.cancel()
     await asyncio.gather(app.task, return_exceptions=True)
@@ -4948,3 +5007,1075 @@ async def test_starting_the_background_work_does_not_ask_the_index_or_write_a_fi
 
     assert not path.exists(), "nothing was fetched, so nothing was stored"
     await asyncio.wait_for(app.stop_background(), 2.0)
+
+
+# -- the prompt's shortcuts, sent the way a terminal sends them ------------------------
+
+
+async def test_the_approval_prompts_shortcuts_work_when_they_arrive_as_typed_characters():
+    """A terminal has no "y" key: it sends the character, and the decoder calls that text.
+
+    The prompt advertises ``(y)`` beside a row, so the shortcut has to answer the event a real
+    keypress produces — a test that only sends a key event passes while the shortcut is dead.
+    """
+    app = build_app()
+    harness = _harness(app)
+    await app.projector.dispatch(_approval_event())
+
+    harness.write("y")
+
+    event, _ = app.agent.runtime.client.agent.emitted[0]
+    assert event.payload["decision"] == "execute"
+    assert app.app.screens.top.name == "main"
+
+
+async def test_the_approval_prompts_row_numbers_work_as_typed_characters_too():
+    app = build_app()
+    harness = _harness(app)
+    await app.projector.dispatch(_approval_event())
+    page = _approval_page(app)
+
+    harness.write(str(len(page.options)))
+
+    event, _ = app.agent.runtime.client.agent.emitted[0]
+    assert event.payload["decision"] == "abort", "the last row is the refusal"
+
+
+async def test_a_character_that_is_not_an_ascii_digit_is_not_a_row_number():
+    """``"²".isdigit()`` is true and ``int("²")`` raises: a stray keystroke must not crash the page."""
+    app = build_app()
+    harness = _harness(app)
+    await app.projector.dispatch(_approval_event())
+
+    for character in ("\u00b2", "\u0663", "x"):
+        harness.write(character)
+
+    assert app.agent.runtime.client.agent.emitted == [], "none of them chose a row"
+    assert app.app.screens.top.name == "page"
+
+
+# -- follow-ups: the container, and the question a message typed mid-request asks ---------
+
+
+def _send_kind_page(app: ZettCodeApp) -> SendKindPage:
+    """Return the steer-or-follow-up panel on top of the stack."""
+    return next(widget for widget in walk(app.app.screens.top.widget) if isinstance(widget, SendKindPage))
+
+
+async def _until_idle(app: ZettCodeApp) -> None:
+    """Wait for the run in flight and for every follow-up that goes out behind it.
+
+    A finished run starts the next waiting message from its own ``finally``, so by the time
+    the task has been awaited ``app.task`` is already the next one; the loop ends when
+    awaiting a task starts nothing new.
+    """
+    while True:
+        task = app.task
+        assert task is not None
+        await asyncio.wait_for(task, 2.0)
+        if app.task is task:
+            return
+
+
+def _press_bytes(harness: Harness, raw: bytes) -> None:
+    """Send raw terminal bytes the way the runner does: decode them, translate, dispatch."""
+    for event in InputDecoder().feed(raw):
+        translated = translate(event)
+        assert translated is not None
+        harness.dispatch(translated)
+
+
+async def _running_with(*follow_ups: str, hold: bool = True) -> tuple[ZettCodeApp, Harness]:
+    """Return an app mid-request with these messages waiting behind it as follow-ups."""
+    app = build_app(hold=hold, block=not hold)
+    harness = _harness(app)
+    harness.write("first")
+    harness.press("enter")
+    await asyncio.sleep(0)
+    for message in follow_ups:
+        await _send_during_run(harness, message, "f")
+    assert app.follow_ups.messages == follow_ups
+    return app, harness
+
+
+async def _stop(app: ZettCodeApp) -> None:
+    """End a run a test left blocked, without letting it drain anything."""
+    assert app.task is not None
+    app.task.cancel()
+    await asyncio.gather(app.task, return_exceptions=True)
+
+
+def test_the_follow_up_queue_lists_messages_in_order_and_collapses_when_empty():
+    queue = FollowUpQueue()
+    assert queue.preferred_height() == 0
+    assert queue.set_messages(["then run the tests", "and open a pull request"]) is True
+    assert queue.set_messages(["then run the tests", "and open a pull request"]) is False
+
+    lines = Harness(queue, width=70, height=3).text().splitlines()
+
+    assert lines[0].lstrip().startswith("\u2022 then run the tests")
+    assert lines[1].lstrip().startswith("\u2022 and open a pull request")
+    assert lines[0].endswith("follow-up") and lines[1].endswith("follow-up")
+    assert queue.preferred_height() == 3, "one row per message and the keys line"
+
+
+def test_the_follow_up_queue_says_which_keys_use_it_and_the_line_follows_the_highlight():
+    """The shortcuts are only worth having if a reader can find them: the row under the list
+    names the one that starts, and once something is highlighted, all the rest."""
+    queue = FollowUpQueue()
+    queue.set_messages(["a", "b"])
+    idle = Harness(queue, width=90, height=3).text().splitlines()[2]
+
+    assert f"{OPTION}+\u2191/\u2193 to select" in idle and "after a reply completes" in idle
+    assert "enter" not in idle, "nothing to edit yet"
+
+    queue.set_messages(["a", "b"], selected=1)
+    chosen = Harness(queue, width=90, height=3).text().splitlines()[2]
+
+    for key in ("\u2191/\u2193 select", f"{OPTION}+\u2191/\u2193 reorder", "enter edit", "del remove", "esc done"):
+        assert key in chosen
+
+
+def test_the_keys_line_says_the_list_is_held_when_nothing_is_running():
+    queue = FollowUpQueue()
+    queue.set_messages(["a"], held=True)
+
+    line = Harness(queue, width=90, height=2).text().splitlines()[1]
+
+    assert "held until your next reply completes" in line and "after a reply completes" not in line
+
+
+def test_the_modifier_is_named_the_way_the_keyboard_in_front_of_the_reader_names_it():
+    """The same key is "option" on a Mac and "alt" everywhere else, and a hint should not need translating."""
+    import zettcode.app.ui.widgets.follow_up as module
+
+    assert module.OPTION == ("option" if sys.platform == "darwin" else "alt")
+
+
+def test_the_highlighted_follow_up_is_banded_and_marked():
+    queue = FollowUpQueue()
+    queue.set_messages(["a", "b", "c"], selected=1)
+    snapshot = Harness(queue, width=40, height=4).render()
+
+    def banded(row: int) -> bool:
+        return any(span.style.background == DARK.selection for span in snapshot.styled[row])
+
+    def bold(row: int) -> bool:
+        return any(span.style.bold and span.text.strip() for span in snapshot.styled[row])
+
+    assert snapshot.lines[1].lstrip().startswith("\u25b8 b") and snapshot.lines[0].lstrip().startswith("\u2022 a")
+    assert banded(1) and not banded(0) and not banded(2), "only the highlighted row is banded"
+    assert bold(1) and not bold(0)
+
+
+def test_a_highlight_past_the_end_of_the_list_is_no_highlight():
+    queue = FollowUpQueue()
+    queue.set_messages(["a"], selected=1)
+
+    assert queue.selected is None
+
+
+def test_a_follow_up_row_is_one_line_however_long_the_message_is():
+    queue = FollowUpQueue()
+    queue.set_messages(["first line\nsecond line\nthird"])
+
+    row = Harness(queue, width=60, height=2).text().splitlines()[0]
+
+    assert "first line \u2026" in row and "second line" not in row
+
+
+def test_a_narrow_follow_up_row_drops_the_badge_before_the_message():
+    queue = FollowUpQueue()
+    queue.set_messages(["run the whole test suite"])
+
+    row = Harness(queue, width=18, height=2).text().splitlines()[0]
+
+    assert "run the whole" in row and "follow-up" not in row
+    assert "follow-up" in Harness(queue, width=40, height=2).text().splitlines()[0], "with room, it is there"
+
+
+def test_the_send_kind_page_offers_follow_up_first_and_highlights_it():
+    """The first row is the one that cannot interrupt anything, so an unread Enter is safe."""
+    chosen: list[SendKind] = []
+    page = SendKindPage("and open a pull request", on_choice=chosen.append, on_cancel=lambda: None)
+
+    assert [option.kind for option in page.options] == [SendKind.FOLLOW_UP, SendKind.STEER]
+    assert page.choice is SendKind.FOLLOW_UP
+    text = Harness(page, width=100, height=SEND_KIND_ROWS).text()
+    assert "and open a pull request" in text, "the question is about something visible"
+    assert "send it after this request finishes (f)" in text
+    assert "replaces the rest of the current task (s)" in text
+
+
+@pytest.mark.parametrize(
+    ("send", "expected"),
+    [
+        (lambda h: h.write("f"), SendKind.FOLLOW_UP),
+        (lambda h: h.write("s"), SendKind.STEER),
+        (lambda h: h.press("f"), SendKind.FOLLOW_UP),
+        (lambda h: h.press("enter"), SendKind.FOLLOW_UP),
+        (lambda h: (h.press("down"), h.press("enter")), SendKind.STEER),
+        (lambda h: (h.press("up"), h.press("enter")), SendKind.STEER),
+        (lambda h: h.write("2"), SendKind.STEER),
+        (lambda h: h.write("1"), SendKind.FOLLOW_UP),
+    ],
+)
+def test_the_send_kind_page_answers_to_keys_however_they_arrive(send, expected):
+    """Letters reach a page as typed text from a terminal and as keys from a test; both count."""
+    chosen: list[SendKind] = []
+    page = SendKindPage("message", on_choice=chosen.append, on_cancel=lambda: None)
+
+    send(Harness(page, width=100, height=SEND_KIND_ROWS))
+
+    assert chosen == [expected]
+
+
+def test_the_send_kind_page_cancels_on_escape_and_ignores_other_keys():
+    chosen: list[SendKind] = []
+    cancelled: list[bool] = []
+    page = SendKindPage("message", on_choice=chosen.append, on_cancel=lambda: cancelled.append(True))
+    harness = Harness(page, width=100, height=SEND_KIND_ROWS)
+
+    for stray in ("x", "3", "\u00b2"):
+        harness.write(stray)
+    assert chosen == [] and cancelled == []
+
+    harness.press("escape")
+    assert cancelled == [True] and chosen == []
+
+
+def test_clicking_a_row_of_the_send_kind_page_picks_it():
+    chosen: list[SendKind] = []
+    page = SendKindPage("message", on_choice=chosen.append, on_cancel=lambda: None)
+    harness = Harness(page, width=100, height=SEND_KIND_ROWS)
+
+    harness.mouse_down(10, 6)
+
+    assert chosen == [SendKind.STEER]
+
+
+async def test_a_message_typed_during_a_request_asks_which_kind_and_keeps_the_draft():
+    app = build_app(block=True)
+    harness = _harness(app)
+    harness.write("first")
+    harness.press("enter")
+    await asyncio.sleep(0)
+
+    harness.write("also open a pull request")
+    harness.press("enter")
+
+    page = _send_kind_page(app)
+    assert page.choice is SendKind.FOLLOW_UP
+    assert app.composer.text == "also open a pull request", "asking costs the reader nothing: the draft is still there"
+    assert app.steering.messages == () and app.follow_ups.messages == ()
+    await _stop(app)
+
+
+async def test_escape_closes_the_question_and_leaves_the_draft_to_be_changed():
+    app = build_app(block=True)
+    harness = _harness(app)
+    harness.write("first")
+    harness.press("enter")
+    await asyncio.sleep(0)
+    harness.write("not yet")
+    harness.press("enter")
+
+    harness.press("escape")
+
+    assert app.app.screens.top.name == "main"
+    assert app.composer.text == "not yet"
+    assert app.busy is True, "Escape closed the question, it did not stop the request"
+    assert app.steering.messages == () and app.follow_ups.messages == ()
+    await _stop(app)
+
+
+async def test_choosing_follow_up_holds_the_message_clears_the_draft_and_remembers_it():
+    app = build_app(block=True)
+    harness = _harness(app)
+    harness.write("first")
+    harness.press("enter")
+    await asyncio.sleep(0)
+
+    await _send_during_run(harness, "then run the tests", "f")
+
+    assert app.follow_ups.messages == ("then run the tests",)
+    assert app.steering.messages == (), "a follow-up is not handed to the agent"
+    assert app.agent.runtime.client.agent.emitted == []
+    assert app.composer.text == ""
+    assert app.composer.history[-1] == "then run the tests", "Up recalls it, as for any message sent"
+    assert app.app.screens.top.name == "main"
+    await _stop(app)
+
+
+async def test_choosing_steer_hands_the_message_to_the_agent_and_clears_the_draft():
+    app = build_app(block=True)
+    harness = _harness(app)
+    harness.write("first")
+    harness.press("enter")
+    await asyncio.sleep(0)
+
+    await _send_during_run(harness, "stop and explain", "s")
+
+    assert app.steering.messages == ("stop and explain",)
+    assert app.follow_ups.messages == ()
+    event, _ = app.agent.runtime.client.agent.emitted[-1]
+    assert event.payload == {"content": "stop and explain"}
+    assert app.composer.text == "" and app.composer.history[-1] == "stop and explain"
+    await _stop(app)
+
+
+async def test_enter_alone_answers_the_question_with_the_safe_kind():
+    """The highlighted row is the one that interrupts nothing."""
+    app = build_app(block=True)
+    harness = _harness(app)
+    harness.write("first")
+    harness.press("enter")
+    await asyncio.sleep(0)
+    harness.write("later")
+    harness.press("enter")
+
+    harness.press("enter")
+
+    assert app.follow_ups.messages == ("later",) and app.steering.messages == ()
+    await _stop(app)
+
+
+async def test_a_request_that_ends_while_the_question_is_open_just_sends_the_message():
+    """With nothing running there is nothing to steer or to follow, and asking is over."""
+    app = build_app(hold=True)
+    harness = _harness(app)
+    harness.write("first")
+    harness.press("enter")
+    await asyncio.sleep(0)
+    harness.write("next")
+    harness.press("enter")
+    _send_kind_page(app)
+    first = app.task
+
+    app.agent.runtime.client.released.set()
+    await asyncio.wait_for(first, 2.0)
+    harness.write("f")
+    await _until_idle(app)
+
+    assert app.agent.runtime.client.messages == ["first", "next"]
+    assert app.follow_ups.messages == () and app.composer.text == ""
+
+
+async def test_a_command_running_is_not_a_turn_so_only_a_follow_up_is_possible():
+    """`/compact` cannot be steered, so there is nothing to ask: the message waits, and goes after."""
+    app = build_app(hold=True)
+    harness = _harness(app)
+    harness.write("/compact")
+    harness.press("enter")
+    await asyncio.sleep(0)
+
+    harness.write("and then summarize")
+    harness.press("enter")
+
+    assert app.app.screens.top.name == "main", "no question: one answer is possible"
+    assert app.follow_ups.messages == ("and then summarize",)
+    assert not any(entry.kind == "notice" and "queued as a follow-up" in entry.text for entry in app.transcript.entries)
+    app.agent.runtime.client.released.set()
+    await _until_idle(app)
+    assert app.agent.runtime.client.messages == ["and then summarize"]
+
+
+async def test_an_image_cannot_be_sent_while_a_request_runs_as_either_kind():
+    app = build_app(block=True)
+    harness = _harness(app)
+    harness.write("first")
+    harness.press("enter")
+    await asyncio.sleep(0)
+    app.composer.attach_image(b"png", "image/png")
+
+    harness.press("enter")
+
+    assert app.app.screens.top.name == "main"
+    assert app.follow_ups.messages == () and app.steering.messages == ()
+    assert any(entry.level == "error" and "takes text only" in entry.text for entry in app.transcript.entries)
+    await _stop(app)
+
+
+async def test_follow_ups_stop_at_the_limit_and_keep_the_draft():
+    app, harness = await _running_with(*(f"later {index}" for index in range(MAX_FOLLOW_UPS)))
+
+    harness.write("one too many")
+    harness.press("enter")
+    harness.write("f")
+
+    assert len(app.follow_ups.messages) == MAX_FOLLOW_UPS
+    assert app.composer.text == "one too many", "refused, so the draft stays"
+    assert any(entry.level == "error" and "follow-up limit reached" in entry.text for entry in app.transcript.entries)
+    await _stop(app)
+
+
+async def test_follow_ups_go_out_one_turn_each_in_order_when_the_request_ends():
+    app, _ = await _running_with("one", "two", "three")
+
+    app.agent.runtime.client.released.set()
+    await _until_idle(app)
+
+    assert app.agent.runtime.client.messages == ["first", "one", "two", "three"]
+    # (The fake client echoes each turn as well, so the rows are compared by what they say, once.)
+    shown = [entry.text for entry in app.transcript.entries if entry.kind == "user"]
+    assert [text for text in dict.fromkeys(shown)] == ["first", "one", "two", "three"]
+    assert app.follow_ups.messages == () and app.busy is False
+
+
+async def test_a_follow_up_waits_for_the_one_before_it_to_finish():
+    """One at a time: the second goes out when the first's turn ends, not beside it."""
+    app, _ = await _running_with("one", "two")
+    client = app.agent.runtime.client
+    client.released.set()
+    await asyncio.wait_for(app.task, 2.0)
+
+    # ``one`` is running and ``two`` is still waiting; the runs never overlap.
+    assert app.busy or client.messages == ["first", "one", "two"]
+    await _until_idle(app)
+    assert client.messages == ["first", "one", "two"]
+
+
+async def test_a_stopped_request_keeps_its_follow_ups_and_sends_none_of_them():
+    """Escape is only ever "stop this": it must not cost the reader their list, and it must not
+    send messages that were written for the task that was just stopped."""
+    app, harness = await _running_with("one", "two")
+    harness.write("half a thought")
+
+    await _stop(app)
+
+    assert app.agent.runtime.client.messages == ["first"], "nothing went out"
+    assert app.follow_ups.messages == ("one", "two"), "and nothing was given up"
+    assert app.composer.text == "half a thought", "the draft is the reader's, and untouched"
+    assert any(
+        "2 follow-ups are held and will be sent after your next reply completes" in e.text
+        for e in app.transcript.entries
+    )
+    assert app.busy is False
+
+
+async def test_the_note_about_held_follow_ups_comes_before_the_line_that_says_how_the_request_ended():
+    """The ``Processed for`` row stays the last line, where a reader looks for the outcome."""
+    app, _ = await _running_with("one")
+
+    await _stop(app)
+
+    last = app.transcript.entries[-1]
+    assert last.kind == "wait" and last.text.startswith("Processed for ")
+    assert any(
+        "1 follow-up is held and will be sent after your next reply completes" in e.text for e in app.transcript.entries
+    )
+
+
+async def test_a_steering_message_nobody_read_is_added_after_the_draft_already_there():
+    """It was typed a moment ago to redirect a request that has just ended: it is not held, and
+    it is not dropped either — it is text the reader typed, so it goes back where they type."""
+    app = build_app(block=True)
+    harness = _harness(app)
+    harness.write("first")
+    harness.press("enter")
+    await asyncio.sleep(0)
+    await _send_during_run(harness, "change course", "s")
+    harness.write("half a thought")
+
+    await _stop(app)
+
+    assert app.composer.text == "half a thought\n\nchange course"
+    assert any(
+        "1 steering message was never read by the agent and is back in the draft" in e.text
+        for e in app.transcript.entries
+    )
+
+
+async def test_a_request_that_failed_holds_its_follow_ups_like_one_that_was_stopped():
+    app = build_app(hold=True)
+    harness = _harness(app)
+    real = app.agent.stream
+
+    async def failing(*args, **kwargs):
+        async for event in real(*args, **kwargs):
+            yield event
+        raise RuntimeError("provider down")
+
+    app.agent.stream = failing
+    harness.write("first")
+    harness.press("enter")
+    await asyncio.sleep(0)
+    await _send_during_run(harness, "later", "f")
+
+    app.agent.runtime.client.released.set()
+    await asyncio.wait_for(app.task, 2.0)
+
+    assert app.agent.runtime.client.messages == ["first"], "a failed request is not a conversation that ended well"
+    assert app.follow_ups.messages == ("later",)
+    assert any(entry.level == "error" and "provider down" in entry.text for entry in app.transcript.entries)
+
+
+async def test_a_command_stopped_part_way_holds_what_waited_behind_it():
+    app = build_app(block=True)
+    harness = _harness(app)
+    harness.write("/compact")
+    harness.press("enter")
+    await asyncio.sleep(0)
+    harness.write("afterwards")
+    harness.press("enter")
+    assert app.follow_ups.messages == ("afterwards",)
+
+    await _stop(app)
+
+    assert app.follow_ups.messages == ("afterwards",) and app.composer.text == ""
+    assert app.agent.runtime.client.messages == []
+
+
+async def test_a_queued_command_runs_before_the_follow_ups_behind_it():
+    """``/btw`` is typed as a command and does not join the conversation, so it cannot reorder it."""
+    app, harness = await _running_with("one")
+    harness.write("/btw what is parse()?")
+    harness.press("enter")
+    ran: list[str] = []
+
+    async def spy(context: CommandContext) -> CommandResult:
+        ran.append(f"btw:{app.follow_ups.messages}")
+        return CommandResult()
+
+    app.commands = tuple(
+        replace(command, handler=spy) if command.name == "/btw" else command for command in app.commands
+    )
+    app.agent.runtime.client.released.set()
+    await _until_idle(app)
+
+    assert ran == ["btw:('one',)"], "the command ran while the follow-up was still waiting"
+    assert app.agent.runtime.client.messages == ["first", "one"]
+
+
+def test_a_steering_message_the_agent_never_adopted_is_not_lost_when_a_request_completes():
+    """Defensive: a request that answered normally with one still waiting hands it on."""
+    app = build_app()
+    app._steering = ["adopted never"]
+
+    app._settle_queues(True, turn=True)
+
+    assert app.steering.messages == ()
+    assert app.follow_ups.messages == ("adopted never",), "it goes out next, as a message of its own"
+
+
+async def test_option_up_enters_the_list_from_the_composer_side_and_the_arrow_walks_toward_the_first():
+    app, harness = await _running_with("a", "b", "c")
+    assert app.follow_ups.selected is None
+
+    harness.press("alt_up")
+    assert app.follow_ups.selected == 2, "the row nearest the composer"
+    assert app.follow_ups.messages == ("a", "b", "c"), "entering does not move anything"
+    harness.press("up")
+    assert app.follow_ups.selected == 1
+    harness.press("up")
+    harness.press("up")
+    assert app.follow_ups.selected == 0, "the first row is the end of the list going up"
+    assert app.follow_ups.messages == ("a", "b", "c"), "walking never reorders"
+    await _stop(app)
+
+
+async def test_option_down_enters_at_the_first_row_and_the_arrow_leaves_the_list_past_the_last():
+    app, harness = await _running_with("a", "b")
+
+    harness.press("alt_down")
+    assert app.follow_ups.selected == 0
+    harness.press("down")
+    assert app.follow_ups.selected == 1
+    harness.press("down")
+    assert app.follow_ups.selected is None, "back to the composer"
+    assert app.follow_ups.messages == ("a", "b")
+    await _stop(app)
+
+
+async def test_option_arrows_move_the_highlighted_message_and_the_highlight_goes_with_it():
+    app, harness = await _running_with("a", "b", "c")
+    harness.press("alt_down")  # a
+
+    harness.press("alt_down")
+    assert app.follow_ups.messages == ("b", "a", "c") and app.follow_ups.selected == 1
+    harness.press("alt_down")
+    assert app.follow_ups.messages == ("b", "c", "a") and app.follow_ups.selected == 2
+    harness.press("alt_down")
+    assert app.follow_ups.messages == ("b", "c", "a"), "the last row cannot go later"
+    harness.press("alt_up")
+    harness.press("alt_up")
+    harness.press("alt_up")
+    assert app.follow_ups.messages == ("a", "b", "c") and app.follow_ups.selected == 0
+    await _stop(app)
+
+
+async def test_the_order_the_reader_made_is_the_order_the_messages_are_sent_in():
+    app, harness = await _running_with("a", "b", "c")
+    harness.press("alt_up")  # enters at c
+    harness.press("alt_up")
+    harness.press("alt_up")  # c, a, b
+
+    harness.press("escape")
+    app.agent.runtime.client.released.set()
+    await _until_idle(app)
+
+    assert app.agent.runtime.client.messages == ["first", "c", "a", "b"]
+
+
+async def test_enter_on_a_highlighted_message_takes_it_out_and_into_the_composer():
+    app, harness = await _running_with("a", "b", "c")
+    harness.press("alt_up")  # c
+    harness.press("up")  # b
+
+    harness.press("enter")
+
+    assert app.composer.text == "b"
+    assert app.follow_ups.messages == ("a", "c") and app.follow_ups.selected is None
+    assert app.app.screens.top.name == "main", "no question: it is going back where it came from"
+    await _stop(app)
+
+
+async def test_a_message_that_was_edited_goes_back_to_the_slot_it_left():
+    app, harness = await _running_with("a", "b", "c")
+    harness.press("alt_up")
+    harness.press("up")
+    harness.press("enter")
+    harness.write(" and more")
+
+    harness.press("enter")
+
+    assert app.follow_ups.messages == ("a", "b and more", "c"), "in the middle, not at the end"
+    assert app.app.screens.top.name == "main", "still a follow-up, so nothing is asked again"
+    assert app.composer.text == "" and app._editing_slot is None
+    await _stop(app)
+
+
+async def test_enter_does_not_overwrite_a_draft_that_is_already_there():
+    app, harness = await _running_with("a", "b")
+    harness.write("half a thought")
+    harness.press("alt_up")
+
+    harness.press("enter")
+
+    assert app.composer.text == "half a thought"
+    assert app.follow_ups.messages == ("a", "b"), "nothing was taken out"
+    assert "clear the draft" in app._flash[0]
+    await _stop(app)
+
+
+async def test_clearing_the_draft_abandons_an_edit_and_the_message_is_gone():
+    app, harness = await _running_with("a", "b")
+    harness.press("alt_up")
+    harness.press("enter")
+    assert app.composer.text == "b"
+
+    app.composer.clear()
+
+    assert app.follow_ups.messages == ("a",) and app._editing_slot is None
+
+
+async def test_typing_lets_go_of_the_highlight():
+    app, harness = await _running_with("a", "b")
+    harness.press("alt_up")
+    assert app.follow_ups.selected == 1
+
+    harness.write("x")
+
+    assert app.follow_ups.selected is None
+    assert app.composer.text == "x"
+    await _stop(app)
+
+
+async def test_escape_lets_go_of_the_highlight_without_stopping_the_request():
+    """Escape stops a running request, so it must not do that while it is being used to let go."""
+    app, harness = await _running_with("a", "b")
+    harness.press("alt_up")
+
+    harness.press("escape")
+
+    assert app.follow_ups.selected is None
+    assert app.busy is True and not app.task.done(), "the request is still running"
+    assert app.follow_ups.messages == ("a", "b")
+
+    harness.press("escape")
+    await asyncio.wait_for(asyncio.gather(app.task, return_exceptions=True), 2.0)
+    assert app.busy is False, "with nothing highlighted, the second Escape stops it as it always did"
+
+
+async def test_the_keys_do_nothing_when_there_is_nothing_to_select():
+    app = build_app(block=True)
+    harness = _harness(app)
+    harness.write("first")
+    harness.press("enter")
+    await asyncio.sleep(0)
+    harness.write("draft")
+
+    for key in ("alt_up", "alt_down", "delete"):
+        harness.press(key)
+
+    assert app.composer.text == "draft", "Delete with nothing highlighted is still the composer's"
+    assert app.follow_ups.selected is None
+    await _stop(app)
+
+
+async def test_the_plain_arrows_and_enter_belong_to_the_composer_when_nothing_is_highlighted():
+    """Up and Down are history and the cursor until a message is highlighted; Enter still sends."""
+    app, harness = await _running_with("a", "b")
+
+    harness.press("up")
+    harness.press("down")
+    assert app.follow_ups.messages == ("a", "b") and app.follow_ups.selected is None
+    harness.write("typed")
+    harness.press("enter")
+    assert app.app.screens.top.name == "page", "Enter asked what the typed message is"
+    await _stop(app)
+
+
+async def test_the_follow_up_keys_are_off_while_a_question_is_on_screen():
+    app, harness = await _running_with("a", "b")
+    harness.write("another")
+    harness.press("enter")
+    assert app.app.screens.top.name == "page"
+
+    harness.press("alt_up")
+
+    assert app.follow_ups.selected is None, "the question has the keys"
+    await _stop(app)
+
+
+async def test_the_highlight_stays_on_the_same_message_when_the_first_one_is_sent():
+    """The head goes out and every row moves up one; the highlight moves with its message."""
+    app, harness = await _running_with("a", "b", "c")
+    harness.press("alt_up")  # c
+    assert app.follow_ups.selected == 2
+
+    app._start_follow_up()  # what the end of the running request does
+
+    assert app.follow_ups.messages == ("b", "c")
+    assert app.follow_ups.selected == 1, "still on c"
+    app._start_follow_up()
+    assert app.follow_ups.messages == ("c",) and app.follow_ups.selected == 0
+    app._start_follow_up()
+    assert app.follow_ups.messages == () and app.follow_ups.selected is None, "its message was sent"
+    app.agent.runtime.client.released.set()
+    await _until_idle(app)
+
+
+async def test_the_keys_line_is_on_screen_and_changes_when_a_message_is_highlighted():
+    """The point of the hint: a reader who never read the docs can see what to press."""
+    app, harness = await _running_with("a", "b")
+    harness.resize(110, 24)
+
+    idle = harness.render().text
+    assert f"{OPTION}+\u2191/\u2193 to select" in idle and "\u2022 a" in idle and "follow-up" in idle
+
+    harness.press("alt_up")
+    chosen = harness.render().text
+    for shown in ("\u2191/\u2193 select", f"{OPTION}+\u2191/\u2193 reorder", "enter edit", "del remove", "esc done"):
+        assert shown in chosen
+    assert "\u25b8 b" in chosen
+    await _stop(app)
+
+
+async def test_option_and_plain_arrows_work_from_the_bytes_a_terminal_sends():
+    """The whole path: terminal bytes, decoder, bridge, keymap — in each spelling a terminal uses."""
+    app, harness = await _running_with("a", "b", "c")
+
+    _press_bytes(harness, b"\x1b[1;3A")  # option+up, xterm modifiers: walks in, at c
+    assert app.follow_ups.selected == 2
+    _press_bytes(harness, b"\x1b[A")  # plain up: the highlight, to b
+    assert app.follow_ups.selected == 1 and app.follow_ups.messages == ("a", "b", "c")
+    _press_bytes(harness, b"\x1b\x1b[A")  # option+up as "Option sends Esc+": moves b, never Escape then Up
+    assert app.follow_ups.messages == ("b", "a", "c") and app.follow_ups.selected == 0
+    assert app.busy is True and not app.task.done(), "the second spelling did not stop the request"
+    _press_bytes(harness, b"\x1b[1;3B")  # option+down: back
+    assert app.follow_ups.messages == ("a", "b", "c") and app.follow_ups.selected == 1
+    await _stop(app)
+
+
+async def test_delete_removes_the_highlighted_follow_up_and_the_highlight_stays_in_its_place():
+    app, harness = await _running_with("a", "b", "c")
+    harness.press("alt_down")  # a
+    harness.press("down")  # b
+
+    harness.press("delete")
+
+    assert app.follow_ups.messages == ("a", "c")
+    assert app.follow_ups.selected == 1, "c moved up into the place b left, and is highlighted"
+    await _stop(app)
+
+
+async def test_deleting_the_last_row_moves_the_highlight_to_the_one_before_it():
+    app, harness = await _running_with("a", "b")
+    harness.press("alt_up")  # b, the last
+
+    harness.press("delete")
+
+    assert app.follow_ups.messages == ("a",) and app.follow_ups.selected == 0
+    await _stop(app)
+
+
+async def test_deleting_the_only_follow_up_empties_the_list_and_gives_the_rows_back():
+    app, harness = await _running_with("only")
+    harness.press("alt_up")
+
+    harness.press("delete")
+
+    assert app.follow_ups.messages == () and app.follow_ups.selected is None
+    assert app.follow_ups.preferred_height() == 0, "the container collapses"
+    await _stop(app)
+
+
+@pytest.mark.parametrize("key", ["backspace", "delete"])
+async def test_both_the_key_a_mac_calls_delete_and_the_one_everywhere_else_remove_it(key):
+    app, harness = await _running_with("a", "b")
+    harness.press("alt_up")
+
+    harness.press(key)
+
+    assert app.follow_ups.messages == ("a",)
+    await _stop(app)
+
+
+async def test_a_removed_follow_up_is_never_sent():
+    app, harness = await _running_with("a", "b", "c")
+    harness.press("alt_down")  # a
+    harness.press("down")  # b
+    harness.press("delete")
+
+    app.agent.runtime.client.released.set()
+    await _until_idle(app)
+
+    assert app.agent.runtime.client.messages == ["first", "a", "c"]
+
+
+async def test_the_line_above_the_composer_names_what_was_removed():
+    app, harness = await _running_with("a long message that says what it was for and then goes on and on")
+    harness.press("alt_up")
+
+    harness.press("delete")
+
+    shown = app._flash[0]
+    assert shown.startswith("removed follow-up: a long message that says what it was")
+    assert shown.endswith("\u2026"), "long messages are cut, the way the row cuts them"
+    await _stop(app)
+
+
+async def test_removing_a_row_above_a_message_being_edited_keeps_its_slot_right():
+    """The edited message goes back where it was *among the others*, and the others moved."""
+    app, harness = await _running_with("a", "b", "c", "d")
+    harness.press("alt_up")  # d
+    harness.press("up")  # c
+    harness.press("enter")  # c is in the composer, slot 2, list a b d
+    assert app._editing_slot == 2
+    harness.press("alt_down")  # walks in at a
+    harness.press("delete")  # a is gone: b d, and b is highlighted
+    assert app.follow_ups.selected == 0
+    harness.press("escape")  # let go, so that Enter sends the draft instead of editing b
+
+    harness.press("enter")  # send c back
+
+    assert app.follow_ups.messages == ("b", "c", "d"), "still between b and d"
+    await _stop(app)
+
+
+async def test_backspace_still_edits_the_draft_when_nothing_is_highlighted():
+    """The keys are the list's only while a message is highlighted."""
+    app, harness = await _running_with("a")
+    harness.write("typed")
+
+    harness.press("backspace")
+    harness.press("delete")
+
+    assert app.composer.text == "type"
+    assert app.follow_ups.messages == ("a",)
+    await _stop(app)
+
+
+async def test_delete_works_from_the_bytes_a_terminal_sends():
+    """Backspace is 0x7f and forward delete is CSI 3~: both arrive as keys the list binds."""
+    app, harness = await _running_with("a", "b", "c")
+    _press_bytes(harness, b"\x1b[1;3A")  # alt+up: c
+    _press_bytes(harness, b"\x7f")
+    assert app.follow_ups.messages == ("a", "b")
+    _press_bytes(harness, b"\x1b[3~")
+    assert app.follow_ups.messages == ("a",)
+    await _stop(app)
+
+
+async def test_the_keys_line_lists_delete_beside_edit():
+    app, harness = await _running_with("a", "b")
+    harness.resize(110, 24)
+    harness.press("alt_up")
+
+    assert "enter edit \u00b7 del remove" in harness.render().text
+    await _stop(app)
+
+
+async def test_after_a_stop_the_next_reply_that_completes_releases_the_held_follow_ups_behind_it():
+    """The whole shape of it: stop, say something else, and when *that* finishes, the list goes on."""
+    app, harness = await _running_with("one", "two")
+    await _stop(app)
+    assert app.follow_ups.messages == ("one", "two")
+
+    harness.write("do this instead")
+    harness.press("enter")
+    app.agent.runtime.client.released.set()
+    await _until_idle(app)
+
+    assert app.agent.runtime.client.messages == ["first", "do this instead", "one", "two"]
+    assert app.follow_ups.messages == () and app.busy is False
+
+
+async def test_the_list_waits_while_nothing_is_running_and_says_what_it_is_waiting_for():
+    app, harness = await _running_with("one")
+    harness.resize(110, 24)
+    assert "sent in order after a reply completes" in harness.render().text
+
+    await _stop(app)
+
+    assert "held until your next reply completes" in harness.render().text
+    assert "sent in order after a reply completes" not in harness.render().text
+
+
+async def test_stopping_a_follow_ups_own_turn_leaves_the_rest_held():
+    """Stopped is stopped, whether the turn was typed or released from the list."""
+    app, _ = await _running_with("one", "two", "three")
+    client = app.agent.runtime.client
+    original = app.task
+
+    app._start_follow_up()  # what the end of a reply does: "one" goes out as a turn of its own
+    await asyncio.sleep(0)
+    assert app.follow_ups.messages == ("two", "three") and app._turn_running
+
+    await _stop(app)  # the reader stops that turn
+
+    assert client.messages == ["first", "one"], "two and three never went out"
+    assert app.follow_ups.messages == ("two", "three"), "and are not given up"
+    assert app._follow_ups_held
+    client.released.set()
+    await asyncio.gather(original, return_exceptions=True)
+
+
+async def test_a_message_edited_while_the_list_is_held_is_sent_now_and_the_rest_follow_it():
+    """With nothing running Enter means send, so an edited follow-up becomes the next reply."""
+    app, harness = await _running_with("one", "two")
+    await _stop(app)
+    harness.press("alt_up")  # two
+    harness.press("enter")
+    assert app.composer.text == "two" and app.follow_ups.messages == ("one",)
+    harness.write(" first, please")
+
+    harness.press("enter")
+    app.agent.runtime.client.released.set()
+    await _until_idle(app)
+
+    assert app.agent.runtime.client.messages == ["first", "two first, please", "one"]
+    assert app._editing_slot is None
+
+
+async def test_a_command_queued_behind_a_stopped_request_still_runs_but_the_list_stays_held():
+    app, harness = await _running_with("one")
+    harness.write("/btw what is parse()?")
+    harness.press("enter")
+    ran: list[str] = []
+
+    async def spy(context: CommandContext) -> CommandResult:
+        ran.append(context.argument)
+        return CommandResult()
+
+    app.commands = tuple(
+        replace(command, handler=spy) if command.name == "/btw" else command for command in app.commands
+    )
+
+    await _stop(app)
+    if app.task is not None:
+        await asyncio.gather(app.task, return_exceptions=True)
+
+    assert ran == ["what is parse()?"], "it was typed as a command and asked for"
+    assert app.follow_ups.messages == ("one",) and app.agent.runtime.client.messages == ["first"]
+
+
+async def test_a_new_session_hands_the_held_follow_ups_back_because_their_conversation_is_over():
+    app, harness = await _running_with("one", "two")
+    await _stop(app)
+
+    harness.write("/new")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    assert app.follow_ups.messages == ()
+    assert app.composer.text == "one\n\ntwo"
+    assert any(
+        "2 held follow-ups from the previous session are back in the draft" in e.text for e in app.transcript.entries
+    )
+    assert app.agent.runtime.client.messages == ["first"], "nothing was sent into the new conversation"
+
+
+async def test_resuming_another_session_hands_the_held_follow_ups_back_too(tmp_path):
+    app = await _seeded_app(tmp_path, turns=2)
+    harness = _harness(app)
+    app.agent.runtime.client.hold = True
+    harness.write("first")
+    harness.press("enter")
+    await asyncio.sleep(0)
+    await _send_during_run(harness, "a follow-up", "f")
+    await _stop(app)
+    assert app.follow_ups.messages == ("a follow-up",)
+
+    app.select_session("previous")
+    await asyncio.wait_for(app.task, 2.0)
+
+    assert app.follow_ups.messages == () and app.composer.text == "a follow-up"
+    assert any(
+        "1 held follow-up from the previous session is back in the draft" in e.text for e in app.transcript.entries
+    )
+
+
+async def test_a_completed_command_releases_the_follow_ups_that_waited_for_it():
+    app = build_app(hold=True)
+    harness = _harness(app)
+    harness.write("/compact")
+    harness.press("enter")
+    await asyncio.sleep(0)
+    harness.write("and then summarize")
+    harness.press("enter")
+
+    app.agent.runtime.client.released.set()
+    await _until_idle(app)
+
+    assert app.agent.runtime.client.messages == ["and then summarize"]
+
+
+async def test_a_list_emptied_while_held_does_not_hold_the_messages_that_come_after():
+    """The hold is about the messages that were waiting at the stop, not about the session."""
+    app, harness = await _running_with("one")
+    await _stop(app)
+    harness.press("alt_up")
+    harness.press("delete")
+    assert app.follow_ups.messages == ()
+
+    app.agent.runtime.client.hold = True
+    harness.write("/compact")
+    harness.press("enter")
+    await asyncio.sleep(0)
+    harness.write("and then summarize")
+    harness.press("enter")
+    assert app.follow_ups.messages == ("and then summarize",)
+    app.agent.runtime.client.released.set()
+    await _until_idle(app)
+
+    assert app.agent.runtime.client.messages == ["first", "and then summarize"]
+
+
+async def test_sending_an_edited_follow_up_while_idle_leaves_no_stale_slot_behind():
+    """Otherwise the next message typed during a request is taken for the edited one, put into
+    the list without asking, and never offered the choice of steering."""
+    app, harness = await _running_with("one", "two")
+    await _stop(app)
+    harness.press("alt_up")
+    harness.press("enter")  # "two" is in the composer, with its slot remembered
+    harness.press("enter")  # nothing is running: it is simply sent
+    await asyncio.sleep(0)  # and its turn starts
+    assert app.busy and app._editing_slot is None
+
+    harness.write("another thought")
+    harness.press("enter")
+
+    assert app.app.screens.top.name == "page", "a new message during a request is asked about again"
+    await _stop(app)
