@@ -188,6 +188,31 @@ class SessionPersistenceMixin:
             if SAFE_SESSION_ID.match(session_id) and ".." not in session_id:
                 yield session_id
 
+    def exists(self, session_id: str) -> bool:
+        """Say whether a session was started, by reading the one line that says so.
+
+        A session file opens with its header, so that line answers the question.
+        :meth:`read` is the call that checks the whole file, and it is the wrong one
+        to ask a yes-or-no question with: on a long session it parses every message
+        to report what the first line already says, and a command line that did so
+        before resuming paid for the parse twice — once to be told the session was
+        there, and again, in a store that had not kept the first, to open it.
+
+        Args:
+            session_id: The session to look for.
+
+        Returns:
+            ``True`` when the file exists and its first record is a session header.
+        """
+        try:
+            with self.session_path(session_id).open("rb") as handle:
+                for line in handle:
+                    if line.strip():
+                        return isinstance(LINES.validate_json(line), SessionLine)
+        except (OSError, ValidationError):
+            return False
+        return False
+
     def read(self, session_id: str) -> Session:
         """Parse one session file, tolerating a half-written final line."""
         path = self.session_path(session_id)
@@ -199,7 +224,12 @@ class SessionPersistenceMixin:
         cached = self._sessions.get(session_id)
         if cached is not None and cached[0] == stamp:
             return cached[1]
-        lines = path.read_text(encoding="utf-8").splitlines()
+        # Bytes, not text: the parser takes them as they are, so the file is not
+        # decoded to a string only to be encoded again, and a line is only ever split
+        # where the file's own newline is. ``str.splitlines`` also breaks at U+2028,
+        # U+2029, and U+0085, which JSON writes into a string as they are — a
+        # message that held one was cut in half and the file called corrupt.
+        lines = path.read_bytes().splitlines()
         header: SessionLine | None = None
         messages: list[MessageLine] = []
         compactions: list[CompactionLine] = []

@@ -219,6 +219,87 @@ def test_a_torn_final_line_is_ignored_and_a_corrupt_middle_line_is_not(tmp_path:
         store.read("s1")
 
 
+async def test_a_message_holding_a_unicode_line_separator_is_read_back_whole(tmp_path: Path):
+    """JSON writes U+2028, U+2029, and U+0085 into a string as they are, and a record is one line.
+
+    ``str.splitlines`` breaks at all three, so a message that quoted one — a pasted
+    log, a page of prose with a paragraph separator — was cut in half when its session
+    was read and the file reported as corrupt. The file's own newline is the only
+    thing that ends a record.
+    """
+    text = "before\u2028middle\u2029after\x85end — and a tab\tand a form feed\x0c"
+    writer = SessionStore(tmp_path)
+    await writer.append("s1", "r", UserMessage(content=text))
+    await writer.append("s1", "r", AssistantMessage(content=text))
+
+    session = SessionStore(tmp_path).read("s1")
+
+    assert [line.message[0].content for line in session.messages] == [text, text]
+
+
+def test_a_final_line_cut_in_the_middle_of_a_character_is_ignored(tmp_path: Path):
+    """A crash can stop an append between the bytes of one character, not only between lines.
+
+    Decoding the whole file first made that a ``UnicodeDecodeError`` for every record
+    before it; read as bytes, the torn line is the one the parser rejects, and the
+    rule that tolerates a half-written final line covers it.
+    """
+    store = SessionStore(tmp_path)
+    store._append_line("s1", _header("s1"))
+    store._append_line("s1", _stored_message("s1", id="m1", parent=None))
+    with store.session_path("s1").open("ab") as handle:
+        handle.write('{"kind": "message", "id": "中'.encode()[:-1])  # two of the character's three bytes
+
+    assert [line.id for line in SessionStore(tmp_path).read("s1").messages] == ["m1"]
+
+
+async def test_asking_whether_a_session_exists_reads_one_line(tmp_path: Path, monkeypatch):
+    """The header answers the question, so a long session is not parsed to be told it is there.
+
+    A command line that resumes asked this with a fresh store, which cannot have kept
+    the parse for the store that opens the session next: the same file was parsed
+    twice, and on a long one the first of them cost more than any other stage.
+    """
+    from zettcode.app.agent.storage import store as store_module
+
+    writer = SessionStore(tmp_path)
+    for index in range(200):
+        await writer.append("s1", f"r{index}", UserMessage(content=f"message {index}"))
+    parsed: list[int] = []
+    real = store_module.LINES
+
+    class Counting:
+        def validate_json(self, line):
+            parsed.append(len(line))
+            return real.validate_json(line)
+
+    monkeypatch.setattr(store_module, "LINES", Counting())
+
+    assert SessionStore(tmp_path).exists("s1") is True
+    assert len(parsed) == 1, "one line, however long the session"
+
+    assert SessionStore(tmp_path).exists("missing") is False
+    assert len(parsed) == 1, "a session that is not there reads nothing"
+
+
+def test_a_file_that_does_not_open_with_a_header_is_not_a_session(tmp_path: Path):
+    store = SessionStore(tmp_path)
+    path = store.session_path("s1")
+    path.parent.mkdir(parents=True)
+
+    path.write_bytes(b"")
+    assert store.exists("s1") is False, "empty"
+
+    path.write_bytes(b"not json at all\n")
+    assert store.exists("s1") is False, "garbage"
+
+    path.write_text(_stored_message("s1", id="m1", parent=None).model_dump_json() + "\n", encoding="utf-8")
+    assert store.exists("s1") is False, "a message first"
+
+    path.write_text("\n\n" + _header("s1").model_dump_json() + "\n", encoding="utf-8")
+    assert store.exists("s1") is True, "blank lines before the header do not hide it"
+
+
 def test_session_ids_cannot_leave_the_store(tmp_path: Path):
     store = SessionStore(tmp_path)
 
@@ -259,13 +340,13 @@ def test_a_session_is_parsed_once_and_then_served_from_the_cache(tmp_path: Path,
     store._append_line("s1", _stored_message("s1", id="m1", parent=None))
     path = store.session_path("s1")
     reads: list[Path] = []
-    original = Path.read_text
+    original = Path.read_bytes
 
     def spy(self: Path, *args, **kwargs):
         reads.append(self)
         return original(self, *args, **kwargs)
 
-    monkeypatch.setattr(Path, "read_text", spy)
+    monkeypatch.setattr(Path, "read_bytes", spy)
 
     first = store.read("s1")
     second = store.read("s1")
@@ -312,13 +393,13 @@ async def test_appending_does_not_reparse_the_whole_file(tmp_path: Path, monkeyp
     store.read("s1")
     path = store.session_path("s1")
     reads: list[Path] = []
-    original = Path.read_text
+    original = Path.read_bytes
 
     def spy(self: Path, *args, **kwargs):
         reads.append(self)
         return original(self, *args, **kwargs)
 
-    monkeypatch.setattr(Path, "read_text", spy)
+    monkeypatch.setattr(Path, "read_bytes", spy)
 
     second = await store.append("s1", "req", AssistantMessage(content="hi"))
     session = store.read("s1")
@@ -710,3 +791,110 @@ async def test_a_stale_compaction_range_is_rejected(tmp_path: Path):
             ctx,
             CompactionEvent(compressed_from=1, compressed_to=9, kept_from=1, kept_to=1, summary="too far"),
         )
+
+
+# -- messages that are decoded when someone looks inside ---------------------------
+
+
+async def test_a_line_read_from_the_file_is_not_decoded_until_it_is_looked_into(tmp_path: Path):
+    """Decoding a message into its runtime type is the one step that costs Python time per message.
+
+    A reader that wants the whole branch pays it; one that wants the newest part and the
+    usage beside the message must not.
+    """
+    writer = SessionStore(tmp_path)
+    for index in range(20):
+        await writer.append("s1", f"r{index}", UserMessage(content=f"message {index}"))
+
+    session = SessionStore(tmp_path).read("s1")
+    lines = session.messages
+
+    assert not any(line.message.decoded for line in lines), "reading decodes nothing"
+    assert [len(line.message) for line in lines] == [1] * 20, "the length is known without decoding"
+    assert not any(line.message.decoded for line in lines), "and so is asking how many"
+
+    assert lines[7].message[0].content == "message 7"
+    assert [line.message.decoded for line in lines].count(True) == 1, "only the one that was looked into"
+
+
+async def test_an_undecoded_line_is_written_back_exactly_as_it_was_read(tmp_path: Path):
+    """The stored form is the envelope, so a line nobody opened must not change on its way out."""
+    writer = SessionStore(tmp_path)
+    await writer.append("s1", "r", UserMessage(content="hello \u2028 world"))
+    await writer.append(
+        "s1", "r", AssistantMessage(content="hi", tool_calls=(ToolCall("c1", "read_file", {"path": "a.py"}),))
+    )
+    stored = [json.loads(line) for line in writer.session_path("s1").read_bytes().splitlines()]
+
+    session = SessionStore(tmp_path).read("s1")
+
+    for line, raw in zip(session.messages, stored[1:], strict=True):
+        assert json.loads(line.model_dump_json())["message"] == raw["message"]
+        assert not line.message.decoded, "writing it out did not open it"
+
+
+async def test_a_message_sequence_behaves_as_the_tuple_it_replaces(tmp_path: Path):
+    writer = SessionStore(tmp_path)
+    await writer.append("s1", "r", UserMessage(content="first"))
+
+    (lazy,) = SessionStore(tmp_path).read("s1").messages
+    messages = lazy.message
+
+    assert len(messages) == 1
+    assert [message.content for message in messages] == ["first"]
+    assert messages[0] is messages[-1]
+    assert messages[0:1] == (messages[0],)
+    assert messages == (messages[0],) and messages == messages
+    assert messages != ()
+    assert "decoded" in repr(messages)
+    with pytest.raises(TypeError):
+        hash(messages)
+    with pytest.raises(IndexError):
+        messages[1]
+
+
+def test_messages_built_in_python_are_validated_when_they_are_built():
+    """A writer that hands over a malformed envelope is told at once, before anything is written."""
+    with pytest.raises(ValidationError):
+        MessageLine(
+            id="m",
+            session_id="s",
+            request_id="r",
+            message=({"kind": 99, "data": {}},),
+            timing=MessageTiming.instant(),
+            created_at=now(),
+        )
+
+    line = MessageLine(
+        id="m",
+        session_id="s",
+        request_id="r",
+        message=({"kind": 2, "data": {"content": "hi"}},),
+        timing=MessageTiming.instant(),
+        created_at=now(),
+    )
+    assert line.message.decoded and line.message[0].content == "hi"
+
+
+async def test_a_corrupt_envelope_in_a_line_nobody_opens_is_found_when_somebody_does(tmp_path: Path):
+    """The cost of deferring: the line parses, and an envelope the runtime cannot decode shows later.
+
+    The structure of a record is still checked when the file is read, so a torn or
+    reordered file is refused as before; only a well-formed line holding an envelope of a
+    kind the runtime does not know waits for the first look.
+    """
+    writer = SessionStore(tmp_path)
+    await writer.append("s1", "r", UserMessage(content="fine"))
+    path = writer.session_path("s1")
+    record = json.loads(path.read_bytes().splitlines()[-1])
+    record["id"] = "bad"
+    record["parent"] = json.loads(path.read_bytes().splitlines()[-1])["id"]
+    record["message"] = [{"kind": 99, "data": {}}]
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record) + "\n")
+
+    session = SessionStore(tmp_path).read("s1")
+
+    assert [line.id for line in session.messages][-1] == "bad", "the file reads"
+    with pytest.raises(ValueError):
+        session.messages[-1].message[0]

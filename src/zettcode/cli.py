@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from .app.agent.agent import ZettCodeAgent
     from .app.ui.app import ZettCodeApp
     from .config import ZettCodeConfig
+    from .tui import Theme, TuiApp
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,7 +93,7 @@ def session_exists(config: ZettCodeConfig, session_id: str) -> bool:
     """Return whether the store holds a session with this id in this workspace."""
     from .app.agent.storage import SessionStore
 
-    return SessionStore(config.store, config.workspace).read(session_id).header is not None
+    return SessionStore(config.store, config.workspace).exists(session_id)
 
 
 def resume_hint(agent: ZettCodeAgent) -> str | None:
@@ -193,12 +194,20 @@ def _name_process() -> None:
         return
 
 
-def build_application(options: Options) -> ZettCodeApp:
+def build_application(options: Options, *, terminal: TuiApp | None = None) -> ZettCodeApp:
     """Read the settings and build the application, off the event loop.
 
     Runs in a worker thread: the config read, the shell's imports, and the
     runtime preview together cost about 130 ms, and the composer is already on
     screen taking the reader's keys while this happens.
+
+    Args:
+        options: What the command line asked for.
+        terminal: The app already painting the boot frame, when there is one. A
+            resumed session's rows are measured while the file is read, and they
+            can only be measured at the width and in the palette of the terminal
+            they are going to: this app knows both, and the tree built here does
+            not yet.
     """
     from .app import ZettCodeApp
     from .app.agent.agent import ZettCodeAgent
@@ -214,7 +223,15 @@ def build_application(options: Options) -> ZettCodeApp:
     agent = ZettCodeAgent.preview(config)
     app = ZettCodeApp(agent, theme=theme, auto_theme=config.theme_file is None)
     if options.resume is not None:
-        app.restore_session(options.resume)
+        window = None
+        if terminal is not None:
+
+            def window() -> tuple[int, Theme]:
+                # A palette the reader configured is the one the tree will paint in; with
+                # none, the terminal chooses and the running app already has its answer.
+                return terminal.width, theme if config.theme_file is not None else terminal.theme
+
+        app.restore_session(options.resume, window=window)
     return app
 
 
@@ -224,10 +241,13 @@ async def launch(options: Options) -> None:
     Nothing the first frame shows needs the config, the runtime, or the widget
     library, so the terminal is taken with a frame drawn from the framework
     alone, the application is built in a worker thread, and the running app is
-    handed the real tree as soon as it exists.
+    handed the real tree as soon as it exists. The work that belongs to the first
+    turn — the provider and its client, the token counter, the release check —
+    starts once the frame carrying the real tree has been written: it shares the
+    interpreter's one lock with the drawing, and the frame is what the reader is
+    waiting for.
 
-    Two lanes run at once and meet at the swap. The times are this machine's
-    medians from ``python -m perf.startup``; the order is what the tests pin —
+    Two lanes run at once and meet at the swap; the order is what the tests pin —
     the frame before the terminal is asked anything, and nothing on it that the
     shell does not draw in the same cell.
 
@@ -235,22 +255,76 @@ async def launch(options: Options) -> None:
 
         main thread: the frame             worker thread: the application
         ------------------------------     ------------------------------------
-        import the boot frame   ~50 ms
+        import the boot frame
         TuiApp(boot_tree(...))
         runner.run()
           enter alternate screen
-          mount(), paint()      ~65 ms --> the reader sees the composer
-          query_background()    ......    its answer returns as input, not a wait
+          mount(), paint()          -----> the reader sees the composer
+          query_background()   ......      its answer returns as input, not a wait
           start the reader
-                                           resolve_config()           ~60 ms
-                                           import ZettCodeApp         ~57 ms
-                                           ZettCodeAgent.preview()     ~2 ms
+                                           resolve_config()
+                                           import ZettCodeApp
+                                           ZettCodeAgent.preview()
                                            ZettCodeApp(agent, ...)
                                            restore_session()   (--resume only)
-        app.adopt(tui)         <--------- the build returns
-        tui.set_root(...)     ~160 ms --> the real tree replaces it, whole frame
+        app.adopt(tui)         <---------  the build returns
+        tui.set_root(...)          ----->  the real tree replaces it, whole frame
                                            start_background(): warm the runtime,
                                            check for a release
+
+    When each moment arrives, in milliseconds from the process starting, on this
+    machine at 120 columns. The right column is a 25 MB session of 5714
+    messages; the left is the same launch with nothing to restore.
+
+    +--------------------------------------+---------+---------+
+    | moment                               | fresh   | resume  |
+    +======================================+=========+=========+
+    | the interpreter, and the cli imported|    67   |    66   |
+    | the build thread starts              |    86   |    84   |
+    | the boot frame is on screen          |    88   |    86   |
+    | the shell and the agent are imported |   200   |   203   |
+    | the stored file is parsed            |     -   |   293   |
+    | it is replayed into the rows         |     -   |   339   |
+    | those rows are measured              |   203   |   400   |
+    | the tree is swapped in, content on   |   206   |   405   |
+    | the background imports are done      |   747   |  1009   |
+    +--------------------------------------+---------+---------+
+
+    Medians of five runs. The resume half is what ``python -m perf.resume``
+    measures again on any machine; the shape is what matters here. A character
+    cell is 20 ms, and a blank stretch on the main lane is the frame loop waiting
+    for the build rather than working:
+
+    .. code-block:: text
+
+        resume — the 25 MB session, at 120 columns
+                        ms
+                        |    |    |    |    |    |    |    |    |    |
+                        0    100  200  300  400  500  600  700  800  900
+          main          ###==               =
+          worker            ######pppprrmmmm
+          hidden            ..............................................
+                                            ^
+
+          # interpreter + imports   = a frame   p parsing the file
+          r replaying it into rows   m measuring those rows   . warming the runtime
+          ^ the reader can type; everything to its right in "hidden" is behind them
+
+        fresh start — the same launch with nothing to restore
+                        ms
+                        |    |    |    |    |    |    |    |    |    |
+                        0    100  200  300  400  500  600  700  800  900
+          main          ###==     =
+          worker            ######
+          hidden            ..................................
+                                  ^
+
+          # interpreter + imports   = a frame   . warming the runtime
+          ^ the reader can type
+
+    The warm-up is the part the reader never waits for: on the resumed launch it
+    runs for another 600 ms after they can type, and the first turn waits for it
+    there rather than here.
 
     Args:
         options: What the command line asked for.
@@ -279,9 +353,12 @@ async def launch(options: Options) -> None:
     running = asyncio.ensure_future(runner.run())
     app: ZettCodeApp | None = None
     try:
-        app = await asyncio.to_thread(build_application, options)
+        app = await asyncio.to_thread(build_application, options, terminal=tui)
         app.adopt(tui)
-        app.start_background()
+        # The imports the first turn needs start once the real frame is on the screen,
+        # not when the tree is swapped in: they share the interpreter's one lock with
+        # the drawing, and the frame is what the reader is waiting for.
+        runner.after_next_paint(app.start_background)
         await running
     finally:
         if app is not None:

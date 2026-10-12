@@ -115,7 +115,7 @@ class ShellCommands(CommandProvider):
         and the same call opens the session `--resume` names on the command line.
         """
         if context.argument:
-            self.shell.restore_session(context.argument)
+            await self.shell.resume_session(context.argument)
             return CommandResult(notification=f"resumed session {context.argument[:8]}", relayout=True)
         sessions = await self.shell.agent.list_sessions(limit=20)
         if not sessions:

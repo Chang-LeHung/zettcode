@@ -122,6 +122,15 @@ class ShellState:
     def close_page(self) -> None:
         """Close the page a command presented."""
 
+    async def resume_session(self, session_id: str) -> None:
+        """Restore a stored session behind the interface rather than in front of it."""
+
+    def _set_busy(self, busy: bool) -> None:
+        """Track in-flight work and keep the frame loop alive while it runs."""
+
+    def _start_next_command(self) -> None:
+        """Run the command that was typed while the finished request was busy."""
+
     def submit(self, value: str) -> bool | None:
         """Start a turn, steer the running one, or run a slash command."""
 

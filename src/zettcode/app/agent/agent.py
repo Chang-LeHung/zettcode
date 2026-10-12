@@ -34,7 +34,7 @@ from .context import ContextReport
 from .export import build_trace, render_html, write_export
 from .mentions import MentionProvider, MentionRegistry
 from .permission import PERMISSION_LEVELS, Permission
-from .replay import replay
+from .replay import Replayed, replay
 from .runtime import ZettCodeRuntime, build_system_prompt
 from .side import SIDE, question
 from .storage import Session, SessionInfo
@@ -57,6 +57,24 @@ class MentionPart:
 
 
 PromptPart: TypeAlias = str | MentionPart | tuple[bytes, str]
+
+
+@dataclass(frozen=True, slots=True)
+class StoredSession:
+    """A session read from the store and rebuilt into rows, not yet made active.
+
+    Attributes:
+        session_id: The session that was read.
+        session: Its parsed file.
+        replayed: The rows, totals, and branch it replays into.
+        title: Its stored display title, if it has one: read here because folding
+            the metadata log is the other thing resuming used to do on the loop.
+    """
+
+    session_id: str
+    session: Session
+    replayed: Replayed
+    title: str | None
 
 
 def plain_text_part(part: PromptPart) -> str:
@@ -374,9 +392,26 @@ class ZettCodeAgent:
         """Switch future turns to a session."""
         self.runtime.use_session(session_id)
 
-    def restore_session(self, session_id: str, transcript: Transcript) -> None:
-        """Load the active stored branch into the UI before switching sessions."""
-        session = self.runtime.persistence.read(session_id)
+    def load_session(self, session_id: str, transcript: Transcript) -> StoredSession:
+        """Read a stored session and rebuild what it will show, changing nothing.
+
+        This is the expensive half of resuming — parsing the file and replaying the
+        newest part of it into rows — and it touches no state the shell is reading:
+        the rows are built into a transcript of their own, and the result is a value.
+        That is what lets the shell run it on a worker thread while the interface
+        keeps answering keys, and hand the result to :meth:`install_session` on the
+        loop. The ``transcript`` is only read, for the renderers, presenters, and cap
+        the rebuilt one has to match.
+
+        Args:
+            session_id: The session to read.
+            transcript: The transcript the result will be installed into.
+
+        Raises:
+            ValueError: The store holds no such session, or its file is corrupt.
+        """
+        persistence = self.runtime.persistence
+        session = persistence.read(session_id)
         if session.header is None:
             raise ValueError(f"Unknown session: {session_id}")
         replayed = replay(
@@ -384,7 +419,22 @@ class ZettCodeAgent:
             renderers=transcript.renderers,
             presenters=transcript.presenters,
             frame=transcript.frame,
+            max_entries=transcript.max_entries,
         )
+        return StoredSession(
+            session_id=session_id,
+            session=session,
+            replayed=replayed,
+            title=persistence.session_title(session_id),
+        )
+
+    def install_session(self, stored: StoredSession, transcript: Transcript) -> None:
+        """Make a loaded session the active one: its rows, its totals, its id.
+
+        The cheap half, and the one that changes state, so it runs where the rest of
+        the shell does. Everything it does is assignment.
+        """
+        session_id, session, replayed = stored.session_id, stored.session, stored.replayed
         transcript.replace(replayed.transcript.entries)
         self.runtime.usage.seed(session_id, replayed.usage)
         self.use_session(session_id)
@@ -395,8 +445,15 @@ class ZettCodeAgent:
         # pinned at a hundred. `_context_request` is the one definition of that
         # request; the environment and tool notes only exist inside a real one,
         # which the report admits.
-        messages, _ = self._context_request(session)
-        self.runtime.context.remember(session_id, messages)
+        #
+        # It is handed over as a function, not built here: the request holds every
+        # message since the last checkpoint, decoding them is most of what a long
+        # resume would cost, and nothing reads the list until `/context` does.
+        self.runtime.context.remember(session_id, lambda: self._stored_request(session))
+
+    def restore_session(self, session_id: str, transcript: Transcript) -> None:
+        """Load the active stored branch into the UI before switching sessions."""
+        self.install_session(self.load_session(session_id, transcript), transcript)
 
     async def list_sessions(self, *, limit: int = 20) -> list[SessionInfo]:
         """List persisted session metadata by recent activity."""
@@ -568,13 +625,22 @@ class ZettCodeAgent:
         if assembled is not None:
             messages, tools = assembled
             return tuple(messages), tuple(tools)
+        return self._stored_request(session), self.runtime.context.tools
+
+    def _stored_request(self, session: Session) -> tuple[AnyMessage, ...]:
+        """Return the messages a request for ``session`` would carry, from what is stored.
+
+        This depends on the session it is given and on nothing that changes with the
+        active one, so it can be run later — a restore hands it over unrun, and the
+        reader may have moved to another session by the time it is wanted.
+        """
         instructions = self.runtime.context.instructions or (
             SystemMessage(content=build_system_prompt(self.runtime.config)),
         )
         checkpoint, tail = session.active()
         stored: list[AnyMessage] = [checkpoint.message[0]] if checkpoint is not None else []
         stored.extend(line.message[0] for line in tail if line.message[0].include_in_messages)
-        return (*(instructions or ()), *stored), self.runtime.context.tools
+        return (*instructions, *stored)
 
     def _export_meta(self, session: Session) -> tuple[tuple[str, str], ...]:
         """Return the label/value pairs the exported page's sidebar carries."""

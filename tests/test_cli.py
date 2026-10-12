@@ -223,6 +223,56 @@ def test_resuming_builds_the_application_where_no_loop_is_running(tmp_path: Path
     assert app._measure_task is None, "nothing on this path schedules anything"
 
 
+def test_resuming_a_long_session_decodes_only_the_window_the_transcript_keeps(tmp_path: Path, monkeypatch):
+    """The cap the config sets reaches the walk, and the messages before it stay as stored.
+
+    A resumed session costs what the transcript shows and not what the session holds:
+    the lines before the window are neither decoded nor replayed, and the figures the
+    status line adds up from them — the tokens every reply used — still count them.
+    """
+    from zett_agent.messages import AssistantMessage, UserMessage
+    from zett_agent.model import ModelUsage
+
+    from zettcode.app.agent.storage import SessionStore
+    from zettcode.config import ModelConfig, ZettCodeConfig
+
+    root = tmp_path / "sessions"
+    store = SessionStore(root, tmp_path)
+
+    async def write() -> None:
+        for turn in range(200):
+            await store.append("long", f"r{turn}", UserMessage(content=f"question {turn}"))
+            await store.append(
+                "long",
+                f"r{turn}",
+                AssistantMessage(content=f"answer {turn}"),
+                usage=ModelUsage(input_tokens=1_000, output_tokens=10),
+            )
+
+    asyncio.run(write())
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        cli,
+        "resolve_config",
+        lambda: ZettCodeConfig(
+            workspace=tmp_path,
+            models=(ModelConfig(model="m", token="t"),),
+            store=root,
+            transcript_max_entries=50,
+        ),
+    )
+
+    app = cli.build_application(Options(workspace=tmp_path, resume="long"))
+
+    shown = [entry.text for entry in app.transcript.entries if entry.kind == "answer"]
+    assert shown[-1] == "answer 199"
+    assert 50 <= len(app.transcript.entries) < 400, "the configured cap, not the default one and not the whole session"
+    lines = app.agent.runtime.persistence.read("long").branch()
+    assert not lines[0].message.decoded and not lines[100].message.decoded
+    assert lines[-1].message.decoded
+    assert app._usage.input_tokens == 200 * 1_000, "every reply on the branch is in the totals"
+
+
 def test_an_unknown_session_is_refused_before_the_terminal_is_taken(tmp_path: Path, monkeypatch):
     path = tmp_path / "config.toml"
     path.write_text('[[models]]\nmodel = "m"\ntoken = "t"\n', encoding="utf-8")
@@ -358,3 +408,221 @@ def test_the_help_flag_builds_nothing():
     assert result.returncode == 0, result.stderr
     # The help text shares stdout with the probe, so only its last line is read.
     assert result.stdout.strip().splitlines()[-1] == "False False"
+
+
+# -- a resumed session is measured where it will be drawn ----------------------------
+
+
+def _long_session(tmp_path: Path, turns: int = 40) -> tuple[Path, Path]:
+    """Write a session of ``turns`` turns into a throwaway store and return (store, workspace)."""
+    from zett_agent.messages import AssistantMessage, ToolCall, ToolMessage, UserMessage
+
+    from zettcode.app.agent.storage import SessionStore
+
+    root = tmp_path / "sessions"
+    store = SessionStore(root, tmp_path)
+
+    async def write() -> None:
+        for turn in range(turns):
+            await store.append("long", f"r{turn}", UserMessage(content=f"question {turn}"))
+            call = ToolCall(f"c{turn}", "read_file", {"path": f"module_{turn}.py"})
+            await store.append("long", f"r{turn}", AssistantMessage(tool_calls=(call,)))
+            await store.append(
+                "long", f"r{turn}", ToolMessage(tool_call_id=call.id, name="read_file", content="x = 1\n" * 12)
+            )
+            await store.append("long", f"r{turn}", AssistantMessage(content=f"answer {turn} with `code` and **bold**"))
+
+    asyncio.run(write())
+    return root, tmp_path
+
+
+def _resume(tmp_path: Path, monkeypatch, *, terminal, theme_file=None):
+    """Build the application the way the command line does, for a terminal that is already up."""
+    from zettcode.config import ModelConfig, ZettCodeConfig
+
+    root, workspace = _long_session(tmp_path)
+    monkeypatch.chdir(workspace)
+    monkeypatch.setattr(
+        cli,
+        "resolve_config",
+        lambda: ZettCodeConfig(
+            workspace=workspace, models=(ModelConfig(model="m", token="t"),), store=root, theme_file=theme_file
+        ),
+    )
+    return cli.build_application(Options(workspace=workspace, resume="long"), terminal=terminal)
+
+
+def _count_rendered(app, monkeypatch) -> list[int]:
+    """Spy every presenter's ``lines``, and return the ids of the rows it is asked to render."""
+    drawn: list[int] = []
+    for presenter in app.transcript.presenters.presenters:
+        real = type(presenter).lines
+
+        def spy(self, entry, *args, _real=real):
+            drawn.append(entry.id)
+            return _real(self, entry, *args)
+
+        monkeypatch.setattr(type(presenter), "lines", spy)
+    return drawn
+
+
+def test_a_resumed_session_is_measured_at_the_terminals_width_and_the_first_frame_reuses_it(tmp_path, monkeypatch):
+    """The tree built behind the boot frame has no size yet, but the terminal under it does.
+
+    Measuring at the width of an unplaced view — one column — was the most expensive thing
+    the transcript can be asked and was thrown away by the first frame, which measured
+    every row again at the real width.
+    """
+    from zettcode.tui import DARK
+
+    terminal = SimpleNamespace(width=100, theme=DARK)
+    app = _resume(tmp_path, monkeypatch, terminal=terminal)
+    drawn = _count_rendered(app, monkeypatch)
+
+    app.app.resize(100, 30)
+    app.app.mount()
+    app.app.render()
+
+    assert len(app.transcript.entries) >= 100
+    assert drawn == [], "the first frame found every row already measured"
+
+
+def test_a_resumed_session_is_measured_in_the_palette_the_terminal_chose(tmp_path, monkeypatch):
+    """A light terminal's rows are keyed to the light palette, which is the one they are painted in."""
+    from zettcode.tui import LIGHT
+
+    terminal = SimpleNamespace(width=100, theme=LIGHT)
+    app = _resume(tmp_path, monkeypatch, terminal=terminal)
+    app.app.theme = LIGHT  # what adopting the boot frame's app does once the terminal has answered
+    drawn = _count_rendered(app, monkeypatch)
+
+    app.app.resize(100, 30)
+    app.app.mount()
+    app.app.render()
+
+    assert drawn == []
+
+
+def test_a_width_other_than_the_terminals_is_a_miss_and_not_a_wrong_row(tmp_path, monkeypatch):
+    """The window can be resized between the read and the swap; the rows are then measured again."""
+    from zettcode.tui import DARK
+
+    app = _resume(tmp_path, monkeypatch, terminal=SimpleNamespace(width=100, theme=DARK))
+    drawn = _count_rendered(app, monkeypatch)
+
+    app.app.resize(70, 30)
+    app.app.mount()
+    app.app.render()
+
+    assert drawn, "measured at 70, because 100 was what the cache held"
+    lines = app.view.transcript_source
+    assert all(lines.line(index, 70).width <= 70 for index in range(lines.count(70)))
+
+
+def test_without_a_terminal_the_session_is_measured_at_the_view_it_has(tmp_path, monkeypatch):
+    """The path the tests and the dry run take: no boot frame, so the view's own size is all there is."""
+    app = _resume(tmp_path, monkeypatch, terminal=None)
+
+    assert len(app.transcript.entries) >= 100
+    assert [entry for entry in app.transcript.entries if entry.block is None] == []
+
+
+async def test_the_launch_hands_the_build_the_terminal_it_is_painting(tmp_path, monkeypatch):
+    """The build measures a resumed session at the boot frame's width, so it has to be given the frame.
+
+    Every test of that measuring builds the application directly; the one place the terminal
+    reaches it is the line in `launch` that starts the build, which only a test that runs
+    `launch` can see.
+    """
+    import zettcode.tui as tui_module
+
+    config = tmp_path / "config.toml"
+    config.write_text('[[models]]\nmodel = "m"\ntoken = "t"\n', encoding="utf-8")
+    monkeypatch.setenv("ZETTCODE_CONFIG", str(config))
+    given: dict[str, object] = {}
+
+    class QuietRunner:
+        def __init__(self, tui, *, terminal=None):
+            given["boot"] = tui
+            given["after_paint"] = []
+
+        def after_next_paint(self, callback) -> None:
+            given["after_paint"].append(callback)
+
+        async def run(self) -> None:
+            await asyncio.sleep(0)
+
+    class NoTerminal:
+        def __init__(self, **_):
+            pass
+
+    async def stop() -> None:
+        pass
+
+    started: list[str] = []
+    stub = SimpleNamespace(
+        adopt=lambda boot: given.setdefault("order", []).append("adopt"),
+        start_background=lambda: started.append("started"),
+        stop_background=stop,
+        agent=None,
+    )
+
+    def build(options, *, terminal=None):
+        given["terminal"] = terminal
+        return stub
+
+    monkeypatch.setattr(tui_module, "TerminalRunner", QuietRunner)
+    monkeypatch.setattr(tui_module, "Terminal", NoTerminal)
+    monkeypatch.setattr(cli, "build_application", build)
+    monkeypatch.setattr(cli, "report_resume", lambda agent: None)
+
+    await cli.launch(Options(workspace=tmp_path, resume="anything"))
+
+    assert given["terminal"] is given["boot"], "the app painting the boot frame is the one the build is told about"
+
+
+async def test_the_runtime_warms_up_after_the_real_frame_is_painted_not_when_it_is_swapped_in(tmp_path, monkeypatch):
+    """The imports share the interpreter's one lock with the drawing, so the frame goes first.
+
+    The swap hands the runner the real tree; the background work is queued behind the frame
+    that draws it, and a launch that ends before that frame starts none of it.
+    """
+    import zettcode.tui as tui_module
+
+    config = tmp_path / "config.toml"
+    config.write_text('[[models]]\nmodel = "m"\ntoken = "t"\n', encoding="utf-8")
+    monkeypatch.setenv("ZETTCODE_CONFIG", str(config))
+    queued: list = []
+    started: list[str] = []
+
+    class QuietRunner:
+        def __init__(self, tui, *, terminal=None):
+            pass
+
+        def after_next_paint(self, callback) -> None:
+            queued.append(callback)
+
+        async def run(self) -> None:
+            await asyncio.sleep(0)
+
+    class NoTerminal:
+        def __init__(self, **_):
+            pass
+
+    async def stop() -> None:
+        pass
+
+    stub = SimpleNamespace(
+        adopt=lambda boot: None, start_background=lambda: started.append("started"), stop_background=stop, agent=None
+    )
+    monkeypatch.setattr(tui_module, "TerminalRunner", QuietRunner)
+    monkeypatch.setattr(tui_module, "Terminal", NoTerminal)
+    monkeypatch.setattr(cli, "build_application", lambda options, *, terminal=None: stub)
+    monkeypatch.setattr(cli, "report_resume", lambda agent: None)
+
+    await cli.launch(Options(workspace=tmp_path))
+
+    assert started == [], "nothing was started when the tree was swapped in"
+    assert len(queued) == 1, "it was queued for after the next frame"
+    queued[0]()
+    assert started == ["started"], "and what was queued is the start of the background work"

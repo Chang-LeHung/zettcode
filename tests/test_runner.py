@@ -322,3 +322,46 @@ def test_parse_background_reads_the_two_spellings_terminals_use():
     assert scheme_named("#f7f8f7") == "light"
     assert scheme_named("#101214") == "dark"
     assert scheme_named(None) is None
+
+
+async def test_a_callback_runs_once_after_the_next_frame_has_been_written():
+    """Work that must not compete with a frame is started from the end of it, and only the next one."""
+    read_fd, write_fd = os.pipe()
+    terminal = StubTerminal(read_fd, width=24, height=3)
+    app = TuiApp(Editor(), width=24, height=3)
+    runner = TerminalRunner(app, terminal=terminal)
+    seen: list[tuple[str, int]] = []
+    runner.after_next_paint(lambda: seen.append(("first", len(terminal.output.getvalue()))))
+    runner.after_next_paint(lambda: seen.append(("second", len(terminal.output.getvalue()))))
+
+    assert seen == [], "registering it runs nothing"
+    runner.paint()
+    written = len(terminal.output.getvalue())
+
+    assert [name for name, _ in seen] == ["first", "second"], "in the order they were asked for"
+    assert all(size == written for _, size in seen), "after the frame was in the terminal's output, not before"
+    assert written > 0
+    runner.paint()
+    assert len(seen) == 2, "a callback is for the next frame only"
+    os.close(read_fd)
+    os.close(write_fd)
+
+
+async def test_a_callback_asked_for_while_a_frame_is_painting_waits_for_the_one_after():
+    read_fd, write_fd = os.pipe()
+    terminal = StubTerminal(read_fd, width=24, height=3)
+    app = TuiApp(Editor(), width=24, height=3)
+    runner = TerminalRunner(app, terminal=terminal)
+    seen: list[str] = []
+
+    def first() -> None:
+        seen.append("first")
+        runner.after_next_paint(lambda: seen.append("later"))
+
+    runner.after_next_paint(first)
+    runner.paint()
+    assert seen == ["first"]
+    runner.paint()
+    assert seen == ["first", "later"]
+    os.close(read_fd)
+    os.close(write_fd)
