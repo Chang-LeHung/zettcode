@@ -12,7 +12,7 @@ One store root holds every workspace, grouped by workspace first:
 ~/.zettcode/sessions/<workspace key>/
 └── <session-id>/
     ├── data.jsonl              the conversation
-    ├── metadata.json           the title and the times: a couple of hundred bytes
+    ├── metadata.json           the title, the times and the model: a couple of hundred bytes
     └── tool-output/            what long shell commands printed, kept for the model to read
 ```
 
@@ -23,9 +23,9 @@ store.
 `data.jsonl` is append-only — every record names its parent, which makes the
 conversation a **tree** rather than a list. `metadata.json` is the small file the
 session list reads, so showing recent sessions never parses a conversation. It is
-written when a session starts and when it is renamed — not on every message — so
-it stays the same size however long the conversation gets, and it travels with the
-folder if you copy or move it. How recently a session was used comes from the
+written when a session starts, when it is renamed, and when the model it uses
+changes — not on every message — so it stays the same size however long the conversation
+gets, and it travels with the folder if you copy or move it. How recently a session was used comes from the
 conversation file itself. A crash can truncate the final line; that line is
 ignored, and a damaged line anywhere else is reported rather than silently dropped.
 
@@ -40,6 +40,33 @@ can delete it once you no longer need to go back to an older version. A
 `metadata.json` that is damaged, or that belongs to a different session (a folder
 copied under a new name), is simply rebuilt.
 :::
+
+### Which model a session uses
+
+Each session remembers the model it last used. When a turn ends — however it ends, a stopped
+or failed turn used the model too — ZettCode writes that model's name into the session's
+`metadata.json` if it is not already there, so switching models costs one small write and an
+ordinary message costs none.
+
+Resuming the session — `/resume`, `/fork`, or `zettcode --resume` — switches back to that
+model, and the conversation says so:
+
+```text
+──────── Model set to GPT-4o, the one this session last used. ────────
+```
+
+- Switching with `/model` is not "using": nothing is recorded until a message is sent on it.
+- A `/btw` side question is not part of the conversation and records nothing.
+- A session that never recorded a model — one from an older version, or one that has not had a
+  turn yet — keeps whichever model is selected when you open it.
+- If the recorded model is no longer in your configuration, or two entries show the same name so
+  ZettCode cannot tell which was meant, it stays on the current model and says so
+  (`This session last used … which is not in your configuration; staying on …`) instead of
+  guessing.
+- The name recorded is the one the model picker shows (`display_model` when you set one). If you
+  edit the configuration between runs — adding a `display_model` to an entry that had none, say —
+  a session recorded under the old name still finds it.
+- `/fork` starts on the model the original was using.
 
 ### Long command output
 

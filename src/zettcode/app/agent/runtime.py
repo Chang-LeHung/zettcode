@@ -128,7 +128,7 @@ def integration_extensions(config: ZettCodeConfig) -> tuple[AgentExtension, ...]
     from zett_agent.extensions.agents_md import AgentsMdExtension
     from zett_agent.extensions.skill import SkillExtension
 
-    from .extensions.mcp import ReportingMcpExtension
+    from .extensions.mcp import build_mcp_extension
 
     extensions: list[AgentExtension] = []
     if config.ask_user_enabled:
@@ -140,7 +140,7 @@ def integration_extensions(config: ZettCodeConfig) -> tuple[AgentExtension, ...]
     if config.mcp_enabled:
         path = config.mcp_config or DEFAULT_MCP_CONFIG
         if Path(path).expanduser().is_file():
-            extensions.append(ReportingMcpExtension(config_path=path))
+            extensions.append(build_mcp_extension(path))
     return tuple(extensions)
 
 
@@ -453,6 +453,22 @@ class ZettCodeRuntime:
             levels = ", ".join(level.value for level in ReasoningEffort)
             raise ValueError(f"Unknown reasoning effort: {name}. Try one of: {levels}") from None
         return self.effort
+
+    def find_model(self, name: str) -> ModelConfig | None:
+        """Return the configured model a recorded name stands for, if exactly one does.
+
+        The name a session records is the one the picker showed. It is looked for as that
+        first. When nothing shows it, it is looked for as a model or display name, which is
+        how ``/model`` takes one: the configuration may have been edited since — a
+        ``display_model`` added to an entry that had none — and the session should still find
+        its model. Each step must find *one*: a name that two entries answer to is not a
+        choice this can make for the reader, and is reported as not found.
+        """
+        shown = [entry for entry in self.config.models if entry.shown_name == name]
+        if shown:
+            return shown[0] if len(shown) == 1 else None
+        either = [entry for entry in self.config.models if name in (entry.model, entry.display_model)]
+        return either[0] if len(either) == 1 else None
 
     def use_model(self, name: str | ModelConfig) -> ModelConfig:
         """Select a configured model for subsequent requests without changing sessions."""

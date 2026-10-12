@@ -55,6 +55,7 @@ from zett_agent.model import ModelUsage
 
 from ..dialogue.side import SIDE, is_side
 from .metadata import (
+    MAX_MODEL,
     MAX_TITLE,
     METADATA_FILE,
     SESSION_METADATA_FILE,
@@ -463,7 +464,8 @@ class SessionPersistenceMixin:
             carried = (
                 f"{title}{FORK_SUFFIX}" if title is not None and len(f"{title}{FORK_SUFFIX}") <= MAX_TITLE else None
             )
-            self._begin_metadata(new_id, created_at, title=carried)
+            # A fork carries on from where the session left off, so it uses the model that did.
+            self._begin_metadata(new_id, created_at, title=carried, model=self.session_model(session_id))
         parent: str | None = None
         if checkpoint is not None:
             # The summary is copied as a message of its own. As a checkpoint it would
@@ -527,6 +529,30 @@ class SessionPersistenceMixin:
         metadata = self._metadata(session_id)
         return metadata.title if metadata is not None else None
 
+    def session_model(self, session_id: str) -> str | None:
+        """Return the model one session last used, or ``None`` when none was recorded."""
+        metadata = self._metadata(session_id)
+        return metadata.model if metadata is not None else None
+
+    def set_model(self, session_id: str, model: str) -> bool:
+        """Record the model a session used, writing only when it is not the one already recorded.
+
+        A session is asked about once per turn and its model changes once in a long while, so
+        asking is one small read and the write is the exception. Nothing is written for a session
+        with no conversation yet — there is no folder to put the file in, and the first turn
+        records it when it ends — and a name that is empty or absurdly long is not a model.
+
+        Returns:
+            Whether the file was written.
+        """
+        cleaned = model.strip()
+        if not cleaned or len(cleaned) > MAX_MODEL:
+            return False
+        metadata = self._metadata(session_id)
+        if metadata is None or metadata.model == cleaned:
+            return False
+        return write_session_metadata(self._metadata_file(session_id), metadata.model_copy(update={"model": cleaned}))
+
     async def list_sessions(self, *, limit: int = 100, offset: int = 0) -> list[SessionInfo]:
         """Return session metadata by latest activity, newest first.
 
@@ -560,9 +586,13 @@ class SessionPersistenceMixin:
         """Return the file that holds one session's own metadata."""
         return self.session_dir(session_id) / SESSION_METADATA_FILE
 
-    def _begin_metadata(self, session_id: str, created_at: datetime, *, title: str | None = None) -> SessionMetadata:
+    def _begin_metadata(
+        self, session_id: str, created_at: datetime, *, title: str | None = None, model: str | None = None
+    ) -> SessionMetadata:
         """Write the metadata of a session that has just been created, and return it."""
-        metadata = SessionMetadata(session_id=session_id, created_at=created_at, updated_at=created_at, title=title)
+        metadata = SessionMetadata(
+            session_id=session_id, created_at=created_at, updated_at=created_at, title=title, model=model
+        )
         write_session_metadata(self._metadata_file(session_id), metadata)
         return metadata
 

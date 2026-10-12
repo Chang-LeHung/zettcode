@@ -52,7 +52,12 @@ class KeysMixin(ShellState):
         )
         # The follow-up list. The modifier key (Option on a Mac) is the list's own: with
         # nothing highlighted it walks into the list from the composer's side, and with a
-        # message highlighted it moves that message. The plain arrows move the highlight,
+        # message highlighted it moves that message. VS Code's terminal rewrites Option-Up and
+        # Option-Down before the terminal sees them — it has a keybinding that sends the bytes of
+        # Ctrl-Up and Ctrl-Down in their place — so the program is told Ctrl, never Alt, and
+        # both spellings are the same key here. Nothing else in the program uses Ctrl with an
+        # arrow, and on a Mac the system keeps Ctrl-Up for itself, so this takes nothing away.
+        # The plain arrows move the highlight,
         # which they only do while one is highlighted — until then they are the composer's,
         # history and the cursor. Enter edits, Delete removes, Escape lets go. They are
         # capture bindings because the composer reads Up and Down as history and Enter as
@@ -60,6 +65,8 @@ class KeysMixin(ShellState):
         # message is the most specific thing the reader is doing, so its keys win.
         self.app.keymap.bind("alt_up", "follow_up_up", priority="capture", when=self._follow_ups_listed)
         self.app.keymap.bind("alt_down", "follow_up_down", priority="capture", when=self._follow_ups_listed)
+        self.app.keymap.bind("ctrl_up", "follow_up_up", priority="capture", when=self._follow_ups_listed)
+        self.app.keymap.bind("ctrl_down", "follow_up_down", priority="capture", when=self._follow_ups_listed)
         self.app.keymap.bind("up", "follow_up_previous", priority="capture", when=self._follow_up_chosen)
         self.app.keymap.bind("down", "follow_up_next", priority="capture", when=self._follow_up_chosen)
         self.app.keymap.bind("enter", "follow_up_edit", priority="capture", when=self._follow_up_chosen)

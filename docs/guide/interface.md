@@ -129,6 +129,10 @@ its next safe point — after the tool batch it is running — and drops the res
 current task for it. Up to eight can be queued. It is a new instruction for the **same**
 task and does not undo edits already made.
 
+Both lists show one line per message. A message too long for the line is cut and ends in `…`, and
+so does one with more lines after the first (a pasted block shows its first line and `…`); the whole
+text is still what is sent.
+
 By the time you see it in the list the agent already has it, and the agent offers no way
 to take a message back, so **a steering message cannot be edited, removed or reordered**.
 If you are not sure you want it, send it as a follow-up: that one stays in your hands.
@@ -156,6 +160,13 @@ The list names these keys itself — the row under it reads `option+↑/↓ to s
 message is highlighted it lists the rest — so there is nothing to memorise. Typing anything
 also lets go of the highlight, and `Enter` will not overwrite a draft you have already
 started: finish or clear it (`Ctrl-C`) first.
+
+::: tip In VS Code's terminal
+VS Code rewrites `Option-↑` and `Option-↓` before the terminal sees them — it sends the keys
+`Ctrl-↑` and `Ctrl-↓` instead — so ZettCode treats the two spellings as the same key, and the
+list works the same there as in iTerm2. (Only while a follow-up list exists: with nothing queued
+the keys are left alone.)
+:::
 
 ::: tip If your terminal swallows Option-Up
 Some terminals use `Option-Up` themselves. ZettCode reads the usual spellings, including

@@ -581,26 +581,6 @@ def test_error_reasons_are_unwrapped_from_their_groups_and_deduplicated():
     assert describe_error(ValueError("plain")) == "plain"
 
 
-async def test_a_dead_mcp_server_is_named_in_the_failure(tmp_path, monkeypatch):
-    from zett_agent.extensions.mcp import McpExtension
-
-    servers = tmp_path / "mcp.json"
-    servers.write_text(
-        '{"servers": {"docs": {"type": "streamable-http", "url": "http://127.0.0.1:1/mcp"}}}',
-        encoding="utf-8",
-    )
-    config = _config_with(tmp_path, skills_enabled=False, mcp_config=servers)
-    extension = _mcp(runtime_module.integration_extensions(config))
-
-    async def failing(self, context):
-        raise ExceptionGroup("unhandled errors in a TaskGroup", [ConnectionError("All connection attempts failed")])
-
-    monkeypatch.setattr(McpExtension, "on_tool", failing)
-
-    with pytest.raises(RuntimeError, match=r"MCP unavailable \(docs\): All connection attempts failed"):
-        await extension.on_tool(object())
-
-
 async def test_runtime_switches_models_and_closes_every_provider(tmp_path, monkeypatch):
     created = []
     captured = {}

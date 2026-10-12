@@ -11,6 +11,7 @@ from zett_agent.extensions.shell_approval import SHELL_APPROVAL_EVENT_NAME
 from zett_agent.messages import ToolMessage
 
 from ..dialogue.ask import AskUserQuestion, question_from
+from ..extensions.mcp_notice import MCP_NOTICE_EVENT_NAME, notice_from
 from ..extensions.usage import USAGE_EVENT_NAME
 from .entries import EntryStatus
 from .transcript import Transcript
@@ -187,11 +188,17 @@ class TranscriptProjector(AgentEventDispatcher):
         self.transcript.complete_thinking()
 
     async def on_custom_event(self, event: AgentEvent) -> None:
-        """Route extension events: questions and approvals to the shell, usage to the rows."""
+        """Route extension events: questions and approvals to the shell, usage and MCP news to the rows."""
         if event.name == SHELL_APPROVAL_EVENT_NAME and self.on_approval is not None:
             self.on_approval(event)
         elif event.name == USAGE_EVENT_NAME and self.on_usage is not None:
             self.on_usage(event)
+        elif event.name == MCP_NOTICE_EVENT_NAME:
+            # News about an MCP server or its configuration. It is a remark in the conversation,
+            # not an error: the request goes on without whatever could not be reached.
+            line = notice_from(event)
+            if line is not None:
+                self.transcript.notice(line)
         elif self.on_ask is not None:
             question = question_from(event)
             if question is not None:

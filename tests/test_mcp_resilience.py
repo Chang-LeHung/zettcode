@@ -1,0 +1,475 @@
+"""One broken MCP server, tool, or config entry never stops the task, and the reader is told."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+from contextlib import asynccontextmanager
+from pathlib import Path
+
+import pytest
+from mcp.types import CallToolResult, ListToolsResult, TextContent, Tool
+from zett_agent.agent import AgentRunConfig
+from zett_agent.client import create_agent
+from zett_agent.events import AgentEvent, AgentEventType
+from zett_agent.extensions.coding import CodingExtension
+from zett_agent.extensions.mcp import McpExtension
+from zett_agent.messages import AssistantMessage, ToolCall, ToolMessage
+from zett_agent.model import ModelEvent, ModelResponse, RetryOptions
+
+from zettcode._compat import ExceptionGroup
+from zettcode.app.agent.conversation.projection import TranscriptProjector
+from zettcode.app.agent.conversation.transcript import Transcript
+from zettcode.app.agent.extensions.mcp import ReportingMcpExtension, build_mcp_extension
+from zettcode.app.agent.extensions.mcp_notice import MCP_NOTICE_EVENT_NAME, notice_from, notice_payload
+
+
+def _tool(name: str) -> Tool:
+    return Tool(name=name, description=f"{name} tool", inputSchema={"type": "object", "properties": {}})
+
+
+class FakeServers:
+    """Stands in for the MCP SDK: which servers are up, what their tools do, who has been asked.
+
+    ``client_factory`` is the seam zett-agent leaves for tests, so everything above the transport
+    is the real extension.
+    """
+
+    def __init__(self, **servers: dict[str, object]) -> None:
+        #: server name -> {tool name -> "ok" | "error" | "crash" | "hang"}, or None for a server that is down
+        self.tools: dict[str, dict[str, str] | None] = {name: spec for name, spec in servers.items()}  # type: ignore[misc]
+        self.opened: list[str] = []
+        self.called: list[tuple[str, str]] = []
+
+    def factory(self, server):
+        @asynccontextmanager
+        async def open_client():
+            self.opened.append(server.name)
+            behaviour = self.tools.get(server.name)
+            if behaviour is None:
+                raise ConnectionError(f"{server.name} refused the connection")
+            yield _Client(self, server.name, behaviour)
+
+        return open_client()
+
+
+class _Client:
+    def __init__(self, servers: FakeServers, name: str, behaviour: dict[str, str]) -> None:
+        self.servers, self.name, self.behaviour = servers, name, behaviour
+
+    async def list_tools(self, *, cursor=None):
+        return ListToolsResult(tools=[_tool(tool) for tool in self.behaviour])
+
+    async def call_tool(self, name, arguments=None):
+        self.servers.called.append((self.name, name))
+        mode = self.behaviour[name]
+        if mode == "crash":
+            raise ConnectionError("Connection closed")
+        if mode == "hang":
+            await asyncio.sleep(3600)
+        text = f"{self.name}.{name} says hi"
+        return CallToolResult(content=[TextContent(type="text", text=text)], is_error=mode == "error")
+
+
+class _Context:
+    """The part of an agent run the extension touches, for the tests that call ``on_tool`` directly."""
+
+    def __init__(self) -> None:
+        from types import SimpleNamespace
+
+        self.config = SimpleNamespace(session_id="s1")
+        self.tools: dict[str, object] = {}
+        self.events: list[AgentEvent] = []
+
+    def register_tool(self, tool) -> None:
+        self.tools[tool.name] = tool
+
+    async def emit(self, event: AgentEvent) -> None:
+        self.events.append(event)
+
+    @property
+    def notices(self) -> list[str]:
+        return [text for event in self.events if (text := notice_from(event)) is not None]
+
+
+def _file(tmp_path: Path, servers: dict[str, object]) -> Path:
+    path = tmp_path / "mcp.json"
+    path.write_text(json.dumps({"servers": servers}), encoding="utf-8")
+    return path
+
+
+def _entry(name: str) -> dict[str, object]:
+    return {"command": "unused", "args": [name]}
+
+
+def _extension(path: Path, fake: FakeServers, **options) -> ReportingMcpExtension:
+    return ReportingMcpExtension(config_path=path, client_factory=fake.factory, tools_cache_ttl=0, **options)
+
+
+# -- a server that is down costs its own tools and nothing else --------------------------------------
+
+
+async def test_a_server_that_is_down_is_skipped_and_the_others_still_register(tmp_path):
+    fake = FakeServers(good={"add": "ok"}, dead=None)
+    extension = _extension(_file(tmp_path, {"good": _entry("g"), "dead": _entry("d")}), fake)
+    context = _Context()
+
+    await extension.on_tool(context)  # does not raise
+
+    assert sorted(context.tools) == ["good__add"]
+
+
+async def test_the_reader_is_told_which_server_is_down_and_why(tmp_path):
+    fake = FakeServers(good={"add": "ok"}, dead=None)
+    extension = _extension(_file(tmp_path, {"good": _entry("g"), "dead": _entry("d")}), fake)
+    context = _Context()
+
+    await extension.on_tool(context)
+
+    assert context.notices == [
+        "MCP server 'dead' is not available (ConnectionError); its tools are skipped until it works"
+    ]
+    assert "good" not in " ".join(context.notices), "the healthy server is not named as broken"
+
+
+async def test_a_server_that_stays_down_is_reported_once_not_at_the_top_of_every_turn(tmp_path):
+    fake = FakeServers(good={"add": "ok"}, dead=None)
+    extension = _extension(_file(tmp_path, {"good": _entry("g"), "dead": _entry("d")}), fake)
+    first, second, third = _Context(), _Context(), _Context()
+
+    await extension.on_tool(first)
+    await extension.on_tool(second)
+    await extension.on_tool(third)
+
+    assert len(first.notices) == 1 and second.notices == [] and third.notices == []
+    assert "good__add" in third.tools, "and it is still skipped each time, with the others working"
+
+
+async def test_a_server_that_comes_back_and_goes_down_again_is_news_again(tmp_path):
+    fake = FakeServers(flaky=None)
+    extension = _extension(_file(tmp_path, {"flaky": _entry("f")}), fake)
+    down, up, down_again = _Context(), _Context(), _Context()
+
+    await extension.on_tool(down)
+    fake.tools["flaky"] = {"ping": "ok"}
+    await extension.on_tool(up)
+    fake.tools["flaky"] = None
+    await extension.on_tool(down_again)
+
+    assert len(down.notices) == 1 and up.notices == [] and "flaky__ping" in up.tools
+    assert len(down_again.notices) == 1
+
+
+async def test_every_server_down_still_leaves_the_request_running_without_mcp_tools(tmp_path):
+    fake = FakeServers(a=None, b=None)
+    extension = _extension(_file(tmp_path, {"a": _entry("a"), "b": _entry("b")}), fake)
+    context = _Context()
+
+    await extension.on_tool(context)
+
+    assert context.tools == {} and len(context.notices) == 2
+
+
+# -- an error nobody planned for costs the request its MCP tools, not the request --------------------
+
+
+async def test_an_unexpected_error_during_discovery_does_not_end_the_request(tmp_path, monkeypatch):
+    extension = _extension(_file(tmp_path, {"good": _entry("g")}), FakeServers(good={"add": "ok"}))
+    context = _Context()
+
+    async def broken(self, context):
+        raise ExceptionGroup("unhandled errors in a TaskGroup", [RuntimeError("registry exploded")])
+
+    monkeypatch.setattr(McpExtension, "on_tool", broken)
+
+    await extension.on_tool(context)  # does not raise
+
+    assert context.notices == ["MCP is unavailable for this request: registry exploded"]
+
+
+async def test_a_cancellation_is_not_swallowed_because_that_is_how_the_reader_stops_a_request(tmp_path, monkeypatch):
+    """Absorbing BaseException would turn Escape into a failure that is reported and then ignored."""
+    extension = _extension(_file(tmp_path, {"good": _entry("g")}), FakeServers(good={"add": "ok"}))
+
+    async def cancelled(self, context):
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(McpExtension, "on_tool", cancelled)
+
+    with pytest.raises(asyncio.CancelledError):
+        await extension.on_tool(_Context())
+
+
+async def test_a_keyboard_interrupt_is_not_swallowed_either(tmp_path, monkeypatch):
+    extension = _extension(_file(tmp_path, {"good": _entry("g")}), FakeServers(good={"add": "ok"}))
+
+    async def interrupted(self, context):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(McpExtension, "on_tool", interrupted)
+
+    with pytest.raises(KeyboardInterrupt):
+        await extension.on_tool(_Context())
+
+
+# -- the configuration file ----------------------------------------------------------------------------
+
+
+async def test_one_malformed_entry_does_not_take_the_other_servers_with_it(tmp_path):
+    fake = FakeServers(good={"add": "ok"})
+    path = _file(tmp_path, {"good": _entry("g"), "typo": {"nonsense": True}, "alien": {"type": "carrier-pigeon"}})
+    extension = _extension(path, fake)
+    context = _Context()
+
+    await extension.on_tool(context)
+
+    assert sorted(context.tools) == ["good__add"]
+    said = "\n".join(context.notices)
+    assert "'typo' in mcp.json is ignored" in said and "'alien' in mcp.json is ignored" in said
+    assert "must define a string transport type" in said and "unsupported transport" in said
+
+
+async def test_a_malformed_entry_is_reported_once_until_the_file_changes(tmp_path):
+    fake = FakeServers(good={"add": "ok"})
+    path = _file(tmp_path, {"good": _entry("g"), "typo": {"nonsense": True}})
+    extension = _extension(path, fake)
+    first, second = _Context(), _Context()
+
+    await extension.on_tool(first)
+    await extension.on_tool(second)
+
+    assert len(first.notices) == 1 and second.notices == []
+
+    path.write_text(json.dumps({"servers": {"good": _entry("g"), "typo2": {"nonsense": True}}}), encoding="utf-8")
+    third = _Context()
+    await extension.on_tool(third)
+
+    assert len(third.notices) == 1 and "'typo2'" in third.notices[0]
+
+
+async def test_a_file_with_no_problems_says_nothing(tmp_path):
+    extension = _extension(_file(tmp_path, {"good": _entry("g")}), FakeServers(good={"add": "ok"}))
+    context = _Context()
+
+    await extension.on_tool(context)
+
+    assert context.notices == []
+
+
+@pytest.mark.parametrize(
+    ("text", "why"),
+    [
+        ('{"servers": {"good": ', "Invalid MCP configuration JSON"),
+        ('{"other": {}}', "must contain one of"),
+        ('["not", "an", "object"]', "must be a JSON object"),
+        ("", "Invalid MCP configuration JSON"),
+    ],
+    ids=["torn-json", "no-servers-key", "wrong-root", "empty"],
+)
+async def test_a_file_that_cannot_be_read_means_no_mcp_and_a_line_saying_why_not_a_crash(tmp_path, text, why):
+    """The framework raises while the extension is built, which is while the runtime is built:
+    the first turn would never run because of a typo in a file the reader may have forgotten."""
+    path = tmp_path / "mcp.json"
+    path.write_text(text, encoding="utf-8")
+
+    extension = build_mcp_extension(path)  # does not raise
+
+    context = _Context()
+    await extension.on_tool(context)
+    assert extension.servers == () and context.tools == {}
+    assert len(context.notices) == 1
+    assert "mcp.json cannot be read, so MCP is off" in context.notices[0] and why in context.notices[0]
+    assert context.notices[0].endswith("Fix it and restart.")
+
+
+async def test_that_line_is_said_once(tmp_path):
+    path = tmp_path / "mcp.json"
+    path.write_text("{", encoding="utf-8")
+    extension = build_mcp_extension(path)
+    first, second = _Context(), _Context()
+
+    await extension.on_tool(first)
+    await extension.on_tool(second)
+
+    assert len(first.notices) == 1 and second.notices == []
+
+
+def test_a_good_file_builds_the_normal_extension(tmp_path):
+    extension = build_mcp_extension(_file(tmp_path, {"good": _entry("g")}))
+
+    assert [server.name for server in extension.servers] == ["good"]
+    assert extension.startup_issues == []
+
+
+def test_the_framework_default_that_one_bad_entry_voids_the_file_is_switched_off(tmp_path):
+    path = _file(tmp_path, {"good": _entry("g"), "typo": {"nonsense": True}})
+
+    with pytest.raises(ValueError):
+        McpExtension(config_path=path)  # what the framework does by default
+    extension = ReportingMcpExtension(config_path=path)
+
+    assert [server.name for server in extension.servers] == ["good"]
+
+
+def test_strict_config_can_still_be_asked_for(tmp_path):
+    path = _file(tmp_path, {"good": _entry("g"), "typo": {"nonsense": True}})
+
+    with pytest.raises(ValueError):
+        ReportingMcpExtension(config_path=path, strict_config=True)
+
+
+# -- a tool that fails while it runs: in a real agent, end to end ------------------------------------
+
+
+class _ScriptedModel:
+    """Asks for the given tool calls one per step, then answers."""
+
+    retry = RetryOptions(max_retries=0)
+
+    def __init__(self, *calls: ToolCall) -> None:
+        self.calls, self.step, self.results = list(calls), 0, []
+
+    async def stream(self, request):
+        self.step += 1
+        self.results = [m for m in request.messages if isinstance(m, ToolMessage)]
+        if self.step <= len(self.calls):
+            yield ModelEvent.completed(
+                ModelResponse(AssistantMessage(content="", tool_calls=[self.calls[self.step - 1]]))
+            )
+        else:
+            yield ModelEvent.completed(ModelResponse(AssistantMessage(content="finished the task")))
+
+
+async def _run(extension, model, *, transcript: Transcript | None = None):
+    client = await create_agent(
+        model, config=AgentRunConfig(session_id="s1"), system_prompt="x", extensions=[CodingExtension(), extension]
+    )
+    if transcript is not None:
+        client.event_dispatcher = TranscriptProjector(transcript)
+    async for _ in client.stream("go", config=AgentRunConfig(session_id="s1"), model=model):
+        pass
+
+
+def _call(name: str, call_id: str = "c1") -> ToolCall:
+    return ToolCall(id=call_id, name=name, arguments={})
+
+
+async def test_a_tool_that_reports_an_error_comes_back_as_a_failed_result_and_the_task_finishes(tmp_path):
+    fake = FakeServers(good={"fine": "ok", "boom": "error"})
+    model = _ScriptedModel(_call("good__boom", "c1"), _call("good__fine", "c2"))
+
+    await _run(_extension(_file(tmp_path, {"good": _entry("g")}), fake), model)  # does not raise
+
+    outcomes = {m.name: m.success for m in model.results}
+    assert outcomes == {"good__boom": False, "good__fine": True}, "the next call still ran"
+    assert model.step == 3, "and the model got to answer"
+
+
+async def test_a_server_that_dies_mid_call_fails_that_call_and_the_task_finishes(tmp_path):
+    fake = FakeServers(good={"fine": "ok", "die": "crash"})
+    model = _ScriptedModel(_call("good__die", "c1"), _call("good__fine", "c2"))
+
+    await _run(_extension(_file(tmp_path, {"good": _entry("g")}), fake), model)  # does not raise
+
+    died = next(m for m in model.results if m.name == "good__die")
+    assert died.success is False and "Connection closed" in str(died.content)
+    assert model.step == 3
+
+
+async def test_a_tool_that_never_answers_times_out_and_the_task_finishes(tmp_path):
+    fake = FakeServers(good={"stuck": "hang"})
+    model = _ScriptedModel(_call("good__stuck"))
+
+    await _run(_extension(_file(tmp_path, {"good": _entry("g")}), fake, call_timeout=0.2), model)
+
+    stuck = next(m for m in model.results if m.name == "good__stuck")
+    assert stuck.success is False and "timed out" in str(stuck.content)
+
+
+async def test_a_dead_server_and_a_failing_tool_together_still_finish_the_task(tmp_path):
+    """The case that used to stop everything: any server down failed the whole request."""
+    fake = FakeServers(good={"fine": "ok", "boom": "error"}, dead=None)
+    model = _ScriptedModel(_call("good__boom", "c1"), _call("good__fine", "c2"))
+
+    await _run(_extension(_file(tmp_path, {"good": _entry("g"), "dead": _entry("d")}), fake), model)
+
+    assert {m.name: m.success for m in model.results} == {"good__boom": False, "good__fine": True}
+    assert model.step == 3
+
+
+async def test_the_model_is_told_too_that_the_server_is_unavailable(tmp_path):
+    fake = FakeServers(good={"fine": "ok"}, dead=None)
+    seen: list[str] = []
+
+    class Spy(_ScriptedModel):
+        async def stream(self, request):
+            seen.extend(str(getattr(m, "content", "")) for m in request.messages if type(m).__name__ == "SystemMessage")
+            async for event in super().stream(request):
+                yield event
+
+    await _run(_extension(_file(tmp_path, {"good": _entry("g"), "dead": _entry("d")}), fake), Spy())
+
+    assert any("dead" in text and "unavailable in this request" in text for text in seen)
+
+
+async def test_the_reader_sees_the_notice_in_the_transcript_through_the_real_projector(tmp_path):
+    fake = FakeServers(good={"fine": "ok"}, dead=None)
+    transcript = Transcript()
+
+    await _run(
+        _extension(_file(tmp_path, {"good": _entry("g"), "dead": _entry("d")}), fake),
+        _ScriptedModel(_call("good__fine")),
+        transcript=transcript,
+    )
+
+    notices = [e.text for e in transcript.entries if e.kind == "notice"]
+    assert notices == ["MCP server 'dead' is not available (ConnectionError); its tools are skipped until it works"]
+    assert all(e.level != "error" for e in transcript.entries if e.kind == "notice"), "a remark, not a failure"
+
+
+async def test_the_transcript_ignores_a_malformed_notice_event(tmp_path):
+    transcript = Transcript()
+    projector = TranscriptProjector(transcript)
+
+    for payload in (None, {}, {"text": 7}, {"text": "   "}, "not a dict", ["x"]):
+        await projector.dispatch(
+            AgentEvent(type=AgentEventType.CUSTOM, session_id="s1", name=MCP_NOTICE_EVENT_NAME, payload=payload)
+        )
+    await projector.dispatch(
+        AgentEvent(type=AgentEventType.CUSTOM, session_id="s1", name="somebody_else", payload=notice_payload("hi"))
+    )
+
+    assert [e for e in transcript.entries if e.kind == "notice"] == []
+
+
+def test_a_notice_event_round_trips_its_text():
+    event = AgentEvent(
+        type=AgentEventType.CUSTOM, session_id="s1", name=MCP_NOTICE_EVENT_NAME, payload=notice_payload("  hi  ")
+    )
+
+    assert notice_from(event) == "hi"
+
+
+# -- wiring ----------------------------------------------------------------------------------------------
+
+
+def test_the_runtime_builds_its_mcp_extension_through_the_forgiving_factory():
+    import inspect
+
+    from zettcode.app.agent import runtime
+
+    source = inspect.getsource(runtime.integration_extensions)
+    assert "build_mcp_extension(path)" in source and "ReportingMcpExtension(" not in source
+
+
+def test_the_module_that_imports_the_mcp_sdk_is_not_imported_by_the_transcript():
+    """The transcript recognises the event through a module that costs nothing; the SDK is the cost."""
+    import subprocess
+    import sys
+
+    code = (
+        "import sys; import zettcode.app.agent.conversation.projection; "
+        "print('mcp' in sys.modules, 'zettcode.app.agent.extensions.mcp' in sys.modules)"
+    )
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True).stdout.split()
+    assert out[1] == "False", "the projector must not import the extension that imports the SDK"

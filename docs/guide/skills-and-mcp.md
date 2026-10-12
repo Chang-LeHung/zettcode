@@ -153,8 +153,21 @@ keys in `env` or `headers` out of version control.
 
 With no file there is nothing to load, so an unconfigured run carries no MCP
 instructions at all — rather than a system message saying there is nothing.
-`[mcp] enabled = false` turns the extension off, and a server that fails to
-start is reported by name, so a dead endpoint does not look like a hung request.
+`[mcp] enabled = false` turns the extension off.
+
+### When a server or a tool goes wrong
+
+One broken MCP piece never stops the task. What happens depends on which piece:
+
+| What went wrong | What happens |
+| --- | --- |
+| A server is down, will not start, or does not answer in time | It is skipped for that request and the others work as usual. You get one line in the conversation — `MCP server 'docs' is not available (ConnectionError); its tools are skipped until it works` — and the model is told too, so it does not call tools that are not there. The line is said once, not at the top of every turn; if the server comes back and fails again, you hear about it again. |
+| A tool reports an error, or the server dies in the middle of a call | The call comes back to the model as an ordinary failed tool result, with the server's own message, and the model carries on. A call that never answers times out after five minutes. |
+| One entry in `mcp.json` is malformed (a missing field, an unknown `type`) | That entry is ignored and named — `MCP server 'typo' in mcp.json is ignored: …` — and every other server still loads. |
+| `mcp.json` is not valid JSON at all, or names no servers | MCP is off for this run, with a line saying why. Fix the file and restart ZettCode; a file that was valid when it started is re-read when it changes, but one that never loaded has nothing to reload. |
+
+Earlier versions stopped the whole request with `MCP unavailable (…)` when any one server
+could not be reached, and listed every configured server in the message, working ones included.
 
 ::: tip A chatty server cannot break the screen
 A stdio server writes its banner to stderr. While ZettCode owns the terminal

@@ -377,7 +377,7 @@ the two files at the top are the composition and the thing it composes.
 | --- | --- |
 | `agent/` | `ZettCodeAgent`, the application's one entry point, assembled from mixins: `base` (runtime, workspace, session id), `settings` (model, effort, shell permission), `context` (the next request, compaction), `sessions` (switch, resume, fork, title), `turns` (build, stream, steer), `interaction` (answer an approval or a question), `exports`, `commands`; and `prompt`, the parts of a user turn |
 | `runtime.py` | `ZettCodeRuntime`: composes the vendor client with the extensions below |
-| `extensions/` | What the runtime plugs into zett-agent that is ours: `capabilities`, `compaction`, `context`, `mcp`, `subagents`, `tool_output`, `usage` |
+| `extensions/` | What the runtime plugs into zett-agent that is ours: `capabilities`, `compaction`, `context`, `mcp` (and `mcp_notice`, the event it reports through), `subagents`, `tool_output`, `usage` |
 | `permission/` | How much of the shell may run unasked: the levels and what enforces them (`__init__`), the fail-closed read-only classifier (`readonly`), what an approval may remember (`approval`) |
 | `conversation/` | The conversation as the screen shows it: `entries`, `transcript/`, `presenters`, `rendering`, `rows`, `projection` (agent events fill it), `replay` (a stored branch rebuilds it) |
 | `dialogue/` | What is said besides the turns: `mentions` (`@`), `ask`, `side`, `title` |
