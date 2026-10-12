@@ -30,6 +30,13 @@ class KeysMixin(ShellState):
         self.app.commands.add("interrupt_run", self._interrupt_run)
         self.app.commands.add("complete_accept", self._complete_accept)
         self.app.commands.add("complete_dismiss", self._complete_dismiss)
+        self.app.commands.add("follow_up_up", self._follow_up_up)
+        self.app.commands.add("follow_up_down", self._follow_up_down)
+        self.app.commands.add("follow_up_previous", self._follow_up_previous)
+        self.app.commands.add("follow_up_next", self._follow_up_next)
+        self.app.commands.add("follow_up_edit", self._follow_up_edit)
+        self.app.commands.add("follow_up_delete", self._follow_up_delete)
+        self.app.commands.add("follow_up_done", self._follow_up_done)
         self.app.keymap.bind("ctrl_c", "interrupt", priority="capture")
         self.app.keymap.bind("ctrl_l", "redraw", priority="capture")
         self.app.keymap.bind("ctrl_t", "toggle_thinking", priority="capture")
@@ -41,6 +48,24 @@ class KeysMixin(ShellState):
             priority="capture",
             when=lambda: self.app.screens.top.name != PAGE_SCREEN and not self._busy and not self.composer.text,
         )
+        # The follow-up list. The modifier key (Option on a Mac) is the list's own: with
+        # nothing highlighted it walks into the list from the composer's side, and with a
+        # message highlighted it moves that message. The plain arrows move the highlight,
+        # which they only do while one is highlighted — until then they are the composer's,
+        # history and the cursor. Enter edits, Delete removes, Escape lets go. They are
+        # capture bindings because the composer reads Up and Down as history and Enter as
+        # send, and they come before the Escape and Enter bindings below: a highlighted
+        # message is the most specific thing the reader is doing, so its keys win.
+        self.app.keymap.bind("alt_up", "follow_up_up", priority="capture", when=self._follow_ups_listed)
+        self.app.keymap.bind("alt_down", "follow_up_down", priority="capture", when=self._follow_ups_listed)
+        self.app.keymap.bind("up", "follow_up_previous", priority="capture", when=self._follow_up_chosen)
+        self.app.keymap.bind("down", "follow_up_next", priority="capture", when=self._follow_up_chosen)
+        self.app.keymap.bind("enter", "follow_up_edit", priority="capture", when=self._follow_up_chosen)
+        # Backspace is what the key labelled "delete" sends on a Mac, and Delete is the one
+        # that sends it everywhere else, so both remove the message.
+        self.app.keymap.bind("backspace", "follow_up_delete", priority="capture", when=self._follow_up_chosen)
+        self.app.keymap.bind("delete", "follow_up_delete", priority="capture", when=self._follow_up_chosen)
+        self.app.keymap.bind("escape", "follow_up_done", priority="capture", when=self._follow_up_chosen)
         # Escape stops a running turn, above the uses below: a reader who wants the
         # request stopped should not have to remember that Ctrl-C is the key for
         # it, and a panel, a question, the menu, and a scrolled transcript keep
@@ -62,6 +87,54 @@ class KeysMixin(ShellState):
         self.app.keymap.bind("escape", "complete_dismiss", priority="capture", when=self._menu_open)
         self.app.keymap.bind("enter", "complete_accept", priority="capture", when=self._accept_on_enter)
 
+    def _follow_ups_listed(self) -> bool:
+        """Return whether there are follow-ups to move through, and nothing is on top of them."""
+        return bool(self._follow_ups) and self.app.screens.top.name not in (PAGE_SCREEN, ASK_SCREEN)
+
+    def _follow_up_chosen(self) -> bool:
+        """Return whether a follow-up is highlighted, and nothing is on top of the list."""
+        return self._follow_up_selecting and self.app.screens.top.name not in (PAGE_SCREEN, ASK_SCREEN)
+
+    def _follow_up_up(self, event: AnyEvent, host: Host) -> bool:
+        """Option-Up: send the highlighted follow-up sooner, or walk into the list to begin."""
+        if self._follow_up_selecting:
+            self._move_follow_up(-1)
+        else:
+            self._select_follow_up(-1)
+        return True
+
+    def _follow_up_down(self, event: AnyEvent, host: Host) -> bool:
+        """Option-Down: send the highlighted follow-up later, or walk into the list to begin."""
+        if self._follow_up_selecting:
+            self._move_follow_up(1)
+        else:
+            self._select_follow_up(1)
+        return True
+
+    def _follow_up_previous(self, event: AnyEvent, host: Host) -> bool:
+        """Highlight the previous follow-up."""
+        self._select_follow_up(-1)
+        return True
+
+    def _follow_up_next(self, event: AnyEvent, host: Host) -> bool:
+        """Highlight the next follow-up; past the last one the highlight leaves the list."""
+        self._select_follow_up(1)
+        return True
+
+    def _follow_up_edit(self, event: AnyEvent, host: Host) -> bool:
+        """Take the highlighted follow-up out of the list and into the composer."""
+        return self._edit_follow_up()
+
+    def _follow_up_delete(self, event: AnyEvent, host: Host) -> bool:
+        """Remove the highlighted follow-up, so it is never sent."""
+        self._delete_follow_up()
+        return True
+
+    def _follow_up_done(self, event: AnyEvent, host: Host) -> bool:
+        """Let go of the highlighted follow-up."""
+        self._deselect_follow_up()
+        return True
+
     def _menu_open(self) -> bool:
         """Return whether the slash-command menu is showing."""
         return self.app.screens.top.name != PAGE_SCREEN and self.completions.visible
@@ -72,15 +145,15 @@ class KeysMixin(ShellState):
         The key has other jobs, and each of them is answered elsewhere: a panel
         and the question the model is waiting on own Escape while they are up, the
         menu asks for it to dismiss itself, a scrolled transcript takes it as
-        "back to the newest line", and a selection belongs to Ctrl-C, which
-        copies. What is left is the case this binding exists for: a turn is in
+        "back to the newest line", a highlighted follow-up takes it to let go,
+        and a selection belongs to Ctrl-C, which copies. What is left is the case this binding exists for: a turn is in
         flight and Escape has nothing else to do.
         """
         if not self._busy or self._task is None or self._task.done():
             return False
         if self.app.screens.top.name in (PAGE_SCREEN, ASK_SCREEN):
             return False
-        if self._menu_open() or self.view.selected_text():
+        if self._menu_open() or self.view.selected_text() or self._follow_up_selecting:
             return False
         return not self._transcript_scrolled_up()
 

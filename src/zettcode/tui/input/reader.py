@@ -142,6 +142,6 @@ class AsyncInput:
     def _flush_escape(self) -> None:
         """Resolve a lone escape that never grew into a control sequence."""
         self._escape_handle = None
-        event = self.decoder.flush_escape()
-        if event is not None:
+        # One event per call, so a run of escapes is reported press by press.
+        while (event := self.decoder.flush_escape()) is not None:
             self.publish(event)

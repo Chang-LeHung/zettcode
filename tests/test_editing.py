@@ -174,3 +174,20 @@ def test_an_unknown_key_is_ignored():
 
     assert harness.press("f13") is False
     assert area.text == "keep"
+
+
+def test_commit_records_a_draft_and_empties_the_editor_for_a_hook_that_accepts_later():
+    """A hook that has to ask something first returns False, keeping the draft, and commits
+    once it has the answer: the history and the cleared editor are what Enter would have done."""
+    area = TextArea(on_submit=lambda value: False)
+    harness = Harness(area, width=40, height=6)
+    area.set_text("a question to ask first")
+
+    harness.press("enter")
+    assert area.text == "a question to ask first" and area.history == (), "refused: nothing recorded"
+
+    area.commit("a question to ask first")
+
+    assert area.text == "" and area.history == ("a question to ask first",)
+    area.commit("a question to ask first")
+    assert area.history == ("a question to ask first",), "the same draft twice in a row is one entry"

@@ -19,6 +19,12 @@ CORPUS = [
     b"\x01\x02\x05",
     b"\x1b\x7f",
     b"\x1b[Z",
+    # Alt on a cursor key, in the three spellings terminals use, and the bare double Escape
+    # whose first byte is the start of the second spelling.
+    b"\x1b[1;3A",
+    b"\x1b\x1b[B",
+    b"\x1b[1;2:1A",
+    b"\x1b\x1b",
     b"\r",
     b"\t",
     b"\x1f",
@@ -31,8 +37,8 @@ def decode_in_chunks(chunks: list[bytes]) -> list[InputEvent]:
     events: list[InputEvent] = []
     for chunk in chunks:
         events.extend(decoder.feed(chunk))
-    trailing = decoder.flush_escape()
-    if trailing is not None:
+    # The reader asks again until nothing is left, so this does too.
+    while (trailing := decoder.flush_escape()) is not None:
         events.append(trailing)
     return events
 

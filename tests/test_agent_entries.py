@@ -18,6 +18,7 @@ from zettcode.app.agent.conversation.entries import (
     WaitEntry,
 )
 from zettcode.app.agent.conversation.presenters import block_for
+from zettcode.app.agent.conversation.rows import move_frames
 from zettcode.app.agent.conversation.transcript import Transcript
 from zettcode.tui import DARK, LIGHT, LineSource
 
@@ -214,7 +215,9 @@ def test_a_processing_row_rebuilds_for_its_title_timer_and_frame():
     assert _painted(entry) != before
 
     entry = WaitEntry(id=3, started_at=0.0)
-    assert _painted(entry, frame=1) != _painted(entry, frame=0)
+    # Half way through the sweep, not one step on: a step is a hundred-and-twentieth of a
+    # second, and the highlight has not yet moved a column.
+    assert _painted(entry, frame=move_frames() // 2) != _painted(entry, frame=0)
 
 
 def test_a_thinking_row_rebuilds_for_expansion_text_status_and_timer():

@@ -68,7 +68,7 @@ and prints the command to resume your session.
 | --- | --- |
 | **See every step** | Reasoning, answers, and tool calls stream as readable rows — not raw JSON. |
 | **Keep the decision** | Review shell commands before they run. When the agent needs your input, choose an option or type an answer. |
-| **Keep moving** | Send a steering message during a reply. Use `/btw` for a side question that stays out of later context. |
+| **Keep moving** | Type during a reply and choose: steer it now, or queue a follow-up you can edit, delete and reorder with `Option`+`↑`/`↓`. Use `/btw` for a side question that stays out of later context. |
 | **Come back later** | `/resume` restores a conversation; `/export` saves a readable HTML record. |
 | **Understand the context** | Monitor token usage and caching, inspect `/context`, and compact when needed. |
 | **Bring your tools** | Use project `AGENTS.md` instructions, skills, MCP servers, and Python plugins. |

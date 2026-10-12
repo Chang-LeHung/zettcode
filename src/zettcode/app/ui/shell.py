@@ -42,13 +42,19 @@ UPDATE_ROWS = 8
 #: for a single request, and the count resets when a new run starts.
 MAX_STEERING = 8
 
+#: Follow-up messages that may wait at once. They are held by the shell and each takes a row
+#: above the composer, so the list is bounded the way the steering one is.
+MAX_FOLLOW_UPS = 8
+
 if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay lazy
     import asyncio
+    from collections.abc import Sequence
 
     from ...plugins import Activity, UiRow
     from ...tui import CompletionPopup, StatusBar, TuiApp
     from ...update import UpdateState
     from ..agent.agent import ZettCodeAgent
+    from ..agent.agent.prompt import PromptPart
     from ..agent.conversation.projection import TranscriptProjector
     from ..agent.conversation.rows import EffortFrame
     from ..agent.conversation.transcript import Transcript
@@ -56,7 +62,8 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
     from ..agent.dialogue.mentions import MentionRegistry
     from ..agent.extensions.usage import UsageSnapshot
     from ..commands import Command
-    from .widgets import Composer, SteeringQueue, TranscriptView, ZettCodeRoot
+    from .followups import FollowUp
+    from .widgets import Composer, FollowUpQueue, SteeringQueue, TranscriptView, ZettCodeRoot
 
 
 class ShellState:
@@ -77,8 +84,9 @@ class ShellState:
     view: TranscriptView
     composer: Composer
     completions: CompletionPopup
-    #: Messages queued to steer the running turn.
+    #: Messages queued to steer the running turn, and the ones held to follow it.
     steering: SteeringQueue
+    follow_ups: FollowUpQueue
     #: The two rows the plugin segments fill.
     header: StatusBar
     status: StatusBar
@@ -102,6 +110,16 @@ class ShellState:
     #: Steering messages queued for this run, and how many were queued in all.
     _steering: list[str]
     _steering_sent: int
+    #: The follow-ups waiting in send order, the highlighted one, and the slot a message
+    #: taken out for editing will return to.
+    _follow_ups: list[FollowUp]
+    _follow_up_selected: int | None
+    _editing_slot: int | None
+    #: Whether the list is held: a request was stopped or failed with follow-ups waiting, and
+    #: no reply has completed since.
+    _follow_ups_held: bool
+    #: Whether the work in flight is a turn, which can be steered, rather than a command.
+    _turn_running: bool
     #: The in-flight request that names a session, if any.
     _title_task: asyncio.Task[None] | None
     #: The in-flight re-measure of a context figure, if any.
@@ -130,6 +148,45 @@ class ShellState:
 
     def _start_next_command(self) -> None:
         """Run the command that was typed while the finished request was busy."""
+
+    def _return_follow_ups_to_draft(self) -> None:
+        """Hand the held follow-ups back as text, because their conversation is over."""
+
+    @property
+    def _follow_up_selecting(self) -> bool:
+        """Return whether a follow-up is highlighted."""
+        return False
+
+    def _select_follow_up(self, step: int) -> None:
+        """Move the follow-up highlight."""
+
+    def _deselect_follow_up(self) -> None:
+        """Take the follow-up highlight off."""
+
+    def _move_follow_up(self, step: int) -> None:
+        """Swap the highlighted follow-up with its neighbour."""
+
+    def _edit_follow_up(self) -> bool:
+        """Take the highlighted follow-up out and into the composer."""
+        return False
+
+    def _delete_follow_up(self) -> None:
+        """Remove the highlighted follow-up from the list."""
+
+    def _queue_steering(self, value: str) -> None:
+        """Show one message waiting for the agent to adopt it."""
+
+    def _clear_steering(self) -> None:
+        """Drop the steering list."""
+
+    def _refuse_busy(self) -> None:
+        """Tell the reader a draft cannot be taken while a request runs."""
+
+    def _refresh_completions(self) -> None:
+        """Mirror the composer's slash-command candidates into the menu."""
+
+    async def _run_prompt(self, prompt: str, parts: Sequence[PromptPart] = (), hint: str | None = None) -> None:
+        """Stream one agent turn."""
 
     def submit(self, value: str) -> bool | None:
         """Start a turn, steer the running one, or run a slash command."""

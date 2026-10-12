@@ -7,10 +7,15 @@ from collections.abc import Sequence
 from ....tui import SEPARATOR, Completer, CompletionItem
 from ...agent.dialogue.mentions import MentionRegistry
 from ...commands import Command
+from .follow_up import OPTION
 
 KEY_HELP = (
-    f"  Enter send {SEPARATOR} Alt-Enter newline {SEPARATOR} Ctrl-C stop or clear\n"
-    f"  Ctrl-T thinking {SEPARATOR} PgUp/PgDn scroll {SEPARATOR} Ctrl-L redraw {SEPARATOR} Ctrl-D exit"
+    f"  Enter send {SEPARATOR} Shift-Enter or Alt-Enter newline {SEPARATOR} Ctrl-C stop or clear\n"
+    f"  Ctrl-T thinking {SEPARATOR} PgUp/PgDn scroll {SEPARATOR} Ctrl-L redraw {SEPARATOR} Ctrl-D exit\n"
+    f"  While a request runs, Enter asks whether a message should steer it or follow up after it;\n"
+    f"  {OPTION.capitalize()}-\u2191/\u2193 select a follow-up {SEPARATOR} \u2191/\u2193 move the highlight "
+    f"{SEPARATOR} {OPTION.capitalize()}-\u2191/\u2193 reorder {SEPARATOR} Enter edit "
+    f"{SEPARATOR} Del remove {SEPARATOR} Esc done"
 )
 
 

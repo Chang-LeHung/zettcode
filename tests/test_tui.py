@@ -346,3 +346,56 @@ def test_the_decoded_names_are_the_ones_the_editor_waits_for():
 
     assert [getattr(event, "key", None) for event in shifted] == ["shift_enter"]
     assert [getattr(event, "key", None) for event in plain] == ["enter"]
+
+
+# -- Alt on a cursor key: the spellings terminals actually send ---------------------
+
+
+@pytest.mark.parametrize(
+    ("sequence", "expected"),
+    [
+        (b"\x1b[1;3A", "alt_up"),  # xterm and every terminal that reports modifiers
+        (b"\x1b[1;3B", "alt_down"),
+        (b"\x1b[1;2A", "shift_up"),
+        (b"\x1b[1;2B", "shift_down"),
+        # "Option sends Esc+": the key is ESC [ A and Alt is one more ESC in front.
+        (b"\x1b\x1b[A", "alt_up"),
+        (b"\x1b\x1b[B", "alt_down"),
+        (b"\x1b\x1b[D", "alt_left"),
+        (b"\x1b\x1b[5~", "alt_page_up"),
+        # A terminal that reports event types writes "mods:event"; only the mods count.
+        (b"\x1b[1;3:1A", "alt_up"),
+        (b"\x1b[1;2:1B", "shift_down"),
+    ],
+)
+def test_alt_and_shift_on_a_cursor_key_arrive_under_one_name_however_they_are_spelled(sequence, expected):
+    """The shell binds ``alt_up`` once; every terminal's spelling has to land on it."""
+    assert [event.key for event in InputDecoder().feed(sequence)] == [expected]
+
+
+def test_alt_up_is_never_read_as_escape_followed_by_up():
+    """Escape stops a running request, so a mis-read Alt-Up would cancel the work it was pressed over."""
+    keys = [event.key for event in InputDecoder().feed(b"\x1b\x1b[A")]
+
+    assert "escape" not in keys
+
+
+def test_two_escape_presses_wait_for_what_follows_and_are_still_two_presses():
+    """``ESC ESC`` may be the start of Alt on a cursor key, so it waits; if nothing follows it is
+    still two Escape presses, each its own event, not one."""
+    decoder = InputDecoder()
+
+    assert decoder.feed(b"\x1b\x1b") == [], "undecided until the next byte, or the timeout"
+    flushed = [decoder.flush_escape(), decoder.flush_escape(), decoder.flush_escape()]
+    assert [event.key if event else None for event in flushed] == ["escape", "escape", None]
+
+
+def test_escape_then_a_letter_still_reads_as_it_did():
+    assert [event.key for event in InputDecoder().feed(b"\x1b\x1bx")] == ["escape", "x"]
+
+
+def test_a_meta_sequence_split_across_reads_waits_for_its_final_byte():
+    decoder = InputDecoder()
+
+    assert decoder.feed(b"\x1b\x1b[") == []
+    assert [event.key for event in decoder.feed(b"A")] == ["alt_up"]

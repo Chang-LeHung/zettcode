@@ -100,22 +100,94 @@ the screen.
   chip. Text and images keep the order you wrote them in. See
   [Pictures and pastes](#pictures-and-pastes).
 
-## Steering a running request
+## Typing while a request runs
 
-You do not have to wait for the model to stop. Type while it is working and
-press Enter: the message joins a small `↳ steering` list above the composer and
-the agent reads it at its next safe point — after the tool batch it is running.
-Up to eight can be queued; the shell says so if you try more.
+You do not have to wait for the model to stop. Type while it is working and press
+Enter, and ZettCode asks what the message is — the text alone cannot say:
 
-Steering is for direction, not for interruption: `Ctrl-C` is how you stop a
-request you no longer want.
+```text
+You sent a message while ZettCode is working. What should it do?
 
-For example, while a pagination change is running, send:
+› then open a pull request
+
+▸ 1. Follow up  send it after this request finishes (f)
+  2. Steer      hand it to the agent now; it replaces the rest of the current task (s)
+
+enter choose · f follow up · s steer · esc keep editing the draft
+```
+
+`f` and `s` pick a row directly, `Enter` takes the highlighted one (**Follow up**, the
+choice that cannot interrupt anything), and `Esc` closes the question and leaves your
+draft in the composer, so pressing Enter too early costs nothing. When only one answer
+is possible — a command such as `/compact` is running, which cannot be steered — nothing
+is asked and the message waits as a follow-up.
+
+### Steer: change what it is doing
+
+A steering message joins a small `↳ steer` list above the composer. The agent reads it at
+its next safe point — after the tool batch it is running — and drops the rest of the
+current task for it. Up to eight can be queued. It is a new instruction for the **same**
+task and does not undo edits already made.
+
+By the time you see it in the list the agent already has it, and the agent offers no way
+to take a message back, so **a steering message cannot be edited, removed or reordered**.
+If you are not sure you want it, send it as a follow-up: that one stays in your hands.
+
+### Follow up: do this next
+
+A follow-up waits in its own `• follow-up` list, directly above the composer, and goes out
+as a message of its own when the conversation ends well — one at a time, in the order shown,
+each starting when the one before it is done. Up to eight can wait. Steering messages and
+follow-ups can wait together: the steering list sits above, and every key below works on
+the follow-ups.
+
+Because a follow-up is still in your hands, you can change it. `Option` is the key marked
+`⌥` on a Mac (`Alt` on other keyboards, and that is what the hints say there):
+
+| Key | What it does |
+| --- | --- |
+| <kbd>Option</kbd>+<kbd>Up</kbd> / <kbd>Option</kbd>+<kbd>Down</kbd> | With nothing highlighted: walk into the list. `Option-Up` lands on the row nearest the composer and `Option-Down` on the first. **With a message highlighted: move that message** one place earlier or later; the highlight goes with it. |
+| <kbd>Up</kbd> / <kbd>Down</kbd> | With a message highlighted: move the highlight. `Down` past the last row goes back to the composer. Without a highlight these are the composer's, as always. |
+| <kbd>Enter</kbd> | Take the highlighted message out of the list and into the composer to change it. Sending it again puts it back **in the slot it left**, not at the end. |
+| <kbd>Delete</kbd> / <kbd>Backspace</kbd> | Remove the highlighted message; it will not be sent. The line above the composer names what was removed. |
+| <kbd>Esc</kbd> | Let go of the highlight. The request keeps running; a second `Esc` stops it as usual. |
+
+The list names these keys itself — the row under it reads `option+↑/↓ to select`, and once a
+message is highlighted it lists the rest — so there is nothing to memorise. Typing anything
+also lets go of the highlight, and `Enter` will not overwrite a draft you have already
+started: finish or clear it (`Ctrl-C`) first.
+
+::: tip If your terminal swallows Option-Up
+Some terminals use `Option-Up` themselves. ZettCode reads the usual spellings, including
+the "Option sends Esc+" setting of macOS Terminal and iTerm2. If yours still keeps the key,
+turn on "Use Option as Meta" (Terminal) or set the left Option key to "Esc+" (iTerm2).
+:::
+
+### When the conversation does not end well
+
+`Esc` (or `Ctrl-C`) stops a request you no longer want, and that is *all* it does. The follow-ups
+are your own list: stopping does not send them, and it does not take them away either. They stay
+in the list, which now reads `held until your next reply completes`, and the transcript says how
+many are held. Say what you meant to say instead — and when **that** reply completes, the held
+follow-ups go out behind it, in order. A request that failed does the same.
+
+So a follow-up is only ever attached to a conversation that finished smoothly. A side question
+(`/btw`) finishing in between is not a reply and does not release them. The list belongs to its
+conversation: `/new`, `/resume` and `/fork` hand it back as text in the composer rather than send
+it into a conversation it was not written for.
+
+One thing is different. A *steering* message the agent never got to read was written to redirect
+the request that just ended, so it goes back into the composer, after whatever you had typed there.
+
+For example, while a pagination change is running, send this as a **steer**:
 
 > Keep the current API response format; only add the pagination fields.
 
-This is a new instruction for the **same** task. It does not undo edits already
-made. If you need the agent to stop immediately, press `Ctrl-C` instead.
+and this as a **follow-up**:
+
+> Then add a test for the last page.
+
+If you need the agent to stop immediately, press `Esc` instead.
 
 ## Panels
 

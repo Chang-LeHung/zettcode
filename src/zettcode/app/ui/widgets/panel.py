@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ....tui import Anchor, Overlay, OverlaySlot, Widget
+from ....tui import Anchor, KeyEvent, Overlay, OverlaySlot, TextEvent, Widget
 
 
 def bottom_panel(widget: Widget, *, rows: int) -> Widget:
@@ -22,3 +22,18 @@ def bottom_panel(widget: Widget, *, rows: int) -> Widget:
     """
     anchor = Anchor(horizontal="stretch", vertical="end", height=rows)
     return Overlay([OverlaySlot(widget, anchor)])
+
+
+def pressed(event: object) -> str | None:
+    """Return the key one press names, whether the terminal sent it as a key or as text.
+
+    A terminal has no "y" key: it sends the character, and the decoder reports a printable
+    character as text, while arrows, Enter and Escape are named keys. A page that lists
+    ``(y)`` beside a row has to answer both, or the shortcut it advertises only works for the
+    tests that send a key event. Alt and Ctrl chords are not shortcuts and are left alone.
+    """
+    if isinstance(event, KeyEvent):
+        return None if event.alt or event.control else event.key
+    if isinstance(event, TextEvent) and len(event.text) == 1 and not (event.alt or event.control):
+        return event.text
+    return None
