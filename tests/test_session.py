@@ -17,6 +17,7 @@ from zett_agent.model import ModelUsage
 
 from zettcode.app.agent.storage import SessionPersistenceMixin, SessionStore, now, workspace_key
 from zettcode.app.agent.storage.metadata import (
+    MAX_TITLE,
     SessionActivity,
     SessionStarted,
     SessionTitle,
@@ -898,3 +899,162 @@ async def test_a_corrupt_envelope_in_a_line_nobody_opens_is_found_when_somebody_
     assert [line.id for line in session.messages][-1] == "bad", "the file reads"
     with pytest.raises(ValueError):
         session.messages[-1].message[0]
+
+
+# -- forking a session -------------------------------------------------------------
+
+
+async def test_a_fork_carries_the_context_and_leaves_the_rest_behind(tmp_path: Path):
+    """What is copied is what a request would send, not everything the file holds.
+
+    The messages a checkpoint replaced are not part of the conversation any more: a
+    fork that copied them would carry context the model never sees, and the fork
+    exists to start from what the model is working with.
+    """
+    from zett_agent.messages import AssistantMessage
+
+    store = SessionStore(tmp_path)
+    ids = [await store.append("s1", f"r{index}", UserMessage(content=f"message {index}")) for index in range(4)]
+    await store.checkpoint("s1", _summary("the first two, summarized"), ids[1], 0)
+    await store.append("s1", "r2", AssistantMessage(content="after the checkpoint"))
+
+    fork_id = store.fork("s1")
+    fork = SessionStore(tmp_path).read(fork_id)
+    source = SessionStore(tmp_path).read("s1")
+
+    assert fork_id != "s1"
+    assert [line.message[0].content for line in fork.messages] == [
+        "the first two, summarized",
+        "message 2",
+        "message 3",
+        "after the checkpoint",
+    ]
+    assert fork.compactions == (), "the summary is a message now: there is no boundary to sit on"
+    assert _active_messages(SessionStore(tmp_path), fork_id) == _active_messages(SessionStore(tmp_path), "s1"), (
+        "the same context, message for message"
+    )
+    assert [line.message[0].content for line in source.messages] == [
+        "message 0",
+        "message 1",
+        "message 2",
+        "message 3",
+        "after the checkpoint",
+    ], "the session forked from is untouched"
+
+
+async def test_a_fork_without_a_checkpoint_is_the_whole_branch(tmp_path: Path):
+    store = SessionStore(tmp_path)
+    for index in range(3):
+        await store.append("s1", "r", UserMessage(content=f"message {index}"))
+
+    fork = SessionStore(tmp_path).read(store.fork("s1"))
+
+    assert [line.message[0].content for line in fork.messages] == ["message 0", "message 1", "message 2"]
+
+
+async def test_a_fork_keeps_the_usage_tags_and_timing_it_was_taken_from(tmp_path: Path):
+    """A forked conversation reads, and counts, the way the one it came from did."""
+    from zett_agent.messages import AssistantMessage
+
+    from zettcode.app.agent.side import SIDE
+
+    store = SessionStore(tmp_path)
+    timing = MessageTiming(started_at=now(), completed_at=now(), duration_ns=2_500_000_000)
+    await store.append("s1", "r1", UserMessage(content="ask"), tags={SIDE: True}, metadata={"note": "kept"})
+    await store.append(
+        "s1",
+        "r1",
+        AssistantMessage(content="answer"),
+        timing=timing,
+        usage=ModelUsage(input_tokens=1_000, output_tokens=20, cache_read_tokens=900),
+    )
+
+    fork = SessionStore(tmp_path).read(store.fork("s1"))
+
+    asked, answered = fork.messages
+    assert asked.tags == {SIDE: True} and asked.metadata == {"note": "kept"}
+    assert asked.request_id == "r1"
+    assert answered.usage is not None and answered.usage.input_tokens == 1_000
+    assert answered.usage.cache_read_tokens == 900
+    assert answered.timing.duration_ns == 2_500_000_000
+
+
+async def test_a_fork_names_where_it_came_from_and_carries_the_title(tmp_path: Path):
+    store = SessionStore(tmp_path)
+    await store.append("s1", "r", UserMessage(content="hello"))
+    await store.set_title("s1", "Fix the parser")
+
+    fork_id = store.fork("s1")
+
+    assert store.read(fork_id).header is not None
+    assert store.read(fork_id).parent_session_id == "s1"
+    assert store.session_title(fork_id) == "Fix the parser (fork)"
+    assert store.session_title("s1") == "Fix the parser", "the original keeps its own name"
+
+
+async def test_a_fork_of_a_fork_and_a_nameless_one_are_both_fine(tmp_path: Path):
+    store = SessionStore(tmp_path)
+    await store.append("s1", "r", UserMessage(content="hello"))
+
+    nameless = store.fork("s1")
+    assert store.session_title(nameless) is None
+
+    await store.set_title(nameless, "a name long enough to matter here")
+    again = store.fork(nameless)
+    assert store.session_title(again) == "a name long enough to matter here (fork)"
+
+
+async def test_a_fork_that_is_too_long_to_name_stays_unnamed(tmp_path: Path):
+    """The suffix is a nicety; a name at the limit keeps the fork rather than breaking it."""
+    store = SessionStore(tmp_path)
+    await store.append("s1", "r", UserMessage(content="hello"))
+    await store.set_title("s1", "x" * MAX_TITLE)
+
+    fork_id = store.fork("s1")
+
+    assert store.session_title(fork_id) is None
+    assert [line.message[0].content for line in store.read(fork_id).messages] == ["hello"]
+
+
+async def test_forking_something_with_nothing_in_it_is_refused(tmp_path: Path):
+    store = SessionStore(tmp_path)
+
+    with pytest.raises(ValueError, match="Nothing to fork yet"):
+        store.fork("no-such-session")
+
+    await store.set_title("empty", "a session with a name and no messages")
+    with pytest.raises(ValueError, match="Nothing to fork yet"):
+        store.fork("empty")
+
+
+async def test_a_fork_can_be_continued_and_only_shows_the_forked_branch(tmp_path: Path):
+    store = SessionStore(tmp_path)
+    for index in range(3):
+        await store.append("s1", "r", UserMessage(content=f"message {index}"))
+
+    fork_id = store.fork("s1")
+    await store.append(fork_id, "r", UserMessage(content="a new direction"))
+
+    fork = SessionStore(tmp_path).read(fork_id)
+    assert [line.message[0].content for line in fork.branch()] == [
+        "message 0",
+        "message 1",
+        "message 2",
+        "a new direction",
+    ]
+    assert len(SessionStore(tmp_path).read("s1").messages) == 3, "the source did not grow"
+
+
+async def test_a_forked_session_keeps_its_parent_when_a_later_append_names_none(tmp_path: Path):
+    """The runtime hands the stored parent back on every append; a caller that names
+    none is leaving the header as it is, not asking for it to be changed."""
+    store = SessionStore(tmp_path)
+    await store.append("s1", "r", UserMessage(content="hello"))
+    fork_id = store.fork("s1")
+
+    await store.append(fork_id, "r", UserMessage(content="onwards"))
+    await store.append(fork_id, "r", UserMessage(content="and onwards"), parent_session_id=fork_id and "s1")
+
+    assert store.read(fork_id).parent_session_id == "s1"
+    with pytest.raises(ValueError, match="cannot change after creation"):
+        await store.append(fork_id, "r", UserMessage(content="elsewhere"), parent_session_id="some-other-session")

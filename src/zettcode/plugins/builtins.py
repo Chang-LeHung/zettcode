@@ -10,7 +10,7 @@ second segment beside it.
 
 from __future__ import annotations
 
-from ..app.agent.mentions import SkillMentions
+from ..app.agent.mentions import FileMentions, SkillMentions
 from ..app.agent.rows import activity_glyph
 from ..app.agent.usage import context_text, usage_text
 from ..app.ui import labels
@@ -63,5 +63,20 @@ class SkillResources(Plugin):
             container.register_mention(SkillMentions(container.config))
 
 
+class FileResources(Plugin):
+    """The ``@`` resource provider for the workspace's own files.
+
+    Registered after the skills, so a name both could offer is the skill: a
+    repository holds a file called ``test`` and a skill is the more specific
+    thing to mean. Nothing turns this off, because a workspace always has files.
+    """
+
+    name = "files"
+
+    def activate(self, container: PluginContainer) -> None:
+        """Offer the workspace's files as ``@`` resources."""
+        container.register_mention(FileMentions(container.config.workspace))
+
+
 #: Plugins loaded from the repository itself, never from a distribution.
-BUILTIN_PLUGINS: tuple[Plugin, ...] = (ShellRows(), SkillResources())
+BUILTIN_PLUGINS: tuple[Plugin, ...] = (ShellRows(), SkillResources(), FileResources())

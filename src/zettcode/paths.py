@@ -8,6 +8,7 @@ read the config, so the paths cannot live behind that import.
 from __future__ import annotations
 
 import os
+import shlex
 from pathlib import Path
 
 #: The conventional config file, read when the user has created one.
@@ -46,3 +47,14 @@ def config_path(path: str | Path | None = None) -> Path:
         return Path(path).expanduser()
     override = os.getenv("ZETTCODE_CONFIG")
     return Path(override).expanduser() if override else CONFIG_FILE
+
+
+def resume_command(session_id: str, workspace: Path) -> str:
+    """Return the command that reopens one stored session from anywhere.
+
+    It is written down once because two places say it: the line printed on the way
+    out, and the line a fork leaves in the conversation. The workspace is part of it
+    because the store is keyed by workspace — the same id means nothing in another
+    checkout — and it is quoted, because a path may hold a space.
+    """
+    return f"zettcode --resume {shlex.quote(session_id)} --workspace {shlex.quote(str(workspace))}"

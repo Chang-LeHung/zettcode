@@ -88,7 +88,9 @@ is no universal expected percentage. See the
 **A command ran that I did not want.** Check the level in the status line: `· auto`
 runs every command and `· safe` runs the ones it recognises as read-only, while
 no marker means `ask`. `/permission ask` puts the question back, and
-`/permission deny` stops shell commands altogether. Earlier approval choices
+`/permission deny` stops shell commands altogether. A run started with
+`--auto` (or `--yolo`) begins at `auto` for the same reason, without a line
+in the conversation to say so. Earlier approval choices
 matter too: `a` switched to `auto`, `s` to `safe`, and `p` remembers an exact
 command for the current process. Restarting clears all of it. The level applies
 to the built-in shell tool, not to file-editing or MCP tools. ZettCode does not

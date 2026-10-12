@@ -9,7 +9,16 @@ import pytest
 from zett_agent.messages import UserMessage
 
 from zettcode.app.agent.agent import MentionPart, ZettCodeAgent, mention_hint
-from zettcode.app.agent.mentions import Mention, MentionProvider, MentionRegistry, SkillMentions
+from zettcode.app.agent.mentions import (
+    LISTING_SECONDS,
+    MAX_CANDIDATES,
+    MENTION,
+    FileMentions,
+    Mention,
+    MentionProvider,
+    MentionRegistry,
+    SkillMentions,
+)
 from zettcode.app.agent.replay import replay
 from zettcode.app.agent.storage import SessionStore
 from zettcode.app.ui.widgets import Composer
@@ -235,3 +244,186 @@ async def test_replay_shows_the_typed_text_instead_of_the_expanded_one(tmp_path:
     assert users == ["typed @skill"]
     # The model's history still carries what it was actually sent.
     assert replayed.history[0].text == "expanded @skill"
+
+
+# -- files in the workspace as @ resources ---------------------------------------
+
+
+@pytest.fixture
+def workspace(tmp_path: Path) -> Path:
+    """Return a small tree, with the directories a listing skips filled in."""
+    (tmp_path / "src" / "app").mkdir(parents=True)
+    (tmp_path / "src" / "app" / "cli.py").write_text("print('cli')\n" * 20)
+    (tmp_path / "src" / "app" / "server.py").write_text("x = 1\n")
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_cli.py").write_text("assert True\n")
+    (tmp_path / "README.md").write_text("# readme\n")
+    (tmp_path / ".git").mkdir()
+    (tmp_path / ".git" / "config").write_text("[core]\n")
+    (tmp_path / "node_modules" / "left-pad").mkdir(parents=True)
+    (tmp_path / "node_modules" / "left-pad" / "index.js").write_text("module.exports = 1\n")
+    (tmp_path / "__pycache__").mkdir()
+    (tmp_path / "__pycache__" / "cli.cpython-314.pyc").write_bytes(b"\x00")
+    return tmp_path
+
+
+def _files(workspace: Path, *, clock=None) -> FileMentions:
+    return FileMentions(workspace) if clock is None else FileMentions(workspace, clock=clock)
+
+
+def test_a_file_token_is_a_path_and_an_email_is_still_not_a_mention():
+    """A draft points at a file by path, so the token holds the punctuation a path does."""
+    assert MentionPart("@src/app/cli.py") in _parts("look at @src/app/cli.py")
+    assert [match.group(1) for match in MENTION.finditer("see @src/app/cli.py and @README.md")] == [
+        "src/app/cli.py",
+        "README.md",
+    ]
+    assert MENTION.findall("mail me at someone@example.com") == []
+    assert MENTION.findall("@ @/ @-x") == []
+    assert MENTION.findall("@Code-Review_v2 @a/b") == ["Code-Review_v2", "a/b"]
+
+
+def test_the_workspace_is_offered_without_its_ignored_directories(workspace: Path):
+    files = _files(workspace).candidates("")
+
+    paths = [mention.name for mention in files]
+    assert paths == sorted(paths, key=lambda path: (len(path), path)) or "src/app/cli.py" in paths
+    assert {"README.md", "src/app/cli.py", "src/app/server.py", "tests/test_cli.py"} <= set(paths)
+    assert not [path for path in paths if path.startswith((".git/", "__pycache__/", "node_modules/"))]
+
+
+def test_a_path_that_starts_with_the_query_is_offered_before_one_that_contains_it(workspace: Path):
+    files = [mention.name for mention in _files(workspace).candidates("cli")]
+    server = [mention.name for mention in _files(workspace).candidates("server")]
+
+    assert files[0] == "src/app/cli.py", "the file named cli.py comes first"
+    assert "tests/test_cli.py" in files, "and one that only contains it is still offered"
+    assert server == ["src/app/server.py"]
+    assert _files(workspace).candidates("nothing-like-this") == ()
+
+
+def test_the_menu_line_says_how_big_the_file_is(workspace: Path):
+    described = {mention.name: mention.description for mention in _files(workspace).candidates("")}
+
+    assert described["src/app/server.py"] == "6 B"
+    assert described["README.md"] == "9 B"
+    assert described["src/app/cli.py"].endswith(" B")
+
+
+def test_a_listing_is_reused_and_then_taken_again(workspace: Path):
+    """Typing a path must not walk the tree on every keystroke, and a new file must still appear."""
+    now = [0.0]
+    files = _files(workspace, clock=lambda: now[0])
+    assert [mention.name for mention in files.candidates("added")] == []
+
+    (workspace / "added.py").write_text("x = 1\n")
+    now[0] = LISTING_SECONDS / 2
+    assert [mention.name for mention in files.candidates("added")] == [], "too soon: the listing is reused"
+
+    now[0] = LISTING_SECONDS + 0.1
+    assert [mention.name for mention in files.candidates("added")] == ["added.py"]
+
+
+def test_a_file_deleted_after_the_listing_drops_out_of_the_menu(workspace: Path):
+    files = _files(workspace)
+    assert [mention.name for mention in files.candidates("server")] == ["src/app/server.py"]
+
+    (workspace / "src" / "app" / "server.py").unlink()
+
+    assert files.candidates("server") == ()
+
+
+def test_at_most_a_screenful_of_files_is_offered(workspace: Path):
+    for index in range(MAX_CANDIDATES + 25):
+        (workspace / f"many_{index:03d}.py").write_text("x = 1\n")
+
+    offered = _files(workspace).candidates("many_")
+
+    assert len(offered) == MAX_CANDIDATES
+
+
+def test_one_token_expands_to_a_sentence_about_the_file_not_its_contents(workspace: Path):
+    files = _files(workspace)
+
+    text = files.expand("src/app/cli.py")
+
+    assert text is not None and '"src/app/cli.py"' in text and "read_file" not in text
+    assert "print(" not in text, "the body is not inlined: the model has a tool for that"
+    assert files.expand("src") is not None and "directory" in (files.expand("src") or "")
+    assert files.expand("src/missing.py") is None
+
+
+def test_a_file_reference_reaches_the_model_as_the_sentence(workspace: Path):
+    """The draft is stored as typed; the expansion rides as an attribute, as skills do."""
+    registry = MentionRegistry([_files(workspace), _TextMentions("note", HINTS)])
+
+    hint = mention_hint(_parts("what does @src/app/cli.py do, @note?"), registry)
+
+    assert hint is not None
+    assert '"src/app/cli.py"' in hint and hint.endswith(HINTS["note"])
+
+
+def test_the_workspace_offers_files_through_the_builtin_bundle(tmp_path: Path):
+    """The shell merges whatever the bundle holds, so the provider has to be in it."""
+    from zettcode.plugins import load_plugins
+
+    config = ZettCodeConfig(
+        workspace=tmp_path,
+        models=(ModelConfig(model="m", token="t"),),
+        store=tmp_path / "s",
+        skills_enabled=False,
+        mcp_enabled=False,
+    )
+    (tmp_path / "solo.py").write_text("x = 1\n")
+
+    plugins = load_plugins(config, entry_points=())
+    registry = MentionRegistry(plugins.mentions)
+
+    assert "solo.py" in [mention.name for mention in registry.candidates("solo")]
+    assert "@solo.py" in [mention.token for mention in registry.candidates("solo")]
+
+
+def test_a_skill_and_a_file_of_the_same_name_are_both_offered_without_duplicating(tmp_path: Path):
+    class Skillish(_TextMentions):
+        kind = "skill"
+
+    class Fileish(_TextMentions):
+        kind = "file"
+
+    registry = MentionRegistry(
+        [Skillish("skill", {"README.md": "skill text"}), Fileish("file", {"README.md": "file text"})]
+    )
+
+    offered = registry.candidates("README")
+
+    assert [mention.kind for mention in offered] == ["skill"], "the earlier provider owns the name"
+    assert registry.expand_token("@README.md") == "skill text"
+
+
+def test_each_provider_is_asked_for_the_query_rather_than_handed_everything(workspace: Path):
+    """Completion runs per keystroke; a provider with thousands of names must not be materialized."""
+    asked: list[str] = []
+
+    class Counting(_TextMentions):
+        kind = "file"
+
+        def candidates(self, query: str) -> Sequence[Mention]:
+            asked.append(query)
+            return super().candidates(query)
+
+    registry = MentionRegistry([Counting("file", {"src/app/cli.py": "x", "README.md": "y"})])
+    registry.candidates("src")
+
+    assert asked == ["src"]
+
+
+def test_the_menu_offers_a_path_while_it_is_being_typed(workspace: Path):
+    """The composer's completer is what the reader sees, so a typed path has to reach it."""
+    registry = MentionRegistry([_files(workspace)])
+    completer = CommandCompleter((), registry)
+    draft = "look at @src/app/cl"
+
+    items = completer(draft, len(draft))
+
+    assert [item.value for item in items] == ["@src/app/cli.py"]
+    assert [item.type for item in items] == ["file"]

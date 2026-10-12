@@ -6,7 +6,7 @@ import re
 
 from ..core.events import MouseAction
 from .events import EventType, InputEvent
-from .keys import CONTROL_KEYS, KEY_SEQUENCES
+from .keys import CONTROL_KEYS, KEY_SEQUENCES, csi_event, split_csi
 
 # SGR mouse report: CSI < Cb ; Cx ; Cy M (press or motion) or m (release).
 # Coordinates arrive 1-based, so the decoder subtracts one from each.
@@ -132,6 +132,18 @@ class InputDecoder:
                 return InputEvent(EventType.KEY, key=key), len(sequence), False
             if sequence.startswith(data):
                 return None, 0, True
+
+        # The modified encoding: the key a terminal can only report after being asked,
+        # like Shift-Enter, and the keys whose names the fixed table does not spell.
+        # A complete sequence this program has no name for is consumed rather than
+        # typed into the draft one byte at a time.
+        csi = split_csi(data)
+        if csi is not None:
+            parameters, final, consumed = csi
+            named, text = csi_event(parameters, final)
+            if text is not None:
+                return InputEvent(EventType.TEXT, text=text), consumed, False
+            return (InputEvent(EventType.KEY, key=named) if named is not None else None), consumed, False
 
         first = data[0]
         if first in CONTROL_KEYS:

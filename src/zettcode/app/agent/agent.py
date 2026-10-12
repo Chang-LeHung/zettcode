@@ -392,6 +392,19 @@ class ZettCodeAgent:
         """Switch future turns to a session."""
         self.runtime.use_session(session_id)
 
+    def fork_session(self) -> str:
+        """Copy this conversation's context into a new session, and return its id.
+
+        What is carried over is what a request would send — the newest checkpoint's
+        summary and the messages after it — not the whole stored history: the fork
+        starts from the conversation the model is actually working with. The shell
+        installs the result the way a resume does, so the reader lands in the fork
+        with the same conversation in front of them.
+
+        Synchronous file work on purpose, so the shell can run it on a thread.
+        """
+        return self.runtime.persistence.fork(self.session_id)
+
     def load_session(self, session_id: str, transcript: Transcript) -> StoredSession:
         """Read a stored session and rebuild what it will show, changing nothing.
 
