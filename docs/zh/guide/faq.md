@@ -46,7 +46,7 @@ macOS/Linux 可以用 `time zettcode --dry-run`，PowerShell 可以用
 
 **对话丢了。** 所有内容都是边发生边追加到
 `~/.zettcode/sessions/<工作区键>/<会话 id>/data.jsonl`，所以它还在：`/resume` 会列出这个
-工作区最近的会话（新的在前）。同一目录下的 `metadata.jsonl` 存着标题。
+工作区最近的会话（新的在前）。会话目录里的 `metadata.json` 存着它的标题。
 
 **恢复出来的会话不一样。** 标题和 token 统计来自元数据索引，对话来自 JSONL 树。如果崩溃截断了
 文件的最后一行，那一行会被忽略，其余部分照常加载。

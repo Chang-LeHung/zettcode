@@ -10,9 +10,10 @@ One store root holds every workspace, grouped by workspace first:
 
 ```
 ~/.zettcode/sessions/<workspace key>/
-├── metadata.jsonl              the index: titles and activity times
 └── <session-id>/
-    └── data.jsonl              the conversation
+    ├── data.jsonl              the conversation
+    ├── metadata.json           the title and the times: a couple of hundred bytes
+    └── tool-output/            what long shell commands printed, kept for the model to read
 ```
 
 `<workspace key>` is the URL-safe base64 of the resolved workspace path, so two
@@ -20,10 +21,34 @@ checkouts of the same project never share a folder, and no path can escape the
 store.
 
 `data.jsonl` is append-only — every record names its parent, which makes the
-conversation a **tree** rather than a list. `metadata.jsonl` is the small index
-the session list reads, so showing recent sessions never parses a conversation.
-A crash can truncate the final line; that line is ignored, and a damaged line
-anywhere else is reported rather than silently dropped.
+conversation a **tree** rather than a list. `metadata.json` is the small file the
+session list reads, so showing recent sessions never parses a conversation. It is
+written when a session starts and when it is renamed — not on every message — so
+it stays the same size however long the conversation gets, and it travels with the
+folder if you copy or move it. How recently a session was used comes from the
+conversation file itself. A crash can truncate the final line; that line is
+ignored, and a damaged line anywhere else is reported rather than silently dropped.
+
+::: details Sessions from an older version
+Older versions kept one `metadata.jsonl` for the whole workspace and added a line to
+it for every message, so it could reach thousands of lines. Nothing writes it any
+more. The first time ZettCode looks at a session that has no `metadata.json` of its
+own, it reads what that file recorded — the title and the times — and saves it into
+the session's folder, so each old session is carried over once and the old file is
+not consulted for it again. The old file is left in place and is never modified; you
+can delete it once you no longer need to go back to an older version. A
+`metadata.json` that is damaged, or that belongs to a different session (a folder
+copied under a new name), is simply rebuilt.
+:::
+
+### Long command output
+
+When a shell command prints more than fits in a reply, the model is shown the start and
+the end and told where the whole output is. That output is kept in the session's own
+`tool-output/` folder under `~/.zettcode`, not in your project, so it never turns up in
+`git status` or a search. It is removed along with the session. Folders named
+`.zett-tool-output` that earlier versions left in your projects are not moved or deleted;
+they are safe to delete (and to add to `.gitignore`).
 
 ::: tip Why a tree
 Appending is the only write, so saving a turn cannot rewrite history. It also
@@ -104,8 +129,8 @@ own means nothing in another checkout.
 ## Titles
 
 After the first reply, the agent asks a small model call for a four-or-five word
-name and appends it to `metadata.jsonl`. That is what the sessions panel and the
-status line show.
+name and saves it in the session's `metadata.json`. That is what the sessions panel
+and the status line show.
 
 `/title users endpoint` names it yourself, and the name sticks: the automatic
 naming never overwrites a session that already has a title, so a name you chose

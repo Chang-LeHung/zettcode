@@ -70,7 +70,8 @@ src/zettcode/
                      cache), projection.py (agent events into that model),
                      runtime.py (AgentClient and composition), title.py (the
                      one-shot session naming call), storage/ (the workspace
-                     layout, the JSONL conversation tree, metadata.jsonl, and
+                     layout, the JSONL conversation tree, each session's metadata.json (and
+                     the old workspace metadata.jsonl it is carried over from), and
                      the persistence plugin)
     ui/              app.py (shell, keymap, commands), transcript.py (the
                      virtualized view over the model), clipboard.py (reading a
@@ -376,7 +377,7 @@ the two files at the top are the composition and the thing it composes.
 | --- | --- |
 | `agent/` | `ZettCodeAgent`, the application's one entry point, assembled from mixins: `base` (runtime, workspace, session id), `settings` (model, effort, shell permission), `context` (the next request, compaction), `sessions` (switch, resume, fork, title), `turns` (build, stream, steer), `interaction` (answer an approval or a question), `exports`, `commands`; and `prompt`, the parts of a user turn |
 | `runtime.py` | `ZettCodeRuntime`: composes the vendor client with the extensions below |
-| `extensions/` | What the runtime plugs into zett-agent that is ours: `capabilities`, `compaction`, `context`, `mcp`, `subagents`, `usage` |
+| `extensions/` | What the runtime plugs into zett-agent that is ours: `capabilities`, `compaction`, `context`, `mcp`, `subagents`, `tool_output`, `usage` |
 | `permission/` | How much of the shell may run unasked: the levels and what enforces them (`__init__`), the fail-closed read-only classifier (`readonly`), what an approval may remember (`approval`) |
 | `conversation/` | The conversation as the screen shows it: `entries`, `transcript/`, `presenters`, `rendering`, `rows`, `projection` (agent events fill it), `replay` (a stored branch rebuilds it) |
 | `dialogue/` | What is said besides the turns: `mentions` (`@`), `ask`, `side`, `title` |
@@ -526,10 +527,10 @@ can appear.
 
 `app/agent/dialogue/title.py` names a session after its first exchange: one provider
 request with no tools, whose reply is reduced to a single line and written into
-the workspace's `metadata.jsonl`, so renaming appends a line to the index and
+the session's own `metadata.json`, so renaming rewrites that one small file and
 never enters the conversation log. The shell schedules that call in the
 background once a turn ends, which keeps the composer responsive. `/title <name>`
-writes the same metadata line by hand, creating the session first when it has no
+writes the same metadata by hand, creating the session first when it has no
 conversation yet, and the background call leaves a session that already has a
 title alone. `/resume` presents the result as another bottom panel — one row per session, with the title padded into
 a column, the age of the last change, and the short id so an untitled session is
@@ -567,7 +568,7 @@ badge over the transcript's last row; clicking it, or pressing `Esc`, follows
 the tail again, and the binding is captured precisely because the composer
 would otherwise swallow `Esc`. The status line's left segment ends with the
 active session's title, cached when a turn names it or a session is resumed so
-the metadata log is not folded on every frame, followed by `app/agent/extensions/usage.py`'s
+the metadata file is not read on every frame, followed by `app/agent/extensions/usage.py`'s
 cumulative token counters: tokens in and out, the cache share of the input, and
 generated tokens per second. That module is an `AgentExtension` observing
 `before_model`/`after_model`; it emits one `session_usage` custom event per
