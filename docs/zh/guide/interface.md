@@ -284,6 +284,10 @@ pasteboard，Linux 上用 `wl-paste` 或 `xclip` —— 并在图片应在的位
 WebP、GIF 都会原样送达，并按芯片所在的位置作为图片部分发出，所以模型看到图片的顺序就是你写的
 顺序。
 
+这读的是 ZettCode 所在那台机器的剪贴板，所以**通过 `ssh` 时它看不到你在自己机器上复制的图片**：终端能把文字带过连接（[复制](#通过-ssh-复制)就是这样工作的），却没有办法带一张图片。所以在 `ssh` 里 Ctrl-V 根本不去读，而是告诉你原因和办法：把文件放到服务器上，用路径引用它；或者当你转发了显示、服务器的剪贴板恰好就是想要的那个时，设置 `ZETTCODE_CLIPBOARD=system`。
+
+在没有剪贴板工具的机器上（一台干净的 Linux 服务器既没有 `wl-paste` 也没有 `xclip`），Ctrl-V 会提示 `no image on the clipboard`。工具缺失、无法运行或三秒内没有响应，都不会让会话结束。
+
 芯片本身是文本，这带来两个结果：
 
 - 恢复会话时会显示 `[image #3]` 而不是图片，也不会重发；
@@ -297,11 +301,37 @@ WebP、GIF 都会原样送达，并按芯片所在的位置作为图片部分发
 
 ## 选中与复制
 
-- 在对话区拖动选中，松开即复制；输入框上方那一行会短暂居中提示 `copied 42 chars to clipboard`，
-  随后被你接着输入的内容取代。
+- 在对话区拖动选中，松开即复制；输入框上方那一行会短暂居中显示一颗高亮的小药丸 `✓ copied 42 chars to clipboard`，
+  随后被你接着输入的内容取代。屏幕上只有这颗药丸能说明复制发生了，所以它有自己的底色；底色只包住文字本身，不会铺满整行。
 - 双击选中整行，<kbd>Shift</kbd>+单击扩大选区。
 - 在其他地方（弹窗、列表、头部）拖动，会复制画在那里的文字。
 - `Ctrl-C` 复制当前选中并清除；没有选中时，它用来停止正在跑的请求，或者清空草稿。
+
+### 通过 `ssh` 复制
+
+当 ZettCode 跑在你用 `ssh` 登录的服务器上时，你要粘贴的剪贴板是**你自己那台机器**的，而不是服务器的。
+服务器上的剪贴板工具只能碰到服务器的剪贴板，所以 ZettCode 在这种情况下不用它，而是请你的终端去复制
+（一条 [OSC 52](https://invisible-island.net/xterm/ctlseqs/ctlseqs.html) 转义序列），它和程序打印的其他内容一样经由连接传到你面前。
+这时药丸写的是
+
+```text
+✓ sent 42 chars to your terminal's clipboard
+```
+
+这里特意写 “sent” 而不是 “copied”：程序在另一台机器上，看不到你的终端是否接受了它。不少终端会先询问，或默认拒绝。
+
+| 终端 | 需要什么 |
+| --- | --- |
+| iTerm2 | 打开“允许终端里的应用访问剪贴板”的那个设置 —— 在 Settings → General → Selection 里，“Applications in terminal may access clipboard” |
+| kitty、Alacritty、Ghostty | 什么都不用做：它们默认允许程序*写入*剪贴板 |
+| WezTerm、Windows Terminal | 支持 |
+| tmux | 在 `~/.tmux.conf` 里设置 `set -g set-clipboard on` —— tmux 默认的 `external` 不接受里面程序发来的 —— 或者 `set -g allow-passthrough on` |
+
+不支持 OSC 52 的终端会直接忽略它，文字哪里也不会去。这时请用那个终端自己的选择来复制：拖动时按住它的修饰键（<kbd>Shift</kbd> 或 <kbd>Option</kbd>）。
+
+ZettCode 靠环境变量判断往哪里复制：`SSH_CONNECTION`、`SSH_CLIENT` 或 `SSH_TTY` 表示它在连接的另一头。
+判断错了的时候 —— 比如 `sudo` 丢掉了这些变量，或者你转发了 X 显示、想要的恰恰是服务器的剪贴板 ——
+用 `ZETTCODE_CLIPBOARD=terminal` 或 `ZETTCODE_CLIPBOARD=system` 明确告诉它。
 
 ## 状态行
 

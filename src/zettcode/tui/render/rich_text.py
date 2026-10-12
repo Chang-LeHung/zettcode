@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Literal, TypeAlias
 
-from .style import Span, TextLine
+from .style import Span, Style, TextLine
 from .text import truncate_spans, wrap_spans
 
 Alignment: TypeAlias = Literal["left", "center", "right"]
@@ -22,6 +22,20 @@ def inset_line(line: TextLine, columns: int) -> TextLine:
         return line
     first, *rest = line.spans
     return TextLine((Span(" " * columns + first.text, first.style), *rest), metadata=line.metadata)
+
+
+def align_line(line: TextLine, columns: int) -> TextLine:
+    """Shift a line right by ``columns`` of plain space, leaving its own styling where it is.
+
+    This is not :func:`inset_line`, which gives the margin the style of the first run. That is
+    what a wrapped continuation wants — the indent of a list item belongs to the item — and it
+    is wrong for alignment: a run that carries a background would drag it across the whole
+    margin, and a line meant to be a pill would be a stripe from the edge of the screen to the
+    last word. The margin of an aligned line is empty.
+    """
+    if columns <= 0 or not line.spans:
+        return line
+    return TextLine((Span(" " * columns, Style()), *line.spans), metadata=line.metadata)
 
 
 def layout_rich_lines(
@@ -61,6 +75,6 @@ def layout_rich_lines(
                 used = row.width
             if align != "left" and used < width and row.spans:
                 gap = (width - used) // 2 if align == "center" else width - used
-                row = inset_line(row, gap)
+                row = align_line(row, gap)
             laid_out.append(row)
     return tuple(laid_out)

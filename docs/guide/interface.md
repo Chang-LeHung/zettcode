@@ -349,6 +349,17 @@ the system clipboard itself — the macOS pasteboard in-process, `wl-paste` or
 and GIF all arrive as themselves, and each one is sent as an image part in the
 position its chip holds, so the model reads each picture where you put it.
 
+This reads the clipboard of the machine ZettCode runs on, so **over `ssh` it cannot see an image
+you copied on your own machine**: a terminal can carry text across the connection (that is how
+[copying works](#copying-over-ssh)) but has no way to carry a picture. Over `ssh` Ctrl-V therefore
+does not look at all; it says why and what to do instead — put the file on the server and refer to
+it by path, or set `ZETTCODE_CLIPBOARD=system` if a display forwarded over `ssh` makes the
+server's clipboard the right one.
+
+On a machine with no clipboard tool (a bare Linux server has neither `wl-paste` nor `xclip`),
+Ctrl-V says `no image on the clipboard`. A tool that is missing, cannot be run, or does not
+answer within three seconds never ends the session.
+
 Two things follow from the chip being text:
 
 - a restored session shows `[image #3]` where the picture was, and does not
@@ -365,13 +376,46 @@ decodes to a known image, becomes the same chip instead of a wall of characters.
 ## Selecting and copying
 
 - Drag in the transcript to select; the selection is copied when you release, and
-  the row above the composer says so for a moment — `copied 42 chars to
-  clipboard` — before the next thing typed takes that row back.
+  the row above the composer says so for a moment — a small highlighted pill, `✓ copied 42
+  chars to clipboard` — before the next thing typed takes that row back. The pill is the
+  only thing on screen that shows a copy happened, which is why it has a fill of its own;
+  it hugs its words rather than running across the screen.
 - Double-click selects a whole row; `Shift`-click extends.
 - Drag anywhere else — a panel, a list, the header — to copy the text painted
   there; those surfaces never had selectable text of their own.
 - `Ctrl-C` copies the current selection and clears it. With nothing selected it
   stops the running request, or clears the draft.
+
+### Copying over `ssh`
+
+When ZettCode runs on a server you reach with `ssh`, the clipboard you will paste from is
+the one on **your** machine, not the server's. A clipboard tool on the server can only reach
+the server's, so ZettCode does not use it there: it asks your terminal to do the copy
+(an [OSC 52](https://invisible-island.net/xterm/ctlseqs/ctlseqs.html) escape sequence), and
+that travels over the connection like everything else it prints. The pill then reads
+
+```text
+✓ sent 42 chars to your terminal's clipboard
+```
+
+and says "sent" rather than "copied" on purpose: the program is on another machine and cannot
+see whether your terminal accepted it. Several terminals ask first or refuse by default.
+
+| Terminal | What it needs |
+| --- | --- |
+| iTerm2 | Turn on the setting that lets applications in the terminal access the clipboard — in Settings → General → Selection, "Applications in terminal may access clipboard" |
+| kitty, Alacritty, Ghostty | Nothing: they allow a program to *write* the clipboard by default |
+| WezTerm, Windows Terminal | Support it |
+| tmux | `set -g set-clipboard on` — tmux's default, `external`, does not accept it from programs inside — or `set -g allow-passthrough on`, in `~/.tmux.conf` |
+
+A terminal that does not support OSC 52 ignores it, and the text goes nowhere. Then copy with
+that terminal's own selection, which you get by holding its modifier (<kbd>Shift</kbd> or
+<kbd>Option</kbd>) while dragging.
+
+ZettCode decides where to copy from the environment: `SSH_CONNECTION`, `SSH_CLIENT` or `SSH_TTY`
+means it is on the far side of a connection. Where that guess is wrong — `sudo` drops the
+variables, or you forwarded an X display and the server's clipboard is the one you want —
+say so with `ZETTCODE_CLIPBOARD=terminal` or `ZETTCODE_CLIPBOARD=system`.
 
 ## The status line
 

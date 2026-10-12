@@ -128,7 +128,7 @@ class ShellState:
     _update_task: asyncio.Task[None] | None
     #: A short-lived message for the row above the composer: its text and the
     #: moment it stops being true.
-    _flash: tuple[str, float] | None
+    _flash: tuple[str, float, str] | None
     #: The effort switch being animated: the level it came from, the level it is
     #: reaching, and the moment it started.
     _effort_animation: tuple[str, str, float] | None
@@ -191,7 +191,7 @@ class ShellState:
     def submit(self, value: str) -> bool | None:
         """Start a turn, steer the running one, or run a slash command."""
 
-    def flash(self, message: str, *, seconds: float = FLASH_SECONDS) -> None:
+    def flash(self, message: str, *, seconds: float = FLASH_SECONDS, level: str = "info") -> None:
         """Say something in the row above the composer, for a few seconds."""
 
     def change_permission(self, name: str) -> str:

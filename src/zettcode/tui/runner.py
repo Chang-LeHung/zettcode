@@ -51,11 +51,12 @@ event the loop is already waiting on.
 from __future__ import annotations
 
 import asyncio
-import base64
-from collections.abc import Callable
+import os
+from collections.abc import Callable, Mapping
 
 import pyperclip
 
+from .clipboard import copy_route, osc52
 from .core.app import TuiApp
 from .core.events import ResizeEvent
 from .core.theme import scheme_named, theme_named
@@ -236,18 +237,36 @@ async def run_app(app: TuiApp, *, terminal: Terminal | None = None) -> None:
     await TerminalRunner(app, terminal=terminal).run()
 
 
-def clipboard_writer(terminal: Terminal) -> Callable[[str], None]:
-    """Copy through the OS clipboard, falling back to the OSC 52 escape."""
+def clipboard_writer(
+    terminal: Terminal,
+    *,
+    environ: Mapping[str, str] | None = None,
+    system: Callable[[str], object] = pyperclip.copy,
+) -> Callable[[str], None]:
+    """Copy to the clipboard the reader will paste from.
+
+    Which one that is depends on where the program runs (see :mod:`zettcode.tui.clipboard`):
+    over ``ssh`` the terminal's, reached with OSC 52, because a tool on the server would put the
+    text where the reader cannot paste it; anywhere else the system clipboard, with OSC 52 as the
+    fallback for a headless session that has no tool to reach.
+
+    Args:
+        terminal: Where an OSC 52 sequence is written.
+        environ: Environment to read; defaults to ``os.environ``, looked at on every copy.
+        system: Writes the system clipboard; injectable so a test needs no desktop.
+    """
 
     def write(text: str) -> None:
         """Handle one copy request from the app."""
+        env = os.environ if environ is None else environ
+        if copy_route(env) == "terminal":
+            terminal.write(osc52(text, env))
+            return
         try:
-            pyperclip.copy(text)
-        except pyperclip.PyperclipException:
-            encoded = base64.b64encode(text.encode()).decode()
-            # OSC 52: "ESC ] 52 ; c ; <base64> BEL" asks the terminal itself to
-            # put the text on the clipboard. It is the fallback for a headless
-            # session where no clipboard library can reach the display server.
-            terminal.write(f"\x1b]52;c;{encoded}\x07")
+            system(text)
+        except (pyperclip.PyperclipException, OSError):
+            # Either the machine has no clipboard tool, or the one it has could not be run.
+            # A copy must never take the session down, and the terminal is a way out.
+            terminal.write(osc52(text, env))
 
     return write

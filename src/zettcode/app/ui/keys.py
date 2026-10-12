@@ -8,6 +8,8 @@ table. :class:`ZettCodeApp` installs them once and never touches a key again.
 from __future__ import annotations
 
 from ...tui import AnyEvent, Host
+from ...tui.clipboard import copy_route
+from ..agent.errors import describe_error
 from .clipboard import read_image
 from .shell import ASK_SCREEN, PAGE_SCREEN, ShellState
 
@@ -200,12 +202,35 @@ class KeysMixin(ShellState):
         return True
 
     def _attach_image(self, event: AnyEvent, host: Host) -> bool:
-        """Attach the clipboard's image to the draft, or say there is none.
+        """Attach the clipboard's image to the draft, or say why there is none.
 
         Ctrl-V rather than the terminal's paste key: an image never reaches the
         program as input, so the shell has to go and look for it.
+
+        Over ``ssh`` there is nothing to look at. The clipboard this process can read is the
+        server's, an image the reader copied on their own machine never crosses the
+        connection — a terminal carries text, not pictures — and a server rarely has a
+        clipboard tool at all. So it does not look, and says so, instead of reporting "no
+        image" and sending the reader to copy it again. ``ZETTCODE_CLIPBOARD=system`` is the
+        reader saying the server's clipboard is the right one.
         """
-        image = read_image()
+        if copy_route() == "terminal":
+            self.transcript.notice(
+                "Ctrl-V cannot reach your clipboard over ssh — a terminal carries text, not pictures. "
+                "Put the file on the server and refer to it by path, "
+                "or set ZETTCODE_CLIPBOARD=system to read this machine's clipboard"
+            )
+            host.request_layout()
+            return True
+        try:
+            image = read_image()
+        except Exception as error:
+            # Reading a clipboard is the shell reaching into the desktop, and a desktop can
+            # fail in ways no tool list anticipates. The session is the reader's work: a
+            # failed paste says what failed and leaves everything else as it was.
+            self.transcript.error(f"could not read the clipboard: {describe_error(error)}")
+            host.request_layout()
+            return True
         if image is None:
             self.transcript.notice("no image on the clipboard")
         elif not self.agent.active_model.multimodal:
