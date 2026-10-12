@@ -140,7 +140,7 @@ def test_running_a_tool_that_does_not_exist_is_a_nonzero_result(tmp_path, monkey
 
     assert result.returncode == 127, "the shell's code for 'command not found'"
     assert result.stdout == b""
-    assert b"wl-paste" in result.stderr, "and the reason is kept"
+    assert result.stderr.startswith(b"wl-paste: "), "and the reason names the tool, whatever the platform words it"
 
 
 def test_a_tool_that_cannot_be_executed_is_a_nonzero_result_too(tmp_path, monkeypatch):

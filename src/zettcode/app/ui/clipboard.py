@@ -121,7 +121,10 @@ def _run(argv: Sequence[str]) -> CompletedProcess[bytes]:
     except subprocess.TimeoutExpired:
         return CompletedProcess(list(argv), 124, b"", b"timed out")
     except OSError as error:
-        return CompletedProcess(list(argv), 127, b"", str(error).encode())
+        # The tool is named here rather than left to the error's own text: POSIX puts the file name
+        # in a FileNotFoundError and Windows ("[WinError 2] The system cannot find the file
+        # specified") does not, and a reason that does not say which tool is not much of one.
+        return CompletedProcess(list(argv), 127, b"", f"{argv[0]}: {error}".encode())
 
 
 def _macos_image(runner: Runner, *, native: bool) -> tuple[bytes, str] | None:
