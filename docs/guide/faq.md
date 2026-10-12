@@ -66,7 +66,7 @@ instance) is recognised anyway.
 **I lost a conversation.** Everything is appended to
 `~/.zettcode/sessions/<workspace key>/<session id>/data.jsonl` as it happens, so
 it is still there: `/resume` lists what this workspace has, newest first. The
-same folder's `metadata.jsonl` holds the titles.
+session folder's `metadata.json` holds its title.
 
 **A session does not resume the same way.** Titles and token totals come from
 the metadata index; the conversation comes from the JSONL tree. If the last line

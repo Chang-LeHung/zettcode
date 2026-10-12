@@ -21,7 +21,6 @@ from zettcode.app.agent.storage.metadata import (
     SessionActivity,
     SessionStarted,
     SessionTitle,
-    append_metadata,
     read_metadata,
 )
 from zettcode.app.agent.storage.records import CompactionLine, MessageLine, SessionLine
@@ -579,17 +578,28 @@ async def test_list_sessions_reports_activity_newest_first(tmp_path: Path):
     assert await store.list_sessions(limit=1, offset=1) == [listed[1]]
 
 
-async def test_the_metadata_log_records_the_session_lifecycle(tmp_path: Path):
+async def test_a_session_writes_its_own_metadata_when_it_begins_and_when_it_is_named(tmp_path: Path):
     store = SessionStore(tmp_path, workspace="/work/project")
     await store.append("s1", "req", UserMessage(content="one"))
     await store.append("s1", "req", UserMessage(content="two"))
     await store.set_title("s1", "Fix the parser crash")
 
-    records = [json.loads(line) for line in store.metadata_path.read_text(encoding="utf-8").splitlines()]
+    record = json.loads((store.session_dir("s1") / "metadata.json").read_text(encoding="utf-8"))
 
-    assert [record["kind"] for record in records] == ["session", "activity", "activity", "title"]
-    assert records[0]["session_id"] == "s1"
-    assert records[-1]["title"] == "Fix the parser crash"
+    assert record["session_id"] == "s1" and record["title"] == "Fix the parser crash"
+    assert record["version"] == 1 and record["created_at"] <= record["updated_at"]
+    assert not store.legacy_metadata_path.exists(), "the workspace-wide log is not written any more"
+
+
+def append_metadata(path: Path, record) -> None:
+    """Write one line of the OLD per-workspace log, the way versions before this one did.
+
+    Nothing in the program writes that log any more; the tests that exercise the carry-over
+    from it need to be able to make one.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record.model_dump(mode="json"), ensure_ascii=False, sort_keys=True) + "\n")
 
 
 def test_the_metadata_log_folds_to_the_newest_record_of_each_kind(tmp_path: Path):

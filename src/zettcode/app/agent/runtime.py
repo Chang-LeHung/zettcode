@@ -40,6 +40,7 @@ from .dialogue.side import SideQuestions
 from .extensions.capabilities import ModelCapabilities
 from .extensions.compaction import OnDemandCompaction
 from .extensions.context import ContextExtension, Tokenizer
+from .extensions.tool_output import ToolOutputExtension
 from .extensions.usage import UsageExtension
 from .permission import Permission, ShellDenyExtension, ShellPolicy, parse_permission
 from .permission.approval import ShellApprovalMemory
@@ -323,7 +324,9 @@ class ZettCodeRuntime:
         selected = self.active_model
         model = self._provider(selected)
         capabilities = ModelCapabilities(self._models)
-        extensions: list[AgentExtension] = [CodingExtension(), capabilities]
+        # The coding bundle's shell tool keeps long output inside the project it runs in; this moves
+        # it into the session's folder before the result is stored or sent anywhere.
+        extensions: list[AgentExtension] = [CodingExtension(), ToolOutputExtension(self.persistence), capabilities]
         if self.config.subagent_enabled:
             # Imported with the runtime, not with the module: the subagent
             # extension pulls in its SQLite store and SQLAlchemy, which a launch

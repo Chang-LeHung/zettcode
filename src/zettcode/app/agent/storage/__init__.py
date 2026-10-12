@@ -1,14 +1,16 @@
 """Session storage: the conversation log, its metadata, and the agent plugin.
 
-One folder per workspace, one conversation file per session::
+One folder per workspace, one folder per session, and everything about a session in its own::
 
     ~/.zettcode/sessions/<base64 workspace path>/
-    ├── metadata.jsonl              <- title and activity, folded on read
+    ├── metadata.jsonl              <- the old index; read for sessions that predate their own file
     └── <session-id>/
-        └── data.jsonl              <- the append-only message tree
+        ├── data.jsonl              <- the append-only message tree
+        ├── metadata.json           <- title and times: written on creation and rename only
+        └── tool-output/            <- what a long shell command printed, kept for the model to read
 
 :mod:`records` owns the conversation's record types and the parsed read model,
-:mod:`metadata` owns the per-workspace index file, and :mod:`store` puts them
+:mod:`metadata` owns the per-session file and the old log, and :mod:`store` puts them
 behind one API: the persistence mixin and the :class:`SessionStore` plugin.
 """
 

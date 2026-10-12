@@ -26,6 +26,7 @@ plugin concern.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import json
@@ -56,12 +57,13 @@ from ..dialogue.side import SIDE, is_side
 from .metadata import (
     MAX_TITLE,
     METADATA_FILE,
-    SessionActivity,
+    SESSION_METADATA_FILE,
     SessionInfo,
-    SessionStarted,
-    SessionTitle,
-    append_metadata,
+    SessionMetadata,
+    info_of,
     read_metadata,
+    read_session_metadata,
+    write_session_metadata,
 )
 from .records import (
     FORK_SUFFIX,
@@ -159,17 +161,18 @@ class SessionPersistenceMixin:
         self.root = Path(root) if root is not None else Path.home() / ".zettcode" / "sessions"
         self.workspace = Path(workspace).expanduser().resolve() if workspace is not None else Path.cwd()
         self.workspace_dir = self.root / workspace_key(self.workspace)
-        self.metadata_path = self.workspace_dir / METADATA_FILE
+        #: The log older versions kept for the whole workspace. Read, never written: see
+        #: :mod:`zettcode.app.agent.storage.metadata`.
+        self.legacy_metadata_path = self.workspace_dir / METADATA_FILE
         self.workspace_dir.mkdir(parents=True, exist_ok=True)
         # Parsed sessions, keyed by the file stamp that produced them. Appending
         # is the hot path — one call per message — so it must not re-parse the
         # whole log; the cache makes a read O(1) and a write a tuple copy.
         self._sessions: dict[str, tuple[tuple[int, int] | None, Session]] = {}
+        #: The old log folded into rows, with the stamp of the file it came from, so a
+        #: workspace with several old sessions folds it once instead of once per session.
+        self._legacy: tuple[tuple[int, int] | None, dict[str, SessionInfo]] | None = None
         super().__init__()
-
-    def _record_activity(self, session_id: str, updated_at: datetime) -> None:
-        """Stamp one session's activity, which is what a session list sorts on."""
-        append_metadata(self.metadata_path, SessionActivity(session_id=session_id, updated_at=updated_at))
 
     # -- files --------------------------------------------------------------
     def session_dir(self, session_id: str) -> Path:
@@ -205,14 +208,19 @@ class SessionPersistenceMixin:
         Returns:
             ``True`` when the file exists and its first record is a session header.
         """
+        return self._header(session_id) is not None
+
+    def _header(self, session_id: str) -> SessionLine | None:
+        """Return a session's header, read from the first line of its file and nothing more."""
         try:
             with self.session_path(session_id).open("rb") as handle:
                 for line in handle:
                     if line.strip():
-                        return isinstance(LINES.validate_json(line), SessionLine)
+                        record = LINES.validate_json(line)
+                        return record if isinstance(record, SessionLine) else None
         except (OSError, ValidationError):
-            return False
-        return False
+            return None
+        return None
 
     def read(self, session_id: str) -> Session:
         """Parse one session file, tolerating a half-written final line."""
@@ -342,7 +350,7 @@ class SessionPersistenceMixin:
         session = self.read(session_id)
         created_at = self._write_header(session, session_id, parent_session_id, agent_name)
         if created_at is not None:
-            append_metadata(self.metadata_path, SessionStarted(session_id=session_id, created_at=created_at))
+            self._begin_metadata(session_id, created_at)
         if parent is None:
             parent = session.head_id
         elif session.message(parent) is None:
@@ -364,7 +372,8 @@ class SessionPersistenceMixin:
                 created_at=stamp,
             ),
         )
-        self._record_activity(session_id, stamp)
+        # Nothing is written about the session itself: the conversation file's own
+        # modification time moved with the line above, and that is the activity a list shows.
         return node_id
 
     async def checkpoint(
@@ -395,26 +404,27 @@ class SessionPersistenceMixin:
             created_at=now(),
         )
         self._append_line(session_id, line)
-        self._record_activity(session_id, line.created_at)
         return line
 
     async def set_title(self, session_id: str, title: str) -> None:
         """Write one session's display title, replacing any earlier one.
 
-        The title is metadata, not conversation, so renaming is one more line in
-        the metadata log and never shows up in the message history. Naming a
-        session that has not been used yet creates it: the header that marks a
-        session is written first, so a name the user typed is never dropped for
-        want of a conversation.
+        The title is metadata, not conversation, so renaming rewrites the session's small
+        metadata file and never shows up in the message history. Naming a session that has
+        not been used yet creates it: the header that marks a session is written first, so a
+        name the user typed is never dropped for want of a conversation.
         """
         cleaned = title.strip()
         if not cleaned or len(cleaned) > MAX_TITLE:
             raise ValueError(f"Session title must contain between 1 and {MAX_TITLE} characters")
-        if not any(info.session_id == session_id for info in read_metadata(self.metadata_path)):
+        metadata = self._metadata(session_id)
+        if metadata is None:
             created_at = self._write_header(self.read(session_id), session_id, None, None)
-            if created_at is not None:
-                append_metadata(self.metadata_path, SessionStarted(session_id=session_id, created_at=created_at))
-        append_metadata(self.metadata_path, SessionTitle(session_id=session_id, title=cleaned))
+            metadata = (
+                self._begin_metadata(session_id, created_at) if created_at is not None else self._metadata(session_id)
+            )
+        if metadata is not None:
+            write_session_metadata(self._metadata_file(session_id), metadata.model_copy(update={"title": cleaned}))
 
     def fork(self, session_id: str) -> str:
         """Copy the context one session carries into a new session, and return its id.
@@ -449,7 +459,11 @@ class SessionPersistenceMixin:
         new_id = new_uuid7()
         created_at = self._write_header(self.read(new_id), new_id, session_id, None)
         if created_at is not None:
-            append_metadata(self.metadata_path, SessionStarted(session_id=new_id, created_at=created_at))
+            title = self.session_title(session_id)
+            carried = (
+                f"{title}{FORK_SUFFIX}" if title is not None and len(f"{title}{FORK_SUFFIX}") <= MAX_TITLE else None
+            )
+            self._begin_metadata(new_id, created_at, title=carried)
         parent: str | None = None
         if checkpoint is not None:
             # The summary is copied as a message of its own. As a checkpoint it would
@@ -469,10 +483,6 @@ class SessionPersistenceMixin:
                 tags=line.tags,
                 created_at=line.created_at,
             )
-        self._record_activity(new_id, now())
-        title = self.session_title(session_id)
-        if title is not None and len(f"{title}{FORK_SUFFIX}") <= MAX_TITLE:
-            append_metadata(self.metadata_path, SessionTitle(session_id=new_id, title=f"{title}{FORK_SUFFIX}"))
         return new_id
 
     def _copy_message(
@@ -514,24 +524,93 @@ class SessionPersistenceMixin:
 
     def session_title(self, session_id: str) -> str | None:
         """Return one session's stored title, or ``None`` when it is unnamed."""
-        return next(
-            (info.title for info in read_metadata(self.metadata_path) if info.session_id == session_id),
-            None,
-        )
+        metadata = self._metadata(session_id)
+        return metadata.title if metadata is not None else None
 
     async def list_sessions(self, *, limit: int = 100, offset: int = 0) -> list[SessionInfo]:
         """Return session metadata by latest activity, newest first.
 
-        The listing reads the metadata log alone: no conversation file is
-        opened, and rows whose folder was deleted by hand are skipped rather
-        than shown.
+        Each row is read from the session's own metadata file, so no conversation is parsed
+        and the cost is one small file per session. A session with no file of its own is one
+        an older version made: its row is carried over from the old log, written into its
+        folder, and read from there from then on. A folder deleted by hand has no row.
         """
         if limit < 1:
             raise ValueError("limit must be positive")
         if offset < 0:
             raise ValueError("offset cannot be negative")
-        sessions = [info for info in read_metadata(self.metadata_path) if self.session_path(info.session_id).is_file()]
-        return sessions[offset : offset + limit]
+        # On a thread: the cost is a file per session, which is a few milliseconds for the
+        # hundred a person has and a fifth of a second for five thousand, and this is awaited
+        # from the interface. The first listing after an upgrade also writes a file per old
+        # session, once.
+        return await asyncio.to_thread(self._listing, limit, offset)
+
+    def _listing(self, limit: int, offset: int) -> list[SessionInfo]:
+        """Read every session's row and return one page of them, newest activity first."""
+        rows: list[SessionInfo] = []
+        for session_id in self.session_ids():
+            metadata = self._metadata(session_id)
+            if metadata is not None:
+                rows.append(info_of(metadata, self.session_path(session_id)))
+        rows.sort(key=lambda info: (info.updated_at, info.session_id), reverse=True)
+        return rows[offset : offset + limit]
+
+    # -- metadata -------------------------------------------------------------
+    def _metadata_file(self, session_id: str) -> Path:
+        """Return the file that holds one session's own metadata."""
+        return self.session_dir(session_id) / SESSION_METADATA_FILE
+
+    def _begin_metadata(self, session_id: str, created_at: datetime, *, title: str | None = None) -> SessionMetadata:
+        """Write the metadata of a session that has just been created, and return it."""
+        metadata = SessionMetadata(session_id=session_id, created_at=created_at, updated_at=created_at, title=title)
+        write_session_metadata(self._metadata_file(session_id), metadata)
+        return metadata
+
+    def _metadata(self, session_id: str) -> SessionMetadata | None:
+        """Return one session's metadata, from its own file when it has one.
+
+        The common case is one small read. A session with a conversation but no file — one an
+        older version made, or one whose file was lost — is carried over: the old log is asked
+        what it knew, the answer is written into the session's folder, and the next look reads
+        it from there. A session with no conversation has nothing to describe.
+
+        Returns:
+            The metadata, or ``None`` when the session has no conversation.
+        """
+        found = read_session_metadata(self._metadata_file(session_id), session_id)
+        if found is not None:
+            return found
+        header = self._header(session_id)
+        if header is None:
+            return None
+        old = self._legacy_rows().get(session_id)
+        metadata = SessionMetadata(
+            session_id=session_id,
+            created_at=old.created_at if old is not None else header.created_at,
+            updated_at=old.updated_at if old is not None else header.created_at,
+            title=old.title if old is not None else None,
+        )
+        write_session_metadata(self._metadata_file(session_id), metadata)
+        return metadata
+
+    def _legacy_rows(self) -> dict[str, SessionInfo]:
+        """Return what the old workspace log says about each session, folded once per change.
+
+        Raises:
+            ValueError: The old log has a damaged line other than its last. That is reported
+                rather than skipped: a session carried over from a log that could not be read
+                would lose its title for good.
+        """
+        path = self.legacy_metadata_path
+        try:
+            stat = path.stat()
+        except OSError:
+            self._legacy = (None, {})
+            return {}
+        stamp = (stat.st_mtime_ns, stat.st_size)
+        if self._legacy is None or self._legacy[0] != stamp:
+            self._legacy = (stamp, {info.session_id: info for info in read_metadata(path)})
+        return self._legacy[1]
 
     async def close(self) -> None:
         """Release nothing; every write opens and closes its own handle."""
