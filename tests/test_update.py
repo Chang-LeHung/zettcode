@@ -19,6 +19,7 @@ from zettcode.update import (
     check_for_update,
     display_command,
     fetch_latest,
+    in_background,
     is_newer,
     read_state,
     run_upgrade,
@@ -238,3 +239,62 @@ async def test_cancelling_a_background_call_leaves_its_thread_alone():
     assert finished.wait(3.0)
     await asyncio.sleep(0.05)
     assert failures == []
+
+
+def test_an_answer_that_arrives_after_the_loop_closed_is_dropped_quietly(monkeypatch):
+    """The thread is left behind when the session ends, so its answer can come too late.
+
+    ``call_soon_threadsafe`` raises once the loop is closed, and a daemon thread that
+    raises prints a traceback — which, while the interpreter is shutting down, can abort
+    the whole process (exit code 134, seen on CI). Nobody is waiting for the answer any
+    more, so it is dropped: the thread ends without raising.
+    """
+    release = threading.Event()
+    raised: list[BaseException] = []
+    monkeypatch.setattr(threading, "excepthook", lambda args: raised.append(args.exc_value))
+    loop = asyncio.new_event_loop()
+
+    async def start() -> asyncio.Task:
+        task = asyncio.ensure_future(in_background(lambda: (release.wait(5.0), "late")[1]))
+        await asyncio.sleep(0.02)  # the thread is running, and waiting on the event
+        return task
+
+    task = loop.run_until_complete(start())
+    task.cancel()
+    loop.run_until_complete(asyncio.gather(task, return_exceptions=True))
+    loop.close()
+    thread = next(thread for thread in threading.enumerate() if thread.name == "zettcode-background")
+
+    release.set()
+    thread.join(5.0)
+
+    assert not thread.is_alive(), "the thread finished"
+    assert raised == [], "and did not raise on its way out"
+
+
+def test_a_failure_that_arrives_after_the_loop_closed_is_dropped_quietly(monkeypatch):
+    """The same for a check that failed: reporting the error is as unwanted as the answer."""
+    release = threading.Event()
+    raised: list[BaseException] = []
+    monkeypatch.setattr(threading, "excepthook", lambda args: raised.append(args.exc_value))
+    loop = asyncio.new_event_loop()
+
+    def fails() -> str:
+        release.wait(5.0)
+        raise OSError("the index could not be reached")
+
+    async def start() -> asyncio.Task:
+        task = asyncio.ensure_future(in_background(fails))
+        await asyncio.sleep(0.02)
+        return task
+
+    task = loop.run_until_complete(start())
+    task.cancel()
+    loop.run_until_complete(asyncio.gather(task, return_exceptions=True))
+    loop.close()
+    thread = next(thread for thread in threading.enumerate() if thread.name == "zettcode-background")
+
+    release.set()
+    thread.join(5.0)
+
+    assert not thread.is_alive() and raised == []
