@@ -20,7 +20,7 @@ from collections.abc import Iterable
 from dataclasses import fields as dataclass_fields
 from typing import Any, ClassVar, Generic, TypeVar
 
-from ...tui import (
+from ....tui import (
     DONE,
     ELLIPSIS,
     EXPANDED,
@@ -37,9 +37,9 @@ from ...tui import (
     TextLine,
     Theme,
 )
-from ...tui.render import SweepSpan, display_width, highlight, inset_line, layout_rich_lines, sweep_spans, truncate
-from ...tui.widgets.markdown import MarkdownSource
-from ..brand import LOGO_LINES
+from ....tui.render import SweepSpan, display_width, highlight, inset_line, layout_rich_lines, sweep_spans, truncate
+from ....tui.widgets.markdown import MarkdownSource
+from ...brand import LOGO_LINES
 from .entries import (
     Entry,
     EntryKind,

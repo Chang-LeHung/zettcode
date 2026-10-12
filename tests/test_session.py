@@ -956,7 +956,7 @@ async def test_a_fork_keeps_the_usage_tags_and_timing_it_was_taken_from(tmp_path
     """A forked conversation reads, and counts, the way the one it came from did."""
     from zett_agent.messages import AssistantMessage
 
-    from zettcode.app.agent.side import SIDE
+    from zettcode.app.agent.dialogue.side import SIDE
 
     store = SessionStore(tmp_path)
     timing = MessageTiming(started_at=now(), completed_at=now(), duration_ns=2_500_000_000)

@@ -32,7 +32,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from time import monotonic
 
-from ....config import DEFAULT_TRANSCRIPT_MAX_ENTRIES
+from .....config import DEFAULT_TRANSCRIPT_MAX_ENTRIES
 from ..presenters import DEFAULT_PRESENTERS, Presenters
 from ..rendering import DEFAULT_RENDERERS, Renderers
 from .fold import FoldMixin

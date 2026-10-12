@@ -23,8 +23,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ..storage import SessionStore
 from .capabilities import ModelCapabilities
-from .storage import SessionStore
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only; the imports are the cost
     from zett_agent.extensions.base import AgentExtension

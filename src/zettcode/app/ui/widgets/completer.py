@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from ....tui import SEPARATOR, Completer, CompletionItem
-from ...agent.mentions import MentionRegistry
+from ...agent.dialogue.mentions import MentionRegistry
 from ...commands import Command
 
 KEY_HELP = (

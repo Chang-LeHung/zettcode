@@ -12,7 +12,7 @@ from zett_agent.agent import AgentRunContext
 from zett_agent.extensions.compaction import CompactionExtension
 from zett_agent.model import ModelRequest
 
-from .side import is_side_run
+from ..dialogue.side import is_side_run
 
 
 class OnDemandCompaction(CompactionExtension):

@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 
 from ....tui import SEPARATOR, ListItem, ListPage
 from ....tui.render import display_width
-from ...agent.agent import UNTITLED_SESSION
+from ...agent.agent.sessions import UNTITLED_SESSION
 from ...agent.storage import SessionInfo
 
 

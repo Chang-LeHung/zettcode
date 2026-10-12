@@ -16,8 +16,8 @@ from collections.abc import Callable
 
 from ...tui import DARK, ELLIPSIS, SEPARATOR, AnyEvent, Host, Slot, Text, TuiApp, VBox, Widget, run_app
 from ...tui.widgets import Rule
-from ..agent import rows as rows_module
-from ..agent.transcript import Transcript
+from ..agent.conversation import rows as rows_module
+from ..agent.conversation.transcript import Transcript
 from .widgets import TranscriptView
 
 

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from zett_agent.extensions.shell_approval import ShellApprovalMode
 
-from .permission import ShellPolicy
+from . import ShellPolicy
 
 
 class ShellApprovalMemory:

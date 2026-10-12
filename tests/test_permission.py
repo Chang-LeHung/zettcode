@@ -10,7 +10,6 @@ import pytest
 from zett_agent.extensions.shell_approval import ShellApprovalExtension, ShellApprovalMode
 from zett_agent.messages import ToolCall
 
-from zettcode.app.agent.approval import ShellApprovalMemory
 from zettcode.app.agent.permission import (
     DENIED_MESSAGE,
     PERMISSION_LEVELS,
@@ -19,6 +18,7 @@ from zettcode.app.agent.permission import (
     ShellPolicy,
     parse_permission,
 )
+from zettcode.app.agent.permission.approval import ShellApprovalMemory
 
 
 class _AskedTheReader(Exception):

@@ -84,7 +84,7 @@ carry. Changing models alone is not a context reset.
 `@` pulls a resource into a message. Two providers offer them: the workspace's
 files, by path, and your [skills](/guide/skills-and-mcp), by name.
 
-> what does @src/zettcode/app/agent/replay.py do?
+> what does @src/zettcode/cli.py do?
 
 Type `@` and the menu lists both, files with their size. What a file reference
 sends is the path, not the file: the model reads it with its own tools, so a
@@ -95,7 +95,7 @@ version control and dependency directories are skipped, and a very large tree is
 listed up to a cap.
 
 The draft you typed is what gets stored and shown, so reopening the session
-later gives you `@src/zettcode/app/agent/replay.py` back rather than the expanded
+later gives you `@src/zettcode/cli.py` back rather than the expanded
 text. A skill is told to load itself — the model sees the name and reads the body
 when it needs it, which is what keeps a large skill catalog out of every request.
 

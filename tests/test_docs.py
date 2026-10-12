@@ -10,8 +10,8 @@ from xml.etree import ElementTree
 import pytest
 
 import zettcode
-from zettcode.app.agent.entries import TextEntry
-from zettcode.app.agent.presenters import WelcomePresenter
+from zettcode.app.agent.conversation.entries import TextEntry
+from zettcode.app.agent.conversation.presenters import WelcomePresenter
 from zettcode.app.brand import LOGO_LINES, LOGO_PALETTE, LOGO_PIXELS
 from zettcode.app.commands import CommandContext, CommandUi
 from zettcode.app.ui.widgets.welcome import WELCOME

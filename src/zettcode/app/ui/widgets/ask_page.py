@@ -27,7 +27,7 @@ from ....tui import (
 )
 from ....tui.core.geometry import Constraints
 from ....tui.layout import Slot
-from ...agent.ask import AskUserQuestion
+from ...agent.dialogue.ask import AskUserQuestion
 
 #: Options drawn at once; a longer list scrolls around the highlight, because
 #: the model may offer twenty and the panel cannot grow to fit them all.

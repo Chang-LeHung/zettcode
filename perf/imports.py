@@ -35,8 +35,8 @@ from .startup import slowest_imports
 #: plausibly only needed by one command or a later step.
 DEFAULT_CANDIDATES: tuple[str, ...] = (
     "zettcode.app.agent.export",
-    "zettcode.app.agent.replay",
-    "zettcode.app.agent.title",
+    "zettcode.app.agent.conversation.replay",
+    "zettcode.app.agent.dialogue.title",
     "zettcode.app.ui.updating",
     "zettcode.app.commands",
     "zettcode.plugins",

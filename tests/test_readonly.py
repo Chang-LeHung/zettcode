@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from zettcode.app.agent.readonly import is_read_only
+from zettcode.app.agent.permission.readonly import is_read_only
 
 
 @pytest.fixture
@@ -310,7 +310,7 @@ def test_a_git_file_is_not_followed(tmp_path: Path):
 
 def test_the_read_only_programs_are_a_short_reviewed_list():
     """Adding a program here is a security decision; the list is pinned so that it is made on purpose."""
-    from zettcode.app.agent import readonly
+    from zettcode.app.agent.permission import readonly
 
     assert readonly._PLAIN == frozenset(
         "pwd ls cat head tail wc stat du df which whoami id uname basename dirname realpath readlink echo grep diff cut jq".split()

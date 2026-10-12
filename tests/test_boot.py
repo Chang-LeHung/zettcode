@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from zettcode.app.agent.rows import compact_path as agent_compact_path
+from zettcode.app.agent.conversation.rows import compact_path as agent_compact_path
 from zettcode.app.ui import labels
 from zettcode.app.ui.boot import boot_tree
 from zettcode.app.ui.labels import compact_path

@@ -18,7 +18,7 @@ from .._compat import StrEnum
 if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay lazy
     from pathlib import Path
 
-    from ..app.agent.usage import UsageSnapshot
+    from ..app.agent.extensions.usage import UsageSnapshot
     from ..config import ModelConfig, ZettCodeConfig
     from ..tui import TextLine, Theme
 

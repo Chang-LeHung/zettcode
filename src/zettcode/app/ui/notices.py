@@ -12,7 +12,7 @@ from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from ...tui import Anchor, Overlay, OverlaySlot, Screen, Toast
-from ..agent.usage import UsageSnapshot
+from ..agent.extensions.usage import UsageSnapshot
 from ..commands import CommandUi
 from .shell import APPROVAL_ROWS, ASK_SCREEN, PAGE_SCREEN, ShellState
 from .widgets import ApprovalChoice, ApprovalPage, AskUserPage, bottom_panel
@@ -20,7 +20,7 @@ from .widgets import ApprovalChoice, ApprovalPage, AskUserPage, bottom_panel
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zett_agent.events import AgentEvent
 
-    from ..agent.ask import AskUserQuestion
+    from ..agent.dialogue.ask import AskUserQuestion
 
 
 class NoticesMixin(CommandUi, ShellState):

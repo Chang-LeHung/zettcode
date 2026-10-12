@@ -9,8 +9,8 @@ from zett_agent.messages import AssistantMessage, UserMessage
 from zett_agent.model import ModelEvent, ModelRequest, ModelResponse, RetryOptions
 
 from zettcode.app.agent.agent import ZettCodeAgent
+from zettcode.app.agent.dialogue.title import MAX_TITLE_CHARS, clean_title, excerpt, summarize_title
 from zettcode.app.agent.storage import MAX_TITLE, SessionStore
-from zettcode.app.agent.title import MAX_TITLE_CHARS, clean_title, excerpt, summarize_title
 
 
 class FakeModel:

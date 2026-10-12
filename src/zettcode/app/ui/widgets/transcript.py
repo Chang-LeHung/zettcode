@@ -26,9 +26,9 @@ from ....tui import (
     Theme,
 )
 from ....tui.render import display_width
-from ...agent.entries import Entry
-from ...agent.presenters import Presenters, block_for
-from ...agent.transcript import Transcript
+from ...agent.conversation.entries import Entry
+from ...agent.conversation.presenters import Presenters, block_for
+from ...agent.conversation.transcript import Transcript
 
 #: Badge shown once the reader scrolls away from the newest line. It names the
 #: shortcut so the mouse and the keyboard offer the same way back.

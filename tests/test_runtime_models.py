@@ -16,7 +16,8 @@ from zettcode._compat import ExceptionGroup
 from zettcode.app import pipeline as pipeline_module
 from zettcode.app.agent import runtime as runtime_module
 from zettcode.app.agent.agent import ZettCodeAgent
-from zettcode.app.agent.compaction import OnDemandCompaction
+from zettcode.app.agent.errors import describe_error
+from zettcode.app.agent.extensions.compaction import OnDemandCompaction
 from zettcode.app.agent.storage import STORE_FILE, SessionStore
 from zettcode.config import ModelConfig, ZettCodeConfig
 
@@ -481,7 +482,7 @@ async def test_a_text_only_model_is_not_offered_the_image_tool():
     from zett_agent.model import ModelEvent, ModelResponse, RetryOptions
     from zett_agent.tools.images import view_image
 
-    from zettcode.app.agent.capabilities import ModelCapabilities
+    from zettcode.app.agent.extensions.capabilities import ModelCapabilities
 
     class Context:
         """The two things the filter reads."""
@@ -545,7 +546,7 @@ async def test_the_approval_memory_remembers_exact_commands_for_the_run():
     """The prompt promises one exact command for this run, not an allowlist."""
     from zett_agent.extensions.shell_approval import ShellApprovalMode
 
-    from zettcode.app.agent.approval import ShellApprovalMemory
+    from zettcode.app.agent.permission.approval import ShellApprovalMemory
 
     memory = ShellApprovalMemory()
 
@@ -576,8 +577,8 @@ def test_error_reasons_are_unwrapped_from_their_groups_and_deduplicated():
         ],
     )
 
-    assert runtime_module.describe_error(grouped) == "All connection attempts failed; bad config; 'silent'"
-    assert runtime_module.describe_error(ValueError("plain")) == "plain"
+    assert describe_error(grouped) == "All connection attempts failed; bad config; 'silent'"
+    assert describe_error(ValueError("plain")) == "plain"
 
 
 async def test_a_dead_mcp_server_is_named_in_the_failure(tmp_path, monkeypatch):
@@ -654,7 +655,7 @@ async def test_runtime_switches_models_and_closes_every_provider(tmp_path, monke
     assert any(isinstance(extension, SkillExtension) for extension in captured["extensions"])
     assert not any(isinstance(extension, McpExtension) for extension in captured["extensions"])
     # The tool list follows the model, so the capability filter is part of the run.
-    from zettcode.app.agent.capabilities import ModelCapabilities
+    from zettcode.app.agent.extensions.capabilities import ModelCapabilities
 
     assert any(isinstance(extension, ModelCapabilities) for extension in captured["extensions"])
     # The prompt can offer "always allow" only because the runtime hands the

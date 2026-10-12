@@ -11,9 +11,9 @@ from zett_agent.extensions.tool_guidelines import ToolGuidelinesExtension
 from zett_agent.messages import AssistantMessage, ToolCall, ToolMessage
 from zett_agent.model import ModelEvent, ModelRequest, ModelResponse, RetryOptions
 
-from zettcode.app.agent.capabilities import ModelCapabilities
+from zettcode.app.agent.extensions.capabilities import ModelCapabilities
+from zettcode.app.agent.extensions.subagents import build_subagents, subagent_extension
 from zettcode.app.agent.storage import SessionStore
-from zettcode.app.agent.subagents import build_subagents, subagent_extension
 
 
 class _StubModel:

@@ -32,19 +32,18 @@ from zett_agent.extensions.tool_guidelines import ToolGuidelinesExtension
 from zett_agent.ids import new_uuid7
 from zett_agent.model import ReasoningEffort
 
-from ..._compat import BaseExceptionGroup
 from ...config import DEFAULT_ANTHROPIC_BASE_URL, ModelConfig, ZettCodeConfig
 from ...paths import DEFAULT_MCP_CONFIG
 from ...plugins import Plugins, load_plugins
 from ..pipeline import ImportPipeline
-from .approval import ShellApprovalMemory
-from .capabilities import ModelCapabilities
-from .compaction import OnDemandCompaction
-from .context import ContextExtension, Tokenizer
+from .dialogue.side import SideQuestions
+from .extensions.capabilities import ModelCapabilities
+from .extensions.compaction import OnDemandCompaction
+from .extensions.context import ContextExtension, Tokenizer
+from .extensions.usage import UsageExtension
 from .permission import Permission, ShellDenyExtension, ShellPolicy, parse_permission
-from .side import SideQuestions
+from .permission.approval import ShellApprovalMemory
 from .storage import SessionStore
-from .usage import UsageExtension
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only; the imports are the cost
     from zett_agent.providers.anthropic import AnthropicProvider
@@ -128,7 +127,7 @@ def integration_extensions(config: ZettCodeConfig) -> tuple[AgentExtension, ...]
     from zett_agent.extensions.agents_md import AgentsMdExtension
     from zett_agent.extensions.skill import SkillExtension
 
-    from .mcp import ReportingMcpExtension
+    from .extensions.mcp import ReportingMcpExtension
 
     extensions: list[AgentExtension] = []
     if config.ask_user_enabled:
@@ -142,35 +141,6 @@ def integration_extensions(config: ZettCodeConfig) -> tuple[AgentExtension, ...]
         if Path(path).expanduser().is_file():
             extensions.append(ReportingMcpExtension(config_path=path))
     return tuple(extensions)
-
-
-def describe_error(error: BaseException) -> str:
-    """Return the reasons an exception carries, not the group that wraps them.
-
-    A failure inside a task group arrives as an ``ExceptionGroup`` whose own
-    text says nothing — "unhandled errors in a TaskGroup (1 sub-exception)" —
-    and a server refusing a connection is reported exactly that way. The reasons
-    are the leaves, so that is what a row shows, each one once, however deeply
-    the groups nest.
-
-    Args:
-        error: The exception a request failed with.
-
-    Returns:
-        The leaf reasons joined by ``"; "``, or the class name when a reason has
-        no text of its own.
-    """
-    reasons: list[str] = []
-    pending: list[BaseException] = [error]
-    while pending:
-        current = pending.pop(0)
-        if isinstance(current, BaseExceptionGroup):
-            pending[:0] = list(current.exceptions)
-            continue
-        text = str(current).strip() or type(current).__name__
-        if text not in reasons:
-            reasons.append(text)
-    return "; ".join(reasons)
 
 
 def _build_provider(selected: ModelConfig) -> Adapter:
@@ -360,7 +330,7 @@ class ZettCodeRuntime:
             # that never runs a child should not pay for on the way to the first
             # frame. Before ToolGuidelinesExtension, so the task tool's own
             # guidance reaches the prompt it is registered for.
-            from .subagents import subagent_extension
+            from .extensions.subagents import subagent_extension
 
             extensions.append(subagent_extension(model=model, persistence=self.persistence, capabilities=capabilities))
         extensions.extend([ShellDenyExtension(self.policy), self.approval, self.persistence])

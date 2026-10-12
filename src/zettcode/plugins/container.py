@@ -20,7 +20,7 @@ from ..app.commands import Command, CommandHandler, CommandList, CommandProvider
 from .state import UiRow, UiSegment
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay lazy
-    from ..app.agent.mentions import MentionProvider
+    from ..app.agent.dialogue.mentions import MentionProvider
     from ..config import ZettCodeConfig
     from .state import UiBuilder, UiRegion, UiSide
 

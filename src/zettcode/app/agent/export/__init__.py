@@ -25,9 +25,9 @@ from string import Template
 
 from zett_agent.messages import AnyMessage, AssistantMessage, SystemMessage, ToolMessage, UserMessage
 
-from .context import ContextReport
-from .side import is_side_line
-from .storage import MessageLine, Session
+from ..dialogue.side import is_side_line
+from ..extensions.context import ContextReport
+from ..storage import MessageLine, Session
 
 #: Characters a block keeps inline before it collapses. The system prompt and
 #: long tool output are the only things that usually pass it.
@@ -134,7 +134,7 @@ def _assets() -> tuple[Template, str, str]:
     as markup and CSS than as a Python string — and are folded back into one
     document here, so what is exported still fetches nothing.
     """
-    root = files("zettcode.app.agent").joinpath("trace")
+    root = files("zettcode.app.agent.export").joinpath("trace")
     template = Template(root.joinpath("template.html").read_text(encoding="utf-8"))
     style = root.joinpath("style.css").read_text(encoding="utf-8")
     script = root.joinpath("script.js").read_text(encoding="utf-8")

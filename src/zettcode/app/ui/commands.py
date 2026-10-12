@@ -257,7 +257,7 @@ class ShellCommands(CommandProvider):
 
         The answer is shown in the transcript like any other, but the store
         records the exchange as one the model is never given back, and the tools
-        are the reading ones — see :mod:`zettcode.app.agent.side`. Declaring
+        are the reading ones — see :mod:`zettcode.app.agent.dialogue.side`. Declaring
         itself queue-worthy is what lets the command be typed during a reply:
         the answer then waits its turn like any other request.
         """

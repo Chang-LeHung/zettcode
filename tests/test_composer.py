@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import base64
 
-from zettcode.app.agent.agent import MentionPart
+from zettcode.app.agent.agent.prompt import MentionPart
 from zettcode.app.ui.widgets import Composer
 from zettcode.tui import DARK, Style
 from zettcode.tui.testing import Harness

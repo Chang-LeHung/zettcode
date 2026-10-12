@@ -7,11 +7,11 @@ from types import SimpleNamespace
 from zett_agent.messages import AssistantMessage, SystemMessage, UserMessage
 from zett_agent.model import ModelEvent, ModelResponse, RetryOptions
 
-from zettcode.app.agent.compaction import OnDemandCompaction
-from zettcode.app.agent.entries import EntryStatus, ThinkingEntry
-from zettcode.app.agent.rows import COMPACTING_LABEL
-from zettcode.app.agent.side import question
-from zettcode.app.agent.transcript import Transcript
+from zettcode.app.agent.conversation.entries import EntryStatus, ThinkingEntry
+from zettcode.app.agent.conversation.rows import COMPACTING_LABEL
+from zettcode.app.agent.conversation.transcript import Transcript
+from zettcode.app.agent.dialogue.side import question
+from zettcode.app.agent.extensions.compaction import OnDemandCompaction
 
 
 class FakeModel:

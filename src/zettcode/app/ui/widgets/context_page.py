@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ....tui import SEPARATOR, ListItem, ListPage
-from ...agent.context import SOURCES, ContextReport
+from ...agent.extensions.context import SOURCES, ContextReport
 from ..labels import compact_path
 
 #: The sources only an assembled request carries: the notes an extension appends

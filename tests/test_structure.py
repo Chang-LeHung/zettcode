@@ -148,6 +148,57 @@ def test_layers_only_import_downwards():
     assert violations == []
 
 
+#: What each part of ``zettcode.app.agent`` may import from its siblings, and nothing more.
+#: The order runs one way: ``dialogue`` and ``errors`` stand alone, ``storage`` builds on
+#: the dialogue's side questions, ``extensions`` and ``conversation`` on those, ``runtime``
+#: composes the extensions, and ``agent`` composes everything. A part that needed to import
+#: *up* this table would be a cycle waiting for the first function-level import to hide it —
+#: ``describe_error`` was exactly that, between the runtime and an extension, until it
+#: moved to ``errors``.
+AGENT_PARTS: dict[str, frozenset[str]] = {
+    "errors": frozenset(),
+    "dialogue": frozenset(),
+    "permission": frozenset(),
+    "storage": frozenset({"dialogue"}),
+    "extensions": frozenset({"dialogue", "errors", "storage"}),
+    "conversation": frozenset({"dialogue", "extensions", "storage"}),
+    "export": frozenset({"dialogue", "extensions", "storage"}),
+    "runtime": frozenset({"dialogue", "extensions", "permission", "storage"}),
+    "agent": frozenset({"conversation", "dialogue", "export", "extensions", "permission", "runtime", "storage"}),
+}
+
+
+def _agent_part(module: str) -> str | None:
+    """Return which part of ``zettcode.app.agent`` a module belongs to, if it is in one."""
+    prefix = "zettcode.app.agent."
+    if not module.startswith(prefix):
+        return None
+    head = module[len(prefix) :].split(".")[0]
+    return head if head in AGENT_PARTS else None
+
+
+def test_the_parts_of_the_agent_package_import_in_one_direction():
+    """The grouping is only worth having if it keeps holding: each part imports what it is
+    allowed to and nothing else, and every module sits in a part or is the facade itself."""
+    seen: dict[str, set[str]] = {part: set() for part in AGENT_PARTS}
+    unplaced: list[str] = []
+    for path, module, is_package in _sources():
+        if not module.startswith("zettcode.app.agent.") or module == "zettcode.app.agent":
+            continue
+        part = _agent_part(module)
+        if part is None:
+            unplaced.append(module)
+            continue
+        for _, target, _ in _imports(path, module, is_package):
+            other = _agent_part(target)
+            if other is not None and other != part:
+                seen[part].add(other)
+
+    assert unplaced == [], f"a module outside every part of the agent package: {unplaced}"
+    exceeded = {part: sorted(found - AGENT_PARTS[part]) for part, found in seen.items() if found - AGENT_PARTS[part]}
+    assert exceeded == {}, f"imports the table does not allow: {exceeded}"
+
+
 def test_every_facade_publishes_what_it_promises():
     """A lazy re-export is easy to get wrong, so every name has to resolve."""
     missing: list[str] = []

@@ -7,9 +7,9 @@ from typing import TYPE_CHECKING
 
 #: Where each public name lives; read by :func:`__getattr__` on first use.
 _EXPORTS = {
-    "Entry": ".entries",
-    "Transcript": ".transcript",
-    "TranscriptProjector": ".projection",
+    "Entry": ".conversation.entries",
+    "Transcript": ".conversation.transcript",
+    "TranscriptProjector": ".conversation.projection",
     "ZettCodeAgent": ".agent",
     "ZettCodeRuntime": ".runtime",
 }
@@ -17,10 +17,10 @@ _EXPORTS = {
 
 if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
     from .agent import ZettCodeAgent
-    from .entries import Entry
-    from .projection import TranscriptProjector
+    from .conversation.entries import Entry
+    from .conversation.projection import TranscriptProjector
+    from .conversation.transcript import Transcript
     from .runtime import ZettCodeRuntime
-    from .transcript import Transcript
 
 
 def __getattr__(name: str) -> object:

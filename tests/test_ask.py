@@ -9,7 +9,7 @@ from zett_agent.events import AgentEvent, AgentEventType
 from zett_agent.extensions.ask_user import ASK_USER_EVENT_NAME
 
 from zettcode.app.agent import runtime as runtime_module
-from zettcode.app.agent.ask import AskUserQuestion, answer_payload, decline_payload, question_from
+from zettcode.app.agent.dialogue.ask import AskUserQuestion, answer_payload, decline_payload, question_from
 from zettcode.config import ModelConfig, ZettCodeConfig
 
 

@@ -8,8 +8,10 @@ from pathlib import Path
 import pytest
 from zett_agent.messages import UserMessage
 
-from zettcode.app.agent.agent import MentionPart, ZettCodeAgent, mention_hint
-from zettcode.app.agent.mentions import (
+from zettcode.app.agent.agent import ZettCodeAgent
+from zettcode.app.agent.agent.prompt import MentionPart, mention_hint
+from zettcode.app.agent.conversation.replay import replay
+from zettcode.app.agent.dialogue.mentions import (
     LISTING_SECONDS,
     MAX_CANDIDATES,
     MENTION,
@@ -19,7 +21,6 @@ from zettcode.app.agent.mentions import (
     MentionRegistry,
     SkillMentions,
 )
-from zettcode.app.agent.replay import replay
 from zettcode.app.agent.storage import SessionStore
 from zettcode.app.ui.widgets import Composer
 from zettcode.app.ui.widgets.completer import CommandCompleter

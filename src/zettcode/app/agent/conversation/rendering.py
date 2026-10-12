@@ -30,8 +30,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from ...tui import ELLIPSIS, SEPARATOR
-from ...tui.render import GENERIC, language_for
+from ....tui import ELLIPSIS, SEPARATOR
+from ....tui.render import GENERIC, language_for
 
 #: Output kinds the chain shapes; a link claims one or more of them.
 TOOL = "tool"
