@@ -17,7 +17,7 @@ from datetime import datetime
 from pathlib import Path
 
 from ...tui import ELLIPSIS, RUNNING
-from ...tui.render import display_width, wrap_columns
+from ...tui.render import count_wrapped_rows, display_width, wrap_columns
 
 #: Left margin of every transcript row: the width of the composer's ``\u203a ``
 #: prompt, so text lines up under what the user types and never starts left of
@@ -74,6 +74,10 @@ def terminal_safe(value: str) -> str:
     being a line break the moment it is replaced.
     """
     cleaned = _ANSI.sub("", value).replace("\r\n", "\n").replace("\r", "\n").expandtabs(4)
+    if cleaned.replace("\n", "").isprintable():
+        # Nothing to replace, which is the usual output: say so in one pass instead
+        # of looking at every character of what may be tens of kilobytes.
+        return cleaned
     return "".join(
         character if character in "\n" else character if character.isprintable() else "\ufffd" for character in cleaned
     )
@@ -88,9 +92,16 @@ def bounded_rows(value: str, width: int, limit: int) -> tuple[list[str], int]:
         limit: Most rows to return; the remainder is reported as omitted.
     """
     rows: list[str] = []
+    hidden = 0
     for source in terminal_safe(value).splitlines() or [""]:
-        rows.extend(wrap_columns(source, width))
-    omitted = max(0, len(rows) - limit)
+        if len(rows) < limit:
+            rows.extend(wrap_columns(source, width))
+        else:
+            # Past the rows that are shown only the count is wanted, and counting
+            # a line's rows does not need the rows: a 900-line test log is wrapped
+            # for five of them.
+            hidden += count_wrapped_rows(source, width)
+    omitted = max(0, len(rows) - limit) + hidden
     return rows[:limit], omitted
 
 
