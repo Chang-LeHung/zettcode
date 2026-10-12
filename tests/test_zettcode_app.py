@@ -393,6 +393,25 @@ def _sessions_page(app: ZettCodeApp) -> SessionsPage:
     return next(widget for widget in walk(app.app.screens.top.widget) if isinstance(widget, SessionsPage))
 
 
+@pytest.fixture(autouse=True)
+def _no_release_check(monkeypatch):
+    """Keep every shell in this file off the network.
+
+    ``FakeConfig`` leaves the release check on, so a test that starts the background
+    work — four of them do, for the runtime — used to start a thread that asked the real
+    package index and wrote ``/tmp/zettcode-update.json``: a test depending on the
+    network and sharing a file with every other run. Worse, the thread outlives the
+    test, and an answer arriving after the loop closed took the interpreter down at
+    exit on CI. The shell's own call is replaced by one that answers at once; a test
+    that wants a particular check sets its own, as ``test_stopping_an_upgrade...`` does.
+    """
+
+    async def offline(path):
+        return None
+
+    monkeypatch.setattr(updating_module, "check_for_update", offline)
+
+
 def _update_page(app: ZettCodeApp) -> UpdatePage:
     """Return the newer-release panel on top of the stack."""
     return next(widget for widget in walk(app.app.screens.top.widget) if isinstance(widget, UpdatePage))
@@ -4915,3 +4934,17 @@ async def test_the_fork_notice_lands_under_the_rows_it_describes(tmp_path):
     assert len(notices) == 1
     assert app.transcript.entries[-1] is notices[0], "last, after the rows it talks about"
     assert len(app.transcript.entries) == rows + 1
+
+
+async def test_starting_the_background_work_does_not_ask_the_index_or_write_a_file(tmp_path):
+    """The release check is the one background task that leaves the process; tests keep it home."""
+    app = build_app()
+    path = tmp_path / "update.json"
+    app.agent.runtime.config.update_file = path
+
+    app.start_background()
+    assert app._update_task is not None
+    await asyncio.wait_for(app._update_task, 2.0)
+
+    assert not path.exists(), "nothing was fetched, so nothing was stored"
+    await asyncio.wait_for(app.stop_background(), 2.0)

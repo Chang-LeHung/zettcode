@@ -28,7 +28,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from shutil import which
 from tempfile import NamedTemporaryFile
-from typing import TypeVar
+from typing import Any, TypeVar
 
 from . import __version__
 
@@ -138,13 +138,28 @@ async def in_background(work: Callable[[], Result]) -> Result:
         if not future.done():
             future.set_exception(error)
 
+    def hand_over(callback: Callable[[Any], None], argument: Any) -> None:
+        """Pass the outcome to the loop, unless the loop is gone.
+
+        The thread is left running on purpose when the session ends, so its answer can
+        arrive after the loop has been closed — and ``call_soon_threadsafe`` then raises.
+        A daemon thread that raises prints a traceback, and one that does so while the
+        interpreter is shutting down can take the whole process down with it: the
+        standard error stream's lock cannot be taken, and Python aborts. Nobody is
+        waiting for this answer any more, so dropping it is the whole of the handling.
+        """
+        try:
+            loop.call_soon_threadsafe(callback, argument)
+        except RuntimeError:
+            pass
+
     def run() -> None:
         try:
             value = work()
         except BaseException as error:  # noqa: BLE001 - handed to the awaiting caller
-            loop.call_soon_threadsafe(fail, error)
+            hand_over(fail, error)
         else:
-            loop.call_soon_threadsafe(deliver, value)
+            hand_over(deliver, value)
 
     threading.Thread(target=run, name="zettcode-background", daemon=True).start()
     return await future
