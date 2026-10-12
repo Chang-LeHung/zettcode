@@ -2,7 +2,25 @@
 
 from __future__ import annotations
 
+import atexit
+import os
+import shutil
+import tempfile
+
 import pytest
+
+# The suite runs in a home directory of its own, set before anything from zettcode is imported.
+# Every default the program has — the config file, the session store, the release check's state,
+# the tokenizer's cache, the log, the theme — is `Path.home() / ".zettcode" / ...` evaluated when
+# its module is imported, so this has to come first: patching a variable afterwards does not move
+# a default that was already computed, and a test that builds a config without naming a store
+# (`resolve_config(["-w", tmp_path])` does exactly that) would write into the developer's real
+# `~/.zettcode`. That is what happened: every run left two workspace folders behind, and
+# thousands piled up in a real store, each with a metadata file listing one throwaway session.
+_HOME = tempfile.mkdtemp(prefix="zettcode-test-home-")
+os.environ["HOME"] = _HOME
+os.environ["USERPROFILE"] = _HOME  # what `Path.home()` reads on Windows
+atexit.register(shutil.rmtree, _HOME, ignore_errors=True)
 
 
 @pytest.fixture(autouse=True)
