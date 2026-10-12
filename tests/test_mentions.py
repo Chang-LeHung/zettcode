@@ -249,21 +249,32 @@ async def test_replay_shows_the_typed_text_instead_of_the_expanded_one(tmp_path:
 # -- files in the workspace as @ resources ---------------------------------------
 
 
+def _write(path: Path, text: str) -> None:
+    """Write a file whose size the test will assert, byte for byte.
+
+    ``Path.write_text`` translates ``\\n`` to ``\\r\\n`` on Windows, so a file written
+    with it is a byte longer per line there and a size read back differs by platform.
+    The menu reports what ``stat`` says, which is what a reader would see, so the
+    files have to be exactly what the test thinks they are.
+    """
+    path.write_bytes(text.encode("utf-8"))
+
+
 @pytest.fixture
 def workspace(tmp_path: Path) -> Path:
     """Return a small tree, with the directories a listing skips filled in."""
     (tmp_path / "src" / "app").mkdir(parents=True)
-    (tmp_path / "src" / "app" / "cli.py").write_text("print('cli')\n" * 20)
-    (tmp_path / "src" / "app" / "server.py").write_text("x = 1\n")
+    _write(tmp_path / "src" / "app" / "cli.py", "print('cli')\n" * 20)
+    _write(tmp_path / "src" / "app" / "server.py", "x = 1\n")
     (tmp_path / "tests").mkdir()
-    (tmp_path / "tests" / "test_cli.py").write_text("assert True\n")
-    (tmp_path / "README.md").write_text("# readme\n")
+    _write(tmp_path / "tests" / "test_cli.py", "assert True\n")
+    _write(tmp_path / "README.md", "# readme\n")
     (tmp_path / ".git").mkdir()
-    (tmp_path / ".git" / "config").write_text("[core]\n")
+    _write(tmp_path / ".git" / "config", "[core]\n")
     (tmp_path / "node_modules" / "left-pad").mkdir(parents=True)
-    (tmp_path / "node_modules" / "left-pad" / "index.js").write_text("module.exports = 1\n")
+    _write(tmp_path / "node_modules" / "left-pad" / "index.js", "module.exports = 1\n")
     (tmp_path / "__pycache__").mkdir()
-    (tmp_path / "__pycache__" / "cli.cpython-314.pyc").write_bytes(b"\x00")
+    _write(tmp_path / "__pycache__" / "cli.cpython-314.pyc", "\x00")
     return tmp_path
 
 
