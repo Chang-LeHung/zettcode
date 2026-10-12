@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from functools import lru_cache
 
 from wcwidth import wcwidth
 
@@ -24,14 +25,24 @@ def cell_glyph(character: str) -> tuple[str, int]:
     return character, width
 
 
+@lru_cache(maxsize=1 << 16)
 def character_width(character: str) -> int:
-    """Return the columns one character occupies on screen."""
+    """Return the columns one character occupies on screen.
+
+    Remembered, because the same few thousand characters make up almost all of the
+    text a terminal shows, and a cache hit is answered without running any Python:
+    measuring a screenful of Chinese is a hundred thousand of these.
+    """
     return cell_glyph(character)[1]
 
 
 def display_width(text: str) -> int:
     """Return the columns a string occupies, counting wide glyphs as two."""
-    return sum(character_width(character) for character in text)
+    if text.isascii() and text.isprintable():
+        # Printable ASCII is one column a character, and it is nearly all of what a
+        # terminal shows; measuring it one character at a time is the cost this skips.
+        return len(text)
+    return sum(map(character_width, text))
 
 
 def slice_columns(text: str, start: int, end: int) -> str:
@@ -114,6 +125,10 @@ def wrap_columns(text: str, width: int) -> list[str]:
         width: Column budget per row, floored at 1.
     """
     width = max(1, width)
+    if text.isascii() and text.isprintable():
+        # One column a character, so a row is exactly ``width`` characters and the
+        # last is whatever is left. An empty line is still one (empty) row.
+        return [text[start : start + width] for start in range(0, len(text), width)] or [""]
     lines: list[str] = []
     current = ""
     used = 0
@@ -126,6 +141,22 @@ def wrap_columns(text: str, width: int) -> list[str]:
         used += char_width
     lines.append(current)
     return lines
+
+
+def count_wrapped_rows(text: str, width: int) -> int:
+    """Return how many rows :func:`wrap_columns` would make of one line, without making them.
+
+    A caller that only needs to say how many rows lie beyond the ones it shows — a
+    tool result's "… 40 more rows" — should not build every one of them to count.
+
+    Args:
+        text: Source line; embedded newlines are not treated specially.
+        width: Column budget per row, floored at 1.
+    """
+    width = max(1, width)
+    if text.isascii() and text.isprintable():
+        return max(1, -(-len(text) // width))
+    return len(wrap_columns(text, width))
 
 
 def expand_tabs(text: str, *, tab_size: int = 4, start_column: int = 0) -> str:
@@ -196,7 +227,23 @@ def wrap_spans(spans: Sequence[Span], width: int) -> list[tuple[Span, ...]]:
     chunk_style: Style = Style()
     used = 0
     for span in spans:
-        for character in span.text:
+        text = span.text
+        if not text:
+            continue
+        span_width = display_width(text)
+        if used + span_width <= width:
+            # The whole fragment fits on this row, so no character of it can wrap:
+            # it joins the run in progress when the style is the same and starts a
+            # new one when it is not, exactly as placing it character by character
+            # would, without visiting each character to say so.
+            if chunk and chunk_style != span.style:
+                row.append(Span(chunk, chunk_style))
+                chunk = ""
+            chunk_style = span.style
+            chunk += text
+            used += span_width
+            continue
+        for character in text:
             char_width = character_width(character)
             if used and used + char_width > width:
                 if chunk:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -36,6 +37,25 @@ class Style:
 DEFAULT_STYLE = Style()
 
 
+_measure: Callable[[str], int] | None = None
+
+
+def _display_width() -> Callable[[str], int]:
+    """Return ``text.display_width``, imported the first time it is needed and kept.
+
+    ``text`` builds on the types in this module, so this module cannot import it when
+    it loads; asking for the function inside every call was a statement the
+    interpreter had to resolve each time, and a transcript measures a span tens of
+    thousands of times.
+    """
+    global _measure
+    if _measure is None:
+        from .text import display_width
+
+        _measure = display_width
+    return _measure
+
+
 @dataclass(frozen=True, slots=True)
 class Span:
     """One styled text fragment.
@@ -51,9 +71,7 @@ class Span:
     @property
     def width(self) -> int:
         """Return the columns this fragment paints, including wide glyphs."""
-        from .text import display_width
-
-        return display_width(self.text)
+        return _display_width()(self.text)
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,7 +95,8 @@ class TextLine:
     @property
     def width(self) -> int:
         """Return the displayed column width of this line."""
-        return sum(span.width for span in self.spans)
+        measure = _display_width()
+        return sum(measure(span.text) for span in self.spans)
 
     def layout(self, width: int, *, wrap: bool = True, align: Alignment = "left") -> tuple[TextLine, ...]:
         """Lay out this line using the same rules as a RichText widget."""
