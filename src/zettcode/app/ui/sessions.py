@@ -7,14 +7,16 @@ and asks the agent to name a new session once, off the composer's critical path.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from dataclasses import replace
-from typing import TYPE_CHECKING
 
+from ...collector import collector_paused
+from ...plugins.state import Activity
+from ...tui import ELLIPSIS, Theme
+from ..agent.agent import StoredSession
+from ..agent.presenters import block_for
 from .shell import ShellState
 from .widgets import WELCOME
-
-if TYPE_CHECKING:  # pragma: no cover - annotations only
-    pass
 
 
 class SessionMixin(ShellState):
@@ -36,26 +38,100 @@ class SessionMixin(ShellState):
         return renamed
 
     def select_session(self, session_id: str) -> None:
-        """Switch to the session picked in the panel and return to the composer."""
-        try:
-            self.restore_session(session_id)
-        except ValueError as error:
-            self.transcript.error(str(error))
-            self.close_page()
-            return
+        """Switch to the session picked in the panel, and close the panel.
+
+        Resuming reads and rebuilds a whole session, which on a long one is a
+        noticeable part of a second; it runs behind the interface rather than in
+        front of it, as a command does, so the panel closes at once and the status
+        line says what is happening while the rows are made.
+        """
+        if self._busy:
+            return  # a request or an earlier resume is already in flight
         # Close the panel first: the toast is its own screen, and closing it
         # instead of the panel would leave the picker on top.
         self.close_page()
-        self.notify(f"using session {session_id[:8]}", level="success")
+        self._task = asyncio.create_task(self._switch_session(session_id))
 
-    def restore_session(self, session_id: str) -> None:
-        """Replace the visible history with the chosen persisted branch."""
-        self.agent.restore_session(session_id, self.transcript)
+    async def _switch_session(self, session_id: str) -> None:
+        """Resume a session as a task, holding the busy flag the way a command does."""
+        self._activity = Activity.RUNNING
+        self._note = f"resume {ELLIPSIS}"
+        self._set_busy(True)
+        self.app.invalidate()
+        try:
+            await self.resume_session(session_id)
+        except ValueError as error:
+            self.transcript.error(str(error))
+        else:
+            self.notify(f"using session {session_id[:8]}", level="success")
+        finally:
+            self._set_busy(False)
+            self._activity = Activity.READY
+            self._note = None
+            self.app.invalidate()
+            self._start_next_command()
+
+    async def resume_session(self, session_id: str) -> None:
+        """Restore a session without holding the event loop for the work.
+
+        The reading, the parsing, and the building of rows — and the first
+        measuring of those rows at the width the view has now — happen on a worker
+        thread; what is left for the loop is the assignment that makes the result
+        the visible conversation. While it runs the interface keeps drawing and
+        taking keys, which a resume that parsed the file in the handler did not.
+        """
+        stored = await asyncio.to_thread(self._load_session, session_id)
+        self._install_session(stored)
+
+    def restore_session(self, session_id: str, *, window: Callable[[], tuple[int, Theme]] | None = None) -> None:
+        """Replace the visible history with the chosen persisted branch.
+
+        The same two steps :meth:`resume_session` takes, run where the caller is:
+        the command line calls this on its own worker thread, before the interface
+        has a loop to hold up.
+
+        Args:
+            session_id: The session to restore.
+            window: Where the rows will be drawn — the width and the palette — when
+                this view is not laid out yet, which is the case on the command
+                line: the real tree is built behind a frame painted by another
+                app, so ``self.view`` has no size to measure at. It is a function,
+                called once the file has been read, because the terminal's size and
+                the palette it asked for are settled by then and may not have been
+                when the call was made.
+        """
+        self._install_session(self._load_session(session_id, window=window))
+
+    def _load_session(self, session_id: str, *, window: Callable[[], tuple[int, Theme]] | None = None) -> StoredSession:
+        """Read a session and prepare its rows, changing nothing the shell shows.
+
+        Safe to run on a worker thread: the rows live in a transcript of their own
+        until they are installed, so nothing here is visible to the loop. The
+        blocks are measured now, at the width and palette they will be drawn in, so
+        the loop's first look at them is a cache hit; a window that has since
+        changed size simply misses and measures again, as it would have.
+
+        A view that is not laid out reports a width of one column, and measuring
+        every row at one column is the most expensive thing the transcript can be
+        asked and is no use to anyone: it is what this did before it was told where
+        the rows would go, and the first frame then measured them all again.
+        """
+        with collector_paused():
+            stored = self.agent.load_session(session_id, self.transcript)
+            transcript = stored.replayed.transcript
+            width, theme = window() if window is not None else (self.view.line_width, self.view.theme)
+            for entry in transcript.entries:
+                block_for(entry, width, theme, transcript.frame, presenters=transcript.presenters).count(width)
+        return stored
+
+    def _install_session(self, stored: StoredSession) -> None:
+        """Make a loaded session the visible one. Assignment only; runs on the loop."""
+        self.agent.install_session(stored, self.transcript)
         if not self.transcript.entries:
             self.transcript.welcome(WELCOME)
         self.view.follow_tail = True
         self.view.clear_selection()
-        self._remember_session_title()
+        self._session_title = stored.title
         self._usage = self.agent.usage
         self._refresh_tasks()
         self.app.request_layout()

@@ -507,3 +507,64 @@ async def test_the_extension_remembers_the_last_request_per_session():
     assert extension.assembled("s-1") == (second.messages, second.tools)
     assert extension.report("s-2", window=100, tokenizer=_counting_tokenizer()) is not None
     assert extension.report("missing", window=100, tokenizer=_counting_tokenizer()) is None
+
+
+# -- a restored session's request is built when it is asked for ------------------
+
+
+def test_a_restored_request_is_not_built_until_something_asks_for_it():
+    """Assembling it decodes every message since the last checkpoint; resuming should not pay that.
+
+    Only the `/context` panel and the context figure read it, so a restore hands it
+    over as a function. It runs once, on the first question, and the answer is kept.
+    """
+    extension = ContextExtension()
+    built: list[int] = []
+
+    def build():
+        built.append(1)
+        return (UserMessage(content="an earlier question"),)
+
+    extension.remember("restored", build)
+
+    assert built == [], "remembering it costs nothing"
+    first = extension.assembled("restored")
+    second = extension.assembled("restored")
+
+    assert built == [1], "built on the first question and never again"
+    assert first is not None and first[0][0].text == "an earlier question"
+    assert second == first
+
+
+async def test_a_real_request_replaces_a_restored_one_without_it_ever_being_built():
+    """The first turn after a resume sends a real request, which is the better answer."""
+    extension = ContextExtension()
+    built: list[int] = []
+    extension.remember("s", lambda: built.append(1) or (UserMessage(content="stored"),))
+
+    await extension.before_model(_Context("s"), _request((UserMessage(content="live"),)))
+
+    assembled = extension.assembled("s")
+    assert built == [], "the stored dialogue was never assembled"
+    assert assembled is not None and assembled[0][0].text == "live"
+
+
+def test_remembering_a_list_after_a_pending_one_replaces_it():
+    extension = ContextExtension()
+    extension.remember("s", lambda: (UserMessage(content="pending"),))
+    extension.remember("s", (UserMessage(content="eager"),))
+
+    assembled = extension.assembled("s")
+    assert assembled is not None and assembled[0][0].text == "eager"
+
+
+def test_a_pending_request_belongs_to_its_session():
+    extension = ContextExtension()
+    extension.remember("a", lambda: (UserMessage(content="from a"),))
+    extension.remember("b", lambda: (UserMessage(content="from b"),))
+
+    one, two = extension.assembled("b"), extension.assembled("a")
+
+    assert one is not None and one[0][0].text == "from b"
+    assert two is not None and two[0][0].text == "from a"
+    assert extension.assembled("c") is None

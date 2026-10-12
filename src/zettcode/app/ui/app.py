@@ -162,6 +162,11 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
         self._effort_animation: tuple[str, str, float] | None = None
         #: The context re-measure a restore started, replaced by the next restore.
         self._measure_task: asyncio.Task[None] | None = None
+        #: The release check or upgrade in flight. Set here, not only where one is
+        #: started: the shutdown drops it whatever the configuration, and a shell
+        #: that never started one — because the update check is off, or because it
+        #: is leaving before the background work began — has nothing else to drop.
+        self._update_task: asyncio.Task[None] | None = None
         #: The runtime warm-up this shell started, released on the way out.
         self._warm: asyncio.Task[object] | None = None
         self._busy = False

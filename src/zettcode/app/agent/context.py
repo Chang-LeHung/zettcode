@@ -438,6 +438,9 @@ class ContextExtension(AgentExtension):
     def __init__(self) -> None:
         """Start with no captured request and nothing counted."""
         self._requests: dict[str, tuple[tuple[AnyMessage, ...], tuple[ToolDefinition, ...]]] = {}
+        #: Requests promised but not built yet: a restored session's dialogue is only
+        #: assembled when something asks for it (see :meth:`remember`).
+        self._pending: dict[str, Callable[[], Sequence[AnyMessage]]] = {}
         self._template: tuple[tuple[AnyMessage, ...], tuple[ToolDefinition, ...]] | None = None
         #: Per session, the items the last report counted and the counter that
         #: produced those numbers (see :class:`SessionCounts`). This is what makes
@@ -450,6 +453,7 @@ class ContextExtension(AgentExtension):
         # The runtime replaces an empty session_id before hooks run.
         session_id = cast(str, context.config.session_id)
         self._requests[session_id] = (tuple(request.messages), tuple(request.tools))
+        self._pending.pop(session_id, None)
         self._template = (tuple(request.messages), tuple(request.tools))
 
     @property
@@ -462,18 +466,31 @@ class ContextExtension(AgentExtension):
         """Return the tool schemas every request offers, once one was seen."""
         return self._template[1] if self._template is not None else ()
 
-    def remember(self, session_id: str, messages: Sequence[AnyMessage]) -> None:
+    def remember(self, session_id: str, messages: Sequence[AnyMessage] | Callable[[], Sequence[AnyMessage]]) -> None:
         """Record a context assembled outside a model call, as restoring does.
 
         Args:
             session_id: Session the messages belong to.
             messages: Instructions followed by the restored dialogue, in the
-                order a request would carry them.
+                order a request would carry them — or a function that builds that
+                list. A restore passes the function: the list needs every message
+                since the last checkpoint decoded, which is most of what resuming a
+                long session would cost, and only ``/context`` and the context
+                figure ever read it. It runs the first time one of them asks, and
+                a real request in the meantime replaces it without it ever running.
         """
+        self._requests.pop(session_id, None)
+        if callable(messages):
+            self._pending[session_id] = messages
+            return
+        self._pending.pop(session_id, None)
         self._requests[session_id] = (tuple(messages), self.tools)
 
     def assembled(self, session_id: str) -> tuple[tuple[AnyMessage, ...], tuple[ToolDefinition, ...]] | None:
         """Return the last assembled request, or None before the first call."""
+        build = self._pending.pop(session_id, None)
+        if build is not None:
+            self._requests[session_id] = (tuple(build()), self.tools)
         return self._requests.get(session_id)
 
     def report(

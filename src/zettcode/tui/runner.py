@@ -85,6 +85,22 @@ class TerminalRunner:
         self.reader: AsyncInput | None = None
         self._input: asyncio.Task[InputEvent] | None = None
         self._title = ""
+        self._after_paint: list[Callable[[], None]] = []
+
+    def after_next_paint(self, callback: Callable[[], None]) -> None:
+        """Run ``callback`` once, right after the next frame has been written.
+
+        For work that must not compete with a frame the reader is waiting for. The
+        interpreter runs one thread's Python at a time, so a worker that starts
+        before the frame is drawn takes turns with the drawing, and the frame is
+        what pays: each time the loop wakes it queues behind the worker for the
+        lock. Starting the worker from here lets the frame finish first.
+
+        Args:
+            callback: Called on the loop, after the terminal has the frame. An
+                exception it raises propagates out of the paint like any other.
+        """
+        self._after_paint.append(callback)
 
     async def run(self) -> None:
         """Enter raw mode and loop until the application exits."""
@@ -133,6 +149,9 @@ class TerminalRunner:
         canvas = self.app.render()
         cursor = self.app.cursor()
         self.renderer.render(canvas, cursor=None if cursor is None else (cursor.x, cursor.y))
+        callbacks, self._after_paint = self._after_paint, []
+        for callback in callbacks:
+            callback()
 
     def _ask_terminal_scheme(self) -> None:
         """Ask the terminal which palette its background calls for, when allowed."""

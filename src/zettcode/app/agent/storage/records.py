@@ -26,12 +26,13 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Annotated, Any, Literal, TypeAlias, cast
+from typing import Annotated, Any, Literal, TypeAlias, cast, overload
 
-from pydantic import BaseModel, Field, TypeAdapter, field_serializer, field_validator
+from pydantic import BaseModel, Field, GetCoreSchemaHandler, TypeAdapter, field_serializer, field_validator
+from pydantic_core import core_schema
 from zett_agent.extensions.compaction import CompactedMessage
 from zett_agent.extensions.events import MessageTiming
 from zett_agent.messages import AnyMessage
@@ -105,6 +106,117 @@ class SessionLine(BaseModel):
     created_at: datetime
 
 
+class Messages(Sequence[AnyMessage]):
+    """The messages of one stored line, turned into runtime messages when first read.
+
+    Reading a session parses every line, and decoding a message into its runtime type
+    is most of what that costs — it is the one step that runs Python for each message.
+    A reader that wants the whole branch pays it, but resuming a long session shows only
+    the newest part of it and totals the usage of the rest, which lives beside the
+    message and not in it. So a line read from the file keeps its envelopes as they
+    were parsed and decodes them the first time anything looks inside, and a line that
+    is never looked inside is never decoded.
+
+    It is a sequence of messages and nothing else: indexing, iterating, ``len``, and
+    equality all behave as the tuple it replaces did, and a line built from live
+    messages holds them already decoded. Writing a line that was never decoded writes
+    its envelopes back as they came.
+
+    The decode is idempotent and the result is assigned in one step, so two threads
+    that look inside at once both decode and the later assignment is the same value.
+    """
+
+    __slots__ = ("_decoded", "_raw")
+
+    def __init__(self, *, raw: Sequence[object] | None = None, decoded: tuple[AnyMessage, ...] | None = None) -> None:
+        """Hold stored envelopes to decode later, or messages that are already decoded."""
+        self._raw = raw
+        self._decoded = decoded
+
+    @classmethod
+    def of(cls, value: object, *, lazy: bool = True) -> Messages:
+        """Accept what the file holds (envelopes) or what a writer holds (messages).
+
+        Args:
+            value: Envelopes as parsed from JSON, runtime messages, or a ``Messages``.
+            lazy: Keep envelopes undecoded until they are read. Only a line parsed
+                from the file is lazy: one built in Python is decoded at once, so a
+                writer that hands over a malformed envelope is told when it does,
+                before anything is written.
+        """
+        if isinstance(value, Messages):
+            return value
+        items = cast("Sequence[object]", value)
+        if not items or not isinstance(items[0], dict):
+            return cls(decoded=tuple(cast("Sequence[AnyMessage]", items)))
+        messages = cls(raw=items)
+        if not lazy:
+            messages._messages()
+        return messages
+
+    @classmethod
+    def _validate(cls, value: object, info: core_schema.ValidationInfo) -> Messages:
+        """Validate for pydantic: lazily when parsing the file, eagerly for a Python caller."""
+        return cls.of(value, lazy=info.mode == "json")
+
+    @property
+    def decoded(self) -> bool:
+        """Return whether the messages have been turned into runtime types yet."""
+        return self._decoded is not None
+
+    def _messages(self) -> tuple[AnyMessage, ...]:
+        """Return the runtime messages, decoding the envelopes the first time."""
+        decoded = self._decoded
+        if decoded is None:
+            decoded = tuple(cast("Sequence[AnyMessage]", _load_messages(self._raw)))
+            self._decoded = decoded
+            self._raw = None
+        return decoded
+
+    def envelopes(self) -> list[dict[str, object]]:
+        """Return the stored form: the envelopes as read, or the messages encoded."""
+        raw = self._raw
+        if raw is not None:
+            return cast("list[dict[str, object]]", list(raw))
+        return _dump_messages(self._messages())
+
+    @overload
+    def __getitem__(self, index: int) -> AnyMessage: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> tuple[AnyMessage, ...]: ...
+
+    def __getitem__(self, index: int | slice) -> AnyMessage | tuple[AnyMessage, ...]:
+        return self._messages()[index]
+
+    def __len__(self) -> int:
+        raw = self._raw
+        return len(raw) if raw is not None else len(self._messages())
+
+    def __iter__(self) -> Iterator[AnyMessage]:
+        return iter(self._messages())
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, Messages):
+            return self._messages() == other._messages()
+        if isinstance(other, tuple):
+            return self._messages() == other
+        return NotImplemented
+
+    __hash__ = None  # type: ignore[assignment]
+
+    def __repr__(self) -> str:
+        return f"Messages({len(self)} {'decoded' if self.decoded else 'stored'})"
+
+    @classmethod
+    def __get_pydantic_core_schema__(cls, source: object, handler: GetCoreSchemaHandler) -> core_schema.CoreSchema:
+        """Teach pydantic to read and write this as the stored envelope list."""
+        return core_schema.with_info_plain_validator_function(
+            cls._validate,
+            serialization=core_schema.plain_serializer_function_ser_schema(cls.envelopes, when_used="json"),
+        )
+
+
 class MessageLine(BaseModel):
     """One message, continuing from ``parent``."""
 
@@ -113,23 +225,12 @@ class MessageLine(BaseModel):
     parent: str | None = None
     session_id: str
     request_id: str
-    message: tuple[AnyMessage, ...]
+    message: Messages
     timing: MessageTiming
     usage: ModelUsage | None = None
     metadata: dict[str, JsonValue] = Field(default_factory=dict)
     tags: dict[str, JsonValue] = Field(default_factory=dict)
     created_at: datetime
-
-    @field_validator("message", mode="before")
-    @classmethod
-    def _messages_from_storage(cls, value: object) -> object:
-        """Read the stored envelope list back into typed runtime messages."""
-        return _load_messages(value)
-
-    @field_serializer("message", when_used="json")
-    def _messages_to_storage(self, value: Sequence[AnyMessage]) -> list[dict[str, object]]:
-        """Write typed runtime messages as the stored envelope list."""
-        return _dump_messages(value)
 
 
 class CompactionLine(BaseModel):

@@ -4036,6 +4036,7 @@ async def test_switching_sessions_replaces_the_transcript_with_stored_history(tm
     harness.render()
     page.list.select(next(index for index, item in enumerate(page.list.items) if item.value == "previous"))
     harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
 
     assert app.agent.session_id == "previous"
     assert [entry.kind for entry in app.transcript.entries] == ["user", "answer"]
@@ -4175,6 +4176,7 @@ async def test_sessions_command_opens_a_panel_with_titles_and_ages(tmp_path):
 
     harness.press("down")
     harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
 
     assert app.agent.session_id == "alpha-1"
     assert app.app.screens.top.name != "page"
@@ -4499,3 +4501,239 @@ async def test_every_copy_says_so_in_the_row_above_the_composer():
 
     app.flash("gone", seconds=0.0)
     assert "gone" not in harness.render().text, "a flash with no time left is not drawn"
+
+
+# -- resuming behind the interface -----------------------------------------------
+
+
+async def _seeded_app(tmp_path, turns: int = 30) -> ZettCodeApp:
+    """Return an app whose store holds a session called ``previous`` of ``turns`` turns."""
+    store = SessionStore(tmp_path)
+    for turn in range(turns):
+        await store.append("previous", f"r{turn}", UserMessage(content=f"question {turn}"))
+        await store.append(
+            "previous",
+            f"r{turn}",
+            AssistantMessage(content=f"answer {turn}"),
+            usage=ModelUsage(input_tokens=1_000, output_tokens=10),
+        )
+    app = build_app()
+    app.agent.runtime.persistence.store = store
+    app.agent.runtime.persistence.sessions = await store.list_sessions()
+    return app
+
+
+async def test_resuming_from_the_panel_reads_the_session_off_the_event_loop(tmp_path):
+    """The parse and the rebuilding of rows run on a worker, so the interface keeps turning.
+
+    Doing them in the handler held the loop for as long as the session was long: no
+    keys, no repaint, no spinner, for the better part of a second on a real one.
+    """
+    import threading
+
+    app = await _seeded_app(tmp_path)
+    loop_thread = threading.get_ident()
+    seen: list[int] = []
+    real = app.agent.load_session
+
+    def spy(session_id, transcript):
+        seen.append(threading.get_ident())
+        return real(session_id, transcript)
+
+    app.agent.load_session = spy
+    harness = _harness(app)
+    harness.write("/resume")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+    page = _sessions_page(app)
+    harness.render()
+    page.list.select(next(index for index, item in enumerate(page.list.items) if item.value == "previous"))
+
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    assert seen and seen[0] != loop_thread, "the file was read and replayed on a worker thread"
+    assert app.agent.session_id == "previous"
+    assert [entry.kind for entry in app.transcript.entries][-2:] == ["user", "answer"]
+
+
+async def test_the_loop_keeps_turning_while_a_session_is_being_loaded(tmp_path):
+    """Hold the worker still and the loop must still run: that is what off the loop means."""
+    import threading
+
+    app = await _seeded_app(tmp_path)
+    release = threading.Event()
+    real = app.agent.load_session
+
+    def slow(session_id, transcript):
+        release.wait(5.0)
+        return real(session_id, transcript)
+
+    app.agent.load_session = slow
+    harness = _harness(app)
+    harness.write("/resume")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+    page = _sessions_page(app)
+    harness.render()
+    page.list.select(next(index for index, item in enumerate(page.list.items) if item.value == "previous"))
+    harness.press("enter")
+
+    ticks = 0
+    for _ in range(5):
+        await asyncio.sleep(0.01)
+        ticks += 1
+    assert not app.task.done(), "the load is still waiting on the worker"
+    assert ticks == 5, "and the loop went on turning"
+    assert app._busy and "resume" in (app._note or ""), "the status line says what is happening"
+    assert app.agent.session_id != "previous", "nothing is installed until the load is done"
+
+    release.set()
+    await asyncio.wait_for(app.task, 2.0)
+
+    assert app.agent.session_id == "previous"
+    assert not app._busy and app._note is None
+
+
+async def test_nothing_can_be_submitted_while_a_session_is_loading(tmp_path):
+    """A draft sent into the gap would be answered in the conversation that is about to be replaced."""
+    import threading
+
+    app = await _seeded_app(tmp_path)
+    release = threading.Event()
+    real = app.agent.load_session
+    app.agent.load_session = lambda session_id, transcript: (release.wait(5.0), real(session_id, transcript))[1]
+    harness = _harness(app)
+    harness.write("/resume")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+    page = _sessions_page(app)
+    harness.render()
+    page.list.select(next(index for index, item in enumerate(page.list.items) if item.value == "previous"))
+    harness.press("enter")
+    await asyncio.sleep(0.01)
+
+    assert app.submit("/model") is False, "a command is refused while the load runs"
+
+    release.set()
+    await asyncio.wait_for(app.task, 2.0)
+
+
+async def test_a_session_that_cannot_be_read_is_reported_and_leaves_the_conversation_alone(tmp_path):
+    app = await _seeded_app(tmp_path)
+    app.transcript.notice("from the current session")
+    app.select_session("no-such-session")
+    await asyncio.wait_for(app.task, 2.0)
+
+    texts = [getattr(entry, "text", "") for entry in app.transcript.entries]
+    assert any("Unknown session: no-such-session" in text for text in texts)
+    assert "from the current session" in texts
+    assert app.agent.session_id != "no-such-session"
+    assert not app._busy, "the busy flag is not left up by the failure"
+
+
+async def test_cancelling_a_resume_installs_nothing(tmp_path):
+    """Ctrl-C while the file is being read must not leave half of a session behind."""
+    import threading
+
+    app = await _seeded_app(tmp_path)
+    release = threading.Event()
+    real = app.agent.load_session
+    app.agent.load_session = lambda session_id, transcript: (release.wait(5.0), real(session_id, transcript))[1]
+    before = [entry.id for entry in app.transcript.entries]
+    app.select_session("previous")
+    await asyncio.sleep(0.01)
+
+    app.task.cancel()
+    release.set()
+    with pytest.raises(asyncio.CancelledError):
+        await app.task
+
+    assert app.agent.session_id != "previous"
+    assert [entry.id for entry in app.transcript.entries] == before
+    assert not app._busy, "the flag comes down however the task ends"
+
+
+async def test_the_rows_of_a_resumed_session_are_measured_before_the_loop_sees_them(tmp_path, monkeypatch):
+    """The worker pays for the first measuring, so the first frame after a resume is a cache hit.
+
+    Laying out a long transcript for the first time is as expensive as parsing it, and
+    it used to happen in the frame that followed the swap.
+    """
+    app = await _seeded_app(tmp_path, turns=40)
+    _harness(app).render()  # lay the window out, so the view has the width it will paint at
+    app.select_session("previous")
+    await asyncio.wait_for(app.task, 2.0)
+    assert app.view.line_width > 1
+
+    drawn: list[int] = []
+    for presenter in app.transcript.presenters.presenters:
+        real = type(presenter).lines
+
+        def spy(self, entry, *args, _real=real):
+            drawn.append(entry.id)
+            return _real(self, entry, *args)
+
+        monkeypatch.setattr(type(presenter), "lines", spy)
+
+    app.view.transcript_source.count(app.view.line_width)
+
+    assert drawn == [], "no row is rendered again: the worker's blocks are the ones the view reads"
+
+
+async def test_a_second_pick_while_one_is_loading_does_not_start_another(tmp_path):
+    """Two loads in flight would install in whichever order they happened to finish."""
+    import threading
+
+    app = await _seeded_app(tmp_path)
+    release = threading.Event()
+    loads: list[str] = []
+    real = app.agent.load_session
+
+    def slow(session_id, transcript):
+        loads.append(session_id)
+        release.wait(5.0)
+        return real(session_id, transcript)
+
+    app.agent.load_session = slow
+    app.select_session("previous")
+    first = app.task
+    await asyncio.sleep(0.01)
+
+    app.select_session("previous")
+    await asyncio.sleep(0.01)
+
+    assert app.task is first, "the second pick started nothing"
+    release.set()
+    await asyncio.wait_for(first, 2.0)
+    assert loads == ["previous"], "the session was loaded once"
+
+
+async def test_stopping_the_shell_works_when_the_update_check_was_never_started():
+    """A quit must not depend on which background work happened to start.
+
+    The release check is skipped when the update setting is off, so its task was only
+    ever created by the path that starts it; a shutdown that read it anyway raised
+    `AttributeError` and printed a traceback over the reader's terminal as they left.
+    """
+    app = build_app()
+    object.__setattr__(app.agent.runtime.config, "update_enabled", False)
+    app.start_background()
+
+    assert app._update_task is None, "nothing to check, so nothing was started"
+    await asyncio.wait_for(app.stop_background(), 2.0)
+
+
+async def test_stopping_a_shell_that_never_started_its_background_work_is_clean():
+    """The launch can be left in the gap between the swap and the frame that starts them.
+
+    The frame that draws the real tree is the one that starts the warm-up, so a reader
+    who leaves before it — Ctrl-D as soon as the content appears — shuts down a shell
+    whose background work has not begun. Every slot the shutdown drops has to exist by
+    then, not only after the work that fills it.
+    """
+    app = build_app()
+
+    await asyncio.wait_for(app.stop_background(), 2.0)
+
+    assert app._warm is None and app._update_task is None and app._task is None
