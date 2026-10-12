@@ -10,10 +10,10 @@ from zett_agent.events import AgentEvent
 from zett_agent.extensions.shell_approval import SHELL_APPROVAL_EVENT_NAME
 from zett_agent.messages import ToolMessage
 
-from .ask import AskUserQuestion, question_from
+from ..dialogue.ask import AskUserQuestion, question_from
+from ..extensions.usage import USAGE_EVENT_NAME
 from .entries import EntryStatus
 from .transcript import Transcript
-from .usage import USAGE_EVENT_NAME
 
 
 def tool_output(message: ToolMessage) -> str:

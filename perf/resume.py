@@ -36,9 +36,9 @@ from zett_agent.messages import AssistantMessage, ToolCall, ToolMessage, UserMes
 
 from zettcode.app import TranscriptSource
 from zettcode.app.agent.agent import ZettCodeAgent
-from zettcode.app.agent.replay import replay
+from zettcode.app.agent.conversation.replay import replay
+from zettcode.app.agent.conversation.transcript import Transcript
 from zettcode.app.agent.storage import SessionStore
-from zettcode.app.agent.transcript import Transcript
 from zettcode.cli import session_exists
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.tui import DARK

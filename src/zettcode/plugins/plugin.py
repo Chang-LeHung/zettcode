@@ -16,7 +16,7 @@ from .mixins import PluginAgentMixin, PluginUiMixin
 from .state import UiRow
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay lazy
-    from ..app.agent.mentions import MentionProvider
+    from ..app.agent.dialogue.mentions import MentionProvider
     from ..app.commands import Command
     from .container import PluginContainer
     from .extension import PluginExtension

@@ -7,7 +7,7 @@ from zett_agent.events import AgentEvent, AgentEventType
 from zett_agent.messages import AssistantMessage
 from zett_agent.model import ModelResponse, ModelUsage
 
-from zettcode.app.agent.usage import (
+from zettcode.app.agent.extensions.usage import (
     USAGE_EVENT_NAME,
     UsageExtension,
     UsageSnapshot,

@@ -7,10 +7,10 @@ from pathlib import Path
 from zett_agent.events import AgentEvent, AgentEventType
 from zett_agent.messages import AssistantMessage, ToolCall, ToolMessage, UserMessage
 
-from zettcode.app.agent.projection import TranscriptProjector
-from zettcode.app.agent.replay import replay
+from zettcode.app.agent.conversation.projection import TranscriptProjector
+from zettcode.app.agent.conversation.replay import replay
+from zettcode.app.agent.conversation.transcript import Transcript
 from zettcode.app.agent.storage import SessionStore
-from zettcode.app.agent.transcript import Transcript
 
 
 def _rows(transcript: Transcript) -> list[tuple[str, str]]:
@@ -117,7 +117,7 @@ async def _long_session(tmp_path: Path, turns: int) -> SessionStore:
 
 def _shape(transcript: Transcript) -> list[tuple]:
     """Return what each entry looks like, without the ids that depend on how many came before."""
-    from zettcode.app.agent.presenters import _look_fields
+    from zettcode.app.agent.conversation.presenters import _look_fields
 
     return [
         (
@@ -211,7 +211,7 @@ async def test_a_tool_result_whose_call_is_before_the_window_adds_no_row(tmp_pat
         index for index in range(len(lines) // 2, len(lines)) if isinstance(lines[index].message[0], ToolMessage)
     )
 
-    from zettcode.app.agent import replay as replay_module
+    from zettcode.app.agent.conversation import replay as replay_module
 
     original = replay_module.window_start
     replay_module.window_start = lambda lines, entries: tool_result

@@ -5,8 +5,12 @@
 - ZettCode is the terminal coding agent. `src/zettcode` holds `cli.py` and
   `config.py` at the top, the application in `app/` (`agent/` for the
   conversation model, the event projection, session persistence, and the
-  runtime composition; `ui/` for the shell and the views), and the reusable
-  framework in `tui/`; `tests` drives all of it without a real terminal.
+  runtime composition, grouped into `agent/` itself — the one class, built
+  from mixins — and `conversation/`, `dialogue/`, `extensions/`,
+  `permission/`, `storage/`, `export/` and `runtime.py`; `docs/internal/tui.md`
+  has the map and `tests/test_structure.py` the import order; `ui/` for the
+  shell and the views), and the reusable framework in `tui/`; `tests` drives
+  all of it without a real terminal.
 - The agent runtime is an external dependency: depend on released `zett-agent`
   versions and never vendor or re-implement the model loop, tools, compaction,
   or message types. Session persistence is the deliberate exception —

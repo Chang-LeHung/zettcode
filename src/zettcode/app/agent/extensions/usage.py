@@ -22,7 +22,7 @@ from zett_agent.events import AgentEvent, AgentEventType
 from zett_agent.extensions.base import AgentExtension
 from zett_agent.model import ModelRequest, ModelResponse, ModelUsage
 
-from ...tui import ARROW_DOWN, ARROW_UP, SEPARATOR
+from ....tui import ARROW_DOWN, ARROW_UP, SEPARATOR
 
 #: Custom event name for one cumulative usage update; its payload is
 #: :meth:`UsageSnapshot.to_payload`.

@@ -5,8 +5,8 @@ from __future__ import annotations
 from time import perf_counter
 
 from zettcode.app import Transcript, TranscriptSource
-from zettcode.app.agent.entries import WaitEntry
-from zettcode.app.agent.presenters import DEFAULT_PRESENTERS
+from zettcode.app.agent.conversation.entries import WaitEntry
+from zettcode.app.agent.conversation.presenters import DEFAULT_PRESENTERS
 from zettcode.tui import DARK
 from zettcode.tui.widgets import markdown as markdown_module
 

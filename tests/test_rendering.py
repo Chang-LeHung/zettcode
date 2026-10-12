@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from zettcode.app.agent.rendering import (
+from zettcode.app.agent.conversation.rendering import (
     ANSWER,
     DEFAULT_RENDERERS,
     THINKING,

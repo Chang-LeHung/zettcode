@@ -29,9 +29,9 @@ data), `core/events.py` (the input model), `core/widget.py` (the contract),
 `core/app.py` (routing, focus, screens, painting), `runner.py` (the terminal
 loop). Everything else is built on these.
 
-**Pass 2 — the application (~880 lines).** `app/agent/transcript.py` owns the
+**Pass 2 — the application (~880 lines).** `app/agent/conversation/transcript/` owns the
 conversation model and the render cache behind each entry,
-`app/agent/projection.py` maps agent events onto it, and `app/ui/app.py` owns
+`app/agent/conversation/projection.py` maps agent events onto it, and `app/ui/app.py` owns
 the keymap, the slash commands, and the approval panel. `app/ui/transcript.py`
 is the scrollable, virtualized view over the model.
 
@@ -366,13 +366,37 @@ cached prefix plus the open tail, and only the visible rows are ever built.
 `src/zettcode/app/` is the only consumer of the framework, and the only place
 that knows about agents, sessions, and tools.
 
+### How `app/agent/` is laid out
+
+Twenty-three flat modules used to sit side by side, which made the one that mattered
+indistinguishable from the ones that did not. They are grouped by what they are *for*;
+the two files at the top are the composition and the thing it composes.
+
+| Where | What is in it |
+| --- | --- |
+| `agent/` | `ZettCodeAgent`, the application's one entry point, assembled from mixins: `base` (runtime, workspace, session id), `settings` (model, effort, shell permission), `context` (the next request, compaction), `sessions` (switch, resume, fork, title), `turns` (build, stream, steer), `interaction` (answer an approval or a question), `exports`, `commands`; and `prompt`, the parts of a user turn |
+| `runtime.py` | `ZettCodeRuntime`: composes the vendor client with the extensions below |
+| `extensions/` | What the runtime plugs into zett-agent that is ours: `capabilities`, `compaction`, `context`, `mcp`, `subagents`, `usage` |
+| `permission/` | How much of the shell may run unasked: the levels and what enforces them (`__init__`), the fail-closed read-only classifier (`readonly`), what an approval may remember (`approval`) |
+| `conversation/` | The conversation as the screen shows it: `entries`, `transcript/`, `presenters`, `rendering`, `rows`, `projection` (agent events fill it), `replay` (a stored branch rebuilds it) |
+| `dialogue/` | What is said besides the turns: `mentions` (`@`), `ask`, `side`, `title` |
+| `storage/` | The session file format and the store that reads and writes it |
+| `export/` | A stored session as a self-contained HTML page, with the page's assets under `export/trace/` |
+
+The dependency order inside it runs one way, and invariant L1 holds it
+(`tests/test_structure.py` carries the table): `dialogue`, `errors`, and `permission`
+stand alone; `storage` builds on the dialogue's side questions; `extensions` and
+`conversation` build on those; `runtime` composes the extensions; and `agent`
+composes everything. A module that sits in none of them fails the same test, which is
+what keeps the flat directory from growing back.
+
 The conversation is four things, each in one place:
 
 | Concept | What it is | Where |
 | --- | --- | --- |
-| **Entry** | One item of the conversation: plain data, with an `EntryKind` that says which kind of row it is | `app/agent/entries.py` |
-| **Transcript** | The ordered list of entries, what changed since the view last looked, how many are kept, and the verbs the agent's events map onto (start a tool, stream an answer, settle the wait) | `app/agent/transcript/` |
-| **Presenter** | Turns one kind of entry into styled rows; there is exactly one per `EntryKind`, held in a `Presenters` registry | `app/agent/presenters.py` |
+| **Entry** | One item of the conversation: plain data, with an `EntryKind` that says which kind of row it is | `app/agent/conversation/entries.py` |
+| **Transcript** | The ordered list of entries, what changed since the view last looked, how many are kept, and the verbs the agent's events map onto (start a tool, stream an answer, settle the wait) | `app/agent/conversation/transcript/` |
+| **Presenter** | Turns one kind of entry into styled rows; there is exactly one per `EntryKind`, held in a `Presenters` registry | `app/agent/conversation/presenters.py` |
 | **TranscriptSource** | Stacks every entry's cached *block* (an entry presented as rows) into the single `LineSource` the scrolling view reads | `app/ui/widgets/transcript.py` |
 
 `Transcript` is split by responsibility the way the shell is: a state class and a
@@ -424,7 +448,7 @@ definitions and small width/layout entry points together in `render/style.py`,
 while the reusable width-aware algorithms stay in `render/text.py` and
 `render/rich_text.py`.
 
-`app/agent/context.py` measures one assembled request: an extension remembers the
+`app/agent/extensions/context.py` measures one assembled request: an extension remembers the
 messages and tool schemas `before_model` saw, and `/context` tokenizes them by
 source (instructions, tool schemas, user turns, model turns, tool output,
 compaction summaries) against the compaction budget. Counting prefers `tiktoken`
@@ -445,7 +469,7 @@ in plugin-priority order). The agent therefore sees a single extension, and
 plugin-wide behaviour — ordering, shared state, loading later — has one place to
 live. Plugins register slash commands through the `PluginContainer` they are
 activated with; those commands reach the shell after the built-ins
-(`app/agent/agent.py::plugin_commands`), so a plugin cannot shadow one.
+(`app/agent/agent/commands.py::plugin_commands`), so a plugin cannot shadow one.
 `PluginContainer` imports `app.commands`, which is why the plugin package is
 part of the application layer rather than the framework.
 
@@ -486,7 +510,7 @@ memory (whose ``is_allowed`` is what lets ``safe`` and ``auto`` skip the prompt)
 and ``ShellDenyExtension`` (which runs before the approval extension and refuses
 for ``deny``, since the approval extension can ask but cannot refuse on the
 reader's behalf). It is deliberately not persisted, so the next launch asks
-again. What ``safe`` may skip is decided by ``app/agent/readonly.py``, which is
+again. What ``safe`` may skip is decided by ``app/agent/permission/readonly.py``, which is
 fail-closed: a command is read-only only when every part of it is recognised.
 
 `rendering.py` shapes every kind of agent output, as a chain of handlers: each
@@ -500,7 +524,7 @@ the language it is. The text links work on streamed fragments, which is why they
 are told whether a fragment opens its message — the only place a chat preamble
 can appear.
 
-`app/agent/title.py` names a session after its first exchange: one provider
+`app/agent/dialogue/title.py` names a session after its first exchange: one provider
 request with no tools, whose reply is reduced to a single line and written into
 the workspace's `metadata.jsonl`, so renaming appends a line to the index and
 never enters the conversation log. The shell schedules that call in the
@@ -543,7 +567,7 @@ badge over the transcript's last row; clicking it, or pressing `Esc`, follows
 the tail again, and the binding is captured precisely because the composer
 would otherwise swallow `Esc`. The status line's left segment ends with the
 active session's title, cached when a turn names it or a session is resumed so
-the metadata log is not folded on every frame, followed by `app/agent/usage.py`'s
+the metadata log is not folded on every frame, followed by `app/agent/extensions/usage.py`'s
 cumulative token counters: tokens in and out, the cache share of the input, and
 generated tokens per second. That module is an `AgentExtension` observing
 `before_model`/`after_model`; it emits one `session_usage` custom event per

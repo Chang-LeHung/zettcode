@@ -15,8 +15,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from ..._compat import StrEnum
-from ...tui import LineSource, Markdown
+from ...._compat import StrEnum
+from ....tui import LineSource, Markdown
 from .rows import THINKING_LABEL
 
 

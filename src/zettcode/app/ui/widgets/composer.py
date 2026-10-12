@@ -13,8 +13,8 @@ import re
 from collections.abc import Sequence
 
 from ....tui import Span, Style, TextArea
-from ...agent.agent import MentionPart, PromptPart
-from ...agent.mentions import MENTION
+from ...agent.agent.prompt import MentionPart, PromptPart
+from ...agent.dialogue.mentions import MENTION
 from ..clipboard import image_from_paste
 
 #: A slash command as typed: a leading ``/`` at a word boundary, then a name.

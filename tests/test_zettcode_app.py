@@ -34,12 +34,9 @@ from zett_agent.model import ModelRequest, ModelUsage, ReasoningEffort, ToolDefi
 from zettcode._compat import ExceptionGroup
 from zettcode.app import Transcript, TranscriptSource, TranscriptView, ZettCodeApp
 from zettcode.app.agent.agent import ZettCodeAgent
-from zettcode.app.agent.context import IMAGE_TOKENS, ContextExtension, Tokenizer
-from zettcode.app.agent.entries import EntryStatus
-from zettcode.app.agent.mentions import Mention, MentionProvider, MentionRegistry
-from zettcode.app.agent.permission import Permission, parse_permission
-from zettcode.app.agent.projection import TranscriptProjector
-from zettcode.app.agent.rows import (
+from zettcode.app.agent.conversation.entries import EntryStatus
+from zettcode.app.agent.conversation.projection import TranscriptProjector
+from zettcode.app.agent.conversation.rows import (
     ANIMATION_SECONDS,
     EFFORT_SECONDS,
     PULSE_FRAMES,
@@ -55,9 +52,12 @@ from zettcode.app.agent.rows import (
     sweep_column,
     terminal_safe,
 )
-from zettcode.app.agent.side import SideQuestions
+from zettcode.app.agent.dialogue.mentions import Mention, MentionProvider, MentionRegistry
+from zettcode.app.agent.dialogue.side import SideQuestions
+from zettcode.app.agent.extensions.context import IMAGE_TOKENS, ContextExtension, Tokenizer
+from zettcode.app.agent.extensions.usage import USAGE_EVENT_NAME, UsageExtension, UsageSnapshot, context_text
+from zettcode.app.agent.permission import Permission, parse_permission
 from zettcode.app.agent.storage import STORE_FILE, SessionInfo, SessionStore
-from zettcode.app.agent.usage import USAGE_EVENT_NAME, UsageExtension, UsageSnapshot, context_text
 from zettcode.app.brand import LOGO_LINES, LOGO_PALETTE, LOGO_PIXELS
 from zettcode.app.commands import Command, CommandContext, CommandResult
 from zettcode.app.ui import app as app_module
@@ -467,8 +467,8 @@ def test_welcome_mark_is_wide_and_mirror_symmetric_with_a_centered_heart():
 
 @pytest.mark.parametrize("width", [1, 8, 19, 32, 40, 60])
 def test_welcome_labels_stack_without_overflow_on_narrow_windows(width):
-    from zettcode.app.agent.entries import TextEntry
-    from zettcode.app.agent.presenters import WelcomePresenter
+    from zettcode.app.agent.conversation.entries import TextEntry
+    from zettcode.app.agent.conversation.presenters import WelcomePresenter
 
     rows = WelcomePresenter().lines(TextEntry(id=0, kind="welcome", text=WELCOME), width, DARK, 0)
     assert all(row.width <= width for row in rows)

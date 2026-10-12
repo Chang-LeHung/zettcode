@@ -22,7 +22,7 @@ from zett_agent.messages import (
 )
 from zett_agent.model import ModelRequest, ToolDefinition
 
-from zettcode.app.agent.context import (
+from zettcode.app.agent.extensions.context import (
     IMAGE_TOKENS,
     ContextExtension,
     Tokenizer,

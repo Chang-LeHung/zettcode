@@ -10,9 +10,9 @@ second segment beside it.
 
 from __future__ import annotations
 
-from ..app.agent.mentions import FileMentions, SkillMentions
-from ..app.agent.rows import activity_glyph
-from ..app.agent.usage import context_text, usage_text
+from ..app.agent.conversation.rows import activity_glyph
+from ..app.agent.dialogue.mentions import FileMentions, SkillMentions
+from ..app.agent.extensions.usage import context_text, usage_text
 from ..app.ui import labels
 from ..tui import SEPARATOR, STATUS
 from .container import PluginContainer

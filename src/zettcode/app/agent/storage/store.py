@@ -52,7 +52,7 @@ from zett_agent.ids import new_uuid7
 from zett_agent.messages import AnyMessage, AssistantMessage, SystemMessage, ToolMessage
 from zett_agent.model import ModelUsage
 
-from ..side import SIDE, is_side
+from ..dialogue.side import SIDE, is_side
 from .metadata import (
     MAX_TITLE,
     METADATA_FILE,

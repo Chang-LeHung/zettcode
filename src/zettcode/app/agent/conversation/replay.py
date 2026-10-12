@@ -17,14 +17,14 @@ from dataclasses import dataclass
 
 from zett_agent.messages import AnyMessage, AssistantMessage, SystemMessage, ToolMessage, UserMessage
 
-from ...config import DEFAULT_TRANSCRIPT_MAX_ENTRIES
+from ....config import DEFAULT_TRANSCRIPT_MAX_ENTRIES
+from ..dialogue.side import is_side_line
+from ..extensions.usage import UsageSnapshot
+from ..storage import MessageLine, Session
 from .entries import EntryStatus
 from .presenters import DEFAULT_PRESENTERS, Presenters
 from .rendering import DEFAULT_RENDERERS, Renderers
-from .side import is_side_line
-from .storage import MessageLine, Session
 from .transcript import Transcript
-from .usage import UsageSnapshot
 
 #: Entries of margin past the ones a window has to hold. Counting what a message will
 #: add is an upper bound — consecutive replies with no row between them share one

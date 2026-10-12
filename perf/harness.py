@@ -20,8 +20,8 @@ from pathlib import Path
 from time import perf_counter
 
 from zettcode.app.agent.agent import ZettCodeAgent
+from zettcode.app.agent.conversation.transcript import Transcript
 from zettcode.app.agent.runtime import ZettCodeRuntime
-from zettcode.app.agent.transcript import Transcript
 from zettcode.app.ui import ZettCodeApp
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.tui import DifferentialRenderer, TextEvent

@@ -4,7 +4,7 @@ from dataclasses import replace
 
 import pytest
 
-from zettcode.app.agent.entries import (
+from zettcode.app.agent.conversation.entries import (
     EntryKind,
     EntryStatus,
     MarkdownEntry,
@@ -13,7 +13,7 @@ from zettcode.app.agent.entries import (
     ToolEntry,
     WaitEntry,
 )
-from zettcode.app.agent.presenters import (
+from zettcode.app.agent.conversation.presenters import (
     DEFAULT_PRESENTERS,
     AnnouncementPresenter,
     NoticePresenter,
@@ -28,8 +28,8 @@ from zettcode.app.agent.presenters import (
     render_entry,
     tool_color,
 )
-from zettcode.app.agent.rows import COMPACTING_LABEL, PULSE_FRAMES, STOP_HINT
-from zettcode.app.agent.transcript import Transcript
+from zettcode.app.agent.conversation.rows import COMPACTING_LABEL, PULSE_FRAMES, STOP_HINT
+from zettcode.app.agent.conversation.transcript import Transcript
 from zettcode.app.ui.widgets.transcript import TranscriptSource
 from zettcode.tui import DARK, LIGHT, SEPARATOR, TextLine
 from zettcode.tui.render import display_width

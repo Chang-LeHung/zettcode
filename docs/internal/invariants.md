@@ -175,6 +175,12 @@ invariant breaks, not merely that the code is exercised.
 | --- | --- | --- | --- |
 | X1 | Every module parses on the oldest supported interpreter, and the shims cover what the standard library only grew later: a 3.12-only construct, an unshimmed `tomllib`/`ExceptionGroup`, or a `StrEnum` that stringifies as `Activity.READY` installs fine and then fails — or draws the member name — on 3.10. | done | `test_compat.py::test_every_module_parses_as_the_oldest_supported_python`, `test_the_str_enum_shim_reads_like_the_value_it_carries`, `test_the_toml_reader_parses_what_the_config_and_theme_files_hold` |
 
+## Source layout
+
+| # | Invariant (what breaks) | Status | Test |
+| --- | --- | --- | --- |
+| L1 | The parts of `app/agent/` import in one direction and every module sits in a part: `dialogue`, `errors`, and `permission` stand alone, `storage` builds on the dialogue's side questions, `extensions` and `conversation` on those, `runtime` composes the extensions, and `agent` composes everything. A part that needed to import *up* would be a cycle waiting for the first function-level import to hide it — `describe_error` was exactly that between the runtime and an MCP extension, hidden for as long as it was imported inside a function, until it moved to `errors`. A module outside every part is the flat directory growing back. | done | `test_structure.py::test_the_parts_of_the_agent_package_import_in_one_direction` |
+
 ## Terminal identity
 
 | # | Invariant (what breaks) | Status | Test |

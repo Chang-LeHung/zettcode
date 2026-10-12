@@ -18,7 +18,7 @@ from ...plugins import (
 )
 from ...tui import HEADER, SEPARATOR, Span, Style, TextLine
 from ...tui.render import blend
-from ..agent.agent import UNTITLED_SESSION
+from ..agent.agent.sessions import UNTITLED_SESSION
 from ..agent.permission import Permission
 from .shell import ShellState
 

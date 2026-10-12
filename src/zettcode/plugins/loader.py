@@ -32,7 +32,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
     from collections.abc import Iterable, Sequence
     from importlib.metadata import EntryPoint
 
-    from ..app.agent.mentions import MentionProvider
+    from ..app.agent.dialogue.mentions import MentionProvider
     from ..app.commands import Command
     from ..config import ZettCodeConfig
 

@@ -14,8 +14,8 @@ from pathlib import Path
 from ...collector import collector_paused
 from ...plugins.state import Activity
 from ...tui import ELLIPSIS, SEPARATOR, Theme
-from ..agent.agent import StoredSession
-from ..agent.presenters import block_for
+from ..agent.agent.sessions import StoredSession
+from ..agent.conversation.presenters import block_for
 from .shell import ShellState
 from .widgets import WELCOME
 

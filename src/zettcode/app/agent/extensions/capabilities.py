@@ -9,7 +9,7 @@ from zett_agent.extensions.base import AgentExtension
 from zett_agent.model import AgentModel
 from zett_agent.tools.images import view_image
 
-from ...config import ModelConfig
+from ....config import ModelConfig
 
 
 class ModelCapabilities(AgentExtension):

@@ -22,8 +22,8 @@ from typing import TypeAlias
 
 from zett_agent.extensions.skill import SkillExtension
 
-from ...config import ZettCodeConfig
-from ..registry import Provider, Registry
+from ....config import ZettCodeConfig
+from ...registry import Provider, Registry
 
 #: One mention token: an ``@`` at a word boundary, then a name. A name is what a
 #: skill is called (lowercase words) or where a file lives (``src/app.py``), so it

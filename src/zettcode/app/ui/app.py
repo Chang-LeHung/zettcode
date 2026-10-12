@@ -42,14 +42,15 @@ from ...tui.widgets import Rule
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from collections.abc import AsyncGenerator
-from ..agent.agent import PromptPart, ZettCodeAgent, carries_image, mention_hint
-from ..agent.ask import AskUserQuestion
-from ..agent.mentions import MentionRegistry
-from ..agent.projection import TranscriptProjector
-from ..agent.rows import EFFORT_SECONDS, EffortFrame, clock_text, effort_frame, elapsed_text
-from ..agent.runtime import describe_error
-from ..agent.transcript import Transcript
-from ..agent.usage import UsageSnapshot
+from ..agent.agent import ZettCodeAgent
+from ..agent.agent.prompt import PromptPart, carries_image, mention_hint
+from ..agent.conversation.projection import TranscriptProjector
+from ..agent.conversation.rows import EFFORT_SECONDS, EffortFrame, clock_text, effort_frame, elapsed_text
+from ..agent.conversation.transcript import Transcript
+from ..agent.dialogue.ask import AskUserQuestion
+from ..agent.dialogue.mentions import MentionRegistry
+from ..agent.errors import describe_error
+from ..agent.extensions.usage import UsageSnapshot
 from ..commands import Command, CommandContext, CommandList, CommandResult
 from ..registry import Registry
 from .commands import ShellCommands
@@ -414,7 +415,7 @@ class ZettCodeApp(RowsMixin, KeysMixin, NoticesMixin, SessionMixin, SettingsMixi
 
         The run needs the whole conversation to be useful, so it goes through
         the same session; it is the store that keeps the exchange out of the
-        context afterwards (see :mod:`zettcode.app.agent.side`). The side
+        context afterwards (see :mod:`zettcode.app.agent.dialogue.side`). The side
         mechanics are the extension's, started and ended around this stream;
         what the shell adds is the marker on the turn, so the rows read as a
         question of the reader's rather than as part of the conversation.

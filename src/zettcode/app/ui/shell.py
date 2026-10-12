@@ -49,12 +49,12 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
     from ...tui import CompletionPopup, StatusBar, TuiApp
     from ...update import UpdateState
     from ..agent.agent import ZettCodeAgent
-    from ..agent.ask import AskUserQuestion
-    from ..agent.mentions import MentionRegistry
-    from ..agent.projection import TranscriptProjector
-    from ..agent.rows import EffortFrame
-    from ..agent.transcript import Transcript
-    from ..agent.usage import UsageSnapshot
+    from ..agent.conversation.projection import TranscriptProjector
+    from ..agent.conversation.rows import EffortFrame
+    from ..agent.conversation.transcript import Transcript
+    from ..agent.dialogue.ask import AskUserQuestion
+    from ..agent.dialogue.mentions import MentionRegistry
+    from ..agent.extensions.usage import UsageSnapshot
     from ..commands import Command
     from .widgets import Composer, SteeringQueue, TranscriptView, ZettCodeRoot
 
