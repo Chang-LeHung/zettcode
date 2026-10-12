@@ -73,6 +73,7 @@ class ShellCommands(CommandProvider):
             Command("/resume", "resume a session: /resume [id]", "app", self.resume),
             Command("/model", "choose a model", "app", self.model),
             Command("/theme", "choose the palette (or /theme dark|light)", "app", self.theme),
+            Command("/fork", "carry this conversation into a new session", "app", self.fork),
             Command("/context", "what is filling the context window", "app", self.context),
             Command("/title", "name this session: /title <name>", "app", self.title),
             Command("/effort", "how much the model reasons: /effort high", "app", self.effort),
@@ -126,6 +127,19 @@ class ShellCommands(CommandProvider):
     def _panel(self, page: Widget) -> Widget:
         """Wrap one picker in the bottom panel the shell's own commands use."""
         return bottom_panel(page, rows=PICKER_ROWS)
+
+    async def fork(self, context: CommandContext) -> CommandResult:
+        """Copy what this conversation carries into a new session and continue there.
+
+        The copy lands in a session of its own so the reader can take a different
+        direction without losing the conversation that got them here, which stays
+        where it is: nothing about the session being left is written.
+        """
+        # The line the fork leaves in the conversation is the report: it names the
+        # session, and both commands that reopen it. A toast above the composer would
+        # be the same news twice, in less detail.
+        await self.shell.fork_session()
+        return CommandResult(relayout=True)
 
     async def theme(self, context: CommandContext) -> CommandResult:
         """Open the theme picker, or switch straight to a named palette.

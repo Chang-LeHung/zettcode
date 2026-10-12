@@ -30,6 +30,7 @@ pip install zettcode
 | --- | --- |
 | `-w`、`--workspace DIR` | 工作的目录，默认是当前目录。 |
 | `-r`、`--resume SESSION` | 打开一个已保存的会话，而不是新建一个。 |
+| `--auto`、`--yolo` | 本轮不再询问就执行 shell 命令，等同于 `/permission auto`。 |
 | `--dry-run` | 跑完启动流程、画一帧就退出，用来做性能分析。 |
 
 如果你想从源码跑：

@@ -19,6 +19,7 @@ from zettcode.tui import (
     Style,
     TextLine,
 )
+from zettcode.tui.input import translate  # noqa: E402 - the bridge the runner uses
 
 
 def test_tui_imports_where_termios_is_unavailable(monkeypatch) -> None:
@@ -63,17 +64,22 @@ def test_terminal_modes_follow_the_declared_capabilities() -> None:
     from zettcode.tui.capabilities import TerminalCapabilities
 
     full = terminal_module.Terminal(input_fd=0, output=StringIO())
-    # The default terminal keeps the exact sequence the runner has always sent.
-    assert full._enter_sequences() == "\x1b[?1049h\x1b[?7l\x1b[?25l\x1b[?2004h\x1b[?1000h\x1b[?1002h\x1b[?1006h"
-    assert full._exit_sequences() == "\x1b[0m\x1b[?25h\x1b[?7h\x1b[?1000l\x1b[?1002l\x1b[?1006l\x1b[?2004l\x1b[?1049l"
+    # The default terminal keeps the exact sequence the runner has always sent, plus
+    # the keyboard protocol flags that make Shift-Enter reachable, pushed and popped.
+    assert full._enter_sequences() == (
+        "\x1b[?1049h\x1b[?7l\x1b[?25l\x1b[?2004h\x1b[>1u\x1b[?1000h\x1b[?1002h\x1b[?1006h"
+    )
+    assert full._exit_sequences() == (
+        "\x1b[0m\x1b[?25h\x1b[?7h\x1b[?1000l\x1b[?1002l\x1b[?1006l\x1b[?2004l\x1b[<u\x1b[?1049l"
+    )
 
     plain = terminal_module.Terminal(
         input_fd=0,
         output=StringIO(),
         capabilities=TerminalCapabilities(mouse=False, bracketed_paste=False),
     )
-    assert plain._enter_sequences() == "\x1b[?1049h\x1b[?7l\x1b[?25l"
-    assert plain._exit_sequences() == "\x1b[0m\x1b[?25h\x1b[?7h\x1b[?1049l"
+    assert plain._enter_sequences() == "\x1b[?1049h\x1b[?7l\x1b[?25l\x1b[>1u"
+    assert plain._exit_sequences() == "\x1b[0m\x1b[?25h\x1b[?7h\x1b[<u\x1b[?1049l"
 
 
 def test_the_terminal_keeps_stderr_out_of_the_frame(tmp_path) -> None:
@@ -218,3 +224,125 @@ def test_the_input_decoder_reads_a_terminal_reply_without_typing_it():
     truncated = InputDecoder()
     assert truncated.feed(b"\x1b]11;rgb:") == []
     assert truncated.flush_escape() is None
+
+
+# -- the modified encoding: keys a terminal can only report after being asked -------
+
+
+@pytest.mark.parametrize(
+    ("sequence", "expected"),
+    [
+        # The codes a terminal reports once the keyboard protocol's disambiguation flag
+        # is pushed: the keys the legacy encoding cannot tell apart.
+        (b"\x1b[13;2u", "shift_enter"),
+        (b"\x1b[13;3u", "alt_enter"),
+        (b"\x1b[13u", "enter"),
+        (b"\x1b[13;5u", "ctrl_enter"),
+        (b"\x1b[27;2;13~", "shift_enter"),
+        (b"\x1b[27;3;13~", "alt_enter"),
+        (b"\x1b[9;2u", "backtab"),
+        (b"\x1b[9u", "tab"),
+        (b"\x1b[27u", "escape"),
+        (b"\x1b[127;3u", "alt_backspace"),
+        (b"\x1b[127u", "backspace"),
+        (b"\x1b[99;5u", "ctrl_c"),
+        (b"\x1b[118;5u", "ctrl_v"),
+        (b"\x1b[108;5u", "ctrl_l"),
+        (b"\x1b[116;5u", "ctrl_t"),
+        (b"\x1b[27;5;99~", "ctrl_c"),
+        (b"\x1b[1;5A", "ctrl_up"),
+        (b"\x1b[1;2B", "shift_down"),
+        (b"\x1b[1;3C", "alt_right"),
+        (b"\x1b[1;5D", "ctrl_left"),
+        (b"\x1b[1;5H", "ctrl_home"),
+        (b"\x1b[1;5F", "ctrl_end"),
+        (b"\x1b[3;5~", "ctrl_delete"),
+        (b"\x1b[5;2~", "shift_page_up"),
+    ],
+)
+def test_the_modified_encoding_names_a_key_the_way_its_binding_spells_it(sequence, expected):
+    """Every key this program binds has to come back under the name its binding uses.
+
+    A terminal that has been asked for the modified encoding stops sending the byte a
+    binding was written for — Ctrl-C arrives as ``CSI 99;5u``, not as 0x03 — so a name
+    that drifts by one letter is a key that silently stops working.
+    """
+    assert [event.key for event in InputDecoder().feed(sequence)] == [expected]
+
+
+@pytest.mark.parametrize(
+    ("character", "name"),
+    [
+        ("a", "ctrl_a"),
+        ("c", "ctrl_c"),
+        ("d", "ctrl_d"),
+        ("e", "ctrl_e"),
+        ("g", "ctrl_g"),
+        ("k", "ctrl_k"),
+        ("l", "ctrl_l"),
+        ("n", "ctrl_n"),
+        ("p", "ctrl_p"),
+        ("r", "ctrl_r"),
+        ("t", "ctrl_t"),
+        ("u", "ctrl_u"),
+        ("v", "ctrl_v"),
+        ("w", "ctrl_w"),
+        ("y", "ctrl_y"),
+        ("z", "ctrl_z"),
+        ("_", "ctrl_underscore"),
+    ],
+)
+def test_a_control_key_with_the_encoding_is_named_what_its_byte_used_to_be(character, name):
+    """Ctrl-I is Tab and Ctrl-M is Enter in a terminal, and here: the encoding names the
+    letter that was pressed, and it has to land on the name the old byte produced."""
+    encoded = f"\x1b[{ord(character)};5u".encode()
+
+    assert [event.key for event in InputDecoder().feed(encoded)] == [name]
+    assert [event.key for event in InputDecoder().feed(bytes([ord(character.upper()) & 0x1F]))] == [name]
+
+
+def test_a_sequence_the_program_does_not_model_is_swallowed_rather_than_typed():
+    """Its bytes are consumed, so an unmodelled sequence is not typed one character at a time."""
+    assert InputDecoder().feed(b"\x1b[1;5q") == []
+    assert InputDecoder().feed(b"\x1b[20013;5u") == [], "Ctrl with a character no terminal reports"
+
+
+def test_an_incomplete_sequence_waits_for_the_rest_of_itself():
+    decoder = InputDecoder()
+
+    assert decoder.feed(b"\x1b[13;2") == [], "the final byte is still on its way"
+    assert [event.key for event in decoder.feed(b"u")] == ["shift_enter"]
+
+
+def test_a_sequence_split_across_reads_is_reassembled():
+    decoder = InputDecoder()
+    assert decoder.feed(b"\x1b[27;5;") == []
+    assert [event.key for event in decoder.feed(b"118~")] == ["ctrl_v"]
+
+
+def test_a_shifted_printable_key_is_still_the_text_it_spells():
+    """Uppercase typing has to survive the encoding: a character, not a name."""
+    events = InputDecoder().feed(b"\x1b[65;2u")
+
+    assert [(event.type, event.text) for event in events] == [(EventType.TEXT, "A")]
+
+
+def test_alt_with_a_printable_key_is_named_rather_than_typed():
+    """ESC then a letter is how Alt-<letter> was spelled; the encoding spells it a name."""
+    assert [event.key for event in InputDecoder().feed(b"\x1b[120;3u")] == ["alt_x"]
+
+
+def test_the_decoded_names_are_the_ones_the_editor_waits_for():
+    """Decoder and bridge together: Shift-Enter arrives as one name, Enter as another.
+
+    What the editor does with each name is its own test; this is the half that was
+    missing, because until the terminal was asked for the encoding the name
+    ``shift_enter`` could not be produced at all, and every Shift-Enter was a submit.
+    """
+    decoder = InputDecoder()
+
+    shifted = [translate(event) for event in decoder.feed(b"\x1b[13;2u")]
+    plain = [translate(event) for event in decoder.feed(b"\r")]
+
+    assert [getattr(event, "key", None) for event in shifted] == ["shift_enter"]
+    assert [getattr(event, "key", None) for event in plain] == ["enter"]

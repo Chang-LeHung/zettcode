@@ -64,6 +64,7 @@ from .metadata import (
     read_metadata,
 )
 from .records import (
+    FORK_SUFFIX,
     LINES,
     MAX_AGENT_NAME,
     SAFE_SESSION_ID,
@@ -415,6 +416,102 @@ class SessionPersistenceMixin:
                 append_metadata(self.metadata_path, SessionStarted(session_id=session_id, created_at=created_at))
         append_metadata(self.metadata_path, SessionTitle(session_id=session_id, title=cleaned))
 
+    def fork(self, session_id: str) -> str:
+        """Copy the context one session carries into a new session, and return its id.
+
+        What is copied is the context, not the file: the newest checkpoint's summary
+        and the messages after it — the part a request would carry. A session that has
+        been compacted therefore forks into the part of it that still matters, and the
+        messages the summary replaced stay behind with the session they belong to. That
+        is what makes a fork worth having rather than a copy of the file: a long
+        conversation continues from what the model is actually working with.
+
+        The new session records where it came from and takes the source's title with
+        ``(fork)`` after it, so a picker shows the two apart. A session holding nothing
+        is refused rather than forked empty.
+
+        This is file work, like :meth:`read`, and not part of the persistence
+        extension's async contract: the shell runs it on a thread, so copying a long
+        conversation does not hold the event loop.
+
+        Args:
+            session_id: The session whose context is copied.
+
+        Raises:
+            ValueError: There is nothing to copy — the session holds no messages, or
+                never reached the store at all, which for a fork of the session the
+                reader is already in are the same answer to the same question.
+        """
+        source = self.read(session_id)
+        checkpoint, tail = source.active() if source.header is not None else (None, ())
+        if checkpoint is None and not tail:
+            raise ValueError("Nothing to fork yet: this session has no messages")
+        new_id = new_uuid7()
+        created_at = self._write_header(self.read(new_id), new_id, session_id, None)
+        if created_at is not None:
+            append_metadata(self.metadata_path, SessionStarted(session_id=new_id, created_at=created_at))
+        parent: str | None = None
+        if checkpoint is not None:
+            # The summary is copied as a message of its own. As a checkpoint it would
+            # need a boundary message to sit on, and the boundary it was taken at
+            # belongs to the conversation being left behind; as a message it reaches
+            # the next request exactly as the checkpoint body did.
+            parent = self._copy_message(new_id, None, cast("AnyMessage", checkpoint.message[0]), request_id="fork")
+        for line in tail:
+            parent = self._copy_message(
+                new_id,
+                parent,
+                line.message[0],
+                request_id=line.request_id,
+                timing=line.timing,
+                usage=line.usage,
+                metadata=line.metadata,
+                tags=line.tags,
+                created_at=line.created_at,
+            )
+        self._record_activity(new_id, now())
+        title = self.session_title(session_id)
+        if title is not None and len(f"{title}{FORK_SUFFIX}") <= MAX_TITLE:
+            append_metadata(self.metadata_path, SessionTitle(session_id=new_id, title=f"{title}{FORK_SUFFIX}"))
+        return new_id
+
+    def _copy_message(
+        self,
+        session_id: str,
+        parent: str | None,
+        message: AnyMessage,
+        *,
+        request_id: str,
+        timing: MessageTiming | None = None,
+        usage: ModelUsage | None = None,
+        metadata: Mapping[str, object] | None = None,
+        tags: Mapping[str, object] | None = None,
+        created_at: datetime | None = None,
+    ) -> str:
+        """Append one message copied from another session, and return its id.
+
+        Everything the line carried travels with it — its request, its timings, the
+        usage its reply reported, and the tags that mark a side question — so a forked
+        conversation reads, and counts, the way the one it came from did.
+        """
+        node_id = new_uuid7()
+        self._append_line(
+            session_id,
+            MessageLine(
+                id=node_id,
+                parent=parent,
+                session_id=session_id,
+                request_id=request_id,
+                message=(message,),
+                timing=timing or MessageTiming.instant(),
+                usage=usage,
+                metadata=dict(metadata or {}),
+                tags=dict(tags or {}),
+                created_at=created_at or now(),
+            ),
+        )
+        return node_id
+
     def session_title(self, session_id: str) -> str | None:
         """Return one session's stored title, or ``None`` when it is unnamed."""
         return next(
@@ -448,13 +545,19 @@ class SessionPersistenceMixin:
     ) -> datetime | None:
         """Create the session line, rejecting a parent that changed after creation.
 
+        A later append that names no parent leaves the one already written alone: the
+        header's parent is set when the session is created — by a delegation, or by a
+        fork, which records the conversation it was taken from — and the runtime hands
+        it back on every append of that run. Naming a *different* parent is the mistake
+        this rejects.
+
         Returns:
             The new session's creation time, or ``None`` when the file already
             had a header — which is also what tells the caller whether to start
             the session's metadata row.
         """
         if session.header is not None:
-            if session.header.parent_session_id != request_parent:
+            if request_parent is not None and session.header.parent_session_id != request_parent:
                 raise ValueError("Session parent cannot change after creation")
             return None
         created_at = now()

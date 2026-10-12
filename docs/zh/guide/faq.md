@@ -65,7 +65,7 @@ macOS/Linux 可以用 `time zettcode --dry-run`，PowerShell 可以用
 
 **跑了我不想跑的命令。** 先看状态栏里的档位：`· auto` 表示每条命令都直接跑，`· safe` 表示认出是只读的
 命令直接跑，没有标记就是 `ask`。`/permission ask` 把询问放回来，`/permission deny` 则完全禁止 shell
-命令。之前的审批选择也要看：`a` 切到了 `auto`，`s` 切到了 `safe`，`p` 会在当前进程中记住精确命令，
+命令。用 `--auto`（或 `--yolo`）启动的这轮也一样从 `auto` 开始，只是对话里不会有那行公告。之前的审批选择也要看：`a` 切到了 `auto`，`s` 切到了 `safe`，`p` 会在当前进程中记住精确命令，
 重启会把这些全部清除。档位针对内置 shell 工具，不覆盖文件编辑或 MCP 工具。ZettCode 不提供工具沙箱，
 应使用版本控制并检查 diff。
 

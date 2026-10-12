@@ -9,10 +9,11 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 from dataclasses import replace
+from pathlib import Path
 
 from ...collector import collector_paused
 from ...plugins.state import Activity
-from ...tui import ELLIPSIS, Theme
+from ...tui import ELLIPSIS, SEPARATOR, Theme
 from ..agent.agent import StoredSession
 from ..agent.presenters import block_for
 from .shell import ShellState
@@ -82,6 +83,42 @@ class SessionMixin(ShellState):
         """
         stored = await asyncio.to_thread(self._load_session, session_id)
         self._install_session(stored)
+
+    async def fork_session(self) -> str:
+        """Carry this conversation into a new session, behind the interface.
+
+        Writing the copy is file work over everything the conversation carries, so it
+        runs on a worker like a resume does, under the same busy flag: the reader keeps
+        their keys, another command is refused, and the status line says what is
+        happening while the fork is written. The new session is then installed the way
+        a resumed one is, so being in a fork is like being in anything else.
+        """
+        # The session being left, named before it is left: the notice says where the
+        # reader came from, which is only knowable here.
+        previous_id, previous_title = self.agent.session_id, self.agent.session_title
+        self._activity = Activity.RUNNING
+        self._note = f"fork {ELLIPSIS}"
+        self._set_busy(True)
+        self.app.invalidate()
+        try:
+            stored = await asyncio.to_thread(self._fork_and_load)
+        finally:
+            self._set_busy(False)
+            self._activity = Activity.READY
+            self._note = None
+            self.app.invalidate()
+        self._install_session(stored)
+        # After the install, never before: installing replaces every entry with the
+        # fork's own rows, so a line written first would be wiped by the very thing it
+        # is there to describe.
+        self.transcript.notice(
+            fork_notice(stored.session_id, stored.title, previous_id, previous_title, self.agent.workspace)
+        )
+        return stored.session_id
+
+    def _fork_and_load(self) -> StoredSession:
+        """Write the fork and prepare its rows, changing nothing the shell shows."""
+        return self._load_session(self.agent.fork_session())
 
     def restore_session(self, session_id: str, *, window: Callable[[], tuple[int, Theme]] | None = None) -> None:
         """Replace the visible history with the chosen persisted branch.
@@ -196,3 +233,34 @@ class SessionMixin(ShellState):
             return
         self._title_task.cancel()
         await asyncio.gather(self._title_task, return_exceptions=True)
+
+
+def fork_notice(
+    session_id: str,
+    title: str | None,
+    previous_id: str,
+    previous_title: str | None,
+    workspace: Path,
+) -> str:
+    """Return what a fork leaves in the conversation: which two sessions, and how to reach either.
+
+    A fork is the one command that moves the reader without their asking to go
+    anywhere, so it says where they are *and* where they were: the session they left
+    is where the work that led here lives, and it is one `/resume` away. The command
+    line is named too, because it is the form that still works from another directory
+    later — the store is keyed by workspace, so an id on its own means nothing in
+    another checkout, and its line carries a placeholder rather than one of the two
+    ids, since either fits.
+
+    One command to a line: the transcript wraps at its column budget, and a hard wrap
+    in the middle of `--resume` reads as a typo. Each line opens with the part that
+    matters, so a path too long for the window wraps where it costs least.
+    """
+    here = f'"{title}" {SEPARATOR} ' if title else ""
+    there = f' {SEPARATOR} "{previous_title}"' if previous_title else ""
+    return (
+        f"Forked into a new session: {here}{session_id}\n"
+        f"resume this session: /resume {session_id}\n"
+        f"back to the previous session: /resume {previous_id}{there}\n"
+        f"from a shell: zettcode --resume <session id> --workspace {workspace}"
+    )

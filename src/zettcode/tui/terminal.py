@@ -180,6 +180,13 @@ class Terminal:
             # DECSET 2004: wrap pastes in ESC[200~ .. ESC[201~ so a multiline
             # paste arrives as one event instead of a burst of Enter keys.
             parts.append("\x1b[?2004h")
+        # Push the kitty keyboard protocol's "disambiguate escape codes" flag, so the
+        # keys the legacy encoding cannot tell apart arrive apart: Shift-Enter as
+        # `CSI 13;2u` rather than the carriage return Enter sends. It is pushed rather
+        # than set, and popped on the way out, so a terminal that had flags of its own
+        # keeps them. A terminal that does not know the sequence ignores it, and the
+        # keys keep arriving as they always did.
+        parts.append("\x1b[>1u")
         if self.capabilities.mouse:
             parts += [
                 "\x1b[?1000h",  # DECSET 1000: report button presses and releases
@@ -199,5 +206,6 @@ class Terminal:
             parts += ["\x1b[?1000l", "\x1b[?1002l", "\x1b[?1006l"]  # stop mouse reports
         if self.capabilities.bracketed_paste:
             parts.append("\x1b[?2004l")  # stop wrapping pastes
+        parts.append("\x1b[<u")  # pop the keyboard protocol flags this terminal pushed
         parts.append("\x1b[?1049l")  # switch back to the primary screen buffer
         return "".join(parts)

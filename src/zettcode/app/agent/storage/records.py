@@ -44,6 +44,10 @@ STORE_FILE = "data.jsonl"
 STORE_VERSION = 1
 MAX_AGENT_NAME = 64
 
+#: Appended to a title when a session is forked from one that has a name, so a
+#: session list shows where the fork came from without a second naming pass.
+FORK_SUFFIX = " (fork)"
+
 # Session ids become directory names, so they may not escape the store root.
 SAFE_SESSION_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 

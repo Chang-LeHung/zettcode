@@ -71,6 +71,36 @@ new session; it does not silently reopen the last one. If the id is not found,
 check the workspace first: two checkouts have separate session lists even when
 their files are identical.
 
+## Forking
+
+`/fork` carries the conversation into a new session and continues there. Reach for
+it when you want to take a different direction without losing the one that got you
+here: the session you were in is not touched — every message stays where it is —
+and the fork is a second conversation that starts from where that one had got to.
+
+What is carried is what a request would send: the newest compaction summary and the
+messages after it. A conversation that was compacted therefore forks into the part
+of it the model is still reading, rather than into a file of messages that were
+summarized away and would be walked past on every later turn. The fork records the
+session it came from and takes its title with `(fork)` after it, so the session
+list shows the two apart.
+
+The fork says all of this in the conversation, so nothing has to be remembered:
+
+```text
+Forked into a new session: "Fix the parser (fork)" · 01a12dd8-2d6d-70b2
+resume this session: /resume 01a12dd8-2d6d-70b2
+back to the previous session: /resume 01a10b75-c3a1-4d2e · "Parser rewrite"
+from a shell: zettcode --resume <session id> --workspace ~/projects/api
+```
+
+The session you left is named with it, because that is where the work which led here
+lives: going back to it is one `/resume` away, and this line is the only place its id
+is written down. Both in-app commands are named because they are wanted at different
+moments, and the command-line form carries a placeholder id — either session fits —
+together with the workspace, since the store is keyed by workspace and an id on its
+own means nothing in another checkout.
+
 ## Titles
 
 After the first reply, the agent asks a small model call for a four-or-five word

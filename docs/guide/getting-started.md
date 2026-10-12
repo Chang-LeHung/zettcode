@@ -36,6 +36,7 @@ command line takes, which is deliberately short:
 | --- | --- |
 | `-w`, `--workspace DIR` | The directory to work in. Defaults to the current directory. |
 | `-r`, `--resume SESSION` | Open a stored session instead of starting a new one. |
+| `--auto`, `--yolo` | Run shell commands without asking, for this run. The same as `/permission auto`. |
 | `--dry-run` | Run the startup, paint one frame, and exit. Useful for profiling. |
 
 Working from a checkout instead:

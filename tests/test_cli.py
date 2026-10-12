@@ -626,3 +626,58 @@ async def test_the_runtime_warms_up_after_the_real_frame_is_painted_not_when_it_
     assert len(queued) == 1, "it was queued for after the next frame"
     queued[0]()
     assert started == ["started"], "and what was queued is the start of the background work"
+
+
+# -- starting with the shell permission already at auto --------------------------
+
+
+def test_the_auto_flag_has_two_spellings_and_sets_the_starting_level(tmp_path, monkeypatch):
+    """`--auto` and `--yolo` are one setting, because nobody types the long one twice."""
+    assert cli.parse_args(["--auto"]).auto is True
+    assert cli.parse_args(["--yolo"]).auto is True
+    assert cli.parse_args([]).auto is False
+
+    config = tmp_path / "config.toml"
+    config.write_text('[[models]]\nmodel = "m"\ntoken = "t"\n', encoding="utf-8")
+    monkeypatch.setenv("ZETTCODE_CONFIG", str(config))
+    monkeypatch.setattr(cli, "resolve_config", lambda: resolve_config(["-w", str(tmp_path)]))
+    from zettcode.app.agent.permission import Permission
+
+    plain = cli.build_application(Options(workspace=tmp_path))
+    wild = cli.build_application(Options(workspace=tmp_path, auto=True))
+
+    assert plain.agent.permission is Permission.ASK, "a launch asks unless it is told not to"
+    assert wild.agent.permission is Permission.AUTO
+    announced = [entry for entry in wild.transcript.entries if entry.kind != "welcome"]
+    assert announced == [], "nothing is announced: there is no conversation yet"
+    assert "auto" in wild._status_left().text, "the status line says so instead"
+
+
+async def test_the_auto_flag_reaches_the_dry_run_path_too(tmp_path, monkeypatch):
+    """Both ways in build the same shell, so the flag cannot mean one thing on one path."""
+    from zettcode.app.agent.permission import Permission
+
+    config = tmp_path / "config.toml"
+    config.write_text('[[models]]\nmodel = "m"\ntoken = "t"\n', encoding="utf-8")
+    monkeypatch.setenv("ZETTCODE_CONFIG", str(config))
+    import zettcode.app as app_facade
+
+    real = app_facade.ZettCodeApp
+    seen: dict[str, object] = {}
+
+    class Recorder(real):  # type: ignore[misc, valid-type]
+        def __init__(self, agent, **kwargs):
+            super().__init__(agent, **kwargs)
+            seen["permission"] = agent.permission
+
+        async def dry_run(self, **kwargs) -> None:
+            return None
+
+    monkeypatch.setattr(app_facade, "ZettCodeApp", Recorder)
+    settings = resolve_config(["-w", str(tmp_path)])
+
+    await cli.async_main(settings, auto=True, dry_run=True)
+    assert seen["permission"] is Permission.AUTO
+
+    await cli.async_main(settings, dry_run=True)
+    assert seen["permission"] is Permission.ASK

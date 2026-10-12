@@ -5,9 +5,11 @@ already know. The shell adds the keys that need the whole screen.
 
 ## A few workflows to try
 
-- **Write a multi-line request:** type the first line, press `Alt-Enter` or
-  `Shift-Enter`, add the next line, then `Enter` to send the whole draft. Some
-  terminals do not distinguish `Shift-Enter`; use `Alt-Enter` in that case.
+- **Write a multi-line request:** type the first line, press `Shift-Enter`, add the
+  next line, then `Enter` to send the whole draft. A terminal cannot report
+  `Shift-Enter` unless it is asked to, so ZettCode asks — where the terminal knows
+  the request it arrives as its own key, and where it does not, `Alt-Enter` is the
+  one every terminal can send.
 - **Fix the start of a line:** `Ctrl-A` moves to its start; edit it, then
   `Ctrl-E` returns to its end. This is line navigation, not select-all.
 - **Reuse a request:** from an empty draft, press `Up` or `Ctrl-P` to recall a

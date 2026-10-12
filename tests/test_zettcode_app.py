@@ -187,6 +187,12 @@ class FakePersistence:
             return self.store.session_title(session_id)
         return next((info.title for info in self.sessions if info.session_id == session_id), None)
 
+    def fork(self, session_id: str) -> str:
+        """Copy one session's context the way the real store does, through the store it holds."""
+        if self.store is None:
+            raise ValueError(f"Unknown session: {session_id}")
+        return self.store.fork(session_id)
+
     async def set_title(self, session_id: str, title: str) -> None:
         if self.store is None:
             raise ValueError(f"Unknown session: {session_id}")
@@ -4737,3 +4743,175 @@ async def test_stopping_a_shell_that_never_started_its_background_work_is_clean(
     await asyncio.wait_for(app.stop_background(), 2.0)
 
     assert app._warm is None and app._update_task is None and app._task is None
+
+
+# -- /fork: carrying a conversation into a session of its own ----------------------
+
+
+async def test_fork_carries_the_conversation_into_a_new_session_and_continues_there(tmp_path):
+    """The reader takes a different direction without losing where they came from.
+
+    The conversation is installed in the fork the way a resumed one is, so the screen
+    holds the same rows; the session being left keeps every message it had, and the
+    next turn goes to the fork.
+    """
+    app = await _seeded_app(tmp_path, turns=3)
+    assert app.agent.runtime.persistence.store is not None
+    await app.agent.runtime.persistence.store.set_title("previous", "Fix the parser")
+    app.select_session("previous")
+    await asyncio.wait_for(app.task, 2.0)
+    before = [(entry.kind, getattr(entry, "text", "")) for entry in app.transcript.entries]
+    harness = _harness(app)
+
+    harness.write("/fork")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    forked = app.agent.session_id
+    assert forked != "previous"
+    rows = [(entry.kind, getattr(entry, "text", "")) for entry in app.transcript.entries]
+    assert rows[:-1] == before, "the same conversation, with the fork's own line after it"
+    assert rows[-1][0] == "notice"
+    notice = rows[-1][1].splitlines()
+    assert notice[0] == f'Forked into a new session: "Fix the parser (fork)" {SEPARATOR} {forked}'
+    assert notice[1] == f"resume this session: /resume {forked}"
+    assert notice[2] == f'back to the previous session: /resume previous {SEPARATOR} "Fix the parser"'
+    assert notice[3] == f"from a shell: zettcode --resume <session id> --workspace {app.agent.workspace}"
+    assert app._session_title == "Fix the parser (fork)"
+    assert "Fix the parser (fork)" in app.app.title()
+
+    stored = app.agent.runtime.persistence.read(forked)
+    assert len(stored.messages) == 6 and stored.parent_session_id == "previous"
+    assert len(app.agent.runtime.persistence.read("previous").messages) == 6, "the source is untouched"
+
+    # The next turn is aimed at the fork, not at the conversation it came from.
+    harness.write("try the other approach")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+    assert app.agent.runtime.client.configs[-1].session_id == forked
+
+
+async def test_fork_writes_the_copy_off_the_event_loop(tmp_path):
+    """Copying a conversation is file work over everything it carries, so it goes to a worker."""
+    import threading
+
+    app = await _seeded_app(tmp_path, turns=20)
+    app.select_session("previous")
+    await asyncio.wait_for(app.task, 2.0)
+    loop_thread = threading.get_ident()
+    seen: list[int] = []
+    real = app.agent.fork_session
+
+    def spy():
+        seen.append(threading.get_ident())
+        return real()
+
+    app.agent.fork_session = spy
+    harness = _harness(app)
+    harness.write("/fork")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    assert seen and seen[0] != loop_thread
+    assert app.agent.session_id != "previous"
+
+
+async def test_fork_says_so_in_the_status_line_while_it_writes(tmp_path):
+    """A fork of a long conversation is a wait, so the reader is told what the wait is."""
+    import threading
+
+    app = await _seeded_app(tmp_path, turns=5)
+    release = threading.Event()
+    real = app.agent.fork_session
+    app.agent.fork_session = lambda: (release.wait(5.0), real())[1]
+    harness = _harness(app)
+    harness.write("/fork")
+    harness.press("enter")
+
+    await asyncio.sleep(0.02)
+    assert app._busy and "fork" in (app._note or "")
+
+    release.set()
+    await asyncio.wait_for(app.task, 2.0)
+    assert not app._busy and app._note is None
+
+
+async def test_forking_a_session_with_nothing_in_it_says_so(tmp_path):
+    app = build_app()
+    harness = _harness(app)
+    app.agent.runtime.persistence.store = SessionStore(tmp_path)
+
+    harness.write("/fork")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    texts = [getattr(entry, "text", "") for entry in app.transcript.entries]
+    assert any("Nothing to fork yet" in text for text in texts)
+    assert not app._busy, "the busy flag comes down after a refusal too"
+
+
+async def test_fork_is_refused_while_a_request_is_running(tmp_path):
+    app = build_app([AgentEvent(AgentEventType.TEXT_DELTA, "s", delta="working")], block=True)
+    app.start_background()
+    harness = _harness(app)
+    harness.write("something long")
+    harness.press("enter")
+    await asyncio.sleep(0)
+    assert app.busy is True
+    before = app.agent.session_id
+
+    harness.write("/fork")
+    harness.press("enter")
+    await asyncio.sleep(0.02)
+
+    assert app.agent.session_id == before, "a fork mid-request would copy a conversation still being written"
+    await asyncio.wait_for(app.stop_background(), 2.0)
+
+
+def test_the_fork_notice_names_both_sessions_and_how_to_reach_either(tmp_path):
+    """The line a fork leaves: where the reader now is, where they were, and either way back.
+
+    A fork is the one command that moves the reader somewhere they did not ask to go, so
+    the session they left is named with it — that is where the work which led here lives,
+    and going back is one `/resume` away. The command line is the form that still works
+    from another directory later, and it carries a placeholder rather than one of the two
+    ids, because either fits.
+    """
+    from zettcode.app.ui.sessions import fork_notice
+
+    notice = fork_notice(
+        "01a12dde-033f-7116", "Parser rewrite (fork)", "01a1210a-0d15-73a5", "Parser rewrite", tmp_path
+    ).splitlines()
+
+    assert len(notice) == 4, "one command to a line: a hard wrap inside --resume reads as a typo"
+    assert notice[0] == f'Forked into a new session: "Parser rewrite (fork)" {SEPARATOR} 01a12dde-033f-7116'
+    assert notice[1] == "resume this session: /resume 01a12dde-033f-7116"
+    assert notice[2] == f'back to the previous session: /resume 01a1210a-0d15-73a5 {SEPARATOR} "Parser rewrite"'
+    assert notice[3] == f"from a shell: zettcode --resume <session id> --workspace {tmp_path}"
+
+
+def test_the_fork_notice_leaves_out_a_name_either_session_does_not_have(tmp_path):
+    from zettcode.app.ui.sessions import fork_notice
+
+    notice = fork_notice("01a12dde-033f-7116", None, "01a1210a-0d15-73a5", None, tmp_path).splitlines()
+
+    assert notice[0] == "Forked into a new session: 01a12dde-033f-7116", "no title, no quotes"
+    assert notice[2] == "back to the previous session: /resume 01a1210a-0d15-73a5"
+
+
+async def test_the_fork_notice_lands_under_the_rows_it_describes(tmp_path):
+    """Installing a session replaces every entry, so the line has to be written after it."""
+    app = await _seeded_app(tmp_path, turns=2)
+    app.select_session("previous")
+    await asyncio.wait_for(app.task, 2.0)
+    rows = len(app.transcript.entries)
+    harness = _harness(app)
+
+    harness.write("/fork")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    notices = [entry for entry in app.transcript.entries if entry.kind == "notice"]
+    assert len(notices) == 1
+    assert app.transcript.entries[-1] is notices[0], "last, after the rows it talks about"
+    assert len(app.transcript.entries) == rows + 1

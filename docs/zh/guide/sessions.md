@@ -60,6 +60,28 @@ zettcode --workspace ~/projects/api --resume 01a10b75
 把路径和 id 换成自己的。直接运行 `zettcode` 默认开始新会话，不会自动恢复上一条。
 如果找不到 id，先检查工作区：即使文件相同，两份 checkout 的会话列表也是分开的。
 
+## Fork
+
+`/fork` 会把当前对话带进一个新会话，并在那里继续。想换个方向、又不想丢掉走到这里的这段对话时用它：
+原来的会话完全不受影响，每条消息都留在原地，新会话是接着它的进度另起的一条对话。
+
+带过去的是"下一次请求本来就会发送的内容"：最新的压缩摘要，以及它之后的消息。所以被压缩过的对话会
+fork 成"模型仍在阅读的那部分"，而不是一个满是已被摘要取代、之后每轮都会被跳过的消息文件。新会话会
+记下自己来自哪个会话，标题也接上 `(fork)`，这样会话列表里两条能区分开。
+
+这些信息会直接留在对话里，不需要你记住：
+
+```text
+Forked into a new session: "Fix the parser (fork)" · 01a12dd8-2d6d-70b2
+resume this session: /resume 01a12dd8-2d6d-70b2
+back to the previous session: /resume 01a10b75-c3a1-4d2e · "Parser rewrite"
+from a shell: zettcode --resume <session id> --workspace ~/projects/api
+```
+
+这条通知里也写上了你离开的那个会话：那段把工作带到这里的对话就在里面，回去只需要一次 `/resume`，
+而它的 id 只有这里写着。两条应用内命令都列出来，是因为它们用在不同场合；命令行那条用的是占位 id
+（两个会话都适用），并带上工作区 —— 会话存储按工作区分开，光有 id 在另一份 checkout 里没有意义。
+
 ## 标题
 
 第一次回答之后，代理会用一次很小的模型调用生成一个四五个词的标题，追加到 `metadata.jsonl`。
