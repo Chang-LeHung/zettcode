@@ -46,13 +46,33 @@ class TurnsMixin(AgentBase):
         """
         await self.runtime.start()
         client = self.runtime.started
-        async for event in client.stream(
-            self.request(parts, hint=hint, side=side),
-            config=AgentRunConfig(session_id=self.session_id),
-            model=self.runtime.provider,
-            reasoning_effort=self.runtime.effort,
-        ):
-            yield event
+        used = self.runtime.active_model.shown_name
+        session_id = self.session_id
+        try:
+            async for event in client.stream(
+                self.request(parts, hint=hint, side=side),
+                config=AgentRunConfig(session_id=session_id),
+                model=self.runtime.provider,
+                reasoning_effort=self.runtime.effort,
+            ):
+                yield event
+        finally:
+            if not side:
+                self._remember_model(session_id, used)
+
+    def _remember_model(self, session_id: str, model: str) -> None:
+        """Record the model a turn used in its session, so resuming the session starts on it.
+
+        Done when the turn ends, however it ends — a stopped or failed turn used the model too —
+        and not before it, because a session's folder does not exist until its first message is
+        written. A side question is not part of the conversation and records nothing. Metadata is
+        never worth failing a conversation for, so a store that cannot be written or read here is
+        passed over; the next turn tries again.
+        """
+        try:
+            self.runtime.persistence.set_model(session_id, model)
+        except (OSError, ValueError):
+            pass
 
     @staticmethod
     def request(parts: Sequence[PromptPart], *, hint: str | None = None, side: bool = False) -> str | UserMessage:

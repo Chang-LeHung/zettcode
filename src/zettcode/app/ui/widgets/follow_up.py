@@ -64,7 +64,7 @@ class FollowUpQueue(Widget):
           \u2022 then run the tests                              follow-up
         \u25b8 summarize what changed                            follow-up   <- highlighted
           \u2022 and open a pull request                         follow-up
-          enter edit \u00b7 shift+\u2191/\u2193 reorder \u00b7 alt+\u2191/\u2193 move \u00b7 esc done
+          \u2191/\u2193 select \u00b7 option+\u2191/\u2193 reorder \u00b7 enter edit \u00b7 del remove \u00b7 esc done
         ^ marker, body text           right-aligned badge, then the keys
 
     The rows are in the order they will be sent, the first at the top. The highlighted

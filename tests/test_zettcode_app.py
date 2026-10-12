@@ -57,6 +57,7 @@ from zettcode.app.agent.dialogue.side import SideQuestions
 from zettcode.app.agent.extensions.context import IMAGE_TOKENS, ContextExtension, Tokenizer
 from zettcode.app.agent.extensions.usage import USAGE_EVENT_NAME, UsageExtension, UsageSnapshot, context_text
 from zettcode.app.agent.permission import Permission, parse_permission
+from zettcode.app.agent.runtime import ZettCodeRuntime
 from zettcode.app.agent.storage import STORE_FILE, SessionInfo, SessionStore
 from zettcode.app.brand import LOGO_LINES, LOGO_PALETTE, LOGO_PIXELS
 from zettcode.app.commands import Command, CommandContext, CommandResult
@@ -184,6 +185,7 @@ class FakePersistence:
     def __init__(self) -> None:
         self.sessions: list[SessionInfo] = []
         self.store: SessionStore | None = None
+        self.models: dict[str, str] = {}
 
     def session_path(self, session_id: str) -> Path:
         """Mirror the store's layout: one directory per session, one file in it."""
@@ -203,6 +205,20 @@ class FakePersistence:
         if self.store is not None:
             return self.store.session_title(session_id)
         return next((info.title for info in self.sessions if info.session_id == session_id), None)
+
+    def session_model(self, session_id: str) -> str | None:
+        """The model a session last used: the store's answer, or what ``set_model`` was told."""
+        if self.store is not None:
+            return self.store.session_model(session_id)
+        return self.models.get(session_id)
+
+    def set_model(self, session_id: str, model: str) -> bool:
+        """Record a session's model the way the store does, and say whether anything was written."""
+        if self.store is not None:
+            return self.store.set_model(session_id, model)
+        written = self.models.get(session_id) != model
+        self.models[session_id] = model
+        return written
 
     def fork(self, session_id: str) -> str:
         """Copy one session's context the way the real store does, through the store it holds."""
@@ -315,6 +331,10 @@ class FakeRuntime:
     def set_event_dispatcher(self, dispatcher: object) -> None:
         """Mirror the real runtime's dispatcher seam."""
         self.client.event_dispatcher = dispatcher
+
+    #: The real lookup, borrowed rather than rewritten: it only needs ``config.models``, which
+    #: the fake has, and a second copy here would test itself.
+    find_model = ZettCodeRuntime.find_model
 
     def use_model(self, name: str | ModelConfig) -> ModelConfig:
         entry = next(
@@ -6258,3 +6278,454 @@ async def test_on_the_readers_own_machine_an_empty_image_paste_stays_short(monke
     harness.press("ctrl_v")
 
     assert [e.text for e in app.transcript.entries if e.kind == "notice"] == ["no image on the clipboard"]
+
+
+# -- a message longer than its row says so, in both queues, and Option-Up works in VS Code --------
+
+
+def _first_row(queue, message: str, width: int) -> str:
+    """Return the row a queue draws for one message, with the badge and the margin taken off."""
+    queue.set_messages([message])
+    row = Harness(queue, width=width, height=2).text().splitlines()[0]
+    return row.strip()
+
+
+@pytest.mark.parametrize("queue_type", [FollowUpQueue, SteeringQueue], ids=["follow-up", "steering"])
+def test_a_message_that_runs_past_the_end_of_its_row_is_cut_with_an_ellipsis(queue_type):
+    message = "please refactor the whole storage layer so that every session keeps its own metadata file"
+
+    row = _first_row(queue_type(), message, width=50)
+
+    assert "\u2026" in row, "something was cut, and the row says so"
+    assert message not in row and "please refactor the whole" in row
+
+
+@pytest.mark.parametrize("queue_type", [FollowUpQueue, SteeringQueue], ids=["follow-up", "steering"])
+def test_a_message_with_more_lines_than_one_shows_its_first_line_and_an_ellipsis(queue_type):
+    """The bug: the steering list showed a pasted block as its first line alone, and nothing said
+    the rest was there. The follow-up list always did; they now agree."""
+    message = "first line of a pasted block\nsecond line\nthird line"
+
+    row = _first_row(queue_type(), message, width=80)
+
+    assert "first line of a pasted block \u2026" in row
+    assert "second line" not in row and "third line" not in row
+    assert "\n" not in row
+
+
+@pytest.mark.parametrize("queue_type", [FollowUpQueue, SteeringQueue], ids=["follow-up", "steering"])
+def test_a_one_line_message_that_fits_is_shown_whole_with_no_ellipsis(queue_type):
+    row = _first_row(queue_type(), "run the tests", width=80)
+
+    assert "run the tests" in row and "\u2026" not in row
+
+
+@pytest.mark.parametrize("queue_type", [FollowUpQueue, SteeringQueue], ids=["follow-up", "steering"])
+def test_leading_blank_lines_and_windows_line_endings_do_not_hide_the_message(queue_type):
+    """The first *line with something on it* is what the row shows."""
+    leading = _first_row(queue_type(), "\n\n  fix the parser\nthen the lexer", width=80)
+    windows = _first_row(queue_type(), "fix the parser\r\nthen the lexer", width=80)
+
+    assert "fix the parser \u2026" in leading and "fix the parser \u2026" in windows
+
+
+@pytest.mark.parametrize("queue_type", [FollowUpQueue, SteeringQueue], ids=["follow-up", "steering"])
+def test_a_wide_character_message_is_cut_by_columns_not_by_characters(queue_type):
+    """Each of these takes two columns, so counting characters would draw past the row."""
+    message = "\u8bf7\u628a\u6240\u6709\u4f1a\u8bdd\u7684\u5143\u6570\u636e\u5355\u72ec\u5b58\u6210\u4e00\u4e2a\u6587\u4ef6\u5e76\u66f4\u65b0\u6240\u6709\u6d4b\u8bd5"
+    queue = queue_type()
+    queue.set_messages([message])
+
+    lines = Harness(queue, width=40, height=2).text().splitlines()
+
+    assert "\u2026" in lines[0] and all(display_width(line) <= 40 for line in lines)
+
+
+@pytest.mark.parametrize("queue_type", [FollowUpQueue, SteeringQueue], ids=["follow-up", "steering"])
+def test_a_queue_asks_for_the_width_of_the_one_line_it_will_draw_not_of_the_whole_message(queue_type):
+    """Measuring the raw text counted a line break as a column and the lines after the first as width."""
+    from zettcode.tui import Constraints
+
+    plain, multi = queue_type(), queue_type()
+    plain.set_messages(["first line of a block \u2026"])
+    multi.set_messages(["first line of a block\n" + "x" * 200])
+
+    wide = Constraints(max_width=500, max_height=10)
+
+    assert multi.measure(wide).width == plain.measure(wide).width
+
+
+def test_the_two_queues_draw_the_same_text_for_the_same_message():
+    """One rule for "this message is longer than its row", kept in one place.
+
+    The badges differ in width (``follow-up`` and ``steer``), so a message too long for the row is
+    cut in a different place in each; what must agree is everything that does not depend on that.
+    """
+
+    def drawn(queue, badge: str, marker: str, message: str) -> str:
+        return _first_row(queue, message, 70).replace(badge, "").strip().lstrip(marker).strip()
+
+    for message in ("short", "line one\nline two", "\n\n  padded\nmore"):
+        follow = drawn(FollowUpQueue(), "follow-up", "\u2022", message)
+        steer = drawn(SteeringQueue(), "steer", "\u21b3", message)
+        assert follow == steer, message.replace("\n", "\\n")
+
+    follow = drawn(FollowUpQueue(), "follow-up", "\u2022", "x" * 300)
+    steer = drawn(SteeringQueue(), "steer", "\u21b3", "x" * 300)
+    assert follow.endswith("\u2026") and steer.endswith("\u2026"), "both say it was cut"
+    short, long = sorted((follow, steer), key=len)
+    assert long.startswith(short.rstrip("\u2026")), "and both show the start of the same text"
+
+
+async def test_vscode_sends_control_for_option_up_and_down_and_they_work_the_same():
+    """VS Code's terminal has a keybinding that sends the bytes of Ctrl-Up and Ctrl-Down when
+    Option-Up and Option-Down are pressed, so the program is told Ctrl and never Alt there. iTerm2
+    sends the Alt form. The same key, in both spellings, has to do the same thing."""
+    app, harness = await _running_with("a", "b", "c")
+
+    _press_bytes(harness, b"\x1b[1;5A")  # VS Code: Option-Up arrives as Ctrl-Up; walks in at the last row
+    assert app.follow_ups.selected == 2
+    _press_bytes(harness, b"\x1b[A")  # plain Up moves the highlight to b
+    _press_bytes(harness, b"\x1b[1;5A")  # VS Code Option-Up moves b ahead of a
+    assert app.follow_ups.messages == ("b", "a", "c") and app.follow_ups.selected == 0
+    _press_bytes(harness, b"\x1b[1;5B")  # VS Code Option-Down moves it back
+    assert app.follow_ups.messages == ("a", "b", "c") and app.follow_ups.selected == 1
+    assert app.busy is True and not app.task.done(), "none of it stopped the request"
+    await _stop(app)
+
+
+async def test_the_alt_and_control_spellings_end_in_exactly_the_same_place():
+    """Same keys through both spellings from the same start: the result must not depend on the terminal."""
+    ends = []
+    for up, down in ((b"\x1b[1;3A", b"\x1b[1;3B"), (b"\x1b[1;5A", b"\x1b[1;5B")):
+        app, harness = await _running_with("a", "b", "c", "d")
+        for raw in (up, b"\x1b[A", up, down, down, down):
+            _press_bytes(harness, raw)
+        ends.append((app.follow_ups.messages, app.follow_ups.selected))
+        await _stop(app)
+
+    assert ends[0] == ends[1]
+
+
+async def test_control_up_is_left_for_anyone_else_when_there_is_no_list_and_taken_only_while_there_is_one():
+    """The binding must not swallow a key nothing here needs. A handler that is always on would say
+    "handled" with nothing done, and anything else that wants Ctrl-Up would never hear of it."""
+    app, harness = await _running_with("a", "b")
+    heard: list[str] = []
+
+    def probe(event, host) -> bool:
+        heard.append("probe")
+        return True
+
+    app.app.commands.add("probe_control_up", probe)
+    app.app.keymap.bind("ctrl_up", "probe_control_up")  # an ordinary binding: below the list's capture one
+
+    _press_bytes(harness, b"\x1b[1;5A")
+    assert heard == [] and app.follow_ups.selected == 1, "with a list, the list takes it"
+
+    await _stop(app)
+    app2 = build_app(block=True)
+    harness2 = _harness(app2)
+    app2.app.commands.add("probe_control_up", probe)
+    app2.app.keymap.bind("ctrl_up", "probe_control_up")
+    harness2.write("first")
+    harness2.press("enter")
+    await asyncio.sleep(0)
+
+    _press_bytes(harness2, b"\x1b[1;5A")
+
+    assert heard == ["probe"], "with no list, the key goes on to whoever else wanted it"
+    await _stop(app2)
+
+
+async def test_control_up_is_the_composers_own_when_there_is_no_follow_up_list():
+    """The binding applies only while a list exists; otherwise the key is left to whoever else wants it."""
+    app = build_app(block=True)
+    harness = _harness(app)
+    harness.write("first")
+    harness.press("enter")
+    await asyncio.sleep(0)
+    harness.write("a draft")
+
+    _press_bytes(harness, b"\x1b[1;5A")
+    _press_bytes(harness, b"\x1b[1;5B")
+
+    assert app.composer.text == "a draft" and app.follow_ups.selected is None
+    assert app.busy is True, "and it did not stop the request"
+    await _stop(app)
+
+
+# -- the model a session last used: recorded when a turn ends, restored when the session is resumed --
+
+
+def _recorded(app: ZettCodeApp) -> dict[str, str]:
+    """What the fake store was told each session used."""
+    return dict(app.agent.runtime.persistence.models)
+
+
+async def _one_turn(app: ZettCodeApp, harness: Harness, text: str = "hello") -> None:
+    harness.write(text)
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+
+async def test_a_turn_records_the_model_it_used_in_its_session():
+    app = build_app()
+    harness = _harness(app)
+
+    await _one_turn(app, harness)
+
+    assert _recorded(app) == {"session-0001": "gpt-5-mini"}
+
+
+async def test_the_name_recorded_is_the_one_the_model_picker_shows():
+    """`display_model` when there is one, because that is what the reader chose and what a later
+    start has to find again."""
+    app = build_app()
+    harness = _harness(app)
+    app.change_model("GPT-4o")
+
+    await _one_turn(app, harness)
+
+    assert _recorded(app) == {"session-0001": "GPT-4o"}
+
+
+async def test_a_model_chosen_part_way_through_is_what_the_next_turn_records():
+    app = build_app()
+    harness = _harness(app)
+    await _one_turn(app, harness, "first")
+    app.change_model("GPT-4o")
+    assert _recorded(app) == {"session-0001": "gpt-5-mini"}, "choosing is not using: nothing is written yet"
+
+    await _one_turn(app, harness, "second")
+
+    assert _recorded(app) == {"session-0001": "GPT-4o"}
+
+
+async def test_a_turn_that_was_stopped_still_records_the_model_it_used():
+    app = build_app(block=True)
+    harness = _harness(app)
+    harness.write("first")
+    harness.press("enter")
+    await asyncio.sleep(0)
+
+    await _stop(app)
+
+    assert _recorded(app) == {"session-0001": "gpt-5-mini"}
+
+
+async def test_a_turn_that_failed_still_records_the_model_it_used():
+    app = build_app()
+    harness = _harness(app)
+
+    real_stream = app.agent.runtime.client.stream
+    app.agent.runtime.client.stream = lambda *args, **kwargs: _fail_after(real_stream, args, kwargs)
+    harness.write("first")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    assert _recorded(app) == {"session-0001": "gpt-5-mini"}
+
+
+async def _fail_after(real_stream, args, kwargs):
+    async for event in real_stream(*args, **kwargs):
+        yield event
+    raise RuntimeError("provider down")
+
+
+async def test_a_side_question_records_nothing_because_it_is_not_part_of_the_conversation():
+    app = build_app()
+
+    async for _ in app.agent.stream(("what does parse() do?",), side=True):
+        pass
+
+    assert _recorded(app) == {}
+
+
+async def test_the_same_model_turn_after_turn_is_recorded_each_time_without_complaint():
+    app = build_app()
+    harness = _harness(app)
+
+    for index in range(3):
+        await _one_turn(app, harness, f"turn {index}")
+
+    assert _recorded(app) == {"session-0001": "gpt-5-mini"}
+
+
+async def test_a_store_that_fails_while_recording_does_not_fail_the_turn(tmp_path):
+    app = build_app()
+    harness = _harness(app)
+
+    def broken(session_id: str, model: str) -> bool:
+        raise OSError("read-only store")
+
+    app.agent.runtime.persistence.set_model = broken
+
+    await _one_turn(app, harness)
+
+    errors = [entry.text for entry in app.transcript.entries if getattr(entry, "level", None) == "error"]
+    assert errors == [], "a store that cannot be written is not the conversation's problem"
+    assert app.busy is False
+    assert any(entry.kind == "wait" and entry.text.startswith("Processed for ") for entry in app.transcript.entries)
+
+
+async def _app_whose_stored_session_used(tmp_path, model: str | None) -> ZettCodeApp:
+    app = await _seeded_app(tmp_path, turns=2)
+    if model is not None:
+        app.agent.runtime.persistence.store.set_model("previous", model)
+    return app
+
+
+async def test_resuming_a_session_switches_to_the_model_it_last_used(tmp_path):
+    app = await _app_whose_stored_session_used(tmp_path, "GPT-4o")
+    assert app.agent.active_model.shown_name == "gpt-5-mini"
+
+    await app.resume_session("previous")
+
+    assert app.agent.active_model.shown_name == "GPT-4o"
+    assert app.agent.runtime.active_model.shown_name == "GPT-4o"
+
+
+async def test_the_reader_is_told_the_model_was_switched_on_resume(tmp_path):
+    app = await _app_whose_stored_session_used(tmp_path, "GPT-4o")
+
+    await app.resume_session("previous")
+
+    announcements = [entry.text for entry in app.transcript.entries if entry.kind == "announcement"]
+    assert announcements == ["Model set to GPT-4o, the one this session last used."]
+
+
+async def test_the_next_turn_after_a_resume_goes_out_on_the_restored_model(tmp_path):
+    app = await _app_whose_stored_session_used(tmp_path, "GPT-4o")
+    await app.resume_session("previous")
+    harness = _harness(app)
+
+    harness.write("continue")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    assert app.agent.runtime.client.models[-1] == "gpt-4o", "the provider the turn was sent to is the restored one"
+
+
+async def test_the_header_shows_the_restored_model(tmp_path):
+    app = await _app_whose_stored_session_used(tmp_path, "GPT-4o")
+    app.app.resize(100, 20)
+    harness = _harness(app)
+
+    await app.resume_session("previous")
+
+    assert "GPT-4o" in harness.render().text.splitlines()[0]
+
+
+async def test_resuming_with_the_model_already_in_use_says_nothing(tmp_path):
+    app = await _app_whose_stored_session_used(tmp_path, "gpt-5-mini")
+
+    await app.resume_session("previous")
+
+    assert app.agent.active_model.shown_name == "gpt-5-mini"
+    assert not [e for e in app.transcript.entries if e.kind in ("announcement", "notice")]
+
+
+async def test_resuming_a_session_that_never_recorded_a_model_keeps_the_one_in_use(tmp_path):
+    """An older session, or one that has not had a turn yet: nothing to restore, so nothing is changed."""
+    app = await _app_whose_stored_session_used(tmp_path, None)
+    app.change_model("GPT-4o")
+
+    await app.resume_session("previous")
+
+    assert app.agent.active_model.shown_name == "GPT-4o"
+    assert not [e for e in app.transcript.entries if e.kind == "announcement"]
+    assert not [e for e in app.transcript.entries if e.kind == "notice"]
+
+
+async def test_a_model_no_longer_in_the_configuration_is_not_guessed_at_and_the_reader_is_told(tmp_path):
+    app = await _app_whose_stored_session_used(tmp_path, "gpt-3-retired")
+
+    await app.resume_session("previous")
+
+    assert app.agent.active_model.shown_name == "gpt-5-mini"
+    notices = [entry.text for entry in app.transcript.entries if entry.kind == "notice"]
+    assert notices == [
+        "This session last used gpt-3-retired, which is not in your configuration; staying on gpt-5-mini."
+    ]
+
+
+async def test_a_name_that_two_entries_share_is_not_guessed_at_either(tmp_path):
+    app = await _app_whose_stored_session_used(tmp_path, "twin")
+    twins = (
+        ModelConfig(model="gpt-5-mini", token="t"),
+        ModelConfig(model="a", display_model="twin", token="t"),
+        ModelConfig(model="b", display_model="twin", token="t"),
+    )
+    app.agent.runtime.config.models = twins
+    app.agent.runtime.active_model = twins[0]
+
+    await app.resume_session("previous")
+
+    assert app.agent.active_model is twins[0], "choosing between them would be a guess"
+    assert any("twin" in entry.text and "not in your configuration" in entry.text for entry in app.transcript.entries)
+
+
+async def test_restoring_at_startup_applies_the_model_the_same_way(tmp_path):
+    """`--resume` goes through `restore_session`, not the panel; the model must follow there too."""
+    app = await _app_whose_stored_session_used(tmp_path, "GPT-4o")
+
+    app.restore_session("previous")
+
+    assert app.agent.active_model.shown_name == "GPT-4o"
+    assert [e.text for e in app.transcript.entries if e.kind == "announcement"] == [
+        "Model set to GPT-4o, the one this session last used."
+    ]
+
+
+async def test_resuming_then_resuming_another_session_follows_each_ones_own_model(tmp_path):
+    app = await _app_whose_stored_session_used(tmp_path, "GPT-4o")
+    store = app.agent.runtime.persistence.store
+    await store.append("other", "r", UserMessage(content="hi"))
+    store.set_model("other", "gpt-5-mini")
+
+    await app.resume_session("previous")
+    assert app.agent.active_model.shown_name == "GPT-4o"
+    await app.resume_session("other")
+
+    assert app.agent.active_model.shown_name == "gpt-5-mini"
+
+
+async def test_a_session_recorded_under_the_raw_model_name_still_finds_its_model_after_a_display_name_is_added(
+    tmp_path,
+):
+    """It was recorded when the entry had no `display_model`, so it holds the raw name; the entry
+    is shown as "GPT-4o" now. The configuration may be edited between runs."""
+    app = await _app_whose_stored_session_used(tmp_path, "gpt-4o")
+
+    await app.resume_session("previous")
+
+    assert app.agent.active_model.shown_name == "GPT-4o"
+    assert [e.text for e in app.transcript.entries if e.kind == "announcement"] == [
+        "Model set to GPT-4o, the one this session last used."
+    ]
+
+
+def test_the_name_the_picker_showed_wins_over_a_model_that_happens_to_be_called_the_same():
+    """A is shown as "b"; B's raw name is "b". Looking only by raw or display name would find both."""
+    from zettcode.app.agent.runtime import ZettCodeRuntime
+
+    a = ModelConfig(model="a", display_model="b", token="t")
+    b = ModelConfig(model="b", display_model="c", token="t")
+    holder = type("Holder", (), {"config": type("C", (), {"models": (a, b)})()})()
+
+    assert ZettCodeRuntime.find_model(holder, "b") is a
+    assert ZettCodeRuntime.find_model(holder, "c") is b, "and a display name is still found"
+    assert ZettCodeRuntime.find_model(holder, "a") is a, "and so is a raw one"
+
+
+def test_a_name_two_entries_answer_to_in_the_second_step_is_not_guessed():
+    from zettcode.app.agent.runtime import ZettCodeRuntime
+
+    a = ModelConfig(model="x", display_model="one", token="t")
+    b = ModelConfig(model="x", display_model="two", token="t")
+    holder = type("Holder", (), {"config": type("C", (), {"models": (a, b)})()})()
+
+    assert ZettCodeRuntime.find_model(holder, "x") is None
+    assert ZettCodeRuntime.find_model(holder, "one") is a
+    assert ZettCodeRuntime.find_model(holder, "missing") is None

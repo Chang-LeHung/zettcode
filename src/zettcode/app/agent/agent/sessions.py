@@ -33,12 +33,15 @@ class StoredSession:
         replayed: The rows, totals, and branch it replays into.
         title: Its stored display title, if it has one: read here because folding
             the metadata log is the other thing resuming used to do on the loop.
+        model: The model the session last used, by the name the model picker shows, if one
+            was recorded; read here for the same reason as the title.
     """
 
     session_id: str
     session: Session
     replayed: Replayed
     title: str | None
+    model: str | None = None
 
 
 class SessionsMixin(ContextMixin):
@@ -127,6 +130,7 @@ class SessionsMixin(ContextMixin):
             session=session,
             replayed=replayed,
             title=persistence.session_title(session_id),
+            model=persistence.session_model(session_id),
         )
 
     def install_session(self, stored: StoredSession, transcript: Transcript) -> None:
@@ -139,6 +143,12 @@ class SessionsMixin(ContextMixin):
         transcript.replace(replayed.transcript.entries)
         self.runtime.usage.seed(session_id, replayed.usage)
         self.use_session(session_id)
+        # Pick up where the session left off: the model it last used, when this configuration
+        # still has it. A session that never recorded one, or whose model is gone, keeps whatever
+        # is selected now — the shell says so in the second case.
+        model = self.runtime.find_model(stored.model) if stored.model else None
+        if model is not None and model is not self.runtime.active_model:
+            self.runtime.use_model(model)
         # Prime the report with what the next turn would send, not with what the
         # transcript shows: the display keeps every message a compaction folded
         # away, and measuring those claims a request several times the size of the

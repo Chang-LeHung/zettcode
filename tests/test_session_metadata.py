@@ -558,3 +558,184 @@ async def test_the_listing_runs_off_the_event_loop(tmp_path: Path, monkeypatch):
     await store.list_sessions()
 
     assert seen and all(ident != threading.get_ident() for ident in seen)
+
+
+# -- the model a session last used ------------------------------------------------------------------
+
+
+async def test_the_model_a_session_used_is_recorded_and_read_back(tmp_path: Path):
+    store = _store(tmp_path)
+    await store.append("s1", "req", UserMessage(content="hello"))
+    assert store.session_model("s1") is None, "nothing is recorded until a turn says what it used"
+
+    assert store.set_model("s1", "gpt-5-mini") is True
+
+    assert store.session_model("s1") == "gpt-5-mini"
+    assert read_session_metadata(_file(store, "s1"), "s1").model == "gpt-5-mini"  # type: ignore[union-attr]
+
+
+async def test_recording_the_same_model_again_writes_nothing(tmp_path: Path):
+    """It is asked about once per turn and changes once in a long while: the write is the exception."""
+    store = _store(tmp_path)
+    await store.append("s1", "req", UserMessage(content="hello"))
+    store.set_model("s1", "gpt-5-mini")
+    stamp = _file(store, "s1").stat().st_mtime_ns
+    before = _file(store, "s1").read_bytes()
+
+    results = [store.set_model("s1", "gpt-5-mini") for _ in range(50)]
+
+    assert results == [False] * 50
+    assert _file(store, "s1").stat().st_mtime_ns == stamp and _file(store, "s1").read_bytes() == before
+
+
+async def test_a_different_model_replaces_the_recorded_one(tmp_path: Path):
+    store = _store(tmp_path)
+    await store.append("s1", "req", UserMessage(content="hello"))
+    store.set_model("s1", "gpt-5-mini")
+
+    assert store.set_model("s1", "GPT-4o") is True
+
+    assert store.session_model("s1") == "GPT-4o"
+
+
+async def test_nothing_is_written_for_a_session_with_no_conversation(tmp_path: Path):
+    """There is no folder to put the file in; the first turn records it when it ends."""
+    store = _store(tmp_path)
+
+    assert store.set_model("not-started", "gpt-5-mini") is False
+
+    assert store.session_model("not-started") is None
+    assert not store.session_dir("not-started").exists()
+
+
+@pytest.mark.parametrize("name", ["", "   ", "x" * 201], ids=["empty", "blank", "too-long"])
+async def test_a_name_that_is_not_a_model_is_not_recorded(tmp_path: Path, name):
+    store = _store(tmp_path)
+    await store.append("s1", "req", UserMessage(content="hello"))
+
+    assert store.set_model("s1", name) is False
+    assert store.session_model("s1") is None
+
+
+async def test_a_name_is_trimmed_before_it_is_recorded(tmp_path: Path):
+    store = _store(tmp_path)
+    await store.append("s1", "req", UserMessage(content="hello"))
+
+    store.set_model("s1", "  gpt-5-mini \n")
+
+    assert store.session_model("s1") == "gpt-5-mini"
+
+
+async def test_naming_a_session_keeps_its_model_and_choosing_a_model_keeps_its_name(tmp_path: Path):
+    """Each write replaces the file whole, so each must carry the other's field across."""
+    store = _store(tmp_path)
+    await store.append("s1", "req", UserMessage(content="hello"))
+    store.set_model("s1", "gpt-5-mini")
+
+    await store.set_title("s1", "Fix the parser")
+    assert store.session_model("s1") == "gpt-5-mini" and store.session_title("s1") == "Fix the parser"
+
+    store.set_model("s1", "GPT-4o")
+    assert store.session_model("s1") == "GPT-4o" and store.session_title("s1") == "Fix the parser"
+
+
+async def test_a_message_and_a_checkpoint_still_write_nothing_once_a_model_is_recorded(tmp_path: Path):
+    store = _store(tmp_path)
+    await store.append("s1", "req", UserMessage(content="hello"))
+    store.set_model("s1", "gpt-5-mini")
+    before = _file(store, "s1").read_bytes()
+    stamp = _file(store, "s1").stat().st_mtime_ns
+
+    for index in range(100):
+        await store.append("s1", f"r{index}", UserMessage(content=f"message {index}"))
+
+    assert _file(store, "s1").read_bytes() == before and _file(store, "s1").stat().st_mtime_ns == stamp
+
+
+async def test_a_file_written_before_models_were_recorded_reads_as_having_none(tmp_path: Path):
+    """The field is additive: an old file simply lacks it, and the layout version is unchanged."""
+    store = _store(tmp_path)
+    await store.append("s1", "req", UserMessage(content="hello"))
+    record = json.loads(_file(store, "s1").read_text(encoding="utf-8"))
+    record.pop("model", None)
+    _file(store, "s1").write_text(json.dumps(record), encoding="utf-8")
+
+    assert read_session_metadata(_file(store, "s1"), "s1") is not None, "still a valid v1 file"
+    assert store.session_model("s1") is None
+    assert store.set_model("s1", "gpt-5-mini") is True and store.session_model("s1") == "gpt-5-mini"
+
+
+async def test_a_file_with_a_field_this_version_does_not_know_is_still_read(tmp_path: Path):
+    """What lets a later version add to the file without making an earlier one rebuild it."""
+    store = _store(tmp_path)
+    await store.append("s1", "req", UserMessage(content="hello"))
+    await store.set_title("s1", "Kept")
+    record = json.loads(_file(store, "s1").read_text(encoding="utf-8"))
+    record["something_added_later"] = {"a": 1}
+    _file(store, "s1").write_text(json.dumps(record), encoding="utf-8")
+
+    assert store.session_title("s1") == "Kept"
+
+
+async def test_a_session_from_an_older_version_has_no_model_and_can_be_given_one(tmp_path: Path):
+    store = _store(tmp_path)
+    await _old_session(store, "legacy", title="Old session")
+
+    assert store.session_model("legacy") is None
+    assert store.set_model("legacy", "gpt-5-mini") is True
+
+    assert store.session_model("legacy") == "gpt-5-mini" and store.session_title("legacy") == "Old session"
+    assert (store.session_dir("legacy") / "metadata.json").is_file()
+
+
+async def test_a_fork_starts_on_the_model_the_session_it_came_from_was_using(tmp_path: Path):
+    store = _store(tmp_path)
+    await store.append("s1", "req", UserMessage(content="hello"))
+    store.set_model("s1", "GPT-4o")
+
+    forked = store.fork("s1")
+
+    assert store.session_model(forked) == "GPT-4o"
+    assert store.session_model("s1") == "GPT-4o", "and the original is untouched"
+
+
+async def test_a_fork_of_a_session_with_no_recorded_model_has_none_either(tmp_path: Path):
+    store = _store(tmp_path)
+    await store.append("s1", "req", UserMessage(content="hello"))
+
+    assert store.session_model(store.fork("s1")) is None
+
+
+async def test_each_session_remembers_its_own_model(tmp_path: Path):
+    store = _store(tmp_path)
+    await store.append("a", "req", UserMessage(content="hello"))
+    await store.append("b", "req", UserMessage(content="hello"))
+
+    store.set_model("a", "gpt-5-mini")
+    store.set_model("b", "GPT-4o")
+
+    assert (store.session_model("a"), store.session_model("b")) == ("gpt-5-mini", "GPT-4o")
+
+
+async def test_recording_a_model_does_not_move_the_age_the_list_shows(tmp_path: Path):
+    store = _store(tmp_path)
+    await store.append("s1", "req", UserMessage(content="hello"))
+    _age(store, "s1", FUTURE)
+    before = (await store.list_sessions())[0].updated_at
+
+    store.set_model("s1", "gpt-5-mini")
+
+    assert (await store.list_sessions())[0].updated_at == before == FUTURE
+
+
+async def test_a_failed_write_while_recording_a_model_is_not_an_error(tmp_path: Path, monkeypatch):
+    store = _store(tmp_path)
+    await store.append("s1", "req", UserMessage(content="hello"))
+
+    def fail(source, target):
+        raise OSError("read-only")
+
+    monkeypatch.setattr(metadata_module.os, "replace", fail)
+
+    assert store.set_model("s1", "gpt-5-mini") is False
+    assert store.session_model("s1") is None, "and nothing half-written is read back"

@@ -2,10 +2,13 @@
 
 **The file.** Each session folder holds a ``metadata.json`` beside its ``data.jsonl``::
 
-    {"version": 1, "session_id": "01a1...", "created_at": "...", "updated_at": "...", "title": "Fix the parser"}
+    {"version": 1, "session_id": "01a1...", "created_at": "...", "updated_at": "...",
+     "title": "Fix the parser", "model": "gpt-5-mini"}
 
-It is written when a session begins and when it is renamed, and at no other time — about two
-hundred bytes, whatever the conversation does. What a list needs besides that is when the
+It is written when a session begins, when it is renamed, and when the model it uses changes, and
+at no other time — about two hundred bytes, whatever the conversation does. A file written before
+the model was recorded simply has none, and a reader that does not know the field ignores it, so
+the layout version is unchanged. What a list needs besides that is when the
 conversation last changed, and the conversation file already says so: its modification time moves
 with every message it is given, so the age a list shows is read from there instead of being
 written down again on every append. The folder is also the unit a person copies, moves or
@@ -57,6 +60,7 @@ SESSION_METADATA_FILE = "metadata.json"
 SESSION_METADATA_VERSION = 1
 
 MAX_TITLE = 200
+MAX_MODEL = 200
 
 
 class SessionMetadata(BaseModel):
@@ -71,6 +75,10 @@ class SessionMetadata(BaseModel):
             the conversation file's own modification time is newer after any later message, and
             :func:`effective_updated_at` takes the later of the two.
         title: The display title, or ``None`` while the session is unnamed.
+        model: The model the session last used, by the name the model picker shows, or ``None``
+            before any turn has run. It is what resuming the session switches back to. It is
+            written when it *changes*, not on every turn, so it costs the file no more writes
+            than a rename does.
     """
 
     version: int = SESSION_METADATA_VERSION
@@ -78,6 +86,7 @@ class SessionMetadata(BaseModel):
     created_at: datetime
     updated_at: datetime
     title: str | None = None
+    model: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

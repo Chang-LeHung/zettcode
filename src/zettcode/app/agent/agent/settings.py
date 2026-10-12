@@ -27,6 +27,10 @@ class SettingsMixin(AgentBase):
         """Return the model selected for the next turn."""
         return self.runtime.active_model
 
+    def find_model(self, name: str) -> ModelConfig | None:
+        """Return the configured model a recorded name stands for, if exactly one does."""
+        return self.runtime.find_model(name)
+
     def use_model(self, name: str | ModelConfig) -> ModelConfig:
         """Select a configured model for subsequent turns."""
         return self.runtime.use_model(name)

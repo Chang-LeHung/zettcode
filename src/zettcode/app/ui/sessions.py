@@ -10,6 +10,7 @@ import asyncio
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ...collector import collector_paused
 from ...plugins.state import Activity
@@ -18,6 +19,9 @@ from ..agent.agent.sessions import StoredSession
 from ..agent.conversation.presenters import block_for
 from .shell import ShellState
 from .widgets import WELCOME
+
+if TYPE_CHECKING:  # pragma: no cover - annotations only
+    from ...config import ModelConfig
 
 
 class SessionMixin(ShellState):
@@ -163,9 +167,11 @@ class SessionMixin(ShellState):
 
     def _install_session(self, stored: StoredSession) -> None:
         """Make a loaded session the visible one. Assignment only; runs on the loop."""
+        previous = self.agent.active_model
         self.agent.install_session(stored, self.transcript)
         if not self.transcript.entries:
             self.transcript.welcome(WELCOME)
+        self._announce_restored_model(previous, stored)
         self.view.follow_tail = True
         self.view.clear_selection()
         self._session_title = stored.title
@@ -175,6 +181,22 @@ class SessionMixin(ShellState):
         # as text, after the new transcript is up so the line that says so is in it.
         self._return_follow_ups_to_draft()
         self.app.request_layout()
+
+    def _announce_restored_model(self, previous: ModelConfig, stored: StoredSession) -> None:
+        """Say so when resuming a session moved the model, or could not.
+
+        The model is part of what the reader picks up when they come back to a session, and a
+        header that quietly shows another name is not a thing to notice. Silence is for when
+        nothing changed: the session never recorded a model, or it is the one already in use.
+        """
+        current = self.agent.active_model
+        if current is not previous:
+            self.transcript.announce(f"Model set to {current.shown_name}, the one this session last used.")
+        elif stored.model and self.agent.find_model(stored.model) is None:
+            self.transcript.notice(
+                f"This session last used {stored.model}, which is not in your configuration; "
+                f"staying on {current.shown_name}."
+            )
 
     def _remeasure_context_later(self) -> None:
         """Measure the context again, for a figure that cannot be true.

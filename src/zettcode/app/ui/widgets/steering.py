@@ -13,6 +13,7 @@ from collections.abc import Sequence
 from ....tui import STEERING, Canvas, Constraints, Size, Style, Widget
 from ....tui.render import display_width, truncate
 from ...agent.conversation.rows import CONTENT_INDENT
+from .follow_up import one_line
 
 #: Right-aligned badge that says a row is a steering message.
 STEER_BADGE = "steer"
@@ -41,6 +42,11 @@ class SteeringQueue(Widget):
     below, so the queue reads as pending rather than as part of the input. An
     empty queue asks for no rows, so the body slot collapses and the composer
     keeps its place when nothing is pending.
+
+    A row is one line tall, so a message that is longer than that is cut and says so with an
+    ellipsis — whether it ran past the end of the line or had more lines after the first, the
+    same way the follow-up list does it. Without that a pasted block shows as its first line
+    alone, and nothing says there was more.
     """
 
     def __init__(self) -> None:
@@ -68,7 +74,7 @@ class SteeringQueue(Widget):
 
     def measure(self, constraints: Constraints) -> Size:
         """Ask for the widest row, the timing note included."""
-        widest = max((display_width(message) for message in self.messages), default=0)
+        widest = max((display_width(one_line(message)) for message in self.messages), default=0)
         row = INDENT + MARKER_COLUMNS + widest + BADGE_GAP + display_width(STEER_BADGE)
         note = INDENT + display_width(STEER_WHEN)
         return constraints.constrain(Size(max(row, note), self.preferred_height()))
@@ -101,7 +107,7 @@ class SteeringQueue(Widget):
             canvas.draw_text(
                 self.rect.x + left,
                 y,
-                truncate(message, text_width),
+                truncate(one_line(message), text_width),
                 Style(foreground=theme.text),
                 max_width=text_width,
             )
