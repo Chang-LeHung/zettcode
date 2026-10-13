@@ -22,6 +22,7 @@ from zett_agent.model import ReasoningEffort
 
 from ._compat import tomllib
 from .paths import DEFAULT_STORE, DEFAULT_UPDATE_FILE, config_path
+from .providers import Api
 
 #: The concrete type :func:`_typed` verifies a raw config value against.
 T = TypeVar("T")
@@ -163,7 +164,7 @@ class ModelConfig:
         return self.display_model or self.model
 
     @property
-    def api(self) -> str:
+    def api(self) -> Api:
         """Return which API this model speaks: ``anthropic``, ``responses``, or ``chat``.
 
         Named for the picker and for messages: the three are one model entry's
@@ -171,8 +172,8 @@ class ModelConfig:
         one an entry they wrote actually selected.
         """
         if self.anthropic:
-            return "anthropic"
-        return "responses" if self.responses_api else "chat"
+            return Api.ANTHROPIC
+        return Api.RESPONSES if self.responses_api else Api.CHAT
 
     @property
     def compaction_max_tokens(self) -> int:
