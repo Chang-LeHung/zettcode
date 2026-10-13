@@ -17,6 +17,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ..app.commands import Command, CommandHandler, CommandList, CommandProvider
+from ..providers import Provider
 from .state import UiRow, UiSegment
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay lazy
@@ -129,6 +130,7 @@ class PluginContainer:
         self.workspace = config.workspace
         self._command_providers: list[CommandProvider] = []
         self._mentions: list[MentionProvider] = []
+        self._providers: list[Provider] = []
         self._slots = UiSlots()
 
     @property
@@ -150,6 +152,11 @@ class PluginContainer:
     def mentions(self) -> tuple[MentionProvider, ...]:
         """Return the ``@`` resource providers registered so far."""
         return tuple(self._mentions)
+
+    @property
+    def providers(self) -> tuple[Provider, ...]:
+        """Return the model providers registered so far, in registration order."""
+        return tuple(self._providers)
 
     @property
     def rows(self) -> tuple[UiRow, ...]:
@@ -265,6 +272,31 @@ class PluginContainer:
             if command.name in registered:
                 raise ValueError(f"Command already registered: {command.name}")
         self._command_providers.append(provider)
+        return provider
+
+    def register_provider(self, provider: Provider) -> Provider:
+        """Describe a host models can be reached at, so ``/config`` offers it.
+
+        A provider is an address and a protocol; the reader brings the token and the model id. It
+        appears in the ``/config`` picker beside the built-in ones and ``/config add <name>``
+        takes it. Nothing is called or connected to: this only describes a host.
+
+        Args:
+            provider: The host. Its ``name`` must be unique across the application, because it is
+                what ``/config add`` is typed with.
+
+        Returns:
+            The registered provider, in case the plugin wants to keep it.
+
+        Raises:
+            ValueError: When the name is already registered by this plugin, or is one of the
+                built-in providers'.
+        """
+        if not isinstance(provider, Provider):
+            raise ValueError("A provider must be a zettcode.providers.Provider")
+        if provider.name in {existing.name for existing in self._providers}:
+            raise ValueError(f"Provider already registered: {provider.name}")
+        self._providers.append(provider)
         return provider
 
     def register_mention(self, provider: MentionProvider) -> MentionProvider:
