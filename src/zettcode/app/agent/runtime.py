@@ -15,7 +15,7 @@ import asyncio
 import os
 import platform
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, TypeAlias
@@ -502,7 +502,12 @@ class ZettCodeRuntime:
     def use_model(self, name: str | ModelConfig) -> ModelConfig:
         """Select a configured model for subsequent requests without changing sessions."""
         if isinstance(name, ModelConfig):
-            chosen = next((entry for entry in self.config.models if entry is name), None)
+            # The very entry first, so two entries that hold the same settings stay two choices; an
+            # equal one is accepted too, because a model read back from the config file is a new
+            # object holding what the session's entry holds, and is the same model to a reader.
+            chosen = next((entry for entry in self.config.models if entry is name), None) or next(
+                (entry for entry in self.config.models if entry == name), None
+            )
             if chosen is None:
                 raise ValueError("Unknown model selection")
         else:
@@ -522,6 +527,34 @@ class ZettCodeRuntime:
         self.compaction.max_tokens = chosen.compaction_max_tokens
         self.compaction.keep_recent_tokens = chosen.compaction_keep_tokens
         return chosen
+
+    def replace_models(self, models: tuple[ModelConfig, ...]) -> ModelConfig:
+        """Adopt a new list of models in this running session, keeping the one in use if it is still there.
+
+        This is what ``/config`` calls after it has written the file: the entries a reader added or
+        removed take effect without a restart, and the model a conversation is using is not
+        changed under it unless it was the one removed. An entry is the same entry when it is equal
+        by value — what is read back from the file is a new object holding the same settings — and
+        the one in use is looked for that way. When it is not there — it was removed, or it was the
+        entry that was edited — the entry now at its old place takes over: the edited one stays in
+        use, and a removed one is replaced by its neighbour rather than by whichever came first.
+
+        Args:
+            models: The configured models, in file order; must not be empty.
+
+        Returns:
+            The model in use afterwards, which is the previous one unless it was removed.
+        """
+        if not models:
+            raise ValueError("At least one model must stay configured")
+        previous = self.active_model
+        old = self.config.models
+        place = old.index(previous) if previous in old else 0
+        self.config = replace(self.config, models=models)
+        # The adapters already built stay in the cache even for an entry that is gone: the cache is
+        # what shutdown walks to close each client, so dropping one here would leak its connection.
+        chosen = next((entry for entry in models if entry == previous), models[min(place, len(models) - 1)])
+        return self.use_model(chosen)
 
     def new_session(self) -> str:
         """Switch future requests to a fresh session identity."""

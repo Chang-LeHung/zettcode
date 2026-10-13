@@ -61,6 +61,7 @@ from .commands import ShellCommands
 from .followups import FollowUp, FollowUpsMixin
 from .keys import KeysMixin
 from .notices import NoticesMixin
+from .providers import ConfigMixin
 from .rows import RowsMixin
 from .sessions import SessionMixin
 from .settings import SettingsMixin
@@ -77,7 +78,9 @@ from .widgets import (
 )
 
 
-class ZettCodeApp(RowsMixin, KeysMixin, FollowUpsMixin, NoticesMixin, SessionMixin, SettingsMixin, UpdateMixin):
+class ZettCodeApp(
+    RowsMixin, KeysMixin, FollowUpsMixin, NoticesMixin, SessionMixin, SettingsMixin, ConfigMixin, UpdateMixin
+):
     """Own the application agent, widget tree, keymap, and slash commands."""
 
     def __init__(self, agent: ZettCodeAgent, *, theme: Theme = DARK, auto_theme: bool = True) -> None:
