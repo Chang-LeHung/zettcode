@@ -72,6 +72,7 @@ class ShellCommands(CommandProvider):
             Command("/help", "show the commands and the keys", "app", self.help),
             Command("/resume", "resume a session: /resume [id]", "app", self.resume),
             Command("/model", "choose a model", "app", self.model),
+            Command("/config", "add, change or remove models: /config [add|remove|list|providers]", "app", self.config),
             Command("/theme", "choose the palette (or /theme dark|light)", "app", self.theme),
             Command("/fork", "carry this conversation into a new session", "app", self.fork),
             Command("/context", "what is filling the context window", "app", self.context),
@@ -107,6 +108,31 @@ class ShellCommands(CommandProvider):
             return CommandResult(relayout=True)
         page = ModelPage(self.shell.agent, on_select=self.shell.select_model, on_cancel=self.shell.close_page)
         return CommandResult(widget=self._panel(page))
+
+    async def config(self, context: CommandContext) -> CommandResult:
+        """Open the model list, or act on it from one line.
+
+        With nothing after it the command opens the panel, which asks one question at a time and
+        is the way to type a token without it being echoed. The words after it do the same job
+        on one line: ``add`` takes a provider and whatever of its settings the line gives, and
+        asks for the rest; ``remove`` takes a number or a name; ``list`` and ``providers`` only
+        show. A refusal — a bad address, a file that cannot be edited — is the command's error and
+        nothing is written.
+        """
+        word, _, rest = context.argument.partition(" ")
+        shell = self.shell
+        if not word:
+            return CommandResult(widget=shell.config_page())
+        if word == "list":
+            return CommandResult(message=shell.config_listing())
+        if word == "providers":
+            return CommandResult(message=shell.config_providers_listing())
+        if word == "add":
+            done = shell.config_add_from_line(rest)
+            return CommandResult(notification=done, relayout=True) if done else CommandResult()
+        if word == "remove":
+            return CommandResult(notification=shell.config_remove_from_line(rest), relayout=True)
+        raise ValueError("Usage: /config [add <provider> ... | remove <number|name> | list | providers]")
 
     async def resume(self, context: CommandContext) -> CommandResult:
         """Open the stored sessions, or resume the one named in the argument.

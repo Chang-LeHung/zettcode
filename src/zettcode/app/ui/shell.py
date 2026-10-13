@@ -50,6 +50,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
     import asyncio
     from collections.abc import Sequence
 
+    from ...config import ModelConfig
     from ...plugins import Activity, UiRow
     from ...tui import CompletionPopup, StatusBar, TuiApp
     from ...update import UpdateState
@@ -142,6 +143,10 @@ class ShellState:
 
     def close_page(self) -> None:
         """Close the page a command presented."""
+
+    def change_model(self, name: ModelConfig | str) -> ModelConfig:
+        """Switch models and announce the change in the transcript."""
+        raise NotImplementedError
 
     async def resume_session(self, session_id: str) -> None:
         """Restore a stored session behind the interface rather than in front of it."""

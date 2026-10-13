@@ -8,6 +8,7 @@ agent is where the shell asks for everything the runtime loaded.
 from __future__ import annotations
 
 from ....plugins import UiRow
+from ....providers import BUILTIN_PROVIDERS, Provider, merge_providers
 from ...commands import Command, CommandContext, CommandResult
 from ..dialogue.mentions import MentionProvider
 from .exports import ExportsMixin
@@ -43,6 +44,11 @@ class CommandsMixin(ExportsMixin):
     def plugin_mentions(self) -> tuple[MentionProvider, ...]:
         """Return the ``@`` resource providers the installed plugins registered."""
         return self.runtime.plugins.mentions
+
+    @property
+    def providers(self) -> tuple[Provider, ...]:
+        """Return the hosts ``/config`` can offer: the built-in ones, then the plugins' own."""
+        return merge_providers(BUILTIN_PROVIDERS, self.runtime.plugins.providers)
 
     @property
     def plugin_failures(self) -> tuple[str, ...]:

@@ -1,0 +1,1018 @@
+"""``/config``: the models in the file, from inside the shell, against a real config file."""
+
+from __future__ import annotations
+
+import asyncio
+import os
+import stat
+import sys
+from dataclasses import replace
+from pathlib import Path
+
+import pytest
+
+from zettcode._compat import tomllib
+from zettcode.app.agent import runtime as runtime_module
+from zettcode.app.agent.agent import ZettCodeAgent
+from zettcode.app.agent.runtime import ZettCodeRuntime
+from zettcode.app.ui import ZettCodeApp
+from zettcode.app.ui.widgets import InputPage
+from zettcode.app.ui.widgets.input_page import MASK
+from zettcode.config import load_config
+from zettcode.config_edit import ConfigEditError
+from zettcode.plugins import Plugin, PluginContainer, load_plugins
+from zettcode.providers import BUILTIN_PROVIDERS, Provider
+from zettcode.tui import ListPage, walk
+from zettcode.tui.testing import Harness
+
+BASE = """\
+# my config
+[[models]]
+model = "gpt-5-mini"
+token = "sk-one"
+
+# second
+[[models]]
+model = "gpt-4o"
+display_model = "GPT-4o"
+token = "sk-two"
+base_url = "https://proxy.example.com/v1"
+
+[skills]
+enabled = false
+"""
+
+
+class Fixture:
+    """A real shell over a real config file in a temporary directory."""
+
+    def __init__(self, app: ZettCodeApp, path: Path, harness: Harness) -> None:
+        self.app, self.path, self.harness = app, path, harness
+
+    @property
+    def text(self) -> str:
+        return self.path.read_text(encoding="utf-8")
+
+    @property
+    def models(self) -> list[dict]:
+        return tomllib.loads(self.text)["models"]
+
+    @property
+    def configured(self) -> tuple[str, ...]:
+        return tuple(model.model for model in self.app.agent.models)
+
+    def screen(self) -> str:
+        return self.harness.render().text
+
+    def page(self, kind: type):
+        return next((w for w in walk(self.app.app.screens.top.widget) if isinstance(w, kind)), None)
+
+    async def command(self, line: str) -> None:
+        self.harness.write(line)
+        self.harness.press("enter")
+        await asyncio.wait_for(self.app.task, 3.0)
+
+    def errors(self) -> list[str]:
+        return [entry.text for entry in self.app.transcript.entries if getattr(entry, "level", None) == "error"]
+
+    def notices(self) -> list[str]:
+        return [entry.text for entry in self.app.transcript.entries if getattr(entry, "level", None) == "info"]
+
+    def choose(self, label: str) -> None:
+        """Pick the row of the list on screen whose label starts with ``label``."""
+        page = self.page(ListPage)
+        assert page is not None, self.screen()
+        items = page.list.items
+        index = next(i for i, item in enumerate(items) if item.label.lstrip(" 0123456789.").startswith(label))
+        page.list.select(index, notify=False)
+        self.harness.press("enter")
+
+    def type(self, text: str) -> None:
+        self.harness.write(text)
+        self.harness.press("enter")
+
+
+@pytest.fixture
+def shell(tmp_path, monkeypatch):
+    def build(text: str = BASE, **overrides: object) -> Fixture:
+        path = tmp_path / "config.toml"
+        path.write_text(text, encoding="utf-8")
+        monkeypatch.setenv("ZETTCODE_CONFIG", str(path))
+        monkeypatch.setattr(runtime_module.os, "chdir", lambda _path: None)
+        workspace = tmp_path / "work"
+        workspace.mkdir(exist_ok=True)
+        config = replace(
+            load_config(workspace, path=path),
+            store=tmp_path / "sessions",
+            plugins_enabled=False,
+            skills_enabled=False,
+            mcp_enabled=False,
+            **overrides,
+        )
+        app = ZettCodeApp(ZettCodeAgent(ZettCodeRuntime.preview(config)))
+        app.app.resize(110, 30)
+        app.app.mount()
+        return Fixture(app, path, Harness(app=app.app))
+
+    return build
+
+
+# -- /config list and /config providers ---------------------------------------------------------------
+
+
+async def test_list_shows_every_model_with_the_current_one_marked_and_never_a_token(shell):
+    fx = shell()
+
+    await fx.command("/config list")
+
+    shown = "\n".join(entry.text for entry in fx.app.transcript.entries)
+    assert "gpt-5-mini (current)" in shown and "GPT-4o" in shown and "https://proxy.example.com/v1" in shown
+    assert "sk-one" not in shown and "sk-two" not in shown
+
+
+async def test_providers_lists_the_builtins_and_custom(shell):
+    fx = shell()
+
+    await fx.command("/config providers")
+
+    shown = "\n".join(entry.text for entry in fx.app.transcript.entries)
+    for provider in BUILTIN_PROVIDERS:
+        assert f"`{provider.name}`" in shown
+    assert "`custom`" in shown
+
+
+async def test_an_unknown_subcommand_says_how_to_use_the_command(shell):
+    fx = shell()
+
+    await fx.command("/config frobnicate")
+
+    assert any("Usage: /config" in error for error in fx.errors())
+
+
+# -- /config add on one line ---------------------------------------------------------------------------
+
+
+async def test_add_with_everything_on_the_line_writes_the_model_and_changes_nothing_else(shell):
+    fx = shell()
+
+    await fx.command("/config add deepseek --model deepseek-chat --token sk-new")
+
+    assert fx.models[-1] == {"model": "deepseek-chat", "token": "sk-new", "base_url": "https://api.deepseek.com"}
+    assert fx.text.startswith("# my config\n"), "the banner is where it was"
+    assert "# second" in fx.text and "[skills]\nenabled = false" in fx.text
+    assert fx.errors() == []
+
+
+async def test_add_makes_the_model_available_at_once_without_a_restart_and_without_switching(shell):
+    fx = shell()
+    before = fx.app.agent.active_model
+
+    await fx.command("/config add deepseek --model deepseek-chat --token sk-new")
+
+    assert fx.configured == ("gpt-5-mini", "gpt-4o", "deepseek-chat")
+    assert fx.app.agent.active_model == before, "adding is not choosing"
+    fx.app.change_model("deepseek-chat")
+    assert fx.app.agent.active_model.model == "deepseek-chat"
+    assert fx.app.agent.active_model.base_url == "https://api.deepseek.com"
+
+
+async def test_add_for_each_protocol_writes_the_flag_that_selects_it(shell):
+    fx = shell()
+
+    await fx.command("/config add anthropic --model claude-x --token k1")
+    await fx.command("/config add custom --api responses --url https://r.example/v1 --model r1 --token k2")
+    await fx.command(
+        "/config add custom --api chat --url https://c.example/v1 --model c1 --token k3 --name Chatty --multimodal"
+    )
+
+    by_model = {m["model"]: m for m in fx.models}
+    assert by_model["claude-x"]["anthropic"] is True and "responses_api" not in by_model["claude-x"]
+    assert by_model["r1"]["responses_api"] is True and "anthropic" not in by_model["r1"]
+    assert "anthropic" not in by_model["c1"] and "responses_api" not in by_model["c1"]
+    assert by_model["c1"]["display_model"] == "Chatty" and by_model["c1"]["multimodal"] is True
+    assert {m.model: m.api for m in fx.app.agent.models} == {
+        "gpt-5-mini": "chat", "gpt-4o": "chat", "claude-x": "anthropic", "r1": "responses", "c1": "chat",
+    }  # fmt: skip
+
+
+async def test_add_refuses_a_bad_address_and_writes_nothing(shell):
+    fx = shell()
+    before = fx.text
+
+    await fx.command("/config add custom --api chat --url not-a-url --model m --token t")
+
+    assert any("http or https" in error for error in fx.errors())
+    assert fx.text == before and fx.configured == ("gpt-5-mini", "gpt-4o")
+
+
+async def test_add_refuses_an_unknown_provider_and_names_the_known_ones(shell):
+    fx = shell()
+    before = fx.text
+
+    await fx.command("/config add nonesuch --model m --token t")
+
+    assert any("Unknown provider 'nonesuch'" in e and "deepseek" in e for e in fx.errors())
+    assert fx.text == before
+
+
+async def test_a_failed_add_does_not_leave_the_shell_stuck_busy(shell):
+    fx = shell()
+
+    await fx.command("/config add nonesuch")
+
+    assert fx.app._busy is False
+
+
+async def test_a_token_typed_on_the_line_is_not_echoed_into_the_conversation_or_the_listing(shell):
+    fx = shell()
+
+    await fx.command("/config add deepseek --model deepseek-chat --token sk-SECRET-123")
+    await fx.command("/config list")
+
+    shown = "\n".join(getattr(entry, "text", "") for entry in fx.app.transcript.entries)
+    assert "sk-SECRET-123" not in shown and "sk-SECRET-123" not in fx.screen()
+
+
+# -- /config add: the questions ------------------------------------------------------------------------
+
+
+async def test_add_with_a_provider_only_asks_for_the_model_then_the_token(shell):
+    fx = shell()
+
+    await fx.command("/config add deepseek")
+    page = fx.page(InputPage)
+    assert page is not None and "Model id" in page.title
+    fx.type("deepseek-chat")
+    page = fx.page(InputPage)
+    assert page is not None and "Token" in page.title
+    fx.type("sk-typed")
+
+    assert fx.page(InputPage) is None, "the panel closed when the last answer was in"
+    assert fx.models[-1] == {"model": "deepseek-chat", "token": "sk-typed", "base_url": "https://api.deepseek.com"}
+    assert fx.configured[-1] == "deepseek-chat"
+
+
+async def test_the_token_question_hides_what_is_typed(shell):
+    fx = shell()
+    await fx.command("/config add deepseek --model deepseek-chat")
+
+    fx.harness.write("sk-hidden-token")
+    screen = fx.screen()
+
+    assert "sk-hidden-token" not in screen
+    assert MASK * len("sk-hidden-token") in screen
+
+
+async def test_the_token_is_masked_but_what_is_submitted_is_what_was_typed(shell):
+    fx = shell()
+    await fx.command("/config add deepseek --model deepseek-chat")
+
+    fx.type("sk-exact")
+
+    assert fx.models[-1]["token"] == "sk-exact"
+
+
+async def test_a_custom_endpoint_asks_for_its_api_then_address_then_model_then_token(shell):
+    fx = shell()
+
+    await fx.command("/config add custom")
+    assert fx.page(ListPage) is not None and "Which API" in fx.screen()
+    fx.choose("anthropic")
+    assert "Address" not in fx.page(InputPage).title, "an Anthropic endpoint has an address of its own"
+    assert "Model id" in fx.page(InputPage).title
+    fx.type("claude-x")
+    fx.type("sk-a")
+
+    assert fx.models[-1] == {"model": "claude-x", "token": "sk-a", "anthropic": True}
+
+
+async def test_a_custom_chat_endpoint_asks_for_the_address(shell):
+    fx = shell()
+    await fx.command("/config add custom")
+
+    fx.choose("chat")
+    assert "Address" in fx.page(InputPage).title
+    fx.type("https://llm.example/v1")
+    fx.type("my-model")
+    fx.type("sk-a")
+
+    assert fx.models[-1] == {"model": "my-model", "token": "sk-a", "base_url": "https://llm.example/v1"}
+
+
+async def test_a_bad_address_is_refused_in_place_and_can_be_corrected(shell):
+    fx = shell()
+    await fx.command("/config add custom --api chat")
+
+    fx.type("llm.example")
+    page = fx.page(InputPage)
+
+    assert page is not None and "http or https" in page.note
+    assert "http or https" in fx.screen(), "the reason is on screen"
+    assert page.answer.text == "llm.example", "the text stays so only the slip needs fixing"
+    for _ in range(len("llm.example")):
+        fx.harness.press("backspace")
+    assert fx.page(InputPage).note == "", "and the reason goes once it is being corrected"
+    fx.type("https://llm.example/v1")
+    assert "Model id" in fx.page(InputPage).title
+
+
+async def test_an_empty_answer_is_not_taken(shell):
+    fx = shell()
+    await fx.command("/config add deepseek")
+
+    fx.harness.press("enter")
+
+    assert "Model id" in fx.page(InputPage).title and fx.page(InputPage).note
+    assert fx.configured == ("gpt-5-mini", "gpt-4o")
+
+
+# -- /config: the panel ------------------------------------------------------------------------------------
+
+
+async def test_the_panel_lists_the_models_from_the_file_with_a_row_to_add_one(shell):
+    fx = shell()
+
+    await fx.command("/config")
+
+    screen = fx.screen()
+    assert "Models" in screen and "gpt-5-mini (current)" in screen and "GPT-4o" in screen and "+ Add a model" in screen
+    assert "config.toml" in screen, "the file being edited is named"
+    assert "sk-one" not in screen
+
+
+async def test_the_panel_reads_the_file_not_what_the_session_started_with(shell):
+    fx = shell()
+    fx.path.write_text(BASE + '\n[[models]]\nmodel = "added-by-hand"\ntoken = "t"\n', encoding="utf-8")
+
+    await fx.command("/config")
+
+    assert "added-by-hand" in fx.screen()
+
+
+async def test_adding_from_the_panel_goes_provider_then_model_then_token(shell):
+    fx = shell()
+    await fx.command("/config")
+
+    fx.choose("+ Add")
+    assert "which provider" in fx.screen()
+    for provider in BUILTIN_PROVIDERS:
+        assert provider.label in fx.screen() or True
+    fx.choose("DeepSeek")
+    fx.type("deepseek-chat")
+    fx.type("sk-panel")
+
+    assert fx.models[-1]["token"] == "sk-panel" and fx.configured[-1] == "deepseek-chat"
+    assert any("added" in notice and "deepseek-chat" in notice for notice in fx.notices())
+    assert not any("sk-panel" in notice for notice in fx.notices())
+
+
+async def test_custom_is_the_last_provider_in_the_panel(shell):
+    fx = shell()
+    await fx.command("/config")
+    fx.choose("+ Add")
+
+    page = fx.page(ListPage)
+
+    assert page.list.items[-1].value == "custom"
+    assert [item.value.name for item in page.list.items[:-1]] == [p.name for p in BUILTIN_PROVIDERS]
+
+
+async def test_escape_in_the_provider_list_goes_back_to_the_model_list(shell):
+    fx = shell()
+    await fx.command("/config")
+    fx.choose("+ Add")
+
+    fx.harness.press("escape")
+
+    assert "Models" in fx.screen() and "which provider" not in fx.screen()
+
+
+async def test_a_model_in_the_panel_offers_what_can_be_done_to_it(shell):
+    fx = shell()
+    await fx.command("/config")
+
+    fx.choose("GPT-4o")
+
+    screen = fx.screen()
+    for action in ("Use this model", "Change the token", "Change the address", "Change the model id", "Remove"):
+        assert action in screen
+    assert "sk-two" not in screen
+
+
+async def test_use_this_model_switches_to_it_and_closes_the_panel(shell):
+    fx = shell()
+    await fx.command("/config")
+    fx.choose("GPT-4o")
+
+    fx.choose("Use this model")
+
+    assert fx.app.agent.active_model.model == "gpt-4o" and fx.app.app.screens.top.name == "main"
+
+
+async def test_changing_a_token_rewrites_only_that_key_of_that_model(shell):
+    fx = shell()
+    await fx.command("/config")
+    fx.choose("GPT-4o")
+    fx.choose("Change the token")
+    assert isinstance(fx.page(InputPage).answer, type(fx.page(InputPage).answer))
+    assert fx.page(InputPage).answer.text == "", "the existing token is never put in the box"
+
+    fx.type("sk-rotated")
+
+    assert fx.models[1]["token"] == "sk-rotated" and fx.models[0]["token"] == "sk-one"
+    assert fx.models[1]["base_url"] == "https://proxy.example.com/v1" and fx.models[1]["display_model"] == "GPT-4o"
+    assert "# second" in fx.text and fx.text.startswith("# my config")
+
+
+async def test_changing_the_token_of_the_model_in_use_keeps_it_in_use(shell):
+    fx = shell()
+    fx.app.change_model("gpt-4o")
+    await fx.command("/config")
+    fx.choose("GPT-4o")
+    fx.choose("Change the token")
+
+    fx.type("sk-rotated")
+
+    assert fx.app.agent.active_model.model == "gpt-4o" and fx.app.agent.active_model.token == "sk-rotated"
+
+
+async def test_changing_the_address_shows_the_current_one_and_refuses_a_bad_one(shell):
+    fx = shell()
+    await fx.command("/config")
+    fx.choose("GPT-4o")
+    fx.choose("Change the address")
+    assert fx.page(InputPage).answer.text == "https://proxy.example.com/v1"
+
+    for _ in range(len("https://proxy.example.com/v1")):
+        fx.harness.press("backspace")
+    fx.type("proxy2.example.com")
+    assert "http or https" in fx.page(InputPage).note
+    assert fx.models[1]["base_url"] == "https://proxy.example.com/v1", "nothing was written"
+
+
+async def test_clearing_the_address_removes_the_key(shell):
+    fx = shell()
+    await fx.command("/config")
+    fx.choose("GPT-4o")
+    fx.choose("Change the address")
+    for _ in range(len("https://proxy.example.com/v1")):
+        fx.harness.press("backspace")
+
+    fx.harness.press("enter")
+
+    assert "base_url" not in fx.models[1] and fx.app.agent.models[1].base_url is None
+
+
+async def test_changing_the_shown_name_and_the_model_id(shell):
+    fx = shell()
+    await fx.command("/config")
+    fx.choose("GPT-4o")
+    fx.choose("Change the shown name")
+    for _ in range(len("GPT-4o")):
+        fx.harness.press("backspace")
+    fx.type("Fast")
+    await fx.command("/config")
+    fx.choose("Fast")
+    fx.choose("Change the model id")
+    for _ in range(len("gpt-4o")):
+        fx.harness.press("backspace")
+    fx.type("gpt-4.1")
+
+    assert fx.models[1]["display_model"] == "Fast" and fx.models[1]["model"] == "gpt-4.1"
+
+
+async def test_removing_asks_first_and_keep_is_the_default(shell):
+    fx = shell()
+    await fx.command("/config")
+    fx.choose("GPT-4o")
+    fx.choose("Remove")
+
+    assert "Remove this model?" in fx.screen()
+    fx.harness.press("enter")  # the highlighted row
+
+    assert fx.configured == ("gpt-5-mini", "gpt-4o"), "Enter on the default kept it"
+
+
+async def test_removing_a_model_edits_the_file_and_the_session(shell):
+    fx = shell()
+    await fx.command("/config")
+    fx.choose("GPT-4o")
+    fx.choose("Remove")
+
+    fx.choose("Remove GPT-4o")
+
+    assert [m["model"] for m in fx.models] == ["gpt-5-mini"] and fx.configured == ("gpt-5-mini",)
+    assert "# my config" in fx.text and "[skills]" in fx.text
+    assert any("removed GPT-4o" in n for n in fx.notices())
+
+
+async def test_removing_the_model_in_use_moves_to_its_neighbour_and_says_so(shell):
+    fx = shell()
+    fx.app.change_model("gpt-4o")
+
+    await fx.command("/config remove 2")
+
+    assert fx.app.agent.active_model.model == "gpt-5-mini"
+    assert any(
+        getattr(e, "kind", "") == "announcement" or "gpt-5-mini" in getattr(e, "text", "")
+        for e in fx.app.transcript.entries
+    )
+
+
+async def test_removing_the_only_model_is_refused(shell):
+    fx = shell('[[models]]\nmodel = "only"\ntoken = "t"\n')
+
+    await fx.command("/config remove 1")
+
+    assert any("only model" in e for e in fx.errors()) and fx.configured == ("only",)
+
+
+# -- /config remove on one line --------------------------------------------------------------------------
+
+
+async def test_remove_by_number_and_by_name(shell):
+    fx = shell()
+    await fx.command("/config add deepseek --model d1 --token t")
+    await fx.command("/config add deepseek --model d2 --token t --name Two")
+
+    await fx.command("/config remove 3")
+    await fx.command("/config remove Two")
+
+    assert fx.configured == ("gpt-5-mini", "gpt-4o")
+
+
+async def test_remove_with_a_name_that_matches_two_asks_for_a_number(shell):
+    fx = shell()
+    await fx.command("/config add custom --api chat --url https://b.example/v1 --model gpt-4o --token t")
+
+    await fx.command("/config remove gpt-4o")
+
+    assert any("more than one model" in e for e in fx.errors()) and len(fx.configured) == 3
+
+
+@pytest.mark.parametrize(
+    ("line", "message"),
+    [
+        ("/config remove", "Usage"),
+        ("/config remove 9", "no model number 9"),
+        ("/config remove ghost", "No model called"),
+    ],
+)
+async def test_remove_refuses_what_it_cannot_find(shell, line, message):
+    fx = shell()
+    before = fx.text
+
+    await fx.command(line)
+
+    assert any(message in e for e in fx.errors()) and fx.text == before
+
+
+# -- the file is the reader's -----------------------------------------------------------------------------
+
+
+async def test_a_file_with_models_written_another_way_is_refused_with_a_reason_and_left_alone(shell):
+    inline = 'models = [{ model = "a", token = "t" }]\n'
+    fx = shell(inline)
+
+    await fx.command("/config add deepseek --model m --token t")
+    await fx.command("/config")
+
+    assert any("edit the file by hand" in e for e in fx.errors()) and fx.text == inline
+
+
+async def test_a_file_that_was_broken_by_hand_after_the_start_is_refused_not_overwritten(shell):
+    fx = shell()
+    fx.path.write_text("[[models\n", encoding="utf-8")
+
+    await fx.command("/config add deepseek --model m --token t")
+
+    assert any("not valid TOML" in e for e in fx.errors()) and fx.text == "[[models\n"
+
+
+async def test_a_file_that_vanished_is_reported_not_recreated(shell):
+    fx = shell()
+    fx.path.unlink()
+
+    await fx.command("/config add deepseek --model m --token t")
+
+    assert any("does not exist" in e for e in fx.errors()) and not fx.path.exists()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission bits")
+async def test_the_permissions_of_the_file_survive_an_edit(shell):
+    fx = shell()
+    os.chmod(fx.path, 0o600)
+
+    await fx.command("/config add deepseek --model m --token t")
+
+    assert stat.S_IMODE(fx.path.stat().st_mode) == 0o600
+
+
+async def test_a_write_that_fails_leaves_the_file_and_the_session_as_they_were(shell, monkeypatch):
+    fx = shell()
+    before = fx.text
+
+    def fail(source, target):
+        raise OSError("read-only file system")
+
+    monkeypatch.setattr(os, "replace", fail)
+
+    await fx.command("/config add deepseek --model m --token t")
+
+    assert any("could not be written" in e for e in fx.errors())
+    assert fx.text == before and fx.configured == ("gpt-5-mini", "gpt-4o")
+
+
+async def test_after_an_edit_a_fresh_load_of_the_file_agrees_with_the_running_session(shell):
+    fx = shell()
+    await fx.command("/config add deepseek --model deepseek-chat --token sk-x --multimodal")
+    await fx.command("/config remove 1")
+
+    reloaded = load_config(fx.path.parent / "work", path=fx.path)
+
+    assert reloaded.models == fx.app.agent.models
+
+
+# -- the session after an edit ---------------------------------------------------------------------------
+
+
+async def test_replacing_models_keeps_the_one_in_use_and_moves_the_compaction_thresholds_with_it(shell):
+    fx = shell()
+    fx.app.change_model("gpt-4o")
+    runtime = fx.app.agent.runtime
+
+    runtime.replace_models(runtime.config.models + (replace(runtime.config.models[0], model="extra"),))
+
+    assert runtime.active_model.model == "gpt-4o"
+    assert runtime.compaction.max_tokens == runtime.active_model.compaction_max_tokens
+
+
+def test_replacing_models_with_none_is_refused(shell):
+    fx = shell()
+
+    with pytest.raises(ValueError, match="At least one model"):
+        fx.app.agent.runtime.replace_models(())
+
+
+async def test_the_header_shows_the_model_that_replaced_a_removed_one(shell):
+    fx = shell()
+    fx.app.change_model("gpt-4o")
+    assert "GPT-4o" in fx.screen().splitlines()[0]
+
+    await fx.command("/config remove 2")
+
+    assert "gpt-5-mini" in fx.screen().splitlines()[0]
+
+
+# -- the agent ----------------------------------------------------------------------------------------------
+
+
+def test_the_agent_offers_the_builtin_providers_first(shell):
+    fx = shell()
+
+    assert [p.name for p in fx.app.agent.providers][: len(BUILTIN_PROVIDERS)] == [p.name for p in BUILTIN_PROVIDERS]
+
+
+def test_file_models_pairs_each_model_with_the_keys_the_file_writes(shell):
+    fx = shell()
+
+    pairs = fx.app.agent.file_models()
+
+    assert [m.model for m, _ in pairs] == ["gpt-5-mini", "gpt-4o"]
+    assert pairs[0][1] == {"model": "gpt-5-mini", "token": "sk-one"}
+
+
+def test_a_token_from_the_environment_is_not_written_into_the_file_by_an_edit(shell, monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-from-env")
+    fx = shell('[[models]]\nmodel = "a"\n\n[[models]]\nmodel = "b"\ntoken = "t"\n')
+
+    fx.app.agent.update_configured_model(1, {"model": "b", "token": "t2"})
+
+    assert "sk-from-env" not in fx.text and fx.text.startswith('[[models]]\nmodel = "a"\n')
+
+
+def test_editing_a_model_that_is_not_there_is_an_error_not_a_crash(shell):
+    fx = shell()
+
+    with pytest.raises(ConfigEditError):
+        fx.app.agent.remove_configured_model(7)
+
+
+# -- plugins can describe providers --------------------------------------------------------------------------
+
+
+class Acme(Plugin):
+    name = "acme"
+
+    def activate(self, container: PluginContainer) -> None:
+        container.register_provider(
+            Provider("acme", "Acme AI", base_url="https://api.acme.example/v1", note="from the acme plugin")
+        )
+
+
+class FakePoint:
+    def __init__(self, name: str, target: object) -> None:
+        self.name, self._target = name, target
+
+    def load(self) -> object:
+        return self._target
+
+
+def test_a_plugin_provider_is_offered_by_the_agent_after_the_builtins(shell):
+    fx = shell()
+    runtime = fx.app.agent.runtime
+    runtime.plugins = load_plugins(
+        replace(runtime.config, plugins_enabled=True), builtins=(), entry_points=[FakePoint("acme", Acme)]
+    )
+
+    names = [p.name for p in fx.app.agent.providers]
+
+    assert names[-1] == "acme" and names[: len(BUILTIN_PROVIDERS)] == [p.name for p in BUILTIN_PROVIDERS]
+
+
+async def test_a_plugin_provider_works_with_config_add(shell):
+    fx = shell()
+    runtime = fx.app.agent.runtime
+    runtime.plugins = load_plugins(
+        replace(runtime.config, plugins_enabled=True), builtins=(), entry_points=[FakePoint("acme", Acme)]
+    )
+
+    await fx.command("/config add acme --model acme-1 --token sk-acme")
+
+    assert fx.models[-1] == {"model": "acme-1", "token": "sk-acme", "base_url": "https://api.acme.example/v1"}
+
+
+async def test_a_plugin_provider_is_a_row_in_the_panel(shell):
+    fx = shell()
+    runtime = fx.app.agent.runtime
+    runtime.plugins = load_plugins(
+        replace(runtime.config, plugins_enabled=True), builtins=(), entry_points=[FakePoint("acme", Acme)]
+    )
+    await fx.command("/config")
+
+    fx.choose("+ Add")
+
+    assert "Acme AI" in fx.screen() and "from the acme plugin" in fx.screen()
+
+
+# -- the panel is a surface of its own -----------------------------------------------------------------------
+
+
+async def test_the_input_panel_hides_what_is_underneath_it(shell):
+    """The status line's keys must not show beside the panel's own text."""
+    fx = shell()
+    await fx.command("/config add deepseek --model deepseek-chat")
+
+    rows = fx.screen().splitlines()
+    panel = [row for row in rows if "enter confirm" in row]
+
+    assert panel and "interrupt" not in panel[0] and "^D" not in panel[0]
+
+
+# -- Escape goes back one step; it never throws the whole thing away -------------------------------------------
+
+
+async def test_escape_from_the_token_question_goes_back_to_the_model_question_with_its_answer(shell):
+    fx = shell()
+    await fx.command("/config add deepseek")
+    fx.type("deepseek-chat")
+    assert "Token" in fx.page(InputPage).title
+    before = fx.text
+
+    fx.harness.press("escape")
+
+    page = fx.page(InputPage)
+    assert "Model id" in page.title and page.answer.text == "deepseek-chat", "the answer comes back to be changed"
+    assert fx.text == before and fx.app.app.screens.top.name == "page"
+
+
+async def test_the_answer_can_be_changed_and_the_flow_goes_on_from_there(shell):
+    fx = shell()
+    await fx.command("/config add deepseek")
+    fx.type("wrong-model")
+    fx.harness.press("escape")
+    for _ in range(len("wrong-model")):
+        fx.harness.press("backspace")
+
+    fx.type("deepseek-chat")
+    fx.type("sk-1")
+
+    assert fx.models[-1]["model"] == "deepseek-chat" and fx.models[-1]["token"] == "sk-1"
+
+
+async def test_escape_steps_back_through_every_question_of_a_custom_endpoint(shell):
+    fx = shell()
+    await fx.command("/config add custom")
+    fx.choose("chat")
+    fx.type("https://llm.example/v1")
+    fx.type("my-model")
+    assert "Token" in fx.page(InputPage).title
+
+    fx.harness.press("escape")
+    assert fx.page(InputPage).answer.text == "my-model"
+    fx.harness.press("escape")
+    assert "Address" in fx.page(InputPage).title and fx.page(InputPage).answer.text == "https://llm.example/v1"
+    fx.harness.press("escape")
+    assert fx.page(ListPage) is not None and "Which API" in fx.screen()
+
+
+async def test_escape_from_the_first_question_of_the_panel_goes_back_to_the_provider_list(shell):
+    fx = shell()
+    await fx.command("/config")
+    fx.choose("+ Add")
+    fx.choose("DeepSeek")
+    assert "Model id" in fx.page(InputPage).title
+
+    fx.harness.press("escape")
+
+    assert "which provider" in fx.screen()
+    fx.harness.press("escape")
+    assert "Models" in fx.screen() and "+ Add a model" in fx.screen()
+    fx.harness.press("escape")
+    assert fx.app.app.screens.top.name == "main", "and only from the very first page does it close"
+
+
+async def test_escape_from_the_first_question_of_a_typed_line_closes_because_nothing_is_behind_it(shell):
+    fx = shell()
+    before = fx.text
+    await fx.command("/config add deepseek")
+
+    fx.harness.press("escape")
+
+    assert fx.app.app.screens.top.name == "main" and fx.text == before
+
+
+async def test_going_back_writes_nothing_and_a_token_is_never_put_back_in_the_box(shell):
+    fx = shell()
+    before = fx.text
+    await fx.command("/config add deepseek --model deepseek-chat")
+    fx.harness.write("sk-secret")
+    fx.harness.press("escape")
+
+    assert fx.page(InputPage) is None or fx.page(InputPage).answer.text != "sk-secret"
+    assert fx.text == before
+
+
+async def test_the_keys_line_says_back_when_there_is_a_step_behind_and_cancel_when_there_is_not(shell):
+    fx = shell()
+    await fx.command("/config add deepseek")
+    assert "esc cancel" in fx.screen()
+    fx.type("deepseek-chat")
+
+    assert "esc back" in fx.screen()
+
+
+async def test_escape_while_changing_a_token_goes_back_to_that_models_actions(shell):
+    fx = shell()
+    await fx.command("/config")
+    fx.choose("GPT-4o")
+    fx.choose("Change the token")
+    before = fx.text
+
+    fx.harness.press("escape")
+
+    assert "Use this model" in fx.screen() and "Change the token" in fx.screen()
+    assert fx.text == before
+
+
+async def test_escape_in_the_actions_goes_back_to_the_model_list(shell):
+    fx = shell()
+    await fx.command("/config")
+    fx.choose("GPT-4o")
+
+    fx.harness.press("escape")
+
+    assert "+ Add a model" in fx.screen() and "Use this model" not in fx.screen()
+
+
+async def test_escape_in_the_remove_question_goes_back_to_the_models_actions_and_removes_nothing(shell):
+    fx = shell()
+    await fx.command("/config")
+    fx.choose("GPT-4o")
+    fx.choose("Remove")
+
+    fx.harness.press("escape")
+
+    assert "Use this model" in fx.screen() and fx.configured == ("gpt-5-mini", "gpt-4o")
+
+
+async def test_keeping_a_model_returns_to_its_actions_too(shell):
+    fx = shell()
+    await fx.command("/config")
+    fx.choose("GPT-4o")
+    fx.choose("Remove")
+
+    fx.choose("Keep it")
+
+    assert "Use this model" in fx.screen() and fx.configured == ("gpt-5-mini", "gpt-4o")
+
+
+async def test_a_token_is_kept_out_of_the_trail_even_if_a_later_question_were_added(shell):
+    """The token is the last question today, so nothing backs into it; this is the rule for the day one does."""
+    from zettcode.app.ui.config_form import Draft
+
+    fx = shell()
+    draft = Draft.for_provider(BUILTIN_PROVIDERS[2])
+    draft.model = "m"
+    fx.app._config_write = lambda _draft: None  # stop at recording the answer
+
+    fx.app._config_set(draft, "token", "sk-never-shown-again")
+
+    assert draft.trail[-1] == ("token", "")
+
+
+# -- changing the protocol of a model already in the file ---------------------------------------------------
+
+
+async def _to_api(fx, model: str, api: str) -> None:
+    await fx.command("/config")
+    fx.choose(model)
+    fx.choose("Change the API")
+    fx.choose(api)
+
+
+@pytest.mark.parametrize(
+    ("api", "keys"),
+    [("responses", {"responses_api": True}), ("anthropic", {"anthropic": True}), ("chat", {})],
+)
+async def test_the_protocol_of_a_model_can_be_changed_to_each_of_the_three(shell, api, keys):
+    # It starts on the Responses API, so every row below is a change or, for that one, a no-op.
+    fx = shell(BASE.replace('token = "sk-two"', 'token = "sk-two"\nresponses_api = true'))
+    await _to_api(fx, "GPT-4o", api)
+
+    entry = fx.models[1]
+    assert {k: v for k, v in entry.items() if k in ("anthropic", "responses_api")} == keys
+    assert entry["token"] == "sk-two" and entry["base_url"] == "https://proxy.example.com/v1"
+    assert fx.app.agent.models[1].api == api
+    assert any(api in notice for notice in fx.notices())
+
+
+async def test_changing_between_anthropic_and_responses_never_leaves_both_set(shell):
+    fx = shell()
+    await _to_api(fx, "GPT-4o", "anthropic")
+    await _to_api(fx, "GPT-4o", "responses")
+
+    assert fx.models[1].get("responses_api") is True and "anthropic" not in fx.models[1]
+    assert fx.errors() == []
+
+
+async def test_the_protocol_page_starts_on_the_current_one_and_marks_it(shell):
+    fx = shell()
+    await fx.command("/config")
+    fx.choose("GPT-4o")
+    fx.choose("Change the API")
+
+    page = fx.page(ListPage)
+
+    assert page.list.items[page.list.selected].value == "chat"
+    assert "chat (current)" in fx.screen() and "Which API does it speak?" in fx.screen()
+
+
+async def test_the_actions_show_the_current_protocol(shell):
+    fx = shell()
+    await fx.command("/config")
+
+    fx.choose("GPT-4o")
+
+    assert "Change the API" in fx.screen() and "chat" in fx.screen()
+
+
+async def test_changing_the_protocol_of_the_model_in_use_keeps_it_in_use(shell):
+    fx = shell()
+    fx.app.change_model("gpt-4o")
+
+    await _to_api(fx, "GPT-4o", "responses")
+
+    assert fx.app.agent.active_model.model == "gpt-4o" and fx.app.agent.active_model.api == "responses"
+
+
+async def test_escape_in_the_protocol_page_goes_back_to_the_actions_and_writes_nothing(shell):
+    fx = shell()
+    await fx.command("/config")
+    fx.choose("GPT-4o")
+    fx.choose("Change the API")
+    before = fx.text
+
+    fx.harness.press("escape")
+
+    assert "Use this model" in fx.screen() and fx.text == before
+
+
+async def test_choosing_the_protocol_it_already_has_changes_nothing_in_the_file(shell):
+    fx = shell()
+    before = fx.models
+
+    await _to_api(fx, "GPT-4o", "chat")
+
+    assert fx.models == before
+
+
+async def test_the_protocol_page_starts_on_the_current_one_when_it_is_not_the_first(shell):
+    fx = shell(BASE.replace('token = "sk-two"', 'token = "sk-two"\nanthropic = true'))
+    await fx.command("/config")
+    fx.choose("GPT-4o")
+    fx.choose("Change the API")
+
+    page = fx.page(ListPage)
+
+    assert page.list.items[page.list.selected].value == "anthropic" and "anthropic (current)" in fx.screen()

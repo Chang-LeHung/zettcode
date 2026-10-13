@@ -20,6 +20,8 @@ _EXPORTS = {
     "Composer": ".composer",
     "ContextPage": ".context_page",
     "FollowUpQueue": ".follow_up",
+    "INPUT_ROWS": ".input_page",
+    "InputPage": ".input_page",
     "LATER": ".update_page",
     "ModelPage": ".model_page",
     "SEND_KIND_ROWS": ".send_kind_page",
@@ -47,6 +49,7 @@ if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
     from .composer import Composer
     from .context_page import ContextPage
     from .follow_up import FollowUpQueue
+    from .input_page import INPUT_ROWS, InputPage
     from .model_page import ModelPage
     from .panel import bottom_panel
     from .root import ZettCodeRoot
@@ -86,6 +89,8 @@ __all__ = [
     "Composer",
     "ContextPage",
     "FollowUpQueue",
+    "INPUT_ROWS",
+    "InputPage",
     "LATER",
     "ModelPage",
     "SEND_KIND_ROWS",
