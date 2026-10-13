@@ -60,12 +60,6 @@ class FollowUpsMixin(ShellState):
             What :meth:`submit` returns: whether the draft was taken.
         """
         parts = self.composer.parts()
-        if carries_image(parts):
-            # Checked before anything is asked: neither kind takes a picture, and a question
-            # whose every answer is a refusal is worse than the refusal.
-            self.transcript.error("a message sent while a request runs takes text only")
-            self.app.invalidate()
-            return False
         if self._editing_slot is not None:
             # A message taken out to be edited goes back where it was, as what it was.
             return self._queue_follow_up(value, parts, slot=self._editing_slot)
@@ -113,8 +107,12 @@ class FollowUpsMixin(ShellState):
             self.composer.commit(value)
             return
         if kind is SendKind.STEER:
-            if self._steer_blocked() is None and self.agent.steer(value):
-                self._queue_steering(value)
+            # Text goes as it was typed. A message with pictures is built the way a turn is, and
+            # the agent reports it by the text *that* has, which is what the queue must match.
+            message = self.agent.turn(parts) if carries_image(parts) else value
+            key = message if isinstance(message, str) else message.text
+            if self._steer_blocked() is None and self.agent.steer(message):
+                self._queue_steering(value, key, parts)
                 self.composer.commit(value)
             else:
                 self._refuse_busy()
@@ -243,7 +241,7 @@ class FollowUpsMixin(ShellState):
         self._follow_up_selected = None
         self._editing_slot = index
         self._sync_follow_ups()
-        self.composer.set_text(item.text)
+        self.composer.restore(item.parts)
         self.app.request_layout()
         return True
 
@@ -282,7 +280,11 @@ class FollowUpsMixin(ShellState):
             completed: Whether the request ended by answering.
             turn: Whether it was a turn of the conversation, as opposed to a command.
         """
-        unread = list(self._steering)
+        # Each with the parts it was sent as, so a picture is not lost on the way back.
+        unread = [
+            (value, (self._steering_meta[index][1] if index < len(self._steering_meta) else ()) or (value,))
+            for index, value in enumerate(self._steering)
+        ]
         self._clear_steering()
         if completed and turn:
             self._follow_ups_held = False
@@ -290,7 +292,7 @@ class FollowUpsMixin(ShellState):
             # A request that answered normally with one still unread hands it on, ahead of
             # the follow-ups: it was sent first.
             if unread:
-                self._follow_ups[:0] = [FollowUp(text, (text,)) for text in unread]
+                self._follow_ups[:0] = [FollowUp(text, tuple(parts)) for text, parts in unread]
                 self._sync_follow_ups()
             return
         if unread:
@@ -305,11 +307,27 @@ class FollowUpsMixin(ShellState):
             noun = "follow-up is" if held == 1 else "follow-ups are"
             self.transcript.notice(f"{held} {noun} held and will be sent after your next reply completes")
 
-    def _return_to_draft(self, texts: Sequence[str], notice: str) -> None:
-        """Put messages back in the composer, after whatever is already there, and say so."""
+    def _return_to_draft(self, items: Sequence[tuple[str, Sequence[PromptPart]]], notice: str) -> None:
+        """Put messages back in the composer, after whatever is already there, and say so.
+
+        Args:
+            items: Each message as its text and the parts it was sent as.
+            notice: The line to leave in the transcript.
+        """
         draft = self.composer.text.strip()
-        self.composer.position = len(self.composer.text)
-        self.composer.paste(("\n\n" if draft else "") + "\n\n".join(texts))
+        pictures = self.composer.images or any(carries_image(parts) for _, parts in items)
+        if pictures:
+            # With a picture in play the draft is rebuilt from parts, so each picture is a chip
+            # again and keeps its place; the labels are renumbered across the whole draft.
+            merged: list[PromptPart] = list(self.composer.parts()) if draft else []
+            for index, (_, parts) in enumerate(items):
+                if merged or index:
+                    merged.append("\n\n")
+                merged.extend(parts)
+            self.composer.restore(merged)
+        else:
+            self.composer.position = len(self.composer.text)
+            self.composer.paste(("\n\n" if draft else "") + "\n\n".join(text for text, _ in items))
         self.transcript.notice(notice)
         self.app.request_layout()
 
@@ -323,13 +341,14 @@ class FollowUpsMixin(ShellState):
         if not self._follow_ups:
             return
         texts = [item.text for item in self._follow_ups]
+        items = [(item.text, item.parts) for item in self._follow_ups]
         self._follow_ups.clear()
         self._follow_up_selected = None
         self._editing_slot = None
         self._sync_follow_ups()
         noun = "held follow-up" if len(texts) == 1 else "held follow-ups"
         self._return_to_draft(
-            texts,
+            items,
             f"{len(texts)} {noun} from the previous session {'is' if len(texts) == 1 else 'are'} back in the draft",
         )
 

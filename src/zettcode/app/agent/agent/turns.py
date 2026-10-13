@@ -127,7 +127,7 @@ class TurnsMixin(AgentBase):
         progress = self.runtime.todos.todos(self.session_id)
         return tuple((item.status.value, item.content) for item in progress.todos) if progress else ()
 
-    def steer(self, text: str) -> bool:
+    def steer(self, message: str | UserMessage) -> bool:
         """Queue an urgent user message for the request that is running.
 
         The agent adopts it at the next model or tool boundary and drops the
@@ -136,17 +136,25 @@ class TurnsMixin(AgentBase):
         is what tells the shell it may show the message as queued.
 
         Args:
-            text: What the user typed; blank text is refused without asking the
-                agent, and a request that is not running refuses it here.
+            message: What the user typed, as text, or as a message when it carries
+                pictures (see :meth:`turn`): zett-agent's steering inbox takes either.
+                An empty one is refused without asking the agent, and a request that
+                is not running refuses it here.
         """
-        if not text.strip():
-            return False
+        if isinstance(message, str):
+            if not message.strip():
+                return False
+            payload: dict[str, object] = {"content": message}
+        else:
+            if not message.text.strip() and not message.parts:
+                return False
+            payload = {"message": message}
         try:
             agent = self.runtime.started.agent
         except RuntimeError:
             return False
         accepted = agent.emit_external_event(
-            ExternalEvent(name=STEERING_MESSAGE_EVENT_NAME, payload={"content": text}),
+            ExternalEvent(name=STEERING_MESSAGE_EVENT_NAME, payload=payload),
             config=AgentRunConfig(session_id=self.session_id),
         )
         return bool(accepted)

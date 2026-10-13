@@ -10,10 +10,10 @@ and that is put back when the draft is submitted.
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 from ....tui import Span, Style, TextArea
-from ...agent.agent.prompt import MentionPart, PromptPart
+from ...agent.agent.prompt import MentionPart, PromptPart, plain_text_part
 from ...agent.dialogue.mentions import MENTION
 from ..clipboard import image_from_paste
 
@@ -23,6 +23,8 @@ COMMAND = re.compile(r"(?<![\w/])/[a-z][a-z0-9_-]*")
 #: The same tokens, anchored to the end of the text before the cursor.
 MENTION_END = re.compile(MENTION.pattern + r"\Z")
 COMMAND_END = re.compile(COMMAND.pattern + r"\Z")
+#: The label an image chip carries, at the end of the text that was written before its picture.
+IMAGE_LABEL_END = re.compile(r"\[image #\d+\]\Z")
 
 
 def _split_mentions(parts: Sequence[PromptPart]) -> tuple[PromptPart, ...]:
@@ -77,6 +79,14 @@ class Composer(TextArea):
         super().__init__(**kwargs)  # type: ignore[arg-type]
         self.pastes: dict[str, str] = {}
         self.images: dict[str, tuple[bytes, str]] = {}
+        #: Whether a typed ``/name`` is a command that exists, and whether a typed ``@token`` is a
+        #: resource that exists. They decide what is painted as one and what Backspace takes whole:
+        #: a word that merely *looks* like a command or a reference is just a word, and painting it
+        #: as one tells the reader something false. Left alone they accept everything, which is
+        #: what an editor that knows no commands has to do; the shell sets them.
+        self.is_command: Callable[[str], bool] = lambda name: True
+        self.is_mention: Callable[[str], bool] = lambda token: True
+        self._hits: tuple[str, tuple[tuple[int, int, str], ...]] | None = None
 
     def paste(self, text: str) -> None:
         """Insert a paste: an image as a picture chip, a large block as a text chip.
@@ -146,6 +156,42 @@ class Composer(TextArea):
             parts.append(run)
         return _split_mentions(parts)
 
+    def restore(self, parts: Sequence[PromptPart]) -> None:
+        """Replace the draft with a message's parts: text as it was written, pictures as chips again.
+
+        The inverse of :meth:`parts`, for taking a message back out of a queue to edit it, or to
+        hand it back after it was never sent. A picture's chip label is the last thing in the text
+        before it, so it is taken off and the picture is given the next label of this draft —
+        which is what keeps two messages that were both written as ``[image #1]`` from colliding
+        when they are put back into one.
+
+        Text with no picture in it goes through :meth:`set_text`, so a large block is a chip again.
+        A draft with pictures is not chipped: the pictures are labels *inside* the text, and a
+        chip over them would hide the labels the pictures are known by.
+
+        Args:
+            parts: The ordered parts of one or more messages, as :meth:`parts` returned them.
+        """
+        text = ""
+        images: dict[str, tuple[bytes, str]] = {}
+        for part in parts:
+            if isinstance(part, (str, MentionPart)):
+                text += plain_text_part(part)
+                continue
+            text = IMAGE_LABEL_END.sub("", text)
+            label = f"[image #{len(images) + 1}]"
+            images[label] = part
+            text += label
+        if not images:
+            self.set_text(text)
+            return
+        self.pastes.clear()
+        self.images.clear()
+        TextArea.show(self, text)  # the draft as it is: no chip over the labels the pictures are known by
+        self.images.update(images)
+        self._leave_history()
+        self._changed()
+
     def attach_image(self, data: bytes, media_type: str) -> str:
         """Stand one clipboard image in for itself and return its chip label.
 
@@ -168,12 +214,38 @@ class Composer(TextArea):
         stops being painted, and a mention or command is styled wherever it sits.
         """
         chip = Style(foreground=self.theme.warning, background=body.background, bold=True)
-        mention = Style(foreground=self.theme.accent_bright, background=body.background)
-        command = Style(foreground=self.theme.accent, background=body.background)
+        styles = {
+            "mention": Style(foreground=self.theme.accent_bright, background=body.background),
+            "command": Style(foreground=self.theme.accent, background=body.background),
+        }
         ranges = [(begin, end, chip) for begin, end, _ in self._chip_ranges()]
-        ranges += [(match.start(), match.end(), mention) for match in MENTION.finditer(self.text)]
-        ranges += [(match.start(), match.end(), command) for match in COMMAND.finditer(self.text)]
+        ranges += [(begin, end, styles[kind]) for begin, end, kind in self._token_hits()]
         return self._row_spans(line, start, body, self._first_wins(ranges))
+
+    def _token_hits(self) -> tuple[tuple[int, int, str], ...]:
+        """Return the ``@`` references and slash commands in the draft that are really there.
+
+        A reference is painted, and taken whole by Backspace, only when it names a resource that
+        exists; a command only when it names one the shell has *and* it opens the draft, which is
+        the one place a command is recognised at all. Everything else is ordinary text.
+
+        Each row of the draft asks, and each ``@`` is a lookup on disk, so the answer is kept for
+        as long as the draft is the same text.
+        """
+        if self._hits is not None and self._hits[0] == self.text:
+            return self._hits[1]
+        hits: list[tuple[int, int, str]] = []
+        for match in MENTION.finditer(self.text):
+            if self.is_mention(match.group(0)):
+                hits.append((match.start(), match.end(), "mention"))
+        opening = COMMAND.match(self.text.lstrip())
+        if opening is not None:
+            begin = len(self.text) - len(self.text.lstrip()) + opening.start()
+            if self.is_command(opening.group(0)):
+                hits.append((begin, begin + len(opening.group(0)), "command"))
+        found = tuple(hits)
+        self._hits = (self.text, found)
+        return found
 
     @staticmethod
     def _first_wins(ranges: Sequence[tuple[int, int, Style]]) -> list[tuple[int, int, Style]]:
@@ -205,10 +277,15 @@ class Composer(TextArea):
         self._delete(self.position - len(chip), self.position)
 
     def _token_before(self) -> str | None:
-        """Return the ``@`` reference or slash command ending at the cursor, if any."""
-        tail = self.text[: self.position]
-        match = MENTION_END.search(tail) or COMMAND_END.search(tail)
-        return match.group(0) if match is not None else None
+        """Return the ``@`` reference or slash command ending at the cursor, if it is a real one.
+
+        The same test the painting uses, so what Backspace takes whole is what was painted as a
+        unit: a word that was not highlighted is peeled one character at a time like any other.
+        """
+        for begin, end, _ in self._token_hits():
+            if end == self.position:
+                return self.text[begin:end]
+        return None
 
     def show(self, value: str) -> None:
         """Replace the draft, chipping a value too large to show plainly."""

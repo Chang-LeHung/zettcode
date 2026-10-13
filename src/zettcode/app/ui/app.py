@@ -123,6 +123,9 @@ class ZettCodeApp(RowsMixin, KeysMixin, FollowUpsMixin, NoticesMixin, SessionMix
             on_change=self._composer_changed,
             surface=True,
         )
+        # What is painted and taken whole as a command or a reference is only what exists.
+        self.composer.is_command = lambda name: self._lookup(name)[0] is not None
+        self.composer.is_mention = lambda token: self.mentions.expand_token(token) is not None
         #: The row between the conversation and the composer: blank until something
         #: the reader just did needs saying, then a centred line that expires.
         self.flash_line = RichText(self._flash_line, align="center", wrap=False)
@@ -180,6 +183,7 @@ class ZettCodeApp(RowsMixin, KeysMixin, FollowUpsMixin, NoticesMixin, SessionMix
         self._warm: asyncio.Task[object] | None = None
         self._busy = False
         self._steering: list[str] = []
+        self._steering_meta: list[tuple[str, tuple[PromptPart, ...]]] = []
         self._steering_sent = 0
         self._follow_ups: list[FollowUp] = []
         self._follow_up_selected: int | None = None
@@ -605,9 +609,20 @@ class ZettCodeApp(RowsMixin, KeysMixin, FollowUpsMixin, NoticesMixin, SessionMix
             self._task = asyncio.create_task(self._run_prompt(value, parts, mention_hint(parts, self.mentions)))
         return True
 
-    def _queue_steering(self, value: str) -> None:
-        """Show one message waiting for the agent to adopt it."""
+    def _queue_steering(self, value: str, key: str | None = None, parts: Sequence[PromptPart] = ()) -> None:
+        """Show one message waiting for the agent to adopt it.
+
+        Args:
+            value: The message as the list shows it.
+            key: What the agent will call it when it adopts it. For text that is the text; for a
+                message with pictures it is not, because the pictures split the text into runs
+                that the agent's own ``text`` joins with line breaks, and matching on the typed
+                text would leave the row in the list for good.
+            parts: The message as the parts of a turn, kept so that a message the agent never
+                read can be handed back with its pictures.
+        """
         self._steering.append(value)
+        self._steering_meta.append((value if key is None else key, tuple(parts)))
         self._steering_sent += 1
         self.steering.set_messages(self._steering)
         self.app.request_layout()
@@ -647,24 +662,36 @@ class ZettCodeApp(RowsMixin, KeysMixin, FollowUpsMixin, NoticesMixin, SessionMix
         if not self._steering:
             return
         self._steering.clear()
+        self._steering_meta.clear()
         self.steering.set_messages(())
         self.app.request_layout()
 
-    def _steering_started(self, text: str) -> None:
-        """Drop a message the agent just adopted; the projector echoes its row."""
-        if text in self._steering:
-            self._steering.remove(text)
+    def _steering_index(self, text: str) -> int | None:
+        """Return the place in the queue of the message the agent reports by ``text``, if it is there."""
+        for index, value in enumerate(self._steering):
+            key = self._steering_meta[index][0] if index < len(self._steering_meta) else value
+            if key == text:
+                return index
+        return None
+
+    def _drop_steering(self, text: str) -> None:
+        """Take one message out of the queue, wherever the agent's name for it puts it."""
+        index = self._steering_index(text)
+        if index is not None:
+            del self._steering[index]
+            if index < len(self._steering_meta):
+                del self._steering_meta[index]
             self.steering.set_messages(self._steering)
             self.app.request_layout()
         self.app.invalidate()
 
+    def _steering_started(self, text: str) -> None:
+        """Drop a message the agent just adopted; the projector echoes its row."""
+        self._drop_steering(text)
+
     def _steering_interrupted(self, text: str) -> None:
         """Drop a queued message a newer steering message superseded."""
-        if text in self._steering:
-            self._steering.remove(text)
-            self.steering.set_messages(self._steering)
-            self.app.request_layout()
-        self.app.invalidate()
+        self._drop_steering(text)
 
     async def _run_prompt(self, prompt: str, parts: Sequence[PromptPart] = (), hint: str | None = None) -> None:
         """Stream one agent turn, keeping the task panel and transcript current.

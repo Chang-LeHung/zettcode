@@ -109,6 +109,9 @@ class ShellState:
     _busy: bool
     #: Steering messages queued for this run, and how many were queued in all.
     _steering: list[str]
+    #: What each queued steering message was made of, in step with :attr:`_steering`: the text the
+    #: agent will report it by when it adopts it, and the parts it was sent as.
+    _steering_meta: list[tuple[str, tuple[PromptPart, ...]]]
     _steering_sent: int
     #: The follow-ups waiting in send order, the highlighted one, and the slot a message
     #: taken out for editing will return to.
@@ -173,7 +176,7 @@ class ShellState:
     def _delete_follow_up(self) -> None:
         """Remove the highlighted follow-up from the list."""
 
-    def _queue_steering(self, value: str) -> None:
+    def _queue_steering(self, value: str, key: str | None = None, parts: Sequence[PromptPart] = ()) -> None:
         """Show one message waiting for the agent to adopt it."""
 
     def _clear_steering(self) -> None:

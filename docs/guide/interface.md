@@ -99,6 +99,10 @@ the screen.
 - **Ctrl-V** attaches an image from the desktop clipboard as an `[image #N]`
   chip. Text and images keep the order you wrote them in. See
   [Pictures and pastes](#pictures-and-pastes).
+- A `/command` or an `@resource` is coloured only when it is real. The command must exist and be
+  the first word of the draft (that is the only place a command runs); the resource must be one
+  that exists. Anything else — `/usr/bin` in a sentence, `@someone` — is just text, and
+  **Backspace** deletes it one character at a time. A real one is deleted whole.
 
 ## Typing while a request runs
 
@@ -353,6 +357,11 @@ If a normal request is still running, the side question waits for it to finish;
 it is not a second simultaneous writer to the workspace.
 
 ## Pictures and pastes
+
+A picture can be sent like any other message, including **while a request is running**: as a
+follow-up it goes out with its picture in the place its chip holds, and as steering it reaches the
+agent as one message with the picture in it. Taking a message back out to edit it, or getting back
+one the agent never read, restores its pictures as chips.
 
 A terminal cannot hand a program the bytes of a pasted image, so **Ctrl-V** reads
 the system clipboard itself — the macOS pasteboard in-process, `wl-paste` or

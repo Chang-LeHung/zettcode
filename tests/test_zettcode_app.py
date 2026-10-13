@@ -5402,22 +5402,6 @@ async def test_a_command_running_is_not_a_turn_so_only_a_follow_up_is_possible()
     assert app.agent.runtime.client.messages == ["and then summarize"]
 
 
-async def test_an_image_cannot_be_sent_while_a_request_runs_as_either_kind():
-    app = build_app(block=True)
-    harness = _harness(app)
-    harness.write("first")
-    harness.press("enter")
-    await asyncio.sleep(0)
-    app.composer.attach_image(b"png", "image/png")
-
-    harness.press("enter")
-
-    assert app.app.screens.top.name == "main"
-    assert app.follow_ups.messages == () and app.steering.messages == ()
-    assert any(entry.level == "error" and "takes text only" in entry.text for entry in app.transcript.entries)
-    await _stop(app)
-
-
 async def test_follow_ups_stop_at_the_limit_and_keep_the_draft():
     app, harness = await _running_with(*(f"later {index}" for index in range(MAX_FOLLOW_UPS)))
 
@@ -6845,3 +6829,251 @@ def test_a_draft_typed_during_the_boot_of_a_resumed_session_arrives_too(tmp_path
     shell.adopt(placeholder)
 
     assert shell.composer.text == "and then?"
+
+
+# -- pictures in a message sent while a request runs ---------------------------------------------------------
+
+_PNG = (b"\x89PNG\r\n\x1a\n" + b"1", "image/png")
+_JPEG = (b"\xff\xd8\xff" + b"2", "image/jpeg")
+
+
+def _images_of(message) -> list[bytes]:
+    return [part.source.data for part in message.parts if isinstance(part, ImageContent)]
+
+
+def _steered(app) -> list[object]:
+    """The payloads the fake agent was handed as steering messages."""
+    return [event.payload for event, _ in app.agent.runtime.client.agent.emitted if event.name == "steering_message"]
+
+
+async def _busy_with_a_picture_in_the_draft(text="look at "):
+    app = build_app(hold=True)
+    app.agent.runtime.active_model = app.agent.runtime.config.models[1]  # takes images
+    harness = _harness(app)
+    harness.write("first")
+    harness.press("enter")
+    await asyncio.sleep(0)
+    harness.write(text)
+    app.composer.attach_image(*_PNG)
+    return app, harness
+
+
+async def test_a_message_with_a_picture_can_be_queued_as_a_follow_up():
+    app, harness = await _busy_with_a_picture_in_the_draft()
+
+    harness.press("enter")
+    harness.write("f")
+
+    assert app.follow_ups.messages == ("look at [image #1]",)
+    assert app.composer.text == "" and app.composer.images == {}, "taken, so the draft and its picture are cleared"
+    await _stop(app)
+
+
+async def test_a_follow_up_with_a_picture_goes_out_with_the_picture_in_its_place():
+    app, harness = await _busy_with_a_picture_in_the_draft("compare ")
+    harness.press("enter")
+    harness.write("f")
+
+    app.agent.runtime.client.released.set()
+    await _until_idle(app)
+
+    sent = app.agent.runtime.client.messages[-1]
+    assert isinstance(sent, UserMessage) and _images_of(sent) == [_PNG[0]]
+    assert sent.text.startswith("compare [image #1]")
+
+
+async def test_a_steering_message_with_a_picture_reaches_the_agent_as_a_message_with_the_picture():
+    app, harness = await _busy_with_a_picture_in_the_draft("use this instead: ")
+    app.composer.paste(" ok")
+
+    harness.press("enter")
+    harness.write("s")
+
+    (payload,) = _steered(app)
+    message = payload["message"]
+    assert isinstance(message, UserMessage) and _images_of(message) == [_PNG[0]]
+    assert "content" not in payload
+    assert app.steering.messages == ("use this instead: [image #1] ok",)
+    await _stop(app)
+
+
+async def test_a_steering_message_without_a_picture_still_goes_as_plain_text():
+    app, harness = await _busy_with_a_picture_in_the_draft()
+    app.composer.clear()
+    harness.write("change course")
+
+    harness.press("enter")
+    harness.write("s")
+
+    assert _steered(app) == [{"content": "change course"}]
+    await _stop(app)
+
+
+async def test_a_steering_row_with_a_picture_leaves_the_queue_when_the_agent_adopts_it():
+    """The agent reports a message by its own `text`, which joins the runs around a picture with a line
+    break; matching on what was typed would leave the row there for good."""
+    app, harness = await _busy_with_a_picture_in_the_draft("before ")
+    app.composer.paste(" after")
+    harness.press("enter")
+    harness.write("s")
+    (payload,) = _steered(app)
+    adopted = payload["message"].text
+    assert adopted != "before [image #1] after", "the two spellings differ, which is the whole problem"
+    assert app.steering.messages == ("before [image #1] after",)
+
+    app._steering_started(adopted)
+
+    assert app.steering.messages == () and app._steering_meta == []
+    await _stop(app)
+
+
+async def test_a_steering_message_with_a_picture_that_a_newer_one_replaced_leaves_the_queue_too():
+    app, harness = await _busy_with_a_picture_in_the_draft("a ")
+    app.composer.paste(" b")
+    harness.press("enter")
+    harness.write("s")
+    (payload,) = _steered(app)
+
+    app._steering_interrupted(payload["message"].text)
+
+    assert app.steering.messages == ()
+    await _stop(app)
+
+
+async def test_two_queued_steering_messages_are_dropped_one_at_a_time_by_their_own_names():
+    app, harness = await _busy_with_a_picture_in_the_draft("one ")
+    app.composer.paste(" x")
+    harness.press("enter")
+    harness.write("s")
+    harness.write("two")
+    harness.press("enter")
+    harness.write("s")
+    first = _steered(app)[0]["message"].text
+
+    app._steering_started(first)
+
+    assert app.steering.messages == ("two",)
+    await _stop(app)
+
+
+async def test_a_picture_steering_message_the_agent_never_read_comes_back_with_its_picture():
+    app, harness = await _busy_with_a_picture_in_the_draft("see ")
+    harness.press("enter")
+    harness.write("s")
+
+    await _stop(app)
+
+    assert app.composer.text == "see [image #1]"
+    assert app.composer.images == {"[image #1]": _PNG}
+    assert app.composer.parts() == ("see [image #1]", _PNG)
+
+
+async def test_unread_steering_with_a_picture_is_put_after_a_draft_that_has_its_own_picture():
+    app, harness = await _busy_with_a_picture_in_the_draft("see ")
+    harness.press("enter")
+    harness.write("s")
+    harness.write("meanwhile ")
+    app.composer.attach_image(*_JPEG)
+
+    await _stop(app)
+
+    assert app.composer.text == "meanwhile [image #1]\n\nsee [image #2]"
+    assert app.composer.images == {"[image #1]": _JPEG, "[image #2]": _PNG}
+
+
+async def test_a_picture_steering_message_the_agent_never_read_becomes_a_follow_up_when_the_request_completes():
+    app, harness = await _busy_with_a_picture_in_the_draft("see ")
+    harness.press("enter")
+    harness.write("s")
+
+    app._settle_queues(True, turn=True)
+
+    (item,) = app._follow_ups
+    assert item.parts == ("see [image #1]", _PNG), "its picture came with it"
+
+
+async def test_taking_a_follow_up_with_a_picture_back_to_edit_restores_its_chip():
+    app, harness = await _busy_with_a_picture_in_the_draft("look at ")
+    harness.press("enter")
+    harness.write("f")
+    harness.press("alt_up")
+
+    harness.press("enter")
+
+    assert app.composer.text == "look at [image #1]"
+    assert app.composer.images == {"[image #1]": _PNG}
+    assert app._editing_slot == 0
+    await _stop(app)
+
+
+async def test_a_follow_up_with_a_picture_goes_back_to_its_slot_with_the_picture_after_an_edit():
+    app, harness = await _busy_with_a_picture_in_the_draft("look at ")
+    harness.press("enter")
+    harness.write("f")
+    harness.write("later")
+    harness.press("enter")
+    harness.write("f")
+    harness.press("alt_down")  # the first
+    harness.press("enter")
+    harness.write(" closely")
+
+    harness.press("enter")
+
+    assert app.follow_ups.messages == ("look at [image #1] closely", "later")
+    assert app._follow_ups[0].parts == ("look at [image #1]", _PNG, " closely"), "the picture sits where its chip does"
+    await _stop(app)
+
+
+async def test_held_follow_ups_with_pictures_are_handed_back_with_them_when_the_session_changes():
+    app, harness = await _busy_with_a_picture_in_the_draft("look at ")
+    harness.press("enter")
+    harness.write("f")
+    await _stop(app)
+    assert app.follow_ups.messages == ("look at [image #1]",)
+
+    app._return_follow_ups_to_draft()
+
+    assert app.composer.text == "look at [image #1]" and app.composer.images == {"[image #1]": _PNG}
+    assert app.follow_ups.messages == ()
+
+
+async def test_a_message_without_pictures_is_queued_and_returned_exactly_as_before():
+    app, harness = await _running_with("one", "two")
+    await _stop(app)
+
+    app._return_follow_ups_to_draft()
+
+    assert app.composer.text == "one\n\ntwo" and app.composer.images == {}
+
+
+# -- the shell tells the composer what exists ----------------------------------------------------------------
+
+
+def test_the_composer_knows_which_commands_exist():
+    app = build_app()
+
+    assert app.composer.is_command("/help") is True
+    assert app.composer.is_command("/not-a-command") is False
+
+
+def test_the_composer_asks_the_current_registry_which_references_exist():
+    app = build_app()
+    assert app.composer.is_mention("@note") is False
+
+    app.mentions = MentionRegistry([MapMentions({"note": "The injected note."})])
+
+    assert app.composer.is_mention("@note") is True
+    assert app.composer.is_mention("@missing") is False
+
+
+async def test_a_typed_command_is_painted_only_when_the_shell_has_it():
+    app = build_app()
+    harness = _harness(app)
+    app.composer.set_text("/help")
+
+    real = [s for row in harness.render().styled for s in row if s.text == "/help"]
+    app.composer.set_text("/nothelp")
+    fake = [s for row in harness.render().styled for s in row if s.text == "/nothelp"]
+
+    assert real and real[0].style.foreground == app.app.theme.accent
+    assert not fake or fake[0].style.foreground != app.app.theme.accent
