@@ -18,6 +18,7 @@ from .state import UiRow
 if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay lazy
     from ..app.agent.dialogue.mentions import MentionProvider
     from ..app.commands import Command
+    from ..providers import Provider
     from .container import PluginContainer
     from .extension import PluginExtension
 
@@ -74,6 +75,8 @@ class Plugins:
             order, each typed ``"plugin"``.
         mentions: ``@`` resource providers the plugins registered, in load and
             registration order; the shell merges them with the builtin skills.
+        providers: Model providers the plugins described, in load and registration order; the
+            shell offers them in ``/config`` after the built-in ones.
         rows: The header and status rows the plugins fill, each with its left
             and right segments in paint order. The builtin rows are merged in
             first, so an overridden segment keeps its place.
@@ -85,6 +88,7 @@ class Plugins:
     host: PluginExtension | None = None
     commands: tuple[Command, ...] = ()
     mentions: tuple[MentionProvider, ...] = ()
+    providers: tuple[Provider, ...] = ()
     rows: tuple[UiRow, ...] = ()
     failures: tuple[str, ...] = ()
 

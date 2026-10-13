@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ..providers import BUILTIN_PROVIDERS
 from .builtins import BUILTIN_PLUGINS
 from .container import PluginContainer, UiSlots
 from .extension import PluginExtension
@@ -35,6 +36,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
     from ..app.agent.dialogue.mentions import MentionProvider
     from ..app.commands import Command
     from ..config import ZettCodeConfig
+    from ..providers import Provider
 
 #: Entry-point group a distribution publishes its plugin under.
 PLUGIN_ENTRY_POINT_GROUP = "zettcode.plugins"
@@ -106,10 +108,12 @@ class _Loader:
         self.plugins: list[Plugin] = []
         self.commands: list[Command] = []
         self.mentions: list[MentionProvider] = []
+        self.providers: list[Provider] = []
         self.failures: list[str] = []
         self._identities: set[str] = set()
         self._claimed: set[str] = set()
         self._mention_kinds: set[str] = set()
+        self._provider_names: set[str] = {provider.name for provider in BUILTIN_PROVIDERS}
 
     def fail(self, origin: str, error: BaseException) -> None:
         """Record one plugin that could not be prepared."""
@@ -150,7 +154,18 @@ class _Loader:
         if mention_clash is not None:
             self.failures.append(f"{origin}: mention kind {mention_clash} is already registered")
             return
+        # A name is what `/config add` is typed with, so two hosts sharing one cannot both be
+        # reached; the one that was there first, a built-in or an earlier plugin, keeps it.
+        provider_clash = next(
+            (provider.name for provider in container.providers if provider.name in self._provider_names),
+            None,
+        )
+        if provider_clash is not None:
+            self.failures.append(f"{origin}: provider {provider_clash} is already registered")
+            return
         self._identities.add(name)
+        self._provider_names.update(provider.name for provider in container.providers)
+        self.providers.extend(container.providers)
         self._claimed.update(command.name for command in container.commands)
         self._mention_kinds.update(provider.kind for provider in container.mentions)
         self.commands.extend(container.commands)
@@ -165,6 +180,7 @@ class _Loader:
             host=host,
             commands=tuple(self.commands),
             mentions=tuple(self.mentions),
+            providers=tuple(self.providers),
             rows=self.slots.rows(),
             failures=tuple(self.failures),
         )
