@@ -96,6 +96,7 @@ from zettcode.tui import (
     SEPARATOR,
     Canvas,
     InputDecoder,
+    KeyEvent,
     ListItem,
     ListPage,
     Rect,
@@ -103,6 +104,7 @@ from zettcode.tui import (
     Span,
     Style,
     Text,
+    TextEvent,
     TextLine,
     Toast,
     TuiApp,
@@ -6729,3 +6731,117 @@ def test_a_name_two_entries_answer_to_in_the_second_step_is_not_guessed():
     assert ZettCodeRuntime.find_model(holder, "x") is None
     assert ZettCodeRuntime.find_model(holder, "one") is a
     assert ZettCodeRuntime.find_model(holder, "missing") is None
+
+
+# -- what was typed before the application arrived is not lost when it does ----------------------------
+
+
+def _placeholder_and_shell(tmp_path):
+    """The placeholder the command line paints first, and the shell that is about to replace it."""
+    shell = build_app()
+    placeholder = TuiApp(boot_tree(tmp_path.resolve()), theme=DARK, auto_theme=False, width=60, height=14)
+    placeholder.mount()
+    return placeholder, shell
+
+
+def _type_into(placeholder: TuiApp, text: str) -> None:
+    for character in text:
+        placeholder.dispatch(TextEvent(text=character))
+
+
+def test_what_was_typed_into_the_placeholder_is_in_the_shells_composer_after_the_swap(tmp_path):
+    """The bug: keystrokes land in the box that is on screen, and the shell takes 130 ms (700 to 1200
+    after an install) to build; the draft was in the old box, which the swap threw away."""
+    placeholder, shell = _placeholder_and_shell(tmp_path)
+    _type_into(placeholder, "explain the parser")
+
+    shell.adopt(placeholder)
+
+    assert shell.composer.text == "explain the parser"
+    assert shell.composer.position == len("explain the parser"), (
+        "and the cursor is where the reader left it: at the end"
+    )
+
+
+def test_the_draft_is_on_screen_after_the_swap_not_only_in_memory(tmp_path):
+    placeholder, shell = _placeholder_and_shell(tmp_path)
+    _type_into(placeholder, "explain the parser")
+    shell.adopt(placeholder)
+
+    screen = Harness(app=placeholder).render().text
+
+    assert "explain the parser" in screen
+
+
+def test_typing_goes_on_from_the_end_of_what_was_carried(tmp_path):
+    placeholder, shell = _placeholder_and_shell(tmp_path)
+    _type_into(placeholder, "explain ")
+    shell.adopt(placeholder)
+
+    _type_into(placeholder, "the parser")
+
+    assert shell.composer.text == "explain the parser"
+
+
+def test_a_draft_with_more_than_one_line_arrives_whole(tmp_path):
+    placeholder, shell = _placeholder_and_shell(tmp_path)
+    _type_into(placeholder, "first line")
+    placeholder.dispatch(KeyEvent(key="shift_enter"))
+    _type_into(placeholder, "second line")
+
+    shell.adopt(placeholder)
+
+    assert shell.composer.text == "first line\nsecond line"
+
+
+def test_nothing_typed_leaves_the_shells_composer_as_it_was(tmp_path):
+    placeholder, shell = _placeholder_and_shell(tmp_path)
+
+    shell.adopt(placeholder)
+
+    assert shell.composer.text == "" and shell.composer.history == ()
+
+
+def test_carrying_a_draft_does_not_count_it_as_a_message_already_sent(tmp_path):
+    """It is a draft, not history: Up must not recall something that was never submitted."""
+    placeholder, shell = _placeholder_and_shell(tmp_path)
+    _type_into(placeholder, "not sent yet")
+
+    shell.adopt(placeholder)
+
+    assert shell.composer.history == ()
+
+
+def test_the_carried_draft_can_be_sent_like_any_other(tmp_path):
+    placeholder, shell = _placeholder_and_shell(tmp_path)
+    _type_into(placeholder, "hello")
+    shell.adopt(placeholder)
+    submitted: list[str] = []
+    shell.composer.on_submit = lambda value: submitted.append(value) or True
+
+    placeholder.dispatch(KeyEvent(key="enter"))
+
+    assert submitted == ["hello"]
+
+
+def test_a_placeholder_with_no_composer_is_nothing_to_carry_and_not_an_error():
+    shell = build_app()
+    bare = TuiApp(Text("loading"), theme=DARK, width=60, height=14)
+    bare.mount()
+
+    shell.adopt(bare)
+
+    assert shell.composer.text == ""
+
+
+def test_a_draft_typed_during_the_boot_of_a_resumed_session_arrives_too(tmp_path):
+    placeholder = TuiApp(
+        boot_tree(tmp_path.resolve(), resuming=True), theme=DARK, auto_theme=False, width=60, height=14
+    )
+    placeholder.mount()
+    shell = build_app()
+    _type_into(placeholder, "and then?")
+
+    shell.adopt(placeholder)
+
+    assert shell.composer.text == "and then?"

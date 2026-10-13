@@ -33,10 +33,12 @@ from ...tui import (
     StatusBar,
     Style,
     TaskPanel,
+    TextArea,
     TextLine,
     Theme,
     TuiApp,
     VBox,
+    walk,
 )
 from ...tui.clipboard import copy_route
 from ...tui.layout import Slot
@@ -409,10 +411,19 @@ class ZettCodeApp(RowsMixin, KeysMixin, FollowUpsMixin, NoticesMixin, SessionMix
         lets the terminal choose it, because the runner has already adopted the
         one the terminal asked for.
 
+        What the reader typed into the placeholder's composer comes with it. The box on
+        screen is the placeholder's until the swap, a keystroke lands wherever the box is,
+        and the application takes a few hundred milliseconds to build — seven hundred to
+        twelve hundred on a first run after an install — so a reader who starts typing the
+        moment the frame appears would otherwise watch their words vanish when it is replaced.
+        The swap happens on the event loop, so no key can arrive between reading the draft and
+        writing it.
+
         Args:
             tui: Running app whose placeholder this application replaces.
         """
         placeholder = self.app
+        typed = self._typed_into(tui)
         self.app = tui
         tui.commands = placeholder.commands
         tui.keymap = placeholder.keymap
@@ -426,6 +437,16 @@ class ZettCodeApp(RowsMixin, KeysMixin, FollowUpsMixin, NoticesMixin, SessionMix
         if not placeholder.auto_theme:
             tui.theme = placeholder.theme
         tui.set_root(self.root)
+        if typed:
+            self.composer.set_text(typed)
+
+    @staticmethod
+    def _typed_into(tui: TuiApp) -> str:
+        """Return the draft in the composer the placeholder tree has, or nothing if it has none."""
+        for widget in walk(tui.root):
+            if isinstance(widget, TextArea):
+                return widget.text
+        return ""
 
     async def dry_run(self, *, width: int = 120, height: int = 40) -> None:
         """Run the whole start, paint one frame, and return.

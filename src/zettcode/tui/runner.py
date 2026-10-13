@@ -129,7 +129,7 @@ class TerminalRunner:
             try:
                 while app.running:
                     if app.scheduler.poll(now=app.clock()):
-                        self.paint()
+                        self.paint(animation_only=not app.scheduler.requested)
                     if not app.running:
                         break
                     await self.wait_for_work()
@@ -140,12 +140,29 @@ class TerminalRunner:
             finally:
                 await self._shutdown()
 
-    def paint(self) -> None:
-        """Draw one frame into the terminal."""
-        if self.app.refreshed:
+    def paint(self, *, animation_only: bool = False) -> None:
+        """Draw one frame into the terminal, unless it would only repeat the last one.
+
+        Args:
+            animation_only: The frame is due because an animation's interval ran out and
+                nothing else asked for it. The widgets are still given the clock, because
+                that is how an animation moves; when none of them reports a change, nothing
+                else is pending and no one is waiting on the frame, it is skipped whole —
+                no canvas, no diff, no write. Most frames of a long wait are skipped this
+                way: the picture changes a few dozen times a second where the frames come a
+                hundred and twenty, and building every one cost a third of a core.
+        """
+        refreshed = self.app.refreshed
+        if refreshed:
             self.app.refreshed = False
             self.renderer.reset()
-        self.app.tick()
+        changed = self.app.tick()
+        if (
+            animation_only
+            and not (refreshed or changed or self._after_paint)
+            and not (self.app.scheduler.pending or self.app.layout_pending)
+        ):
+            return
         self._sync_title()
         canvas = self.app.render()
         cursor = self.app.cursor()

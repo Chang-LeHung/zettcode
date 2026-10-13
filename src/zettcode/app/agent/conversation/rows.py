@@ -349,6 +349,33 @@ def sweep_column(frame: int, travel: int) -> int:
     return frame % PULSE_FRAMES * max(1, travel) // move_frames()
 
 
+#: Columns of fade on each side of the waiting row's highlight. The presenter draws with it and
+#: :func:`wait_picture` counts with it, so the two cannot disagree about how far a pass travels.
+WAIT_RAMP = 3
+
+
+def wait_picture(frame: int, title_width: int) -> tuple[bool, int]:
+    """Return what the waiting row looks like at one frame, as a value.
+
+    Two frames give equal values exactly when the row is drawn the same way at both: the
+    highlight sits on a whole column, and its colours depend on nothing else, so this is
+    that column (``0`` while the row rests, which is drawn flat whatever the frame is).
+    The loop uses it to tell a frame that changes the screen from one that only repeats it.
+
+    Args:
+        frame: Monotonic frame counter shared by the whole application.
+        title_width: Display width of the word the highlight crosses.
+    """
+    if not moving(frame):
+        return (False, 0)
+    return (True, sweep_column(frame, title_width + 2 * WAIT_RAMP))
+
+
+def blink_state(frame: int) -> bool:
+    """Say which of its two states the status bar's icon is in at one frame."""
+    return frame % STATUS_BLINK_FRAMES < STATUS_BLINK_FRAMES // 2
+
+
 def activity_glyph(frame: int) -> str:
     """Return the marker the status bar shows while work is in progress.
 
@@ -362,7 +389,7 @@ def activity_glyph(frame: int) -> str:
     Args:
         frame: Monotonic frame counter shared by the whole application.
     """
-    return RUNNING_GLYPHS[0 if frame % STATUS_BLINK_FRAMES < STATUS_BLINK_FRAMES // 2 else 1]
+    return RUNNING_GLYPHS[0 if blink_state(frame) else 1]
 
 
 def compact_path(path: Path, *, limit: int | None = 38) -> str:

@@ -28,12 +28,20 @@ class Scheduler:
         self.on_request: Callable[[], None] | None = None
         self._last_frame = float("-inf")
         self._dirty = True
+        #: Whether the frame the last :meth:`poll` returned was asked for, as opposed to
+        #: falling due on an animation's interval alone.
+        self.requested = True
         self._animations: set[str] = set()
 
     @property
     def animating(self) -> bool:
         """Return whether any animation token is registered."""
         return bool(self._animations)
+
+    @property
+    def pending(self) -> bool:
+        """Return whether a repaint has been requested and not yet taken."""
+        return self._dirty
 
     @property
     def animations(self) -> tuple[str, ...]:
@@ -73,6 +81,7 @@ class Scheduler:
         if not self._dirty:
             if not self._animations or moment - self._last_frame < self.interval:
                 return False
+        self.requested = self._dirty
         self._dirty = False
         self._last_frame = moment
         return True

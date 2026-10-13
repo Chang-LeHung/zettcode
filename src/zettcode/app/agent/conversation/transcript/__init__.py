@@ -71,3 +71,4 @@ class Transcript(OneOffMixin, FoldMixin, StreamMixin, EntryLog):
         self.renderers = renderers
         self.presenters = presenters
         self.frame = 0
+        self._picture_drawn = None
