@@ -44,6 +44,84 @@ Relative workspace paths resolve from the directory where you launch ZettCode.
 
 ## Models
 
+### Adding models with /config {#adding-models-with-config}
+
+You do not have to edit the file to add a model. `/config` opens a panel over the conversation:
+
+```text
+Models
+~/.zettcode/config.toml
+ ▸ 1. DeepSeek Pro (current)   deepseek-v4-pro · chat · https://api.deepseek.com
+   2. DeepSeek Flash           deepseek-flash · chat · https://api.deepseek.com
+   + Add a model               from a provider, or any endpoint
+```
+
+**Add a model** asks which provider it is at, then only what that provider does not already say. A
+provider is a known host — its address and API are filled in, so you give the **model id** and
+your **token**:
+
+| Provider | API | Address |
+| --- | --- | --- |
+| `openai` | chat completions | `https://api.openai.com/v1` |
+| `anthropic` | Messages API | `https://api.anthropic.com` |
+| `deepseek` | chat completions | `https://api.deepseek.com` |
+| `openrouter` | chat completions | `https://openrouter.ai/api/v1` |
+| `groq` | chat completions | `https://api.groq.com/openai/v1` |
+| `ollama` | chat completions | `http://localhost:11434/v1` |
+| `custom` | **you choose** | **you give it** |
+
+`custom` is any other endpoint, and asks four things: which **API** it speaks (`chat` for
+chat completions, `responses` for the Responses API, `anthropic` for the Messages API), its
+**address**, the **model id**, and the **token**. An Anthropic-API endpoint does not ask for an
+address: the SDK has one. Plugins can add providers to this list; see
+[Plugins](/guide/plugins#providers).
+
+The token is typed as bullets and never shown again — not in the panel, not in `/config list`, not
+in the line that says the model was added. **Escape goes back one step**: from the token to the model id (with what you typed there, to change),
+from the first question to the provider list, from the list to the models, and only from the models
+panel does it close. Nothing is written until the last answer is in, so going back never costs anything.
+
+Choose a model in the panel to **use** it, change its **token**, **API** (`chat`, `responses` or
+`anthropic`), **address**, **model id** or **shown name**, or **remove** it (it asks first, and *Keep it* is the answer Enter gives).
+
+The same thing on one line, asking only for what the line leaves out:
+
+```text
+/config add deepseek --model deepseek-chat --token sk-...
+/config add custom --api chat --url https://llm.example/v1 --model my-model --token sk-... --name "My model"
+/config add anthropic --model claude-sonnet-4-5          # asks for the token
+/config remove 3          # or the name: /config remove "My model"
+/config list              # the models and their addresses, never a token
+/config providers         # what `add` accepts
+```
+
+| Option | Meaning |
+| --- | --- |
+| `--model ID` | The model id the provider calls it. |
+| `--token KEY` | The credential. Left out, it is asked for with the input hidden. |
+| `--url URL` | The address, replacing the provider's. Required for `custom` (except `--api anthropic`). |
+| `--api chat\|responses\|anthropic` | Which API. A provider has its own; this overrides it, e.g. `openai --api responses`. |
+| `--name SHOWN` | The name in the header and `/model` (`display_model`). |
+| `--multimodal` | The model accepts images. |
+
+::: tip Prefer the panel for a token
+A line you type stays in the composer's in-memory history, so pressing `Up` shows it again until
+you quit. Leave `--token` off and type the token into the hidden prompt instead.
+:::
+
+What `/config` does to the file:
+
+- It changes **only the `[[models]]` entries**. Your comments, other tables, and layout stay exactly
+  as written, and the result is checked before it is saved: if it would not hold exactly the models
+  meant, or would change anything else, nothing is written.
+- A model you add is available **at once** — no restart. Adding is not choosing: the model in use
+  stays. Removing the one in use switches to its neighbour and says so.
+- The file keeps its permissions. A new file is created readable by you alone, since it holds keys.
+- `/config` reads the file each time, so models you added by hand since starting show up in it.
+- Comments *inside* a model you edit are not kept (those above it and everywhere else are).
+- A file that writes its models another way — an inline `models = [ … ]` array — is left alone with
+  a message to edit it by hand, and the last remaining model cannot be removed.
+
 ### A working DeepSeek example
 
 Create an API key on the [DeepSeek platform](https://platform.deepseek.com/).
@@ -193,8 +271,9 @@ does not expose Flash's vision capability, keep `multimodal = false` there too.
 
 The first entry is selected at startup. Inside ZettCode, run `/model` and choose
 an entry, or type `/model DeepSeek Flash`. Switching changes later requests;
-it does not start a new session or interrupt a request already running. Restart
-after editing the file to load new entries.
+it does not start a new session or interrupt a request already running. Entries
+added with [`/config`](#adding-models-with-config) are available at once; after editing the
+file by hand, restart to load new entries.
 
 ### Choosing the compaction threshold
 

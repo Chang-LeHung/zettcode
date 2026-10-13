@@ -139,6 +139,40 @@ are displayed in the transcript; they are not a user message submitted to the
 model. Prefer the command UI methods to `print()`, which writes outside the
 terminal interface.
 
+## Describing a provider {#providers}
+
+A plugin can add a host to the list `/config` offers, so a service ZettCode does not know can be
+set up by choosing it and giving a token:
+
+```python
+from zettcode.plugins import Plugin, PluginContainer
+from zettcode.providers import Provider
+
+
+class Acme(Plugin):
+    name = "acme"
+
+    def activate(self, container: PluginContainer) -> None:
+        container.register_provider(
+            Provider(
+                "acme",                                   # what `/config add acme` is typed with
+                "Acme AI",                                # what the picker shows
+                api="chat",                               # chat | responses | anthropic
+                base_url="https://api.acme.example/v1",
+                token_env="ACME_API_KEY",                 # named in the hint only; never read
+                note="the model id is acme-<size>",       # one line shown beside it
+            )
+        )
+```
+
+A provider describes an address and a protocol and nothing more: nothing is called or connected to,
+and the reader still supplies the token and the model id. `models=("acme-small", …)` can suggest
+ids to show in the question.
+
+Names are unique across the application. A plugin that registers a name a built-in provider already
+has (`openai`, `anthropic`, `deepseek`, `openrouter`, `groq`, `ollama`, `custom`), or one another plugin
+registered first, is skipped and reported like any other plugin that cannot load.
+
 ## When something goes wrong
 
 A plugin that cannot be imported or activated is skipped, not fatal: the shell

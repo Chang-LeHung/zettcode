@@ -125,6 +125,39 @@ async def greet(self, context: CommandContext) -> CommandResult:
 用这个方法替换前面 `Greeter.greet` 即可。错误、提示和 Markdown 结果只展示在 transcript，
 不是发送给模型的用户消息。用 command UI 方法输出，不要用会绕过终端界面的 `print()`。
 
+## 描述一个 provider {#providers}
+
+插件可以往 `/config` 提供的列表里添加一个服务商，这样 ZettCode 不认识的服务，选中它再给一个 token
+就能配好：
+
+```python
+from zettcode.plugins import Plugin, PluginContainer
+from zettcode.providers import Provider
+
+
+class Acme(Plugin):
+    name = "acme"
+
+    def activate(self, container: PluginContainer) -> None:
+        container.register_provider(
+            Provider(
+                "acme",                                   # `/config add acme` 里输入的名字
+                "Acme AI",                                # 选择器里显示的名字
+                api="chat",                               # chat | responses | anthropic
+                base_url="https://api.acme.example/v1",
+                token_env="ACME_API_KEY",                 # 只用于提示，不会被读取
+                note="the model id is acme-<size>",       # 显示在旁边的一行说明
+            )
+        )
+```
+
+provider 只描述一个地址和一种协议：不会调用或连接任何东西，token 和模型 id 仍然由用户提供。
+`models=("acme-small", …)` 可以给提问处提示几个 id。
+
+名字在整个应用里唯一。如果插件注册的名字已被内置 provider（`openai`、`anthropic`、`deepseek`、
+`openrouter`、`groq`、`ollama`、`custom`）占用，或被先加载的插件占用，这个插件会被跳过，并像其他加载
+失败的插件一样报告。
+
 ## 出问题的时候
 
 导入或激活失败的插件会被跳过，而不是让程序挂掉：对话里出现一行 `plugin: …`，会话继续正常

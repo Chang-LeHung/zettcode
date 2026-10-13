@@ -12,6 +12,7 @@ the highlighted name. A command with an argument takes it after a space —
 | `/resume` | Pick a recent session from a panel; `/resume <id>` opens one directly. |
 | `/fork` | Carry this conversation into a new session and continue there. |
 | `/model` | Pick the model for later requests from a panel. |
+| `/config` | Add, change or remove models without editing the file: `/config`, `/config add <provider> …`, `/config remove <n>`. See [Adding models with /config](/guide/config#adding-models-with-config). |
 | `/effort` | Pick how much the model reasons: `/effort high`. |
 | `/permission` | Pick how much of the shell may run without asking: `/permission safe`. |
 | `/btw` | Ask something that is answered here but never joins the conversation: `/btw <question>`. |
