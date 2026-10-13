@@ -51,3 +51,21 @@ def _a_local_session(monkeypatch: pytest.MonkeyPatch) -> None:
 
     for name in (*SSH_VARIABLES, "TMUX", CLIPBOARD_ENV):
         monkeypatch.delenv(name, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _offline_tokenizers(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep every tokenizer in the suite off the network.
+
+    Starting a runtime starts two background loads — the ``/context`` report's encoding and the one
+    compaction counts with — and a vocabulary that is not in the cache is a download. A test that
+    wants an encoder passes its own ``loader``; one that does not gets an answer as if the machine
+    were offline, which both counters take as "estimate", exactly as a first run with no network
+    would.
+    """
+    from zettcode.app.agent.extensions import context
+
+    def offline(encoding: str):
+        raise OSError(f"the {encoding} vocabulary is not fetched in tests")
+
+    monkeypatch.setattr(context, "_tiktoken_encoder", offline)

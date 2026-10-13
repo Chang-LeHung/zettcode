@@ -58,6 +58,7 @@ from .rows import (
     STOP_HINT,
     TOOL_EXPANDED_ROWS,
     TOOL_PREVIEW_ROWS,
+    WAIT_RAMP,
     bounded_rows,
     duration_text,
     elapsed_text,
@@ -611,5 +612,5 @@ def _running_label(text: str, theme: Theme, frame: int) -> tuple[Span, ...]:
     resting = Style(foreground=theme.accent_bright)
     if not moving(frame):
         return (Span(f"{RUNNING_GLYPHS[1]} ", Style(foreground=theme.muted)), Span(text, resting))
-    label = SweepSpan(text, resting, peak=Style(foreground=theme.text), ramp=3)
+    label = SweepSpan(text, resting, peak=Style(foreground=theme.text), ramp=WAIT_RAMP)
     return (Span(f"{RUNNING_GLYPHS[0]} ", resting), *sweep_spans(label, sweep_column(frame, label.travel)))

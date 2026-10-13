@@ -38,7 +38,7 @@ from ...plugins import Plugins, load_plugins
 from ..pipeline import ImportPipeline
 from .dialogue.side import SideQuestions
 from .extensions.capabilities import ModelCapabilities
-from .extensions.compaction import OnDemandCompaction
+from .extensions.compaction import COUNTER_WAIT, CompactionCounter, OnDemandCompaction
 from .extensions.context import ContextExtension, Tokenizer
 from .extensions.tool_output import ToolOutputExtension
 from .extensions.usage import UsageExtension
@@ -60,7 +60,14 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only; the imports are the co
 #: cached — and the zett-agent module is what :meth:`ZettCodeRuntime._build`
 #: would otherwise import on the event loop. A name added here moves its import
 #: off the first turn and onto the pipeline's thread.
-WARM_MODULES = ("openai", "anthropic", "zett_agent.client")
+WARM_MODULES = ("zett_agent.client",)
+
+#: What each model SDK needs imported before its first request, in order. ``openai`` alone is not
+#: enough: its resource tree (``openai.resources``) is imported the first time a client touches
+#: one, and that is five hundred modules — 430 ms measured — on whichever thread made the first
+#: request, which is the event loop. ``anthropic`` has no such tree to speak of (15 ms).
+OPENAI_WARM_MODULES = ("openai", "openai.resources")
+ANTHROPIC_WARM_MODULES = ("anthropic",)
 
 
 #: Modules a request needs only under the configuration that asks for them: each
@@ -192,6 +199,9 @@ class ZettCodeRuntime:
     session_id: str
     active_model: ModelConfig
     compaction: OnDemandCompaction
+    #: What the compaction counts the context with; loaded on a thread of its own so that the
+    #: first turn does not load it on the event loop. See :class:`CompactionCounter`.
+    compaction_counter: CompactionCounter
     #: The read-only boundary a side question runs behind; the shell keeps it to
     #: mark the run it is about to start.
     sides: SideQuestions = field(default_factory=SideQuestions)
@@ -224,6 +234,7 @@ class ZettCodeRuntime:
         # about: the memory lets `safe` and `auto` through, the deny extension
         # refuses for `deny`, and the shell changes it from `/permission`.
         policy = ShellPolicy.from_mode(config.shell_approval, config.workspace)
+        counter = CompactionCounter()
         return cls(
             config=config,
             persistence=SessionStore(config.store, config.workspace),
@@ -240,7 +251,9 @@ class ZettCodeRuntime:
                 None,
                 max_tokens=selected.compaction_max_tokens,
                 keep_recent_tokens=selected.compaction_keep_tokens,
+                count_tokens=counter.count,
             ),
+            compaction_counter=counter,
             plugins=load_plugins(config),
         )
 
@@ -260,6 +273,7 @@ class ZettCodeRuntime:
         """
         if self._starting is None:
             self._begin_imports()
+            self.compaction_counter.start()
             self._starting = asyncio.ensure_future(self._build())
             self._counter = asyncio.ensure_future(self.tokenizer.prepare())
         return self._starting
@@ -274,8 +288,18 @@ class ZettCodeRuntime:
         extensions the configuration turns on.
         """
         config = self.config
+        # The SDKs of every configured model, not only the active one: `/model` can select an
+        # entry that speaks the other API, and its adapter imports its SDK when it is built. An
+        # entry that is not configured cannot be selected, so its SDK is left alone — a run that
+        # only talks to OpenAI-compatible endpoints does not import `anthropic` on a thread that
+        # competes with the interface for the interpreter.
+        sdks: list[str] = []
+        if any(not model.anthropic for model in config.models):
+            sdks.extend(OPENAI_WARM_MODULES)
+        if any(model.anthropic for model in config.models):
+            sdks.extend(ANTHROPIC_WARM_MODULES)
         optional = tuple(module for setting, module in WARM_MODULES_WHEN if getattr(config, setting, False))
-        return (*WARM_MODULES, *optional)
+        return (*sdks, *WARM_MODULES, *optional)
 
     def _begin_imports(self) -> None:
         """Start the import pipeline, and the loop-side signal that releases its waiters.
@@ -318,6 +342,11 @@ class ZettCodeRuntime:
         """
         if self._ready is not None:
             await self._ready.wait()
+        # The compaction's encoding, loaded on its own thread since `start`: what the first turn
+        # would otherwise load on this loop, with nothing painted and no key read until it was done.
+        # Waiting for it here is only a wait — the loop is free — and it is bounded, so a first run
+        # with no network goes on with an estimate instead of for as long as a download takes.
+        await self.compaction_counter.wait(COUNTER_WAIT)
 
         from zett_agent.client import create_agent
 

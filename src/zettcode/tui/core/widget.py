@@ -158,8 +158,17 @@ class Widget:
     def on_blur(self) -> None:
         """Run when this widget stops being the focus target."""
 
-    def on_tick(self) -> None:
-        """Run before each frame so a widget can react to the clock."""
+    def on_tick(self) -> bool | None:
+        """Run before each frame so a widget can react to the clock.
+
+        Returns:
+            ``False`` when nothing the reader can see is different from the last frame, which
+            is what the default does because it does nothing. ``True`` says something is.
+            ``None`` — what a subclass that overrides this without returning anything gives —
+            is the cautious answer, "it may be", and is treated as ``True``: a widget has to
+            say *no* to let a frame be skipped, so forgetting to cannot freeze the screen.
+        """
+        return False
 
     # -- invalidation -------------------------------------------------------
     def invalidate(self) -> None:

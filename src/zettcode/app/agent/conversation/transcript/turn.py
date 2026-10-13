@@ -11,8 +11,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TypeGuard
 
+from .....tui.render import display_width
 from ..entries import Entry, EntryKind, EntryStatus, TextEntry, ThinkingEntry, TimedEntry, ToolEntry, WaitEntry
-from ..rows import ANIMATION_SECONDS, PROCESSING
+from ..rows import ANIMATION_SECONDS, PROCESSING, blink_state, wait_picture
 from .log import EntryLog
 
 
@@ -23,6 +24,8 @@ class TurnMixin(EntryLog):
     clock: Callable[[], float]
     #: The animation step the clock is at, which the presenters pace themselves by.
     frame: int
+    #: What the last animation step that was taken drew; see :meth:`advance_frame`.
+    _picture_drawn: tuple[object, ...] | None
 
     @staticmethod
     def _is_open_row(entry: Entry) -> TypeGuard[ThinkingEntry | ToolEntry]:
@@ -126,7 +129,7 @@ class TurnMixin(EntryLog):
         if changed:
             self.version += 1
 
-    def advance_frame(self) -> None:
+    def advance_frame(self) -> bool:
         """Move the activity animation on, and bring every running timer up.
 
         The waiting row is the one row that sweeps; a reasoning or tool row
@@ -147,18 +150,55 @@ class TurnMixin(EntryLog):
         nothing, and says so: every version bump makes the transcript view
         measure every entry again, so the frame rate a busy shell paints at
         must not decide how much work that is.
+
+        Most steps repeat the picture before them. A step is a hundred and twentieth of
+        a second, but the highlight sits on a whole column and crosses a word in a
+        second and a half, so it changes a few dozen times a second; the icon turns
+        over twice in a second and a half; a timer shows whole seconds. A step that lands on the picture already drawn is not
+        taken: the frame counter, the timers and the version stay where they were, the
+        cached rows stay valid, and the caller is told nothing changed, so the loop
+        can skip the frame it would have painted — the measured cost of painting every
+        one was a third of a core for a reader who was only waiting.
+
+        Returns:
+            Whether anything the reader can see is different from the last step taken.
         """
-        frame = int(self.clock() / ANIMATION_SECONDS)
+        now = self.clock()
+        frame = int(now / ANIMATION_SECONDS)
         if frame == self.frame:
-            return
+            return False
+        # One walk, which both the picture and the timers use: the rows of this request and
+        # no more, so what a step reads does not grow with the session.
+        running = [
+            (index, entry)
+            for index in range(self._turn_from, len(self.entries))
+            if isinstance(entry := self.entries[index], TimedEntry) and entry.running
+        ]
+        picture = self._picture(frame, now, [entry for _, entry in running])
+        if picture == self._picture_drawn:
+            return False
+        self._picture_drawn = picture
         self.frame = frame
-        changed = False
-        for index in range(self._turn_from, len(self.entries)):
-            entry = self.entries[index]
-            if not isinstance(entry, TimedEntry) or not entry.running:
-                continue
-            entry.tick(self.clock())
+        for index, entry in running:
+            entry.tick(now)
             self._touch(index)
-            changed = True
-        if changed:
+        if running:
             self.version += 1
+        return True
+
+    @staticmethod
+    def _picture(frame: int, now: float, running: list[TimedEntry]) -> tuple[object, ...]:
+        """Return everything the running rows and the status icon would show at ``frame``.
+
+        The waiting row's highlight and rest, the icon's state, and — for every running
+        row — the whole seconds its timer reads. Equal pictures are drawn identically,
+        which is what lets a step that repeats one be skipped.
+        """
+        seconds: list[int] = []
+        wait: tuple[bool, int] = (False, 0)
+        for entry in running:
+            if entry.started_at is not None:
+                seconds.append(round(now - entry.started_at))
+            if isinstance(entry, WaitEntry):
+                wait = wait_picture(frame, display_width(entry.title))
+        return (wait, blink_state(frame), tuple(seconds))

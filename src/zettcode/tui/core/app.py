@@ -333,11 +333,19 @@ class TuiApp(Host):
             return focused.cursor()
         return self.screens.top.widget.cursor()
 
-    def tick(self) -> None:
-        """Give every mounted widget a chance to react to the clock."""
+    def tick(self) -> bool:
+        """Give every mounted widget a chance to react to the clock.
+
+        Returns:
+            Whether any widget may have changed what is on screen. Every widget is asked,
+            whatever the first one said: each reacts to the clock whether or not another did.
+        """
+        changed = False
         for screen in list(self.screens):
             for widget in walk(screen.widget):
-                widget.on_tick()
+                if widget.on_tick() is not False:
+                    changed = True
+        return changed
 
     # -- input --------------------------------------------------------------
     def dispatch(self, event: AnyEvent) -> bool:

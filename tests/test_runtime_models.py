@@ -188,22 +188,34 @@ def test_the_runtime_module_costs_nothing_until_it_starts(tmp_path):
 
 
 @pytest.mark.parametrize(
-    ("anthropic", "subagent", "mcp"),
-    [(False, True, True), (True, False, False), (True, True, True)],
+    ("models", "sdks"),
+    [
+        ((False,), ("openai", "openai.resources")),
+        ((True,), ("anthropic",)),
+        ((False, True), ("openai", "openai.resources", "anthropic")),
+        ((True, False), ("openai", "openai.resources", "anthropic")),
+    ],
+    ids=["openai-only", "anthropic-only", "both", "both-reversed"],
 )
-def test_the_warm_up_names_every_module_a_request_needs(tmp_path, monkeypatch, anthropic, subagent, mcp):
-    """Both SDKs are warmed, not only the active model's, and the optional ones follow the config.
+@pytest.mark.parametrize(("subagent", "mcp"), [(True, True), (False, False)])
+def test_the_warm_up_names_every_module_a_request_needs(tmp_path, monkeypatch, models, sdks, subagent, mcp):
+    """The SDKs of every configured model are warmed, and the optional modules follow the config.
 
-    ``/model`` can select an entry that speaks the other API, and the adapter
-    built for it imports its SDK in the constructor: doing that on the event
-    loop, in the middle of a turn, is the freeze this warm-up exists to avoid.
-    The extensions the configuration turns off are left out, so a run with no
-    MCP config never pays for the MCP client.
+    Every configured entry, not only the active one: ``/model`` can select an entry that speaks the
+    other API, and the adapter built for it imports its SDK in the constructor — doing that on the
+    event loop, in the middle of a turn, is the freeze this warm-up exists to avoid. An entry that
+    is not configured cannot be selected, so a run that only talks to OpenAI-compatible endpoints
+    leaves ``anthropic`` unimported, on a thread that would have competed with the interface.
+
+    OpenAI's resource tree is named as well as the package: the first request imports it — five
+    hundred modules, 430 ms measured — and that is the loop's, unless it was done here.
     """
     monkeypatch.setattr(runtime_module.os, "chdir", lambda path: None)
     config = ZettCodeConfig(
         workspace=tmp_path,
-        models=(ModelConfig(model="m", token="t", anthropic=anthropic),),
+        models=tuple(
+            ModelConfig(model=f"m{index}", token="t", anthropic=anthropic) for index, anthropic in enumerate(models)
+        ),
         store=tmp_path / "sessions",
         subagent_enabled=subagent,
         mcp_enabled=mcp,
@@ -213,8 +225,7 @@ def test_the_warm_up_names_every_module_a_request_needs(tmp_path, monkeypatch, a
     names = runtime_module.ZettCodeRuntime.preview(config).warm_modules()
 
     assert names == (
-        "openai",
-        "anthropic",
+        *sdks,
         "zett_agent.client",
         *(("zett_agent.extensions.subagent",) if subagent else ()),
         *(("zett_agent.extensions.mcp",) if mcp else ()),
