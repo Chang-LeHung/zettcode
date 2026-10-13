@@ -41,6 +41,80 @@ Remove-Item Env:ZETTCODE_CONFIG
 
 ## 模型连接 {#models}
 
+### 用 /config 添加模型 {#adding-models-with-config}
+
+添加模型不必改文件。`/config` 会在对话上方打开一个面板：
+
+```text
+Models
+~/.zettcode/config.toml
+ ▸ 1. DeepSeek Pro (current)   deepseek-v4-pro · chat · https://api.deepseek.com
+   2. DeepSeek Flash           deepseek-flash · chat · https://api.deepseek.com
+   + Add a model               from a provider, or any endpoint
+```
+
+**Add a model** 先问你选哪个 provider，再只问这个 provider 没有说明的部分。provider 是已知的服务商
+—— 地址和 API 已经填好，你只需要给出**模型 id** 和 **token**：
+
+| Provider | API | 地址 |
+| --- | --- | --- |
+| `openai` | chat completions | `https://api.openai.com/v1` |
+| `anthropic` | Messages API | `https://api.anthropic.com` |
+| `deepseek` | chat completions | `https://api.deepseek.com` |
+| `openrouter` | chat completions | `https://openrouter.ai/api/v1` |
+| `groq` | chat completions | `https://api.groq.com/openai/v1` |
+| `ollama` | chat completions | `http://localhost:11434/v1` |
+| `custom` | **你选择** | **你填写** |
+
+`custom` 是任何其他端点，会问四件事：它用哪种 **API**（`chat` 是 chat completions，`responses` 是
+Responses API，`anthropic` 是 Messages API）、**地址**、**模型 id** 和 **token**。Anthropic API 的端点
+不会问地址：SDK 自带一个。插件可以往这个列表里添加 provider，见[插件](/zh/guide/plugins#providers)。
+
+token 输入时显示为圆点，之后也不会再显示 —— 面板里没有，`/config list` 里没有，提示“已添加”的那一行
+里也没有。**Escape 是退回上一步**：从 token 退到模型 id（带着你刚才输入的内容，可以直接改），从第一个问题退到
+provider 列表，从列表退到模型列表，只有在模型列表按 Escape 才会关闭。最后一个答案提交之前什么都不会
+写入，所以退回去不会有任何损失。
+
+在面板里选中一个模型可以**使用**它、修改它的 **token**、**API**（`chat`、`responses` 或 `anthropic`）、**地址**、**模型 id** 或**显示名**，或者**删除**
+它（删除前会先确认，Enter 默认的答案是 *Keep it*）。
+
+同样的事也可以写成一行，只会询问这一行没有给出的部分：
+
+```text
+/config add deepseek --model deepseek-chat --token sk-...
+/config add custom --api chat --url https://llm.example/v1 --model my-model --token sk-... --name "My model"
+/config add anthropic --model claude-sonnet-4-5          # 会询问 token
+/config remove 3          # 也可以用名字：/config remove "My model"
+/config list              # 模型和地址，不显示 token
+/config providers         # `add` 接受哪些 provider
+```
+
+| 选项 | 含义 |
+| --- | --- |
+| `--model ID` | provider 称呼这个模型的 id。 |
+| `--token KEY` | 凭据。不写的话会用隐藏输入来询问。 |
+| `--url URL` | 地址，替换 provider 自带的。`custom` 必须给（`--api anthropic` 除外）。 |
+| `--api chat\|responses\|anthropic` | 用哪种 API。provider 有自己的默认值，这里可以覆盖，例如 `openai --api responses`。 |
+| `--name SHOWN` | 在标题栏和 `/model` 里显示的名字（`display_model`）。 |
+| `--multimodal` | 模型接受图片。 |
+
+::: tip token 优先用面板输入
+你输入过的一行会留在输入框的内存历史里，按 `↑` 能再看到它，直到退出。不写 `--token`，在隐藏提示里输入
+token 更稳妥。
+:::
+
+`/config` 对文件做了什么：
+
+- 它**只改 `[[models]]` 条目**。你的注释、其它表和排版保持原样，并且在保存前会检查结果：如果结果不恰好
+  是要的那些模型、或者会改动别的东西，就什么也不写。
+- 添加的模型**立刻可用**，不用重启。添加不等于切换：正在用的模型不变。删除正在用的那个，会切到它相邻
+  的一个并说明。
+- 文件的权限保持不变。新建的文件只有你自己可读，因为里面有密钥。
+- `/config` 每次都重新读文件，所以你启动之后手动加的模型也会显示在里面。
+- 你编辑的那个模型**内部**的注释不会保留（它上面和其他地方的注释都保留）。
+- 用别的写法写模型的文件 —— 比如内联的 `models = [ … ]` 数组 —— 会原样保留并提示你手动编辑；最后
+  一个模型不能删除。
+
 ### 一份可以照着配置的 DeepSeek 示例
 
 在 [DeepSeek 开放平台](https://platform.deepseek.com/)创建 API key。
@@ -176,7 +250,8 @@ DeepSeek 当前的 Flash 模型接受图片，Pro 不接受。如果网关没有
 那一项也应该保持 `multimodal = false`。
 
 启动时选择第一项。运行中输入 `/model` 从列表选择，或者直接输入 `/model DeepSeek Flash`。
-切换只影响后续请求，不创建新会话，也不打断正在执行的请求。编辑文件后需要重启才能读到新增项。
+切换只影响后续请求，不创建新会话，也不打断正在执行的请求。用 [`/config`](#adding-models-with-config)
+添加的模型立刻可用；手动编辑文件之后需要重启才能读到新增项。
 
 ### 压缩百分比应该怎么选
 

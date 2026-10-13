@@ -103,7 +103,7 @@ class ExampleCommandUi(CommandUi):
 @pytest.mark.parametrize("path", ["docs/guide/plugins.md", "docs/zh/guide/plugins.md"])
 async def test_documented_plugin_registers_and_runs_its_command(path, tmp_path):
     examples = code_blocks(path, "python")
-    assert len(examples) == 3
+    assert len(examples) == 4
     namespace = {}
     for example in examples:
         exec(compile(example, path, "exec"), namespace)
@@ -129,6 +129,13 @@ async def test_documented_plugin_registers_and_runs_its_command(path, tmp_path):
     result = await progress_handler(plugin, CommandContext(argument="Ada", ui=ui))
     assert ui.events == [("notice", "Preparing a greeting…")]
     assert result.message == "## Hello\n\nWelcome, Ada."
+
+    # The provider example is run as written: what the page says a plugin can describe is what loads.
+    described = PluginContainer(config)
+    namespace["Acme"]().activate(described)
+    (provider,) = described.providers
+    assert (provider.name, provider.label, provider.api) == ("acme", "Acme AI", "chat")
+    assert provider.base_url == "https://api.acme.example/v1" and provider.token_env == "ACME_API_KEY"
 
 
 @pytest.fixture

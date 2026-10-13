@@ -11,6 +11,7 @@
 | `/resume` | 弹出面板选择最近的会话；`/resume <id>` 直接打开指定会话。 |
 | `/fork` | 把当前对话带进一个新会话，并在那里继续。 |
 | `/model` | 用面板选择后续请求使用的模型。 |
+| `/config` | 不用改文件就能添加、修改、删除模型：`/config`、`/config add <provider> …`、`/config remove <序号>`。见[用 /config 添加模型](/zh/guide/config#adding-models-with-config)。 |
 | `/effort` | 选择模型的推理强度：`/effort high`。 |
 | `/permission` | 选择 shell 命令在多大范围内不用问：`/permission safe`。 |
 | `/btw` | 问一件只在当场回答、不进入对话的事：`/btw <问题>`。 |
