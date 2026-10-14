@@ -309,6 +309,7 @@ enabled = true                 # 后台检查 PyPI 新版本
 
 [harness]
 subagent = true                # 提供 task 工具及其子 agent 档位
+subagent_max_iterations = 512  # 一个子 agent 完成一个任务最多调用模型的次数
 todowrite = false              # 提供 todo_write，界面会画出计划面板
 ```
 
@@ -330,6 +331,7 @@ todowrite = false              # 提供 todo_write，界面会画出计划面板
 | `plugins.disable` | `[]` | 要跳过的插件 **entry-point 名称**数组，不一定等于 pip 包名。 |
 | `update.enabled` | `true` | 后台检查 PyPI，并在之后启动时提示新版本，不会自动安装。 |
 | `harness.subagent` | `true` | 提供 `task` 工具：模型可以把任务交给带独立上下文和会话日志的子 agent。 |
+| `harness.subagent_max_iterations` | `512` | 一个子 agent 完成一个任务最多可以调用模型的次数。子 agent 在真实代码库里探索或修改要调用几十次（库自带的默认值 18 会让这类任务做到一半就结束）；这个值是防止它停不下来的上限，不是目标。子 agent 也会拿到你项目的 `AGENTS.md`。 |
 | `harness.todowrite` | `false` | 提供 `todo_write`，清单由界面画在计划面板里。维护计划要花轮次，所以默认关闭。 |
 
 例如，减少回看内容、添加项目内 skills，再关闭远程工具服务器：

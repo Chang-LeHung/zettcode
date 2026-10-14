@@ -334,6 +334,7 @@ enabled = true                 # background PyPI version checks
 
 [harness]
 subagent = true                # offer the `task` tool and its child profiles
+subagent_max_iterations = 512  # model calls one child may make for one task
 todowrite = false              # offer `todo_write`, which draws the plan panel
 ```
 
@@ -356,6 +357,7 @@ belong to the most recent table heading; an `enabled` key immediately under
 | `plugins.disable` | `[]` | Array of plugin **entry-point names** to skip, not necessarily their pip package names. |
 | `update.enabled` | `true` | Check PyPI in the background and offer newer releases on a later start; does not automatically install them. |
 | `harness.subagent` | `true` | Offer the `task` tool, so the model can delegate to a child agent with its own context and session log. |
+| `harness.subagent_max_iterations` | `512` | Model calls one child agent may make for one task. A child exploring or editing a real codebase makes dozens (the library's own default of 18 ended such tasks halfway); this is a ceiling against one that never stops, not a target. Children are also given your project's `AGENTS.md`. |
 | `harness.todowrite` | `false` | Offer `todo_write`, whose checklist the shell draws in its plan panel. Keeping a plan costs turns, so it is off unless asked for. |
 
 Example: keep less scrollback, add project-local skills, and disable remote
