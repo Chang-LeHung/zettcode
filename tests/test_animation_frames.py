@@ -18,6 +18,7 @@ from zettcode.app.agent.conversation.rows import (
     WAIT_RAMP,
     activity_glyph,
     blink_state,
+    duration_text,
     sweep_column,
     wait_picture,
 )
@@ -198,21 +199,21 @@ def test_the_timer_crossing_a_whole_second_is_a_change_even_while_the_highlight_
     assert round(wait.duration or 0) == 2
 
 
-def test_a_second_running_row_with_its_own_timer_is_a_change_when_its_own_second_turns():
-    """The reasoning row above the wait row has its own start, so its timer turns over at its own
-    moment, which can fall inside the rest where nothing else moves."""
-    transcript, clock = _waiting(started_at=0.0)  # the wait row reads whole seconds from 0.0
+def test_a_second_running_row_with_its_own_timer_is_a_change_when_its_own_tenth_turns():
+    """The reasoning row above the wait row starts at its own moment and counts tenths, so its timer turns
+    over at moments of its own, which fall inside the rest where nothing else moves."""
+    transcript, clock = _waiting(started_at=0.0)
     clock.now = 0.3
-    transcript.start_thinking()  # and the reasoning row from 0.3
-    clock.now = 1.6  # inside the rest, both timers read 1
+    transcript.start_thinking()  # the reasoning row counts from 0.3
+    clock.now = 1.2  # inside the rest (1.0 s to 2.0 s), the wait row reads 1 s
     transcript.advance_frame()
 
     changes = []
-    for step in range(1, 36):
-        clock.now = 1.6 + step / 120  # to 1.89 s: the wait row's timer turned at 1.5, the reasoning row's at 1.8
+    for step in range(1, 31):
+        clock.now = 1.2 + step / 120  # to 1.45 s: the reasoning row passes 1.0 s and 1.1 s of its own
         changes.append(transcript.advance_frame())
 
-    assert changes.count(True) == 1, "one step, the one that takes the reasoning row's timer to 2 s"
+    assert changes.count(True) == 2, "one step for each tenth the reasoning row's timer turns over"
 
 
 def test_the_same_step_twice_is_one_change():
@@ -550,16 +551,16 @@ def test_the_frame_rate_the_reader_asked_for_is_still_what_the_clock_offers():
 
 
 def test_the_icon_turning_over_is_a_change_even_while_the_highlight_rests():
-    """Frame 270 is inside the rest (180 to 299) and is where the icon turns over again: nothing else
-    moves there, so only the icon can make it a change. Frames 90 and 180, where it also turns, are
-    no use for this — the highlight happens to move at those too."""
+    """Frame 180 is inside the rest (120 to 239) and is where the icon turns over again: nothing else
+    moves there, so only the icon can make it a change. Frame 90, where it also turns, is no use for
+    this — the highlight is sweeping then."""
     transcript, clock = _waiting(started_at=0.0)
-    clock.now = 269 * FRAME
+    clock.now = 179 * FRAME
     transcript.advance_frame()
-    assert not blink_state(269) == blink_state(270), "the icon does turn over at frame 270"
-    assert wait_picture(269, 10) == wait_picture(270, 10) == (False, 0), "and the row is at rest on both sides"
+    assert blink_state(179) != blink_state(180), "the icon does turn over at frame 180"
+    assert wait_picture(179, 10) == wait_picture(180, 10) == (False, 0), "and the row is at rest on both sides"
 
-    clock.now = 270 * FRAME
+    clock.now = 180 * FRAME
 
     assert transcript.advance_frame() is True
 
@@ -657,3 +658,82 @@ def test_a_callback_waiting_for_the_next_paint_is_not_left_waiting_by_a_quiet_fr
     renders = _renders_during(app, lambda: runner.paint(animation_only=True))
 
     assert ran == [True] and renders == 1
+
+
+# -- a timer that counts tenths keeps counting while the rest of the picture holds still ---------------------
+
+
+def _shown_timers(transcript: Transcript, clock: Clock, seconds: float):
+    """Step through ``seconds`` of animation and return the text of the tool row's timer after each step."""
+    tool = next(entry for entry in transcript.entries if entry.kind == "tool")
+    texts = []
+    for step in range(1, int(seconds * 120) + 1):
+        clock.now = step / 120
+        transcript.advance_frame()
+        texts.append(duration_text(tool.duration))
+    return texts
+
+
+def _running_tool() -> tuple[Transcript, Clock]:
+    transcript, clock = _waiting()
+    transcript.start_tool("call-1", "read_file", {"path": "a.py"})
+    return transcript, clock
+
+
+def test_a_tool_timer_never_jumps_by_more_than_a_tenth_across_a_whole_pulse():
+    """The bug: the signature counted whole seconds, so in the second the highlight rests nothing changed
+    and the timer froze, then jumped from 0.1 to 0.9 when the sweep began again."""
+    transcript, clock = _running_tool()
+
+    texts = _shown_timers(transcript, clock, 2.6)
+    distinct = [float(text.split()[0]) for text in dict.fromkeys(texts)]
+
+    jumps = [round(b - a, 1) for a, b in zip(distinct, distinct[1:], strict=False)]
+    assert max(jumps) <= 0.1, f"the timer skipped: {distinct}"
+    assert distinct[-1] >= 2.5, "and it kept going to the end"
+
+
+def test_a_tool_timer_still_moves_during_the_second_the_highlight_rests():
+    transcript, clock = _running_tool()
+    first = 1.1  # the rest runs from one second to two
+    for step in range(1, int(first * 120) + 1):
+        clock.now = step / 120
+        transcript.advance_frame()
+    tool = next(entry for entry in transcript.entries if entry.kind == "tool")
+    assert wait_picture(int(clock.now * 120), 10) == (False, 0), "the highlight is at rest here"
+    before = duration_text(tool.duration)
+
+    for step in range(int(first * 120) + 1, int(1.35 * 120) + 1):
+        clock.now = step / 120
+        transcript.advance_frame()
+
+    assert duration_text(tool.duration) != before
+
+
+def test_a_thinking_timer_counts_tenths_too():
+    transcript, clock = _waiting()
+    transcript.start_thinking()
+    thinking = next(entry for entry in transcript.entries if entry.kind == "thinking")
+    seen = []
+    for step in range(1, int(2.4 * 120) + 1):
+        clock.now = step / 120
+        transcript.advance_frame()
+        seen.append(duration_text(thinking.duration))
+
+    distinct = [float(text.split()[0]) for text in dict.fromkeys(seen)]
+
+    assert max(round(b - a, 1) for a, b in zip(distinct, distinct[1:], strict=False)) <= 0.1
+
+
+def test_the_wait_row_still_counts_whole_seconds_and_changes_once_a_second_while_resting():
+    """The other half of the rule: only what is drawn counts as a change, and the wait row draws seconds."""
+    transcript, clock = _waiting()
+    wait = transcript.entries[-1]
+    clock.now = 1.05
+    transcript.advance_frame()
+    changes = 0
+    for step in range(int(1.05 * 120) + 1, int(1.95 * 120) + 1):
+        clock.now = step / 120
+        changes += transcript.advance_frame()
+
+    assert changes == 1 and round(wait.duration or 0) == 2  # the one step where "1s" becomes "2s"

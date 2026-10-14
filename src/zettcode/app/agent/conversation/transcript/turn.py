@@ -13,7 +13,7 @@ from typing import TypeGuard
 
 from .....tui.render import display_width
 from ..entries import Entry, EntryKind, EntryStatus, TextEntry, ThinkingEntry, TimedEntry, ToolEntry, WaitEntry
-from ..rows import ANIMATION_SECONDS, PROCESSING, blink_state, wait_picture
+from ..rows import ANIMATION_SECONDS, PROCESSING, blink_state, duration_text, elapsed_text, wait_picture
 from .log import EntryLog
 
 
@@ -191,14 +191,19 @@ class TurnMixin(EntryLog):
         """Return everything the running rows and the status icon would show at ``frame``.
 
         The waiting row's highlight and rest, the icon's state, and — for every running
-        row — the whole seconds its timer reads. Equal pictures are drawn identically,
+        row — the text its timer reads. Equal pictures are drawn identically,
         which is what lets a step that repeats one be skipped.
         """
-        seconds: list[int] = []
+        shown: list[str] = []
         wait: tuple[bool, int] = (False, 0)
         for entry in running:
             if entry.started_at is not None:
-                seconds.append(round(now - entry.started_at))
+                # What the row will *say*, not a number it is derived from: the wait row counts
+                # whole seconds and every other row counts tenths, and a signature that rounded
+                # the second to the first would freeze a tenths timer for as long as the rest of
+                # the picture holds still — a second at a time, which read as 0.1 jumping to 0.9.
+                elapsed = now - entry.started_at
+                shown.append(elapsed_text(elapsed) if isinstance(entry, WaitEntry) else duration_text(elapsed))
             if isinstance(entry, WaitEntry):
                 wait = wait_picture(frame, display_width(entry.title))
-        return (wait, blink_state(frame), tuple(seconds))
+        return (wait, blink_state(frame), tuple(shown))

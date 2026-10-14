@@ -188,11 +188,12 @@ def clock_text(moment: datetime | None = None) -> str:
 #: the label after it never shifts as the row pulses.
 RUNNING_GLYPHS = RUNNING
 
-#: Seconds one pulse of the waiting row takes: it moves for a second and a half,
-#: then rests for a second before it moves again. The marker and the highlight
-#: share the period, so the row reads as one thing breathing instead of two
-#: effects on clocks of their own.
-MOVE_SECONDS = 1.5
+#: Seconds one pulse of the waiting row takes: it moves for a second, then rests
+#: for a second before it moves again. The marker and the highlight share the
+#: period, so the row reads as one thing breathing instead of two effects on
+#: clocks of their own. The rest is deliberate: a row that never stops reads as
+#: busy-work, and the pause is what makes the sweep look like an event.
+MOVE_SECONDS = 1.0
 REST_SECONDS = 1.0
 
 #: Share of a pulse spent moving, and the frames one takes, counted in animation

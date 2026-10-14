@@ -816,9 +816,9 @@ def test_a_pass_crosses_the_label_in_the_moving_part_of_the_pulse():
     """A fixed period, not a fixed speed: a long row is not crossed more slowly."""
     narrow, wide = 10, 60
 
-    # A second and a half of movement and a second of rest, in seconds.
-    assert move_frames() * ANIMATION_SECONDS == pytest.approx(1.5)
-    assert PULSE_FRAMES * ANIMATION_SECONDS == pytest.approx(2.5)
+    # A second of movement and a second of rest, in seconds.
+    assert move_frames() * ANIMATION_SECONDS == pytest.approx(1.0)
+    assert PULSE_FRAMES * ANIMATION_SECONDS == pytest.approx(2.0)
     assert sweep_column(0, narrow) == sweep_column(0, wide) == 0
     assert sweep_column(PULSE_FRAMES, wide) == 0  # the next pulse starts over
     # A frame moves the highlight the same fraction of either row — sixty columns
@@ -912,7 +912,7 @@ def test_the_blink_demo_can_be_slowed_down_while_it_runs(monkeypatch):
 
     harness.press("]")
     assert demo.rows_module.PULSE_FRAMES == 3 * notch
-    assert "one pass per 0.9 s" in harness.render().text
+    assert "one pass per 0.8 s" in harness.render().text
 
     harness.press("[")
     harness.press("[")
