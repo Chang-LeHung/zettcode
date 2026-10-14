@@ -20,8 +20,10 @@ from zettcode.update import (
     display_command,
     fetch_latest,
     in_background,
+    installed_version,
     is_newer,
     read_state,
+    record_install,
     run_upgrade,
     upgrade_command,
     write_state,
@@ -298,3 +300,174 @@ def test_a_failure_that_arrives_after_the_loop_closed_is_dropped_quietly(monkeyp
     thread.join(5.0)
 
     assert not thread.is_alive() and raised == []
+
+
+# -- recognising a uv tool environment --------------------------------------------------------------------------
+
+
+def _fake_environment(tmp_path: Path, monkeypatch, *, receipt: bool, named_like_a_tool: bool) -> Path:
+    """An interpreter path that is a link to another one, as every virtual environment's ``python`` is."""
+    inside = tmp_path / "uv" / "tools" / "zettcode" if named_like_a_tool else tmp_path / "venvs" / "zettcode"
+    (inside / "bin").mkdir(parents=True)
+    link = inside / "bin" / "python"
+    link.symlink_to(Path(sys.executable).resolve())
+    if receipt:
+        (inside / "uv-receipt.toml").write_text("[tool]\n", encoding="utf-8")
+    monkeypatch.setattr(sys, "executable", str(link))
+    monkeypatch.setattr(sys, "prefix", str(inside))
+    return link
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="links need privileges there")
+def test_a_uv_tool_environment_is_recognised_although_its_python_is_a_link_elsewhere(tmp_path, monkeypatch):
+    """The bug: the path was resolved, which names the interpreter the environment was built from."""
+    link = _fake_environment(tmp_path, monkeypatch, receipt=False, named_like_a_tool=True)
+
+    assert "tools" not in link.resolve().parts, "resolving it loses the directory that says what it is"
+    assert update.installed_by_uv_tool() is True
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="links need privileges there")
+def test_the_receipt_uv_leaves_is_what_decides_wherever_the_tools_directory_was_put(tmp_path, monkeypatch):
+    _fake_environment(tmp_path, monkeypatch, receipt=True, named_like_a_tool=False)
+
+    assert update.installed_by_uv_tool() is True
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="links need privileges there")
+def test_an_ordinary_environment_is_not_taken_for_a_uv_tool(tmp_path, monkeypatch):
+    _fake_environment(tmp_path, monkeypatch, receipt=False, named_like_a_tool=False)
+
+    assert update.installed_by_uv_tool() is False
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="links need privileges there")
+def test_a_uv_tool_environment_is_upgraded_with_uv_and_never_with_a_pip_it_does_not_have(tmp_path, monkeypatch):
+    _fake_environment(tmp_path, monkeypatch, receipt=True, named_like_a_tool=True)
+    monkeypatch.setattr(update, "which", lambda name: "/usr/local/bin/uv")
+
+    assert upgrade_command() == ("uv", "tool", "upgrade", "zettcode")
+
+
+# -- what an upgrade installed, read back and written down -------------------------------------------------------
+
+
+def _interpreter(tmp_path: Path, body: str) -> str:
+    """A stand-in interpreter: a script that ignores its arguments and runs ``body``."""
+    script = tmp_path / "fake-python"
+    script.write_text(f"#!{sys.executable}\n{body}\n", encoding="utf-8")
+    script.chmod(0o755)
+    return str(script)
+
+
+async def test_the_installed_version_is_read_from_a_fresh_process():
+    import importlib.metadata
+
+    assert await installed_version() == importlib.metadata.version("zettcode")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the stand-in is a shell script")
+async def test_the_last_line_is_the_version_so_a_banner_before_it_does_not_matter(tmp_path):
+    executable = _interpreter(tmp_path, "print('warning: something noisy')\nprint('0.4.2')\nprint()")
+
+    assert await installed_version(executable) == "0.4.2"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the stand-in is a shell script")
+@pytest.mark.parametrize(
+    "body",
+    [
+        "raise SystemExit(3)",
+        "print()",
+        "import sys; sys.stderr.write('boom'); sys.exit(1)",
+        # It printed a version and then died: a half-finished answer is not an answer.
+        "print('0.9.9'); raise SystemExit(1)",
+    ],
+)
+async def test_a_probe_that_fails_or_says_nothing_is_unconfirmed_not_unchanged(tmp_path, body):
+    assert await installed_version(_interpreter(tmp_path, body)) is None
+
+
+async def test_an_interpreter_that_does_not_exist_is_unconfirmed():
+    assert await installed_version("/nonexistent/python") is None
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the stand-in is a shell script")
+async def test_the_probe_runs_away_from_the_workspace_so_a_stray_package_there_cannot_answer(tmp_path):
+    import tempfile
+
+    executable = _interpreter(tmp_path, "import os; print(os.getcwd())")
+
+    assert Path(await installed_version(executable)).resolve() == Path(tempfile.gettempdir()).resolve()
+
+
+def test_a_recorded_install_is_written_beside_what_the_last_check_found(tmp_path):
+    path = tmp_path / "update.json"
+    write_state(UpdateState(checked_at=NOON, latest="0.2.0", skipped="0.1.9"), path)
+
+    record_install(path, "0.2.0")
+
+    state = read_state(path)
+    assert (state.installed, state.installed_by) == ("0.2.0", sys.executable)
+    assert (state.checked_at, state.latest, state.skipped) == (NOON, "0.2.0", "0.1.9")
+
+
+def test_a_recorded_install_with_no_state_file_yet_creates_one(tmp_path):
+    path = tmp_path / "deep" / "update.json"
+
+    record_install(path, "0.2.0", executable="/venv/bin/python")
+
+    assert read_state(path) == UpdateState(installed="0.2.0", installed_by="/venv/bin/python")
+
+
+def test_a_new_install_forgets_an_explanation_given_about_the_old_one(tmp_path):
+    path = tmp_path / "update.json"
+    write_state(UpdateState(installed="0.2.0", installed_by=sys.executable, noted="0.2.0"), path)
+
+    record_install(path, "0.3.0")
+
+    assert read_state(path).noted is None, "a different mismatch deserves its own explanation"
+
+
+def test_the_new_fields_round_trip_and_an_old_file_without_them_still_reads(tmp_path):
+    path = tmp_path / "update.json"
+    state = UpdateState(checked_at=NOON, latest="0.2.0", installed="0.2.0", installed_by="/v/python", noted="0.2.0")
+    write_state(state, path)
+    assert read_state(path) == state
+
+    path.write_text(json.dumps({"checked_at": NOON.isoformat(), "latest": "0.2.0", "skipped": None}), encoding="utf-8")
+    assert read_state(path) == UpdateState(checked_at=NOON, latest="0.2.0")
+
+
+def test_a_confirmed_install_newer_than_what_runs_is_not_offered_again_in_that_interpreter():
+    state = UpdateState(latest="0.2.0", installed="0.2.0", installed_by="/v/python")
+
+    assert state.shadowed_by("0.1.5", "/v/python") == "0.2.0"
+    assert state.offer("0.1.5", "/v/python") is None
+
+
+def test_it_is_still_offered_to_an_interpreter_that_was_not_the_one_upgraded():
+    state = UpdateState(latest="0.2.0", installed="0.2.0", installed_by="/v/python")
+
+    assert state.shadowed_by("0.1.5", "/another/python") is None
+    assert state.offer("0.1.5", "/another/python") == "0.2.0"
+
+
+def test_nothing_is_shadowed_once_the_running_version_has_caught_up():
+    state = UpdateState(latest="0.2.0", installed="0.2.0", installed_by="/v/python")
+
+    assert state.shadowed_by("0.2.0", "/v/python") is None
+    assert state.offer("0.2.0", "/v/python") is None, "and it is not newer, so there is nothing to say either"
+
+
+def test_a_release_newer_than_the_recorded_install_is_offered_once_the_copy_is_not_shadowed():
+    state = UpdateState(latest="0.3.0", installed="0.2.0", installed_by="/v/python")
+
+    assert state.shadowed_by("0.2.0", "/v/python") is None
+    assert state.offer("0.2.0", "/v/python") == "0.3.0"
+
+
+def test_a_skipped_version_stays_skipped_whatever_was_installed():
+    state = UpdateState(latest="0.3.0", skipped="0.3.0", installed="0.1.0", installed_by="/v/python")
+
+    assert state.offer("0.1.0", "/v/python") is None

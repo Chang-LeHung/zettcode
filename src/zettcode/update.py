@@ -5,6 +5,13 @@ leaves what it found in ``~/.zettcode/update.json``. The next start reads that
 file — no network, nothing to wait for — and offers the version it names, unless
 the reader has already skipped that one.
 
+An upgrade is only believed once it has been checked. A package manager that exits 0 has
+not necessarily installed anything (``uv tool upgrade`` answers "Nothing to upgrade" with 0, and so
+does a pip whose index has not listed the release yet), so after it runs the installed version is
+read back from the interpreter that was upgraded and written to the same file. What the file says
+is what the next start trusts: an upgrade that did not take is reported as that, not as done, and
+one that did is not offered again.
+
 Every failure means "no news". A machine with no network, a proxy that eats the
 request, an index that answers with something unexpected: none of them may
 become the reason a session fails to open, so the check swallows what it cannot
@@ -19,6 +26,7 @@ import os
 import ssl
 import subprocess
 import sys
+import tempfile
 import threading
 import urllib.error
 import urllib.request
@@ -89,18 +97,26 @@ def _moment(value: object) -> datetime | None:
 
 @dataclass(frozen=True, slots=True)
 class UpdateState:
-    """What the last check found, and what the reader has dismissed.
+    """What the last check found, what the reader has dismissed, and what an upgrade installed.
 
     Attributes:
         checked_at: When the index was last asked, aware and in UTC; ``None``
             before the first successful check.
         latest: Newest release the index named, if any.
         skipped: Version the reader said not to ask about again.
+        installed: Version an upgrade was *confirmed* to have installed, read back from the
+            environment afterwards; ``None`` until one has been.
+        installed_by: The interpreter that upgrade ran in. A record is only about that interpreter.
+        noted: Version whose mismatch with the running program has already been explained, so the
+            explanation is given once and not at every start.
     """
 
     checked_at: datetime | None = None
     latest: str | None = None
     skipped: str | None = None
+    installed: str | None = None
+    installed_by: str | None = None
+    noted: str | None = None
 
     @property
     def stale(self) -> bool:
@@ -109,9 +125,27 @@ class UpdateState:
             return True
         return datetime.now(timezone.utc) - self.checked_at >= CHECK_INTERVAL
 
-    def offer(self, current: str = __version__) -> str | None:
+    def shadowed_by(self, current: str = __version__, executable: str | None = None) -> str | None:
+        """Return the version an upgrade installed here that this process is not running, if any.
+
+        A confirmed install newer than the running program, in the interpreter that is running it,
+        means the upgrade worked and something else is supplying the code — an editable checkout, a
+        ``PYTHONPATH`` — so offering the same upgrade again cannot change what runs. A record made
+        by another interpreter says nothing about this one: that copy really is old.
+
+        Args:
+            current: Version of the running program.
+            executable: Interpreter running it; defaults to this process's.
+        """
+        if self.installed is None or self.installed_by != (executable or sys.executable):
+            return None
+        return self.installed if is_newer(self.installed, current) else None
+
+    def offer(self, current: str = __version__, executable: str | None = None) -> str | None:
         """Return the version worth offering, or ``None`` when there is nothing to say."""
         if self.latest is None or self.skipped == self.latest:
+            return None
+        if self.shadowed_by(current, executable) is not None:
             return None
         return self.latest if is_newer(self.latest, current) else None
 
@@ -177,6 +211,9 @@ def read_state(path: Path) -> UpdateState:
         checked_at=_moment(raw.get("checked_at")),
         latest=_text(raw.get("latest")),
         skipped=_text(raw.get("skipped")),
+        installed=_text(raw.get("installed")),
+        installed_by=_text(raw.get("installed_by")),
+        noted=_text(raw.get("noted")),
     )
 
 
@@ -186,6 +223,9 @@ def write_state(state: UpdateState, path: Path) -> None:
         "checked_at": state.checked_at.isoformat() if state.checked_at is not None else None,
         "latest": state.latest,
         "skipped": state.skipped,
+        "installed": state.installed,
+        "installed_by": state.installed_by,
+        "noted": state.noted,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     with NamedTemporaryFile("w", encoding="utf-8", dir=path.parent, delete=False) as handle:
@@ -261,8 +301,18 @@ async def check_for_update(
 
 
 def installed_by_uv_tool() -> bool:
-    """Return whether this interpreter lives in a ``uv tool`` environment."""
-    parts = Path(sys.executable).resolve().parts
+    """Return whether this interpreter lives in a ``uv tool`` environment.
+
+    ``uv`` leaves a ``uv-receipt.toml`` at the root of every tool environment, wherever
+    ``UV_TOOL_DIR`` put it, which is the one thing that is not a guess. The path is the fallback,
+    and it is read as given: a tool environment's ``python`` is a link to the interpreter it was
+    built from, and resolving it names that interpreter's directory instead, which has no ``tools``
+    in it. That is how a real ``uv tool`` install used to be taken for a pip one, and handed a
+    ``pip install --upgrade`` in an environment that has no pip.
+    """
+    if (Path(sys.prefix) / "uv-receipt.toml").is_file():
+        return True
+    parts = Path(sys.executable).parts
     return "uv" in parts and "tools" in parts
 
 
@@ -300,6 +350,65 @@ async def run_upgrade(command: Sequence[str] | None = None, *, timeout: float = 
         return False, str(error)
     output = f"{result.stdout or ''}{result.stderr or ''}".strip()
     return result.returncode == 0, output
+
+
+#: What a fresh interpreter is asked to print: the version of the installed distribution, which is
+#: what the next start will run, whatever this process was started with.
+INSTALLED_PROBE = "from importlib.metadata import version; print(version('zettcode'))"
+
+
+async def installed_version(executable: str | None = None, *, timeout: float = 60.0) -> str | None:
+    """Return the version of ZettCode installed for an interpreter, read from a fresh process.
+
+    The running process cannot answer: it imported the code it started with, which is the version
+    that is being replaced. A new process reads what is on disk now, which is what the next start
+    will run. It is started from a neutral directory, because a start is not made from the workspace
+    and a stray ``zettcode`` there must not answer for the install.
+
+    Args:
+        executable: The interpreter the upgrade ran in; defaults to this process's.
+        timeout: Seconds before giving up.
+
+    Returns:
+        The version, or ``None`` when it could not be read — which is "unconfirmed", never "unchanged".
+    """
+    argv = (executable or sys.executable, "-c", INSTALLED_PROBE)
+    try:
+        result = await in_background(
+            lambda: subprocess.run(
+                argv,
+                capture_output=True,
+                text=True,
+                stdin=subprocess.DEVNULL,
+                timeout=timeout,
+                check=False,
+                cwd=tempfile.gettempdir(),
+            )
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    lines = [line.strip() for line in (result.stdout or "").splitlines() if line.strip()]
+    return lines[-1] if lines else None
+
+
+def record_install(path: Path, version: str, executable: str | None = None) -> None:
+    """Write down that an upgrade installed ``version``, keeping everything else the file says.
+
+    Args:
+        path: The state file.
+        version: What :func:`installed_version` confirmed.
+        executable: The interpreter it was confirmed for; defaults to this process's.
+    """
+    write_state(
+        replace(read_state(path), installed=version, installed_by=executable or sys.executable, noted=None), path
+    )
+
+
+def running_from() -> str:
+    """Return the directory the running program's code was loaded from."""
+    return str(Path(__file__).resolve().parent)
 
 
 def display_command(command: Sequence[str]) -> str:

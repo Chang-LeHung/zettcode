@@ -88,11 +88,21 @@ macOS/Linux 可以用 `time zettcode --dry-run`，PowerShell 可以用
 
 - **Upgrade now**：按当前安装方式执行升级 —— `uv tool upgrade zettcode`，或
   `pip install --upgrade zettcode` —— 在后台跑。当前窗口用的还是启动时的代码，升级后需要重启。
+  包管理器正常退出不等于装上了新版本（`uv tool upgrade` 会提示 “Nothing to upgrade” 并返回成功；
+  pip 在索引还没列出这个版本时也一样），所以之后 ZettCode 会用一个全新的进程把已安装的版本读回来，
+  并如实告诉你：**装好了**、**仍是旧版本**（几分钟后再试）、或**读不回来**。只有确认装上的版本才会写进
+  `~/.zettcode/update.json`、不再被提示；没有生效的升级，下次启动会再次提示。
 - **Skip this version**：把版本记进 `~/.zettcode/update.json`，这个版本不再提示，再往后的
   新版本会重新提示。
 - **Not now**（或 `Esc`）：什么都不写，下次启动还会就同一个版本再问一次。
 
 提示来自那个文件而不是网络，所以离线机器不会看到任何版本相关的打扰。
+
+**我升级了，可它还是显示旧版本。** 先看你启动的是哪一份：`zettcode --version` 会打印版本，
+`which zettcode` 会告诉你启动的是哪个命令。如果 ZettCode 已经确认装上了新版本、而你启动的程序仍是旧的，
+说明有别的东西在提供代码 —— 一个可编辑安装的检出目录，或者 `PYTHONPATH`。这时 ZettCode 会说明一次
+（并指出正在运行的代码来自哪个目录），而不是再提示同一个升级。另一份从没升级过的副本（比如 `uv tool` 旁边
+还有一份 `pip` 安装的）会照常被提示升级，并且显示的命令是针对正在运行的那一份的。
 
 ## 退出
 
