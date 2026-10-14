@@ -64,6 +64,10 @@ from .input import AsyncInput, EventType, InputEvent, translate
 from .render import DifferentialRenderer
 from .terminal import Terminal, parse_background, title_sequence
 
+#: Most queued events applied before the next frame is drawn. Large enough that a burst of wheel notches
+#: or a held key is one frame, small enough that a flood of input still gets painted.
+MAX_BATCH = 256
+
 
 class TerminalRunner:
     """Drive one TuiApp from a real terminal, owning every resource it needs."""
@@ -137,8 +141,28 @@ class TerminalRunner:
                         raw = self._input.result()
                         self._input = asyncio.ensure_future(self.queue.get())
                         self.deliver(raw)
+                        self._deliver_pending()
             finally:
                 await self._shutdown()
+
+    def _deliver_pending(self) -> None:
+        """Hand over every event that is already waiting, so one frame answers all of them.
+
+        A wheel flick or a held key reaches the queue as a burst, and delivering one event per trip
+        round the loop paints between each: a hundred and twenty notches measured a hundred and twenty
+        full frames and three quarters of a second before the view stopped moving, the screen crawling
+        through positions the reader had already scrolled past. What is queued has all happened, so
+        it is applied together and drawn once. The batch is bounded, so a flood cannot starve the
+        frame it is waiting for, and it stops the moment the app is leaving.
+        """
+        for _ in range(MAX_BATCH):
+            if not self.app.running:
+                return
+            try:
+                raw = self.queue.get_nowait()
+            except asyncio.QueueEmpty:
+                return
+            self.deliver(raw)
 
     def paint(self, *, animation_only: bool = False) -> None:
         """Draw one frame into the terminal, unless it would only repeat the last one.
