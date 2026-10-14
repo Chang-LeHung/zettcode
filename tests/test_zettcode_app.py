@@ -3484,18 +3484,20 @@ async def test_a_command_declaring_itself_queued_runs_when_the_reply_ends():
     assert app._pending == []
 
 
-async def test_a_command_without_the_queue_policy_is_refused_while_busy():
+async def test_a_command_that_does_not_ask_to_run_while_busy_is_refused_while_busy():
+    """The default is to refuse: a command is not safe beside a request unless it says it is."""
     app = build_app(block=True)
     harness = _harness(app)
 
     harness.write("a long task")
     harness.press("enter")
     await asyncio.sleep(0)
-    harness.write("/help")
+    harness.write("/clear")  # touches the transcript the request is writing into
     harness.press("enter")
 
     assert app._pending == []
     assert any("busy" in entry.text for entry in app.transcript.entries if entry.kind == "notice")
+    assert any(entry.kind == "user" for entry in app.transcript.entries), "and nothing was cleared"
 
     app.task.cancel()
     await asyncio.gather(app.task, return_exceptions=True)
@@ -7470,3 +7472,355 @@ async def test_a_side_question_never_reports_changes():
     await asyncio.wait_for(app.task, 2.0)
 
     assert not any(entry.kind == "changes" for entry in app.transcript.entries)
+
+
+# -- commands that run while a request is running ------------------------------------------------------------
+
+
+def _with_plugin_command(name: str, handler, *, when_busy="refuse"):
+    """A shell whose plugin registered one command, as an installed plugin would."""
+    container = PluginContainer(FakeConfig())
+    container.register_command(name, f"{name} for the test", handler, when_busy=when_busy)
+    return build_app(block=True, plugins=rows_and_commands(commands=container.commands))
+
+
+async def _typed_while_running(app, harness, line: str) -> None:
+    harness.write(line)
+    harness.press("enter")
+    await asyncio.sleep(0.05)
+
+
+async def _start_a_request(harness) -> None:
+    harness.write("a long task")
+    harness.press("enter")
+    await asyncio.sleep(0)
+
+
+def _rows(app) -> list[str]:
+    return [row.strip() for row in _rendered(app.transcript, 70)]
+
+
+async def test_a_command_that_says_now_runs_at_once_while_the_request_goes_on():
+    app = build_app(block=True)
+    harness = _harness(app)
+    await _start_a_request(harness)
+
+    await _typed_while_running(app, harness, "/help")
+
+    assert any("Commands" in row for row in _rows(app)), "its output is in the conversation"
+    assert app._busy is True and not app.task.done(), "and the request was not disturbed"
+    assert app._pending == [], "it was run, not queued"
+    await _stop(app)
+
+
+async def test_a_command_run_beside_a_request_does_not_take_over_its_busy_state():
+    """The reason it is a path of its own: `_run_command` ends by clearing exactly this."""
+    app = build_app(block=True)
+    harness = _harness(app)
+    await _start_a_request(harness)
+    turn = app.task
+
+    await _typed_while_running(app, harness, "/theme dark")
+
+    assert app.task is turn and app._busy is True and app._turn_running is True
+    await _stop(app)
+    assert app._busy is False
+
+
+async def test_the_steering_waiting_beside_a_request_is_not_handed_back_by_a_command_that_ran_beside_it():
+    """Ending a command used to settle the queues; a command run beside a request must not."""
+    app = build_app(block=True)
+    harness = _harness(app)
+    await _start_a_request(harness)
+    await _send_during_run(harness, "change course", "s")
+    assert app.steering.messages == ("change course",)
+
+    await _typed_while_running(app, harness, "/help")
+
+    assert app.steering.messages == ("change course",) and app.composer.text == ""
+    await _stop(app)
+
+
+async def test_every_command_the_shell_runs_beside_a_request_is_one_that_cannot_hurt_it():
+    app = build_app(block=True)
+
+    now = sorted(c.name for c in app.commands if c.when_busy == "now")
+    refused = sorted(c.name for c in app.commands if c.when_busy == "refuse")
+    queued = sorted(c.name for c in app.commands if c.when_busy == "queue")
+
+    assert now == ["/context", "/effort", "/exit", "/help", "/permission", "/quit", "/theme", "/title"]
+    assert queued == ["/btw"]
+    # What a running request is built on stays out: the transcript it writes into, the session, and
+    # the model it started with together with the window its compaction is sized to.
+    assert {"/clear", "/new", "/resume", "/fork", "/model", "/config", "/compact", "/export"} <= set(refused)
+
+
+@pytest.mark.parametrize("command", ["/model", "/config", "/clear", "/new", "/resume", "/fork", "/compact", "/export"])
+async def test_a_command_that_touches_what_the_request_stands_on_is_still_turned_away(command):
+    app = build_app(block=True)
+    harness = _harness(app)
+    await _start_a_request(harness)
+
+    await _typed_while_running(app, harness, command)
+
+    assert any("busy" in row for row in _rows(app)) and app._pending == []
+    assert app.app.screens.top.name == "main", "and no panel was opened over the request"
+    await _stop(app)
+
+
+async def test_title_names_the_session_while_the_request_runs():
+    app = build_app(block=True)
+    harness = _harness(app)
+    await _start_a_request(harness)
+    renamed: list[str] = []
+
+    async def rename(title: str) -> str:
+        renamed.append(title)
+        return title
+
+    app.agent.rename_session = rename  # type: ignore[method-assign]
+    await _typed_while_running(app, harness, "/title Fix the parser")
+
+    assert renamed == ["Fix the parser"] and app._busy is True
+    await _stop(app)
+
+
+async def test_effort_changes_while_the_request_runs_and_is_announced_without_an_animation():
+    app = build_app(block=True)
+    harness = _harness(app)
+    await _start_a_request(harness)
+    before = app.agent.effort
+
+    await _typed_while_running(app, harness, "/effort high")
+
+    assert app.agent.effort == "high" != before
+    assert app._effort_animation is None, "the waiting row owns the motion"
+    assert any("high" in row for row in _rows(app))
+    await _stop(app)
+
+
+async def test_permission_changes_while_the_request_runs_and_says_so():
+    app = build_app(block=True)
+    harness = _harness(app)
+    await _start_a_request(harness)
+
+    await _typed_while_running(app, harness, "/permission auto")
+
+    assert app.agent.permission.value == "auto"
+    assert any("auto" in row for row in _rows(app)) and app._busy is True
+    await _stop(app)
+
+
+async def test_theme_and_context_open_their_panels_over_a_running_request_and_close_back_to_it():
+    app = build_app(block=True)
+    harness = _harness(app)
+    await _start_a_request(harness)
+
+    await _typed_while_running(app, harness, "/theme")
+    assert app.app.screens.top.name == "page" and app._busy is True
+    harness.press("escape")
+    assert app.app.screens.top.name == "main" and app._busy is True, "Escape closed the panel, not the request"
+    assert not app.task.done()
+    await _stop(app)
+
+
+async def test_context_before_any_request_has_measured_says_so_instead_of_failing():
+    app = build_app(block=True)
+    harness = _harness(app)
+    await _start_a_request(harness)
+
+    await _typed_while_running(app, harness, "/context")
+
+    assert any("No request yet" in row for row in _rows(app))
+    await _stop(app)
+
+
+async def test_quit_leaves_even_while_a_request_runs():
+    app = build_app(block=True)
+    harness = _harness(app)
+    await _start_a_request(harness)
+
+    await _typed_while_running(app, harness, "/quit")
+
+    assert harness.exited
+
+
+async def test_a_command_that_says_now_is_not_stopped_by_the_request_it_ran_beside_ending():
+    app = build_app(hold=True)
+    harness = _harness(app)
+    await _start_a_request(harness)
+    gate = asyncio.Event()
+    finished: list[str] = []
+
+    async def slow(context: CommandContext) -> CommandResult:
+        await gate.wait()
+        finished.append(context.argument)
+        return CommandResult(message="slow done")
+
+    app.commands = (*app.commands, Command("/slow", "slow", "plugin", slow, when_busy="now"))
+    await _typed_while_running(app, harness, "/slow later")
+    assert finished == [] and len(app._now_tasks) == 1
+
+    gate.set()
+    await asyncio.sleep(0.05)
+
+    assert finished == ["later"] and app._now_tasks == set()
+    assert any("slow done" in row for row in _rows(app))
+    app.agent.runtime.client.released.set()
+    await asyncio.wait_for(app.task, 2.0)
+
+
+async def test_a_usage_error_a_handler_returns_is_shown_and_the_request_is_untouched():
+    app = build_app(block=True)
+    harness = _harness(app)
+    await _start_a_request(harness)
+
+    await _typed_while_running(app, harness, "/effort nonsense")
+
+    assert any("nonsense" in row for row in _rows(app))
+    assert app._busy is True and not app.task.done()
+    await _stop(app)
+
+
+async def test_a_value_error_a_handler_raises_is_shown_as_an_error_not_lost():
+    """Raising ``ValueError`` is the documented way to report a usage error, so it has to be seen."""
+
+    async def usage(context):
+        raise ValueError("usage: /check <name>")
+
+    app = _with_plugin_command("/check", usage, when_busy="now")
+    harness = _harness(app)
+    await _start_a_request(harness)
+
+    await _typed_while_running(app, harness, "/check")
+
+    errors = [e.text for e in app.transcript.entries if getattr(e, "level", None) == "error"]
+    assert errors == ["usage: /check <name>"]
+    assert app._busy is True and not app.task.done()
+    await _stop(app)
+
+
+async def test_a_bug_in_a_command_run_beside_a_request_is_reported_and_the_request_goes_on():
+    async def broken(context):
+        raise RuntimeError("the plugin has a bug")
+
+    app = _with_plugin_command("/oops", broken, when_busy="now")
+    harness = _harness(app)
+    await _start_a_request(harness)
+
+    await _typed_while_running(app, harness, "/oops")
+
+    errors = [e.text for e in app.transcript.entries if getattr(e, "level", None) == "error"]
+    assert any("/oops" in text and "the plugin has a bug" in text for text in errors), errors
+    assert app._busy is True and not app.task.done()
+    await _stop(app)
+
+
+async def test_a_plugin_command_can_ask_to_run_while_a_request_runs():
+    ran: list[str] = []
+
+    async def status(context):
+        ran.append(context.argument)
+        return CommandResult(message="all good")
+
+    app = _with_plugin_command("/status", status, when_busy="now")
+    harness = _harness(app)
+    await _start_a_request(harness)
+
+    await _typed_while_running(app, harness, "/status now")
+
+    assert ran == ["now"] and any("all good" in row for row in _rows(app)) and app._busy is True
+    await _stop(app)
+
+
+async def test_a_plugin_command_that_says_nothing_is_still_turned_away_while_a_request_runs():
+    ran: list[str] = []
+
+    async def mine(context):
+        ran.append("ran")
+        return CommandResult()
+
+    app = _with_plugin_command("/mine", mine)
+    harness = _harness(app)
+    await _start_a_request(harness)
+
+    await _typed_while_running(app, harness, "/mine")
+
+    assert ran == [] and any("busy" in row for row in _rows(app))
+    await _stop(app)
+
+
+async def test_a_plugin_command_can_ask_to_wait_for_the_request_to_end():
+    ran: list[str] = []
+
+    async def later(context):
+        ran.append("ran")
+        return CommandResult()
+
+    app = _with_plugin_command("/later", later, when_busy="queue")
+    harness = _harness(app)
+    await _start_a_request(harness)
+
+    await _typed_while_running(app, harness, "/later")
+
+    assert ran == [] and app._pending == ["/later"]
+    await _stop(app)
+
+
+def test_the_default_for_a_plugin_command_is_to_refuse():
+    from zettcode.plugins import PluginContainer
+
+    async def noop(context):
+        return CommandResult()
+
+    container = PluginContainer(FakeConfig())
+
+    assert container.register_command("/plain", "plain", noop).when_busy == "refuse"
+    assert container.register_command("/now", "now", noop, when_busy="now").when_busy == "now"
+
+
+async def test_leaving_cancels_a_command_still_running_beside_the_request():
+    app = build_app(block=True)
+    harness = _harness(app)
+    await _start_a_request(harness)
+    never = asyncio.Event()
+
+    async def stuck(context):
+        await never.wait()
+        return CommandResult()
+
+    app.commands = (*app.commands, Command("/stuck", "stuck", "plugin", stuck, when_busy="now"))
+    await _typed_while_running(app, harness, "/stuck")
+    (task,) = app._now_tasks
+
+    # A bound, so a regression fails here instead of waiting for a command that will never end.
+    await asyncio.wait_for(app._stop_turn(), 2.0)
+
+    assert task.cancelled() and app._now_tasks == set()
+
+
+async def test_a_permission_typed_beside_a_request_reaches_the_runtime_that_request_runs_on():
+    app = build_app(block=True)
+    harness = _harness(app)
+    await _start_a_request(harness)
+
+    await _typed_while_running(app, harness, "/permission deny")
+    assert app.agent.runtime.permission.value == "deny" and app._busy is True
+    await _typed_while_running(app, harness, "/permission safe")
+
+    assert app.agent.runtime.permission.value == "safe"
+    await _stop(app)
+
+
+async def test_an_effort_changed_beside_a_request_applies_to_the_next_request_not_the_one_running():
+    """What the guide says: the request was started with the effort it had, and the next one gets the new."""
+    app = build_app(block=True)
+    harness = _harness(app)
+    await _start_a_request(harness)
+    started_with = app.agent.effort
+
+    await _typed_while_running(app, harness, "/effort high")
+
+    assert app.agent.effort == "high" and started_with != "high"
+    assert app.agent.runtime.effort.value == "high", "the next request reads this"
+    await _stop(app)

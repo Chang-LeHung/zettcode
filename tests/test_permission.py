@@ -198,3 +198,71 @@ def test_the_deny_layer_runs_before_the_approval_layer():
     policy = ShellPolicy()
 
     assert ShellDenyExtension(policy).priority < ShellApprovalExtension().priority
+
+
+async def test_the_level_the_command_sets_is_the_one_object_the_guard_the_runtime_built_reads(tmp_path):
+    """The guide's promise that `/permission` lands in a request already running: no copy in between.
+
+    The guard is handed the runtime's own policy when the request is assembled, and ``use_permission``
+    changes that policy's level in place, so the guard's next shell call sees it with no restart.
+    """
+    from zett_agent.messages import ToolCall
+
+    from zettcode.app.agent.permission import SHELL_APPROVAL_TOOL_NAME
+    from zettcode.app.agent.runtime import ZettCodeRuntime
+    from zettcode.config import ModelConfig, ZettCodeConfig
+
+    config = ZettCodeConfig(
+        workspace=tmp_path, models=(ModelConfig(model="m", token="t"),), store=tmp_path / "sessions", mcp_enabled=False
+    )
+    runtime = ZettCodeRuntime.preview(config)
+    guard = ShellDenyExtension(runtime.policy)  # exactly how the runtime builds it
+
+    async def shell_call() -> str:
+        async def through():
+            return "ran"
+
+        try:
+            return await guard.on_tool_call(None, ToolCall("c", SHELL_APPROVAL_TOOL_NAME, {}), through)  # type: ignore[arg-type]
+        except PermissionError:
+            return "refused"
+
+    assert await shell_call() == "ran"
+    runtime.use_permission("deny")
+    assert await shell_call() == "refused"
+    runtime.use_permission("auto")
+    assert await shell_call() == "ran"
+
+
+async def test_the_guard_the_runtime_really_hands_the_agent_reads_the_policy_the_command_changes(tmp_path, monkeypatch):
+    """Not a copy of how the runtime builds it: the extension it actually passes to ``create_agent``."""
+    from zettcode.app.agent import runtime as runtime_module
+    from zettcode.config import ModelConfig, ZettCodeConfig
+
+    given: list[list[object]] = []
+
+    class FakeProvider:
+        def __init__(self, model, token, *, base_url, response):
+            pass
+
+        async def aclose(self):
+            pass
+
+    async def fake_create_agent(model, **kwargs):
+        given.append(list(kwargs["extensions"]))
+        return type("FakeClient", (), {"event_dispatcher": None})()
+
+    monkeypatch.setattr("zett_agent.providers.openai.OpenAIProvider", FakeProvider)
+    monkeypatch.setattr("zett_agent.client.create_agent", fake_create_agent)
+    monkeypatch.setattr(runtime_module.os, "chdir", lambda path: None)
+    config = ZettCodeConfig(
+        workspace=tmp_path, models=(ModelConfig(model="m", token="t"),), store=tmp_path / "sessions", mcp_enabled=False
+    )
+    runtime = runtime_module.ZettCodeRuntime.preview(config)
+    await runtime.start()
+
+    (guard,) = [e for e in given[0] if isinstance(e, ShellDenyExtension)]
+
+    assert guard._policy is runtime.policy
+    runtime.use_permission("deny")
+    assert guard._policy.level is Permission.DENY

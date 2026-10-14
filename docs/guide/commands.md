@@ -28,6 +28,25 @@ shell's own (above), the agent's (`/new`, `/compact`, `/export`), and any
 [plugin](/guide/plugins) that registered one. A plugin cannot take a name that
 is already used, so `/model` always does what this page says.
 
+## While a request is running
+
+Most commands wait until the request is over, because they change what it is standing on. These do
+not: they only look at the session or change a setting the request does not depend on, so they run
+at once, beside the request.
+
+| Runs at once | Why it is safe |
+| --- | --- |
+| `/help`, `/context`, `/theme` | They only show something. `/context` reports the last request measured. |
+| `/title` | Names the session; nothing running reads it. |
+| `/permission` | The next shell command asks the level again, so a change lands in the request that is already running — `/permission auto` in the middle of a long task is the point. |
+| `/effort` | A request starts with the effort it had, so the change applies from the next request; the running one is not touched. |
+| `/quit`, `/exit` | Leaving does not wait for the answer. |
+| `/btw` | Waits its turn and then answers, as before. |
+
+`/model`, `/config`, `/clear`, `/new`, `/resume`, `/fork`, `/compact` and `/export` still say "busy":
+they change the model a request started with, the transcript it is writing into, or the session it is
+part of. A [plugin](/guide/plugins#while-a-request-is-running) chooses for its own commands.
+
 ## Panels, not arguments
 
 `/model`, `/resume`, `/theme`, `/effort`, and `/permission` open a picker. `Up` / `Down` move,
