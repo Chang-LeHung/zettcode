@@ -14,6 +14,12 @@ end a conversation:
   the first turn never ran. Entries that cannot be used are skipped and named, and a file that
   cannot be read at all means "no MCP servers" plus a line saying why.
 
+* Starting a server is slow and silent. A stdio server is a process — ``npx`` may download a package
+  first — and the framework connects and lists its tools while the first request waits, so the
+  reader saw "Processing" for as long as that took with nothing to say why. A line is said when each
+  server starts and when it is ready, with how long it took and how many tools it brought. A server
+  whose tool list is already cached starts nothing, so it says nothing.
+
 A tool that fails while it runs is the framework's own business and already harmless: the failure
 comes back to the model as an ordinary failed tool result, and the model carries on.
 
@@ -27,15 +33,22 @@ builds on costs more than the first frame.
 
 from __future__ import annotations
 
+import time
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any, cast
 
 from zett_agent.agent import AgentRunContext
 from zett_agent.events import AgentEvent, AgentEventType
-from zett_agent.extensions.mcp import McpConfiguration, McpExtension
+from zett_agent.extensions.mcp import McpConfiguration, McpExtension, McpStdioServer
 
 from ..errors import describe_error
 from .mcp_notice import MCP_NOTICE_EVENT_NAME, notice_payload
+
+#: The request whose tools are being discovered, so a server starting on its own task can say so in
+#: that request's transcript. Set around the framework's discovery and read by the tasks it spawns, which
+#: inherit it; ``None`` outside one.
+_DISCOVERING: ContextVar[AgentRunContext | None] = ContextVar("zettcode_mcp_discovering", default=None)
 
 
 class ReportingMcpExtension(McpExtension):
@@ -63,6 +76,7 @@ class ReportingMcpExtension(McpExtension):
         An error the framework does not handle itself — it handles a server that cannot connect or
         list — costs this request its MCP tools and nothing else.
         """
+        token = _DISCOVERING.set(context)
         try:
             await super().on_tool(context)
         except Exception as error:
@@ -70,9 +84,44 @@ class ReportingMcpExtension(McpExtension):
             # already closed what it opened for this request before the error got here.
             await self._say(context, f"MCP is unavailable for this request: {describe_error(error)}")
             return
+        finally:
+            _DISCOVERING.reset(token)
         for line in (*self.startup_issues, *self._config_issues(), *self._server_issues(context)):
             await self._say(context, line)
         self.startup_issues.clear()
+
+    async def _discover(self, request: Any, server: Any) -> Any:
+        """Connect to one server and list its tools, saying when it starts and when it is ready.
+
+        The framework's cache decides whether anything is started at all; when it holds this
+        server's tools nothing is, and nothing is said. The server's command and arguments are
+        never repeated here — they can carry a key — only its name and what kind of server it is.
+        """
+        context = _DISCOVERING.get()
+        cached = self._tool_cache.get(server.name)
+        starts = context is not None and not (
+            cached is not None and cached.server == server and cached.expires_at > time.monotonic()
+        )
+        began = time.monotonic()
+        if starts:
+            kind = "process" if isinstance(server, McpStdioServer) else "connection"
+            await self._say_quietly(context, f"Starting MCP server {server.name!r} ({kind})\u2026")
+        tools = await super()._discover(request, server)
+        if starts and tools is not None:
+            count = len(tools)
+            took = time.monotonic() - began
+            noun = "tool" if count == 1 else "tools"
+            await self._say_quietly(context, f"MCP server {server.name!r} is ready: {count} {noun}, {took:.1f}s")
+        return tools
+
+    async def _say_quietly(self, context: AgentRunContext | None, text: str) -> None:
+        """Say a line without letting the saying fail the discovery it reports on."""
+        if context is None:
+            return
+        try:
+            await self._say(context, text)
+        except Exception:  # noqa: BLE001 - news about a server must never be what stops it
+            pass
 
     def _server_issues(self, context: AgentRunContext) -> list[str]:
         """Return a line for each server that became unavailable, or changed why, since last said.

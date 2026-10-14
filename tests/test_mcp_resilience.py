@@ -88,8 +88,19 @@ class _Context:
         self.events.append(event)
 
     @property
-    def notices(self) -> list[str]:
+    def said(self) -> list[str]:
+        """Every line the extension published, in order."""
         return [text for event in self.events if (text := notice_from(event)) is not None]
+
+    @property
+    def notices(self) -> list[str]:
+        """What went wrong, which is what most of these tests are about: the lines that are not progress."""
+        return [text for text in self.said if text not in self.progress]
+
+    @property
+    def progress(self) -> list[str]:
+        """The lines that say a server is starting or is ready."""
+        return [text for text in self.said if text.startswith("Starting MCP server") or " is ready: " in text]
 
 
 def _file(tmp_path: Path, servers: dict[str, object]) -> Path:
@@ -423,7 +434,12 @@ async def test_the_reader_sees_the_notice_in_the_transcript_through_the_real_pro
     )
 
     notices = [e.text for e in transcript.entries if e.kind == "notice"]
-    assert notices == ["MCP server 'dead' is not available (ConnectionError); its tools are skipped until it works"]
+    problems = [text for text in notices if "not available" in text]
+    assert problems == ["MCP server 'dead' is not available (ConnectionError); its tools are skipped until it works"]
+    # And the reader was told about the two that started, in a whole run, not only in a direct call.
+    assert "Starting MCP server 'good' (process)\u2026" in notices
+    assert any(text.startswith("MCP server 'good' is ready: 1 tool,") for text in notices)
+    assert not any("'dead' is ready" in text for text in notices)
     assert all(e.level != "error" for e in transcript.entries if e.kind == "notice"), "a remark, not a failure"
 
 
@@ -473,3 +489,150 @@ def test_the_module_that_imports_the_mcp_sdk_is_not_imported_by_the_transcript()
     )
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True).stdout.split()
     assert out[1] == "False", "the projector must not import the extension that imports the SDK"
+
+
+# -- starting a server says so ------------------------------------------------------------------------------
+
+
+async def test_a_server_that_starts_says_so_and_then_that_it_is_ready(tmp_path):
+    fake = FakeServers(docs={"search": "ok", "fetch": "ok"})
+    context = _Context()
+
+    await _extension(_file(tmp_path, {"docs": _entry("docs")}), fake).on_tool(context)
+
+    assert context.progress[0] == "Starting MCP server 'docs' (process)\u2026"
+    assert context.progress[1].startswith("MCP server 'docs' is ready: 2 tools, ") and context.progress[1].endswith("s")
+    assert context.notices == []
+
+
+async def test_the_start_comes_before_the_ready_and_before_the_tools_are_registered(tmp_path):
+    fake = FakeServers(docs={"search": "ok"})
+    context = _Context()
+    order: list[str] = []
+    real_emit, real_register = context.emit, context.register_tool
+
+    async def emit(event):
+        order.append("said")
+        await real_emit(event)
+
+    context.emit = emit  # type: ignore[method-assign]
+    context.register_tool = lambda tool: (order.append("registered"), real_register(tool))[1]  # type: ignore[method-assign]
+
+    await _extension(_file(tmp_path, {"docs": _entry("docs")}), fake).on_tool(context)
+
+    assert order == ["said", "said", "registered"]
+
+
+async def test_one_tool_is_a_tool_not_tools(tmp_path):
+    fake = FakeServers(docs={"search": "ok"})
+    context = _Context()
+
+    await _extension(_file(tmp_path, {"docs": _entry("docs")}), fake).on_tool(context)
+
+    assert " 1 tool," in context.progress[1]
+
+
+async def test_every_server_that_starts_is_named_and_a_dead_one_is_not_called_ready(tmp_path):
+    fake = FakeServers(good={"a": "ok"}, dead=None)
+    context = _Context()
+
+    await _extension(_file(tmp_path, {"good": _entry("good"), "dead": _entry("dead")}), fake).on_tool(context)
+
+    starts = [line for line in context.progress if line.startswith("Starting")]
+    ready = [line for line in context.progress if " is ready: " in line]
+    assert sorted(starts) == [
+        "Starting MCP server 'dead' (process)\u2026",
+        "Starting MCP server 'good' (process)\u2026",
+    ]
+    assert len(ready) == 1 and "'good'" in ready[0], "the one that is down is reported as down, not as ready"
+    assert any("'dead' is not available" in line for line in context.notices)
+
+
+async def test_a_server_whose_tools_are_cached_starts_nothing_and_says_nothing(tmp_path):
+    fake = FakeServers(docs={"search": "ok"})
+    extension = ReportingMcpExtension(
+        config_path=_file(tmp_path, {"docs": _entry("docs")}), client_factory=fake.factory, tools_cache_ttl=60
+    )
+    first, second = _Context(), _Context()
+
+    await extension.on_tool(first)
+    await extension.on_tool(second)
+
+    assert len(first.progress) == 2 and second.progress == []
+    assert fake.opened == ["docs"], "the second request opened nothing, which is why there is nothing to say"
+
+
+async def test_a_cache_that_has_expired_starts_again_and_says_so_again(tmp_path):
+    fake = FakeServers(docs={"search": "ok"})
+    extension = ReportingMcpExtension(
+        config_path=_file(tmp_path, {"docs": _entry("docs")}), client_factory=fake.factory, tools_cache_ttl=0.05
+    )
+    await extension.on_tool(_Context())
+    await asyncio.sleep(0.1)
+    again = _Context()
+
+    await extension.on_tool(again)
+
+    assert [line for line in again.progress if line.startswith("Starting")]
+
+
+async def test_a_command_with_a_key_in_it_is_never_repeated_in_what_is_said(tmp_path):
+    fake = FakeServers(docs={"search": "ok"})
+    entry = {"command": "npx", "args": ["server", "--token", "sk-SECRET-KEY"], "env": {"API_KEY": "sk-SECRET-KEY"}}
+    context = _Context()
+
+    await _extension(_file(tmp_path, {"docs": entry}), fake).on_tool(context)
+
+    assert "sk-SECRET-KEY" not in "\n".join(context.said) and "npx" not in "\n".join(context.said)
+
+
+async def test_a_remote_server_is_a_connection_not_a_process(tmp_path):
+    fake = FakeServers(remote={"search": "ok"})
+    context = _Context()
+
+    await _extension(
+        _file(tmp_path, {"remote": {"type": "streamable-http", "url": "http://127.0.0.1:9/mcp"}}), fake
+    ).on_tool(context)
+
+    assert context.progress[0] == "Starting MCP server 'remote' (connection)\u2026"
+
+
+async def test_a_failure_to_say_so_does_not_stop_the_server_from_starting(tmp_path):
+    fake = FakeServers(docs={"search": "ok"})
+    context = _Context()
+
+    async def broken(event):
+        if notice_from(event) and "Starting" in (notice_from(event) or ""):
+            raise RuntimeError("the transcript is gone")
+        context.events.append(event)
+
+    context.emit = broken  # type: ignore[method-assign]
+
+    await _extension(_file(tmp_path, {"docs": _entry("docs")}), fake).on_tool(context)
+
+    assert "docs__search" in context.tools and fake.opened == ["docs"]
+
+
+async def test_the_progress_lines_reach_the_transcript_as_notices_through_the_real_projector(tmp_path):
+    fake = FakeServers(docs={"search": "ok"})
+    context = _Context()
+    await _extension(_file(tmp_path, {"docs": _entry("docs")}), fake).on_tool(context)
+    transcript = Transcript(clock=lambda: 0.0)
+    projector = TranscriptProjector(transcript)
+
+    for event in context.events:
+        await projector.dispatch(event)
+
+    shown = [entry.text for entry in transcript.entries if getattr(entry, "kind", "") == "notice"]
+    assert shown[0].startswith("Starting MCP server 'docs'") and shown[1].startswith("MCP server 'docs' is ready")
+
+
+async def test_a_server_that_starts_in_one_request_does_not_speak_in_another(tmp_path):
+    """Two requests discover at once (a subagent beside its parent); each hears about its own start."""
+    fake = FakeServers(docs={"search": "ok"})
+    extension = _extension(_file(tmp_path, {"docs": _entry("docs")}), fake)
+    first, second = _Context(), _Context()
+
+    await asyncio.gather(extension.on_tool(first), extension.on_tool(second))
+
+    assert len(first.progress) == 2 and len(second.progress) == 2
