@@ -34,6 +34,7 @@ command line takes, which is deliberately short:
 
 | Flag | What it does |
 | --- | --- |
+| `-v`, `-V`, `--version` | Print the version — ZettCode, the zett-agent it runs on, and Python — and exit. Quote it when you report a problem. |
 | `-w`, `--workspace DIR` | The directory to work in. Defaults to the current directory. |
 | `-r`, `--resume SESSION` | Open a stored session instead of starting a new one. |
 | `--auto`, `--yolo` | Run shell commands without asking, for this run. The same as `/permission auto`. |
