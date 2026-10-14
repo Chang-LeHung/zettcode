@@ -4063,7 +4063,8 @@ async def test_history_still_works_while_the_menu_is_closed():
     harness.press("up")
 
     assert app.composer.text == "/help"
-    assert app.completions.visible is True
+    # Recalled, not typed: a menu here would own Up and Down and end the walk at the first command.
+    assert app.completions.visible is False
 
 
 async def test_a_wrapping_draft_grows_the_composer_and_shrinks_the_transcript():
@@ -7077,3 +7078,108 @@ async def test_a_typed_command_is_painted_only_when_the_shell_has_it():
 
     assert real and real[0].style.foreground == app.app.theme.accent
     assert not fake or fake[0].style.foreground != app.app.theme.accent
+
+
+# -- walking back through the history is not stopped by a command ------------------------------------------------
+
+
+def _with_history(*lines: str):
+    app = build_app()
+    harness = _harness(app)
+    for line in lines:
+        app.composer._history.append(line)
+    return app, harness
+
+
+def _walk(app, harness, key: str, times: int) -> list[str]:
+    seen = []
+    for _ in range(times):
+        harness.press(key)
+        seen.append(app.composer.text)
+    return seen
+
+
+def test_up_walks_past_a_command_to_what_was_sent_before_it():
+    """The bug: a recalled `/context` opened the menu, the menu took the arrows, and the walk stopped."""
+    app, harness = _with_history("first question", "/context", "third question")
+
+    seen = _walk(app, harness, "up", 4)
+
+    assert seen == ["third question", "/context", "first question", "first question"]
+
+
+def test_down_walks_back_out_through_a_command_to_the_draft():
+    app, harness = _with_history("first question", "/context", "third question")
+    harness.write("half a thought")
+    _walk(app, harness, "up", 3)
+
+    seen = _walk(app, harness, "down", 4)
+
+    assert seen == ["/context", "third question", "half a thought", "half a thought"]
+
+
+def test_no_menu_is_shown_over_a_recalled_command():
+    app, harness = _with_history("/context")
+
+    harness.press("up")
+
+    assert app.composer.text == "/context" and not app.completions.visible and app.composer.browsing_history
+
+
+def test_several_commands_in_a_row_are_all_walked_through():
+    app, harness = _with_history("a", "/help", "/model", "/context", "b")
+
+    assert _walk(app, harness, "up", 5) == ["b", "/context", "/model", "/help", "a"]
+
+
+def test_typing_over_a_recalled_command_brings_the_menu_back():
+    app, harness = _with_history("/con")  # not a whole command, so Backspace peels one character
+    harness.press("up")
+    assert not app.completions.visible
+
+    harness.press("backspace")
+
+    assert app.composer.text == "/co" and app.completions.visible and not app.composer.browsing_history
+
+
+def test_a_command_typed_by_hand_still_opens_the_menu():
+    app, harness = _with_history("something")
+
+    harness.write("/co")
+
+    assert app.completions.visible
+
+
+def test_enter_on_a_recalled_command_runs_it_without_asking_the_menu():
+    app, harness = _with_history("/context")
+    harness.press("up")
+    ran = []
+    app.submit = lambda value: ran.append(value) or True  # type: ignore[method-assign]
+    app.composer.on_submit = app.submit
+
+    harness.press("enter")
+
+    assert ran == ["/context"]
+
+
+def test_walking_forward_into_a_partly_typed_command_offers_its_menu_again():
+    """Back at the live draft the reader is writing again, so the menu returns."""
+    app, harness = _with_history("one")
+    harness.write("/mod")
+    harness.press("escape")  # the menu is dismissed, so Up is the history's
+    harness.press("up")
+    assert app.composer.text == "one" and not app.completions.visible
+
+    harness.press("down")
+
+    assert app.composer.text == "/mod" and app.completions.visible
+
+
+def test_the_arrow_keys_still_move_the_menu_when_it_was_opened_by_typing():
+    app, harness = _with_history()
+    harness.write("/")
+    first = app.completions.current
+
+    harness.press("down")
+
+    assert app.completions.current is not first
