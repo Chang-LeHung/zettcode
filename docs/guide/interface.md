@@ -71,8 +71,8 @@ Every kind of output has its own row, in the order it happened:
   `✦ Processing (8s · ^C/Esc to interrupt)`. Reasoning, tool calls, and the answer all appear
   above it, and when the request ends — answered, failed, or stopped — that same
   row becomes `Processed for 12s · 22:53`. It is the only row that moves: its
-  marker and the highlight crossing the word pulse together — a second and a half
-  of movement, then a second at rest — while the clock and the stop key stand
+  marker and the highlight crossing the word pulse together — a second of
+  movement, then a second at rest — while the clock and the stop key stand
   beside it in parentheses, in the quiet ink a notice uses, counting whole
   seconds and minutes.
 - **Notices** — a copied selection, a refused command, an exported file — appear

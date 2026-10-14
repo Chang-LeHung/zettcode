@@ -601,7 +601,7 @@ class Indented(LineSource):
 def _running_label(text: str, theme: Theme, frame: int) -> tuple[Span, ...]:
     """Pulse the waiting row: one frame count drives the marker and the highlight.
 
-    The row moves for a second and a half — the marker lit, the highlight crossing
+    The row moves for a second — the marker lit, the highlight crossing
     the label — and then rests for a second, in which neither moves: the marker is
     the quiet ink's dot so the row keeps its shape without blinking, and the label
     is painted flat. Both halves read the same frame counter, so neither depends
