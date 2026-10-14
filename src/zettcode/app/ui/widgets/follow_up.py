@@ -35,7 +35,7 @@ HINT_HELD = f"held until your next reply completes {SEPARATOR} {OPTION}+\u2191/\
 #: move the highlight, and with the modifier they move the message.
 HINT_SELECTED = (
     f"\u2191/\u2193 select {SEPARATOR} {OPTION}+\u2191/\u2193 reorder {SEPARATOR} enter edit "
-    f"{SEPARATOR} del remove {SEPARATOR} esc done"
+    f"{SEPARATOR} ^S steer {SEPARATOR} del remove {SEPARATOR} esc done"
 )
 #: Left margin, shared with the transcript and the composer prompt.
 INDENT = CONTENT_INDENT
@@ -64,7 +64,7 @@ class FollowUpQueue(Widget):
           \u2022 then run the tests                              follow-up
         \u25b8 summarize what changed                            follow-up   <- highlighted
           \u2022 and open a pull request                         follow-up
-          \u2191/\u2193 select \u00b7 option+\u2191/\u2193 reorder \u00b7 enter edit \u00b7 del remove \u00b7 esc done
+          \u2191/\u2193 select \u00b7 option+\u2191/\u2193 reorder \u00b7 enter edit \u00b7 ^S steer \u00b7 del remove \u00b7 esc done
         ^ marker, body text           right-aligned badge, then the keys
 
     The rows are in the order they will be sent, the first at the top. The highlighted

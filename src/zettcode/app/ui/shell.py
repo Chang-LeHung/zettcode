@@ -184,6 +184,10 @@ class ShellState:
     def _delete_follow_up(self) -> None:
         """Remove the highlighted follow-up from the list."""
 
+    def _steer_follow_up(self) -> bool:
+        """Send the highlighted follow-up to the running request as steering."""
+        raise NotImplementedError
+
     def _queue_steering(self, value: str, key: str | None = None, parts: Sequence[PromptPart] = ()) -> None:
         """Show one message waiting for the agent to adopt it."""
 

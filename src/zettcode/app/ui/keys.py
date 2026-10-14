@@ -38,6 +38,7 @@ class KeysMixin(ShellState):
         self.app.commands.add("follow_up_next", self._follow_up_next)
         self.app.commands.add("follow_up_edit", self._follow_up_edit)
         self.app.commands.add("follow_up_delete", self._follow_up_delete)
+        self.app.commands.add("follow_up_steer", self._follow_up_steer)
         self.app.commands.add("follow_up_done", self._follow_up_done)
         self.app.keymap.bind("ctrl_c", "interrupt", priority="capture")
         self.app.keymap.bind("ctrl_l", "redraw", priority="capture")
@@ -70,6 +71,10 @@ class KeysMixin(ShellState):
         self.app.keymap.bind("up", "follow_up_previous", priority="capture", when=self._follow_up_chosen)
         self.app.keymap.bind("down", "follow_up_next", priority="capture", when=self._follow_up_chosen)
         self.app.keymap.bind("enter", "follow_up_edit", priority="capture", when=self._follow_up_chosen)
+        # Ctrl-S sends the highlighted message now, as steering. Not a letter: typing anything
+        # lets go of the highlight, so a plain "s" would be the composer's. It is the editor's
+        # usual "send", and the terminal's flow-control meaning of it is off in raw mode.
+        self.app.keymap.bind("ctrl_s", "follow_up_steer", priority="capture", when=self._follow_up_chosen)
         # Backspace is what the key labelled "delete" sends on a Mac, and Delete is the one
         # that sends it everywhere else, so both remove the message.
         self.app.keymap.bind("backspace", "follow_up_delete", priority="capture", when=self._follow_up_chosen)
@@ -133,6 +138,11 @@ class KeysMixin(ShellState):
     def _follow_up_edit(self, event: AnyEvent, host: Host) -> bool:
         """Take the highlighted follow-up out of the list and into the composer."""
         return self._edit_follow_up()
+
+    def _follow_up_steer(self, event: AnyEvent, host: Host) -> bool:
+        """Send the highlighted follow-up to the running request as steering."""
+        self._steer_follow_up()
+        return True
 
     def _follow_up_delete(self, event: AnyEvent, host: Host) -> bool:
         """Remove the highlighted follow-up, so it is never sent."""
