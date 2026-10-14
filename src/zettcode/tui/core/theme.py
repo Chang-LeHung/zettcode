@@ -78,6 +78,11 @@ class Theme:
             hunk headers.
         warning: Warning state, currently the warning toast.
         error: Failure state: failed tool rows and the error toast.
+        diff_added: A line a change adds, and the ``+N`` beside the file. ``None`` — what both built-in
+            palettes use — means :attr:`accent`, so a theme that changes the accent changes the diff
+            with it; set it to colour additions on their own. Read it through :attr:`addition`.
+        diff_removed: A line a change removes, and the ``-N`` beside the file. ``None`` means
+            :attr:`error`. Read it through :attr:`deletion`.
         border: Frame glyphs and separators.
         focus: Focus ring colour; reserved, no built-in widget draws a ring yet.
         selection: Background of a selected or emphasised cell, used by list
@@ -98,11 +103,23 @@ class Theme:
     accent_bright: str = "#83c092"
     warning: str = "#dbbc7f"
     error: str = "#e67e80"
+    diff_added: str | None = None
+    diff_removed: str | None = None
     border: str = "#3d484d"
     focus: str = "#83c092"
     selection: str = "#4a5f52"
     tools: ToolTheme = ToolTheme()
     code: CodeTheme = CodeTheme()
+
+    @property
+    def addition(self) -> str:
+        """Return the colour of an added line: ``diff_added`` if set, else the accent."""
+        return self.diff_added or self.accent
+
+    @property
+    def deletion(self) -> str:
+        """Return the colour of a removed line: ``diff_removed`` if set, else the error colour."""
+        return self.diff_removed or self.error
 
 
 DARK = Theme()

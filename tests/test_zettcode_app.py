@@ -7356,3 +7356,117 @@ async def test_ctrl_s_is_left_alone_when_nothing_is_highlighted_so_it_is_not_swa
     harness.press("alt_up")
     assert harness.press("ctrl_s") is True
     await _stop(app)
+
+
+# -- the files a turn changed, said once at its end ------------------------------------------------------------
+
+
+def _file_events(*calls: tuple[str, str, dict], status_of=lambda name: True) -> list[AgentEvent]:
+    """The events of a turn in which each ``(call_id, tool, arguments)`` ran and succeeded."""
+    events: list[AgentEvent] = []
+    for call_id, tool, arguments in calls:
+        call = ToolCall(call_id, tool, arguments)
+        events.append(AgentEvent(AgentEventType.TOOL_STARTED, "s", tool_calls=(call,)))
+        if status_of(tool):
+            message = ToolMessage(tool_call_id=call_id, name=tool, content="ok")
+            events.append(AgentEvent(AgentEventType.TOOL_COMPLETED, "s", message=message))
+        else:  # what the agent sends when a tool raises: a failure event, not a completed one
+            events.append(AgentEvent(AgentEventType.TOOL_FAILED, "s", tool_calls=(call,), error=RuntimeError("no")))
+    return events
+
+
+async def _run_turn(app, harness, text="go"):
+    harness.write(text)
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+
+async def test_a_turn_that_changed_a_file_ends_with_the_file_and_then_the_time():
+    events = _file_events(("c1", "write_file", {"path": "new.py", "content": "a\nb\n"}))
+    app = build_app(events)
+    harness = _harness(app)
+
+    await _run_turn(app, harness)
+
+    kinds = [entry.kind for entry in app.transcript.entries]
+    assert kinds[-2:] == ["changes", "wait"], kinds
+    rows = [row.strip() for row in _rendered(app.transcript, 70)]
+    assert rows.index("Changed new.py +2") < next(i for i, r in enumerate(rows) if r.startswith("Processed for"))
+    assert rows[-1].startswith("Processed for"), "the time is still the last line"
+
+
+async def test_a_turn_that_changed_nothing_says_nothing_about_files():
+    app = build_app(_file_events(("c1", "read_file", {"path": "a.py"})))
+    harness = _harness(app)
+
+    await _run_turn(app, harness)
+
+    assert not any(entry.kind == "changes" for entry in app.transcript.entries)
+    assert not any("Changed" in row for row in _rendered(app.transcript, 70))
+
+
+async def test_a_turn_with_no_tools_at_all_says_nothing_about_files():
+    app = build_app([AgentEvent(AgentEventType.TEXT_DELTA, "s", delta="just an answer")])
+    harness = _harness(app)
+
+    await _run_turn(app, harness)
+
+    assert not any(entry.kind == "changes" for entry in app.transcript.entries)
+
+
+async def test_a_path_inside_the_workspace_is_shown_relative_to_it():
+    workspace = str(build_app().agent.workspace)
+    events = _file_events(("c1", "write_file", {"path": f"{workspace}/src/a.py", "content": "x"}))
+    app = build_app(events)
+    harness = _harness(app)
+
+    await _run_turn(app, harness)
+
+    assert "Changed src/a.py +1" in [row.strip() for row in _rendered(app.transcript, 70)]
+
+
+async def test_a_failed_edit_is_not_reported_as_a_change():
+    events = _file_events(
+        ("c1", "replace_in_file", {"path": "a.py", "edits": [{"old_text": "x", "new_text": "y"}]}),
+        status_of=lambda name: False,
+    )
+    app = build_app(events)
+    harness = _harness(app)
+
+    await _run_turn(app, harness)
+
+    assert not any(entry.kind == "changes" for entry in app.transcript.entries)
+
+
+async def test_each_turn_has_its_own_summary_and_does_not_repeat_the_last_ones():
+    app = build_app(_file_events(("c1", "write_file", {"path": "first.py", "content": "x"})))
+    harness = _harness(app)
+    await _run_turn(app, harness, "one")
+    app.agent.runtime.client.events = _file_events(("c2", "write_file", {"path": "second.py", "content": "x"}))
+
+    await _run_turn(app, harness, "two")
+
+    rows = [row.strip() for row in _rendered(app.transcript, 70)]
+    assert rows.count("Changed first.py +1") == 1 and rows.count("Changed second.py +1") == 1
+
+
+async def test_a_stopped_turn_still_reports_what_it_had_already_changed():
+    app = build_app(_file_events(("c1", "write_file", {"path": "partial.py", "content": "x"})), block=True)
+    harness = _harness(app)
+    harness.write("go")
+    harness.press("enter")
+    await asyncio.sleep(0.05)
+
+    await _stop(app)
+
+    assert "Changed partial.py +1" in [row.strip() for row in _rendered(app.transcript, 70)]
+
+
+async def test_a_side_question_never_reports_changes():
+    app = build_app([AgentEvent(AgentEventType.TEXT_DELTA, "s", delta="an aside")])
+    harness = _harness(app)
+    harness.write("/btw what is this")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    assert not any(entry.kind == "changes" for entry in app.transcript.entries)

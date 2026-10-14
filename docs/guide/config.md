@@ -418,9 +418,12 @@ built-in palette during that run; it does not rewrite the custom file.
 
 | Section | Colour keys |
 | --- | --- |
-| `ui` | `background`, `surface`, `surface_alt`, `surface_side`, `text`, `muted`, `subtle`, `accent`, `accent_bright`, `warning`, `error`, `border`, `focus`, `selection` |
+| `ui` | `background`, `surface`, `surface_alt`, `surface_side`, `text`, `muted`, `subtle`, `accent`, `accent_bright`, `warning`, `error`, `diff_added`, `diff_removed`, `border`, `focus`, `selection` |
 | `tools` | `read`, `search`, `image`, `write`, `delete`, `shell`, `plan`, `subagent` |
 | `code` | `inline`, `text`, `keyword`, `string`, `comment`, `number`, `function`, `builtin`, `operator`, `punctuator` |
+
+`diff_added` and `diff_removed` colour the lines of an edit's diff and the `+N -M` beside a file. Left out,
+they follow `accent` and `error`, so changing those changes the diff too; set them to colour the diff on its own.
 
 Colours use quoted six-digit hex strings such as `"#83c092"`. Do not use
 `"green"`, three-digit hex, or the TOML string `"None"` for transparency; omit

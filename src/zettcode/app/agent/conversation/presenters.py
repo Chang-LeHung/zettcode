@@ -41,15 +41,21 @@ from ....tui.render import SweepSpan, display_width, highlight, inset_line, layo
 from ....tui.widgets.markdown import MarkdownSource
 from ...brand import LOGO_LINES
 from .entries import (
+    ChangesEntry,
+    EditEntry,
     Entry,
     EntryKind,
     EntryStatus,
+    FileChangeEntry,
+    FileSummary,
     MarkdownEntry,
     NoticeLevel,
+    ReadEntry,
     TextEntry,
     ThinkingEntry,
     ToolEntry,
     WaitEntry,
+    WriteEntry,
 )
 from .rows import (
     COMPACTING_LABEL,
@@ -64,10 +70,17 @@ from .rows import (
     elapsed_text,
     moving,
     sweep_column,
+    terminal_safe,
 )
 
 #: The entry a presenter accepts; each subclass pins it to one entry type.
 E = TypeVar("E", bound=Entry)
+
+#: The tool entry a tool presenter accepts.
+T = TypeVar("T", bound=ToolEntry)
+
+#: The file-changing tool entry a file-change presenter accepts.
+F = TypeVar("F", bound=FileChangeEntry)
 
 #: Palette role that paints a tool, by the action it performs. The built-in
 #: palettes give every role the same violet; a theme file can separate them. A
@@ -121,6 +134,10 @@ class Presenter(Generic[E], ABC):
 
     Attributes:
         kind: The kind of entry this presenter presents; one presenter per kind.
+        entry_type: The entry class this presenter is for, when it is for one family of a kind
+            rather than the kind as a whole: the presenter of an edit row is the one for
+            ``EditEntry``, though an edit row is a ``tool`` row like any other. The registry looks
+            for the entry's own class first (and its parents') and the kind second.
         gutter: Whether the rows open with a marker the presenter draws in the
             gutter's own column — the user's arrow, the wait row's sparkle, a
             tool's outcome. Every other row is inset past the gutter, so every
@@ -128,6 +145,7 @@ class Presenter(Generic[E], ABC):
     """
 
     kind: ClassVar[EntryKind]
+    entry_type: ClassVar[type[Entry] | None] = None
     gutter: ClassVar[bool] = False
 
     @abstractmethod
@@ -365,19 +383,25 @@ class ThinkingPresenter(Presenter[ThinkingEntry]):
         return lines
 
 
-class ToolPresenter(Presenter[ToolEntry]):
+class ToolPresenter(Presenter[T]):
     """Draw a tool heading and a bounded preview of its result.
 
     A row is painted in the hue of the tool that ran, so a transcript reads by
     what was done: reading, searching, editing, running. Tools that do the same
     thing share a hue, and a failed row is red whatever the tool was.
+
+    This is the row every tool has. A tool whose entry carries more has a presenter that
+    extends this one in the two places a row can differ — what is written after the title
+    (:meth:`after_title`) and what is written under it (:meth:`body_lines`) — and nothing
+    else, so the symbol, the timer, the fold and the preview limits are the same for all of
+    them and cannot drift apart.
     """
 
     kind = EntryKind.TOOL
     gutter = True
 
-    def lines(self, entry: ToolEntry, width: int, theme: Theme, frame: int) -> list[TextLine]:
-        """Show the call, elapsed time, and optional syntax-highlighted output."""
+    def lines(self, entry: T, width: int, theme: Theme, frame: int) -> list[TextLine]:
+        """Show the call, elapsed time, and whatever body the tool's entry has."""
         running = entry.running
         symbol = (
             RUNNING_GLYPHS[0]
@@ -394,41 +418,186 @@ class ToolPresenter(Presenter[ToolEntry]):
         label = Style(foreground=colour)
         muted = Style(foreground=theme.muted)
         timing = f"  {duration_text(entry.duration)}" if entry.duration is not None else ""
-        disclosure = "" if running or not entry.text else (f" {EXPANDED}" if entry.expanded else f" {MARKER}")
+        disclosure = "" if not entry.foldable else (f" {EXPANDED}" if entry.expanded else f" {MARKER}")
         room = max(1, width - display_width(f"{symbol} {timing}{disclosure}"))
         title = truncate(entry.title, room)
         # A running title is painted flat, exactly as a settled one is: the
         # waiting row owns the motion, and a row that does not move is a row an
         # animation step never has to rebuild.
-        heading: list[Span] = [Span(f"{symbol} ", marker), Span(title, label)]
-        if entry.added:
-            heading.append(Span(f" +{entry.added}", Style(foreground=theme.accent)))
-        if entry.removed:
-            heading.append(Span(f" -{entry.removed}", Style(foreground=theme.error)))
+        heading: list[Span] = [Span(f"{symbol} ", marker), Span(title, label), *self.after_title(entry, theme)]
         if timing:
             heading.append(Span(timing, muted))
         if disclosure:
             heading.append(Span(disclosure, muted))
         lines = [TextLine(), TextLine(tuple(heading))]
-        output = f"Running{ELLIPSIS}" if running else entry.text
-        if output:
-            limit = TOOL_EXPANDED_ROWS if entry.expanded else TOOL_PREVIEW_ROWS
-            rows, omitted = bounded_rows(output, max(1, width - CONTENT_INDENT * 2), limit)
-            detail = Style(foreground=theme.subtle)
-            for index, row in enumerate(rows):
-                lead = f"{' ' * CONTENT_INDENT}\u2514 " if index == 0 else " " * (CONTENT_INDENT * 2)
-                lines.append(self._body_line(lead, row, detail, entry.language, theme))
-            if omitted:
-                lines.append(TextLine((Span(f"{' ' * (CONTENT_INDENT * 2)}{ELLIPSIS} {omitted} more rows", muted),)))
+        lines.extend(self.body_lines(entry, width, theme, muted))
         return [layout_rich_lines((line,), width, wrap=False)[0] if line.spans else line for line in lines]
 
+    def after_title(self, entry: T, theme: Theme) -> list[Span]:
+        """Return what follows the title on the heading row; a plain tool has nothing to add."""
+        return []
+
+    def body_lines(self, entry: T, width: int, theme: Theme, muted: Style) -> list[TextLine]:
+        """Return the rows under the heading: the tool's output, bounded, or that it is running."""
+        return self.output_lines(entry, width, theme, muted, language=None)
+
     @staticmethod
-    def _body_line(lead: str, text: str, detail: Style, language: str | None, theme: Theme) -> TextLine:
-        """Highlight file contents with their language while the gutter stays faint."""
+    def output_lines(
+        entry: ToolEntry, width: int, theme: Theme, muted: Style, *, language: str | None
+    ) -> list[TextLine]:
+        """Return the bounded preview of a tool's output, highlighted as ``language`` when it has one."""
+        output = f"Running{ELLIPSIS}" if entry.running else entry.text
+        if not output:
+            return []
+        limit = TOOL_EXPANDED_ROWS if entry.expanded else TOOL_PREVIEW_ROWS
+        rows, omitted = bounded_rows(output, max(1, width - CONTENT_INDENT * 2), limit)
+        detail = Style(foreground=theme.subtle)
         gutter = Style(foreground=theme.muted)
-        if language is None:
-            return TextLine((Span(lead, gutter), Span(text, detail)))
-        return TextLine((Span(lead, gutter), *highlight(text, language, theme.code)))
+        lines: list[TextLine] = []
+        for index, row in enumerate(rows):
+            lead = f"{' ' * CONTENT_INDENT}\u2514 " if index == 0 else " " * (CONTENT_INDENT * 2)
+            if language is None:
+                lines.append(TextLine((Span(lead, gutter), Span(row, detail))))
+            else:
+                lines.append(TextLine((Span(lead, gutter), *highlight(row, language, theme.code))))
+        if omitted:
+            lines.append(TextLine((Span(f"{' ' * (CONTENT_INDENT * 2)}{ELLIPSIS} {omitted} more rows", muted),)))
+        return lines
+
+
+class ReadPresenter(ToolPresenter[ReadEntry]):
+    """A file that was read: the body is highlighted as the language the file is in."""
+
+    entry_type = ReadEntry
+
+    def body_lines(self, entry: ReadEntry, width: int, theme: Theme, muted: Style) -> list[TextLine]:
+        """Show the output as source code when the file is."""
+        return self.output_lines(entry, width, theme, muted, language=entry.language)
+
+
+def _change_counts(added: int, removed: int, theme: Theme) -> list[Span]:
+    """Return ``+N`` and ``-M`` in the colours an addition and a deletion get; a zero is left out."""
+    spans: list[Span] = []
+    if added:
+        spans.append(Span(f" +{added}", Style(foreground=theme.addition)))
+    if removed:
+        spans.append(Span(f" -{removed}", Style(foreground=theme.deletion)))
+    return spans
+
+
+class FileChangePresenter(ToolPresenter[F]):
+    """A tool that changed a file: the lines it changed beside the name, and the change under it.
+
+    What a write and an edit share. They differ only in whether anything is taken away
+    (:meth:`removed`), so the diff, the colours, the cut at the width and the preview limits are
+    written once.
+    """
+
+    def removed(self, entry: F) -> int:
+        """Return the lines the change removes; a change that cannot remove any says none."""
+        return 0
+
+    def after_title(self, entry: F, theme: Theme) -> list[Span]:
+        """Show how many lines the change adds and removes."""
+        return _change_counts(entry.added, self.removed(entry), theme)
+
+    def body_lines(self, entry: F, width: int, theme: Theme, muted: Style) -> list[TextLine]:
+        """Show the change once the call has succeeded; before that, and if it failed, the usual body."""
+        if not entry.shows_diff:
+            return super().body_lines(entry, width, theme, muted)
+        return self._diff_lines(entry, width, theme, muted)
+
+    @staticmethod
+    def _diff_lines(entry: FileChangeEntry, width: int, theme: Theme, muted: Style) -> list[TextLine]:
+        """Draw the change an edit made: additions and deletions in the colours the counts wear.
+
+        A row is cut at the width rather than wrapped, so one long line cannot push the rest of
+        the diff off the screen; the break between two edits is drawn quiet, and what is past the
+        preview is counted the way a long output's is.
+        """
+        limit = TOOL_EXPANDED_ROWS if entry.expanded else TOOL_PREVIEW_ROWS
+        room = max(1, width - CONTENT_INDENT * 2 - 2)
+        styles = {
+            "+": Style(foreground=theme.addition),
+            "-": Style(foreground=theme.deletion),
+            " ": Style(foreground=theme.subtle),
+            "@": muted,
+        }
+        lines: list[TextLine] = []
+        for index, (sign, text) in enumerate(entry.diff[:limit]):
+            lead = f"{' ' * CONTENT_INDENT}\u2514 " if index == 0 else " " * (CONTENT_INDENT * 2)
+            style = styles.get(sign, styles[" "])
+            shown = text if sign == "@" else f"{sign} {terminal_safe(text)}"
+            lines.append(TextLine((Span(lead, muted), Span(truncate(shown, room), style))))
+        omitted = len(entry.diff) - limit
+        if omitted > 0:
+            lines.append(TextLine((Span(f"{' ' * (CONTENT_INDENT * 2)}{ELLIPSIS} {omitted} more rows", muted),)))
+        return lines
+
+
+class WritePresenter(FileChangePresenter[WriteEntry]):
+    """A file that was written whole: every line of it an addition."""
+
+    entry_type = WriteEntry
+
+
+class EditPresenter(FileChangePresenter[EditEntry]):
+    """A file that was edited: the lines added and removed, and the change."""
+
+    entry_type = EditEntry
+
+    def removed(self, entry: EditEntry) -> int:
+        """Return the lines the edits remove."""
+        return entry.removed
+
+
+#: Files listed under "Changed N files" before the rest are counted. A request that rewrote forty
+#: files has a summary that is a summary, not the list of them.
+MAX_CHANGED_ROWS = 8
+
+
+class ChangesPresenter(Presenter[ChangesEntry]):
+    """Say which files a request changed: one line for one file, a short list for several.
+
+    ::
+
+        Changed src/app.py +4 -1
+
+        Changed 3 files
+          src/app.py +4 -1
+          src/new.py +40
+          old.py deleted
+
+    The same colours as the tool rows above it, so a count means the same thing in both places.
+    """
+
+    kind = EntryKind.CHANGES
+
+    def lines(self, entry: ChangesEntry, width: int, theme: Theme, frame: int) -> list[TextLine]:
+        """Return the summary under a blank separator, each row cut at the width."""
+        muted = Style(foreground=theme.muted)
+        room = max(1, width)
+        files = entry.files
+        if len(files) == 1:
+            return [TextLine(), self._row("Changed ", files[0], theme, muted, room)]
+        shown = files[:MAX_CHANGED_ROWS]
+        rows = [TextLine(), TextLine((Span(f"Changed {len(files)} files", muted),))]
+        rows.extend(self._row("  ", item, theme, muted, room) for item in shown)
+        if len(files) > len(shown):
+            rows.append(TextLine((Span(f"  {ELLIPSIS} and {len(files) - len(shown)} more", muted),)))
+        return rows
+
+    @staticmethod
+    def _row(lead: str, item: FileSummary, theme: Theme, muted: Style, room: int) -> TextLine:
+        """One file: its name, then what happened to it."""
+        counts = (
+            [Span(" deleted", Style(foreground=theme.deletion))]
+            if item.deleted
+            else _change_counts(item.added, item.removed, theme)
+        )
+        used = display_width(lead) + sum(display_width(span.text) for span in counts)
+        name = truncate(item.path, max(1, room - used))
+        return TextLine((Span(lead + name, muted), *counts))
 
 
 class MarkdownPresenter(Presenter[MarkdownEntry]):
@@ -469,30 +638,46 @@ class MessagePresenter(MarkdownPresenter):
 
 
 class Presenters:
-    """The presenters of one transcript, looked up by the kind of entry each presents.
+    """The presenters of one transcript: one for each kind of entry, and for the families inside a kind.
 
-    There is exactly one presenter per kind, and a later one for a kind replaces an
-    earlier one, which is how a transcript is given a different way to draw a kind
-    without a chain whose order has to be right: :meth:`replacing`.
+    A presenter is found by the entry's class first, walking up its parents, and by its kind
+    second. Most kinds have one presenter and no family (a notice is a notice), and ``tool`` has
+    one for tools in general and one for each tool whose entry carries more than the rest.
+
+    A later presenter for a kind replaces an earlier one, which is how a transcript is given a
+    different way to draw a kind without a chain whose order has to be right: :meth:`replacing`.
+    A presenter given for a whole kind replaces its families too — it was asked to draw every row of
+    the kind, and a family left behind would keep drawing its own — while a family given after it
+    is a refinement of it, and stays.
     """
 
     def __init__(self, presenters: Iterable[Presenter[Any]]) -> None:
-        """Register presenters by kind; the last one given for a kind wins."""
+        """Register presenters; the last one given for a kind, or for an entry class, wins."""
         self._by_kind: dict[EntryKind, Presenter[Any]] = {}
+        self._by_type: dict[type[Entry], Presenter[Any]] = {}
         for presenter in presenters:
+            if presenter.entry_type is not None:
+                self._by_type[presenter.entry_type] = presenter
+                continue
             self._by_kind[presenter.kind] = presenter
+            for entry_type in [t for t, other in self._by_type.items() if other.kind is presenter.kind]:
+                del self._by_type[entry_type]
 
     @property
     def presenters(self) -> tuple[Presenter[Any], ...]:
-        """Return the registered presenters, one per kind."""
-        return tuple(self._by_kind.values())
+        """Return the registered presenters: the kinds' first, then the families'."""
+        return (*self._by_kind.values(), *self._by_type.values())
 
     def replacing(self, *presenters: Presenter[Any]) -> Presenters:
-        """Return a registry that draws the given kinds with the given presenters."""
+        """Return a registry that draws the given kinds, and families, with the given presenters."""
         return Presenters((*self.presenters, *presenters))
 
     def for_entry(self, entry: Entry) -> Presenter[Any]:
-        """Return the presenter for an entry's kind, or say which kind has none."""
+        """Return the presenter for an entry: its class's, else its kind's, else say which kind has none."""
+        for cls in type(entry).__mro__:
+            found = self._by_type.get(cls)
+            if found is not None:
+                return found
         try:
             return self._by_kind[entry.kind]
         except KeyError:
@@ -518,6 +703,10 @@ DEFAULT_PRESENTERS = Presenters(
         WaitPresenter(),
         ThinkingPresenter(),
         ToolPresenter(),
+        ChangesPresenter(),
+        ReadPresenter(),
+        WritePresenter(),
+        EditPresenter(),
     )
 )
 

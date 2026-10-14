@@ -124,19 +124,9 @@ class StreamMixin(TurnMixin):
             arguments: Arguments the chain reads to phrase the call.
         """
         self.complete_thinking()
-        row = self.renderers.describe(name, arguments)
-        self._add(
-            ToolEntry(
-                id=self._next_id,
-                call_id=call_id,
-                tool=name,
-                title=row.title,
-                language=row.language,
-                added=row.added,
-                removed=row.removed,
-                started_at=self.clock(),
-            )
-        )
+        # The tool's own handler decides which entry the call is, so what a row carries is its
+        # tool's business and this opens every one the same way.
+        self._add(self.renderers.open_tool(name, arguments, id=self._next_id, call_id=call_id, started_at=self.clock()))
 
     def complete_tool(
         self, call_id: str, output: str, *, status: EntryStatus = EntryStatus.COMPLETED, wait: bool = True

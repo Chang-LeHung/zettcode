@@ -387,9 +387,12 @@ inline = "#9bddad"            # Markdown `行内代码`
 
 | 段落 | 颜色参数 |
 | --- | --- |
-| `ui` | `background`, `surface`, `surface_alt`, `surface_side`, `text`, `muted`, `subtle`, `accent`, `accent_bright`, `warning`, `error`, `border`, `focus`, `selection` |
+| `ui` | `background`, `surface`, `surface_alt`, `surface_side`, `text`, `muted`, `subtle`, `accent`, `accent_bright`, `warning`, `error`, `diff_added`, `diff_removed`, `border`, `focus`, `selection` |
 | `tools` | `read`, `search`, `image`, `write`, `delete`, `shell`, `plan`, `subagent` |
 | `code` | `inline`, `text`, `keyword`, `string`, `comment`, `number`, `function`, `builtin`, `operator`, `punctuator` |
+
+`diff_added` 和 `diff_removed` 给编辑 diff 的行和文件旁边的 `+N -M` 上色。不写时分别跟随 `accent` 和 `error`，
+所以改了这两个，diff 也会跟着变；想让 diff 单独换颜色就设置它们。
 
 颜色使用带引号的六位十六进制，例如 `"#83c092"`。不能填 `"green"`、三位十六进制，
 也不能用 TOML 字符串 `"None"` 表示透明；省略 `background` 就会保留终端背景。
