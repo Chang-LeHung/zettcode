@@ -78,7 +78,9 @@ Every kind of output has its own row, in the order it happened:
 - **Notices** — a copied selection, a refused command, an exported file — appear
   as muted one-liners.
 
-`Page Up` / `Page Down` and the mouse wheel scroll. While you are scrolled up, a
+`Page Up` / `Page Down` and the mouse wheel scroll. The wheel is one line a notch when you nudge it, and
+gathers speed the longer you keep turning (up to ten lines a notch); a pause, or turning the other way,
+starts again at one line. While you are scrolled up, a
 `↓ back to bottom` badge appears; `Esc` or the badge returns to the newest line.
 While a request is running, `Esc` stops it, exactly as `Ctrl-C` does: the key that
 means "get me out of this" should not depend on remembering which of the two the

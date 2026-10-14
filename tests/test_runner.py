@@ -138,10 +138,10 @@ async def test_runner_decodes_pipe_bytes_and_paints_until_exit():
         os.close(write_fd)
 
     frame = terminal.output.getvalue()
-    # The differential renderer writes only changed cells, so the frame holds
-    # the incremental edits rather than one contiguous copy of the row.
+    # The differential renderer writes only changed cells, so the frame holds the edit rather than
+    # a copy of the row. Both keys were waiting when the loop looked, so they are one frame: "hi>".
     assert "\x1b[2J" in frame
-    assert "h>" in frame and "i>" in frame
+    assert "hi>" in frame
     assert app.running is False
     # ANSI256 was requested, so the renderer must not emit truecolor SGR.
     assert "38;2;" not in frame
@@ -365,3 +365,107 @@ async def test_a_callback_asked_for_while_a_frame_is_painting_waits_for_the_one_
     assert seen == ["first", "later"]
     os.close(read_fd)
     os.close(write_fd)
+
+
+# -- a burst of input is one frame --------------------------------------------------------------------------
+
+
+class _Counter(Widget):
+    """Counts the events it is handed and the frames drawn for them."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.events = 0
+        self.frames = 0
+
+    @property
+    def focusable(self) -> bool:
+        return True
+
+    def render(self, canvas) -> None:
+        self.frames += 1
+        canvas.draw_text(0, 0, f"events {self.events}", max_width=self.rect.width)
+
+    def handle(self, event: AnyEvent, host: Host) -> bool:
+        if isinstance(event, TextEvent):
+            self.events += 1
+            host.invalidate()
+            return True
+        if isinstance(event, KeyEvent) and event.key == "escape":
+            host.exit()
+            return True
+        return False
+
+
+async def _run_with_queued(count: int, *, batch: int | None = None):
+    from zettcode.tui import runner as runner_module
+    from zettcode.tui.input import EventType, InputEvent
+
+    read_fd, write_fd = os.pipe()
+    counter = _Counter()
+    app = TuiApp(counter, width=30, height=3)
+    runner = TerminalRunner(app, terminal=StubTerminal(read_fd, width=30, height=3))
+    original = runner_module.MAX_BATCH
+    if batch is not None:
+        runner_module.MAX_BATCH = batch
+    task = asyncio.create_task(runner.run())
+    try:
+        await _wait_for(lambda: app.focused_widget() is not None)
+        await asyncio.sleep(0.05)
+        frames_before = counter.frames
+        for _ in range(count):  # all queued before the loop gets another turn
+            runner.queue.put_nowait(InputEvent(type=EventType.TEXT, text="x"))
+        await _wait_for(lambda: counter.events == count)
+        await asyncio.sleep(0.05)
+        return counter.events, counter.frames - frames_before
+    finally:
+        runner_module.MAX_BATCH = original
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        os.close(read_fd)
+        os.close(write_fd)
+
+
+async def test_a_burst_of_queued_events_is_drawn_once_not_once_per_event():
+    """The bug: a wheel flick queued a hundred and twenty notches and the loop painted between each,
+    three quarters of a second of crawl after the reader had stopped."""
+    events, frames = await _run_with_queued(100)
+
+    assert events == 100 and frames <= 2, f"{frames} frames for 100 queued events"
+
+
+async def test_a_single_event_is_still_drawn_at_once():
+    events, frames = await _run_with_queued(1)
+
+    assert events == 1 and frames == 1
+
+
+async def test_a_flood_larger_than_the_batch_is_still_all_delivered_and_painted_between_batches():
+    events, frames = await _run_with_queued(40, batch=10)
+
+    assert events == 40
+    assert 2 <= frames <= 6, "bounded batches: several frames, never one per event and never a starved loop"
+
+
+async def test_escape_in_the_middle_of_a_burst_stops_the_batch_where_the_app_stopped():
+    from zettcode.tui.input import EventType, InputEvent
+
+    read_fd, write_fd = os.pipe()
+    counter = _Counter()
+    app = TuiApp(counter, width=30, height=3)
+    runner = TerminalRunner(app, terminal=StubTerminal(read_fd, width=30, height=3))
+    task = asyncio.create_task(runner.run())
+    try:
+        await _wait_for(lambda: app.focused_widget() is not None)
+        for index in range(20):
+            runner.queue.put_nowait(InputEvent(type=EventType.TEXT, text="x"))
+            if index == 4:
+                runner.queue.put_nowait(InputEvent(type=EventType.KEY, key="escape"))
+        await asyncio.wait_for(task, 3.0)
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        os.close(read_fd)
+        os.close(write_fd)
+
+    assert app.running is False and counter.events == 5, "nothing after the key that ended the app was applied"

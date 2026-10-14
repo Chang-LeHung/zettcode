@@ -14,9 +14,34 @@ from ..core.widget import Widget
 from ..render import Canvas, TextLine
 from ..render.text import display_width, slice_columns
 
-#: Lines one wheel notch scrolls. One line per notch matches a mouse wheel's
-#: own resolution instead of jumping a page's worth of the window.
+#: Lines one wheel notch scrolls when the wheel is turned slowly. One line per notch matches a mouse
+#: wheel's own resolution instead of jumping a page's worth of the window.
 WHEEL_STEP = 1
+
+#: Notches closer together than this belong to one turn of the wheel; a longer pause, or the other
+#: direction, starts a new one. Slow deliberate clicks are further apart than this, a flick is not.
+WHEEL_STREAK_GAP = 0.12
+
+#: The first notches of a turn move one line each, so a small nudge lands where it was aimed; after that
+#: a turn that goes on gains one line per notch every ``WHEEL_RAMP_EVENTS`` notches, up to the cap.
+WHEEL_SLOW_EVENTS = 3
+WHEEL_RAMP_EVENTS = 2
+WHEEL_MAX_STEP = 10
+
+
+def wheel_step(streak: int) -> int:
+    """Return the lines the ``streak``-th notch of one continuous turn of the wheel scrolls.
+
+    Args:
+        streak: How many notches the turn has delivered, counting this one; ``1`` is the first.
+
+    A reader who turns the wheel a little wants a little movement, and one who keeps turning it wants
+    to get somewhere, so the step grows with how long the turn has gone on rather than with how fast
+    any one notch came: the first :data:`WHEEL_SLOW_EVENTS` notches are one line each, then a line more
+    every :data:`WHEEL_RAMP_EVENTS`, to :data:`WHEEL_MAX_STEP`.
+    """
+    extra = max(0, streak - WHEEL_SLOW_EVENTS) // WHEEL_RAMP_EVENTS
+    return min(WHEEL_MAX_STEP, WHEEL_STEP + extra)
 
 
 class LineSource(ABC):
@@ -111,6 +136,9 @@ class ScrollView(Widget):
         self._double_click = False
         self._last_click_at = float("-inf")
         self._last_click_line: int | None = None
+        self._wheel_at = float("-inf")
+        self._wheel_direction = 0
+        self._wheel_streak = 0
 
     @property
     def focusable(self) -> bool:
@@ -150,10 +178,10 @@ class ScrollView(Widget):
             return self._handle_pointer(event, host)
         if isinstance(event, MouseEvent) and self.rect.contains(event.x, event.y):
             if event.action is MouseAction.SCROLL_UP:
-                self.scroll_by(-WHEEL_STEP)
+                self._wheel(-1)
                 return True
             if event.action is MouseAction.SCROLL_DOWN:
-                self.scroll_by(WHEEL_STEP)
+                self._wheel(1)
                 return True
             return False
         if not isinstance(event, KeyEvent) or host.focused_widget() is not self:
@@ -206,10 +234,10 @@ class ScrollView(Widget):
         """Implement click, drag, and double-click selection for the mouse."""
         inside = self.rect.contains(event.x, event.y)
         if event.action is MouseAction.SCROLL_UP and inside:
-            self.scroll_by(-WHEEL_STEP)
+            self._wheel(-1)
             return True
         if event.action is MouseAction.SCROLL_DOWN and inside:
-            self.scroll_by(WHEEL_STEP)
+            self._wheel(1)
             return True
         if event.action is MouseAction.DOWN and inside:
             point = self._point(event.x, event.y)
@@ -328,6 +356,19 @@ class ScrollView(Widget):
         maximum = max(0, count - self.rect.height)
         self.top = min(max(0, index), maximum)
         self.follow_tail = maximum == 0 or self.top >= maximum
+
+    def _wheel(self, direction: int) -> None:
+        """Scroll one wheel notch, by more lines the longer the wheel has been turning one way.
+
+        Args:
+            direction: ``-1`` for up, ``1`` for down.
+        """
+        now = self.clock()
+        if direction != self._wheel_direction or now - self._wheel_at > WHEEL_STREAK_GAP:
+            self._wheel_streak = 0
+        self._wheel_direction, self._wheel_at = direction, now
+        self._wheel_streak += 1
+        self.scroll_by(direction * wheel_step(self._wheel_streak))
 
     def scroll_by(self, amount: int) -> None:
         """Move the window by a relative number of lines."""

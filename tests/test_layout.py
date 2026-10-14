@@ -333,3 +333,135 @@ def test_a_view_that_is_not_selectable_leaves_the_drag_to_the_frame():
 
     assert view.selected_text() == ""
     assert harness.clipboard == "lpha\nbet"
+
+
+# -- the wheel: slow when nudged, faster the longer it turns ---------------------------------------------------
+
+
+class _Clock:
+    def __init__(self) -> None:
+        self.now = 100.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+def _long_view(clock: _Clock, lines: int = 2000, *, selectable: bool = False) -> ScrollView:
+    view = ScrollView(
+        RecordingSource([f"line {index}" for index in range(lines)]),
+        follow_tail=False,
+        clock=clock,
+        selectable=selectable,
+    )
+    view.layout(Rect(0, 0, 20, 10))
+    view.scroll_to(1000)
+    return view
+
+
+def _notches(view: ScrollView, clock: _Clock, count: int, *, gap: float, up: bool = False) -> list[int]:
+    """Turn the wheel ``count`` notches ``gap`` seconds apart; return how far each one moved the view."""
+    from zettcode.tui import MouseAction, MouseEvent
+
+    moved = []
+    for _ in range(count):
+        before = view.top
+        action = MouseAction.SCROLL_UP if up else MouseAction.SCROLL_DOWN
+        assert view.handle(MouseEvent(x=1, y=1, action=action), Harness(view, width=20, height=10).app)
+        moved.append(abs(view.top - before))
+        clock.now += gap
+    return moved
+
+
+def test_the_step_is_one_line_for_the_first_few_notches_then_grows_to_a_cap():
+    from zettcode.tui.layout.scroll import WHEEL_MAX_STEP, WHEEL_SLOW_EVENTS, wheel_step
+
+    steps = [wheel_step(n) for n in range(1, 40)]
+
+    assert steps[:WHEEL_SLOW_EVENTS] == [1] * WHEEL_SLOW_EVENTS
+    assert steps == sorted(steps), "never slows down while the turn goes on"
+    assert steps[-1] == WHEEL_MAX_STEP and max(steps) == WHEEL_MAX_STEP
+    assert steps[WHEEL_SLOW_EVENTS + 1] > 1, "and it does leave one line a notch"
+
+
+def test_a_slow_turn_of_the_wheel_stays_one_line_a_notch_however_long_it_goes_on():
+    clock = _Clock()
+    view = _long_view(clock)
+
+    moved = _notches(view, clock, 30, gap=0.5)
+
+    assert moved == [1] * 30
+
+
+def test_a_continuous_turn_scrolls_faster_and_faster():
+    clock = _Clock()
+    view = _long_view(clock)
+
+    moved = _notches(view, clock, 30, gap=0.02)
+
+    assert moved[0] == moved[1] == moved[2] == 1, "a nudge is still precise"
+    assert moved == sorted(moved) and moved[-1] > moved[0] * 4
+
+
+def test_a_pause_starts_the_turn_over_at_one_line():
+    clock = _Clock()
+    view = _long_view(clock)
+    _notches(view, clock, 20, gap=0.02)
+
+    clock.now += 0.5
+    moved = _notches(view, clock, 3, gap=0.02)
+
+    assert moved == [1, 1, 1]
+
+
+def test_turning_the_other_way_starts_over_too():
+    clock = _Clock()
+    view = _long_view(clock)
+    _notches(view, clock, 20, gap=0.02, up=False)
+
+    moved = _notches(view, clock, 3, gap=0.02, up=True)
+
+    assert moved == [1, 1, 1]
+
+
+def test_the_acceleration_applies_to_a_view_that_selects_text_as_well():
+    """The transcript is one: its wheel goes through the pointer handler, not the plain one."""
+    clock = _Clock()
+    view = _long_view(clock, selectable=True)
+
+    moved = _notches(view, clock, 20, gap=0.02)
+
+    assert moved[0] == 1 and moved[-1] > 4
+
+
+def test_a_notch_outside_the_view_neither_moves_it_nor_counts_towards_the_turn():
+    from zettcode.tui import MouseAction, MouseEvent
+
+    clock = _Clock()
+    view = _long_view(clock)
+    app = Harness(view, width=20, height=10).app
+    top = view.top
+
+    handled = view.handle(MouseEvent(x=50, y=50, action=MouseAction.SCROLL_DOWN), app)
+
+    assert handled is False and view.top == top and view._wheel_streak == 0
+
+
+def test_scrolling_still_stops_at_both_ends_however_fast_the_turn():
+    clock = _Clock()
+    view = _long_view(clock, lines=40)
+
+    _notches(view, clock, 60, gap=0.01, up=False)
+    assert view.top == view.max_top and view.follow_tail
+    _notches(view, clock, 80, gap=0.01, up=True)
+    assert view.top == 0
+
+
+@pytest.mark.parametrize("selectable", [False, True])
+def test_the_acceleration_works_scrolling_up_as_well_as_down_in_both_kinds_of_view(selectable):
+    clock = _Clock()
+    view = _long_view(clock, selectable=selectable)
+    view.scroll_to(1800)
+
+    moved = _notches(view, clock, 20, gap=0.02, up=True)
+
+    assert moved[0] == 1 and moved[-1] > 4 and view.top < 1800 - 20
