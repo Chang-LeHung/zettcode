@@ -69,7 +69,13 @@ PLUGIN_KEYS = frozenset({"enabled", "disable"})
 UPDATE_KEYS = frozenset({"enabled"})
 
 #: Keys the ``[harness]`` table may set.
-HARNESS_KEYS = frozenset({"subagent", "todowrite"})
+HARNESS_KEYS = frozenset({"subagent", "subagent_max_iterations", "todowrite"})
+
+#: Model calls one subagent may make for the task it was given. A child that is exploring or editing
+#: a real codebase makes dozens (a search, a read, an edit, a re-read, for each file), and the framework's
+#: own default of 18 ended such a task halfway with a half-finished report; this is a ceiling against a
+#: child that never stops, not a target.
+DEFAULT_SUBAGENT_MAX_ITERATIONS = 512
 
 #: Where ZettCode's own skills live, searched after any ``[skills] roots``. A
 #: project-local directory is a configured root, not a default: only what the
@@ -225,6 +231,7 @@ class ZettCodeConfig:
             without uninstalling it.
         subagent_enabled: Offer the ``task`` tool, whose profiles run a child
             agent with its own context and session log.
+        subagent_max_iterations: Model calls one such child may make for one task.
         todowrite_enabled: Offer the ``todo_write`` tool, whose list the shell
             shows in its plan panel. Off by default: a plan is a turn spent
             updating it, and not every session wants one.
@@ -252,6 +259,7 @@ class ZettCodeConfig:
     plugins_enabled: bool = True
     disabled_plugins: tuple[str, ...] = ()
     subagent_enabled: bool = True
+    subagent_max_iterations: int = DEFAULT_SUBAGENT_MAX_ITERATIONS
     todowrite_enabled: bool = False
     update_enabled: bool = True
     update_file: Path = DEFAULT_UPDATE_FILE
@@ -266,6 +274,8 @@ class ZettCodeConfig:
             raise ValueError("At least one model must be configured")
         if self.max_iterations < 1:
             raise ValueError("max_iterations must be positive")
+        if self.subagent_max_iterations < 1:
+            raise ValueError("subagent_max_iterations must be positive")
         if self.transcript_max_entries < 1:
             raise ValueError("transcript_max_entries must be positive")
         object.__setattr__(self, "workspace", workspace)
@@ -502,6 +512,11 @@ def load_config(
         plugins_enabled=bool(_setting(plugins, "enabled", bool, True)),
         disabled_plugins=_read_disabled_plugins(plugins.get("disable"), source),
         subagent_enabled=bool(_setting(harness, "subagent", bool, True)),
+        subagent_max_iterations=_typed(
+            harness.get("subagent_max_iterations", DEFAULT_SUBAGENT_MAX_ITERATIONS),
+            f"Config key 'harness.subagent_max_iterations' in {source}",
+            int,
+        ),
         todowrite_enabled=bool(_setting(harness, "todowrite", bool, False)),
         update_enabled=bool(_setting(update, "enabled", bool, True)),
     )

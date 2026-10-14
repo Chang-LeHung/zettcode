@@ -364,7 +364,16 @@ class ZettCodeRuntime:
             # guidance reaches the prompt it is registered for.
             from .extensions.subagents import subagent_extension
 
-            extensions.append(subagent_extension(model=model, persistence=self.persistence, capabilities=capabilities))
+            extensions.append(
+                subagent_extension(
+                    model=model,
+                    persistence=self.persistence,
+                    capabilities=capabilities,
+                    # The parent's project instructions go to its children too.
+                    workspace=self.config.workspace if self.config.agents_md_enabled else None,
+                    max_iterations=self.config.subagent_max_iterations,
+                )
+            )
         extensions.extend([ShellDenyExtension(self.policy), self.approval, self.persistence])
         if self.config.todowrite_enabled:
             extensions.append(self.todos)
