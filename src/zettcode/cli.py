@@ -439,7 +439,9 @@ def freeze_heap() -> None:
 #: SDKs, the widget tree, the rows of a long transcript — and a frame allocates thousands, so the
 #: default had the collector interrupting a scroll every few frames. Measured with the same scroll
 #: over a ten-thousand-line transcript: frames past one frame's budget 13 in 4200 with the default,
-#: 4 in 4200 with this. Anything it leaves is still collected, just less often.
+#: 4 in 4200 with this. Anything it leaves is still collected, just less often. That makes a
+#: collection rare; :mod:`zettcode.app.ui.gc_policy` decides *when* one may happen (only while work
+#: is in flight, never while the reader types) and freezes the SDK heap so it is cheap when it does.
 GC_YOUNG_THRESHOLD = 100_000
 
 

@@ -64,6 +64,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
     from ..agent.extensions.usage import UsageSnapshot
     from ..commands import Command
     from .followups import FollowUp
+    from .gc_policy import CollectorPolicy
     from .widgets import Composer, FollowUpQueue, SteeringQueue, TranscriptView, ZettCodeRoot
 
 
@@ -108,6 +109,8 @@ class ShellState:
     _usage: UsageSnapshot
     #: Whether a turn or a command is in flight.
     _busy: bool
+    #: When the garbage collector may run: while work is in flight, and not while the reader types.
+    collector: CollectorPolicy
     #: Steering messages queued for this run, and how many were queued in all.
     _steering: list[str]
     #: What each queued steering message was made of, in step with :attr:`_steering`: the text the
