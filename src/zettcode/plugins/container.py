@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ..app.commands import Command, CommandHandler, CommandList, CommandProvider
+from ..app.commands import BusyPolicy, Command, CommandHandler, CommandList, CommandProvider
 from ..providers import Provider
 from .state import UiRow, UiSegment
 
@@ -203,7 +203,9 @@ class PluginContainer:
         """
         return self._slots.add("status", "right", name, builder, override=override)
 
-    def register_command(self, name: str, description: str, handler: CommandHandler) -> Command:
+    def register_command(
+        self, name: str, description: str, handler: CommandHandler, *, when_busy: BusyPolicy = "refuse"
+    ) -> Command:
         """Register one slash command the shell will offer and run.
 
         The leading slash is optional, so ``"deploy"`` and ``"/deploy"`` are the
@@ -222,6 +224,13 @@ class PluginContainer:
             handler: Coroutine taking a
                 :class:`~zettcode.app.commands.CommandContext` and returning the
                 result.
+            when_busy: What happens when the command is typed while a request is
+                running. ``"refuse"`` (the default) turns it away; ``"queue"`` runs
+                it when the request ends; ``"now"`` runs it at once, beside the
+                request. Say ``"now"`` only for a command that does not touch what
+                a running request is built on — it reads or reports, or changes a
+                setting the request reads when it needs it — because it is run
+                without the busy state to itself.
 
         Returns:
             The registered command, in case the plugin wants to keep it.
@@ -244,6 +253,7 @@ class PluginContainer:
                         description=description,
                         type="plugin",
                         handler=handler,
+                        when_busy=when_busy,
                     ),
                 )
             )

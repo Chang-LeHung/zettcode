@@ -69,16 +69,27 @@ class ShellCommands(CommandProvider):
     def items(self) -> Sequence[Command]:
         """Return the shell's own commands, in the order ``/help`` lists them."""
         return (
-            Command("/help", "show the commands and the keys", "app", self.help),
+            # ``when_busy="now"`` below is for what only looks at the session or sets something the
+            # running request reads when it needs it. What it touches while a request runs - the
+            # transcript it writes into, the session, the model it started with and the window that
+            # model's compaction is sized to - stays refused: /model, /config, /clear, /new, /resume,
+            # /fork, /compact and /export.
+            Command("/help", "show the commands and the keys", "app", self.help, when_busy="now"),
             Command("/resume", "resume a session: /resume [id]", "app", self.resume),
             Command("/model", "choose a model", "app", self.model),
             Command("/config", "add, change or remove models: /config [add|remove|list|providers]", "app", self.config),
-            Command("/theme", "choose the palette (or /theme dark|light)", "app", self.theme),
+            Command("/theme", "choose the palette (or /theme dark|light)", "app", self.theme, when_busy="now"),
             Command("/fork", "carry this conversation into a new session", "app", self.fork),
-            Command("/context", "what is filling the context window", "app", self.context),
-            Command("/title", "name this session: /title <name>", "app", self.title),
-            Command("/effort", "how much the model reasons: /effort high", "app", self.effort),
-            Command("/permission", "how much of the shell may run unasked: /permission safe", "app", self.permission),
+            Command("/context", "what is filling the context window", "app", self.context, when_busy="now"),
+            Command("/title", "name this session: /title <name>", "app", self.title, when_busy="now"),
+            Command("/effort", "how much the model reasons: /effort high", "app", self.effort, when_busy="now"),
+            Command(
+                "/permission",
+                "how much of the shell may run unasked: /permission safe",
+                "app",
+                self.permission,
+                when_busy="now",
+            ),
             Command(
                 "/btw",
                 "ask something that will not join the conversation: /btw <question>",
@@ -89,8 +100,8 @@ class ShellCommands(CommandProvider):
                 when_busy="queue",
             ),
             Command("/clear", "clear the transcript", "app", self.clear),
-            Command("/quit", "exit", "app", self.quit),
-            Command("/exit", "exit, same as /quit", "app", self.quit),
+            Command("/quit", "exit", "app", self.quit, when_busy="now"),
+            Command("/exit", "exit, same as /quit", "app", self.quit, when_busy="now"),
         )
 
     async def help(self, context: CommandContext) -> CommandResult:

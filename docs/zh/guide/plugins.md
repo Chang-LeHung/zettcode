@@ -125,6 +125,25 @@ async def greet(self, context: CommandContext) -> CommandResult:
 用这个方法替换前面 `Greeter.greet` 即可。错误、提示和 Markdown 结果只展示在 transcript，
 不是发送给模型的用户消息。用 command UI 方法输出，不要用会绕过终端界面的 `print()`。
 
+### 请求运行期间
+
+默认情况下，请求运行时输入的命令会被拒绝，因为大多数命令会改动这个请求正依赖的东西。注册时用
+`when_busy` 另行声明：
+
+```text
+container.register_command("status", "show the build status", self.status, when_busy="now")
+```
+
+| `when_busy` | 请求运行期间输入它会怎样 |
+| --- | --- |
+| `"refuse"`（默认） | 被拒绝，提示 “busy”。 |
+| `"queue"` | 先记下来，请求一结束就运行，和 `/btw` 一样。 |
+| `"now"` | 立刻运行，与请求并行，请求不受影响地继续。 |
+
+只有“只读取或报告”、或者“只改请求在需要时才去读的设置”的命令才用 `"now"`。它运行时**不会**独占
+忙碌状态，所以一个会修改 transcript、会话、或请求启动时所用模型的命令，会把请求脚下的地面抽走。
+处理函数想等多久都可以：请求不会等它，退出时会取消它。
+
 ## 描述一个 provider {#providers}
 
 插件可以往 `/config` 提供的列表里添加一个服务商，这样 ZettCode 不认识的服务，选中它再给一个 token

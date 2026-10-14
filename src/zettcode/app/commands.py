@@ -57,8 +57,13 @@ CommandHandler: TypeAlias = Callable[[CommandContext], Awaitable["CommandResult"
 #: ``"refuse"`` is the default: the draft is turned away, exactly as a prompt
 #: that cannot steer is. ``"queue"`` takes the draft and runs it the moment the
 #: request in flight finishes — for a command whose whole point is to be usable
-#: mid-reply, such as ``/btw``.
-BusyPolicy: TypeAlias = Literal["refuse", "queue"]
+#: mid-reply, such as ``/btw``. ``"now"`` runs it at once, beside the request: for a
+#: command that only looks at the session or changes a setting the request reads when it
+#: needs it, so waiting for the request to end would be waiting for nothing (``/context``,
+#: ``/title``, ``/theme``). A command that touches what a running request is built on — the
+#: transcript it is writing into, the session, the model it started with — must not say
+#: ``"now"``; it never gets the busy state to itself, because it runs without taking it.
+BusyPolicy: TypeAlias = Literal["refuse", "queue", "now"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,7 +117,9 @@ class Command:
             state.
         when_busy: What the shell does when the command is typed while a
             request is in flight: ``"refuse"`` (the default) turns the draft
-            away, ``"queue"`` holds it and runs it as soon as that request ends.
+            away, ``"queue"`` holds it and runs it as soon as that request ends,
+            and ``"now"`` runs it at once without disturbing the request (see
+            :data:`BusyPolicy` for what that is safe for).
     """
 
     name: str

@@ -139,6 +139,26 @@ are displayed in the transcript; they are not a user message submitted to the
 model. Prefer the command UI methods to `print()`, which writes outside the
 terminal interface.
 
+### While a request is running
+
+A command typed while a request is running is turned away by default, because most commands change
+what that request is standing on. Say otherwise with `when_busy` when you register it:
+
+```text
+container.register_command("status", "show the build status", self.status, when_busy="now")
+```
+
+| `when_busy` | What happens when it is typed during a request |
+| --- | --- |
+| `"refuse"` (default) | It is turned away with "busy". |
+| `"queue"` | It is held and runs the moment the request ends, like `/btw`. |
+| `"now"` | It runs at once, beside the request, which carries on undisturbed. |
+
+Say `"now"` only for a command that reads or reports, or changes a setting the request reads when it
+needs it. It runs **without** the busy state to itself, so a command that edits the transcript, the
+session, or the model the request started with would pull the floor out from under it. Your handler
+can be awaited for as long as it likes: the request is not waiting for it, and quitting cancels it.
+
 ## Describing a provider {#providers}
 
 A plugin can add a host to the list `/config` offers, so a service ZettCode does not know can be

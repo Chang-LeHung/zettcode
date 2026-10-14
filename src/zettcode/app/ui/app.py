@@ -201,6 +201,9 @@ class ZettCodeApp(
         #: Drafts typed while a request was in flight, in arrival order: only
         #: commands that declare ``when_busy="queue"`` land here.
         self._pending: list[str] = []
+        #: Commands running beside a request (``when_busy="now"``), held so they are not collected
+        #: while they run and can be cancelled when the shell leaves.
+        self._now_tasks: set[asyncio.Task[None]] = set()
         self._activity = Activity.READY
         self._note: str | None = None
         self._session_title: str | None = None
@@ -415,6 +418,10 @@ class ZettCodeApp(
             turn.cancel()
         if turn is not None:
             await asyncio.gather(turn, return_exceptions=True)
+        beside = list(self._now_tasks)
+        for task in beside:
+            task.cancel()
+        await asyncio.gather(*beside, return_exceptions=True)
 
     def adopt(self, tui: TuiApp) -> None:
         """Move this application's interface into a shell that is already running.
@@ -545,6 +552,39 @@ class ZettCodeApp(
         name, _, argument = value.partition(" ")
         return next((item for item in self.commands if item.name == name), None), argument.strip()
 
+    def _run_command_now(self, command: Command, argument: str) -> None:
+        """Run a command beside the request in flight, without taking the busy state.
+
+        ``_run_command`` owns everything about a run being in progress: it sets the busy flag,
+        the activity and the task, and when it ends it clears them and settles the waiting
+        messages. Done for a command typed during a request, that would end the request's
+        busy state under it and hand the unread steering back as if the request were over. So
+        this does none of that. The handler runs on a task of its own, its result is shown the
+        way any command's is, and Ctrl-C and Escape still mean the request.
+
+        A failure is reported in the conversation: a command that did nothing and said nothing is
+        worse than one that failed.
+
+        Args:
+            command: The command, whose ``when_busy`` is ``"now"``.
+            argument: What followed its name.
+        """
+        task = asyncio.create_task(self._execute_now(command, argument))
+        self._now_tasks.add(task)
+        task.add_done_callback(self._now_tasks.discard)
+
+    async def _execute_now(self, command: Command, argument: str) -> None:
+        """Await one handler and show what it returned, or why it could not."""
+        try:
+            result = await command.handler(CommandContext(argument=argument, ui=self))
+        except ValueError as error:
+            self.transcript.error(str(error))
+        except Exception as error:  # noqa: BLE001 - a command's bug is reported, never swallowed
+            self.transcript.error(f"{command.name}: {describe_error(error)}")
+        else:
+            self._apply_result(result)
+        self.app.invalidate()
+
     def _queue_command(self, value: str) -> None:
         """Hold one typed command until the request in flight is done."""
         self._pending.append(value)
@@ -575,9 +615,9 @@ class ZettCodeApp(
         model or tool boundary — or follow up, held and sent as a turn of its own
         when the request ends; either way a list above the composer shows it until
         then. A slash command is refused while one runs, because there is no
-        running request to steer — unless the command itself declares
-        ``when_busy="queue"``, which holds the draft and runs it the moment the
-        request in flight ends.
+        running request to steer — unless the command itself says otherwise with
+        ``when_busy``: ``"queue"`` holds the draft and runs it the moment the request
+        in flight ends, and ``"now"`` runs it at once, beside the request.
 
         Args:
             value: Draft text from the composer; a leading ``/`` selects the
@@ -592,10 +632,13 @@ class ZettCodeApp(
                 # Which commands are taken mid-request is the command's own
                 # decision, not a name the shell knows: a queued one runs the
                 # moment the request in flight ends.
-                command, _ = self._lookup(value)
+                command, argument = self._lookup(value)
                 if command is None or command.when_busy == "refuse":
                     self._refuse_busy()
                     return False
+                if command.when_busy == "now":
+                    self._run_command_now(command, argument)
+                    return True
                 self._queue_command(value)
                 return True
             if not value.strip():
