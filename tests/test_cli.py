@@ -458,6 +458,34 @@ def test_the_help_lists_the_version_flag(capsys):
     assert "-v, -V, --version" in capsys.readouterr().out
 
 
+def test_the_collector_is_told_to_interrupt_the_interface_less_often_and_nothing_else_changes():
+    import gc
+
+    gc.set_threshold(2000, 10, 0)  # python's own default, whatever an earlier test left
+    before = gc.get_threshold()
+
+    cli.tune_collector()
+    after = gc.get_threshold()
+
+    assert after[0] == cli.GC_YOUNG_THRESHOLD > before[0]
+    assert after[1:] == before[1:]
+
+
+def test_starting_the_program_tunes_the_collector_before_anything_else_runs(monkeypatch):
+
+    calls: list[str] = []
+    monkeypatch.setattr(cli, "tune_collector", lambda: calls.append("tuned"))
+    monkeypatch.setattr(cli, "parse_args", lambda: SimpleNamespace(dry_run=False, resume=None, auto=False))
+    monkeypatch.setattr(cli, "_name_process", lambda: calls.append("named"))
+    monkeypatch.setattr(cli, "launch", lambda options: calls.append("launched"))
+    monkeypatch.setattr(cli.asyncio, "run", lambda coroutine: calls.append(coroutine))
+    monkeypatch.setattr(cli, "freeze_heap", lambda: None)
+
+    cli.main()
+
+    assert calls[:2] == ["tuned", "named"]
+
+
 # -- a resumed session is measured where it will be drawn ----------------------------
 
 

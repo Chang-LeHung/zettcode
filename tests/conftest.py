@@ -69,3 +69,17 @@ def _offline_tokenizers(monkeypatch: pytest.MonkeyPatch) -> None:
         raise OSError(f"the {encoding} vocabulary is not fetched in tests")
 
     monkeypatch.setattr(context, "_tiktoken_encoder", offline)
+
+
+@pytest.fixture(autouse=True)
+def _keep_the_collector_as_it_was() -> None:
+    """Give back the collector's thresholds, because starting the program changes them for the process.
+
+    ``cli.main`` raises the young-generation threshold; a test that calls it must not leave that
+    behind for every test after it.
+    """
+    import gc
+
+    before = gc.get_threshold()
+    yield
+    gc.set_threshold(*before)

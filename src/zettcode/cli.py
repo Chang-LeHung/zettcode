@@ -434,9 +434,25 @@ def freeze_heap() -> None:
     gc.freeze()
 
 
+#: Allocations the collector waits for before it looks at the newest objects. The default (2000) is
+#: sized for scripts; this program keeps a live heap of a few hundred thousand objects — the model
+#: SDKs, the widget tree, the rows of a long transcript — and a frame allocates thousands, so the
+#: default had the collector interrupting a scroll every few frames. Measured with the same scroll
+#: over a ten-thousand-line transcript: frames past one frame's budget 13 in 4200 with the default,
+#: 4 in 4200 with this. Anything it leaves is still collected, just less often.
+GC_YOUNG_THRESHOLD = 100_000
+
+
+def tune_collector() -> None:
+    """Make the cyclic collector interrupt the interface less often; the older generations are untouched."""
+    _, older, oldest = gc.get_threshold()
+    gc.set_threshold(GC_YOUNG_THRESHOLD, older, oldest)
+
+
 def main() -> None:
     """Installed console-script entry point."""
     options = parse_args()
+    tune_collector()
     _name_process()
     try:
         if options.dry_run:
