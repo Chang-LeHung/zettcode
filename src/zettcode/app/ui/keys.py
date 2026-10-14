@@ -260,7 +260,10 @@ class KeysMixin(ShellState):
 
     def _refresh_completions(self) -> None:
         """Mirror the composer's slash-command candidates into the menu."""
-        candidates = self.composer.completion_candidates()
+        # Nothing is offered over an entry the reader is only walking past: the menu would own
+        # Up and Down from then on, and the walk through the history would stop at the first
+        # command it met. Editing the entry (or typing from scratch) ends the walk and brings it back.
+        candidates = () if self.composer.browsing_history else self.composer.completion_candidates()
         if candidates == self.completions.items:
             return
         self.completions.set_items(candidates, selected=0)

@@ -98,6 +98,17 @@ class TextArea(Widget):
         return True
 
     @property
+    def browsing_history(self) -> bool:
+        """Return whether the draft on show is a recalled entry rather than something being written.
+
+        It is true from the first Up that recalls an entry until the draft is edited or replaced,
+        which is what lets a host tell "the reader is walking through what they sent" from "the
+        reader typed this": the first is not a reason to offer anything, and a menu that opened
+        over a recalled ``/command`` took the arrow keys from the walk and ended it there.
+        """
+        return self._history_index is not None
+
+    @property
     def history(self) -> tuple[str, ...]:
         """Return the submitted drafts, oldest first."""
         return tuple(self._history)
