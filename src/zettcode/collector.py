@@ -26,6 +26,16 @@ _holders = 0
 _was_enabled = False
 
 
+def held() -> bool:
+    """Return whether a burst is holding the collector off right now.
+
+    The shell switches the collector with what the reader is doing (:mod:`zettcode.app.ui.gc_policy`),
+    and must not switch it back on in the middle of a burst that is being built with it off: that
+    would hand the burst the very passes the pause exists to skip.
+    """
+    return _holders > 0
+
+
 @contextmanager
 def collector_paused() -> Generator[None, None, None]:
     """Keep the cyclic collector off for the body, and restore it as it was afterwards."""

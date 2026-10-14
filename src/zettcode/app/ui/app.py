@@ -59,6 +59,7 @@ from ..commands import Command, CommandContext, CommandList, CommandResult
 from ..registry import Registry
 from .commands import ShellCommands
 from .followups import FollowUp, FollowUpsMixin
+from .gc_policy import CollectorPolicy, freeze_long_lived
 from .keys import KeysMixin
 from .notices import NoticesMixin
 from .providers import ConfigMixin
@@ -185,6 +186,8 @@ class ZettCodeApp(
         #: The runtime warm-up this shell started, released on the way out.
         self._warm: asyncio.Task[object] | None = None
         self._busy = False
+        #: When the garbage collector may run: while work is in flight, and not while the reader types.
+        self.collector = CollectorPolicy()
         self._steering: list[str] = []
         self._steering_meta: list[tuple[str, tuple[PromptPart, ...]]] = []
         self._steering_sent = 0
@@ -364,7 +367,11 @@ class ZettCodeApp(
         there or the command line painted a frame before this application
         existed.
         """
-        self._warm = self.agent.runtime.start()
+        self.collector.rest()
+        self._warm = asyncio.ensure_future(self.agent.runtime.start())
+        # Once the SDKs are loaded and the client is built, that heap is permanent: the collector has
+        # no reason to walk it again. A warm-up that failed freezes what it did load, which is as true.
+        self._warm.add_done_callback(lambda _: freeze_long_lived())
         self.start_update_check()
         self.offer_update()
 
@@ -372,6 +379,7 @@ class ZettCodeApp(
         """Release what :meth:`start_background` began, and end a request still in flight."""
         await self._stop_title_task()
         await self._stop_update_task()
+        self.collector.close()
         self._effort_animation = None
         self.app.scheduler.animate(EFFORT_TOKEN, active=False)
         measure, self._measure_task = self._measure_task, None
@@ -762,6 +770,12 @@ class ZettCodeApp(
         the flag that says "busy" is what holds the animation token.
         """
         self._busy = busy
+        # The collector runs while there is work and is off while there is none, so an idle shell
+        # and the reader's typing are never interrupted by it.
+        if busy:
+            self.collector.work_started()
+        else:
+            self.collector.work_ended()
         self.app.scheduler.animate("activity", active=busy)
         if self._follow_ups:
             # The list's keys line says what it is waiting for, which is a different thing

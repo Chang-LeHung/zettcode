@@ -251,6 +251,8 @@ class FollowUpsMixin(ShellState):
         Typing means the reader has moved on from the highlighted message, so the highlight
         goes; and an emptied draft means a message taken out for editing was abandoned.
         """
+        # A key was pressed: nothing may pause the screen the reader is typing into.
+        self.collector.typed()
         self._refresh_completions()
         if self._follow_up_selected is not None:
             self._deselect_follow_up()

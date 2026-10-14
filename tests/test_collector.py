@@ -84,3 +84,25 @@ def test_pauses_from_two_threads_leave_it_on_when_both_are_done():
 
     assert seen == [False, False]
     assert gc.isenabled()
+
+
+def test_a_burst_says_it_is_holding_the_collector_while_it_does_and_not_after():
+    from zettcode.collector import held
+
+    assert held() is False
+    with collector_paused():
+        assert held() is True
+        with collector_paused():
+            assert held() is True
+        assert held() is True, "the outer burst still holds it"
+    assert held() is False
+
+
+def test_a_burst_that_raises_stops_holding_the_collector():
+    from zettcode.collector import held
+
+    with pytest.raises(RuntimeError):
+        with collector_paused():
+            raise RuntimeError("boom")
+
+    assert held() is False

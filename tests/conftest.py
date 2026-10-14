@@ -73,7 +73,7 @@ def _offline_tokenizers(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture(autouse=True)
 def _keep_the_collector_as_it_was() -> None:
-    """Give back the collector's thresholds, because starting the program changes them for the process.
+    """Give back the collector as it was: its thresholds, whether it is on, and what is frozen.
 
     ``cli.main`` raises the young-generation threshold; a test that calls it must not leave that
     behind for every test after it.
@@ -81,5 +81,10 @@ def _keep_the_collector_as_it_was() -> None:
     import gc
 
     before = gc.get_threshold()
+    was_on = gc.isenabled()
     yield
     gc.set_threshold(*before)
+    # The shell switches the collector with its busy state and freezes the heap once it has warmed; a
+    # test that ran a shell must not leave the next one with the collector off or the heap frozen.
+    (gc.enable if was_on else gc.disable)()
+    gc.unfreeze()
