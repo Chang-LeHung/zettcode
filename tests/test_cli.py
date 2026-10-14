@@ -410,6 +410,54 @@ def test_the_help_flag_builds_nothing():
     assert result.stdout.strip().splitlines()[-1] == "False False"
 
 
+@pytest.mark.parametrize("flag", ["-v", "-V", "--version"])
+def test_every_spelling_of_the_version_flag_prints_one_line_and_exits_cleanly(flag, capsys):
+    from zettcode import __version__
+
+    with pytest.raises(SystemExit) as exit_info:
+        parse_args([flag])
+
+    out = capsys.readouterr().out
+    assert exit_info.value.code in (0, None)
+    assert out.count("\n") == 1 and out.startswith(f"zettcode {__version__} (zett-agent ")
+    assert "Python " in out
+
+
+def test_the_version_names_the_agent_library_it_runs_on():
+    import importlib.metadata
+
+    assert f"zett-agent {importlib.metadata.version('zett-agent')}" in cli.version_text()
+
+
+def test_the_version_flag_wins_over_the_other_arguments_and_builds_nothing(tmp_path):
+    """`-v` is answered from the argument parser: no agent, no terminal, whatever else was typed."""
+    script = "\n".join(
+        [
+            "import sys",
+            f"sys.argv = ['zettcode', '-v', '-w', {str(tmp_path)!r}]",
+            "import zettcode.cli",
+            "try:",
+            "    zettcode.cli.main()",
+            "except SystemExit:",
+            "    pass",
+            "print('zett_agent' in sys.modules, 'zettcode.app.ui.app' in sys.modules)",
+        ]
+    )
+
+    result = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stderr
+    lines = result.stdout.strip().splitlines()
+    assert lines[0].startswith("zettcode ") and lines[-1] == "False False"
+
+
+def test_the_help_lists_the_version_flag(capsys):
+    with pytest.raises(SystemExit):
+        parse_args(["--help"])
+
+    assert "-v, -V, --version" in capsys.readouterr().out
+
+
 # -- a resumed session is measured where it will be drawn ----------------------------
 
 

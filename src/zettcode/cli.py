@@ -2,7 +2,7 @@
 
 Almost everything is configured in ``~/.zettcode/config.toml`` (see
 :mod:`zettcode.config`), not on the command line: ``-w``/``--workspace`` picks
-the directory to work in, ``-r``/``--resume`` picks the stored session to open
+the directory to work in, ``-v``/``--version`` prints the version, ``-r``/``--resume`` picks the stored session to open
 instead of a fresh one, and ``$ZETTCODE_CONFIG`` can point at a different
 config file.
 
@@ -48,6 +48,34 @@ class Options:
     dry_run: bool = False
 
 
+def version_text() -> str:
+    """Return the line ``--version`` prints: this program, and what it runs on.
+
+    The agent library is named because it is the half of the program that is released
+    separately, so a report that says only "0.1.5" leaves out the version most likely to
+    matter. It is looked up here, when asked for, rather than at import: ``--help`` and every
+    start would otherwise pay for a metadata scan to print nothing.
+    """
+    import platform
+    from importlib import metadata
+
+    from . import __version__
+
+    try:
+        agent = metadata.version("zett-agent")
+    except metadata.PackageNotFoundError:  # pragma: no cover - a source tree without its dependencies
+        agent = "not installed"
+    return f"zettcode {__version__} (zett-agent {agent}, Python {platform.python_version()})"
+
+
+class _Version(argparse.Action):
+    """Print :func:`version_text` and exit, the way ``action="version"`` does but computed on demand."""
+
+    def __call__(self, parser, namespace, values, option_string=None) -> None:
+        print(version_text())
+        parser.exit()
+
+
 def parse_args(argv: list[str] | None = None) -> Options:
     """Return the workspace to run in and the session to resume, if any.
 
@@ -57,6 +85,14 @@ def parse_args(argv: list[str] | None = None) -> Options:
     parser = argparse.ArgumentParser(
         prog="zettcode",
         description="Run the ZettCode terminal coding agent",
+    )
+    parser.add_argument(
+        "-v",
+        "-V",
+        "--version",
+        action=_Version,
+        nargs=0,
+        help="print the version and exit",
     )
     parser.add_argument(
         "-w",
