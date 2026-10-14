@@ -159,6 +159,7 @@ Because a follow-up is still in your hands, you can change it. `Option` is the k
 | <kbd>Option</kbd>+<kbd>Up</kbd> / <kbd>Option</kbd>+<kbd>Down</kbd> | With nothing highlighted: walk into the list. `Option-Up` lands on the row nearest the composer and `Option-Down` on the first. **With a message highlighted: move that message** one place earlier or later; the highlight goes with it. |
 | <kbd>Up</kbd> / <kbd>Down</kbd> | With a message highlighted: move the highlight. `Down` past the last row goes back to the composer. Without a highlight these are the composer's, as always. |
 | <kbd>Enter</kbd> | Take the highlighted message out of the list and into the composer to change it. Sending it again puts it back **in the slot it left**, not at the end. |
+| <kbd>Ctrl</kbd>+<kbd>S</kbd> | **Steer with it now.** The highlighted message leaves the follow-ups and goes to the running request as a steering message, to be adopted at its next model or tool boundary — for the one that turned out to be urgent. Pictures go with it. It says why when it cannot: nothing is running (the list is held after a stop), a command is running rather than a reply, or the steering limit is reached; the message stays where it is then. |
 | <kbd>Delete</kbd> / <kbd>Backspace</kbd> | Remove the highlighted message; it will not be sent. The line above the composer names what was removed. |
 | <kbd>Esc</kbd> | Let go of the highlight. The request keeps running; a second `Esc` stops it as usual. |
 

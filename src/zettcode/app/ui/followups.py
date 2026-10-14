@@ -107,18 +107,64 @@ class FollowUpsMixin(ShellState):
             self.composer.commit(value)
             return
         if kind is SendKind.STEER:
-            # Text goes as it was typed. A message with pictures is built the way a turn is, and
-            # the agent reports it by the text *that* has, which is what the queue must match.
-            message = self.agent.turn(parts) if carries_image(parts) else value
-            key = message if isinstance(message, str) else message.text
-            if self._steer_blocked() is None and self.agent.steer(message):
-                self._queue_steering(value, key, parts)
+            if self._steer_now(value, parts):
                 self.composer.commit(value)
             else:
                 self._refuse_busy()
             return
         if self._queue_follow_up(value, parts):
             self.composer.commit(value)
+
+    def _steer_now(self, value: str, parts: Sequence[PromptPart]) -> bool:
+        """Hand one message to the running request as steering, and show it waiting to be adopted.
+
+        Text goes as it was typed. A message with pictures is built the way a turn is, and the agent
+        reports it by the text *that* has, which is what the queue must match.
+
+        Returns:
+            Whether the agent took it; ``False`` leaves everything as it was.
+        """
+        message = self.agent.turn(parts) if carries_image(parts) else value
+        key = message if isinstance(message, str) else message.text
+        if self._steer_blocked() is None and self.agent.steer(message):
+            self._queue_steering(value, key, parts)
+            return True
+        return False
+
+    def _steer_follow_up(self) -> bool:
+        """Turn the highlighted follow-up into a steering message, without taking it out of the reader's hands first.
+
+        A follow-up waits for the request to finish; steering changes what the request does *now*,
+        so this is for the message that turned out to be urgent. It is the same hand-over the
+        question makes, and it is refused for the same reasons, said in words: nothing is running
+        (the list is held after a stop, and steering has nothing to steer), a command is running
+        rather than a turn, or the steering limit is reached. A refused message stays where it is.
+
+        Returns:
+            Whether it was sent. The key is always consumed; the reason, when there is one, is flashed.
+        """
+        index = self._follow_up_selected
+        if index is None or index >= len(self._follow_ups):
+            return False
+        if not self._busy:
+            self.flash("nothing is running to steer \u2014 it will be sent when you send your next message")
+            return False
+        blocked = self._steer_blocked()
+        if blocked is not None:
+            self.flash(blocked or "only a reply can be steered, not a command")
+            return False
+        item = self._follow_ups[index]
+        if not self._steer_now(item.text, item.parts):
+            self._refuse_busy()
+            return False
+        del self._follow_ups[index]
+        if self._editing_slot is not None and index < self._editing_slot:
+            self._editing_slot -= 1
+        remaining = len(self._follow_ups)
+        self._follow_up_selected = None if not remaining else min(index, remaining - 1)
+        self._sync_follow_ups()
+        self.flash(f"steering: {truncate(one_line(item.text), 40)}", level="success")
+        return True
 
     # -- the follow-up list ------------------------------------------------------------
     def _queue_follow_up(self, value: str, parts: Sequence[PromptPart], *, slot: int | None = None) -> bool:

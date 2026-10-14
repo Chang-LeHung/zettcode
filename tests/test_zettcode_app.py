@@ -5910,7 +5910,9 @@ async def test_the_keys_line_lists_delete_beside_edit():
     harness.resize(110, 24)
     harness.press("alt_up")
 
-    assert "enter edit \u00b7 del remove" in harness.render().text
+    text = harness.render().text
+    assert "enter edit" in text and "del remove" in text
+    assert text.index("enter edit") < text.index("^S steer") < text.index("del remove")
     await _stop(app)
 
 
@@ -7183,3 +7185,174 @@ def test_the_arrow_keys_still_move_the_menu_when_it_was_opened_by_typing():
     harness.press("down")
 
     assert app.completions.current is not first
+
+
+# -- a highlighted follow-up can be sent now, as steering ---------------------------------------------------------
+
+
+def _steering_payloads(app) -> list[dict]:
+    return [event.payload for event, _ in app.agent.runtime.client.agent.emitted if event.name == "steering_message"]
+
+
+async def test_ctrl_s_on_a_highlighted_follow_up_sends_it_to_the_running_request_as_steering():
+    app, harness = await _running_with("first", "urgent", "last")
+    harness.press("alt_up")  # nearest the composer: "last"
+    harness.press("up")  # "urgent"
+    assert app.follow_ups.selected == 1
+
+    harness.press("ctrl_s")
+
+    assert _steering_payloads(app) == [{"content": "urgent"}]
+    assert app.follow_ups.messages == ("first", "last"), "it left the follow-ups"
+    assert app.steering.messages == ("urgent",), "and is waiting to be adopted, like any steering message"
+    await _stop(app)
+
+
+async def test_after_steering_the_highlight_stays_where_the_reader_is():
+    app, harness = await _running_with("a", "b", "c")
+    harness.press("alt_down")  # the first
+    harness.press("down")  # "b"
+
+    harness.press("ctrl_s")
+
+    assert app.follow_ups.messages == ("a", "c") and app.follow_ups.selected == 1  # on "c", which moved up
+    await _stop(app)
+
+
+async def test_steering_the_last_one_leaves_nothing_highlighted():
+    app, harness = await _running_with("only")
+    harness.press("alt_up")
+
+    harness.press("ctrl_s")
+
+    assert app.follow_ups.messages == () and app.follow_ups.selected is None
+    assert app.steering.messages == ("only",)
+    await _stop(app)
+
+
+async def test_the_reader_is_told_what_was_steered():
+    app, harness = await _running_with("do the other thing instead")
+    harness.press("alt_up")
+
+    harness.press("ctrl_s")
+
+    assert "steering: do the other thing instead" in harness.render().text
+    await _stop(app)
+
+
+async def test_ctrl_s_does_nothing_when_no_follow_up_is_highlighted():
+    app, harness = await _running_with("waiting")
+
+    harness.press("ctrl_s")
+
+    assert _steering_payloads(app) == [] and app.follow_ups.messages == ("waiting",)
+    await _stop(app)
+
+
+async def test_a_follow_up_with_a_picture_is_steered_with_its_picture():
+    app = build_app(hold=True)
+    app.agent.runtime.active_model = app.agent.runtime.config.models[1]
+    harness = _harness(app)
+    harness.write("first")
+    harness.press("enter")
+    await asyncio.sleep(0)
+    harness.write("look at ")
+    app.composer.attach_image(b"\x89PNG-bytes", "image/png")
+    harness.press("enter")
+    harness.write("f")
+    harness.press("alt_up")
+
+    harness.press("ctrl_s")
+
+    (payload,) = _steering_payloads(app)
+    assert "message" in payload and any(isinstance(p, ImageContent) for p in payload["message"].parts)
+    assert app.follow_ups.messages == () and app.steering.messages == ("look at [image #1]",)
+    await _stop(app)
+
+
+async def test_a_refused_steer_leaves_the_follow_up_where_it_is_and_says_why():
+    app, harness = await _running_with("keep me")
+    harness.press("alt_up")
+    app.agent.runtime.client.agent.emit_external_event = lambda event, *, config=None: []  # the agent says no
+
+    harness.press("ctrl_s")
+
+    assert app.follow_ups.messages == ("keep me",) and app.steering.messages == ()
+    assert app.follow_ups.selected == 0, "still highlighted, so it can be tried again or edited"
+    assert any("busy" in getattr(entry, "text", "") for entry in app.transcript.entries)
+    await _stop(app)
+
+
+async def test_the_steering_limit_is_respected_and_named():
+    from zettcode.app.ui.shell import MAX_STEERING
+
+    app, harness = await _running_with("one more")
+    app._steering_sent = MAX_STEERING
+    harness.press("alt_up")
+
+    harness.press("ctrl_s")
+
+    assert app.follow_ups.messages == ("one more",) and _steering_payloads(app) == []
+    assert f"steering limit reached ({MAX_STEERING})" in harness.render().text
+    await _stop(app)
+
+
+async def test_with_nothing_running_it_says_there_is_nothing_to_steer_and_keeps_the_message():
+    """After a stop the list is held; steering a request that is not there would be sending it into nothing."""
+    app, harness = await _running_with("held one")
+    await _stop(app)
+    harness.press("alt_up")
+    assert app.follow_ups.selected == 0
+
+    harness.press("ctrl_s")
+
+    assert app.follow_ups.messages == ("held one",) and _steering_payloads(app) == []
+    assert "nothing is running to steer" in harness.render().text
+
+
+async def test_a_command_running_rather_than_a_turn_cannot_be_steered():
+    app, harness = await _running_with("later")
+    app._turn_running = False  # what a running /command looks like to the shell
+    harness.press("alt_up")
+
+    harness.press("ctrl_s")
+
+    assert app.follow_ups.messages == ("later",) and _steering_payloads(app) == []
+    assert "only a reply can be steered" in harness.render().text
+    app._turn_running = True
+    await _stop(app)
+
+
+async def test_a_message_being_edited_keeps_its_place_when_one_above_it_is_steered():
+    app, harness = await _running_with("a", "b", "c")
+    harness.press("alt_down")
+    harness.press("down")
+    harness.press("down")  # "c"
+    harness.press("enter")  # take "c" out to edit: its slot is 2
+    assert app._editing_slot == 2
+    harness.press("alt_down")  # highlight the first of the rest: "a"
+
+    harness.press("ctrl_s")  # steer "a", which sat above the slot
+
+    assert app._editing_slot == 1, "the slot moved up with the list"
+    await _stop(app)
+
+
+async def test_the_keys_line_names_the_key():
+    app, harness = await _running_with("a")
+    harness.resize(120, 24)
+    harness.press("alt_up")
+
+    assert "^S steer" in harness.render().text
+    await _stop(app)
+
+
+async def test_ctrl_s_is_left_alone_when_nothing_is_highlighted_so_it_is_not_swallowed():
+    """Bound only while a message is chosen: otherwise the key belongs to whoever else wants it."""
+    app, harness = await _running_with("waiting")
+
+    assert harness.press("ctrl_s") is False
+
+    harness.press("alt_up")
+    assert harness.press("ctrl_s") is True
+    await _stop(app)
