@@ -37,6 +37,7 @@ class EntryKind(StrEnum):
             the line it ended on.
         THINKING: Reasoning, or a compaction's summary, with its own clock.
         TOOL: One tool call and its bounded result.
+        CHANGES: The files a request changed, said once when it ends.
     """
 
     WELCOME = "welcome"
@@ -48,6 +49,7 @@ class EntryKind(StrEnum):
     WAIT = "wait"
     THINKING = "thinking"
     TOOL = "tool"
+    CHANGES = "changes"
 
 
 class EntryStatus(StrEnum):
@@ -200,19 +202,117 @@ class ThinkingEntry(TimedEntry):
 
 @dataclass(slots=True, kw_only=True)
 class ToolEntry(TimedEntry):
-    """Expandable tool invocation and bounded result.
+    """One tool call and its bounded result: what every tool has, and nothing only some do.
 
-    ``added`` and ``removed`` are the lines an edit changes, counted from the call's
-    arguments when the row opens; they ride beside the title because the presenter
-    paints them in colours of their own.
+    A tool whose row shows something of its own has an entry of its own that adds it
+    (:class:`ReadEntry`, :class:`WriteEntry`, :class:`EditEntry`); they are all ``tool`` rows,
+    folded and timed alike, and the presenter registry finds the one that draws each by its class.
+    Which class a call gets is decided by the render handler that describes it
+    (:class:`~.rendering.ToolRow`), so nothing here, and nothing in the transcript, names a tool.
     """
 
     kind: EntryKind = field(default=EntryKind.TOOL, init=False)
     call_id: str
     tool: str
     title: str
-    language: str | None = None
-    added: int = 0
-    removed: int = 0
     text: str = ""
     expanded: bool = False
+
+    @property
+    def foldable(self) -> bool:
+        """Return whether there is a body to expand and collapse."""
+        return not self.running and bool(self.text)
+
+
+@dataclass(slots=True, kw_only=True)
+class ReadEntry(ToolEntry):
+    """A file that was read: its body is source code, drawn as the language it is.
+
+    ``language`` names the scanner for the output, or is ``None`` for a file that is not code.
+    """
+
+    language: str | None = None
+
+
+@dataclass(slots=True, kw_only=True)
+class FileChangeEntry(ToolEntry):
+    """A tool that changed a file, and the change it made, as rows.
+
+    ``path`` is the file, as the call named it. ``added`` is the number of lines the change adds, drawn
+    beside the title in the colour an addition has. ``diff`` is the change itself (see :data:`~.rendering.DiffRow`), which the row shows in place
+    of the tool's one-line answer once the call has succeeded: the answer says "Wrote 120 bytes", the
+    diff says what was written.
+    """
+
+    path: str = ""
+    added: int = 0
+    diff: tuple[tuple[str, str], ...] = ()
+
+    @property
+    def shows_diff(self) -> bool:
+        """Return whether the row's body is its diff: there is one, and the call succeeded.
+
+        A call that failed did not change the file, so a diff of what it meant to do would
+        describe something that did not happen; its error is the body then.
+        """
+        return bool(self.diff) and self.status is EntryStatus.COMPLETED
+
+    @property
+    def foldable(self) -> bool:
+        """Return whether there is a body to expand: the tool's answer, or the diff."""
+        return not self.running and (bool(self.text) or self.shows_diff)
+
+
+@dataclass(slots=True, kw_only=True)
+class WriteEntry(FileChangeEntry):
+    """A file that was written whole: every line of it is an addition.
+
+    The tool overwrites, and what it overwrote is not in the call, so there is nothing to take away
+    from: the diff is the new content as additions, and there is no ``removed`` to count.
+    """
+
+
+@dataclass(slots=True, kw_only=True)
+class EditEntry(FileChangeEntry):
+    """A file that was edited in place: the lines the edits add and remove, and the change.
+
+    ``removed`` is counted from the call's arguments when the row opens, as ``added`` is.
+    """
+
+    removed: int = 0
+
+
+@dataclass(slots=True, kw_only=True)
+class DeleteEntry(ToolEntry):
+    """A file that was deleted; ``path`` is the file, as the call named it."""
+
+    path: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class FileSummary:
+    """What one request did to one file, in total.
+
+    Attributes:
+        path: The file, relative to the workspace when it is inside it.
+        added: Lines added across every edit and write of it.
+        removed: Lines removed across every edit of it.
+        deleted: The file's last change was its deletion.
+    """
+
+    path: str
+    added: int = 0
+    removed: int = 0
+    deleted: bool = False
+
+
+@dataclass(slots=True, kw_only=True)
+class ChangesEntry(Entry):
+    """The files a request changed, listed once when it ends.
+
+    Never made for a request that changed nothing: a row that says "no changes" would be said after
+    every question.
+    """
+
+    kind: EntryKind = field(default=EntryKind.CHANGES, init=False)
+    files: tuple[FileSummary, ...] = ()

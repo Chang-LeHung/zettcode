@@ -32,6 +32,7 @@ from pathlib import Path
 
 from ....tui import ELLIPSIS, SEPARATOR
 from ....tui.render import GENERIC, language_for
+from .entries import DeleteEntry, EditEntry, ReadEntry, ToolEntry, WriteEntry
 
 #: Output kinds the chain shapes; a link claims one or more of them.
 TOOL = "tool"
@@ -52,6 +53,18 @@ CHAT_PREAMBLE = re.compile(r"^\s*(?:assistant|ai)\s*[:\uff1a]\s*", re.IGNORECASE
 ANSI = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\))")
 
 
+#: One row of an edit's diff: ``("+", text)`` an addition, ``("-", text)`` a deletion, ``(" ", text)`` a line
+#: kept for context, ``("@", label)`` the break between one edit and the next.
+DiffRow = tuple[str, str]
+
+#: Rows kept of one edit call's diff. The arguments are what the model sent and can be a whole file; the
+#: row shows a handful and expands to a screenful, so what is stored only has to be more than that.
+MAX_DIFF_ROWS = 400
+
+#: Unchanged lines kept on each side of a change, so an edit reads in place without repeating the file.
+DIFF_CONTEXT = 1
+
+
 @dataclass(frozen=True, slots=True)
 class ToolRow:
     """How one tool call appears as a transcript row.
@@ -60,16 +73,13 @@ class ToolRow:
         title: The row's words, e.g. ``Read src/app.py``.
         language: Scanner for the row's output when it is source code, so a
             ``read_file`` body is highlighted; ``None`` draws it plain.
-        added: Lines the call adds, drawn after the title in the colour an
-            addition gets; zero draws nothing.
-        removed: Lines the call removes, drawn after the title in the colour a
-            deletion gets; zero draws nothing.
+
+    This is only the words. What else a tool's row carries — the lines an edit changes, the change
+    itself — belongs to that tool's entry, which its handler builds in :meth:`RenderHandler.open_tool`.
     """
 
     title: str
     language: str | None = None
-    added: int = 0
-    removed: int = 0
 
 
 class RenderHandler(ABC):
@@ -92,6 +102,25 @@ class RenderHandler(ABC):
     def describe(self, name: str, arguments: Mapping[str, object]) -> ToolRow:
         """Return the words of a tool row; only a tool link changes this."""
         return ToolRow(name)
+
+    def open_tool(
+        self, name: str, arguments: Mapping[str, object], *, id: int, call_id: str, started_at: float
+    ) -> ToolEntry:
+        """Return the entry for one call as it starts: the class that carries what this tool shows.
+
+        The default is a plain :class:`ToolEntry` with the words :meth:`describe` gives it. A tool
+        whose row shows more has its own entry class and builds it here, so the transcript, which
+        opens every row the same way, never has to know which tool it is.
+
+        Args:
+            name: The tool's name.
+            arguments: What the model called it with.
+            id: The row's identity in the transcript.
+            call_id: Identifier the matching result will carry.
+            started_at: Clock reading the row opens on.
+        """
+        row = self.describe(name, arguments)
+        return ToolEntry(id=id, call_id=call_id, tool=name, title=row.title, started_at=started_at)
 
     def body(self, name: str, output: str) -> str:
         """Return the text under a tool row; only a tool link changes this."""
@@ -137,6 +166,15 @@ class Renderers:
         """Return the row for one call, asking each link until one claims it."""
         handler = self._claim(TOOL, name)
         return ToolRow(name) if handler is None else handler.describe(name, arguments)
+
+    def open_tool(
+        self, name: str, arguments: Mapping[str, object], *, id: int, call_id: str, started_at: float
+    ) -> ToolEntry:
+        """Return the entry for one call, of the class its claiming link builds."""
+        handler = self._claim(TOOL, name)
+        if handler is None:
+            return ToolEntry(id=id, call_id=call_id, tool=name, title=name, started_at=started_at)
+        return handler.open_tool(name, arguments, id=id, call_id=call_id, started_at=started_at)
 
     def body(self, name: str, output: str) -> str:
         """Return the body for one call's result, through the claiming link."""
@@ -198,6 +236,91 @@ def edited_lines(edits: object) -> tuple[int, int]:
     return (added, removed)
 
 
+def edit_diff(edits: object, *, limit: int = MAX_DIFF_ROWS) -> tuple[DiffRow, ...]:
+    """Return the rows of the change a ``replace_in_file`` call makes.
+
+    Each edit carries the text it replaces and the text it puts there, so the change can be shown
+    without reading the file: the lines that differ, and one unchanged line around each so it reads in
+    place. Edits are told apart by a labelled break when there is more than one, and what is kept is
+    cut at ``limit`` rows with a last row saying so, because the arguments can be a whole file.
+
+    Args:
+        edits: The call's ``edits`` argument as the model sent it; anything that is not a mapping with
+            two texts is skipped rather than guessed at, exactly as :func:`edited_lines` does.
+        limit: Most rows to keep.
+    """
+    if not isinstance(edits, Sequence) or isinstance(edits, str):
+        return ()
+    usable = [
+        edit
+        for edit in edits
+        if isinstance(edit, Mapping) and isinstance(edit.get("old_text"), str) and isinstance(edit.get("new_text"), str)
+    ]
+    rows: list[DiffRow] = []
+    for number, edit in enumerate(usable, start=1):
+        if len(usable) > 1:
+            rows.append(("@", f"edit {number} of {len(usable)}"))
+        old_lines, new_lines = edit["old_text"].splitlines(), edit["new_text"].splitlines()
+        opcodes = difflib.SequenceMatcher(None, old_lines, new_lines).get_opcodes()
+        for index, (tag, old_start, old_end, new_start, new_end) in enumerate(opcodes):
+            if tag == "equal":
+                kept = old_lines[old_start:old_end]
+                first, last = index == 0, index == len(opcodes) - 1
+                if len(kept) > DIFF_CONTEXT * (2 - first - last):
+                    head = [] if first else kept[:DIFF_CONTEXT]
+                    tail = [] if last else kept[-DIFF_CONTEXT:]
+                    rows.extend((" ", line) for line in head)
+                    if not first and not last:
+                        rows.append(("@", ELLIPSIS))
+                    rows.extend((" ", line) for line in tail)
+                else:
+                    rows.extend((" ", line) for line in kept)
+                continue
+            rows.extend(("-", line) for line in old_lines[old_start:old_end])
+            rows.extend(("+", line) for line in new_lines[new_start:new_end])
+    return _capped(rows, limit)
+
+
+def _capped(rows: list[DiffRow], limit: int) -> tuple[DiffRow, ...]:
+    """Keep ``limit`` rows, and say how many were not kept."""
+    if len(rows) > limit:
+        rows = [*rows[:limit], ("@", f"{ELLIPSIS} {len(rows) - limit} more rows not kept")]
+    return tuple(rows)
+
+
+def write_diff(content: object, *, limit: int = MAX_DIFF_ROWS) -> tuple[DiffRow, ...]:
+    """Return the rows of the change a ``write_file`` call makes: every line of the file, added.
+
+    A write replaces the file, and what it replaced is not in the call, so nothing can be shown as
+    removed and nothing as unchanged; the new content is the change. A file past ``limit`` lines is
+    cut there with a last row saying so, and an empty or unreadable ``content`` is no change to show.
+
+    Args:
+        content: The call's ``content`` argument as the model sent it.
+        limit: Most rows to keep.
+    """
+    if not isinstance(content, str):
+        return ()
+    return _write_rows(content.splitlines(), limit)
+
+
+def _write_rows(lines: list[str], limit: int) -> tuple[DiffRow, ...]:
+    """The kept lines as additions, without building a row for every line of a file that is too long."""
+    rows: list[DiffRow] = [("+", line) for line in lines[:limit]]
+    if len(lines) > limit:
+        rows.append(("@", f"{ELLIPSIS} {len(lines) - limit} more rows not kept"))
+    return tuple(rows)
+
+
+def written_lines(content: object) -> int:
+    """Return how many lines a ``write_file`` call writes: what the file will hold, not what it held.
+
+    The tool overwrites, and what it overwrote is not in the call, so this is the size of the new
+    file — which is the number a reader asks of a row that says it created one.
+    """
+    return len(content.splitlines()) if isinstance(content, str) else 0
+
+
 def summarise(arguments: Mapping[str, object], *, limit: int = 48) -> str:
     """Return ``key=value`` pairs for a tool no handler claims.
 
@@ -241,6 +364,15 @@ class ReadTool(ToolHandler):
         path = argument(arguments, "path", "(unknown file)")
         return ToolRow(f"Read {path}", language_for_path(path))
 
+    def open_tool(
+        self, name: str, arguments: Mapping[str, object], *, id: int, call_id: str, started_at: float
+    ) -> ToolEntry:
+        """A read row, which knows the language its body is in."""
+        row = self.describe(name, arguments)
+        return ReadEntry(
+            id=id, call_id=call_id, tool=name, title=row.title, language=row.language, started_at=started_at
+        )
+
     def body(self, name: str, output: str) -> str:
         """Drop the continuation hint; the row bounds the text it applies to."""
         return CONTINUATION.sub("", output).rstrip()
@@ -254,6 +386,22 @@ class WriteTool(ToolHandler):
     def describe(self, name: str, arguments: Mapping[str, object]) -> ToolRow:
         """Show the file being written."""
         return ToolRow(f"Wrote {argument(arguments, 'path', '(unknown file)')}")
+
+    def open_tool(
+        self, name: str, arguments: Mapping[str, object], *, id: int, call_id: str, started_at: float
+    ) -> ToolEntry:
+        """A write row, which says how many lines the file will hold and shows them as additions."""
+        content = arguments.get("content")
+        return WriteEntry(
+            id=id,
+            call_id=call_id,
+            tool=name,
+            title=self.describe(name, arguments).title,
+            path=argument(arguments, "path"),
+            added=written_lines(content),
+            diff=write_diff(content),
+            started_at=started_at,
+        )
 
 
 class EditTool(ToolHandler):
@@ -271,11 +419,30 @@ class EditTool(ToolHandler):
         path = argument(arguments, "path", "(unknown file)")
         edits = arguments.get("edits")
         count = len(edits) if isinstance(edits, Sequence) and not isinstance(edits, str) else 0
-        added, removed = edited_lines(edits)
         suffix = f" ({count} edit{'' if count == 1 else 's'})" if count else ""
-        # The counts ride outside the title: they are drawn in the colours an
-        # addition and a deletion get, which a title made of one string cannot be.
-        return ToolRow(f"Edited {path}{suffix}", added=added, removed=removed)
+        return ToolRow(f"Edited {path}{suffix}")
+
+    def open_tool(
+        self, name: str, arguments: Mapping[str, object], *, id: int, call_id: str, started_at: float
+    ) -> ToolEntry:
+        """An edit row, which carries the lines it changes and the change itself.
+
+        The counts ride outside the title: they are drawn in the colours an addition and a
+        deletion get, which a title made of one string cannot be.
+        """
+        edits = arguments.get("edits")
+        added, removed = edited_lines(edits)
+        return EditEntry(
+            id=id,
+            call_id=call_id,
+            tool=name,
+            title=self.describe(name, arguments).title,
+            path=argument(arguments, "path"),
+            added=added,
+            removed=removed,
+            diff=edit_diff(edits),
+            started_at=started_at,
+        )
 
 
 class DeleteTool(ToolHandler):
@@ -286,6 +453,19 @@ class DeleteTool(ToolHandler):
     def describe(self, name: str, arguments: Mapping[str, object]) -> ToolRow:
         """Show the file being removed."""
         return ToolRow(f"Deleted {argument(arguments, 'path', '(unknown file)')}")
+
+    def open_tool(
+        self, name: str, arguments: Mapping[str, object], *, id: int, call_id: str, started_at: float
+    ) -> ToolEntry:
+        """A delete row, which knows which file went."""
+        return DeleteEntry(
+            id=id,
+            call_id=call_id,
+            tool=name,
+            title=self.describe(name, arguments).title,
+            path=argument(arguments, "path"),
+            started_at=started_at,
+        )
 
 
 class ShellTool(ToolHandler):

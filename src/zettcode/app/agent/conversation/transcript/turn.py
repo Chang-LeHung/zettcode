@@ -9,10 +9,22 @@ animation step belongs here too, because it is the wait row's clock that it move
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import PurePath
 from typing import TypeGuard
 
 from .....tui.render import display_width
-from ..entries import Entry, EntryKind, EntryStatus, TextEntry, ThinkingEntry, TimedEntry, ToolEntry, WaitEntry
+from ..changes import changed_files
+from ..entries import (
+    ChangesEntry,
+    Entry,
+    EntryKind,
+    EntryStatus,
+    TextEntry,
+    ThinkingEntry,
+    TimedEntry,
+    ToolEntry,
+    WaitEntry,
+)
 from ..rows import ANIMATION_SECONDS, PROCESSING, blink_state, duration_text, elapsed_text, wait_picture
 from .log import EntryLog
 
@@ -77,6 +89,25 @@ class TurnMixin(EntryLog):
             return False
         self._turn_from = len(self.entries)
         self._add(WaitEntry(id=self._next_id, title=PROCESSING, started_at=self.clock()))
+        return True
+
+    def summarize_changes(self, workspace: PurePath | None = None) -> bool:
+        """Say which files the request changed, above the pinned row; say nothing when it changed none.
+
+        Called as the request ends, before the wait row is settled, so the line that says how long it
+        ran stays the last one. It covers the rows of this request only, and counts only calls that
+        succeeded.
+
+        Args:
+            workspace: The directory paths are shown relative to.
+
+        Returns:
+            Whether a summary was added.
+        """
+        files = changed_files(self.entries[self._turn_from :], workspace)
+        if not files:
+            return False
+        self._add(ChangesEntry(id=self._next_id, files=files))
         return True
 
     def settle_wait(self, text: str) -> bool:

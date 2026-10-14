@@ -430,6 +430,18 @@ question (`running`) where it used to list those classes in several places. A
 `TextEntry` serves the welcome banner, user messages, notices, and announcements;
 a `MarkdownEntry` serves the streamed answer and Markdown command output.
 
+A tool row is a family, not one class. `ToolEntry` holds what every tool has (the call, the title,
+the output, whether it is open) and a tool whose row shows more has an entry that adds exactly that:
+`ReadEntry` the language its body is in, and `WriteEntry` and `EditEntry` (both a `FileChangeEntry`) the
+lines they changed and the change itself, a write's being every line of the file as an addition. They are all `tool` rows, so folding, timing and animation, which
+ask about `kind` or `ToolEntry`, do not know the difference. Two things pick the class and the
+drawing, and neither is the transcript: the render handler for a tool builds the entry
+(`open_tool`, which a plugin's handler may leave alone and get a plain `ToolEntry` from its
+`describe`), and the presenter registry finds a presenter by the entry's class first, walking up its
+parents, and by its kind second. A family's presenter extends the tool presenter in the two places a
+row can differ, what follows the title (`after_title`) and what is under it (`body_lines`), so the
+symbol, the timer and the preview limits are written once.
+
 A presenter says three things about the kind it presents: the rows (`lines`), what
 those rows depend on (`look`), and whether it draws its own marker in the gutter
 (`gutter`). They are in one class because they are facts about the same code that

@@ -58,10 +58,41 @@ Every kind of output has its own row, in the order it happened:
 - **Thinking** is collapsed to one row. `Ctrl-T` or a click opens the newest one;
   each block can be opened on its own.
 - **Tool calls** read like a log — `Read src/app.py`, `Ran pwd`, `Edited
-  app.py (2 edits) +24 -6`, `Searched TODO in src`. An edit's added lines are
-  painted green and its removed ones red, whether the call is still running or
-  done. The first five lines of output stay visible and the rest is behind a
-  click; nothing is ever dumped as JSON.
+  app.py (2 edits) +24 -6`, `Wrote src/new.py +40`, `Searched TODO in src`. An edit's added lines
+  are painted green and its removed ones red, whether the call is still running or done, and a
+  write says how many lines the file now holds. Once an edit or a write has succeeded the row shows
+  **the change itself** under the title, instead of the tool's one-line answer:
+
+  ```text
+  ✓ Edited app.py (1 edit) +2 -1  0.0 s ▸
+    └ - x = 1
+      + x = 2
+        keep
+      + y = 3
+  ```
+
+  A removed line is red, an added one green, and one unchanged line either side keeps the change in
+  place; several edits in one call are told apart by `edit 1 of 3`. A written file is shown the same
+  way with **every line added**: the call holds the new content and not what it replaced, so nothing
+  can be shown as removed. A failed edit or write shows its error instead, because nothing changed. The first five rows stay visible and the rest is behind a click
+  (up to forty when open); a long line is cut at the width, never wrapped. Other output works the
+  same way; nothing is ever dumped as JSON.
+- **The files a request changed** are listed once when it ends, above the `Processed for …` line, and only
+  when there are any:
+
+  ```text
+  Changed src/app.py +4 -1          <- one file: one line
+
+  Changed 3 files                   <- several: a short list (eight, then "and N more")
+    src/app.py +4 -1
+    src/new.py +40
+    old.py deleted
+  ```
+
+  Each file is counted once, however many times it was edited, with the totals; paths inside the
+  workspace are shown relative to it. Only edits, writes and deletes that **succeeded** count — a
+  failed call changed nothing — and a stopped request still reports what it had already done. Files
+  changed by a shell command (`sed -i`, a formatter) are not seen: the program only knows what its own file tools did.
 - **The answer** is rendered as Markdown: headings, lists, quotes, links,
   **bold**, *emphasis*, `inline code`, fenced code with syntax colours, and
   tables drawn with per-column rules that survive wide CJK characters. An HTML

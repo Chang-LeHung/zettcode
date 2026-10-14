@@ -27,6 +27,11 @@ def row(name: str, **arguments: object) -> ToolRow:
     return DEFAULT_RENDERERS.describe(name, arguments)
 
 
+def opened(name: str, **arguments: object):
+    """Return the entry the default chain opens for one call: the class that carries what its row shows."""
+    return DEFAULT_RENDERERS.open_tool(name, arguments, id=1, call_id="call-1", started_at=0.0)
+
+
 def test_the_chain_phrases_the_coding_tools():
     assert describe("read_file", path="src/app.py") == "Read src/app.py"
     assert describe("write_file", path="notes/plan.md") == "Wrote notes/plan.md"
@@ -52,19 +57,21 @@ def test_an_edit_row_counts_the_lines_it_changes():
     """
     twelve = "\n".join(f"line {index}" for index in range(12))
 
-    counted = row("replace_in_file", path="app.py", edits=[{"old_text": "a\nb\nc", "new_text": twelve}])
+    counted = opened("replace_in_file", path="app.py", edits=[{"old_text": "a\nb\nc", "new_text": twelve}])
 
     assert (counted.title, counted.added, counted.removed) == ("Edited app.py (1 edit)", 12, 3)
 
     # A side stays at zero when nothing was added or removed: the renderer draws
     # nothing for it, so there is no `-0` for a reader to decode.
-    added = row("replace_in_file", path="app.py", edits=[{"old_text": "one\ntwo", "new_text": "one\ntwo\nthree"}])
+    added = opened("replace_in_file", path="app.py", edits=[{"old_text": "one\ntwo", "new_text": "one\ntwo\nthree"}])
     assert (added.title, added.added, added.removed) == ("Edited app.py (1 edit)", 1, 0)
 
-    removed = row("replace_in_file", path="app.py", edits=[{"old_text": "one\ntwo\nthree", "new_text": "one\nthree"}])
+    removed = opened(
+        "replace_in_file", path="app.py", edits=[{"old_text": "one\ntwo\nthree", "new_text": "one\nthree"}]
+    )
     assert (removed.title, removed.added, removed.removed) == ("Edited app.py (1 edit)", 0, 1)
 
-    both = row(
+    both = opened(
         "replace_in_file",
         path="app.py",
         edits=[{"old_text": "a", "new_text": "b"}, {"old_text": "c\nd", "new_text": "e"}],
@@ -78,7 +85,7 @@ def test_a_rewritten_line_counts_as_one_added_and_one_removed():
     A replacement that keeps the lines around it and changes one of them is one
     line added and one removed; subtracting the lengths would call it nothing.
     """
-    rewritten = row(
+    rewritten = opened(
         "replace_in_file", path="app.py", edits=[{"old_text": "keep\nold\nkeep", "new_text": "keep\nnew\nkeep"}]
     )
 
@@ -110,7 +117,7 @@ def test_an_edit_that_replaces_every_occurrence_counts_once():
     `replace_all` may hit five occurrences or none, and the arguments cannot say
     which — the tool's answer names the count, and the row counts the edit.
     """
-    once = row("replace_in_file", path="app.py", edits=[{"old_text": "old", "new_text": "new", "replace_all": True}])
+    once = opened("replace_in_file", path="app.py", edits=[{"old_text": "old", "new_text": "new", "replace_all": True}])
 
     assert (once.title, once.added, once.removed) == ("Edited app.py (1 edit)", 1, 1)
 
@@ -210,3 +217,92 @@ def test_a_chat_preamble_is_dropped_only_where_it_can_appear():
     # Mid-message the same words are content, not a preamble.
     assert text(ANSWER, "Assistant: the field is unused", opening=False) == "Assistant: the field is unused"
     assert text(ANSWER, "plain \x1b[1mbold\x1b[0m", opening=False) == "plain bold"
+
+
+# -- which entry a call opens -----------------------------------------------------------------------------------
+
+
+def test_each_family_of_tool_opens_the_entry_that_carries_what_its_row_shows():
+    from zettcode.app.agent.conversation.entries import DeleteEntry, EditEntry, ReadEntry, ToolEntry, WriteEntry
+
+    kinds = {
+        "read_file": (ReadEntry, {"path": "a.py"}),
+        "write_file": (WriteEntry, {"path": "a.py", "content": "x"}),
+        "replace_in_file": (EditEntry, {"path": "a.py", "edits": []}),
+        "bash": (ToolEntry, {"command": "ls"}),
+        "grep": (ToolEntry, {"pattern": "x"}),
+        "delete_file": (DeleteEntry, {"path": "a.py"}),
+        "something_new": (ToolEntry, {}),
+    }
+    for name, (expected, arguments) in kinds.items():
+        assert type(opened(name, **arguments)) is expected, name
+
+
+def test_an_entry_opens_with_the_words_the_row_gives_it_and_the_identity_it_was_asked_for():
+    entry = DEFAULT_RENDERERS.open_tool("read_file", {"path": "src/app.py"}, id=7, call_id="call-9", started_at=3.5)
+
+    assert (entry.id, entry.call_id, entry.tool, entry.title, entry.started_at) == (
+        7, "call-9", "read_file", "Read src/app.py", 3.5,
+    )  # fmt: skip
+    assert entry.language == "python" and entry.running
+
+
+def test_a_chain_with_no_link_for_a_tool_still_opens_a_plain_entry():
+    from zettcode.app.agent.conversation.entries import ToolEntry
+
+    entry = Renderers(()).open_tool("mystery", {"x": 1}, id=1, call_id="c", started_at=0.0)
+
+    assert type(entry) is ToolEntry and entry.title == "mystery"
+
+
+def test_a_link_that_only_describes_its_tool_gets_a_plain_entry_with_those_words():
+    """What a plugin's handler does today: it returns a row, and nothing else has to change."""
+    from zettcode.app.agent.conversation.entries import ToolEntry
+
+    class Mine(ToolHandler):
+        names = frozenset({"mine"})
+
+        def describe(self, name, arguments):
+            return ToolRow("Did mine")
+
+    entry = Renderers((Mine(),)).open_tool("mine", {}, id=1, call_id="c", started_at=0.0)
+
+    assert type(entry) is ToolEntry and entry.title == "Did mine"
+
+
+def test_a_link_can_open_an_entry_class_of_its_own():
+    from dataclasses import dataclass
+
+    from zettcode.app.agent.conversation.entries import ToolEntry
+
+    @dataclass(slots=True, kw_only=True)
+    class Deploy(ToolEntry):
+        target: str = ""
+
+    class Mine(ToolHandler):
+        names = frozenset({"deploy"})
+
+        def open_tool(self, name, arguments, *, id, call_id, started_at):
+            return Deploy(
+                id=id, call_id=call_id, tool=name, title="Deploy", target=str(arguments["to"]), started_at=started_at
+            )
+
+    entry = Renderers((Mine(),)).open_tool("deploy", {"to": "prod"}, id=1, call_id="c", started_at=0.0)
+
+    assert isinstance(entry, Deploy) and entry.target == "prod"
+
+
+def test_the_transcript_opens_every_row_the_same_way_and_the_handler_picks_the_class():
+    from zettcode.app.agent.conversation.entries import EditEntry, ReadEntry, ToolEntry
+    from zettcode.app.agent.conversation.transcript import Transcript
+
+    transcript = Transcript(clock=lambda: 0.0)
+    transcript.begin_turn("go")
+    transcript.start_tool("c1", "read_file", {"path": "a.py"})
+    transcript.start_tool("c2", "replace_in_file", {"path": "a.py", "edits": [{"old_text": "a", "new_text": "b"}]})
+    transcript.start_tool("c3", "bash", {"command": "ls"})
+
+    tools = [e for e in transcript.entries if isinstance(e, ToolEntry)]
+
+    assert [type(e) for e in tools] == [ReadEntry, EditEntry, ToolEntry]
+    assert [e.call_id for e in tools] == ["c1", "c2", "c3"] and all(e.running for e in tools)

@@ -19,12 +19,12 @@ class FoldMixin(EntryLog):
 
         Args:
             entry_id: Id from the click or key that triggered the toggle; a
-                running or empty tool row refuses to expand.
+                running tool row, or one with no body, refuses to expand.
         """
         entry = self.entry(entry_id)
         if not isinstance(entry, (ThinkingEntry, ToolEntry)):
             return False
-        if isinstance(entry, ToolEntry) and (entry.running or not entry.text):
+        if isinstance(entry, ToolEntry) and not entry.foldable:
             return False
         entry.expanded = not entry.expanded
         self._changed(entry)

@@ -16,6 +16,8 @@ base = "dark"                 # dark | light
 [ui]
 accent = "#a7c080"
 error = "#e67e80"
+# diff_added = "#a7c080"       # default: the accent
+# diff_removed = "#e67e80"     # default: the error colour
 surface_side = "#393a44"
 
 [tools]

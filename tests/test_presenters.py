@@ -5,9 +5,11 @@ from dataclasses import replace
 import pytest
 
 from zettcode.app.agent.conversation.entries import (
+    EditEntry,
     EntryKind,
     EntryStatus,
     MarkdownEntry,
+    ReadEntry,
     TextEntry,
     ThinkingEntry,
     ToolEntry,
@@ -48,10 +50,12 @@ def test_every_kind_of_entry_has_exactly_one_presenter():
     enum rather than for a hand-written list of the kinds that existed on the day
     the test was written.
     """
-    presented = [presenter.kind for presenter in DEFAULT_PRESENTERS.presenters]
+    whole = [presenter.kind for presenter in DEFAULT_PRESENTERS.presenters if presenter.entry_type is None]
 
-    assert sorted(presented) == sorted(EntryKind), "every kind has a presenter, and no kind has two"
+    assert sorted(whole) == sorted(EntryKind), "every kind has a presenter, and no kind has two"
     assert all(isinstance(presenter, Presenter) for presenter in DEFAULT_PRESENTERS.presenters)
+    families = [presenter for presenter in DEFAULT_PRESENTERS.presenters if presenter.entry_type is not None]
+    assert all(presenter.kind in whole for presenter in families), "a family belongs to a kind that has its own"
 
 
 def test_each_entry_is_drawn_by_the_presenter_for_its_kind():
@@ -318,7 +322,7 @@ def test_an_edit_row_paints_its_additions_and_deletions_in_their_own_colours():
     string is painted in one colour, and `+12 -3` in the green and red a diff
     uses is the whole point of showing them.
     """
-    entry = ToolEntry(
+    entry = EditEntry(
         id=1,
         call_id="call-1",
         tool="replace_in_file",
@@ -332,8 +336,8 @@ def test_an_edit_row_paints_its_additions_and_deletions_in_their_own_colours():
     spans = [span for line in render_entry(entry, 80, DARK, 0) for span in line.spans]
 
     assert (next(span for span in spans if "12" in span.text).text).strip() == "+12"
-    assert next(span for span in spans if "+12" in span.text).style.foreground == DARK.accent
-    assert next(span for span in spans if "-3" in span.text).style.foreground == DARK.error
+    assert next(span for span in spans if "+12" in span.text).style.foreground == DARK.addition
+    assert next(span for span in spans if "-3" in span.text).style.foreground == DARK.deletion
     # A row with nothing counted paints no fragment at all, in any colour.
     plain = replace(entry, added=0, removed=0)
     assert all(
@@ -344,7 +348,7 @@ def test_an_edit_row_paints_its_additions_and_deletions_in_their_own_colours():
 
 
 def test_tool_component_keeps_code_colours_and_bounded_preview():
-    entry = ToolEntry(
+    entry = ReadEntry(
         id=1,
         call_id="call-1",
         tool="read_file",
@@ -408,3 +412,161 @@ def test_a_failed_tool_row_is_red_whatever_the_tool_was():
 
     assert DARK.error in colours
     assert DARK.tools.read not in colours
+
+
+# -- a tool's row is drawn by the presenter for its entry ------------------------------------------------------
+
+
+def _bare(cls, **extra):
+    fields = {"id": 1, "call_id": "c", "tool": "t", "title": "Ran t", "text": "out", "status": EntryStatus.COMPLETED}
+    return cls(**{**fields, **extra})
+
+
+def test_each_family_of_tool_entry_has_its_own_presenter_and_the_rest_share_the_general_one():
+    from zettcode.app.agent.conversation.entries import WriteEntry
+    from zettcode.app.agent.conversation.presenters import EditPresenter, ReadPresenter, WritePresenter
+
+    cases = [
+        (_bare(ToolEntry), ToolPresenter),
+        (_bare(ReadEntry), ReadPresenter),
+        (_bare(WriteEntry), WritePresenter),
+        (_bare(EditEntry), EditPresenter),
+    ]
+    for entry, presenter in cases:
+        assert type(DEFAULT_PRESENTERS.for_entry(entry)) is presenter, type(entry).__name__
+        assert entry.kind is EntryKind.TOOL, "they are all tool rows"
+
+
+def test_an_entry_class_nobody_wrote_a_presenter_for_is_drawn_by_the_nearest_one_above_it():
+    """A host's own subclass of an edit entry is drawn as an edit, not as a bare tool and not as an error."""
+    from dataclasses import dataclass
+
+    from zettcode.app.agent.conversation.presenters import EditPresenter
+
+    @dataclass(slots=True, kw_only=True)
+    class AuditedEdit(EditEntry):
+        reviewer: str = "me"
+
+    entry = AuditedEdit(id=1, call_id="c", tool="t", title="x", added=2, status=EntryStatus.COMPLETED)
+
+    assert type(DEFAULT_PRESENTERS.for_entry(entry)) is EditPresenter
+    assert any("+2" in line.text for line in render_entry(entry, 60, DARK, 0))
+
+
+def test_a_tool_entry_that_is_none_of_the_families_falls_back_to_the_kind():
+    from dataclasses import dataclass
+
+    @dataclass(slots=True, kw_only=True)
+    class Odd(ToolEntry):
+        pass
+
+    assert type(DEFAULT_PRESENTERS.for_entry(Odd(id=1, call_id="c", tool="t", title="x"))) is ToolPresenter
+
+
+def test_a_presenter_given_for_the_whole_kind_replaces_the_families_too():
+    """It was asked to draw every tool row; a family left behind would go on drawing its own."""
+
+    class Everything(Presenter):
+        kind = EntryKind.TOOL
+
+        def lines(self, entry, width, theme, frame):
+            return [TextLine()]
+
+    presenters = DEFAULT_PRESENTERS.replacing(Everything())
+
+    for cls in (ToolEntry, ReadEntry, EditEntry):
+        assert presenters.lines(_bare(cls), 40, DARK, 0) == [TextLine()], cls.__name__
+    assert [p for p in presenters.presenters if p.kind is EntryKind.TOOL and p.entry_type is not None] == []
+
+
+def test_a_family_given_after_the_kind_is_a_refinement_of_it_and_stays():
+    from zettcode.app.agent.conversation.presenters import EditPresenter
+
+    class Everything(Presenter):
+        kind = EntryKind.TOOL
+
+        def lines(self, entry, width, theme, frame):
+            return [TextLine()]
+
+    presenters = Presenters((Everything(), EditPresenter()))
+
+    assert presenters.lines(_bare(ToolEntry), 40, DARK, 0) == [TextLine()]
+    assert type(presenters.for_entry(_bare(EditEntry))) is EditPresenter
+
+
+def test_a_family_can_be_replaced_without_touching_the_others():
+    from zettcode.app.agent.conversation.presenters import EditPresenter
+
+    class Quiet(EditPresenter):
+        def after_title(self, entry, theme):
+            return []
+
+    presenters = DEFAULT_PRESENTERS.replacing(Quiet())
+    edit = _bare(EditEntry, added=9)
+
+    assert not any("+9" in line.text for line in presenters.lines(edit, 60, DARK, 0))
+    assert any("+9" in line.text for line in DEFAULT_PRESENTERS.lines(edit, 60, DARK, 0))
+    assert len(presenters.presenters) == len(DEFAULT_PRESENTERS.presenters)
+
+
+def test_the_rows_every_tool_shares_are_drawn_the_same_whatever_the_entry():
+    """The symbol, timer and body are the base's: the families add after the title and under it, nothing else."""
+    from zettcode.app.agent.conversation.entries import WriteEntry
+
+    plain = [line.text for line in render_entry(_bare(ToolEntry, duration=1.5), 60, DARK, 0)]
+    for cls in (ReadEntry, WriteEntry, EditEntry):
+        assert [line.text for line in render_entry(_bare(cls, duration=1.5), 60, DARK, 0)] == plain, cls.__name__
+
+
+def test_a_write_entry_paints_only_what_it_has_a_count_of():
+    from zettcode.app.agent.conversation.entries import WriteEntry
+
+    spans = [s for line in render_entry(_bare(WriteEntry, added=40), 60, DARK, 0) for s in line.spans]
+
+    assert next(s for s in spans if "+40" in s.text).style.foreground == DARK.addition
+    assert not any("-" == s.text.strip()[:1] and s.text.strip()[1:].isdigit() for s in spans)
+
+
+def test_a_read_entry_without_a_language_is_drawn_plain():
+    plain = [s for line in render_entry(_bare(ReadEntry, language=None), 60, DARK, 0) for s in line.spans]
+    code = [
+        s
+        for line in render_entry(_bare(ReadEntry, language="python", text="def f(): pass"), 60, DARK, 0)
+        for s in line.spans
+    ]
+
+    assert not any(s.style.foreground == DARK.code.keyword for s in plain)
+    assert any(s.style.foreground == DARK.code.keyword for s in code)
+
+
+def test_an_entry_has_only_the_fields_its_tool_shows():
+    from zettcode.app.agent.conversation.entries import WriteEntry
+
+    assert not hasattr(_bare(ToolEntry), "language") and not hasattr(_bare(ToolEntry), "diff")
+    assert not hasattr(_bare(ReadEntry), "added") and not hasattr(_bare(ReadEntry), "diff")
+    assert not hasattr(_bare(WriteEntry), "removed"), "a write takes nothing away"
+    assert hasattr(_bare(WriteEntry), "diff") and hasattr(_bare(WriteEntry), "added")
+    assert hasattr(_bare(EditEntry), "diff") and hasattr(_bare(EditEntry), "removed")
+
+
+def test_a_write_and_an_edit_are_drawn_by_the_same_file_change_code_and_differ_only_in_what_they_remove():
+    from zettcode.app.agent.conversation.entries import FileChangeEntry, WriteEntry
+    from zettcode.app.agent.conversation.presenters import EditPresenter, FileChangePresenter, WritePresenter
+
+    assert issubclass(WriteEntry, FileChangeEntry) and issubclass(EditEntry, FileChangeEntry)
+    assert issubclass(WritePresenter, FileChangePresenter) and issubclass(EditPresenter, FileChangePresenter)
+    diff = (("+", "x"),)
+    write = _bare(WriteEntry, added=1, diff=diff)
+    edit = _bare(EditEntry, added=1, removed=0, diff=diff)
+
+    assert [row.text for row in render_entry(write, 60, DARK, 0)] == [
+        row.text for row in render_entry(edit, 60, DARK, 0)
+    ]
+
+
+def test_a_write_never_draws_a_removal_count_whatever_it_holds():
+    from zettcode.app.agent.conversation.entries import WriteEntry
+
+    spans = [s for line in render_entry(_bare(WriteEntry, added=5), 60, DARK, 0) for s in line.spans]
+
+    assert not any(s.style.foreground == DARK.deletion for s in spans)

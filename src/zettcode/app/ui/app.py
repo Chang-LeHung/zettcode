@@ -750,6 +750,9 @@ class ZettCodeApp(
             # ran stays the last thing in the transcript, where a reader looks for it.
             self._settle_queues(completed, turn=True)
             self._close_run()
+            # Which files this request changed, said once and only when there are any, above the
+            # line that says how long it took.
+            self.transcript.summarize_changes(self.agent.workspace)
             self._settle_wait(f"Processed for {took} {SEPARATOR} {clock_text()}")
             self._drop_ask()
             self._turn_running = False
