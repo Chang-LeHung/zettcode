@@ -436,6 +436,17 @@ async def test_the_harness_switches_choose_the_tools_the_model_may_use(tmp_path,
         assert (TodoWriteExtension in kinds) is todowrite
 
 
+#: How long each import takes in the warm-up test below, and the longest the event loop may go without
+#: turning while they run. The delay is the signal: a warm-up that ran on the loop would stall it for at
+#: least one whole import, so the limit sits well under that. It also sits well over what the import
+#: *thread* can do to a loop that is waiting for the interpreter lock: compiling a large module with no
+#: bytecode cache, which is what a fresh CI checkout has, held it for 150-210 ms. A limit just under the
+#: delay (0.15 s against 0.2 s) failed about half of the Python 3.10 runs there, for a loop that was never
+#: blocked by the warm-up at all.
+WARM_UP_IMPORT_SECONDS = 0.6
+WARM_UP_LOOP_LIMIT = 0.35
+
+
 async def test_the_warm_up_never_blocks_the_event_loop(tmp_path, monkeypatch):
     """Importing the SDKs blocks for hundreds of milliseconds; the loop must turn.
 
@@ -451,7 +462,7 @@ async def test_the_warm_up_never_blocks_the_event_loop(tmp_path, monkeypatch):
 
         def import_module(self, name: str, package: str | None = None) -> object:
             calls.append(name)
-            time.sleep(0.2)
+            time.sleep(WARM_UP_IMPORT_SECONDS)
             return original(name, package)
 
     async def fake_create_agent(model, **kwargs):
@@ -480,7 +491,7 @@ async def test_the_warm_up_never_blocks_the_event_loop(tmp_path, monkeypatch):
 
     assert calls, "the runtime never warmed the SDKs"
     assert gaps, "the event loop never turned while the runtime warmed"
-    assert max(gaps) < 0.15
+    assert max(gaps) < WARM_UP_LOOP_LIMIT
 
 
 async def test_a_text_only_model_is_not_offered_the_image_tool():
