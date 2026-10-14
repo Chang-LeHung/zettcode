@@ -113,7 +113,7 @@ from zettcode.tui import (
 from zettcode.tui.input import translate
 from zettcode.tui.render import display_width
 from zettcode.tui.testing import Harness, render_block
-from zettcode.update import UpdateState, display_command, in_background, read_state, write_state
+from zettcode.update import UpdateState, display_command, in_background, read_state, running_from, write_state
 
 
 class FakeAgent:
@@ -3562,21 +3562,173 @@ async def test_the_offer_disappears_once_the_running_version_is_the_newest(tmp_p
     assert app.app.screens.top.name == "main"
 
 
-async def test_choosing_upgrade_runs_the_command_and_reports_it(tmp_path, monkeypatch):
-    app = build_app()
-    harness = _harness(app)
-    _offer_update(app, tmp_path)
-    monkeypatch.setattr(
-        updating_module, "upgrade_command", lambda: (sys.executable, "-c", "print('installed zettcode')")
-    )
+def _upgrade_that_exits_zero(monkeypatch, installed: str | None):
+    """An upgrade command that succeeds, and what a fresh interpreter then reports as installed."""
+    monkeypatch.setattr(updating_module, "upgrade_command", lambda: (sys.executable, "-c", "print('did something')"))
 
+    async def read_back(*args, **kwargs):
+        return installed
+
+    monkeypatch.setattr(updating_module, "installed_version", read_back)
+
+
+async def _choose_upgrade(app, harness):
     harness.press("enter")
     await app._update_task
+
+
+def _said(app) -> list[str]:
+    return [entry.text for entry in app.transcript.entries if entry.kind == "notice"]
+
+
+async def test_an_upgrade_that_installed_the_release_says_so_and_writes_it_down(tmp_path, monkeypatch):
+    app = build_app()
+    harness = _harness(app)
+    path = _offer_update(app, tmp_path)
+    _upgrade_that_exits_zero(monkeypatch, "99.0.0")
+
+    await _choose_upgrade(app, harness)
 
     # The panel is gone and the confirmation is a toast, not another page.
     assert not any(isinstance(widget, UpdatePage) for widget in walk(app.app.screens.top.widget))
     assert any(isinstance(widget, Toast) for screen in app.app.screens for widget in walk(screen.widget))
-    assert any("ZettCode 99.0.0 installed" in entry.text for entry in app.transcript.entries)
+    assert any("ZettCode 99.0.0 installed" in text for text in _said(app))
+    state = read_state(path)
+    assert (state.installed, state.installed_by) == ("99.0.0", sys.executable)
+    assert state.latest == "99.0.0", "and what the last check found is kept"
+
+
+async def test_an_upgrade_that_exits_zero_but_left_the_old_version_is_not_reported_as_done(tmp_path, monkeypatch):
+    """`uv tool upgrade` says "Nothing to upgrade" and exits 0: that is not an install."""
+    app = build_app()
+    harness = _harness(app)
+    path = _offer_update(app, tmp_path)
+    before = read_state(path)
+    _upgrade_that_exits_zero(monkeypatch, "0.1.5")
+
+    await _choose_upgrade(app, harness)
+
+    errors = [e.text for e in app.transcript.entries if getattr(e, "level", None) == "error"]
+    assert any("still 0.1.5, not 99.0.0" in text for text in errors)
+    assert not any("installed — restart" in text for text in _said(app))
+    assert any("try again in a few minutes" in text for text in _said(app))
+    assert read_state(path) == before, "nothing is written, so the next start offers it again"
+    assert not any(isinstance(widget, Toast) for screen in app.app.screens for widget in walk(screen.widget))
+
+
+async def test_an_upgrade_whose_result_cannot_be_read_back_is_not_called_done_and_not_recorded(tmp_path, monkeypatch):
+    app = build_app()
+    harness = _harness(app)
+    path = _offer_update(app, tmp_path)
+    before = read_state(path)
+    _upgrade_that_exits_zero(monkeypatch, None)
+
+    await _choose_upgrade(app, harness)
+
+    assert any("could not be read back" in text and "zettcode --version" in text for text in _said(app))
+    assert not any("installed — restart" in text for text in _said(app))
+    assert read_state(path) == before
+
+
+async def test_an_index_that_moved_on_while_upgrading_still_counts_as_installed(tmp_path, monkeypatch):
+    """Installing something newer than the version that was offered is not a failure."""
+    app = build_app()
+    harness = _harness(app)
+    path = _offer_update(app, tmp_path, latest="99.0.0")
+    _upgrade_that_exits_zero(monkeypatch, "99.1.0")
+
+    await _choose_upgrade(app, harness)
+
+    assert any("ZettCode 99.1.0 installed" in text for text in _said(app))
+    assert read_state(path).installed == "99.1.0"
+
+
+async def test_a_state_file_that_cannot_be_written_does_not_turn_an_install_into_a_failure(tmp_path, monkeypatch):
+    app = build_app()
+    harness = _harness(app)
+    _offer_update(app, tmp_path)
+    _upgrade_that_exits_zero(monkeypatch, "99.0.0")
+
+    def refuse(*args, **kwargs):
+        raise OSError("read-only file system")
+
+    monkeypatch.setattr(updating_module, "record_install", refuse)
+
+    await _choose_upgrade(app, harness)
+
+    assert any("ZettCode 99.0.0 installed" in text for text in _said(app))
+    assert not any(getattr(e, "level", None) == "error" for e in app.transcript.entries)
+
+
+async def test_after_a_confirmed_upgrade_the_next_start_does_not_offer_it_again(tmp_path, monkeypatch):
+    """The report: upgraded, restarted, and asked to upgrade again. Nothing is offered, in a new shell."""
+    app = build_app()
+    harness = _harness(app)
+    path = _offer_update(app, tmp_path)
+    _upgrade_that_exits_zero(monkeypatch, "99.0.0")
+    await _choose_upgrade(app, harness)
+
+    monkeypatch.setattr(updating_module, "__version__", "99.0.0")  # what the restarted program reports
+    restarted = build_app()
+    restarted.agent.runtime.config.update_file = path
+
+    assert restarted.offer_update() is None
+    assert restarted.app.screens.top.name == "main"
+
+
+async def test_an_upgrade_that_did_not_take_is_offered_again_on_the_next_start(tmp_path, monkeypatch):
+    app = build_app()
+    harness = _harness(app)
+    path = _offer_update(app, tmp_path)
+    _upgrade_that_exits_zero(monkeypatch, "0.1.5")
+    await _choose_upgrade(app, harness)
+
+    again = build_app()
+    again.agent.runtime.config.update_file = path
+
+    assert again.offer_update() is not None, "an honest failure must not silence the offer"
+
+
+async def test_an_upgrade_that_worked_but_is_not_what_runs_is_explained_once_and_not_offered(tmp_path, monkeypatch):
+    """An editable checkout or PYTHONPATH shadows the install: upgrading again cannot help."""
+    app = build_app()
+    path = tmp_path / "update.json"
+    app.agent.runtime.config.update_file = path
+    write_state(
+        UpdateState(
+            checked_at=datetime.now(timezone.utc), latest="99.0.0", installed="99.0.0", installed_by=sys.executable
+        ),
+        path,
+    )
+
+    assert app.offer_update() is None and app.app.screens.top.name == "main"
+    explanation = [text for text in _said(app) if "is installed, but this session runs" in text]
+    assert len(explanation) == 1 and "99.0.0" in explanation[0] and running_from() in explanation[0]
+    assert read_state(path).noted == "99.0.0"
+
+    second = build_app()
+    second.agent.runtime.config.update_file = path
+    assert second.offer_update() is None
+    assert not any("is installed, but this session runs" in text for text in _said(second)), (
+        "said once, not every start"
+    )
+
+
+async def test_a_record_from_another_interpreter_does_not_silence_this_one(tmp_path):
+    app = build_app()
+    path = tmp_path / "update.json"
+    app.agent.runtime.config.update_file = path
+    write_state(
+        UpdateState(
+            checked_at=datetime.now(timezone.utc),
+            latest="99.0.0",
+            installed="99.0.0",
+            installed_by="/some/other/venv/bin/python",
+        ),
+        path,
+    )
+
+    assert app.offer_update() is not None, "that other copy was upgraded; this one is old and says so"
 
 
 async def test_a_failed_upgrade_is_reported_with_the_command_to_run(tmp_path, monkeypatch):

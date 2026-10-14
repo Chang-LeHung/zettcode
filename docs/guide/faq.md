@@ -127,6 +127,12 @@ version, the next start shows a panel over the conversation:
 - **Upgrade now** runs the upgrade for the install it came from — `uv tool
   upgrade zettcode`, or `pip install --upgrade zettcode` — in the background.
   The window keeps the code it started with, so restart to use the new version.
+  A package manager that exits cleanly has not necessarily installed anything (`uv tool
+  upgrade` says "Nothing to upgrade" and succeeds; so does pip when its index has not listed
+  the release yet), so ZettCode then reads the installed version back from a fresh process and
+  tells you what it found: **installed**, **still the old version** (try again in a few minutes), or
+  **could not be read back**. Only a confirmed install is written to `~/.zettcode/update.json`,
+  so it is not offered again; one that did not take is offered again on the next start.
 - **Skip this version** remembers it in `~/.zettcode/update.json`. That one is
   never offered again; a later release is.
 - **Not now** (or `Esc`) writes nothing, so the next start asks again about the
@@ -134,6 +140,14 @@ version, the next start shows a panel over the conversation:
 
 The offer comes from that file, never from the network, so a machine that is
 offline simply hears nothing about versions.
+
+**I upgraded and it still says the old version.** Check which copy you are starting:
+`zettcode --version` prints the version, and `which zettcode` the command. If ZettCode
+confirmed the install but the program you start is older, something else is supplying the code —
+an editable checkout, or a `PYTHONPATH` — and ZettCode says so once (naming the directory the
+running code came from) instead of offering the same upgrade again. A different copy that was
+never upgraded (for instance a `pip` install beside a `uv tool` one) is offered the upgrade
+as usual, and the command it shows is the one for the copy that is running.
 
 ## Leaving
 
