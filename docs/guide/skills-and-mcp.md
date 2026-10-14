@@ -155,6 +155,21 @@ With no file there is nothing to load, so an unconfigured run carries no MCP
 instructions at all — rather than a system message saying there is nothing.
 `[mcp] enabled = false` turns the extension off.
 
+### Starting a server
+
+A server that has to be started is a process, and starting one can take a while (`npx` may download a
+package first). While it does, the conversation says so, so a request that sits on "Processing" has
+a reason you can read:
+
+```text
+Starting MCP server 'docs' (process)…
+MCP server 'docs' is ready: 3 tools, 2.1s
+```
+
+A remote server says `(connection)`. A server whose tool list ZettCode already has starts nothing
+and says nothing, and one that is down is reported as down rather than ready. The lines name the
+server and its kind and never repeat its command, which may carry a key.
+
 ### When a server or a tool goes wrong
 
 One broken MCP piece never stops the task. What happens depends on which piece:
