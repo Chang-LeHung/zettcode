@@ -275,6 +275,7 @@ to the composer, and the transcript is untouched underneath:
 - `/resume` — pick a recent session, with its title and how long ago it changed.
 - `/theme`, `/effort`, and `/permission` — pick a palette, a reasoning level, or how much of the shell may run without asking.
 - `/context` — what is filling the context window right now.
+- `/usage` — what this project's sessions have spent, by model, by session and by day; it takes the whole screen. See [Token usage](/guide/commands#usage).
 - **Approvals** — the panel that asks whether to run a shell command.
 
 ## Approvals

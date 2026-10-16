@@ -10,10 +10,15 @@ second segment beside it.
 
 from __future__ import annotations
 
+import asyncio
+
 from ..app.agent.conversation.rows import activity_glyph
 from ..app.agent.dialogue.mentions import FileMentions, SkillMentions
 from ..app.agent.extensions.usage import context_text, usage_text
+from ..app.agent.storage.ledger import LedgerReader
+from ..app.commands import CommandContext, CommandResult
 from ..app.ui import labels
+from ..app.ui.widgets import UsagePage
 from ..tui import SEPARATOR, STATUS
 from .container import PluginContainer
 from .plugin import Plugin
@@ -78,5 +83,32 @@ class FileResources(Plugin):
         container.register_mention(FileMentions(container.config.workspace))
 
 
+class UsageCommand(Plugin):
+    """``/usage``: what this workspace's sessions have spent, by model, session and day.
+
+    The numbers are read back from the stored conversations, so the page covers every
+    session of the workspace, not only the one open, and an hour from now it will still
+    agree with the files. It only reads, so it may run beside a request.
+    """
+
+    name = "usage"
+
+    def activate(self, container: PluginContainer) -> None:
+        """Register ``/usage`` and keep one reader, so a second look re-reads only what changed."""
+        config = container.config
+        readers: list[LedgerReader] = []
+
+        async def show(context: CommandContext) -> CommandResult:
+            """Open the usage page, or say that nothing has been spent yet."""
+            if not readers:
+                readers.append(LedgerReader(config.store, config.workspace))
+            ledger = await asyncio.to_thread(readers[0].read)
+            if ledger.empty:
+                return CommandResult(message="No model replies are recorded in this workspace yet.")
+            return CommandResult(widget=UsagePage(ledger, workspace=labels.compact_path(config.workspace, limit=None)))
+
+        container.register_command("usage", "Token use by model, by session and by day", show, when_busy="now")
+
+
 #: Plugins loaded from the repository itself, never from a distribution.
-BUILTIN_PLUGINS: tuple[Plugin, ...] = (ShellRows(), SkillResources(), FileResources())
+BUILTIN_PLUGINS: tuple[Plugin, ...] = (ShellRows(), SkillResources(), FileResources(), UsageCommand())

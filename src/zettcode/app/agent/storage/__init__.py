@@ -4,6 +4,7 @@ One folder per workspace, one folder per session, and everything about a session
 
     ~/.zettcode/sessions/<base64 workspace path>/
     ├── metadata.jsonl              <- the old index; read for sessions that predate their own file
+    ├── usage.json                  <- what ``/usage`` has counted so far, so it reads only what is new (see :mod:`ledger`)
     └── <session-id>/
         ├── data.jsonl              <- the append-only message tree
         ├── metadata.json           <- title and times: written on creation and rename only

@@ -8290,3 +8290,50 @@ def test_a_shell_whose_configuration_turns_tips_off_shows_none_however_long_it_w
     _wait_seconds(app, now, 40)
 
     assert app.transcript.tip_deck is None and "Tip:" not in _harness(app).text()
+
+
+async def test_usage_opens_a_full_screen_page_and_escape_returns_to_the_conversation(tmp_path):
+    """The builtin ``/usage`` goes through the shell like any command: a page over everything, then back."""
+    from zett_agent.messages import AssistantMessage
+    from zett_agent.model import ModelUsage
+
+    from zettcode.app.agent.storage import SessionStore
+    from zettcode.app.ui.widgets import UsagePage
+    from zettcode.plugins.builtins import UsageCommand
+
+    work = tmp_path / "work"
+    work.mkdir()
+    store = SessionStore(tmp_path / "sessions", work)
+    usage = ModelUsage(
+        input_tokens=1500, output_tokens=40, cache_read_tokens=0, cache_write_tokens=0, reasoning_tokens=0
+    )
+    await store.append("a", "r", AssistantMessage(content="x", model="alpha"), usage=usage)
+    container = PluginContainer(
+        ZettCodeConfig(
+            workspace=work,
+            store=tmp_path / "sessions",
+            models=(ModelConfig(model="m", token="t"),),
+            plugins_enabled=False,
+            skills_enabled=False,
+            mcp_enabled=False,
+        )
+    )
+    UsageCommand().activate(container)
+    app = build_app(plugins=rows_and_commands(commands=container.commands))
+    harness = _harness(app)
+
+    harness.write("/usage")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    assert app.app.screens.top.name == "page"
+    page = next(widget for widget in walk(app.app.screens.top.widget) if isinstance(widget, UsagePage))
+    frame = harness.render().text
+    assert page.rect.height == app.app.height and page.rect.width == app.app.width, "the whole screen, not a panel"
+    assert "Usage" in frame and "alpha" in frame and "1.54K tokens" in frame
+
+    harness.press("tab")
+    assert page.tab_name == "Sessions"
+    harness.press("escape")
+    assert app.app.screens.top.name == "main"
+    assert not app._busy
