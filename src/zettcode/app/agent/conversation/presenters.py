@@ -69,20 +69,17 @@ from .entries import (
     WaitEntry,
     WriteEntry,
 )
-from .rows import (
+from .pulse import RUNNING_GLYPHS, WAIT_RAMP, moving, sweep_column
+from .text import (
     COMPACTING_LABEL,
     CONTENT_INDENT,
-    RUNNING_GLYPHS,
     STOP_HINT,
     TOOL_EXPANDED_ROWS,
     TOOL_PREVIEW_ROWS,
-    WAIT_RAMP,
     bounded_rows,
     duration_text,
     elapsed_text,
-    moving,
     quiet_text,
-    sweep_column,
     terminal_safe,
     tip_text,
 )

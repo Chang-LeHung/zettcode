@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 
 from ...._compat import StrEnum
 from ....tui import LineSource, Markdown
-from .rows import THINKING_LABEL
+from .text import THINKING_LABEL
 
 
 class EntryKind(StrEnum):

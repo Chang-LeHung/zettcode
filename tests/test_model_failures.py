@@ -16,7 +16,7 @@ from zett_agent.providers.openai import OpenAIProvider
 
 from zettcode.app.agent import runtime as runtime_module
 from zettcode.app.agent.agent import ZettCodeAgent
-from zettcode.app.agent.conversation.rows import QUIET_SECONDS
+from zettcode.app.agent.conversation.text import QUIET_SECONDS
 from zettcode.app.ui.app import ZettCodeApp
 from zettcode.app.ui.shell import EMPTY_REPLY
 from zettcode.config import ModelConfig, ZettCodeConfig
@@ -192,9 +192,9 @@ async def test_a_reply_that_is_only_a_failure_is_not_also_called_empty(shell):
 async def test_a_server_that_never_answers_is_said_to_have_gone_quiet_and_the_request_can_be_stopped(
     shell, monkeypatch
 ):
-    from zettcode.app.agent.conversation import rows
+    from zettcode.app.agent.conversation import text
 
-    monkeypatch.setattr(rows, "QUIET_SECONDS", 0.2)
+    monkeypatch.setattr(text, "QUIET_SECONDS", 0.2)
 
     async def never(request):
         await asyncio.sleep(60)

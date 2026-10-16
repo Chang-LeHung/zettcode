@@ -15,7 +15,7 @@ from collections.abc import Sequence
 
 from ....tui import MARKER, SEPARATOR, Canvas, Constraints, Size, Style, Widget
 from ....tui.render import ELLIPSIS, display_width, truncate
-from ...agent.conversation.rows import CONTENT_INDENT
+from ...agent.conversation.text import CONTENT_INDENT
 
 #: Right-aligned badge that says a row is a follow-up.
 FOLLOW_UP_BADGE = "follow-up"

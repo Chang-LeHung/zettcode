@@ -34,22 +34,24 @@ from zett_agent.model import ModelRequest, ModelUsage, ReasoningEffort, ToolDefi
 from zettcode._compat import ExceptionGroup
 from zettcode.app import Transcript, TranscriptSource, TranscriptView, ZettCodeApp
 from zettcode.app.agent.agent import ZettCodeAgent
+from zettcode.app.agent.conversation.effort_gauge import EFFORT_SECONDS
 from zettcode.app.agent.conversation.entries import EntryStatus
 from zettcode.app.agent.conversation.projection import TranscriptProjector
-from zettcode.app.agent.conversation.rows import (
+from zettcode.app.agent.conversation.pulse import (
     ANIMATION_SECONDS,
-    EFFORT_SECONDS,
     PULSE_FRAMES,
     RUNNING_GLYPHS,
     STATUS_BLINK_FRAMES,
-    STOP_HINT,
     activity_glyph,
+    move_frames,
+    sweep_column,
+)
+from zettcode.app.agent.conversation.text import (
+    STOP_HINT,
     clock_text,
     compact_path,
     duration_text,
     elapsed_text,
-    move_frames,
-    sweep_column,
     terminal_safe,
 )
 from zettcode.app.agent.dialogue.mentions import Mention, MentionProvider, MentionRegistry
@@ -934,27 +936,27 @@ async def test_the_blink_demo_script_walks_a_turn():
 def test_the_blink_demo_can_be_slowed_down_while_it_runs(monkeypatch):
     # The pace is a period: a key is half a second, whatever the step is.
     notch = demo.frames(demo.PACE_STEP_SECONDS)
-    monkeypatch.setattr(demo.rows_module, "PULSE_FRAMES", 4 * notch)
+    monkeypatch.setattr(demo.pulse_module, "PULSE_FRAMES", 4 * notch)
     harness = Harness(app=demo.build())
 
     harness.press("]")
-    assert demo.rows_module.PULSE_FRAMES == 3 * notch
+    assert demo.pulse_module.PULSE_FRAMES == 3 * notch
     assert "one pass per 0.8 s" in harness.render().text
 
     harness.press("[")
     harness.press("[")
-    assert demo.rows_module.PULSE_FRAMES == 5 * notch
+    assert demo.pulse_module.PULSE_FRAMES == 5 * notch
 
 
 def test_the_demo_keeps_the_pace_between_a_second_and_five(monkeypatch):
-    monkeypatch.setattr(demo.rows_module, "PULSE_FRAMES", demo.rows_module.PULSE_FRAMES)  # restored afterwards
+    monkeypatch.setattr(demo.pulse_module, "PULSE_FRAMES", demo.pulse_module.PULSE_FRAMES)  # restored afterwards
     notch = demo.frames(demo.PACE_STEP_SECONDS)
     for _ in range(40):
         demo.nudge_pace(-notch)
-    assert demo.rows_module.PULSE_FRAMES == demo.frames(1.0)
+    assert demo.pulse_module.PULSE_FRAMES == demo.frames(1.0)
     for _ in range(40):
         demo.nudge_pace(notch)
-    assert demo.rows_module.PULSE_FRAMES == demo.frames(5.0)
+    assert demo.pulse_module.PULSE_FRAMES == demo.frames(5.0)
 
 
 def test_the_animation_never_steps_faster_than_the_loop_can_paint_it():
@@ -964,7 +966,7 @@ def test_the_animation_never_steps_faster_than_the_loop_can_paint_it():
     the counter steps still keeps time — it just drops frames of the sweep. The ceiling of
     the loop is the animation's rate, and this holds them together.
     """
-    from zettcode.app.agent.conversation.rows import ANIMATION_FPS
+    from zettcode.app.agent.conversation.pulse import ANIMATION_FPS
     from zettcode.tui.core.scheduler import Scheduler
 
     assert 1 / ANIMATION_SECONDS == pytest.approx(ANIMATION_FPS)

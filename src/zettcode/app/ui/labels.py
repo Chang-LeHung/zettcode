@@ -15,7 +15,7 @@ from pathlib import Path
 
 from ...tui import ELLIPSIS, HEADER, SEPARATOR, STATUS
 from ...tui.render import display_width
-from ..agent.conversation.rows import STOP_HINT
+from ..agent.conversation.text import STOP_HINT
 
 #: The keys worth remembering, shown at the right of the status row.
 KEY_HINTS = f"{STOP_HINT}  ^D exit"

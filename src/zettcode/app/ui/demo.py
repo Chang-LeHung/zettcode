@@ -16,14 +16,14 @@ from collections.abc import Callable
 
 from ...tui import DARK, ELLIPSIS, SEPARATOR, AnyEvent, Host, Slot, Text, TuiApp, VBox, Widget, run_app
 from ...tui.widgets import Rule
-from ..agent.conversation import rows as rows_module
+from ..agent.conversation import pulse as pulse_module
 from ..agent.conversation.transcript import Transcript
 from .widgets import TranscriptView
 
 
 def hint() -> str:
     """Return the key hint, including the pace one pass takes."""
-    seconds = rows_module.move_frames() * rows_module.ANIMATION_SECONDS
+    seconds = pulse_module.move_frames() * pulse_module.ANIMATION_SECONDS
     return f"  q / Esc quit {SEPARATOR} [ slower {SEPARATOR} ] faster {SEPARATOR} one pass per {seconds:.1f} s"
 
 
@@ -34,7 +34,7 @@ def frames(seconds: float) -> int:
     into steps here: a step is a hundred-and-twentieth of a second, and "five of them"
     would be a twitch of the dial, not a notch.
     """
-    return round(seconds / rows_module.ANIMATION_SECONDS)
+    return round(seconds / pulse_module.ANIMATION_SECONDS)
 
 
 #: How much one keypress changes the pulse by.
@@ -53,7 +53,7 @@ def nudge_pace(delta: int) -> None:
             :data:`PACE_SECONDS`.
     """
     shortest, longest = frames(PACE_SECONDS[0]), frames(PACE_SECONDS[1])
-    rows_module.PULSE_FRAMES = min(longest, max(shortest, rows_module.PULSE_FRAMES + delta))
+    pulse_module.PULSE_FRAMES = min(longest, max(shortest, pulse_module.PULSE_FRAMES + delta))
 
 
 class Blinking(Widget):

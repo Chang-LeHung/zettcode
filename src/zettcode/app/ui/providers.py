@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, cast
 from ...config_edit import ConfigEditError
 from ...providers import API_FLAG_KEYS, CUSTOM, Api
 from ...tui import SEPARATOR, ListItem, ListPage, Screen, Widget
-from ..agent.conversation.rows import compact_path
+from ..agent.conversation.text import compact_path
 from .config_form import (
     Draft,
     describe,

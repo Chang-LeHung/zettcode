@@ -1,6 +1,6 @@
-"""The shell's two rows: what the header and the status line draw.
+"""The shell's two bars: what the header and the status line draw.
 
-The rows are plugin segments, so this part owns only the generic loop and the
+The bars are plugin segments, so this part owns only the generic loop and the
 snapshot a segment builder reads. The builtin rows themselves ship as a plugin,
 which is what leaves the shell with one renderer rather than one per row.
 """
@@ -23,7 +23,7 @@ from ..agent.permission import Permission
 from .shell import ShellState
 
 
-class RowsMixin(ShellState):
+class BarsMixin(ShellState):
     """Paint each row side from the segments the plugins registered."""
 
     def _terminal_title(self) -> str:

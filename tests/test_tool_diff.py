@@ -14,7 +14,7 @@ from zettcode.app.agent.conversation.rendering import (
     write_diff,
     written_lines,
 )
-from zettcode.app.agent.conversation.rows import TOOL_EXPANDED_ROWS, TOOL_PREVIEW_ROWS
+from zettcode.app.agent.conversation.text import TOOL_EXPANDED_ROWS, TOOL_PREVIEW_ROWS
 from zettcode.app.agent.conversation.transcript import Transcript
 from zettcode.app.ui.widgets import TranscriptSource
 from zettcode.tui import DARK, LIGHT
