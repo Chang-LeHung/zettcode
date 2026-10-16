@@ -7,6 +7,8 @@ which is what leaves the shell with one renderer rather than one per row.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from ...plugins import (
     ActivityState,
     DisplayState,
@@ -17,8 +19,9 @@ from ...plugins import (
     UiSide,
 )
 from ...tui import HEADER, SEPARATOR, Span, Style, TextLine
-from ...tui.render import blend
+from ...tui.render import blend, display_width
 from ..agent.agent.sessions import UNTITLED_SESSION
+from ..agent.conversation.shimmer import ShimmerFrame
 from ..agent.permission import Permission
 from .shell import ShellState
 from .widgets.effort_page import heat_colour
@@ -32,8 +35,32 @@ class BarsMixin(ShellState):
         return f"{HEADER} zettcode {SEPARATOR} {self._session_title or UNTITLED_SESSION}"
 
     def _header_left(self) -> TextLine:
-        """Return the header's left side, whatever the plugins put there."""
-        return self._side("header", "left")
+        """Return the header's left side, whatever the plugins put there.
+
+        While the show for a switch to the top of the scale plays, the light crossing the header goes over
+        this side too, so the whole row glints and not only the corner that changed.
+        """
+        line = self._side("header", "left")
+        frame = self._effort_gauge()
+        return self._glint(line, frame) if isinstance(frame, ShimmerFrame) else line
+
+    def _glint(self, line: TextLine, frame: ShimmerFrame) -> TextLine:
+        """Lay the light of the show over a line drawn from the left edge, character by character."""
+        theme = self.app.theme
+        halo = blend(blend(theme.warning, theme.text, 0.18), theme.text, 0.4)
+        spans: list[Span] = []
+        column = 0
+        for span in line.spans:
+            for character in span.text:
+                glow, core = frame.light(frame.reach - 1 - column)
+                colour = span.style.foreground or theme.muted
+                if glow > 0.0:
+                    colour = blend(colour, halo, glow * 0.9 * frame.presence)
+                    colour = blend(colour, theme.text, core * frame.presence)
+                bold = span.style.bold or core * frame.presence > 0.5
+                spans.append(Span(character, replace(span.style, foreground=colour, bold=bold)))
+                column += max(1, display_width(character))
+        return TextLine(tuple(spans), metadata=line.metadata)
 
     def _header_right(self) -> TextLine:
         """Return the header's right side: the plugins' segments, or the gauge.
@@ -46,6 +73,8 @@ class BarsMixin(ShellState):
         gauge = self._effort_gauge()
         if gauge is None:
             return self._side("header", "right")
+        if isinstance(gauge, ShimmerFrame):
+            return self._shimmer_row(gauge)
         theme = self.app.theme
         muted = Style(foreground=theme.muted)
         # The rail is the border colour brought toward the background, so an
@@ -75,6 +104,67 @@ class BarsMixin(ShellState):
             # The word returns to the header's own grey, which is what it is
             # when the gauge is gone: the last frame and the next are the same colour.
             spans.append(Span(character, Style(foreground=blend(colour, theme.muted, away))))
+        return TextLine(tuple(spans))
+
+    def _shimmer_row(self, frame: ShimmerFrame) -> TextLine:
+        """Paint the show a switch to the top of the scale plays: light crossing the row, right to left.
+
+        The frame says where the light is and what it has lit; the colours are chosen here, from the theme
+        like every other colour in the header. A lit column is gold, and at ``ultra`` the gauge runs on from
+        gold into the error colour toward its dear end. The halo is a pale gold and the core inside it takes
+        the text colour, which is the brightest the palette has (on a light theme that is the darkest ink,
+        so the glint reads as a glint there too). Everything returns to the resting header by what is
+        missing of the frame's presence, as the ordinary gauge does.
+        """
+        theme = self.app.theme
+        muted = theme.muted
+        groove = blend(theme.muted, theme.surface, 0.55)
+        away = 1.0 - frame.presence
+        ultra = frame.word == "ultra"
+        gold = blend(theme.warning, theme.text, 0.18)
+        halo = blend(gold, theme.text, 0.4)
+        last = max(1, frame.cells - 1)
+
+        def lit(steady: str, column: int, rest: str, *, ignited: bool | None = None) -> str:
+            colour = steady if (frame.ignited[column] if ignited is None else ignited) else rest
+            colour = blend(colour, halo, frame.glow[column] * 0.9)
+            colour = blend(colour, theme.text, frame.core[column])
+            if frame.ignited[column]:
+                colour = blend(colour, theme.text, frame.glitter[column] * 0.8)
+            return blend(colour, rest, away)
+
+        spans: list[Span] = []
+        column = 0
+        for character in f"{self.agent.active_model.shown_name} {SEPARATOR} ":
+            if column >= frame.lead:
+                break
+            steady = blend(muted, gold, 0.3)
+            spans.append(Span(character, Style(foreground=lit(steady, column, muted))))
+            column += max(1, display_width(character))
+        for index in range(frame.cells):
+            column = frame.lead + index
+            if index < frame.lit_cells and frame.ignited[column]:
+                steady = heat_colour(theme, index / last)
+                steady = blend(steady, gold, 0.45)
+                if ultra:
+                    steady = blend(steady, theme.error, 0.5 * index / last)
+                spans.append(Span("\u2501", Style(foreground=lit(steady, column, groove))))
+            else:
+                spans.append(Span("\u2500", Style(foreground=lit(groove, column, groove, ignited=False))))
+        word_colour = blend(heat_colour(theme, frame.heat), gold, 0.5)
+        if ultra:
+            word_colour = blend(word_colour, theme.error, 0.35)
+        word_start = frame.word_start
+        spans.append(Span(" ", Style(foreground=muted)))
+        spark_left = word_start - 2
+        spans.append(Span(frame.sparks[0], Style(foreground=lit(word_colour, spark_left, muted), bold=True)))
+        spans.append(Span(" ", Style(foreground=muted)))
+        for offset, character in enumerate(frame.word):
+            at = word_start + offset
+            spans.append(Span(character, Style(foreground=lit(word_colour, at, muted), bold=frame.ignited[at])))
+        spans.append(Span(" ", Style(foreground=muted)))
+        spark_right = frame.width - 1
+        spans.append(Span(frame.sparks[1], Style(foreground=lit(word_colour, spark_right, muted), bold=True)))
         return TextLine(tuple(spans))
 
     def _heat(self, heat: float) -> str:

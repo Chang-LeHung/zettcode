@@ -42,6 +42,7 @@ from ...tui import (
 )
 from ...tui.clipboard import copy_route
 from ...tui.layout import Slot
+from ...tui.render import display_width
 from ...tui.widgets import Rule
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
@@ -50,6 +51,13 @@ from ..agent.agent import ZettCodeAgent
 from ..agent.agent.prompt import PromptPart, carries_image, mention_hint, mention_parts
 from ..agent.conversation.effort_gauge import EFFORT_SECONDS, EffortFrame, effort_frame
 from ..agent.conversation.projection import TranscriptProjector
+from ..agent.conversation.shimmer import (
+    SHIMMER_LEVELS,
+    ShimmerFrame,
+    shimmer_frame,
+    shimmer_seconds,
+    shimmer_width,
+)
 from ..agent.conversation.text import clock_text, elapsed_text
 from ..agent.conversation.tips import TipDeck
 from ..agent.conversation.transcript import Transcript
@@ -308,7 +316,7 @@ class ZettCodeApp(
         self.app.scheduler.animate(EFFORT_TOKEN, active=True)
         self.app.request_layout()
 
-    def _effort_gauge(self) -> EffortFrame | None:
+    def _effort_gauge(self) -> EffortFrame | ShimmerFrame | None:
         """Return the gauge for this paint, or None when the switch is over.
 
         The clock and the state are read here, in the module that set them: an
@@ -316,11 +324,19 @@ class ZettCodeApp(
         clock in a running shell and two in a test. Progress is a fraction of
         elapsed time, not a frame count, so the motion is as smooth as the loop
         that paints it and a slow terminal drops frames instead of slowing down.
+        A switch to the top of the scale is a different animation, and a longer one:
+        light crossing the whole row from right to left, which needs to know how wide
+        the row is, so it is told where the gauge starts.
         """
         animation = self._effort_animation
         if animation is None:
             return None
         previous, current, started = animation
+        if current in SHIMMER_LEVELS:
+            lead = display_width(self.agent.active_model.shown_name) + len(f" {SEPARATOR} ")
+            reach = max(self.app.width, shimmer_width(lead, len(self.agent.efforts), current))
+            progress = (monotonic() - started) / shimmer_seconds(current, reach)
+            return shimmer_frame(current, self.agent.efforts, lead=lead, reach=reach, progress=progress)
         progress = (monotonic() - started) / EFFORT_SECONDS
         return effort_frame(previous, current, self.agent.efforts, progress=progress)
 
