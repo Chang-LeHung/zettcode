@@ -57,9 +57,43 @@ def compact_path(path: Path, *, limit: int | None = 38) -> str:
     return f"{ELLIPSIS}{tail}"
 
 
-def header_left(workspace: Path) -> str:
-    """Label the app and the workspace it runs in."""
-    return f"  {HEADER} zettcode  {compact_path(workspace)}"
+#: The most columns of a session's title the header keeps. A title can be a hundred and twenty characters, and the
+#: header is cut from its right end when the row is full: unbounded, a long title would push the session's name
+#: and the workspace off the screen.
+TITLE_COLUMNS = 36
+
+
+def header_left(workspace: Path, name: str = "", handle: str = "") -> str:
+    """Label the app, the session, and the workspace it runs in.
+
+    The session comes before the workspace because a row that is too narrow loses its right end first, and which
+    session this is matters more than a directory that does not change while it is open.
+
+    Args:
+        workspace: Directory the session runs in.
+        name: The session's title, or its placeholder before it has one. Left out, the row names no session, which
+            is how a frame drawn before there is one looks.
+        handle: The name other sessions address this one by (without the ``@``); empty when messaging is off or the
+            session is not registered yet.
+    """
+    parts = [
+        _fit(name, TITLE_COLUMNS) if name else "",
+        f"@{handle}" if handle else "",
+        compact_path(workspace),
+    ]
+    return f"  {HEADER} zettcode  " + f" {SEPARATOR} ".join(part for part in parts if part)
+
+
+def _fit(text: str, columns: int) -> str:
+    """Return ``text`` cut to ``columns`` with an ellipsis when it is longer; a wide glyph is dropped whole."""
+    if display_width(text) <= columns:
+        return text
+    kept = ""
+    for character in text:
+        if display_width(kept) + display_width(character) > columns - 1:
+            break
+        kept += character
+    return kept.rstrip() + ELLIPSIS
 
 
 def header_right(model: str, effort: str) -> str:
@@ -98,9 +132,9 @@ def model_name(config_file: Path) -> str | None:
     return None
 
 
-def status_left(label: str, name: str) -> str:
-    """Show the activity glyph, its status word, and the session's name."""
-    return f"  {STATUS} {label}  {name}"
+def status_left(label: str) -> str:
+    """Show the activity glyph and its status word; the session is named in the header."""
+    return f"  {STATUS} {label}"
 
 
 def status_right() -> str:

@@ -5,7 +5,7 @@ stays near the bottom while the conversation uses the remaining space; command
 panels temporarily cover the lower part of it.
 
 ```
-  ▐ zettcode  ~/projects/api          DeepSeek Pro · high  ← header
+  ▐ zettcode  New session · @api · ~/projects/api   DeepSeek Pro · high  ← header
  ─────────────────────────────────────────────────────────
  ● Read src/api/users.py                                ← transcript
  ● Edited src/api/users.py (2 edits) +24 -6             (scrolls)
@@ -15,13 +15,15 @@ panels temporarily cover the lower part of it.
  ─────────────────────────────────────────────────────────
    /model  /resume  /context                              ← completions
  › add a limit/offset window to GET /users                ← composer
-   ● ready  New session  ↑18.4k ↓900 · ctx 12.3%          ← status line
+   ● ready  ↑18.4k ↓900 · ctx 12.3%                       ← status line
 ```
 
 ## The header
 
-The left side names the application and the workspace, shortened to the last
-useful part of the path. The right side names the model and the reasoning effort
+The left side names the application, the **session** — its title (`New session` until it has one) and, when
+[messaging](/guide/messaging) is on, the name other sessions reach it by (`@api`) — and the workspace, shortened
+to the last useful part of the path. A very long title is cut to leave room for the rest; when the row is still too
+narrow it is the workspace that goes first, because it does not change while the session is open. The right side names the model and the reasoning effort
 that the **next** request will use, so a switch is visible before you send
 anything. Changing the effort plays an animation in that corner for a few seconds: a hairline gauge with one cell per level fills from the level you left to the level you chose, and a soft glow travels over it and then over the word. Colour is a position on the scale, not a state: the cheap end is your theme's accent and the dear end its error colour, with a smooth blend between, so `ultra` is the one that is red. The gauge fades in and out rather than cutting, and gives the corner back when it is done. It does not appear while a request runs (the waiting row is moving then) or under reduced motion, where the level still changes and the transcript still says so.
 
@@ -77,6 +79,10 @@ Every kind of output has its own row, in the order it happened:
   can be shown as removed. A failed edit or write shows its error instead, because nothing changed. The first five rows stay visible and the rest is behind a click
   (up to forty when open); a long line is cut at the width, never wrapped. Other output works the
   same way; nothing is ever dumped as JSON.
+- **Tool rows use a few colours**, so a long transcript stays calm: lavender for everything the agent looks at or runs
+  (reading, searching, pictures, commands, the plan), yellow for writing and editing (not green, which is an added line in its diff), red for deleting (and for any
+  call that failed), teal for a delegated subagent, and mauve for talking to another session. A theme file can change
+  each one under `[tools]`.
 - **The files a request changed** are listed once when it ends, above the `Processed for …` line, and only
   when there are any:
 
@@ -105,13 +111,24 @@ Every kind of output has its own row, in the order it happened:
   marker and the highlight crossing the word pulse together — a second of
   movement, then a second at rest — while the clock and the stop key stand
   beside it in parentheses, in the quiet ink a notice uses, counting whole
-  seconds and minutes.
+  seconds and minutes. If the model says nothing for twenty seconds while nothing else is running, the row
+  says so in the warning colour — `✦ Processing (47s · nothing from the model for 47s · ^C/Esc to interrupt)` —
+  so a request that is not going anywhere does not look like a slow one. It is only said, never acted on: a
+  model that reasons for minutes before its first word is normal, and `Esc` is yours to press. A command that
+  runs for minutes is not the model going quiet, and says nothing.
+- **A request that fails** says why in the conversation, in the error colour: what the library reported and, in
+  brackets, what the server answered — `error: Provider stream request failed (HTTP 404: The model gpt-9 does
+  not exist — check the model id and the address with /config)`. For a refused token, a missing model or an
+  address that cannot be reached it also says which setting to look at. Anything in the server's reply that looks
+  like a credential is replaced with `…`, so an error can be pasted into an issue. A request that ends with an
+  empty reply says that instead of leaving a line with only a time on it.
 - **Notices** — a copied selection, a refused command, an exported file — appear
   as muted one-liners.
 
-`Page Up` / `Page Down` and the mouse wheel scroll. The wheel is one line a notch when you nudge it, and
-gathers speed the longer you keep turning (up to ten lines a notch); a pause, or turning the other way,
-starts again at one line. While you are scrolled up, a
+`Page Up` / `Page Down` and the mouse wheel scroll. The wheel moves one row for each event the terminal
+sends, however fast you turn it, and a single frame never moves further than half the screen, so a flick of a
+trackpad cannot jump past content you have not seen. If that is too slow for your mouse, set
+`transcript.mouse_scroll_speed` (see [Configuration](/guide/config)). While you are scrolled up, a
 `↓ back to bottom` badge appears; `Esc` or the badge returns to the newest line.
 While a request is running, `Esc` stops it, exactly as `Ctrl-C` does: the key that
 means "get me out of this" should not depend on remembering which of the two the
@@ -124,7 +141,8 @@ The `›` prompt is where you type. It grows as the draft grows, up to a share o
 the screen.
 
 - **Enter** sends. **Alt-Enter** or **Shift-Enter** adds a newline.
-- **`/`** opens the command menu, **`@`** opens the resource menu (your skills).
+- **`/`** opens the command menu, **`@`** opens the resource menu (your skills, files, and the other running
+  sessions — see [Talking between sessions](/guide/messaging)).
   `Up` / `Down` choose, `Enter` or `Tab` fills in, `Esc` closes.
 - A long paste — over 512 characters, or taller than the composer grows — is
   replaced by a `[pasted text 6012 chars]` chip. **Backspace** removes the whole
@@ -481,7 +499,6 @@ half keeps the two keys worth remembering (`^C/Esc to interrupt`, `^D exit`) in 
 | `●` / a blinking `✦` | The dot is idle; the blinking sparkle is work in progress. |
 | `ready`, `running` | The current state — or a one-off note, such as the command being run or a copied selection. |
 | `· deny`, `· safe`, `· auto` | The shell permission, when it is not the default `ask`. |
-| `New session` | The session's title, or `New session` before the agent names it. |
 | `↑18.4k ↓900` | Tokens sent to the model, and tokens it generated, this session. |
 | `71.2% cached` | The share of the input the provider served from its cache. |
 | `74 tok/s` | Generated tokens per second of model time, averaged over the session. |

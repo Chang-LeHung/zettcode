@@ -29,7 +29,7 @@ T = TypeVar("T")
 
 #: Top-level keys the config file may set; anything else is a typo.
 CONFIGURABLE = frozenset(
-    {"models", "transcript", "agents_md", "ask_user", "skills", "mcp", "plugins", "update", "harness"}
+    {"models", "transcript", "agents_md", "ask_user", "skills", "mcp", "plugins", "update", "harness", "sessions"}
 )
 
 #: Keys one ``[[models]]`` entry may set.
@@ -48,7 +48,7 @@ MODEL_KEYS = frozenset(
 )
 
 #: Keys the ``[transcript]`` table may set.
-TRANSCRIPT_KEYS = frozenset({"max_entries"})
+TRANSCRIPT_KEYS = frozenset({"max_entries", "mouse_scroll_speed"})
 
 #: Keys the ``[agents_md]`` table may set.
 AGENTS_MD_KEYS = frozenset({"enabled"})
@@ -67,6 +67,9 @@ PLUGIN_KEYS = frozenset({"enabled", "disable"})
 
 #: Keys the ``[update]`` table may set.
 UPDATE_KEYS = frozenset({"enabled"})
+
+#: Keys the ``[sessions]`` table may set.
+SESSIONS_KEYS = frozenset({"enabled"})
 
 #: Keys the ``[harness]`` table may set.
 HARNESS_KEYS = frozenset({"subagent", "subagent_max_iterations", "todowrite"})
@@ -102,6 +105,12 @@ KEEP_SHARE = 4
 #: Conversation entries kept on screen before the oldest are dropped. The
 #: session file keeps the whole tree, so this bounds scrollback, not history.
 DEFAULT_TRANSCRIPT_MAX_ENTRIES = 1024
+
+#: Rows one mouse-wheel event scrolls the transcript by: one, as Codex does, however fast they come.
+DEFAULT_MOUSE_SCROLL_SPEED = 1.0
+
+#: The fastest it may be set to: a notch of the wheel moves a page, and no more can be wanted.
+MAX_MOUSE_SCROLL_SPEED = 20.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -211,6 +220,9 @@ class ZettCodeConfig:
         transcript_max_entries: Conversation entries the shell keeps on screen;
             older ones are dropped from the display while the session file
             keeps the whole tree.
+        mouse_scroll_speed: Rows one mouse-wheel event scrolls the transcript
+            by. A fraction is carried to the next event, so ``0.5`` is a row
+            every second event and ``3`` is three rows a notch.
         agents_md_enabled: Read the ``AGENTS.md`` files that apply to the
             workspace and give them to the model as project instructions.
         ask_user_enabled: Give the model the ``ask_user`` tool, which pauses a
@@ -235,6 +247,9 @@ class ZettCodeConfig:
         todowrite_enabled: Offer the ``todo_write`` tool, whose list the shell
             shows in its plan panel. Off by default: a plan is a turn spent
             updating it, and not every session wants one.
+        sessions_enabled: Register with the background session broker, so this session can be
+            messaged by the others and message them: ``@name`` in the composer and the
+            ``send_message`` and ``list_sessions`` tools.
         update_enabled: Ask PyPI, in the background, whether a newer release
             exists, and offer it on a later start.
         update_file: Where that check leaves what it found; one small JSON file.
@@ -250,6 +265,7 @@ class ZettCodeConfig:
     parallel_tool_call: bool = True
     max_iterations: int = 360
     transcript_max_entries: int = DEFAULT_TRANSCRIPT_MAX_ENTRIES
+    mouse_scroll_speed: float = DEFAULT_MOUSE_SCROLL_SPEED
     agents_md_enabled: bool = True
     ask_user_enabled: bool = True
     skills_enabled: bool = True
@@ -261,6 +277,7 @@ class ZettCodeConfig:
     subagent_enabled: bool = True
     subagent_max_iterations: int = DEFAULT_SUBAGENT_MAX_ITERATIONS
     todowrite_enabled: bool = False
+    sessions_enabled: bool = True
     update_enabled: bool = True
     update_file: Path = DEFAULT_UPDATE_FILE
 
@@ -278,6 +295,8 @@ class ZettCodeConfig:
             raise ValueError("subagent_max_iterations must be positive")
         if self.transcript_max_entries < 1:
             raise ValueError("transcript_max_entries must be positive")
+        if not 0 < self.mouse_scroll_speed <= MAX_MOUSE_SCROLL_SPEED:
+            raise ValueError(f"mouse_scroll_speed must be greater than 0 and at most {MAX_MOUSE_SCROLL_SPEED:g}")
         object.__setattr__(self, "workspace", workspace)
         object.__setattr__(self, "store", store)
         object.__setattr__(
@@ -492,6 +511,7 @@ def load_config(
     transcript = _read_table(data.get("transcript"), "transcript", source, TRANSCRIPT_KEYS)
     update = _read_table(data.get("update"), "update", source, UPDATE_KEYS)
     harness = _read_table(data.get("harness"), "harness", source, HARNESS_KEYS)
+    sessions = _read_table(data.get("sessions"), "sessions", source, SESSIONS_KEYS)
 
     return ZettCodeConfig(
         workspace=Path(workspace),
@@ -502,6 +522,10 @@ def load_config(
             transcript.get("max_entries", DEFAULT_TRANSCRIPT_MAX_ENTRIES),
             f"Config key 'transcript.max_entries' in {source}",
             int,
+        ),
+        mouse_scroll_speed=_number(
+            transcript.get("mouse_scroll_speed", DEFAULT_MOUSE_SCROLL_SPEED),
+            f"Config key 'transcript.mouse_scroll_speed' in {source}",
         ),
         agents_md_enabled=bool(_setting(agents_md, "enabled", bool, True)),
         ask_user_enabled=bool(_setting(ask_user, "enabled", bool, True)),
@@ -518,5 +542,6 @@ def load_config(
             int,
         ),
         todowrite_enabled=bool(_setting(harness, "todowrite", bool, False)),
+        sessions_enabled=bool(_setting(sessions, "enabled", bool, True)),
         update_enabled=bool(_setting(update, "enabled", bool, True)),
     )

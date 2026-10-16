@@ -4,6 +4,7 @@ from dataclasses import replace
 
 import pytest
 
+from zettcode.app.agent.conversation.presenters import relay_detail
 from zettcode.tui import DARK, EXAMPLE, LIGHT, ThemeFileError, load_theme, theme_from_toml
 from zettcode.tui.render import highlight, language_for, languages
 from zettcode.tui.widgets.markdown import render_markdown
@@ -207,8 +208,9 @@ def test_load_theme_reads_the_documented_example(tmp_path):
 
     assert theme.code.keyword == "#e58fa8"
     assert theme.accent == "#a7c080"
-    assert theme.tools.read == "#a7c080"
-    assert theme.tools.shell == "#7fbbb3"
+    assert theme.tools.read == "#89b4fa" != DARK.tools.read
+    assert theme.tools.shell == "#fab387" != DARK.tools.shell
+    assert theme.tools.write == DARK.tools.write, "what the example leaves out keeps the palette's own"
 
 
 def test_a_theme_file_can_recolour_one_tool_family(tmp_path):
@@ -226,17 +228,18 @@ def test_load_theme_reports_a_missing_file(tmp_path):
         load_theme(tmp_path / "missing.toml")
 
 
+def _luminance(value: str) -> float:
+    """Return the WCAG relative luminance of a ``#rrggbb`` colour."""
+    channels = []
+    for index in (1, 3, 5):
+        channel = int(value[index : index + 2], 16) / 255
+        channels.append(channel / 12.92 if channel <= 0.04045 else ((channel + 0.055) / 1.055) ** 2.4)
+    return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
+
+
 def _contrast(first: str, second: str) -> float:
     """Return the WCAG contrast ratio between two ``#rrggbb`` colours."""
-
-    def luminance(value: str) -> float:
-        channels = []
-        for index in (1, 3, 5):
-            channel = int(value[index : index + 2], 16) / 255
-            channels.append(channel / 12.92 if channel <= 0.04045 else ((channel + 0.055) / 1.055) ** 2.4)
-        return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
-
-    lighter, darker = sorted((luminance(first), luminance(second)), reverse=True)
+    lighter, darker = sorted((_luminance(first), _luminance(second)), reverse=True)
     return (lighter + 0.05) / (darker + 0.05)
 
 
@@ -252,3 +255,19 @@ def test_a_side_question_stays_readable_on_its_own_surface():
 
     washed = theme_from_toml('[ui]\nsurface_side = "#7f8a86"\n')
     assert _contrast(washed.subtle, washed.surface_side) < 4.5  # the pinned pair is not accidental
+
+
+def test_a_message_between_sessions_stays_readable_on_its_own_surface():
+    """The peer surface leans blue; the body text and the header's quiet detail have to survive on it."""
+    for theme in (DARK, LIGHT):
+        assert _contrast(theme.text, theme.surface_peer) >= 7, theme.name
+        assert _contrast(relay_detail(theme), theme.surface_peer) >= 4.5, theme.name
+        # It is a neighbour of the reader's own message, not a band of its own: about as light as it.
+        assert abs(_luminance(theme.surface_peer) - _luminance(theme.surface_alt)) < 0.05, theme.name
+        assert _contrast(theme.tools.message, theme.surface_peer) >= 3, theme.name
+        assert _contrast(theme.warning, theme.surface_peer) >= 3, theme.name
+        assert _contrast(theme.accent, theme.surface_peer) >= 3, theme.name
+
+
+def test_the_peer_surface_can_be_recoloured_from_a_theme_file():
+    assert theme_from_toml('[ui]\nsurface_peer = "#102030"\n').surface_peer == "#102030"

@@ -20,6 +20,12 @@ end a conversation:
   server starts and when it is ready, with how long it took and how many tools it brought. A server
   whose tool list is already cached starts nothing, so it says nothing.
 
+  That is said **once per session, at its first turn**: it explains why that turn was slow, and only
+  that turn. The framework forgets a tool list after five minutes and lists it again at the top of the
+  next request, which in a long conversation is most turns; a reader does not need to be told again
+  each time that servers they already know about were looked at. A subagent, which has a session of its
+  own beside the one the reader is in, says nothing: the reader never asked it anything.
+
 A tool that fails while it runs is the framework's own business and already harmless: the failure
 comes back to the model as an ordinary failed tool result, and the model carries on.
 
@@ -69,6 +75,8 @@ class ReportingMcpExtension(McpExtension):
         self._checked: tuple[int, int] | None | object = _UNCHECKED
         #: Lines to say at the first request: what went wrong before there was a request to say it in.
         self.startup_issues: list[str] = []
+        #: The sessions whose first turn has been and gone, which is when the start of the servers is said.
+        self._narrated: set[str] = set()
 
     async def on_tool(self, context: AgentRunContext) -> None:
         """Register the tools of every server that works, and tell the reader about the ones that do not.
@@ -86,6 +94,9 @@ class ReportingMcpExtension(McpExtension):
             return
         finally:
             _DISCOVERING.reset(token)
+            # After the discovery, not before: every server of this turn is narrated or none is.
+            if self._is_a_reader_session(context):
+                self._narrated.add(cast(str, context.config.session_id))
         for line in (*self.startup_issues, *self._config_issues(), *self._server_issues(context)):
             await self._say(context, line)
         self.startup_issues.clear()
@@ -99,8 +110,10 @@ class ReportingMcpExtension(McpExtension):
         """
         context = _DISCOVERING.get()
         cached = self._tool_cache.get(server.name)
-        starts = context is not None and not (
-            cached is not None and cached.server == server and cached.expires_at > time.monotonic()
+        starts = (
+            context is not None
+            and self._first_turn_of_a_reader_session(context)
+            and not (cached is not None and cached.server == server and cached.expires_at > time.monotonic())
         )
         began = time.monotonic()
         if starts:
@@ -113,6 +126,15 @@ class ReportingMcpExtension(McpExtension):
             noun = "tool" if count == 1 else "tools"
             await self._say_quietly(context, f"MCP server {server.name!r} is ready: {count} {noun}, {took:.1f}s")
         return tools
+
+    @staticmethod
+    def _is_a_reader_session(context: AgentRunContext) -> bool:
+        """Return whether this request belongs to a session the reader is in, not to a subagent's own."""
+        return not context.config.parent_session_id
+
+    def _first_turn_of_a_reader_session(self, context: AgentRunContext) -> bool:
+        """Return whether this is the first request its session has made, in a session the reader is in."""
+        return self._is_a_reader_session(context) and cast(str, context.config.session_id) not in self._narrated
 
     async def _say_quietly(self, context: AgentRunContext | None, text: str) -> None:
         """Say a line without letting the saying fail the discovery it reports on."""

@@ -20,6 +20,7 @@ from .text import (
     truncate_spans,
     wrap_columns,
     wrap_spans,
+    wrap_words,
 )
 
 __all__ = [
@@ -62,4 +63,5 @@ __all__ = [
     "truncate_spans",
     "wrap_columns",
     "wrap_spans",
+    "wrap_words",
 ]

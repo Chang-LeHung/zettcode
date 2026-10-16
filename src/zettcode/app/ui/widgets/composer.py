@@ -12,7 +12,10 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Sequence
 
-from ....tui import Span, Style, TextArea
+from ....tui import Canvas, KeyEvent, Point, Span, Style, TextArea
+from ....tui.core.events import AnyEvent
+from ....tui.core.host import Host
+from ....tui.render import display_width
 from ...agent.agent.prompt import MentionPart, PromptPart, plain_text_part
 from ...agent.dialogue.mentions import MENTION
 from ..clipboard import image_from_paste
@@ -25,6 +28,9 @@ MENTION_END = re.compile(MENTION.pattern + r"\Z")
 COMMAND_END = re.compile(COMMAND.pattern + r"\Z")
 #: The label an image chip carries, at the end of the text that was written before its picture.
 IMAGE_LABEL_END = re.compile(r"\[image #\d+\]\Z")
+
+#: What a locked composer shows in the middle of its row, and in the prompt's place when a command is being typed.
+LOCK = "\U0001f512"
 
 
 def _split_mentions(parts: Sequence[PromptPart]) -> tuple[PromptPart, ...]:
@@ -76,6 +82,11 @@ class Composer(TextArea):
 
     def __init__(self, **kwargs: object) -> None:
         """Build the editor and start with no pasted text standing in."""
+        self._locked = False
+        self._free_prompt = ""
+        self._free_placeholder = ""
+        #: Called when Enter is pressed on a locked composer with nothing typed: the reader asking to try again.
+        self.on_locked_enter: Callable[[], None] | None = None
         super().__init__(**kwargs)  # type: ignore[arg-type]
         self.pastes: dict[str, str] = {}
         self.images: dict[str, tuple[bytes, str]] = {}
@@ -87,6 +98,91 @@ class Composer(TextArea):
         self.is_command: Callable[[str], bool] = lambda name: True
         self.is_mention: Callable[[str], bool] = lambda token: True
         self._hits: tuple[str, tuple[tuple[int, int, str], ...]] | None = None
+
+    # -- locked ---------------------------------------------------------------------------------
+    @property
+    def locked(self) -> bool:
+        """Return whether the session is another process's, so nothing can be written to it from here."""
+        return self._locked
+
+    @locked.setter
+    def locked(self, value: bool) -> None:
+        self._locked = value
+
+    @property
+    def prompt(self) -> str:
+        """Return the arrow, or — locked — nothing, or the lock where a command being typed has its arrow."""
+        if not self._locked:
+            return self._free_prompt
+        return f"{LOCK} " if self.text else ""
+
+    @prompt.setter
+    def prompt(self, value: str) -> None:
+        self._free_prompt = value
+
+    @property
+    def placeholder(self) -> str:
+        """Return the hint, which a locked composer does not give: the lock is what it shows."""
+        return "" if self._locked else self._free_placeholder
+
+    @placeholder.setter
+    def placeholder(self, value: str) -> None:
+        self._free_placeholder = value
+
+    def render(self, canvas: Canvas) -> None:
+        """Paint the editor; locked and empty, the lock in the middle of the row and no arrow."""
+        super().render(canvas)
+        if not (self._locked and not self.text) or self.rect.empty:
+            return
+        band = self.theme.surface_alt if self.surface else None
+        banded = self.surface and self.rect.height >= 3
+        inner = self.rect.height - (2 if banded else 0)
+        row = self.rect.y + (1 if banded else 0) + (inner - 1) // 2
+        column = self.rect.x + max(0, (self.rect.width - display_width(LOCK)) // 2)
+        canvas.draw_text(column, row, LOCK, Style(foreground=self.theme.warning, background=band), max_width=2)
+
+    def cursor(self) -> Point | None:
+        """Show no cursor over the lock: there is nothing here to type into."""
+        if self._locked and not self.text:
+            return None
+        return super().cursor()
+
+    def handle(self, event: AnyEvent, host: Host) -> bool:
+        """Edit as usual; locked, let through only what a command is made of, and make Enter a request to retry.
+
+        What a locked draft may become is checked after the editor has acted on the key, and the draft put back
+        if it may not be: every way of changing it (typing, a paste, history, undo, a completion) goes through
+        here, so none needs its own guard. Deleting is always allowed, which is how a draft left over from the
+        session that was left can be cleared.
+        """
+        if not self._locked:
+            return super().handle(event, host)
+        if (
+            isinstance(event, KeyEvent)
+            and event.key == "enter"
+            and not event.alt
+            and not self.text.strip()
+            and host.focused_widget() is self
+        ):
+            if self.on_locked_enter is not None:
+                self.on_locked_enter()
+            return True
+        before = (self.text, self.position)
+        handled = super().handle(event, host)
+        if self.text != before[0] and not self._allowed_when_locked(before[0], self.text):
+            self.text, self.position = before
+        return handled
+
+    @staticmethod
+    def _allowed_when_locked(before: str, after: str) -> bool:
+        """Return whether a locked draft may change from ``before`` to ``after``: to a command, to nothing, or shorter."""
+        return after == "" or after.lstrip().startswith("/") or len(after) < len(before)
+
+    def attach_image(self, data: bytes, media_type: str) -> str:
+        """Stand one clipboard image in for itself and return its chip label; a locked composer takes none."""
+        if self._locked:
+            return ""
+        return self._attach_image(data, media_type)
 
     def paste(self, text: str) -> None:
         """Insert a paste: an image as a picture chip, a large block as a text chip.
@@ -192,7 +288,7 @@ class Composer(TextArea):
         self._leave_history()
         self._changed()
 
-    def attach_image(self, data: bytes, media_type: str) -> str:
+    def _attach_image(self, data: bytes, media_type: str) -> str:
         """Stand one clipboard image in for itself and return its chip label.
 
         Args:

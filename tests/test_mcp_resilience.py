@@ -74,10 +74,10 @@ class _Client:
 class _Context:
     """The part of an agent run the extension touches, for the tests that call ``on_tool`` directly."""
 
-    def __init__(self) -> None:
+    def __init__(self, session_id: str = "s1", parent_session_id: str | None = None) -> None:
         from types import SimpleNamespace
 
-        self.config = SimpleNamespace(session_id="s1")
+        self.config = SimpleNamespace(session_id=session_id, parent_session_id=parent_session_id)
         self.tools: dict[str, object] = {}
         self.events: list[AgentEvent] = []
 
@@ -562,18 +562,109 @@ async def test_a_server_whose_tools_are_cached_starts_nothing_and_says_nothing(t
     assert fake.opened == ["docs"], "the second request opened nothing, which is why there is nothing to say"
 
 
-async def test_a_cache_that_has_expired_starts_again_and_says_so_again(tmp_path):
+async def test_a_cache_that_has_expired_starts_again_but_the_same_session_is_not_told_again(tmp_path):
+    """The framework forgets a tool list after five minutes, which in a long conversation is most turns."""
     fake = FakeServers(docs={"search": "ok"})
     extension = ReportingMcpExtension(
         config_path=_file(tmp_path, {"docs": _entry("docs")}), client_factory=fake.factory, tools_cache_ttl=0.05
     )
-    await extension.on_tool(_Context())
+    first = _Context()
+    await extension.on_tool(first)
     await asyncio.sleep(0.1)
     again = _Context()
 
     await extension.on_tool(again)
 
-    assert [line for line in again.progress if line.startswith("Starting")]
+    assert len(first.progress) == 2
+    assert fake.opened == ["docs", "docs"], "the server was started again; the reader was not told"
+    assert again.progress == [] and "docs__search" in again.tools
+
+
+async def test_every_later_turn_of_a_session_stays_quiet_however_many_there_are(tmp_path):
+    fake = FakeServers(docs={"search": "ok"})
+    extension = _extension(_file(tmp_path, {"docs": _entry("docs")}), fake)
+    told = []
+
+    for _ in range(6):
+        context = _Context()
+        await extension.on_tool(context)
+        told.append(len(context.progress))
+
+    assert told == [2, 0, 0, 0, 0, 0]
+    assert len(fake.opened) == 6, "with the cache off every turn started it, silently"
+
+
+async def test_a_new_session_is_told_at_its_first_turn_and_not_again(tmp_path):
+    """Starting a new session or resuming another is entering one: its first turn explains itself."""
+    fake = FakeServers(docs={"search": "ok"})
+    extension = _extension(_file(tmp_path, {"docs": _entry("docs")}), fake)
+
+    one, one_again, two, two_again = _Context("one"), _Context("one"), _Context("two"), _Context("two")
+    for context in (one, one_again, two, two_again):
+        await extension.on_tool(context)
+
+    assert [len(c.progress) for c in (one, one_again, two, two_again)] == [2, 0, 2, 0]
+
+
+async def test_going_back_to_a_session_already_told_does_not_tell_it_again(tmp_path):
+    fake = FakeServers(docs={"search": "ok"})
+    extension = _extension(_file(tmp_path, {"docs": _entry("docs")}), fake)
+    contexts = [_Context(name) for name in ("one", "two", "one")]
+
+    for context in contexts:
+        await extension.on_tool(context)
+
+    assert [len(c.progress) for c in contexts] == [2, 2, 0]
+
+
+async def test_a_subagent_has_a_session_of_its_own_and_says_nothing_about_servers_the_reader_did_not_ask_for(tmp_path):
+    fake = FakeServers(docs={"search": "ok"})
+    extension = _extension(_file(tmp_path, {"docs": _entry("docs")}), fake)
+    child = _Context("child-1", parent_session_id="one")
+    parent = _Context("one")
+
+    await extension.on_tool(child)
+    await extension.on_tool(parent)
+
+    assert child.progress == [] and "docs__search" in child.tools, "it has the tools, and is not narrated"
+    assert len(parent.progress) == 2, "and the child's turn did not use up the parent's first"
+
+
+async def test_a_session_whose_first_turn_failed_to_discover_is_still_past_its_first_turn(tmp_path, monkeypatch):
+    fake = FakeServers(docs={"search": "ok"})
+    extension = _extension(_file(tmp_path, {"docs": _entry("docs")}), fake)
+    calls = {"count": 0}
+    real = type(extension).__mro__[1].on_tool
+
+    async def broken_once(self, context):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise RuntimeError("the framework fell over")
+        await real(self, context)
+
+    monkeypatch.setattr(type(extension).__mro__[1], "on_tool", broken_once)
+    first, second = _Context(), _Context()
+
+    await extension.on_tool(first)
+    await extension.on_tool(second)
+
+    assert any("MCP is unavailable for this request" in line for line in first.said)
+    assert second.progress == [], "it was the session's first turn, and it has had it"
+
+
+async def test_a_problem_with_a_server_is_still_said_when_it_arises_in_a_later_turn(tmp_path):
+    """Only the story of a start is limited to the first turn; news that something is wrong is not."""
+    fake = FakeServers(docs={"search": "ok"}, dead=None)
+    path = _file(tmp_path, {"docs": _entry("docs")})
+    extension = _extension(path, fake)
+    await extension.on_tool(_Context())
+    path.write_text(json.dumps({"servers": {"docs": _entry("docs"), "dead": _entry("dead")}}), encoding="utf-8")
+    later = _Context()
+
+    await extension.on_tool(later)
+
+    assert later.progress == []
+    assert any("'dead' is not available" in line for line in later.notices)
 
 
 async def test_a_command_with_a_key_in_it_is_never_repeated_in_what_is_said(tmp_path):
@@ -628,10 +719,10 @@ async def test_the_progress_lines_reach_the_transcript_as_notices_through_the_re
 
 
 async def test_a_server_that_starts_in_one_request_does_not_speak_in_another(tmp_path):
-    """Two requests discover at once (a subagent beside its parent); each hears about its own start."""
+    """Two sessions' first turns discover at once; each hears about its own start."""
     fake = FakeServers(docs={"search": "ok"})
     extension = _extension(_file(tmp_path, {"docs": _entry("docs")}), fake)
-    first, second = _Context(), _Context()
+    first, second = _Context("one"), _Context("two")
 
     await asyncio.gather(extension.on_tool(first), extension.on_tool(second))
 

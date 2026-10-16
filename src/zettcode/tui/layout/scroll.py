@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Sequence
 from dataclasses import replace
@@ -14,34 +15,21 @@ from ..core.widget import Widget
 from ..render import Canvas, TextLine
 from ..render.text import display_width, slice_columns
 
-#: Lines one wheel notch scrolls when the wheel is turned slowly. One line per notch matches a mouse
-#: wheel's own resolution instead of jumping a page's worth of the window.
-WHEEL_STEP = 1
+#: Rows one wheel event scrolls. One event is one row however fast they come, which is how Codex does it:
+#: a mouse wheel's notch is one row, a trackpad that sends sixty events a second scrolls sixty rows a
+#: second, and nothing grows with how long the wheel has been turning. The reader who wants it faster
+#: says so (``ScrollView(wheel_speed=...)``, ``transcript.mouse_scroll_speed`` in the configuration)
+#: instead of the view guessing from how hard they flicked. An earlier version did guess — a turn that
+#: went on gained a row a notch, to ten — and a trackpad's momentum then threw the view across several
+#: pages in one flick.
+WHEEL_SPEED = 1.0
 
-#: Notches closer together than this belong to one turn of the wheel; a longer pause, or the other
-#: direction, starts a new one. Slow deliberate clicks are further apart than this, a flick is not.
-WHEEL_STREAK_GAP = 0.12
-
-#: The first notches of a turn move one line each, so a small nudge lands where it was aimed; after that
-#: a turn that goes on gains one line per notch every ``WHEEL_RAMP_EVENTS`` notches, up to the cap.
-WHEEL_SLOW_EVENTS = 3
-WHEEL_RAMP_EVENTS = 2
-WHEEL_MAX_STEP = 10
-
-
-def wheel_step(streak: int) -> int:
-    """Return the lines the ``streak``-th notch of one continuous turn of the wheel scrolls.
-
-    Args:
-        streak: How many notches the turn has delivered, counting this one; ``1`` is the first.
-
-    A reader who turns the wheel a little wants a little movement, and one who keeps turning it wants
-    to get somewhere, so the step grows with how long the turn has gone on rather than with how fast
-    any one notch came: the first :data:`WHEEL_SLOW_EVENTS` notches are one line each, then a line more
-    every :data:`WHEEL_RAMP_EVENTS`, to :data:`WHEEL_MAX_STEP`.
-    """
-    extra = max(0, streak - WHEEL_SLOW_EVENTS) // WHEEL_RAMP_EVENTS
-    return min(WHEEL_MAX_STEP, WHEEL_STEP + extra)
+#: The most a single frame may move the view by the wheel, as a share of the window: half. Events that
+#: pile up (a terminal that was busy, a flick delivered in one burst) are applied together and drawn
+#: once, so without a bound the rows between where the view was and where it ends up are never drawn at
+#: all, which reads as content that was skipped. Half a window always leaves half of what was on screen
+#: still there to follow.
+WHEEL_FRAME_SHARE = 0.5
 
 
 class LineSource(ABC):
@@ -108,6 +96,7 @@ class ScrollView(Widget):
         selectable: bool = False,
         clock: Callable[[], float] = monotonic,
         double_click_seconds: float = 0.4,
+        wheel_speed: float = WHEEL_SPEED,
     ) -> None:
         """Configure the window, the tail behavior, and the selection state.
 
@@ -119,6 +108,8 @@ class ScrollView(Widget):
             clock: Time source used to detect double clicks.
             double_click_seconds: Window in which two clicks on one line count as
                 a double click, which selects the whole line.
+            wheel_speed: Rows one wheel event scrolls; a fraction is carried to the next event, so
+                ``0.5`` is a row every second event. Not positive or not finite is the default.
         """
         super().__init__()
         self.source = source
@@ -136,9 +127,9 @@ class ScrollView(Widget):
         self._double_click = False
         self._last_click_at = float("-inf")
         self._last_click_line: int | None = None
-        self._wheel_at = float("-inf")
-        self._wheel_direction = 0
-        self._wheel_streak = 0
+        self.wheel_speed = wheel_speed if math.isfinite(wheel_speed) and wheel_speed > 0 else WHEEL_SPEED
+        self._wheel_owed = 0.0
+        self._frame_start: int | None = None
 
     @property
     def focusable(self) -> bool:
@@ -164,6 +155,7 @@ class ScrollView(Widget):
         count = self.line_count()
         wanted = count - self.rect.height if self.follow_tail else self.top
         self.top = self._clamp(wanted, count)
+        self._frame_start = None  # the next frame measures how far the wheel has moved from here
         for row in range(self.rect.height):
             index = self.top + row
             if index >= count:
@@ -358,17 +350,29 @@ class ScrollView(Widget):
         self.follow_tail = maximum == 0 or self.top >= maximum
 
     def _wheel(self, direction: int) -> None:
-        """Scroll one wheel notch, by more lines the longer the wheel has been turning one way.
+        """Scroll one wheel event: :attr:`wheel_speed` rows, and never far enough in a frame to skip content.
+
+        The fraction of a row a slow speed leaves over is carried to the next event, and dropped when the
+        wheel turns the other way, so a reversal starts from a whole row.
 
         Args:
             direction: ``-1`` for up, ``1`` for down.
         """
-        now = self.clock()
-        if direction != self._wheel_direction or now - self._wheel_at > WHEEL_STREAK_GAP:
-            self._wheel_streak = 0
-        self._wheel_direction, self._wheel_at = direction, now
-        self._wheel_streak += 1
-        self.scroll_by(direction * wheel_step(self._wheel_streak))
+        if self._wheel_owed * direction < 0:
+            self._wheel_owed = 0.0
+        self._wheel_owed += direction * self.wheel_speed
+        rows = int(self._wheel_owed)
+        # A speed such as 0.1 reaches a whole row after repeated addition only by a hair; round the hair off.
+        if rows == 0 and abs(round(self._wheel_owed) - self._wheel_owed) < 1e-9 and round(self._wheel_owed) != 0:
+            rows = int(round(self._wheel_owed))
+        self._wheel_owed -= rows
+        if rows == 0:
+            return
+        if self._frame_start is None:
+            self._frame_start = self.top
+        reach = max(1, int(self.rect.height * WHEEL_FRAME_SHARE))
+        target = min(max(self.top + rows, self._frame_start - reach), self._frame_start + reach)
+        self.scroll_to(target)
 
     def scroll_by(self, amount: int) -> None:
         """Move the window by a relative number of lines."""

@@ -22,8 +22,10 @@ from typing import TypeAlias
 
 from zett_agent.extensions.skill import SkillExtension
 
+from ....broker.text import folder_name
 from ....config import ZettCodeConfig
 from ...registry import Provider, Registry
+from .relay import Peer
 
 #: One mention token: an ``@`` at a word boundary, then a name. A name is what a
 #: skill is called (lowercase words) or where a file lives (``src/app.py``), so it
@@ -69,6 +71,14 @@ class MentionProvider(Provider[Mention], ABC):
     def expand(self, name: str) -> str | None:
         """Return the text one resource injects, or ``None`` when it is unknown."""
 
+    def rename(self, name: str) -> str | None:
+        """Return the words the model reads in place of ``@name``, or ``None`` to leave the token as typed.
+
+        Most references are meaningful to the model as they are (a path, a skill's name). One that is not —
+        the name of another session — is replaced, so the model is not left holding a word it must guess at.
+        """
+        return None
+
 
 class MentionRegistry(Registry[Mention]):
     """The providers a draft is resolved against, in registration order."""
@@ -113,6 +123,18 @@ class MentionRegistry(Registry[Mention]):
                 return block
         return None
 
+    def rename_token(self, token: str) -> str | None:
+        """Return the words the model reads in place of one typed token, from the provider that owns it.
+
+        The owner is the first provider that knows the name, which is the one :meth:`expand_token` asks:
+        a session and a file with one name are the session.
+        """
+        name = token[1:] if token.startswith("@") else token
+        for provider in self.mention_providers:
+            if provider.expand(name) is not None:
+                return provider.rename(name)
+        return None
+
 
 class SkillMentions(MentionProvider):
     """Skills discovered from the configured roots, named for the model to load."""
@@ -145,6 +167,98 @@ class SkillMentions(MentionProvider):
         return (
             f'Use the "{skill.name}" skill: call read_skill(name="{skill.name}") '
             "if its instructions are useful and not already in context."
+        )
+
+
+class SessionMentions(MentionProvider):
+    """The other ZettCode sessions that are running, addressed by the name they are listed under.
+
+    A draft that *begins* with one of these is a message to that session and is sent there instead of
+    to the model (see :mod:`zettcode.app.ui.messaging`). A session named further along is only a
+    reference, which tells the model what the name means and that it can send a message to it.
+
+    Candidates are read from what the connection last reported — a list in memory — and never from
+    the broker: completion runs on every keystroke after an ``@``.
+    """
+
+    kind = "session"
+
+    def __init__(self, peers: Callable[[], Sequence[Peer]]) -> None:
+        """Offer whichever sessions ``peers`` returns when asked.
+
+        Args:
+            peers: The other sessions as of now; called for every query, so it must not block.
+        """
+        self._peers = peers
+
+    def candidates(self, query: str) -> Sequence[Mention]:
+        """List the sessions ``query`` could mean, the likeliest first.
+
+        A reader looks for a session by what they remember of it, which is its name, what it was about,
+        the folder it works in, or the start of its id — so any of those matches, with a session whose
+        *name* starts with the query before one that only mentions it elsewhere. The token offered is
+        always the name, because that is what can be sent to.
+        """
+        lowered = query.lower()
+        ranked: list[tuple[int, int, Peer]] = []
+        for order, peer in enumerate(self._peers()):
+            if peer.handle.lower().startswith(lowered):
+                ranked.append((0, order, peer))
+            elif (
+                lowered in peer.handle.lower() or lowered in peer.title.lower() or lowered in self._folder(peer).lower()
+            ):
+                ranked.append((1, order, peer))
+            elif len(lowered) >= 4 and peer.session_id.lower().startswith(lowered):
+                ranked.append((2, order, peer))
+        return tuple(
+            Mention(token=f"@{peer.handle}", kind=self.kind, name=peer.handle, description=self._describe(peer))
+            for _, _, peer in sorted(ranked, key=lambda item: item[:2])
+        )
+
+    @staticmethod
+    def _folder(peer: Peer) -> str:
+        """Return the last part of the directory the session works in."""
+        return folder_name(peer.workspace)
+
+    @classmethod
+    def _describe(cls, peer: Peer) -> str:
+        """Return the menu's line for a session: what it is about, whether it is working, where it is."""
+        parts = [peer.title or "untitled"]
+        if peer.status != "idle":
+            parts.append(peer.status)
+        folder = cls._folder(peer)
+        if folder:
+            parts.append(folder)
+        return " \u00b7 ".join(parts)
+
+    def rename(self, name: str) -> str | None:
+        """Put ``session "work"`` where the reader typed ``@work``: the model has no use for the ``@``."""
+        return f'session "{name}"' if self._find(name) is not None else None
+
+    def _find(self, name: str) -> Peer | None:
+        """Return the session called ``name`` among those running now."""
+        return next((peer for peer in self._peers() if peer.handle == name), None)
+
+    def expand(self, name: str) -> str | None:
+        """Tell the model what the reader's ``@`` meant, for a draft that names a session inside a sentence.
+
+        Nothing is sent from here: the model is told which session the words mean and how to reach it, and
+        decides for itself whether the request calls for a message. A draft that *begins* with the name
+        never gets this far, because the shell sends it to that session itself.
+        """
+        peer = self._find(name)
+        if peer is None:
+            return None
+        where = f" in {peer.workspace}" if peer.workspace else ""
+        about = f' It is titled "{peer.title}".' if peer.title else ""
+        return (
+            f'In the message above, `session "{name}"` is what the user wrote as @{name}. In ZettCode an @ before a '
+            f"name means another ZettCode session that is running right now, not a file or a skill. This one works{where}.{about}\n"
+            f"If the user's request is for that session to do or know something, send it a message with the "
+            f'send_message tool: send_message(to="{peer.session_id}", message=...). Write the message so the '
+            f"other session can act on it without having seen this conversation. If the request is only about the "
+            f"session (what it is doing, where it is), list_sessions answers that. Do not send anything the "
+            f"user did not ask you to pass on."
         )
 
 

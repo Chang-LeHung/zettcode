@@ -24,6 +24,20 @@ atexit.register(shutil.rmtree, _HOME, ignore_errors=True)
 
 
 @pytest.fixture(autouse=True)
+def _no_broker_process(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep a test run from starting the background session broker.
+
+    A shell that starts connects to the broker and starts one when none answers, and a broker is a
+    process that outlives whoever started it. No test of the shell wants one: the tests of the broker
+    itself start theirs explicitly, on a directory of their own, and the tests of the shell hand it a
+    fake.
+    """
+    from zettcode.broker import finder
+
+    monkeypatch.setattr(finder, "spawn_broker", lambda directory: None)
+
+
+@pytest.fixture(autouse=True)
 def _no_installed_plugins(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep the suite hermetic: an installed plugin must not join a test run.
 

@@ -165,16 +165,17 @@ class TranscriptView(ScrollView):
     the pointer; everything else, the wheel included, is ScrollView's.
     """
 
-    def __init__(self, transcript: Transcript, *, theme: Theme) -> None:
+    def __init__(self, transcript: Transcript, *, theme: Theme, wheel_speed: float = 1.0) -> None:
         """Scroll the transcript and keep its line source in sync with the theme.
 
         Args:
             transcript: Model rendered by this view.
             theme: Initial palette; ``render`` refreshes it from the live theme.
+            wheel_speed: Rows one wheel event scrolls (``transcript.mouse_scroll_speed``).
         """
         self.transcript = transcript
         self.transcript_source = TranscriptSource(transcript, theme=theme, frame=lambda: transcript.frame)
-        super().__init__(self.transcript_source, follow_tail=True, selectable=True)
+        super().__init__(self.transcript_source, follow_tail=True, selectable=True, wheel_speed=wheel_speed)
 
     def render(self, canvas: Canvas) -> None:
         """Refresh the source theme, then float the return badge over the rows."""

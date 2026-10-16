@@ -47,13 +47,15 @@ from ...tui.widgets import Rule
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from collections.abc import AsyncGenerator
 from ..agent.agent import ZettCodeAgent
-from ..agent.agent.prompt import PromptPart, carries_image, mention_hint
+from ..agent.agent.prompt import PromptPart, carries_image, mention_hint, mention_parts
 from ..agent.conversation.projection import TranscriptProjector
 from ..agent.conversation.rows import EFFORT_SECONDS, EffortFrame, clock_text, effort_frame, elapsed_text
 from ..agent.conversation.transcript import Transcript
 from ..agent.dialogue.ask import AskUserQuestion
-from ..agent.dialogue.mentions import MentionRegistry
+from ..agent.dialogue.mentions import MentionRegistry, SessionMentions
+from ..agent.dialogue.relay import Relayed
 from ..agent.errors import describe_error
+from ..agent.extensions.messenger import Messenger
 from ..agent.extensions.usage import UsageSnapshot
 from ..commands import Command, CommandContext, CommandList, CommandResult
 from ..registry import Registry
@@ -61,12 +63,13 @@ from .commands import ShellCommands
 from .followups import FollowUp, FollowUpsMixin
 from .gc_policy import CollectorPolicy, freeze_long_lived
 from .keys import KeysMixin
+from .messaging import MessagingMixin
 from .notices import NoticesMixin
 from .providers import ConfigMixin
 from .rows import RowsMixin
 from .sessions import SessionMixin
 from .settings import SettingsMixin
-from .shell import EFFORT_TOKEN, FLASH_SECONDS, PAGE_SCREEN
+from .shell import EFFORT_TOKEN, EMPTY_REPLY, FLASH_SECONDS, PAGE_SCREEN
 from .updating import UpdateMixin
 from .widgets import (
     WELCOME,
@@ -80,7 +83,15 @@ from .widgets import (
 
 
 class ZettCodeApp(
-    RowsMixin, KeysMixin, FollowUpsMixin, NoticesMixin, SessionMixin, SettingsMixin, ConfigMixin, UpdateMixin
+    RowsMixin,
+    KeysMixin,
+    FollowUpsMixin,
+    MessagingMixin,
+    NoticesMixin,
+    SessionMixin,
+    SettingsMixin,
+    ConfigMixin,
+    UpdateMixin,
 ):
     """Own the application agent, widget tree, keymap, and slash commands."""
 
@@ -103,7 +114,14 @@ class ZettCodeApp(
                 CommandList(agent.plugin_commands),
             ]
         ).items()
-        self.mentions = MentionRegistry(agent.plugin_mentions)
+        #: The line to the other sessions, when the configuration has one; the session names it offers
+        #: for ``@`` come first, because a draft that begins with one is a message to that session.
+        self.messenger: Messenger | None = agent.runtime.messenger
+        self.mentions = MentionRegistry(
+            agent.plugin_mentions
+            if self.messenger is None
+            else (SessionMentions(self.messenger.peers), *agent.plugin_mentions)
+        )
         self.transcript = Transcript(max_entries=agent.runtime.config.transcript_max_entries)
         self.transcript.welcome(WELCOME)
         for failure in agent.plugin_failures:
@@ -117,7 +135,7 @@ class ZettCodeApp(
             on_steering_interrupted=self._steering_interrupted,
         )
         self.agent.set_event_dispatcher(self.projector)
-        self.view = TranscriptView(self.transcript, theme=theme)
+        self.view = TranscriptView(self.transcript, theme=theme, wheel_speed=agent.runtime.config.mouse_scroll_speed)
         self.composer = Composer(
             prompt=f"{PROMPT} ",
             placeholder="Ask ZettCode to do anything",
@@ -130,6 +148,7 @@ class ZettCodeApp(
         # What is painted and taken whole as a command or a reference is only what exists.
         self.composer.is_command = lambda name: self._lookup(name)[0] is not None
         self.composer.is_mention = lambda token: self.mentions.expand_token(token) is not None
+        self.composer.on_locked_enter = self._retry_lock
         #: The row between the conversation and the composer: blank until something
         #: the reader just did needs saying, then a centred line that expires.
         self.flash_line = RichText(self._flash_line, align="center", wrap=False)
@@ -196,6 +215,14 @@ class ZettCodeApp(
         self._editing_slot: int | None = None
         self._follow_ups_held = False
         self._turn_running = False
+        self._inbox: list[Relayed] = []
+        self._sends: set[asyncio.Task[None]] = set()
+        self._lock_watch: asyncio.Task[None] | None = None
+        self._lock_said: str | None = None
+        self._messaging_live = False
+        self._messaging_trouble = False
+        self._messaging_session: str | None = None
+        self._messaging_start: asyncio.Future[None] | None = None
         self._asks: list[AskUserQuestion] = []
         self._ask_total = 0
         #: Drafts typed while a request was in flight, in arrival order: only
@@ -377,9 +404,14 @@ class ZettCodeApp(
         self._warm.add_done_callback(lambda _: freeze_long_lived())
         self.start_update_check()
         self.offer_update()
+        if self.agent.session_locked:
+            self._start_lock_watch()
+        self._start_messaging()
 
     async def stop_background(self) -> None:
         """Release what :meth:`start_background` began, and end a request still in flight."""
+        await self._stop_messaging()
+        self._stop_lock_watch()
         await self._stop_title_task()
         await self._stop_update_task()
         self.collector.close()
@@ -606,6 +638,8 @@ class ZettCodeApp(
             self._task = asyncio.create_task(self._run_command(self._pending.pop(0)))
         elif self._follow_ups and not self._follow_ups_held:
             self._start_follow_up()
+        else:
+            self._start_next_relayed()
 
     def submit(self, value: str) -> bool | None:
         """Start a turn or a slash command, or take a message typed while one runs.
@@ -627,6 +661,17 @@ class ZettCodeApp(
             False when the draft was refused; returning a true value also
             clears the composer.
         """
+        if self.agent.session_locked and not value.startswith("/"):
+            # Only commands are taken, which is how a reader leaves: the composer does not let anything else be
+            # typed, and this is for what arrives some other way (a draft that was there already, a recall).
+            self.flash("this session is open in another ZettCode process; it is read-only here", level="error")
+            return False
+        if not value.startswith("/"):
+            # A draft that begins with the name of an active session is a message to it: sent whatever this
+            # session is doing, because it is not a request to this session's model.
+            sent = self._send_session_message(self.composer.parts())
+            if sent is not None:
+                return sent
         if self._busy:
             if value.startswith("/"):
                 # Which commands are taken mid-request is the command's own
@@ -652,7 +697,7 @@ class ZettCodeApp(
         else:
             # The parts are taken before the composer is cleared, and keep the
             # order the chips sit in, so text and pictures stay interleaved.
-            parts = self.composer.parts()
+            parts = mention_parts(self.composer.parts(), self.mentions)
             if carries_image(parts) and not self.agent.active_model.multimodal:
                 # A pasted base64 image reaches the composer without the shell
                 # having seen the clipboard, so the model's own limits are
@@ -747,7 +792,14 @@ class ZettCodeApp(
         """Drop a queued message a newer steering message superseded."""
         self._drop_steering(text)
 
-    async def _run_prompt(self, prompt: str, parts: Sequence[PromptPart] = (), hint: str | None = None) -> None:
+    async def _run_prompt(
+        self,
+        prompt: str,
+        parts: Sequence[PromptPart] = (),
+        hint: str | None = None,
+        *,
+        relayed: Relayed | None = None,
+    ) -> None:
         """Stream one agent turn, keeping the task panel and transcript current.
 
         Args:
@@ -757,8 +809,16 @@ class ZettCodeApp(
                 sequence falls back to the prompt alone.
             hint: Instructions the draft's ``@`` references contribute; the
                 stored message keeps ``prompt``.
+            relayed: The turn answers a message another session sent, which the transcript draws as
+                that, the model is told where it came from, and the session stores as that.
         """
-        self.projector.begin_turn(prompt)
+        if relayed is None:
+            self.projector.begin_turn(prompt)
+        else:
+            self.projector.begin_turn(prompt, relayed=relayed)
+        if self.messenger is not None:
+            # What this turn answers decides how many hops an answer sent from it carries.
+            self.messenger.answering = relayed
         started = monotonic()
         completed = False
         self._turn_running = True
@@ -772,7 +832,12 @@ class ZettCodeApp(
             # without the keyword argument a reference-carrying turn adds; the
             # cast lets aclosing close the stream when the turn is cancelled.
             turn = parts or (prompt,)
-            stream = self.agent.stream(turn) if hint is None else self.agent.stream(turn, hint=hint)
+            if relayed is not None:
+                stream = self.agent.stream(turn, relayed=relayed)
+            elif hint is None:
+                stream = self.agent.stream(turn)
+            else:
+                stream = self.agent.stream(turn, hint=hint)
             async with aclosing(cast("AsyncGenerator[AgentEvent]", stream)) as events:
                 async for _event in events:
                     self._refresh_tasks()
@@ -785,9 +850,13 @@ class ZettCodeApp(
             self.transcript.error(f"error: {describe_error(error)}")
         else:
             completed = True
+            if self.transcript.turn_said_nothing():
+                self.transcript.notice(EMPTY_REPLY)
             self._title_session_later(self.agent.session_id)
         finally:
             took = elapsed_text(monotonic() - started)
+            if self.messenger is not None:
+                self.messenger.answering = None
             # Before the pinned row is settled, not after: what happened to the waiting
             # messages is part of how the request ended, and the line that says how long it
             # ran stays the last thing in the transcript, where a reader looks for it.
@@ -816,6 +885,7 @@ class ZettCodeApp(
         the flag that says "busy" is what holds the animation token.
         """
         self._busy = busy
+        self._sync_messaging()
         # The collector runs while there is work and is off while there is none, so an idle shell
         # and the reader's typing are never interrupted by it.
         if busy:
@@ -860,6 +930,7 @@ class ZettCodeApp(
                         self.view.scroll_end()
                         self.view.clear_selection()
                         self._remember_session_title()
+                        self._sync_lock()
                         self._usage = self.agent.usage
                         self._refresh_tasks()
                         self._return_follow_ups_to_draft()

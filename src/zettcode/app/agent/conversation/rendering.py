@@ -32,7 +32,8 @@ from pathlib import Path
 
 from ....tui import ELLIPSIS, SEPARATOR
 from ....tui.render import GENERIC, language_for
-from .entries import DeleteEntry, EditEntry, ReadEntry, ToolEntry, WriteEntry
+from .entries import DeleteEntry, EditEntry, MessageEntry, ReadEntry, ToolEntry, WriteEntry
+from .rows import limit_output
 
 #: Output kinds the chain shapes; a link claims one or more of them.
 TOOL = "tool"
@@ -539,6 +540,39 @@ class TaskTool(ToolHandler):
         return output
 
 
+_UUID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+
+
+class MessageTool(ToolHandler):
+    """``send_message``: a message to another session, kept whole so the row can show it."""
+
+    names = frozenset({"send_message"})
+
+    def describe(self, name: str, arguments: Mapping[str, object]) -> ToolRow:
+        """Say who it is for; an id is shortened to its end, which is how a session is named without a title."""
+        return ToolRow(f"Message to {self._recipient(argument(arguments, 'to', '(unknown)'))}")
+
+    @staticmethod
+    def _recipient(to: str) -> str:
+        """Return the recipient as a reader can use it: a name as it is, an id by its last characters."""
+        return f"session {to[-6:]}" if _UUID.fullmatch(to) else to
+
+    def open_tool(
+        self, name: str, arguments: Mapping[str, object], *, id: int, call_id: str, started_at: float
+    ) -> ToolEntry:
+        """A message row, which holds the text that was sent."""
+        message = arguments.get("message")
+        return MessageEntry(
+            id=id,
+            call_id=call_id,
+            tool=name,
+            title=self.describe(name, arguments).title,
+            to=argument(arguments, "to"),
+            message=limit_output(message) if isinstance(message, str) else "",
+            started_at=started_at,
+        )
+
+
 class FallbackTool(ToolHandler):
     """Anything no other link claims: its name and flat arguments, never JSON."""
 
@@ -610,6 +644,7 @@ DEFAULT_RENDERERS = Renderers(
         TodoTool(),
         SkillTool(),
         TaskTool(),
+        MessageTool(),
         FallbackTool(),
         ReasoningHandler(),
         AnswerHandler(),

@@ -24,8 +24,93 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
     from ...config import ModelConfig
 
 
+#: Seconds between the tries to take the lock of a session another process has open: long enough to cost
+#: nothing, short enough that the session is the reader's within a moment of the other process letting go.
+LOCK_POLL_SECONDS = 2.0
+
+
 class SessionMixin(ShellState):
     """Switch the active session and keep its title current."""
+
+    #: The task that keeps trying to take the lock of a session another process has open.
+    _lock_watch: asyncio.Task[None] | None
+    #: Whether the reader has been told the session is read-only here, so that is said once.
+    _lock_said: str | None
+
+    # -- the lock on the session -------------------------------------------------------------------
+    def _sync_lock(self) -> None:
+        """Make the composer, the messaging and the watcher agree with who holds the active session's lock.
+
+        A session another process has open is shown and not written to: the composer shows a lock and takes
+        only commands, the session does not register with the broker (so nobody sends it a message it would
+        turn into a write), and a task tries again every few seconds. Called wherever the active session may
+        have changed: starting, resuming, forking, ``/new``.
+        """
+        locked = self.agent.session_locked
+        self.composer.locked = locked
+        if not locked:
+            self._lock_said = None
+            self._stop_lock_watch()
+        else:
+            if self._lock_said != self.agent.session_id:
+                self._lock_said = self.agent.session_id
+                self.transcript.notice(
+                    "This session is open in another ZettCode process, so it is read-only here. "
+                    "It unlocks by itself when that one lets go; /new starts a new session, "
+                    "/fork carries this conversation into one."
+                )
+            self._start_lock_watch()
+        self._sync_messaging()
+        self.app.invalidate()
+
+    def _start_lock_watch(self) -> None:
+        """Begin trying to take the lock again, when there is a loop to try on."""
+        if self._lock_watch is not None and not self._lock_watch.done():
+            return
+        try:
+            self._lock_watch = asyncio.get_running_loop().create_task(self._watch_lock())
+        except RuntimeError:
+            self._lock_watch = None  # the command line builds the shell with no loop; starting it again starts this
+
+    def _stop_lock_watch(self) -> None:
+        """Stop trying: the session is ours, or another one is open."""
+        watch, self._lock_watch = self._lock_watch, None
+        if watch is not None and watch is not asyncio.current_task():
+            watch.cancel()
+
+    async def _watch_lock(self) -> None:
+        """Try to take the lock until it is had, then load the session again: it moved while it was not ours."""
+        session_id = self.agent.session_id
+        while self.agent.session_locked and self.agent.session_id == session_id:
+            await asyncio.sleep(LOCK_POLL_SECONDS)
+            if self._busy or self.agent.session_id != session_id:
+                continue
+            if self.agent.retake_session():
+                await self._lock_taken(session_id)
+                return
+
+    def _retry_lock(self) -> None:
+        """Enter on a locked composer: try for the lock now, and say how it went."""
+        if self._busy:
+            return
+        session_id = self.agent.session_id
+        if self.agent.retake_session():
+            self._task = asyncio.create_task(self._lock_taken(session_id))
+        else:
+            self.flash("still open in another ZettCode process", level="error")
+
+    async def _lock_taken(self, session_id: str) -> None:
+        """The other process let go: read the session again, so what it wrote is what is on screen, and say so.
+
+        The conversation shown was read when the lock was not ours, and the process that had it has been
+        writing to it since; typing into that would continue a conversation that is no longer there.
+        """
+        if self._busy:
+            return
+        await self._switch_session(session_id)
+        if self.agent.session_id == session_id and not self.agent.session_locked:
+            self.transcript.notice("The other process has let go of this session; it is yours now.")
+            self.app.invalidate()
 
     async def rename_session(self, title: str) -> str:
         """Name the active session and show it in the status line.
@@ -39,6 +124,7 @@ class SessionMixin(ShellState):
         """
         renamed = await self.agent.rename_session(title)
         self._session_title = renamed
+        self._sync_messaging()
         self.app.invalidate()
         return renamed
 
@@ -175,6 +261,7 @@ class SessionMixin(ShellState):
         self.view.follow_tail = True
         self.view.clear_selection()
         self._session_title = stored.title
+        self._sync_lock()
         self._usage = self.agent.usage
         self._refresh_tasks()
         # The held follow-ups continued the conversation being left; they are handed back
@@ -233,6 +320,7 @@ class SessionMixin(ShellState):
     def _remember_session_title(self) -> None:
         """Cache the active session's title, which the status line paints per frame."""
         self._session_title = self.agent.session_title
+        self._sync_messaging()
 
     def _title_session_later(self, session_id: str) -> None:
         """Ask the agent to name a session once, off the composer's critical path."""
@@ -250,6 +338,7 @@ class SessionMixin(ShellState):
             return
         if session_id == self.agent.session_id:
             self._session_title = title
+            self._sync_messaging()
             self.app.invalidate()
 
     async def _stop_title_task(self) -> None:

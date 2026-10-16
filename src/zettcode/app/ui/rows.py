@@ -142,6 +142,7 @@ class RowsMixin(ShellState):
                 title=self._session_title,
                 name=self._session_title or UNTITLED_SESSION,
                 workspace=self.agent.workspace,
+                handle=self.messenger.handle if self.messenger is not None else "",
             ),
             model=ModelState(
                 config=self.agent.active_model,

@@ -37,7 +37,17 @@ from ....tui import (
     TextLine,
     Theme,
 )
-from ....tui.render import SweepSpan, display_width, highlight, inset_line, layout_rich_lines, sweep_spans, truncate
+from ....tui.render import (
+    SweepSpan,
+    blend,
+    display_width,
+    highlight,
+    inset_line,
+    layout_rich_lines,
+    sweep_spans,
+    truncate,
+    wrap_words,
+)
 from ....tui.widgets.markdown import MarkdownSource
 from ...brand import LOGO_LINES
 from .entries import (
@@ -49,8 +59,10 @@ from .entries import (
     FileChangeEntry,
     FileSummary,
     MarkdownEntry,
+    MessageEntry,
     NoticeLevel,
     ReadEntry,
+    RelayEntry,
     TextEntry,
     ThinkingEntry,
     ToolEntry,
@@ -69,6 +81,7 @@ from .rows import (
     duration_text,
     elapsed_text,
     moving,
+    quiet_text,
     sweep_column,
     terminal_safe,
 )
@@ -97,6 +110,8 @@ TOOL_ROLES = {
     "todo_write": "plan",
     "read_skill": "read",
     "task": "subagent",
+    "send_message": "message",
+    "list_sessions": "message",
 }
 
 
@@ -184,11 +199,27 @@ class Presenter(Generic[E], ABC):
         return entry.block
 
     @staticmethod
-    def text_lines(text: str, width: int, style: Style, *, indent: int = 0) -> list[TextLine]:
-        """Wrap text with the same layout used by RichText and Markdown."""
-        source = tuple(TextLine((Span(line, style),)) for line in text.split("\n"))
+    def text_lines(text: str, width: int, style: Style, *, indent: int = 0, words: bool = False) -> list[TextLine]:
+        """Wrap text with the same layout used by RichText and Markdown.
+
+        Args:
+            text: What to wrap; each newline starts a new row.
+            width: Columns available.
+            style: The ink the text is drawn in.
+            indent: Columns left empty at the start of every row.
+            words: Break between words and not mid-word. For a sentence a reader is meant to read, such as an
+                error naming a command to try; left off, a row breaks at the column, as code and output must.
+        """
         margin = min(indent, max(0, width - 1))
-        return [inset_line(row, margin) for row in layout_rich_lines(source, max(1, width - margin))]
+        room = max(1, width - margin)
+        if words:
+            rows = [piece for line in text.split("\n") for piece in wrap_words(line, room)]
+            # A character wider than the whole row (a wide glyph in a column or two) cannot be placed in it;
+            # the layout that wraps by column cuts such a row to the budget, and so does this.
+            fitted = layout_rich_lines(tuple(TextLine((Span(row, style),)) for row in rows), room, wrap=False)
+            return [inset_line(row, margin) for row in fitted]
+        source = tuple(TextLine((Span(line, style),)) for line in text.split("\n"))
+        return [inset_line(row, margin) for row in layout_rich_lines(source, room)]
 
 
 class WelcomePresenter(Presenter[TextEntry]):
@@ -236,7 +267,7 @@ class NoticePresenter(Presenter[TextEntry]):
     def lines(self, entry: TextEntry, width: int, theme: Theme, frame: int) -> list[TextLine]:
         """Leave a blank separator and let the transcript gutter add the inset."""
         colour = theme.error if entry.level == NoticeLevel.ERROR else theme.muted
-        return [TextLine(), *self.text_lines(entry.text, width, Style(foreground=colour))]
+        return [TextLine(), *self.text_lines(entry.text, width, Style(foreground=colour), words=True)]
 
 
 class AnnouncementPresenter(Presenter[TextEntry]):
@@ -309,6 +340,79 @@ class UserPresenter(Presenter[TextEntry]):
         return lines
 
 
+def relay_detail(theme: Theme) -> str:
+    """Return the colour of the quiet words on a message between sessions (``delivered``, ``queued``).
+
+    The surface is a little lighter than the reader's own, and the usual quiet text would be too close to
+    it, so the words are taken halfway to the body colour: still quieter than the message, and readable.
+    """
+    return blend(theme.subtle, theme.text, 0.5)
+
+
+class RelayPresenter(Presenter[RelayEntry]):
+    """Draw a message between two sessions the way the reader's own message is drawn, on a surface of its own.
+
+    Same arrow, same text column, same filled rows as what the reader types — it is part of the
+    conversation — but on a different background, with a line above the text that says whose it is::
+
+        ← agent of session fix-the-parser
+        › The tokenizer change is merged; can you rerun the parser tests?
+
+        → to session fix-the-parser · queued
+        › yes, on it
+
+    The header is the one place colour says who spoke: the message colour (mauve) for another session's
+    *agent* (another agent, as a delegated child is), the warning yellow for another session's reader,
+    and the accent for this reader's own message to it.
+    """
+
+    kind = EntryKind.RELAY
+    gutter = True
+
+    def lines(self, entry: RelayEntry, width: int, theme: Theme, frame: int) -> list[TextLine]:
+        """Return the header and the wrapped message on the surface, every row filled to the edge."""
+        if entry.outgoing:
+            tone = theme.accent
+        elif entry.external:
+            tone = theme.warning
+        elif entry.by_agent:
+            tone = theme.tools.message
+        else:
+            tone = theme.warning
+        style = Style(foreground=theme.text, background=theme.surface_peer)
+        margin = min(CONTENT_INDENT, max(0, width - 1))
+        pad = " " * display_width(PROMPT)
+        peer = terminal_safe(entry.peer).replace("\n", " ")
+        if entry.outgoing:
+            label = f"\u2192 to session {peer}"
+            detail = f" {SEPARATOR} {entry.note}" if entry.note else ""
+        else:
+            label = (
+                f"\u2190 external source {peer}"
+                if entry.external
+                else f"\u2190 {'agent' if entry.by_agent else 'user'} of session {peer}"
+            )
+            detail = ""
+
+        def row(*spans: Span) -> TextLine:
+            used = sum(display_width(span.text) for span in spans)
+            return TextLine((*spans, Span(" " * max(0, width - used), style)))
+
+        head = truncate(f"{pad} {label}", width)
+        tail = truncate(detail, max(0, width - display_width(head)))
+        header = row(
+            Span(head, Style(foreground=tone, background=theme.surface_peer)),
+            Span(tail, Style(foreground=relay_detail(theme), background=theme.surface_peer)),
+        )
+        blank = row()
+        lines = [TextLine(), blank, header]
+        for index, text in enumerate(self.text_lines(terminal_safe(entry.text), max(1, width - margin), style)):
+            prefix = f"{PROMPT} " if index == 0 else f"{pad} "
+            lines.append(row(Span(truncate(f"{prefix}{text.text}", width), style)))
+        lines.append(blank)
+        return lines
+
+
 class WaitPresenter(Presenter[WaitEntry]):
     """Draw the pinned wait row: a sweep while it runs, a line once it has ended.
 
@@ -349,8 +453,16 @@ class WaitPresenter(Presenter[WaitEntry]):
             ]
         spans = list(_running_label(entry.title, theme, frame))
         if entry.duration is not None:
-            aside = f" ({elapsed_text(entry.duration)} {SEPARATOR} {STOP_HINT})"
-            spans.append(Span(aside, Style(foreground=theme.muted)))
+            quiet = quiet_text(entry.quiet)
+            said = f"{elapsed_text(entry.duration)} {SEPARATOR} "
+            if quiet is not None:
+                # In the warning ink, apart from the quiet aside around it: this is the one thing in the row
+                # that says something may be wrong, and a reader who has been waiting is looking for it.
+                spans.append(Span(f" ({said}", Style(foreground=theme.muted)))
+                spans.append(Span(quiet, Style(foreground=theme.warning)))
+                spans.append(Span(f" {SEPARATOR} {STOP_HINT})", Style(foreground=theme.muted)))
+            else:
+                spans.append(Span(f" ({said}{STOP_HINT})", Style(foreground=theme.muted)))
         return [TextLine(), layout_rich_lines((TextLine(tuple(spans)),), width, wrap=False)[0]]
 
 
@@ -462,6 +574,44 @@ class ToolPresenter(Presenter[T]):
                 lines.append(TextLine((Span(lead, gutter), *highlight(row, language, theme.code))))
         if omitted:
             lines.append(TextLine((Span(f"{' ' * (CONTENT_INDENT * 2)}{ELLIPSIS} {omitted} more rows", muted),)))
+        return lines
+
+
+class SessionMessagePresenter(ToolPresenter[MessageEntry]):
+    """A message the agent sent to another session: what it said, then how it ended.
+
+    Folded, the row shows the first lines of the message and the one-line outcome; expanded, every
+    line of the message. The message comes first because it is the substance of the call; the outcome
+    (``Delivered to work …``, or why it was not) is a line of its own underneath, in the colour of the
+    result — muted when it went, the error colour when it did not.
+    """
+
+    entry_type = MessageEntry
+
+    def body_lines(self, entry: MessageEntry, width: int, theme: Theme, muted: Style) -> list[TextLine]:
+        """Return the message, bounded as any tool output is, and the outcome under it."""
+        if entry.running:
+            return []
+        inner = max(1, width - CONTENT_INDENT * 2)
+        limit = TOOL_EXPANDED_ROWS if entry.expanded else TOOL_PREVIEW_ROWS
+        detail = Style(foreground=theme.subtle)
+        gutter = Style(foreground=theme.muted)
+        lines: list[TextLine] = []
+        rows, omitted = bounded_rows(entry.message, inner, limit) if entry.message else ([], 0)
+        for index, row in enumerate(rows):
+            lead = f"{' ' * CONTENT_INDENT}\u2514 " if index == 0 else " " * (CONTENT_INDENT * 2)
+            lines.append(TextLine((Span(lead, gutter), Span(row, detail))))
+        if omitted:
+            lines.append(TextLine((Span(f"{' ' * (CONTENT_INDENT * 2)}{ELLIPSIS} {omitted} more rows", muted),)))
+        if entry.text:
+            ended = Style(foreground=theme.error if entry.status is EntryStatus.FAILED else theme.muted)
+            # An arrow, so the answer is not read as the last line of the message above it.
+            outcome, more = bounded_rows(entry.text, max(1, inner - 2), 3 if entry.expanded else 1)
+            for index, row in enumerate(outcome):
+                lead = f"{' ' * CONTENT_INDENT}\u2192 " if index == 0 else " " * (CONTENT_INDENT * 2)
+                lines.append(TextLine((Span(f"{lead}{row}", ended),)))
+            if more and not entry.expanded:
+                lines[-1] = TextLine((Span(f"{lines[-1].text} {ELLIPSIS}", ended),))
         return lines
 
 
@@ -704,9 +854,11 @@ DEFAULT_PRESENTERS = Presenters(
         ThinkingPresenter(),
         ToolPresenter(),
         ChangesPresenter(),
+        RelayPresenter(),
         ReadPresenter(),
         WritePresenter(),
         EditPresenter(),
+        SessionMessagePresenter(),
     )
 )
 

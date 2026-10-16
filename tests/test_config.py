@@ -214,6 +214,40 @@ def test_transcript_max_entries_comes_from_its_table(tmp_path: Path):
     assert load_config(tmp_path, path=path).transcript_max_entries == 64
 
 
+def test_the_wheel_scrolls_one_row_an_event_unless_the_table_says_otherwise(tmp_path: Path):
+    path = tmp_path / "config.toml"
+    path.write_text('[[models]]\nmodel = "m"\ntoken = "t"\n', encoding="utf-8")
+    assert load_config(tmp_path, path=path).mouse_scroll_speed == 1.0
+
+    path.write_text('[[models]]\nmodel = "m"\ntoken = "t"\n\n[transcript]\nmouse_scroll_speed = 3\n', encoding="utf-8")
+    assert load_config(tmp_path, path=path).mouse_scroll_speed == 3.0
+
+    path.write_text(
+        '[[models]]\nmodel = "m"\ntoken = "t"\n\n[transcript]\nmouse_scroll_speed = 0.5\n', encoding="utf-8"
+    )
+    assert load_config(tmp_path, path=path).mouse_scroll_speed == 0.5
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "0.0", "21", "1e9", '"fast"', "true", "nan", "inf"])
+def test_a_wheel_speed_that_cannot_mean_anything_is_refused_with_where_it_was_written(tmp_path: Path, value):
+    path = tmp_path / "config.toml"
+    path.write_text(
+        f'[[models]]\nmodel = "m"\ntoken = "t"\n\n[transcript]\nmouse_scroll_speed = {value}\n', encoding="utf-8"
+    )
+
+    with pytest.raises(ValueError, match="mouse_scroll_speed"):
+        load_config(tmp_path, path=path)
+
+
+def test_the_wheel_speed_in_the_configuration_reaches_the_transcript_view(tmp_path: Path):
+    from zettcode.app.agent.conversation.transcript import Transcript
+    from zettcode.app.ui.widgets import TranscriptView
+    from zettcode.tui import DARK
+
+    assert TranscriptView(Transcript(), theme=DARK, wheel_speed=2.5).wheel_speed == 2.5
+    assert TranscriptView(Transcript(), theme=DARK).wheel_speed == 1.0
+
+
 def test_a_non_positive_transcript_cap_is_rejected(tmp_path: Path):
     with pytest.raises(ValueError, match="transcript_max_entries must be positive"):
         ZettCodeConfig(

@@ -469,3 +469,45 @@ async def test_escape_in_the_middle_of_a_burst_stops_the_batch_where_the_app_sto
         os.close(write_fd)
 
     assert app.running is False and counter.events == 5, "nothing after the key that ended the app was applied"
+
+
+async def test_a_flick_of_wheel_events_queued_together_moves_the_view_half_a_window_not_pages():
+    """The bug, through the real loop: a trackpad's momentum arrives as a burst, the loop applies it as one
+    batch and draws once, and the rows in between used to be skipped, ten at a time, for several pages."""
+    from zettcode.tui import MouseAction, ScrollView, Span, TextLine
+    from zettcode.tui.input import EventType, InputEvent
+    from zettcode.tui.layout import LineSource
+
+    class Rows(LineSource):
+        """A thousand numbered rows."""
+
+        def count(self, width: int) -> int:
+            return 1000
+
+        def line(self, index: int, width: int) -> TextLine:
+            return TextLine((Span(f"row {index}"),))
+
+    read_fd, write_fd = os.pipe()
+    view = ScrollView(Rows(), follow_tail=False, focusable=True)
+    app = TuiApp(view, width=30, height=20)
+    runner = TerminalRunner(app, terminal=StubTerminal(read_fd, width=30, height=20))
+    task = asyncio.create_task(runner.run())
+    try:
+        await _wait_for(lambda: app.focused_widget() is not None)
+        view.scroll_to(500)
+        app.invalidate()
+        await asyncio.sleep(0.05)
+        start = view.top
+        for _ in range(100):  # all queued before the loop gets another turn
+            runner.queue.put_nowait(
+                InputEvent(type=EventType.MOUSE, x=1, y=1, action=MouseAction.SCROLL_DOWN, button=0)
+            )
+        await _wait_for(lambda: view.top != start)
+        await asyncio.sleep(0.1)
+
+        assert 0 < view.top - start <= 10, f"moved {view.top - start} rows for one burst in a window of 20"
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        os.close(read_fd)
+        os.close(write_fd)

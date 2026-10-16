@@ -273,6 +273,7 @@ class FakeConfig:
     reduced_motion: bool = False
     compaction_max_tokens: int = 128_000
     transcript_max_entries: int = 1024
+    mouse_scroll_speed: float = 1.0
     skills_enabled: bool = False
     plugins_enabled: bool = True
     disabled_plugins: tuple[str, ...] = ()
@@ -305,6 +306,12 @@ class FakeRuntime:
     tokenizer: Tokenizer = field(default_factory=lambda: Tokenizer(deadline=0.0, loader=_no_encoder))
     config: FakeConfig = field(default_factory=FakeConfig)
     plugins: Plugins = field(default_factory=Plugins)
+    messenger: object | None = None
+    #: The sessions another process has open: the fake's lock. A session in here is shown and not written to.
+    held_elsewhere: set[str] = field(default_factory=set)
+    #: The sessions this runtime holds the lock of, as the real one does: it changes when a session is
+    #: selected or the lock is retaken, and not when the other process lets go.
+    _mine: set[str] = field(default_factory=set, init=False)
     active_model: ModelConfig = field(init=False)
     model: object = field(init=False)
     auto_approved: bool = field(default=False, init=False)
@@ -314,6 +321,23 @@ class FakeRuntime:
     def __post_init__(self) -> None:
         self.active_model = self.config.models[0]
         self.model = self.active_model.model
+        self._mine.add(self.session_id)
+
+    def _claim(self) -> None:
+        """Take the lock of the active session unless another process has it, and let go of the one before."""
+        self._mine.clear()
+        if self.session_id not in self.held_elsewhere:
+            self._mine.add(self.session_id)
+
+    @property
+    def session_locked(self) -> bool:
+        """Mirror the real runtime: this process does not hold the active session's lock."""
+        return self.session_id not in self._mine
+
+    def retake_session(self) -> bool:
+        """Mirror the real runtime: take the lock again, and say whether it is held now."""
+        self._claim()
+        return not self.session_locked
 
     async def start(self) -> FakeRuntime:
         """A real runtime builds its provider and client here; this one is ready."""
@@ -355,10 +379,12 @@ class FakeRuntime:
 
     def new_session(self) -> str:
         self.session_id = "session-0002"
+        self._claim()
         return self.session_id
 
     def use_session(self, session_id: str) -> None:
         self.session_id = session_id
+        self._claim()
 
     def approve_all_shell_commands(self) -> None:
         self.auto_approved = True
@@ -1343,6 +1369,7 @@ def test_a_row_switches_to_minutes_once_a_minute_is_past():
     transcript = Transcript(clock=lambda: now[0])
     transcript.begin_turn("question")
     now[0] = 100.4
+    transcript.heard()  # the model has been talking, so this is a long run and not a silent one
     transcript.advance_frame()
 
     # Wide enough for the aside, which names both keys that stop a run.
@@ -1715,7 +1742,7 @@ async def test_the_title_command_names_the_session(tmp_path):
 
     # Trimmed, stored, and shown without waiting for the next turn.
     assert store.session_title("session-0001") == "Fix the parser crash"
-    assert "Fix the parser crash" in app._status_left().text
+    assert "Fix the parser crash" in app._header_left().text
     assert app.app.title() == "◈ zettcode · Fix the parser crash"
 
     harness.write("/title")
@@ -3816,6 +3843,43 @@ async def test_the_transcript_scrolls_with_the_mouse_wheel():
     assert view.follow_tail is True
 
 
+async def test_the_wheel_speed_from_the_configuration_is_what_the_transcript_scrolls_by():
+    app = build_app()
+    harness = _harness(app)
+    for index in range(200):
+        app.transcript.notice(f"line {index}")
+    harness.render()
+    view = app.view
+    assert view.wheel_speed == 1.0
+    x, y = view.rect.x + 1, view.rect.y + 1
+    start = view.top
+
+    harness.scroll(x, y, up=True)
+    harness.render()
+    assert start - view.top == 1, "one row an event, as Codex does"
+
+    view.wheel_speed = 3
+    before = view.top
+    harness.scroll(x, y, up=True)
+    assert before - view.top == 3
+
+
+async def test_a_burst_of_wheel_events_never_moves_the_transcript_more_than_half_a_window_in_one_frame():
+    app = build_app()
+    harness = _harness(app)
+    for index in range(400):
+        app.transcript.notice(f"line {index}")
+    harness.render()
+    view = app.view
+    x, y = view.rect.x + 1, view.rect.y + 1
+    start = view.top
+
+    for _ in range(100):
+        harness.scroll(x, y, up=True)
+
+    assert 0 < start - view.top <= view.rect.height // 2
+
+
 async def test_a_toast_does_not_block_scrolling_the_transcript():
     """A toast is a paint-only layer: the wheel must still reach the transcript."""
     app = build_app()
@@ -4441,8 +4505,8 @@ async def test_sessions_command_opens_a_panel_with_titles_and_ages(tmp_path):
 
     assert app.agent.session_id == "alpha-1"
     assert app.app.screens.top.name != "page"
-    # Resuming a session puts its stored title, not its id, in the status line.
-    assert "Fix the parser crash" in app._status_left().text
+    # Resuming a session puts its stored title, not its id, in the header.
+    assert "Fix the parser crash" in app._header_left().text
     assert app.app.title() == "◈ zettcode · Fix the parser crash"
 
 
@@ -4477,8 +4541,8 @@ async def test_the_first_reply_names_the_session_in_the_background():
     assert calls == ["session-0001"]
     # Naming stays out of the transcript: the status line is where the title lands.
     assert not any("Fix the parser crash" in getattr(entry, "text", "") for entry in app.transcript.entries)
-    assert "Fix the parser crash" in app._status_left().text
-    assert "session-0001" not in app._status_left().text
+    assert "Fix the parser crash" in app._header_left().text
+    assert "session-0001" not in app._header_left().text
     assert app.app.title() == "◈ zettcode · Fix the parser crash"
 
 
@@ -4488,14 +4552,14 @@ async def test_an_unnamed_session_reads_as_a_new_session(tmp_path):
     app.agent.runtime.persistence.store = SessionStore(tmp_path)
     harness = _harness(app)
 
-    assert "New session" in app._status_left().text
+    assert "New session" in app._header_left().text
 
     harness.write("/title  Fix the parser crash  ")
     harness.press("enter")
     await asyncio.wait_for(app.task, 2.0)
 
-    assert "Fix the parser crash" in app._status_left().text
-    assert "New session" not in app._status_left().text
+    assert "Fix the parser crash" in app._header_left().text
+    assert "New session" not in app._header_left().text
 
 
 def test_the_sessions_panel_names_an_untitled_session():
@@ -7976,3 +8040,108 @@ async def test_an_effort_changed_beside_a_request_applies_to_the_next_request_no
     assert app.agent.effort == "high" and started_with != "high"
     assert app.agent.runtime.effort.value == "high", "the next request reads this"
     await _stop(app)
+
+
+# -- the session in the header, not the status line -------------------------------------------------------------
+
+
+def test_the_header_names_the_session_between_the_app_and_the_workspace():
+    app = build_app()
+    app._session_title = "Fix the parser crash"
+
+    text = app._header_left().text
+
+    assert text.startswith("  \u25c8 zettcode  Fix the parser crash \u00b7 ")
+    assert text.index("Fix the parser crash") < text.index("workspace"), "the session first, then where it runs"
+
+
+def test_an_untitled_session_is_called_new_session_in_the_header():
+    assert "New session" in build_app()._header_left().text
+
+
+def test_the_name_others_reach_the_session_by_follows_the_title_in_the_header():
+    from zettcode.app.ui import labels
+
+    text = labels.header_left(Path("/work/zettdemos"), "Fix the parser", "fix-the-parser")
+
+    assert text == f"  \u25c8 zettcode  Fix the parser \u00b7 @fix-the-parser \u00b7 {Path('/work/zettdemos')}"
+
+
+def test_a_session_with_no_name_to_reach_it_by_shows_only_its_title():
+    from zettcode.app.ui import labels
+
+    assert labels.header_left(Path("/w"), "Title", "") == f"  \u25c8 zettcode  Title \u00b7 {Path('/w')}"
+    assert "@" not in build_app()._header_left().text, "messaging is off in this shell, so there is no name"
+
+
+def test_a_frame_with_no_session_to_name_is_the_old_header():
+    from zettcode.app.ui import labels
+
+    assert labels.header_left(Path("/w")) == f"  \u25c8 zettcode  {Path('/w')}"
+
+
+def test_a_long_title_is_cut_so_the_name_and_the_workspace_still_fit_behind_it():
+    from zettcode.app.ui import labels
+    from zettcode.tui.render import display_width
+
+    text = labels.header_left(Path("/w"), "x" * 120, "name")
+
+    assert text.endswith(f"\u2026 \u00b7 @name \u00b7 {Path('/w')}")
+    assert display_width(text) < 70
+
+
+def test_a_title_in_a_wide_script_is_cut_whole_glyphs_within_its_columns():
+    from zettcode.app.ui import labels
+    from zettcode.tui.render import display_width
+
+    title = "\u4fee\u590d\u89e3\u6790\u5668" * 20
+    text = labels.header_left(Path("/w"), title, "")
+    shown = text.split("  ", 2)[2].split(" \u00b7 ")[0]
+
+    assert display_width(shown) <= labels.TITLE_COLUMNS and shown.endswith("\u2026")
+
+
+def test_a_title_that_fits_exactly_is_not_cut():
+    from zettcode.app.ui import labels
+
+    title = "t" * labels.TITLE_COLUMNS
+
+    assert title in labels.header_left(Path("/w"), title) and "\u2026" not in labels.header_left(Path("/w"), title)
+
+
+def test_a_narrow_header_loses_the_workspace_before_the_session():
+    app = build_app()
+    app._session_title = "Fix the parser crash"
+    harness = _harness(app)
+    harness.resize(62, 12)
+
+    header = harness.render().text.splitlines()[0]
+
+    assert "Fix the parser crash" in header
+    assert "workspace" not in header, "the right end goes first, and the right end is the directory"
+
+
+def test_the_status_line_no_longer_carries_the_session():
+    app = build_app()
+    app._session_title = "Fix the parser crash"
+
+    status = app._status_left().text
+
+    assert status == "  \u25cf ready"
+
+
+def test_the_status_line_keeps_the_counters_and_has_no_gap_where_the_session_was():
+    app = build_app()
+    app._usage = UsageSnapshot(input_tokens=900, output_tokens=90, seconds=3.0, requests=1)
+
+    status = app._status_left().text
+
+    assert status.startswith("  \u25cf ready  \u2191900 \u219390")
+    assert "ready   " not in status
+
+
+def test_the_permission_mode_stays_in_the_status_line():
+    app = build_app()
+    app.change_permission("auto")
+
+    assert app._status_left().text.startswith("  \u25cf ready \u00b7 auto")

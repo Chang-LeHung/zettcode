@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING
 
 from ...tui import Screen
 from ...tui.render import truncate
-from ..agent.agent.prompt import PromptPart, carries_image, mention_hint
+from ..agent.agent.prompt import PromptPart, carries_image, mention_hint, mention_parts
 from .shell import MAX_FOLLOW_UPS, MAX_STEERING, PAGE_SCREEN, ShellState
 from .widgets import SEND_KIND_ROWS, SendKind, SendKindPage, bottom_panel
 from .widgets.follow_up import one_line
@@ -124,7 +124,11 @@ class FollowUpsMixin(ShellState):
         Returns:
             Whether the agent took it; ``False`` leaves everything as it was.
         """
-        message = self.agent.turn(parts) if carries_image(parts) else value
+        # A reference that needs explaining (a session) makes the message a built one, as a picture does:
+        # the model is told what the @ means whether the turn started with it or it arrived mid-request.
+        parts = mention_parts(parts, self.mentions)
+        hint = mention_hint(parts, self.mentions)
+        message = self.agent.turn(parts, hint=hint) if carries_image(parts) or hint is not None else value
         key = message if isinstance(message, str) else message.text
         if self._steer_blocked() is None and self.agent.steer(message):
             self._queue_steering(value, key, parts)
@@ -411,6 +415,5 @@ class FollowUpsMixin(ShellState):
         # Busy before the task has run: between here and its first step a keystroke must not
         # be able to start a second turn beside it.
         self._set_busy(True)
-        self._task = asyncio.create_task(
-            self._run_prompt(item.text, item.parts, mention_hint(item.parts, self.mentions))
-        )
+        parts = mention_parts(item.parts, self.mentions)
+        self._task = asyncio.create_task(self._run_prompt(item.text, parts, mention_hint(parts, self.mentions)))

@@ -11,6 +11,7 @@ from zett_agent.extensions.shell_approval import SHELL_APPROVAL_EVENT_NAME
 from zett_agent.messages import ToolMessage
 
 from ..dialogue.ask import AskUserQuestion, question_from
+from ..dialogue.relay import Relayed
 from ..extensions.mcp_notice import MCP_NOTICE_EVENT_NAME, notice_from
 from ..extensions.usage import USAGE_EVENT_NAME
 from .entries import EntryStatus
@@ -81,14 +82,27 @@ class TranscriptProjector(AgentEventDispatcher):
         self.on_steering_started = on_steering_started
         self.on_steering_interrupted = on_steering_interrupted
 
-    def begin_turn(self, prompt: str, *, side: bool = False) -> None:
+    def begin_turn(self, prompt: str, *, side: bool = False, relayed: Relayed | None = None) -> None:
         """Echo the prompt into the transcript before the run starts.
 
         Args:
             prompt: What the reader asked.
             side: The question is a side one, which the transcript shows as such.
+            relayed: The turn answers a message another session sent, which the transcript shows as that.
         """
-        self.transcript.begin_turn(prompt, side=side)
+        if relayed is None:
+            self.transcript.begin_turn(prompt, side=side)
+        else:
+            self.transcript.begin_turn(prompt, side=side, relayed=relayed)
+
+    async def dispatch(self, event: AgentEvent) -> None:
+        """Note that the agent spoke, then hand the event to the callback that draws it.
+
+        Every event ends a silence, whichever it is: the waiting row counts how long it has been since the model
+        last said anything, and has to be told each time it does.
+        """
+        self.transcript.heard()
+        await super().dispatch(event)
 
     async def on_compaction_started_event(self, event: AgentEvent) -> None:
         """Open the compaction row; the summary streams into it as it arrives."""

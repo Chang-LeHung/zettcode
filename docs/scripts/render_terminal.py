@@ -36,6 +36,7 @@ class PreviewRows(ShellRows):
 def preview() -> Canvas:
     """Paint one sample conversation without a terminal, network, or user store."""
     previous = Path.cwd()
+    runtime: ZettCodeRuntime | None = None
     with tempfile.TemporaryDirectory(prefix="zettcode-docs-") as directory:
         try:
             workspace = Path(directory)
@@ -80,6 +81,9 @@ def preview() -> Canvas:
             return app.app.render()
         finally:
             os.chdir(previous)
+            if runtime is not None:
+                # The session's lock file is open until it is released, and Windows will not delete an open file.
+                runtime.session_locks.release()
 
 
 def svg(canvas: Canvas) -> str:

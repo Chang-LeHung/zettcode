@@ -21,7 +21,7 @@ from zettcode.app.ui.widgets.input_page import MASK
 from zettcode.config import load_config
 from zettcode.config_edit import ConfigEditError
 from zettcode.plugins import Plugin, PluginContainer, load_plugins
-from zettcode.providers import BUILTIN_PROVIDERS, Provider
+from zettcode.providers import BUILTIN_PROVIDERS, Api, Provider
 from zettcode.tui import ListPage, walk
 from zettcode.tui.testing import Harness
 
@@ -347,6 +347,82 @@ async def test_the_panel_reads_the_file_not_what_the_session_started_with(shell)
     await fx.command("/config")
 
     assert "added-by-hand" in fx.screen()
+
+
+async def test_every_row_of_the_provider_picker_says_what_it_speaks_in_the_same_kind_of_words(shell):
+    """The picker showed a note on some rows, an article on one, and a bare address on two."""
+    fx = shell()
+    await fx.command("/config")
+    fx.choose("+ Add")
+
+    rows = {item.label: item.description for item in fx.page(ListPage).list.items}
+
+    assert set(rows) == {*(p.label for p in BUILTIN_PROVIDERS), "Custom"}
+    for label, description in rows.items():
+        assert description and not description.startswith(("the ", "The ", "http")), (label, description)
+        assert not description.endswith("."), (label, description)
+    assert rows["DeepSeek"] == rows["Groq"] == "chat completions"
+    assert rows["Anthropic"] == "Anthropic Messages API"
+    assert rows["Custom"] == "any endpoint; you give the address and the protocol"
+
+
+async def test_a_plugin_provider_with_no_note_is_shown_by_its_protocol_and_not_by_its_address(shell):
+    fx = shell()
+    runtime = fx.app.agent.runtime
+    runtime.plugins = load_plugins(
+        replace(runtime.config, plugins_enabled=True),
+        builtins=(),
+        entry_points=[FakePoint("bare", Bare)],
+    )
+    await fx.command("/config")
+    fx.choose("+ Add")
+
+    rows = {item.label: item.description for item in fx.page(ListPage).list.items}
+
+    assert rows["Bare AI"] == "Responses API"
+
+
+async def test_the_api_question_names_each_protocol_without_an_article(shell):
+    fx = shell()
+    await fx.command("/config add custom")
+
+    rows = [(item.label, item.description) for item in fx.page(ListPage).list.items]
+
+    assert rows == [
+        ("chat", "chat completions"),
+        ("responses", "Responses API"),
+        ("anthropic", "Anthropic Messages API"),
+    ]
+
+
+async def test_the_questions_after_the_provider_are_worded_alike(shell):
+    """Each help line is a sentence that ends with a full stop, or an example that does not."""
+    fx = shell()
+    await fx.command("/config add custom")
+    fx.choose("chat")
+    url_help = fx.page(InputPage).help_lines
+    fx.type("https://api.example.com/v1")
+    model_help = fx.page(InputPage).help_lines
+    fx.type("some-model")
+    token_help = fx.page(InputPage).help_lines
+
+    assert url_help == ("The address the client appends its route to.", "For example: https://api.example.com/v1")
+    for line in (*url_help, *model_help, *token_help):
+        assert line[0].isupper(), line
+        assert line.endswith(".") or line.startswith("For example:"), line
+    assert model_help[0] == "The id the provider calls the model, exactly as its documentation writes it."
+    assert token_help[0] == "Your key for this endpoint."
+
+
+async def test_a_provider_with_suggested_models_gives_them_as_an_example(shell):
+    fx = shell()
+    runtime = fx.app.agent.runtime
+    runtime.plugins = load_plugins(
+        replace(runtime.config, plugins_enabled=True), builtins=(), entry_points=[FakePoint("bare", Suggests)]
+    )
+    await fx.command("/config add suggests")
+
+    assert fx.page(InputPage).help_lines[-1] == "For example: one, two, three"
 
 
 async def test_adding_from_the_panel_goes_provider_then_model_then_token(shell):
@@ -707,6 +783,22 @@ class Acme(Plugin):
     def activate(self, container: PluginContainer) -> None:
         container.register_provider(
             Provider("acme", "Acme AI", base_url="https://api.acme.example/v1", note="from the acme plugin")
+        )
+
+
+class Bare(Plugin):
+    name = "bare"
+
+    def activate(self, container: PluginContainer) -> None:
+        container.register_provider(Provider("bare", "Bare AI", api=Api.RESPONSES, base_url="https://bare.example/v1"))
+
+
+class Suggests(Plugin):
+    name = "suggests"
+
+    def activate(self, container: PluginContainer) -> None:
+        container.register_provider(
+            Provider("suggests", "Suggests AI", base_url="https://s.example/v1", models=("one", "two", "three", "four"))
         )
 
 

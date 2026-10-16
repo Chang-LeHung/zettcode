@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from zett_agent.messages import AnyMessage, AssistantMessage, SystemMessage, ToolMessage, UserMessage
 
 from ....config import DEFAULT_TRANSCRIPT_MAX_ENTRIES
+from ..dialogue.relay import relay_of
 from ..dialogue.side import is_side_line
 from ..extensions.usage import UsageSnapshot
 from ..storage import MessageLine, Session
@@ -139,7 +140,12 @@ def replay(
                 # reader typed as an attribute; the row restores that, while
                 # ``history`` keeps the text the model was given.
                 original = message.attributes.get("prompt")
-                transcript.user_message(original if isinstance(original, str) and original else message.text, side=side)
+                shown = original if isinstance(original, str) and original else message.text
+                relayed = relay_of(message.attributes, shown)
+                if relayed is not None and not side:
+                    transcript.relayed_message(relayed)
+                else:
+                    transcript.user_message(shown, side=side)
             case AssistantMessage():
                 if message.reasoning:
                     transcript.restore_thinking(message.reasoning, line.timing.reasoning_duration_ns)

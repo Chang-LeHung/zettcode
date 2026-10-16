@@ -70,6 +70,9 @@ def test_every_invariant_cites_a_test_that_exists():
 LAYERS = (
     ("zettcode.tui", ("zettcode.app", "zettcode.cli", "zettcode.config")),
     ("zettcode.app.agent", ("zettcode.app.ui",)),
+    # The broker is standard library only, and the shell imports it, never the other way round.
+    ("zettcode.broker", ("zettcode.app", "zettcode.cli", "zettcode.config", "zettcode.tui")),
+    ("zettcode.filelock", ("zettcode.app", "zettcode.cli", "zettcode.config", "zettcode.tui", "zettcode.broker")),
 )
 
 #: Packages that re-export their subpackages lazily through ``__getattr__``.
@@ -269,3 +272,26 @@ def test_a_facade_maps_every_name_to_the_module_it_statically_imports():
             drifted.append(f"{name}: static {sorted(static)} vs map {sorted(mapping)}")
 
     assert drifted == []
+
+
+def test_the_hub_and_the_roster_know_nothing_of_the_web():
+    """What the broker decides is separate from how it is served: the hub and the roster import none of the web
+    libraries (nor the web layer), so they can be driven, and read, without a socket."""
+    root = pathlib.Path(zettcode.__file__).parent / "broker"
+    forbidden = ("starlette", "uvicorn", "websockets", "httpx", "zettcode.broker.web", "zettcode.broker.server")
+    found: list[str] = []
+    for name in ("hub.py", "roster.py", "protocol.py", "text.py"):
+        tree = ast.parse((root / name).read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            modules = (
+                [alias.name for alias in node.names]
+                if isinstance(node, ast.Import)
+                else [("." * node.level) + (node.module or "")]
+                if isinstance(node, ast.ImportFrom)
+                else []
+            )
+            for module in modules:
+                if module.startswith(forbidden) or module in (".web", ".server", ".runner"):
+                    found.append(f"{name}: {module}")
+
+    assert found == []

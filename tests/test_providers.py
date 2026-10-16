@@ -140,6 +140,43 @@ def test_every_protocol_has_a_description():
     assert all(api.description for api in Api)
 
 
+#: Words a note may begin with a capital for: the proper nouns the protocols and vendors are called.
+PROPER_NOUNS = ("Anthropic", "Responses", "Messages", "Chat")
+
+
+def _wording_problems(text: str) -> list[str]:
+    """Say what is wrong with one note or description, by the rule every list in the shell follows:
+    a phrase that starts in lower case (unless it opens with a proper noun), has no leading article, and no full stop."""
+    problems = []
+    first = text.split(" ", 1)[0]
+    if first.lower() in ("the", "a", "an"):
+        problems.append("starts with an article")
+    if first[:1].isupper() and first not in PROPER_NOUNS:
+        problems.append("starts with a capital that is not a proper noun")
+    if text.endswith("."):
+        problems.append("ends with a full stop")
+    return problems
+
+
+def test_every_built_in_provider_has_a_note_and_every_note_is_worded_the_same_way():
+    """The picker showed a note here, an article there and a bare address for the two that had no note."""
+    for provider in BUILTIN_PROVIDERS:
+        assert provider.note, f"{provider.name} has no note"
+        assert _wording_problems(provider.note) == [], (provider.name, provider.note)
+
+
+def test_every_protocol_is_described_by_the_same_rule_and_without_the():
+    for api in Api:
+        assert _wording_problems(api.description) == [], (api, api.description)
+    assert [api.description for api in Api] == ["chat completions", "Responses API", "Anthropic Messages API"]
+
+
+def test_the_providers_that_speak_the_same_protocol_say_so_in_the_same_words():
+    chat = [p for p in BUILTIN_PROVIDERS if p.api is Api.CHAT]
+
+    assert all(p.note.startswith("chat completions") for p in chat), [p.note for p in chat]
+
+
 def test_a_provider_given_the_protocol_as_text_holds_it_as_a_member():
     assert Provider("p", "P", api="responses").api is Api.RESPONSES
 

@@ -23,6 +23,9 @@ class MentionPart:
     """
 
     token: str
+    #: The words the model reads in the token's place, when it is not to see the token itself. ``None``
+    #: leaves the token as typed; the typed text is what the transcript and the store keep either way.
+    says: str | None = None
 
 
 #: One piece of a user turn, in the order it was written: a run of text, or the
@@ -37,6 +40,29 @@ def plain_text_part(part: PromptPart) -> str:
     if isinstance(part, MentionPart):
         return part.token
     return ""
+
+
+def model_text_part(part: PromptPart) -> str:
+    """Return the text one part is to the model: a reference that was resolved reads as what it says."""
+    if isinstance(part, MentionPart) and part.says is not None:
+        return part.says
+    return plain_text_part(part)
+
+
+def mention_parts(parts: Sequence[PromptPart], mentions: MentionRegistry) -> tuple[PromptPart, ...]:
+    """Return a turn with each reference that has words of its own carrying them.
+
+    ``@work`` typed for a session that is running is not a word the model knows, so it is put in the
+    model's reading as ``session "work"`` and :func:`mention_hint` explains it. Anything else — a skill, a
+    file, a name nobody has — keeps the token as it was typed.
+    """
+    if not mentions.providers:
+        return tuple(parts)
+    resolved: list[PromptPart] = []
+    for part in parts:
+        says = mentions.rename_token(part.token) if isinstance(part, MentionPart) else None
+        resolved.append(MentionPart(part.token, says) if says is not None and isinstance(part, MentionPart) else part)
+    return tuple(resolved)
 
 
 def plain_text(parts: Sequence[PromptPart]) -> str:

@@ -175,12 +175,12 @@ class Acme(Plugin):
     def activate(self, container: PluginContainer) -> None:
         container.register_provider(
             Provider(
-                "acme",                                   # what `/config add acme` is typed with
-                "Acme AI",                                # what the picker shows
-                api="chat",                               # chat | responses | anthropic
+                "acme",  # what `/config add acme` is typed with
+                "Acme AI",  # what the picker shows
+                api="chat",  # chat | responses | anthropic
                 base_url="https://api.acme.example/v1",
-                token_env="ACME_API_KEY",                 # named in the hint only; never read
-                note="the model id is acme-<size>",       # one line shown beside it
+                token_env="ACME_API_KEY",  # named in the hint only; never read
+                note="model ids look like acme-<size>",  # a lower-case phrase, no leading article or full stop
             )
         )
 ```

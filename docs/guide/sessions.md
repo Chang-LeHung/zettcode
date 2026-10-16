@@ -13,6 +13,7 @@ One store root holds every workspace, grouped by workspace first:
 └── <session-id>/
     ├── data.jsonl              the conversation
     ├── metadata.json           the title, the times and the model: a couple of hundred bytes
+    ├── session.lock            held by the process that has the session open
     └── tool-output/            what long shell commands printed, kept for the model to read
 ```
 
@@ -94,7 +95,7 @@ resume this session: zettcode --resume 01a10b75 --workspace ~/projects/api
 
 Inside the program, `/resume` opens a panel of recent sessions for this
 workspace, newest first, each with its title and how long ago it changed;
-`/resume <id>` skips the panel. The status line names the session you are in.
+`/resume <id>` skips the panel. The header names the session you are in.
 
 `/new` starts a fresh one and leaves the current conversation on disk. `/clear`
 only empties the screen; the session keeps going, and the model still remembers
@@ -122,6 +123,39 @@ Replace both the path and id with your own. A plain `zettcode` always starts a
 new session; it does not silently reopen the last one. If the id is not found,
 check the workspace first: two checkouts have separate session lists even when
 their files are identical.
+
+## One process at a time
+
+A session can be open in one ZettCode process at a time. Opening it takes a **lock** — an operating-system lock on
+`session.lock` in the session's folder — and the process that holds it is the only one that writes to the session.
+Without it, two terminals resumed on the same session would each append to it from their own idea of where the
+conversation had got to, and the conversation would fork behind both of them.
+
+The lock goes with the process, however it ends: closing ZettCode, a crash and `kill -9` all release it, so there is
+never a stale lock to clear by hand. Starting a new session, resuming or forking moves it.
+
+If you resume a session another process has open, you can still **read** it, but the composer shows a lock where the
+arrow was:
+
+```text
+  ◈ zettcode  Fix the parser · ~/projects/api
+  …the conversation, as it was when you opened it…
+
+ ┌──────────────────────────────────────────────────────┐
+ │                          🔒                          │
+ └──────────────────────────────────────────────────────┘
+   ● ready
+```
+
+- **What it takes.** Only slash commands: type `/` and the lock moves to where the arrow would be. Anything else is
+  not accepted, including a paste or a picture, and `Backspace` still clears what was there.
+- **What it refuses.** Anything that writes to the session: a message, `/btw`, `/title`, `/compact`, and the title
+  the first answer would have written. A locked session also does not appear to the other sessions for
+  [messaging](/guide/messaging), so nobody can send it something it would have to turn into a write.
+- **Getting out.** `/new` starts a session of your own, and `/fork` carries this conversation into one. Or wait:
+  ZettCode tries again every couple of seconds, and the moment the other process lets go it **reads the session
+  again** — so what that process wrote is on screen — and unlocks the composer. Pressing `Enter` on the lock tries at
+  once.
 
 ## Forking
 
@@ -157,7 +191,7 @@ own means nothing in another checkout.
 
 After the first reply, the agent asks a small model call for a four-or-five word
 name and saves it in the session's `metadata.json`. That is what the sessions panel
-and the status line show.
+and the header show.
 
 `/title users endpoint` names it yourself, and the name sticks: the automatic
 naming never overwrites a session that already has a title, so a name you chose
