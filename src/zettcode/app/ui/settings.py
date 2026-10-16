@@ -54,7 +54,7 @@ class SettingsMixin(ShellState):
         return theme
 
     def change_effort(self, name: str) -> str:
-        """Switch reasoning effort and announce the change in the transcript."""
+        """Switch reasoning effort, run the header's gauge, and announce the change in the transcript."""
         previous = self.agent.effort
         selected = self.agent.use_effort(name)
         if selected != previous:
@@ -75,12 +75,3 @@ class SettingsMixin(ShellState):
             self.transcript.permission_changed(previous.value, selected.value)
         self.app.invalidate()
         return selected.value
-
-    def select_effort(self, name: str) -> None:
-        """Apply the reasoning level picked in the panel and return to the composer."""
-        try:
-            self.change_effort(name)
-        except ValueError as error:
-            self.transcript.error(str(error))
-        self.close_page()
-        self.app.request_layout()

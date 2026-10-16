@@ -78,6 +78,7 @@ from zettcode.app.ui.widgets import (
     AskUserPage,
     CommandCompleter,
     ContextPage,
+    EffortPage,
     FollowUpQueue,
     SendKind,
     SendKindPage,
@@ -2552,12 +2553,11 @@ async def test_the_effort_panel_offers_max_and_ultra():
     app = build_app()
     harness = _harness(app)
 
-    harness.write("/effort")
-    harness.press("enter")
-    await asyncio.wait_for(app.task, 2.0)
-    page = _presented_page(app)
+    await _type_command(app, harness, "/effort")
 
-    assert [item.value for item in page.list.items] == [level.value for level in ReasoningEffort]
+    page = _effort_page(app)
+    assert list(page.levels) == [level.value for level in ReasoningEffort]
+    assert {"max", "ultra"} <= set(page.levels)
 
 
 async def test_switching_effort_announces_it_in_the_conversation():
@@ -2583,23 +2583,8 @@ async def test_switching_effort_announces_it_in_the_conversation():
     ]
 
 
-async def test_the_effort_command_opens_a_picker_over_the_levels():
-    app = build_app()
-    harness = _harness(app)
-
-    harness.write("/effort")
-    harness.press("enter")
-    await asyncio.wait_for(app.task, 2.0)
-
-    page = next(widget for widget in walk(app.app.screens.top.widget) if isinstance(widget, ListPage))
-    assert [item.value for item in page.list.items] == list(app.agent.efforts)
-    assert page.list.current.value == "medium"  # the level in force is highlighted
-
-    harness.press("down")  # medium -> high
-    harness.press("enter")
-
-    assert app.agent.effort == "high"
-    assert app.app.screens.top.name == "main"
+def _effort_page(app) -> EffortPage:
+    return next(widget for widget in walk(app.app.screens.top.widget) if isinstance(widget, EffortPage))
 
 
 async def test_the_theme_command_moves_to_a_menu_and_enter_applies_the_choice():

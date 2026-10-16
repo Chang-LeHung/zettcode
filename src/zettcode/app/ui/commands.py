@@ -12,9 +12,9 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
-from ...tui import ListItem, ListPage, Widget, theme_names
+from ...tui import Widget, theme_names
 from ..commands import Command, CommandContext, CommandProvider, CommandResult, Subcommand
-from .widgets import ContextPage, ModelPage, SessionsPage, bottom_panel, help_text
+from .widgets import EFFORT_ROWS, ContextPage, EffortPage, ModelPage, SessionsPage, bottom_panel, help_text
 
 #: Rows the picker panels take from the bottom of the screen: the title, the
 #: list, and the footer hint. The handler owns the number; nothing in the
@@ -281,10 +281,11 @@ class ShellCommands(CommandProvider):
         return CommandResult(notification=f"renamed to {renamed}", relayout=True)
 
     async def effort(self, context: CommandContext) -> CommandResult:
-        """Open the reasoning picker, or switch straight to a named level.
+        """Switch straight to a named level, or open the panel with a knob on a rail.
 
-        The levels are the runtime's own, so the picker lists what the provider
-        adapters can actually send rather than a hand-written list.
+        The levels are the runtime's own, so the panel lists what the provider adapters can actually
+        send rather than a hand-written list. The arrow keys only slide the knob; Enter applies the level
+        under it, which is when the header plays its gauge and the transcript says so. Escape applies nothing.
         """
         if context.argument:
             try:
@@ -292,16 +293,25 @@ class ShellCommands(CommandProvider):
             except ValueError as error:
                 return CommandResult(message=str(error))
             return CommandResult(relayout=True)
-        levels = self.shell.agent.efforts
-        current = self.shell.agent.effort
-        page = ListPage(
-            [ListItem(level, level, EFFORT_NOTES.get(level, "")) for level in levels],
-            title="Reasoning effort",
-            on_select=lambda item: self.shell.select_effort(str(item.value)),
-            on_cancel=self.shell.close_page,
-            selected=levels.index(current) if current in levels else 0,
+        shell = self.shell
+
+        def select(level: str) -> None:
+            # The page goes first: the header's gauge is for a reader looking at the header, and it is
+            # skipped while a command holds the shell busy.
+            shell.close_page()
+            try:
+                shell.change_effort(level)
+            except ValueError as error:
+                shell.transcript.error(str(error))
+
+        page = EffortPage(
+            shell.agent.efforts,
+            shell.agent.effort,
+            notes=EFFORT_NOTES,
+            on_select=select,
+            on_cancel=shell.close_page,
         )
-        return CommandResult(widget=self._panel(page))
+        return CommandResult(widget=bottom_panel(page, rows=EFFORT_ROWS))
 
     async def permission(self, context: CommandContext) -> CommandResult:
         """Set a named level straight away, or open the menu of the levels.

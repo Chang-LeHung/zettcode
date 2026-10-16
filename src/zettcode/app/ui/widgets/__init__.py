@@ -19,6 +19,8 @@ _EXPORTS = {
     "CommandCompleter": ".completer",
     "Composer": ".composer",
     "ContextPage": ".context_page",
+    "EFFORT_ROWS": ".effort_page",
+    "EffortPage": ".effort_page",
     "FollowUpQueue": ".follow_up",
     "INPUT_ROWS": ".input_page",
     "InputPage": ".input_page",
@@ -49,6 +51,7 @@ if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
     from .completer import CommandCompleter, help_text
     from .composer import Composer
     from .context_page import ContextPage
+    from .effort_page import EFFORT_ROWS, EffortPage
     from .follow_up import FollowUpQueue
     from .input_page import INPUT_ROWS, InputPage
     from .model_page import ModelPage
@@ -90,6 +93,8 @@ __all__ = [
     "CommandCompleter",
     "Composer",
     "ContextPage",
+    "EFFORT_ROWS",
+    "EffortPage",
     "FollowUpQueue",
     "INPUT_ROWS",
     "InputPage",

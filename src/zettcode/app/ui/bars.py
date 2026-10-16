@@ -21,6 +21,7 @@ from ...tui.render import blend
 from ..agent.agent.sessions import UNTITLED_SESSION
 from ..agent.permission import Permission
 from .shell import ShellState
+from .widgets.effort_page import heat_colour
 
 
 class BarsMixin(ShellState):
@@ -86,10 +87,7 @@ class BarsMixin(ShellState):
         the same colour whether it is being switched to or away from.
         """
         theme = self.app.theme
-        stops = (theme.accent, theme.accent_bright, theme.warning, theme.error)
-        scaled = min(max(heat, 0.0), 1.0) * (len(stops) - 1)
-        index = min(int(scaled), len(stops) - 2)
-        return blend(stops[index], stops[index + 1], scaled - index)
+        return heat_colour(theme, heat)
 
     def _status_left(self) -> TextLine:
         """Return the status line's left side, whatever the plugins put there."""
