@@ -379,7 +379,7 @@ the two files at the top are the composition and the thing it composes.
 | `runtime.py` | `ZettCodeRuntime`: composes the vendor client with the extensions below |
 | `extensions/` | What the runtime plugs into zett-agent that is ours: `capabilities`, `compaction`, `context`, `mcp` (and `mcp_notice`, the event it reports through), `messenger` (the line to the other sessions) and `messaging` (the two tools), `subagents`, `tool_output`, `usage` |
 | `permission/` | How much of the shell may run unasked: the levels and what enforces them (`__init__`), the fail-closed read-only classifier (`readonly`), what an approval may remember (`approval`) |
-| `conversation/` | The conversation as the screen shows it: `entries`, `transcript/`, `presenters`, `rendering`, `text` (the words and bounds of a row), `pulse` (how the waiting row and status icon move), `effort_gauge` (the header's effort animation), `projection` (agent events fill it), `replay` (a stored branch rebuilds it) |
+| `conversation/` | The conversation as the screen shows it: `entries`, `transcript/`, `presenters`, `rendering`, `text` (the words and bounds of a row), `pulse` (how the waiting row and status icon move), `effort_gauge` and `shimmer` (the header's two effort animations), `projection` (agent events fill it), `replay` (a stored branch rebuilds it) |
 | `dialogue/` | What is said besides the turns: `mentions` (`@`, including the names of other sessions), `ask`, `side`, `title`, `relay` (a message from another session: what the model reads, what is stored) |
 | `storage/` | The session file format and the store that reads and writes it |
 | `export/` | A stored session as a self-contained HTML page, with the page's assets under `export/trace/` |

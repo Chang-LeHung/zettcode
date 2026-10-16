@@ -2216,7 +2216,7 @@ def test_switching_effort_animates_the_header_while_the_gauge_runs(monkeypatch):
     clock = [1_000.0]
     monkeypatch.setattr(app_module, "monotonic", lambda: clock[0])
 
-    app.change_effort("ultra")
+    app.change_effort("xhigh")
 
     assert app._effort_animation is not None
     assert "effort" in app.app.scheduler.animations, "the frame loop is kept awake for it"
@@ -2224,7 +2224,7 @@ def test_switching_effort_animates_the_header_while_the_gauge_runs(monkeypatch):
     clock[0] += EFFORT_SECONDS * 0.4
     middle = app._header_right().text
     assert middle.count("\u2501") + middle.count("\u2578") >= 1, middle
-    assert middle.strip().endswith("ultra"), "the word is beside it"
+    assert middle.strip().endswith("xhigh"), "the word is beside it"
     assert app._effort_animation is not None, "well inside its time, it is still running"
 
     clock[0] += EFFORT_SECONDS
@@ -2232,7 +2232,7 @@ def test_switching_effort_animates_the_header_while_the_gauge_runs(monkeypatch):
 
     assert app._effort_animation is None
     assert "effort" not in app.app.scheduler.animations, "and the token is released"
-    assert app._header_right().text.strip().endswith("ultra"), "the header is the plugins' again"
+    assert app._header_right().text.strip().endswith("xhigh"), "the header is the plugins' again"
     assert "\u2501" not in app._header_right().text, "with no gauge left in it"
     assert harness.render().text.strip() != "", "and the frame still paints"
 
@@ -2253,7 +2253,7 @@ def test_the_effort_gauge_is_painted_in_a_ramp_that_follows_the_theme(monkeypatc
     app.change_effort("medium")
     clock[0] += 2.0
     app.settle_effort_animation()
-    app.change_effort("ultra")
+    app.change_effort("xhigh")
     clock[0] += EFFORT_SECONDS * 0.5
 
     colours = [span.style.foreground for span in app._header_right().spans if span.text in ("\u2501", "\u2578")]
@@ -2279,7 +2279,7 @@ def test_the_effort_gauge_carries_a_travelling_glow(monkeypatch):
     clock[0] += EFFORT_SECONDS * 2
     app.settle_effort_animation()
     started = clock[0]
-    app.change_effort("ultra")
+    app.change_effort("xhigh")
 
     def brightest(fraction: float) -> int:
         """Return the index of the span the glow is on at one moment of the animation."""
