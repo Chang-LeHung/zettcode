@@ -12,7 +12,7 @@ from collections.abc import Callable, Mapping
 
 from ..entries import EntryKind, EntryStatus, MarkdownEntry, ThinkingEntry, ToolEntry
 from ..rendering import ANSWER, THINKING, Renderers
-from ..rows import COMPACTING_LABEL, limit_output
+from ..text import COMPACTING_LABEL, limit_output
 from .turn import TurnMixin
 
 

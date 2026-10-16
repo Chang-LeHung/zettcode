@@ -48,8 +48,9 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
     from collections.abc import AsyncGenerator
 from ..agent.agent import ZettCodeAgent
 from ..agent.agent.prompt import PromptPart, carries_image, mention_hint, mention_parts
+from ..agent.conversation.effort_gauge import EFFORT_SECONDS, EffortFrame, effort_frame
 from ..agent.conversation.projection import TranscriptProjector
-from ..agent.conversation.rows import EFFORT_SECONDS, EffortFrame, clock_text, effort_frame, elapsed_text
+from ..agent.conversation.text import clock_text, elapsed_text
 from ..agent.conversation.tips import TipDeck
 from ..agent.conversation.transcript import Transcript
 from ..agent.dialogue.ask import AskUserQuestion
@@ -60,6 +61,7 @@ from ..agent.extensions.messenger import Messenger
 from ..agent.extensions.usage import UsageSnapshot
 from ..commands import Command, CommandContext, CommandList, CommandResult
 from ..registry import Registry
+from .bars import BarsMixin
 from .commands import ShellCommands
 from .followups import FollowUp, FollowUpsMixin
 from .gc_policy import CollectorPolicy, freeze_long_lived
@@ -67,7 +69,6 @@ from .keys import KeysMixin
 from .messaging import MessagingMixin
 from .notices import NoticesMixin
 from .providers import ConfigMixin
-from .rows import RowsMixin
 from .sessions import SessionMixin
 from .settings import SettingsMixin
 from .shell import EFFORT_TOKEN, EMPTY_REPLY, FLASH_SECONDS, PAGE_SCREEN
@@ -84,7 +85,7 @@ from .widgets import (
 
 
 class ZettCodeApp(
-    RowsMixin,
+    BarsMixin,
     KeysMixin,
     FollowUpsMixin,
     MessagingMixin,

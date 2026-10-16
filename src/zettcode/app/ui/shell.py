@@ -60,8 +60,8 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
     from ...update import UpdateState
     from ..agent.agent import ZettCodeAgent
     from ..agent.agent.prompt import PromptPart
+    from ..agent.conversation.effort_gauge import EffortFrame
     from ..agent.conversation.projection import TranscriptProjector
-    from ..agent.conversation.rows import EffortFrame
     from ..agent.conversation.transcript import Transcript
     from ..agent.dialogue.ask import AskUserQuestion
     from ..agent.dialogue.mentions import MentionRegistry

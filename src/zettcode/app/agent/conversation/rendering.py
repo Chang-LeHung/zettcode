@@ -33,7 +33,7 @@ from pathlib import Path
 from ....tui import ELLIPSIS, SEPARATOR
 from ....tui.render import GENERIC, language_for
 from .entries import DeleteEntry, EditEntry, MessageEntry, ReadEntry, ToolEntry, WriteEntry
-from .rows import limit_output
+from .text import limit_output
 
 #: Output kinds the chain shapes; a link claims one or more of them.
 TOOL = "tool"

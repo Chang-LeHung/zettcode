@@ -30,13 +30,8 @@ from zettcode.app.agent.conversation.presenters import (
     render_entry,
     tool_color,
 )
-from zettcode.app.agent.conversation.rows import (
-    COMPACTING_LABEL,
-    PULSE_FRAMES,
-    RUNNING_GLYPHS,
-    STOP_HINT,
-    move_frames,
-)
+from zettcode.app.agent.conversation.pulse import PULSE_FRAMES, RUNNING_GLYPHS, move_frames
+from zettcode.app.agent.conversation.text import COMPACTING_LABEL, STOP_HINT
 from zettcode.app.agent.conversation.transcript import Transcript
 from zettcode.app.ui.widgets.transcript import TranscriptSource
 from zettcode.tui import DARK, LIGHT, SEPARATOR, TextLine
@@ -774,7 +769,7 @@ def test_a_message_with_no_answer_yet_recorded_is_still_something_to_expand():
 
 
 def test_an_enormous_message_is_kept_bounded_like_any_tool_output():
-    from zettcode.app.agent.conversation.rows import MAX_TOOL_OUTPUT
+    from zettcode.app.agent.conversation.text import MAX_TOOL_OUTPUT
 
     transcript, entry = _sent("x" * (MAX_TOOL_OUTPUT * 3))
 

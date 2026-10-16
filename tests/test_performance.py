@@ -7,7 +7,7 @@ from time import perf_counter
 from zettcode.app import Transcript, TranscriptSource
 from zettcode.app.agent.conversation.entries import WaitEntry
 from zettcode.app.agent.conversation.presenters import DEFAULT_PRESENTERS
-from zettcode.app.agent.conversation.rows import ANIMATION_SECONDS
+from zettcode.app.agent.conversation.pulse import ANIMATION_SECONDS
 from zettcode.tui import DARK
 from zettcode.tui.widgets import markdown as markdown_module
 

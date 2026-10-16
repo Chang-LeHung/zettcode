@@ -9,7 +9,7 @@ import pytest
 
 from zettcode.app.agent.conversation.entries import EntryStatus, WaitEntry
 from zettcode.app.agent.conversation.presenters import _running_label
-from zettcode.app.agent.conversation.rows import (
+from zettcode.app.agent.conversation.pulse import (
     ANIMATION_FPS,
     ANIMATION_SECONDS,
     PULSE_FRAMES,
@@ -18,10 +18,10 @@ from zettcode.app.agent.conversation.rows import (
     WAIT_RAMP,
     activity_glyph,
     blink_state,
-    duration_text,
     sweep_column,
     wait_picture,
 )
+from zettcode.app.agent.conversation.text import duration_text
 from zettcode.app.agent.conversation.transcript import Transcript
 from zettcode.tui import DARK, ColorDepth, Style, Terminal, TerminalCapabilities, TuiApp, Widget
 from zettcode.tui.core.scheduler import Scheduler

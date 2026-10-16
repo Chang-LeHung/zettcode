@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from zettcode.app.agent.conversation.rows import EFFORT_GLOW_HALF_WIDTH, EffortFrame, effort_frame
+from zettcode.app.agent.conversation.effort_gauge import EFFORT_GLOW_HALF_WIDTH, EffortFrame, effort_frame
 
 LEVELS = ("off", "minimal", "low", "medium", "high", "xhigh", "max", "ultra")
 

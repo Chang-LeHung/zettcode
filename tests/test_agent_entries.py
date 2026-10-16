@@ -20,7 +20,7 @@ from zettcode.app.agent.conversation.entries import (
     WaitEntry,
 )
 from zettcode.app.agent.conversation.presenters import block_for
-from zettcode.app.agent.conversation.rows import move_frames
+from zettcode.app.agent.conversation.pulse import move_frames
 from zettcode.app.agent.conversation.transcript import Transcript
 from zettcode.tui import DARK, LIGHT, LineSource
 
