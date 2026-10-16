@@ -78,6 +78,17 @@ provider 列表，从列表退到模型列表，只有在模型列表按 Escape 
 在面板里选中一个模型可以**使用**它、修改它的 **token**、**API**（`chat`、`responses` 或 `anthropic`）、**地址**、**模型 id** 或**显示名**，或者**删除**
 它（删除前会先确认，Enter 默认的答案是 *Keep it*）。
 
+另外三行是关于模型能装多少的，改完立刻在当前会话里生效：
+
+| 行 | 设置什么 | 怎么写 |
+| --- | --- | --- |
+| **Images** | 模型是否接受图片（`multimodal`）。选 *No* 时，图片会在本地被拒绝，模型也拿不到 `view_image`。 | 选 *Yes* 或 *No*，默认停在当前答案上。 |
+| **Context window** | 模型能装多少 token（`context_window`），`/context` 就是对着它衡量的。 | `128000`、`128,000`、`128k`、`1m` 或 `1.5m`。小于 1,000 会被拒绝，因为那几乎一定是按“千”写的窗口 —— 请写 `200k`。留空用 128,000。 |
+| **Compress at** | 对话占到窗口的多少时，在下一次请求前先做摘要（`compact_percent`）。 | 大于 0、不超过 100 的百分比：`80` 或 `80%`。留空用 80。 |
+
+窗口和比例合起来决定什么时候压缩 —— 窗口 200k、比例 75% 就是 150,000 token —— 设置之后面板会告诉你算出来是多少。
+*添加*模型时不会问这些（provider 并不知道），添加之后在这里设置，或者在命令行里加 `--context` 和 `--compact`。
+
 同样的事也可以写成一行，只会询问这一行没有给出的部分：
 
 ```text
@@ -85,7 +96,9 @@ provider 列表，从列表退到模型列表，只有在模型列表按 Escape 
 /config add custom --api chat --url https://llm.example/v1 --model my-model --token sk-... --name "My model"
 /config add anthropic --model claude-sonnet-4-5          # 会询问 token
 /config remove 3          # 也可以用名字：/config remove "My model"
-/config list              # 模型和地址，不显示 token
+/config add custom --api chat --url https://llm.example/v1 --model big --token sk-... --context 1m --compact 60
+/config add custom --api chat --url https://llm.example/v1 --model big --token sk-... --context 1m --compact 60
+/config list              # 模型、它们接受什么、在哪里压缩，不显示 token
 /config providers         # `add` 接受哪些 provider
 ```
 
@@ -97,6 +110,8 @@ provider 列表，从列表退到模型列表，只有在模型列表按 Escape 
 | `--api chat\|responses\|anthropic` | 用哪种 API。provider 有自己的默认值，这里可以覆盖，例如 `openai --api responses`。 |
 | `--name SHOWN` | 在标题栏和 `/model` 里显示的名字（`display_model`）。 |
 | `--multimodal` | 模型接受图片。 |
+| `--context TOKENS` | 上下文窗口：`200000`、`200k`、`1m`。 |
+| `--compact PERCENT` | 达到窗口的这个比例时做摘要：`75` 或 `75%`。 |
 
 ::: tip token 优先用面板输入
 你输入过的一行会留在输入框的内存历史里，按 `↑` 能再看到它，直到退出。不写 `--token`，在隐藏提示里输入
@@ -286,6 +301,7 @@ compact_percent = 80
 [transcript]
 max_entries = 1024             # 显示的对话块数量，不是终端行数
 mouse_scroll_speed = 1           # 一个滚轮事件滚动的行数
+tips = true                    # Processing 下面的小提示
 
 [agents_md]
 enabled = true                 # 使用项目指令
@@ -326,6 +342,7 @@ todowrite = false              # 提供 todo_write，界面会画出计划面板
 | --- | --- | --- |
 | `transcript.max_entries` | `1024` | 正整数。限制可回看的对话块，旧块移出界面，但不会删除持久化历史或模型上下文。 |
 | `transcript.mouse_scroll_speed` | `1` | 一个鼠标滚轮事件滚动对话的行数，大于 0、最大 20；`0.5` 这样的小数表示每两个事件滚一行，`3` 表示一格三行。无论取值多少，单个画面最多只移动半屏。 |
+| `transcript.tips` | `true` | 请求运行五秒后，在 `Processing` 行下面显示一条小提示。设为 `false` 关闭。 |
 | `agents_md.enabled` | `true` | 读取工作区及其上层目录的 `AGENTS.md`，见[项目指令](/zh/guide/instructions)。 |
 | `ask_user.enabled` | `true` | 允许单选、多选和自由输入的提问面板。`false` 移除这个工具，不代表禁止模型在普通回答里提出问题。 |
 | `skills.enabled` | `true` | 发现 skill 名称和描述，并允许按需加载正文。 |

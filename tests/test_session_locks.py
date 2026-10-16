@@ -194,7 +194,11 @@ def test_a_session_another_real_process_has_open_cannot_be_taken_and_is_free_whe
         holder.terminate()
         holder.wait(timeout=10)
 
-    assert locks.claim(A) is True
+    # The operating system lets go of a dead process's lock a moment after it has gone, and on Windows not at once.
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline and not locks.claim(A):
+        time.sleep(0.05)
+    assert locks.holds(A)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX signals")

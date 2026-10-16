@@ -84,6 +84,18 @@ panel does it close. Nothing is written until the last answer is in, so going ba
 Choose a model in the panel to **use** it, change its **token**, **API** (`chat`, `responses` or
 `anthropic`), **address**, **model id** or **shown name**, or **remove** it (it asks first, and *Keep it* is the answer Enter gives).
 
+Three more rows are about what the model can carry, and each takes effect in the running session at once:
+
+| Row | What it sets | How to write it |
+| --- | --- | --- |
+| **Images** | Whether the model accepts images (`multimodal`). With *No*, a picture is refused here and the model gets no `view_image`. | Pick *Yes* or *No*; it starts on the current answer. |
+| **Context window** | How many tokens the model can carry (`context_window`), which `/context` measures against. | `128000`, `128,000`, `128k`, `1m` or `1.5m`. Under 1,000 is refused, because it is nearly always a window written in thousands — write `200k`. Empty uses 128,000. |
+| **Compress at** | The share of the window at which the conversation is summarized before the next request (`compact_percent`). | A percentage above 0 and up to 100: `80` or `80%`. Empty uses 80. |
+
+The window and the share together decide when compaction happens — at 200k and 75% that is 150,000 tokens —
+and the panel says what they come to when you set them. The values are not asked when you *add* a model
+(the provider does not know them); set them here afterwards, or give `--context` and `--compact` on the line.
+
 The same thing on one line, asking only for what the line leaves out:
 
 ```text
@@ -91,7 +103,8 @@ The same thing on one line, asking only for what the line leaves out:
 /config add custom --api chat --url https://llm.example/v1 --model my-model --token sk-... --name "My model"
 /config add anthropic --model claude-sonnet-4-5          # asks for the token
 /config remove 3          # or the name: /config remove "My model"
-/config list              # the models and their addresses, never a token
+/config add custom --api chat --url https://llm.example/v1 --model big --token sk-... --context 1m --compact 60
+/config list              # the models, what they take and where they compress, never a token
 /config providers         # what `add` accepts
 ```
 
@@ -103,6 +116,8 @@ The same thing on one line, asking only for what the line leaves out:
 | `--api chat\|responses\|anthropic` | Which API. A provider has its own; this overrides it, e.g. `openai --api responses`. |
 | `--name SHOWN` | The name in the header and `/model` (`display_model`). |
 | `--multimodal` | The model accepts images. |
+| `--context TOKENS` | The context window: `200000`, `200k`, `1m`. |
+| `--compact PERCENT` | Summarize at this share of the window: `75` or `75%`. |
 
 ::: tip Prefer the panel for a token
 A line you type stays in the composer's in-memory history, so pressing `Up` shows it again until
@@ -311,6 +326,7 @@ compact_percent = 80
 [transcript]
 max_entries = 1024             # displayed blocks, not terminal lines
 mouse_scroll_speed = 1           # rows one wheel event scrolls
+tips = true                    # a small tip under Processing
 
 [agents_md]
 enabled = true                 # use project instructions
@@ -352,6 +368,7 @@ belong to the most recent table heading; an `enabled` key immediately under
 | --- | --- | --- |
 | `transcript.max_entries` | `1024` | Positive integer. Limits visible conversation blocks; older blocks leave the scrollback, but saved history and model context are not deleted. |
 | `transcript.mouse_scroll_speed` | `1` | Rows one mouse-wheel event scrolls the conversation, from just above 0 to 20; a fraction such as `0.5` is a row every second event, and `3` is three rows a notch. Whatever the value, one frame moves the view at most half a screen. |
+| `transcript.tips` | `true` | Show a small tip under the `Processing` row once a request has run for five seconds. `false` turns them off. |
 | `agents_md.enabled` | `true` | Read `AGENTS.md` from the workspace and its ancestors. See [Project instructions](/guide/instructions). |
 | `ask_user.enabled` | `true` | Allow the question panel with single-choice, multiple-choice, and typed answers. `false` removes that tool; it does not prevent all questions in normal prose. |
 | `skills.enabled` | `true` | Discover skill names/descriptions and allow their instructions to be loaded when needed. |

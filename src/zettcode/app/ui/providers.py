@@ -16,7 +16,17 @@ from ...config_edit import ConfigEditError
 from ...providers import API_FLAG_KEYS, CUSTOM, Api
 from ...tui import SEPARATOR, ListItem, ListPage, Screen, Widget
 from ..agent.conversation.rows import compact_path
-from .config_form import Draft, describe, entry_for, parse_add
+from .config_form import (
+    Draft,
+    describe,
+    entry_for,
+    limits_text,
+    parse_add,
+    parse_percent,
+    parse_tokens,
+    tokens_text,
+    whole_if_whole,
+)
 from .shell import PAGE_SCREEN, ShellState
 from .widgets import INPUT_ROWS, InputPage, bottom_panel
 
@@ -26,6 +36,9 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
 
 #: Rows the list pages take: the title, a blank, up to eight rows, the keys.
 LIST_ROWS = 13
+
+#: Rows the list of things to do with one model takes: ten of them.
+ACTION_ROWS = 15
 
 #: Columns the file's path may take under the title; a longer one keeps its end, where the name is.
 SUBTITLE_COLUMNS = 70
@@ -291,6 +304,13 @@ class ConfigMixin(ShellState):
             ListItem("base_url", "Change the address", model.base_url or "default address"),
             ListItem("model", "Change the model id", model.model),
             ListItem("display_model", "Change the shown name", model.display_model or "(the model id)"),
+            ListItem("multimodal", "Images", "accepted" if model.multimodal else "not accepted \u2014 text only"),
+            ListItem("context_window", "Context window", tokens_text(model.context_window)),
+            ListItem(
+                "compact_percent",
+                "Compress at",
+                f"{whole_if_whole(model.compact_percent)}% of the window \u2014 {model.compaction_max_tokens:,} tokens",
+            ),
             ListItem("remove", "Remove", "delete it from the file"),
         ]
         page = ListPage(
@@ -299,7 +319,7 @@ class ConfigMixin(ShellState):
             on_select=lambda item: self._config_act(index, str(item.value)),
             on_cancel=self._config_back,
         )
-        self._config_show(page, rows=LIST_ROWS, replace=replace)
+        self._config_show(page, rows=ACTION_ROWS, replace=replace)
 
     def _config_act(self, index: int, action: str) -> None:
         """Do one of the things offered for a model."""
@@ -315,6 +335,10 @@ class ConfigMixin(ShellState):
             self._config_confirm_remove(index, model)
         elif action == "api":
             self._config_pick_api(index, model.api, dict(entry))
+        elif action == "multimodal":
+            self._config_pick_images(index, model, dict(entry))
+        elif action in ("context_window", "compact_percent"):
+            self._config_ask_limit(index, model, dict(entry), action)
         else:
             secret = action == "token"
             self._config_ask_text(
@@ -347,18 +371,87 @@ class ConfigMixin(ShellState):
         )
         self._config_show(page, rows=LIST_ROWS, replace=True)
 
+    def _config_pick_images(self, index: int, model: ModelConfig, entry: dict[str, object]) -> None:
+        """Ask whether a model takes images, starting on the answer it has."""
+        rows = [
+            ListItem(True, "Yes" + (" (current)" if model.multimodal else ""), "pictures can be attached with Ctrl-V"),
+            ListItem(False, "No" + ("" if model.multimodal else " (current)"), "text only: a picture is refused"),
+        ]
+        page = ListPage(
+            rows,
+            title="Does it accept images?",
+            subtitle="Only the model's documentation knows; a model that cannot read one fails the request.",
+            on_select=lambda item: self._config_set_images(index, entry, bool(item.value)),
+            on_cancel=lambda: self._config_actions(index, replace=True),
+            selected=0 if model.multimodal else 1,
+        )
+        self._config_show(page, rows=LIST_ROWS, replace=True)
+
+    def _config_set_images(self, index: int, entry: dict[str, object], accepts: bool) -> None:
+        """Write whether the model takes images; the default is no, so no is written as nothing."""
+        if accepts:
+            entry["multimodal"] = True
+        else:
+            entry.pop("multimodal", None)
+        refused = self._config_save(
+            index, entry, lambda model: f"{model.shown_name}: images {'accepted' if accepts else 'not accepted'}"
+        )
+        if refused is not None:
+            self._config_failed(ValueError(refused))
+
+    def _config_ask_limit(self, index: int, model: ModelConfig, entry: dict[str, object], key: str) -> None:
+        """Ask for the size of a model's window, or the share of it at which a request is summarized."""
+        window = key == "context_window"
+        self._config_ask_text(
+            "Context window" if window else "Compress at",
+            Draft(),
+            lambda text: self._config_change_limit(index, entry, key, text),
+            help_lines=(
+                (
+                    "How many tokens the model can carry: 128000, 128k or 1m.",
+                    "Leave it empty to use 128,000.",
+                )
+                if window
+                else (
+                    "When the conversation fills this share of the window, it is summarized before the next request.",
+                    "A percentage, more than 0 and at most 100. Leave it empty to use 80.",
+                )
+            ),
+            initial=str(entry.get(key, "")),
+            allow_empty=True,
+            replace=True,
+            on_cancel=lambda: self._config_actions(index, replace=True),
+        )
+
+    def _config_change_limit(self, index: int, entry: dict[str, object], key: str, text: str) -> str | None:
+        """Write one of the two limits; answer why not when the text is not one."""
+        if text:
+            try:
+                entry[key] = parse_tokens(text) if key == "context_window" else whole_if_whole(parse_percent(text))
+            except ValueError as error:
+                return str(error)
+        else:
+            entry.pop(key, None)
+        return self._config_save(index, entry, lambda model: f"{model.shown_name}: {limits_text(model)}")
+
+    def _config_save(self, index: int, entry: dict[str, object], say: Callable[[ModelConfig], str]) -> str | None:
+        """Rewrite the entry in the file and in this session, and say what it came to; answer why not on a refusal."""
+        try:
+            model = self.agent.update_configured_model(index, entry)
+        except ValueError as error:
+            return str(error)
+        self._config_end(say(model))
+        self.app.request_layout()
+        return None
+
     def _config_set_api(self, index: int, entry: dict[str, object], api: Api) -> None:
         """Write the protocol as the two keys the loader reads, clearing the one it no longer is."""
         for key in API_FLAG_KEYS:
             entry.pop(key, None)
         entry.update(api.keys)
-        try:
-            self.agent.update_configured_model(index, entry)
-        except ValueError as error:
-            self._config_failed(error)
-            return
-        self._config_end(f"updated {describe(entry)}")
-        self.app.request_layout()
+        refused = self._config_save(index, entry, lambda model: f"updated {describe(entry)}")
+        if refused is not None:
+            self._config_failed(ValueError(refused))
 
     def _config_change(self, index: int, entry: dict[str, object], key: str, value: str) -> str | None:
         """Rewrite one key of one entry; answer why not when the new value is refused."""
@@ -373,13 +466,7 @@ class ConfigMixin(ShellState):
             entry[key] = value
         else:
             entry.pop(key, None)
-        try:
-            self.agent.update_configured_model(index, entry)
-        except ValueError as error:
-            return str(error)
-        self._config_end(f"updated {describe(entry)}")
-        self.app.request_layout()
-        return None
+        return self._config_save(index, entry, lambda model: f"updated {describe(entry)}")
 
     def _config_confirm_remove(self, index: int, model: ModelConfig) -> None:
         """Ask once before deleting, with the safe answer first."""
@@ -455,12 +542,17 @@ class ConfigMixin(ShellState):
 
     def config_listing(self) -> str:
         """Return the models in the file as Markdown, with no token in it."""
-        lines = ["| # | name | model | api | address |", "| --- | --- | --- | --- | --- |"]
+        lines = [
+            "| # | name | model | api | address | images | context window | compress at |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- |",
+        ]
         current = self.agent.active_model
         for index, (model, _) in enumerate(self.agent.file_models(), start=1):
             mark = " (current)" if model == current else ""
             lines.append(
-                f"| {index} | {model.shown_name}{mark} | `{model.model}` | {model.api} | {model.base_url or 'default'} |"
+                f"| {index} | {model.shown_name}{mark} | `{model.model}` | {model.api} | {model.base_url or 'default'} "
+                f"| {'yes' if model.multimodal else 'no'} | {model.context_window:,} "
+                f"| {whole_if_whole(model.compact_percent)}% |"
             )
         return "\n".join(lines)
 

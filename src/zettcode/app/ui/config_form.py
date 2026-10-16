@@ -7,16 +7,27 @@ knows nothing about widgets or the file, which is what makes the rules testable 
 
 from __future__ import annotations
 
+import re
 import shlex
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, TypeVar
 
 from ...providers import CUSTOM, Api, Provider, check_url, find_provider
 
+if TYPE_CHECKING:  # pragma: no cover - annotations only
+    from ...config import ModelConfig
+
+T = TypeVar("T")
+
 USAGE = (
     "/config add <provider> [--model ID] [--token KEY] [--url URL] [--api chat|responses|anthropic] "
-    "[--name SHOWN] [--multimodal]"
+    "[--name SHOWN] [--multimodal] [--context TOKENS] [--compact PERCENT]"
 )
+
+#: The smallest context window the panel accepts. A window is counted in tokens, so a small number is nearly always a
+#: window written in thousands (``200``); the file itself would take it, and the model would be compacted at once.
+MIN_CONTEXT_WINDOW = 1_000
 
 #: The flags ``/config add`` takes, and whether each one carries a value.
 _FLAGS = {
@@ -26,6 +37,8 @@ _FLAGS = {
     "--api": True,
     "--name": True,
     "--multimodal": False,
+    "--context": True,
+    "--compact": True,
 }
 
 
@@ -41,6 +54,8 @@ class Draft:
         token: The credential.
         name: What the picker shows; empty means the model id.
         multimodal: Whether it takes images.
+        context_window: Tokens it can carry; ``None`` leaves the default.
+        compact_percent: The share of the window at which a request is summarized first; ``None`` leaves the default.
     """
 
     provider: Provider | None = None
@@ -50,6 +65,8 @@ class Draft:
     token: str = ""
     name: str = ""
     multimodal: bool = False
+    context_window: int | None = None
+    compact_percent: float | None = None
     #: Which values the reader already gave on the command line, so the panel does not ask again.
     given: set[str] = field(default_factory=set)
     #: The questions answered in the panel, newest last, each with what was typed, so that
@@ -129,6 +146,10 @@ def entry_for(draft: Draft) -> dict[str, object]:
     entry.update(draft.api.keys)
     if draft.multimodal:
         entry["multimodal"] = True
+    if draft.context_window is not None:
+        entry["context_window"] = draft.context_window
+    if draft.compact_percent is not None:
+        entry["compact_percent"] = whole_if_whole(draft.compact_percent)
     return entry
 
 
@@ -172,7 +193,71 @@ def parse_add(argument: str, providers: Sequence[Provider]) -> Draft:
         draft.name = flags["--name"].strip()
     if "--multimodal" in flags:
         draft.multimodal = True
+    if "--context" in flags:
+        draft.context_window = _flag(parse_tokens, flags["--context"], "--context")
+    if "--compact" in flags:
+        draft.compact_percent = _flag(parse_percent, flags["--compact"], "--compact")
     return draft
+
+
+def _flag(parse: Callable[[str], T], text: str, flag: str) -> T:
+    """Read the value of a flag with ``parse``, naming the flag in what is wrong with it."""
+    try:
+        return parse(text)
+    except ValueError as error:
+        raise ValueError(f"{flag}: {error}") from None
+
+
+def parse_tokens(text: str) -> int:
+    """Read a size in tokens: ``128000``, ``128,000``, ``128k``, ``1m`` or ``1.5m``.
+
+    Raises:
+        ValueError: With a sentence saying how to write it, when it is not a size or is too small to be a window.
+    """
+    cleaned = re.sub(r"[\s,_]|tokens?$", "", text.strip().lower())
+    found = re.fullmatch(r"(\d+(?:\.\d+)?)([km]?)", cleaned)
+    if found is None:
+        raise ValueError("write the size in tokens: 128000, 128k or 1m")
+    tokens = round(float(found.group(1)) * {"": 1, "k": 1_000, "m": 1_000_000}[found.group(2)])
+    if tokens < MIN_CONTEXT_WINDOW:
+        raise ValueError(
+            f"a context window is counted in tokens and is at least {MIN_CONTEXT_WINDOW:,}; "
+            "write 200k for two hundred thousand"
+        )
+    return tokens
+
+
+def parse_percent(text: str) -> float:
+    """Read a share of the window: ``80`` or ``80%``, more than 0 and at most 100.
+
+    Raises:
+        ValueError: With a sentence saying what is allowed.
+    """
+    try:
+        percent = float(text.strip().removesuffix("%").strip())
+    except ValueError:
+        raise ValueError("write a percentage of the window, such as 80") from None
+    if not 0 < percent <= 100:
+        raise ValueError("the percentage must be more than 0 and at most 100")
+    return percent
+
+
+def whole_if_whole(number: float) -> int | float:
+    """Return ``80`` for ``80.0``, so the file reads ``compact_percent = 80`` and not ``80.0``."""
+    return int(number) if float(number).is_integer() else number
+
+
+def tokens_text(tokens: int) -> str:
+    """Return a size the way a reader says it: ``128,000 tokens``."""
+    return f"{tokens:,} tokens"
+
+
+def limits_text(model: ModelConfig) -> str:
+    """Return what a model's window and compaction setting come to, in one line."""
+    percent = whole_if_whole(model.compact_percent)
+    return (
+        f"{tokens_text(model.context_window)} \u00b7 compressed at {percent}% ({model.compaction_max_tokens:,} tokens)"
+    )
 
 
 def _flags(words: Sequence[str]) -> Mapping[str, str]:
