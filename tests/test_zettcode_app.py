@@ -1881,7 +1881,7 @@ async def test_every_panel_shows_its_list_and_the_arrows_move_it():
     def marked(harness) -> list[str]:
         return [line.strip() for line in harness.render().text.splitlines() if "\u25b8" in line]
 
-    for command in ("/theme", "/model", "/context"):
+    for command in ("/model", "/context"):
         app = build_app()
         harness = _harness(app)
         harness.render()
@@ -2426,23 +2426,26 @@ async def test_a_wrong_permission_name_lists_the_right_ones_and_changes_nothing(
     )
 
 
-async def test_the_permission_picker_lists_the_four_levels_with_the_current_one_selected():
+async def test_the_permission_command_offers_the_four_levels_with_the_current_one_marked():
     app = build_app()
     harness = _harness(app)
     await _type_command(app, harness, "/permission safe")
 
     await _type_command(app, harness, "/permission")
-    page = _presented_page(app)
 
-    assert [item.value for item in page.list.items] == ["deny", "ask", "safe", "auto"]
-    assert page.list.items[page.list.selected].value == "safe"
+    assert app.app.screens.top.name == "main", "no panel: the menu is the choice"
+    assert app.composer.text == "/permission "
+    items = app.completions.items
+    assert [item.value for item in items] == ["deny", "ask", "safe", "auto"]
+    assert [item.value for item in items if "(current)" in item.description] == ["safe"]
     text = harness.render().text
-    assert "Shell permission" in text
     assert "every command runs without asking" in text, "each row says what happens to a command"
+    assert app.completions.current.value == "safe", "the highlight starts on what is in force"
 
     harness.press("up")
     harness.press("up")
     harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
 
     assert app.agent.permission is Permission.DENY
     assert app.app.screens.top.name == "main", "choosing closes the picker"
@@ -2599,22 +2602,22 @@ async def test_the_effort_command_opens_a_picker_over_the_levels():
     assert app.app.screens.top.name == "main"
 
 
-async def test_the_theme_command_opens_a_panel_and_applies_the_choice():
+async def test_the_theme_command_moves_to_a_menu_and_enter_applies_the_choice():
     app = build_app()
     harness = _harness(app)
 
-    harness.write("/theme")
-    harness.press("enter")
-    await asyncio.wait_for(app.task, 2.0)
+    await _type_command(app, harness, "/theme")
 
-    page = next(widget for widget in walk(app.app.screens.top.widget) if isinstance(widget, ListPage))
-    assert app.app.screens.top.name == "page"
-    assert [item.value for item in page.list.items] == ["dark", "light"]
-    assert page.list.current.value == "dark"  # the active palette is highlighted
+    assert app.app.screens.top.name == "main"
+    assert app.composer.text == "/theme "
+    assert [item.value for item in app.completions.items] == ["dark", "light"]
+    assert [item.value for item in app.completions.items if "(current)" in item.description] == ["dark"]
     assert harness.render().text.count("green-leaning") == 2
+    assert app.completions.current.value == "dark"
 
     harness.press("down")
     harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
 
     assert app.app.theme is LIGHT
     assert app.app.screens.top.name == "main"
@@ -7830,15 +7833,15 @@ async def test_permission_changes_while_the_request_runs_and_says_so():
     await _stop(app)
 
 
-async def test_theme_and_context_open_their_panels_over_a_running_request_and_close_back_to_it():
+async def test_theme_over_a_running_request_moves_to_its_menu_and_leaves_the_request_alone():
     app = build_app(block=True)
     harness = _harness(app)
     await _start_a_request(harness)
 
     await _typed_while_running(app, harness, "/theme")
-    assert app.app.screens.top.name == "page" and app._busy is True
-    harness.press("escape")
-    assert app.app.screens.top.name == "main" and app._busy is True, "Escape closed the panel, not the request"
+
+    assert app.app.screens.top.name == "main" and app._busy is True
+    assert app.composer.text == "/theme " and app.completions.visible
     assert not app.task.done()
     await _stop(app)
 

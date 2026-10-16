@@ -31,6 +31,7 @@ class KeysMixin(ShellState):
         self.app.commands.add("complete_previous", self._complete_previous)
         self.app.commands.add("interrupt_run", self._interrupt_run)
         self.app.commands.add("complete_accept", self._complete_accept)
+        self.app.commands.add("complete_run", self._complete_run)
         self.app.commands.add("complete_dismiss", self._complete_dismiss)
         self.app.commands.add("follow_up_up", self._follow_up_up)
         self.app.commands.add("follow_up_down", self._follow_up_down)
@@ -99,6 +100,7 @@ class KeysMixin(ShellState):
         self.app.keymap.bind("up", "complete_previous", priority="capture", when=self._menu_open)
         self.app.keymap.bind("tab", "complete_accept", priority="capture", when=self._menu_open)
         self.app.keymap.bind("escape", "complete_dismiss", priority="capture", when=self._menu_open)
+        self.app.keymap.bind("enter", "complete_run", priority="capture", when=self._run_on_enter)
         self.app.keymap.bind("enter", "complete_accept", priority="capture", when=self._accept_on_enter)
 
     def _follow_ups_listed(self) -> bool:
@@ -258,15 +260,37 @@ class KeysMixin(ShellState):
         host.request_layout()
         return True
 
+    def _run_on_enter(self) -> bool:
+        """Return whether Enter should take the highlighted word and send the draft.
+
+        That is a word that says everything the command needs (a model, a palette, a level): picking
+        it is the whole job, so a second Enter to run it would only be the reader asking again.
+        """
+        item = self.completions.current
+        return item is not None and item.final
+
+    def _complete_run(self, event: AnyEvent, host: Host) -> bool:
+        """Drop the highlighted word into the draft and send it."""
+        item = self.completions.current
+        if item is None:
+            return False
+        self.composer.replace_token(item.value)
+        self.composer.submit()
+        host.request_layout()
+        return True
+
     def _accept_on_enter(self) -> bool:
         """Return whether Enter should complete the draft instead of running it.
 
-        Completing is only useful while the highlighted command differs from
-        what was typed; once the draft already spells it, Enter runs it instead
-        of filling in the same text twice.
+        Completing is only useful while the highlighted candidate differs from
+        the word being typed; once that word already spells it, Enter runs the
+        draft instead of filling in the same text twice. Right after a command
+        and a space nothing has been typed of the second word yet, so the menu
+        is only a list of what could follow and Enter runs the command.
         """
         item = self.completions.current
-        return item is not None and item.value != self.composer.text.strip()
+        token = self.composer.text[self.composer.token_start() : self.composer.position]
+        return item is not None and not item.final and bool(token) and item.value != token
 
     def _refresh_completions(self) -> None:
         """Mirror the composer's slash-command candidates into the menu."""
@@ -276,7 +300,10 @@ class KeysMixin(ShellState):
         candidates = () if self.composer.browsing_history else self.composer.completion_candidates()
         if candidates == self.completions.items:
             return
-        self.completions.set_items(candidates, selected=0)
+        # The highlight starts on what is in force (a setting the reader is choosing among), so Enter
+        # straight after the space asks for no change.
+        start = next((index for index, item in enumerate(candidates) if item.current), 0)
+        self.completions.set_items(candidates, selected=start)
         self.app.request_layout()
 
     def _complete_next(self, event: AnyEvent, host: Host) -> bool:

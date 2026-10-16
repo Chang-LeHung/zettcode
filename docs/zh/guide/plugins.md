@@ -125,6 +125,18 @@ async def greet(self, context: CommandContext) -> CommandResult:
 用这个方法替换前面 `Greeter.greet` 即可。错误、提示和 Markdown 结果只展示在 transcript，
 不是发送给模型的用户消息。用 command UI 方法输出，不要用会绕过终端界面的 `print()`。
 
+### 提示第一个词
+
+如果命令的第一个词是固定的（`/deploy staging`），可以把它列出来，补全菜单在输入命令和空格之后就会给出这些词：
+
+```text
+container.register_command("deploy", "ship a build", self.deploy, subcommands=["staging", "prod"])
+```
+
+带说明的词用 `zettcode.app.commands.Subcommand("prod", "the live site")`；传一个返回列表的函数则每次打开菜单时都会被调用，
+适合依赖当前会话的词。它们只是建议：handler 拿到的仍然是输入的原样（`context.argument`），而且只有紧跟在命令后面
+的那个词会被提示。
+
 ### 请求运行期间
 
 默认情况下，请求运行时输入的命令会被拒绝，因为大多数命令会改动这个请求正依赖的东西。注册时用

@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 
 from ....tui import SEPARATOR, Completer, CompletionItem
 from ...agent.dialogue.mentions import MentionRegistry
 from ...commands import Command
 from .follow_up import OPTION
+
+#: A draft's text before the word under the cursor, when that word is the one right after a command.
+COMMAND_PREFIX = re.compile(r"(/\S+)[ \t]+")
 
 KEY_HELP = (
     f"  Enter send {SEPARATOR} Shift-Enter or Alt-Enter newline {SEPARATOR} Ctrl-C stop or clear\n"
@@ -20,12 +24,14 @@ KEY_HELP = (
 
 
 class CommandCompleter(Completer):
-    """Complete the slash commands and ``@`` resources on the cursor's line.
+    """Complete the slash commands, their first word, and ``@`` resources on the cursor's line.
 
     A leading ``/`` filters the commands; a leading ``@`` filters the resources
-    the mention providers offer, skills among them. A space ends the suggestion:
-    ``/resume abc`` has moved on to a session id, so the menu steps aside
-    instead of filtering the commands down to nothing.
+    the mention providers offer, skills among them. After a command that lists
+    subcommands and a space, the menu offers those (``/config `` then ``add``,
+    ``remove``, ...). Any further space ends the suggestion: ``/resume abc``
+    has moved on to a session id, so the menu steps aside instead of filtering
+    anything down to nothing.
     """
 
     def __init__(self, commands: Sequence[Command], mentions: MentionRegistry | None = None) -> None:
@@ -54,11 +60,37 @@ class CommandCompleter(Completer):
                 for mention in self.mentions.candidates(token[1:])
             )
         if not token.startswith("/") or any(character.isspace() for character in token):
-            return ()
+            return self._subcommands(text[:start], token)
         return tuple(
             CompletionItem(command.name, description=command.description, type=command.type)
             for command in self.commands
             if command.name.startswith(token)
+        )
+
+    def _subcommands(self, before: str, token: str) -> tuple[CompletionItem, ...]:
+        """Return the words a command takes first, when the cursor is on the word right after its name.
+
+        Only the second word of the draft is offered: ``before`` must be nothing but a command and the
+        spaces after it. A word further on is the command's own argument (a session id, a model's
+        settings), which the menu has no business filtering.
+        """
+        match = COMMAND_PREFIX.fullmatch(before)
+        if match is None or any(character.isspace() for character in token):
+            return ()
+        command = next((command for command in self.commands if command.name == match.group(1)), None)
+        if command is None:
+            return ()
+        return tuple(
+            CompletionItem(
+                option.name,
+                description=" ".join(
+                    part for part in (option.description, "(current)" if option.current else "") if part
+                ),
+                final=not option.needs_more,
+                current=option.current,
+            )
+            for option in command.options()
+            if option.name.startswith(token)
         )
 
 
