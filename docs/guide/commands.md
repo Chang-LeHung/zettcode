@@ -4,6 +4,12 @@ Type `/` to see the menu; it filters as you type, and `Enter` or `Tab` fills in
 the highlighted name. A command with an argument takes it after a space —
 `/title users endpoint` — and running one never leaves the screen.
 
+A command that takes a fixed first word lists it once you type the command and a space:
+`/config ` offers `add`, `remove`, `list` and `providers`, `/theme ` the palettes, `/permission `
+its levels, `/model ` the models you have configured. `Tab` fills one
+in, and `Enter` picks the highlighted one and runs it at once — `/model ` then `↓` `Enter` switches
+the model without opening the picker. The two `/config` words that need more (`add`, `remove`) are only filled in.
+
 Only a name from the list is a command. Anything else that starts with a slash — a path such as
 `/var/log/syslog`, a typo, `/tmp is full` — is ordinary text and goes to the model like any other message.
 A command is drawn in a different colour as soon as it is one, so you can see which it will be.
@@ -19,9 +25,9 @@ A command is drawn in a different colour as soon as it is one, so you can see wh
 | `/model` | Pick the model for later requests from a panel. |
 | `/config` | Add, change or remove models, and set whether one takes images, its context window and when it is compressed, without editing the file: `/config`, `/config add <provider> …`, `/config remove <n>`. See [Adding models with /config](/guide/config#adding-models-with-config). |
 | `/effort` | Pick how much the model reasons: `/effort high`. |
-| `/permission` | Pick how much of the shell may run without asking: `/permission safe`. |
+| `/permission` | Choose how much of the shell may run without asking: `/permission` lists the levels in the menu; `/permission safe` sets one. |
 | `/btw` | Ask something that is answered here but never joins the conversation: `/btw <question>`. |
-| `/theme` | Pick a palette from a panel; `/theme dark` or `/theme light` switches in one step. |
+| `/theme` | Choose a palette: `/theme` lists them in the menu; `/theme dark` or `/theme light` switches in one step. |
 | `/context` | Show what is filling the context window right now, and where this session is stored. |
 | `/usage` | Open a page of what this project's sessions have spent: tokens by model, by session, and a calendar of the days. See [Token usage](#usage). |
 | `/compact` | Summarize the conversation now, instead of waiting for the window to fill. |
@@ -107,9 +113,15 @@ sessions (under `~/.zettcode/sessions`), and every later `/usage` — in this ru
 the next — reads only what was added since. The file is only a shortcut: it is safe to delete,
 and ZettCode rebuilds it the next time.
 
-## Panels, not arguments
+## Panels, and the menu for short choices
 
-`/model`, `/resume`, `/theme`, `/effort`, and `/permission` open a picker. `Up` / `Down` move,
+`/permission` and `/theme` choose among a few fixed words, so they have no panel: typed
+on their own they put the command and a space in the composer, and the menu lists the words with a
+note each and `(current)` on the one in force, highlighted to begin with. `Up` / `Down` move and
+`Enter` applies the highlighted one.
+
+`/model`, `/resume` and `/effort` open a picker: a model can have a name with spaces in it, and a session is
+best chosen with its title beside it, which a menu word cannot be. `Up` / `Down` move,
 `Enter` accepts, and `Esc` goes back without changing anything. `/context`
 opens a report rather than a choice: read it, then press `Esc` to close it. The
 report names the file this conversation is written to under `~/.zettcode/sessions`,

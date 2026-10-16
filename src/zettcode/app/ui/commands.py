@@ -13,7 +13,7 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from ...tui import ListItem, ListPage, Widget, theme_names
-from ..commands import Command, CommandContext, CommandProvider, CommandResult
+from ..commands import Command, CommandContext, CommandProvider, CommandResult, Subcommand
 from .widgets import ContextPage, ModelPage, SessionsPage, bottom_panel, help_text
 
 #: Rows the picker panels take from the bottom of the screen: the title, the
@@ -27,7 +27,7 @@ THEME_NOTES = {
     "light": "green-leaning palette for light terminals",
 }
 
-#: One-line note per shell-permission level, shown next to its name in the picker.
+#: One-line note per shell-permission level, shown next to its name in the menu.
 #: They say what happens to a command, because the names alone do not: `safe` in
 #: particular is a promise about what a command can do, not about what it can read.
 PERMISSION_NOTES = {
@@ -37,7 +37,7 @@ PERMISSION_NOTES = {
     "auto": "every command runs without asking",
 }
 
-#: One-line note per reasoning level, shown next to its name in the picker.
+#: One-line note per reasoning level, shown next to its name in the menu.
 EFFORT_NOTES = {
     "off": "no deliberate reasoning",
     "minimal": "a token of thought, fastest",
@@ -48,6 +48,14 @@ EFFORT_NOTES = {
     "max": "the highest budget the provider takes",
     "ultra": "above max; a provider maps it down when it must",
 }
+
+#: What ``/config`` takes first, as its description lists them.
+CONFIG_WORDS = (
+    Subcommand("add", "add a model: a provider, then what it needs", needs_more=True),
+    Subcommand("remove", "remove a model by number or name", needs_more=True),
+    Subcommand("list", "show the models in the file"),
+    Subcommand("providers", "show the providers and where to get a key"),
+)
 
 if TYPE_CHECKING:  # pragma: no cover - only needed for the annotation
     from .app import ZettCodeApp
@@ -77,19 +85,41 @@ class ShellCommands(CommandProvider):
             Command("/help", "show the commands and the keys", "app", self.help, when_busy="now"),
             Command("/resume", "resume a session: /resume [id]", "app", self.resume),
             Command("/continue", "carry on a request that was cut short", "app", self.continue_),
-            Command("/model", "choose a model", "app", self.model),
-            Command("/config", "add, change or remove models: /config [add|remove|list|providers]", "app", self.config),
-            Command("/theme", "choose the palette (or /theme dark|light)", "app", self.theme, when_busy="now"),
+            Command("/model", "choose a model", "app", self.model, subcommands=self.model_words),
+            Command(
+                "/config",
+                "add, change or remove models: /config [add|remove|list|providers]",
+                "app",
+                self.config,
+                subcommands=CONFIG_WORDS,
+            ),
+            Command(
+                "/theme",
+                "choose the palette (or /theme dark|light)",
+                "app",
+                self.theme,
+                when_busy="now",
+                subcommands=lambda: self._words(theme_names(), THEME_NOTES, self.shell.app.theme.name),
+            ),
             Command("/fork", "carry this conversation into a new session", "app", self.fork),
             Command("/context", "what is filling the context window", "app", self.context, when_busy="now"),
             Command("/title", "name this session: /title <name>", "app", self.title, when_busy="now"),
-            Command("/effort", "how much the model reasons: /effort high", "app", self.effort, when_busy="now"),
+            Command(
+                "/effort",
+                "how much the model reasons: /effort high",
+                "app",
+                self.effort,
+                when_busy="now",
+            ),
             Command(
                 "/permission",
                 "how much of the shell may run unasked: /permission safe",
                 "app",
                 self.permission,
                 when_busy="now",
+                subcommands=lambda: self._words(
+                    self.shell.agent.permissions, PERMISSION_NOTES, self.shell.agent.permission.value
+                ),
             ),
             Command(
                 "/btw",
@@ -103,6 +133,34 @@ class ShellCommands(CommandProvider):
             Command("/clear", "clear the transcript", "app", self.clear),
             Command("/quit", "exit", "app", self.quit, when_busy="now"),
             Command("/exit", "exit, same as /quit", "app", self.quit, when_busy="now"),
+        )
+
+    @staticmethod
+    def _words(names: Sequence[str], notes: dict[str, str], current: str = "") -> tuple[Subcommand, ...]:
+        """Offer each name a command takes, with its note and a mark on the one in force."""
+        return tuple(Subcommand(name, notes.get(name, ""), current=name == current) for name in names)
+
+    def _offer(self, command: str) -> CommandResult:
+        """Put the command and a space in the draft, which opens the menu of the words it takes.
+
+        A command that is a choice among a few fixed words has no page of its own: the menu is the choice,
+        so typing the bare command only moves the reader to it.
+        """
+        self.shell.composer.set_text(f"{command} ")
+        return CommandResult()
+
+    def model_words(self) -> tuple[Subcommand, ...]:
+        """Offer the configured models by the name ``/model`` accepts.
+
+        A name two entries share is left out (``/model`` refuses it as ambiguous), and so is one with a space
+        in it, which would not stay one word.
+        """
+        models = self.shell.agent.models
+        shown = [model.display_model or model.model for model in models]
+        return tuple(
+            Subcommand(name, model.model)
+            for name, model in zip(shown, models, strict=True)
+            if shown.count(name) == 1 and not any(character.isspace() for character in name)
         )
 
     async def help(self, context: CommandContext) -> CommandResult:
@@ -180,25 +238,11 @@ class ShellCommands(CommandProvider):
         return CommandResult(relayout=True)
 
     async def theme(self, context: CommandContext) -> CommandResult:
-        """Open the theme picker, or switch straight to a named palette.
-
-        The built-in palettes are a tiny fixed list, so the picker is a plain
-        :class:`ListPage`; a named argument keeps the direct `/theme light` path
-        working the same way `/model <name>` does.
-        """
+        """Switch straight to a named palette, or open the menu of them."""
         if context.argument:
             self.shell.apply_theme(context.argument)
             return CommandResult(relayout=True)
-        current = self.shell.app.theme.name
-        names = theme_names()
-        page = ListPage(
-            [ListItem(item, item, THEME_NOTES.get(item, "")) for item in names],
-            title="Theme",
-            on_select=lambda item: self.shell.select_theme(str(item.value)),
-            on_cancel=self.shell.close_page,
-            selected=names.index(current) if current in names else 0,
-        )
-        return CommandResult(widget=self._panel(page))
+        return self._offer("/theme")
 
     async def context(self, context: CommandContext) -> CommandResult:
         """Show what the next request carries, by source and token share.
@@ -260,13 +304,12 @@ class ShellCommands(CommandProvider):
         return CommandResult(widget=self._panel(page))
 
     async def permission(self, context: CommandContext) -> CommandResult:
-        """Open the permission picker, or set a named level straight away.
+        """Set a named level straight away, or open the menu of the levels.
 
-        The picker lists the four levels strictest first with the current one
-        selected, and each row says what happens to a command rather than what
-        the level is called. The level governs the shell tool only; the file and
-        MCP tools are not behind a prompt in this application, which the title
-        says so that nobody reads ``deny`` as a read-only mode for the workspace.
+        The menu lists the four levels strictest first, and each says what happens to a command rather than
+        what the level is called. The level governs the shell tool only; the file and MCP tools are not
+        behind a prompt in this application, so nobody should read ``deny`` as a read-only mode for the
+        workspace.
         """
         if context.argument:
             try:
@@ -274,16 +317,7 @@ class ShellCommands(CommandProvider):
             except ValueError as error:
                 return CommandResult(message=str(error))
             return CommandResult(relayout=True)
-        levels = self.shell.agent.permissions
-        current = self.shell.agent.permission.value
-        page = ListPage(
-            [ListItem(level, level, PERMISSION_NOTES.get(level, "")) for level in levels],
-            title="Shell permission",
-            on_select=lambda item: self.shell.select_permission(str(item.value)),
-            on_cancel=self.shell.close_page,
-            selected=levels.index(current) if current in levels else 0,
-        )
-        return CommandResult(widget=self._panel(page))
+        return self._offer("/permission")
 
     async def clear(self, context: CommandContext) -> CommandResult:
         """Clear visible conversation entries."""

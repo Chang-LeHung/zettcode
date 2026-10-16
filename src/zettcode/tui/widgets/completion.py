@@ -21,12 +21,18 @@ class CompletionItem:
         label: Row text; falls back to ``value`` when empty.
         description: Muted text shown after the label when space allows.
         type: Optional command owner displayed in a right-aligned column.
+        final: Choosing the candidate completes the draft, so Enter inserts it and sends the draft
+            instead of only inserting it (the word after a command that is all the command needs).
+        current: The candidate stands for what is in force now: it is drawn with a mark, and the menu
+            opens with it highlighted.
     """
 
     value: str
     label: str = ""
     description: str = ""
     type: str = ""
+    final: bool = False
+    current: bool = False
 
     @property
     def display(self) -> str:

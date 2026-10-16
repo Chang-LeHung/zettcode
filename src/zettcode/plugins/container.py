@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ..app.commands import BusyPolicy, Command, CommandHandler, CommandList, CommandProvider
+from ..app.commands import BusyPolicy, Command, CommandHandler, CommandList, CommandProvider, Subcommands
 from ..providers import Provider
 from .state import UiRow, UiSegment
 
@@ -204,7 +204,13 @@ class PluginContainer:
         return self._slots.add("status", "right", name, builder, override=override)
 
     def register_command(
-        self, name: str, description: str, handler: CommandHandler, *, when_busy: BusyPolicy = "refuse"
+        self,
+        name: str,
+        description: str,
+        handler: CommandHandler,
+        *,
+        when_busy: BusyPolicy = "refuse",
+        subcommands: Subcommands = (),
     ) -> Command:
         """Register one slash command the shell will offer and run.
 
@@ -231,6 +237,11 @@ class PluginContainer:
                 a running request is built on — it reads or reports, or changes a
                 setting the request reads when it needs it — because it is run
                 without the busy state to itself.
+            subcommands: The words the command takes first, offered by the completion menu
+                once the command and a space are typed: names, or
+                :class:`~zettcode.app.commands.Subcommand` for a name with a description. A
+                function returning them is asked each time the menu opens. They only suggest;
+                the handler gets whatever was typed as ``context.argument``.
 
         Returns:
             The registered command, in case the plugin wants to keep it.
@@ -254,6 +265,7 @@ class PluginContainer:
                         type="plugin",
                         handler=handler,
                         when_busy=when_busy,
+                        subcommands=subcommands,
                     ),
                 )
             )

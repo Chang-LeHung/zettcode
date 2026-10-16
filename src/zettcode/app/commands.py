@@ -96,6 +96,32 @@ class CommandResult:
 
 
 @dataclass(frozen=True, slots=True)
+class Subcommand:
+    """One word a command takes first, offered by the completion menu once the command is typed.
+
+    Attributes:
+        name: The word as typed (``"add"``); it replaces what the reader has typed after the command.
+        description: One-line summary shown beside it in the menu.
+        needs_more: The word is only the start of an argument (``/config add`` still asks which
+            provider). Enter on it fills it in and leaves the rest to the reader; without this,
+            Enter on it runs the command with it, as for a model or a level that says everything.
+        current: The word names what is in force now. The menu marks it and opens with it highlighted,
+            so Enter straight after the space changes nothing.
+    """
+
+    name: str
+    description: str = ""
+    needs_more: bool = False
+    current: bool = False
+
+
+#: What a command offers after its name: a fixed list, or a function asked each time the menu opens, for a
+#: list that depends on the session (the models configured, the reasoning levels the model takes). A bare
+#: string is a subcommand with no description.
+Subcommands: TypeAlias = Sequence[Subcommand | str] | Callable[[], Sequence[Subcommand | str]]
+
+
+@dataclass(frozen=True, slots=True)
 class Command:
     """One slash command: how the menu shows it and what runs it.
 
@@ -120,6 +146,10 @@ class Command:
             away, ``"queue"`` holds it and runs it as soon as that request ends,
             and ``"now"`` runs it at once without disturbing the request (see
             :data:`BusyPolicy` for what that is safe for).
+        subcommands: The words the command takes first (``/config add``), offered by the
+            completion menu once the command and a space are typed. A function is asked each
+            time the menu opens. They only suggest: the handler still receives whatever was
+            typed as its ``argument`` and decides what it means.
     """
 
     name: str
@@ -127,6 +157,14 @@ class Command:
     type: Literal["app", "agent", "plugin"]
     handler: CommandHandler
     when_busy: BusyPolicy = "refuse"
+    subcommands: Subcommands = ()
+
+    def options(self) -> tuple[Subcommand, ...]:
+        """Return the subcommands to offer now."""
+        source = self.subcommands
+        return tuple(
+            Subcommand(item) if isinstance(item, str) else item for item in (source() if callable(source) else source)
+        )
 
 
 class CommandProvider(Provider[Command]):

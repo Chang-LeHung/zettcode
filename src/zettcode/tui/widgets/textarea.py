@@ -369,6 +369,10 @@ class TextArea(Widget):
                 return False
         return True
 
+    def submit(self) -> None:
+        """Send the draft as Enter does."""
+        self._submit()
+
     def _submit(self) -> None:
         """Offer the trimmed draft to the submit hook, recording it when accepted."""
         value = self.value.strip()

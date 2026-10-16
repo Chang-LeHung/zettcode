@@ -139,6 +139,20 @@ are displayed in the transcript; they are not a user message submitted to the
 model. Prefer the command UI methods to `print()`, which writes outside the
 terminal interface.
 
+### Suggesting a first word
+
+A command that takes a fixed first word (`/deploy staging`) can list it, and the completion menu then
+offers the words as soon as the command and a space are typed:
+
+```text
+container.register_command("deploy", "ship a build", self.deploy, subcommands=["staging", "prod"])
+```
+
+A name with a description is a `zettcode.app.commands.Subcommand("prod", "the live site")`, and a
+function returning the list is asked each time the menu opens, for words that depend on the session.
+They only suggest: the handler still receives whatever was typed as `context.argument`, and only the
+word right after the command is offered.
+
 ### While a request is running
 
 A command typed while a request is running is turned away by default, because most commands change

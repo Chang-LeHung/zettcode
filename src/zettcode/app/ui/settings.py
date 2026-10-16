@@ -53,14 +53,6 @@ class SettingsMixin(ShellState):
         self.app.request_layout()
         return theme
 
-    def select_theme(self, name: str) -> None:
-        """Apply the palette picked in the panel and return to the composer."""
-        try:
-            self.apply_theme(name)
-        except ValueError as error:
-            self.transcript.error(str(error))
-        self.close_page()
-
     def change_effort(self, name: str) -> str:
         """Switch reasoning effort and announce the change in the transcript."""
         previous = self.agent.effort
@@ -83,14 +75,6 @@ class SettingsMixin(ShellState):
             self.transcript.permission_changed(previous.value, selected.value)
         self.app.invalidate()
         return selected.value
-
-    def select_permission(self, name: str) -> None:
-        """Apply the level picked in the panel and return to the composer."""
-        try:
-            self.change_permission(name)
-        except ValueError as error:
-            self.transcript.error(str(error))
-        self.close_page()
 
     def select_effort(self, name: str) -> None:
         """Apply the reasoning level picked in the panel and return to the composer."""

@@ -3,6 +3,11 @@
 输入 `/` 就会打开菜单，边打边过滤，`Enter` 或 `Tab` 填入高亮的那一条。需要参数的命令在名字后
 面加空格和参数 —— `/title users endpoint` —— 执行任何命令都不会离开当前界面。
 
+有固定第一个词的命令，在输入命令名和空格之后会把它列出来：`/config ` 给出 `add`、`remove`、`list`、
+`providers`，`/theme ` 给出各个配色，`/permission ` 给出它的档位，`/model ` 给出你配置过的
+模型。`Tab` 填入其中一项，`Enter` 选中高亮的那一项并立即执行 —— `/model ` 再按 `↓` `Enter` 就直接切换模型，不再打开选择器。
+`/config` 里需要继续输入的两个词（`add`、`remove`）只会被填入。
+
 只有列表里的名字才是命令。其他以斜杠开头的内容 —— 比如路径 `/var/log/syslog`、打错的名字、`/tmp is full` —— 都是普通文本，
 和其他消息一样发给模型。是命令的时候会立刻换成另一种颜色，所以你能看出它会按哪种方式处理。
 
@@ -17,9 +22,9 @@
 | `/model` | 用面板选择后续请求使用的模型。 |
 | `/config` | 不用改文件就能添加、修改、删除模型，并设置它是否接受图片、上下文窗口多大、什么时候压缩：`/config`、`/config add <provider> …`、`/config remove <序号>`。见[用 /config 添加模型](/zh/guide/config#adding-models-with-config)。 |
 | `/effort` | 选择模型的推理强度：`/effort high`。 |
-| `/permission` | 选择 shell 命令在多大范围内不用问：`/permission safe`。 |
+| `/permission` | 选择 shell 命令在多大范围内不用问：`/permission` 在菜单里列出各档，`/permission safe` 直接设置。 |
 | `/btw` | 问一件只在当场回答、不进入对话的事：`/btw <问题>`。 |
-| `/theme` | 用面板选择配色；`/theme dark` 或 `/theme light` 一步切换。 |
+| `/theme` | 选择配色：`/theme` 在菜单里列出它们，`/theme dark` 或 `/theme light` 一步切换。 |
 | `/context` | 查看当前上下文窗口被什么占着，以及这个会话存在哪里。 |
 | `/usage` | 打开一个页面，看这个项目的会话花了多少：按模型、按会话统计 token，以及一张按天的日历图。见[Token 用量](#usage)。 |
 | `/compact` | 立即总结对话，而不用等到窗口快满。 |
@@ -93,9 +98,14 @@
 （`~/.zettcode/sessions` 下）旁边留一个很小的 `usage.json`，往后的每一次 `/usage`（无论是这次运行还是下次运行）只读新增的部分。
 这个文件只是一个捷径：随时可以删除，ZettCode 下次会自动重建。
 
-## 用面板，而不是参数
+## 短选择用菜单，其他用面板
 
-`/model`、`/resume`、`/theme`、`/effort`、`/permission` 打开选择列表：`↑` / `↓` 移动，`Enter` 确认，
+`/permission`、`/theme` 是在几个固定的词里选一个，所以没有面板：单独输入它们时，输入框里会出现
+命令加一个空格，菜单把各个词列出来，每个带一句说明，当前生效的那个标 `(current)` 并高亮。
+`↑` / `↓` 移动，`Enter` 应用高亮的那一项。
+
+`/model`、`/resume` 和 `/effort` 仍然打开选择列表：模型名可能带空格，会话最好连标题一起挑，这两点菜单里的一个词做不到。
+`↑` / `↓` 移动，`Enter` 确认，
 `Esc` 不做修改直接返回。`/context` 打开的是报告，不需要选择，读完按 `Esc` 关闭即可；
 报告里会写明这段对话写在 `~/.zettcode/sessions` 下的哪个文件，数字不对时能顺藤摸瓜。
 标题里的总量是 provider 为上一次请求计费的数字，各行百分比则是本地测出来的——所以百分比加起来是
