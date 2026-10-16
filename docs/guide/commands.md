@@ -24,7 +24,7 @@ A command is drawn in a different colour as soon as it is one, so you can see wh
 | `/fork` | Carry this conversation into a new session and continue there. |
 | `/model` | Pick the model for later requests from a panel. |
 | `/config` | Add, change or remove models, and set whether one takes images, its context window and when it is compressed, without editing the file: `/config`, `/config add <provider> …`, `/config remove <n>`. See [Adding models with /config](/guide/config#adding-models-with-config). |
-| `/effort` | Pick how much the model reasons: `/effort high`. |
+| `/effort` | Choose how much the model reasons with a knob on a rail: `/effort` opens it, ← → slide, `Enter` applies; `/effort high` sets one directly. |
 | `/permission` | Choose how much of the shell may run without asking: `/permission` lists the levels in the menu; `/permission safe` sets one. |
 | `/btw` | Ask something that is answered here but never joins the conversation: `/btw <question>`. |
 | `/theme` | Choose a palette: `/theme` lists them in the menu; `/theme dark` or `/theme light` switches in one step. |
@@ -120,7 +120,13 @@ on their own they put the command and a space in the composer, and the menu list
 note each and `(current)` on the one in force, highlighted to begin with. `Up` / `Down` move and
 `Enter` applies the highlighted one.
 
-`/model`, `/resume` and `/effort` open a picker: a model can have a name with spaces in it, and a session is
+`/effort` opens a panel of its own: a rail with a node and a name for every level, and a knob on it.
+`←` / `→` (or `Home` / `End`, or a click) send the knob along the rail, which it travels with a short
+slide, lighting the stretch behind it in the colour of the scale, green for the cheap end and warm for the
+dear end. Moving it changes nothing; `Enter` applies the level under it, and that is when the header's own
+reasoning gauge plays. `Esc` puts the panel away and leaves the level as it was.
+
+`/model` and `/resume` open a picker: a model can have a name with spaces in it, and a session is
 best chosen with its title beside it, which a menu word cannot be. `Up` / `Down` move,
 `Enter` accepts, and `Esc` goes back without changing anything. `/context`
 opens a report rather than a choice: read it, then press `Esc` to close it. The
