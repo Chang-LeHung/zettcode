@@ -17,7 +17,7 @@ import re
 
 import pytest
 
-from zettcode.app.agent.conversation.rows import bounded_rows, terminal_safe
+from zettcode.app.agent.conversation.text import bounded_rows, terminal_safe
 from zettcode.tui import Span, Style, TextLine
 from zettcode.tui.render import character_width, count_wrapped_rows, display_width, wrap_columns, wrap_spans
 

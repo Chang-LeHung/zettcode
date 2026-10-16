@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import asyncio
 
-from ..app.agent.conversation.rows import activity_glyph
+from ..app.agent.conversation.pulse import activity_glyph
 from ..app.agent.dialogue.mentions import FileMentions, SkillMentions
 from ..app.agent.extensions.usage import context_text, usage_text
 from ..app.agent.storage.ledger import LedgerReader

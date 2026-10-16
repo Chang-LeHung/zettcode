@@ -12,7 +12,7 @@ from collections.abc import Sequence
 
 from ....tui import STEERING, Canvas, Constraints, Size, Style, Widget
 from ....tui.render import display_width, truncate
-from ...agent.conversation.rows import CONTENT_INDENT
+from ...agent.conversation.text import CONTENT_INDENT
 from .follow_up import one_line
 
 #: Right-aligned badge that says a row is a steering message.

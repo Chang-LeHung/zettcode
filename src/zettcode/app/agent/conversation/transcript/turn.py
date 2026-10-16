@@ -27,15 +27,8 @@ from ..entries import (
     ToolEntry,
     WaitEntry,
 )
-from ..rows import (
-    ANIMATION_SECONDS,
-    PROCESSING,
-    blink_state,
-    duration_text,
-    elapsed_text,
-    quiet_text,
-    wait_picture,
-)
+from ..pulse import ANIMATION_SECONDS, blink_state, wait_picture
+from ..text import PROCESSING, duration_text, elapsed_text, quiet_text
 from ..tips import TipDeck
 from .log import EntryLog
 
