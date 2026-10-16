@@ -55,12 +55,15 @@ class SessionState:
         title: Stored session title, or ``None`` before the first reply.
         name: Title to show, falling back to ``"New session"``.
         workspace: Workspace directory the agent runs in.
+        handle: The name other sessions address this one by with ``@``, or ``""`` when messaging is off or
+            the session is not registered yet.
     """
 
     id: str
     title: str | None
     name: str
     workspace: Path
+    handle: str = ""
 
 
 @dataclass(frozen=True, slots=True)

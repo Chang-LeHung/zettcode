@@ -285,6 +285,7 @@ compact_percent = 80
 
 [transcript]
 max_entries = 1024             # 显示的对话块数量，不是终端行数
+mouse_scroll_speed = 1           # 一个滚轮事件滚动的行数
 
 [agents_md]
 enabled = true                 # 使用项目指令
@@ -307,6 +308,9 @@ disable = []                   # 要跳过的 entry-point 名称
 [update]
 enabled = true                 # 后台检查 PyPI 新版本
 
+[sessions]
+enabled = true                 # 会话之间可以互发消息；false 则不加入 broker
+
 [harness]
 subagent = true                # 提供 task 工具及其子 agent 档位
 subagent_max_iterations = 512  # 一个子 agent 完成一个任务最多调用模型的次数
@@ -321,6 +325,7 @@ todowrite = false              # 提供 todo_write，界面会画出计划面板
 | 段落 / 参数 | 默认值 | 效果与限制 |
 | --- | --- | --- |
 | `transcript.max_entries` | `1024` | 正整数。限制可回看的对话块，旧块移出界面，但不会删除持久化历史或模型上下文。 |
+| `transcript.mouse_scroll_speed` | `1` | 一个鼠标滚轮事件滚动对话的行数，大于 0、最大 20；`0.5` 这样的小数表示每两个事件滚一行，`3` 表示一格三行。无论取值多少，单个画面最多只移动半屏。 |
 | `agents_md.enabled` | `true` | 读取工作区及其上层目录的 `AGENTS.md`，见[项目指令](/zh/guide/instructions)。 |
 | `ask_user.enabled` | `true` | 允许单选、多选和自由输入的提问面板。`false` 移除这个工具，不代表禁止模型在普通回答里提出问题。 |
 | `skills.enabled` | `true` | 发现 skill 名称和描述，并允许按需加载正文。 |
@@ -330,6 +335,7 @@ todowrite = false              # 提供 todo_write，界面会画出计划面板
 | `plugins.enabled` | `true` | 加载已安装的第三方插件；关闭后内置 UI 功能仍可使用。 |
 | `plugins.disable` | `[]` | 要跳过的插件 **entry-point 名称**数组，不一定等于 pip 包名。 |
 | `update.enabled` | `true` | 后台检查 PyPI，并在之后启动时提示新版本，不会自动安装。 |
+| `sessions.enabled` | `true` | 向后台会话 broker 登记，使本会话可以被 `@名字` 发消息，也可以给其他会话发消息；模型会多出 `list_sessions` 和 `send_message` 两个工具。见[会话之间互发消息](/zh/guide/messaging)。 |
 | `harness.subagent` | `true` | 提供 `task` 工具：模型可以把任务交给带独立上下文和会话日志的子 agent。 |
 | `harness.subagent_max_iterations` | `512` | 一个子 agent 完成一个任务最多可以调用模型的次数。子 agent 在真实代码库里探索或修改要调用几十次（库自带的默认值 18 会让这类任务做到一半就结束）；这个值是防止它停不下来的上限，不是目标。子 agent 也会拿到你项目的 `AGENTS.md`。 |
 | `harness.todowrite` | `false` | 提供 `todo_write`，清单由界面画在计划面板里。维护计划要花轮次，所以默认关闭。 |
@@ -366,11 +372,12 @@ base = "dark"                  # dark 或 light，默认 dark
 accent = "#a7c080"
 accent_bright = "#83c092"
 surface_side = "#393a44"       # /btw 消息背景
+surface_peer = "#313244"       # 会话之间互发消息的背景
 # background = "#232a2e"      # 保持注释，继续使用终端背景
 
 [tools]
-read = "#b8a6e0"
-shell = "#7fbbb3"
+read = "#89b4fa"
+shell = "#fab387"
 
 [code]
 keyword = "#e58fa8"
@@ -387,8 +394,8 @@ inline = "#9bddad"            # Markdown `行内代码`
 
 | 段落 | 颜色参数 |
 | --- | --- |
-| `ui` | `background`, `surface`, `surface_alt`, `surface_side`, `text`, `muted`, `subtle`, `accent`, `accent_bright`, `warning`, `error`, `diff_added`, `diff_removed`, `border`, `focus`, `selection` |
-| `tools` | `read`, `search`, `image`, `write`, `delete`, `shell`, `plan`, `subagent` |
+| `ui` | `background`, `surface`, `surface_alt`, `surface_side`, `surface_peer`, `text`, `muted`, `subtle`, `accent`, `accent_bright`, `warning`, `error`, `diff_added`, `diff_removed`, `border`, `focus`, `selection` |
+| `tools` | `read`, `search`, `image`, `write`, `delete`, `shell`, `plan`, `subagent`, `message` |
 | `code` | `inline`, `text`, `keyword`, `string`, `comment`, `number`, `function`, `builtin`, `operator`, `punctuator` |
 
 `diff_added` 和 `diff_removed` 给编辑 diff 的行和文件旁边的 `+N -M` 上色。不写时分别跟随 `accent` 和 `error`，
@@ -407,6 +414,8 @@ inline = "#9bddad"            # Markdown `行内代码`
 | `ANTHROPIC_API_KEY` | `anthropic` 项没有非空 `token` 时使用的 key。 |
 | `TIKTOKEN_CACHE_DIR` | 分词器下载的词表缓存位置。默认 `~/.zettcode/cache/tiktoken`；放在系统临时目录里迟早会被清掉，而重新下载要好几秒。 |
 | `ZETTCODE_REDUCED_MOTION` | 设置为 `1`，抑制装饰性的扫光动画。 |
+| `ZETTCODE_BROKER_DIR` | 会话 broker 存放文件的目录，默认 `~/.zettcode/broker`。 |
+| `ZETTCODE_BROKER_IDLE` | 最后一个会话离开后 broker 保留的秒数，默认 `30`。 |
 | `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY` | 模型 HTTP 客户端使用的标准代理设置。 |
 
 会话固定保存在 `~/.zettcode/sessions`，按工作区分组。
@@ -460,6 +469,10 @@ Invoke-RestMethod -Uri "https://api.deepseek.com/chat/completions" `
 | `must be bool` / `must be int` | 用 `true` 而不是 `"true"`；用 `1000000` 而不是 `"1000000"`。 |
 | `Invalid config file ...` | 检查引号、表头和重复键。TOML 语法错误会包含解析器的位置信息。 |
 | `cannot use both APIs` | 同一项同时写了 `anthropic` 和 `responses_api`。只能留一个：它们是两种不同的协议，不是同一件事的两半。 |
+| 报错里出现 `HTTP 401` / `HTTP 403` | 服务端拒绝了 token。检查这一项的 `token`，或它所属 API 的环境变量。状态码后面是服务端给出的原话。 |
+| 报错里出现 `HTTP 404` | 这个端点上模型 id 或地址不对。检查 `model` 和 `base_url`。 |
+| 报错里出现 `HTTP 429` / `HTTP 5xx` | 是 provider 在限流或出故障，不是 ZettCode。报错之前已经自动重试过几次。 |
+| `Processing` 旁边出现 `nothing from the model for …` | 模型有一阵子没说话了。推理模型沉默很久是正常的；觉得不对就按 `Esc` 停掉。 |
 | API 拒绝模型或协议 | 检查模型 id 和协议开关：OpenAI 兼容接口看 `responses_api`，Messages API 看 `anthropic`。显示标签不是 API id。 |
 | 图片输入被拒绝 | 选择支持图片的模型，并且只为对应项启用 `multimodal`。 |
 

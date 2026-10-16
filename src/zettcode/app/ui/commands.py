@@ -297,7 +297,11 @@ class ShellCommands(CommandProvider):
         are the reading ones — see :mod:`zettcode.app.agent.dialogue.side`. Declaring
         itself queue-worthy is what lets the command be typed during a reply:
         the answer then waits its turn like any other request.
+
+        A session another process has open takes none: the store records the exchange, which is a write, and
+        the question is refused before it is echoed rather than shown and then failed.
         """
+        self.shell.agent.require_session()
         await self.shell.run_side_question(context.argument)
         return CommandResult()
 

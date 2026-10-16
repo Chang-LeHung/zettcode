@@ -40,6 +40,30 @@ def test_the_system_prompt_head_changes_only_by_the_day(tmp_path):
     assert prompt != runtime_module.build_system_prompt(config, now=late + timedelta(days=1))
 
 
+def test_the_system_prompt_tells_the_model_to_change_files_with_the_file_tools_and_never_the_shell(tmp_path):
+    """The model reached for sed, cat > and scripts it wrote itself, which leave no diff for the reader to see."""
+    config = ZettCodeConfig(workspace=tmp_path, models=(ModelConfig(model="m", token="t"),), store=tmp_path / "s")
+
+    prompt = runtime_module.build_system_prompt(config)
+    flat = " ".join(prompt.split())
+
+    assert "To edit a file that exists, call replace_in_file directly" in flat
+    assert "Use write_file for a new file" in flat and "delete_file to remove one" in flat
+    for forbidden in ("sed", "awk", "perl -i", "python -c", "cat or echo with a redirection", "a heredoc", "tee"):
+        assert forbidden in flat, forbidden
+    assert "Never change a file through the shell" in flat
+    assert "retry it with corrected old_text; do not fall back to a shell command" in flat
+
+
+def test_the_file_editing_rule_comes_before_the_environment_snapshot_so_the_head_stays_cacheable(tmp_path):
+    config = ZettCodeConfig(workspace=tmp_path, models=(ModelConfig(model="m", token="t"),), store=tmp_path / "s")
+
+    prompt = runtime_module.build_system_prompt(config)
+
+    assert prompt.index("Changing files:") < prompt.index("Runtime environment:")
+    assert str(tmp_path) not in prompt[: prompt.index("Runtime environment:")], "nothing that varies sits above it"
+
+
 def _config_with(tmp_path, **changes) -> ZettCodeConfig:
     """Return a minimal config, with one workspace-local change applied.
 

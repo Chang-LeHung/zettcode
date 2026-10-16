@@ -120,7 +120,10 @@ async def test_a_side_question_only_gets_the_reading_tools():
 
     await extension.before_turn(context)
 
-    assert set(context.tools) == READ_ONLY_TOOLS - {"view_image", "glob", "read_skill"} | {"read_file", "grep"}
+    assert set(context.tools) == READ_ONLY_TOOLS - {"view_image", "glob", "read_skill", "list_sessions"} | {
+        "read_file",
+        "grep",
+    }
     assert set(context.tools) <= READ_ONLY_TOOLS
 
 

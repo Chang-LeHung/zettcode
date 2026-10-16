@@ -335,7 +335,7 @@ def test_a_view_that_is_not_selectable_leaves_the_drag_to_the_frame():
     assert harness.clipboard == "lpha\nbet"
 
 
-# -- the wheel: slow when nudged, faster the longer it turns ---------------------------------------------------
+# -- the wheel: one row an event, as Codex does, and never far enough in a frame to skip anything ------------
 
 
 class _Clock:
@@ -346,122 +346,171 @@ class _Clock:
         return self.now
 
 
-def _long_view(clock: _Clock, lines: int = 2000, *, selectable: bool = False) -> ScrollView:
+def _long_view(clock: _Clock | None = None, lines: int = 2000, *, selectable: bool = False, **options) -> ScrollView:
     view = ScrollView(
         RecordingSource([f"line {index}" for index in range(lines)]),
         follow_tail=False,
-        clock=clock,
+        clock=clock or _Clock(),
         selectable=selectable,
+        **options,
     )
     view.layout(Rect(0, 0, 20, 10))
     view.scroll_to(1000)
     return view
 
 
-def _notches(view: ScrollView, clock: _Clock, count: int, *, gap: float, up: bool = False) -> list[int]:
-    """Turn the wheel ``count`` notches ``gap`` seconds apart; return how far each one moved the view."""
+def _turn(view: ScrollView, count: int, *, up: bool = False, frame_each: bool = True) -> list[int]:
+    """Turn the wheel ``count`` events; return how far each one moved the view.
+
+    A frame is drawn after each unless ``frame_each`` is off, which is how a burst that was queued and
+    applied together reaches the view.
+    """
     from zettcode.tui import MouseAction, MouseEvent
 
+    app = Harness(view, width=20, height=10).app
     moved = []
     for _ in range(count):
         before = view.top
         action = MouseAction.SCROLL_UP if up else MouseAction.SCROLL_DOWN
-        assert view.handle(MouseEvent(x=1, y=1, action=action), Harness(view, width=20, height=10).app)
+        assert view.handle(MouseEvent(x=1, y=0, action=action), app)
         moved.append(abs(view.top - before))
-        clock.now += gap
+        if frame_each:
+            view._frame_start = None  # what render does at the start of the next frame
     return moved
 
 
-def test_the_step_is_one_line_for_the_first_few_notches_then_grows_to_a_cap():
-    from zettcode.tui.layout.scroll import WHEEL_MAX_STEP, WHEEL_SLOW_EVENTS, wheel_step
+def test_every_wheel_event_is_one_row_however_long_or_fast_the_wheel_turns():
+    """The bug: a turn that went on gained a row an event up to ten, and a trackpad's momentum — dozens of events
+    in a flick — threw the view across several pages."""
+    view = _long_view()
 
-    steps = [wheel_step(n) for n in range(1, 40)]
-
-    assert steps[:WHEEL_SLOW_EVENTS] == [1] * WHEEL_SLOW_EVENTS
-    assert steps == sorted(steps), "never slows down while the turn goes on"
-    assert steps[-1] == WHEEL_MAX_STEP and max(steps) == WHEEL_MAX_STEP
-    assert steps[WHEEL_SLOW_EVENTS + 1] > 1, "and it does leave one line a notch"
+    assert _turn(view, 100) == [1] * 100
+    assert view.top == 1100
 
 
-def test_a_slow_turn_of_the_wheel_stays_one_line_a_notch_however_long_it_goes_on():
-    clock = _Clock()
-    view = _long_view(clock)
+def test_a_flick_of_events_that_pile_up_moves_the_view_by_less_than_a_window_in_one_frame():
+    """Events that were queued are applied together and drawn once; rows past half a window are never painted."""
+    view = _long_view()  # a window of ten rows
 
-    moved = _notches(view, clock, 30, gap=0.5)
+    moved = _turn(view, 100, frame_each=False)
 
-    assert moved == [1] * 30
-
-
-def test_a_continuous_turn_scrolls_faster_and_faster():
-    clock = _Clock()
-    view = _long_view(clock)
-
-    moved = _notches(view, clock, 30, gap=0.02)
-
-    assert moved[0] == moved[1] == moved[2] == 1, "a nudge is still precise"
-    assert moved == sorted(moved) and moved[-1] > moved[0] * 4
+    assert view.top - 1000 == 5, "half a window, however many events there were"
+    assert sum(moved) == 5 and moved[:5] == [1] * 5 and moved[5:] == [0] * 95
 
 
-def test_a_pause_starts_the_turn_over_at_one_line():
-    clock = _Clock()
-    view = _long_view(clock)
-    _notches(view, clock, 20, gap=0.02)
+def test_the_next_frame_may_move_it_again_so_a_long_flick_still_gets_there_a_frame_at_a_time():
+    view = _long_view()
 
-    clock.now += 0.5
-    moved = _notches(view, clock, 3, gap=0.02)
+    for _ in range(4):
+        _turn(view, 100, frame_each=False)
+        view._frame_start = None
 
-    assert moved == [1, 1, 1]
-
-
-def test_turning_the_other_way_starts_over_too():
-    clock = _Clock()
-    view = _long_view(clock)
-    _notches(view, clock, 20, gap=0.02, up=False)
-
-    moved = _notches(view, clock, 3, gap=0.02, up=True)
-
-    assert moved == [1, 1, 1]
+    assert view.top == 1020
 
 
-def test_the_acceleration_applies_to_a_view_that_selects_text_as_well():
+def test_turning_back_within_a_frame_is_measured_from_where_the_frame_began():
+    view = _long_view()
+
+    _turn(view, 100, frame_each=False)
+    assert view.top == 1005
+    _turn(view, 100, up=True, frame_each=False)
+
+    assert view.top == 995, "five rows the other side of where the frame began, and no more"
+
+
+def test_a_window_one_row_high_still_moves_a_row_an_event():
+    view = ScrollView(RecordingSource([f"l{n}" for n in range(50)]), follow_tail=False)
+    view.layout(Rect(0, 0, 20, 1))
+    view.scroll_to(10)
+
+    _turn(view, 3, frame_each=False)
+
+    assert view.top == 11, "at least one row a frame, or the wheel would do nothing"
+
+
+def test_rendering_starts_a_new_frame():
+    view = _long_view()
+    _turn(view, 100, frame_each=False)
+    assert view.top == 1005
+
+    view.render(Canvas(20, 10))
+    _turn(view, 100, frame_each=False)
+
+    assert view.top == 1010
+
+
+def test_the_speed_is_the_rows_an_event_moves_and_a_fraction_is_carried_to_the_next_event():
+    view = _long_view(wheel_speed=0.5)
+
+    assert _turn(view, 6) == [0, 1, 0, 1, 0, 1]
+
+
+def test_a_speed_of_three_moves_three_rows_a_notch():
+    view = _long_view(wheel_speed=3)
+
+    assert _turn(view, 4) == [3, 3, 3, 3]
+
+
+def test_a_speed_of_a_tenth_reaches_a_whole_row_after_ten_events_despite_rounding_in_the_sum():
+    view = _long_view(wheel_speed=0.1)
+
+    moved = _turn(view, 30)
+
+    assert sum(moved) == 3 and moved.count(1) == 3
+
+
+def test_the_carried_fraction_is_dropped_when_the_wheel_turns_the_other_way():
+    view = _long_view(wheel_speed=0.4)
+    _turn(view, 2)  # 0.8 owed, down
+
+    moved = _turn(view, 3, up=True)  # starts again from nothing: 0.4, 0.8, 1.2
+
+    assert moved == [0, 0, 1]
+
+
+@pytest.mark.parametrize("speed", [0, -1, float("nan"), float("inf"), -0.0])
+def test_a_speed_that_cannot_mean_anything_is_the_default(speed):
+    from zettcode.tui.layout.scroll import WHEEL_SPEED
+
+    view = _long_view(wheel_speed=speed)
+
+    assert view.wheel_speed == WHEEL_SPEED
+    assert _turn(view, 3) == [1, 1, 1]
+
+
+def test_a_view_that_selects_text_scrolls_the_same_way_as_one_that_does_not():
     """The transcript is one: its wheel goes through the pointer handler, not the plain one."""
-    clock = _Clock()
-    view = _long_view(clock, selectable=True)
+    view = _long_view(selectable=True)
 
-    moved = _notches(view, clock, 20, gap=0.02)
-
-    assert moved[0] == 1 and moved[-1] > 4
+    assert _turn(view, 20) == [1] * 20
+    assert _turn(_long_view(selectable=True), 100, frame_each=False) == [1] * 5 + [0] * 95
 
 
-def test_a_notch_outside_the_view_neither_moves_it_nor_counts_towards_the_turn():
+def test_an_event_outside_the_view_neither_moves_it_nor_owes_it_anything():
     from zettcode.tui import MouseAction, MouseEvent
 
-    clock = _Clock()
-    view = _long_view(clock)
+    view = _long_view(wheel_speed=0.5)
     app = Harness(view, width=20, height=10).app
     top = view.top
 
     handled = view.handle(MouseEvent(x=50, y=50, action=MouseAction.SCROLL_DOWN), app)
 
-    assert handled is False and view.top == top and view._wheel_streak == 0
+    assert handled is False and view.top == top and view._wheel_owed == 0.0
 
 
-def test_scrolling_still_stops_at_both_ends_however_fast_the_turn():
-    clock = _Clock()
-    view = _long_view(clock, lines=40)
+def test_scrolling_still_stops_at_both_ends_however_many_events_there_are():
+    view = _long_view(lines=40)
 
-    _notches(view, clock, 60, gap=0.01, up=False)
+    _turn(view, 60)
     assert view.top == view.max_top and view.follow_tail
-    _notches(view, clock, 80, gap=0.01, up=True)
-    assert view.top == 0
+    _turn(view, 80, up=True)
+    assert view.top == 0 and not view.follow_tail
 
 
 @pytest.mark.parametrize("selectable", [False, True])
-def test_the_acceleration_works_scrolling_up_as_well_as_down_in_both_kinds_of_view(selectable):
-    clock = _Clock()
-    view = _long_view(clock, selectable=selectable)
+def test_the_wheel_is_one_row_an_event_scrolling_up_as_well_as_down_in_both_kinds_of_view(selectable):
+    view = _long_view(selectable=selectable)
     view.scroll_to(1800)
 
-    moved = _notches(view, clock, 20, gap=0.02, up=True)
-
-    assert moved[0] == 1 and moved[-1] > 4 and view.top < 1800 - 20
+    assert _turn(view, 20, up=True) == [1] * 20
+    assert view.top == 1780

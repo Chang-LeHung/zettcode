@@ -13,19 +13,21 @@ from pathlib import PurePath
 from typing import TypeGuard
 
 from .....tui.render import display_width
+from ...dialogue.relay import VIA_EXTERNAL, Relayed
 from ..changes import changed_files
 from ..entries import (
     ChangesEntry,
     Entry,
     EntryKind,
     EntryStatus,
+    RelayEntry,
     TextEntry,
     ThinkingEntry,
     TimedEntry,
     ToolEntry,
     WaitEntry,
 )
-from ..rows import ANIMATION_SECONDS, PROCESSING, blink_state, duration_text, elapsed_text, wait_picture
+from ..rows import ANIMATION_SECONDS, PROCESSING, blink_state, duration_text, elapsed_text, quiet_text, wait_picture
 from .log import EntryLog
 
 
@@ -58,15 +60,43 @@ class TurnMixin(EntryLog):
         """
         self._add(TextEntry(id=self._next_id, kind=EntryKind.USER, text=text, side=side))
 
-    def begin_turn(self, prompt: str, *, side: bool = False) -> None:
+    def relayed_message(self, relayed: Relayed) -> None:
+        """Append a message another session sent, without opening a wait row."""
+        self._add(
+            RelayEntry(
+                id=self._next_id,
+                peer=relayed.sender,
+                text=relayed.text,
+                outgoing=False,
+                by_agent=relayed.by_agent,
+                external=relayed.via == VIA_EXTERNAL,
+            )
+        )
+
+    def sent_message(self, peer: str, text: str, note: str = "") -> None:
+        """Append a message this session's reader sent to another session.
+
+        Args:
+            peer: The handle it was sent to.
+            text: What was sent.
+            note: What became of it, such as ``started`` or ``queued``.
+        """
+        self._add(RelayEntry(id=self._next_id, peer=peer, text=text, outgoing=True, by_agent=False, note=note))
+
+    def begin_turn(self, prompt: str, *, side: bool = False, relayed: Relayed | None = None) -> None:
         """Record the user prompt and open the first wait row for the reply.
 
         Args:
             prompt: What the reader asked, as it should appear in the transcript.
             side: The question is a side one: answered here, never part of the
                 conversation the model carries afterwards.
+            relayed: The turn answers a message from another session, which is drawn as that
+                and not as something the reader typed.
         """
-        self.user_message(prompt, side=side)
+        if relayed is not None:
+            self.relayed_message(relayed)
+        else:
+            self.user_message(prompt, side=side)
         self.wait_for_model()
 
     def wait_for_model(self) -> bool:
@@ -205,6 +235,7 @@ class TurnMixin(EntryLog):
             for index in range(self._turn_from, len(self.entries))
             if isinstance(entry := self.entries[index], TimedEntry) and entry.running
         ]
+        self._measure_quiet(now, [entry for _, entry in running])
         picture = self._picture(frame, now, [entry for _, entry in running])
         if picture == self._picture_drawn:
             return False
@@ -216,6 +247,38 @@ class TurnMixin(EntryLog):
         if running:
             self.version += 1
         return True
+
+    def turn_said_nothing(self) -> bool:
+        """Return whether the request that has just ended produced nothing a reader could see.
+
+        No answer, no tool, no reasoning: the model was asked and sent back an empty reply, which the stream reports
+        as a request that completed. Without a line saying so the reader is left with a row that says how long it
+        took and a conversation exactly as it was, which looks like the request was lost.
+        """
+        wanted = (EntryKind.ANSWER, EntryKind.TOOL, EntryKind.THINKING, EntryKind.MESSAGE)
+        return not any(entry.kind in wanted for entry in self.entries[self._turn_from :])
+
+    def heard(self) -> None:
+        """Note that the agent just said something, which is what ends a stretch of silence.
+
+        Called for every event the agent emits. It changes nothing a reader can see, so it moves no version.
+        """
+        wait = self._open_wait()
+        if wait is not None:
+            wait.heard_at = self.clock()
+
+    @staticmethod
+    def _measure_quiet(now: float, running: list[TimedEntry]) -> None:
+        """Say how long the model has been silent, when the model is what the request is waiting for.
+
+        A request with a tool, a reasoning row or a compaction in flight is waiting for that, not for the model,
+        and a silence there is a command that takes a while: it says nothing then.
+        """
+        waits = [entry for entry in running if isinstance(entry, WaitEntry)]
+        waiting_on_the_model = len(waits) == len(running)
+        for wait in waits:
+            since = wait.heard_at if wait.heard_at is not None else wait.started_at
+            wait.quiet = max(0.0, now - since) if waiting_on_the_model and since is not None else 0.0
 
     @staticmethod
     def _picture(frame: int, now: float, running: list[TimedEntry]) -> tuple[object, ...]:
@@ -237,4 +300,7 @@ class TurnMixin(EntryLog):
                 shown.append(elapsed_text(elapsed) if isinstance(entry, WaitEntry) else duration_text(elapsed))
             if isinstance(entry, WaitEntry):
                 wait = wait_picture(frame, display_width(entry.title))
+                # What the quiet clock will say, so a silence that grows is drawn as it grows and one that
+                # has not reached the threshold costs nothing.
+                shown.append(quiet_text(entry.quiet) or "")
         return (wait, blink_state(frame), tuple(shown))

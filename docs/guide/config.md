@@ -310,6 +310,7 @@ compact_percent = 80
 
 [transcript]
 max_entries = 1024             # displayed blocks, not terminal lines
+mouse_scroll_speed = 1           # rows one wheel event scrolls
 
 [agents_md]
 enabled = true                 # use project instructions
@@ -332,6 +333,9 @@ disable = []                   # entry-point names to skip
 [update]
 enabled = true                 # background PyPI version checks
 
+[sessions]
+enabled = true                 # let sessions message each other; `false` joins no broker
+
 [harness]
 subagent = true                # offer the `task` tool and its child profiles
 subagent_max_iterations = 512  # model calls one child may make for one task
@@ -347,6 +351,7 @@ belong to the most recent table heading; an `enabled` key immediately under
 | Table / key | Default | Effect and constraints |
 | --- | --- | --- |
 | `transcript.max_entries` | `1024` | Positive integer. Limits visible conversation blocks; older blocks leave the scrollback, but saved history and model context are not deleted. |
+| `transcript.mouse_scroll_speed` | `1` | Rows one mouse-wheel event scrolls the conversation, from just above 0 to 20; a fraction such as `0.5` is a row every second event, and `3` is three rows a notch. Whatever the value, one frame moves the view at most half a screen. |
 | `agents_md.enabled` | `true` | Read `AGENTS.md` from the workspace and its ancestors. See [Project instructions](/guide/instructions). |
 | `ask_user.enabled` | `true` | Allow the question panel with single-choice, multiple-choice, and typed answers. `false` removes that tool; it does not prevent all questions in normal prose. |
 | `skills.enabled` | `true` | Discover skill names/descriptions and allow their instructions to be loaded when needed. |
@@ -356,6 +361,7 @@ belong to the most recent table heading; an `enabled` key immediately under
 | `plugins.enabled` | `true` | Load installed third-party plugins. Built-in UI functionality remains available when false. |
 | `plugins.disable` | `[]` | Array of plugin **entry-point names** to skip, not necessarily their pip package names. |
 | `update.enabled` | `true` | Check PyPI in the background and offer newer releases on a later start; does not automatically install them. |
+| `sessions.enabled` | `true` | Register with the background session broker so this session can be messaged with `@name` and can message others; the model gets `list_sessions` and `send_message`. See [Talking between sessions](/guide/messaging). |
 | `harness.subagent` | `true` | Offer the `task` tool, so the model can delegate to a child agent with its own context and session log. |
 | `harness.subagent_max_iterations` | `512` | Model calls one child agent may make for one task. A child exploring or editing a real codebase makes dozens (the library's own default of 18 ended such tasks halfway); this is a ceiling against one that never stops, not a target. Children are also given your project's `AGENTS.md`. |
 | `harness.todowrite` | `false` | Offer `todo_write`, whose checklist the shell draws in its plan panel. Keeping a plan costs turns, so it is off unless asked for. |
@@ -396,11 +402,12 @@ base = "dark"                  # dark or light; defaults to dark
 accent = "#a7c080"
 accent_bright = "#83c092"
 surface_side = "#393a44"       # background for /btw messages
+surface_peer = "#313244"       # background for messages between sessions
 # background = "#232a2e"      # leave commented to use the terminal background
 
 [tools]
-read = "#b8a6e0"
-shell = "#7fbbb3"
+read = "#89b4fa"
+shell = "#fab387"
 
 [code]
 keyword = "#e58fa8"
@@ -418,8 +425,8 @@ built-in palette during that run; it does not rewrite the custom file.
 
 | Section | Colour keys |
 | --- | --- |
-| `ui` | `background`, `surface`, `surface_alt`, `surface_side`, `text`, `muted`, `subtle`, `accent`, `accent_bright`, `warning`, `error`, `diff_added`, `diff_removed`, `border`, `focus`, `selection` |
-| `tools` | `read`, `search`, `image`, `write`, `delete`, `shell`, `plan`, `subagent` |
+| `ui` | `background`, `surface`, `surface_alt`, `surface_side`, `surface_peer`, `text`, `muted`, `subtle`, `accent`, `accent_bright`, `warning`, `error`, `diff_added`, `diff_removed`, `border`, `focus`, `selection` |
+| `tools` | `read`, `search`, `image`, `write`, `delete`, `shell`, `plan`, `subagent`, `message` |
 | `code` | `inline`, `text`, `keyword`, `string`, `comment`, `number`, `function`, `builtin`, `operator`, `punctuator` |
 
 `diff_added` and `diff_removed` colour the lines of an edit's diff and the `+N -M` beside a file. Left out,
@@ -439,6 +446,8 @@ contrast after changing a surface colour.
 | `ANTHROPIC_API_KEY` | Key for `anthropic` entries without a non-empty `token`. |
 | `TIKTOKEN_CACHE_DIR` | Where the token counter keeps the vocabulary it downloads once. Defaults to `~/.zettcode/cache/tiktoken`; the OS temp directory would be emptied sooner or later, and refilling it takes seconds. |
 | `ZETTCODE_REDUCED_MOTION` | Set to `1` to suppress decorative sweep motion. |
+| `ZETTCODE_BROKER_DIR` | Where the session broker keeps its files. Defaults to `~/.zettcode/broker`. |
+| `ZETTCODE_BROKER_IDLE` | Seconds the broker stays after the last session leaves. Defaults to `30`. |
 | `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY` | Standard proxy settings used by the model's HTTP client. |
 
 Session storage stays in `~/.zettcode/sessions`, grouped by workspace. Do not
@@ -497,6 +506,10 @@ or your shell history in an issue.
 | `must be bool` / `must be int` | Use `true`, not `"true"`; use `1000000`, not `"1000000"`. |
 | `Invalid config file ...` | Check quotes, table headings, and duplicate keys. TOML syntax errors include parser location information. |
 | `cannot use both APIs` | An entry set `anthropic` and `responses_api`. Keep one: they are different protocols, not two halves of one. |
+| `HTTP 401` / `HTTP 403` in an error | The server refused the token. Check `token` for that entry, or the variable of its API. The message the server gave is shown after the status. |
+| `HTTP 404` in an error | The model id or the address is wrong for that endpoint. Check `model` and `base_url`. |
+| `HTTP 429` / `HTTP 5xx` in an error | The provider is limiting or failing, not ZettCode. The request was already retried a few times before it was reported. |
+| `Processing` with `nothing from the model for …` | The model has said nothing for a while. A long silence from a reasoning model is normal; press `Esc` to stop if it is not. |
 | API rejects the model or protocol | Check the endpoint's supported model ids and its protocol: `responses_api`, or `anthropic` for the Messages API. The UI label is not the API id. |
 | Image input is refused | Select a vision-capable model and enable `multimodal` only for that entry. |
 

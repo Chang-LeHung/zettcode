@@ -30,7 +30,13 @@ from zettcode.app.agent.conversation.presenters import (
     render_entry,
     tool_color,
 )
-from zettcode.app.agent.conversation.rows import COMPACTING_LABEL, PULSE_FRAMES, STOP_HINT, move_frames
+from zettcode.app.agent.conversation.rows import (
+    COMPACTING_LABEL,
+    PULSE_FRAMES,
+    RUNNING_GLYPHS,
+    STOP_HINT,
+    move_frames,
+)
 from zettcode.app.agent.conversation.transcript import Transcript
 from zettcode.app.ui.widgets.transcript import TranscriptSource
 from zettcode.tui import DARK, LIGHT, SEPARATOR, TextLine
@@ -373,11 +379,12 @@ def _tool_entry(tool: str, *, status: EntryStatus = EntryStatus.COMPLETED) -> To
     return ToolEntry(id=1, call_id="call-1", tool=tool, title=f"Ran {tool}", text="output", status=status)
 
 
-def test_tool_rows_share_one_hue_until_a_palette_separates_them():
-    """The built-in palettes paint every tool the same; a theme may differ.
+def test_tool_rows_are_painted_by_what_the_tool_did():
+    """Five hues, not seven: what is looked at or run is lavender, what is written green, what is deleted
+    red, a delegated agent teal, and another session mauve.
 
-    The roles exist so a palette *can* pull reading and running apart, which is
-    what the custom palette below checks, but the shipped look is one colour.
+    A transcript is mostly tool rows, and a rainbow of them reads as noise. Tools that do the same thing
+    share a hue, and the roles stay separate so a palette can override one of them on its own.
     """
     read = render_entry(_tool_entry("read_file"), 40, DARK, 0)
     shell = render_entry(_tool_entry("bash"), 40, DARK, 0)
@@ -387,14 +394,56 @@ def test_tool_rows_share_one_hue_until_a_palette_separates_them():
 
     assert DARK.tools.read in hue(read)
     assert DARK.tools.shell in hue(shell)
-    assert DARK.tools.read == DARK.tools.search == DARK.tools.shell == DARK.code.builtin
+    assert DARK.tools.read == DARK.tools.search
+    for theme in (DARK, LIGHT):
+        looking = {theme.tools.read, theme.tools.search, theme.tools.image, theme.tools.shell, theme.tools.plan}
+        assert len(looking) == 1, "everything the agent looks at or runs is one hue"
+        assert len({*looking, theme.tools.write, theme.tools.delete, theme.tools.subagent, theme.tools.message}) == 5
+    assert DARK.tools.delete == DARK.error, "a deletion is the colour of a failure, on purpose"
+    assert tool_color("grep", DARK) == tool_color("read_file", DARK)
+    assert tool_color("bash", DARK) == DARK.tools.shell != tool_color("write_file", DARK)
     # Roles stay separate so one of them can be overridden on its own.
     assert tool_color("write_file", DARK) == tool_color("replace_in_file", DARK) == DARK.tools.write
     # A delegated task is its own family, not a file operation.
     assert tool_color("task", DARK) == DARK.tools.subagent
     assert DARK.tools.subagent != DARK.tools.read
+    # Talking to another session is its own colour, the one the header of a message from one is drawn in.
+    assert tool_color("send_message", DARK) == tool_color("list_sessions", DARK) == DARK.tools.message
+    assert DARK.tools.message != DARK.tools.subagent and LIGHT.tools.message != LIGHT.tools.subagent
     # An unfamiliar tool still gets a colour rather than no style at all.
     assert tool_color("mcp__something", DARK) == DARK.accent
+
+
+@pytest.mark.parametrize("theme", [DARK, LIGHT], ids=lambda theme: theme.name)
+def test_the_heading_of_an_edit_is_not_the_colour_of_the_added_lines_under_it(theme):
+    """The heading sits on the line above its diff; in the same green it read as one more added line."""
+    transcript = Transcript()
+    transcript.start_tool(
+        "e", "replace_in_file", {"path": "a.py", "edits": [{"old_text": "x = 1", "new_text": "x = 2\ny = 3"}]}
+    )
+    transcript.complete_tool("e", "ok", wait=False)
+    (entry,) = transcript.entries
+
+    lines = render_entry(entry, 60, theme, 0)
+    heading = next(line for line in lines if "Edited" in line.text)
+    added = next(line for line in lines if line.text.strip().startswith("+ x = 2"))
+    heading_colour = next(span.style.foreground for span in heading.spans if "Edited" in span.text)
+    added_colour = next(span.style.foreground for span in added.spans if span.text.strip())
+
+    assert added_colour == theme.addition
+    assert heading_colour == theme.tools.write != theme.addition
+    assert theme.tools.write not in (theme.accent, theme.addition, theme.deletion, theme.error)
+    for other in ("read", "search", "image", "delete", "shell", "plan", "subagent", "message"):
+        if other in ("read", "search", "image", "shell", "plan"):
+            continue  # one hue by design, tested above
+        assert getattr(theme.tools, other) != theme.tools.write, other
+    assert theme.tools.write not in {theme.tools.read, theme.tools.subagent, theme.tools.message}
+
+
+def test_writing_is_a_hue_of_its_own_among_the_tool_colours_in_both_palettes():
+    for theme in (DARK, LIGHT):
+        hues = {theme.tools.read, theme.tools.write, theme.tools.delete, theme.tools.subagent, theme.tools.message}
+        assert len(hues) == 5, theme.name
 
 
 def test_a_palette_may_separate_the_tool_roles():
@@ -570,3 +619,174 @@ def test_a_write_never_draws_a_removal_count_whatever_it_holds():
     spans = [s for line in render_entry(_bare(WriteEntry, added=5), 60, DARK, 0) for s in line.spans]
 
     assert not any(s.style.foreground == DARK.deletion for s in spans)
+
+
+# -- a message the agent sent to another session ---------------------------------------------------------------
+
+
+SESSION = "01a10b75-aaaa-7000-8000-00000000f00d"
+
+
+def _sent(message: str, *, to: str = "work", output: str = "Delivered to work (id abc); it started a turn.", **fields):
+    """Run a ``send_message`` call through the real transcript, as a request would, and return the row."""
+    transcript = Transcript()
+    transcript.start_tool("call-1", "send_message", {"to": to, "message": message})
+    if output is not None:
+        transcript.complete_tool("call-1", output, wait=False, **fields)
+    (entry,) = transcript.entries
+    return transcript, entry
+
+
+def _plain(lines) -> list[str]:
+    return [line.text for line in lines]
+
+
+def test_a_sent_message_opens_as_its_own_row_that_holds_every_word():
+    from zettcode.app.agent.conversation.entries import MessageEntry
+
+    long = "\n".join(f"line {number}" for number in range(30))
+    transcript, entry = _sent(long)
+
+    assert isinstance(entry, MessageEntry)
+    assert (entry.to, entry.message, entry.title) == ("work", long, "Message to work")
+
+
+def test_a_message_to_a_session_id_is_titled_by_the_end_of_the_id_and_a_name_as_it_is():
+    assert _sent("hi", to=SESSION)[1].title == "Message to session 00f00d"
+    assert _sent("hi", to="fix-the-parser")[1].title == "Message to fix-the-parser"
+    assert _sent("hi", to="")[1].title == "Message to (unknown)"
+
+
+def test_a_message_that_is_not_text_is_an_empty_one_and_does_not_break_the_row():
+    transcript = Transcript()
+    transcript.start_tool("c", "send_message", {"to": "work", "message": 12})
+    transcript.complete_tool("c", "Delivered.", wait=False)
+
+    assert _plain(render_entry(transcript.entries[0], 60, DARK, 0))[-1].strip() == "\u2192 Delivered."
+
+
+def test_a_running_send_shows_only_its_heading():
+    transcript, entry = _sent("hello there", output=None)
+
+    rows = _plain(render_entry(entry, 60, DARK, 0))
+
+    assert [row.strip() for row in rows if row.strip()] == [f"{RUNNING_GLYPHS[0]} Message to work"]
+    assert transcript.toggle(entry.id) is False, "a running row has nothing to expand yet"
+
+
+def test_a_sent_message_is_folded_to_a_few_lines_and_expands_to_all_of_them():
+    body = "\n".join(f"line {number}" for number in range(30))
+    transcript, entry = _sent(body)
+
+    folded = _plain(render_entry(entry, 60, DARK, 0))
+    assert "▸" in folded[1] and "line 0" in "".join(folded) and "line 4" in "".join(folded)
+    assert "line 5" not in "".join(folded)
+    assert any("25 more rows" in row for row in folded)
+    assert folded[-1].strip().startswith("\u2192 Delivered to work"), "the answer is told from the message by an arrow"
+
+    assert transcript.toggle(entry.id) is True
+    opened = _plain(render_entry(entry, 60, DARK, 0))
+    assert "▾" in opened[1] and "line 29" in "".join(opened)
+    assert not any("more rows" in row for row in opened)
+
+    assert transcript.toggle(entry.id) is True
+    assert _plain(render_entry(entry, 60, DARK, 0)) == folded
+
+
+def test_a_message_longer_than_the_row_wraps_instead_of_running_off_it():
+    transcript, entry = _sent("word " * 60)
+    transcript.toggle(entry.id)
+
+    rows = _plain(render_entry(entry, 40, DARK, 0))
+
+    assert max(display_width(row) for row in rows) <= 40
+    assert len([row for row in rows if "word" in row]) > 3
+
+
+def test_the_outcome_is_one_muted_line_folded_and_whole_when_expanded():
+    output = "Not delivered: the session is busy. " + "x " * 80
+    transcript, entry = _sent("hi", output=output, status=EntryStatus.FAILED)
+
+    folded = _plain(render_entry(entry, 50, DARK, 0))
+    assert folded[-1].rstrip().endswith("\u2026") and len(folded) == 4
+    transcript.toggle(entry.id)
+    assert len(_plain(render_entry(entry, 50, DARK, 0))) > len(folded)
+
+
+def test_a_failed_send_is_drawn_in_the_error_colour_with_its_reason_in_the_same_colour():
+    transcript, entry = _sent("hi", output="No such session is active.", status=EntryStatus.FAILED)
+
+    lines = render_entry(entry, 60, DARK, 0)
+    colours = {span.style.foreground for line in lines for span in line.spans if span.text.strip()}
+
+    assert DARK.error in colours and DARK.tools.message not in colours
+    assert lines[-1].spans[0].style.foreground == DARK.error
+
+
+def test_a_delivered_send_is_in_the_message_colour_and_its_outcome_muted():
+    transcript, entry = _sent("hi")
+
+    lines = render_entry(entry, 60, DARK, 0)
+
+    assert lines[1].spans[1].style.foreground == DARK.tools.message
+    assert lines[-1].spans[0].style.foreground == DARK.muted
+
+
+def test_the_text_of_a_sent_message_cannot_move_the_cursor_or_retitle_the_window():
+    transcript, entry = _sent("\x1b[2Jclear \x1b]0;owned\x07 done", output="ok")
+    transcript.toggle(entry.id)
+
+    rendered = "".join(_plain(render_entry(entry, 60, DARK, 0)))
+
+    assert "\x1b" not in rendered and "\x07" not in rendered
+
+
+def test_a_sent_message_with_nothing_to_say_still_shows_how_it_ended():
+    transcript, entry = _sent("", output="Delivered.")
+
+    assert entry.foldable and _plain(render_entry(entry, 60, DARK, 0))[-1].strip() == "\u2192 Delivered."
+    assert transcript.toggle(entry.id) is True
+
+
+def test_the_narrowest_row_does_not_fail():
+    transcript, entry = _sent("a long message " * 5)
+    transcript.toggle(entry.id)
+
+    for width in (1, 2, 3, 8):
+        assert render_entry(entry, width, DARK, 0)
+
+
+def test_list_sessions_takes_the_message_colour_too_and_its_listing_expands_like_any_output():
+    transcript = Transcript()
+    transcript.start_tool("c", "list_sessions", {})
+    transcript.complete_tool("c", "\n".join(f"@s{n}" for n in range(9)), wait=False)
+    (entry,) = transcript.entries
+
+    assert tool_color(entry.tool, DARK) == DARK.tools.message
+    assert transcript.toggle(entry.id) is True
+
+
+def test_a_message_with_no_answer_yet_recorded_is_still_something_to_expand():
+    transcript, entry = _sent("sent but the tool said nothing", output="")
+
+    assert entry.foldable and transcript.toggle(entry.id) is True
+    assert "sent but the tool said nothing" in "".join(_plain(render_entry(entry, 60, DARK, 0)))
+
+
+def test_an_enormous_message_is_kept_bounded_like_any_tool_output():
+    from zettcode.app.agent.conversation.rows import MAX_TOOL_OUTPUT
+
+    transcript, entry = _sent("x" * (MAX_TOOL_OUTPUT * 3))
+
+    assert len(entry.message) < MAX_TOOL_OUTPUT * 1.1 and "characters omitted" in entry.message
+
+
+def test_every_tool_hue_can_be_read_on_the_surfaces_a_row_sits_on():
+    """A hue that vanishes on a palette's own surface would hide the very rows it is meant to sort."""
+    from test_theme_config import _contrast
+
+    for theme in (DARK, LIGHT):
+        for role in ("read", "search", "image", "write", "delete", "shell", "plan", "subagent", "message"):
+            colour = getattr(theme.tools, role)
+            assert _contrast(colour, theme.surface) >= 3.4, (theme.name, role, "on surface")
+            assert _contrast(colour, theme.surface_alt) >= 3.4, (theme.name, role, "on the alternate surface")

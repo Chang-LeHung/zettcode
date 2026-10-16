@@ -40,11 +40,12 @@ from .dialogue.side import SideQuestions
 from .extensions.capabilities import ModelCapabilities
 from .extensions.compaction import COUNTER_WAIT, CompactionCounter, OnDemandCompaction
 from .extensions.context import ContextExtension, Tokenizer
+from .extensions.messenger import Messenger
 from .extensions.tool_output import ToolOutputExtension
 from .extensions.usage import UsageExtension
 from .permission import Permission, ShellDenyExtension, ShellPolicy, parse_permission
 from .permission.approval import ShellApprovalMemory
-from .storage import SessionStore
+from .storage import NoLocks, SessionGuard, SessionLocks, SessionStore
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only; the imports are the cost
     from zett_agent.providers.anthropic import AnthropicProvider
@@ -98,6 +99,16 @@ def build_system_prompt(config: ZettCodeConfig, *, now: datetime | None = None) 
 Inspect relevant files before editing. Make focused changes, preserve unrelated work,
 and run checks proportional to risk. Explain blockers concretely. Do not perform
 destructive actions unless the user explicitly requests them.
+
+Changing files: use the file tools, and only them. To edit a file that exists, call
+replace_in_file directly: read the lines first, copy old_text exactly, and send every change
+to that file in one call. Use write_file for a new file or a deliberate whole-file rewrite, and
+delete_file to remove one. Never change a file through the shell: no sed, awk, perl -i,
+python -c, a script you write to do the editing, cat or echo with a redirection, a heredoc,
+or tee. The shell is for running things (tests, builds, git, searches), not for editing; the
+file tools show the user exactly what changed and the shell commands do not. If
+replace_in_file fails, read the file again and retry it with corrected old_text; do not fall
+back to a shell command.
 
 Runtime environment:
 - Workspace: {config.workspace}
@@ -206,6 +217,12 @@ class ZettCodeRuntime:
     #: mark the run it is about to start.
     sides: SideQuestions = field(default_factory=SideQuestions)
     plugins: Plugins = field(default_factory=Plugins)
+    #: The lock on the session this process has open: only the process that holds it writes to the session.
+    #: A runtime that was not given one (a test's) shares nothing, so every claim is granted.
+    session_locks: SessionGuard = field(default_factory=NoLocks)
+    #: The line to the other sessions, when the configuration switches messaging on; the shell fills in
+    #: what it does with a message received. ``None`` registers no tool and joins no broker.
+    messenger: Messenger | None = None
     event_dispatcher: AgentEventDispatcher | None = None
     client: AgentClient | None = None
     model: Adapter | None = None
@@ -235,9 +252,11 @@ class ZettCodeRuntime:
         # refuses for `deny`, and the shell changes it from `/permission`.
         policy = ShellPolicy.from_mode(config.shell_approval, config.workspace)
         counter = CompactionCounter()
-        return cls(
+        persistence = SessionStore(config.store, config.workspace)
+        runtime = cls(
             config=config,
-            persistence=SessionStore(config.store, config.workspace),
+            persistence=persistence,
+            session_locks=SessionLocks(persistence.session_dir),
             approval=ShellApprovalExtension(ShellApprovalMemory(policy)),
             policy=policy,
             todos=TodoWriteExtension(),
@@ -255,7 +274,12 @@ class ZettCodeRuntime:
             ),
             compaction_counter=counter,
             plugins=load_plugins(config),
+            messenger=Messenger.create(config),
         )
+        # The session a launch starts in is a new one, so this always succeeds; a launch that resumes
+        # another moves the lock when it installs it.
+        runtime.session_locks.claim(runtime.session_id)
+        return runtime
 
     def start(self) -> asyncio.Task[ZettCodeRuntime]:
         """Build the provider and the client once, whoever asks first.
@@ -374,6 +398,10 @@ class ZettCodeRuntime:
                     max_iterations=self.config.subagent_max_iterations,
                 )
             )
+        if self.messenger is not None:
+            from .extensions.messaging import SessionMessagingExtension
+
+            extensions.append(SessionMessagingExtension(self.messenger))
         extensions.extend([ShellDenyExtension(self.policy), self.approval, self.persistence])
         if self.config.todowrite_enabled:
             extensions.append(self.todos)
@@ -566,15 +594,30 @@ class ZettCodeRuntime:
         return self.use_model(chosen)
 
     def new_session(self) -> str:
-        """Switch future requests to a fresh session identity."""
+        """Switch future requests to a fresh session identity, and lock it."""
         self.session_id = new_uuid7()
+        self.session_locks.claim(self.session_id)
         return self.session_id
 
     def use_session(self, session_id: str) -> None:
-        """Select a persisted or new explicit session for the next request."""
+        """Select a persisted or new explicit session for the next request, and try to lock it.
+
+        Whether the lock was had is :attr:`session_locked`: a session another process has open is still
+        selected, so the reader can read it, and is not written to.
+        """
         if not session_id.strip():
             raise ValueError("Session ID cannot be empty")
         self.session_id = session_id.strip()
+        self.session_locks.claim(self.session_id)
+
+    @property
+    def session_locked(self) -> bool:
+        """Return whether the active session is held by another process, so that this one only reads it."""
+        return not self.session_locks.holds(self.session_id)
+
+    def retake_session(self) -> bool:
+        """Try again to lock the active session, and say whether this process holds it now."""
+        return self.session_locks.claim(self.session_id)
 
     async def aclose(self) -> None:
         """Release all resources owned by this runtime.
@@ -602,3 +645,4 @@ class ZettCodeRuntime:
         for model in self._models.values():
             await model.aclose()
         await self.persistence.close()
+        self.session_locks.release()

@@ -35,6 +35,8 @@ class FakeRuntime:
 
     persistence: SessionStore
     model: FakeModel
+    session_id: str = "s1"
+    session_locked: bool = False
 
     async def start(self) -> FakeRuntime:
         """A real runtime builds its provider here; this one already has it."""

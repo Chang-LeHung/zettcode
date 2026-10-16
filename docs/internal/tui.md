@@ -377,10 +377,10 @@ the two files at the top are the composition and the thing it composes.
 | --- | --- |
 | `agent/` | `ZettCodeAgent`, the application's one entry point, assembled from mixins: `base` (runtime, workspace, session id), `settings` (model, effort, shell permission), `context` (the next request, compaction), `sessions` (switch, resume, fork, title), `turns` (build, stream, steer), `interaction` (answer an approval or a question), `exports`, `commands`; and `prompt`, the parts of a user turn |
 | `runtime.py` | `ZettCodeRuntime`: composes the vendor client with the extensions below |
-| `extensions/` | What the runtime plugs into zett-agent that is ours: `capabilities`, `compaction`, `context`, `mcp` (and `mcp_notice`, the event it reports through), `subagents`, `tool_output`, `usage` |
+| `extensions/` | What the runtime plugs into zett-agent that is ours: `capabilities`, `compaction`, `context`, `mcp` (and `mcp_notice`, the event it reports through), `messenger` (the line to the other sessions) and `messaging` (the two tools), `subagents`, `tool_output`, `usage` |
 | `permission/` | How much of the shell may run unasked: the levels and what enforces them (`__init__`), the fail-closed read-only classifier (`readonly`), what an approval may remember (`approval`) |
 | `conversation/` | The conversation as the screen shows it: `entries`, `transcript/`, `presenters`, `rendering`, `rows`, `projection` (agent events fill it), `replay` (a stored branch rebuilds it) |
-| `dialogue/` | What is said besides the turns: `mentions` (`@`), `ask`, `side`, `title` |
+| `dialogue/` | What is said besides the turns: `mentions` (`@`, including the names of other sessions), `ask`, `side`, `title`, `relay` (a message from another session: what the model reads, what is stored) |
 | `storage/` | The session file format and the store that reads and writes it |
 | `export/` | A stored session as a self-contained HTML page, with the page's assets under `export/trace/` |
 
@@ -422,6 +422,43 @@ Adding a kind of row is three things: a member of `EntryKind`, an entry class
 that declares it, and a presenter that names it. `test_every_kind_of_entry_has_exactly_one_presenter`
 checks the enum against the registry, so a kind that has no presenter fails there
 rather than on a user's screen.
+
+### Messages between sessions
+
+A second process, the broker, lets one session message another, and lets anything that holds its token do
+the same; invariants B1-B16 hold it. It is one package, `src/zettcode/broker/`: a Starlette application served
+by uvicorn on a loopback port, and the client a session reaches it with. A session is a WebSocket
+(`/inbox`: registered while it is open), sending is `POST /messages`, and who a message is from is the
+session its key belongs to or an external source that names itself. `src/zettcode/filelock.py` is the
+operating-system file lock the broker is made a singleton with, shared with the session store's own lock.
+
+- Server side, one job each: `protocol` is what is said and the limits on it (the routes and the WebSocket
+  ops are described at its top; `Refused` with its reasons); `roster` is who is registered and what each is
+  called, with no sockets in it; `hub` is what the broker decides (the sessions, who a message is from,
+  the rate limit, the hand-over and its ack, who is told when) and knows nothing of HTTP; `web` is the
+  Starlette application over the hub (routes, the token, reading a body, the WebSocket read and write loops);
+  `server` is the `Broker` (bind, uvicorn, goodbye, the exit when idle); `runner` is the process around it
+  (`python -m zettcode.broker`: the lock, the note, signals, the watch over its own files).
+- Client side: `client` is `BrokerClient` (stay connected, what a session says about itself, the roster it
+  keeps, sending with httpx and receiving on the WebSocket); `finder` finds the broker, starts it when the
+  lock is free and replaces an older one (with `process`, which ends it); `models` is the words the rest of
+  the application uses (`SessionInfo`, `Incoming`, `Receipt`, `SendError`). `files` is where the broker's files
+  are and the note a session finds it by; `text` cleans what comes from another process. The package imports
+  nothing of the shell, the agent or the terminal (`tests/test_structure.py` holds it).
+- `app/agent/extensions/messenger.py` is the line the rest of the application holds: it describes
+  this session to the broker, lists the others from memory, sends, and remembers which received
+  message the running turn answers (so an agent's answer carries the hop count on).
+  `messaging.py` is the two tools over it, imported when the runtime builds its client.
+- `app/agent/dialogue/relay.py` is the one type (`Relayed`) the transcript, the agent and the shell
+  share: what the model reads, and what is stored beside the message (`attributes["relay"]`).
+- `app/ui/messaging.py` is the shell's part: the `@name` send, and a received message starting a turn
+  or waiting in `_inbox`. A received message runs through `_run_prompt` like any other, with a
+  `relayed` argument; nothing after that point knows it came from elsewhere.
+- Rows are `RelayEntry` / `RelayPresenter`, a kind of their own, because the reader's message and a
+  message from somebody else must never look alike.
+
+The shell never awaits the broker on a keystroke: completion reads `Messenger.peers()`, a tuple
+the client keeps up to date, and a send runs on a task of its own.
 
 Entries are data. `Entry` carries an id, a kind, and two slots a presenter caches
 its rows in; `TimedEntry` adds a status, a start, and a duration for the rows that

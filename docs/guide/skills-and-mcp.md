@@ -166,9 +166,13 @@ Starting MCP server 'docs' (process)…
 MCP server 'docs' is ready: 3 tools, 2.1s
 ```
 
-A remote server says `(connection)`. A server whose tool list ZettCode already has starts nothing
-and says nothing, and one that is down is reported as down rather than ready. The lines name the
-server and its kind and never repeat its command, which may carry a key.
+A remote server says `(connection)`. These lines appear **once per session, at its first turn** — they
+explain why that turn was slow, and nothing later needs explaining: ZettCode looks at the servers again every
+few minutes without saying so. Starting a new session or resuming one is entering one, so its first turn
+says it again. A server whose tool list ZettCode already has starts nothing and says nothing, and one that
+is down is reported as down rather than ready — and that is said whenever it happens, not only at the first
+turn. The lines name the server and its kind and never repeat its command, which may carry a key. A
+subagent says nothing about servers: you did not ask it anything.
 
 ### When a server or a tool goes wrong
 

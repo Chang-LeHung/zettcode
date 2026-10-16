@@ -180,7 +180,11 @@ class SessionsMixin(ContextMixin):
         Args:
             title: Name to store; surrounding space is trimmed, and a blank or
                 over-long name is rejected by the store.
+
+        Raises:
+            SessionLocked: Another process has this session open.
         """
+        self.require_session()
         await self.runtime.persistence.set_title(self.session_id, title)
         return title.strip()
 
@@ -199,6 +203,8 @@ class SessionsMixin(ContextMixin):
         """
         if self.runtime.persistence.session_title(session_id) is not None:
             return None
+        if session_id == self.session_id and self.session_locked:
+            return None  # a nicety, and not one that is worth writing into a session that is not ours
         session = self.runtime.persistence.read(session_id)
         branch = session.branch()
         question = next(

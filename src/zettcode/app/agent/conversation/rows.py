@@ -158,6 +158,19 @@ def duration_text(seconds: float | None) -> str:
     return f"{hours}h {minutes}m"
 
 
+#: Seconds the model may say nothing before the waiting row says so. A first token after ten seconds is a
+#: slow model and after twenty is something a reader is already wondering about; a reasoning model that
+#: streams nothing for longer is also why this only *says* it and never gives up on the request.
+QUIET_SECONDS = 20.0
+
+
+def quiet_text(seconds: float) -> str | None:
+    """Return what the waiting row says about a silence of ``seconds``, or ``None`` while it is too short to mention."""
+    if seconds < QUIET_SECONDS:
+        return None
+    return f"nothing from the model for {elapsed_text(seconds)}"
+
+
 def elapsed_text(seconds: float) -> str:
     """Show every nonzero time unit in a finished request's wall time.
 

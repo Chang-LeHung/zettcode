@@ -117,6 +117,49 @@ def truncate_spans(spans: Sequence[Span], width: int) -> tuple[Span, ...]:
     return tuple(clipped)
 
 
+def wrap_words(text: str, width: int) -> list[str]:
+    """Wrap one logical line of prose at a column budget, breaking between words where it can.
+
+    A word that fits a row is never split: it moves to the next row whole, and the space it was set
+    off by is dropped at the break rather than starting a row with a gap. A word wider than a row of
+    its own — a long path, an address, text with no spaces at all — is broken at the budget, never
+    mid-character, because there is nowhere kinder to break it. Leading space is kept on the first row,
+    and a run of spaces inside a line that has to wrap becomes one.
+
+    This is for sentences; code and command output keep :func:`wrap_columns`, where a column is a
+    column and a space is a character to preserve.
+
+    Args:
+        text: Source line; embedded newlines are not treated specially.
+        width: Column budget per row, floored at 1.
+    """
+    width = max(1, width)
+    if display_width(text) <= width:
+        return [text]
+    indent = text[: len(text) - len(text.lstrip(" "))]
+    rows: list[str] = []
+    current = indent if display_width(indent) < width else ""
+    used = display_width(current)
+    for word in text.lstrip(" ").split(" "):
+        if not word:
+            continue
+        size = display_width(word)
+        gap = 1 if current.strip() else 0
+        if used + gap + size <= width:
+            current += (" " if gap else "") + word
+            used += gap + size
+            continue
+        if current.strip():
+            rows.append(current)
+            current, used = "", 0
+        pieces = wrap_columns(word, width)  # a word that fits a row comes back whole, so only a longer one is cut
+        rows.extend(pieces[:-1])
+        current = pieces[-1]
+        used = display_width(current)
+    rows.append(current)
+    return rows or [""]
+
+
 def wrap_columns(text: str, width: int) -> list[str]:
     """Hard-wrap one logical line at a column budget, never mid-character.
 

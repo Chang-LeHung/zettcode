@@ -38,6 +38,7 @@ class EntryKind(StrEnum):
         THINKING: Reasoning, or a compaction's summary, with its own clock.
         TOOL: One tool call and its bounded result.
         CHANGES: The files a request changed, said once when it ends.
+        RELAY: A message that crossed between two sessions, in either direction.
     """
 
     WELCOME = "welcome"
@@ -50,6 +51,7 @@ class EntryKind(StrEnum):
     THINKING = "thinking"
     TOOL = "tool"
     CHANGES = "changes"
+    RELAY = "relay"
 
 
 class EntryStatus(StrEnum):
@@ -181,6 +183,13 @@ class WaitEntry(TimedEntry):
     kind: EntryKind = field(default=EntryKind.WAIT, init=False)
     title: str = "Processing"
     started_at: float
+    #: The clock reading of the last thing the agent said (a delta, a tool, a step), which is when the model
+    #: was last heard from; ``None`` until it has said anything.
+    heard_at: float | None = None
+    #: Seconds the model has said nothing while nothing else was running, brought up with the timers. Zero
+    #: while a tool, a reasoning row or a compaction is the thing being waited for: a ``pytest`` that takes two
+    #: minutes is not the model going quiet.
+    quiet: float = 0.0
     #: The line the request ended on, written when the row is settled.
     text: str = ""
 
@@ -289,6 +298,24 @@ class DeleteEntry(ToolEntry):
     path: str = ""
 
 
+@dataclass(slots=True, kw_only=True)
+class MessageEntry(ToolEntry):
+    """A message the agent sent to another session: who it was for, and every word of it.
+
+    The tool's own answer is one line (``Delivered to work …``); what the reader wants to see is what
+    was said, which the call's arguments hold and a one-line title cannot, so the entry keeps it and the
+    row shows it — a few lines folded, the whole message expanded.
+    """
+
+    to: str = ""
+    message: str = ""
+
+    @property
+    def foldable(self) -> bool:
+        """Return whether there is more to see once the call is over: what was said, or how it ended."""
+        return not self.running and bool(self.message or self.text)
+
+
 @dataclass(frozen=True, slots=True)
 class FileSummary:
     """What one request did to one file, in total.
@@ -316,3 +343,26 @@ class ChangesEntry(Entry):
 
     kind: EntryKind = field(default=EntryKind.CHANGES, init=False)
     files: tuple[FileSummary, ...] = ()
+
+
+@dataclass(slots=True, kw_only=True)
+class RelayEntry(Entry):
+    """A message between two sessions: one this session received, or one its reader sent.
+
+    Attributes:
+        peer: The other session's handle.
+        text: The message.
+        outgoing: This session sent it; otherwise it arrived.
+        by_agent: The other session's agent wrote it (received), or this session's reader chose to
+            send it with ``@`` (sent, so ``False``).
+        external: It came from a program that is not a ZettCode session, whose name nobody has checked.
+        note: What became of a sent message, such as ``queued``; empty for a received one.
+    """
+
+    kind: EntryKind = field(default=EntryKind.RELAY, init=False)
+    peer: str
+    text: str
+    outgoing: bool = False
+    by_agent: bool = True
+    external: bool = False
+    note: str = ""

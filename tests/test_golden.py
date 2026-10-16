@@ -184,7 +184,7 @@ def test_golden_transcript_blocks():
         "3:0-44 fg#f2f5f3,bg#343f44\n"
         "4:0-44 fg#f2f5f3,bg#343f44\n"
         "6:0-17 fg#83c092\n"
-        "8:0-13 fg#b8a6e0\n"
+        "8:0-13 fg#b4befe\n"
         "8:13-22 fg#7a8478\n"
         "9:0-4 fg#7a8478\n"
         "9:4-12 fg#f2f5f3\n"

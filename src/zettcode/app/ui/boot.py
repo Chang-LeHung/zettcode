@@ -72,12 +72,15 @@ def boot_tree(
     )
     return VBox(
         [
-            Slot(StatusBar(labels.header_left(workspace), labels.header_right(model, effort) if model else ""), size=1),
+            Slot(
+                StatusBar(labels.header_left(workspace, UNTITLED), labels.header_right(model, effort) if model else ""),
+                size=1,
+            ),
             Slot(Rule(), size=1),
             Slot(Text("") if resuming else Welcome(), flex=1),
             Slot(Text(""), size=1),
             Slot(composer, size=lambda width: composer.preferred_height(width)),
-            Slot(StatusBar(labels.status_left(IDLE_STATUS, UNTITLED), labels.status_right()), size=1),
+            Slot(StatusBar(labels.status_left(IDLE_STATUS), labels.status_right()), size=1),
         ]
     )
 

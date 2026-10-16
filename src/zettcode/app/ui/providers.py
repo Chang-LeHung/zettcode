@@ -92,10 +92,10 @@ class ConfigMixin(ShellState):
     def _config_pick_provider(self, *, replace: bool) -> None:
         """Ask which host the model is at."""
         rows = [
-            ListItem(provider, provider.label, provider.note or provider.base_url or "")
+            ListItem(provider, provider.label, provider.note or provider.api.description)
             for provider in self.agent.providers
         ]
-        rows.append(ListItem(CUSTOM, "Custom", "any endpoint: you give the address and the protocol"))
+        rows.append(ListItem(CUSTOM, "Custom", "any endpoint; you give the address and the protocol"))
         page = ListPage(
             rows,
             title="Add a model \u2014 which provider?",
@@ -157,7 +157,10 @@ class ConfigMixin(ShellState):
                 f"Address of {host}",
                 draft,
                 lambda text: self._config_set(draft, "url", text),
-                help_lines=("The address the client appends its route to, such as https://api.example.com/v1",),
+                help_lines=(
+                    "The address the client appends its route to.",
+                    "For example: https://api.example.com/v1",
+                ),
                 allow_empty=not draft.custom,
                 initial=initial,
                 replace=replace,
@@ -170,7 +173,7 @@ class ConfigMixin(ShellState):
                 lambda text: self._config_set(draft, "model", text),
                 help_lines=(
                     "The id the provider calls the model, exactly as its documentation writes it.",
-                    *((f"for example: {', '.join(suggestions[:3])}",) if suggestions else ()),
+                    *((f"For example: {', '.join(suggestions[:3])}",) if suggestions else ()),
                 ),
                 initial=initial,
                 replace=replace,
@@ -465,6 +468,7 @@ class ConfigMixin(ShellState):
         """Return the providers `/config add` accepts, as Markdown."""
         lines = ["| name | api | address | note |", "| --- | --- | --- | --- |"]
         for provider in self.agent.providers:
-            lines.append(f"| `{provider.name}` | {provider.api} | {provider.base_url or 'default'} | {provider.note} |")
+            note = provider.note or provider.api.description
+            lines.append(f"| `{provider.name}` | {provider.api} | {provider.base_url or 'default'} | {note} |")
         lines.append(f"| `{CUSTOM}` | you choose | you give it | any endpoint |")
         return "\n".join(lines)

@@ -19,10 +19,11 @@ error = "#e67e80"
 # diff_added = "#a7c080"       # default: the accent
 # diff_removed = "#e67e80"     # default: the error colour
 surface_side = "#393a44"
+surface_peer = "#313244"
 
 [tools]
-read = "#a7c080"
-shell = "#7fbbb3"
+read = "#89b4fa"
+shell = "#fab387"
 
 [code]
 keyword = "#e58fa8"

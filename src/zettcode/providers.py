@@ -1,6 +1,6 @@
 """Providers: the hosts a model can be reached at, described once so ``/config`` can offer them.
 
-A model entry needs an API (chat completions, the Responses API, or Anthropic's Messages API), an
+A model entry needs an API (chat completions, Responses API, or Anthropic Messages API), an
 address, a token and a model id. For a well-known host the first two are the same for everyone, so a
 :class:`Provider` carries them and the reader only supplies the token and a model. A host nobody has
 described is ``custom``: the reader gives the address too.
@@ -62,10 +62,13 @@ class Api(StrEnum):
             raise ValueError(f"the api must be one of {', '.join(cls)}, not {text!r}") from None
 
 
+#: How each protocol is named beside a choice. The wording rule for everything a list shows next to a name — here,
+#: a provider's :attr:`~Provider.note`, and the notes of the other pickers — is a lower-case phrase with no
+#: leading article and no full stop; a proper noun (Responses API, Anthropic) keeps its capital.
 _DESCRIPTIONS = {
     Api.CHAT: "chat completions",
-    Api.RESPONSES: "the Responses API",
-    Api.ANTHROPIC: "Anthropic's Messages API",
+    Api.RESPONSES: "Responses API",
+    Api.ANTHROPIC: "Anthropic Messages API",
 }
 
 #: The flags a ``[[models]]`` entry sets to choose a protocol; every one is cleared before one is set.
@@ -93,7 +96,9 @@ class Provider:
         models: Model ids worth suggesting. Left empty by the built-ins: a list of model names goes
             stale faster than this program is released, so the reader types the one they mean.
         multimodal: Whether models at this host take images, as the default for a new entry.
-        note: One line of help shown with the provider.
+        note: One line of help shown beside the provider in the picker: a lower-case phrase with no leading
+            article and no full stop, as every note in a list is (``chat completions``, ``local models``).
+            Left empty, the picker shows the protocol's own name.
     """
 
     name: str
@@ -146,7 +151,7 @@ BUILTIN_PROVIDERS: tuple[Provider, ...] = (
         api=Api.CHAT,
         base_url="https://api.openai.com/v1",
         token_env="OPENAI_API_KEY",
-        note="chat completions; set the api to responses for the Responses API",
+        note="chat completions; change the api later for Responses API",
     ),
     Provider(
         "anthropic",
@@ -154,32 +159,34 @@ BUILTIN_PROVIDERS: tuple[Provider, ...] = (
         api=Api.ANTHROPIC,
         base_url="https://api.anthropic.com",
         token_env="ANTHROPIC_API_KEY",
-        note="the Messages API",
+        note="Anthropic Messages API",
     ),
     Provider(
         "deepseek",
         "DeepSeek",
         base_url="https://api.deepseek.com",
         token_env="DEEPSEEK_API_KEY",
+        note="chat completions",
     ),
     Provider(
         "openrouter",
         "OpenRouter",
         base_url="https://openrouter.ai/api/v1",
         token_env="OPENROUTER_API_KEY",
-        note="one key for many vendors; the model id is vendor/name",
+        note="chat completions; one key for many vendors, model ids look like vendor/name",
     ),
     Provider(
         "groq",
         "Groq",
         base_url="https://api.groq.com/openai/v1",
         token_env="GROQ_API_KEY",
+        note="chat completions",
     ),
     Provider(
         "ollama",
         "Ollama (local)",
         base_url="http://localhost:11434/v1",
-        note="runs on this machine and checks no key; any text will do for the token",
+        note="chat completions on this machine; no key is checked, any text will do for the token",
     ),
 )
 

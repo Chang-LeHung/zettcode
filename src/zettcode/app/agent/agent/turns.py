@@ -12,9 +12,10 @@ from zett_agent.extensions.external import ExternalEvent
 from zett_agent.extensions.steering import STEERING_MESSAGE_EVENT_NAME
 from zett_agent.messages import ImageBytesSource, ImageContent, TextContent, UserMessage
 
+from ..dialogue.relay import Relayed
 from ..dialogue.side import SIDE, question
 from .base import AgentBase
-from .prompt import MentionPart, PromptPart, carries_image, plain_text, plain_text_part
+from .prompt import MentionPart, PromptPart, carries_image, model_text_part, plain_text
 
 
 class TurnsMixin(AgentBase):
@@ -30,6 +31,7 @@ class TurnsMixin(AgentBase):
         *,
         hint: str | None = None,
         side: bool = False,
+        relayed: Relayed | None = None,
     ) -> AsyncIterator[AgentEvent]:
         """Run one turn with the selected session, model, and reasoning effort.
 
@@ -43,14 +45,21 @@ class TurnsMixin(AgentBase):
                 what was typed and a restored session shows it.
             side: Ask without letting the exchange join the conversation; see
                 :mod:`zettcode.app.agent.side`.
+            relayed: The turn is a message another session sent. It is what the model reads
+                (with where it came from), and ``parts`` and ``hint`` are not used.
+
+        Raises:
+            SessionLocked: Another process has the session open. Checked before anything else, and a side
+                question is no exception: the store records it even though it never replays it.
         """
+        self.require_session()
         await self.runtime.start()
         client = self.runtime.started
         used = self.runtime.active_model.shown_name
         session_id = self.session_id
         try:
             async for event in client.stream(
-                self.request(parts, hint=hint, side=side),
+                self.request(parts, hint=hint, side=side) if relayed is None else relayed.message(),
                 config=AgentRunConfig(session_id=session_id),
                 model=self.runtime.provider,
                 reasoning_effort=self.runtime.effort,
@@ -105,11 +114,12 @@ class TurnsMixin(AgentBase):
             text = plain_text(parts)
             if hint is None:
                 return text
-            return UserMessage(content=f"{text}\n\n{hint}", attributes={"prompt": text})
+            said = "".join(model_text_part(part) for part in parts)
+            return UserMessage(content=f"{said}\n\n{hint}", attributes={"prompt": text})
         content: list[TextContent | ImageContent] = []
         for part in parts:
             if isinstance(part, (str, MentionPart)):
-                text = plain_text_part(part)
+                text = model_text_part(part)
                 if text:
                     content.append(TextContent(text))
                 continue

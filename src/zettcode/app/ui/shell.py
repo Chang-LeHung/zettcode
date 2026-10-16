@@ -21,6 +21,10 @@ EFFORT_TOKEN = "effort"
 #: something the reader is still reading.
 FLASH_SECONDS = 1.5
 
+#: What the conversation says when a request ends having produced nothing: the model was asked and sent back an
+#: empty reply, which the stream reports as a request that completed.
+EMPTY_REPLY = "The model sent back an empty reply. Try again, or check the model and address with /config."
+
 #: Screen name used for a page a command presented; the shell checks it to know
 #: that Ctrl-C and Ctrl-D belong to the page rather than the composer.
 PAGE_SCREEN = "page"
@@ -61,6 +65,8 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
     from ..agent.conversation.transcript import Transcript
     from ..agent.dialogue.ask import AskUserQuestion
     from ..agent.dialogue.mentions import MentionRegistry
+    from ..agent.dialogue.relay import Relayed
+    from ..agent.extensions.messenger import Messenger
     from ..agent.extensions.usage import UsageSnapshot
     from ..commands import Command
     from .followups import FollowUp
@@ -95,6 +101,8 @@ class ShellState:
     #: The event projector that fills the transcript, and the root widget.
     projector: TranscriptProjector
     root: ZettCodeRoot
+    #: The line to the other sessions, or ``None`` when sessions are switched off.
+    messenger: Messenger | None
     #: The merged slash commands and the ``@`` resource registry.
     commands: tuple[Command, ...]
     mentions: MentionRegistry
@@ -200,8 +208,25 @@ class ShellState:
     def _refresh_completions(self) -> None:
         """Mirror the composer's slash-command candidates into the menu."""
 
-    async def _run_prompt(self, prompt: str, parts: Sequence[PromptPart] = (), hint: str | None = None) -> None:
+    async def _run_prompt(
+        self,
+        prompt: str,
+        parts: Sequence[PromptPart] = (),
+        hint: str | None = None,
+        *,
+        relayed: Relayed | None = None,
+    ) -> None:
         """Stream one agent turn."""
+
+    def _sync_messaging(self) -> None:
+        """Tell the other sessions what this one is now."""
+
+    def _sync_lock(self) -> None:
+        """Make the composer and the messaging agree with who holds the active session's lock."""
+
+    def _start_next_relayed(self) -> bool:
+        """Start the oldest message another session sent, if one waits and nothing runs."""
+        return False
 
     def submit(self, value: str) -> bool | None:
         """Start a turn, steer the running one, or run a slash command."""

@@ -12,13 +12,16 @@ from ..render.color import parse_hex
 class ToolTheme:
     """The colour a tool row is painted with, by what the tool did.
 
-    The built-in palettes paint every tool with the code palette's builtin
-    violet — the colour a reader already knows from ``print`` and ``__main__``
-    in a snippet — which is what a transcript wants until its reader knows the
-    tools by heart. The roles are separate so a theme file can pull them apart —
-    one hue for reading, another for running — without touching any code. A tool
-    the palette has never heard of, and any role left unset, falls back to
-    :attr:`Theme.accent`.
+    The built-in palettes keep to a few hues, the way editors keep their tool and
+    status colours to a few: a soft lavender for everything the agent looks at or
+    runs (reading, searching, pictures, commands, the plan), yellow for what it
+    writes, red for what it deletes, teal for a delegated child agent, and mauve
+    for talking to another session. More hues than that read as noise in a
+    transcript that is mostly tool rows. Writing is yellow and not green because green is the
+    colour of an added line: the heading of an edit sits on the line above its diff, and the same
+    green on both made the heading read as one more added line. The roles are separate so a theme
+    file can pull them apart without touching any code. A tool the palette has never heard of, and
+    any role left unset, falls back to :attr:`Theme.accent`.
 
     Attributes:
         read: Reading one file, the least surprising action.
@@ -30,16 +33,20 @@ class ToolTheme:
         plan: Recording the task list.
         subagent: Delegating work to an isolated child agent, which is its own
             family rather than a file operation.
+        message: Talking to another session: ``send_message`` and ``list_sessions``, and the
+            header of a message another session's agent sent. One hue for both directions, so a
+            conversation between sessions reads as one thing.
     """
 
-    read: str = "#b8a6e0"
-    search: str = "#b8a6e0"
-    image: str = "#b8a6e0"
-    write: str = "#b8a6e0"
-    delete: str = "#b8a6e0"
-    shell: str = "#b8a6e0"
-    plan: str = "#b8a6e0"
-    subagent: str = "#8fcfc6"
+    read: str = "#b4befe"
+    search: str = "#b4befe"
+    image: str = "#b4befe"
+    write: str = "#e5c890"
+    delete: str = "#e67e80"
+    shell: str = "#b4befe"
+    plan: str = "#b4befe"
+    subagent: str = "#94e2d5"
+    message: str = "#cba6f7"
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,6 +75,11 @@ class Theme:
             it — but it leans a different way from the green-toned neutrals, a
             soft slate, so an aside reads as a note beside the conversation
             rather than as one of its turns.
+        surface_peer: Fill of a message that crossed between two sessions, in either direction. It
+            is drawn like the reader's own message (the arrow, the same text column), so only its
+            background says it is not the reader's. It is as light as ``surface_alt`` and only leans another way —
+            Catppuccin Mocha's lavender-grey ``surface0`` in the dark palette, a pale sage in the light one —
+            so it reads as a neighbour of the reader's message rather than as a hole or a banner next to it.
         text: Body text.
         muted: Lowest-emphasis text (hints, timestamps, disabled rows).
         subtle: Secondary body text that must stay readable, such as a reasoning
@@ -96,6 +108,7 @@ class Theme:
     surface: str = "#2d353b"
     surface_alt: str = "#343f44"
     surface_side: str = "#393a44"
+    surface_peer: str = "#313244"
     text: str = "#f2f5f3"
     muted: str = "#7a8478"
     subtle: str = "#9da9a0"
@@ -130,6 +143,7 @@ LIGHT = Theme(
     surface="#ffffff",
     surface_alt="#eceeec",
     surface_side="#e5e6ee",
+    surface_peer="#e1ebe4",
     text="#1b211d",
     muted="#68736c",
     subtle="#4c554e",
@@ -144,11 +158,12 @@ LIGHT = Theme(
         read="#5b3fa8",
         search="#5b3fa8",
         image="#5b3fa8",
-        write="#5b3fa8",
-        delete="#5b3fa8",
+        write="#946200",
+        delete="#b23b30",
         shell="#5b3fa8",
         plan="#5b3fa8",
         subagent="#1e7f76",
+        message="#8a4a9e",
     ),
     code=CodeTheme(
         name="light",

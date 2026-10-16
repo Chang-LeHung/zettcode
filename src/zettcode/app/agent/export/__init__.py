@@ -25,6 +25,7 @@ from string import Template
 
 from zett_agent.messages import AnyMessage, AssistantMessage, SystemMessage, ToolMessage, UserMessage
 
+from ..dialogue.relay import relay_of
 from ..dialogue.side import is_side_line
 from ..extensions.context import ContextReport
 from ..storage import MessageLine, Session
@@ -167,6 +168,12 @@ def write_export(path: str | Path, content: str) -> Path:
     return target.resolve()
 
 
+def _user_label(message: UserMessage) -> str:
+    """Return what a user message is called: a message another session sent says whose it is."""
+    relayed = relay_of(message.attributes, message.text)
+    return "User message" if relayed is None else f"Message from session {relayed.sender}"
+
+
 def _branch_messages(session: Session) -> list[MessageLine]:
     """Return the active branch's message lines, oldest first."""
     return list(session.branch())
@@ -180,7 +187,7 @@ def _event(number: int, line: MessageLine) -> Event:
         case SystemMessage():
             return Event(number, "system", "System instruction", message.content, created_at=line.created_at)
         case UserMessage():
-            return Event(number, "user", "User message", message.text, created_at=line.created_at)
+            return Event(number, "user", _user_label(message), message.text, created_at=line.created_at)
         case AssistantMessage():
             calls = tuple(
                 (call.name, json.dumps(call.arguments, ensure_ascii=False, sort_keys=True))
@@ -274,7 +281,7 @@ def _context_event(number: int, message: AnyMessage) -> Event:
         case ToolMessage():
             return Event(number, "tool", "Tool result", message.text, ok=message.success)
         case UserMessage():
-            return Event(number, "user", "User message", message.text)
+            return Event(number, "user", _user_label(message), message.text)
         case _:
             return Event(number, "other", type(message).__name__, repr(message))
 

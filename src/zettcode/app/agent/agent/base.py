@@ -10,6 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..runtime import ZettCodeRuntime
+from ..storage import SessionLocked
 
 
 class AgentBase:
@@ -27,3 +28,27 @@ class AgentBase:
     def session_id(self) -> str:
         """Return the session used for the next turn."""
         return self.runtime.session_id
+
+    @property
+    def session_locked(self) -> bool:
+        """Return whether another process has the active session open, so that this one may only read it.
+
+        Every session is locked by the process that has it open (see :mod:`..storage.locks`). A session this
+        process started is always its own; one it resumed may be somebody else's, and then it is shown and
+        nothing is written to it: no turn, no title, no compaction.
+        """
+        return self.runtime.session_locked
+
+    def retake_session(self) -> bool:
+        """Try again to lock the active session; return whether this process holds it now."""
+        return self.runtime.retake_session()
+
+    def require_session(self) -> None:
+        """Refuse to go on when the active session is another process's.
+
+        Raises:
+            SessionLocked: The lock is not held. A ``ValueError``, which the shell shows as a line in the
+                conversation.
+        """
+        if self.session_locked:
+            raise SessionLocked()

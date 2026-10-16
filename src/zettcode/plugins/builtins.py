@@ -26,21 +26,21 @@ class ShellRows(Plugin):
     name = "shell"
 
     def render_header_left(self, context: ShellContext) -> str:
-        """Label the app and the workspace it runs in."""
-        return labels.header_left(context.session.workspace)
+        """Label the app, the session (its title and the name others reach it by), and the workspace."""
+        return labels.header_left(context.session.workspace, context.session.name, context.session.handle)
 
     def render_header_right(self, context: ShellContext) -> str:
         """Show the model and the reasoning effort the next request will use."""
         return labels.header_right(context.model.name, context.model.effort)
 
     def render_status_left(self, context: ShellContext) -> str:
-        """Show the activity glyph, status word, mode, session title, and token use."""
+        """Show the activity glyph, status word, mode, and token use; the session is in the header."""
         activity = context.activity
         icon = activity_glyph(activity.frame) if activity.busy else STATUS
         mode = f" {SEPARATOR} {activity.permission}" if activity.permission != "ask" else ""
         used = context_text(activity.usage, context.model.config.context_window)
         label = f"{activity.label}{mode}"
-        return f"  {icon} {label}  {context.session.name}{usage_text(activity.usage)}{used}"
+        return f"  {icon} {label}{usage_text(activity.usage)}{used}"
 
     def render_status_right(self, context: ShellContext) -> str:
         """List the keys worth remembering."""

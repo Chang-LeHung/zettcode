@@ -80,9 +80,11 @@ class ContextMixin(AgentBase):
             worth replacing.
 
         Raises:
+            SessionLocked: Another process has this session open, and a checkpoint is a write.
             ValueError: When the newest checkpoint already covers the branch —
                 a second pass would summarize nothing but the checkpoint.
         """
+        self.require_session()
         if self._compacted_at_the_head():
             raise ValueError("Already compacted; send a message before compacting again")
         await self.runtime.start()
