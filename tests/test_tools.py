@@ -24,15 +24,15 @@ def test_every_tool_schema_stands_on_its_own():
     """
     schemas = {tool.name: json.dumps(tool.parameters) for tool in CodingExtension().tools}
 
-    # ``replace_in_file`` is the tool with a nested model, so it is the one whose
+    # ``edit`` is the tool with a nested model, so it is the one whose
     # rendering this test is about; a rename that emptied the bundle would
     # otherwise make the assertions below pass on nothing.
-    assert "replace_in_file" in schemas
+    assert "edit" in schemas
     assert '"$ref"' not in "".join(schemas.values())
     assert '"$defs"' not in "".join(schemas.values())
 
     # And the nested model really is there, inlined: a field of it is described
     # where it is used, not left behind the pointer.
-    edits = json.loads(schemas["replace_in_file"])["properties"]["edits"]
+    edits = json.loads(schemas["edit"])["properties"]["edits"]
     assert set(edits["items"]["properties"]) >= {"old_text", "new_text"}
     assert edits["items"]["properties"]["old_text"]["description"] == "Exact text to find"

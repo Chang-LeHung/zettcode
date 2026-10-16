@@ -577,6 +577,57 @@ class ZettCodeApp(
                 self._settle_wait(outcome)
             self.agent.runtime.sides.end()
 
+    async def run_continue(self) -> None:
+        """Pick up the request that was interrupted, where it stopped, as a turn of the conversation.
+
+        A request can end without finishing: the connection dropped, the reader pressed Esc, the process was killed,
+        the model hit its output limit. The history says which, and the library knows what each calls for (see
+        :class:`zett_agent.resume.ResumeKind`), so this asks it, tells the reader what it is about to do, and runs
+        it. A tool is never run again on its own: the model is told which ones were cut short and decides.
+
+        Like ``/btw`` this is run by the command that owns it, so the busy flag and the request slot are the command
+        path's. Unlike ``/btw`` it is part of the conversation, so it may be steered and what it ends on is a reply:
+        the follow-ups a stop held go out behind it.
+        """
+        point = await self.agent.resume_point()
+        if point is None:
+            self.transcript.notice(await self.agent.resume_blocker() or "There is nothing to continue.")
+            return
+        self.transcript.notice(point.description)
+        self.transcript.wait_for_model()
+        started = monotonic()
+        completed = False
+        self._turn_running = True
+        self.app.invalidate()
+        try:
+            self._refresh_tasks()
+            async with aclosing(cast("AsyncGenerator[AgentEvent]", self.agent.stream_resume())) as events:
+                async for _event in events:
+                    self._refresh_tasks()
+                    self.app.invalidate()
+        except asyncio.CancelledError:
+            self.transcript.complete_thinking()
+            self.transcript.notice("stopped")
+            raise
+        except Exception as error:
+            self.transcript.complete_thinking()
+            self.transcript.error(f"error: {describe_error(error)}")
+        else:
+            completed = True
+            self._follow_ups_held = False
+            if self.transcript.turn_said_nothing():
+                self.transcript.notice(EMPTY_REPLY)
+            self._title_session_later(self.agent.session_id)
+        finally:
+            self._close_run()
+            if completed:
+                self.transcript.summarize_changes(self.agent.workspace)
+            self._settle_wait(f"Continued for {elapsed_text(monotonic() - started)} {SEPARATOR} {clock_text()}")
+            self._drop_ask()
+            self._turn_running = False
+            self._refresh_tasks()
+            self.app.invalidate()
+
     def _lookup(self, value: str) -> tuple[Command | None, str]:
         """Split a typed line into the command it names and its argument.
 

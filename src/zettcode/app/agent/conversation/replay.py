@@ -25,6 +25,7 @@ from ..storage import MessageLine, Session
 from .entries import EntryStatus
 from .presenters import DEFAULT_PRESENTERS, Presenters
 from .rendering import DEFAULT_RENDERERS, Renderers
+from .stops import stop_text
 from .transcript import Transcript
 
 #: Entries of margin past the ones a window has to hold. Counting what a message will
@@ -72,7 +73,8 @@ def entries_added_by(message: AnyMessage) -> int:
         case UserMessage():
             return 1
         case AssistantMessage():
-            return bool(message.reasoning) + bool(message.content) + len(message.tool_calls)
+            stopped = message.stop is not None and not message.stop.ok
+            return bool(message.reasoning) + bool(message.content) + len(message.tool_calls) + stopped
         case _:
             return 0
 
@@ -153,6 +155,8 @@ def replay(
                     transcript.append_answer(message.content)
                 for call in message.tool_calls:
                     transcript.start_tool(call.id, call.name, call.arguments)
+                if message.stop is not None and not message.stop.ok:
+                    transcript.error(stop_text(message.stop))
             case ToolMessage():
                 status = EntryStatus.COMPLETED if message.success else EntryStatus.FAILED
                 transcript.complete_tool(message.tool_call_id, message.text, status=status, wait=False)

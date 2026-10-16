@@ -30,6 +30,7 @@ class _Context:
 
     def __init__(self) -> None:
         self.config = SimpleNamespace(session_id="session-1")
+        self.session_id = "session-1"
         self.asked: list[object] = []
 
     async def emit(self, event: object) -> None:

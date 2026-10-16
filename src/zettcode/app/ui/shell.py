@@ -228,6 +228,9 @@ class ShellState:
         """Start the oldest message another session sent, if one waits and nothing runs."""
         return False
 
+    async def run_continue(self) -> None:
+        """Pick up the interrupted request where it stopped."""
+
     def submit(self, value: str, *, command: bool | None = None) -> bool | None:
         """Start a turn, steer the running one, or run a slash command (``command``: whether the draft is one)."""
 

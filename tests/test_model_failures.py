@@ -93,7 +93,9 @@ async def test_a_model_that_does_not_exist_is_shown_with_the_servers_reason_and_
     flat = " ".join(screen.split())
     assert "The model `gpt-9` does not exist" in flat and "HTTP 404" in flat
     assert "/config" in flat
-    assert "Provider stream request failed" in flat, "and the library's own sentence is still there"
+    assert flat.count("The model `gpt-9` does not exist") == 1, (
+        "said once, though the library says it in its own sentence too"
+    )
 
 
 async def test_a_refused_token_is_shown_with_what_to_do_and_none_of_the_token(shell):

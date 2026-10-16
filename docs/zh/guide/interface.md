@@ -97,6 +97,7 @@ VS Code 默认显示的是**进程名**，不是程序设置的窗口标题。�
   请求运行五秒之后，这个词下面会出现一条小提示（同样的灰色，挂在和工具结果相同的 `└` 上）—— `└ Tip: /btw <question> is answered on the side and never
   joins the conversation.` —— 之后每十五秒换下一条。马上就回答的请求不会出现提示，结束后的那一行也不留提示。
   每个请求都从下一条开始，所以你每次看到的都不一样；在 `[transcript]` 下设置 `tips = false` 可以关掉。
+- **没有正常结束的回复**后面会跟一行说明原因（错误色），免得模型写到一半的内容被当成答案：它碰到了**输出上限**、provider 把它**截断**或**暂停**了、**上下文窗口**满了、或者模型**拒绝**了（附上 provider 的原话，以及它想运行但因此没有运行的工具）。有办法时这行会直接说 —— `/continue`、`/compact`、`/model` —— 以后再打开这个会话时也会显示同样的一行。
 - **请求失败**会在对话里用错误色说明原因：库报告了什么，以及括号里服务端的回答 ——
   `error: Provider stream request failed (HTTP 404: The model gpt-9 does not exist — check the model id and the address with /config)`。
   token 被拒绝、模型不存在、地址连不上时，还会告诉你该看哪项设置。服务端回复里任何像密钥的内容都会被替换成 `…`，

@@ -47,7 +47,7 @@ def test_the_system_prompt_tells_the_model_to_change_files_with_the_file_tools_a
     prompt = runtime_module.build_system_prompt(config)
     flat = " ".join(prompt.split())
 
-    assert "To edit a file that exists, call replace_in_file directly" in flat
+    assert "To edit a file that exists, call edit directly" in flat
     assert "Use write_file for a new file" in flat and "delete_file to remove one" in flat
     for forbidden in ("sed", "awk", "perl -i", "python -c", "cat or echo with a redirection", "a heredoc", "tee"):
         assert forbidden in flat, forbidden
@@ -775,3 +775,18 @@ def test_the_configured_allow_all_mode_starts_a_run_at_auto(tmp_path, monkeypatc
     assert default.permission is Permission.ASK
     assert allowing.permission is Permission.AUTO
     assert default.policy.workspace == tmp_path, "git is judged against this workspace"
+
+
+def test_the_tool_the_prompt_names_for_editing_is_one_the_agent_really_has(tmp_path):
+    """The library renamed ``replace_in_file`` to ``edit``; a prompt naming a tool that is not offered sends the
+    model looking for it."""
+    from zett_agent.extensions.coding import CodingExtension
+
+    names = {tool.name for tool in CodingExtension().tools}
+    prompt = runtime_module.build_system_prompt(
+        ZettCodeConfig(workspace=tmp_path, models=(ModelConfig(model="m", token="t"),), store=tmp_path / "s")
+    )
+
+    for named in ("edit", "write_file", "delete_file"):
+        assert named in names and named in prompt
+    assert "replace_in_file" not in prompt

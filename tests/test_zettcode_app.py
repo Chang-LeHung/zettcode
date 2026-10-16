@@ -4098,7 +4098,7 @@ async def test_the_slash_menu_lists_and_filters_commands():
 
     harness.write("/")
 
-    assert [item.value for item in app.completions.items][:3] == ["/help", "/resume", "/model"]
+    assert [item.value for item in app.completions.items][:4] == ["/help", "/resume", "/continue", "/model"]
     assert "show the commands and the keys" in harness.text()
     assert "[app]" in harness.text()
     assert app.completions.items[0].type == "app"

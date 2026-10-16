@@ -197,7 +197,7 @@ def argument(arguments: Mapping[str, object], key: str, default: str = "") -> st
 
 
 def edited_lines(edits: object) -> tuple[int, int]:
-    """Return the lines a ``replace_in_file`` call adds and removes.
+    """Return the lines an ``edit`` call adds and removes.
 
     The tool answers ``Replaced 2 occurrences in app.py``, which says how many
     edits landed but not how large they were: a two-line fix and a two-hundred-line
@@ -238,7 +238,7 @@ def edited_lines(edits: object) -> tuple[int, int]:
 
 
 def edit_diff(edits: object, *, limit: int = MAX_DIFF_ROWS) -> tuple[DiffRow, ...]:
-    """Return the rows of the change a ``replace_in_file`` call makes.
+    """Return the rows of the change an ``edit`` call makes.
 
     Each edit carries the text it replaces and the text it puts there, so the change can be shown
     without reading the file: the lines that differ, and one unchanged line around each so it reads in
@@ -356,9 +356,9 @@ def language_for_path(path: str) -> str | None:
 
 
 class ReadTool(ToolHandler):
-    """``read_file``: which file, and the scanner for its contents."""
+    """``read_file`` and ``read``: which file, and the scanner for its contents."""
 
-    names = frozenset({"read_file"})
+    names = frozenset({"read_file", "read"})
 
     def describe(self, name: str, arguments: Mapping[str, object]) -> ToolRow:
         """Show the file, and highlight the body as the language it is."""
@@ -406,9 +406,12 @@ class WriteTool(ToolHandler):
 
 
 class EditTool(ToolHandler):
-    """``replace_in_file``: the file and how many edits the call carries."""
+    """``edit``: the file and how many edits the call carries.
 
-    names = frozenset({"replace_in_file"})
+    A session stored before the tool was renamed calls it ``replace_in_file``, and is still shown the same way.
+    """
+
+    names = frozenset({"edit", "replace_in_file"})
 
     def describe(self, name: str, arguments: Mapping[str, object]) -> ToolRow:
         """Count the edits, and the lines they add and remove, before they land.
