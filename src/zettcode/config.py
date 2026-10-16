@@ -48,7 +48,7 @@ MODEL_KEYS = frozenset(
 )
 
 #: Keys the ``[transcript]`` table may set.
-TRANSCRIPT_KEYS = frozenset({"max_entries", "mouse_scroll_speed"})
+TRANSCRIPT_KEYS = frozenset({"max_entries", "mouse_scroll_speed", "tips"})
 
 #: Keys the ``[agents_md]`` table may set.
 AGENTS_MD_KEYS = frozenset({"enabled"})
@@ -223,6 +223,7 @@ class ZettCodeConfig:
         mouse_scroll_speed: Rows one mouse-wheel event scrolls the transcript
             by. A fraction is carried to the next event, so ``0.5`` is a row
             every second event and ``3`` is three rows a notch.
+        tips: Show a small tip under the waiting row while a request runs.
         agents_md_enabled: Read the ``AGENTS.md`` files that apply to the
             workspace and give them to the model as project instructions.
         ask_user_enabled: Give the model the ``ask_user`` tool, which pauses a
@@ -266,6 +267,7 @@ class ZettCodeConfig:
     max_iterations: int = 360
     transcript_max_entries: int = DEFAULT_TRANSCRIPT_MAX_ENTRIES
     mouse_scroll_speed: float = DEFAULT_MOUSE_SCROLL_SPEED
+    tips: bool = True
     agents_md_enabled: bool = True
     ask_user_enabled: bool = True
     skills_enabled: bool = True
@@ -527,6 +529,7 @@ def load_config(
             transcript.get("mouse_scroll_speed", DEFAULT_MOUSE_SCROLL_SPEED),
             f"Config key 'transcript.mouse_scroll_speed' in {source}",
         ),
+        tips=bool(_setting(transcript, "tips", bool, True)),
         agents_md_enabled=bool(_setting(agents_md, "enabled", bool, True)),
         ask_user_enabled=bool(_setting(ask_user, "enabled", bool, True)),
         skills_enabled=bool(_setting(skills, "enabled", bool, True)),

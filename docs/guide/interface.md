@@ -116,6 +116,10 @@ Every kind of output has its own row, in the order it happened:
   so a request that is not going anywhere does not look like a slow one. It is only said, never acted on: a
   model that reasons for minutes before its first word is normal, and `Esc` is yours to press. A command that
   runs for minutes is not the model going quiet, and says nothing.
+  After five seconds a small tip hangs under the word in the same quiet ink, from the same `└` a tool's result hangs from — `└ Tip: /btw <question> is answered
+  on the side and never joins the conversation.` — and is replaced by the next every fifteen seconds. A request
+  that is answered at once shows none, and the settled row keeps none. Each request begins one tip further along,
+  so you see a different one each time; `tips = false` under `[transcript]` turns them off.
 - **A request that fails** says why in the conversation, in the error colour: what the library reported and, in
   brackets, what the server answered — `error: Provider stream request failed (HTTP 404: The model gpt-9 does
   not exist — check the model id and the address with /config)`. For a refused token, a missing model or an

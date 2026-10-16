@@ -94,6 +94,9 @@ VS Code 默认显示的是**进程名**，不是程序设置的窗口标题。�
   这一行会用警告色说出来 —— `✦ Processing (47s · nothing from the model for 47s · ^C/Esc to interrupt)` ——
   这样一个没有进展的请求就不会被当成只是慢。它只是说出来，不会替你做任何事：推理模型在第一个字之前想几分钟是正常的，
   是否按 `Esc` 由你决定。跑几分钟的命令不算模型沉默，不会触发这句话。
+  请求运行五秒之后，这个词下面会出现一条小提示（同样的灰色，挂在和工具结果相同的 `└` 上）—— `└ Tip: /btw <question> is answered on the side and never
+  joins the conversation.` —— 之后每十五秒换下一条。马上就回答的请求不会出现提示，结束后的那一行也不留提示。
+  每个请求都从下一条开始，所以你每次看到的都不一样；在 `[transcript]` 下设置 `tips = false` 可以关掉。
 - **请求失败**会在对话里用错误色说明原因：库报告了什么，以及括号里服务端的回答 ——
   `error: Provider stream request failed (HTTP 404: The model gpt-9 does not exist — check the model id and the address with /config)`。
   token 被拒绝、模型不存在、地址连不上时，还会告诉你该看哪项设置。服务端回复里任何像密钥的内容都会被替换成 `…`，

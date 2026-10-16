@@ -50,6 +50,7 @@ from ..agent.agent import ZettCodeAgent
 from ..agent.agent.prompt import PromptPart, carries_image, mention_hint, mention_parts
 from ..agent.conversation.projection import TranscriptProjector
 from ..agent.conversation.rows import EFFORT_SECONDS, EffortFrame, clock_text, effort_frame, elapsed_text
+from ..agent.conversation.tips import TipDeck
 from ..agent.conversation.transcript import Transcript
 from ..agent.dialogue.ask import AskUserQuestion
 from ..agent.dialogue.mentions import MentionRegistry, SessionMentions
@@ -123,6 +124,8 @@ class ZettCodeApp(
             else (SessionMentions(self.messenger.peers), *agent.plugin_mentions)
         )
         self.transcript = Transcript(max_entries=agent.runtime.config.transcript_max_entries)
+        if agent.runtime.config.tips:
+            self.transcript.tip_deck = TipDeck()
         self.transcript.welcome(WELCOME)
         for failure in agent.plugin_failures:
             self.transcript.error(f"plugin: {failure}")
@@ -581,8 +584,16 @@ class ZettCodeApp(
         queue all agree on what ``/name argument`` means. An unknown name answers
         ``None`` and the whole tail as the argument.
         """
-        name, _, argument = value.partition(" ")
+        name, argument = (value.split(None, 1) + [""])[:2] if value.strip() else ("", "")
         return next((item for item in self.commands if item.name == name), None), argument.strip()
+
+    def _is_command(self, value: str) -> bool:
+        """Return whether a draft is a command: it opens with the name of one the shell really has.
+
+        ``/usr/bin`` or ``/tmp is full`` or a typo is not one. It is text, and goes to the model like any other.
+        This is the same test the composer paints a command by, so what is drawn as a command is what runs as one.
+        """
+        return value.startswith("/") and self._lookup(value)[0] is not None
 
     def _run_command_now(self, command: Command, argument: str) -> None:
         """Run a command beside the request in flight, without taking the busy state.
@@ -641,7 +652,7 @@ class ZettCodeApp(
         else:
             self._start_next_relayed()
 
-    def submit(self, value: str) -> bool | None:
+    def submit(self, value: str, *, command: bool | None = None) -> bool | None:
         """Start a turn or a slash command, or take a message typed while one runs.
 
         Plain text typed during a request is not refused. The reader is asked
@@ -654,35 +665,39 @@ class ZettCodeApp(
         in flight ends, and ``"now"`` runs it at once, beside the request.
 
         Args:
-            value: Draft text from the composer; a leading ``/`` selects the
-                slash-command branch.
+            value: Draft text from the composer.
+            command: Whether the draft is a slash command. Only a command is looked up and run as one; any
+                other text, whatever it starts with, is a message and is never checked against the commands.
+                Left out, it is worked out from the draft (see :meth:`_is_command`).
 
         Returns:
             False when the draft was refused; returning a true value also
             clears the composer.
         """
-        if self.agent.session_locked and not value.startswith("/"):
+        if command is None:
+            command = self._is_command(value)
+        if self.agent.session_locked and not command:
             # Only commands are taken, which is how a reader leaves: the composer does not let anything else be
             # typed, and this is for what arrives some other way (a draft that was there already, a recall).
             self.flash("this session is open in another ZettCode process; it is read-only here", level="error")
             return False
-        if not value.startswith("/"):
+        if not command:
             # A draft that begins with the name of an active session is a message to it: sent whatever this
             # session is doing, because it is not a request to this session's model.
             sent = self._send_session_message(self.composer.parts())
             if sent is not None:
                 return sent
         if self._busy:
-            if value.startswith("/"):
+            if command:
                 # Which commands are taken mid-request is the command's own
                 # decision, not a name the shell knows: a queued one runs the
                 # moment the request in flight ends.
-                command, argument = self._lookup(value)
-                if command is None or command.when_busy == "refuse":
+                chosen, argument = self._lookup(value)
+                if chosen is None or chosen.when_busy == "refuse":
                     self._refuse_busy()
                     return False
-                if command.when_busy == "now":
-                    self._run_command_now(command, argument)
+                if chosen.when_busy == "now":
+                    self._run_command_now(chosen, argument)
                     return True
                 self._queue_command(value)
                 return True
@@ -692,7 +707,7 @@ class ZettCodeApp(
             # Plain text during a request is one of two things, and the text does not say
             # which: see :mod:`zettcode.app.ui.followups`.
             return self._send_while_busy(value)
-        if value.startswith("/"):
+        if command:
             self._task = asyncio.create_task(self._run_command(value))
         else:
             # The parts are taken before the composer is cleared, and keep the
