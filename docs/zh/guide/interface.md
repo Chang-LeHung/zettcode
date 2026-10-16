@@ -219,6 +219,7 @@ VS Code 会在终端看到按键之前就改写 `Option-↑` 和 `Option-↓` �
 - `/resume` —— 选最近的会话，带标题和上次变动距今多久。
 - `/theme`、`/effort` 与 `/permission` —— 选配色、选推理档位、选 shell 命令在多大范围内不用问。
 - `/context` —— 看当前上下文窗口被什么占着。
+- `/usage` —— 看这个项目的会话按模型、按会话、按天花了多少；它占满整个屏幕。见 [Token 用量](/zh/guide/commands#usage)。
 - **审批面板** —— 问你要不要执行某条 shell 命令。
 
 ## 审批

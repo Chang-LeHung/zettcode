@@ -23,6 +23,7 @@ A command is drawn in a different colour as soon as it is one, so you can see wh
 | `/btw` | Ask something that is answered here but never joins the conversation: `/btw <question>`. |
 | `/theme` | Pick a palette from a panel; `/theme dark` or `/theme light` switches in one step. |
 | `/context` | Show what is filling the context window right now, and where this session is stored. |
+| `/usage` | Open a page of what this project's sessions have spent: tokens by model, by session, and a calendar of the days. See [Token usage](#usage). |
 | `/compact` | Summarize the conversation now, instead of waiting for the window to fill. |
 | `/title` | Name this session: `/title users endpoint`. On its own, it reports the current name. |
 | `/export` | Write this session to a standalone HTML file: `/export [path]`. |
@@ -57,7 +58,7 @@ at once, beside the request.
 
 | Runs at once | Why it is safe |
 | --- | --- |
-| `/help`, `/context`, `/theme` | They only show something. `/context` reports the last request measured. |
+| `/help`, `/context`, `/usage`, `/theme` | They only show something. `/context` reports the last request measured; `/usage` reads what the stored sessions recorded. |
 | `/title` | Names the session; nothing running reads it. |
 | `/permission` | The next shell command asks the level again, so a change lands in the request that is already running — `/permission auto` in the middle of a long task is the point. |
 | `/effort` | A request starts with the effort it had, so the change applies from the next request; the running one is not touched. |
@@ -67,6 +68,44 @@ at once, beside the request.
 `/model`, `/config`, `/clear`, `/new`, `/resume`, `/fork`, `/compact` and `/export` still say "busy":
 they change the model a request started with, the transcript it is writing into, or the session it is
 part of. A [plugin](/guide/plugins#while-a-request-is-running) chooses for its own commands.
+
+## Token usage {#usage}
+
+`/usage` opens a full-screen page of what the sessions in the current project have spent. The
+numbers are read back from the stored conversations, so the page covers every session of the
+project, not only the one you are in, and it is the same an hour from now. Three views, switched
+with `Tab` (or `1`, `2`, `3`):
+
+- **Models** — for each model, its input and output as two bars, with the share of the input
+  that came from the provider's cache and how much of the output was reasoning. Input and output
+  each use their own scale, because output is a small fraction of input for every model.
+- **Sessions** — one row for each session, newest first, with when it began, its title, and its
+  input and output as bars. The bars use a square-root scale so a small session still shows next
+  to a very large one; a narrow terminal drops the bars and keeps the numbers.
+- **Calendar** — a grid of weeks like the contribution graph on GitHub: a column is a week, a
+  square is a day, and its shade is that day's tokens (input plus output) from none to the
+  heaviest quarter of your days. `←` `→` move by a week and `↑` `↓` by a day, and the line under
+  the grid says what the chosen day spent, with your streaks. A wider terminal shows more weeks,
+  up to a year.
+
+`↑` `↓`, `PgUp`, `PgDn`, `Home`, `End` and the mouse wheel scroll a long list; `Esc` or `q` closes
+the page. Three things decide what is counted:
+
+- A reply is counted once. `/fork` copies a conversation into a new session along with what each
+  reply cost, so the fork shows only what it spent after the fork; the earlier replies stay with
+  the session they were first written in.
+- A subagent's own session is left out: it is not a conversation you had.
+- A day is a day in your time zone, so a reply written at half past eleven at night is on the
+  day you saw it.
+
+A session an older version stored is counted too, as long as its replies carry their usage; a
+reply without it adds nothing rather than a guess.
+
+The first `/usage` in a project with a long history reads every conversation, which can take a
+few seconds for gigabytes of them. It then keeps a small `usage.json` beside the project's
+sessions (under `~/.zettcode/sessions`), and every later `/usage` — in this run of ZettCode or
+the next — reads only what was added since. The file is only a shortcut: it is safe to delete,
+and ZettCode rebuilds it the next time.
 
 ## Panels, not arguments
 
