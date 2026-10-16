@@ -42,6 +42,7 @@ class FakeContext:
     def __init__(self, messages, model: FakeModel) -> None:
         self.state = FakeState(messages)
         self.config = SimpleNamespace(session_id="session-1")
+        self.session_id = "session-1"
         self.model = model
         self.emitted: list[object] = []
         self.published: list[object] = []

@@ -48,7 +48,7 @@ async def test_a_model_that_does_not_exist_says_so_and_where_to_fix_it():
 
     said = describe_error(error)
 
-    assert said.startswith("Provider stream request failed (HTTP 404: The model `gpt-9` does not exist")
+    assert said.startswith("HTTP 404: The model `gpt-9` does not exist")
     assert "check the model id and the address with /config" in said
 
 
@@ -75,7 +75,7 @@ async def test_a_proxys_html_page_is_read_as_text_not_shown_as_markup():
 
     said = describe_error(error)
 
-    assert "HTTP 502: Bad gateway" in said and "<" not in said
+    assert "HTTP 502: a web page, not an API response \u2014 Bad gateway" in said and "<" not in said
 
 
 async def test_an_overloaded_anthropic_server_is_described_the_same_way():
@@ -109,7 +109,9 @@ async def test_a_timeout_names_what_timed_out_when_the_library_gives_no_reason()
     def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ReadTimeout("")
 
-    assert describe_error(await failure(OpenAIProvider, handler)) == "Request timed out. (ReadTimeout)"
+    said = describe_error(await failure(OpenAIProvider, handler))
+
+    assert "stopped sending data" in said and said.endswith("(ReadTimeout)")
 
 
 # -- the shapes, without a provider ---------------------------------------------------------------------------------

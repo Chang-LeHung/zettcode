@@ -8,9 +8,11 @@ from dataclasses import replace
 from zett_agent.agent import AgentRunConfig
 from zett_agent.dispatcher import AgentEventDispatcher
 from zett_agent.events import AgentEvent
+from zett_agent.exceptions import AgentResumeError
 from zett_agent.extensions.external import ExternalEvent
 from zett_agent.extensions.steering import STEERING_MESSAGE_EVENT_NAME
 from zett_agent.messages import ImageBytesSource, ImageContent, TextContent, UserMessage
+from zett_agent.resume import ResumePoint
 
 from ..dialogue.relay import Relayed
 from ..dialogue.side import SIDE, question
@@ -68,6 +70,65 @@ class TurnsMixin(AgentBase):
         finally:
             if not side:
                 self._remember_model(session_id, used)
+
+    async def resume_point(self) -> ResumePoint | None:
+        """Report where the active session was interrupted, or ``None`` when there is nothing to pick up.
+
+        Nothing is written and no model is called. A session another process has open is refused, as a turn is.
+
+        Raises:
+            SessionLocked: Another process has the session open.
+        """
+        self.require_session()
+        await self.runtime.start()
+        return await self.runtime.started.resume_point(
+            config=AgentRunConfig(session_id=self.session_id), model=self.runtime.provider
+        )
+
+    async def resume_blocker(self) -> str | None:
+        """Say why the active session cannot be picked up, in the library's own words; ``None`` when it can.
+
+        :meth:`resume_point` answers only that there is none. The reason is one the reader can act on — a finished
+        request, a refusal that would be declined again, a context window that is full — and the library says it when
+        a resume is asked for, so it is asked for here and stopped before it starts.
+        """
+        self.require_session()
+        await self.runtime.start()
+        stream = self.runtime.started.stream_resume(
+            config=AgentRunConfig(session_id=self.session_id), model=self.runtime.provider
+        )
+        try:
+            async for _event in stream:
+                return None  # it can be resumed after all; the first event is as far as this looks
+        except AgentResumeError as error:
+            return str(error)
+        finally:
+            await stream.aclose()  # type: ignore[attr-defined]
+        return None
+
+    async def stream_resume(self) -> AsyncIterator[AgentEvent]:
+        """Pick the interrupted request up where it stopped, with the model and effort the next turn would use.
+
+        The library takes none of these from the session, so the same ones a turn would carry are given.
+
+        Raises:
+            SessionLocked: Another process has the session open.
+            AgentResumeError: There is nothing to pick up; :meth:`resume_point` says whether there is.
+        """
+        self.require_session()
+        await self.runtime.start()
+        client = self.runtime.started
+        used = self.runtime.active_model.shown_name
+        session_id = self.session_id
+        try:
+            async for event in client.stream_resume(
+                config=AgentRunConfig(session_id=session_id),
+                model=self.runtime.provider,
+                reasoning_effort=self.runtime.effort,
+            ):
+                yield event
+        finally:
+            self._remember_model(session_id, used)
 
     def _remember_model(self, session_id: str, model: str) -> None:
         """Record the model a turn used in its session, so resuming the session starts on it.

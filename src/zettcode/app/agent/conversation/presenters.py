@@ -104,11 +104,13 @@ F = TypeVar("F", bound=FileChangeEntry)
 #: tool this table has never seen falls back to the generic accent.
 TOOL_ROLES = {
     "read_file": "read",
+    "read": "read",
     "view_image": "image",
     "glob": "search",
     "grep": "search",
     "write_file": "write",
-    "replace_in_file": "write",
+    "edit": "write",
+    "replace_in_file": "write",  # what a session stored before the rename called it
     "delete_file": "delete",
     "bash": "shell",
     "todo_write": "plan",

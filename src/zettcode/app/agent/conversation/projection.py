@@ -15,6 +15,7 @@ from ..dialogue.relay import Relayed
 from ..extensions.mcp_notice import MCP_NOTICE_EVENT_NAME, notice_from
 from ..extensions.usage import USAGE_EVENT_NAME
 from .entries import EntryStatus
+from .stops import stop_text
 from .transcript import Transcript
 
 
@@ -117,6 +118,16 @@ class TranscriptProjector(AgentEventDispatcher):
         self.transcript.complete_compaction()
         state = "applied" if event.applied else "skipped"
         self.transcript.notice(f"Context compaction {state}")
+
+    async def on_model_stopped_event(self, event: AgentEvent) -> None:
+        """Say that a model step ended without finishing: refused, cut off, interrupted or paused for good.
+
+        The event follows the step's completion and is sent only for an abnormal ending, so the reply above it is
+        whatever the model managed to write, and this line is what stands between it and being taken for an answer.
+        """
+        self.transcript.complete_thinking()
+        if event.stop is not None and not event.stop.ok:
+            self.transcript.error(stop_text(event.stop))
 
     async def on_reasoning_started_event(self, event: AgentEvent) -> None:
         """Open the thinking row for this reasoning span."""

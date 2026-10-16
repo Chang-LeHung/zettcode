@@ -126,6 +126,11 @@ Every kind of output has its own row, in the order it happened:
   address that cannot be reached it also says which setting to look at. Anything in the server's reply that looks
   like a credential is replaced with `…`, so an error can be pasted into an issue. A request that ends with an
   empty reply says that instead of leaving a line with only a time on it.
+- **A reply that did not finish normally** is followed by a line saying why, in the error colour, so that what
+  the model managed to write is not taken for an answer: it hit its **output limit**, the provider **cut it off**
+  or **paused** it, the **context window** filled, or the model **declined** (with what the provider said, and
+  which tool calls it had asked for and were therefore not run). Where there is something to do the line says
+  it — `/continue`, `/compact`, `/model` — and it is shown again when the session is opened later.
 - **Notices** — a copied selection, a refused command, an exported file — appear
   as muted one-liners.
 

@@ -76,6 +76,7 @@ class ShellCommands(CommandProvider):
             # /fork, /compact and /export.
             Command("/help", "show the commands and the keys", "app", self.help, when_busy="now"),
             Command("/resume", "resume a session: /resume [id]", "app", self.resume),
+            Command("/continue", "carry on a request that was cut short", "app", self.continue_),
             Command("/model", "choose a model", "app", self.model),
             Command("/config", "add, change or remove models: /config [add|remove|list|providers]", "app", self.config),
             Command("/theme", "choose the palette (or /theme dark|light)", "app", self.theme, when_busy="now"),
@@ -303,6 +304,17 @@ class ShellCommands(CommandProvider):
         """
         self.shell.agent.require_session()
         await self.shell.run_side_question(context.argument)
+        return CommandResult()
+
+    async def continue_(self, context: CommandContext) -> CommandResult:
+        """Carry on the request that was interrupted — stopped, cut off, failed — from where it stopped.
+
+        ``/resume`` opens an earlier *session*; this picks up the *request* that did not finish in this one. Having
+        nothing to continue is not an error: the reader is told why (the last request finished; the model declined
+        and would again; the context window is full), which is the useful part of asking.
+        """
+        self.shell.agent.require_session()
+        await self.shell.run_continue()
         return CommandResult()
 
     async def quit(self, context: CommandContext) -> CommandResult:

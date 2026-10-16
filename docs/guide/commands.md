@@ -14,6 +14,7 @@ A command is drawn in a different colour as soon as it is one, so you can see wh
 | `/new` | Start a fresh session. The old one stays on disk. |
 | `/clear` | Clear the visible conversation, keeping this session. |
 | `/resume` | Pick a recent session from a panel; `/resume <id>` opens one directly. |
+| `/continue` | Carry on a request that was cut short — stopped with `Esc`, failed, dropped by the provider, or ended at the output limit — from where it stopped. See [Carrying on](#continue). |
 | `/fork` | Carry this conversation into a new session and continue there. |
 | `/model` | Pick the model for later requests from a panel. |
 | `/config` | Add, change or remove models, and set whether one takes images, its context window and when it is compressed, without editing the file: `/config`, `/config add <provider> …`, `/config remove <n>`. See [Adding models with /config](/guide/config#adding-models-with-config). |
@@ -31,6 +32,22 @@ Commands come from three places, and the menu shows them in that order: the
 shell's own (above), the agent's (`/new`, `/compact`, `/export`), and any
 [plugin](/guide/plugins) that registered one. A plugin cannot take a name that
 is already used, so `/model` always does what this page says.
+
+## Carrying on a cut-short request {#continue}
+
+`/resume` opens an earlier *session*; `/continue` picks up the *request* that did not finish in this one. The history says how
+it was interrupted, and what is done depends on that:
+
+| How it ended | What `/continue` does |
+| --- | --- |
+| Stopped or failed before the model answered, or after tools finished | Asks the model again, with nothing added. |
+| Stopped while tools were running | Tells the model which tools were cut short and that they may or may not have run, and lets it decide. **A tool is never run again on its own.** |
+| The provider cut the reply off | Tells the model it was interrupted and to start that reply again. |
+| The reply hit the output limit | Asks the model to carry on from where it stopped. |
+| The provider paused it | Hands the turn back to the provider. |
+| Finished, or declined, or the context window is full | Does nothing and says why: a declined request would be declined again; a full window needs `/compact` or `/new`. |
+
+It uses the model and effort the next message would, and shows what it is about to do before it does it.
 
 ## While a request is running
 
