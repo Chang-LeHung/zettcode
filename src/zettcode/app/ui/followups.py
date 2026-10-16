@@ -103,7 +103,7 @@ class FollowUpsMixin(ShellState):
         """
         self.close_page()
         if not self._busy:
-            self.submit(value)
+            self.submit(value, command=False)  # it was asked about, so it is a message
             self.composer.commit(value)
             return
         if kind is SendKind.STEER:

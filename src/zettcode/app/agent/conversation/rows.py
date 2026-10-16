@@ -164,6 +164,24 @@ def duration_text(seconds: float | None) -> str:
 QUIET_SECONDS = 20.0
 
 
+#: Seconds a request has to run before a tip is put under its waiting row: one that is answered at once is not
+#: worth a line, and a tip that flashes by is not read.
+#: Whole seconds, like :data:`TIP_EVERY`: the waiting row's clock counts whole seconds and the picture the loop compares
+#: holds that count, so a tip appears and changes on a second the loop already draws.
+TIP_AFTER = 5.0
+
+#: Seconds each tip stays before the next takes its place, long enough to read and not so long that a request of
+#: several minutes shows one.
+TIP_EVERY = 15.0
+
+
+def tip_text(tips: tuple[str, ...], seconds: float | None) -> str | None:
+    """Return the tip a request that has run for ``seconds`` shows, or ``None`` while it is too soon or there are none."""
+    if not tips or seconds is None or seconds < TIP_AFTER:
+        return None
+    return tips[int((seconds - TIP_AFTER) // TIP_EVERY) % len(tips)]
+
+
 def quiet_text(seconds: float) -> str | None:
     """Return what the waiting row says about a silence of ``seconds``, or ``None`` while it is too short to mention."""
     if seconds < QUIET_SECONDS:

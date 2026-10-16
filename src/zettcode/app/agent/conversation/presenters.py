@@ -84,7 +84,11 @@ from .rows import (
     quiet_text,
     sweep_column,
     terminal_safe,
+    tip_text,
 )
+
+#: Columns a tip's text is inset by: the same two the tools' results use for their hook.
+TIP_INDENT = 2
 
 #: The entry a presenter accepts; each subclass pins it to one entry type.
 E = TypeVar("E", bound=Entry)
@@ -463,7 +467,17 @@ class WaitPresenter(Presenter[WaitEntry]):
                 spans.append(Span(f" {SEPARATOR} {STOP_HINT})", Style(foreground=theme.muted)))
             else:
                 spans.append(Span(f" ({said}{STOP_HINT})", Style(foreground=theme.muted)))
-        return [TextLine(), layout_rich_lines((TextLine(tuple(spans)),), width, wrap=False)[0]]
+        rows = [TextLine(), layout_rich_lines((TextLine(tuple(spans)),), width, wrap=False)[0]]
+        tip = tip_text(entry.tips, entry.duration)
+        if tip is not None:
+            # Under the word, in the quiet ink and hung from it the way a tool's result is: it is not about the
+            # request, so it must not read as part of it.
+            gutter, ink = Style(foreground=theme.muted), Style(foreground=theme.muted)
+            text = self.text_lines(f"Tip: {tip}", max(1, width - TIP_INDENT * 2), ink, words=True)
+            for index, row in enumerate(text):
+                lead = f"{' ' * CONTENT_INDENT}\u2514 " if index == 0 else " " * (CONTENT_INDENT * 2)
+                rows.append(TextLine((Span(lead, gutter), *row.spans)))
+        return rows
 
 
 class ThinkingPresenter(Presenter[ThinkingEntry]):

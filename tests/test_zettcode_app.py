@@ -274,6 +274,7 @@ class FakeConfig:
     compaction_max_tokens: int = 128_000
     transcript_max_entries: int = 1024
     mouse_scroll_speed: float = 1.0
+    tips: bool = False
     skills_enabled: bool = False
     plugins_enabled: bool = True
     disabled_plugins: tuple[str, ...] = ()
@@ -8145,3 +8146,147 @@ def test_the_permission_mode_stays_in_the_status_line():
     app.change_permission("auto")
 
     assert app._status_left().text.startswith("  \u25cf ready \u00b7 auto")
+
+
+# -- text that begins with a slash is not a command unless it names one --------------------------------------
+
+
+def _errors(app) -> list[str]:
+    """Every line of text the transcript holds: an error is one of its notices."""
+    return [text for entry in app.transcript.entries if isinstance(text := getattr(entry, "text", None), str)]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "/usr/bin/env is where it lives",
+        "/tmp is full",
+        "/nosuchcommand",
+        "//",
+        "/Users/me/project: what is in it?",
+    ],
+)
+async def test_text_that_begins_with_a_slash_but_names_no_command_is_a_message_to_the_model(text):
+    app = build_app()
+    harness = _harness(app)
+
+    harness.write(text)
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    assert app.agent.runtime.client.messages == [text], "it was sent as it was typed"
+    assert not any("Unknown command" in message for message in _errors(app))
+    assert "Unknown command" not in harness.render().text
+
+
+async def test_a_real_command_still_runs_as_one_and_is_not_sent_to_the_model():
+    app = build_app()
+    harness = _harness(app)
+
+    harness.write("/help")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    assert app.agent.runtime.client.messages == []
+
+
+async def test_a_command_is_known_by_its_whole_name_not_by_how_it_starts():
+    app = build_app()
+
+    assert app._is_command("/help") and app._is_command("/help with an argument") and app._is_command("/help\nmore")
+    assert not app._is_command("/hel") and not app._is_command("/helpful") and not app._is_command("help")
+    assert not app._is_command("") and not app._is_command("/")
+
+
+async def test_the_command_argument_says_what_the_draft_is_whatever_it_looks_like():
+    """The shell is told, and does not look: a draft given as a message is never run as a command."""
+    app = build_app()
+    harness = _harness(app)
+
+    assert app.submit("/help", command=False) is True
+    await asyncio.wait_for(app.task, 2.0)
+    assert app.agent.runtime.client.messages == ["/help"], "named a command, but given as a message: a message"
+
+    assert app.submit("/usr/bin", command=True) is True
+    await asyncio.wait_for(app.task, 2.0)
+    assert any("Unknown command: /usr/bin" in message for message in _errors(app)), "given as a command: looked up"
+    assert app.agent.runtime.client.messages == ["/help"], "and it was not sent"
+    assert harness.render().text
+
+
+async def test_text_with_a_slash_typed_during_a_request_is_asked_about_like_any_other_text_not_refused():
+    app = build_app(block=True)
+    harness = _harness(app)
+    harness.write("a question")
+    harness.press("enter")
+    await asyncio.sleep(0)
+    assert app.busy is True
+
+    harness.write("/var/log/syslog has the answer")
+    harness.press("enter")
+
+    assert not any("Unknown command" in message for message in _errors(app))
+    assert app._pending == [], "it was not queued as a command"
+    assert "steer" in harness.render().text.lower(), "the reader is asked what to do with it"
+    app.task.cancel()
+    await asyncio.gather(app.task, return_exceptions=True)
+
+
+async def test_a_locked_session_refuses_text_that_begins_with_a_slash_but_still_takes_a_command():
+    app = build_app()
+    app.agent.runtime.held_elsewhere.add(app.agent.runtime.session_id)
+    app.agent.runtime._mine.clear()
+
+    assert app.submit("/usr/bin") is False
+    assert app.agent.runtime.client.messages == []
+    assert app.submit("/help") is True
+    await asyncio.wait_for(app.task, 2.0)
+
+
+async def test_a_lone_slash_given_to_submit_is_a_message_not_an_unknown_command():
+    app = build_app()
+
+    assert app.submit("/") is True
+    await asyncio.wait_for(app.task, 2.0)
+
+    assert app.agent.runtime.client.messages == ["/"]
+
+
+# -- the tip under the waiting row -----------------------------------------------------------------------------
+
+
+def _app_with_tips(enabled: bool) -> tuple[ZettCodeApp, list[float]]:
+    runtime = FakeRuntime(FakeClient(), plugins=rows_and_commands(), config=FakeConfig(tips=enabled))
+    app = ZettCodeApp(ZettCodeAgent(runtime))
+    app.app.resize(80, 20)
+    app.app.mount()
+    now = [1000.0]
+    app.transcript.clock = lambda: now[0]
+    return app, now
+
+
+def _wait_seconds(app: ZettCodeApp, now: list[float], seconds: int) -> None:
+    for _ in range(seconds):
+        now[0] += 1.0
+        app.transcript.advance_frame()
+        app.app.invalidate()
+
+
+def test_a_shell_whose_configuration_asks_for_tips_shows_one_under_the_waiting_row():
+    app, now = _app_with_tips(True)
+    app.transcript.begin_turn("a question")
+
+    _wait_seconds(app, now, 3)
+    assert "Tip:" not in _harness(app).text()
+    _wait_seconds(app, now, 4)
+
+    assert "Tip:" in _harness(app).text()
+
+
+def test_a_shell_whose_configuration_turns_tips_off_shows_none_however_long_it_waits():
+    app, now = _app_with_tips(False)
+    app.transcript.begin_turn("a question")
+
+    _wait_seconds(app, now, 40)
+
+    assert app.transcript.tip_deck is None and "Tip:" not in _harness(app).text()

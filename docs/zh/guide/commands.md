@@ -3,6 +3,9 @@
 输入 `/` 就会打开菜单，边打边过滤，`Enter` 或 `Tab` 填入高亮的那一条。需要参数的命令在名字后
 面加空格和参数 —— `/title users endpoint` —— 执行任何命令都不会离开当前界面。
 
+只有列表里的名字才是命令。其他以斜杠开头的内容 —— 比如路径 `/var/log/syslog`、打错的名字、`/tmp is full` —— 都是普通文本，
+和其他消息一样发给模型。是命令的时候会立刻换成另一种颜色，所以你能看出它会按哪种方式处理。
+
 | 命令 | 作用 |
 | --- | --- |
 | `/help` | 列出命令和快捷键。 |
@@ -11,7 +14,7 @@
 | `/resume` | 弹出面板选择最近的会话；`/resume <id>` 直接打开指定会话。 |
 | `/fork` | 把当前对话带进一个新会话，并在那里继续。 |
 | `/model` | 用面板选择后续请求使用的模型。 |
-| `/config` | 不用改文件就能添加、修改、删除模型：`/config`、`/config add <provider> …`、`/config remove <序号>`。见[用 /config 添加模型](/zh/guide/config#adding-models-with-config)。 |
+| `/config` | 不用改文件就能添加、修改、删除模型，并设置它是否接受图片、上下文窗口多大、什么时候压缩：`/config`、`/config add <provider> …`、`/config remove <序号>`。见[用 /config 添加模型](/zh/guide/config#adding-models-with-config)。 |
 | `/effort` | 选择模型的推理强度：`/effort high`。 |
 | `/permission` | 选择 shell 命令在多大范围内不用问：`/permission safe`。 |
 | `/btw` | 问一件只在当场回答、不进入对话的事：`/btw <问题>`。 |

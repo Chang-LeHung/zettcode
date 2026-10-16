@@ -27,7 +27,16 @@ from ..entries import (
     ToolEntry,
     WaitEntry,
 )
-from ..rows import ANIMATION_SECONDS, PROCESSING, blink_state, duration_text, elapsed_text, quiet_text, wait_picture
+from ..rows import (
+    ANIMATION_SECONDS,
+    PROCESSING,
+    blink_state,
+    duration_text,
+    elapsed_text,
+    quiet_text,
+    wait_picture,
+)
+from ..tips import TipDeck
 from .log import EntryLog
 
 
@@ -40,6 +49,8 @@ class TurnMixin(EntryLog):
     frame: int
     #: What the last animation step that was taken drew; see :meth:`advance_frame`.
     _picture_drawn: tuple[object, ...] | None
+    #: Where the tips under the waiting row come from; set by :class:`~.Transcript`.
+    tip_deck: TipDeck | None
 
     @staticmethod
     def _is_open_row(entry: Entry) -> TypeGuard[ThinkingEntry | ToolEntry]:
@@ -118,7 +129,8 @@ class TurnMixin(EntryLog):
         if any(self._is_open_row(entry) for entry in self.entries):
             return False
         self._turn_from = len(self.entries)
-        self._add(WaitEntry(id=self._next_id, title=PROCESSING, started_at=self.clock()))
+        tips = self.tip_deck.next() if self.tip_deck is not None else ()
+        self._add(WaitEntry(id=self._next_id, title=PROCESSING, started_at=self.clock(), tips=tips))
         return True
 
     def summarize_changes(self, workspace: PurePath | None = None) -> bool:

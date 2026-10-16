@@ -35,6 +35,7 @@ from time import monotonic
 from .....config import DEFAULT_TRANSCRIPT_MAX_ENTRIES
 from ..presenters import DEFAULT_PRESENTERS, Presenters
 from ..rendering import DEFAULT_RENDERERS, Renderers
+from ..tips import TipDeck
 from .fold import FoldMixin
 from .log import EntryLog
 from .oneoff import OneOffMixin
@@ -71,4 +72,6 @@ class Transcript(OneOffMixin, FoldMixin, StreamMixin, EntryLog):
         self.renderers = renderers
         self.presenters = presenters
         self.frame = 0
+        #: Where the tips under the waiting row come from; ``None`` shows none.
+        self.tip_deck: TipDeck | None = None
         self._picture_drawn = None

@@ -190,6 +190,8 @@ class WaitEntry(TimedEntry):
     #: while a tool, a reasoning row or a compaction is the thing being waited for: a ``pytest`` that takes two
     #: minutes is not the model going quiet.
     quiet: float = 0.0
+    #: The tips this request may show, in the order it shows them (see :mod:`.tips`); none when they are off.
+    tips: tuple[str, ...] = ()
     #: The line the request ended on, written when the row is settled.
     text: str = ""
 

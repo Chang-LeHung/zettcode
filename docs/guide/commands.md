@@ -4,6 +4,10 @@ Type `/` to see the menu; it filters as you type, and `Enter` or `Tab` fills in
 the highlighted name. A command with an argument takes it after a space —
 `/title users endpoint` — and running one never leaves the screen.
 
+Only a name from the list is a command. Anything else that starts with a slash — a path such as
+`/var/log/syslog`, a typo, `/tmp is full` — is ordinary text and goes to the model like any other message.
+A command is drawn in a different colour as soon as it is one, so you can see which it will be.
+
 | Command | What it does |
 | --- | --- |
 | `/help` | List the commands and the keys. |
@@ -12,7 +16,7 @@ the highlighted name. A command with an argument takes it after a space —
 | `/resume` | Pick a recent session from a panel; `/resume <id>` opens one directly. |
 | `/fork` | Carry this conversation into a new session and continue there. |
 | `/model` | Pick the model for later requests from a panel. |
-| `/config` | Add, change or remove models without editing the file: `/config`, `/config add <provider> …`, `/config remove <n>`. See [Adding models with /config](/guide/config#adding-models-with-config). |
+| `/config` | Add, change or remove models, and set whether one takes images, its context window and when it is compressed, without editing the file: `/config`, `/config add <provider> …`, `/config remove <n>`. See [Adding models with /config](/guide/config#adding-models-with-config). |
 | `/effort` | Pick how much the model reasons: `/effort high`. |
 | `/permission` | Pick how much of the shell may run without asking: `/permission safe`. |
 | `/btw` | Ask something that is answered here but never joins the conversation: `/btw <question>`. |

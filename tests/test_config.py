@@ -470,3 +470,20 @@ def test_load_config_rejects_broken_toml(tmp_path: Path):
 
     with pytest.raises(ValueError, match="Invalid config file"):
         load_config(tmp_path, path=path)
+
+
+def test_tips_are_on_unless_the_table_turns_them_off(tmp_path: Path):
+    path = tmp_path / "config.toml"
+    path.write_text('[[models]]\nmodel = "m"\ntoken = "t"\n', encoding="utf-8")
+    assert load_config(tmp_path, path=path).tips is True
+
+    path.write_text('[[models]]\nmodel = "m"\ntoken = "t"\n\n[transcript]\ntips = false\n', encoding="utf-8")
+    assert load_config(tmp_path, path=path).tips is False
+
+
+def test_the_tips_setting_must_be_a_boolean(tmp_path: Path):
+    path = tmp_path / "config.toml"
+    path.write_text('[[models]]\nmodel = "m"\ntoken = "t"\n\n[transcript]\ntips = "no"\n', encoding="utf-8")
+
+    with pytest.raises(ValueError, match="tips"):
+        load_config(tmp_path, path=path)
