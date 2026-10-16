@@ -553,7 +553,7 @@ def test_the_workspace_folder_keeps_each_project_apart(tmp_path: Path):
     second = SessionStore(tmp_path, workspace="/work/two")
 
     assert first.workspace_dir != second.workspace_dir
-    # The key is the URL-safe base64 of the resolved path, without padding.
+    # The key is the resolved path with a dash between its levels (see test_workspace_layout.py).
     assert first.workspace_dir.name == workspace_key(first.workspace)
     assert "/" not in first.workspace_dir.name
 

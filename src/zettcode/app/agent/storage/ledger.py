@@ -44,9 +44,9 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import BinaryIO
 
+from .layout import find_workspace
 from .metadata import SESSION_METADATA_FILE
 from .records import SAFE_SESSION_ID, STORE_FILE
-from .store import workspace_key
 
 #: The model a reply is filed under when its message does not say.
 UNKNOWN_MODEL = "unknown"
@@ -346,7 +346,7 @@ class LedgerReader:
             workspace: The project whose sessions are counted.
             index: Keep the index on disk. ``False`` is the in-memory behaviour alone.
         """
-        self.directory = Path(root).expanduser() / workspace_key(workspace)
+        self.directory = find_workspace(Path(root).expanduser(), workspace)
         self.index_path = self.directory / INDEX_FILE
         self._use_index = index
         self._files: dict[str, _File] = {}

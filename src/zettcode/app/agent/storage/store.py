@@ -3,14 +3,15 @@
 One store root is shared by every workspace the user opens, so it is grouped by
 workspace first::
 
-    ~/.zettcode/sessions/<base64 workspace path>/
+    ~/.zettcode/sessions/<workspace path, levels joined with ->/
     ├── metadata.jsonl              <- the index: title and activity times
     └── <session-id>/
         └── data.jsonl              <- the conversation tree
 
-The folder name is the URL-safe base64 of the resolved workspace path, so a
-path containing separators never turns into extra folders and two checkouts of
-the same project stay apart.
+The folder name is the resolved workspace path with ``-`` between its levels
+(``-Users-me-api``), so a path containing separators never turns into extra
+folders; :mod:`layout` decides the name, and moves a folder an older version
+named with base64 when nothing has it open.
 
 File operations are plain blocking reads and writes: an append is one small
 line, and the caller is the single process owning the session. The last line of
@@ -27,8 +28,6 @@ plugin concern.
 from __future__ import annotations
 
 import asyncio
-import base64
-import hashlib
 import json
 from collections import Counter
 from collections.abc import Iterator, Mapping, Sequence
@@ -54,6 +53,7 @@ from zett_agent.messages import AnyMessage, AssistantMessage, SystemMessage, Too
 from zett_agent.model import ModelUsage
 
 from ..dialogue.side import SIDE, is_side
+from .layout import open_workspace
 from .metadata import (
     MAX_MODEL,
     MAX_TITLE,
@@ -81,25 +81,6 @@ from .records import (
     SessionLine,
     now,
 )
-
-#: Longest workspace folder name; longer paths keep a hash instead of the tail.
-MAX_KEY_CHARS = 120
-
-
-def workspace_key(workspace: str | Path) -> str:
-    """Return the folder name that groups one workspace's sessions.
-
-    The key is the URL-safe base64 of the resolved absolute path without
-    padding, so the store reads as a plain directory tree and a path containing
-    separators never turns into extra folders. A path too long for one file name
-    keeps a short digest instead of its tail, which still keeps two long
-    checkouts apart.
-    """
-    encoded = base64.urlsafe_b64encode(str(Path(workspace).expanduser().resolve()).encode()).decode().rstrip("=")
-    if len(encoded) <= MAX_KEY_CHARS:
-        return encoded
-    digest = hashlib.sha256(encoded.encode()).hexdigest()[:12]
-    return f"{encoded[: MAX_KEY_CHARS - 13]}-{digest}"
 
 
 def message_context(
@@ -151,7 +132,7 @@ class SessionPersistenceMixin:
             ``<session_id>/`` folder per session with its own ``data.jsonl``.
             ``None`` uses ``~/.zettcode/sessions``.
         workspace: Project the sessions belong to; its resolved absolute path,
-            base64-encoded, names the workspace folder. ``None`` uses the
+            joined with ``-``, names the workspace folder. ``None`` uses the
             current directory, which is only right for standalone use — the
             runtime always passes the configured workspace.
 
@@ -161,11 +142,12 @@ class SessionPersistenceMixin:
     def __init__(self, root: str | Path | None = None, workspace: str | Path | None = None) -> None:
         self.root = Path(root) if root is not None else Path.home() / ".zettcode" / "sessions"
         self.workspace = Path(workspace).expanduser().resolve() if workspace is not None else Path.cwd()
-        self.workspace_dir = self.root / workspace_key(self.workspace)
+        #: Opening it moves a folder an older version named with base64 to the readable name,
+        #: or leaves it where it is when something has it open (see :mod:`.layout`).
+        self.workspace_dir = open_workspace(self.root, self.workspace)
         #: The log older versions kept for the whole workspace. Read, never written: see
         #: :mod:`zettcode.app.agent.storage.metadata`.
         self.legacy_metadata_path = self.workspace_dir / METADATA_FILE
-        self.workspace_dir.mkdir(parents=True, exist_ok=True)
         # Parsed sessions, keyed by the file stamp that produced them. Appending
         # is the hot path — one call per message — so it must not re-parse the
         # whole log; the cache makes a read O(1) and a write a tuple copy.

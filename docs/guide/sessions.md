@@ -17,9 +17,14 @@ One store root holds every workspace, grouped by workspace first:
     └── tool-output/            what long shell commands printed, kept for the model to read
 ```
 
-`<workspace key>` is the URL-safe base64 of the resolved workspace path, so two
-checkouts of the same project never share a folder, and no path can escape the
-store.
+`<workspace key>` is the resolved workspace path with a `-` between its levels —
+`/Users/me/projects/api` is `-Users-me-projects-api` — so a glance at the folder
+list says which project is which, and no path can escape the store. Any other
+character a folder name cannot hold becomes a `-` too, and a very long path keeps
+a short digest instead of its tail. Joining with a dash can read the same for two
+paths (`/a-b/c` and `/a/b-c`); the folder records the path it belongs to in
+`workspace.txt`, and the project that finds the name taken keeps using a folder
+named with the URL-safe base64 of its path, which is always its own.
 
 `data.jsonl` is append-only — every record names its parent, which makes the
 conversation a **tree** rather than a list. `metadata.json` is the small file the
@@ -31,6 +36,13 @@ conversation file itself. A crash can truncate the final line; that line is
 ignored, and a damaged line anywhere else is reported rather than silently dropped.
 
 ::: details Sessions from an older version
+Older versions named the workspace folder with the URL-safe base64 of the path
+(`L1VzZXJzL21l…`). The first time ZettCode opens such a workspace it renames the
+folder to the readable name, in one step, so nothing is copied and nothing is ever
+half-moved. If the rename cannot be done — a session in it is open in another
+ZettCode, or a file in it is open and the system refuses (Windows does) — the
+folder keeps its old name and is used exactly as before; the next start tries again.
+
 Older versions kept one `metadata.jsonl` for the whole workspace and added a line to
 it for every message, so it could reach thousands of lines. Nothing writes it any
 more. The first time ZettCode looks at a session that has no `metadata.json` of its
