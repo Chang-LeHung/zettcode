@@ -63,20 +63,45 @@ ZettCode 能对接任何 OpenAI 兼容的接入点：云上的 API、把多家 p
 明细 —— 并按模型配置里的 `compact_percent` 在溢出之前压缩。
 
 ```
-Context  103,241 / 128,000 tokens
-  Source              Share    Count
-  System prompt        1.9%      (1)
-  Environment notes    4.8%      (2)
-  Tool schemas        10.9%      (9)
-  User messages        0.1%      (3)
-  Assistant messages  22.2%     (12)
-  Tool output         60.1%     (17)
-~4 chars/token · esc back
+Context  claude-opus-4-5
+~/.zettcode/sessions/…/conversation.jsonl
+
+Window   103,241 / 200,000 tokens   51.6% full
+█████████████████████████████████████▏░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+                      compacts at 160,000 tokens (80.0%) ▲
+
+Used              103,241   51.6%
+Until compaction   56,759   28.4%
+Free in window     96,759   48.4%
+
+Where it goes   how the 103,241 tokens divide between sources
+████████████████████████████████████████████████████████████████████████   <- 每个来源一种颜色
+
+  Source                                         Tokens   Share  Items
+■ System prompt       ▍░░░░░░░░░░░░░░░░░░░░░      1,962    1.9%      1
+■ Environment notes   █░░░░░░░░░░░░░░░░░░░░░      4,956    4.8%      2
+■ Tool schemas        ██▍░░░░░░░░░░░░░░░░░░░     11,253   10.9%      9
+■ User messages       ▏░░░░░░░░░░░░░░░░░░░░░        103    0.1%      3
+■ Assistant messages  ████▉░░░░░░░░░░░░░░░░░     22,919   22.2%     12
+■ Tool output         █████████████▎░░░░░░░░     62,048   60.1%     17
+
+Total from the provider, which counts what it bills. Each source gets
+its share of that total, worked out from a local count.
 ```
 
-标题拿总量和模型的窗口比；百分比是**当前上下文内部**的占比，所以加起来是 100%。如果某一行
-大得意外，那就是该看的地方：一个你从不使用的工具 schema，或者一次读文件返回的长内容。页脚会
-说明这些数字是谁算出来的 —— 能加载编码时是 `tiktoken`，否则是按每四个字符一个 token 估算。
+页面回答三个问题，每个问题用各自的比例和各自的画法：
+
+- **窗口有多满？** 计量条是请求相对于模型窗口的占用，越接近压缩点（`compact_percent`）颜色越
+  暖，从绿到黄再到红，`▲` 标出压缩发生的位置。下面三个数分别是已用、离压缩还剩多少、离窗口装满还剩多少，
+  都写成占窗口的比例。
+- **token 花在哪了？** 彩色的长条是请求按来源分成的几段，下面每一行用同一种颜色再画一根自己的条。
+  这些比例是占**已统计内容**的比例，所以不论窗口多大，加起来都是 100%。
+- **这是谁的数？** 有 provider 的计数时总量用它的，因为它统计的就是计费数字。本地的统计只用来算比例——每个来源
+  显示的是它占 provider 总量的那一份，所以各行加起来正好等于总量。没有 provider 的总量时，各行就是本地
+  统计的数；如果这些数是估算（大约四个字符一个 token），脚注会说明。
+
+某一行大得意外，那就是该看的地方：一个你从不使用的工具 schema，或者一次读文件返回的长内容。终端太矮放不下
+全部内容时，用 `↑` `↓` 滚动。
 
 两种百分比要分开理解：
 
@@ -85,9 +110,9 @@ Context  103,241 / 128,000 tokens
 | 状态行的 `ctx` | 当前上下文 token ÷ 配置的窗口大小 | 1,000,000 的窗口用了 100,000，显示 `ctx 10.0%`。 |
 | `/context` 的分类行 | 这一类的 token ÷ 当前上下文总 token | 总共 100,000，其中工具输出 60,000，工具输出占 `60.0%`。 |
 
-分类占比在显示舍入前加起来是 100%。`Count` 表示对应分类的消息、工具定义或指令条目个数，
-不是对话轮数。恢复的会话也可以查看；当前进程尚未组装工具和环境说明时，页脚可能显示
-`notes and tools pending`，说明这还是一份不完整的快照。
+分类占比在显示舍入前加起来是 100%。`Items` 表示对应分类的消息、工具定义或指令条目个数，
+不是对话轮数。恢复的会话也可以查看；当前进程尚未组装工具和环境说明时，这两行会写着
+`pending`，说明这还是一份不完整的快照。
 
 ## 压缩
 

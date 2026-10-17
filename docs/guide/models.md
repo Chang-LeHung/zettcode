@@ -71,23 +71,50 @@ status line, and the full breakdown under `/context` — and compacts before it
 overflows, using `compact_percent` from the model's configuration.
 
 ```
-Context  103,241 / 128,000 tokens
-  Source              Share    Count
-  System prompt        1.9%      (1)
-  Environment notes    4.8%      (2)
-  Tool schemas        10.9%      (9)
-  User messages        0.1%      (3)
-  Assistant messages  22.2%     (12)
-  Tool output         60.1%     (17)
-~4 chars/token · esc back
+Context  claude-opus-4-5
+~/.zettcode/sessions/…/conversation.jsonl
+
+Window   103,241 / 200,000 tokens   51.6% full
+█████████████████████████████████████▏░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+                      compacts at 160,000 tokens (80.0%) ▲
+
+Used              103,241   51.6%
+Until compaction   56,759   28.4%
+Free in window     96,759   48.4%
+
+Where it goes   how the 103,241 tokens divide between sources
+████████████████████████████████████████████████████████████████████████   <- one colour for each source
+
+  Source                                         Tokens   Share  Items
+■ System prompt       ▍░░░░░░░░░░░░░░░░░░░░░      1,962    1.9%      1
+■ Environment notes   █░░░░░░░░░░░░░░░░░░░░░      4,956    4.8%      2
+■ Tool schemas        ██▍░░░░░░░░░░░░░░░░░░░     11,253   10.9%      9
+■ User messages       ▏░░░░░░░░░░░░░░░░░░░░░        103    0.1%      3
+■ Assistant messages  ████▉░░░░░░░░░░░░░░░░░     22,919   22.2%     12
+■ Tool output         █████████████▎░░░░░░░░     62,048   60.1%     17
+
+Total from the provider, which counts what it bills. Each source gets
+its share of that total, worked out from a local count.
 ```
 
-The title compares the total against the model's window; the percentages are
-shares of the context in use, so they add up to 100%. If a row is surprisingly
-large, that is the thing to look at: a tool schema you never use, or a long file
-that came back from a read. The footer names the counter that produced the
-numbers — `tiktoken` when its encoding could be loaded, a
-four-characters-per-token estimate otherwise.
+The page answers three questions, each with its own ratio and its own drawing:
+
+- **How full is the window?** The gauge is the request against the model's window, and it
+  warms from green through yellow to red as the request nears the point where it is compacted
+  (`compact_percent`), which a `▲` marks. The three numbers under it are what is used, what is
+  left before compaction, and what is left before the window is full, each as a share of the
+  window.
+- **Where did the tokens go?** The coloured bar is the request divided between its sources, and
+  each row repeats its source's colour with a bar of its own. These shares are of what was
+  counted, so they add up to 100%, whatever the window is.
+- **Whose number is it?** The total is the provider's whenever it reported one, because it counts
+  what it bills. A local count can only say how that total divides, so each source is shown as its
+  share of the provider's total and the rows add up to it. Without a provider total the rows are
+  the local counts, and when those are estimates, about four characters to a token, the note
+  says so.
+
+If a row is surprisingly large, that is the thing to look at: a tool schema you never use, or a
+long file that came back from a read. A page too short for all of it scrolls with `↑` `↓`.
 
 Do not confuse the two percentages:
 
@@ -96,11 +123,11 @@ Do not confuse the two percentages:
 | Status `ctx` | Context tokens ÷ configured window | 100,000 of 1,000,000 tokens is `ctx 10.0%`. |
 | A `/context` row | That source's tokens ÷ all current context tokens | 60,000 tool-output tokens out of 100,000 total is `60.0%`. |
 
-The category shares add to 100% before display rounding. `Count` is the number
+The category shares add to 100% before display rounding. `Items` is the number
 of messages, tool definitions, or instruction items in that category, not the
 number of conversation turns. A resumed session can show a breakdown too.
-Before tools/environment notes have been assembled in the current process,
-the footer can say `notes and tools pending`; treat that snapshot as partial.
+Before the environment notes and tool schemas have been assembled in the current
+process, their rows say `pending`; treat that snapshot as partial.
 
 ## Compaction
 

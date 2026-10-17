@@ -163,6 +163,11 @@ class ContextReport:
         return self.reported is not None
 
     @property
+    def estimated(self) -> bool:
+        """Return whether the shares are a characters-per-token estimate and not a tokenizer's count."""
+        return "chars/token" in self.measured_by
+
+    @property
     def free(self) -> int:
         """Return the tokens left before the budget is full, never negative."""
         return max(0, self.window - self.used)
