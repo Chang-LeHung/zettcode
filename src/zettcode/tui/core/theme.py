@@ -14,12 +14,13 @@ class ToolTheme:
 
     The built-in palettes keep to a few hues, the way editors keep their tool and
     status colours to a few: a soft lavender for everything the agent looks at or
-    runs (reading, searching, pictures, commands, the plan), yellow for what it
+    runs (reading, searching, pictures, commands, the plan), orange for what it
     writes, red for what it deletes, teal for a delegated child agent, and mauve
     for talking to another session. More hues than that read as noise in a
-    transcript that is mostly tool rows. Writing is yellow and not green because green is the
+    transcript that is mostly tool rows. Writing is orange and not green because green is the
     colour of an added line: the heading of an edit sits on the line above its diff, and the same
-    green on both made the heading read as one more added line. The roles are separate so a theme
+    green on both made the heading read as one more added line (and a yellow one, close to the
+    green in hue and weight, still read as its neighbour). The roles are separate so a theme
     file can pull them apart without touching any code. A tool the palette has never heard of, and
     any role left unset, falls back to :attr:`Theme.accent`.
 
@@ -41,7 +42,7 @@ class ToolTheme:
     read: str = "#b4befe"
     search: str = "#b4befe"
     image: str = "#b4befe"
-    write: str = "#e5c890"
+    write: str = "#ef9a62"
     delete: str = "#e67e80"
     shell: str = "#b4befe"
     plan: str = "#b4befe"
@@ -158,7 +159,7 @@ LIGHT = Theme(
         read="#5b3fa8",
         search="#5b3fa8",
         image="#5b3fa8",
-        write="#946200",
+        write="#b85a14",
         delete="#b23b30",
         shell="#5b3fa8",
         plan="#5b3fa8",

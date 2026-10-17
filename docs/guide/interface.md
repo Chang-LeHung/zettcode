@@ -82,7 +82,7 @@ Every kind of output has its own row, in the order it happened:
   (up to forty when open); a long line is cut at the width, never wrapped. Other output works the
   same way; nothing is ever dumped as JSON.
 - **Tool rows use a few colours**, so a long transcript stays calm: lavender for everything the agent looks at or runs
-  (reading, searching, pictures, commands, the plan), yellow for writing and editing (not green, which is an added line in its diff), red for deleting (and for any
+  (reading, searching, pictures, commands, the plan), orange for writing and editing (not green, which is an added line in its diff), red for deleting (and for any
   call that failed), teal for a delegated subagent, and mauve for talking to another session. A theme file can change
   each one under `[tools]`.
 - **The files a request changed** are listed once when it ends, above the `Processed for …` line, and only
