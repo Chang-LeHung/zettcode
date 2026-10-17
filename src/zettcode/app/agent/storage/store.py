@@ -125,8 +125,8 @@ class SessionPersistenceMixin:
     ``AgentExtension`` (see :class:`SessionStore`). It owns the storage: the
     workspace layout, parsing and the torn-last-line policy, the tree walk,
     ``read``, ``append``, ``checkpoint``, the metadata log with
-    ``set_title``/``session_title``, and ``list_sessions``. It holds no
-    framework behavior.
+    ``set_title``/``session_title`` and the per-session flags beside them, and
+    ``list_sessions``. It holds no framework behavior.
 
     Args:
         root: Directory holding one folder per workspace, and inside it one
@@ -454,8 +454,15 @@ class SessionPersistenceMixin:
             carried = (
                 f"{title}{FORK_SUFFIX}" if title is not None and len(f"{title}{FORK_SUFFIX}") <= MAX_TITLE else None
             )
-            # A fork carries on from where the session left off, so it uses the model that did.
-            self._begin_metadata(new_id, created_at, title=carried, model=self.session_model(session_id))
+            # A fork carries on from where the session left off, so it uses the model that did,
+            # and keeps the choice about compaction that was made for that conversation.
+            self._begin_metadata(
+                new_id,
+                created_at,
+                title=carried,
+                model=self.session_model(session_id),
+                self_compact=self.session_self_compact(session_id),
+            )
         parent: str | None = None
         if checkpoint is not None:
             # The summary is copied as a message of its own. As a checkpoint it would
@@ -543,6 +550,49 @@ class SessionPersistenceMixin:
             return False
         return write_session_metadata(self._metadata_file(session_id), metadata.model_copy(update={"model": cleaned}))
 
+    def session_self_compact(self, session_id: str) -> bool:
+        """Return whether one session lets the model request compaction.
+
+        Off is what a session that says nothing about it answers, which is every session whose file
+        predates the flag and every session that has not been used yet.
+        """
+        metadata = self._metadata(session_id)
+        return metadata.self_compact if metadata is not None else False
+
+    def set_self_compact(self, session_id: str, enabled: bool) -> None:
+        """Record whether one session lets the model request compaction.
+
+        The flag is metadata, not conversation: turning it on or off rewrites the session's small
+        metadata file and leaves everything else in it — the title, the model, the creation time —
+        as it was. Turning it on for a session that has not been used yet creates the session, the
+        header going in first as it does when one is named, so a choice made before the first
+        message is not dropped. Turning it *off* for such a session records nothing, because a file
+        that holds no flag is already off. A file that holds the value asked for is not rewritten.
+
+        Args:
+            session_id: The session the choice belongs to.
+            enabled: Whether the model may request compaction.
+
+        Raises:
+            OSError: The metadata file could not be replaced. Nothing was saved, so a caller that
+                reported success would be reporting a setting that is not on disk.
+        """
+        metadata = self._metadata(session_id)
+        if metadata is None:
+            if not enabled:
+                return
+            created_at = self._write_header(self.read(session_id), session_id, None, None)
+            metadata = (
+                SessionMetadata(session_id=session_id, created_at=created_at, updated_at=created_at)
+                if created_at is not None
+                else self._metadata(session_id)
+            )
+        if metadata is None or metadata.self_compact == enabled:
+            return
+        updated = metadata.model_copy(update={"self_compact": enabled})
+        if not write_session_metadata(self._metadata_file(session_id), updated):
+            raise OSError(f"Could not save the self-compaction setting for session {session_id!r}")
+
     async def list_sessions(self, *, limit: int = 100, offset: int = 0) -> list[SessionInfo]:
         """Return session metadata by latest activity, newest first.
 
@@ -577,11 +627,22 @@ class SessionPersistenceMixin:
         return self.session_dir(session_id) / SESSION_METADATA_FILE
 
     def _begin_metadata(
-        self, session_id: str, created_at: datetime, *, title: str | None = None, model: str | None = None
+        self,
+        session_id: str,
+        created_at: datetime,
+        *,
+        title: str | None = None,
+        model: str | None = None,
+        self_compact: bool = False,
     ) -> SessionMetadata:
         """Write the metadata of a session that has just been created, and return it."""
         metadata = SessionMetadata(
-            session_id=session_id, created_at=created_at, updated_at=created_at, title=title, model=model
+            session_id=session_id,
+            created_at=created_at,
+            updated_at=created_at,
+            title=title,
+            model=model,
+            self_compact=self_compact,
         )
         write_session_metadata(self._metadata_file(session_id), metadata)
         return metadata

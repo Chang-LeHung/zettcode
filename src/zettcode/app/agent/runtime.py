@@ -274,6 +274,7 @@ class ZettCodeRuntime:
                 max_tokens=selected.compaction_max_tokens,
                 keep_recent_tokens=selected.compaction_keep_tokens,
                 count_tokens=counter.count,
+                self_compact=persistence.session_self_compact,
             ),
             compaction_counter=counter,
             plugins=load_plugins(config),

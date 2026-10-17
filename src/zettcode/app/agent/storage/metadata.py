@@ -87,6 +87,8 @@ class SessionMetadata(BaseModel):
     updated_at: datetime
     title: str | None = None
     model: str | None = None
+    #: Whether this session lets the model request compaction. Older files default to disabled.
+    self_compact: bool = Field(default=False, strict=True)
 
 
 @dataclass(frozen=True, slots=True)

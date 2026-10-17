@@ -31,6 +31,7 @@ A command is drawn in a different colour as soon as it is one, so you can see wh
 | `/context` | Show how full the context window is, how close it is to being compacted, and what is filling it — as bars, with the file this session is stored in. |
 | `/usage` | Open a page of what this project's sessions have spent: tokens by model, by session, and a calendar of the days. See [Token usage](#usage). |
 | `/compact` | Summarize the conversation now, instead of waiting for the window to fill. |
+| `/self-compact` | Show whether this session lets the model request compaction. `/self-compact on` enables it, `/self-compact off` disables it (the default). The choice is saved with the session and restored when you resume it. |
 | `/title` | Name this session: `/title users endpoint`. On its own, it reports the current name. |
 | `/export` | Write this session to a standalone HTML file: `/export [path]`. |
 | `/quit`, `/exit` | Leave. The shell prints the command that reopens the session. |
