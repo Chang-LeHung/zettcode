@@ -31,7 +31,8 @@ import os
 import re
 from pathlib import Path
 
-from ....filelock import is_held
+from zettcode.filelock import is_held
+
 from .locks import LOCK_FILE
 
 #: Longest workspace folder name; a longer path keeps a hash instead of its tail.
@@ -142,14 +143,19 @@ def find_workspace(root: str | Path, workspace: str | Path) -> Path:
 
 
 def open_workspace(root: str | Path, workspace: str | Path) -> Path:
-    """Return the folder to write a workspace's sessions in, creating it and moving an old one.
+    """Return the folder a workspace's sessions are written in, moving an old one to the readable name.
 
     An old base64 folder is renamed to the readable name when nothing has it open, and stays where it is
-    when something does (see the module's notes). The folder exists when this returns.
+    when something does (see the module's notes). **Nothing is created**: the folder may not exist yet, and
+    a project that is opened and never used leaves no trace in the store. :func:`claim_workspace` makes it
+    when the first record is written.
     """
+    return _choose(Path(root), _resolve(workspace), move=True)
+
+
+def claim_workspace(folder: Path, workspace: str | Path) -> None:
+    """Create a workspace's folder if it is not there, and write the note saying whose it is."""
     path = _resolve(workspace)
-    folder = _choose(Path(root), path, move=True)
     folder.mkdir(parents=True, exist_ok=True)
     if folder.name == workspace_key(path):
         _claim(folder, path)
-    return folder

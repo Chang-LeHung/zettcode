@@ -78,11 +78,15 @@ def test_a_very_long_path_keeps_a_digest_and_stays_apart_from_another():
     assert one != two
 
 
-def test_a_new_workspace_gets_the_readable_folder_and_a_note_of_whose_it_is(tmp_path: Path, work: Path):
+async def test_a_new_workspace_is_named_on_disk_only_once_something_is_written(tmp_path: Path, work: Path):
     store = SessionStore(tmp_path / "store", work)
 
     assert store.workspace_dir == tmp_path / "store" / workspace_key(work)
     assert store.workspace_dir.name != legacy_workspace_key(work)
+    assert not (tmp_path / "store").exists(), "opening a project that is never used leaves no trace"
+
+    await store.append(SESSION, "req", UserMessage(content="hello"))
+
     assert (store.workspace_dir / OWNER_FILE).read_text().strip() == str(work)
     assert not (tmp_path / "store" / legacy_workspace_key(work)).exists()
 
@@ -160,7 +164,7 @@ async def test_another_process_that_moved_it_first_is_not_an_error(
     assert [session.session_id for session in await store.list_sessions()] == [SESSION]
 
 
-def test_two_paths_that_read_alike_do_not_share_a_folder(tmp_path: Path, roomy: None):
+async def test_two_paths_that_read_alike_do_not_share_a_folder(tmp_path: Path, roomy: None):
     root = tmp_path / "store"
     one = tmp_path / "a-b" / "c"
     two = tmp_path / "a" / "b-c"
@@ -169,6 +173,7 @@ def test_two_paths_that_read_alike_do_not_share_a_folder(tmp_path: Path, roomy: 
     assert workspace_key(one) == workspace_key(two)
 
     first = SessionStore(root, one)
+    await first.append(SESSION, "req", UserMessage(content="hello"))  # the folder is marked as one's on first use
     second = SessionStore(root, two)
 
     assert first.workspace_dir == root / workspace_key(one)
