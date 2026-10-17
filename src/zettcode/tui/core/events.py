@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import ClassVar, TypeAlias
 
-from ..._compat import StrEnum
+from zettcode._compat import StrEnum
 
 
 class EventKind(StrEnum):

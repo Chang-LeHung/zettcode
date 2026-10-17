@@ -12,8 +12,9 @@ from collections.abc import Callable
 from pathlib import PurePath
 from typing import TypeGuard
 
-from .....tui.render import display_width
-from ...dialogue.relay import VIA_EXTERNAL, Relayed
+from zettcode.app.agent.dialogue.relay import VIA_EXTERNAL, Relayed
+from zettcode.tui.render import display_width
+
 from ..changes import changed_files
 from ..entries import (
     ChangesEntry,

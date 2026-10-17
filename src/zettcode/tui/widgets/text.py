@@ -5,7 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TypeAlias
 
-from ...tui import RULE
+from zettcode.tui import RULE
+
 from ..core.geometry import Constraints, Size
 from ..core.widget import Widget
 from ..render import Alignment, Canvas, Span, Style, TextLine

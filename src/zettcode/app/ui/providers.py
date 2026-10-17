@@ -12,9 +12,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING, cast
 
-from ...config_edit import ConfigEditError
-from ...providers import API_FLAG_KEYS, CUSTOM, Api
-from ...tui import SEPARATOR, ListItem, ListPage, Screen, Widget
+from zettcode.config_edit import ConfigEditError
+from zettcode.providers import API_FLAG_KEYS, CUSTOM, Api
+from zettcode.tui import SEPARATOR, ListItem, ListPage, Screen, Widget
+
 from ..agent.conversation.text import compact_path
 from .config_form import (
     Draft,
@@ -31,8 +32,8 @@ from .shell import PAGE_SCREEN, ShellState
 from .widgets import INPUT_ROWS, InputPage, bottom_panel
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
-    from ...config import ModelConfig
-    from ...providers import Provider
+    from zettcode.config import ModelConfig
+    from zettcode.providers import Provider
 
 #: Rows the list pages take: the title, a blank, up to eight rows, the keys.
 LIST_ROWS = 13
@@ -256,7 +257,7 @@ class ConfigMixin(ShellState):
     def _config_set(self, draft: Draft, field: str, value: str) -> str | None:
         """Record one answer and move on; answer why not if it cannot be used."""
         if field == "url":
-            from ...providers import check_url
+            from zettcode.providers import check_url
 
             try:
                 checked = check_url(value, what="the address") if value else None
@@ -457,7 +458,7 @@ class ConfigMixin(ShellState):
         """Rewrite one key of one entry; answer why not when the new value is refused."""
         if value:
             if key == "base_url":
-                from ...providers import check_url
+                from zettcode.providers import check_url
 
                 try:
                     value = check_url(value, what="the address")

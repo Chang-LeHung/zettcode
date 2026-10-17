@@ -23,7 +23,7 @@ from typing import Protocol
 
 from zett_agent.messages import UserMessage
 
-from ....broker.protocol import VIA_AGENT, VIA_EXTERNAL, VIA_USER
+from zettcode.broker.protocol import VIA_AGENT, VIA_EXTERNAL, VIA_USER
 
 #: Attribute of a stored message that came from another session. Its value is the :meth:`Relayed.mark`.
 RELAY = "relay"

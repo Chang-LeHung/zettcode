@@ -5,9 +5,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import date, timedelta
 
-from ....tui import SEPARATOR, KeyEvent, MouseAction, MouseEvent, Style, Widget
-from ....tui.render import blend
-from ...agent.storage.ledger import Ledger
+from zettcode.app.agent.storage.ledger import Ledger
+from zettcode.tui import SEPARATOR, KeyEvent, MouseAction, MouseEvent, Style, Widget
+from zettcode.tui.render import blend
+
 from . import usage_charts as charts
 
 #: The tabs, in the order Tab walks through them.

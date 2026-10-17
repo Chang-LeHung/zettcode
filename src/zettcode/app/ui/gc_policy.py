@@ -31,7 +31,7 @@ import gc
 from collections.abc import Callable
 from time import monotonic
 
-from ...collector import held
+from zettcode.collector import held
 
 #: Seconds after the last keystroke before the collector may run again, while work is in flight. Long
 #: enough to bridge the gap between two words, short enough that a reader who has stopped to think

@@ -5,9 +5,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import cast
 
-from ....config import ModelConfig
-from ....tui import SEPARATOR, ListItem, ListPage
-from ...agent.agent import ZettCodeAgent
+from zettcode.app.agent.agent import ZettCodeAgent
+from zettcode.config import ModelConfig
+from zettcode.tui import SEPARATOR, ListItem, ListPage
 
 
 class ModelPage(ListPage):

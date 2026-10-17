@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 
-from ....tui import SEPARATOR, ListItem, ListPage
-from ....update import display_command
+from zettcode.tui import SEPARATOR, ListItem, ListPage
+from zettcode.update import display_command
 
 #: Row values the page hands back through :meth:`UpdatePage.chosen`.
 UPGRADE = "upgrade"

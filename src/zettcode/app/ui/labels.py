@@ -13,8 +13,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ...tui import ELLIPSIS, HEADER, SEPARATOR, STATUS
-from ...tui.render import display_width
+from zettcode.tui import ELLIPSIS, HEADER, SEPARATOR, STATUS
+from zettcode.tui.render import display_width
+
 from ..agent.conversation.text import STOP_HINT
 
 #: The keys worth remembering, shown at the right of the status row.
@@ -116,7 +117,7 @@ def model_name(config_file: Path) -> str | None:
         config_file: The file the settings will be read from, which is
             ``$ZETTCODE_CONFIG`` or the conventional path.
     """
-    from ..._compat import tomllib
+    from zettcode._compat import tomllib
 
     try:
         settings = tomllib.loads(config_file.read_text(encoding="utf-8"))

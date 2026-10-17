@@ -19,8 +19,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ...tui import PROMPT, Canvas, Constraints, Rule, Size, StatusBar, Text, TextArea, TextLine, VBox, Widget
-from ...tui.layout import Slot
+from zettcode.tui import PROMPT, Canvas, Constraints, Rule, Size, StatusBar, Text, TextArea, TextLine, VBox, Widget
+from zettcode.tui.layout import Slot
+
 from ..agent.conversation.entries import EntryKind, TextEntry
 from ..agent.conversation.presenters import CONTENT_INDENT, WelcomePresenter
 from . import labels

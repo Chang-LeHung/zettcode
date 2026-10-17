@@ -30,8 +30,9 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from ....tui import ELLIPSIS, SEPARATOR
-from ....tui.render import GENERIC, language_for
+from zettcode.tui import ELLIPSIS, SEPARATOR
+from zettcode.tui.render import GENERIC, language_for
+
 from .entries import DeleteEntry, EditEntry, MessageEntry, ReadEntry, ToolEntry, WriteEntry
 from .text import limit_output
 

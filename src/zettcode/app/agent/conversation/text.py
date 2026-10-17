@@ -13,8 +13,8 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-from ....tui import ELLIPSIS
-from ....tui.render import count_wrapped_rows, display_width, wrap_columns
+from zettcode.tui import ELLIPSIS
+from zettcode.tui.render import count_wrapped_rows, display_width, wrap_columns
 
 #: Left margin of every transcript row: the width of the composer's ``\u203a ``
 #: prompt, so text lines up under what the user types and never starts left of

@@ -5,9 +5,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from ...._compat import StrEnum
-from ....tui import MARKER, SEPARATOR, Canvas, Host, MouseAction, MouseEvent, Widget
-from ....tui.render import ELLIPSIS, SHELL, Span, Style, highlight, wrap_spans
+from zettcode._compat import StrEnum
+from zettcode.tui import MARKER, SEPARATOR, Canvas, Host, MouseAction, MouseEvent, Widget
+from zettcode.tui.render import ELLIPSIS, SHELL, Span, Style, highlight, wrap_spans
+
 from .panel import pressed
 
 

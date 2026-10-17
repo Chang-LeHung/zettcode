@@ -5,9 +5,10 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 
-from ....tui import SEPARATOR, Completer, CompletionItem
-from ...agent.dialogue.mentions import MentionRegistry
-from ...commands import Command
+from zettcode.app.agent.dialogue.mentions import MentionRegistry
+from zettcode.app.commands import Command
+from zettcode.tui import SEPARATOR, Completer, CompletionItem
+
 from .follow_up import OPTION
 
 #: A draft's text before the word under the cursor, when that word is the one right after a command.

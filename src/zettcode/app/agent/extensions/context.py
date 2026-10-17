@@ -33,8 +33,8 @@ from zett_agent.messages import (
 )
 from zett_agent.model import ModelRequest, ToolDefinition
 
-from ....paths import DEFAULT_TOKENIZER_CACHE
-from ...pipeline import DaemonCall
+from zettcode.app.pipeline import DaemonCall
+from zettcode.paths import DEFAULT_TOKENIZER_CACHE
 
 #: What one image costs, whatever its encoded size. A provider bills an image by
 #: its dimensions and the detail asked for, so counting the bytes of a pasted

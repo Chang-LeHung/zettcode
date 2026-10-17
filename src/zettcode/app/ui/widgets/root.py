@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ....tui import VBox, Widget
+from zettcode.tui import VBox, Widget
 
 if TYPE_CHECKING:  # pragma: no cover - the shell imports this module at runtime
     from ..app import ZettCodeApp

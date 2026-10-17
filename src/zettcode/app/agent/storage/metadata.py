@@ -47,7 +47,7 @@ from typing import Annotated, Literal, TypeAlias
 
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
-from ...._compat import StrEnum
+from zettcode._compat import StrEnum
 
 #: The old per-workspace log, inside the workspace folder. Read, never written.
 METADATA_FILE = "metadata.jsonl"

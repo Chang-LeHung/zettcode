@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from ...tui import EXPANDED, MARKER
+from zettcode.tui import EXPANDED, MARKER
+
 from ..core.events import KeyEvent, MouseAction, MouseEvent
 from ..core.geometry import Constraints, Rect, Size
 from ..core.host import Host

@@ -10,7 +10,10 @@ from __future__ import annotations
 from bisect import bisect_right
 from collections.abc import Callable
 
-from ....tui import (
+from zettcode.app.agent.conversation.entries import Entry
+from zettcode.app.agent.conversation.presenters import Presenters, block_for
+from zettcode.app.agent.conversation.transcript import Transcript
+from zettcode.tui import (
     ARROW_DOWN,
     SEPARATOR,
     Canvas,
@@ -25,10 +28,7 @@ from ....tui import (
     TextLine,
     Theme,
 )
-from ....tui.render import display_width
-from ...agent.conversation.entries import Entry
-from ...agent.conversation.presenters import Presenters, block_for
-from ...agent.conversation.transcript import Transcript
+from zettcode.tui.render import display_width
 
 #: Badge shown once the reader scrolls away from the newest line. It names the
 #: shortcut so the mouse and the keyboard offer the same way back.

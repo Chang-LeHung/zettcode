@@ -27,7 +27,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ....config import DEFAULT_SUBAGENT_MAX_ITERATIONS
+from zettcode.config import DEFAULT_SUBAGENT_MAX_ITERATIONS
+
 from ..storage import SessionStore
 from .capabilities import ModelCapabilities
 

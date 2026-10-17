@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ..._compat import StrEnum
+from zettcode._compat import StrEnum
+
 from ..core.events import MouseAction
 
 

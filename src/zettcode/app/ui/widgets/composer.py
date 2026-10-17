@@ -12,12 +12,13 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Sequence
 
-from ....tui import Canvas, KeyEvent, Point, Span, Style, TextArea
-from ....tui.core.events import AnyEvent
-from ....tui.core.host import Host
-from ....tui.render import display_width
-from ...agent.agent.prompt import MentionPart, PromptPart, plain_text_part
-from ...agent.dialogue.mentions import MENTION
+from zettcode.app.agent.agent.prompt import MentionPart, PromptPart, plain_text_part
+from zettcode.app.agent.dialogue.mentions import MENTION
+from zettcode.tui import Canvas, KeyEvent, Point, Span, Style, TextArea
+from zettcode.tui.core.events import AnyEvent
+from zettcode.tui.core.host import Host
+from zettcode.tui.render import display_width
+
 from ..clipboard import image_from_paste
 
 #: A slash command as typed: a leading ``/`` at a word boundary, then a name.

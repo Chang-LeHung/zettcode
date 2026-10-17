@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from ...tui import RULE
+from zettcode.tui import RULE
+
 from ..core.geometry import Constraints, EdgeInsets, Point, Rect, Size
 from ..core.widget import Widget
 from ..render import DEFAULT_STYLE, Canvas, Style

@@ -17,7 +17,8 @@ from dataclasses import dataclass
 
 from zett_agent.messages import AnyMessage, AssistantMessage, SystemMessage, ToolMessage, UserMessage
 
-from ....config import DEFAULT_TRANSCRIPT_MAX_ENTRIES
+from zettcode.config import DEFAULT_TRANSCRIPT_MAX_ENTRIES
+
 from ..dialogue.relay import relay_of
 from ..dialogue.side import is_side_line
 from ..extensions.usage import UsageSnapshot

@@ -13,10 +13,10 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, TypeVar
 
-from ...providers import CUSTOM, Api, Provider, check_url, find_provider
+from zettcode.providers import CUSTOM, Api, Provider, check_url, find_provider
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
-    from ...config import ModelConfig
+    from zettcode.config import ModelConfig
 
 T = TypeVar("T")
 

@@ -10,9 +10,10 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from ....tui import STEERING, Canvas, Constraints, Size, Style, Widget
-from ....tui.render import display_width, truncate
-from ...agent.conversation.text import CONTENT_INDENT
+from zettcode.app.agent.conversation.text import CONTENT_INDENT
+from zettcode.tui import STEERING, Canvas, Constraints, Size, Style, Widget
+from zettcode.tui.render import display_width, truncate
+
 from .follow_up import one_line
 
 #: Right-aligned badge that says a row is a steering message.

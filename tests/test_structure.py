@@ -139,6 +139,17 @@ def test_every_relative_import_resolves_to_a_real_module():
     assert unresolved == []
 
 
+def test_no_import_climbs_more_than_two_packages_by_dots():
+    """`from ...x` and deeper are written `from zettcode.x`; `.` and `..` stay relative."""
+    deep: list[str] = []
+    for path in sorted((ROOT / "src" / "zettcode").rglob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.ImportFrom) and node.level > 2:
+                deep.append(f"{path.relative_to(ROOT)}:{node.lineno} {'.' * node.level}{node.module or ''}")
+
+    assert deep == []
+
+
 def test_layers_only_import_downwards():
     """`ui` reads `agent`, `agent` builds on `tui`, and `tui` stands alone."""
     violations: list[str] = []

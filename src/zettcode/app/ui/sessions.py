@@ -12,16 +12,17 @@ from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ...collector import collector_paused
-from ...plugins.state import Activity
-from ...tui import ELLIPSIS, SEPARATOR, Theme
+from zettcode.collector import collector_paused
+from zettcode.plugins.state import Activity
+from zettcode.tui import ELLIPSIS, SEPARATOR, Theme
+
 from ..agent.agent.sessions import StoredSession
 from ..agent.conversation.presenters import block_for
 from .shell import ShellState
 from .widgets import WELCOME
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
-    from ...config import ModelConfig
+    from zettcode.config import ModelConfig
 
 
 #: Seconds between the tries to take the lock of a session another process has open: long enough to cost

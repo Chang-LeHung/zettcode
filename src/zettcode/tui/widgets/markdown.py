@@ -12,7 +12,8 @@ from collections.abc import Sequence
 from dataclasses import replace
 from functools import lru_cache
 
-from ...tui import ELLIPSIS, RULE, SEPARATOR
+from zettcode.tui import ELLIPSIS, RULE, SEPARATOR
+
 from ..core.theme import DARK, Theme
 from ..layout.scroll import LineSource, ScrollView
 from ..render import Canvas, Span, Style, TextLine, highlight, layout_rich_lines, wrap_spans
