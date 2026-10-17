@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from ....tui import (
+from zettcode.app.agent.dialogue.ask import AskUserQuestion
+from zettcode.tui import (
     DONE,
     ELLIPSIS,
     MARKER,
@@ -25,9 +26,8 @@ from ....tui import (
     Widget,
     event_key,
 )
-from ....tui.core.geometry import Constraints
-from ....tui.layout import Slot
-from ...agent.dialogue.ask import AskUserQuestion
+from zettcode.tui.core.geometry import Constraints
+from zettcode.tui.layout import Slot
 
 #: Options drawn at once; a longer list scrolls around the highlight, because
 #: the model may offer twenty and the panel cannot grow to fit them all.

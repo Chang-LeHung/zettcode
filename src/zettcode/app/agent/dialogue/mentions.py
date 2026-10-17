@@ -22,9 +22,10 @@ from typing import TypeAlias
 
 from zett_agent.extensions.skill import SkillExtension
 
-from ....broker.text import folder_name
-from ....config import ZettCodeConfig
-from ...registry import Provider, Registry
+from zettcode.app.registry import Provider, Registry
+from zettcode.broker.text import folder_name
+from zettcode.config import ZettCodeConfig
+
 from .relay import Peer
 
 #: One mention token: an ``@`` at a word boundary, then a name. A name is what a

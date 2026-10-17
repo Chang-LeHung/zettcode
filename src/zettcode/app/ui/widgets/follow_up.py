@@ -13,9 +13,9 @@ from __future__ import annotations
 import sys
 from collections.abc import Sequence
 
-from ....tui import MARKER, SEPARATOR, Canvas, Constraints, Size, Style, Widget
-from ....tui.render import ELLIPSIS, display_width, truncate
-from ...agent.conversation.text import CONTENT_INDENT
+from zettcode.app.agent.conversation.text import CONTENT_INDENT
+from zettcode.tui import MARKER, SEPARATOR, Canvas, Constraints, Size, Style, Widget
+from zettcode.tui.render import ELLIPSIS, display_width, truncate
 
 #: Right-aligned badge that says a row is a follow-up.
 FOLLOW_UP_BADGE = "follow-up"

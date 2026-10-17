@@ -8,7 +8,7 @@ warm heart. Its labels form one block next to it, instead of leaving the hint
 detached underneath. Half blocks keep the pixels square in tall terminal cells.
 """
 
-from ...brand import LOGO_LINES
+from zettcode.app.brand import LOGO_LINES
 
 WELCOME = "\n".join(
     f"  {line.text}"

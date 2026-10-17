@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from ....tui import (
+from zettcode.tui import (
     PROMPT,
     SEPARATOR,
     AnyEvent,
@@ -19,8 +19,8 @@ from ....tui import (
     VBox,
     event_key,
 )
-from ....tui.core.geometry import Constraints
-from ....tui.layout import Slot
+from zettcode.tui.core.geometry import Constraints
+from zettcode.tui.layout import Slot
 
 #: What stands in for each character of a secret, so the reader sees that something was typed.
 MASK = "\u2022"

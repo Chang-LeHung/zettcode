@@ -5,7 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
-from ...tui import MARKER
+from zettcode.tui import MARKER
+
 from ..core.events import KeyEvent, MouseAction, MouseEvent
 from ..core.geometry import Constraints, Size
 from ..core.host import Host

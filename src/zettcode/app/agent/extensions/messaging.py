@@ -17,8 +17,9 @@ from zett_agent.agent import AgentRunContext
 from zett_agent.extensions.base import AgentExtension
 from zett_agent.tools.base import AgentTool, tool
 
-from ....broker.client import SendError
-from ....broker.protocol import VIA_AGENT
+from zettcode.broker.client import SendError
+from zettcode.broker.protocol import VIA_AGENT
+
 from .messenger import Messenger
 
 LIST_SESSIONS_TOOL_NAME = "list_sessions"

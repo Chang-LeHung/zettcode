@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from ...tui import DONE, MARKER, PENDING, RULE
+from zettcode.tui import DONE, MARKER, PENDING, RULE
+
 from ..core.geometry import Constraints, Size
 from ..core.widget import Widget
 from ..render import Canvas, Style, truncate

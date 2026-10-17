@@ -18,8 +18,9 @@ import asyncio
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ...tui import Screen
-from ...tui.render import truncate
+from zettcode.tui import Screen
+from zettcode.tui.render import truncate
+
 from ..agent.agent.prompt import PromptPart, carries_image, mention_hint, mention_parts
 from .shell import MAX_FOLLOW_UPS, MAX_STEERING, PAGE_SCREEN, ShellState
 from .widgets import SEND_KIND_ROWS, SendKind, SendKindPage, bottom_panel

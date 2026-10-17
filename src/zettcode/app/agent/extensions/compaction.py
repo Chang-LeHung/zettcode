@@ -25,7 +25,8 @@ from zett_agent.extensions.compaction import CompactionExtension
 from zett_agent.messages import ImageContent
 from zett_agent.model import ModelRequest
 
-from ...pipeline import DaemonCall
+from zettcode.app.pipeline import DaemonCall
+
 from ..dialogue.side import is_side_run
 from . import context as context_module
 from .context import CHARS_PER_TOKEN, message_text

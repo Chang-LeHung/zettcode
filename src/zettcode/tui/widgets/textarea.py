@@ -5,7 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from typing import TypeAlias
 
-from ...tui import PROMPT
+from zettcode.tui import PROMPT
+
 from ..core.events import KeyEvent, MouseAction, MouseEvent, PasteEvent, TextEvent
 from ..core.geometry import Constraints, Point, Size
 from ..core.host import Host

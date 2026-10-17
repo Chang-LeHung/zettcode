@@ -25,15 +25,17 @@ import asyncio
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
-from ...broker.client import Receipt, SendError
-from ...broker.protocol import MAX_TEXT, VIA_USER
+from zettcode.broker.client import Receipt, SendError
+from zettcode.broker.protocol import MAX_TEXT, VIA_USER
+
 from ..agent.agent.prompt import PromptPart, carries_image, plain_text
 from ..agent.dialogue.mentions import MENTION
 from ..agent.dialogue.relay import Relayed
 from .shell import ShellState
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
-    from ...broker.client import RosterEntry
+    from zettcode.broker.client import RosterEntry
+
     from ..agent.extensions.messenger import Messenger
 
 #: Messages from other sessions that may wait for a request to end. A session that is flooded refuses

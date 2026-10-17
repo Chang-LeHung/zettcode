@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ....tui import SEPARATOR, ListItem, ListPage
-from ...agent.extensions.context import SOURCES, ContextReport
+from zettcode.app.agent.extensions.context import SOURCES, ContextReport
+from zettcode.tui import SEPARATOR, ListItem, ListPage
+
 from ..labels import compact_path
 
 #: The sources only an assembled request carries: the notes an extension appends

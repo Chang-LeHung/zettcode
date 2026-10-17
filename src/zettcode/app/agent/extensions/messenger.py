@@ -17,9 +17,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from ....broker.client import BrokerClient, Delivered, Incoming, Receipt, RosterEntry, SessionInfo
-from ....broker.protocol import VIA_AGENT
-from ....config import ZettCodeConfig
+from zettcode.broker.client import BrokerClient, Delivered, Incoming, Receipt, RosterEntry, SessionInfo
+from zettcode.broker.protocol import VIA_AGENT
+from zettcode.config import ZettCodeConfig
+
 from ..dialogue.relay import Relayed
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only

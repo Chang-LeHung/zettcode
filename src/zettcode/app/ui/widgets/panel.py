@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ....tui import Anchor, KeyEvent, Overlay, OverlaySlot, TextEvent, Widget
+from zettcode.tui import Anchor, KeyEvent, Overlay, OverlaySlot, TextEvent, Widget
 
 
 def bottom_panel(widget: Widget, *, rows: int) -> Widget:

@@ -5,7 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from time import monotonic
 
-from ...tui import RULE
+from zettcode.tui import RULE
+
 from ..core.focus import walk
 from ..core.geometry import Constraints, Size
 from ..core.widget import Widget

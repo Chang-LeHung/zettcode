@@ -11,9 +11,9 @@ import asyncio
 from dataclasses import replace
 from pathlib import Path
 
-from ... import __version__
-from ...tui import Screen
-from ...update import (
+from zettcode import __version__
+from zettcode.tui import Screen
+from zettcode.update import (
     UpdateState,
     check_for_update,
     installed_version,
@@ -25,6 +25,7 @@ from ...update import (
     upgrade_command,
     write_state,
 )
+
 from .shell import PAGE_SCREEN, UPDATE_ROWS, ShellState
 from .widgets import LATER, UPGRADE, UpdatePage, bottom_panel
 

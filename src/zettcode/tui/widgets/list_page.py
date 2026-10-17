@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 
-from ...tui import SEPARATOR
+from zettcode.tui import SEPARATOR
+
 from ..core.events import KeyEvent
 from ..core.geometry import Rect
 from ..core.host import Host

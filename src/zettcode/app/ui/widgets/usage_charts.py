@@ -12,9 +12,9 @@ from __future__ import annotations
 from collections.abc import Sequence
 from datetime import date, timedelta
 
-from ....tui import BAR_EMPTY, ELLIPSIS
-from ....tui.render.text import display_width, truncate
-from ...agent.storage.ledger import Ledger, SessionUsage, Tally
+from zettcode.app.agent.storage.ledger import Ledger, SessionUsage, Tally
+from zettcode.tui import BAR_EMPTY, ELLIPSIS
+from zettcode.tui.render.text import display_width, truncate
 
 #: One drawn line: text paired with the role that colours it.
 Line = list[tuple[str, str]]

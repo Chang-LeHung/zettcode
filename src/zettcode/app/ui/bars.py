@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from ...plugins import (
+from zettcode.plugins import (
     ActivityState,
     DisplayState,
     ModelState,
@@ -18,8 +18,9 @@ from ...plugins import (
     UiRegion,
     UiSide,
 )
-from ...tui import HEADER, SEPARATOR, Span, Style, TextLine
-from ...tui.render import blend, display_width
+from zettcode.tui import HEADER, SEPARATOR, Span, Style, TextLine
+from zettcode.tui.render import blend, display_width
+
 from ..agent.agent.sessions import UNTITLED_SESSION
 from ..agent.conversation.shimmer import ShimmerFrame
 from ..agent.permission import Permission

@@ -38,7 +38,7 @@ from zett_agent.extensions.events import MessageTiming
 from zett_agent.messages import AnyMessage
 from zett_agent.model import ModelUsage
 
-from ...._compat import StrEnum
+from zettcode._compat import StrEnum
 
 STORE_FILE = "data.jsonl"
 STORE_VERSION = 1

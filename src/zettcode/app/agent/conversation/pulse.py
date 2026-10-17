@@ -7,7 +7,7 @@ often the terminal happens to repaint: a period is a number of seconds, and a st
 
 from __future__ import annotations
 
-from ....tui import RUNNING
+from zettcode.tui import RUNNING
 
 #: Animation steps per second: the rate the sweep, the running marker and the
 #: timers advance at, matching the frame loop's own ceiling. It used to be ten a

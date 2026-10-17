@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 
-from ..._compat import BaseExceptionGroup
+from zettcode._compat import BaseExceptionGroup
 
 #: The most characters of what a server said that an error carries: enough for a sentence, not a page of HTML.
 MAX_DETAIL = 200

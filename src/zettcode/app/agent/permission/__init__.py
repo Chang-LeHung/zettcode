@@ -33,7 +33,8 @@ from zett_agent.extensions.shell_approval import SHELL_APPROVAL_TOOL_NAME, Shell
 from zett_agent.messages import ToolCall
 from zett_agent.tools.base import ToolResult
 
-from ...._compat import StrEnum
+from zettcode._compat import StrEnum
+
 from .readonly import is_read_only
 
 

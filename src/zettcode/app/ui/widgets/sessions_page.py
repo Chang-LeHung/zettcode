@@ -5,10 +5,10 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from datetime import datetime, timezone
 
-from ....tui import SEPARATOR, ListItem, ListPage
-from ....tui.render import display_width
-from ...agent.agent.sessions import UNTITLED_SESSION
-from ...agent.storage import SessionInfo
+from zettcode.app.agent.agent.sessions import UNTITLED_SESSION
+from zettcode.app.agent.storage import SessionInfo
+from zettcode.tui import SEPARATOR, ListItem, ListPage
+from zettcode.tui.render import display_width
 
 
 def format_ago(moment: datetime, *, now: datetime | None = None) -> str:

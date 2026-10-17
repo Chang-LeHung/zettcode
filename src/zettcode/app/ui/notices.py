@@ -11,7 +11,8 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
-from ...tui import Anchor, Overlay, OverlaySlot, Screen, Toast
+from zettcode.tui import Anchor, Overlay, OverlaySlot, Screen, Toast
+
 from ..agent.extensions.usage import UsageSnapshot
 from ..commands import CommandUi
 from .shell import APPROVAL_ROWS, ASK_SCREEN, PAGE_SCREEN, ShellState

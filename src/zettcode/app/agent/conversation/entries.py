@@ -15,8 +15,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from ...._compat import StrEnum
-from ....tui import LineSource, Markdown
+from zettcode._compat import StrEnum
+from zettcode.tui import LineSource, Markdown
+
 from .text import THINKING_LABEL
 
 
