@@ -211,7 +211,7 @@ def test_session_bars_give_way_before_the_title_does():
     assert wide[0] == 14 and narrow[0] < wide[0] and tiny[0] == 0
     for width in (120, 100, 80, 60, 40, 30):
         track, title = charts.session_columns(width)
-        assert title >= 10
+        assert title >= 0, "a page too narrow for a title drops it rather than running over the edge"
 
 
 def test_a_session_row_is_the_width_of_the_page_it_was_drawn_for():
@@ -226,7 +226,7 @@ def test_a_session_row_is_the_width_of_the_page_it_was_drawn_for():
         ("m",),
     )
     ledger = ledger_of(models={"m": tally(10, 2)}, sessions=[row])
-    for width in (100, 60, 40):
+    for width in (120, 100, 60, 40, 30):
         _, body = charts.sessions_tab(ledger, width)
         assert charts.line_width(body[0]) <= width, width
 
@@ -504,3 +504,44 @@ def test_a_truncated_cjk_title_does_not_push_the_token_columns_out_by_a_column()
     # A code-point index counts a CJK title by characters, not columns, so measure the columns.
     starts = [display_width(line[: line.index("10")]) for line in lines]
     assert starts[0] == starts[1], "the counts start in the same column"
+
+
+def test_the_sessions_tab_shows_each_sessions_cache_hit_rate():
+    """Cached input is most of a long session's input; the row says how much, to two decimals."""
+    from datetime import datetime
+
+    from zettcode.app.agent.storage.ledger import SessionUsage
+
+    row = SessionUsage("s", "A title", datetime(2026, 10, 9), datetime(2026, 10, 16), Tally(1, 1000, 10, 750), ("m",))
+    head, body = charts.sessions_tab(ledger_of(models={"m": row.tally}, sessions=[row]), 100)
+
+    assert "Cached" in text_of(head[1])
+    assert "75.00%" in text_of(body[0])
+
+
+def test_a_cache_rate_is_written_to_two_decimals_everywhere_in_usage():
+    from datetime import datetime
+
+    from zettcode.app.agent.storage.ledger import SessionUsage
+
+    row = SessionUsage("s", "A title", datetime(2026, 10, 9), datetime(2026, 10, 16), Tally(1, 1000, 10, 0), ("m",))
+    ledger = ledger_of(models={"m": row.tally}, sessions=[row])
+    head, body = charts.sessions_tab(ledger, 100)
+    models_head, models_body = charts.models_tab(ledger, 100)
+
+    assert "0.00%" in text_of(head[0]), "the workspace total"
+    assert "0.00%" in text_of(body[0]), "the session"
+    assert any("0.00% cached" in text_of(line) for line in models_body), "each model"
+
+
+def test_the_cache_column_gives_way_before_the_counts_on_a_narrow_page():
+    """Two decimals need seven columns; the row keeps its counts and its title instead."""
+    from datetime import datetime
+
+    from zettcode.app.agent.storage.ledger import SessionUsage
+
+    row = SessionUsage("s", "A title", datetime(2026, 10, 9), datetime(2026, 10, 16), Tally(1, 1000, 10, 750), ("m",))
+    head, _ = charts.sessions_tab(ledger_of(models={"m": row.tally}, sessions=[row]), 40)
+
+    assert "Cached" not in text_of(head[1]), "no room for it here"
+    assert "Input" in text_of(head[1]) and "Output" in text_of(head[1])
