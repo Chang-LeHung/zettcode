@@ -10,7 +10,7 @@ lets a light theme and a dark one share them.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from zettcode.app.agent.storage.ledger import Ledger, SessionUsage, Tally
 from zettcode.tui import BAR_EMPTY, ELLIPSIS
@@ -27,6 +27,9 @@ EIGHTHS = " \u258f\u258e\u258d\u258c\u258b\u258a\u2589\u2588"
 
 #: Month names, written out here so a locale cannot change the width of a label.
 MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+#: Columns a token count takes in the sessions list: ``1.46B`` with room for a thousands unit.
+NUMBER = 7
 
 #: Day names in the order the calendar's rows run: Sunday first, as GitHub draws it.
 WEEKDAYS = ("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
@@ -153,10 +156,11 @@ def models_tab(ledger: Ledger, width: int) -> tuple[list[Line], list[Line]]:
 
 
 def sessions_tab(ledger: Ledger, width: int) -> tuple[list[Line], list[Line]]:
-    """Return the ``Sessions`` tab: one row for each session, newest first.
+    """Return the ``Sessions`` tab: one row for each session, last changed first.
 
-    A row says when the session began, what it is called, and its input and output, each as a
-    bar against the session that used the most. A terminal too narrow for bars gets the
+    A row says when the session began and when it last changed, what it is called, and its input
+    and output, each as a bar against the session that used the most. A terminal too narrow for
+    both times keeps the last change, which is what the order is; one too narrow for bars gets the
     numbers alone, because a bar of three cells is not a chart.
     """
     head: list[Line] = [summary(ledger)]
@@ -165,8 +169,10 @@ def sessions_tab(ledger: Ledger, width: int) -> tuple[list[Line], list[Line]]:
     most_in = max(row.tally.input_tokens for row in ledger.sessions)
     most_out = max(row.tally.output_tokens for row in ledger.sessions)
     track, title_room = session_columns(width)
+    stamp, count = stamp_columns(width)
     column = track + 1 + NUMBER if track else NUMBER
-    heading = f"{'Began':<8}{fit('Title', title_room)}  "
+    heading = (fit("Began", stamp) + "  " if count == 2 else "") + fit("Updated", stamp) + "  "
+    heading += f"{fit('Title', title_room)}  "
     for name in ("Input", "Output"):
         heading += fit(name, column, right=not track) + "  "
     head.append([(heading.rstrip(), "muted")])
@@ -174,12 +180,25 @@ def sessions_tab(ledger: Ledger, width: int) -> tuple[list[Line], list[Line]]:
         head.append([("Bars use a square-root scale against the busiest session, so small ones still show.", "muted")])
     body: list[Line] = []
     for row in ledger.sessions:
-        body.append(_session_line(row, title_room, track, most_in, most_out))
+        body.append(_session_line(row, title_room, track, most_in, most_out, stamp, count))
     return head, body
 
 
-#: Columns a token count takes in the sessions list: ``1.46B`` with room for a thousands unit.
-NUMBER = 7
+#: Columns a timestamp takes when the month, day, hour and minute are all written.
+STAMP = 12
+
+
+def stamp_columns(width: int) -> tuple[int, int]:
+    """Return how wide a timestamp is and how many the page has room for.
+
+    Two times (began, last changed) in full need 28 columns; below that they lose the clock, and
+    below 52 columns only the last change is kept — the order is by it, and a row is still a row.
+    """
+    if width >= 76:
+        return STAMP, 2
+    if width >= 52:
+        return 8, 2
+    return 8, 1
 
 
 def session_columns(width: int) -> tuple[int, int]:
@@ -188,24 +207,42 @@ def session_columns(width: int) -> tuple[int, int]:
     The bars give way before the title does: a title under 18 columns is not a title, so the
     bars shrink and then go, and the numbers are left alone.
     """
+    stamp, count = stamp_columns(width)
+    prefix = count * (stamp + 2)
     track = 0
     for track in (14, 10, 6, 0):
         column = track + 1 + NUMBER if track else NUMBER
-        if width - (10 + 2 * (column + 2)) >= 18:
+        if width - (prefix + 2 + 2 * (column + 2)) >= 18:
             break
     column = track + 1 + NUMBER if track else NUMBER
-    return track, max(10, width - (10 + 2 * (column + 2)))
+    return track, max(10, width - (prefix + 2 + 2 * (column + 2)))
 
 
-def _session_line(row: SessionUsage, title_room: int, track: int, most_in: int, most_out: int) -> Line:
+def _stamp(moment: datetime, width: int) -> str:
+    """Return one time as ``Oct 14 09:12``, ``Oct 14``, or the date padded to the column."""
+    label = f"{MONTHS[moment.month - 1]} {moment.day:>2}"
+    if width > 8:
+        label += f" {moment.hour:02}:{moment.minute:02}"
+    return f"{label:<{width}}"
+
+
+def _session_line(
+    row: SessionUsage, title_room: int, track: int, most_in: int, most_out: int, stamp: int, count: int
+) -> Line:
     """Return one session's row for the ``Sessions`` tab."""
     began = row.started.astimezone()
+    updated = row.updated.astimezone()
     title = row.title or "(untitled)"
-    line: Line = [
-        (f"{MONTHS[began.month - 1]} {began.day:>2}  ", "muted"),
-        (fit(title, title_room), "text" if row.title else "muted"),
-        ("  ", "text"),
-    ]
+    line: Line = []
+    if count == 2:
+        line.extend(((f"{_stamp(began, stamp)}", "muted"), ("  ", "text")))
+    line.extend(((f"{_stamp(updated, stamp)}", "muted"), ("  ", "text")))
+    line.extend(
+        (
+            (fit(title, title_room), "text" if row.title else "muted"),
+            ("  ", "text"),
+        )
+    )
     for value, most, role in (
         (row.tally.input_tokens, most_in, "input"),
         (row.tally.output_tokens, most_out, "output"),

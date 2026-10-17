@@ -391,3 +391,23 @@ async def test_the_index_keeps_the_moment_so_a_new_time_zone_moves_the_day(tmp_p
     finally:
         monkeypatch.undo()
         time.tzset()
+
+
+async def test_sessions_are_ordered_by_when_they_last_changed_not_when_they_began(tmp_path: Path):
+    """The list answers "what was I working on", so the last write decides the order."""
+    import os
+    import time
+
+    store = SessionStore(tmp_path, tmp_path / WORK)
+    await answer(store, "started-first", "r1", "m", spent(10, 1))
+    await answer(store, "started-last", "r2", "m", spent(20, 2))
+    now = time.time()
+    for path in tmp_path.rglob("data.jsonl"):
+        # The session that began first was touched last, and the other way round.
+        touched = now - (0 if path.parent.name == "started-first" else 3600)
+        os.utime(path, (touched, touched))
+
+    ledger = reader(tmp_path).read()
+
+    assert [row.session_id for row in ledger.sessions] == ["started-first", "started-last"]
+    assert ledger.sessions[0].started < ledger.sessions[1].started, "the order is not the start order"

@@ -444,3 +444,37 @@ def test_the_page_reads_what_the_reader_produced(tmp_path: Path):
     ledger = LedgerReader(tmp_path, tmp_path / "work").read()
 
     assert UsagePage(ledger).ledger is ledger
+
+
+def test_the_sessions_tab_shows_both_when_a_session_began_and_when_it_last_changed():
+    """The order is the last change, so the page has to say what that was, next to the start."""
+    from datetime import datetime
+
+    from zettcode.app.agent.storage.ledger import SessionUsage
+
+    row = SessionUsage(
+        "s",
+        "A title",
+        datetime(2026, 10, 9, 8, 0),
+        datetime(2026, 10, 16, 17, 5),
+        tally(10, 2),
+        ("m",),
+    )
+    head, body = charts.sessions_tab(ledger_of(models={"m": tally(10, 2)}, sessions=[row]), 100)
+
+    assert "Began" in text_of(head[1]) and "Updated" in text_of(head[1])
+    line = text_of(body[0])
+    assert "Oct  9 08:00" in line and "Oct 16 17:05" in line
+
+
+def test_a_narrow_sessions_tab_keeps_the_last_change_and_drops_the_start():
+    """A row is still a row at forty columns; the created time is what gives way, not the order's own time."""
+    from datetime import datetime
+
+    from zettcode.app.agent.storage.ledger import SessionUsage
+
+    row = SessionUsage("s", "A title", datetime(2026, 10, 9), datetime(2026, 10, 16), tally(10, 2), ("m",))
+    head, body = charts.sessions_tab(ledger_of(models={"m": tally(10, 2)}, sessions=[row]), 40)
+
+    assert "Updated" in text_of(head[1]) and "Began" not in text_of(head[1])
+    assert "Oct 16" in text_of(body[0]) and "Oct  9" not in text_of(body[0])
