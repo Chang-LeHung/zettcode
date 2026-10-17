@@ -141,6 +141,14 @@ version, the next start shows a panel over the conversation:
 The offer comes from that file, never from the network, so a machine that is
 offline simply hears nothing about versions.
 
+**I don't want to wait to be offered.** Run `zettcode update` from a shell: it asks PyPI,
+says so if you already have the newest release, and otherwise runs the same upgrade as
+**Upgrade now** with the package manager's output on your terminal. It then reads the installed
+version back from a fresh process and reports `updated 0.1.0 → 0.2.0` only when that is what
+it found (otherwise it says the version is unchanged or could not be read back, and exits
+with status 1 for a failure). If PyPI cannot be reached it still runs the upgrade and lets the
+package manager decide. Restart any open ZettCode to use the new version.
+
 **I upgraded and it still says the old version.** Check which copy you are starting:
 `zettcode --version` prints the version, and `which zettcode` the command. If ZettCode
 confirmed the install but the program you start is older, something else is supplying the code —

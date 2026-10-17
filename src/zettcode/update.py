@@ -39,6 +39,7 @@ from tempfile import NamedTemporaryFile
 from typing import Any, TypeVar
 
 from . import __version__
+from .paths import DEFAULT_UPDATE_FILE
 
 Result = TypeVar("Result")
 
@@ -423,3 +424,80 @@ def display_command(command: Sequence[str]) -> str:
     if len(argv) > 2 and argv[1] == "-m" and Path(argv[0]).name.lower().startswith(("python", "pypy")):
         return " ".join(argv[2:])
     return " ".join(argv)
+
+
+def _run_in_terminal(command: Sequence[str]) -> int:
+    """Run the package manager with the reader's own terminal, so its progress is what they see."""
+    try:
+        return subprocess.run(list(command), check=False).returncode
+    except OSError as error:
+        print(f"could not run {display_command(command)}: {error}", file=sys.stderr)
+        return 127
+
+
+def _installed_now() -> str | None:
+    """Read the installed version back from a fresh interpreter (see :func:`installed_version`)."""
+    return asyncio.run(installed_version())
+
+
+def update_program(
+    *,
+    current: str = __version__,
+    path: Path | None = None,
+    fetch: Callable[[], str] = fetch_latest,
+    run: Callable[[Sequence[str]], int] = _run_in_terminal,
+    read_installed: Callable[[], str | None] = _installed_now,
+    say: Callable[[str], None] = print,
+) -> int:
+    """Install the newest release now, from the command line: what ``zettcode update`` does.
+
+    The panel inside the program offers the same upgrade; this is for the reader who would rather ask for it
+    than wait to be offered. It asks the index first, so a program that is already the newest says so and
+    runs nothing; if the index cannot be reached it goes on regardless, because the package manager knows
+    better than a failed request whether there is anything to install. The package manager's own output is
+    shown, and its exit status is not believed on its own (see the module notes): the version is read back
+    from a fresh interpreter, and only that is reported and recorded.
+
+    Args:
+        current: The version running now.
+        path: The state file the confirmed install is written to; defaults to ``~/.zettcode/update.json``.
+        fetch: Supplies the newest version; injectable so tests stay offline.
+        run: Runs the upgrade command and returns its exit status.
+        read_installed: Reads the version installed now, from outside this process.
+        say: Where the report goes.
+
+    Returns:
+        The exit status: ``0`` when ZettCode is the newest release or was updated (or the update ran and the
+        result could not be read back), ``1`` when the upgrade failed or left the old version.
+    """
+    say(f"ZettCode {current}")
+    latest: str | None
+    try:
+        latest = fetch()
+    except Exception:  # noqa: BLE001 - offline, a proxy, an odd answer: let the package manager decide
+        latest = None
+    if latest is not None and not is_newer(latest, current):
+        say(f"already the newest release ({current})")
+        return 0
+    command = upgrade_command()
+    say(f"updating{f' to {latest}' if latest else ''}: {display_command(command)}")
+    status = run(command)
+    if status != 0:
+        say(f"the update failed (exit status {status}); run it yourself: {' '.join(command)}")
+        return 1
+    installed = read_installed()
+    if installed is None:
+        say("the update ran, but the installed version could not be read back — check with `zettcode --version`")
+        return 0
+    if not is_newer(installed, current):
+        if latest is not None:
+            say(f"ZettCode is still {installed}, not {latest}: the package index may not list it yet; try again soon")
+        else:
+            say(f"ZettCode is {installed}: there was nothing newer to install")
+        return 1 if latest is not None else 0
+    try:
+        record_install(path if path is not None else DEFAULT_UPDATE_FILE, installed)
+    except OSError:
+        pass  # the install happened; failing to write it down must not make it look as if it had not
+    say(f"updated {current} → {installed}; restart ZettCode to use it")
+    return 0

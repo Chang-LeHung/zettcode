@@ -475,7 +475,9 @@ def test_starting_the_program_tunes_the_collector_before_anything_else_runs(monk
 
     calls: list[str] = []
     monkeypatch.setattr(cli, "tune_collector", lambda: calls.append("tuned"))
-    monkeypatch.setattr(cli, "parse_args", lambda: SimpleNamespace(dry_run=False, resume=None, auto=False))
+    monkeypatch.setattr(
+        cli, "parse_args", lambda: SimpleNamespace(dry_run=False, resume=None, auto=False, command=None)
+    )
     monkeypatch.setattr(cli, "_name_process", lambda: calls.append("named"))
     monkeypatch.setattr(cli, "launch", lambda options: calls.append("launched"))
     monkeypatch.setattr(cli.asyncio, "run", lambda coroutine: calls.append(coroutine))

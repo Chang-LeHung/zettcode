@@ -4,7 +4,7 @@ Almost everything is configured in ``~/.zettcode/config.toml`` (see
 :mod:`zettcode.config`), not on the command line: ``-w``/``--workspace`` picks
 the directory to work in, ``-v``/``--version`` prints the version, ``-r``/``--resume`` picks the stored session to open
 instead of a fresh one, and ``$ZETTCODE_CONFIG`` can point at a different
-config file.
+config file. ``zettcode update`` installs the newest release and exits.
 
 Nothing beyond the standard library is imported at module level: ``zettcode
 --help`` prints and exits, and paying for the agent runtime, the widget
@@ -40,12 +40,14 @@ class Options:
         resume: Stored session to open instead of a fresh one, if named.
         auto: Start with the shell permission at ``auto``, so no command asks.
         dry_run: Run the startup and exit instead of taking the terminal.
+        command: The subcommand named (``"update"``), or ``None`` to start a session.
     """
 
     workspace: Path
     resume: str | None = None
     auto: bool = False
     dry_run: bool = False
+    command: str | None = None
 
 
 def version_text() -> str:
@@ -121,8 +123,22 @@ def parse_args(argv: list[str] | None = None) -> Options:
         action="store_true",
         help="run the startup, paint one frame, and exit quietly (for profiling)",
     )
+    commands = parser.add_subparsers(dest="command", metavar="COMMAND")
+    commands.add_parser(
+        "update",
+        help="install the newest release and exit",
+        description="Install the newest release of ZettCode with the package manager it was installed with.",
+    )
+    resume = commands.add_parser(
+        "resume",
+        help="open a stored session by id (same as --resume)",
+        description="Open a stored session instead of starting a new one; the same as `zettcode --resume SESSION`.",
+    )
+    resume.add_argument("session", metavar="SESSION", help="the session's id, as printed when it ended")
     args = parser.parse_args(argv)
-    return Options(workspace=args.workspace, resume=args.resume, auto=args.auto, dry_run=args.dry_run)
+    return Options(
+        workspace=args.workspace, resume=args.resume, auto=args.auto, dry_run=args.dry_run, command=args.command
+    )
 
 
 def workspace_from_args(argv: list[str] | None = None) -> Path:
@@ -454,6 +470,10 @@ def tune_collector() -> None:
 def main() -> None:
     """Installed console-script entry point."""
     options = parse_args()
+    if options.command == "update":
+        from .update import update_program
+
+        raise SystemExit(update_program())
     tune_collector()
     _name_process()
     try:
