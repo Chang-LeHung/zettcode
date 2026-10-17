@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from zettcode.app.agent.conversation.entries import EditEntry, EntryStatus, ToolEntry, WriteEntry
@@ -187,9 +189,32 @@ def test_the_diff_stands_in_for_the_tools_own_one_line_answer():
 
 def test_additions_are_painted_as_additions_and_deletions_as_deletions():
     lines = _styled(_edit_transcript([_edit("x = 1", "x = 2")]))
-    colours = {span.text: span.style.foreground for line in lines for span in line.spans}
+    colours = {span.text.strip(): span.style.foreground for line in lines for span in line.spans}
 
     assert colours["- x = 1"] == DARK.deletion and colours["+ x = 2"] == DARK.addition
+
+
+def test_added_and_removed_lines_sit_on_a_band_that_runs_the_width_of_the_row():
+    """The sign and the text are not enough on their own: each changed line is a band, so it reads as a line."""
+    for theme in (DARK, LIGHT):
+        source = TranscriptSource(_edit_transcript([_edit("x = 1", "x = 2")]), theme=theme)
+        lines = [source.line(i, 70) for i in range(source.count(70))]
+        spans = {span.text.strip(): span for line in lines for span in line.spans}
+
+        assert spans["+ x = 2"].style.background == theme.addition_fill != theme.deletion_fill
+        assert spans["- x = 1"].style.background == theme.deletion_fill
+        assert spans["+ x = 2"].width == spans["- x = 1"].width, "both bands are the same width"
+        context = _edit_transcript([_edit("a\nb\nc", "a\nB\nc")])
+        quiet = TranscriptSource(context, theme=theme)
+        rows = [quiet.line(i, 70) for i in range(quiet.count(70))]
+        assert all(span.style.background is None for row in rows for span in row.spans if span.text.strip() == "b")
+
+
+def test_a_palette_can_name_the_band_and_otherwise_it_is_the_line_colour_mixed_into_the_page():
+    assert DARK.addition_fill not in (DARK.addition, DARK.surface)
+    assert replace(DARK, diff_added_fill="#102030").addition_fill == "#102030"
+    assert replace(DARK, diff_removed_fill="#302010").deletion_fill == "#302010"
+    assert replace(DARK, background="#000000").addition_fill != DARK.addition_fill, "it follows the page"
 
 
 def test_context_lines_are_quiet_and_the_break_between_edits_is_quieter_still():
@@ -351,7 +376,7 @@ def test_a_diff_is_painted_in_the_light_palette_in_the_light_palettes_colours():
     transcript = _edit_transcript([_edit("x = 1", "x = 2")])
     source = TranscriptSource(transcript, theme=LIGHT)
     lines = [source.line(i, 70) for i in range(source.count(70))]
-    colours = {span.text: span.style.foreground for line in lines for span in line.spans}
+    colours = {span.text.strip(): span.style.foreground for line in lines for span in line.spans}
 
     assert colours["- x = 1"] == LIGHT.deletion and colours["+ x = 2"] == LIGHT.addition
 
@@ -418,7 +443,7 @@ def test_the_write_diff_stands_in_for_the_tools_own_answer():
 
 def test_written_lines_are_painted_in_the_addition_colour_and_nothing_is_painted_as_removed():
     lines = _styled(_write_transcript("a\nb\n"))
-    colours = {span.text: span.style.foreground for line in lines for span in line.spans}
+    colours = {span.text.strip(): span.style.foreground for line in lines for span in line.spans}
 
     assert colours["+ a"] == DARK.addition and colours["+ b"] == DARK.addition
     assert not any(c == DARK.deletion for c in colours.values())
