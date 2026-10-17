@@ -468,6 +468,7 @@ async def launch(options: Options) -> None:
             Path(options.workspace).expanduser().resolve(),
             resuming=options.resume is not None,
             model=labels.model_name(config_path()),
+            hidden=labels.hidden_parts(config_path()),
         ),
         theme=picked or DARK,
         auto_theme=picked is None,

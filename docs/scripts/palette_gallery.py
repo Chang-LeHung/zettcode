@@ -68,7 +68,7 @@ class PreviewRows(ShellRows):
     """The real header, but naming an illustrative project instead of a temporary directory."""
 
     def render_header_left(self, context) -> str:
-        return header_left(Path("~/projects/api"), context.session.name, context.session.handle)
+        return header_left(Path("~/projects/api"), context.session.name, context.session.handle).text()
 
 
 def preview_plugins() -> tuple[object, ...]:

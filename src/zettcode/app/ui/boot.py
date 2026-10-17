@@ -17,6 +17,7 @@ so the box that is already on screen is the box that stays there.
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from pathlib import Path
 
 from zettcode.tui import PROMPT, Canvas, Constraints, Rule, Size, StatusBar, Text, TextArea, TextLine, VBox, Widget
@@ -46,6 +47,7 @@ def boot_tree(
     resuming: bool = False,
     model: str | None = None,
     effort: str = labels.DEFAULT_EFFORT,
+    hidden: Collection[str] = (),
 ) -> VBox:
     """Return the frame drawn while the application is still loading.
 
@@ -64,6 +66,8 @@ def boot_tree(
             the caller — this frame draws before the settings are loaded. Without
             one that side stays empty and the shell fills it in.
         effort: Reasoning effort to show beside it.
+        hidden: Names of the header and status-line parts the config file switches off, so the frame is the
+            rows the shell will draw and not a row with parts it is about to take away.
     """
     composer = TextArea(
         prompt=f"{PROMPT} ",
@@ -74,14 +78,20 @@ def boot_tree(
     return VBox(
         [
             Slot(
-                StatusBar(labels.header_left(workspace, UNTITLED), labels.header_right(model, effort) if model else ""),
+                StatusBar(
+                    labels.header_left(workspace, UNTITLED).text(hidden),
+                    labels.header_right(model, effort).text(hidden) if model else "",
+                ),
                 size=1,
             ),
             Slot(Rule(), size=1),
             Slot(Text("") if resuming else Welcome(), flex=1),
             Slot(Text(""), size=1),
             Slot(composer, size=lambda width: composer.preferred_height(width)),
-            Slot(StatusBar(labels.status_left(IDLE_STATUS), labels.status_right()), size=1),
+            Slot(
+                StatusBar(labels.status_left(IDLE_STATUS).text(hidden), labels.status_right().text(hidden)),
+                size=1,
+            ),
         ]
     )
 

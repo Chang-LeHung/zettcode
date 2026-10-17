@@ -30,6 +30,7 @@ from .paths import (
     config_path,
 )
 from .providers import Api
+from .statusline import NAMES as STATUSLINE_NAMES
 
 #: The concrete type :func:`_typed` verifies a raw config value against.
 T = TypeVar("T")
@@ -49,6 +50,7 @@ CONFIGURABLE = frozenset(
         "sessions",
         "compaction",
         "ui",
+        "statusline",
     }
 )
 
@@ -109,6 +111,9 @@ SESSIONS_KEYS = frozenset({"enabled"})
 
 #: Keys the ``[ui]`` table may set.
 UI_KEYS = frozenset({"theme"})
+
+#: Keys the ``[statusline]`` table may set: the name of each part of the header and the status line.
+STATUSLINE_KEYS = frozenset(STATUSLINE_NAMES)
 
 #: Keys the ``[harness]`` table may set.
 HARNESS_KEYS = frozenset({"subagent", "subagent_max_iterations", "todowrite"})
@@ -325,6 +330,9 @@ class ZettCodeConfig:
             merges them, a server named in both taken from the workspace's file.
         self_compaction: Whether a session lets the model request compaction unless it says otherwise;
             the default a new session starts with, and what ``/self-compact`` shows until it is changed.
+        statusline_hidden: The names of the header and status-line parts the reader switched off in the
+            ``[statusline]`` table (``ctx = false``); see :mod:`zettcode.statusline`. Every part not named
+            is shown.
         plugins_enabled: Load third-party plugins published under the
             ``zettcode.plugins`` entry-point group. The builtin rows always
             load, so switching this off leaves the shell looking the same.
@@ -368,6 +376,7 @@ class ZettCodeConfig:
     mcp_config: Path | None = None
     mcp_scope: str = DEFAULT_SCOPE
     self_compaction: bool = False
+    statusline_hidden: tuple[str, ...] = ()
     plugins_enabled: bool = True
     disabled_plugins: tuple[str, ...] = ()
     subagent_enabled: bool = True
@@ -397,6 +406,8 @@ class ZettCodeConfig:
             raise ValueError(f"skills_scope must be one of {', '.join(sorted(SCOPES))}")
         if self.mcp_scope not in SCOPES:
             raise ValueError(f"mcp_scope must be one of {', '.join(sorted(SCOPES))}")
+        if stray := [name for name in self.statusline_hidden if name not in STATUSLINE_KEYS]:
+            raise ValueError(f"statusline_hidden names no part: {', '.join(stray)}")
         object.__setattr__(self, "workspace", workspace)
         object.__setattr__(self, "store", store)
         object.__setattr__(
@@ -676,6 +687,7 @@ def load_config(
     compaction = _read_table(data.get("compaction"), "compaction", source, COMPACTION_KEYS)
     sessions = _read_table(data.get("sessions"), "sessions", source, SESSIONS_KEYS)
     ui = _read_table(data.get("ui"), "ui", source, UI_KEYS)
+    statusline = _read_table(data.get("statusline"), "statusline", source, STATUSLINE_KEYS)
 
     return ZettCodeConfig(
         workspace=Path(workspace),
@@ -702,6 +714,11 @@ def load_config(
         mcp_config=_read_mcp_config(mcp.get("config"), source),
         mcp_scope=_read_scope(mcp.get("scope"), source, "mcp"),
         self_compaction=bool(_setting(compaction, "self", bool, False)),
+        statusline_hidden=tuple(
+            name
+            for name in STATUSLINE_NAMES
+            if not _typed(statusline.get(name, True), f"Config key 'statusline.{name}' in {source}", bool)
+        ),
         plugins_enabled=bool(_setting(plugins, "enabled", bool, True)),
         disabled_plugins=_read_disabled_plugins(plugins.get("disable"), source),
         subagent_enabled=bool(_setting(harness, "subagent", bool, True)),

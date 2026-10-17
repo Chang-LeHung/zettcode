@@ -32,6 +32,7 @@ A command is drawn in a different colour as soon as it is one, so you can see wh
 | `/usage` | Open a page of what this project's sessions have spent: tokens by model, by session, and a calendar of the days. See [Token usage](/guide/usage). |
 | `/compact` | Summarize the conversation now, instead of waiting for the window to fill. |
 | `/self-compact` | Self-compaction: let the model compact its own context when it decides the detail is no longer needed. `/self-compact` opens a panel with a rail for this session and one for the default of every session; `on` / `off` / `default` set this session, `global on` / `global off` write the default into `config.toml`. See [Self-compaction](#self-compaction). |
+| `/statusline` | Choose which named parts of the header and the status line are shown — `ctx`, `cache`, `workspace`, and so on. `/statusline` opens a panel (↑ ↓ pick a part, ← → hide or show it, `Enter` applies); `/statusline hide ctx speed` and `/statusline show all` do the same from the keyboard. Saved to `[statusline]` in `config.toml`. See [Choosing what is shown](/guide/interface#choosing-what-is-shown). |
 | `/title` | Name this session: `/title users endpoint`. On its own, it reports the current name. |
 | `/export` | Write this session to a standalone HTML file: `/export [path]`. |
 | `/quit`, `/exit` | Leave. The shell prints the command that reopens the session. |

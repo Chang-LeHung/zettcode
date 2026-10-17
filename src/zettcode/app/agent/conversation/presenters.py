@@ -232,6 +232,36 @@ class Presenter(Generic[E], ABC):
         return [inset_line(row, margin) for row in layout_rich_lines(source, room)]
 
 
+def _welcome_label(label: str, theme: Theme, *, titled: bool) -> list[Span]:
+    """Style one label of the banner: the title in bold, everything after it in the quiet colour.
+
+    The title line is the name and, two spaces after it, the version. The name is the one bold thing; the
+    version is the same line's quiet part, so it reads as a fact about the name rather than as part of it.
+    """
+    quiet = Style(foreground=theme.subtle)
+    if titled:
+        return [Span(label, quiet)]
+    name, gap, rest = _after_indent(label)
+    spans = [Span(name, Style(foreground=theme.text, bold=True))]
+    if rest:
+        spans.append(Span(gap + rest, quiet))
+    return spans
+
+
+def _after_indent(label: str) -> tuple[str, str, str]:
+    """Split an indented title into its name (indent included), the gap, and what follows the gap."""
+    body = label.lstrip()
+    indent = label[: len(label) - len(body)]
+    name, gap, rest = body.partition("  ")
+    return indent + name, gap, rest.strip()
+
+
+def _unindented(spans: list[Span]) -> list[Span]:
+    """Return the spans of a label without the indent it has beside the mark, for stacking under it."""
+    first = spans[0]
+    return [Span(first.text.lstrip(), first.style), *spans[1:]]
+
+
 class WelcomePresenter(Presenter[TextEntry]):
     """Draw the shared brand pixels unchanged, with themed title and hint text."""
 
@@ -252,9 +282,9 @@ class WelcomePresenter(Presenter[TextEntry]):
                 marks.append(TextLine(tuple(spans)))
                 label = line[2 + len(mark.text) :]
                 if label:
-                    style = Style(foreground=theme.subtle) if titled else Style(foreground=theme.text, bold=True)
-                    spans.append(Span(label, style))
-                    labels.append(TextLine((Span(label.lstrip(), style),)))
+                    shown = _welcome_label(label, theme, titled=titled)
+                    spans.extend(shown)
+                    labels.append(TextLine(tuple(_unindented(shown))))
                     titled = True
                 lines.append(TextLine(tuple(spans)))
             else:
