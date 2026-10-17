@@ -95,8 +95,8 @@ def fit(text: str, width: int, *, right: bool = False) -> str:
 
 
 def percent(share: float | None) -> str:
-    """Return a share as a whole percent, or a dash when there was nothing to share."""
-    return "\u2014" if share is None else f"{share * 100:.0f}%"
+    """Return a share as a percent to two decimals, or a dash when there was nothing to share."""
+    return "\u2014" if share is None else f"{share * 100:.2f}%"
 
 
 def summary(ledger: Ledger) -> Line:
@@ -158,10 +158,10 @@ def models_tab(ledger: Ledger, width: int) -> tuple[list[Line], list[Line]]:
 def sessions_tab(ledger: Ledger, width: int) -> tuple[list[Line], list[Line]]:
     """Return the ``Sessions`` tab: one row for each session, last changed first.
 
-    A row says when the session began and when it last changed, what it is called, and its input
-    and output, each as a bar against the session that used the most. A terminal too narrow for
-    both times keeps the last change, which is what the order is; one too narrow for bars gets the
-    numbers alone, because a bar of three cells is not a chart.
+    A row says when the session began and when it last changed, what it is called, its input
+    and output as bars, and the share of that input the provider served from its cache. A
+    terminal too narrow for both times keeps the last change, which is what the order is; one
+    too narrow for bars gets the numbers alone, because a bar of three cells is not a chart.
     """
     head: list[Line] = [summary(ledger)]
     if not ledger.sessions:
@@ -175,12 +175,15 @@ def sessions_tab(ledger: Ledger, width: int) -> tuple[list[Line], list[Line]]:
     heading += f"{fit('Title', title_room)}  "
     for name in ("Input", "Output"):
         heading += fit(name, column, right=not track) + "  "
+    share = shows_share(width)
+    if share:
+        heading += fit("Cached", SHARE, right=not track) + "  "
     head.append([(heading.rstrip(), "muted")])
     if track:
         head.append([("Bars use a square-root scale against the busiest session, so small ones still show.", "muted")])
     body: list[Line] = []
     for row in ledger.sessions:
-        body.append(_session_line(row, title_room, track, most_in, most_out, stamp, count))
+        body.append(_session_line(row, title_room, track, most_in, most_out, stamp, count, share))
     return head, body
 
 
@@ -201,21 +204,34 @@ def stamp_columns(width: int) -> tuple[int, int]:
     return 8, 1
 
 
+#: Columns a cache-hit share takes: ``100.00%``.
+SHARE = 7
+
+
+def shows_share(width: int) -> bool:
+    """Return whether the cache column fits beside a readable title; below that the two counts stay."""
+    stamp, count = stamp_columns(width)
+    prefix = count * (stamp + 2)
+    return width - (prefix + 2 + 2 * (NUMBER + 2) + SHARE + 2) >= 10
+
+
 def session_columns(width: int) -> tuple[int, int]:
     """Return the width of a session's bars and of its title for a page ``width`` columns wide.
 
     The bars give way before the title does: a title under 18 columns is not a title, so the
-    bars shrink and then go, and the numbers are left alone.
+    bars shrink and then go; then the cache column goes, and past that the title itself shrinks,
+    so a row never runs past the page and takes the counts off its right edge.
     """
     stamp, count = stamp_columns(width)
     prefix = count * (stamp + 2)
+    extra = SHARE + 2 if shows_share(width) else 0
     track = 0
     for track in (14, 10, 6, 0):
         column = track + 1 + NUMBER if track else NUMBER
-        if width - (prefix + 2 + 2 * (column + 2)) >= 18:
+        if width - (prefix + 2 + 2 * (column + 2) + extra) >= 18:
             break
     column = track + 1 + NUMBER if track else NUMBER
-    return track, max(10, width - (prefix + 2 + 2 * (column + 2)))
+    return track, max(0, width - (prefix + 2 + 2 * (column + 2) + extra))
 
 
 def _stamp(moment: datetime, width: int) -> str:
@@ -227,7 +243,7 @@ def _stamp(moment: datetime, width: int) -> str:
 
 
 def _session_line(
-    row: SessionUsage, title_room: int, track: int, most_in: int, most_out: int, stamp: int, count: int
+    row: SessionUsage, title_room: int, track: int, most_in: int, most_out: int, stamp: int, count: int, share: bool
 ) -> Line:
     """Return one session's row for the ``Sessions`` tab."""
     began = row.started.astimezone()
@@ -251,6 +267,10 @@ def _session_line(
             line.extend(meter(value, most, track, role, curve=0.5))
             line.append((" ", "text"))
         line.append((f"{compact(value):>{NUMBER}}", "text" if value else "muted"))
+        line.append(("  ", "text"))
+    share_value = row.tally.cache_share
+    if share:
+        line.append((f"{percent(share_value):>{SHARE}}", "text" if share_value is not None else "muted"))
         line.append(("  ", "text"))
     return line
 
