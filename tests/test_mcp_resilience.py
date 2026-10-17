@@ -475,7 +475,7 @@ def test_the_runtime_builds_its_mcp_extension_through_the_forgiving_factory():
     from zettcode.app.agent import runtime
 
     source = inspect.getsource(runtime.integration_extensions)
-    assert "build_mcp_extension(path)" in source and "ReportingMcpExtension(" not in source
+    assert "build_scoped_mcp_extension(" in source and "ReportingMcpExtension(" not in source
 
 
 def test_the_module_that_imports_the_mcp_sdk_is_not_imported_by_the_transcript():

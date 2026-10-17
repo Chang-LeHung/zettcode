@@ -317,7 +317,7 @@ async def test_an_anthropic_model_builds_the_messages_adapter(tmp_path, monkeypa
     monkeypatch.setattr("zett_agent.providers.openai.OpenAIProvider", FakeOpenAI)
     monkeypatch.setattr("zett_agent.client.create_agent", fake_create_agent)
     monkeypatch.setattr(runtime_module.os, "chdir", lambda path: None)
-    monkeypatch.setattr(runtime_module, "DEFAULT_MCP_CONFIG", tmp_path / "absent-mcp.json")
+    monkeypatch.setattr("zettcode.config.DEFAULT_MCP_CONFIG", tmp_path / "absent-mcp.json")
     config = ZettCodeConfig(
         workspace=tmp_path,
         models=(ModelConfig(model="claude-sonnet-4-5", token="anthropic-key", anthropic=True),),
@@ -358,7 +358,7 @@ async def test_an_anthropic_entry_hands_the_adapter_the_corrected_base_url(tmp_p
     monkeypatch.setattr("zett_agent.providers.anthropic.AnthropicProvider", FakeAnthropic)
     monkeypatch.setattr("zett_agent.client.create_agent", fake_create_agent)
     monkeypatch.setattr(runtime_module.os, "chdir", lambda path: None)
-    monkeypatch.setattr(runtime_module, "DEFAULT_MCP_CONFIG", tmp_path / "absent-mcp.json")
+    monkeypatch.setattr("zettcode.config.DEFAULT_MCP_CONFIG", tmp_path / "absent-mcp.json")
     config = ZettCodeConfig(
         workspace=tmp_path,
         models=(ModelConfig(model="claude", token="t", anthropic=True, base_url=written),),
@@ -655,7 +655,7 @@ async def test_runtime_switches_models_and_closes_every_provider(tmp_path, monke
     monkeypatch.setattr("zett_agent.client.create_agent", fake_create_agent)
     monkeypatch.setattr(runtime_module.os, "chdir", lambda path: None)
     # A developer's own ~/.zettcode/mcp.json must not decide what this test sees.
-    monkeypatch.setattr(runtime_module, "DEFAULT_MCP_CONFIG", tmp_path / "absent-mcp.json")
+    monkeypatch.setattr("zettcode.config.DEFAULT_MCP_CONFIG", tmp_path / "absent-mcp.json")
     first = ModelConfig(model="shared-id", display_model="First", token="first", base_url="http://first.test")
     second = ModelConfig(
         model="shared-id",
@@ -733,7 +733,7 @@ async def test_the_runtime_shares_one_permission_policy_with_the_layers_that_enf
 
     monkeypatch.setattr("zett_agent.client.create_agent", fake_create_agent)
     monkeypatch.setattr(runtime_module.os, "chdir", lambda path: None)
-    monkeypatch.setattr(runtime_module, "DEFAULT_MCP_CONFIG", tmp_path / "absent-mcp.json")
+    monkeypatch.setattr("zettcode.config.DEFAULT_MCP_CONFIG", tmp_path / "absent-mcp.json")
 
     runtime = await runtime_module.ZettCodeRuntime.create(_config_with(tmp_path))
     extensions = captured["extensions"]

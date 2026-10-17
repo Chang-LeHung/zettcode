@@ -40,13 +40,14 @@ builds on costs more than the first frame.
 from __future__ import annotations
 
 import time
+from collections.abc import Sequence
 from contextvars import ContextVar
 from pathlib import Path
 from typing import Any, cast
 
 from zett_agent.agent import AgentRunContext
 from zett_agent.events import AgentEvent, AgentEventType
-from zett_agent.extensions.mcp import McpConfiguration, McpExtension, McpStdioServer
+from zett_agent.extensions.mcp import DEFAULT_MCP_SERVER_KEYS, McpConfiguration, McpExtension, McpStdioServer
 
 from ..errors import describe_error
 from .mcp_notice import MCP_NOTICE_EVENT_NAME, notice_payload
@@ -225,3 +226,43 @@ def build_mcp_extension(path: str | Path) -> ReportingMcpExtension:
             f"{name} cannot be read, so MCP is off: {describe_error(error)}. Fix it and restart."
         )
         return extension
+
+
+def build_scoped_mcp_extension(paths: Sequence[Path]) -> ReportingMcpExtension | None:
+    """Return the MCP extension for the server files that exist, the first file winning a server name.
+
+    One file is :func:`build_mcp_extension`, which also notices the file changing. Several are read
+    once, here, and merged: the framework watches one path, and a server list assembled from two
+    files has no single file to watch. A file that cannot be read costs only its own servers, and
+    says why at the first request; an entry in it that cannot be used is named the same way.
+
+    Args:
+        paths: The files to read, the one that wins a name first; a path that is not a file is skipped.
+
+    Returns:
+        The extension, or ``None`` when no path is a file, so a run with nothing configured carries no
+        MCP instructions at all.
+    """
+    present = [path for path in paths if path.is_file()]
+    if not present:
+        return None
+    if len(present) == 1:
+        return build_mcp_extension(present[0])
+    servers: dict[str, Any] = {}
+    issues: list[str] = []
+    for path in present:
+        label = f"{path.parent.name}/{path.name}"
+        try:
+            loaded = McpConfiguration.from_file(path, server_keys=DEFAULT_MCP_SERVER_KEYS, strict=False)
+        except (OSError, ValueError) as error:
+            issues.append(
+                f"{label} cannot be read, so its servers are off: {describe_error(error)}. Fix it and restart."
+            )
+            continue
+        issues.extend(f"MCP server {name!r} in {label} is ignored: {reason}" for name, reason in loaded.skipped.items())
+        for server in loaded.servers:
+            # The earlier file wins, so a project's server of the same name replaces the user's.
+            servers.setdefault(server.name, server)
+    extension = ReportingMcpExtension(servers=tuple(servers.values()))
+    extension.startup_issues.extend(issues)
+    return extension
