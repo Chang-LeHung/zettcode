@@ -4,7 +4,7 @@ UV ?= uv
 # the one it just built and not a release wheel left over from an earlier run.
 SMOKE_DIR := .smoke
 
-.PHONY: help install lint typecheck test build smoke check hooks docs docs-build docs-preview demo demo-all demos demo-thinking palettes perf perf-scaling perf-store perf-profile perf-startup perf-imports perf-exit FORCE
+.PHONY: help install lint typecheck test build smoke check hooks docs docs-build docs-preview demo demo-all demos demo-thinking palettes themes perf perf-scaling perf-store perf-profile perf-startup perf-imports perf-exit FORCE
 
 DEMOS := text status_bar spinner progress_bar list table diff markdown textarea completion dialog collapsible toast tasks scroll layout
 
@@ -21,6 +21,7 @@ help:
 	@echo "  make docs     Serve the user guide at http://localhost:5173"
 	@echo "  make docs-build   Build the guide into docs/.vitepress/dist"
 	@echo "  make palettes     Regenerate docs/internal/palettes.html (every widget in every palette)"
+	@echo "  make themes       Rewrite src/zettcode/tui/themes from docs/scripts/palette_data.py"
 	@echo "  make demo     Browse the widgets interactively"
 	@echo "  make demo-all Print every widget preview"
 	@echo "  make demos    List the widget names"
@@ -79,6 +80,14 @@ docs-preview: docs-build
 palettes:
 	$(UV) run python docs/scripts/palette_gallery.py
 	@echo "open docs/internal/palettes.html"
+
+# The palettes that ship are files in the package, generated from the same data the page is: one table per
+# palette in docs/scripts/palette_data.py. Change a colour there, run this, and commit the files it wrote;
+# the wheel ships whatever is in src/zettcode/tui/themes. Nothing checks the two agree, so run it after a
+# change and look at `git status`.
+themes:
+	$(UV) run python docs/scripts/palette_gallery.py --export-themes src/zettcode/tui/themes
+	@git status --short src/zettcode/tui/themes
 
 # The global hooksPath delegates to .git/hooks, so a local copy is what runs.
 hooks:
