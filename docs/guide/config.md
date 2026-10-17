@@ -181,6 +181,7 @@ is not an API key. On macOS/Linux you can restrict file access with
 | `multimodal` | boolean | `false` | Enable only for a model and endpoint that accept image input. |
 | `context_window` | integer | `128000` | Positive context-window size in tokens, not characters or the output limit. |
 | `compact_percent` | number | `80` | Automatic compaction threshold: greater than `0`, at most `100`. Decimals such as `75.5` are allowed. |
+| `reasoning_efforts` | array of strings | every level | The reasoning levels this model accepts, from `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, `ultra`. List them when the endpoint rejects the rest; see [Reasoning levels a model takes](#reasoning-levels-a-model-takes). |
 
 `base_url` is where the client appends its route — `/chat/completions`,
 `/responses`, or `/v1/messages` for an `anthropic` entry — so the route is not
@@ -194,6 +195,34 @@ provider calls the **API root** rather than guessing from its website URL.
 When `multimodal` is false, image submission is refused locally with an error,
 and the model is not offered the `view_image` tool. Setting it to true does not
 add vision to a text-only model. See [Pictures and pastes](/guide/interface#pictures-and-pastes).
+
+### Reasoning levels a model takes {#reasoning-levels-a-model-takes}
+
+Not every endpoint accepts every reasoning level, and an unsupported one can fail the whole request. An
+entry names the levels its model takes:
+
+```toml
+[[models]]
+model = "deepseek-v4-pro"
+token = "sk-..."
+base_url = "https://api.deepseek.com"
+context_window = 1000000
+compact_percent = 80
+reasoning_efforts = ["low", "high", "max"]
+```
+
+Leave the key out and every level is offered. When it is set:
+
+- `/effort` shows only those levels, and typing another (`/effort ultra`) is refused with the list the model
+  does take, so nothing changes without your noticing.
+- Switching models with `/model` moves the level in force to the nearest one the new model takes, so a
+  request is never sent with a level its endpoint would reject. Switching back does not restore it.
+- A subagent (the `task` tool) runs on the model of the request that started it, at its profile's default
+  level (`explore` low, `coding` medium, `reasoning` high) moved to the nearest the model takes. The model
+  can also pass `reasoning_effort` to the `task` tool to choose how hard that child thinks; only the levels
+  this model takes are offered to it.
+
+A tie between two levels goes to the cheaper one.
 
 ### Anthropic models
 
@@ -337,11 +366,16 @@ enabled = true                 # allow the model to ask for your input
 
 [skills]
 enabled = true
-roots = []                     # extra directories before ~/.zettcode/skills
+roots = []                     # extra directories before the scope's own
+scope = "both"                 # "both", "workspace" or "global"; see Skills and MCP
 
 [mcp]
 enabled = true
 config = "~/.zettcode/mcp.json" # server definitions, not this TOML file
+scope = "both"                 # "both", "workspace" or "global"
+
+[compaction]
+self = false                   # let the model compact its own context; /self-compact overrides per session
 
 [plugins]
 enabled = true                 # load installed third-party plugins
@@ -376,9 +410,12 @@ belong to the most recent table heading; an `enabled` key immediately under
 | `agents_md.enabled` | `true` | Read `AGENTS.md` from the workspace and its ancestors. See [Project instructions](/guide/instructions). |
 | `ask_user.enabled` | `true` | Allow the question panel with single-choice, multiple-choice, and typed answers. `false` removes that tool; it does not prevent all questions in normal prose. |
 | `skills.enabled` | `true` | Discover skill names/descriptions and allow their instructions to be loaded when needed. |
-| `skills.roots` | `[]` | Array of directory strings. Extra roots are searched in order before `~/.zettcode/skills`; the first matching skill name wins. |
+| `skills.roots` | `[]` | Array of directory strings. Extra roots are searched in order before the scope's own directories; the first matching skill name wins. |
+| `skills.scope` | `"both"` | Where skills live: `"both"` (the default) reads `<workspace>/.zettcode/skills` and `~/.zettcode/skills` together, the project's first so its version of a skill wins inside it; `"workspace"` reads only the project's, `"global"` only yours. See [Skills and MCP](/guide/skills-and-mcp#where-they-live). |
 | `mcp.enabled` | `true` | Enable MCP tools when a server config exists. A missing default file means no servers are loaded. |
-| `mcp.config` | `~/.zettcode/mcp.json` | Path to the JSON server configuration. Use an absolute path or `~` to make its location unambiguous. |
+| `mcp.config` | `~/.zettcode/mcp.json` | Path to the user's JSON server configuration. Use an absolute path or `~` to make its location unambiguous. |
+| `mcp.scope` | `"both"` | Which server files to read: `"both"` (the default) merges the user's file and `<workspace>/.zettcode/mcp.json`, the project's entry winning a name; `"workspace"` or `"global"` reads just one. A workspace file is a command a checkout asks you to run, so set `"global"` if you do not want a repository's servers started. |
+| `compaction.self` | `false` | Whether a session lets the model compact its own context unless it chose otherwise. `/self-compact` opens a panel to set it for one session or for all; see [Self-compaction](/guide/commands#self-compaction). |
 | `plugins.enabled` | `true` | Load installed third-party plugins. Built-in UI functionality remains available when false. |
 | `plugins.disable` | `[]` | Array of plugin **entry-point names** to skip, not necessarily their pip package names. |
 | `update.enabled` | `true` | Check PyPI in the background and offer newer releases on a later start; does not automatically install them. |

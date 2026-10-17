@@ -66,112 +66,20 @@ that a provider with thinking enabled by default will disable it.
 
 ## The context window
 
-Every model has a limit. ZettCode tracks how full it is — `ctx 34.0%` in the
-status line, and the full breakdown under `/context` — and compacts before it
-overflows, using `compact_percent` from the model's configuration.
+Every model has a limit on how much it can read at once, and ZettCode keeps a request inside it: `ctx 34.0%` in
+the status line is how full it is, `/context` is the whole picture, and the request is compacted before it can
+overflow, at `compact_percent` of the window. Setting the window and the trigger is in
+[Configuration](/guide/config#models).
 
-```
-Context  claude-opus-4-5
-~/.zettcode/sessions/…/conversation.jsonl
+What each number on `/context` means, where the tokens go, what compaction costs and how to keep a request small
+are in [The context window](/guide/context). Two things worth knowing here:
 
-Window   103,241 / 200,000 tokens   51.6% full
-█████████████████████████████████████▏░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
-                      compacts at 160,000 tokens (80.0%) ▲
+- The status line's `ctx` is the request as a share of the **window**; a `/context` row is a source as a share of
+  the **request**. They are different denominators and a row can be 60% of one and 30% of the other.
+- `compact_percent` is a fraction of the window, not of what is left: at 80%, a 200,000-token window is compacted
+  from 160,000.
 
-Used              103,241   51.6%
-Until compaction   56,759   28.4%
-Free in window     96,759   48.4%
-
-Where it goes   how the 103,241 tokens divide between sources
-████████████████████████████████████████████████████████████████████████   <- one colour for each source
-
-  Source                                         Tokens   Share  Items
-■ System prompt       ▍░░░░░░░░░░░░░░░░░░░░░      1,962    1.9%      1
-■ Environment notes   █░░░░░░░░░░░░░░░░░░░░░      4,956    4.8%      2
-■ Tool schemas        ██▍░░░░░░░░░░░░░░░░░░░     11,253   10.9%      9
-■ User messages       ▏░░░░░░░░░░░░░░░░░░░░░        103    0.1%      3
-■ Assistant messages  ████▉░░░░░░░░░░░░░░░░░     22,919   22.2%     12
-■ Tool output         █████████████▎░░░░░░░░     62,048   60.1%     17
-
-Total from the provider, which counts what it bills. Each source gets
-its share of that total, worked out from a local count.
-```
-
-The page answers three questions, each with its own ratio and its own drawing:
-
-- **How full is the window?** The gauge is the request against the model's window, and it
-  warms from green through yellow to red as the request nears the point where it is compacted
-  (`compact_percent`), which a `▲` marks. The three numbers under it are what is used, what is
-  left before compaction, and what is left before the window is full, each as a share of the
-  window.
-- **Where did the tokens go?** The coloured bar is the request divided between its sources, and
-  each row repeats its source's colour with a bar of its own. These shares are of what was
-  counted, so they add up to 100%, whatever the window is.
-- **Whose number is it?** The total is the provider's whenever it reported one, because it counts
-  what it bills. A local count can only say how that total divides, so each source is shown as its
-  share of the provider's total and the rows add up to it. Without a provider total, or while the
-  environment notes and tool schemas are still `pending` — they are in the provider's total but
-  cannot be seen before this session has sent a request, and dividing the total between the other
-  rows would hand them those tokens — the rows are the local counts, and the note says they do not
-  add up. When the counts are estimates, about four characters to a token, the note says so.
-
-If a row is surprisingly large, that is the thing to look at: a tool schema you never use, or a
-long file that came back from a read. A page too short for all of it scrolls with `↑` `↓`.
-
-Do not confuse the two percentages:
-
-| Display | Calculation | Example |
-| --- | --- | --- |
-| Status `ctx` | Context tokens ÷ configured window | 100,000 of 1,000,000 tokens is `ctx 10.0%`. |
-| A `/context` row | That source's tokens ÷ all current context tokens | 60,000 tool-output tokens out of 100,000 total is `60.0%`. |
-
-The category shares add to 100% before display rounding. `Items` is the number
-of messages, tool definitions, or instruction items in that category, not the
-number of conversation turns. A resumed session can show a breakdown too.
-Before the environment notes and tool schemas have been assembled in the current
-process, their rows say `pending`; treat that snapshot as partial.
-
-## Compaction
-
-When the newest request would cross the trigger, the conversation is summarized
-before it is sent: the older part becomes one summary message, and the newest
-quarter of the trigger stays verbatim, so the model keeps the immediate
-context and loses only what was already said. `/compact` does it immediately.
-
-A summary is stored as its own kind of record, not as a delete. That is why the
-transcript still ends with `Conversation checkpoint`, why the models panel keeps
-working, and why a session compacted yesterday still resumes correctly. Asking
-by hand keeps only the last turn verbatim, where the automatic pass leaves a
-quarter of the trigger behind.
-
-::: tip What compaction costs
-Summarizing is one model call, so it takes a few seconds — the transcript shows
-`Compacting` while it runs. It is worth doing early rather than late: the
-alternative is an endpoint error at the moment you are in the middle of
-something. If a summary would not be smaller than the text it replaces,
-ZettCode says so and keeps the original.
-:::
-
-Try this after several turns or a large file read:
-
-```text
-/context
-/compact
-/context
-```
-
-Close each context panel with `Esc` before typing the next command. `/compact`
-starts the summary immediately and shows an animated `Compacting` row. Compare
-the second report with the first: older details are replaced by a summary,
-while the recent working context remains. This is not `/clear`: it changes
-what later model requests carry, not just what is visible on screen.
-
-If the most recent checkpoint already covers the conversation, another manual
-compaction is refused with a notice. Continue the conversation before trying
-again. A summary may lose detail; ask the model to re-read a specific file when
-exact text matters.
-
-## Reading the numbers
+## Reading the status line {#reading-the-status-line}
 
 `↑18.4k ↓900 · 71.2% cached · 74 tok/s · ctx 12.3%` — in order: tokens sent,
 tokens generated, the share of the input the provider served from its cache,

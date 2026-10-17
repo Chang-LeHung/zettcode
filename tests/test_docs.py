@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import re
+import subprocess
+import sys
 from pathlib import Path
 from xml.etree import ElementTree
 
@@ -263,3 +266,180 @@ def test_the_terminal_svg_escapes_text_and_does_not_duplicate_wide_glyphs(render
     assert "<script>" not in source
     assert source.count("中") == 1
     assert "\x1b" not in source
+
+
+# -- the guide's contents, its links, and the screens it shows ---------------------------------------------------
+
+
+def _node_slug(text: str) -> str:
+    """Return the anchor VitePress gives a heading: lower-cased, punctuation dropped, spaces to dashes."""
+    return re.sub(r"[^\w\u4e00-\u9fff\- ]", "", text.strip().lower()).replace(" ", "-")
+
+
+def _headings(path: Path) -> set[str]:
+    """Return the anchors a page answers to: an explicit ``{#id}``, or the one its heading text gets."""
+    found: set[str] = set()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        match = re.match(r"^#{1,6}\s+(.*)$", line)
+        if match is None:
+            continue
+        text = match.group(1).strip()
+        explicit = re.search(r"\{#([^}]+)\}\s*$", text)
+        found.add(explicit.group(1) if explicit else _node_slug(re.sub(r"\{#([^}]+)\}\s*$", "", text)))
+    return found
+
+
+def _navigation(language: str) -> dict:
+    """Read the sidebar and menus the site really builds, by running its own ``navigation.ts``."""
+    script = (
+        "import { navigation } from "
+        f'"{ROOT}/docs/.vitepress/navigation.ts";'
+        f"console.log(JSON.stringify(navigation({language!r})));"
+    )
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        cwd=ROOT,
+        check=False,
+    )
+    if result.returncode != 0:
+        pytest.skip(f"node cannot run the site's navigation: {result.stderr[-300:]}")
+    return json.loads(result.stdout)
+
+
+def _linked_slugs(navigation: dict, prefix: str, *, menus: bool = True) -> list[str]:
+    """Return every page the sidebar links to, in order and subgroups included; optionally the menus too."""
+    found: list[str] = []
+
+    def visit(item: dict) -> None:
+        link = item.get("link")
+        if link and link.startswith(prefix):
+            found.append(link[len(prefix) :])
+        for child in item.get("items", ()):
+            visit(child)
+
+    for group in navigation["sidebar"][prefix]:
+        visit(group)
+    if menus:
+        for menu in navigation["nav"]:
+            for item in menu.get("items", ()):
+                visit(item)
+    return found
+
+
+@pytest.mark.parametrize(
+    "language,prefix,directory", [("en", "/guide/", "docs/guide"), ("zh", "/zh/guide/", "docs/zh/guide")]
+)
+def test_every_guide_page_is_reachable_from_the_sidebar(language, prefix, directory):
+    """A page that exists but is not in the sidebar can only be found by guessing its address."""
+    navigation = _navigation(language)
+    linked = _linked_slugs(navigation, prefix, menus=False)
+    pages = {path.stem for path in (ROOT / directory).glob("*.md")}
+
+    assert pages - set(linked) == set(), "every page is listed"
+    assert set(linked) <= pages, "and nothing listed is missing"
+    assert len(linked) == len(set(linked)), "no page listed twice"
+    assert "usage" in linked and "context" in linked
+
+    # The menus list the same pages again, and not all of them by design: the first pages are reached from their
+    # own nav entries. What must hold is that no menu points anywhere that is not a page.
+    menu_links = [
+        link for menu in navigation["nav"] for link in _linked_slugs({"sidebar": {prefix: []}, "nav": [menu]}, prefix)
+    ]
+    assert set(menu_links) <= pages
+
+
+def test_the_models_and_context_pages_are_nested_together():
+    """The three pages about the window are one subject, so the sidebar lists them under one heading."""
+    navigation = _navigation("en")
+
+    subgroups = [
+        group
+        for section in navigation["sidebar"]["/guide/"]
+        for group in section["items"]
+        if group.get("items") and group["text"] == "Models & context"
+    ]
+
+    assert len(subgroups) == 1
+    assert [page["link"] for page in subgroups[0]["items"]] == ["/guide/models", "/guide/context", "/guide/usage"]
+
+
+def test_every_guide_link_points_at_a_page_and_an_anchor_that_exists():
+    """A guide link is checked against the files themselves: a renamed heading must not leave a dead anchor."""
+    anchors = {path.stem: _headings(path) for path in (ROOT / "docs/guide").glob("*.md")}
+    anchors |= {f"zh/{path.stem}": _headings(path) for path in (ROOT / "docs/zh/guide").glob("*.md")}
+    broken: list[str] = []
+    for path in sorted((ROOT / "docs/guide").glob("*.md")) + sorted((ROOT / "docs/zh/guide").glob("*.md")):
+        text = path.read_text(encoding="utf-8")
+        for link in re.findall(r"\]\((/[^)\s]+)\)", text):
+            if link.startswith(("#", "/screens/")):
+                continue
+            target, _, anchor = link.partition("#")
+            page = target.removeprefix("/zh/guide/") if target.startswith("/zh/") else target.removeprefix("/guide/")
+            page = f"zh/{page}" if target.startswith("/zh/") else page
+            if page not in anchors:
+                broken.append(f"{path.name}: {link} names no page")
+            elif anchor and anchor not in anchors[page]:
+                broken.append(f"{path.name}: {link} names no heading")
+
+    assert broken == []
+
+
+def test_every_picture_the_guide_shows_is_published():
+    """The clips below the pictures are the page's own words; the files they name must be in ``docs/public``."""
+    broken: list[str] = []
+    for path in sorted((ROOT / "docs/guide").glob("*.md")) + sorted((ROOT / "docs/zh/guide").glob("*.md")):
+        for source in re.findall(r"!\[[^\]]*\]\((/[^)\s]+)\)", path.read_text(encoding="utf-8")):
+            if not (ROOT / "docs/public" / source.removeprefix("/")).is_file():
+                broken.append(f"{path.name}: {source}")
+
+    assert broken == []
+
+
+def test_published_screens_match_the_widgets_that_paint_them():
+    """The pictures are generated, not drawn: this fails when a widget changes and they were not regenerated."""
+    module = _render_screens()
+
+    for name, text in module.render_all().items():
+        published = ROOT / "docs/public/screens" / name
+        assert published.is_file(), f"{name} was never written"
+        assert published.read_text(encoding="utf-8") == text, (
+            f"{name} is out of date: run docs/scripts/render_screens.py"
+        )
+
+
+def test_the_screens_agree_with_what_the_guide_says_about_them():
+    """Every figure the pages quote is on the picture they quote it from, so the prose cannot drift from the sample."""
+    module = _render_screens()
+    pictures = {
+        name: "".join("".join(cell.character for cell in row) for row in paint().cells)
+        for name, paint, _ in module.SCREENS
+    }
+    quoted = {
+        "usage-models": ("3.14M tokens", "43 requests · 3 sessions", "61.07%", "2.40M tokens · 34 requests"),
+        "usage-sessions": ("Fix the parser crash", "76.51%", "1.45M", "Pagination for /use"),
+        "usage-calendar": ("Sat 17 Oct 2026", "16 active days · longest streak 4", "168K tokens"),
+        "context": ("103,241 / 200,000", "51.6%", "compacts at 160,000 tokens (80.0%)", "62,069", "60.1%"),
+        "context-near": ("158,900 / 200,000", "1,100", "Compaction summary", "93,654"),
+        "context-resumed": ("84,000 / 200,000", "pending", "42.0%"),
+    }
+    for name, figures in quoted.items():
+        for figure in figures:
+            assert figure in pictures[name], f"{name} does not show {figure!r}"
+
+
+def _render_screens():
+    """Load ``docs/scripts/render_screens.py`` the way the guide's generator is run."""
+    sys.path.insert(0, str(ROOT / "docs/scripts"))
+    try:
+        # `render_screens` imports `render_terminal` by name, and a dataclass in the module needs the module itself
+        # registered while its body runs: `module_from_spec` alone leaves that lookup empty.
+        spec = importlib.util.spec_from_file_location("render_screens", ROOT / "docs/scripts/render_screens.py")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules["render_screens"] = module
+        spec.loader.exec_module(module)
+    finally:
+        sys.path.remove(str(ROOT / "docs/scripts"))
+    return module

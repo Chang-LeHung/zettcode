@@ -96,14 +96,37 @@ def preview() -> Canvas:
                 runtime.session_locks.release()
 
 
-def svg(canvas: Canvas) -> str:
+#: What a screen reader announces for the home page's picture; the other pictures name themselves.
+DEFAULT_TITLE = "ZettCode — illustrative conversation rendered with the actual terminal widgets"
+
+#: Block characters drawn as rectangles, as ``(left, top, width, height)`` in a 10 × 20 cell. The left
+#: eighths are what a bar's partial cell is drawn with.
+BLOCKS = {
+    "█": (0, 0, 10, 20),
+    "▀": (0, 0, 10, 10),
+    "▄": (0, 10, 10, 10),
+    "▐": (5, 0, 5, 20),
+    "▌": (0, 0, 5, 20),
+    "▏": (0, 0, 1.25, 20),
+    "▎": (0, 0, 2.5, 20),
+    "▍": (0, 0, 3.75, 20),
+    "▋": (0, 0, 6.25, 20),
+    "▊": (0, 0, 7.5, 20),
+    "▉": (0, 0, 8.75, 20),
+}
+
+#: Shade characters drawn as a whole cell at this much of the foreground; the empty track of a bar is the lightest.
+SHADES = {"░": 0.25, "▒": 0.5, "▓": 0.75}
+
+
+def svg(canvas: Canvas, title: str = DEFAULT_TITLE) -> str:
     """Serialize cell colours and glyphs without ANSI or external font assets."""
     cell_width, cell_height = 10, 20
     width, height = canvas.width * cell_width, canvas.height * cell_height
     parts = [
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" role="img" '
         'shape-rendering="crispEdges">',
-        "<title>ZettCode — illustrative conversation rendered with the actual terminal widgets</title>",
+        f"<title>{escape(title)}</title>",
         f'<rect width="{width}" height="{height}" fill="#232a2e"/>',
         '<g font-family="SFMono-Regular,Consolas,Liberation Mono,monospace" font-size="16" xml:space="preserve">',
     ]
@@ -116,18 +139,21 @@ def svg(canvas: Canvas) -> str:
             if style.background and style.background != "#232a2e":
                 parts.append(f'<rect x="{offset_x}" y="{offset_y}" width="10" height="20" fill="{style.background}"/>')
             if cell.character.strip():
-                block = {
-                    "█": (0, 0, 10, 20),
-                    "▀": (0, 0, 10, 10),
-                    "▄": (0, 10, 10, 10),
-                    "▐": (5, 0, 5, 20),
-                    "▌": (0, 0, 5, 20),
-                }.get(cell.character)
+                block = BLOCKS.get(cell.character)
                 if block is not None:
                     left, top, block_width, block_height = block
                     parts.append(
-                        f'<rect x="{offset_x + left}" y="{offset_y + top}" width="{block_width}" '
+                        f'<rect x="{offset_x + left:g}" y="{offset_y + top}" width="{block_width:g}" '
                         f'height="{block_height}" fill="{style.foreground or DARK.text}"/>'
+                    )
+                    continue
+                shade = SHADES.get(cell.character)
+                if shade is not None:
+                    # A shade is the foreground over the background at a fixed strength, so it reads the same
+                    # in every font instead of as whatever dither the font's glyph happens to draw.
+                    parts.append(
+                        f'<rect x="{offset_x}" y="{offset_y}" width="10" height="20" '
+                        f'fill="{style.foreground or DARK.text}" fill-opacity="{shade}"/>'
                     )
                     continue
                 weight = ' font-weight="700"' if style.bold else ""

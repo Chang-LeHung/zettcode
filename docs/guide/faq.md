@@ -82,14 +82,15 @@ kept as chips for you, which is why a resumed session shows the chip.
 
 **`ctx` is high and rising.** Open `/context`: the percentages are shares of
 what the window is holding, so the biggest row is what is filling it — usually
-tool output. `/compact` summarizes now instead of waiting for the trigger.
+tool output. `/compact` summarizes now instead of waiting for the trigger. See
+[The context window](/guide/context).
 
 **The cache hit rate is low.** The provider caches a prefix, so anything that
 changes early in the request breaks it — a different system prompt, a different
 set of tools, a different model. Model switches, compaction, and changed
 instructions can lower it, and cache lifetime depends on the provider. There
 is no universal expected percentage. See the
-[calculation and examples](/guide/models#reading-the-numbers).
+[calculation and examples](/guide/models#reading-the-status-line).
 
 **A command ran that I did not want.** Check the level in the status line: `· auto`
 runs every command and `· safe` runs the ones it recognises as read-only, while

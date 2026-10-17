@@ -43,7 +43,13 @@ from zettcode.app.ui import app as app_module  # noqa: E402
 from zettcode.app.ui.app import ZettCodeApp  # noqa: E402
 from zettcode.app.ui.labels import header_left  # noqa: E402
 from zettcode.app.ui.shell import PAGE_SCREEN  # noqa: E402
-from zettcode.app.ui.widgets import EFFORT_ROWS, EffortPage, bottom_panel  # noqa: E402
+from zettcode.app.ui.widgets import (  # noqa: E402
+    EFFORT_ROWS,
+    SELF_COMPACT_ROWS,
+    EffortPage,
+    SelfCompactPage,
+    bottom_panel,
+)
 from zettcode.config import ModelConfig, ZettCodeConfig  # noqa: E402
 from zettcode.plugins.builtins import BUILTIN_PLUGINS, ShellRows  # noqa: E402
 from zettcode.plugins.loader import load_plugins  # noqa: E402
@@ -293,6 +299,17 @@ def effort_scene(env: Env, theme: Theme, level: str = "high") -> Canvas:
     page(shell, panel, EFFORT_ROWS)
     panel.choose(levels.index(level))
     panel._set_off -= 5  # the slide is over
+    shell.app.tick()
+    return shell.app.render()
+
+
+def self_compact_scene(env: Env, theme: Theme) -> Canvas:
+    shell = env.app(theme, height=18)
+    shell.transcript.notice("Self-compaction is off: this session follows the default (off)")
+    panel = SelfCompactPage(None, False, on_apply=lambda *_: None, on_cancel=lambda: None)
+    page(shell, panel, SELF_COMPACT_ROWS)
+    panel.choose(0, 2)  # this session: on, not applied yet
+    panel.session_rail.set_off -= 5  # the slide is over
     shell.app.tick()
     return shell.app.render()
 
@@ -555,6 +572,13 @@ def scenes() -> list[Scene]:
         ),
         Scene(
             "effort", "面板", "/effort 轨道旋钮", "旋钮落在 high：已点亮的轨道、经过的节点、“now” 标记。", effort_scene
+        ),
+        Scene(
+            "self-compact",
+            "面板",
+            "/self-compact 双轨道",
+            "上轨道是本会话（default / off / on），下轨道是全局默认；旋钮在 on，标题右侧说明“未应用”。",
+            self_compact_scene,
         ),
         Scene("models", "面板", "/model 选择器", "带编号的列表、当前项、选中行。", models_scene),
         Scene("sessions", "面板", "/resume 会话列表", "标题、相对时间、短 id；未命名会话。", sessions_scene),
