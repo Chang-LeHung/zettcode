@@ -19,7 +19,7 @@ from zettcode.app.agent.runtime import ZettCodeRuntime
 from zettcode.app.brand import LOGO_PALETTE, LOGO_PIXELS
 from zettcode.app.ui.app import ZettCodeApp
 from zettcode.config import ModelConfig, ZettCodeConfig
-from zettcode.plugins.builtins import ShellRows
+from zettcode.plugins.builtins import BUILTIN_PLUGINS, ShellRows
 from zettcode.plugins.loader import load_plugins
 from zettcode.plugins.state import ShellContext
 from zettcode.tui import DARK, HEADER, Canvas
@@ -31,6 +31,16 @@ class PreviewRows(ShellRows):
     def render_header_left(self, context: ShellContext) -> str:
         """Show the illustrative workspace instead of its temporary directory."""
         return f"  {HEADER} zettcode  ~/projects/api"
+
+
+def preview_plugins() -> tuple[object, ...]:
+    """The built-in plugins, with the illustrative header rows in place of the shell's own.
+
+    Everything else a run loads is kept: the presenters that draw the rows, and the palettes. Only the header
+    changes, and it changes because the workspace in a documented picture is not the temporary directory the
+    preview happens to run in.
+    """
+    return (PreviewRows(), *(plugin for plugin in BUILTIN_PLUGINS if plugin.name != "shell"))
 
 
 def preview() -> Canvas:
@@ -49,7 +59,7 @@ def preview() -> Canvas:
                 mcp_enabled=False,
             )
             runtime = ZettCodeRuntime.preview(config)
-            runtime.plugins = load_plugins(config, builtins=(PreviewRows(),))
+            runtime.plugins = load_plugins(config, builtins=preview_plugins())
             app = ZettCodeApp(ZettCodeAgent(runtime), theme=replace(DARK, background="#232a2e"))
             clock = [0.0]
             app.transcript.clock = lambda: clock[0]

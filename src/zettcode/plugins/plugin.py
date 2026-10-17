@@ -16,6 +16,7 @@ from .mixins import PluginAgentMixin, PluginUiMixin
 from .state import UiRow
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay lazy
+    from ..app.agent.conversation.presenters import Presenter
     from ..app.agent.dialogue.mentions import MentionProvider
     from ..app.commands import Command
     from ..providers import Provider
@@ -80,6 +81,8 @@ class Plugins:
             shell offers them in ``/config`` after the built-in ones.
         themes: Palettes the plugins offered by name, in load and registration order; the built-in plugin's come
             first. ``/theme`` lists, previews and switches to them, after ``dark`` and ``light``.
+        presenters: How plugins asked for entries to be drawn, in load and registration order; the built-in
+            presenters come first, at the lowest priority, so a plugin's claim on the same rows wins.
         rows: The header and status rows the plugins fill, each with its left
             and right segments in paint order. The builtin rows are merged in
             first, so an overridden segment keeps its place.
@@ -93,6 +96,7 @@ class Plugins:
     mentions: tuple[MentionProvider, ...] = ()
     providers: tuple[Provider, ...] = ()
     themes: tuple[ThemeSource, ...] = ()
+    presenters: tuple[Presenter, ...] = ()
     rows: tuple[UiRow, ...] = ()
     failures: tuple[str, ...] = ()
 

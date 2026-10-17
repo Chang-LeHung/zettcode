@@ -8,12 +8,14 @@ from pathlib import Path
 import pytest
 
 from zettcode.app.agent import runtime as runtime_module
+from zettcode.app.agent.conversation.entries import EditEntry, ReadEntry, TextEntry
 from zettcode.app.agent.extensions.usage import UsageSnapshot
 from zettcode.app.commands import CommandResult
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.plugins import (
     Activity,
     ActivityState,
+    EntryKind,
     Plugin,
     PluginAgentMixin,
     PluginContainer,
@@ -28,12 +30,13 @@ from zettcode.plugins import (
     PluginToolMixin,
     PluginTurnMixin,
     PluginUiMixin,
+    Presenter,
     ShellContext,
     load_plugins,
 )
 from zettcode.plugins import loader as loader_module
 from zettcode.providers import Provider
-from zettcode.tui import Span, TextLine
+from zettcode.tui import DARK, Span, Style, TextLine
 
 
 def test_the_activity_label_prefers_its_note_over_the_state_word():
@@ -415,7 +418,7 @@ async def test_disabled_and_switched_off_plugins_are_not_loaded(tmp_path: Path):
 
     # The switch only governs distributions: the builtin rows still load.
     loaded = load_plugins(make_config(tmp_path, plugins_enabled=False), entry_points=[one])
-    assert loaded_names(loaded) == ["shell", "skills", "files", "usage", "themes"]
+    assert loaded_names(loaded) == ["shell", "skills", "files", "usage", "themes", "presenters"]
     assert [row.region for row in loaded.rows] == ["header", "status"]
     assert all(row.left for row in loaded.rows)
 
@@ -569,7 +572,15 @@ async def test_the_runtime_preview_installs_plugin_extensions_and_commands(tmp_p
     runtime = runtime_module.ZettCodeRuntime.preview(make_config(tmp_path))
 
     # The builtin rows load too; a lower priority sorts it after the plugin.
-    assert loaded_names(runtime.plugins) == ["greeter", "shell", "skills", "files", "usage", "themes"]
+    assert loaded_names(runtime.plugins) == [
+        "greeter",
+        "shell",
+        "skills",
+        "files",
+        "usage",
+        "themes",
+        "presenters",
+    ]
     assert len(runtime.plugins.extensions) == 1
     assert [command.name for command in runtime.plugins.commands] == ["/usage", "/greet"]
     assert [row.region for row in runtime.plugins.rows] == ["header", "status"]
@@ -724,3 +735,78 @@ def test_a_plugin_that_fails_after_registering_a_provider_leaves_none_behind(tmp
 
 def test_providers_are_absent_from_a_bundle_with_no_plugins(tmp_path):
     assert load_plugins(make_config(tmp_path), builtins=(), entry_points=[]).providers == ()
+
+
+# -- drawing a row: a presenter a plugin offers, and the built-ins it replaces -----------------------
+
+
+class LoudNotice(Presenter):
+    """Draw notices as one word, so a test can tell it apart from the built-in presenter."""
+
+    kind = EntryKind.NOTICE
+
+    def lines(self, entry, width, theme, frame):
+        return [TextLine((Span("LOUD", Style(bold=True)),))]
+
+
+def test_a_plugin_can_draw_a_kind_of_row_and_the_built_ins_stay_the_default_for_the_rest(tmp_path: Path):
+    class Drawing(Plugin):
+        name = "drawing"
+
+        def activate(self, container: PluginContainer) -> None:
+            container.register_presenter(LoudNotice())
+
+    plugins = load_plugins(make_config(tmp_path), entry_points=[FakeEntryPoint("drawing", Drawing)])
+    from zettcode.app.agent.conversation.presenters import Presenters
+
+    rows = Presenters(plugins.presenters)
+    notice = TextEntry(id=1, kind="notice", text="saved")
+    user = TextEntry(id=2, kind="user", text="hello")
+
+    assert type(rows.for_entry(notice)) is LoudNotice
+    assert type(rows.for_entry(user)).__name__ == "UserPresenter", "the kinds it did not claim are untouched"
+    assert plugins.presenters[-1].__class__ is LoudNotice, "registered after the built-ins"
+
+
+def test_a_plugin_can_raise_the_claim_on_a_family_without_taking_the_whole_kind(tmp_path: Path):
+    class QuietEdit(Plugin):
+        name = "quiet-edits"
+
+        def activate(self, container: PluginContainer) -> None:
+            from zettcode.app.agent.conversation.presenters import EditPresenter
+
+            class Quiet(EditPresenter):
+                priority = 7
+
+                def after_title(self, entry, theme):
+                    return []
+
+            container.register_presenter(Quiet())
+
+    plugins = load_plugins(make_config(tmp_path), entry_points=[FakeEntryPoint("quiet", QuietEdit)])
+    from zettcode.app.agent.conversation.presenters import Presenters
+
+    rows = Presenters(plugins.presenters)
+    edit = EditEntry(id=1, call_id="c", tool="edit", title="Edited a.py", path="a.py", added=9)
+
+    assert not any("+9" in line.text for line in rows.lines(edit, 60, DARK, 0))
+    read = ReadEntry(id=2, call_id="d", tool="read_file", title="Read a.py")
+    assert type(rows.for_entry(read)).__name__ == "ReadPresenter"
+
+
+def test_registering_something_that_is_not_a_presenter_is_refused_and_the_plugin_is_reported(tmp_path: Path):
+    container = PluginContainer(make_config(tmp_path))
+    with pytest.raises(ValueError, match="Presenter"):
+        container.register_presenter(object())
+
+    class Broken(Plugin):
+        name = "broken-presenter"
+
+        def activate(self, inner: PluginContainer) -> None:
+            inner.register_presenter(object())
+
+    plugins = load_plugins(make_config(tmp_path), entry_points=[FakeEntryPoint("broken", Broken)])
+
+    assert any("broken: A presenter must be" in failure for failure in plugins.failures)
+    assert all(presenter.__class__.__name__.endswith("Presenter") for presenter in plugins.presenters)
+    assert not any(presenter.__class__.__name__ == "object" for presenter in plugins.presenters)

@@ -216,6 +216,38 @@ class Palettes(Plugin):
 优先于插件提供的，所以读者总能改动别人给的配色。插件提供的配色也可以作为启动配色：
 `[ui] theme = "acme"` 能找到它。
 
+## 绘制一行 {#presenters}
+
+对话里的每一行都由一个 *presenter* 绘制：它把一种 entry 变成带样式的行。ZettCode 自带的 presenter
+也由一个内置插件注册，优先级最低，所以插件为同样的行注册一个就能覆盖，不需要压过任何东西：
+
+```text
+from zettcode.plugins import EntryKind, Plugin, PluginContainer, Presenter, Span, Style, TextLine
+
+
+class QuietNotice(Presenter):
+    kind = EntryKind.NOTICE
+
+    def lines(self, entry, width, theme, frame):
+        return [TextLine((Span(entry.text, Style(foreground=theme.muted)),))]
+
+
+class QuietNotices(Plugin):
+    name = "quiet-notices"
+
+    def activate(self, container: PluginContainer) -> None:
+        container.register_presenter(QuietNotice())
+```
+
+presenter 指定一个 `kind`（`EntryKind` 的一项）；如果只画某一种子行——比如工具行里的编辑行——则指定
+`entry_type`。`lines` 收到 entry、可用列数、配色和动画步数，返回 `TextLine`；宽度是预算，要自己换行或截断。
+需要动画的 presenter 读 `frame`，不需要的应当对任何 `frame` 都给出同样的行。
+
+同一个位置有多个 presenter 时，`priority` 高的赢；优先级相同则后注册的赢。内置 presenter 就是这样成为默认的：
+优先级 0，最先注册。插件想压过另一个插件，就在 presenter 类上把 `priority` 提高；只想画某一个子行时不需要
+优先级，注册子行本身就是更窄的声明。为整个 kind 注册的 presenter 声明接管它的每一行，所以会压过在它之前、
+同级注册的子行；在那之后注册、或优先级更高的子行仍然保留自己的行。
+
 ## 出问题的时候
 
 导入或激活失败的插件会被跳过，而不是让程序挂掉：对话里出现一行 `plugin: …`，会话继续正常

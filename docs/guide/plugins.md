@@ -235,6 +235,43 @@ load. A file of the reader's in `~/.zettcode/themes/` with the same name wins ov
 reader can always adjust a palette they were given. A plugin can also be the palette the reader starts
 in: `[ui] theme = "acme"` finds it.
 
+## Drawing a row {#presenters}
+
+Every row of the conversation is drawn by a *presenter*: an object that turns one kind of entry
+into styled lines. The presenters ZettCode ships are registered by a built-in plugin, at the lowest
+priority, so a plugin that registers one for the same rows wins without having to outrank anything:
+
+```text
+from zettcode.plugins import EntryKind, Plugin, PluginContainer, Presenter, Span, Style, TextLine
+
+
+class QuietNotice(Presenter):
+    kind = EntryKind.NOTICE
+
+    def lines(self, entry, width, theme, frame):
+        return [TextLine((Span(entry.text, Style(foreground=theme.muted)),))]
+
+
+class QuietNotices(Plugin):
+    name = "quiet-notices"
+
+    def activate(self, container: PluginContainer) -> None:
+        container.register_presenter(QuietNotice())
+```
+
+A presenter names a `kind` (one member of `EntryKind`), or an `entry_type` when it draws one family
+inside a kind — the edit row among the tool rows, say. `lines` receives the entry, the columns
+available, the palette, and an animation step, and returns `TextLine`s; a width is a budget, so wrap
+or cut. A presenter that animates reads `frame`; one that does not should give the same rows for it.
+
+When more than one presenter could draw the same rows, the higher `priority` wins, and an equal
+priority goes to the later registration. That is why the built-ins are the default: priority 0,
+registered first. A plugin that wants to beat another plugin raises `priority` on its presenter's
+class; drawing only one family never needs a priority, because registering a family is already the
+narrower claim. A presenter for a whole kind
+claims every row of it, so it beats the families registered before it at its priority; a family
+registered after it, or at a higher priority, keeps its own rows.
+
 ## When something goes wrong
 
 A plugin that cannot be imported or activated is skipped, not fatal: the shell

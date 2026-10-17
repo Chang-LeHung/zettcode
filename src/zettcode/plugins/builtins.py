@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 
+from ..app.agent.conversation.presenters import BUILTIN_PRESENTERS
 from ..app.agent.conversation.pulse import activity_glyph
 from ..app.agent.dialogue.mentions import FileMentions, SkillMentions
 from ..app.agent.extensions.usage import context_text, usage_text
@@ -126,5 +127,29 @@ class BuiltinThemes(Plugin):
             container.register_theme(source.name, source.load, description=source.description)
 
 
+class BuiltinPresenters(Plugin):
+    """How the program draws its own rows, offered the way any plugin offers a presenter.
+
+    They register first, at the class's own priority, which is the lowest there is, so a plugin that
+    draws the same kind or family wins without having to outrank them; a plugin that registers
+    nothing leaves exactly the rows the program has always drawn. Adding a built-in kind of row is
+    adding a presenter to ``BUNDLED`` in the conversation and nothing here.
+    """
+
+    name = "presenters"
+
+    def activate(self, container: PluginContainer) -> None:
+        """Register every built-in presenter at the priority its class declares."""
+        for presenter in BUILTIN_PRESENTERS:
+            container.register_presenter(presenter)
+
+
 #: Plugins loaded from the repository itself, never from a distribution.
-BUILTIN_PLUGINS: tuple[Plugin, ...] = (ShellRows(), SkillResources(), FileResources(), UsageCommand(), BuiltinThemes())
+BUILTIN_PLUGINS: tuple[Plugin, ...] = (
+    ShellRows(),
+    SkillResources(),
+    FileResources(),
+    UsageCommand(),
+    BuiltinThemes(),
+    BuiltinPresenters(),
+)

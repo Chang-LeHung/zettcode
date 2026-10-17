@@ -415,6 +415,7 @@ def rows_and_commands(
     override: tuple[tuple[str, str, str, UiBuilder], ...] = (),
     commands: tuple[Command, ...] = (),
     failures: tuple[str, ...] = (),
+    presenters: tuple[object, ...] = (),
 ) -> Plugins:
     """The shell's builtin rows plus the segments and commands one test adds.
 
@@ -431,7 +432,15 @@ def rows_and_commands(
         getattr(container, f"register_{region}_{side}")(builder)
     for region, side, name, builder in override:
         container.slots.add(region, side, name, builder)
-    return Plugins(commands=commands, rows=container.rows, failures=failures, themes=container.themes)
+    for presenter in presenters:
+        container.register_presenter(presenter)  # type: ignore[arg-type]
+    return Plugins(
+        commands=commands,
+        rows=container.rows,
+        failures=failures,
+        themes=container.themes,
+        presenters=container.presenters,
+    )
 
 
 def build_app(
@@ -8330,3 +8339,25 @@ async def test_usage_opens_a_full_screen_page_and_escape_returns_to_the_conversa
     harness.press("escape")
     assert app.app.screens.top.name == "main"
     assert not app._busy
+
+
+def test_a_row_on_screen_is_drawn_by_the_presenter_a_plugin_registered():
+    """The built-ins reach the transcript through the plugin bundle, so a plugin's claim reaches it too."""
+    from zettcode.app.agent.conversation.entries import EntryKind
+    from zettcode.app.agent.conversation.presenters import Presenter
+    from zettcode.app.ui.widgets import TranscriptSource
+    from zettcode.tui import Span, Style, TextLine
+
+    class Loud(Presenter):
+        kind = EntryKind.NOTICE
+
+        def lines(self, entry, width, theme, frame):
+            return [TextLine((Span("LOUD", Style(bold=True)),))]
+
+    app = build_app(plugins=rows_and_commands(presenters=(Loud(),)))
+    app.transcript.notice("saved")
+
+    source = TranscriptSource(app.transcript, theme=DARK)
+    rows = [source.line(index, 40).text for index in range(source.count(40))]
+
+    assert any("LOUD" in row for row in rows), rows

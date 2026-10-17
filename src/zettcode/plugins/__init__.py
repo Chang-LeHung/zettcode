@@ -25,6 +25,8 @@ re-exported here as one surface.
 
 from __future__ import annotations
 
+from ..app.agent.conversation.entries import EntryKind
+from ..app.agent.conversation.presenters import Presenter
 from ..app.commands import Command, CommandResult
 from ..tui import Span, Style, TextLine, Theme
 from .builtins import BUILTIN_PLUGINS
@@ -71,6 +73,8 @@ __all__ = [
     "CommandHandler",
     "CommandResult",
     "DisplayState",
+    "EntryKind",
+    "Presenter",
     "ModelState",
     "Plugin",
     "PluginAgentMixin",
