@@ -5,13 +5,13 @@ from __future__ import annotations
 import pytest
 
 from zettcode.app.ui.widgets import Composer
-from zettcode.app.ui.widgets.composer import LOCK
+from zettcode.app.ui.widgets.composer import LOCK, LOCK_ART, LOCK_CAPTIONS
 from zettcode.tui import PROMPT
 from zettcode.tui.render import display_width
 from zettcode.tui.testing import Harness
 
 
-def _composer(**options) -> tuple[Composer, Harness, list[str]]:
+def _composer(*, width: int = 40, **options) -> tuple[Composer, Harness, list[str]]:
     submitted: list[str] = []
     composer = Composer(
         prompt=f"{PROMPT} ",
@@ -20,7 +20,7 @@ def _composer(**options) -> tuple[Composer, Harness, list[str]]:
         surface=True,
         **options,
     )
-    harness = Harness(composer, width=40, height=5)
+    harness = Harness(composer, width=width, height=5)
     harness.render()
     return composer, harness, submitted
 
@@ -40,26 +40,47 @@ def test_an_unlocked_composer_has_its_arrow_and_its_hint():
     assert f"{PROMPT} Ask ZettCode to do anything" in text and LOCK not in text
 
 
-def test_a_locked_composer_has_no_arrow_and_no_hint_and_a_lock():
-    composer, harness, _ = _composer()
+def test_a_locked_composer_has_no_arrow_and_no_hint_and_a_padlock_that_says_why():
+    composer, harness, _ = _composer(width=60)
 
     composer.locked = True
     text = harness.render().text
 
     assert PROMPT not in text and "Ask ZettCode" not in text
-    assert LOCK in text
+    assert all(row.strip() in text for row in LOCK_ART), "the padlock, all three rows of it"
+    assert LOCK_CAPTIONS[0] in text, "and the words beside it, when there is room"
+    assert "\U0001f512" not in text, "not the emoji, which is a picture the theme cannot colour"
 
 
-def test_the_lock_is_in_the_middle_of_the_row_and_of_the_composer():
-    composer, harness, _ = _composer()
+def test_the_padlock_and_its_words_are_in_the_middle_of_the_composer():
+    composer, harness, _ = _composer(width=60)
     composer.locked = True
 
     rows = _rows(harness)
-    row = next(index for index, text in enumerate(rows) if LOCK in text)
+    middle = next(index for index, text in enumerate(rows) if LOCK_ART[1] in text)
 
-    assert row == 2, "the middle of the three rows of a one-line composer with its band above and below"
-    column = rows[row].index(LOCK)
-    assert abs((column + display_width(LOCK) / 2) - 40 / 2) <= 1, "and across the width"
+    assert middle == 2, "the middle row of the composer, with the padlock's other rows above and below it"
+    assert LOCK_ART[0].strip() in rows[middle - 1] and LOCK_ART[2] in rows[middle + 1]
+    start = rows[middle].index(LOCK_ART[1])
+    end = rows[middle].index(LOCK_CAPTIONS[0]) + display_width(LOCK_CAPTIONS[0])
+    assert abs((start + end) / 2 - 60 / 2) <= 1, "and the pair is across the width"
+
+
+@pytest.mark.parametrize(
+    ("width", "caption"),
+    [(80, LOCK_CAPTIONS[0]), (50, LOCK_CAPTIONS[1]), (30, LOCK_CAPTIONS[2]), (12, "")],
+)
+def test_the_words_beside_the_padlock_shorten_before_they_leave(width, caption):
+    composer = Composer(prompt=f"{PROMPT} ", placeholder="hint", surface=True)
+    harness = Harness(composer, width=width, height=3)
+    composer.locked = True
+
+    text = harness.render().text
+
+    assert all(row.strip() in text for row in LOCK_ART)
+    assert (caption in text) if caption else ("read" not in text), text
+    for longer in LOCK_CAPTIONS[: LOCK_CAPTIONS.index(caption)] if caption else LOCK_CAPTIONS:
+        assert longer not in text
 
 
 @pytest.mark.parametrize("width", [3, 4, 5, 10, 41, 80])
@@ -71,7 +92,32 @@ def test_the_lock_stays_inside_the_composer_at_any_width(width):
     rows = _rows(harness)
 
     assert all(display_width(row) <= width for row in rows)
-    assert any(LOCK in row for row in rows)
+    assert any(LOCK_ART[2] in row for row in rows) or any(LOCK in row for row in rows), "drawn, or at least marked"
+    if width < len(LOCK_ART[0]):
+        assert any(LOCK in row for row in rows), "too narrow for a picture: the one-cell mark"
+
+
+def test_the_padlock_is_in_the_themes_warning_colour_with_the_band_showing_through_its_notch():
+    composer, harness, _ = _composer()
+    composer.locked = True
+    canvas = harness.app.render()
+    theme = composer.theme
+
+    body = next(
+        cell
+        for row in canvas.cells
+        for cell in row
+        if cell.character == "\u2588" and cell.style.foreground == theme.warning
+    )
+    notch = next(
+        cell
+        for row in canvas.cells
+        for cell in row
+        if cell.character == "\u2584" and cell.style.foreground == theme.warning
+    )
+
+    assert body.style.background == theme.surface_alt, "drawn on the band, not on the page"
+    assert notch.style.background == theme.surface_alt, "so the half that is not filled shows the band"
 
 
 def test_a_composer_one_row_high_without_a_band_puts_the_lock_on_that_row():

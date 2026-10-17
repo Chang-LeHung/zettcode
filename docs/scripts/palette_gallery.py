@@ -247,6 +247,16 @@ def working_scene(env: Env, theme: Theme) -> Canvas:
     return shell.app.render()
 
 
+def locked_scene(env: Env, theme: Theme) -> Canvas:
+    shell = env.app(theme, height=14)
+    shell.transcript.notice(
+        "This session is open in another ZettCode process, so it is read-only here. "
+        "It unlocks by itself when that one lets go; /new starts a new session, /fork carries this conversation into one."
+    )
+    shell.composer.locked = True
+    return shell.app.render()
+
+
 def messages_scene(env: Env, theme: Theme) -> Canvas:
     shell = env.app(theme, height=56)
     transcript = shell.transcript
@@ -506,6 +516,13 @@ def scenes() -> list[Scene]:
             "请求进行中",
             "正在思考、命令在跑、等待行、排队的 steering 消息、输入框里有草稿。",
             working_scene,
+        ),
+        Scene(
+            "locked",
+            "整体界面",
+            "会话被另一个进程占用",
+            "输入框只读：半块绘制的挂锁和一句说明，不再用彩色 emoji。",
+            locked_scene,
         ),
         Scene(
             "messages",
