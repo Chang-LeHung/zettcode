@@ -320,3 +320,18 @@ def test_a_continuation_row_still_takes_its_indent_in_the_style_of_its_run():
     row = inset_line(TextLine((Span("item", styled),)), 2)
 
     assert row.spans[0] == Span("  item", styled)
+
+
+def test_truncation_never_spends_a_column_the_budget_does_not_have():
+    """A wide glyph that would straddle the cut is left out, not kept whole at one column over.
+
+    One column over is not cosmetic: the ellipsis is appended after the cut, so the line ends up
+    wider than the column it was cut for and every column after it on that row shifts right.
+    """
+    title = "档位切换滑动动画代码"
+
+    for width in range(1, 13):
+        cut = truncate(title, width)
+        assert display_width(cut) <= width, (width, cut)
+    assert truncate(title, 11) == "档位切换滑\u2026"
+    assert truncate("abcdef", 4) == "abc\u2026"

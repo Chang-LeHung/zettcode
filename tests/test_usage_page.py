@@ -478,3 +478,29 @@ def test_a_narrow_sessions_tab_keeps_the_last_change_and_drops_the_start():
 
     assert "Updated" in text_of(head[1]) and "Began" not in text_of(head[1])
     assert "Oct 16" in text_of(body[0]) and "Oct  9" not in text_of(body[0])
+
+
+def test_a_truncated_cjk_title_does_not_push_the_token_columns_out_by_a_column():
+    """The columns are read down the page: a row one column wide breaks the table.
+
+    A title cut at the column budget used to come out one column wider when the character at
+    the cut was a wide one, because the truncation kept it whole and then appended the ellipsis.
+    Every CJK title longer than its column shifted the bars and the counts of that row right by
+    one, which is why some rows lined up and others did not.
+    """
+    from datetime import datetime
+
+    from zettcode.app.agent.storage.ledger import SessionUsage
+    from zettcode.tui.render import display_width
+
+    def row(session_id: str, title: str) -> SessionUsage:
+        return SessionUsage(session_id, title, datetime(2026, 10, 9), datetime(2026, 10, 16), tally(10, 2), ("m",))
+
+    rows = [row("a", "A title long enough to be cut"), row("b", "档位切换滑动动画代码很长很长")]
+    _, body = charts.sessions_tab(ledger_of(models={"m": tally(10, 2)}, sessions=rows), 60)
+    lines = [text_of(line) for line in body]
+
+    assert "…" in lines[0] and "…" in lines[1], "both titles were cut, which is the point"
+    # A code-point index counts a CJK title by characters, not columns, so measure the columns.
+    starts = [display_width(line[: line.index("10")]) for line in lines]
+    assert starts[0] == starts[1], "the counts start in the same column"
