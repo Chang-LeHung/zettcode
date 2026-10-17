@@ -38,6 +38,7 @@ from zettcode.tui import (
 from zettcode.tui.render import display_width
 from zettcode.tui.testing import Harness
 from zettcode.tui.widgets.progress import DEFAULT_FRAMES
+from zettcode.tui.widgets.status import GAP
 from zettcode.tui.widgets.textarea import layout_input
 
 
@@ -238,7 +239,25 @@ def test_status_bar_aligns_both_segments_and_clips_on_narrow_widths():
     small.layout(Rect(0, 0, 6, 1))
     small.render(narrow)
 
-    assert row_text(narrow, 0) == "\u2026right"
+    assert row_text(narrow, 0) == " right", "no room beside the gap: the left segment is dropped whole"
+
+
+def test_status_bar_leaves_a_gap_between_the_sides_however_long_the_left_one_is():
+    canvas = Canvas(20, 1)
+    bar = StatusBar("a" * 30, "right")
+    bar.layout(Rect(0, 0, 20, 1))
+    bar.render(canvas)
+
+    assert row_text(canvas, 0) == "a" * 12 + "\u2026" + " " * GAP + "right", "the left side gives way, never the gap"
+
+
+def test_status_bar_keeps_the_gap_on_a_row_that_exactly_fits():
+    canvas = Canvas(10, 1)
+    bar = StatusBar("left", "right")
+    bar.layout(Rect(0, 0, 10, 1))
+    bar.render(canvas)
+
+    assert row_text(canvas, 0) == "le" + "\u2026" + " " * GAP + "right"
 
 
 def test_table_renders_header_rule_and_aligned_cells():

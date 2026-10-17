@@ -12,6 +12,11 @@ from ..render import DEFAULT_STYLE, Canvas, Span, Style, TextLine, truncate_span
 Text: TypeAlias = str | TextLine | Callable[[], str | TextLine]
 
 
+#: Columns kept empty between the two segments. Without it a long left segment runs into the right one and the
+#: row reads as a single run of words; the gap is what says which part belongs to which side.
+GAP = 2
+
+
 class StatusBar(Widget):
     """Render a left-aligned and a right-aligned segment on one row.
 
@@ -24,6 +29,11 @@ class StatusBar(Widget):
     The right segment wins when space runs out: it keeps its width and the left
     one is cut instead. A right segment wider than the whole row is drawn alone.
     Either segment may be a callable, read once per paint.
+
+    At least :data:`GAP` columns are left empty between the two. A left segment
+    with no room for even one character next to that gap is dropped rather than
+    drawn as a stray ellipsis against the right segment, so a narrow row says
+    what the row is about and nothing half-written.
 
     A segment can be a styled :class:`~zettcode.tui.render.TextLine`; its spans
     keep their own colours and attributes. A span that sets no style of its own
@@ -64,6 +74,16 @@ class StatusBar(Widget):
             )
             return
         room = self.rect.width - right_width
+        if room <= GAP:
+            # Less than one column beside the gap: the right segment is the whole row.
+            canvas.draw_spans(
+                self.rect.x + self.rect.width - right_width,
+                self.rect.y,
+                right.spans,
+                max_width=right_width,
+            )
+            return
+        room -= GAP
         canvas.draw_spans(self.rect.x, self.rect.y, truncate_spans(left.spans, room), max_width=room)
         canvas.draw_spans(
             self.rect.x + self.rect.width - right_width,
