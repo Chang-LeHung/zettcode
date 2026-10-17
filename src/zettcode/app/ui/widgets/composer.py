@@ -30,8 +30,26 @@ COMMAND_END = re.compile(COMMAND.pattern + r"\Z")
 #: The label an image chip carries, at the end of the text that was written before its picture.
 IMAGE_LABEL_END = re.compile(r"\[image #\d+\]\Z")
 
-#: What a locked composer shows in the middle of its row, and in the prompt's place when a command is being typed.
-LOCK = "\U0001f512"
+#: What a locked composer shows in the middle of its row when it is too small for :data:`LOCK_ART`, and in the
+#: prompt's place when a command is being typed: a circled slash, one cell wide and in the theme's colours, where
+#: the padlock emoji was a coloured picture of a different width in every terminal.
+LOCK = "\u2298"
+
+#: A padlock three rows tall and five cells wide, drawn in half blocks so it takes the theme's colour. A cell is
+#: about twice as tall as it is wide, so each row is two pixels of a five-by-six picture: a hollow shackle above a
+#: wider body with a keyhole notch. The spaces are transparent, so the band shows through them.
+LOCK_ART = (" \u2588\u2580\u2588 ", "\u2584\u2588\u2584\u2588\u2584", "\u2588\u2588\u2584\u2588\u2588")
+
+#: What is written beside the padlock, longest first; the first that fits the row is used.
+LOCK_CAPTIONS = (
+    "read-only \u00b7 open in another ZettCode process",
+    "read-only \u00b7 open in another process",
+    "read-only",
+)
+
+#: Cells between the padlock and its caption, and kept clear on either side of the pair.
+LOCK_GAP = 2
+LOCK_MARGIN = 2
 
 
 def _split_mentions(parts: Sequence[PromptPart]) -> tuple[PromptPart, ...]:
@@ -131,16 +149,35 @@ class Composer(TextArea):
         self._free_placeholder = value
 
     def render(self, canvas: Canvas) -> None:
-        """Paint the editor; locked and empty, the lock in the middle of the row and no arrow."""
+        """Paint the editor; locked and empty, a padlock and what it means in the middle, and no arrow.
+
+        A composer three rows or more high gets the drawn padlock with its caption beside it; a smaller one gets
+        the one-cell mark alone, because a picture that does not fit is worse than a symbol that does.
+        """
         super().render(canvas)
         if not (self._locked and not self.text) or self.rect.empty:
             return
+        rect = self.rect
         band = self.theme.surface_alt if self.surface else None
-        banded = self.surface and self.rect.height >= 3
-        inner = self.rect.height - (2 if banded else 0)
-        row = self.rect.y + (1 if banded else 0) + (inner - 1) // 2
-        column = self.rect.x + max(0, (self.rect.width - display_width(LOCK)) // 2)
-        canvas.draw_text(column, row, LOCK, Style(foreground=self.theme.warning, background=band), max_width=2)
+        lock = Style(foreground=self.theme.warning, background=band)
+        art_width = len(LOCK_ART[0])
+        if rect.height >= len(LOCK_ART) and rect.width >= art_width:
+            top = rect.y + (rect.height - len(LOCK_ART)) // 2
+            room = rect.width - art_width - LOCK_GAP - 2 * LOCK_MARGIN
+            caption = next((words for words in LOCK_CAPTIONS if display_width(words) <= room), "")
+            block = art_width + (LOCK_GAP + display_width(caption) if caption else 0)
+            column = rect.x + (rect.width - block) // 2
+            for offset, art in enumerate(LOCK_ART):
+                canvas.draw_text(column, top + offset, art, lock, max_width=art_width)
+            if caption:
+                words = Style(foreground=self.theme.muted, background=band)
+                canvas.draw_text(column + art_width + LOCK_GAP, top + 1, caption, words, max_width=room)
+            return
+        banded = self.surface and rect.height >= 3
+        inner = rect.height - (2 if banded else 0)
+        row = rect.y + (1 if banded else 0) + (inner - 1) // 2
+        column = rect.x + max(0, (rect.width - display_width(LOCK)) // 2)
+        canvas.draw_text(column, row, LOCK, lock, max_width=2)
 
     def cursor(self) -> Point | None:
         """Show no cursor over the lock: there is nothing here to type into."""

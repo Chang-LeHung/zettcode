@@ -13,7 +13,10 @@ from zettcode.app.agent.conversation.entries import TextEntry
 from zettcode.app.agent.storage import SessionStore
 from zettcode.app.ui import sessions as sessions_module
 from zettcode.app.ui.app import ZettCodeApp
-from zettcode.app.ui.widgets.composer import LOCK
+from zettcode.app.ui.widgets.composer import LOCK_ART
+
+#: The padlock's body, which is on screen only while the composer is locked.
+LOCK = LOCK_ART[1]
 
 OTHERS = "alpha-1"
 

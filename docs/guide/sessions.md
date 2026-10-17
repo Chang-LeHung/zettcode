@@ -152,8 +152,8 @@ conversation had got to, and the conversation would fork behind both of them.
 The lock goes with the process, however it ends: closing ZettCode, a crash and `kill -9` all release it, so there is
 never a stale lock to clear by hand. Starting a new session, resuming or forking moves it.
 
-If you resume a session another process has open, you can still **read** it, but the composer shows a lock where the
-arrow was:
+If you resume a session another process has open, you can still **read** it, but the composer is replaced by a small
+padlock and the words "read-only", with no arrow and no hint:
 
 ```text
   ◈ zettcode  Fix the parser · ~/projects/api
@@ -165,14 +165,14 @@ arrow was:
    ● ready
 ```
 
-- **What it takes.** Only slash commands: type `/` and the lock moves to where the arrow would be. Anything else is
+- **What it takes.** Only slash commands: type `/` and a small `⊘` takes the arrow's place. Anything else is
   not accepted, including a paste or a picture, and `Backspace` still clears what was there.
 - **What it refuses.** Anything that writes to the session: a message, `/btw`, `/title`, `/compact`, and the title
   the first answer would have written. A locked session also does not appear to the other sessions for
   [messaging](/guide/messaging), so nobody can send it something it would have to turn into a write.
 - **Getting out.** `/new` starts a session of your own, and `/fork` carries this conversation into one. Or wait:
   ZettCode tries again every couple of seconds, and the moment the other process lets go it **reads the session
-  again** — so what that process wrote is on screen — and unlocks the composer. Pressing `Enter` on the lock tries at
+  again** — so what that process wrote is on screen — and unlocks the composer. Pressing `Enter` on the padlock tries at
   once.
 
 ## Forking
