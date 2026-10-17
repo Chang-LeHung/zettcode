@@ -177,10 +177,17 @@ def sessions_tab(ledger: Ledger, width: int) -> tuple[list[Line], list[Line]]:
         heading += fit(name, column, right=not track) + "  "
     share = shows_share(width)
     if share:
-        heading += fit("Cached", SHARE, right=not track) + "  "
+        heading += fit("Cached", cache_column(track), right=not track) + "  "
     head.append([(heading.rstrip(), "muted")])
     if track:
-        head.append([("Bars use a square-root scale against the busiest session, so small ones still show.", "muted")])
+        head.append(
+            [
+                (
+                    "Token bars: square-root scale against the busiest session. Cached bar: 0–100%, full is all of it.",
+                    "muted",
+                )
+            ]
+        )
     body: list[Line] = []
     for row in ledger.sessions:
         body.append(_session_line(row, title_room, track, most_in, most_out, stamp, count, share))
@@ -208,6 +215,17 @@ def stamp_columns(width: int) -> tuple[int, int]:
 SHARE = 7
 
 
+def cache_track(track: int) -> int:
+    """Return the cells of a session's cache bar, which is shorter than a token bar: a share needs less room."""
+    return max(4, track * 3 // 5) if track else 0
+
+
+def cache_column(track: int) -> int:
+    """Return the columns the cache column takes: its bar, a space, and the percentage."""
+    bar_cells = cache_track(track)
+    return bar_cells + 1 + SHARE if bar_cells else SHARE
+
+
 def shows_share(width: int) -> bool:
     """Return whether the cache column fits beside a readable title; below that the two counts stay."""
     stamp, count = stamp_columns(width)
@@ -224,14 +242,19 @@ def session_columns(width: int) -> tuple[int, int]:
     """
     stamp, count = stamp_columns(width)
     prefix = count * (stamp + 2)
-    extra = SHARE + 2 if shows_share(width) else 0
+    shown = shows_share(width)
+
+    def room(track: int) -> int:
+        """Return the columns a title keeps when the bars are ``track`` cells wide."""
+        column = track + 1 + NUMBER if track else NUMBER
+        extra = cache_column(track) + 2 if shown else 0
+        return width - (prefix + 2 + 2 * (column + 2) + extra)
+
     track = 0
     for track in (14, 10, 6, 0):
-        column = track + 1 + NUMBER if track else NUMBER
-        if width - (prefix + 2 + 2 * (column + 2) + extra) >= 18:
+        if room(track) >= 18:
             break
-    column = track + 1 + NUMBER if track else NUMBER
-    return track, max(0, width - (prefix + 2 + 2 * (column + 2) + extra))
+    return track, max(0, room(track))
 
 
 def _stamp(moment: datetime, width: int) -> str:
@@ -270,6 +293,10 @@ def _session_line(
         line.append(("  ", "text"))
     share_value = row.tally.cache_share
     if share:
+        if track:
+            # A share is read against a whole, not against the busiest row: full is every input token cached.
+            line.extend(meter(round((share_value or 0) * 10_000), 10_000, cache_track(track), "cached"))
+            line.append((" ", "text"))
         line.append((f"{percent(share_value):>{SHARE}}", "text" if share_value is not None else "muted"))
         line.append(("  ", "text"))
     return line

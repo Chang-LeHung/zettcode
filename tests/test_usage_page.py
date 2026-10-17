@@ -545,3 +545,42 @@ def test_the_cache_column_gives_way_before_the_counts_on_a_narrow_page():
 
     assert "Cached" not in text_of(head[1]), "no room for it here"
     assert "Input" in text_of(head[1]) and "Output" in text_of(head[1])
+
+
+def test_the_cache_column_draws_a_bar_that_can_be_compared_across_rows():
+    """A share is read against a whole, so the bar is 0-100% and not scaled to the busiest row."""
+    from datetime import datetime
+
+    from zettcode.app.agent.storage.ledger import SessionUsage
+
+    def session(name: str, cached: int) -> SessionUsage:
+        return SessionUsage(
+            name, name, datetime(2026, 10, 9), datetime(2026, 10, 16), Tally(1, 1000, 10, cached), ("m",)
+        )
+
+    rows = [session("none", 0), session("half", 500), session("most", 900), session("all", 1000)]
+    _, body = charts.sessions_tab(ledger_of(models={"m": Tally(4, 4000, 40, 2400)}, sessions=rows), 120)
+
+    def cached_bar(line) -> str:
+        """The cells of the bar that is painted with the cache role, filled part only."""
+        return "".join(piece for piece, role in line if role == "cached")
+
+    bars = {
+        name: cached_bar(line) for line in body for name in ("none", "half", "most", "all") if name in text_of(line)
+    }
+    assert bars["none"] == "" and bars["half"] != "" and len(bars["all"]) == charts.cache_track(14)
+    assert len(bars["none"]) < len(bars["half"]) < len(bars["most"]) <= len(bars["all"])
+    assert len(bars["half"]) * 2 == len(bars["all"]), "half is half the bar"
+    assert all(charts.line_width(line) <= 120 for line in body)
+
+
+def test_the_cache_bar_goes_with_the_other_bars_on_a_page_without_room_for_them():
+    from datetime import datetime
+
+    from zettcode.app.agent.storage.ledger import SessionUsage
+
+    row = SessionUsage("s", "A title", datetime(2026, 10, 9), datetime(2026, 10, 16), Tally(1, 1000, 10, 750), ("m",))
+    _, body = charts.sessions_tab(ledger_of(models={"m": row.tally}, sessions=[row]), 80)
+
+    assert not any(role == "cached" for _, role in body[0]), "numbers alone, as for the token bars"
+    assert "75.00%" in text_of(body[0])
