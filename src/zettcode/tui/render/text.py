@@ -80,7 +80,19 @@ def truncate(text: str, width: int, *, ellipsis: str = ELLIPSIS) -> str:
     if display_width(text) <= width:
         return text
     suffix = ellipsis if display_width(ellipsis) <= width else ""
-    return slice_columns(text, 0, width - display_width(suffix)) + suffix
+    # A wide glyph that straddles the cut is left out rather than kept whole: the budget is the budget,
+    # and a result one column over it shifts every column after it on that line (which is what made a
+    # truncated CJK title push a table's columns out by one).
+    remaining = width - display_width(suffix)
+    kept: list[str] = []
+    used = 0
+    for character in text:
+        size = character_width(character)
+        if used + size > remaining:
+            break
+        kept.append(character)
+        used += size
+    return "".join(kept) + suffix
 
 
 def truncate_spans(spans: Sequence[Span], width: int) -> tuple[Span, ...]:
