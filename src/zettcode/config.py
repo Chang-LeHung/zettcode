@@ -21,7 +21,7 @@ from zett_agent.extensions.shell_approval import ShellApprovalMode
 from zett_agent.model import ReasoningEffort
 
 from ._compat import tomllib
-from .paths import DEFAULT_STORE, DEFAULT_UPDATE_FILE, config_path
+from .paths import DEFAULT_STORE, DEFAULT_THEMES_DIR, DEFAULT_UPDATE_FILE, config_path
 from .providers import Api
 
 #: The concrete type :func:`_typed` verifies a raw config value against.
@@ -29,7 +29,7 @@ T = TypeVar("T")
 
 #: Top-level keys the config file may set; anything else is a typo.
 CONFIGURABLE = frozenset(
-    {"models", "transcript", "agents_md", "ask_user", "skills", "mcp", "plugins", "update", "harness", "sessions"}
+    {"models", "transcript", "agents_md", "ask_user", "skills", "mcp", "plugins", "update", "harness", "sessions", "ui"}
 )
 
 #: Keys one ``[[models]]`` entry may set.
@@ -70,6 +70,9 @@ UPDATE_KEYS = frozenset({"enabled"})
 
 #: Keys the ``[sessions]`` table may set.
 SESSIONS_KEYS = frozenset({"enabled"})
+
+#: Keys the ``[ui]`` table may set.
+UI_KEYS = frozenset({"theme"})
 
 #: Keys the ``[harness]`` table may set.
 HARNESS_KEYS = frozenset({"subagent", "subagent_max_iterations", "todowrite"})
@@ -212,6 +215,9 @@ class ZettCodeConfig:
             ``~`` is expanded. Set programmatically; it is not a TOML setting.
         models: Available models, in file order; the first is active at startup.
         theme_file: Optional TOML palette loaded on top of ``theme``.
+        theme: Name of the palette to start in (``[ui] theme``): a built-in one, or a file of the reader's in
+            ``themes_dir``. ``None`` follows the terminal's light or dark. A ``theme_file`` wins over it.
+        themes_dir: Where the reader's own palettes are, one ``<name>.toml`` each.
         reasoning_effort: How much reasoning budget to request per turn.
         shell_approval: When the agent must ask before running a shell command.
         reduced_motion: Suppress decorative animation.
@@ -260,6 +266,8 @@ class ZettCodeConfig:
     models: tuple[ModelConfig, ...]
     store: Path = DEFAULT_STORE
     theme_file: Path | None = None
+    theme: str | None = None
+    themes_dir: Path = DEFAULT_THEMES_DIR
     reasoning_effort: ReasoningEffort = ReasoningEffort.MEDIUM
     shell_approval: ShellApprovalMode = ShellApprovalMode.REVIEW
     reduced_motion: bool = False
@@ -311,6 +319,7 @@ class ZettCodeConfig:
         if self.mcp_config is not None:
             object.__setattr__(self, "mcp_config", self.mcp_config.expanduser().resolve())
         object.__setattr__(self, "update_file", self.update_file.expanduser().resolve())
+        object.__setattr__(self, "themes_dir", self.themes_dir.expanduser().resolve())
 
     def skill_search_roots(self) -> tuple[Path, ...]:
         """Return every skill directory to scan, most specific first.
@@ -474,6 +483,15 @@ def _read_disabled_plugins(raw: object, source: Path) -> tuple[str, ...]:
     return tuple(entry.strip() for entry in raw)
 
 
+def _read_theme_name(raw: object, source: Path) -> str | None:
+    """Return the palette name ``[ui] theme`` asks for, rejecting what could not be typed after ``/theme``."""
+    if raw is None:
+        return None
+    if not isinstance(raw, str) or not raw.strip() or any(character.isspace() for character in raw.strip()):
+        raise ValueError(f"Config key 'ui.theme' in {source} must be a palette name without spaces")
+    return raw.strip()
+
+
 def load_config(
     workspace: str | Path,
     *,
@@ -514,11 +532,13 @@ def load_config(
     update = _read_table(data.get("update"), "update", source, UPDATE_KEYS)
     harness = _read_table(data.get("harness"), "harness", source, HARNESS_KEYS)
     sessions = _read_table(data.get("sessions"), "sessions", source, SESSIONS_KEYS)
+    ui = _read_table(data.get("ui"), "ui", source, UI_KEYS)
 
     return ZettCodeConfig(
         workspace=Path(workspace),
         models=_read_models(data.get("models"), source),
         theme_file=_default_theme_file(),
+        theme=_read_theme_name(ui.get("theme"), source),
         reduced_motion=reduced_motion_default,
         transcript_max_entries=_typed(
             transcript.get("max_entries", DEFAULT_TRANSCRIPT_MAX_ENTRIES),

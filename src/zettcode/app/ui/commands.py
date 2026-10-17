@@ -12,7 +12,9 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
-from ...tui import Widget, theme_names
+from zettcode.config_edit import ConfigEditError
+from zettcode.tui import Widget
+
 from ..commands import Command, CommandContext, CommandProvider, CommandResult, Subcommand
 from .widgets import EFFORT_ROWS, ContextPage, EffortPage, ModelPage, SessionsPage, bottom_panel, help_text
 
@@ -95,11 +97,12 @@ class ShellCommands(CommandProvider):
             ),
             Command(
                 "/theme",
-                "choose the palette (or /theme dark|light)",
+                "choose the palette: /theme <name> (the menu previews each)",
                 "app",
                 self.theme,
                 when_busy="now",
-                subcommands=lambda: self._words(theme_names(), THEME_NOTES, self.shell.app.theme.name),
+                subcommands=self.theme_words,
+                preview=self.shell.preview_theme,
             ),
             Command("/fork", "carry this conversation into a new session", "app", self.fork),
             Command("/context", "what is filling the context window", "app", self.context, when_busy="now"),
@@ -148,6 +151,12 @@ class ShellCommands(CommandProvider):
         """
         self.shell.composer.set_text(f"{command} ")
         return CommandResult()
+
+    def theme_words(self) -> tuple[Subcommand, ...]:
+        """Offer every palette by name: the built-in ones, then the plugins' and the reader's own, with their notes."""
+        catalog = self.shell.agent.themes
+        notes = {**THEME_NOTES, **catalog.notes()}
+        return self._words(catalog.names(), notes, self.shell.app.theme.name)
 
     def model_words(self) -> tuple[Subcommand, ...]:
         """Offer the configured models by the name ``/model`` accepts.
@@ -238,11 +247,22 @@ class ShellCommands(CommandProvider):
         return CommandResult(relayout=True)
 
     async def theme(self, context: CommandContext) -> CommandResult:
-        """Switch straight to a named palette, or open the menu of them."""
-        if context.argument:
-            self.shell.apply_theme(context.argument)
+        """Switch straight to a named palette and remember it, or open the menu of them.
+
+        The choice is written to ``[ui] theme`` in the config file so the next start opens in it. A file that
+        cannot take the line does not undo the switch: the palette is on, and the reader is told it will not be
+        there next time and why.
+        """
+        if not context.argument:
+            return self._offer("/theme")
+        name = context.argument.strip()
+        self.shell.apply_theme(name)
+        try:
+            self.shell.agent.remember_theme(name)
+        except ConfigEditError as error:
+            context.ui.error(f"{name} is on for this run but will not be remembered: {error}")
             return CommandResult(relayout=True)
-        return self._offer("/theme")
+        return CommandResult(relayout=True, notification=f"theme {name} — remembered for next time")
 
     async def context(self, context: CommandContext) -> CommandResult:
         """Show what the next request carries, by source and token share.

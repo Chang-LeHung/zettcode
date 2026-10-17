@@ -54,10 +54,11 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
     import asyncio
     from collections.abc import Sequence
 
-    from ...config import ModelConfig
-    from ...plugins import Activity, UiRow
-    from ...tui import CompletionPopup, StatusBar, TuiApp
-    from ...update import UpdateState
+    from zettcode.config import ModelConfig
+    from zettcode.plugins import Activity, UiRow
+    from zettcode.tui import CompletionPopup, StatusBar, Theme, TuiApp
+    from zettcode.update import UpdateState
+
     from ..agent.agent import ZettCodeAgent
     from ..agent.agent.prompt import PromptPart
     from ..agent.conversation.effort_gauge import EffortFrame
@@ -107,6 +108,10 @@ class ShellState:
     #: The merged slash commands and the ``@`` resource registry.
     commands: tuple[Command, ...]
     mentions: MentionRegistry
+    #: The palette in force before the ``/theme`` menu started showing others, or ``None`` when nothing is previewed.
+    _theme_before: Theme | None
+    #: The command whose menu is showing its words as it is walked (see ``Command.preview``).
+    _previewing: Command | None
     #: The plugin rows, in paint order.
     _plugin_rows: tuple[UiRow, ...]
     #: What the status line shows: the shell's state and a one-off note.

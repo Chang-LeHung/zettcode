@@ -283,6 +283,7 @@ class FakeConfig:
     disabled_plugins: tuple[str, ...] = ()
     update_enabled: bool = True
     update_file: Path = Path("/tmp/zettcode-update.json")
+    themes_dir: Path = Path("/tmp/zettcode-no-themes")
 
     def skill_search_roots(self) -> tuple[Path, ...]:
         """Return no roots: the fake runs without a skills directory."""
@@ -430,7 +431,7 @@ def rows_and_commands(
         getattr(container, f"register_{region}_{side}")(builder)
     for region, side, name, builder in override:
         container.slots.add(region, side, name, builder)
-    return Plugins(commands=commands, rows=container.rows, failures=failures)
+    return Plugins(commands=commands, rows=container.rows, failures=failures, themes=container.themes)
 
 
 def build_app(
@@ -2595,7 +2596,9 @@ async def test_the_theme_command_moves_to_a_menu_and_enter_applies_the_choice():
 
     assert app.app.screens.top.name == "main"
     assert app.composer.text == "/theme "
-    assert [item.value for item in app.completions.items] == ["dark", "light"]
+    names = [item.value for item in app.completions.items]
+    assert names[:2] == ["dark", "light"], "the two the terminal's own light or dark maps to come first"
+    assert "nord" in names and "catppuccin-mocha" in names, "and the palettes that ship follow"
     assert [item.value for item in app.completions.items if "(current)" in item.description] == ["dark"]
     assert harness.render().text.count("green-leaning") == 2
     assert app.completions.current.value == "dark"
@@ -2604,7 +2607,7 @@ async def test_the_theme_command_moves_to_a_menu_and_enter_applies_the_choice():
     harness.press("enter")
     await asyncio.wait_for(app.task, 2.0)
 
-    assert app.app.theme is LIGHT
+    assert app.app.theme.name == "light" and app.app.theme.background == "#f7f8f5"
     assert app.app.screens.top.name == "main"
     assert app.app.focused_widget() is app.composer
 
@@ -2634,7 +2637,7 @@ async def test_switching_the_theme_repaints_every_view():
         if colour is not None
     }
 
-    assert app.app.theme is LIGHT
+    assert app.app.theme.name == "light" and app.app.theme.background == "#f7f8f5"
     assert not painted & (_palette(DARK) - _palette(LIGHT))
 
 
@@ -2680,7 +2683,7 @@ async def test_app_slash_commands_change_theme_sessions_and_exit():
     harness.write("/theme light")
     harness.press("enter")
     await asyncio.wait_for(app.task, 2.0)
-    assert app.app.theme is LIGHT
+    assert app.app.theme.name == "light" and app.app.theme.background == "#f7f8f5"
 
     harness.write("/new")
     harness.press("enter")

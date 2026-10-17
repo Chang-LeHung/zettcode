@@ -113,6 +113,12 @@ _EXPORTS = {
     "centered": ".layout",
     "detect_capabilities": ".capabilities",
     "detect_reduced_motion": ".capabilities",
+    "bundled_themes": ".theme_file",
+    "file_theme": ".theme_file",
+    "ThemeCatalog": ".theme_file",
+    "ThemeSource": ".theme_file",
+    "RESERVED_THEMES": ".theme_file",
+    "THEME_NAME": ".theme_file",
     "event_key": ".core",
     "key_id": ".core",
     "load_theme": ".theme_file",
@@ -213,7 +219,18 @@ if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
     from .render import Canvas, ColorDepth, DifferentialRenderer, Span, Style, TextLine
     from .runner import TerminalRunner, run_app
     from .terminal import Terminal, parse_background, title_sequence
-    from .theme_file import EXAMPLE, ThemeFileError, load_theme, theme_from_toml
+    from .theme_file import (
+        EXAMPLE,
+        RESERVED_THEMES,
+        THEME_NAME,
+        ThemeCatalog,
+        ThemeFileError,
+        ThemeSource,
+        bundled_themes,
+        file_theme,
+        load_theme,
+        theme_from_toml,
+    )
     from .widgets import (
         Collapsible,
         Column,
@@ -371,6 +388,12 @@ __all__ = [
     "build_unified",
     "EXAMPLE",
     "detect_capabilities",
+    "bundled_themes",
+    "file_theme",
+    "RESERVED_THEMES",
+    "THEME_NAME",
+    "ThemeCatalog",
+    "ThemeSource",
     "detect_reduced_motion",
     "centered",
     "event_key",

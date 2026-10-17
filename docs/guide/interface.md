@@ -281,6 +281,8 @@ to the composer, and the transcript is untouched underneath:
 
 `/theme` and `/permission` choose among a few fixed words, so they use the command menu
 instead of a panel: type the command and a space, and `Enter` applies the highlighted word.
+`/theme` goes one step further: moving the highlight repaints the whole interface in that palette, so you can
+judge it on your own conversation, and `Esc` puts the old one back.
 `/effort` has a panel of its own: a rail of levels with a knob you slide with `←` `→`.
 
 ## Approvals

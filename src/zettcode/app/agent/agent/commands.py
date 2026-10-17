@@ -7,9 +7,11 @@ agent is where the shell asks for everything the runtime loaded.
 
 from __future__ import annotations
 
-from ....plugins import UiRow
-from ....providers import BUILTIN_PROVIDERS, Provider, merge_providers
-from ...commands import Command, CommandContext, CommandResult
+from zettcode.app.commands import Command, CommandContext, CommandResult
+from zettcode.plugins import UiRow
+from zettcode.providers import BUILTIN_PROVIDERS, Provider, merge_providers
+from zettcode.tui import ThemeCatalog
+
 from ..dialogue.mentions import MentionProvider
 from .exports import ExportsMixin
 
@@ -49,6 +51,15 @@ class CommandsMixin(ExportsMixin):
     def providers(self) -> tuple[Provider, ...]:
         """Return the hosts ``/config`` can offer: the built-in ones, then the plugins' own."""
         return merge_providers(BUILTIN_PROVIDERS, self.runtime.plugins.providers)
+
+    @property
+    def themes(self) -> ThemeCatalog:
+        """Return every palette that can be asked for by name: the plugins', then the reader's own files.
+
+        Built fresh each time it is asked: it lists names and builds nothing, and the reader's directory may have
+        gained a file since the last look.
+        """
+        return ThemeCatalog(self.runtime.plugins.themes, self.runtime.config.themes_dir)
 
     @property
     def plugin_failures(self) -> tuple[str, ...]:

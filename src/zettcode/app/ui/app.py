@@ -15,12 +15,12 @@ from typing import TYPE_CHECKING, cast
 
 from zett_agent.events import AgentEvent
 
-from ...paths import DEFAULT_LOG
-from ...plugins import (
+from zettcode.paths import DEFAULT_LOG
+from zettcode.plugins import (
     Activity,
     UiRow,
 )
-from ...tui import (
+from zettcode.tui import (
     DARK,
     DONE,
     ELLIPSIS,
@@ -40,10 +40,10 @@ from ...tui import (
     VBox,
     walk,
 )
-from ...tui.clipboard import copy_route
-from ...tui.layout import Slot
-from ...tui.render import display_width
-from ...tui.widgets import Rule
+from zettcode.tui.clipboard import copy_route
+from zettcode.tui.layout import Slot
+from zettcode.tui.render import display_width
+from zettcode.tui.widgets import Rule
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from collections.abc import AsyncGenerator
@@ -214,6 +214,8 @@ class ZettCodeApp(
         #: that never started one — because the update check is off, or because it
         #: is leaving before the background work began — has nothing else to drop.
         self._update_task: asyncio.Task[None] | None = None
+        self._theme_before = None
+        self._previewing = None
         #: The runtime warm-up this shell started, released on the way out.
         self._warm: asyncio.Task[object] | None = None
         self._busy = False
@@ -269,7 +271,7 @@ class ZettCodeApp(
         deserve is drawn from the file the *last* check left, so no start waits
         on the network.
         """
-        from ...tui import Terminal, TerminalRunner
+        from zettcode.tui import Terminal, TerminalRunner
 
         self.start_background()
         try:

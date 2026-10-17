@@ -40,7 +40,8 @@ model or terminal.
 dark`. At startup ZettCode asks the terminal for its background colour; a
 terminal that does not answer, a multiplexer in between, or `TERM` lying about
 its colour depth can all mislead it. `/theme` overrides that for the session,
-and `~/.zettcode/theme.toml` overrides it for good.
+and `[ui] theme = "..."` in `config.toml` (or `~/.zettcode/theme.toml`) overrides it for good. `/theme ` with a
+space opens a menu that previews every palette as you move through it.
 
 **The display is garbled after a while.** `Ctrl-L` repaints from scratch.
 Resizing the window is handled, but a program that wrote to the terminal behind

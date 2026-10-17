@@ -207,6 +207,34 @@ Names are unique across the application. A plugin that registers a name a built-
 has (`openai`, `anthropic`, `deepseek`, `openrouter`, `groq`, `ollama`, `custom`), or one another plugin
 registered first, is skipped and reported like any other plugin that cannot load.
 
+## Offering a palette {#themes}
+
+A plugin can add palettes to `/theme`. Each one is listed in the menu, previewed as you move through
+it, and switched to with `/theme <name>`. ZettCode's own palettes (`nord`, `dracula`, `gruvbox` and the
+rest) are offered the same way by a built-in plugin, so this is the whole mechanism:
+
+```text
+from pathlib import Path
+
+from zettcode.plugins import Plugin, PluginContainer
+
+
+class Palettes(Plugin):
+    name = "acme-palettes"
+
+    def activate(self, container: PluginContainer) -> None:
+        # A theme file shipped inside your package: same format as ~/.zettcode/themes/<name>.toml.
+        container.register_theme("acme", Path(__file__).parent / "acme.toml")
+        # Or a function that builds a zettcode.tui.Theme; it runs only when the palette is first asked for.
+        container.register_theme("acme-night", build_night, description="deep blue, low glare")
+```
+
+A name is one word (letters, digits, `.`, `_`, `-`). `dark` and `light` belong to ZettCode. A name a
+built-in palette or an earlier plugin already has is skipped and reported, like any plugin that cannot
+load. A file of the reader's in `~/.zettcode/themes/` with the same name wins over the plugin's, so a
+reader can always adjust a palette they were given. A plugin can also be the palette the reader starts
+in: `[ui] theme = "acme"` finds it.
+
 ## When something goes wrong
 
 A plugin that cannot be imported or activated is skipped, not fatal: the shell

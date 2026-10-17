@@ -11,7 +11,8 @@
 | 文件 | 用途 | 修改后何时生效 |
 | --- | --- | --- |
 | `~/.zettcode/config.toml` | 模型连接和可选功能 | 重启 ZettCode。 |
-| `~/.zettcode/theme.toml` | 自定义颜色 | 重启；运行中可用 `/theme` 选择内置主题。 |
+| `~/.zettcode/theme.toml` | 一组自定义颜色，叠在当前主题之上 | 重启；运行中可用 `/theme` 选择主题。 |
+| `~/.zettcode/themes/<name>.toml` | 你自己的主题，按名字选用 | 下次使用 `/theme` 时就能看到。 |
 | `~/.zettcode/mcp.json` | 外部工具服务器 | 修改服务器定义后重启。 |
 | 工作区或上层目录的 `AGENTS.md` | 项目约定和测试命令 | 下一次请求重新读取。 |
 
@@ -324,6 +325,9 @@ disable = []                   # 要跳过的 entry-point 名称
 [update]
 enabled = true                 # 后台检查 PyPI 新版本
 
+[ui]
+# theme = "nord"               # 按名字指定启动主题（见“颜色”）；不设则跟随终端深浅
+
 [sessions]
 enabled = true                 # 会话之间可以互发消息；false 则不加入 broker
 
@@ -376,8 +380,54 @@ enabled = false
 
 ## 颜色
 
-没有主题文件时，ZettCode 会尝试检测终端背景，选择匹配的深色或浅色主题。两个内置主题
-都使用终端本身的页面背景。`/theme dark` 或 `/theme light` 只切换本次运行，不修改文件。
+没有指定时，ZettCode 会尝试检测终端背景，选择匹配的深色或浅色主题；这两个主题
+都使用终端本身的页面背景。
+
+### 按名字选主题
+
+其他主题都有名字，而名字就是文件。程序自带 16 个：
+
+| 深色 | 浅色 |
+| --- | --- |
+| `catppuccin-mocha`, `tokyo-night`, `nord`, `gruvbox-dark`, `rose-pine`, `kanagawa`, `dracula`, `one-dark`, `solarized-dark`, `github-dimmed`, `ayu-mirage` | `catppuccin-latte`, `rose-pine-dawn`, `gruvbox-light`, `solarized-light`, `github-light` |
+
+`/theme nord` 只切换本次运行。输入 `/theme ` 和一个空格会打开所有主题的菜单，而且**菜单会预览**：
+用 `↑` `↓` 移动高亮时，整个界面（包括你眼前的对话）都会用那套配色重绘。`Enter` 保留它；
+`Esc` 或者删掉输入，就恢复成之前的。这些主题自己绘制页面背景，所以在任何终端里看起来都一样；按名字选 `dark` 和 `light` 时也一样，只有启动时的自动选择才把页面留给终端。
+
+**选择会被记住。**`/theme nord` 会在 `config.toml` 的 `[ui]` 下写上 `theme = "nord"`（只改这一行，文件其余部分不动），
+下次启动就用它。用方向键在菜单里移动不会记住任何东西，只有 `Enter` 或者输入完整名字才会。如果 `config.toml`
+写不了这一行（文件不存在，或者 `[ui]` 的写法无法安全编辑），配色仍然会切换，并提示你它不会保留。
+
+想启动就用某个主题，在 `config.toml` 里写上它的名字：
+
+```toml
+[ui]
+theme = "nord"
+```
+
+### 加上你自己的
+
+把一个文件放进 `~/.zettcode/themes/`，文件名就是主题名：`~/.zettcode/themes/sunset.toml` 就是
+`/theme sunset`，下次打开菜单就在里面，不用重启。文件格式和下面的 `theme.toml` 相同，另外可以加一行
+`description`，显示在名字旁边：
+
+```toml
+description = "warm and low-contrast"
+base = "dark"            # 没写的颜色从这里来
+
+[ui]
+surface_alt = "#3a322b"          # 不写 `background` 就继续用终端自己的页面背景
+accent = "#e0a458"
+```
+
+和自带主题同名的文件会替换它，调整自带主题就是这样用：复制一份，改掉不满意的，名字不变。`dark` 和 `light`
+不能被替换。名字是一个词（字母、数字、`.`、`_`、`-`）。读不了的文件仍会列在菜单里，选它的时候会告诉你原因。
+
+自带主题以及每个组件在其中的样子，可以用 `make palettes` 生成到 `docs/internal/palettes.html`。
+这个页面是产物、不在仓库里：改了配色或主题相关代码后重新生成一次。
+
+### 叠在任何主题之上的一个文件
 
 需要持久化自定义配色时，创建 `~/.zettcode/theme.toml`。
 这是**另一个文件**，不要把下面的段落放进 `config.toml`：
@@ -406,8 +456,8 @@ builtin = "#b8a6e0"
 inline = "#9bddad"            # Markdown `行内代码`
 ```
 
-只覆盖写出的颜色，其余来自 `base`。主题文件优先于自动深浅色检测；运行中仍然可以用
-`/theme` 选择内置主题，但不会改写自定义文件。
+只覆盖写出的颜色，其余来自 `base`，或者来自 `[ui] theme` 所指定的主题（文件叠在它上面）。主题文件优先于自动深浅色检测；运行中仍然可以用
+`/theme` 选择主题，但不会改写任何文件。
 
 | 段落 | 颜色参数 |
 | --- | --- |
