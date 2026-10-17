@@ -27,15 +27,45 @@ description: Review a diff with the team checklist
 进入模型的只是**目录** —— 名字和描述，仅此而已。正文只有在模型判断自己需要时才被读取，这也是
 skills 再多也不会把上下文占满的原因。
 
-两种发现方式：
+几种发现方式：
 
 | 位置 | 给谁用 |
 | --- | --- |
 | `~/.zettcode/skills/` | 你自己，在所有项目里都生效。 |
-| `[skills] roots` | 项目或团队：`roots = [".zettcode/skills"]` 按工作区解析。 |
+| `<工作区>/.zettcode/skills/` | 某一个项目，随项目一起提交。默认会读取；可用 `[skills] scope` 关掉。 |
+| `[skills] roots` | 团队目录或任何其他目录：`roots = ["~/team-skills"]`。相对路径按工作区解析。 |
 
-名字冲突时前面的根目录优先，配置的根目录排在自带的目录之前。`[skills] enabled = false` 可以
+先搜索配置的根目录，再搜索 scope 对应的目录；名字冲突时前面的优先。`[skills] enabled = false` 可以
 关掉发现。
+
+### 放在哪里：你的目录、项目的目录，还是两者 {#where-they-live}
+
+`[skills] scope`（以及下面的 `[mcp] scope`）决定读取谁的文件：
+
+| `scope` | skills 从哪里读 | MCP 服务器从哪里读 |
+| --- | --- | --- |
+| `"both"`（默认） | 先项目的，再你的 | 两个都读并合并；同名服务器以项目的为准 |
+| `"workspace"` | `<工作区>/.zettcode/skills` | `<工作区>/.zettcode/mcp.json` |
+| `"global"` | `~/.zettcode/skills` | `~/.zettcode/mcp.json`（或 `[mcp] config`） |
+
+除非你另行指定，两边会一起使用，所以项目不用任何配置就能带上自己的 skills 和服务器。想只用一边：
+
+```toml
+[skills]
+scope = "global"      # 忽略项目自带的 skills
+
+[mcp]
+scope = "global"      # 绝不启动项目自带的服务器
+```
+
+用 `both` 时，项目可以带一个自己的 `review` skill，它只在这个项目里压过你自己的同名 skill。
+工作区就是你启动时指定的那个：`zettcode -w ~/projects/api` 读取的是 `~/projects/api/.zettcode/…`。
+
+::: warning 仓库里的文件默认会被读取
+skill 是模型会照着做的指令，MCP 条目是 ZettCode 会去执行的命令。按默认设置，打开一个带有
+`.zettcode/mcp.json` 的仓库就会启动它列出的服务器。读这些文件之前，像对待一段你要运行的脚本一样先看一遍；
+对不信任的仓库，把 scope 设为 `global`。
+:::
 
 ### 用起来
 
@@ -57,20 +87,14 @@ skills 再多也不会把上下文占满的原因。
 `[skills] enabled = false`。添加 skill 不等于安装工具：正文可以指导模型使用已有工具，
 但不会凭空创建新工具。
 
-想让 skill 随项目提交，可以放在 `<工作区>/.zettcode/skills/code-review/SKILL.md`，
-再把下面的段落加到 `config.toml`：
-
-```toml
-[skills]
-roots = [".zettcode/skills"]
-```
-
-项目内的 skill 目录需要显式配置，并不会自动搜索。使用别人提供的 skill 前，先阅读正文，
+想让 skill 随项目提交，可以放在 `<工作区>/.zettcode/skills/code-review/SKILL.md`。不需要任何配置就能找到它，
+而且在这个项目里，它会压过你自己目录里的同名 skill。使用别人提供的 skill 前，先阅读正文，
 就像检查交给同事的任务说明一样。
 
 ## MCP 服务器
 
 MCP 服务器会发布工具。ZettCode 从 `~/.zettcode/mcp.json`（或 `[mcp] config` 指向的位置）读取，
+也读 `<工作区>/.zettcode/mcp.json`（[读哪些文件](#where-they-live)）。
 把每个工具注册成 `<服务器名>__<工具名>`，和自带工具放在一起。
 
 ### 例子：本地浏览器服务器

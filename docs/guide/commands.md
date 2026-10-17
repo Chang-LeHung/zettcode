@@ -28,10 +28,10 @@ A command is drawn in a different colour as soon as it is one, so you can see wh
 | `/permission` | Choose how much of the shell may run without asking: `/permission` lists the levels in the menu; `/permission safe` sets one. |
 | `/btw` | Ask something that is answered here but never joins the conversation: `/btw <question>`. |
 | `/theme` | Choose a palette by name: `/theme` opens the menu, which previews each palette as you move through it; `/theme nord` switches in one step. Your own palettes (`~/.zettcode/themes/<name>.toml`) are in the menu too. |
-| `/context` | Show how full the context window is, how close it is to being compacted, and what is filling it — as bars, with the file this session is stored in. |
-| `/usage` | Open a page of what this project's sessions have spent: tokens by model, by session, and a calendar of the days. See [Token usage](#usage). |
+| `/context` | Show how full the context window is, how close it is to being compacted, and what is filling it — as bars, with the file this session is stored in. See [The context window](/guide/context). |
+| `/usage` | Open a page of what this project's sessions have spent: tokens by model, by session, and a calendar of the days. See [Token usage](/guide/usage). |
 | `/compact` | Summarize the conversation now, instead of waiting for the window to fill. |
-| `/self-compact` | Show whether this session lets the model request compaction. `/self-compact on` enables it, `/self-compact off` disables it (the default). The choice is saved with the session and restored when you resume it. |
+| `/self-compact` | Self-compaction: let the model compact its own context when it decides the detail is no longer needed. `/self-compact` opens a panel with a rail for this session and one for the default of every session; `on` / `off` / `default` set this session, `global on` / `global off` write the default into `config.toml`. See [Self-compaction](#self-compaction). |
 | `/title` | Name this session: `/title users endpoint`. On its own, it reports the current name. |
 | `/export` | Write this session to a standalone HTML file: `/export [path]`. |
 | `/quit`, `/exit` | Leave. The shell prints the command that reopens the session. |
@@ -57,6 +57,51 @@ it was interrupted, and what is done depends on that:
 
 It uses the model and effort the next message would, and shows what it is about to do before it does it.
 
+## Self-compaction {#self-compaction}
+
+Normally the context is summarized for you: automatically when it reaches the model's `compact_percent`, or
+when you type `/compact`. **Self-compaction** adds a third way. The model is given a `compact_context` tool and
+can summarize its own earlier conversation when it judges that finished work no longer needs to stay in view,
+for example after a completed subtask. It never compacts the turn it is in: the current request, with its
+tool calls and results, is kept exactly as it is, and nothing happens when there are no older turns or the
+summary would not be smaller. `/compact` and the automatic threshold keep working either way.
+
+It is off by default. Two places decide it, and the more specific one wins:
+
+| What | How | Applies to |
+| --- | --- | --- |
+| The default | `[compaction] self = true` in `config.toml`, or the second rail of the panel, or `/self-compact global on` / `off`, which edit that line for you | Every session that has not chosen for itself |
+| A session's own choice | The first rail of the panel, or `/self-compact on` / `off` | That session only; saved with it and restored when you resume or fork it |
+| Give the choice back | The panel's `default` stop, or `/self-compact default` | That session follows the default again |
+
+So turning the default on does not change a session where you chose `off`, and turning it off does not change
+one where you chose `on`.
+
+### The panel
+
+`/self-compact` on its own opens a panel in the style of `/effort`, with two rails:
+
+```text
+Self-compaction                                     in effect here: on (not applied)
+
+▸ This session   ●━━━━━━━━━━━━━━━━━━━━━━━━◉      default (off)    off     on
+  Every session  ◉────────────────────────○      off              on
+```
+
+- **This session:** `default` (no choice of its own), `off`, or `on`. The `default` stop says what it would
+  be right now, `default (off)`, and changes as you move the lower rail.
+- **Every session:** `off` or `on`, the config default.
+- ↑ ↓ pick the row, ← → slide the knob, a click on a stop sends it there. Nothing changes until `Enter`,
+  which applies both rails; `Esc` applies nothing. The title shows what would be in force and says
+  `(not applied)` while the knobs are away from where they started.
+- If the default cannot be written (there is no `config.toml`) you are told, and the session's choice is still
+  applied. A session another process has open keeps what it has, and only the lower rail moves.
+
+While it is on, the status line ends with `self-compact`. The typed forms still work for scripts and habit:
+`/self-compact on|off|default`, and `/self-compact global on|off`. With a word, the command reports what now
+applies and why. `global` needs an existing `config.toml`; it does not create one, and it reports a file it
+cannot safely edit instead of guessing.
+
 ## While a request is running
 
 Most commands wait until the request is over, because they change what it is standing on. These do
@@ -68,7 +113,8 @@ at once, beside the request.
 | `/help`, `/context`, `/usage`, `/theme` | They only show something. `/context` reports the last request measured; `/usage` reads what the stored sessions recorded. |
 | `/title` | Names the session; nothing running reads it. |
 | `/permission` | The next shell command asks the level again, so a change lands in the request that is already running — `/permission auto` in the middle of a long task is the point. |
-| `/effort` | A request starts with the effort it had, so the change applies from the next request; the running one is not touched. |
+| `/effort` | A request starts with the effort it had, so the change applies from the next request; the running one is not touched. A level the active model does not take (see [`reasoning_efforts`](/guide/config#reasoning-levels-a-model-takes)) is refused with the ones it does. |
+| `/self-compact` | The tool is offered when a request starts, so a change applies from the next request; one the model has already asked for is dropped if you switch it off. |
 | `/quit`, `/exit` | Leaving does not wait for the answer. |
 | `/btw` | Waits its turn and then answers, as before. |
 
@@ -78,45 +124,11 @@ part of. A [plugin](/guide/plugins#while-a-request-is-running) chooses for its o
 
 ## Token usage {#usage}
 
-`/usage` opens a full-screen page of what the sessions in the current project have spent. The
-numbers are read back from the stored conversations, so the page covers every session of the
-project, not only the one you are in, and it is the same an hour from now. Three views, switched
-with `Tab` (or `1`, `2`, `3`):
+`/usage` opens a full-screen page of what the sessions in this project have spent, in three views: by model, by
+session, and a calendar of the days. `Tab` switches between them, and `Esc` closes the page.
 
-- **Models** — for each model, its input and output as two bars, with the share of the input
-  that came from the provider's cache and how much of the output was reasoning. Input and output
-  each use their own scale, because output is a small fraction of input for every model.
-- **Sessions** — one row for each session, last changed first, with when it began and when it last
-  changed, its title, its input and output as bars, and the share of that input the provider served
-  from its cache, also as a bar. The token bars use a square-root scale so a small session still
-  shows next to a very large one; the cache bar is a plain 0–100% (full means every input token came
-  from the cache), so rows compare directly. A narrow terminal drops the bars first, then the cache
-  column, then the clock, and the narrowest keeps only the last change — the time the order is by.
-  Every cache share on the page is written to two decimals.
-- **Calendar** — a grid of weeks like the contribution graph on GitHub: a column is a week, a
-  square is a day, and its shade is that day's tokens (input plus output) from none to the
-  heaviest quarter of your days. `←` `→` move by a week and `↑` `↓` by a day, and the line under
-  the grid says what the chosen day spent, with your streaks. A wider terminal shows more weeks,
-  up to a year.
-
-`↑` `↓`, `PgUp`, `PgDn`, `Home`, `End` and the mouse wheel scroll a long list; `Esc` or `q` closes
-the page. Three things decide what is counted:
-
-- A reply is counted once. `/fork` copies a conversation into a new session along with what each
-  reply cost, so the fork shows only what it spent after the fork; the earlier replies stay with
-  the session they were first written in.
-- A subagent's own session is left out: it is not a conversation you had.
-- A day is a day in your time zone, so a reply written at half past eleven at night is on the
-  day you saw it.
-
-A session an older version stored is counted too, as long as its replies carry their usage; a
-reply without it adds nothing rather than a guess.
-
-The first `/usage` in a project with a long history reads every conversation, which can take a
-few seconds for gigabytes of them. It then keeps a small `usage.json` beside the project's
-sessions (under `~/.zettcode/sessions`), and every later `/usage` — in this run of ZettCode or
-the next — reads only what was added since. The file is only a shortcut: it is safe to delete,
-and ZettCode rebuilds it the next time.
+Every field, the three tabs, what is and is not counted, and where the page differs from the status line are in
+[Token usage](/guide/usage).
 
 ## Panels, and the menu for short choices
 

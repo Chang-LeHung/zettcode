@@ -21,7 +21,7 @@ moving, or set up the tools and models that suit your project.
 | Switch models, change reasoning effort, or ask a side question | [Commands](/guide/commands) |
 | Select text, paste an image, or scroll back to an answer | [Keys & mouse](/guide/keys) |
 | Continue an earlier session or export it to HTML | [Sessions](/guide/sessions) |
-| Understand context usage, compaction, and caching | [Models & context](/guide/models) |
+| Understand context usage, compaction, and caching | [The context window](/guide/context) |
 
 Typing while the agent works asks whether the message should **steer** the
 request — picked up at the next tool or model boundary — or **follow up** after it,

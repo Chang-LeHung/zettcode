@@ -171,6 +171,7 @@ compact_percent = 80                  # 达到窗口的 80% 时压缩
 | `multimodal` | 布尔值 | `false` | 只有模型和接口都支持图片输入时才开启。 |
 | `context_window` | 整数 | `128000` | 正整数，表示上下文窗口的 token 数，不是字符数，也不是最大输出长度。 |
 | `compact_percent` | 数值 | `80` | 自动压缩触发百分比，大于 `0` 且不超过 `100`。支持 `75.5` 这样的小数。 |
+| `reasoning_efforts` | 字符串数组 | 全部档位 | 这个模型支持的推理档位，取自 `off`、`minimal`、`low`、`medium`、`high`、`xhigh`、`max`、`ultra`。接入点会拒绝其余档位时才需要填写；见[模型支持的推理档位](#reasoning-levels-a-model-takes)。 |
 
 `base_url` 是客户端拼接口路径的那个地址：`/chat/completions`、`/responses`，
 `anthropic` 项则是 `/v1/messages`——路由本身不属于它。把路由一起写进来是很常见的误解，
@@ -182,6 +183,31 @@ compact_percent = 80                  # 达到窗口的 80% 时压缩
 `multimodal = false` 时，提交图片会在本地被拒绝并显示错误，模型也不会拿到 `view_image`
 工具。把它改成 `true` 不会让纯文本模型获得视觉能力。
 具体操作见[图片与粘贴](/zh/guide/interface#图片与粘贴)。
+
+### 模型支持的推理档位 {#reasoning-levels-a-model-takes}
+
+并不是每个接入点都接受所有推理档位，不支持的档位可能让整个请求失败。可以在模型项里写明它支持哪些：
+
+```toml
+[[models]]
+model = "deepseek-v4-pro"
+token = "sk-..."
+base_url = "https://api.deepseek.com"
+context_window = 1000000
+compact_percent = 80
+reasoning_efforts = ["low", "high", "max"]
+```
+
+不写这个参数就提供全部档位。写了以后：
+
+- `/effort` 只显示这些档位；输入别的（例如 `/effort ultra`）会被拒绝，并列出该模型支持的档位，不会悄悄改成别的。
+- 用 `/model` 切换模型时，当前档位会移到新模型支持的最接近的一档，所以请求不会带着接入点不认识的档位发出去。
+  切换回来不会自动恢复原档位。
+- 子 agent（`task` 工具）运行在发起它的那次请求所用的模型上，使用其档位的默认推理强度（`explore` 为 low，
+  `coding` 为 medium，`reasoning` 为 high），并移到该模型支持的最接近的一档。模型还可以给 `task` 工具传
+  `reasoning_effort`，自己决定这个子 agent 想多深；提供给它的只有当前模型支持的档位。
+
+两个档位距离相同时取更便宜的那个。
 
 ### Anthropic 模型
 
@@ -312,11 +338,16 @@ enabled = true                 # 允许模型询问用户
 
 [skills]
 enabled = true
-roots = []                     # 在 ~/.zettcode/skills 之前搜索的额外目录
+roots = []                     # 在 scope 对应目录之前搜索的额外目录
+scope = "both"                 # "both"、"workspace" 或 "global"，见 Skills 与 MCP
 
 [mcp]
 enabled = true
 config = "~/.zettcode/mcp.json" # 服务器定义文件，不是本 TOML 文件
+scope = "both"                 # "both"、"workspace" 或 "global"
+
+[compaction]
+self = false                   # 让模型自己压缩上下文；/self-compact 可按会话覆盖
 
 [plugins]
 enabled = true                 # 加载已安装的第三方插件
@@ -350,9 +381,12 @@ todowrite = false              # 提供 todo_write，界面会画出计划面板
 | `agents_md.enabled` | `true` | 读取工作区及其上层目录的 `AGENTS.md`，见[项目指令](/zh/guide/instructions)。 |
 | `ask_user.enabled` | `true` | 允许单选、多选和自由输入的提问面板。`false` 移除这个工具，不代表禁止模型在普通回答里提出问题。 |
 | `skills.enabled` | `true` | 发现 skill 名称和描述，并允许按需加载正文。 |
-| `skills.roots` | `[]` | 目录字符串数组。按顺序搜索，再搜索 `~/.zettcode/skills`；同名 skill 取最先找到的。 |
+| `skills.roots` | `[]` | 目录字符串数组。先按顺序搜索这些目录，再搜索 scope 对应的目录；同名 skill 取最先找到的。 |
+| `skills.scope` | `"both"` | skills 放在哪里：`"both"`（默认）同时读 `<工作区>/.zettcode/skills` 和 `~/.zettcode/skills`，先项目后个人，所以项目里的同名 skill 在该项目内优先；`"workspace"` 只读项目的，`"global"` 只读你自己的。见 [Skills 与 MCP](/zh/guide/skills-and-mcp#where-they-live)。 |
 | `mcp.enabled` | `true` | 有服务器配置时启用 MCP 工具；默认文件不存在时不加载服务器。 |
-| `mcp.config` | `~/.zettcode/mcp.json` | JSON 服务器配置路径。建议用绝对路径或 `~`，避免位置不明确。 |
+| `mcp.config` | `~/.zettcode/mcp.json` | 用户自己的 JSON 服务器配置路径。建议用绝对路径或 `~`，避免位置不明确。 |
+| `mcp.scope` | `"both"` | 读哪些服务器文件：`"both"`（默认）合并用户的文件和 `<工作区>/.zettcode/mcp.json`，同名服务器以项目的为准；`"workspace"` 或 `"global"` 只读其中一个。工作区文件相当于仓库要求你去运行的命令，不想启动某个仓库的服务器时请设为 `"global"`。 |
+| `compaction.self` | `false` | 没有自己选择过的会话是否允许模型压缩自己的上下文。`/self-compact` 会打开面板，可以只改一个会话或改全部；见[自我压缩](/zh/guide/commands#self-compaction)。 |
 | `plugins.enabled` | `true` | 加载已安装的第三方插件；关闭后内置 UI 功能仍可使用。 |
 | `plugins.disable` | `[]` | 要跳过的插件 **entry-point 名称**数组，不一定等于 pip 包名。 |
 | `update.enabled` | `true` | 后台检查 PyPI，并在之后启动时提示新版本，不会自动安装。 |

@@ -35,10 +35,42 @@ Discover them in two ways:
 | Where | Who it is for |
 | --- | --- |
 | `~/.zettcode/skills/` | You, in every project. |
-| `[skills] roots` | A project or a team: `roots = [".zettcode/skills"]` resolves against the workspace. |
+| `<workspace>/.zettcode/skills/` | One project, checked in with it. Read by default; `[skills] scope` can turn that off. |
+| `[skills] roots` | A team directory, or any other: `roots = ["~/team-skills"]`. A relative entry resolves against the workspace. |
 
-Earlier roots win a name clash, and the configured ones are searched before your
-own. `[skills] enabled = false` turns discovery off.
+Configured roots are searched first, then the scope's directories, and the earlier one wins a name clash.
+`[skills] enabled = false` turns discovery off.
+
+### Where they live: your files, the project's, or both {#where-they-live}
+
+`[skills] scope` (and `[mcp] scope`, below) chooses whose files are read:
+
+| `scope` | Skills read from | MCP servers read from |
+| --- | --- | --- |
+| `"both"` (default) | The project's first, then yours | Both, merged; the project's entry wins a server name |
+| `"workspace"` | `<workspace>/.zettcode/skills` | `<workspace>/.zettcode/mcp.json` |
+| `"global"` | `~/.zettcode/skills` | `~/.zettcode/mcp.json` (or `[mcp] config`) |
+
+Both are used together unless you say otherwise, so a project can carry its own skills and servers without any
+configuration. To choose one side:
+
+```toml
+[skills]
+scope = "global"      # ignore the skills a project carries
+
+[mcp]
+scope = "global"      # never start the servers a project carries
+```
+
+With `both`, a project can ship its own `review` skill that wins over yours inside that project and nowhere
+else. The workspace is the one you launched with, so `zettcode -w ~/projects/api` reads
+`~/projects/api/.zettcode/…`.
+
+::: warning A repository's files are read by default
+A skill is instructions the model follows, and an MCP entry is a command ZettCode runs, so with the default
+opening a repository that carries `.zettcode/mcp.json` starts the servers it names. Review those files as you
+would a script you were about to run, and set `scope = "global"` for the ones you do not trust.
+:::
 
 ### Using one
 
@@ -64,22 +96,15 @@ Adding a skill is not the same as installing a tool: its instructions can ask
 the model to use available tools, but do not create new ones.
 
 For a skill checked into a project, place it at
-`<workspace>/.zettcode/skills/code-review/SKILL.md`, then add this to
-`config.toml`:
-
-```toml
-[skills]
-roots = [".zettcode/skills"]
-```
-
-This is opt-in: project-local skill folders are not searched unless configured.
-Review skill files from other people before using them, just as you would
-review instructions given to a teammate.
+`<workspace>/.zettcode/skills/code-review/SKILL.md`. It is found with no configuration, and wins over a skill
+of the same name in your own directory while you are in that project. Review skill files from other people
+before using them, just as you would review instructions given to a teammate.
 
 ## MCP servers
 
 An MCP server publishes tools. ZettCode reads them from
-`~/.zettcode/mcp.json` — or wherever `[mcp] config` points — and registers each
+`~/.zettcode/mcp.json` — or wherever `[mcp] config` points — and from `<workspace>/.zettcode/mcp.json` too
+([which files are read](#where-they-live)). It registers each
 one as `<server>__<tool>`, so their tools sit beside the built-in ones.
 
 ### Example: a local browser server
