@@ -19,17 +19,23 @@ SHIMMER_LEVELS = frozenset({"max", "ultra"})
 #: How fast the light crosses the header, in columns a second, pass by pass. It is a speed rather than a time,
 #: because a time would send the light across a wide terminal at twice the pace it crosses a narrow one. The
 #: first pass is the slowest, so there is time to watch it light the corner as it goes, and each later one is a
-#: little quicker; the top of the scale gets one pass more.
+#: little quicker; the top of the scale gets one pass more. The pace is chosen against the frame: at 120 frames a
+#: second the slowest pass moves the light about a cell per frame, which is what makes it read as one continuous
+#: crossing rather than a light that sits still and then jumps a column — at half this pace most frames carried
+#: no movement at all, which is the stutter a reader sees as jerky.
 SHIMMER_SPEEDS: dict[str, tuple[float, ...]] = {
-    "max": (34.0, 42.0),
-    "ultra": (34.0, 42.0, 50.0),
+    "max": (110.0, 140.0, 170.0, 200.0),
+    "ultra": (110.0, 140.0, 170.0, 200.0, 230.0),
 }
 
-#: How far across its trip a pass is when the next one sets off, so the light keeps coming.
-SHIMMER_OVERLAP = 0.55
+#: How far across its trip a pass is when the next one sets off, so the light keeps coming. High enough that a
+#: pass is still crossing when the next is well under way: the row carries light the whole time.
+SHIMMER_OVERLAP = 0.5
 
-#: Seconds the corner stays lit after the last pass has gone, before it hands the header back.
-SHIMMER_TAIL = 1.0
+#: Seconds the corner stays lit after the last pass has gone, before it hands the header back. It is a hold
+#: rather than a fade of nothing: the corner keeps the light the first pass put on it, and the row would look
+#: abandoned if it went straight back to the resting header the moment the last pass left.
+SHIMMER_TAIL = 1.6
 
 #: Seconds the row takes to arrive and to leave.
 SHIMMER_FADE_IN_SECONDS = 0.25
@@ -37,11 +43,13 @@ SHIMMER_FADE_OUT_SECONDS = 0.8
 
 #: Seconds the slowest pass is allowed to take, however wide the terminal: past this the light speeds up rather
 #: than keep a very wide header waiting.
-SHIMMER_LONGEST_PASS = 4.0
+SHIMMER_LONGEST_PASS = 2.6
 
 #: Half the width, in cells, of the light that crosses the header (its halo), and of the white-hot core inside it.
+#: The halo is what makes the crossing visible at a glance; the core is the hot centre of it. The core is wide
+#: enough to cover a few cells, so the glint is a band of light rather than a single cell that flickers.
 SHIMMER_HALO = 8.0
-SHIMMER_CORE = 2.2
+SHIMMER_CORE = 4.0
 
 #: Cells past either end of the row a pass starts and finishes, so the light enters and leaves.
 SHIMMER_RUNWAY = 8
