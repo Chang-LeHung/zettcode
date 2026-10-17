@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import colorsys
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -19,6 +20,7 @@ from zettcode.plugins import PluginContainer
 from zettcode.plugins.builtins import BUILTIN_PLUGINS, UsageCommand
 from zettcode.tui import DARK, LIGHT, TuiApp
 from zettcode.tui.core.events import MouseAction, MouseEvent
+from zettcode.tui.render import parse_hex
 from zettcode.tui.testing import Harness
 from zettcode.tui.testing.snapshot import render_block
 
@@ -38,6 +40,14 @@ def ledger_of(days: dict[date, Tally] | None = None, models: dict[str, Tally] | 
 
 def text_of(line) -> str:
     return "".join(piece for piece, _ in line)
+
+
+def hls(colour: str) -> tuple[float, float, float]:
+    return colorsys.rgb_to_hls(*(channel / 255 for channel in parse_hex(colour)))
+
+
+def distance(first: str, second: str) -> float:
+    return sum((a - b) ** 2 for a, b in zip(parse_hex(first), parse_hex(second), strict=True)) ** 0.5
 
 
 # -- numbers and bars --------------------------------------------------------
@@ -266,6 +276,19 @@ def test_the_calendar_shades_are_five_distinct_colours_in_either_theme(theme):
 
     assert len(colours) == 5
     assert page.style_of("heat2*").background == theme.selection != page.style_of("heat2").background
+
+
+@pytest.mark.parametrize("theme", [DARK, LIGHT])
+def test_every_calendar_level_stands_deeper_and_further_from_the_page_than_the_one_below(theme):
+    page = page_of(sample(), tab="Calendar")
+    TuiApp(page, width=60, height=20, theme=theme).mount()
+
+    shades = [page.style_of(f"heat{level}").foreground for level in range(1, charts.LEVELS)]
+    distances = [distance(theme.surface_alt, shade) for shade in shades]
+
+    assert distances == sorted(distances) and len(set(shades)) == len(shades)
+    assert hls(shades[-1])[1] < hls(theme.accent)[1], "the busiest day is deeper than the accent"
+    assert hls(shades[-1])[2] > hls(theme.accent)[2], "and more saturated"
 
 
 def test_tab_and_the_number_keys_switch_views_and_start_each_at_its_top():
