@@ -167,3 +167,28 @@ def test_a_resumed_session_does_not_paint_the_banner():
 
     assert symbols == []
     assert any("\u203a" in row for row in early), "the composer is still the first thing up"
+
+
+def test_the_first_frames_palette_costs_a_file_read_not_the_settings(tmp_path: Path, monkeypatch):
+    """The palette is read from the config file directly, like the model name beside it.
+
+    Building the application to learn which palette to paint in is the tenth of a second this frame exists to
+    avoid, and it would also import the agent runtime before the frame is on screen.
+    """
+    config = _config(tmp_path)
+    config.write_text(config.read_text(encoding="utf-8") + '\n[ui]\ntheme = "nord"\n', encoding="utf-8")
+    monkeypatch.setenv("ZETTCODE_CONFIG", str(config))
+    script = "\n".join(
+        [
+            "import sys",
+            "from zettcode import cli",
+            "theme = cli.boot_theme()",
+            "print(theme.name, theme.background)",
+            "print('zettcode.config' in sys.modules, 'zett_agent' in sys.modules)",
+        ]
+    )
+
+    result = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines() == ["nord #2e3440", "False False"]

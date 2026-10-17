@@ -406,6 +406,9 @@ enabled = false
 theme = "nord"
 ```
 
+外壳构建出来之前画的那一帧就已经是这套配色，所以浅色主题不会先闪一下深色。只有插件提供的主题没法这么早拿到，
+它晚一帧随外壳一起出现。
+
 ### 加上你自己的
 
 把一个文件放进 `~/.zettcode/themes/`，文件名就是主题名：`~/.zettcode/themes/sunset.toml` 就是

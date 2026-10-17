@@ -438,6 +438,9 @@ To start in one, name it in `config.toml`:
 theme = "nord"
 ```
 
+The frame painted before the shell is built is already in that palette, so a light one does not flash dark first.
+A palette only a plugin offers cannot be named that early; it arrives with the shell, one frame later.
+
 ### Adding your own
 
 Put a file in `~/.zettcode/themes/` and its name is the palette's name: `~/.zettcode/themes/sunset.toml` is

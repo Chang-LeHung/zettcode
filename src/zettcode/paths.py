@@ -28,6 +28,9 @@ DEFAULT_UPDATE_FILE = Path.home() / ".zettcode" / "update.json"
 #: Where the reader's own palettes live: one ``<name>.toml`` each, picked by name with ``/theme <name>``.
 DEFAULT_THEMES_DIR = Path.home() / ".zettcode" / "themes"
 
+#: The one palette file that is laid over whatever theme is in force.
+DEFAULT_THEME_FILE = Path.home() / ".zettcode" / "theme.toml"
+
 #: Where tiktoken keeps the vocabulary it downloads once. Deliberately not the
 #: OS temp directory, which is cleaned whenever the system feels like it: a purge
 #: turns the next token count into a 1.7 MB download, and `/context` waits behind
