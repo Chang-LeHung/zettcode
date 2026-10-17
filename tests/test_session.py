@@ -562,7 +562,7 @@ def test_a_very_long_workspace_path_still_names_one_folder(tmp_path: Path):
     store = SessionStore(tmp_path, workspace="/" + "deep/" * 200)
 
     assert len(store.workspace_dir.name) <= 120
-    assert store.workspace_dir.is_dir()
+    assert not store.workspace_dir.exists(), "and it is made by the first write, not by opening the store"
 
 
 async def test_list_sessions_reports_activity_newest_first(tmp_path: Path):

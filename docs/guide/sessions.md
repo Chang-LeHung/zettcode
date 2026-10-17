@@ -35,6 +35,12 @@ gets, and it travels with the folder if you copy or move it. How recently a sess
 conversation file itself. A crash can truncate the final line; that line is
 ignored, and a damaged line anywhere else is reported rather than silently dropped.
 
+A session that never got a message leaves nothing behind. Opening ZettCode in a project
+creates no folder for it until something is first stored, quitting an unused session
+removes its folder (and the project's, if that leaves it empty), and the next start sweeps
+the empty folders that a killed terminal could not tidy — never one that another ZettCode
+has open. A session you named with `/title` has a title to keep, so it stays.
+
 ::: details Sessions from an older version
 Older versions named the workspace folder with the URL-safe base64 of the path
 (`L1VzZXJzL21l…`). The first time ZettCode opens such a workspace it renames the

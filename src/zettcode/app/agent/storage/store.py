@@ -53,7 +53,8 @@ from zett_agent.messages import AnyMessage, AssistantMessage, SystemMessage, Too
 from zett_agent.model import ModelUsage
 
 from ..dialogue.side import SIDE, is_side
-from .layout import open_workspace
+from .layout import claim_workspace, open_workspace
+from .locks import prune_empty
 from .metadata import (
     MAX_MODEL,
     MAX_TITLE,
@@ -136,14 +137,16 @@ class SessionPersistenceMixin:
             current directory, which is only right for standalone use — the
             runtime always passes the configured workspace.
 
-    Parent directories are created eagerly.
+    Folders are created when something is first written to them, not when the store is built: a project
+    that is opened and never used leaves nothing in the store.
     """
 
     def __init__(self, root: str | Path | None = None, workspace: str | Path | None = None) -> None:
         self.root = Path(root) if root is not None else Path.home() / ".zettcode" / "sessions"
         self.workspace = Path(workspace).expanduser().resolve() if workspace is not None else Path.cwd()
         #: Opening it moves a folder an older version named with base64 to the readable name,
-        #: or leaves it where it is when something has it open (see :mod:`.layout`).
+        #: or leaves it where it is when something has it open (see :mod:`.layout`). The folder is
+        #: made by the first write, not here.
         self.workspace_dir = open_workspace(self.root, self.workspace)
         #: The log older versions kept for the whole workspace. Read, never written: see
         #: :mod:`zettcode.app.agent.storage.metadata`.
@@ -155,6 +158,8 @@ class SessionPersistenceMixin:
         #: The old log folded into rows, with the stamp of the file it came from, so a
         #: workspace with several old sessions folds it once instead of once per session.
         self._legacy: tuple[tuple[int, int] | None, dict[str, SessionInfo]] | None = None
+        #: Whether the workspace folder has been made and marked as ours; the first write does it, once.
+        self._claimed = False
         super().__init__()
 
     # -- files --------------------------------------------------------------
@@ -276,6 +281,9 @@ class SessionPersistenceMixin:
     def _append_line(self, session_id: str, line: Line) -> None:
         """Append one validated line, flushing so a reader sees whole records."""
         text = json.dumps(line.model_dump(mode="json"), ensure_ascii=False, allow_nan=False, sort_keys=True)
+        if not self._claimed:
+            claim_workspace(self.workspace_dir, self.workspace)
+            self._claimed = True
         self.session_dir(session_id).mkdir(parents=True, exist_ok=True)
         path = self.session_path(session_id)
         with path.open("a", encoding="utf-8") as handle:
@@ -626,6 +634,13 @@ class SessionPersistenceMixin:
 
     async def close(self) -> None:
         """Release nothing; every write opens and closes its own handle."""
+
+    def prune_empty(self) -> int:
+        """Remove this workspace's session folders that never held a conversation and that nobody has open.
+
+        What a launch that was killed leaves behind; see :func:`.locks.prune_empty`. Returns how many went.
+        """
+        return prune_empty(self.workspace_dir)
 
     def _write_header(
         self,

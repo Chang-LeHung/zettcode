@@ -19,8 +19,9 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Protocol
 
-from ....filelock import SingletonLock
-from .records import STORE_FILE
+from zettcode.filelock import SingletonLock, is_held
+
+from .records import SAFE_SESSION_ID, STORE_FILE
 
 #: The file in a session's folder the lock is taken on.
 LOCK_FILE = "session.lock"
@@ -123,8 +124,59 @@ class SessionLocks:
         # tidying it keeps every launch that was closed unused from leaving one. A session that has data keeps
         # its lock file: the file is how the next process asks, and it is empty.
         if not (path.parent / STORE_FILE).exists():
-            try:
-                path.unlink()
-                path.parent.rmdir()
-            except OSError:
-                pass
+            _remove_if_empty(path.parent)
+
+
+def _remove_if_empty(folder: Path) -> bool:
+    """Remove a session folder that holds nothing but its lock file, and then its workspace folder if that is bare.
+
+    The workspace folder goes only when nothing is left in it, which is what an unused launch in a project
+    nobody has stored anything for leaves behind. ``rmdir`` refuses a folder with anything in it, so another
+    session, or a process that has just made its own, is never in the way of this.
+
+    Returns:
+        Whether the session folder is gone.
+    """
+    try:
+        (folder / LOCK_FILE).unlink(missing_ok=True)
+        folder.rmdir()
+    except OSError:
+        return False
+    try:
+        folder.parent.rmdir()
+    except OSError:
+        pass
+    return True
+
+
+def prune_empty(workspace_dir: Path) -> int:
+    """Remove the session folders in a workspace that never held a conversation and that nobody has open.
+
+    A launch that is closed in the ordinary way tidies its own folder (:meth:`SessionLocks.release`). One
+    that is killed, or whose terminal is closed under it, cannot, and leaves a folder with a lock file in
+    it and nothing else. Those are what this removes, so a store does not fill up with them. A folder is
+    only touched when it has no ``data.jsonl``, holds nothing but the lock file, and the lock is not held:
+    a session another process has just begun has its lock, and is left alone.
+
+    Args:
+        workspace_dir: The workspace's folder under the store root; a folder that is not there is not an error.
+
+    Returns:
+        How many session folders were removed.
+    """
+    removed = 0
+    try:
+        candidates = sorted(workspace_dir.iterdir())
+    except OSError:
+        return 0
+    for folder in candidates:
+        if not SAFE_SESSION_ID.match(folder.name) or ".." in folder.name:
+            continue
+        try:
+            names = {entry.name for entry in folder.iterdir()}
+        except OSError:
+            continue  # not a folder, or gone since the listing
+        if not names <= {LOCK_FILE} or is_held(folder / LOCK_FILE):
+            continue
+        removed += _remove_if_empty(folder)
+    return removed

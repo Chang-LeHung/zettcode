@@ -32,9 +32,10 @@ from zett_agent.extensions.tool_guidelines import ToolGuidelinesExtension
 from zett_agent.ids import new_uuid7
 from zett_agent.model import ReasoningEffort
 
-from ...config import DEFAULT_ANTHROPIC_BASE_URL, ModelConfig, ZettCodeConfig
-from ...paths import DEFAULT_MCP_CONFIG
-from ...plugins import Plugins, load_plugins
+from zettcode.config import DEFAULT_ANTHROPIC_BASE_URL, ModelConfig, ZettCodeConfig
+from zettcode.paths import DEFAULT_MCP_CONFIG
+from zettcode.plugins import Plugins, load_plugins
+
 from ..pipeline import ImportPipeline
 from .dialogue.side import SideQuestions
 from .extensions.capabilities import ModelCapabilities
@@ -228,6 +229,8 @@ class ZettCodeRuntime:
     model: Adapter | None = None
     _starting: asyncio.Task[ZettCodeRuntime] | None = field(default=None, repr=False)
     _counter: asyncio.Task[None] | None = field(default=None, repr=False)
+    #: The sweep for empty session folders a killed process left behind, run once at the start on a thread.
+    _tidying: asyncio.Task[int] | None = field(default=None, repr=False)
     _models: dict[ModelConfig, Adapter] = field(default_factory=dict)
     #: The warm-up imports, running on a daemon thread, and the loop-side event
     #: that releases whoever is waiting for them.
@@ -300,6 +303,9 @@ class ZettCodeRuntime:
             self.compaction_counter.start()
             self._starting = asyncio.ensure_future(self._build())
             self._counter = asyncio.ensure_future(self.tokenizer.prepare())
+            # Folders that held no conversation and that no process has open: what a launch that was killed
+            # leaves. A thread, because it is a listing and a lock probe per folder and nothing waits for it.
+            self._tidying = asyncio.ensure_future(asyncio.to_thread(self.persistence.prune_empty))
         return self._starting
 
     def warm_modules(self) -> tuple[str, ...]:
@@ -642,6 +648,9 @@ class ZettCodeRuntime:
             # which this process does not wait for either.
             counter.cancel()
             await asyncio.gather(counter, return_exceptions=True)
+        tidying, self._tidying = self._tidying, None
+        if tidying is not None:
+            await asyncio.gather(tidying, return_exceptions=True)
         for model in self._models.values():
             await model.aclose()
         await self.persistence.close()

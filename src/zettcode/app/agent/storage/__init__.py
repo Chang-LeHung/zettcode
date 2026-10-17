@@ -18,8 +18,8 @@ behind one API: the persistence mixin and the :class:`SessionStore` plugin. :mod
 workspace folder, and renames one that an older version named with base64.
 """
 
-from .layout import find_workspace, legacy_workspace_key, open_workspace, workspace_key
-from .locks import LOCK_FILE, LOCKED_MESSAGE, NoLocks, SessionGuard, SessionLocked, SessionLocks
+from .layout import claim_workspace, find_workspace, legacy_workspace_key, open_workspace, workspace_key
+from .locks import LOCK_FILE, LOCKED_MESSAGE, NoLocks, SessionGuard, SessionLocked, SessionLocks, prune_empty
 from .metadata import MAX_TITLE, SessionInfo
 from .records import STORE_FILE, MessageLine, Session, now
 from .store import SessionPersistenceMixin, SessionStore
@@ -38,9 +38,11 @@ __all__ = [
     "SessionLocks",
     "SessionPersistenceMixin",
     "SessionStore",
+    "claim_workspace",
     "find_workspace",
     "legacy_workspace_key",
     "now",
     "open_workspace",
+    "prune_empty",
     "workspace_key",
 ]
