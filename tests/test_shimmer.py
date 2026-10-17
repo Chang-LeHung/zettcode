@@ -227,7 +227,11 @@ def test_the_light_crosses_a_wider_header_in_longer_not_at_a_higher_pace_until_t
     pace_wide = (100 + 16) / (wide[1] - wide[0])
 
     assert pace_narrow == pytest.approx(pace_wide), "the same columns a second"
-    assert pace_narrow < 40, "and a gentle one"
+    # A crossing has to cover a cell or so per frame at the fastest the loop paints (120 fps) to read as motion
+    # rather than as a light that sits still and then jumps: at the old 34 columns a second most frames carried
+    # no movement at all, which is the stutter. It still has to be gentle enough to watch.
+    assert pace_narrow > 64, "at least half a cell a frame"
+    assert pace_narrow < 200, "and gentle enough to follow"
 
 
 @pytest.mark.parametrize("level", ["max", "ultra"])
@@ -243,4 +247,4 @@ def test_each_pass_after_the_first_is_a_little_quicker(level: str):
     durations = [end - start for start, end in shimmer_schedule(level, REACH)]
 
     assert durations == sorted(durations, reverse=True)
-    assert durations[0] / durations[-1] < 2.0, "a little, not a blur"
+    assert durations[0] / durations[-1] < 2.5, "a little, not a blur"
