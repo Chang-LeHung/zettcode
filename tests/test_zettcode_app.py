@@ -1840,8 +1840,9 @@ async def test_a_resumed_session_with_pictures_never_shows_their_payload(tmp_pat
     # And the row says the share of the measured total that number is.
     share = expected / report.measured * 100
     assert f"{share:.1f}%" in users_row, users_row
-    # The tokens in the row are that share of the provider's total, not the local count itself.
-    assert f"{round(share / 100 * report.used):,}" in users_row, users_row
+    # A restored session has no tool schemas yet, so the provider's total is not divided between the rows:
+    # the tokens in the row are the local count itself.
+    assert f"{expected:,}" in users_row, users_row
 
 
 async def test_a_resumed_session_shows_the_rows_a_store_can_answer(tmp_path):
@@ -1888,7 +1889,7 @@ async def test_a_resumed_session_shows_the_rows_a_store_can_answer(tmp_path):
     shares = [float(row.split("%")[0].split()[-1]) for name, row in rows.items() if name not in pending]
     assert 99.0 <= sum(shares) <= 101.0, "the rows that can be answered still add up"
     body = "\n".join("".join(piece for piece, _ in line) for line in page.lines(100))
-    assert "provider" in body and "local count" in body, "and the page says which number came from where"
+    assert "provider" in body and "cannot be seen" in body, "and the page says which number came from where"
 
 
 async def test_every_panel_shows_its_list_and_the_arrows_move_it():

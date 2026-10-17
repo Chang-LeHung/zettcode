@@ -109,9 +109,11 @@ The page answers three questions, each with its own ratio and its own drawing:
   counted, so they add up to 100%, whatever the window is.
 - **Whose number is it?** The total is the provider's whenever it reported one, because it counts
   what it bills. A local count can only say how that total divides, so each source is shown as its
-  share of the provider's total and the rows add up to it. Without a provider total the rows are
-  the local counts, and when those are estimates, about four characters to a token, the note
-  says so.
+  share of the provider's total and the rows add up to it. Without a provider total, or while the
+  environment notes and tool schemas are still `pending` — they are in the provider's total but
+  cannot be seen before this session has sent a request, and dividing the total between the other
+  rows would hand them those tokens — the rows are the local counts, and the note says they do not
+  add up. When the counts are estimates, about four characters to a token, the note says so.
 
 If a row is surprisingly large, that is the thing to look at: a tool schema you never use, or a
 long file that came back from a read. A page too short for all of it scrolls with `↑` `↓`.

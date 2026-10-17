@@ -280,3 +280,30 @@ def test_a_page_too_short_for_everything_scrolls_and_never_past_its_ends():
     harness.press("home")
     harness.press("up")
     assert page.offset == 0
+
+
+def test_while_a_source_is_unknown_the_provider_total_is_not_handed_to_the_known_rows():
+    """The provider's number is for the whole request. Dividing it between the sources that can be
+    seen would give them the tokens of the ones that cannot: a resumed session showed its assistant
+    messages as nine tenths of a request that mostly was tool schemas."""
+    known = [share for share in SHARES if share.name not in ("Environment notes", "Tool schemas")]
+    report = report_of(known, reported=60_000, partial=True)
+
+    assert charts.tokens_by_source(report) == {share.name: share.tokens for share in known}
+    lines = charts.makeup_lines(report, 100)
+    assert f"{report.measured:,} tokens" in text_of(lines[0]) and "60,000" not in text_of(lines[0])
+    note = " ".join(texts(charts.note_lines(report)))
+    assert "do not add up" in note and "until a request has been sent" in note
+
+
+def test_once_every_source_is_there_the_provider_total_is_divided_again():
+    report = report_of(reported=60_000, partial=False)
+
+    assert sum(charts.tokens_by_source(report).values()) == 60_000
+    assert "do not add up" not in " ".join(texts(charts.note_lines(report)))
+
+
+def test_a_total_nobody_reported_and_a_source_still_unknown_says_what_is_missing():
+    note = " ".join(texts(charts.note_lines(report_of(partial=True))))
+
+    assert "not counted until a request has been sent" in note
