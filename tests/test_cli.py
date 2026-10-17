@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from zettcode import cli
+from zettcode import cli, paths
 from zettcode.cli import (
     Options,
     async_main,
@@ -772,3 +772,127 @@ async def test_the_auto_flag_reaches_the_dry_run_path_too(tmp_path, monkeypatch)
 
     await cli.async_main(settings, dry_run=True)
     assert seen["permission"] is Permission.ASK
+
+
+# -- the palette of the first frame ---------------------------------------------------------------
+
+
+def _write_config(tmp_path: Path, extra: str = "") -> Path:
+    path = tmp_path / "config.toml"
+    path.write_text(f'[[models]]\nmodel = "m"\ntoken = "t"\n{extra}', encoding="utf-8")
+    return path
+
+
+def test_the_first_frame_is_painted_in_the_palette_the_config_file_names(tmp_path, monkeypatch):
+    """A start that opens in a light palette must not paint a dark frame and swap it a tenth of a second later."""
+    monkeypatch.setenv("ZETTCODE_CONFIG", str(_write_config(tmp_path, '\n[ui]\ntheme = "nord"\n')))
+    monkeypatch.setattr(paths, "DEFAULT_THEME_FILE", tmp_path / "absent-theme.toml")
+
+    picked = cli.boot_theme()
+
+    assert picked is not None and picked.name == "nord"
+    assert picked.background is not None, "and it paints its own page, as the real start will"
+
+
+def test_the_first_frame_lays_a_theme_file_over_the_named_palette(tmp_path, monkeypatch):
+    """The one file over any palette is read on this path too, or the swap would change those colours."""
+    monkeypatch.setenv("ZETTCODE_CONFIG", str(_write_config(tmp_path, '\n[ui]\ntheme = "nord"\n')))
+    adjust = tmp_path / "theme.toml"
+    adjust.write_text('[ui]\naccent = "#010203"\n', encoding="utf-8")
+    monkeypatch.setattr(paths, "DEFAULT_THEME_FILE", adjust)
+
+    picked = cli.boot_theme()
+
+    assert picked is not None and picked.accent == "#010203"
+    from zettcode.tui import ThemeCatalog, bundled_themes
+
+    nord = ThemeCatalog(bundled_themes()).load("nord")
+    assert picked.background == nord.background, "everything else is still nord's"
+
+
+def test_a_palette_this_early_path_cannot_know_is_left_to_the_application(tmp_path, monkeypatch):
+    """A name nobody has (or one only a plugin offers) falls back to the terminal rather than raising here."""
+    monkeypatch.setenv("ZETTCODE_CONFIG", str(_write_config(tmp_path, '\n[ui]\ntheme = "not-a-palette"\n')))
+    monkeypatch.setattr(paths, "DEFAULT_THEME_FILE", tmp_path / "absent-theme.toml")
+
+    assert cli.boot_theme() is None
+
+
+def test_a_config_file_this_early_path_cannot_read_is_left_to_the_application(tmp_path, monkeypatch):
+    monkeypatch.setenv("ZETTCODE_CONFIG", str(tmp_path / "missing.toml"))
+    broken = _write_config(tmp_path, "\n[ui\n")
+    monkeypatch.setenv("ZETTCODE_CONFIG", str(broken))
+
+    assert cli.boot_theme() is None
+
+
+async def test_the_boot_frame_is_the_chosen_palette_and_the_terminal_cannot_override_it(tmp_path, monkeypatch):
+    """`auto_theme` asks the terminal, and the terminal would answer with its own dark or light."""
+    import zettcode.tui as tui_module
+
+    monkeypatch.setenv("ZETTCODE_CONFIG", str(_write_config(tmp_path, '\n[ui]\ntheme = "nord"\n')))
+    monkeypatch.setattr(paths, "DEFAULT_THEME_FILE", tmp_path / "absent-theme.toml")
+    given: dict[str, object] = {}
+
+    class QuietRunner:
+        def __init__(self, tui, *, terminal=None):
+            given["boot"] = tui
+
+        def after_next_paint(self, callback) -> None:
+            pass
+
+        async def run(self) -> None:
+            await asyncio.sleep(0)
+
+    class NoTerminal:
+        def __init__(self, **_):
+            pass
+
+    async def stop() -> None:
+        pass
+
+    stub = SimpleNamespace(adopt=lambda boot: None, start_background=lambda: None, stop_background=stop, agent=None)
+    monkeypatch.setattr(tui_module, "TerminalRunner", QuietRunner)
+    monkeypatch.setattr(tui_module, "Terminal", NoTerminal)
+    monkeypatch.setattr(cli, "build_application", lambda options, *, terminal=None: stub)
+    monkeypatch.setattr(cli, "report_resume", lambda agent: None)
+
+    await cli.launch(Options(workspace=tmp_path))
+
+    boot = given["boot"]
+    assert boot.theme.name == "nord" and boot.auto_theme is False
+
+
+async def test_without_a_chosen_palette_the_boot_frame_still_follows_the_terminals_background(tmp_path, monkeypatch):
+    import zettcode.tui as tui_module
+
+    monkeypatch.setenv("ZETTCODE_CONFIG", str(_write_config(tmp_path)))
+    monkeypatch.setattr(paths, "DEFAULT_THEME_FILE", tmp_path / "absent-theme.toml")
+    given: dict[str, object] = {}
+
+    class QuietRunner:
+        def __init__(self, tui, *, terminal=None):
+            given["boot"] = tui
+
+        def after_next_paint(self, callback) -> None:
+            pass
+
+        async def run(self) -> None:
+            await asyncio.sleep(0)
+
+    class NoTerminal:
+        def __init__(self, **_):
+            pass
+
+    async def stop() -> None:
+        pass
+
+    stub = SimpleNamespace(adopt=lambda boot: None, start_background=lambda: None, stop_background=stop, agent=None)
+    monkeypatch.setattr(tui_module, "TerminalRunner", QuietRunner)
+    monkeypatch.setattr(tui_module, "Terminal", NoTerminal)
+    monkeypatch.setattr(cli, "build_application", lambda options, *, terminal=None: stub)
+    monkeypatch.setattr(cli, "report_resume", lambda agent: None)
+
+    await cli.launch(Options(workspace=tmp_path))
+
+    assert given["boot"].auto_theme is True

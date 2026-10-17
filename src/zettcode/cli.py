@@ -216,6 +216,39 @@ def chosen_theme(agent: ZettCodeAgent) -> Theme | None:
     return named
 
 
+def boot_theme() -> Theme | None:
+    """Return the palette the configured start paints, read without building the application.
+
+    The frame that goes up before the application exists should already be in the reader's palette: a start that
+    opens in a light palette would otherwise paint a dark frame, then swap it a tenth of a second later. Only the
+    two things that decide the palette are read here - ``[ui] theme`` in the config file and a theme file of the
+    reader's - because a plugin's palette cannot be known before the plugins load. A name only a plugin has, an
+    unreadable file, and any other mistake are left to the real application, which knows the plugins and reports
+    the error; the boot frame is not the place for either.
+
+    Returns:
+        The chosen palette, or ``None`` when the terminal's own light or dark should pick.
+    """
+    from ._compat import tomllib
+    from .paths import DEFAULT_THEME_FILE, DEFAULT_THEMES_DIR, config_path
+    from .tui import ThemeCatalog, ThemeFileError, bundled_themes, load_theme
+
+    path = config_path()
+    try:
+        data = tomllib.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, tomllib.TOMLDecodeError):
+        return None
+    ui = data.get("ui")
+    requested = ui.get("theme") if isinstance(ui, dict) else None
+    try:
+        named = ThemeCatalog(bundled_themes(), DEFAULT_THEMES_DIR).load(requested) if requested else None
+        if DEFAULT_THEME_FILE.is_file():
+            return load_theme(DEFAULT_THEME_FILE, base=named)
+    except ThemeFileError:
+        return None
+    return named
+
+
 async def async_main(
     config: ZettCodeConfig, *, resume: str | None = None, auto: bool = False, dry_run: bool = False
 ) -> None:
@@ -346,7 +379,7 @@ async def launch(options: Options) -> None:
         main thread: the frame             worker thread: the application
         ------------------------------     ------------------------------------
         import the boot frame
-        TuiApp(boot_tree(...))
+        TuiApp(boot_tree(...), theme=the palette the config names)
         runner.run()
           enter alternate screen
           mount(), paint()          -----> the reader sees the composer
@@ -424,20 +457,20 @@ async def launch(options: Options) -> None:
     from .paths import DEFAULT_LOG, config_path
     from .tui import DARK, Terminal, TerminalRunner, TuiApp
 
-    # The header's right side is a file read rather than a settings load: the
-    # frame that carries it is painted before any of this program's modules are
-    # imported, and a reader who has just started the shell should see which
-    # model and effort are about to answer, not an empty corner that fills in a
-    # tenth of a second later. A file that cannot be read leaves it empty and
-    # the application fills it in on the swap.
+    # The header's right side is a file read rather than a settings load, and so is the palette: this frame is
+    # painted before any of this program's modules are imported, and a reader should see which model will answer,
+    # and the colours they chose, on the first frame. A file that cannot be read leaves a row empty or a palette
+    # unset, and the application corrects either on the swap. A palette only a plugin offers cannot be named this
+    # early, so that one still arrives with the application.
+    picked = boot_theme()
     tui = TuiApp(
         boot_tree(
             Path(options.workspace).expanduser().resolve(),
             resuming=options.resume is not None,
             model=labels.model_name(config_path()),
         ),
-        theme=DARK,
-        auto_theme=True,
+        theme=picked or DARK,
+        auto_theme=picked is None,
     )
     runner = TerminalRunner(tui, terminal=Terminal(diagnostics=DEFAULT_LOG))
     running = asyncio.ensure_future(runner.run())

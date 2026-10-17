@@ -21,7 +21,7 @@ from zett_agent.extensions.shell_approval import ShellApprovalMode
 from zett_agent.model import ReasoningEffort
 
 from ._compat import tomllib
-from .paths import DEFAULT_STORE, DEFAULT_THEMES_DIR, DEFAULT_UPDATE_FILE, config_path
+from .paths import DEFAULT_STORE, DEFAULT_THEME_FILE, DEFAULT_THEMES_DIR, DEFAULT_UPDATE_FILE, config_path
 from .providers import Api
 
 #: The concrete type :func:`_typed` verifies a raw config value against.
@@ -334,8 +334,7 @@ class ZettCodeConfig:
 
 def _default_theme_file() -> Path | None:
     """Return the conventional palette file when the user has created one."""
-    candidate = Path.home() / ".zettcode" / "theme.toml"
-    return candidate if candidate.is_file() else None
+    return DEFAULT_THEME_FILE if DEFAULT_THEME_FILE.is_file() else None
 
 
 def _without_client_route(base_url: str) -> str:
