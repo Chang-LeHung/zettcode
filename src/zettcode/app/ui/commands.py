@@ -24,8 +24,10 @@ from .widgets import (
     ModelPage,
     SelfCompactPage,
     SessionsPage,
+    StatuslinePage,
     bottom_panel,
     help_text,
+    statusline_rows,
 )
 
 #: Rows the picker panels take from the bottom of the screen: the title, the
@@ -129,6 +131,13 @@ class ShellCommands(CommandProvider):
                 "let the model compact its own context: /self-compact opens a panel; on|off|default|global",
                 "app",
                 self.self_compact,
+                when_busy="now",
+            ),
+            Command(
+                "/statusline",
+                "choose which parts of the header and status line show: /statusline opens a panel",
+                "app",
+                self.statusline,
                 when_busy="now",
             ),
             Command(
@@ -394,6 +403,33 @@ class ShellCommands(CommandProvider):
             session_open=not shell.agent.session_locked,
         )
         return CommandResult(widget=bottom_panel(page, rows=SELF_COMPACT_ROWS))
+
+    async def statusline(self, context: CommandContext) -> CommandResult:
+        """Hide or show parts from the words it takes, or open the panel with a switch for each part.
+
+        The switches only move; Enter writes ``[statusline]`` into the config file, and the rows follow at
+        the next paint. Escape applies nothing. A config file that cannot be written is reported and the rows
+        stay as they were.
+        """
+        shell = self.shell
+        if context.argument:
+            try:
+                message = shell.agent.change_statusline(context.argument)
+            except ValueError as error:
+                return CommandResult(message=str(error))
+            return CommandResult(message=message, relayout=True)
+
+        def apply(shown: dict[str, bool]) -> None:
+            shell.close_page()
+            try:
+                shell.agent.remember_statusline(shown)
+            except ValueError as error:
+                shell.transcript.error(str(error))
+                return
+            shell.transcript.notice(shell.agent.statusline_summary())
+
+        page = StatuslinePage(shell.agent.statusline_hidden, on_apply=apply, on_cancel=shell.close_page)
+        return CommandResult(widget=bottom_panel(page, rows=statusline_rows(shell.app.height)))
 
     async def permission(self, context: CommandContext) -> CommandResult:
         """Set a named level straight away, or open the menu of the levels.

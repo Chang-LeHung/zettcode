@@ -177,6 +177,12 @@
 <text x="270" y="76" fill="#f2f5f3" font-weight="700">o</text>
 <text x="280" y="76" fill="#f2f5f3" font-weight="700">d</text>
 <text x="290" y="76" fill="#f2f5f3" font-weight="700">e</text>
+<text x="320" y="76" fill="#9da9a0">v</text>
+<text x="330" y="76" fill="#9da9a0">0</text>
+<text x="340" y="76" fill="#9da9a0">.</text>
+<text x="350" y="76" fill="#9da9a0">1</text>
+<text x="360" y="76" fill="#9da9a0">.</text>
+<text x="370" y="76" fill="#9da9a0">7</text>
 <rect x="40" y="80" width="10" height="20" fill="#558967"/>
 <rect x="50" y="80" width="10" height="20" fill="#84b795"/>
 <rect x="60" y="80" width="10" height="20" fill="#84b795"/>

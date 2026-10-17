@@ -134,18 +134,37 @@ def compact_tokens(count: int) -> str:
     return f"{count / 1_000_000:.1f}M"
 
 
-def usage_text(snapshot: UsageSnapshot) -> str:
-    """Render the status-line summary, or an empty string before the first call."""
+def usage_parts(snapshot: UsageSnapshot) -> dict[str, str]:
+    """Return the status line's token figures by the name of the part that shows each; empty before a reply."""
     if not snapshot.requests:
-        return ""
-    parts = [f"{ARROW_UP}{compact_tokens(snapshot.input_tokens)} {ARROW_DOWN}{compact_tokens(snapshot.output_tokens)}"]
+        return {}
+    parts = {
+        "tokens": f"{ARROW_UP}{compact_tokens(snapshot.input_tokens)} {ARROW_DOWN}{compact_tokens(snapshot.output_tokens)}"
+    }
     rate = snapshot.cache_hit_rate
     if rate is not None:
-        parts.append(f"{rate * 100:.1f}% cached")
+        parts["cache"] = f"{rate * 100:.1f}% cached"
     speed = snapshot.output_rate
     if speed is not None:
-        parts.append(f"{speed:.0f} tok/s" if speed >= 10 else f"{speed:.1f} tok/s")
-    return "  " + f" {SEPARATOR} ".join(parts)
+        parts["speed"] = f"{speed:.0f} tok/s" if speed >= 10 else f"{speed:.1f} tok/s"
+    return parts
+
+
+def usage_text(snapshot: UsageSnapshot) -> str:
+    """Render the status-line summary, or an empty string before the first call."""
+    parts = usage_parts(snapshot)
+    return "  " + f" {SEPARATOR} ".join(parts.values()) if parts else ""
+
+
+def context_share(snapshot: UsageSnapshot, window: int) -> str:
+    """Render how much of the model's window the newest request filled, as ``ctx 34.0%``.
+
+    Empty before any request has been measured or when the model does not declare a window.
+    """
+    if not snapshot.requests or window < 1 or snapshot.context_tokens < 1:
+        return ""
+    share = min(100.0, snapshot.context_tokens * 100 / window)
+    return f"ctx {share:.1f}%"
 
 
 def context_text(snapshot: UsageSnapshot, window: int) -> str:
@@ -161,10 +180,8 @@ def context_text(snapshot: UsageSnapshot, window: int) -> str:
         separator is part of the fragment, so it joins the usage counters the
         same way they join each other.
     """
-    if not snapshot.requests or window < 1 or snapshot.context_tokens < 1:
-        return ""
-    share = min(100.0, snapshot.context_tokens * 100 / window)
-    return f" {SEPARATOR} ctx {share:.1f}%"
+    share = context_share(snapshot, window)
+    return f" {SEPARATOR} {share}" if share else ""
 
 
 class UsageExtension(AgentExtension):

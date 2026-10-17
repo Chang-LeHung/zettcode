@@ -13,7 +13,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from zettcode.tui import ELLIPSIS, HEADER, SEPARATOR, STATUS
+from zettcode.statusline import Row
+from zettcode.tui import ELLIPSIS, HEADER, STATUS
 from zettcode.tui.render import display_width
 
 from ..agent.conversation.text import STOP_HINT
@@ -64,7 +65,7 @@ def compact_path(path: Path, *, limit: int | None = 38) -> str:
 TITLE_COLUMNS = 36
 
 
-def header_left(workspace: Path, name: str = "", handle: str = "") -> str:
+def header_left(workspace: Path, name: str = "", handle: str = "") -> Row:
     """Label the app, the session, and the workspace it runs in.
 
     The session comes before the workspace because a row that is too narrow loses its right end first, and which
@@ -77,12 +78,14 @@ def header_left(workspace: Path, name: str = "", handle: str = "") -> str:
         handle: The name other sessions address this one by (without the ``@``); empty when messaging is off or the
             session is not registered yet.
     """
-    parts = [
-        _fit(name, TITLE_COLUMNS) if name else "",
-        f"@{handle}" if handle else "",
-        compact_path(workspace),
-    ]
-    return f"  {HEADER} zettcode  " + f" {SEPARATOR} ".join(part for part in parts if part)
+    row = Row(lead="  ")
+    row.add("app", "The mark and name of the program at the start of the header", f"{HEADER} zettcode").gap()
+    row.add("session", "The session's title; New session until it has one", _fit(name, TITLE_COLUMNS) if name else "")
+    row.add(
+        "handle", "The @name other sessions reach this one by, when messaging is on", f"@{handle}" if handle else ""
+    )
+    row.add("workspace", "The directory the session works in", compact_path(workspace))
+    return row
 
 
 def _fit(text: str, columns: int) -> str:
@@ -97,9 +100,12 @@ def _fit(text: str, columns: int) -> str:
     return kept.rstrip() + ELLIPSIS
 
 
-def header_right(model: str, effort: str) -> str:
+def header_right(model: str, effort: str) -> Row:
     """Show the model and the reasoning effort the next request will use."""
-    return f"{model} {SEPARATOR} {effort}  "
+    row = Row(trail="  ")
+    row.add("model", "The model the next request goes to", model)
+    row.add("effort", "How much the model reasons on the next request", effort)
+    return row
 
 
 def model_name(config_file: Path) -> str | None:
@@ -133,11 +139,72 @@ def model_name(config_file: Path) -> str | None:
     return None
 
 
-def status_left(label: str) -> str:
-    """Show the activity glyph and its status word; the session is named in the header."""
-    return f"  {STATUS} {label}"
+def hidden_parts(config_file: Path) -> tuple[str, ...]:
+    """Return the header and status-line parts the config file switches off, read from the file alone.
+
+    Like :func:`model_name` this is for the frame drawn before the settings are imported, so it reads the one
+    table and trusts nothing: anything unreadable, a name that is no part, or a value that is not ``false``
+    answers "nothing hidden" for that entry, and the application reports the mistake when it arrives.
+    """
+    from zettcode._compat import tomllib
+    from zettcode.statusline import NAMES
+
+    try:
+        table = tomllib.loads(config_file.read_text(encoding="utf-8")).get("statusline")
+    except (OSError, ValueError):
+        return ()
+    if not isinstance(table, dict):
+        return ()
+    return tuple(name for name in NAMES if table.get(name) is False)
 
 
-def status_right() -> str:
+def status_left(
+    label: str,
+    *,
+    icon: str = STATUS,
+    permission: str = "ask",
+    self_compact: bool = False,
+    tokens: str = "",
+    cache: str = "",
+    speed: str = "",
+    ctx: str = "",
+) -> Row:
+    """Show what is happening, the mode it runs in, and what the session has cost so far.
+
+    The session is named in the header. Before the first reply the counters are empty and take no room.
+
+    Args:
+        label: The status word, or the one-off note that stands in for it.
+        icon: The activity glyph; the still dot unless a request is running.
+        permission: The shell permission; ``ask`` is the default and is not shown.
+        self_compact: Whether the model may compact its own context in this session.
+        tokens: Tokens sent and received, as the figures read.
+        cache: The cache share, as it reads.
+        speed: The generation speed, as it reads.
+        ctx: How full the context window is, as it reads.
+    """
+    row = Row(lead="  ")
+    row.add("state", "The activity icon and what is happening: ready, thinking, a tool running", f"{icon} {label}")
+    row.add(
+        "mode",
+        "How much of the shell may run unasked; shown unless it is ask",
+        "" if permission == "ask" else permission,
+    )
+    row.add(
+        "self-compact",
+        "Marks a session where the model may compact its own context",
+        "self-compact" if self_compact else "",
+    )
+    row.gap()
+    row.add("tokens", "Tokens sent and received in this session", tokens)
+    row.add("cache", "The share of input the provider served from its cache", cache)
+    row.add("speed", "How fast the model generates, in tokens per second", speed)
+    row.add("ctx", "How much of the model's context window the last request filled", ctx)
+    return row
+
+
+def status_right() -> Row:
     """List the keys worth remembering."""
-    return f"  {KEY_HINTS}  "
+    row = Row(lead="  ", trail="  ")
+    row.add("keys", "The keys worth remembering: stop and exit", KEY_HINTS)
+    return row

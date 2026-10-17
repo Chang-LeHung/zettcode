@@ -29,6 +29,7 @@
 | `/usage` | 打开一个页面，看这个项目的会话花了多少：按模型、按会话统计 token，以及一张按天的日历图。见[Token 用量](/zh/guide/usage)。 |
 | `/compact` | 立即总结对话，而不用等到窗口快满。 |
 | `/self-compact` | 自我压缩：让模型在判断旧内容的细节已不再需要时，自己压缩自己的上下文。`/self-compact` 会打开一个面板：一条轨道管本会话，一条管所有会话的默认值；`on` / `off` / `default` 只设置当前会话，`global on` / `global off` 把默认值写进 `config.toml`。见[自我压缩](#self-compaction)。 |
+| `/statusline` | 选择头部和状态行里哪些有名字的部分要显示——`ctx`、`cache`、`workspace` 等等。`/statusline` 打开面板（↑ ↓ 选部分，← → 隐藏或显示，`Enter` 应用）；`/statusline hide ctx speed`、`/statusline show all` 在键盘上做同样的事。保存在 `config.toml` 的 `[statusline]`。见[选择显示哪些部分](/zh/guide/interface#choosing-what-is-shown)。 |
 | `/title` | 给会话命名：`/title users endpoint`；不带参数时报告当前名字。 |
 | `/export` | 把这个会话导出成一个独立的 HTML 文件：`/export [path]`。 |
 | `/quit`、`/exit` | 退出，并打印恢复这个会话的命令。 |

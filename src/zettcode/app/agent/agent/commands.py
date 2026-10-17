@@ -10,6 +10,7 @@ from __future__ import annotations
 from zettcode.app.commands import Command, CommandContext, CommandResult
 from zettcode.plugins import UiRow
 from zettcode.providers import BUILTIN_PROVIDERS, Provider, merge_providers
+from zettcode.statusline import NAMES, unknown
 from zettcode.tui import ThemeCatalog
 
 from ..conversation.presenters import Presenters
@@ -149,6 +150,36 @@ class CommandsMixin(ExportsMixin):
         elif words:
             self.use_self_compaction({"on": True, "off": False, "default": None}[words[0]])
         return self.self_compact_report()
+
+    def statusline_summary(self) -> str:
+        """Say in one line which parts of the header and the status line are hidden."""
+        hidden = [name for name in NAMES if name in self.statusline_hidden]
+        if not hidden:
+            return "Status line: every part is shown"
+        return f"Status line: {len(hidden)} of {len(NAMES)} parts hidden ({', '.join(hidden)})"
+
+    def change_statusline(self, argument: str) -> str:
+        """Hide or show parts of the header and status line from the words ``/statusline`` takes.
+
+        ``hide <name>...`` and ``show <name>...`` change the named parts, and ``show all`` brings every one
+        back. The change is written to ``[statusline]`` in the config file, and nothing is changed when any
+        name is not a part.
+
+        Raises:
+            ValueError: The words are not ones the command takes, or the change could not be saved.
+        """
+        words = argument.lower().split()
+        usage = ValueError(
+            f"Usage: /statusline [hide|show] <part>... or /statusline show all; parts: {', '.join(NAMES)}"
+        )
+        if len(words) < 2 or words[0] not in {"hide", "show"}:
+            raise usage
+        visible = words[0] == "show"
+        names = list(NAMES) if visible and words[1:] == ["all"] else words[1:]
+        if stray := unknown(names):
+            raise ValueError(f"No such part: {', '.join(stray)}. Parts: {', '.join(NAMES)}")
+        self.remember_statusline({name: visible for name in names})
+        return self.statusline_summary()
 
     async def _command_compact(self, context: CommandContext) -> CommandResult:
         """Summarize the conversation now, whatever its size.

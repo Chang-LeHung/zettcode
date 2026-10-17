@@ -20,6 +20,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
 
     from ..app.agent.extensions.usage import UsageSnapshot
     from ..config import ModelConfig, ZettCodeConfig
+    from ..statusline import Row
     from ..tui import TextLine, Theme
 
 
@@ -31,10 +32,10 @@ UiRegion: TypeAlias = Literal["header", "status"]
 #: registration method it calls, or the builtin segment it replaces, does.
 UiSide: TypeAlias = Literal["left", "right"]
 
-#: What one segment paints: a styled line, a plain string, or nothing. The
-#: alias quotes its members because :class:`TextLine` is imported only for the
-#: checker; an alias evaluates eagerly, so the names must stay strings.
-UiSegmentValue: TypeAlias = "TextLine | str | None"
+#: What one segment paints: a styled line, a plain string, a :class:`~zettcode.statusline.Row` of
+#: named parts the reader may switch off, or nothing. The alias quotes its members because
+#: :class:`TextLine` is imported only for the checker; an alias evaluates eagerly, so the names must stay strings.
+UiSegmentValue: TypeAlias = "TextLine | Row | str | None"
 
 #: What a builder returns: a value, or ``(value, override)`` when the segment
 #: wants its side to itself. With ``override`` the segments registered before it

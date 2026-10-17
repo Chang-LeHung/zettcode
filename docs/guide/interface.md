@@ -524,3 +524,42 @@ half keeps the two keys worth remembering (`^C/Esc to interrupt`, `^D exit`) in 
 Those counters come from the provider's own numbers, accumulated after every
 model call — nothing is estimated locally, and resuming a session seeds them
 from what was stored on its branch.
+
+### Choosing what is shown {#choosing-what-is-shown}
+
+Every word in the header and the status line belongs to a **part** with a name, and every part is shown until you
+switch it off. `/statusline` opens a panel listing them:
+
+| Row | Part | What it shows |
+| --- | --- | --- |
+| Header | `app` | The mark and name of the program |
+| | `session` | The session's title; `New session` until it has one |
+| | `handle` | The `@name` other sessions reach this one by, when messaging is on |
+| | `workspace` | The directory the session works in |
+| | `model` | The model the next request goes to |
+| | `effort` | How much the model reasons on the next request |
+| Status line | `state` | The activity icon and what is happening |
+| | `mode` | How much of the shell may run unasked; shown unless it is `ask` |
+| | `self-compact` | Marks a session where the model may compact its own context |
+| | `tokens` | Tokens sent and received in this session |
+| | `cache` | The share of input the provider served from its cache |
+| | `speed` | How fast the model generates, in tokens per second |
+| | `ctx` | How much of the model's context window the last request filled |
+| | `keys` | The keys worth remembering: stop and exit |
+
+In the panel ↑ ↓ move between the parts and ← → hide or show the one marked (Space flips it). The two rows above the
+list are a preview of the header and the status line with your choices, the marked part picked out, so you see the
+effect before applying it. `Enter` writes the choice and the bars change; `Esc` leaves everything as it was. On a
+short terminal the list scrolls.
+
+The choice is kept in `config.toml`, one line per part you switched off:
+
+```toml
+[statusline]
+ctx = false
+speed = false
+```
+
+From the keyboard, `/statusline hide ctx speed` and `/statusline show cache` do the same, and `/statusline show all`
+brings every part back. A part with nothing to say right now (`handle` with messaging off, `mode` at `ask`) takes no room
+either way.

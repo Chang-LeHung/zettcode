@@ -14,10 +14,12 @@ from zettcode.config_edit import (
     remove_model,
     replace_model,
     set_self_compaction,
+    set_statusline,
     set_theme,
     write_text_atomically,
 )
 from zettcode.paths import config_path
+from zettcode.statusline import NAMES
 
 from ..permission import PERMISSION_LEVELS, Permission
 from .base import AgentBase
@@ -151,6 +153,42 @@ class SettingsMixin(AgentBase):
             write_text_atomically(self.config_file, text)
         except OSError as error:
             raise ConfigEditError(f"{self.config_file} could not be written: {error}") from error
+        return self.config_file
+
+    @property
+    def statusline_hidden(self) -> frozenset[str]:
+        """Return the names of the header and status-line parts the reader switched off."""
+        return frozenset(self.runtime.config.statusline_hidden)
+
+    def remember_statusline(self, shown: Mapping[str, bool]) -> Path:
+        """Write which parts of the header and status line are shown into ``[statusline]``.
+
+        Only the parts that differ from what is in force are written. The file is written first and the
+        running configuration changed second, so a write that fails leaves both as they were; the rows
+        follow at the next paint. A config file that does not exist is not created for it, as for the theme.
+
+        Args:
+            shown: Part name to whether it is shown. A part left out keeps what it has.
+
+        Returns:
+            The file written.
+
+        Raises:
+            ConfigEditError: When there is no config file, it cannot be read or edited safely, or it cannot
+                be written.
+        """
+        hidden = set(self.statusline_hidden)
+        changes = {name: visible for name, visible in shown.items() if (name not in hidden) != visible}
+        if not changes:
+            return self.config_file
+        text = set_statusline(self._read_config_file(), changes, where=self.config_file)
+        try:
+            write_text_atomically(self.config_file, text)
+        except OSError as error:
+            raise ConfigEditError(f"{self.config_file} could not be written: {error}") from error
+        hidden = {name for name in hidden if name not in changes} | {name for name, v in changes.items() if not v}
+        ordered = tuple(name for name in NAMES if name in hidden)
+        self.runtime.config = replace(self.runtime.config, statusline_hidden=ordered)
         return self.config_file
 
     @property

@@ -31,6 +31,7 @@ from zett_agent.messages import (
 )
 from zett_agent.model import ModelRequest, ModelUsage, ReasoningEffort, ToolDefinition
 
+from zettcode import __version__
 from zettcode._compat import ExceptionGroup
 from zettcode.app import Transcript, TranscriptSource, TranscriptView, ZettCodeApp
 from zettcode.app.agent.agent import ZettCodeAgent
@@ -279,6 +280,7 @@ class FakeConfig:
     tips: bool = False
     skills_enabled: bool = False
     self_compaction: bool = False
+    statusline_hidden: tuple[str, ...] = ()
     plugins_enabled: bool = True
     disabled_plugins: tuple[str, ...] = ()
     update_enabled: bool = True
@@ -555,8 +557,14 @@ def test_welcome_mark_is_compact_and_readable_in_both_themes():
         hint = source.line(4, 60)
         assert title.text.index("ZettCode") == subtitle.text.index("A focused")
         assert title.text.index("ZettCode") == hint.text.index("Type a task")
-        assert title.spans[-1].style.foreground == theme.text
-        assert title.spans[-1].style.bold
+        name = next(span for span in title.spans if span.text.strip() == "ZettCode")
+        assert name.style.foreground == theme.text
+        assert name.style.bold
+        # The version follows the name on the same line, in the quiet colour, and is not part of the name.
+        assert title.text.endswith(f"ZettCode  v{__version__}")
+        assert title.spans[-1].text.strip() == f"v{__version__}"
+        assert title.spans[-1].style.foreground == theme.subtle
+        assert not title.spans[-1].style.bold
         assert subtitle.spans[-1].style.foreground == theme.subtle
         for index, mark in enumerate(LOGO_LINES):
             rendered = source.line(index, 60)
@@ -7784,6 +7792,7 @@ async def test_every_command_the_shell_runs_beside_a_request_is_one_that_cannot_
         "/permission",
         "/quit",
         "/self-compact",
+        "/statusline",
         "/theme",
         "/title",
     ]
@@ -8084,7 +8093,7 @@ def test_an_untitled_session_is_called_new_session_in_the_header():
 def test_the_name_others_reach_the_session_by_follows_the_title_in_the_header():
     from zettcode.app.ui import labels
 
-    text = labels.header_left(Path("/work/zettdemos"), "Fix the parser", "fix-the-parser")
+    text = labels.header_left(Path("/work/zettdemos"), "Fix the parser", "fix-the-parser").text()
 
     assert text == f"  \u25c8 zettcode  Fix the parser \u00b7 @fix-the-parser \u00b7 {Path('/work/zettdemos')}"
 
@@ -8092,21 +8101,21 @@ def test_the_name_others_reach_the_session_by_follows_the_title_in_the_header():
 def test_a_session_with_no_name_to_reach_it_by_shows_only_its_title():
     from zettcode.app.ui import labels
 
-    assert labels.header_left(Path("/w"), "Title", "") == f"  \u25c8 zettcode  Title \u00b7 {Path('/w')}"
+    assert labels.header_left(Path("/w"), "Title", "").text() == f"  \u25c8 zettcode  Title \u00b7 {Path('/w')}"
     assert "@" not in build_app()._header_left().text, "messaging is off in this shell, so there is no name"
 
 
 def test_a_frame_with_no_session_to_name_is_the_old_header():
     from zettcode.app.ui import labels
 
-    assert labels.header_left(Path("/w")) == f"  \u25c8 zettcode  {Path('/w')}"
+    assert labels.header_left(Path("/w")).text() == f"  \u25c8 zettcode  {Path('/w')}"
 
 
 def test_a_long_title_is_cut_so_the_name_and_the_workspace_still_fit_behind_it():
     from zettcode.app.ui import labels
     from zettcode.tui.render import display_width
 
-    text = labels.header_left(Path("/w"), "x" * 120, "name")
+    text = labels.header_left(Path("/w"), "x" * 120, "name").text()
 
     assert text.endswith(f"\u2026 \u00b7 @name \u00b7 {Path('/w')}")
     assert display_width(text) < 70
@@ -8117,7 +8126,7 @@ def test_a_title_in_a_wide_script_is_cut_whole_glyphs_within_its_columns():
     from zettcode.tui.render import display_width
 
     title = "\u4fee\u590d\u89e3\u6790\u5668" * 20
-    text = labels.header_left(Path("/w"), title, "")
+    text = labels.header_left(Path("/w"), title, "").text()
     shown = text.split("  ", 2)[2].split(" \u00b7 ")[0]
 
     assert display_width(shown) <= labels.TITLE_COLUMNS and shown.endswith("\u2026")
@@ -8128,7 +8137,8 @@ def test_a_title_that_fits_exactly_is_not_cut():
 
     title = "t" * labels.TITLE_COLUMNS
 
-    assert title in labels.header_left(Path("/w"), title) and "\u2026" not in labels.header_left(Path("/w"), title)
+    assert title in labels.header_left(Path("/w"), title).text()
+    assert "\u2026" not in labels.header_left(Path("/w"), title).text()
 
 
 def test_a_narrow_header_loses_the_workspace_before_the_session():

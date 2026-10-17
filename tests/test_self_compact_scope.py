@@ -304,7 +304,7 @@ def test_the_status_line_says_when_it_is_on():
     rows = ShellRows()
 
     def status(on: bool) -> str:
-        return rows.render_status_left(replace(context, activity=replace(context.activity, self_compact=on)))
+        return rows.render_status_left(replace(context, activity=replace(context.activity, self_compact=on))).text()
 
     assert "self-compact" in status(True)
     assert "self-compact" not in status(False)
