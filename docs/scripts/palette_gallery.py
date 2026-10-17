@@ -402,9 +402,16 @@ def context_scene(env: Env, theme: Theme) -> Canvas:
             ("Tool output", 20216, 17),
         )
     )
-    shell = env.app(theme, height=18)
-    report = ContextReport(window=128000, measured_by="tiktoken", shares=shares, reported=25926)
-    page(shell, ContextPage(report, path=Path("~/.zettcode/sessions/-Users-me-api/01a1/data.jsonl")), 12)
+    shell = env.app(theme, height=34)
+    report = ContextReport(window=200000, measured_by="tiktoken cl100k_base", shares=shares, reported=28400)
+    widget = ContextPage(
+        report,
+        path=Path("~/.zettcode/sessions/-Users-me-api/01a1/data.jsonl"),
+        model="claude-opus-4-5",
+        trigger=160000,
+    )
+    shell.app.push_screen(Screen(widget, name=PAGE_SCREEN, modal=True))
+    shell.app.request_layout()
     return shell.app.render()
 
 
@@ -539,7 +546,7 @@ def scenes() -> list[Scene]:
         Scene("input", "面板", "输入面板 (密钥)", "密码样式的输入、帮助行。", input_scene),
         Scene("update", "面板", "升级提示", "有新版本时的面板。", update_scene),
         Scene("send-kind", "面板", "排队 / 插话选择", "请求进行中发送消息时问你：追加还是插话。", send_kind_scene),
-        Scene("context", "面板", "/context 上下文占用", "各部分占比表。", context_scene),
+        Scene("context", "面板", "/context 上下文占用", "窗口计量条、各来源的堆叠条和占比。", context_scene),
         Scene("usage-models", "面板", "/usage · Models", "按模型的用量条。", usage_scene("Models")),
         Scene("usage-sessions", "面板", "/usage · Sessions", "按会话的用量。", usage_scene("Sessions")),
         Scene("usage-calendar", "面板", "/usage · Calendar", "日历热力图（深浅）。", usage_scene("Calendar")),

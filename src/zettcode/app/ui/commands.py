@@ -277,8 +277,12 @@ class ShellCommands(CommandProvider):
                 message="No request yet \u2014 send one (or resume a session), then `/context` shows the breakdown."
             )
         return CommandResult(
-            widget=self._panel(
-                ContextPage(report, path=self.shell.agent.session_path(), on_cancel=self.shell.close_page)
+            widget=ContextPage(
+                report,
+                path=self.shell.agent.session_path(),
+                model=self.shell.agent.active_model.shown_name,
+                trigger=self.shell.agent.active_model.compaction_max_tokens,
+                on_cancel=self.shell.close_page,
             )
         )
 

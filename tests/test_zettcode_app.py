@@ -56,7 +56,7 @@ from zettcode.app.agent.conversation.text import (
 )
 from zettcode.app.agent.dialogue.mentions import Mention, MentionProvider, MentionRegistry
 from zettcode.app.agent.dialogue.side import SideQuestions
-from zettcode.app.agent.extensions.context import IMAGE_TOKENS, ContextExtension, Tokenizer
+from zettcode.app.agent.extensions.context import IMAGE_TOKENS, SOURCES, ContextExtension, Tokenizer
 from zettcode.app.agent.extensions.usage import USAGE_EVENT_NAME, UsageExtension, UsageSnapshot, context_text
 from zettcode.app.agent.permission import Permission, parse_permission
 from zettcode.app.agent.runtime import ZettCodeRuntime
@@ -68,7 +68,6 @@ from zettcode.app.ui import demo
 from zettcode.app.ui import keys as keys_module
 from zettcode.app.ui import updating as updating_module
 from zettcode.app.ui.boot import boot_tree
-from zettcode.app.ui.commands import PICKER_ROWS
 from zettcode.app.ui.shell import MAX_FOLLOW_UPS, MAX_STEERING
 from zettcode.app.ui.widgets import (
     SEND_KIND_ROWS,
@@ -461,6 +460,17 @@ def build_app(
 def _presented_page(app: ZettCodeApp) -> ListPage:
     """Return the page on top of the stack, wherever the shell wrapped it."""
     return next(widget for widget in walk(app.app.screens.top.widget) if isinstance(widget, ListPage))
+
+
+def _context_rows(page: ContextPage, width: int = 100) -> dict[str, str]:
+    """Return each source's row of the context page by name, as the text a reader sees."""
+    rows: dict[str, str] = {}
+    for line in page.lines(width):
+        text = "".join(piece for piece, _ in line)
+        for name in SOURCES:
+            if text[2:].startswith(name):
+                rows[name] = text
+    return rows
 
 
 def _approval_page(app: ZettCodeApp) -> ApprovalPage:
@@ -1813,7 +1823,7 @@ async def test_a_resumed_session_with_pictures_never_shows_their_payload(tmp_pat
         harness.press("enter")
         await asyncio.wait_for(app.task, 2.0)
         page = next(widget for widget in walk(app.app.screens.top.widget) if isinstance(widget, ContextPage))
-        rows = {item.label: item.description for item in page.list.items}
+        rows = _context_rows(page)
         opened.append((page.title, rows["User messages"]))
         assert "base64" not in harness.render().text, "the payload is not on screen"
         harness.press("escape")
@@ -1829,7 +1839,9 @@ async def test_a_resumed_session_with_pictures_never_shows_their_payload(tmp_pat
 
     # And the row says the share of the measured total that number is.
     share = expected / report.measured * 100
-    assert users_row.split("%")[0].strip() == f"{share:.1f}", users_row
+    assert f"{share:.1f}%" in users_row, users_row
+    # The tokens in the row are that share of the provider's total, not the local count itself.
+    assert f"{round(share / 100 * report.used):,}" in users_row, users_row
 
 
 async def test_a_resumed_session_shows_the_rows_a_store_can_answer(tmp_path):
@@ -1860,11 +1872,10 @@ async def test_a_resumed_session_shows_the_rows_a_store_can_answer(tmp_path):
     harness.press("enter")
     await asyncio.wait_for(app.task, 2.0)
     page = next(widget for widget in walk(app.app.screens.top.widget) if isinstance(widget, ContextPage))
-    text = harness.render().text
 
     assert page.title == "Context  326,277 / 1,000,000 tokens", "the total is what the provider billed"
-    assert [item.label for item in page.list.items] == [
-        "Source",
+    rows = _context_rows(page)
+    assert list(rows) == [
         "System prompt",
         "Environment notes",
         "Tool schemas",
@@ -1872,11 +1883,12 @@ async def test_a_resumed_session_shows_the_rows_a_store_can_answer(tmp_path):
         "Assistant messages",
         "Compaction summary",
     ]
-    pending = [item.label for item in page.list.items if item.description.endswith("pending")]
+    pending = [name for name, row in rows.items() if "pending" in row]
     assert pending == ["Environment notes", "Tool schemas"]
-    shares = [float(item.description.split("%")[0]) for item in page.list.items if "%" in item.description]
+    shares = [float(row.split("%")[0].split()[-1]) for name, row in rows.items() if name not in pending]
     assert 99.0 <= sum(shares) <= 101.0, "the rows that can be answered still add up"
-    assert "shares \u00b7 provider total" in text, "and the panel says which number came from where"
+    body = "\n".join("".join(piece for piece, _ in line) for line in page.lines(100))
+    assert "provider" in body and "local count" in body, "and the page says which number came from where"
 
 
 async def test_every_panel_shows_its_list_and_the_arrows_move_it():
@@ -1885,22 +1897,16 @@ async def test_every_panel_shows_its_list_and_the_arrows_move_it():
     The failure this catches is a selection that moves while the list has no
     height: the marker is somewhere, nothing on screen changes, and the panel
     reads as one where Up and Down do nothing at all. Every picker the shell
-    builds is checked, the context report included, because it is the one that
-    spends a row of its own on the session's path.
+    builds is checked.
     """
 
     def marked(harness) -> list[str]:
         return [line.strip() for line in harness.render().text.splitlines() if "\u25b8" in line]
 
-    for command in ("/model", "/context"):
+    for command in ("/model",):
         app = build_app()
         harness = _harness(app)
         harness.render()
-        if command == "/context":
-            app.agent.runtime.context.remember(
-                app.agent.session_id,
-                (SystemMessage(content="You are ZettCode. " * 40), UserMessage(content="why is this slow?")),
-            )
         harness.write(command)
         harness.press("enter")
         await asyncio.wait_for(app.task, 2.0)
@@ -2104,39 +2110,28 @@ async def test_the_context_command_reports_what_the_request_carries():
     await asyncio.wait_for(app.task, 2.0)
 
     page = next(widget for widget in walk(app.app.screens.top.widget) if isinstance(widget, ContextPage))
-    assert [item.label for item in page.list.items] == [
-        "Source",
-        "System prompt",
-        "Environment notes",
-        "Tool schemas",
-        "User messages",
-    ]
-    # The heading row is a row like any other, so its words sit over the
-    # numbers; it is disabled, which is what keeps the selection off it.
-    assert page.list.items[0].disabled is True
-    assert page.list.current.label == "System prompt"
+    rows = _context_rows(page)
+    assert list(rows) == ["System prompt", "Environment notes", "Tool schemas", "User messages"]
     text = harness.render().text
     assert "Context" in text and "tokens" in text
     # The title carries the window; the rows carry shares of the context.
     assert page.title.startswith("Context  ") and page.title.endswith(" / 128,000 tokens")
     # Under it, the file this session is stored in: the reader's way from the
-    # numbers to the conversation on disk. The panel is narrower than the path,
-    # so what is on screen is its start and the whole thing is on the page.
-    assert page.subtitle == str(app.agent.session_path())
-    assert page.subtitle.endswith(STORE_FILE)
-    # The panel is narrower than the path, so what is on screen is its start. The
-    # fragment comes from the fake's own root, which is what keeps this assertion
+    # numbers to the conversation on disk.
+    assert page.path.endswith(STORE_FILE)
+    # The fragment comes from the fake's own root, which is what keeps this assertion
     # true wherever the platform puts its path separators.
     assert str(FakePersistence.root / "workspace") in text
-    # The window share is not repeated here; the rows carry the context shares,
+    # The window share is not repeated in the title; the rows carry the context shares,
     # which add up to the whole of what the next request would send.
     assert "%" not in page.title
-    # The first row is the heading; every row under it is a share of the context.
-    shares = [float(item.description.split("%")[0]) for item in page.list.items[1:]]
+    shares = [float(row.split("%")[0].split()[-1]) for row in rows.values()]
     assert 99.0 <= sum(shares) <= 101.0
-    assert all(item.description.endswith(")") for item in page.list.items[1:])
-    # The fake runtime never loads tiktoken, so the page has to admit the estimate.
-    assert "chars/token" in text
+    # The gauge says where a request is compacted, because that is what it is read against.
+    assert "compacts at" in text
+    # The fake runtime never loads tiktoken, so the page has to admit the estimate, and only that.
+    body = "\n".join("".join(piece for piece, _ in line) for line in page.lines(100))
+    assert "estimates" in body and "chars/token" not in body
 
 
 async def test_resuming_a_session_makes_it_measurable_before_the_next_reply(tmp_path):
@@ -2145,8 +2140,7 @@ async def test_resuming_a_session_makes_it_measurable_before_the_next_reply(tmp_
     Two of its rows cannot be answered yet: the environment notes an extension
     appends and the tool schemas the runtime offers only exist inside an assembled
     request. They are shown as pending in the list — one row each, in source
-    order — rather than left out with a caveat in the footer, because the footer's
-    tail is what a narrow panel cuts off first.
+    order — rather than left out, and they stay in the list on a narrow page.
     """
     store = SessionStore(tmp_path)
     await store.append("previous", "req", UserMessage(content="an earlier question"))
@@ -2163,22 +2157,21 @@ async def test_resuming_a_session_makes_it_measurable_before_the_next_reply(tmp_
     await asyncio.wait_for(app.task, 2.0)
 
     page = next(widget for widget in walk(app.app.screens.top.widget) if isinstance(widget, ContextPage))
-    assert [item.label for item in page.list.items] == [
-        "Source",
+    rows = _context_rows(page)
+    assert list(rows) == [
         "System prompt",
         "Environment notes",
         "Tool schemas",
         "User messages",
         "Assistant messages",
     ]
-    pending = [item for item in page.list.items if item.description.endswith("pending")]
-    assert [item.label for item in pending] == ["Environment notes", "Tool schemas"]
-    assert all("\u2014" in item.description for item in pending), "an unknown share says so"
+    pending = {name: row for name, row in rows.items() if "pending" in row}
+    assert list(pending) == ["Environment notes", "Tool schemas"]
+    assert all("\u2014" in row for row in pending.values()), "an unknown share says so"
 
-    # On a panel as narrow as the one that hid the footer's caveat, the list still
-    # carries the answer.
-    narrow = Harness(bottom_panel(page, rows=PICKER_ROWS), width=60, height=PICKER_ROWS).render().text
-    assert "Environment notes" in narrow and "pending" in narrow
+    # On a page as narrow as a small terminal, the rows still carry the answer.
+    narrow = _context_rows(page, width=40)
+    assert "pending" in narrow["Environment notes"] and "pending" in narrow["Tool schemas"]
 
 
 async def test_the_model_picker_right_aligns_its_row_numbers():

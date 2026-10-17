@@ -28,7 +28,7 @@ A command is drawn in a different colour as soon as it is one, so you can see wh
 | `/permission` | Choose how much of the shell may run without asking: `/permission` lists the levels in the menu; `/permission safe` sets one. |
 | `/btw` | Ask something that is answered here but never joins the conversation: `/btw <question>`. |
 | `/theme` | Choose a palette by name: `/theme` opens the menu, which previews each palette as you move through it; `/theme nord` switches in one step. Your own palettes (`~/.zettcode/themes/<name>.toml`) are in the menu too. |
-| `/context` | Show what is filling the context window right now, and where this session is stored. |
+| `/context` | Show how full the context window is, how close it is to being compacted, and what is filling it — as bars, with the file this session is stored in. |
 | `/usage` | Open a page of what this project's sessions have spent: tokens by model, by session, and a calendar of the days. See [Token usage](#usage). |
 | `/compact` | Summarize the conversation now, instead of waiting for the window to fill. |
 | `/title` | Name this session: `/title users endpoint`. On its own, it reports the current name. |
@@ -130,13 +130,14 @@ reasoning gauge plays. `Esc` puts the panel away and leaves the level as it was.
 `/model` and `/resume` open a picker: a model can have a name with spaces in it, and a session is
 best chosen with its title beside it, which a menu word cannot be. `Up` / `Down` move,
 `Enter` accepts, and `Esc` goes back without changing anything. `/context`
-opens a report rather than a choice: read it, then press `Esc` to close it. The
+opens a page of bars rather than a choice: read it, then press `Esc` to close it. The
 report names the file this conversation is written to under `~/.zettcode/sessions`,
 so a number that looks wrong leads somewhere you can look. Its total is what the
-provider billed for the last request and its percentages are measured locally, which
-is why the rows add up to a hundred while the total is the same figure the status
-line shows; a session restored from disk has no provider count for the dialogue it
-was rebuilt from, and then both are measured. Two rows — the environment notes
+provider billed for the last request, the same figure the status line shows; the
+local count only supplies the proportions, so each row is that source's share of the
+total and the rows add up to it. A session restored from disk has no provider count
+for the dialogue it was rebuilt from, and then the rows are the local counts. Two
+rows — the environment notes
 and the tool schemas — only exist inside a request the runtime has assembled, so
 a report taken before the first turn of a session shows them as `pending` rather
 than leaving them out. An image is counted as an estimate rather than by the size of
