@@ -20,7 +20,8 @@ from collections.abc import Iterable
 from dataclasses import fields as dataclass_fields
 from typing import Any, ClassVar, Generic, TypeVar
 
-from ....tui import (
+from zettcode.app.brand import LOGO_LINES
+from zettcode.tui import (
     DONE,
     ELLIPSIS,
     EXPANDED,
@@ -37,7 +38,7 @@ from ....tui import (
     TextLine,
     Theme,
 )
-from ....tui.render import (
+from zettcode.tui.render import (
     SweepSpan,
     blend,
     display_width,
@@ -48,8 +49,8 @@ from ....tui.render import (
     truncate,
     wrap_words,
 )
-from ....tui.widgets.markdown import MarkdownSource
-from ...brand import LOGO_LINES
+from zettcode.tui.widgets.markdown import MarkdownSource
+
 from .entries import (
     ChangesEntry,
     EditEntry,
@@ -681,8 +682,8 @@ class FileChangePresenter(ToolPresenter[F]):
         limit = TOOL_EXPANDED_ROWS if entry.expanded else TOOL_PREVIEW_ROWS
         room = max(1, width - CONTENT_INDENT * 2 - 2)
         styles = {
-            "+": Style(foreground=theme.addition),
-            "-": Style(foreground=theme.deletion),
+            "+": Style(foreground=theme.addition, background=theme.addition_fill),
+            "-": Style(foreground=theme.deletion, background=theme.deletion_fill),
             " ": Style(foreground=theme.subtle),
             "@": muted,
         }
@@ -691,7 +692,11 @@ class FileChangePresenter(ToolPresenter[F]):
             lead = f"{' ' * CONTENT_INDENT}\u2514 " if index == 0 else " " * (CONTENT_INDENT * 2)
             style = styles.get(sign, styles[" "])
             shown = text if sign == "@" else f"{sign} {terminal_safe(text)}"
-            lines.append(TextLine((Span(lead, muted), Span(truncate(shown, room), style))))
+            cut = truncate(shown, room)
+            if style.background is not None:
+                # A band runs the width of the row, so a short line is as much a line as a long one.
+                cut += " " * max(0, room - display_width(cut))
+            lines.append(TextLine((Span(lead, muted), Span(cut, style))))
         omitted = len(entry.diff) - limit
         if omitted > 0:
             lines.append(TextLine((Span(f"{' ' * (CONTENT_INDENT * 2)}{ELLIPSIS} {omitted} more rows", muted),)))

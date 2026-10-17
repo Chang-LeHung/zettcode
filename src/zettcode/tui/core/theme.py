@@ -5,7 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ..render.code import CodeTheme
-from ..render.color import parse_hex
+from ..render.color import blend, parse_hex
+
+#: How much of a diff line's colour is mixed into the page to make the fill behind that line.
+DIFF_FILL_SHARE = 0.16
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,6 +99,10 @@ class Theme:
             with it; set it to colour additions on their own. Read it through :attr:`addition`.
         diff_removed: A line a change removes, and the ``-N`` beside the file. ``None`` means
             :attr:`error`. Read it through :attr:`deletion`.
+        diff_added_fill: The band behind an added line of an edit. ``None`` mixes :attr:`addition` into the page
+            (:attr:`background`, or :attr:`surface` when the page is the terminal's), so the band follows the
+            palette. Read it through :attr:`addition_fill`.
+        diff_removed_fill: The same for a removed line; read it through :attr:`deletion_fill`.
         border: Frame glyphs and separators.
         focus: Focus ring colour; reserved, no built-in widget draws a ring yet.
         selection: Background of a selected or emphasised cell, used by list
@@ -119,11 +126,23 @@ class Theme:
     error: str = "#e67e80"
     diff_added: str | None = None
     diff_removed: str | None = None
+    diff_added_fill: str | None = None
+    diff_removed_fill: str | None = None
     border: str = "#3d484d"
     focus: str = "#83c092"
     selection: str = "#4a5f52"
     tools: ToolTheme = ToolTheme()
     code: CodeTheme = CodeTheme()
+
+    @property
+    def addition_fill(self) -> str:
+        """Return the fill behind an added line: ``diff_added_fill`` if set, else the addition colour mixed into the page."""
+        return self.diff_added_fill or blend(self.background or self.surface, self.addition, DIFF_FILL_SHARE)
+
+    @property
+    def deletion_fill(self) -> str:
+        """Return the fill behind a removed line: ``diff_removed_fill`` if set, else the deletion colour mixed in."""
+        return self.diff_removed_fill or blend(self.background or self.surface, self.deletion, DIFF_FILL_SHARE)
 
     @property
     def addition(self) -> str:
