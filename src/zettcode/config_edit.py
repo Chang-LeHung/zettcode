@@ -42,6 +42,7 @@ _KEY_ORDER = (
     "multimodal",
     "context_window",
     "compact_percent",
+    "reasoning_efforts",
 )
 
 
@@ -78,6 +79,8 @@ def _value(value: object) -> str:
         return toml_string(value)
     if isinstance(value, (int, float)):
         return repr(value)
+    if isinstance(value, (list, tuple)) and all(isinstance(item, str) for item in value):
+        return "[" + ", ".join(toml_string(item) for item in value) + "]"
     raise ConfigEditError(f"cannot write a value of type {type(value).__name__}")
 
 
@@ -121,6 +124,8 @@ def entry_from_model(model: ModelConfig, *, token: str | None = None) -> dict[st
         entry["context_window"] = model.context_window
     if model.compact_percent != DEFAULT_COMPACT_PERCENT:
         entry["compact_percent"] = model.compact_percent
+    if model.reasoning_efforts:
+        entry["reasoning_efforts"] = [level.value for level in model.reasoning_efforts]
     return entry
 
 
@@ -241,45 +246,68 @@ def remove_model(text: str, index: int, *, where: Path) -> str:
     return result
 
 
-#: The line that opens the ``[ui]`` table, and the ``theme`` key inside it.
-_UI_HEADER = re.compile(r"^\s*\[\s*ui\s*\]\s*(#.*)?$")
-_THEME_KEY = re.compile(r"^\s*theme\s*=")
+def _set_key(text: str, table: str, key: str, literal: str, value: object, *, where: Path, command: str) -> str:
+    """Return ``text`` with ``[table] key`` set to ``value``, touching nothing else.
 
-
-def set_theme(text: str, name: str, *, where: Path) -> str:
-    """Return ``text`` with ``[ui] theme`` set to ``name``, touching nothing else.
-
-    The key's line is replaced where the file already has one, added under an existing ``[ui]`` header, or the table
-    is appended at the end. Like the model edits it is checked before it is returned: the result must parse and
-    differ from the original in nothing but ``ui.theme``. A file that spells ``ui`` some other way (an inline
+    The key's line is replaced where the file already has one, added under an existing header, or the
+    table is appended at the end. The result is checked before it is returned: it must parse and differ
+    from the original in nothing but this key. A file that spells the table some other way (an inline
     table, say) is refused rather than guessed at.
+
+    Args:
+        table: The table's name (``"ui"``).
+        key: The key in it (``"theme"``).
+        literal: ``value`` as TOML spells it (``'"nord"'``, ``"true"``).
+        value: What the key must read back as.
+        where: The file, for messages.
+        command: What the reader ran, for the message when the file cannot be edited safely.
     """
+    header_pattern = re.compile(rf"^\s*\[\s*{re.escape(table)}\s*\]\s*(#.*)?$")
+    key_pattern = re.compile(rf"^\s*{re.escape(key)}\s*=")
     before = _parse(text, where)
     lines = text.split("\n")
-    line = f"theme = {toml_string(name)}"
-    header = next((index for index, item in enumerate(lines) if _UI_HEADER.match(item)), None)
+    line = f"{key} = {literal}"
+    header = next((index for index, item in enumerate(lines) if header_pattern.match(item)), None)
     if header is None:
-        if "ui" in before:
-            raise ConfigEditError(f"{where} writes [ui] in a way /theme cannot edit safely; edit the file by hand")
+        if table in before:
+            raise ConfigEditError(
+                f"{where} writes [{table}] in a way {command} cannot edit safely; edit the file by hand"
+            )
         while lines and not lines[-1].strip():
             lines.pop()
-        new = [*lines, "", "[ui]", line, ""]
+        new = [*lines, "", f"[{table}]", line, ""]
     else:
         end = next((i for i in range(header + 1, len(lines)) if _HEADER.match(lines[i])), len(lines))
-        existing = next((i for i in range(header + 1, end) if _THEME_KEY.match(lines[i])), None)
+        existing = next((i for i in range(header + 1, end) if key_pattern.match(lines[i])), None)
         if existing is not None:
             new = [*lines[:existing], line, *lines[existing + 1 :]]
         else:
             new = [*lines[: header + 1], line, *lines[header + 1 :]]
     result = "\n".join(new)
     after = _parse(result, where)
-    ui_before = {key: value for key, value in before.get("ui", {}).items() if key != "theme"}
-    ui_after = {key: value for key, value in after.get("ui", {}).items() if key != "theme"}
-    others_before = {key: value for key, value in before.items() if key != "ui"}
-    others_after = {key: value for key, value in after.items() if key != "ui"}
-    if after.get("ui", {}).get("theme") != name or ui_before != ui_after or others_before != others_after:
-        raise ConfigEditError("the edit would have changed something other than the theme; nothing was written")
+    table_before = {name: item for name, item in before.get(table, {}).items() if name != key}
+    table_after = {name: item for name, item in after.get(table, {}).items() if name != key}
+    others_before = {name: item for name, item in before.items() if name != table}
+    others_after = {name: item for name, item in after.items() if name != table}
+    if after.get(table, {}).get(key) != value or table_before != table_after or others_before != others_after:
+        raise ConfigEditError(f"the edit would have changed something other than {table}.{key}; nothing was written")
     return result
+
+
+def set_theme(text: str, name: str, *, where: Path) -> str:
+    """Return ``text`` with ``[ui] theme`` set to ``name``, touching nothing else.
+
+    Like the model edits it is checked before it is returned: the result must parse and differ from the
+    original in nothing but ``ui.theme``.
+    """
+    return _set_key(text, "ui", "theme", toml_string(name), name, where=where, command="/theme")
+
+
+def set_self_compaction(text: str, enabled: bool, *, where: Path) -> str:
+    """Return ``text`` with ``[compaction] self`` set to ``enabled``, touching nothing else."""
+    return _set_key(
+        text, "compaction", "self", "true" if enabled else "false", enabled, where=where, command="/self-compact"
+    )
 
 
 def file_entries(text: str, *, where: Path) -> list[dict[str, Any]]:

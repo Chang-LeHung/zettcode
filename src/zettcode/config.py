@@ -21,7 +21,14 @@ from zett_agent.extensions.shell_approval import ShellApprovalMode
 from zett_agent.model import ReasoningEffort
 
 from ._compat import tomllib
-from .paths import DEFAULT_STORE, DEFAULT_THEME_FILE, DEFAULT_THEMES_DIR, DEFAULT_UPDATE_FILE, config_path
+from .paths import (
+    DEFAULT_MCP_CONFIG,
+    DEFAULT_STORE,
+    DEFAULT_THEME_FILE,
+    DEFAULT_THEMES_DIR,
+    DEFAULT_UPDATE_FILE,
+    config_path,
+)
 from .providers import Api
 
 #: The concrete type :func:`_typed` verifies a raw config value against.
@@ -29,7 +36,20 @@ T = TypeVar("T")
 
 #: Top-level keys the config file may set; anything else is a typo.
 CONFIGURABLE = frozenset(
-    {"models", "transcript", "agents_md", "ask_user", "skills", "mcp", "plugins", "update", "harness", "sessions", "ui"}
+    {
+        "models",
+        "transcript",
+        "agents_md",
+        "ask_user",
+        "skills",
+        "mcp",
+        "plugins",
+        "update",
+        "harness",
+        "sessions",
+        "compaction",
+        "ui",
+    }
 )
 
 #: Keys one ``[[models]]`` entry may set.
@@ -44,6 +64,7 @@ MODEL_KEYS = frozenset(
         "multimodal",
         "context_window",
         "compact_percent",
+        "reasoning_efforts",
     }
 )
 
@@ -57,10 +78,25 @@ AGENTS_MD_KEYS = frozenset({"enabled"})
 ASK_USER_KEYS = frozenset({"enabled"})
 
 #: Keys the ``[skills]`` table may set.
-SKILL_KEYS = frozenset({"enabled", "roots"})
+SKILL_KEYS = frozenset({"enabled", "roots", "scope"})
 
 #: Keys the ``[mcp]`` table may set.
-MCP_KEYS = frozenset({"enabled", "config"})
+MCP_KEYS = frozenset({"enabled", "config", "scope"})
+
+#: Keys the ``[compaction]`` table may set.
+COMPACTION_KEYS = frozenset({"self"})
+
+#: Where a directory-backed feature is looked for: the user's own files, the workspace's, or both.
+#: A workspace file sits beside the project and is reviewed with it; the user's is the fallback every
+#: checkout shares.
+SCOPES = frozenset({"global", "workspace", "both"})
+
+#: The scope a ``[skills]`` or ``[mcp]`` table uses when it names none: both, merged. The user's own
+#: files and the workspace's are used together, the workspace's winning a name inside that project. A
+#: workspace MCP entry is a command that gets run and a skill is instructions the model follows, and both
+#: come from whatever repository is open; a reader who does not want a checkout's files read says
+#: ``scope = "global"``.
+DEFAULT_SCOPE = "both"
 
 #: Keys the ``[plugins]`` table may set.
 PLUGIN_KEYS = frozenset({"enabled", "disable"})
@@ -83,10 +119,17 @@ HARNESS_KEYS = frozenset({"subagent", "subagent_max_iterations", "todowrite"})
 #: child that never stops, not a target.
 DEFAULT_SUBAGENT_MAX_ITERATIONS = 512
 
-#: Where ZettCode's own skills live, searched after any ``[skills] roots``. A
-#: project-local directory is a configured root, not a default: only what the
-#: user asks for is scanned.
+#: Where ZettCode's own skills live, searched after any ``[skills] roots`` and after the workspace's
+#: own directory. The user-level fallback for every checkout.
 DEFAULT_SKILL_ROOT = "~/.zettcode/skills"
+
+#: The skills a workspace may ship, relative to it. Scanned for ``[skills] scope`` of ``workspace``
+#: or ``both``, ahead of the user's own, so a project's version of a skill wins in that project.
+WORKSPACE_SKILL_ROOT = ".zettcode/skills"
+
+#: The MCP server file a workspace may ship, relative to it. Read for ``[mcp] scope`` of
+#: ``workspace`` or ``both``, and merged over the user's file by server name.
+WORKSPACE_MCP_CONFIG = ".zettcode/mcp.json"
 
 #: API root of an Anthropic model whose entry names no ``base_url``. The
 #: Messages API lives at the root itself, not under ``/v1``.
@@ -143,6 +186,10 @@ class ModelConfig:
             measures against.
         compact_percent: Share of :attr:`context_window` at which a request is
             compacted, in percent.
+        reasoning_efforts: The reasoning levels this model accepts, cheapest first. The empty
+            tuple, the default, means every level: a provider that cannot express one maps it
+            onto its closest, which is what makes the default right for an endpoint whose
+            support is unknown. An entry names the subset when the endpoint rejects the rest.
     """
 
     model: str
@@ -154,6 +201,7 @@ class ModelConfig:
     multimodal: bool = False
     context_window: int = DEFAULT_CONTEXT_WINDOW
     compact_percent: float = DEFAULT_COMPACT_PERCENT
+    reasoning_efforts: tuple[ReasoningEffort, ...] = ()
 
     def __post_init__(self) -> None:
         """Reject a model that cannot be called."""
@@ -175,6 +223,11 @@ class ModelConfig:
             raise ValueError(f"context_window must be positive for model {self.model!r}")
         if not 0 < self.compact_percent <= 100:
             raise ValueError(f"compact_percent must be between 0 and 100 for model {self.model!r}")
+        # Cheapest first, one of each: the order is the picker's rail, and a repeat would put two
+        # nodes on one level.
+        levels = tuple(sorted(set(self.reasoning_efforts), key=tuple(ReasoningEffort).index))
+        if levels != self.reasoning_efforts:
+            object.__setattr__(self, "reasoning_efforts", levels)
 
     @property
     def shown_name(self) -> str:
@@ -192,6 +245,32 @@ class ModelConfig:
         if self.anthropic:
             return Api.ANTHROPIC
         return Api.RESPONSES if self.responses_api else Api.CHAT
+
+    @property
+    def efforts(self) -> tuple[ReasoningEffort, ...]:
+        """Return the reasoning levels this model accepts, cheapest first.
+
+        Every level when the entry names none: a provider maps one it cannot express onto its closest, so
+        the widest choice is the honest default for an endpoint whose support the entry does not describe.
+        """
+        return self.reasoning_efforts or tuple(ReasoningEffort)
+
+    def accepted_effort(self, level: ReasoningEffort) -> ReasoningEffort:
+        """Return the level to send when ``level`` was asked for, moved to the nearest one that is accepted.
+
+        A level the model does not take is moved, never refused: the levels are ordered, and the closest
+        one is what a caller who asked for ``ultra`` on a model that stops at ``high`` means. A tie goes
+        to the cheaper level, which is the one the endpoint is known to serve.
+
+        Args:
+            level: The level that was asked for.
+        """
+        accepted = self.efforts
+        if level in accepted:
+            return level
+        order = tuple(ReasoningEffort)
+        position = order.index(level)
+        return min(accepted, key=lambda candidate: (abs(order.index(candidate) - position), order.index(candidate)))
 
     @property
     def compaction_max_tokens(self) -> int:
@@ -235,13 +314,17 @@ class ZettCodeConfig:
         ask_user_enabled: Give the model the ``ask_user`` tool, which pauses a
             turn until the reader answers a question in the shell.
         skills_enabled: Discover local skills and advertise them to the model.
-        skill_roots: Extra skill directories, searched before
-            ``~/.zettcode/skills``; a relative entry is resolved against the
-            workspace, which is how a project ships skills in
-            ``.zettcode/skills``.
-        mcp_enabled: Load MCP servers from :attr:`mcp_config`.
-        mcp_config: JSON file naming MCP servers; ``None`` uses
-            ``~/.zettcode/mcp.json``.
+        skill_roots: Extra skill directories, searched before the directory :attr:`skills_scope`
+            names; a relative entry is resolved against the workspace.
+        skills_scope: Which of the workspace's ``.zettcode/skills`` and the user's
+            ``~/.zettcode/skills`` to scan: ``"both"`` (the default) the project's first, so its version of
+            a skill wins inside it; ``"workspace"`` the project's only, ``"global"`` the user's only.
+        mcp_enabled: Load MCP servers from :attr:`mcp_config` and the workspace's ``.zettcode/mcp.json``.
+        mcp_config: JSON file naming MCP servers; ``None`` uses ``~/.zettcode/mcp.json``.
+        mcp_scope: Which MCP server files to read, with the same three words; ``"both"`` (the default)
+            merges them, a server named in both taken from the workspace's file.
+        self_compaction: Whether a session lets the model request compaction unless it says otherwise;
+            the default a new session starts with, and what ``/self-compact`` shows until it is changed.
         plugins_enabled: Load third-party plugins published under the
             ``zettcode.plugins`` entry-point group. The builtin rows always
             load, so switching this off leaves the shell looking the same.
@@ -280,8 +363,11 @@ class ZettCodeConfig:
     ask_user_enabled: bool = True
     skills_enabled: bool = True
     skill_roots: tuple[Path, ...] = ()
+    skills_scope: str = DEFAULT_SCOPE
     mcp_enabled: bool = True
     mcp_config: Path | None = None
+    mcp_scope: str = DEFAULT_SCOPE
+    self_compaction: bool = False
     plugins_enabled: bool = True
     disabled_plugins: tuple[str, ...] = ()
     subagent_enabled: bool = True
@@ -307,6 +393,10 @@ class ZettCodeConfig:
             raise ValueError("transcript_max_entries must be positive")
         if not 0 < self.mouse_scroll_speed <= MAX_MOUSE_SCROLL_SPEED:
             raise ValueError(f"mouse_scroll_speed must be greater than 0 and at most {MAX_MOUSE_SCROLL_SPEED:g}")
+        if self.skills_scope not in SCOPES:
+            raise ValueError(f"skills_scope must be one of {', '.join(sorted(SCOPES))}")
+        if self.mcp_scope not in SCOPES:
+            raise ValueError(f"mcp_scope must be one of {', '.join(sorted(SCOPES))}")
         object.__setattr__(self, "workspace", workspace)
         object.__setattr__(self, "store", store)
         object.__setattr__(
@@ -324,12 +414,34 @@ class ZettCodeConfig:
     def skill_search_roots(self) -> tuple[Path, ...]:
         """Return every skill directory to scan, most specific first.
 
-        The configured roots come first so a run can point at a team directory
-        or at a project-local one, then the user's own skills. A name declared
-        twice belongs to the earlier directory.
+        The configured roots come first so a run can point at a team directory or at a project-local
+        one, then the directory :attr:`skills_scope` names: a project's skills ahead of the user's, so
+        a name declared in both belongs to the project the reader is in. A name declared twice belongs
+        to the earlier directory.
         """
-        default = _resolve_root(DEFAULT_SKILL_ROOT, self.workspace)
-        return (*self.skill_roots, default)
+        scope = self.skills_scope
+        roots: list[Path] = list(self.skill_roots)
+        if scope in ("workspace", "both"):
+            roots.append(_resolve_root(WORKSPACE_SKILL_ROOT, self.workspace))
+        if scope in ("global", "both"):
+            roots.append(_resolve_root(DEFAULT_SKILL_ROOT, self.workspace))
+        # Ordered, one of each: a configured root may name the same directory a scope does.
+        return tuple(dict.fromkeys(roots))
+
+    def mcp_files(self) -> tuple[Path, ...]:
+        """Return the MCP server files to read, the one that wins a server name first.
+
+        The workspace's file comes first for the same reason its skills do, and a file ``[mcp] config``
+        names replaces the user's own rather than joining it: a reader who points at a team file means
+        that file.
+        """
+        scope = self.mcp_scope
+        files: list[Path] = []
+        if scope in ("workspace", "both"):
+            files.append(_resolve_root(WORKSPACE_MCP_CONFIG, self.workspace))
+        if scope in ("global", "both"):
+            files.append((self.mcp_config or Path(DEFAULT_MCP_CONFIG)).expanduser().resolve())
+        return tuple(dict.fromkeys(files))
 
 
 def _default_theme_file() -> Path | None:
@@ -424,6 +536,9 @@ def _entry_model(entry: dict[str, object], index: int) -> ModelConfig:
             compact_percent=_number(
                 entry.get("compact_percent", DEFAULT_COMPACT_PERCENT), f"{label} key 'compact_percent'"
             ),
+            reasoning_efforts=_read_reasoning_efforts(
+                entry.get("reasoning_efforts"), f"{label} key 'reasoning_efforts'"
+            ),
         )
     except ValueError as error:
         # The same model id can be configured twice against different endpoints,
@@ -455,6 +570,34 @@ def _read_table(raw: object, key: str, source: Path, allowed: frozenset[str]) ->
     if unknown:
         raise ValueError(f"Unknown config keys in the [{key}] table of {source}: {', '.join(unknown)}")
     return raw
+
+
+def _read_reasoning_efforts(raw: object, where: str) -> tuple[ReasoningEffort, ...]:
+    """Return the levels one model accepts, cheapest first; none written means every level."""
+    if raw is None:
+        return ()
+    if not isinstance(raw, list) or any(not isinstance(entry, str) for entry in raw):
+        raise ValueError(f"{where} must be an array of level names")
+    known = {level.value: level for level in ReasoningEffort}
+    chosen: list[ReasoningEffort] = []
+    for entry in raw:
+        level = known.get(entry.strip().lower())
+        if level is None:
+            raise ValueError(f"{where} names {entry!r}, which is not one of {', '.join(known)}")
+        chosen.append(level)
+    if not chosen:
+        raise ValueError(f"{where} must name at least one level, or be left out for all of them")
+    return tuple(sorted(set(chosen), key=tuple(ReasoningEffort).index))
+
+
+def _read_scope(raw: object, source: Path, table: str) -> str:
+    """Return a ``[skills]``/``[mcp]`` scope, rejecting a word that names none of the three."""
+    if raw is None:
+        return DEFAULT_SCOPE
+    if not isinstance(raw, str) or raw.strip().lower() not in SCOPES:
+        words = ", ".join(sorted(SCOPES))
+        raise ValueError(f"Config key '{table}.scope' in {source} must be one of {words}, not {raw!r}")
+    return raw.strip().lower()
 
 
 def _read_skill_roots(raw: object, source: Path) -> tuple[Path, ...]:
@@ -530,6 +673,7 @@ def load_config(
     transcript = _read_table(data.get("transcript"), "transcript", source, TRANSCRIPT_KEYS)
     update = _read_table(data.get("update"), "update", source, UPDATE_KEYS)
     harness = _read_table(data.get("harness"), "harness", source, HARNESS_KEYS)
+    compaction = _read_table(data.get("compaction"), "compaction", source, COMPACTION_KEYS)
     sessions = _read_table(data.get("sessions"), "sessions", source, SESSIONS_KEYS)
     ui = _read_table(data.get("ui"), "ui", source, UI_KEYS)
 
@@ -553,8 +697,11 @@ def load_config(
         ask_user_enabled=bool(_setting(ask_user, "enabled", bool, True)),
         skills_enabled=bool(_setting(skills, "enabled", bool, True)),
         skill_roots=_read_skill_roots(skills.get("roots"), source),
+        skills_scope=_read_scope(skills.get("scope"), source, "skills"),
         mcp_enabled=bool(_setting(mcp, "enabled", bool, True)),
         mcp_config=_read_mcp_config(mcp.get("config"), source),
+        mcp_scope=_read_scope(mcp.get("scope"), source, "mcp"),
+        self_compaction=bool(_setting(compaction, "self", bool, False)),
         plugins_enabled=bool(_setting(plugins, "enabled", bool, True)),
         disabled_plugins=_read_disabled_plugins(plugins.get("disable"), source),
         subagent_enabled=bool(_setting(harness, "subagent", bool, True)),
