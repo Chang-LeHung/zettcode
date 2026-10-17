@@ -4,7 +4,7 @@ UV ?= uv
 # the one it just built and not a release wheel left over from an earlier run.
 SMOKE_DIR := .smoke
 
-.PHONY: help install lint typecheck test build smoke check hooks docs docs-build docs-preview demo demo-all demos demo-thinking perf perf-scaling perf-store perf-profile perf-startup perf-imports perf-exit FORCE
+.PHONY: help install lint typecheck test build smoke check hooks docs docs-build docs-preview demo demo-all demos demo-thinking palettes perf perf-scaling perf-store perf-profile perf-startup perf-imports perf-exit FORCE
 
 DEMOS := text status_bar spinner progress_bar list table diff markdown textarea completion dialog collapsible toast tasks scroll layout
 
@@ -20,6 +20,7 @@ help:
 	@echo "  make hooks    Install the git hooks (blocks a commit that fails mypy)"
 	@echo "  make docs     Serve the user guide at http://localhost:5173"
 	@echo "  make docs-build   Build the guide into docs/.vitepress/dist"
+	@echo "  make palettes     Regenerate docs/internal/palettes.html (every widget in every palette)"
 	@echo "  make demo     Browse the widgets interactively"
 	@echo "  make demo-all Print every widget preview"
 	@echo "  make demos    List the widget names"
@@ -37,8 +38,8 @@ install:
 	$(UV) sync
 
 lint:
-	$(UV) run ruff format --check src tests perf
-	$(UV) run ruff check src tests perf
+	$(UV) run ruff format --check src tests perf docs/scripts
+	$(UV) run ruff check src tests perf docs/scripts
 
 typecheck:
 	$(UV) run mypy
@@ -71,6 +72,13 @@ docs-build:
 
 docs-preview: docs-build
 	cd docs && npm run docs:preview
+
+# The palette page is a build product, not a source: every widget is painted in every palette by the real
+# widget code, and docs/internal/palettes.html is written from that (it is in .gitignore). A change to the
+# theme code, the palettes, or a widget therefore means running this again; nothing checks it for you.
+palettes:
+	$(UV) run python docs/scripts/palette_gallery.py
+	@echo "open docs/internal/palettes.html"
 
 # The global hooksPath delegates to .git/hooks, so a local copy is what runs.
 hooks:
