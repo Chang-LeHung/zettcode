@@ -426,7 +426,7 @@ def usage_scene(tab: str) -> Callable[[Env, Theme], Canvas]:
                     "Fix the parser crash",
                     started,
                     started + timedelta(hours=3),
-                    Tally(12, 900_000, 60_000),
+                    Tally(12, 900_000, 60_000, 800_000),
                     ("gpt-5-mini",),
                 ),
                 SessionUsage(
@@ -440,7 +440,7 @@ def usage_scene(tab: str) -> Callable[[Env, Theme], Canvas]:
             ],
             models={"gpt-5-mini": Tally(30, 2_000_000, 120_000), "claude-sonnet-4-5": Tally(9, 700_000, 40_000)},
             days=days,
-            total=Tally(40, 2_700_000, 160_000),
+            total=Tally(40, 2_700_000, 160_000, 1_100_000),
         )
         shell = env.app(theme, height=26)
         page(shell, UsagePage(ledger, workspace="~/projects/api", today=today, tab=tab), 20)

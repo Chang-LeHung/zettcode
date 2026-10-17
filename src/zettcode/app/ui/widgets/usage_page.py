@@ -200,6 +200,7 @@ class UsagePage(Widget):
             "muted": theme.muted,
             "input": theme.accent,
             "output": theme.warning,
+            "cached": theme.tools.subagent,
             "track": blend(page, theme.text, 0.18),
         }
         return Style(foreground=colours.get(role, theme.text), background=page, bold=role == "heading")

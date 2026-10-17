@@ -87,10 +87,11 @@ with `Tab` (or `1`, `2`, `3`):
   each use their own scale, because output is a small fraction of input for every model.
 - **Sessions** — one row for each session, last changed first, with when it began and when it last
   changed, its title, its input and output as bars, and the share of that input the provider served
-  from its cache. The bars use a square-root scale so a small session still shows next to a very
-  large one; a narrow terminal drops the bars first, then the cache column, then the clock, and the
-  narrowest keeps only the last change — the time the order is by. Every cache share on the page is
-  written to two decimals.
+  from its cache, also as a bar. The token bars use a square-root scale so a small session still
+  shows next to a very large one; the cache bar is a plain 0–100% (full means every input token came
+  from the cache), so rows compare directly. A narrow terminal drops the bars first, then the cache
+  column, then the clock, and the narrowest keeps only the last change — the time the order is by.
+  Every cache share on the page is written to two decimals.
 - **Calendar** — a grid of weeks like the contribution graph on GitHub: a column is a week, a
   square is a day, and its shade is that day's tokens (input plus output) from none to the
   heaviest quarter of your days. `←` `→` move by a week and `↑` `↓` by a day, and the line under
