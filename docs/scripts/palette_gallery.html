@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ZettCode · 配色选择器</title>
+<style>
+:root {
+  --fs: 12px;
+  --chrome-bg: #14161a; --chrome-panel: #1b1e24; --chrome-line: #2a2e36; --chrome-text: #e6e8ec;
+  --chrome-muted: #8d94a1; --chrome-accent: #7aa2f7; --chrome-good: #5fbf7a; --chrome-warn: #e0af68; --chrome-bad: #f7768e;
+}
+:root[data-chrome="light"] {
+  --chrome-bg: #f3f4f6; --chrome-panel: #ffffff; --chrome-line: #dcdfe4; --chrome-text: #1f2328;
+  --chrome-muted: #5d6673; --chrome-accent: #0969da; --chrome-good: #1a7f37; --chrome-warn: #9a6700; --chrome-bad: #cf222e;
+}
+* { box-sizing: border-box; }
+html { scroll-padding-top: 118px; }
+body { margin: 0; background: var(--chrome-bg); color: var(--chrome-text);
+  font: 14px/1.5 -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif; }
+button, select, input { font: inherit; color: inherit; }
+button { background: var(--chrome-panel); border: 1px solid var(--chrome-line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+button:hover { border-color: var(--chrome-accent); }
+button.on { background: var(--chrome-accent); border-color: var(--chrome-accent); color: #fff; }
+select { background: var(--chrome-panel); border: 1px solid var(--chrome-line); border-radius: 6px; padding: 4px 8px; }
+code, pre, .mono { font-family: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace; }
+
+header.top { position: sticky; top: 0; z-index: 20; background: var(--chrome-bg); border-bottom: 1px solid var(--chrome-line); padding: 10px 16px 8px; }
+header.top h1 { margin: 0 16px 0 0; font-size: 16px; display: inline-block; }
+header.top .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+header.top .row + .row { margin-top: 8px; }
+.seg { display: inline-flex; }
+.seg button { border-radius: 0; margin-left: -1px; }
+.seg button:first-child { border-radius: 6px 0 0 6px; margin-left: 0; }
+.seg button:last-child { border-radius: 0 6px 6px 0; }
+.muted { color: var(--chrome-muted); }
+.nav a { color: var(--chrome-muted); text-decoration: none; margin-right: 12px; font-size: 13px; }
+.nav a:hover { color: var(--chrome-accent); }
+
+.layout { display: grid; grid-template-columns: 270px 1fr; align-items: start; }
+aside { position: sticky; top: 104px; max-height: calc(100vh - 104px); overflow: auto; border-right: 1px solid var(--chrome-line); padding: 8px; }
+aside .item { display: block; width: 100%; text-align: left; border: 1px solid transparent; background: transparent; border-radius: 8px; padding: 8px; margin-bottom: 4px; }
+aside .item:hover { background: var(--chrome-panel); }
+aside .item.sel { background: var(--chrome-panel); border-color: var(--chrome-accent); }
+aside .item .name { display: flex; justify-content: space-between; gap: 6px; font-weight: 600; font-size: 13px; }
+aside .strip { display: flex; height: 14px; border-radius: 4px; overflow: hidden; margin-top: 6px; border: 1px solid var(--chrome-line); }
+aside .strip i { flex: 1; }
+.star { cursor: pointer; color: var(--chrome-muted); }
+.star.on { color: #f5c542; }
+.layout.wide { grid-template-columns: 1fr; }
+.layout.wide aside { display: none; }
+.scroll-x { overflow-x: auto; }
+main { padding: 16px 20px 80px; min-width: 0; }
+
+.card { background: var(--chrome-panel); border: 1px solid var(--chrome-line); border-radius: 10px; padding: 14px 16px; margin-bottom: 18px; }
+.card h2 { margin: 0 0 4px; font-size: 18px; }
+.card h3 { margin: 0 0 6px; font-size: 14px; }
+.mood { color: var(--chrome-muted); margin: 0 0 10px; }
+.badge { display: inline-block; font-size: 11px; padding: 0 6px; border-radius: 10px; border: 1px solid var(--chrome-line); color: var(--chrome-muted); margin-left: 6px; vertical-align: 2px; }
+
+.roles { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 8px; }
+.role { border: 1px solid var(--chrome-line); border-radius: 8px; overflow: hidden; background: var(--chrome-bg); }
+.role .sw { height: 38px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; }
+.role .meta { padding: 4px 6px; font-size: 11px; line-height: 1.35; }
+.role .meta b { display: block; font-weight: 600; font-size: 12px; }
+.role .meta .hex { color: var(--chrome-muted); font-family: "SF Mono", Menlo, monospace; }
+.ratio { float: right; font-family: "SF Mono", Menlo, monospace; }
+.ratio.ok { color: var(--chrome-good); } .ratio.mid { color: var(--chrome-warn); } .ratio.low { color: var(--chrome-bad); }
+.tuned { color: var(--chrome-warn); cursor: help; }
+.group-title { margin: 12px 0 6px; font-size: 12px; color: var(--chrome-muted); text-transform: uppercase; letter-spacing: .08em; }
+
+pre.toml { background: var(--chrome-bg); border: 1px solid var(--chrome-line); border-radius: 8px; padding: 10px 12px; overflow: auto; max-height: 260px; margin: 8px 0 0; font-size: 12px; }
+
+.scene { margin-bottom: 26px; }
+.scene .head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+.scene .head h3 { margin: 0; font-size: 15px; }
+.scene .head .note { color: var(--chrome-muted); font-size: 12px; }
+.group { margin: 34px 0 12px; font-size: 20px; border-bottom: 1px solid var(--chrome-line); padding-bottom: 6px; }
+
+/* the terminal */
+.term { display: inline-block; max-width: 100%; overflow-x: auto; border-radius: 8px; border: 1px solid; box-shadow: 0 4px 18px rgba(0,0,0,.25); vertical-align: top; }
+.term .bar { display: flex; gap: 6px; padding: 7px 10px; align-items: center; }
+.term .bar i { width: 10px; height: 10px; border-radius: 50%; display: block; opacity: .8; }
+.term .screen { padding: 4px 6px 8px; font-family: "JetBrains Mono", "Fira Code", "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", "Noto Sans Mono CJK SC", monospace;
+  font-size: var(--fs); line-height: 1.32; font-variant-ligatures: none; font-feature-settings: "liga" 0, "calt" 0; }
+.term .row { white-space: pre; height: 1.32em; }
+.term .row span { display: inline-block; height: 1.32em; vertical-align: top; overflow: visible; }
+.pending { background: var(--chrome-panel); border: 1px dashed var(--chrome-line); border-radius: 8px; color: var(--chrome-muted); display: flex; align-items: center; justify-content: center; }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--min, 560px), 1fr)); gap: 18px; align-items: start; }
+.cell h3 { margin: 0 0 6px; font-size: 13px; display: flex; gap: 8px; align-items: center; }
+.cell .term { display: block; width: fit-content; }
+
+table.matrix { border-collapse: collapse; width: 100%; font-size: 12px; }
+table.matrix th, table.matrix td { border-bottom: 1px solid var(--chrome-line); padding: 5px 6px; text-align: left; white-space: nowrap; }
+table.matrix tr:hover td { background: var(--chrome-bg); }
+table.matrix .dot { display: inline-block; width: 18px; height: 18px; border-radius: 4px; vertical-align: middle; border: 1px solid rgba(128,128,128,.35); }
+table.matrix td.name { font-weight: 600; cursor: pointer; }
+.hint { font-size: 12px; color: var(--chrome-muted); }
+kbd { background: var(--chrome-panel); border: 1px solid var(--chrome-line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; font-size: 11px; }
+@media (max-width: 900px) { .layout { grid-template-columns: 1fr; } aside { position: static; max-height: none; border-right: 0; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="row">
+    <h1>ZettCode · 配色选择器</h1>
+    <span class="seg" id="views">
+      <button data-view="single" class="on">逐个看</button>
+      <button data-view="compare">并排对比</button>
+      <button data-view="overview">色板总览</button>
+    </span>
+    <span class="seg" id="filter">
+      <button data-f="all" class="on">全部</button>
+      <button data-f="dark">暗色</button>
+      <button data-f="light">亮色</button>
+      <button data-f="stars">★ 候选</button>
+    </span>
+    <label class="muted">字号 <input type="range" id="fs" min="8" max="17" value="12"> <span id="fsv">12</span>px</label>
+    <button id="chrome">页面明/暗</button>
+    <span class="hint"><kbd>←</kbd><kbd>→</kbd> 切换配色 · <kbd>S</kbd> 加入/移出候选 · <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> 切换视图</span>
+  </div>
+  <div class="row nav" id="nav"></div>
+</header>
+<div class="layout">
+  <aside id="list"></aside>
+  <main id="main"></main>
+</div>
+
+<script>
+const DATA = /*__DATA__*/null;
+const ROLE_GROUPS = [
+  ["底色与面板", ["background", "surface", "surface_alt", "surface_side", "surface_peer", "border", "selection"], false],
+  ["文字", ["text", "subtle", "muted"], true],
+  ["强调与状态", ["accent", "accent_bright", "warning", "error", "diff_added", "diff_removed"], true],
+];
+const ROLE_NOTE = {
+  background: "整页底色（真实程序里留空=跟随终端）", surface: "弹出面板", surface_alt: "输入框 / 用户消息", surface_side: "旁路提问 /btw",
+  surface_peer: "会话间消息", border: "分隔线", selection: "选中行", text: "正文", subtle: "次要正文（思考 / diff 上下文）", muted: "提示 / 时间 / 禁用",
+  accent: "主强调：运行中、列表标记", accent_bright: "输入提示符、链接、hunk 头", warning: "警告", error: "失败 / 错误", diff_added: "新增行", diff_removed: "删除行",
+};
+const $ = (s, r = document) => r.querySelector(s);
+const el = (tag, attrs = {}, ...kids) => {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") n.className = v; else if (k === "style") n.style.cssText = v;
+    else if (k.startsWith("on")) n.addEventListener(k.slice(2), v); else n.setAttribute(k, v);
+  }
+  for (const kid of kids.flat()) if (kid != null) n.append(kid.nodeType ? kid : document.createTextNode(kid));
+  return n;
+};
+const lum = (hex) => {
+  const c = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255).map(v => v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+  return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+};
+const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+const ink = (hex) => lum(hex) > 0.4 ? "#111" : "#fff";
+
+const state = { view: "single", filter: "all", key: DATA.palettes[0].key, scene: "shell",
+  stars: new Set(JSON.parse(localStorage.getItem("zc-stars") || "[]")) };
+const byKey = Object.fromEntries(DATA.palettes.map(p => [p.key, p]));
+const visible = () => DATA.palettes.filter(p =>
+  state.filter === "all" || (state.filter === "dark" && p.dark) || (state.filter === "light" && !p.dark) || (state.filter === "stars" && state.stars.has(p.key)));
+const sceneById = Object.fromEntries(DATA.scenes.map(s => [s.id, s]));
+
+// ---- terminal ---------------------------------------------------------------------------------------------
+function terminal(pal, shot, title) {
+  const border = pal.theme.roles.border;
+  const screen = el("div", { class: "screen" });
+  for (const row of shot.rows) {
+    const r = el("div", { class: "row" });
+    for (const [text, fg, bg, flags, cells] of row) {
+      const s = document.createElement("span");
+      s.textContent = text;
+      s.style.width = cells + "ch";
+      if (fg >= 0) s.style.color = pal.colours[fg];
+      if (bg >= 0) s.style.background = pal.colours[bg];
+      if (flags & 1) s.style.fontWeight = "700";
+      if (flags & 2) s.style.fontStyle = "italic";
+      if (flags & 4) s.style.opacity = ".6";
+      if (flags & 8) s.style.textDecoration = "line-through";
+      r.append(s);
+    }
+    screen.append(r);
+  }
+  const dots = ["#ff5f57", "#febc2e", "#28c840"].map(c => el("i", { style: `background:${c}` }));
+  const bar = el("div", { class: "bar", style: `border-bottom:1px solid ${border}` }, ...dots,
+    el("span", { style: `margin-left:8px;font-size:11px;color:${pal.theme.roles.muted};font-family:system-ui` }, title || pal.label));
+  return el("div", { class: "term", style: `background:${pal.bg};color:${pal.text};border-color:${border}` }, bar, screen);
+}
+const lazy = (build, heightEm) => {
+  const holder = el("div", { class: "pending", style: `height:calc(var(--fs)*1.32*${heightEm} + 36px);min-width:min(100%,calc(var(--fs)*0.6*60))` }, "加载中…");
+  const io = new IntersectionObserver((entries) => {
+    if (entries.some(e => e.isIntersecting)) { io.disconnect(); holder.replaceWith(build()); }
+  }, { rootMargin: "800px" });
+  io.observe(holder);
+  return holder;
+};
+
+// ---- palette detail ----------------------------------------------------------------------------------------
+function chip(pal, name, hex, key, textual) {
+  const r = textual ? ratio(hex, pal.bg) : null;
+  const cls = r == null ? "" : r >= 4.5 ? "ok" : r >= 3 ? "mid" : "low";
+  const orig = pal.tuned[key];
+  return el("div", { class: "role", title: ROLE_NOTE[name] || name },
+    el("div", { class: "sw", style: `background:${hex};color:${ink(hex)}` }, textual ? "Aa 文字" : ""),
+    el("div", { class: "meta" },
+      el("b", {}, name, orig ? el("span", { class: "tuned", title: `为保证可读性从 ${orig[0]} 微调到 ${orig[1]}` }, " ◐") : null),
+      r != null ? el("span", { class: "ratio " + cls }, r.toFixed(1)) : null,
+      el("span", { class: "hex" }, hex)));
+}
+function rolesCard(pal) {
+  const card = el("div", { class: "card" });
+  const starred = state.stars.has(pal.key);
+  card.append(
+    el("h2", {}, pal.label, el("span", { class: "badge" }, pal.dark ? "暗色" : "亮色"),
+      el("span", { class: "star" + (starred ? " on" : ""), style: "margin-left:10px", title: "加入候选 (S)", onclick: () => toggleStar(pal.key) }, starred ? "★" : "☆")),
+    el("p", { class: "mood" }, pal.mood),
+    el("p", { class: "hint" }, "右侧数字 = 与页面底色的对比度（≥4.5 绿，≥3 黄，更低红）。◐ = 原色太淡，已为可读性微调（悬停可看原值）。"));
+  for (const [title, names, textual] of ROLE_GROUPS) {
+    card.append(el("div", { class: "group-title" }, title),
+      el("div", { class: "roles" }, names.map(n => chip(pal, n, pal.theme.roles[n], n, textual))));
+  }
+  card.append(el("div", { class: "group-title" }, "工具行颜色（读 / 搜 / 图 / 命令 / 计划 共用冷色）"),
+    el("div", { class: "roles" }, Object.entries(pal.theme.tools).map(([n, c]) => chip(pal, n, c, "tools." + n, true))));
+  card.append(el("div", { class: "group-title" }, "代码高亮"),
+    el("div", { class: "roles" }, Object.entries(pal.theme.code).map(([n, c]) => chip(pal, n, c, "code." + n, true))));
+  const pre = el("pre", { class: "toml" }, pal.toml);
+  const copy = el("button", { onclick: async () => { await navigator.clipboard.writeText(pal.toml); copy.textContent = "已复制 ✓"; setTimeout(() => copy.textContent = "复制主题文件", 1500); } }, "复制主题文件");
+  card.append(el("div", { class: "group-title" }, pal.key === "dark" || pal.key === "light" ? "这是当前内置主题（代码里定义）" : `已内置：/theme ${pal.key}。想自己改：保存为 ~/.zettcode/themes/${pal.key}.toml（同名会覆盖内置的）`), copy, pre);
+  return card;
+}
+
+// ---- views -------------------------------------------------------------------------------------------------
+function singleView() {
+  const pal = byKey[state.key];
+  const main = el("div", {}, rolesCard(pal));
+  let group = null;
+  for (const scene of DATA.scenes) {
+    const shot = pal.scenes[scene.id];
+    if (!shot) continue;
+    if (scene.group !== group) {
+      group = scene.group;
+      main.append(el("h2", { class: "group", id: "g-" + group }, group));
+    }
+    main.append(el("div", { class: "scene", id: "s-" + scene.id },
+      el("div", { class: "head" }, el("h3", {}, scene.title), el("span", { class: "note" }, scene.note)),
+      lazy(() => terminal(pal, shot, scene.title), shot.h)));
+  }
+  return main;
+}
+function compareView() {
+  const sc = sceneById[state.scene];
+  const sel = el("select", { onchange: (e) => { state.scene = e.target.value; render(); } },
+    DATA.scenes.map(s => el("option", { value: s.id, ...(s.id === state.scene ? { selected: "" } : {}) }, `${s.group} · ${s.title}`)));
+  const grid = el("div", { class: "grid", style: `--min:calc(var(--fs)*0.62*${(byKey[DATA.palettes[0].key].scenes[state.scene] || { w: 80 }).w} + 30px)` });
+  for (const pal of visible()) {
+    const shot = pal.scenes[state.scene];
+    if (!shot) continue;
+    grid.append(el("div", { class: "cell" },
+      el("h3", {}, pal.label, el("span", { class: "badge" }, pal.dark ? "暗" : "亮"),
+        el("span", { class: "star" + (state.stars.has(pal.key) ? " on" : ""), onclick: () => toggleStar(pal.key) }, state.stars.has(pal.key) ? "★" : "☆"),
+        el("button", { onclick: () => { state.key = pal.key; state.view = "single"; render(); } }, "看全部")),
+      lazy(() => terminal(pal, shot, pal.label), shot.h)));
+  }
+  return el("div", {}, el("div", { class: "card" }, el("b", {}, "对比场景："), sel, el("span", { class: "hint" }, " " + sc.note)), grid);
+}
+function overviewView() {
+  const cols = ["background", "surface_alt", "text", "muted", "accent", "accent_bright", "warning", "error", "diff_added"];
+  const toolCols = ["read", "write", "delete", "subagent", "message"];
+  const codeCols = ["keyword", "string", "function", "number", "builtin", "comment"];
+  const table = el("table", { class: "matrix" });
+  table.append(el("tr", {}, el("th", {}, "★"), el("th", {}, "配色"),
+    cols.map(c => el("th", {}, c)), toolCols.map(c => el("th", {}, "tool." + c)), codeCols.map(c => el("th", {}, "code." + c)), el("th", {}, "文字/底")));
+  for (const pal of visible()) {
+    const r = pal.theme.roles;
+    const dot = (hex) => el("td", { title: hex }, el("span", { class: "dot", style: `background:${hex}` }));
+    table.append(el("tr", {},
+      el("td", { class: "star" + (state.stars.has(pal.key) ? " on" : ""), onclick: () => toggleStar(pal.key) }, state.stars.has(pal.key) ? "★" : "☆"),
+      el("td", { class: "name", onclick: () => { state.key = pal.key; state.view = "single"; render(); } }, pal.label),
+      cols.map(c => dot(r[c])), toolCols.map(c => dot(pal.theme.tools[c])), codeCols.map(c => dot(pal.theme.code[c])),
+      el("td", { class: "mono" }, ratio(r.text, r.background).toFixed(1))));
+  }
+  return el("div", {}, el("div", { class: "card" }, el("p", { class: "hint" }, "每个小方块都是该配色在对应角色上的真实颜色，悬停可看十六进制。点配色名进入详细视图。"), el("div", { class: "scroll-x" }, table)));
+}
+
+// ---- chrome ------------------------------------------------------------------------------------------------
+function toggleStar(key) {
+  state.stars.has(key) ? state.stars.delete(key) : state.stars.add(key);
+  localStorage.setItem("zc-stars", JSON.stringify([...state.stars]));
+  render(true);
+}
+function renderList() {
+  const list = $("#list");
+  list.replaceChildren();
+  for (const pal of visible()) {
+    const r = pal.theme.roles;
+    list.append(el("button", { class: "item" + (pal.key === state.key ? " sel" : ""), onclick: () => { state.key = pal.key; if (state.view === "overview") state.view = "single"; render(); } },
+      el("div", { class: "name" }, el("span", {}, pal.label),
+        el("span", { class: "star" + (state.stars.has(pal.key) ? " on" : ""), onclick: (e) => { e.stopPropagation(); toggleStar(pal.key); } }, state.stars.has(pal.key) ? "★" : "☆")),
+      el("div", { class: "strip" }, ["background", "surface_alt", "text", "accent", "accent_bright", "warning", "error", "diff_added"].map(n => el("i", { style: `background:${r[n]}` })))));
+  }
+  if (!list.children.length) list.append(el("p", { class: "hint" }, "这个筛选下还没有配色。"));
+}
+function renderNav() {
+  const nav = $("#nav");
+  nav.replaceChildren();
+  if (state.view !== "single") return;
+  const groups = [...new Set(DATA.scenes.map(s => s.group))];
+  nav.append(el("span", { class: "muted" }, "跳转："), ...groups.map(g => el("a", { href: "#g-" + g }, g)));
+}
+function render(keepScroll) {
+  const vis = visible();
+  if (vis.length && !vis.some(p => p.key === state.key)) state.key = vis[0].key;
+  document.querySelectorAll("#views button").forEach(b => b.classList.toggle("on", b.dataset.view === state.view));
+  document.querySelectorAll("#filter button").forEach(b => b.classList.toggle("on", b.dataset.f === state.filter));
+  renderList(); renderNav();
+  document.querySelector(".layout").classList.toggle("wide", state.view !== "single");
+  const y = scrollY;
+  const view = !vis.length ? el("div", { class: "card" }, "这个筛选下还没有配色。先在别的视图里点 ☆ 加入候选。")
+    : state.view === "single" ? singleView() : state.view === "compare" ? compareView() : overviewView();
+  $("#main").replaceChildren(view);
+  if (keepScroll) scrollTo(0, y); else if (state.view !== "single" || !location.hash) scrollTo(0, 0);
+}
+function step(d) {
+  const vis = visible();
+  if (!vis.length) return;
+  const i = Math.max(0, vis.findIndex(p => p.key === state.key));
+  state.key = vis[(i + d + vis.length) % vis.length].key;
+  render();
+}
+document.querySelectorAll("#views button").forEach(b => b.onclick = () => { state.view = b.dataset.view; render(); });
+document.querySelectorAll("#filter button").forEach(b => b.onclick = () => { state.filter = b.dataset.f; render(); });
+$("#fs").oninput = (e) => { document.documentElement.style.setProperty("--fs", e.target.value + "px"); $("#fsv").textContent = e.target.value; };
+$("#chrome").onclick = () => { const r = document.documentElement; r.dataset.chrome = r.dataset.chrome === "light" ? "dark" : "light"; };
+if (matchMedia("(prefers-color-scheme: light)").matches) document.documentElement.dataset.chrome = "light";
+addEventListener("keydown", (e) => {
+  if (e.target.matches("input,select,textarea") || e.metaKey || e.ctrlKey) return;
+  if (e.key === "ArrowRight") { step(1); e.preventDefault(); }
+  else if (e.key === "ArrowLeft") { step(-1); e.preventDefault(); }
+  else if (e.key.toLowerCase() === "s") toggleStar(state.key);
+  else if (e.key === "1") { state.view = "single"; render(); }
+  else if (e.key === "2") { state.view = "compare"; render(); }
+  else if (e.key === "3") { state.view = "overview"; render(); }
+});
+render();
+</script>
+</body>
+</html>
