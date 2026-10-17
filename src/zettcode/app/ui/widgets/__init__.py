@@ -34,6 +34,7 @@ _EXPORTS = {
     "SendKindPage": ".send_kind_page",
     "SessionsPage": ".sessions_page",
     "SteeringQueue": ".steering",
+    "StatuslinePage": ".statusline_page",
     "TranscriptSource": ".transcript",
     "TranscriptView": ".transcript",
     "UPGRADE": ".update_page",
@@ -44,6 +45,7 @@ _EXPORTS = {
     "bottom_panel": ".panel",
     "format_ago": ".sessions_page",
     "help_text": ".completer",
+    "statusline_rows": ".statusline_page",
 }
 
 
@@ -62,6 +64,7 @@ if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
     from .self_compact_page import SELF_COMPACT_ROWS, SelfCompactPage
     from .send_kind_page import SEND_KIND_ROWS, SendKind, SendKindPage
     from .sessions_page import SessionsPage, format_ago
+    from .statusline_page import StatuslinePage, statusline_rows
     from .steering import SteeringQueue
     from .transcript import TranscriptSource, TranscriptView
     from .update_page import LATER, SKIP, UPGRADE, UpdatePage
@@ -111,6 +114,7 @@ __all__ = [
     "SendKindPage",
     "SessionsPage",
     "SteeringQueue",
+    "StatuslinePage",
     "TranscriptSource",
     "TranscriptView",
     "UPGRADE",
@@ -121,4 +125,5 @@ __all__ = [
     "bottom_panel",
     "format_ago",
     "help_text",
+    "statusline_rows",
 ]

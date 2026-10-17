@@ -15,12 +15,13 @@ import asyncio
 from ..app.agent.conversation.presenters import BUILTIN_PRESENTERS
 from ..app.agent.conversation.pulse import activity_glyph
 from ..app.agent.dialogue.mentions import FileMentions, SkillMentions
-from ..app.agent.extensions.usage import context_text, usage_text
+from ..app.agent.extensions.usage import context_share, usage_parts
 from ..app.agent.storage.ledger import LedgerReader
 from ..app.commands import CommandContext, CommandResult
 from ..app.ui import labels
 from ..app.ui.widgets import UsagePage
-from ..tui import SEPARATOR, STATUS, bundled_themes
+from ..statusline import Row
+from ..tui import STATUS, bundled_themes
 from .container import PluginContainer
 from .plugin import Plugin
 from .state import ShellContext
@@ -31,26 +32,28 @@ class ShellRows(Plugin):
 
     name = "shell"
 
-    def render_header_left(self, context: ShellContext) -> str:
+    def render_header_left(self, context: ShellContext) -> Row:
         """Label the app, the session (its title and the name others reach it by), and the workspace."""
         return labels.header_left(context.session.workspace, context.session.name, context.session.handle)
 
-    def render_header_right(self, context: ShellContext) -> str:
+    def render_header_right(self, context: ShellContext) -> Row:
         """Show the model and the reasoning effort the next request will use."""
         return labels.header_right(context.model.name, context.model.effort)
 
-    def render_status_left(self, context: ShellContext) -> str:
+    def render_status_left(self, context: ShellContext) -> Row:
         """Show the activity glyph, status word, mode, and token use; the session is in the header."""
         activity = context.activity
-        icon = activity_glyph(activity.frame) if activity.busy else STATUS
-        mode = f" {SEPARATOR} {activity.permission}" if activity.permission != "ask" else ""
-        if activity.self_compact:
-            mode += f" {SEPARATOR} self-compact"
-        used = context_text(activity.usage, context.model.config.context_window)
-        label = f"{activity.label}{mode}"
-        return f"  {icon} {label}{usage_text(activity.usage)}{used}"
+        counters = usage_parts(activity.usage)
+        return labels.status_left(
+            activity.label,
+            icon=activity_glyph(activity.frame) if activity.busy else STATUS,
+            permission=activity.permission,
+            self_compact=activity.self_compact,
+            ctx=context_share(activity.usage, context.model.config.context_window),
+            **counters,
+        )
 
-    def render_status_right(self, context: ShellContext) -> str:
+    def render_status_right(self, context: ShellContext) -> Row:
         """List the keys worth remembering."""
         return labels.status_right()
 

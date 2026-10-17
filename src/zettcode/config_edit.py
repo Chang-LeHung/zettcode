@@ -310,6 +310,20 @@ def set_self_compaction(text: str, enabled: bool, *, where: Path) -> str:
     )
 
 
+def set_statusline(text: str, shown: Mapping[str, bool], *, where: Path) -> str:
+    """Return ``text`` with each named part of ``[statusline]`` set to shown or hidden, touching nothing else.
+
+    A part is a key of the table (``ctx = false`` hides it, ``ctx = true`` shows it again). Each key is
+    written and checked on its own, as the other single-key edits are, so a file that cannot take one is
+    refused whole rather than half-written.
+    """
+    for name, visible in shown.items():
+        text = _set_key(
+            text, "statusline", name, "true" if visible else "false", visible, where=where, command="/statusline"
+        )
+    return text
+
+
 def file_entries(text: str, *, where: Path) -> list[dict[str, Any]]:
     """Return the models as the file writes them (a token left to the environment stays absent)."""
     return list(_guarded(text, where)[2]["models"])
