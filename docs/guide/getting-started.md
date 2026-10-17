@@ -40,6 +40,10 @@ command line takes, which is deliberately short:
 | `--auto`, `--yolo` | Run shell commands without asking, for this run. The same as `/permission auto`. |
 | `--dry-run` | Run the startup, paint one frame, and exit. Useful for profiling. |
 
+Two subcommands do the same things by name: `zettcode resume SESSION` is `zettcode --resume SESSION`
+(put `-w DIR` before it, as in `zettcode -w ~/projects/api resume 01a10b75`), and `zettcode update`
+installs the newest release and exits (see the [FAQ](/guide/faq#new-versions)).
+
 Working from a checkout instead:
 
 ```bash
