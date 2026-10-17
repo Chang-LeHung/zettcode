@@ -194,6 +194,28 @@ def resolve_config(argv: list[str] | None = None) -> ZettCodeConfig:
         raise SystemExit(f"zettcode: {error}") from error
 
 
+def chosen_theme(agent: ZettCodeAgent) -> Theme | None:
+    """Return the palette the reader chose, or ``None`` when the terminal's own light or dark should pick.
+
+    A palette is a choice when ``[ui] theme`` names one, or ``~/.zettcode/theme.toml`` exists; the file is laid
+    over the named palette, so it can adjust a few colours of it. The name is looked up where ``/theme`` looks:
+    the plugins' palettes (the built-in ones among them), then the reader's own files. A name nobody has, or a
+    file that cannot be read, is reported as a clean exit rather than a traceback, and the session the agent has
+    already begun is let go of first so it leaves nothing behind.
+    """
+    from .tui import ThemeFileError, load_theme
+
+    config = agent.runtime.config
+    try:
+        named = agent.themes.load(config.theme) if config.theme else None
+        if config.theme_file is not None:
+            return load_theme(config.theme_file, base=named)
+    except ThemeFileError as error:
+        agent.runtime.session_locks.release()
+        raise SystemExit(f"zettcode: {error}") from error
+    return named
+
+
 async def async_main(
     config: ZettCodeConfig, *, resume: str | None = None, auto: bool = False, dry_run: bool = False
 ) -> None:
@@ -213,18 +235,16 @@ async def async_main(
     """
     from .app import ZettCodeApp
     from .app.agent.agent import ZettCodeAgent
-    from .tui import DARK, ThemeFileError, load_theme
+    from .tui import DARK
 
     if resume is not None and not session_exists(config, resume):
         raise SystemExit(f"zettcode: no session {resume} in {config.store}")
-    try:
-        theme = load_theme(config.theme_file) if config.theme_file is not None else DARK
-    except ThemeFileError as error:
-        raise SystemExit(f"zettcode: {error}") from error
     agent = ZettCodeAgent.preview(config)
+    chosen = chosen_theme(agent)
+    theme = chosen if chosen is not None else DARK
     if auto:
         agent.runtime.approve_all_shell_commands()
-    app = ZettCodeApp(agent, theme=theme, auto_theme=config.theme_file is None)
+    app = ZettCodeApp(agent, theme=theme, auto_theme=chosen is None)
     if resume is not None:
         app.restore_session(resume)
     if dry_run:
@@ -278,22 +298,20 @@ def build_application(options: Options, *, terminal: TuiApp | None = None) -> Ze
     """
     from .app import ZettCodeApp
     from .app.agent.agent import ZettCodeAgent
-    from .tui import DARK, ThemeFileError, load_theme
+    from .tui import DARK
 
     config = resolve_config()
     if options.resume is not None and not session_exists(config, options.resume):
         raise SystemExit(f"zettcode: no session {options.resume} in {config.store}")
-    try:
-        theme = load_theme(config.theme_file) if config.theme_file is not None else DARK
-    except ThemeFileError as error:
-        raise SystemExit(f"zettcode: {error}") from error
     agent = ZettCodeAgent.preview(config)
+    chosen = chosen_theme(agent)
+    theme = chosen if chosen is not None else DARK
     if options.auto:
         # The rung the prompt's `a` and `/permission auto` both reach, taken before
         # the shell exists: nothing is announced, because there is no conversation
         # to announce it in and the status line already reads `· auto`.
         agent.runtime.approve_all_shell_commands()
-    app = ZettCodeApp(agent, theme=theme, auto_theme=config.theme_file is None)
+    app = ZettCodeApp(agent, theme=theme, auto_theme=chosen is None)
     if options.resume is not None:
         window = None
         if terminal is not None:
@@ -301,7 +319,7 @@ def build_application(options: Options, *, terminal: TuiApp | None = None) -> Ze
             def window() -> tuple[int, Theme]:
                 # A palette the reader configured is the one the tree will paint in; with
                 # none, the terminal chooses and the running app already has its answer.
-                return terminal.width, theme if config.theme_file is not None else terminal.theme
+                return terminal.width, chosen if chosen is not None else terminal.theme
 
         app.restore_session(options.resume, window=window)
     return app

@@ -24,7 +24,7 @@
 | `/effort` | 用轨道上的小圆点选择模型的推理强度：`/effort` 打开，← → 滑动，`Enter` 应用；`/effort high` 直接设置。 |
 | `/permission` | 选择 shell 命令在多大范围内不用问：`/permission` 在菜单里列出各档，`/permission safe` 直接设置。 |
 | `/btw` | 问一件只在当场回答、不进入对话的事：`/btw <问题>`。 |
-| `/theme` | 选择配色：`/theme` 在菜单里列出它们，`/theme dark` 或 `/theme light` 一步切换。 |
+| `/theme` | 按名字选配色：`/theme` 打开菜单，在菜单里移动时会预览每一套；`/theme nord` 一步切换。你自己的主题（`~/.zettcode/themes/<name>.toml`）也在菜单里。 |
 | `/context` | 查看当前上下文窗口被什么占着，以及这个会话存在哪里。 |
 | `/usage` | 打开一个页面，看这个项目的会话花了多少：按模型、按会话统计 token，以及一张按天的日历图。见[Token 用量](#usage)。 |
 | `/compact` | 立即总结对话，而不用等到窗口快满。 |

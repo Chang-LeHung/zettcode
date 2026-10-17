@@ -24,6 +24,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ..providers import BUILTIN_PROVIDERS
+from ..tui import RESERVED_THEMES
 from .builtins import BUILTIN_PLUGINS
 from .container import PluginContainer, UiSlots
 from .extension import PluginExtension
@@ -37,6 +38,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
     from ..app.commands import Command
     from ..config import ZettCodeConfig
     from ..providers import Provider
+    from ..tui import ThemeSource
 
 #: Entry-point group a distribution publishes its plugin under.
 PLUGIN_ENTRY_POINT_GROUP = "zettcode.plugins"
@@ -109,11 +111,13 @@ class _Loader:
         self.commands: list[Command] = []
         self.mentions: list[MentionProvider] = []
         self.providers: list[Provider] = []
+        self.themes: list[ThemeSource] = []
         self.failures: list[str] = []
         self._identities: set[str] = set()
         self._claimed: set[str] = set()
         self._mention_kinds: set[str] = set()
         self._provider_names: set[str] = {provider.name for provider in BUILTIN_PROVIDERS}
+        self._theme_names: set[str] = set(RESERVED_THEMES)
 
     def fail(self, origin: str, error: BaseException) -> None:
         """Record one plugin that could not be prepared."""
@@ -163,7 +167,15 @@ class _Loader:
         if provider_clash is not None:
             self.failures.append(f"{origin}: provider {provider_clash} is already registered")
             return
+        # `/theme <name>` has to mean one palette, so a name an earlier plugin (the built-in one first) or the
+        # program itself already has is not shared out a second time.
+        theme_clash = next((source.name for source in container.themes if source.name in self._theme_names), None)
+        if theme_clash is not None:
+            self.failures.append(f"{origin}: theme {theme_clash} is already registered")
+            return
         self._identities.add(name)
+        self._theme_names.update(source.name for source in container.themes)
+        self.themes.extend(container.themes)
         self._provider_names.update(provider.name for provider in container.providers)
         self.providers.extend(container.providers)
         self._claimed.update(command.name for command in container.commands)
@@ -181,6 +193,7 @@ class _Loader:
             commands=tuple(self.commands),
             mentions=tuple(self.mentions),
             providers=tuple(self.providers),
+            themes=tuple(self.themes),
             rows=self.slots.rows(),
             failures=tuple(self.failures),
         )

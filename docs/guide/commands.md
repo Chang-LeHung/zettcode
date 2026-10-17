@@ -27,7 +27,7 @@ A command is drawn in a different colour as soon as it is one, so you can see wh
 | `/effort` | Choose how much the model reasons with a knob on a rail: `/effort` opens it, ← → slide, `Enter` applies; `/effort high` sets one directly. |
 | `/permission` | Choose how much of the shell may run without asking: `/permission` lists the levels in the menu; `/permission safe` sets one. |
 | `/btw` | Ask something that is answered here but never joins the conversation: `/btw <question>`. |
-| `/theme` | Choose a palette: `/theme` lists them in the menu; `/theme dark` or `/theme light` switches in one step. |
+| `/theme` | Choose a palette by name: `/theme` opens the menu, which previews each palette as you move through it; `/theme nord` switches in one step. Your own palettes (`~/.zettcode/themes/<name>.toml`) are in the menu too. |
 | `/context` | Show what is filling the context window right now, and where this session is stored. |
 | `/usage` | Open a page of what this project's sessions have spent: tokens by model, by session, and a calendar of the days. See [Token usage](#usage). |
 | `/compact` | Summarize the conversation now, instead of waiting for the window to fill. |

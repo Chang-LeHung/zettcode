@@ -31,7 +31,8 @@ macOS/Linux 可以用 `time zettcode --dry-run`，PowerShell 可以用
 
 **颜色不对，或者文字看不清。** 用 `/theme light` 或 `/theme dark`。启动时 ZettCode 会问终端
 背景色是什么；终端不回答、中间隔了 multiplexer、或者 `TERM` 报错了颜色深度，都可能让它判断
-失误。`/theme` 对本次运行生效，`~/.zettcode/theme.toml` 则是一劳永逸。
+失误。`/theme` 对本次运行生效，`config.toml` 里的 `[ui] theme = "..."`（或 `~/.zettcode/theme.toml`）则是一劳永逸。
+输入 `/theme ` 和一个空格会打开菜单，在里面移动时会预览每一套配色。
 
 **用久了显示乱掉。** 按 `Ctrl-L` 重画。窗口大小变化是被处理好的，但别的程序绕过 ZettCode 直接
 往终端写，这个没法处理。

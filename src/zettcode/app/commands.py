@@ -150,6 +150,10 @@ class Command:
             completion menu once the command and a space are typed. A function is asked each
             time the menu opens. They only suggest: the handler still receives whatever was
             typed as its ``argument`` and decides what it means.
+        preview: Called with the highlighted word as the reader walks the subcommand menu, to show its effect without
+            choosing it (``/theme`` repaints in the palette), and with ``None`` when the menu goes away without the
+            word having been run, to put things back. Only the menu's own movement calls it; a command typed out in
+            full is simply run.
     """
 
     name: str
@@ -158,6 +162,7 @@ class Command:
     handler: CommandHandler
     when_busy: BusyPolicy = "refuse"
     subcommands: Subcommands = ()
+    preview: Callable[[str | None], None] | None = None
 
     def options(self) -> tuple[Subcommand, ...]:
         """Return the subcommands to offer now."""

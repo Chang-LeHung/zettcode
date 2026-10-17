@@ -241,6 +241,47 @@ def remove_model(text: str, index: int, *, where: Path) -> str:
     return result
 
 
+#: The line that opens the ``[ui]`` table, and the ``theme`` key inside it.
+_UI_HEADER = re.compile(r"^\s*\[\s*ui\s*\]\s*(#.*)?$")
+_THEME_KEY = re.compile(r"^\s*theme\s*=")
+
+
+def set_theme(text: str, name: str, *, where: Path) -> str:
+    """Return ``text`` with ``[ui] theme`` set to ``name``, touching nothing else.
+
+    The key's line is replaced where the file already has one, added under an existing ``[ui]`` header, or the table
+    is appended at the end. Like the model edits it is checked before it is returned: the result must parse and
+    differ from the original in nothing but ``ui.theme``. A file that spells ``ui`` some other way (an inline
+    table, say) is refused rather than guessed at.
+    """
+    before = _parse(text, where)
+    lines = text.split("\n")
+    line = f"theme = {toml_string(name)}"
+    header = next((index for index, item in enumerate(lines) if _UI_HEADER.match(item)), None)
+    if header is None:
+        if "ui" in before:
+            raise ConfigEditError(f"{where} writes [ui] in a way /theme cannot edit safely; edit the file by hand")
+        while lines and not lines[-1].strip():
+            lines.pop()
+        new = [*lines, "", "[ui]", line, ""]
+    else:
+        end = next((i for i in range(header + 1, len(lines)) if _HEADER.match(lines[i])), len(lines))
+        existing = next((i for i in range(header + 1, end) if _THEME_KEY.match(lines[i])), None)
+        if existing is not None:
+            new = [*lines[:existing], line, *lines[existing + 1 :]]
+        else:
+            new = [*lines[: header + 1], line, *lines[header + 1 :]]
+    result = "\n".join(new)
+    after = _parse(result, where)
+    ui_before = {key: value for key, value in before.get("ui", {}).items() if key != "theme"}
+    ui_after = {key: value for key, value in after.get("ui", {}).items() if key != "theme"}
+    others_before = {key: value for key, value in before.items() if key != "ui"}
+    others_after = {key: value for key, value in after.items() if key != "ui"}
+    if after.get("ui", {}).get("theme") != name or ui_before != ui_after or others_before != others_after:
+        raise ConfigEditError("the edit would have changed something other than the theme; nothing was written")
+    return result
+
+
 def file_entries(text: str, *, where: Path) -> list[dict[str, Any]]:
     """Return the models as the file writes them (a token left to the environment stays absent)."""
     return list(_guarded(text, where)[2]["models"])

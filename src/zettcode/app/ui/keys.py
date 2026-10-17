@@ -7,11 +7,18 @@ table. :class:`ZettCodeApp` installs them once and never touches a key again.
 
 from __future__ import annotations
 
-from ...tui import AnyEvent, Host
-from ...tui.clipboard import copy_route
+from typing import TYPE_CHECKING
+
+from zettcode.tui import AnyEvent, Host
+from zettcode.tui.clipboard import copy_route
+
 from ..agent.errors import describe_error
 from .clipboard import read_image
 from .shell import ASK_SCREEN, PAGE_SCREEN, ShellState
+from .widgets.completer import COMMAND_PREFIX
+
+if TYPE_CHECKING:  # pragma: no cover - annotations only
+    from ..commands import Command
 
 
 class KeysMixin(ShellState):
@@ -304,17 +311,48 @@ class KeysMixin(ShellState):
         # straight after the space asks for no change.
         start = next((index for index, item in enumerate(candidates) if item.current), 0)
         self.completions.set_items(candidates, selected=start)
+        self._sync_preview()
         self.app.request_layout()
+
+    def _menu_command(self) -> Command | None:
+        """Return the command whose subcommand menu is open under the cursor, if one is."""
+        if not self.completions.visible:
+            return None
+        match = COMMAND_PREFIX.fullmatch(self.composer.text[: self.composer.token_start()])
+        if match is None:
+            return None
+        return next((command for command in self.commands if command.name == match.group(1)), None)
+
+    def _sync_preview(self) -> None:
+        """Show the highlighted word of a menu whose command can preview it, or put things back.
+
+        The word that is already in force is not previewed (it is what is on screen, and a palette the reader
+        adjusted would be swapped for the stock one of its name just by opening the menu); neither is anything
+        once the menu is gone. Ending a preview restores what the command changed, so closing the menu with
+        Escape, typing on, or running the command leaves the choice to the command and nothing behind.
+        """
+        command = self._menu_command()
+        item = self.completions.current
+        if command is not None and command.preview is not None and item is not None and not item.current:
+            self._previewing = command
+            command.preview(item.value)
+            return
+        if self._previewing is not None:
+            previewing, self._previewing = self._previewing, None
+            if previewing.preview is not None:
+                previewing.preview(None)
 
     def _complete_next(self, event: AnyEvent, host: Host) -> bool:
         """Highlight the next command."""
         self.completions.move(1)
+        self._sync_preview()
         host.invalidate()
         return True
 
     def _complete_previous(self, event: AnyEvent, host: Host) -> bool:
         """Highlight the previous command."""
         self.completions.move(-1)
+        self._sync_preview()
         host.invalidate()
         return True
 
@@ -332,6 +370,7 @@ class KeysMixin(ShellState):
     def _complete_dismiss(self, event: AnyEvent, host: Host) -> bool:
         """Hide the menu until the draft changes again."""
         self.completions.set_items(())
+        self._sync_preview()
         host.request_layout()
         return True
 

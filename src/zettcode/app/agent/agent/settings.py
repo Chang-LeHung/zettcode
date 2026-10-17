@@ -7,16 +7,18 @@ from pathlib import Path
 
 from zett_agent.model import ReasoningEffort
 
-from ....config import ModelConfig, _read_models
-from ....config_edit import (
+from zettcode.config import ModelConfig, _read_models
+from zettcode.config_edit import (
     ConfigEditError,
     add_model,
     file_entries,
     remove_model,
     replace_model,
+    set_theme,
     write_text_atomically,
 )
-from ....paths import config_path
+from zettcode.paths import config_path
+
 from ..permission import PERMISSION_LEVELS, Permission
 from .base import AgentBase
 
@@ -130,6 +132,26 @@ class SettingsMixin(AgentBase):
         """
         text = remove_model(self._read_config_file(), index, where=self.config_file)
         return self._commit_models(text)
+
+    def remember_theme(self, name: str) -> Path:
+        """Write ``[ui] theme = name`` into the config file, so the next start opens in that palette.
+
+        Only that line changes. A config file that does not exist is not created for it: a file with nothing but
+        ``[ui]`` in it would stand where a reader's environment-variable setup is, and say nothing about models.
+
+        Returns:
+            The file written.
+
+        Raises:
+            ConfigEditError: When there is no config file, it cannot be read or edited safely, or it cannot be
+                written. Nothing is written then.
+        """
+        text = set_theme(self._read_config_file(), name, where=self.config_file)
+        try:
+            write_text_atomically(self.config_file, text)
+        except OSError as error:
+            raise ConfigEditError(f"{self.config_file} could not be written: {error}") from error
+        return self.config_file
 
     @property
     def effort(self) -> str:

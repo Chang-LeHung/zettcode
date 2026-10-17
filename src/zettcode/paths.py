@@ -25,6 +25,9 @@ DEFAULT_MCP_CONFIG = Path.home() / ".zettcode" / "mcp.json"
 #: and the version the reader asked not to hear about again.
 DEFAULT_UPDATE_FILE = Path.home() / ".zettcode" / "update.json"
 
+#: Where the reader's own palettes live: one ``<name>.toml`` each, picked by name with ``/theme <name>``.
+DEFAULT_THEMES_DIR = Path.home() / ".zettcode" / "themes"
+
 #: Where tiktoken keeps the vocabulary it downloads once. Deliberately not the
 #: OS temp directory, which is cleaned whenever the system feels like it: a purge
 #: turns the next token count into a 1.7 MB download, and `/context` waits behind

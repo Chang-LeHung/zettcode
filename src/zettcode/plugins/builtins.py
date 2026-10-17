@@ -19,7 +19,7 @@ from ..app.agent.storage.ledger import LedgerReader
 from ..app.commands import CommandContext, CommandResult
 from ..app.ui import labels
 from ..app.ui.widgets import UsagePage
-from ..tui import SEPARATOR, STATUS
+from ..tui import SEPARATOR, STATUS, bundled_themes
 from .container import PluginContainer
 from .plugin import Plugin
 from .state import ShellContext
@@ -110,5 +110,21 @@ class UsageCommand(Plugin):
         container.register_command("usage", "Token use by model, by session and by day", show, when_busy="now")
 
 
+class BuiltinThemes(Plugin):
+    """The palettes that ship with the program, offered the way any plugin offers one.
+
+    They are TOML files beside the theme loader, so adding a built-in palette is adding a file and a name to
+    ``BUNDLED``; nothing here knows what a palette looks like. They are registered first, so they are listed first
+    in the ``/theme`` menu, and a plugin cannot register a name they hold.
+    """
+
+    name = "themes"
+
+    def activate(self, container: PluginContainer) -> None:
+        """Offer each palette file by name. Nothing is read until one is asked for."""
+        for source in bundled_themes():
+            container.register_theme(source.name, source.load, description=source.description)
+
+
 #: Plugins loaded from the repository itself, never from a distribution.
-BUILTIN_PLUGINS: tuple[Plugin, ...] = (ShellRows(), SkillResources(), FileResources(), UsageCommand())
+BUILTIN_PLUGINS: tuple[Plugin, ...] = (ShellRows(), SkillResources(), FileResources(), UsageCommand(), BuiltinThemes())

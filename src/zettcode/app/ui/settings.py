@@ -9,11 +9,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ...tui import Theme, theme_named
+from zettcode.tui import Theme
+
 from .shell import ShellState
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
-    from ...config import ModelConfig
+    from zettcode.config import ModelConfig
 
 
 class SettingsMixin(ShellState):
@@ -42,16 +43,47 @@ class SettingsMixin(ShellState):
         self.close_page()
 
     def apply_theme(self, name: str) -> Theme:
-        """Switch the palette and repaint.
+        """Switch the palette to the one called ``name`` and repaint.
 
+        The name is a built-in palette or a file of the reader's (``~/.zettcode/themes/<name>.toml``).
         Widgets read ``theme`` while painting, so nothing has to be rebuilt;
         the invalidate is what makes the new colours land, and the re-layout
         covers the caches a size-only change would have missed.
+
+        Raises:
+            ValueError: There is no such palette, or its file cannot be read; the message lists the ones there are.
         """
-        theme = theme_named(name)
+        theme = self.agent.themes.load(name)
+        self._theme_before = None  # what is applied is not a preview to be put back
         self.app.theme = theme
         self.app.request_layout()
         return theme
+
+    def preview_theme(self, name: str | None) -> None:
+        """Show a palette without choosing it, or put back the one that was in force.
+
+        Called as the highlight moves through the ``/theme`` menu: the whole interface is repainted in the
+        highlighted palette so it can be judged on the conversation in front of the reader, and the palette that
+        was in force is kept to be restored when the menu goes away without a choice. A palette that cannot be
+        loaded is simply not shown; the error belongs to the reader who picks it.
+
+        Args:
+            name: The palette to show, or ``None`` to end the preview and restore.
+        """
+        if name is None:
+            if self._theme_before is not None:
+                self.app.theme, self._theme_before = self._theme_before, None
+                self.app.request_layout()
+            return
+        try:
+            theme = self.agent.themes.load(name)
+        except ValueError:
+            return
+        if self._theme_before is None:
+            self._theme_before = self.app.theme
+        if theme != self.app.theme:
+            self.app.theme = theme
+            self.app.request_layout()
 
     def change_effort(self, name: str) -> str:
         """Switch reasoning effort, run the header's gauge, and announce the change in the transcript."""

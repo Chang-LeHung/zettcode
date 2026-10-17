@@ -189,6 +189,33 @@ provider 只描述一个地址和一种协议：不会调用或连接任何东�
 `openrouter`、`groq`、`ollama`、`custom`）占用，或被先加载的插件占用，这个插件会被跳过，并像其他加载
 失败的插件一样报告。
 
+## 提供配色 {#themes}
+
+插件可以给 `/theme` 添加配色。每个配色都会出现在菜单里，光标移到它时就预览，用 `/theme <名字>` 切换。
+ZettCode 自带的配色（`nord`、`dracula`、`gruvbox` 等）也是由一个内置插件用同样的方式提供的，所以下面
+就是全部机制：
+
+```text
+from pathlib import Path
+
+from zettcode.plugins import Plugin, PluginContainer
+
+
+class Palettes(Plugin):
+    name = "acme-palettes"
+
+    def activate(self, container: PluginContainer) -> None:
+        # 包里自带的主题文件：格式与 ~/.zettcode/themes/<名字>.toml 相同。
+        container.register_theme("acme", Path(__file__).parent / "acme.toml")
+        # 或者一个返回 zettcode.tui.Theme 的函数；第一次被用到时才会调用。
+        container.register_theme("acme-night", build_night, description="深蓝，低眩光")
+```
+
+名字是一个词（字母、数字、`.`、`_`、`-`）。`dark` 和 `light` 属于 ZettCode。名字如果已被内置配色或更早
+加载的插件占用，就会被跳过并像其他加载失败的插件一样报告。读者放在 `~/.zettcode/themes/` 里的同名文件
+优先于插件提供的，所以读者总能改动别人给的配色。插件提供的配色也可以作为启动配色：
+`[ui] theme = "acme"` 能找到它。
+
 ## 出问题的时候
 
 导入或激活失败的插件会被跳过，而不是让程序挂掉：对话里出现一行 `plugin: …`，会话继续正常

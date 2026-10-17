@@ -18,9 +18,13 @@ from typing import TYPE_CHECKING
 
 from ..app.commands import BusyPolicy, Command, CommandHandler, CommandList, CommandProvider, Subcommands
 from ..providers import Provider
+from ..tui import RESERVED_THEMES, THEME_NAME, Theme, ThemeSource, file_theme
 from .state import UiRow, UiSegment
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay lazy
+    from collections.abc import Callable
+    from pathlib import Path
+
     from ..app.agent.dialogue.mentions import MentionProvider
     from ..config import ZettCodeConfig
     from .state import UiBuilder, UiRegion, UiSide
@@ -131,6 +135,7 @@ class PluginContainer:
         self._command_providers: list[CommandProvider] = []
         self._mentions: list[MentionProvider] = []
         self._providers: list[Provider] = []
+        self._themes: list[ThemeSource] = []
         self._slots = UiSlots()
 
     @property
@@ -157,6 +162,11 @@ class PluginContainer:
     def providers(self) -> tuple[Provider, ...]:
         """Return the model providers registered so far, in registration order."""
         return tuple(self._providers)
+
+    @property
+    def themes(self) -> tuple[ThemeSource, ...]:
+        """Return the palettes registered so far, in registration order."""
+        return tuple(self._themes)
 
     @property
     def rows(self) -> tuple[UiRow, ...]:
@@ -320,6 +330,51 @@ class PluginContainer:
             raise ValueError(f"Provider already registered: {provider.name}")
         self._providers.append(provider)
         return provider
+
+    def register_theme(
+        self,
+        name: str,
+        theme: Theme | Callable[[], Theme] | Path,
+        *,
+        description: str | Callable[[], str] = "",
+    ) -> ThemeSource:
+        """Offer a palette by name, so ``/theme <name>`` switches to it and the menu lists and previews it.
+
+        The palette is a :class:`~zettcode.tui.Theme`, a function that builds one (called when the palette is
+        first asked for, so offering many costs nothing until one is picked), or the path of a theme ``.toml``
+        file, read the same way. A file of the reader's in ``~/.zettcode/themes`` with the same name replaces it.
+        The name is one word and cannot be ``dark`` or ``light``, which are the program's own.
+
+        Args:
+            name: What ``/theme`` is typed with: letters, digits, ``.``, ``_`` and ``-``.
+            theme: The palette, a function that returns it, or a path to its file.
+            description: One line shown beside the name in the menu (or a function returning it). A path's own
+                ``description`` key is used when this is left out.
+
+        Returns:
+            The registered source, in case the plugin wants to keep it.
+
+        Raises:
+            ValueError: When the name is not one word, is reserved, or this plugin already registered it.
+        """
+        name = name.strip()
+        if not THEME_NAME.fullmatch(name):
+            raise ValueError(f"Theme name must be one word of letters, digits, '.', '_' or '-': {name!r}")
+        if name in RESERVED_THEMES:
+            raise ValueError(f"Theme name is reserved: {name}")
+        if any(existing.name == name for existing in self._themes):
+            raise ValueError(f"Theme already registered: {name}")
+        if isinstance(theme, Theme):
+            fixed = theme
+            source = ThemeSource(name, lambda: fixed, description)
+        elif callable(theme):
+            source = ThemeSource(name, theme, description)
+        else:
+            source = file_theme(name, theme)
+            if description:
+                source = ThemeSource(name, source.load, description)
+        self._themes.append(source)
+        return source
 
     def register_mention(self, provider: MentionProvider) -> MentionProvider:
         """Register one kind of ``@`` resource the composer can offer.

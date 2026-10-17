@@ -14,7 +14,8 @@ setting.
 | File | Purpose | When a change takes effect |
 | --- | --- | --- |
 | `~/.zettcode/config.toml` | Model connections and optional features | Restart ZettCode. |
-| `~/.zettcode/theme.toml` | Custom colours | Restart; `/theme` selects a built-in palette during a run. |
+| `~/.zettcode/theme.toml` | One set of custom colours, laid over the palette in force | Restart; `/theme` selects a palette during a run. |
+| `~/.zettcode/themes/<name>.toml` | Your own palettes, picked by name | Picked up the next time `/theme` is used. |
 | `~/.zettcode/mcp.json` | External tool servers | Restart after changing server definitions. |
 | `AGENTS.md` in or above the workspace | Project rules and test commands | Read again for the next request. |
 
@@ -349,6 +350,9 @@ disable = []                   # entry-point names to skip
 [update]
 enabled = true                 # background PyPI version checks
 
+[ui]
+# theme = "nord"               # start in a palette by name (see Colours); unset follows the terminal
+
 [sessions]
 enabled = true                 # let sessions message each other; `false` joins no broker
 
@@ -404,10 +408,60 @@ against the **workspace**, so with `zettcode -w ~/projects/api` it means
 
 ## Colours
 
-Without a theme file, ZettCode tries to detect the terminal's background and
-selects a matching dark or light palette. Both built-in palettes leave the
-page background to the terminal. `/theme dark` or `/theme light` switches for
-the current run without editing any files.
+Without a choice, ZettCode tries to detect the terminal's background and
+selects a matching dark or light palette; those two leave the page background
+to the terminal.
+
+### Palettes by name
+
+Every other palette has a name, and the name is a file. Sixteen ship with the program:
+
+| Dark | Light |
+| --- | --- |
+| `catppuccin-mocha`, `tokyo-night`, `nord`, `gruvbox-dark`, `rose-pine`, `kanagawa`, `dracula`, `one-dark`, `solarized-dark`, `github-dimmed`, `ayu-mirage` | `catppuccin-latte`, `rose-pine-dawn`, `gruvbox-light`, `solarized-light`, `github-light` |
+
+`/theme nord` switches to one for the current run. Typing `/theme ` and a space opens the menu of every palette, and
+**the menu previews**: as you move the highlight with `↑` `↓` the whole interface, the conversation in front of you
+included, is repainted in that palette. `Enter` keeps it; `Esc`, or deleting the draft, puts back the one you had.
+These palettes paint their own page background, so they look the same in any terminal. So do `dark` and `light`
+when you pick them by name; only the automatic choice at startup leaves the page to your terminal.
+
+**The choice is remembered.** `/theme nord` writes `theme = "nord"` under `[ui]` in `config.toml` (one line; the
+rest of the file is untouched), so the next start opens in it. Walking the menu with the arrows remembers nothing;
+only `Enter`, or typing the name, does. If `config.toml` cannot take the line (it does not exist, or it spells
+`[ui]` in a way that cannot be edited safely) the palette is still switched on, and you are told it will not last.
+
+To start in one, name it in `config.toml`:
+
+```toml
+[ui]
+theme = "nord"
+```
+
+### Adding your own
+
+Put a file in `~/.zettcode/themes/` and its name is the palette's name: `~/.zettcode/themes/sunset.toml` is
+`/theme sunset`, and it is in the menu the next time you open it, with no restart. The file is the same format as
+`theme.toml` below, plus an optional one-line `description` shown beside the name:
+
+```toml
+description = "warm and low-contrast"
+base = "dark"            # what any colour you leave out comes from
+
+[ui]
+surface_alt = "#3a322b"          # leave `background` out to keep the terminal's own page
+accent = "#e0a458"
+```
+
+A file with the name of a shipped palette replaces it, which is how to adjust one: copy it, change what you
+dislike, keep the name. `dark` and `light` cannot be replaced. A name is one word (letters, digits, `.`, `_`, `-`).
+A file that cannot be read is still listed, and says why when you pick it.
+
+The shipped palettes are listed with every component drawn in each of them in
+`docs/internal/palettes.html`, which `make palettes` generates. The page is a build product and is not in the
+repository: regenerate it after changing a palette or the theme code.
+
+### One file over any palette
 
 For a persistent custom palette, create `~/.zettcode/theme.toml`. This is a
 separate file: do not paste these sections into `config.toml`.
@@ -436,9 +490,10 @@ builtin = "#b8a6e0"
 inline = "#9bddad"            # Markdown `inline code`
 ```
 
-Only named colours change; the rest come from `base`. A theme file takes
+Only named colours change; the rest come from `base`, or from the palette `[ui] theme` names when there is one
+(the file is laid over it). A theme file takes
 precedence over automatic light/dark detection. `/theme` can still choose a
-built-in palette during that run; it does not rewrite the custom file.
+palette during that run; it does not rewrite any file.
 
 | Section | Colour keys |
 | --- | --- |
