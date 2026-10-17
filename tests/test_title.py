@@ -11,6 +11,7 @@ from zett_agent.model import ModelEvent, ModelRequest, ModelResponse, RetryOptio
 from zettcode.app.agent.agent import ZettCodeAgent
 from zettcode.app.agent.dialogue.title import MAX_TITLE_CHARS, clean_title, excerpt, summarize_title
 from zettcode.app.agent.storage import MAX_TITLE, SessionStore
+from zettcode.config import ModelConfig
 
 
 class FakeModel:
@@ -37,6 +38,7 @@ class FakeRuntime:
     model: FakeModel
     session_id: str = "s1"
     session_locked: bool = False
+    active_model: ModelConfig = ModelConfig(model="m", token="t")
 
     async def start(self) -> FakeRuntime:
         """A real runtime builds its provider here; this one already has it."""
@@ -88,6 +90,24 @@ async def test_summarize_title_asks_the_model_once_for_a_title():
     assert "the parser crashes" in prompt
     assert "I fixed the escaping" in prompt
     assert model.requests[0].tools == ()
+
+
+async def test_the_title_is_asked_for_at_a_level_the_model_takes(tmp_path):
+    """An endpoint that lacks `low` would fail the request that only names the session."""
+    from zett_agent.model import ReasoningEffort
+
+    store = SessionStore(tmp_path)
+    await store.append("alpha-1", "req", UserMessage(content="the parser crashes"))
+    await store.append("alpha-1", "req", AssistantMessage(content="I fixed the escaping"))
+    model = FakeModel()
+    runtime = FakeRuntime(store, model)
+    runtime.active_model = ModelConfig(
+        model="m", token="t", reasoning_efforts=(ReasoningEffort.MEDIUM, ReasoningEffort.HIGH)
+    )
+
+    await ZettCodeAgent(runtime).title_session("alpha-1")
+
+    assert model.requests[0].reasoning_effort == ReasoningEffort.MEDIUM
 
 
 async def test_title_session_names_the_first_exchange_once(tmp_path):

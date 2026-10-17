@@ -16,16 +16,27 @@ carries a ``task`` tool of its own, so a child cannot delegate to another child.
 A child is given the same project instructions the parent has (the workspace's ``AGENTS.md``): one
 that edits files and does not know the project's rules is the child most in need of them.
 
-Everything zett-agent contributes is imported inside the two builders rather
+Everything zett-agent contributes is imported inside the builders rather
 than at module scope. The subagent extension imports its SQLite session store,
 and that imports SQLAlchemy; a launch that never runs a child must not pay for a
 database before the first frame is on screen.
+
+A child runs on the model the *parent's request* runs on, not the one the runtime was built with: ``/model``
+and resuming a session change the parent's model, and a profile that kept the build-time adapter would
+quietly answer on another provider. Its reasoning effort is the profile's default unless the parent model
+asks for another through the ``task`` tool's ``reasoning_effort``; either way it is moved to the nearest
+level the model takes, because an endpoint that rejects a level it does not know fails the whole task.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from contextvars import ContextVar
+from copy import deepcopy
+from dataclasses import replace
+from functools import cache
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from zettcode.config import DEFAULT_SUBAGENT_MAX_ITERATIONS
 
@@ -33,9 +44,15 @@ from ..storage import SessionStore
 from .capabilities import ModelCapabilities
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only; the imports are the cost
+    from zett_agent.agent import Agent, AgentRunContext
     from zett_agent.extensions.base import AgentExtension
-    from zett_agent.extensions.subagent import SubAgentDefinition
+    from zett_agent.extensions.subagent import SubAgentDefinition, SubAgentExtension
     from zett_agent.model import AgentModel
+    from zett_agent.tools.base import AgentTool
+
+#: The effort the parent model asked for on the ``task`` call being run. A tool call is one task, so this
+#: is per call even when several run in parallel; ``None`` outside one, or when it asked for nothing.
+_REQUESTED_EFFORT: ContextVar[str | None] = ContextVar("zettcode_subagent_effort", default=None)
 
 #: What every prompt starts from. A child's context is its own: it sees nothing the parent has read or
 #: said, and the parent sees nothing it does — only the last message it writes comes back — so each
@@ -183,6 +200,86 @@ def build_subagents(
     )
 
 
+@cache
+def _extension_class() -> Callable[..., SubAgentExtension]:
+    """Return the ``task`` extension that runs a child on its parent's model and lets the parent pick the effort.
+
+    Built on first use for the reason the rest of this module imports late: the framework's module is
+    what pulls in the database layer.
+    """
+    from zett_agent.extensions.subagent import SubAgentExtension
+    from zett_agent.model import ReasoningEffort
+    from zett_agent.tools.base import AgentTool as Tool
+
+    class ParentModelSubAgents(SubAgentExtension):
+        """The framework's ``task`` tool, with the child on the parent's model and an optional effort."""
+
+        def __init__(self, subagents: Any, *, capabilities: ModelCapabilities) -> None:
+            super().__init__(subagents)
+            self._capabilities = capabilities
+
+        def _levels(self, context: AgentRunContext) -> tuple[ReasoningEffort, ...]:
+            """Return the levels the parent's model takes: every one for a model the runtime has no entry for."""
+            config = self._capabilities.config_of(context.model)
+            return config.efforts if config is not None else tuple(ReasoningEffort)
+
+        async def _create_child(
+            self, definition: SubAgentDefinition, child_session_id: str, context: AgentRunContext
+        ) -> Agent:
+            """Create the child on the model of the request that delegated, at a level that model takes."""
+            parent = context.model or definition.model
+            asked = _REQUESTED_EFFORT.get()
+            effort = ReasoningEffort(asked) if asked else definition.reasoning_effort
+            config = self._capabilities.config_of(parent)
+            if config is not None:
+                effort = config.accepted_effort(effort)
+            return await super()._create_child(
+                replace(definition, model=parent, reasoning_effort=effort), child_session_id, context
+            )
+
+        def _build_tool(self, context: AgentRunContext, subagents: Any) -> AgentTool:
+            """Add an optional ``reasoning_effort`` to the framework's tool, listing what this model takes."""
+            base = super()._build_tool(context, subagents)
+            levels = self._levels(context)
+            names = [level.value for level in levels]
+            parameters = deepcopy(base.parameters)
+            parameters["properties"]["reasoning_effort"] = {
+                "type": "string",
+                "enum": names,
+                "description": (
+                    "How hard the subagent thinks. Leave it out for the profile's default "
+                    "(explore low, coding medium, reasoning high)."
+                ),
+            }
+            inner = base.handler
+
+            async def handler(**arguments: Any) -> Any:
+                asked = arguments.pop("reasoning_effort", None)
+                if asked is not None and asked not in names:
+                    raise ValueError(f"Unknown reasoning_effort {asked!r}; this model takes: {', '.join(names)}")
+                token = _REQUESTED_EFFORT.set(asked)
+                try:
+                    return await inner(**arguments)
+                finally:
+                    _REQUESTED_EFFORT.reset(token)
+
+            return Tool(
+                name=base.name,
+                description=base.description,
+                parameters=parameters,
+                handler=handler,
+                guidelines=(
+                    *base.guidelines,
+                    f"Set reasoning_effort only when a task is harder or easier than its profile assumes; "
+                    f"the levels you can ask for are {', '.join(names)}.",
+                ),
+                snippet=base.snippet,
+                execution_mode=base.execution_mode,
+            )
+
+    return ParentModelSubAgents
+
+
 def subagent_extension(
     *,
     model: AgentModel,
@@ -198,22 +295,22 @@ def subagent_extension(
     which profiles exist and what each child may touch.
 
     Args:
-        model: Provider the children run on; the caller owns its resources.
+        model: Provider a child runs on when the request that delegated names none; otherwise the
+            children use the parent request's own.
         persistence: Session store that writes each child's own log, linked to
             the calling session through ``parent_session_id``.
-        capabilities: Parent's capability filter, so a text-only model is not
-            offered ``view_image`` inside a child either.
+        capabilities: Parent's capability filter, so a text-only model is not offered ``view_image``
+            inside a child either, and the lookup of which levels a model takes.
         workspace: Directory whose ``AGENTS.md`` files every child is given; ``None`` for none.
         max_iterations: Model calls one child may make for one task.
     """
-    from zett_agent.extensions.subagent import SubAgentExtension
-
-    return SubAgentExtension(
+    return _extension_class()(
         build_subagents(
             model=model,
             persistence=persistence,
             capabilities=capabilities,
             workspace=workspace,
             max_iterations=max_iterations,
-        )
+        ),
+        capabilities=capabilities,
     )

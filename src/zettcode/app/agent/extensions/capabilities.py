@@ -37,8 +37,14 @@ class ModelCapabilities(AgentExtension):
         """
         self._models = models
 
+    def config_of(self, provider: AgentModel | None) -> ModelConfig | None:
+        """Return the configured model a provider serves, or ``None`` for one this runtime did not build."""
+        if provider is None:
+            return None
+        return next((entry for entry, built in self._models.items() if built is provider), None)
+
     async def on_tool(self, context: AgentRunContext) -> None:
         """Drop the image tool when this request's model does not take images."""
-        model = next((entry for entry, provider in self._models.items() if provider is context.model), None)
+        model = self.config_of(context.model)
         if model is not None and not model.multimodal:
             context.tools.pop(view_image.name, None)

@@ -456,7 +456,8 @@ async def test_the_harness_switches_choose_the_tools_the_model_may_use(tmp_path,
 
     for (subagent, todowrite), extensions in zip(cases, given, strict=True):
         kinds = [type(extension) for extension in extensions]
-        assert (SubAgentExtension in kinds) is subagent
+        # The task tool is the framework's extension or ZettCode's subclass of it.
+        assert any(isinstance(extension, SubAgentExtension) for extension in extensions) is subagent
         assert (TodoWriteExtension in kinds) is todowrite
 
 

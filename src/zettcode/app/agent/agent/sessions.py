@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from zett_agent.messages import AssistantMessage, UserMessage
+from zett_agent.model import ReasoningEffort
 
 from ..conversation.replay import Replayed, replay
 from ..conversation.transcript import Transcript
@@ -218,7 +219,9 @@ class SessionsMixin(ContextMixin):
         if not question or not answer:
             return None
         await self.runtime.start()
-        title = await summarize_title(self.runtime.provider, question=question, answer=answer)
+        # A level the model takes, so naming the session cannot be what fails on an endpoint that lacks `low`.
+        effort = self.runtime.active_model.accepted_effort(ReasoningEffort.LOW)
+        title = await summarize_title(self.runtime.provider, question=question, answer=answer, effort=effort)
         if title is None:
             return None
         await self.runtime.persistence.set_title(session_id, title)

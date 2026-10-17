@@ -10,7 +10,7 @@ from zett_agent.extensions.file_system import FileSystemExtension
 from zett_agent.extensions.subagent import SubAgentExtension
 from zett_agent.extensions.tool_guidelines import ToolGuidelinesExtension
 from zett_agent.messages import AssistantMessage, ToolCall, ToolMessage
-from zett_agent.model import ModelEvent, ModelRequest, ModelResponse, RetryOptions
+from zett_agent.model import ModelEvent, ModelRequest, ModelResponse, ReasoningEffort, RetryOptions
 
 from zettcode.app.agent.extensions.capabilities import ModelCapabilities
 from zettcode.app.agent.extensions.subagents import build_subagents, subagent_extension
@@ -69,67 +69,165 @@ def test_no_subagent_profile_can_delegate_to_another(tmp_path):
         assert not any(isinstance(extension, SubAgentExtension) for extension in definition.extensions)
 
 
-class _ParentModel:
-    """Delegate one explore task, then answer with the child's report."""
+class _Provider:
+    """One provider that serves a parent and its children, and records what every request asked for.
+
+    A request that carries the ``task`` tool is the parent's: it delegates one explore task, then answers.
+    Any other is a child's, and reports. ``ask`` is added to the task call's arguments.
+    """
 
     retry = RetryOptions(max_retries=0)
 
+    def __init__(self, ask: dict | None = None) -> None:
+        self.ask = ask or {}
+        self.requests: list[ModelRequest] = []
+
+    @property
+    def children(self) -> list[ModelRequest]:
+        return [request for request in self.requests if "task" not in {tool.name for tool in request.tools}]
+
+    @property
+    def parents(self) -> list[ModelRequest]:
+        return [request for request in self.requests if "task" in {tool.name for tool in request.tools}]
+
     async def stream(self, request: ModelRequest):
+        self.requests.append(request)
+        if "task" not in {tool.name for tool in request.tools}:
+            yield ModelEvent.completed(ModelResponse(AssistantMessage(content="child report")))
+            return
         if isinstance(request.messages[-1], ToolMessage):
             yield ModelEvent.completed(ModelResponse(AssistantMessage(content="parent done")))
             return
-        yield ModelEvent.completed(
-            ModelResponse(
-                AssistantMessage(
-                    tool_calls=(
-                        ToolCall(
-                            "call-1",
-                            "task",
-                            {
-                                "description": "look around",
-                                "prompt": "where is the render loop?",
-                                "subagent_type": "explore",
-                            },
-                        ),
-                    )
-                )
-            )
-        )
+        arguments = {
+            "description": "look around",
+            "prompt": "where is the render loop?",
+            "subagent_type": "explore",
+            **self.ask,
+        }
+        yield ModelEvent.completed(ModelResponse(AssistantMessage(tool_calls=(ToolCall("call-1", "task", arguments),))))
 
 
-class _ChildModel:
-    """Record the tools the child was offered, then report."""
-
-    retry = RetryOptions(max_retries=0)
-    seen_tools: set[str] = set()
-
-    async def stream(self, request: ModelRequest):
-        _ChildModel.seen_tools = {tool.name for tool in request.tools}
-        yield ModelEvent.completed(ModelResponse(AssistantMessage(content="child report")))
-
-
-async def test_the_task_tool_runs_an_explore_child_and_links_its_session(tmp_path):
+async def _delegate(tmp_path, provider, *, efforts=(), stale=None):
+    """Run one parent turn on ``provider``, whose extension was built with ``stale`` as its model."""
     store = _store(tmp_path)
+    config = ModelConfig(model="m", token="t", multimodal=True, reasoning_efforts=tuple(efforts))
+    capabilities = ModelCapabilities({config: provider})
     extension = subagent_extension(
-        model=_ChildModel(),
+        model=stale or _StubModel(),
         persistence=store,
-        capabilities=ModelCapabilities({}),
+        capabilities=capabilities,
     )
     parent = await Agent.create(
-        _ParentModel(),
+        provider,
         config=AgentRunConfig(session_id="parent"),
         extensions=[store, extension, ToolGuidelinesExtension()],
     )
-
     result = await parent.run("where is the render loop?")
+    return store, result
+
+
+async def test_the_task_tool_runs_an_explore_child_and_links_its_session(tmp_path):
+    provider = _Provider()
+
+    store, result = await _delegate(tmp_path, provider)
 
     assert result.content == "parent done"
     # The explore profile offers exactly the read-only filesystem tools.
-    assert _ChildModel.seen_tools == {"read_file", "view_image", "glob", "grep"}
+    assert {tool.name for tool in provider.children[0].tools} == {"read_file", "view_image", "glob", "grep"}
     child_ids = [session_id for session_id in store.session_ids() if session_id != "parent"]
     assert len(child_ids) == 1
     child = store.read(child_ids[0])
     assert child.parent_session_id == "parent"
+
+
+class _Untouched(_StubModel):
+    """The model the extension was *built* with; a child must never reach it."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def stream(self, request: ModelRequest):
+        self.calls += 1
+        yield ModelEvent.completed(ModelResponse(AssistantMessage(content="wrong model")))
+
+
+async def test_a_child_runs_on_the_model_its_parent_request_runs_on_not_the_one_the_runtime_was_built_with(tmp_path):
+    """`/model` and resuming change the parent's model; the children had kept the first one."""
+    provider = _Provider()
+    built_with = _Untouched()
+
+    await _delegate(tmp_path, provider, stale=built_with)
+
+    assert built_with.calls == 0
+    assert len(provider.children) == 1
+
+
+@pytest.mark.parametrize(
+    ("efforts", "sent"),
+    [
+        # The profile's own level (explore: low), for a model that takes everything.
+        ((), ReasoningEffort.LOW),
+        # A model that starts at medium: the profile's low is moved to the nearest it takes.
+        ((ReasoningEffort.MEDIUM, ReasoningEffort.HIGH), ReasoningEffort.MEDIUM),
+        ((ReasoningEffort.OFF, ReasoningEffort.HIGH), ReasoningEffort.OFF),
+    ],
+)
+async def test_a_profiles_default_level_is_moved_to_one_the_model_takes(tmp_path, efforts, sent):
+    provider = _Provider()
+
+    await _delegate(tmp_path, provider, efforts=efforts)
+
+    assert provider.children[0].reasoning_effort == sent
+
+
+async def test_the_parent_model_can_ask_for_the_level_a_child_thinks_at(tmp_path):
+    provider = _Provider(ask={"reasoning_effort": "high"})
+
+    await _delegate(tmp_path, provider)
+
+    assert provider.children[0].reasoning_effort == ReasoningEffort.HIGH
+
+
+async def test_the_task_schema_offers_only_the_levels_the_parents_model_takes(tmp_path):
+    provider = _Provider()
+    taken = (ReasoningEffort.LOW, ReasoningEffort.HIGH)
+
+    await _delegate(tmp_path, provider, efforts=taken)
+
+    task = next(tool for tool in provider.parents[0].tools if tool.name == "task")
+    offered = task.parameters["properties"]["reasoning_effort"]
+    assert offered["enum"] == ["low", "high"]
+    assert "reasoning_effort" not in task.parameters.get("required", ())
+
+
+async def test_a_level_the_model_does_not_take_is_refused_and_the_child_never_starts(tmp_path):
+    """The tool says why, in words the parent can act on; no child is spent on a request that would fail."""
+    provider = _Provider(ask={"reasoning_effort": "ultra"})
+
+    store, result = await _delegate(tmp_path, provider, efforts=(ReasoningEffort.LOW, ReasoningEffort.HIGH))
+
+    assert result.content == "parent done"
+    assert provider.children == []
+    tool_message = provider.parents[1].messages[-1]
+    assert "low, high" in tool_message.content
+    assert [session_id for session_id in store.session_ids() if session_id != "parent"] == []
+
+
+async def test_two_tasks_asking_for_different_levels_do_not_share_one(tmp_path):
+    """The requested level rides a context variable, so parallel calls each keep their own."""
+    import asyncio
+
+    from zettcode.app.agent.extensions import subagents as module
+
+    async def ask(level):
+        token = module._REQUESTED_EFFORT.set(level)
+        await asyncio.sleep(0)
+        seen = module._REQUESTED_EFFORT.get()
+        module._REQUESTED_EFFORT.reset(token)
+        return seen
+
+    assert await asyncio.gather(ask("low"), ask("high")) == ["low", "high"]
+    assert module._REQUESTED_EFFORT.get() is None
 
 
 # -- what a child is given, and what its parent is told about it --------------------------------------------

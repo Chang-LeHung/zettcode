@@ -266,7 +266,7 @@ class ZettCodeRuntime:
             usage=UsageExtension(),
             context=ContextExtension(),
             tokenizer=Tokenizer(),
-            effort=config.reasoning_effort,
+            effort=selected.accepted_effort(config.reasoning_effort),
             session_id=new_uuid7(),
             active_model=selected,
             compaction=OnDemandCompaction(
@@ -510,22 +510,35 @@ class ZettCodeRuntime:
     def use_effort(self, name: str | ReasoningEffort) -> ReasoningEffort:
         """Select how much reasoning the model may spend on later requests.
 
+        A level the active model does not take is refused, naming the ones it does: a reader who typed
+        ``/effort ultra`` should hear that this model stops at ``high``, not get ``high`` unannounced.
+        (A level that is *inherited* — the one in force when the model changes — is moved, by
+        :meth:`use_model`, because nobody asked for it.)
+
         Args:
             name: One of zett-agent's levels, by value (``"high"``) or as the
                 enum itself; case and surrounding space are ignored.
 
         Returns:
             The level now in force.
+
+        Raises:
+            ValueError: The name is not a level, or the active model does not take it.
         """
         if isinstance(name, ReasoningEffort):
-            self.effort = name
-            return name
-        try:
-            self.effort = ReasoningEffort(name.strip().lower())
-        except ValueError:
-            levels = ", ".join(level.value for level in ReasoningEffort)
-            raise ValueError(f"Unknown reasoning effort: {name}. Try one of: {levels}") from None
-        return self.effort
+            level = name
+        else:
+            try:
+                level = ReasoningEffort(name.strip().lower())
+            except ValueError:
+                levels = ", ".join(known.value for known in ReasoningEffort)
+                raise ValueError(f"Unknown reasoning effort: {name}. Try one of: {levels}") from None
+        accepted = self.active_model.efforts
+        if level not in accepted:
+            levels = ", ".join(known.value for known in accepted)
+            raise ValueError(f"{self.active_model.shown_name} does not take {level.value}. Try one of: {levels}")
+        self.effort = level
+        return level
 
     def find_model(self, name: str) -> ModelConfig | None:
         """Return the configured model a recorded name stands for, if exactly one does.
@@ -570,6 +583,9 @@ class ZettCodeRuntime:
         # the point at which a request is compacted with it.
         self.compaction.max_tokens = chosen.compaction_max_tokens
         self.compaction.keep_recent_tokens = chosen.compaction_keep_tokens
+        # The level in force follows the model to the nearest one it takes, so a request is never sent
+        # with a level its endpoint would reject.
+        self.effort = chosen.accepted_effort(self.effort)
         return chosen
 
     def replace_models(self, models: tuple[ModelConfig, ...]) -> ModelConfig:

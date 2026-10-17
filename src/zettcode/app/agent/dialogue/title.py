@@ -29,7 +29,13 @@ _LEADING_MARKER = re.compile(r"^(?:[-*\u2022\u25aa>#]+\s*|\d+[.)]\s+)+")
 _TRAILING = ".:;,\u3002"
 
 
-async def summarize_title(model: AgentModel, *, question: str, answer: str) -> str | None:
+async def summarize_title(
+    model: AgentModel,
+    *,
+    question: str,
+    answer: str,
+    effort: ReasoningEffort = ReasoningEffort.LOW,
+) -> str | None:
     """Return a short title for the first exchange, or ``None`` when there is none.
 
     Args:
@@ -37,13 +43,15 @@ async def summarize_title(model: AgentModel, *, question: str, answer: str) -> s
             retry policy applies and no agent turn or session record is created.
         question: The user's first message.
         answer: The assistant's reply to it.
+        effort: How hard the model thinks about it. Cheap by default; the caller moves it to a
+            level the model takes, because an endpoint that rejects one fails the request.
     """
     request = ModelRequest(
         messages=[
             SystemMessage(content=INSTRUCTIONS),
             UserMessage(content=f"User: {excerpt(question)}\n\nAssistant: {excerpt(answer)}"),
         ],
-        reasoning_effort=ReasoningEffort.LOW,
+        reasoning_effort=effort,
     )
     reply = ""
     async for event in model.stream(request):

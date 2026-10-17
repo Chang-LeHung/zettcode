@@ -5,8 +5,6 @@ from __future__ import annotations
 from collections.abc import Mapping
 from pathlib import Path
 
-from zett_agent.model import ReasoningEffort
-
 from zettcode.config import ModelConfig, _read_models
 from zettcode.config_edit import (
     ConfigEditError,
@@ -160,8 +158,8 @@ class SettingsMixin(AgentBase):
 
     @property
     def efforts(self) -> tuple[str, ...]:
-        """Return the reasoning levels the runtime accepts, cheapest first."""
-        return tuple(level.value for level in ReasoningEffort)
+        """Return the reasoning levels the active model takes, cheapest first."""
+        return tuple(level.value for level in self.runtime.active_model.efforts)
 
     def use_effort(self, name: str) -> str:
         """Select a reasoning level for later requests and return its value."""
