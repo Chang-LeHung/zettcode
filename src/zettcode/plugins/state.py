@@ -111,6 +111,7 @@ class ActivityState:
             busy, which is what a plugin animates against.
         permission: How much of the shell may run unasked: ``"deny"``, ``"ask"``,
             ``"safe"``, or ``"auto"``.
+        self_compact: Whether the model may compact its own context in this session.
     """
 
     busy: bool
@@ -121,6 +122,7 @@ class ActivityState:
     tasks: tuple[tuple[str, str], ...]
     frame: int
     permission: str = "ask"
+    self_compact: bool = False
 
     @property
     def label(self) -> str:

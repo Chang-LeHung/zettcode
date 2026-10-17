@@ -278,6 +278,7 @@ class FakeConfig:
     mouse_scroll_speed: float = 1.0
     tips: bool = False
     skills_enabled: bool = False
+    self_compaction: bool = False
     plugins_enabled: bool = True
     disabled_plugins: tuple[str, ...] = ()
     update_enabled: bool = True
@@ -316,6 +317,7 @@ class FakeRuntime:
     #: The sessions this runtime holds the lock of, as the real one does: it changes when a session is
     #: selected or the lock is retaken, and not when the other process lets go.
     _mine: set[str] = field(default_factory=set, init=False)
+    _self_choices: dict[str, bool | None] = field(default_factory=dict, init=False)
     active_model: ModelConfig = field(init=False)
     model: object = field(init=False)
     auto_approved: bool = field(default=False, init=False)
@@ -342,6 +344,19 @@ class FakeRuntime:
         """Mirror the real runtime: take the lock again, and say whether it is held now."""
         self._claim()
         return not self.session_locked
+
+    def self_compaction_choice(self, session_id: str) -> bool | None:
+        """Mirror the real runtime: the session's own choice, or ``None`` to follow the default."""
+        return self._self_choices.get(session_id)
+
+    def choose_self_compaction(self, session_id: str, choice: bool | None) -> None:
+        """Mirror the real runtime: remember the choice."""
+        self._self_choices[session_id] = choice
+
+    def self_compacting(self, session_id: str) -> bool:
+        """Mirror the real runtime: the session's choice, else the configuration's default."""
+        choice = self.self_compaction_choice(session_id)
+        return self.config.self_compaction if choice is None else choice
 
     async def start(self) -> FakeRuntime:
         """A real runtime builds its provider and client here; this one is ready."""
@@ -7761,7 +7776,17 @@ async def test_every_command_the_shell_runs_beside_a_request_is_one_that_cannot_
     refused = sorted(c.name for c in app.commands if c.when_busy == "refuse")
     queued = sorted(c.name for c in app.commands if c.when_busy == "queue")
 
-    assert now == ["/context", "/effort", "/exit", "/help", "/permission", "/quit", "/theme", "/title"]
+    assert now == [
+        "/context",
+        "/effort",
+        "/exit",
+        "/help",
+        "/permission",
+        "/quit",
+        "/self-compact",
+        "/theme",
+        "/title",
+    ]
     assert queued == ["/btw"]
     # What a running request is built on stays out: the transcript it writes into, the session, and
     # the model it started with together with the window its compaction is sized to.

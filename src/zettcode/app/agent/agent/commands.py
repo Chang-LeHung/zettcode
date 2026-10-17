@@ -7,7 +7,7 @@ agent is where the shell asks for everything the runtime loaded.
 
 from __future__ import annotations
 
-from zettcode.app.commands import Command, CommandContext, CommandResult, Subcommand
+from zettcode.app.commands import Command, CommandContext, CommandResult
 from zettcode.plugins import UiRow
 from zettcode.providers import BUILTIN_PROVIDERS, Provider, merge_providers
 from zettcode.tui import ThemeCatalog
@@ -15,6 +15,9 @@ from zettcode.tui import ThemeCatalog
 from ..conversation.presenters import Presenters
 from ..dialogue.mentions import MentionProvider
 from .exports import ExportsMixin
+
+#: The words ``/self-compact`` takes after it, or after ``global``.
+_SELF_COMPACT_WORDS = frozenset({"on", "off", "default"})
 
 
 class CommandsMixin(ExportsMixin):
@@ -30,13 +33,6 @@ class CommandsMixin(ExportsMixin):
         return (
             Command("/new", "start a fresh session", "agent", self._command_new),
             Command("/compact", "summarize the context now", "agent", self._command_compact),
-            Command(
-                "/self-compact",
-                "let the model request compaction: /self-compact [on|off]",
-                "agent",
-                self._command_self_compact,
-                subcommands=(Subcommand("on", "enable for this session"), Subcommand("off", "disable (default)")),
-            ),
             Command("/export", "write this session to an HTML file: /export [path]", "agent", self._command_export),
         )
 
@@ -103,23 +99,56 @@ class CommandsMixin(ExportsMixin):
         path = await self.export_session(context.argument.strip() or None)
         return CommandResult(message=f"Exported to `{path}`")
 
-    async def _command_self_compact(self, context: CommandContext) -> CommandResult:
-        """Read or change the per-session setting; a failed write is never reported as saved."""
-        argument = context.argument.strip().lower()
-        if argument not in ("", "on", "off"):
-            raise ValueError("Usage: /self-compact [on|off]")
-        store = self.runtime.persistence
-        if argument:
-            self.require_session()
-            try:
-                store.set_self_compact(self.session_id, argument == "on")
-            except OSError as error:
-                raise ValueError(f"Self-compaction setting was not saved: {error}") from error
-        enabled = store.session_self_compact(self.session_id)
-        state = "on" if enabled else "off"
-        return CommandResult(
-            message=f"Self-compaction is **{state}** for this session. Use `/self-compact on|off` to change it."
+    def self_compaction_summary(self) -> str:
+        """Say in one line whether self-compaction is on here, where that comes from, and what the default is."""
+        state = "on" if self.self_compaction else "off"
+        default = "on" if self.self_compaction_default else "off"
+        if self.self_compaction_choice is None:
+            return f"Self-compaction is {state}: this session follows the default ({default})"
+        return f"Self-compaction is {state}: this session chose it; the default is {default}"
+
+    def self_compact_report(self) -> str:
+        """Say what self-compaction is, whether it is on here, and where that comes from."""
+        choice = self.self_compaction_choice
+        default = "on" if self.self_compaction_default else "off"
+        state = "on" if self.self_compaction else "off"
+        source = (
+            f"this session chose it; the config default is **{default}**"
+            if choice is not None
+            else "following the config default (`[compaction] self`)"
         )
+        return (
+            f"Self-compaction is **{state}** ({source}).\n\n"
+            "When on, the model gets a `compact_context` tool and can summarize its own earlier conversation "
+            "when it judges the detail is no longer needed. The current turn is always kept. "
+            "`/compact` and the automatic threshold work either way.\n\n"
+            "`/self-compact on|off` sets this session; `default` hands it back to the config; "
+            "`global on|off` changes the default for every session that has not chosen."
+        )
+
+    def change_self_compaction(self, argument: str) -> str:
+        """Read or change self-compaction from the words ``/self-compact`` takes, and say what now applies.
+
+        ``on``, ``off`` and ``default`` set this session's own choice; ``global on`` and ``global off``
+        write the default for every session into the config file. A failed write is never reported as saved.
+
+        Raises:
+            ValueError: The words are not ones the command takes, or the change could not be saved.
+        """
+        words = argument.lower().split()
+        scope = "session"
+        if words[:1] == ["global"]:
+            scope, words = "global", words[1:]
+        usage = ValueError("Usage: /self-compact [on|off|default] or /self-compact global on|off")
+        if len(words) > 1 or (scope == "global" and not words) or (words and words[0] not in _SELF_COMPACT_WORDS):
+            raise usage
+        if scope == "global":
+            if words[0] == "default":
+                raise usage
+            self.remember_self_compaction(words[0] == "on")
+        elif words:
+            self.use_self_compaction({"on": True, "off": False, "default": None}[words[0]])
+        return self.self_compact_report()
 
     async def _command_compact(self, context: CommandContext) -> CommandResult:
         """Summarize the conversation now, whatever its size.

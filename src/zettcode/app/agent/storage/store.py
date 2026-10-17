@@ -550,28 +550,32 @@ class SessionPersistenceMixin:
             return False
         return write_session_metadata(self._metadata_file(session_id), metadata.model_copy(update={"model": cleaned}))
 
-    def session_self_compact(self, session_id: str) -> bool:
-        """Return whether one session lets the model request compaction.
+    def session_self_compact(self, session_id: str) -> bool | None:
+        """Return the choice one session made about letting the model request compaction.
 
-        Off is what a session that says nothing about it answers, which is every session whose file
-        predates the flag and every session that has not been used yet.
+        ``None`` is the answer of a session that never chose — every session whose file predates the
+        setting, and every session nobody has touched it in — and means it follows the default the
+        configuration gives, which the runtime applies; the store knows nothing of the configuration.
         """
         metadata = self._metadata(session_id)
-        return metadata.self_compact if metadata is not None else False
+        return metadata.self_compact if metadata is not None else None
 
-    def set_self_compact(self, session_id: str, enabled: bool) -> None:
-        """Record whether one session lets the model request compaction.
+    def set_self_compact(self, session_id: str, choice: bool | None, *, default: bool = False) -> None:
+        """Record the choice one session made about letting the model request compaction.
 
-        The flag is metadata, not conversation: turning it on or off rewrites the session's small
-        metadata file and leaves everything else in it — the title, the model, the creation time —
-        as it was. Turning it on for a session that has not been used yet creates the session, the
-        header going in first as it does when one is named, so a choice made before the first
-        message is not dropped. Turning it *off* for such a session records nothing, because a file
-        that holds no flag is already off. A file that holds the value asked for is not rewritten.
+        The choice is metadata, not conversation: it rewrites the session's small metadata file and
+        leaves everything else in it — the title, the model, the creation time — as it was. ``None``
+        takes the choice back, so the session follows the default again. A choice made before the
+        first message is a choice about a session that does not exist yet, so a choice that *differs*
+        from the default creates it, the header going in first as it does when one is named; one that
+        matches the default, or none, records nothing, because a session that holds no choice already
+        behaves that way. A file that holds the value asked for is not rewritten.
 
         Args:
             session_id: The session the choice belongs to.
-            enabled: Whether the model may request compaction.
+            choice: ``True`` or ``False`` for the session's own choice, ``None`` to follow the default.
+            default: What a session with no choice does, to tell a choice that changes something from
+                one that does not.
 
         Raises:
             OSError: The metadata file could not be replaced. Nothing was saved, so a caller that
@@ -579,7 +583,7 @@ class SessionPersistenceMixin:
         """
         metadata = self._metadata(session_id)
         if metadata is None:
-            if not enabled:
+            if choice is None or choice == default:
                 return
             created_at = self._write_header(self.read(session_id), session_id, None, None)
             metadata = (
@@ -587,9 +591,9 @@ class SessionPersistenceMixin:
                 if created_at is not None
                 else self._metadata(session_id)
             )
-        if metadata is None or metadata.self_compact == enabled:
+        if metadata is None or metadata.self_compact == choice:
             return
-        updated = metadata.model_copy(update={"self_compact": enabled})
+        updated = metadata.model_copy(update={"self_compact": choice})
         if not write_session_metadata(self._metadata_file(session_id), updated):
             raise OSError(f"Could not save the self-compaction setting for session {session_id!r}")
 
@@ -633,7 +637,7 @@ class SessionPersistenceMixin:
         *,
         title: str | None = None,
         model: str | None = None,
-        self_compact: bool = False,
+        self_compact: bool | None = None,
     ) -> SessionMetadata:
         """Write the metadata of a session that has just been created, and return it."""
         metadata = SessionMetadata(

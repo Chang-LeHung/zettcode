@@ -27,7 +27,9 @@ _EXPORTS = {
     "LATER": ".update_page",
     "ModelPage": ".model_page",
     "SEND_KIND_ROWS": ".send_kind_page",
+    "SELF_COMPACT_ROWS": ".self_compact_page",
     "SKIP": ".update_page",
+    "SelfCompactPage": ".self_compact_page",
     "SendKind": ".send_kind_page",
     "SendKindPage": ".send_kind_page",
     "SessionsPage": ".sessions_page",
@@ -57,6 +59,7 @@ if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
     from .model_page import ModelPage
     from .panel import bottom_panel
     from .root import ZettCodeRoot
+    from .self_compact_page import SELF_COMPACT_ROWS, SelfCompactPage
     from .send_kind_page import SEND_KIND_ROWS, SendKind, SendKindPage
     from .sessions_page import SessionsPage, format_ago
     from .steering import SteeringQueue
@@ -101,7 +104,9 @@ __all__ = [
     "LATER",
     "ModelPage",
     "SEND_KIND_ROWS",
+    "SELF_COMPACT_ROWS",
     "SKIP",
+    "SelfCompactPage",
     "SendKind",
     "SendKindPage",
     "SessionsPage",

@@ -33,24 +33,24 @@ def _record(store: SessionStore, session_id: str) -> dict:
     return json.loads(_file(store, session_id).read_text(encoding="utf-8"))
 
 
-async def test_a_session_starts_with_it_off(tmp_path: Path):
+async def test_a_session_starts_with_no_choice_of_its_own(tmp_path: Path):
     store = _store(tmp_path)
 
     await store.append("s1", "req", UserMessage(content="hello"))
 
-    assert store.session_self_compact("s1") is False
-    assert _record(store, "s1")["self_compact"] is False
+    assert store.session_self_compact("s1") is None, "it follows the configuration's default"
+    assert _record(store, "s1")["self_compact"] is None
 
 
-def test_a_session_that_was_never_used_reads_as_off_without_being_created(tmp_path: Path):
+def test_a_session_that_was_never_used_has_no_choice_and_is_not_created_by_asking(tmp_path: Path):
     """The shell asks about the session on screen; asking must not write anything."""
     store = _store(tmp_path)
 
-    assert store.session_self_compact("not-started") is False
+    assert store.session_self_compact("not-started") is None
     assert not store.session_dir("not-started").exists()
 
 
-async def test_a_file_written_before_the_flag_existed_reads_as_off(tmp_path: Path):
+async def test_a_file_written_before_the_flag_existed_has_no_choice(tmp_path: Path):
     """The field is additive: an old file simply lacks it, and the layout version is unchanged."""
     store = _store(tmp_path)
     await store.append("s1", "req", UserMessage(content="hello"))
@@ -61,7 +61,7 @@ async def test_a_file_written_before_the_flag_existed_reads_as_off(tmp_path: Pat
     metadata = read_session_metadata(_file(store, "s1"), "s1")
 
     assert metadata is not None, "still a valid v1 file"
-    assert store.session_self_compact("s1") is False
+    assert store.session_self_compact("s1") is None
 
 
 async def test_turning_it_on_and_off_again_round_trips(tmp_path: Path):
@@ -77,6 +77,28 @@ async def test_turning_it_on_and_off_again_round_trips(tmp_path: Path):
 
     assert store.session_self_compact("s1") is False
     assert _record(store, "s1")["self_compact"] is False
+
+
+async def test_an_explicit_off_is_kept_and_is_not_the_same_as_no_choice(tmp_path: Path):
+    """With the default on, off has to be remembered, or the session would turn itself back on."""
+    store = _store(tmp_path)
+    await store.append("s1", "req", UserMessage(content="hello"))
+
+    store.set_self_compact("s1", False, default=True)
+
+    assert store.session_self_compact("s1") is False
+    assert _store(tmp_path).session_self_compact("s1") is False
+
+
+async def test_taking_the_choice_back_makes_the_session_follow_the_default_again(tmp_path: Path):
+    store = _store(tmp_path)
+    await store.append("s1", "req", UserMessage(content="hello"))
+    store.set_self_compact("s1", True)
+
+    store.set_self_compact("s1", None)
+
+    assert store.session_self_compact("s1") is None
+    assert _record(store, "s1")["self_compact"] is None
 
 
 async def test_setting_the_value_the_file_already_holds_writes_nothing(tmp_path: Path):
@@ -144,14 +166,27 @@ async def test_the_first_message_keeps_the_setting_made_before_it(tmp_path: Path
     assert store.session_self_compact("fresh") is True
 
 
-def test_turning_it_off_for_a_session_that_does_not_exist_writes_nothing(tmp_path: Path):
-    """Off is what a session with no file answers already, so there is nothing to save."""
+def test_a_choice_that_matches_the_default_for_a_session_that_does_not_exist_writes_nothing(tmp_path: Path):
+    """A session with no choice already does what the default says, so there is nothing to save."""
     store = _store(tmp_path)
 
     store.set_self_compact("not-started", False)
+    store.set_self_compact("also-not-started", True, default=True)
+    store.set_self_compact("cleared", None)
 
-    assert store.session_self_compact("not-started") is False
+    assert store.session_self_compact("not-started") is None
     assert not store.session_dir("not-started").exists()
+    assert not store.session_dir("also-not-started").exists()
+    assert not store.session_dir("cleared").exists()
+
+
+def test_a_choice_that_differs_from_the_default_creates_the_session(tmp_path: Path):
+    store = _store(tmp_path)
+
+    store.set_self_compact("fresh", False, default=True)
+
+    assert store.session_self_compact("fresh") is False
+    assert _store(tmp_path).session_self_compact("fresh") is False
 
 
 async def test_a_fork_inherits_the_setting(tmp_path: Path):
@@ -165,11 +200,11 @@ async def test_a_fork_inherits_the_setting(tmp_path: Path):
     assert store.session_self_compact("s1") is True, "and the original is untouched"
 
 
-async def test_a_fork_of_a_session_that_never_turned_it_on_has_it_off(tmp_path: Path):
+async def test_a_fork_of_a_session_that_never_chose_has_no_choice_either(tmp_path: Path):
     store = _store(tmp_path)
     await store.append("s1", "req", UserMessage(content="hello"))
 
-    assert store.session_self_compact(store.fork("s1")) is False
+    assert store.session_self_compact(store.fork("s1")) is None
 
 
 async def test_each_session_remembers_its_own_setting(tmp_path: Path):
@@ -179,7 +214,7 @@ async def test_each_session_remembers_its_own_setting(tmp_path: Path):
 
     store.set_self_compact("a", True)
 
-    assert (store.session_self_compact("a"), store.session_self_compact("b")) == (True, False)
+    assert (store.session_self_compact("a"), store.session_self_compact("b")) == (True, None)
 
 
 async def test_setting_it_does_not_move_the_age_the_list_shows(tmp_path: Path):
@@ -205,7 +240,7 @@ async def test_a_failed_write_raises_so_the_choice_is_not_reported_as_saved(tmp_
     with pytest.raises(OSError, match="self-compaction"):
         store.set_self_compact("s1", True)
 
-    assert store.session_self_compact("s1") is False, "and nothing half-written is read back"
+    assert store.session_self_compact("s1") is None, "and nothing half-written is read back"
 
 
 async def test_a_failed_creation_raises_too(tmp_path: Path, monkeypatch):
@@ -218,4 +253,4 @@ async def test_a_failed_creation_raises_too(tmp_path: Path, monkeypatch):
         store.set_self_compact("fresh", True)
 
     monkeypatch.setattr(store_module, "write_session_metadata", real)
-    assert store.session_self_compact("fresh") is False
+    assert store.session_self_compact("fresh") is None

@@ -245,6 +245,7 @@ class BarsMixin(ShellState):
                 note=self._note,
                 auto_shell=self.agent.permission is Permission.AUTO,
                 permission=self.agent.permission.value,
+                self_compact=self.agent.self_compaction,
                 usage=self._usage,
                 tasks=self.agent.tasks(),
                 frame=self.transcript.frame,
