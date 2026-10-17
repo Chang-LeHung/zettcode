@@ -17,7 +17,6 @@ import platform
 import sys
 from dataclasses import dataclass, field, replace
 from datetime import datetime
-from pathlib import Path
 from typing import TYPE_CHECKING, TypeAlias
 
 from zett_agent.agent import AgentRunConfig
@@ -33,7 +32,6 @@ from zett_agent.ids import new_uuid7
 from zett_agent.model import ReasoningEffort
 
 from zettcode.config import DEFAULT_ANTHROPIC_BASE_URL, ModelConfig, ZettCodeConfig
-from zettcode.paths import DEFAULT_MCP_CONFIG
 from zettcode.plugins import Plugins, load_plugins
 
 from ..pipeline import ImportPipeline
@@ -147,7 +145,7 @@ def integration_extensions(config: ZettCodeConfig) -> tuple[AgentExtension, ...]
     from zett_agent.extensions.agents_md import AgentsMdExtension
     from zett_agent.extensions.skill import SkillExtension
 
-    from .extensions.mcp import build_mcp_extension
+    from .extensions.mcp import build_scoped_mcp_extension
 
     extensions: list[AgentExtension] = []
     if config.ask_user_enabled:
@@ -157,9 +155,9 @@ def integration_extensions(config: ZettCodeConfig) -> tuple[AgentExtension, ...]
     if config.skills_enabled:
         extensions.append(SkillExtension(config.skill_search_roots()))
     if config.mcp_enabled:
-        path = config.mcp_config or DEFAULT_MCP_CONFIG
-        if Path(path).expanduser().is_file():
-            extensions.append(build_mcp_extension(path))
+        mcp = build_scoped_mcp_extension(config.mcp_files())
+        if mcp is not None:
+            extensions.append(mcp)
     return tuple(extensions)
 
 
