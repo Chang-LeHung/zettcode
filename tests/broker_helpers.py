@@ -92,6 +92,18 @@ class RawPeer:
     async def send_raw(self, data: str | bytes) -> None:
         await self.websocket.send(data)
 
+    async def announce_frame(self, length: int) -> None:
+        """Say that a text frame of ``length`` bytes is coming, and send none of it.
+
+        Sending a body past the limit is a race of the test's own making: the server refuses on the header and
+        hangs up while the body is still being written, the kernel answers the unread bytes with a reset, and
+        the reset can overtake the close frame, so the sender sees a broken pipe instead of the 1009 it is
+        checking for. The header alone is all the server needs to refuse, and leaves nothing unread behind.
+        """
+        masked = 0x80
+        header = bytes([0x81, masked | 127]) + length.to_bytes(8, "big") + bytes(4)  # text, FIN, 8-byte length, mask
+        self.websocket.transport.write(header)
+
     async def call(self, op: str, timeout: float = 3.0, **fields: Any) -> dict[str, Any]:
         """Say something over the WebSocket and return the ``done`` or ``refused`` that answers it."""
         number = next(self._numbers)
