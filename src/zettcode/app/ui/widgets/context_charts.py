@@ -160,16 +160,26 @@ def window_lines(report: ContextReport, trigger: int | None, width: int) -> list
     return lines
 
 
+def divides_the_total(report: ContextReport) -> bool:
+    """Return whether the rows are shares of the provider's total, and so add up to it.
+
+    That needs every source to be there. The provider's number is for the whole request, tool schemas
+    and environment notes included; while those are unknown (``partial``) dividing it between the
+    sources that are known would hand their tokens to rows that did not send them.
+    """
+    return report.from_provider and not report.partial and report.measured > 0
+
+
 def tokens_by_source(report: ContextReport) -> dict[str, int]:
     """Return the tokens each source takes, in the units of the total the page reports.
 
     The local count is only good for proportions: it uses one tokenizer, and the model bills by
     its own. So when the provider reported the request's size, each source gets its share of
-    *that* number, divided so the rows add up to it exactly; without one, the local counts are
-    all there is and are shown as counted.
+    *that* number, divided so the rows add up to it exactly; without one, or while a source is
+    still unknown, the local counts are all there is and are shown as counted.
     """
     shares = report.shares
-    if not report.from_provider or report.measured <= 0:
+    if not divides_the_total(report):
         return {share.name: share.tokens for share in shares}
     parts = allocate([share.tokens for share in shares], report.used)
     return {share.name: count for share, count in zip(shares, parts, strict=True)}
@@ -181,12 +191,13 @@ def makeup_lines(report: ContextReport, width: int) -> list[Line]:
     measured = report.measured
     tokens = tokens_by_source(report)
     present = [share for share in report.shares if share.tokens > 0]
+    total = report.used if divides_the_total(report) else report.measured
     lines: list[Line] = [
         _fitted(
             width,
             [
-                [("Where it goes", "heading"), (f"   how the {report.used:,} tokens divide between sources", "muted")],
-                [("Where it goes", "heading"), (f"   {report.used:,} tokens", "muted")],
+                [("Where it goes", "heading"), (f"   how the {total:,} tokens divide between sources", "muted")],
+                [("Where it goes", "heading"), (f"   {total:,} tokens", "muted")],
                 [("Where it goes", "heading")],
             ],
         ),
@@ -242,10 +253,21 @@ def note_lines(report: ContextReport, width: int = BAR_MAX) -> list[Line]:
     is and that the division of it between sources is worked out locally, which is why it is a
     proportion and not a bill; and, when the counts are a rule of thumb, that they are.
     """
-    if report.from_provider:
+    if report.from_provider and not report.partial:
         words = (
             "Total from the provider, which counts what it bills. "
             "Each source gets its share of that total, worked out from a local count."
+        )
+    elif report.from_provider:
+        words = (
+            "Total from the provider, which counts what it bills. The rows are counted here and do not "
+            "add up to it: the environment notes and tool schemas are in the total but cannot be seen "
+            "until a request has been sent."
+        )
+    elif report.partial:
+        words = (
+            "Counted here; the provider has not reported this request yet. The environment notes and "
+            "tool schemas are not counted until a request has been sent."
         )
     else:
         words = "Counted here; the provider has not reported this request yet."
