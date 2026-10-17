@@ -85,9 +85,10 @@ with `Tab` (or `1`, `2`, `3`):
 - **Models** — for each model, its input and output as two bars, with the share of the input
   that came from the provider's cache and how much of the output was reasoning. Input and output
   each use their own scale, because output is a small fraction of input for every model.
-- **Sessions** — one row for each session, newest first, with when it began, its title, and its
-  input and output as bars. The bars use a square-root scale so a small session still shows next
-  to a very large one; a narrow terminal drops the bars and keeps the numbers.
+- **Sessions** — one row for each session, last changed first, with when it began and when it last
+  changed, its title, and its input and output as bars. The bars use a square-root scale so a small
+  session still shows next to a very large one; a narrow terminal drops the bars first, then the
+  clock, and the narrowest keeps only the last change — the time the order is by.
 - **Calendar** — a grid of weeks like the contribution graph on GitHub: a column is a week, a
   square is a day, and its shade is that day's tokens (input plus output) from none to the
   heaviest quarter of your days. `←` `→` move by a week and `↑` `↓` by a day, and the line under

@@ -122,7 +122,7 @@ class Ledger:
     """A workspace's usage three ways: by model, by session, and by day.
 
     Attributes:
-        sessions: One row per counted session, newest first. A session that has not
+        sessions: One row per counted session, last changed first. A session that has not
             spent anything is a row of zeros, so the list is the list ``/resume`` shows.
         models: Totals by model name.
         days: Totals by calendar day, only for days something was spent.
@@ -465,5 +465,6 @@ def _fold(found: Iterable[tuple[datetime, str, Path, _File]]) -> Ledger:
             updated = started
         title = _title_of(path.parent)
         ledger.sessions.append(SessionUsage(session_id, title, started, updated, tally, tuple(models)))
-    ledger.sessions.reverse()
+    # The list answers "what was I working on", so it is ordered by the last change, not by the first word.
+    ledger.sessions.sort(key=lambda row: (row.updated, row.started, row.session_id), reverse=True)
     return ledger
