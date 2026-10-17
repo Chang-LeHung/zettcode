@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import replace
 from pathlib import Path
 
 from zettcode.config import ModelConfig, _read_models
@@ -12,6 +13,7 @@ from zettcode.config_edit import (
     file_entries,
     remove_model,
     replace_model,
+    set_self_compaction,
     set_theme,
     write_text_atomically,
 )
@@ -149,6 +151,56 @@ class SettingsMixin(AgentBase):
             write_text_atomically(self.config_file, text)
         except OSError as error:
             raise ConfigEditError(f"{self.config_file} could not be written: {error}") from error
+        return self.config_file
+
+    @property
+    def self_compaction(self) -> bool:
+        """Return whether the model may request compaction in this session right now."""
+        return self.runtime.self_compacting(self.session_id)
+
+    @property
+    def self_compaction_choice(self) -> bool | None:
+        """Return this session's own choice, or ``None`` when it follows the default."""
+        return self.runtime.self_compaction_choice(self.session_id)
+
+    @property
+    def self_compaction_default(self) -> bool:
+        """Return what a session that has made no choice does: ``[compaction] self`` in the config."""
+        return self.runtime.config.self_compaction
+
+    def use_self_compaction(self, choice: bool | None) -> None:
+        """Set this session's own choice, or give it back with ``None`` so it follows the default.
+
+        Raises:
+            SessionLocked: Another process has the session open; the choice is part of the session.
+            ConfigEditError: The choice could not be saved. Nothing is reported as saved then.
+        """
+        self.require_session()
+        try:
+            self.runtime.choose_self_compaction(self.session_id, choice)
+        except OSError as error:
+            raise ConfigEditError(f"Self-compaction setting was not saved: {error}") from error
+
+    def remember_self_compaction(self, enabled: bool) -> Path:
+        """Write ``[compaction] self = enabled`` into the config file: the default for every session.
+
+        The file is written first and the running configuration changed second, so a write that fails
+        leaves both as they were. A session with a choice of its own keeps it; one without follows this at
+        once. A config file that does not exist is not created for it, as for the theme.
+
+        Returns:
+            The file written.
+
+        Raises:
+            ConfigEditError: When there is no config file, it cannot be read or edited safely, or it cannot
+                be written.
+        """
+        text = set_self_compaction(self._read_config_file(), enabled, where=self.config_file)
+        try:
+            write_text_atomically(self.config_file, text)
+        except OSError as error:
+            raise ConfigEditError(f"{self.config_file} could not be written: {error}") from error
+        self.runtime.config = replace(self.runtime.config, self_compaction=enabled)
         return self.config_file
 
     @property

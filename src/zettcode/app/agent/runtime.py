@@ -232,6 +232,8 @@ class ZettCodeRuntime:
     #: The sweep for empty session folders a killed process left behind, run once at the start on a thread.
     _tidying: asyncio.Task[int] | None = field(default=None, repr=False)
     _models: dict[ModelConfig, Adapter] = field(default_factory=dict)
+    #: Each session's own self-compaction choice as last read or written; see :meth:`self_compaction_choice`.
+    _self_choices: dict[str, bool | None] = field(default_factory=dict, repr=False)
     #: The warm-up imports, running on a daemon thread, and the loop-side event
     #: that releases whoever is waiting for them.
     _imports: ImportPipeline | None = field(default=None, repr=False)
@@ -274,7 +276,6 @@ class ZettCodeRuntime:
                 max_tokens=selected.compaction_max_tokens,
                 keep_recent_tokens=selected.compaction_keep_tokens,
                 count_tokens=counter.count,
-                self_compact=persistence.session_self_compact,
             ),
             compaction_counter=counter,
             plugins=load_plugins(config),
@@ -283,6 +284,8 @@ class ZettCodeRuntime:
         # The session a launch starts in is a new one, so this always succeeds; a launch that resumes
         # another moves the lock when it installs it.
         runtime.session_locks.claim(runtime.session_id)
+        # Asked for every request, so a choice made in the middle of a conversation applies to its next one.
+        runtime.compaction.self_compact = runtime.self_compacting
         return runtime
 
     def start(self) -> asyncio.Task[ZettCodeRuntime]:
@@ -506,6 +509,34 @@ class ZettCodeRuntime:
     def approve_all_shell_commands(self) -> None:
         """Stop asking for shell approval for the rest of this process."""
         self.use_permission(Permission.AUTO)
+
+    def self_compaction_choice(self, session_id: str) -> bool | None:
+        """Return the choice one session made about self-compaction, ``None`` when it follows the default.
+
+        Read from the session's file once and remembered: the status line asks on every repaint, and only
+        the process that holds the session's lock writes it, so what was read stays true until this
+        runtime changes it.
+        """
+        if session_id not in self._self_choices:
+            self._self_choices[session_id] = self.persistence.session_self_compact(session_id)
+        return self._self_choices[session_id]
+
+    def choose_self_compaction(self, session_id: str, choice: bool | None) -> None:
+        """Save one session's choice about self-compaction, and remember it only once it is saved.
+
+        Raises:
+            OSError: The choice could not be written; the remembered one is unchanged.
+        """
+        self.persistence.set_self_compact(session_id, choice, default=self.config.self_compaction)
+        self._self_choices[session_id] = choice
+
+    def self_compacting(self, session_id: str) -> bool:
+        """Return whether the model may request compaction in one session.
+
+        The session's own choice when it made one, else the configuration's ``[compaction] self``.
+        """
+        choice = self.self_compaction_choice(session_id)
+        return self.config.self_compaction if choice is None else choice
 
     def use_effort(self, name: str | ReasoningEffort) -> ReasoningEffort:
         """Select how much reasoning the model may spend on later requests.

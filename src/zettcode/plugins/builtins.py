@@ -44,6 +44,8 @@ class ShellRows(Plugin):
         activity = context.activity
         icon = activity_glyph(activity.frame) if activity.busy else STATUS
         mode = f" {SEPARATOR} {activity.permission}" if activity.permission != "ask" else ""
+        if activity.self_compact:
+            mode += f" {SEPARATOR} self-compact"
         used = context_text(activity.usage, context.model.config.context_window)
         label = f"{activity.label}{mode}"
         return f"  {icon} {label}{usage_text(activity.usage)}{used}"

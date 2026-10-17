@@ -141,16 +141,17 @@ class OnDemandCompaction(CompactionExtension):
 
         @tool(name="compact_context")
         async def compact_context() -> str:
-            """Request a summary of older conversation before your next model call.
-
-            The current user turn, including tool calls and results, stays intact. Older turns are
-            replaced by a checkpoint only when its summary is smaller. Nothing is compacted if
-            there are no older turns to summarize.
+            """Self-compaction: compact your own context by replacing your earlier conversation with a summary you keep
+            working from. The user enabled it so that you, not only the size limit, decide when the context is worth
+            shrinking. It runs before your next model call and always keeps the current user turn, with its tool calls
+            and results, exactly as it is; nothing happens if there are no older turns or the summary would not be
+            smaller.
 
             Guidelines:
-                - Use when earlier work is settled and its detail no longer needs to stay in context.
-                - Do not call repeatedly: one request is enough, and the current turn cannot be compacted.
-                - Continue the task after requesting compaction; this is not a final answer.
+                - Call it when earlier work is settled and its detail no longer needs to stay in context, for
+                  example after a finished subtask, or before a long unrelated one.
+                - Do not call it repeatedly: one request is enough, and the current turn cannot be compacted.
+                - Do not call it to finish a turn. Continue the task after requesting it; this is not an answer.
             """
             if not self.self_compact(context.session_id or ""):
                 return "Self-compaction is disabled for this session."

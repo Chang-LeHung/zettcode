@@ -16,7 +16,17 @@ from zettcode.config_edit import ConfigEditError
 from zettcode.tui import Widget
 
 from ..commands import Command, CommandContext, CommandProvider, CommandResult, Subcommand
-from .widgets import EFFORT_ROWS, ContextPage, EffortPage, ModelPage, SessionsPage, bottom_panel, help_text
+from .widgets import (
+    EFFORT_ROWS,
+    SELF_COMPACT_ROWS,
+    ContextPage,
+    EffortPage,
+    ModelPage,
+    SelfCompactPage,
+    SessionsPage,
+    bottom_panel,
+    help_text,
+)
 
 #: Rows the picker panels take from the bottom of the screen: the title, the
 #: list, and the footer hint. The handler owns the number; nothing in the
@@ -112,6 +122,13 @@ class ShellCommands(CommandProvider):
                 "how much the model reasons: /effort high",
                 "app",
                 self.effort,
+                when_busy="now",
+            ),
+            Command(
+                "/self-compact",
+                "let the model compact its own context: /self-compact opens a panel; on|off|default|global",
+                "app",
+                self.self_compact,
                 when_busy="now",
             ),
             Command(
@@ -336,6 +353,47 @@ class ShellCommands(CommandProvider):
             on_cancel=shell.close_page,
         )
         return CommandResult(widget=bottom_panel(page, rows=EFFORT_ROWS))
+
+    async def self_compact(self, context: CommandContext) -> CommandResult:
+        """Change self-compaction from the words it takes, or open the panel with a rail for each setting.
+
+        The panel has two rails: this session's own choice, and the default every session that never chose
+        follows. The knobs only move; Enter applies both, which is when the session's metadata and the config
+        file are written. A part that cannot be saved is reported and the other part still applies, so a
+        missing config file does not cost the session its choice. Escape applies nothing.
+        """
+        shell = self.shell
+        if context.argument:
+            try:
+                return CommandResult(message=shell.agent.change_self_compaction(context.argument))
+            except ValueError as error:
+                return CommandResult(message=str(error))
+
+        def apply(choice: bool | None, default: bool) -> None:
+            shell.close_page()
+            agent = shell.agent
+            # The default first: whether a choice differs from it is what decides if a session that has not
+            # been used yet has anything to save.
+            for change, needed in (
+                (lambda: agent.remember_self_compaction(default), default != agent.self_compaction_default),
+                (lambda: agent.use_self_compaction(choice), choice != agent.self_compaction_choice),
+            ):
+                if not needed:
+                    continue
+                try:
+                    change()
+                except ValueError as error:
+                    shell.transcript.error(str(error))
+            shell.transcript.notice(shell.agent.self_compaction_summary())
+
+        page = SelfCompactPage(
+            shell.agent.self_compaction_choice,
+            shell.agent.self_compaction_default,
+            on_apply=apply,
+            on_cancel=shell.close_page,
+            session_open=not shell.agent.session_locked,
+        )
+        return CommandResult(widget=bottom_panel(page, rows=SELF_COMPACT_ROWS))
 
     async def permission(self, context: CommandContext) -> CommandResult:
         """Set a named level straight away, or open the menu of the levels.
