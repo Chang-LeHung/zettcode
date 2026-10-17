@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from zett_agent.model import ReasoningEffort
 
 from zettcode._compat import tomllib
 from zettcode.config import ModelConfig
@@ -92,7 +93,32 @@ def test_an_unknown_key_is_refused_rather_than_written_where_the_loader_would_re
 
 def test_a_value_it_cannot_write_is_refused():
     with pytest.raises(ConfigEditError, match="cannot write"):
-        render_entry({"model": "m", "token": ["a"]})
+        render_entry({"model": "m", "token": {"a": 1}})
+    with pytest.raises(ConfigEditError, match="cannot write"):
+        render_entry({"model": "m", "token": [1]})
+
+
+def test_the_levels_a_model_takes_are_written_and_read_back_in_the_documented_place():
+    model = ModelConfig(model="m", token="t", reasoning_efforts=(ReasoningEffort.LOW, ReasoningEffort.HIGH))
+
+    entry = entry_from_model(model)
+    text = render_entry(entry)
+
+    assert entry["reasoning_efforts"] == ["low", "high"]
+    assert text.splitlines()[-1] == 'reasoning_efforts = ["low", "high"]'
+    assert tomllib.loads(text)["models"] == [entry]
+
+
+def test_editing_a_model_in_the_panel_does_not_drop_the_levels_it_takes():
+    """The panel rewrites a model from the keys the file holds; a key it did not write would silently vanish."""
+    text = '[[models]]\nmodel = "m"\ntoken = "t"\nreasoning_efforts = ["low", "high"]\n'
+    entry = dict(file_entries(text, where=WHERE)[0])
+    entry["display_model"] = "Renamed"
+
+    result = replace_model(text, 0, entry, where=WHERE)
+
+    assert tomllib.loads(result)["models"][0]["reasoning_efforts"] == ["low", "high"]
+    assert tomllib.loads(result)["models"][0]["display_model"] == "Renamed"
 
 
 def test_a_model_becomes_only_the_keys_that_are_not_defaults():

@@ -270,6 +270,8 @@ def test_skill_roots_are_searched_before_the_default_directory(tmp_path: Path):
     assert config.skill_search_roots() == (
         (home / "team-skills").resolve(),
         (tmp_path / ".agent" / "skills").resolve(),
+        # The default scope reads the project's own skills, then the user's.
+        (tmp_path / ".zettcode" / "skills").resolve(),
         (home / ".zettcode" / "skills").resolve(),
     )
 
