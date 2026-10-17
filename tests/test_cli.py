@@ -165,6 +165,19 @@ def test_the_resume_flag_picks_the_session(tmp_path: Path):
     assert parse_args(["--resume", "abc", "--workspace", str(tmp_path)]) == Options(workspace=tmp_path, resume="abc")
 
 
+def test_the_resume_subcommand_is_the_resume_option_spelled_as_a_word(tmp_path: Path):
+    """`zettcode resume ID` starts a session exactly as `zettcode --resume ID` does; both stay."""
+    assert parse_args(["-w", str(tmp_path), "resume", "abc"]) == Options(workspace=tmp_path, resume="abc")
+    assert parse_args(["resume", "abc"]).command is None, "it starts a session; it is not a program of its own"
+    assert parse_args(["resume", "abc"]) == parse_args(["--resume", "abc"])
+    # Both spellings at once are fine when they agree, and a mistake when they do not.
+    assert parse_args(["--resume", "abc", "resume", "abc"]).resume == "abc"
+    with pytest.raises(SystemExit):
+        parse_args(["--resume", "abc", "resume", "def"])
+    with pytest.raises(SystemExit):
+        parse_args(["resume"])
+
+
 def test_the_resume_command_survives_a_workspace_with_spaces(tmp_path: Path):
     """The line the shell prints on exit has to paste into a shell as it stands."""
     workspace = tmp_path / "my workspace"

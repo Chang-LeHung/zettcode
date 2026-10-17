@@ -2,7 +2,7 @@
 
 Almost everything is configured in ``~/.zettcode/config.toml`` (see
 :mod:`zettcode.config`), not on the command line: ``-w``/``--workspace`` picks
-the directory to work in, ``-v``/``--version`` prints the version, ``-r``/``--resume`` picks the stored session to open
+the directory to work in, ``-v``/``--version`` prints the version, ``-r``/``--resume`` (or the ``resume`` subcommand) picks the stored session to open
 instead of a fresh one, and ``$ZETTCODE_CONFIG`` can point at a different
 config file. ``zettcode update`` installs the newest release and exits.
 
@@ -136,9 +136,14 @@ def parse_args(argv: list[str] | None = None) -> Options:
     )
     resume.add_argument("session", metavar="SESSION", help="the session's id, as printed when it ended")
     args = parser.parse_args(argv)
-    return Options(
-        workspace=args.workspace, resume=args.resume, auto=args.auto, dry_run=args.dry_run, command=args.command
-    )
+    session = args.resume
+    command = args.command
+    if command == "resume":
+        # Opening a session is a way of starting one, not a different program, so it is the option's twin.
+        if args.resume is not None and args.resume != args.session:
+            parser.error(f"--resume {args.resume} and resume {args.session} name different sessions")
+        session, command = args.session, None
+    return Options(workspace=args.workspace, resume=session, auto=args.auto, dry_run=args.dry_run, command=command)
 
 
 def workspace_from_args(argv: list[str] | None = None) -> Path:
