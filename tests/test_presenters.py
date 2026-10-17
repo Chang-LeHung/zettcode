@@ -785,3 +785,65 @@ def test_every_tool_hue_can_be_read_on_the_surfaces_a_row_sits_on():
             colour = getattr(theme.tools, role)
             assert _contrast(colour, theme.surface) >= 3.4, (theme.name, role, "on surface")
             assert _contrast(colour, theme.surface_alt) >= 3.4, (theme.name, role, "on the alternate surface")
+
+
+# -- whose presenter draws a row: the built-ins are the default, at the lowest priority -----------------
+
+
+def test_the_built_in_presenters_are_the_lowest_claim_so_a_plugin_replaces_one_by_registering():
+    """Nothing has to outrank the program's own rows; registering the same kind is enough."""
+    from zettcode.app.agent.conversation.presenters import BUILTIN_PRESENTERS
+
+    assert {presenter.priority for presenter in BUILTIN_PRESENTERS} == {0}
+
+    class Mine(NoticePresenter):
+        def lines(self, entry, width, theme, frame):
+            return [TextLine()]
+
+    notice = TextEntry(id=1, kind="notice", text="handled")
+
+    assert Presenters((*BUILTIN_PRESENTERS, Mine())).for_entry(notice).__class__ is Mine
+    assert DEFAULT_PRESENTERS.for_entry(notice).__class__ is NoticePresenter
+
+
+def test_a_stronger_claim_wins_wherever_it_was_registered():
+    """Priority, then registration order: a higher number beats a later registration at a lower one."""
+    notice = TextEntry(id=1, kind="notice", text="handled")
+
+    class Strong(NoticePresenter):
+        priority = 5
+
+    class Late(NoticePresenter):
+        pass
+
+    assert Presenters((Strong(), Late())).for_entry(notice).__class__ is Strong
+    assert Presenters((Late(), Strong())).for_entry(notice).__class__ is Strong
+
+
+def test_a_presenter_for_the_whole_kind_outranks_the_families_it_was_registered_after():
+    """A claim on every tool row is a claim on the edit row too, unless the family claims more."""
+    from zettcode.app.agent.conversation.presenters import EditPresenter
+
+    class Everything(ToolPresenter):
+        priority = 4
+
+    class StillMine(EditPresenter):
+        priority = 6
+
+    edit = EditEntry(id=1, call_id="c", tool="edit", title="Edited a.py", path="a.py")
+    rows = Presenters((EditPresenter(), Everything(), StillMine()))
+
+    assert rows.for_entry(ToolEntry(id=2, call_id="d", tool="read_file", title="Read a.py")).__class__ is Everything
+    assert rows.for_entry(edit).__class__ is StillMine
+
+
+def test_a_family_the_kinds_presenter_outranks_is_not_in_the_list_at_all():
+    """It would never be asked for a row, so the registry does not hold it out as one of the drawers."""
+
+    class Everything(ToolPresenter):
+        priority = 4
+
+    rows = Presenters((*DEFAULT_PRESENTERS.presenters, Everything()))
+
+    families = [p for p in rows.presenters if p.kind is EntryKind.TOOL and p.entry_type is not None]
+    assert families == [] and type(rows.for_entry(ToolEntry(id=1, call_id="c", tool="t", title="x"))) is Everything

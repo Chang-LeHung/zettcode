@@ -161,11 +161,17 @@ class Presenter(Generic[E], ABC):
             gutter's own column — the user's arrow, the wait row's sparkle, a
             tool's outcome. Every other row is inset past the gutter, so every
             leading glyph sits in one column and every line of content in the next.
+        priority: How strongly this presenter claims the rows it draws, when more than one could draw
+            them. The higher number wins, and an equal number goes to whichever was registered later,
+            so the built-in presenters - priority 0, registered first - are what a transcript uses
+            until a plugin registers its own. A plugin that wants to replace only some families of a
+            kind, or to beat another plugin, raises this.
     """
 
     kind: ClassVar[EntryKind]
     entry_type: ClassVar[type[Entry] | None] = None
     gutter: ClassVar[bool] = False
+    priority: ClassVar[int] = 0
 
     @abstractmethod
     def lines(self, entry: E, width: int, theme: Theme, frame: int) -> list[TextLine]:
@@ -812,44 +818,65 @@ class Presenters:
     second. Most kinds have one presenter and no family (a notice is a notice), and ``tool`` has
     one for tools in general and one for each tool whose entry carries more than the rest.
 
-    A later presenter for a kind replaces an earlier one, which is how a transcript is given a
-    different way to draw a kind without a chain whose order has to be right: :meth:`replacing`.
-    A presenter given for a whole kind replaces its families too — it was asked to draw every row of
-    the kind, and a family left behind would keep drawing its own — while a family given after it
-    is a refinement of it, and stays.
+    When more than one presenter could draw the same rows, the one with the higher
+    :attr:`Presenter.priority` wins, and an equal priority goes to the later registration. That is
+    what makes a transcript's own presenters the default: they are registered first, at priority 0,
+    so anything a plugin registers for the same rows wins without having to outrank them.
+    :meth:`replacing` appends, which is the same thing for a caller holding a registry rather than a
+    plugin container.
+
+    A presenter for a whole kind is a claim on every row of that kind, so it beats the families
+    registered before it at its priority: a plugin that draws every tool row draws every tool row.
+    A family registered after it, or at a higher priority, is a refinement and keeps its own.
     """
 
     def __init__(self, presenters: Iterable[Presenter[Any]]) -> None:
-        """Register presenters; the last one given for a kind, or for an entry class, wins."""
-        self._by_kind: dict[EntryKind, Presenter[Any]] = {}
-        self._by_type: dict[type[Entry], Presenter[Any]] = {}
-        for presenter in presenters:
+        """Register presenters in order; for one kind or class, the strongest claim wins."""
+        self._by_kind: dict[EntryKind, tuple[int, int, Presenter[Any]]] = {}
+        self._by_type: dict[type[Entry], tuple[int, int, Presenter[Any]]] = {}
+        for order, presenter in enumerate(presenters):
+            rank = (presenter.priority, order)
             if presenter.entry_type is not None:
-                self._by_type[presenter.entry_type] = presenter
-                continue
-            self._by_kind[presenter.kind] = presenter
-            for entry_type in [t for t, other in self._by_type.items() if other.kind is presenter.kind]:
-                del self._by_type[entry_type]
+                current = self._by_type.get(presenter.entry_type)
+                if current is None or rank >= current[:2]:
+                    self._by_type[presenter.entry_type] = (*rank, presenter)
+            else:
+                current = self._by_kind.get(presenter.kind)
+                if current is None or rank >= current[:2]:
+                    self._by_kind[presenter.kind] = (*rank, presenter)
 
     @property
     def presenters(self) -> tuple[Presenter[Any], ...]:
-        """Return the registered presenters: the kinds' first, then the families'."""
-        return (*self._by_kind.values(), *self._by_type.values())
+        """Return the presenters that draw something: the kinds' first, then the families'.
+
+        A family a kind's presenter has outranked is left out: it would never be asked for a row.
+        """
+        live = [presenter for _, _, presenter in self._by_kind.values()]
+        live.extend(
+            presenter
+            for priority, order, presenter in self._by_type.values()
+            if self._by_kind.get(presenter.kind) is None or (priority, order) > self._by_kind[presenter.kind][:2]
+        )
+        return tuple(live)
 
     def replacing(self, *presenters: Presenter[Any]) -> Presenters:
         """Return a registry that draws the given kinds, and families, with the given presenters."""
         return Presenters((*self.presenters, *presenters))
 
     def for_entry(self, entry: Entry) -> Presenter[Any]:
-        """Return the presenter for an entry: its class's, else its kind's, else say which kind has none."""
+        """Return the presenter for an entry: the strongest claim on its class or kind, else say so."""
+        family: tuple[int, int, Presenter[Any]] | None = None
         for cls in type(entry).__mro__:
             found = self._by_type.get(cls)
             if found is not None:
-                return found
-        try:
-            return self._by_kind[entry.kind]
-        except KeyError:
-            raise ValueError(f"No presenter for a {entry.kind.value} row") from None
+                family = found
+                break
+        kind = self._by_kind.get(entry.kind)
+        if family is not None and (kind is None or family[:2] > kind[:2]):
+            return family[2]
+        if kind is None:
+            raise ValueError(f"No presenter for a {entry.kind.value} row")
+        return kind[2]
 
     def lines(self, entry: Entry, width: int, theme: Theme, frame: int) -> list[TextLine]:
         """Return the rows an entry paints, rendered now and not cached."""
@@ -860,25 +887,27 @@ class Presenters:
         return self.for_entry(entry).block(entry, width, theme, frame, self)
 
 
-DEFAULT_PRESENTERS = Presenters(
-    (
-        WelcomePresenter(),
-        UserPresenter(),
-        NoticePresenter(),
-        AnnouncementPresenter(),
-        AnswerPresenter(),
-        MessagePresenter(),
-        WaitPresenter(),
-        ThinkingPresenter(),
-        ToolPresenter(),
-        ChangesPresenter(),
-        RelayPresenter(),
-        ReadPresenter(),
-        WritePresenter(),
-        EditPresenter(),
-        SessionMessagePresenter(),
-    )
+BUILTIN_PRESENTERS: tuple[Presenter[Any], ...] = (
+    WelcomePresenter(),
+    UserPresenter(),
+    NoticePresenter(),
+    AnnouncementPresenter(),
+    AnswerPresenter(),
+    MessagePresenter(),
+    WaitPresenter(),
+    ThinkingPresenter(),
+    ToolPresenter(),
+    ChangesPresenter(),
+    RelayPresenter(),
+    ReadPresenter(),
+    WritePresenter(),
+    EditPresenter(),
+    SessionMessagePresenter(),
 )
+
+#: How a transcript draws entries when nothing has registered a presenter: the built-in ones, at the
+#: lowest priority, which is also what the built-in plugin registers them with for a real run.
+DEFAULT_PRESENTERS = Presenters(BUILTIN_PRESENTERS)
 
 
 def render_entry(

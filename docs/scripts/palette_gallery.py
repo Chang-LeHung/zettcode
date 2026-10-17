@@ -45,7 +45,7 @@ from zettcode.app.ui.labels import header_left  # noqa: E402
 from zettcode.app.ui.shell import PAGE_SCREEN  # noqa: E402
 from zettcode.app.ui.widgets import EFFORT_ROWS, EffortPage, bottom_panel  # noqa: E402
 from zettcode.config import ModelConfig, ZettCodeConfig  # noqa: E402
-from zettcode.plugins.builtins import ShellRows  # noqa: E402
+from zettcode.plugins.builtins import BUILTIN_PLUGINS, ShellRows  # noqa: E402
 from zettcode.plugins.loader import load_plugins  # noqa: E402
 from zettcode.tui import Canvas, Screen, Theme, TuiApp  # noqa: E402
 from zettcode.tui.gallery import GALLERY, render_entry  # noqa: E402
@@ -63,6 +63,11 @@ class PreviewRows(ShellRows):
 
     def render_header_left(self, context) -> str:
         return header_left(Path("~/projects/api"), context.session.name, context.session.handle)
+
+
+def preview_plugins() -> tuple[object, ...]:
+    """Every built-in plugin, with the illustrative header rows in place of the shell's own."""
+    return (PreviewRows(), *(plugin for plugin in BUILTIN_PLUGINS if plugin.name != "shell"))
 
 
 class Env:
@@ -88,7 +93,7 @@ class Env:
             mcp_enabled=False,
         )
         self.runtime = ZettCodeRuntime.preview(config)
-        self.runtime.plugins = load_plugins(config, builtins=(PreviewRows(),))
+        self.runtime.plugins = load_plugins(config, builtins=preview_plugins())
         self.workspace = workspace
 
     def close(self) -> None:

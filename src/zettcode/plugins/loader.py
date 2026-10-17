@@ -21,7 +21,7 @@ collides is skipped and reported rather than silently shadowed.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from ..providers import BUILTIN_PROVIDERS
 from ..tui import RESERVED_THEMES
@@ -34,6 +34,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
     from collections.abc import Iterable, Sequence
     from importlib.metadata import EntryPoint
 
+    from ..app.agent.conversation.presenters import Presenter
     from ..app.agent.dialogue.mentions import MentionProvider
     from ..app.commands import Command
     from ..config import ZettCodeConfig
@@ -112,6 +113,7 @@ class _Loader:
         self.mentions: list[MentionProvider] = []
         self.providers: list[Provider] = []
         self.themes: list[ThemeSource] = []
+        self.presenters: list[Presenter[Any]] = []
         self.failures: list[str] = []
         self._identities: set[str] = set()
         self._claimed: set[str] = set()
@@ -176,6 +178,7 @@ class _Loader:
         self._identities.add(name)
         self._theme_names.update(source.name for source in container.themes)
         self.themes.extend(container.themes)
+        self.presenters.extend(container.presenters)
         self._provider_names.update(provider.name for provider in container.providers)
         self.providers.extend(container.providers)
         self._claimed.update(command.name for command in container.commands)
@@ -194,6 +197,7 @@ class _Loader:
             mentions=tuple(self.mentions),
             providers=tuple(self.providers),
             themes=tuple(self.themes),
+            presenters=tuple(self.presenters),
             rows=self.slots.rows(),
             failures=tuple(self.failures),
         )

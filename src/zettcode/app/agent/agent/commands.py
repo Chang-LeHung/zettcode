@@ -12,6 +12,7 @@ from zettcode.plugins import UiRow
 from zettcode.providers import BUILTIN_PROVIDERS, Provider, merge_providers
 from zettcode.tui import ThemeCatalog
 
+from ..conversation.presenters import Presenters
 from ..dialogue.mentions import MentionProvider
 from .exports import ExportsMixin
 
@@ -65,6 +66,16 @@ class CommandsMixin(ExportsMixin):
     def plugin_failures(self) -> tuple[str, ...]:
         """Return one message per plugin that could not be loaded or activated."""
         return self.runtime.plugins.failures
+
+    @property
+    def presenters(self) -> Presenters:
+        """Return how this run draws entries: the built-in presenters, and any a plugin outranks them with.
+
+        Built from the bundle rather than from a module-level default for the same reason the palettes are: the
+        program's own rows are registered through the plugin route, so a plugin that draws a kind or a family of
+        rows reaches the transcript without a second path only plugins could not take.
+        """
+        return Presenters(self.runtime.plugins.presenters)
 
     @property
     def plugin_rows(self) -> tuple[UiRow, ...]:

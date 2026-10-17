@@ -14,8 +14,10 @@ reusing its segment names is what taking a slot over means.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
+from ..app.agent.conversation.entries import EntryKind
+from ..app.agent.conversation.presenters import Presenter
 from ..app.commands import BusyPolicy, Command, CommandHandler, CommandList, CommandProvider, Subcommands
 from ..providers import Provider
 from ..tui import RESERVED_THEMES, THEME_NAME, Theme, ThemeSource, file_theme
@@ -136,6 +138,7 @@ class PluginContainer:
         self._mentions: list[MentionProvider] = []
         self._providers: list[Provider] = []
         self._themes: list[ThemeSource] = []
+        self._presenters: list[Presenter[Any]] = []
         self._slots = UiSlots()
 
     @property
@@ -162,6 +165,11 @@ class PluginContainer:
     def providers(self) -> tuple[Provider, ...]:
         """Return the model providers registered so far, in registration order."""
         return tuple(self._providers)
+
+    @property
+    def presenters(self) -> tuple[Presenter[Any], ...]:
+        """Return the presenters registered so far, in registration order."""
+        return tuple(self._presenters)
 
     @property
     def themes(self) -> tuple[ThemeSource, ...]:
@@ -375,6 +383,34 @@ class PluginContainer:
                 source = ThemeSource(name, source.load, description)
         self._themes.append(source)
         return source
+
+    def register_presenter(self, presenter: Presenter[Any]) -> Presenter[Any]:
+        """Draw a kind of entry, or one family inside a kind, instead of the way it is drawn now.
+
+        A presenter names a ``kind`` (one member of :class:`EntryKind`), or an ``entry_type`` when it
+        draws one family of a kind — the edit row inside the tool rows, say. It is placed by its own
+        :attr:`Presenter.priority`: the highest wins, and an equal priority goes to the later
+        registration, so the built-in presenters (priority 0, registered first) are the default any
+        plugin's presenter replaces. A plugin that wants to beat another plugin raises the
+        ``priority`` on its presenter's class. A presenter registered for a whole kind draws every
+        row of that kind unless a family outranks it.
+
+        Args:
+            presenter: The presenter.
+
+        Returns:
+            The presenter, in case the plugin wants to keep it.
+
+        Raises:
+            ValueError: When the object is not a presenter, or names neither a kind nor an entry
+                class.
+        """
+        if not isinstance(presenter, Presenter):
+            raise ValueError("A presenter must be a zettcode.app.agent.conversation.presenters.Presenter")
+        if not isinstance(presenter.kind, EntryKind):
+            raise ValueError("A presenter must name the kind of entry it draws")
+        self._presenters.append(presenter)
+        return presenter
 
     def register_mention(self, provider: MentionProvider) -> MentionProvider:
         """Register one kind of ``@`` resource the composer can offer.

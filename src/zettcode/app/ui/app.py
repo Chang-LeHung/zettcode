@@ -132,7 +132,9 @@ class ZettCodeApp(
             if self.messenger is None
             else (SessionMentions(self.messenger.peers), *agent.plugin_mentions)
         )
-        self.transcript = Transcript(max_entries=agent.runtime.config.transcript_max_entries)
+        self.transcript = Transcript(
+            presenters=agent.presenters, max_entries=agent.runtime.config.transcript_max_entries
+        )
         if agent.runtime.config.tips:
             self.transcript.tip_deck = TipDeck()
         self.transcript.welcome(WELCOME)
