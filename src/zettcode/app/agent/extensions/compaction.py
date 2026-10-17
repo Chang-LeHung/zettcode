@@ -19,11 +19,13 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING, Any
+from weakref import WeakSet
 
 from zett_agent.agent import AgentRunContext
 from zett_agent.extensions.compaction import CompactionExtension
 from zett_agent.messages import ImageContent
 from zett_agent.model import ModelRequest
+from zett_agent.tools.base import tool
 
 from zettcode.app.pipeline import DaemonCall
 
@@ -126,6 +128,37 @@ class OnDemandCompaction(CompactionExtension):
     and summarizes everything before it.
     """
 
+    def __init__(self, *args: Any, self_compact: Callable[[str], bool] | None = None, **kwargs: Any) -> None:
+        """Use the released compaction policy, optionally offering a tool for enabled sessions."""
+        super().__init__(*args, **kwargs)
+        self.self_compact = self_compact or (lambda session_id: False)
+        self._requested: WeakSet[AgentRunContext] = WeakSet()
+
+    async def on_tool(self, context: AgentRunContext) -> None:
+        """Offer the tool only to a session that opted in, never to a side question."""
+        if is_side_run(context) or not self.self_compact(context.session_id or ""):
+            return
+
+        @tool(name="compact_context")
+        async def compact_context() -> str:
+            """Request a summary of older conversation before your next model call.
+
+            The current user turn, including tool calls and results, stays intact. Older turns are
+            replaced by a checkpoint only when its summary is smaller. Nothing is compacted if
+            there are no older turns to summarize.
+
+            Guidelines:
+                - Use when earlier work is settled and its detail no longer needs to stay in context.
+                - Do not call repeatedly: one request is enough, and the current turn cannot be compacted.
+                - Continue the task after requesting compaction; this is not a final answer.
+            """
+            if not self.self_compact(context.session_id or ""):
+                return "Self-compaction is disabled for this session."
+            self._requested.add(context)
+            return "Compaction requested for the next model call; the current turn will be kept intact."
+
+        context.register_tool(compact_context)
+
     async def before_model(self, context: AgentRunContext, request: ModelRequest) -> None:
         """Leave a side question's context alone.
 
@@ -133,9 +166,16 @@ class OnDemandCompaction(CompactionExtension):
         and store a checkpoint whose boundary ignores that the exchange is a side
         one. Automatic compaction waits for the next ordinary turn instead.
         """
+        requested = context in self._requested
+        self._requested.discard(context)
         if is_side_run(context):
             return
-        await super().before_model(context, request)
+        if requested and self.self_compact(context.session_id or ""):
+            # Wait until every tool result has joined the turn. Mutating context inside a tool
+            # would race parallel siblings and could separate a call from its result.
+            await self.on_compact(context)
+        else:
+            await super().before_model(context, request)
 
     async def on_compact(self, context: AgentRunContext) -> None:
         """Compact now, keeping only the turn the reader is still in."""

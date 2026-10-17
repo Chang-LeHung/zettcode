@@ -7,7 +7,7 @@ agent is where the shell asks for everything the runtime loaded.
 
 from __future__ import annotations
 
-from zettcode.app.commands import Command, CommandContext, CommandResult
+from zettcode.app.commands import Command, CommandContext, CommandResult, Subcommand
 from zettcode.plugins import UiRow
 from zettcode.providers import BUILTIN_PROVIDERS, Provider, merge_providers
 from zettcode.tui import ThemeCatalog
@@ -30,6 +30,13 @@ class CommandsMixin(ExportsMixin):
         return (
             Command("/new", "start a fresh session", "agent", self._command_new),
             Command("/compact", "summarize the context now", "agent", self._command_compact),
+            Command(
+                "/self-compact",
+                "let the model request compaction: /self-compact [on|off]",
+                "agent",
+                self._command_self_compact,
+                subcommands=(Subcommand("on", "enable for this session"), Subcommand("off", "disable (default)")),
+            ),
             Command("/export", "write this session to an HTML file: /export [path]", "agent", self._command_export),
         )
 
@@ -95,6 +102,24 @@ class CommandsMixin(ExportsMixin):
         """
         path = await self.export_session(context.argument.strip() or None)
         return CommandResult(message=f"Exported to `{path}`")
+
+    async def _command_self_compact(self, context: CommandContext) -> CommandResult:
+        """Read or change the per-session setting; a failed write is never reported as saved."""
+        argument = context.argument.strip().lower()
+        if argument not in ("", "on", "off"):
+            raise ValueError("Usage: /self-compact [on|off]")
+        store = self.runtime.persistence
+        if argument:
+            self.require_session()
+            try:
+                store.set_self_compact(self.session_id, argument == "on")
+            except OSError as error:
+                raise ValueError(f"Self-compaction setting was not saved: {error}") from error
+        enabled = store.session_self_compact(self.session_id)
+        state = "on" if enabled else "off"
+        return CommandResult(
+            message=f"Self-compaction is **{state}** for this session. Use `/self-compact on|off` to change it."
+        )
 
     async def _command_compact(self, context: CommandContext) -> CommandResult:
         """Summarize the conversation now, whatever its size.
