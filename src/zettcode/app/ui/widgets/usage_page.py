@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import colorsys
 from collections.abc import Callable
 from datetime import date, timedelta
 
 from zettcode.app.agent.storage.ledger import Ledger
 from zettcode.tui import SEPARATOR, KeyEvent, MouseAction, MouseEvent, Style, Widget
-from zettcode.tui.render import blend
+from zettcode.tui.render import blend, parse_hex
 
 from . import usage_charts as charts
 
@@ -20,8 +21,31 @@ HEAD_ROWS = 4
 #: How far a mouse-wheel notch moves the body.
 WHEEL_ROWS = 3
 
-#: Shade of each calendar level, as how far it sits from the page colour towards the accent.
-HEAT = (0.0, 0.32, 0.55, 0.78, 1.0)
+#: Shade of each calendar level, as how far it sits from the page colour towards the deepest accent.
+#: The first level starts well clear of the empty cell, as GitHub's does: an active day must not read as
+#: a quiet one, on a dark page least of all, where a faint blend vanishes into the background. The steps
+#: still grow towards the top, so the busiest days pull away from the ones below them.
+HEAT = (0.0, 0.34, 0.56, 0.78, 1.0)
+
+#: How the busiest day deepens the accent: more saturation and less lightness, so the top of
+#: the ramp reads as a deeper colour than the accent the rest of the page draws.
+DEEPER_SATURATION = 1.25
+DEEPER_LIGHTNESS = 0.88
+
+
+def deepened_accent(colour: str) -> str:
+    """Return ``colour`` deeper and more saturated: the shade of the busiest calendar day.
+
+    The ramp runs from the page towards this shade rather than towards the accent itself, so
+    the four levels spread over a wider range and the top one is deeper than anything else on
+    the page. A colour that cannot be parsed is returned unchanged, as :func:`blend` does.
+    """
+    rgb = parse_hex(colour)
+    if rgb is None:
+        return colour
+    hue, lightness, saturation = colorsys.rgb_to_hls(*(channel / 255 for channel in rgb))
+    deepened = colorsys.hls_to_rgb(hue, lightness * DEEPER_LIGHTNESS, min(1.0, saturation * DEEPER_SATURATION))
+    return "#" + "".join(f"{round(channel * 255):02x}" for channel in deepened)
 
 
 class UsagePage(Widget):
@@ -192,7 +216,7 @@ class UsagePage(Widget):
             if level == 0:
                 colour = blend(page, theme.text, 0.14)
             else:
-                colour = blend(page, theme.accent, HEAT[level])
+                colour = blend(page, deepened_accent(theme.accent), HEAT[level])
             return Style(foreground=colour, background=theme.selection if chosen else page, bold=chosen)
         colours = {
             "text": theme.text,
