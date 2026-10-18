@@ -7825,6 +7825,7 @@ async def test_every_command_the_shell_runs_beside_a_request_is_one_that_cannot_
     queued = sorted(c.name for c in app.commands if c.when_busy == "queue")
 
     assert now == [
+        "/bash",
         "/context",
         "/effort",
         "/exit",

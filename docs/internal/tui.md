@@ -73,6 +73,10 @@ src/zettcode/
                      layout, the JSONL conversation tree, each session's metadata.json (and
                      the old workspace metadata.jsonl it is carried over from), and
                      the persistence plugin)
+    commandline/     history.py (the shells' history files, one class per
+                     shell), completion.py and arguments.py (Tab: programs,
+                     paths, git, the words typed before), runner.py (the
+                     process behind /bash, and how each shell is launched)
     ui/              app.py (shell, keymap, commands), transcript.py (the
                      virtualized view over the model), clipboard.py (reading a
                      desktop image), widgets/ (shell-specific widgets such as
@@ -108,11 +112,12 @@ tui/
   terminal.py       raw mode, alternate screen, size
   runner.py         terminal-backed async loop over a TuiApp
   input/            events.py, keys.py, decoder.py, reader.py, bridge.py
-  render/           style.py, text.py, color.py, canvas.py, renderer.py
+  render/           style.py, text.py, color.py, canvas.py, renderer.py, ansi.py
   core/             geometry.py, events.py, host.py, widget.py, theme.py,
                     focus.py, screen.py, keymap.py, scheduler.py, app.py
   layout/           solver.py, box.py, spacing.py, overlay.py, scroll.py
   widgets/          list.py, textarea.py, dialog.py, table.py, completion.py,
+                    console.py,
                     status.py, progress.py, toast.py, collapsible.py,
                     diff.py, markdown.py, text.py, tasks.py
   testing/          harness.py

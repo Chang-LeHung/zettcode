@@ -16,6 +16,7 @@ _EXPORTS = {
     "BAR_FULL": ".glyphs",
     "Binding": ".core",
     "Border": ".layout",
+    "AnsiBuffer": ".render",
     "Canvas": ".render",
     "Collapsible": ".widgets",
     "ColorDepth": ".render",
@@ -25,6 +26,7 @@ _EXPORTS = {
     "Completer": ".widgets",
     "CompletionItem": ".widgets",
     "CompletionPopup": ".widgets",
+    "ConsolePanel": ".widgets",
     "Constraints": ".core",
     "DARK": ".core",
     "DONE": ".glyphs",
@@ -216,7 +218,7 @@ if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
         centered,
         resolve_tracks,
     )
-    from .render import Canvas, ColorDepth, DifferentialRenderer, Span, Style, TextLine
+    from .render import AnsiBuffer, Canvas, ColorDepth, DifferentialRenderer, Span, Style, TextLine
     from .runner import TerminalRunner, run_app
     from .terminal import Terminal, parse_background, title_sequence
     from .theme_file import (
@@ -237,6 +239,7 @@ if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
         Completer,
         CompletionItem,
         CompletionPopup,
+        ConsolePanel,
         Dialog,
         DialogAction,
         DiffLine,
@@ -310,6 +313,7 @@ __all__ = [
     "TuiApp",
     "Binding",
     "Border",
+    "AnsiBuffer",
     "Canvas",
     "Collapsible",
     "ColorDepth",
@@ -319,6 +323,7 @@ __all__ = [
     "Completer",
     "CompletionItem",
     "CompletionPopup",
+    "ConsolePanel",
     "Constraints",
     "DARK",
     "DifferentialRenderer",

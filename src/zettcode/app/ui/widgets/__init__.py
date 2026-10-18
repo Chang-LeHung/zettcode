@@ -16,6 +16,7 @@ _EXPORTS = {
     "ApprovalChoice": ".approval_page",
     "ApprovalPage": ".approval_page",
     "AskUserPage": ".ask_page",
+    "BashPage": ".bash_page",
     "CommandCompleter": ".completer",
     "Composer": ".composer",
     "ContextPage": ".context_page",
@@ -55,6 +56,7 @@ _EXPORTS = {
 if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
     from .approval_page import ApprovalChoice, ApprovalPage
     from .ask_page import AskUserPage
+    from .bash_page import BashPage
     from .completer import CommandCompleter, help_text
     from .composer import Composer
     from .context_page import ContextPage
@@ -101,6 +103,7 @@ __all__ = [
     "ApprovalChoice",
     "ApprovalPage",
     "AskUserPage",
+    "BashPage",
     "CommandCompleter",
     "Composer",
     "ContextPage",

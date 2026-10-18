@@ -1,5 +1,6 @@
 """Rendering primitives: styled text, capabilities-aware color, and canvases."""
 
+from .ansi import ANSI_COLORS, AnsiBuffer, AnsiLine
 from .canvas import Canvas
 from .code import DEFAULT_CODE_THEME, GENERIC, LATEX, PYTHON, SHELL, CodeTheme, highlight, language_for, languages
 from .color import ColorDepth, blend, encode_style, parse_hex, rgb_to_ansi16, rgb_to_ansi256
@@ -24,6 +25,9 @@ from .text import (
 )
 
 __all__ = [
+    "ANSI_COLORS",
+    "AnsiBuffer",
+    "AnsiLine",
     "DEFAULT_CODE_THEME",
     "DEFAULT_STYLE",
     "ELLIPSIS",

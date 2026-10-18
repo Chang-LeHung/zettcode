@@ -23,7 +23,7 @@ from ..app.ui import labels
 from ..app.ui.widgets import UsagePage
 from ..statusline import Row
 from ..tui import STATUS, bundled_themes
-from .builtin_commands import HelpCommand, ModelCommands, SessionCommands, ShellControl, SideQuestion
+from .builtin_commands import BashCommand, HelpCommand, ModelCommands, SessionCommands, ShellControl, SideQuestion
 from .container import PluginContainer
 from .plugin import Plugin
 from .state import ShellContext
@@ -178,6 +178,7 @@ BUILTIN_PLUGINS: tuple[Plugin, ...] = (
     SessionCommands(),
     ModelCommands(),
     SideQuestion(),
+    BashCommand(),
     ShellControl(),
     UsageCommand(),
     BuiltinThemes(),

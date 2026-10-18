@@ -42,6 +42,9 @@ DEFAULT_TOKENIZER_CACHE = Path.home() / ".zettcode" / "cache" / "tiktoken"
 #: frame is the interface, and the renderer only repaints what it changed.
 DEFAULT_LOG = Path.home() / ".zettcode" / "log" / "tui.log"
 
+#: The commands typed in the ``/bash`` panel, one per line, so they are there next time.
+DEFAULT_COMMAND_HISTORY = Path.home() / ".zettcode" / "command_history"
+
 
 def config_path(path: str | Path | None = None) -> Path:
     """Return the config file to read: an explicit path, ``$ZETTCODE_CONFIG``, or the default.
