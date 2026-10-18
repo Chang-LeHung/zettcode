@@ -89,19 +89,30 @@ available in English and [简体中文](https://chang-lehung.github.io/zettcode/
 | [Problems & questions](https://chang-lehung.github.io/zettcode/guide/faq) | [Sessions](https://chang-lehung.github.io/zettcode/guide/sessions) | [Project instructions](https://chang-lehung.github.io/zettcode/guide/instructions) |
 | | | [Skills & MCP](https://chang-lehung.github.io/zettcode/guide/skills-and-mcp) · [Plugins](https://chang-lehung.github.io/zettcode/guide/plugins) |
 
+Embedding it elsewhere: the [**SDK**](https://chang-lehung.github.io/zettcode/sdk/) drives the agent from Python, and the
+[**server**](https://chang-lehung.github.io/zettcode/server/) exposes it over HTTP — prompts streamed as they run,
+with sessions, approvals, steering and models.
+
+```bash
+uv tool install zettcode-server
+zettcode-server --workspace ~/projects/api --port 8000
+```
+
 ## Development
 
 ```bash
-uv sync                         # install dependencies
-make check                      # Ruff, mypy, and tests
+uv sync --all-packages           # install both packages
+make check                      # Ruff, mypy, and both test suites
+make client                     # build and test the TypeScript client
 make hooks                      # enforce mypy before commits
 make demo                       # browse terminal widgets
 make docs                       # preview the user guide locally
 uv run zettcode --workspace .    # run from the checkout
 ```
 
-ZettCode provides the terminal application; the agent runtime is
-[`zett-agent`](https://github.com/Chang-LeHung/zett-agent). Contributor notes and
+ZettCode provides the terminal application and its HTTP server; the agent runtime is
+[`zett-agent`](https://github.com/Chang-LeHung/zett-agent). The repository is a uv workspace: `zettcode/` is the
+agent, `zettcode-server/` the API, and `clients/typescript/` the TypeScript client for it. Contributor notes and
 invariants live in [`AGENTS.md`](AGENTS.md) and
 [`docs/internal/`](docs/internal/), separately from the user guide. See
 [`docs/internal/site-design.md`](docs/internal/site-design.md) for preview and

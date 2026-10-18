@@ -32,6 +32,9 @@ dependencies = [
   "httpx>=0.27,<1",
 ]
 
+[project.scripts]
+zettcode-server = "zettcode_server.cli:main"
+
 [project.urls]
 Repository = "https://github.com/Chang-LeHung/zettcode"
 Issues = "https://github.com/Chang-LeHung/zettcode/issues"

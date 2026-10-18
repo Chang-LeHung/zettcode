@@ -1,0 +1,224 @@
+/** What the server sends and accepts: the wire format of `zettcode-server`, in TypeScript. */
+
+/** The shell permission levels. */
+export type Permission = "deny" | "ask" | "safe" | "auto";
+
+/** How a run answers the shell commands the model asks to run. */
+export type ApprovalMode = "deny" | "auto" | "commands" | "ask";
+
+/** Whether a question the model asks waits for the client. */
+export type QuestionMode = "ask" | "decline";
+
+export interface ApprovalPolicy {
+  /** `deny` refuses everything, `auto` approves everything, `commands` approves the named ones, `ask` asks you. */
+  mode?: ApprovalMode;
+  /** The commands `commands` approves, such as `"git status"` or `"pytest"`. */
+  commands?: string[];
+}
+
+/** An image sent with a prompt, base64 encoded. */
+export interface ImageInput {
+  data: string;
+  mediaType: string;
+}
+
+export interface Usage {
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_write_tokens: number;
+  reasoning_tokens: number;
+  seconds: number;
+  requests: number;
+  context_tokens: number;
+}
+
+export interface ModelInfo {
+  name: string;
+  model: string;
+  context_window: number;
+  multimodal: boolean;
+  efforts: string[];
+  active: boolean;
+}
+
+export interface Settings {
+  model: ModelInfo;
+  effort: string;
+  efforts: string[];
+  permission: Permission;
+  permissions: string[];
+}
+
+export interface SettingsUpdate {
+  model?: string;
+  effort?: string;
+  permission?: Permission;
+}
+
+export interface Health {
+  status: "ok";
+  version: string;
+  workspace: string;
+  session: string;
+  busy: boolean;
+}
+
+export interface SessionInfo {
+  id: string;
+  title: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  current: boolean;
+}
+
+export interface CurrentSession {
+  id: string;
+  title: string | null;
+  locked: boolean;
+  usage: Usage;
+}
+
+export interface ToolRecord {
+  call_id: string;
+  name: string;
+  arguments: Record<string, unknown>;
+  output: string;
+  ok: boolean;
+  skipped: boolean;
+}
+
+export interface Message {
+  role: string;
+  text: string;
+  tool_calls: ToolRecord[];
+  tool_call_id: string | null;
+  tool_name: string | null;
+  ok: boolean;
+  images: number;
+}
+
+export interface Compaction {
+  applied: boolean;
+  summary: string;
+  compressed: number;
+  kept: number;
+}
+
+export interface ContextShare {
+  name: string;
+  tokens: number;
+  items: number;
+}
+
+export interface ContextReport {
+  window: number;
+  used: number;
+  measured_by: string;
+  shares: ContextShare[];
+  partial: boolean;
+  from_provider: boolean;
+}
+
+export interface RunResult {
+  text: string;
+  session_id: string;
+  usage: Usage;
+  tools: ToolRecord[];
+  stop: string | null;
+  stop_message: string | null;
+  questions: string[];
+}
+
+export interface Plugins {
+  loaded: string[];
+  failures: string[];
+}
+
+export interface RunState {
+  running: boolean;
+  pending: PendingRequest | null;
+}
+
+export interface PendingRequest {
+  kind: "approval" | "question";
+  call_id: string;
+  command?: string | null;
+  timeout_seconds?: number | null;
+  remember_supported?: boolean;
+  question?: string | null;
+  options?: string[];
+  allow_multiple?: boolean;
+}
+
+export interface Resumable {
+  resumable: boolean;
+  kind: string | null;
+  description: string | null;
+}
+
+/** Every event a run streams, discriminated by `type`. */
+export type RunEvent =
+  | { type: "text_delta"; text: string }
+  | { type: "reasoning_delta"; text: string }
+  | { type: "tool_started"; call_id: string; name: string; arguments: Record<string, unknown> }
+  | { type: "tool_finished"; call_id: string; name: string; output: string; ok: boolean; skipped: boolean }
+  | { type: "approval_requested"; call_id: string; command: string; approved: boolean | null }
+  | {
+      type: "question_asked";
+      call_id: string;
+      question: string;
+      options: string[];
+      allow_multiple: boolean;
+      answered: boolean;
+    }
+  | { type: "usage_updated"; usage: Usage }
+  | { type: "compaction_started" }
+  | { type: "compaction_finished"; applied: boolean; summary: string }
+  | { type: "model_stopped"; reason: string; message: string | null }
+  | { type: "steered"; text: string }
+  | { type: "notice"; text: string }
+  | { type: "finished"; text: string }
+  | { type: "event"; name: string };
+
+/** One frame of the event stream: its SSE name and its parsed payload. */
+export interface StreamFrame {
+  event: "event" | "result" | "error" | "cancelled";
+  data: RunEvent | RunResult | { error: string; message: string } | { type: "cancelled" } | string;
+}
+
+/** Options every run takes, whether it starts a prompt or continues one. */
+export interface RunOptions {
+  approvals?: ApprovalPolicy;
+  questions?: QuestionMode;
+  /** Seconds the whole run may take. */
+  timeout?: number;
+  /** Seconds an `ask` approval or question waits for you before the safe default. */
+  answerTimeout?: number;
+  keepEvents?: boolean;
+  /** Called with every frame before it is queued, for logging. */
+  onEvent?: (frame: StreamFrame) => void;
+  /** Answers an approval the run is suspended on; omit it and the server's `answerTimeout` decides. */
+  onApproval?: (request: { call_id: string; command: string; timeout_seconds?: number | null }) => boolean | Promise<boolean>;
+  /** Answers a question; returning `null` declines it. */
+  onQuestion?: (request: {
+    call_id: string;
+    question: string;
+    options: string[];
+    allow_multiple: boolean;
+  }) => string | null | Promise<string | null>;
+  /** Aborts the request; the server stops the run when the connection closes. */
+  signal?: AbortSignal;
+}
+
+export interface PromptOptions extends RunOptions {
+  /** Pictures for a model that takes them; `data` is base64. */
+  images?: ImageInput[];
+  /** Resolve `@path` mentions, as the terminal does. Defaults to true on the server. */
+  mentions?: boolean;
+}
+
+/** The token counts of a session or a run. */
+export function totalTokens(usage: Usage): number {
+  return usage.input_tokens + usage.output_tokens;
+}

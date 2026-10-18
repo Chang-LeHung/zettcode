@@ -42,6 +42,12 @@ def test_every_invariant_cites_a_test_that_exists():
     reader looking for evidence that is not where the row says it is.
     """
     document = (ROOT / "docs/internal/invariants.md").read_text(encoding="utf-8")
+    # The evidence lives with the package it pins: the agent's tests in zettcode/, the server's in zettcode-server/.
+    # A name both packages use (``test_cli.py``) may be either, so a citation is looked for in both.
+    evidence: dict[str, list[pathlib.Path]] = {}
+    for folder in (PROJECT / "tests", ROOT / "zettcode-server" / "tests"):
+        for path in folder.glob("test_*.py"):
+            evidence.setdefault(path.name, []).append(path)
     missing: list[str] = []
     unqualified: list[str] = []
     checked = 0
@@ -59,8 +65,11 @@ def test_every_invariant_cites_a_test_that_exists():
             else:
                 continue
             checked += 1
-            source = (PROJECT / "tests" / f"{current}.py").read_text(encoding="utf-8")
-            if not re.search(rf"^\s*(?:async )?def {re.escape(name)}\(", source, re.MULTILINE):
+            found = any(
+                re.search(rf"^\s*(?:async )?def {re.escape(name)}\(", path.read_text(encoding="utf-8"), re.MULTILINE)
+                for path in evidence.get(f"{current}.py", [])
+            )
+            if not found:
                 missing.append(f"{current}::{name}")
 
     assert checked > 150, f"the citations stopped parsing: {checked} read"
