@@ -33,6 +33,7 @@ const translations = {
         events: "Streaming events",
         approvals: "Approvals & questions",
         sessions: "Sessions",
+        usage: "Usage & health",
         errors: "Errors & timeouts",
         cookbook: "Cookbook",
         reference: "API reference",
@@ -81,6 +82,7 @@ const translations = {
         events: "事件流",
         approvals: "审批与提问",
         sessions: "会话",
+        usage: "用量与体检",
         errors: "错误与超时",
         cookbook: "示例集",
         reference: "API 参考",
@@ -122,7 +124,7 @@ const layout = [
 // its own sidebar. `index` is the section's front page, so it answers at the section's own address.
 const sdkLayout = [
   { group: 0, pages: ["index", "quickstart", "concepts"] },
-  { group: 1, pages: ["client", "running", "events", "approvals", "sessions", "errors"] },
+  { group: 1, pages: ["client", "running", "events", "approvals", "sessions", "usage", "errors"] },
   { group: 2, pages: ["cookbook", "reference"] },
 ];
 

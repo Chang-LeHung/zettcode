@@ -71,7 +71,8 @@ question again.
 | `listSessions(limit)`, `createSession(title?)`, `currentSession()` | `/sessions`, `/sessions/current` |
 | `openSession(id)`, `renameSession(title)`, `nameSession()`, `forkSession()` | `/sessions/...` |
 | `compactSession()`, `context()`, `history()`, `exportSession()`, `ask(question)` | `/sessions/current/...` |
-| `usage()` | `GET /usage` |
+| `usage()`, `usageLedger()`, `sessionStats(ids?)` | `/usage`, `/usage/ledger`, `/sessions/.../stats` |
+| `selfCompaction()`, `setSelfCompaction(choice)`, `mentions(query)`, `doctor(timeout)` | `/sessions/current/self-compaction`, `/mentions`, `/doctor` |
 | `prompt(text, options)`, `resume(options)` | `POST /prompts`, `POST /runs/resume` |
 | `runState()`, `resumable()`, `approve()`, `answer()`, `steer()`, `cancelRun()` | `/runs/...` |
 

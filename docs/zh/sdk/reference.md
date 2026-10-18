@@ -96,6 +96,8 @@ class Client:
 | `permissions` | `tuple[str, ...]` | `("deny", "ask", "safe", "auto")`。 |
 | `usage` | `Usage` | 当前会话已花的用量。 |
 | `plugins` | `PluginReport` | 已加载的插件，以及失败的。 |
+| `self_compaction` | `bool` | 模型是否可以自己压缩这个会话。 |
+| `self_compaction_choice` | `bool \| None` | 这个会话自己的选择，`None` 表示跟随配置。 |
 
 #### 方法
 
@@ -107,6 +109,11 @@ class Client:
 | `use_model(name)` | `ModelInfo` | 选择模型；接受名字或 `ModelInfo`。 |
 | `use_effort(name)` | `str` | 选择推理级别。 |
 | `use_permission(name)` | `str` | 选择权限级别；从下一条 shell 命令起生效。 |
+| `mentions(query="", *, limit=50)` | `tuple[MentionInfo, ...]` | 匹配查询的 `@` 资源，用于补全菜单。 |
+| `await usage_ledger()` | `WorkspaceUsage` | 工作区每个已存会话花的用量，按会话、模型和天。 |
+| `await session_stats(ids=None)` | `tuple[SessionStatsInfo, ...]` | 若干会话在存储里的统计；不传 id 就是当前会话。 |
+| `use_self_compaction(choice)` | `bool` | 允许模型自己压缩这个会话（`True`）、停掉（`False`），或跟随默认值（`None`）。 |
+| `await check_models(*, timeout=30)` | `tuple[ModelCheck, ...]` | 对每个配置的模型各问一个短问题，和 `zettcode doctor` 一致。 |
 | `aclose()` | — | 停止进行中的 run 并释放一切。重复调用是安全的。 |
 
 `use_model`、`use_effort` 和 `use_permission` 在选择不存在时抛出 `ConfigurationError`，消息里列出有效的选项。
@@ -276,6 +283,26 @@ class Client:
 
 `Message(role, text, tool_calls=(), tool_call_id=None, tool_name=None, ok=True, images=0)`。
 `ToolCallInfo(id, name, arguments)`。
+
+### `MentionInfo`
+
+`token`、`kind`、`name`、`description`。
+
+### `Totals`
+
+用量账本里一份计数:`requests`、`input_tokens`、`output_tokens`、`cache_read_tokens`、`reasoning_tokens`（都是 `int`），并提供算好的 `total_tokens` 与 `cache_share`（没有输入时为 `None`）。
+
+### `SessionTotals`、`ModelTotals`、`DayTotals`、`WorkspaceUsage`
+
+`SessionTotals(id, title, started, updated, tokens, models, entries)`;`ModelTotals(model, tokens)`;`DayTotals(day, tokens)`。`WorkspaceUsage(sessions, models, days, total)` 就是 `usage_ledger()` 的返回值:会话最近活动的在前,模型用得最多的在前,天从早到晚。
+
+### `SessionStatsInfo`
+
+`id`、`entries`、`requests`、`input_tokens`、`output_tokens`、`cache_read_tokens`、`reasoning_tokens`,并提供算好的 `total_tokens` 与 `cache_share`。终端 `/resume` 面板的一行。
+
+### `ModelCheck`
+
+`model`、`model_id`、`ok`、`seconds`、`detail`、`input_tokens: int | None`、`output_tokens: int | None`。一个模型对 `check_models()` 的回答。
 
 ### `ContextReport` 和 `ContextShare`
 

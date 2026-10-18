@@ -39,6 +39,8 @@ title: HTTP API 参考
 | `GET` | `/settings` | — | `{"model","effort","efforts","permission","permissions"}` |
 | `PATCH` | `/settings` | `{"model"?, "effort"?, "permission"?}` | 更改后与 `GET /settings` 相同;至少给一个字段。 |
 | `GET` | `/plugins` | — | `{"loaded": [...], "failures": [...]}` |
+| `GET` | `/mentions?query=&limit=50` | — | `{"mentions": [{"token","kind","name","description"}]}`:`@` 能指向的文件、skills 和插件资源。 |
+| `POST` | `/doctor` | `{"timeout"?: 30}` | `{"checks": [{"model","model_id","ok","seconds","detail","input_tokens","output_tokens"}]}`:对每个配置的模型各问一个短问题。 |
 
 ```bash
 curl -X PATCH http://127.0.0.1:3290/settings \
@@ -66,6 +68,12 @@ curl -X PATCH http://127.0.0.1:3290/settings \
 | `GET` | `/sessions/current/history` | — | `{"messages": [{"role","text","tool_calls","ok","images"}]}` |
 | `GET` | `/sessions/current/export` | — | 对话导出成独立的 HTML 页面(`text/html`,按下载处理)。 |
 | `POST` | `/sessions/current/ask` | `{"question","timeout"?}` | `{"answer"}`;在旁边回答,不进入对话。运行进行中返回 409。 |
+| `GET` | `/sessions/current/stats` | — | `{"id","entries","requests","input_tokens","output_tokens","cache_read_tokens","reasoning_tokens","total_tokens","cache_share"}`,还没存任何东西时为 `null`:即 `/resume` 的一行。 |
+| `GET` | `/sessions/stats?ids=a,b` | — | 指定会话的 `{"stats": [...]}`,形状相同;最多 200 个 id。 |
+| `GET` | `/sessions/current/self-compaction` | — | `{"choice": true\|false\|null, "effective": bool}` |
+| `PUT` | `/sessions/current/self-compaction` | `{"choice": true\|false\|null}` | 保存到会话后的同样结构;从下一次请求起生效。 |
+| `GET` | `/usage` | — | 当前会话的累计用量。 |
+| `GET` | `/usage/ledger` | — | `{"sessions", "models", "days", "total"}`:工作区花了多少,和终端 `/usage` 页面一致。 |
 
 `usage` 是会话的累计值:
 

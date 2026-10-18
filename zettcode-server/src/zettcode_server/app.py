@@ -41,9 +41,12 @@ from .schemas import (
     CompactionOut,
     ContextOut,
     CurrentSessionOut,
+    DoctorOut,
+    DoctorRequest,
     ErrorOut,
     HealthOut,
     HistoryOut,
+    MentionsOut,
     ModelsOut,
     PluginsOut,
     PromptRequest,
@@ -53,23 +56,32 @@ from .schemas import (
     ResumableOut,
     ResumeRequest,
     RunStateOut,
+    SelfCompactionOut,
+    SelfCompactionUpdate,
     SessionCreate,
     SessionOut,
     SessionsOut,
+    SessionStatsListOut,
+    SessionStatsOut,
     SettingsOut,
     SettingsUpdate,
     SideQuestionRequest,
     SteeredOut,
     SteerIn,
     UsageOut,
+    WorkspaceUsageOut,
 )
 from .serialize import (
+    check_out,
     compaction_out,
     context_out,
     current_session_out,
+    ledger_out,
+    mention_out,
     message_out,
     model_out,
     session_out,
+    stats_out,
     usage_out,
 )
 from .settings import Settings
@@ -297,6 +309,41 @@ def create_app(settings: Settings, *, client_factory: ClientFactory | None = Non
         """Return what this session has spent, in this process and before it was resumed."""
         return usage_out(runner.client.usage)
 
+    @protected.get("/usage/ledger", response_model=WorkspaceUsageOut, tags=["usage"])
+    async def usage_ledger(runner: RunnerDep) -> WorkspaceUsageOut:
+        """Return what the workspace's stored sessions have spent: by session, model and day.
+
+        This is the ``/usage`` page's data, read back from the conversations, so it covers every session of the
+        workspace and not only this one.
+        """
+        return ledger_out(await runner.usage_ledger())
+
+    @protected.get("/sessions/current/stats", response_model=SessionStatsOut | None, tags=["sessions"])
+    async def stats_of_session(runner: RunnerDep) -> SessionStatsOut | None:
+        """Return the stored totals of the current session: entries, replies, tokens and the cached share."""
+        found = await runner.session_stats(None)
+        return stats_out(found[0]) if found else None
+
+    @protected.get("/sessions/stats", response_model=SessionStatsListOut, tags=["sessions"])
+    async def stats_of_sessions(
+        runner: RunnerDep, ids: Annotated[str, Query(description="The session ids, comma separated")] = ""
+    ) -> SessionStatsListOut:
+        """Return the stored totals of named sessions, as the terminal's ``/resume`` panel lists its columns."""
+        wanted = [part.strip() for part in ids.split(",") if part.strip()][:200]
+        return SessionStatsListOut(stats=[stats_out(item) for item in await runner.session_stats(wanted)])
+
+    @protected.get("/sessions/current/self-compaction", response_model=SelfCompactionOut, tags=["sessions"])
+    async def self_compaction(runner: RunnerDep) -> SelfCompactionOut:
+        """Whether the model may compact this session itself, and the session's own choice."""
+        choice, effective = runner.self_compaction()
+        return SelfCompactionOut(choice=choice, effective=effective)
+
+    @protected.put("/sessions/current/self-compaction", response_model=SelfCompactionOut, tags=["sessions"])
+    async def set_self_compaction(body: SelfCompactionUpdate, runner: RunnerDep) -> SelfCompactionOut:
+        """Let the model compact this session itself (``true``), stop it (``false``), or follow the default (``null``)."""
+        effective = await runner.use_self_compaction(body.choice)
+        return SelfCompactionOut(choice=body.choice, effective=effective)
+
     @protected.post("/prompts", tags=["prompts"], responses={200: {"content": {"text/event-stream": {}}}})
     async def prompts(request: PromptRequest, runner: RunnerDep) -> StreamingResponse:
         """Run one prompt and stream it as server-sent events; see the guide for the frames.
@@ -385,6 +432,21 @@ def create_app(settings: Settings, *, client_factory: ClientFactory | None = Non
         """List the plugins this server loaded, and the ones that could not load."""
         report = runner.client.plugins
         return PluginsOut(loaded=list(report.loaded), failures=list(report.failures))
+
+    @protected.get("/mentions", response_model=MentionsOut, tags=["models"])
+    async def mentions(
+        runner: RunnerDep,
+        query: Annotated[str, Query(description="What was typed after the @, without it")] = "",
+        limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    ) -> MentionsOut:
+        """List the files, skills and plugin resources an ``@`` in the prompt can reference."""
+        return MentionsOut(mentions=[mention_out(item) for item in await runner.mentions(query, limit)])
+
+    @protected.post("/doctor", response_model=DoctorOut, tags=["models"])
+    async def doctor(runner: RunnerDep, body: DoctorRequest | None = None) -> DoctorOut:
+        """Ask every configured model one short question and report which of them answer, as ``zettcode doctor``."""
+        timeout = 30.0 if body is None else body.timeout
+        return DoctorOut(checks=[check_out(item) for item in await runner.check_models(timeout)])
 
     app.include_router(protected)
 

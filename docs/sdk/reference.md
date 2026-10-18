@@ -96,6 +96,8 @@ The agent for one workspace. An async context manager. See [Client & configurati
 | `permissions` | `tuple[str, ...]` | `("deny", "ask", "safe", "auto")`. |
 | `usage` | `Usage` | What the current session has spent. |
 | `plugins` | `PluginReport` | The plugins that loaded, and the failures. |
+| `self_compaction` | `bool` | Whether the model may compact this session itself. |
+| `self_compaction_choice` | `bool \| None` | This session's own choice, or `None` when it follows the configuration. |
 
 #### Methods
 
@@ -107,6 +109,11 @@ The agent for one workspace. An async context manager. See [Client & configurati
 | `use_model(name)` | `ModelInfo` | Chooses the model; takes a name or a `ModelInfo`. |
 | `use_effort(name)` | `str` | Chooses the reasoning level. |
 | `use_permission(name)` | `str` | Chooses the permission level; applies from the next shell command. |
+| `mentions(query="", *, limit=50)` | `tuple[MentionInfo, ...]` | The `@` resources matching a query, for a completion menu. |
+| `await usage_ledger()` | `WorkspaceUsage` | What every stored session of the workspace spent, by session, model and day. |
+| `await session_stats(ids=None)` | `tuple[SessionStatsInfo, ...]` | Stored totals of some sessions, or of the current one. |
+| `use_self_compaction(choice)` | `bool` | Let the model compact this session itself (`True`), stop it (`False`), or follow the default (`None`). |
+| `await check_models(*, timeout=30)` | `tuple[ModelCheck, ...]` | Ask every configured model one short question, as `zettcode doctor`. |
 | `aclose()` | — | Stops a run in progress and releases everything. Safe to call twice. |
 
 `use_model`, `use_effort` and `use_permission` raise `ConfigurationError` for a choice that does not exist, with the valid ones in the message.
@@ -276,6 +283,26 @@ Properties: `ok` (`stop is None`) and `failed_tools`.
 
 `Message(role, text, tool_calls=(), tool_call_id=None, tool_name=None, ok=True, images=0)`.
 `ToolCallInfo(id, name, arguments)`.
+
+### `MentionInfo`
+
+`token`, `kind`, `name`, `description`.
+
+### `Totals`
+
+What a tally in the usage ledger holds: `requests`, `input_tokens`, `output_tokens`, `cache_read_tokens`, `reasoning_tokens` (all `int`), with `total_tokens` and `cache_share` (`None` with no input) worked out.
+
+### `SessionTotals`, `ModelTotals`, `DayTotals`, `WorkspaceUsage`
+
+`SessionTotals(id, title, started, updated, tokens, models, entries)`; `ModelTotals(model, tokens)`; `DayTotals(day, tokens)`. `WorkspaceUsage(sessions, models, days, total)` is what `usage_ledger()` returns: sessions most recently active first, models busiest first, days oldest first.
+
+### `SessionStatsInfo`
+
+`id`, `entries`, `requests`, `input_tokens`, `output_tokens`, `cache_read_tokens`, `reasoning_tokens`, with `total_tokens` and `cache_share` worked out. One row of the terminal's `/resume` panel.
+
+### `ModelCheck`
+
+`model`, `model_id`, `ok`, `seconds`, `detail`, `input_tokens: int | None`, `output_tokens: int | None`. One model's answer to `check_models()`.
 
 ### `ContextReport` and `ContextShare`
 

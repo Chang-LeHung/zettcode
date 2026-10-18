@@ -193,6 +193,22 @@ async with zc.Client(".") as client:
 
 `client.config` 是生效的 `ZettCodeConfig`，它是冻结的：要改 `use_*` 方法之外的设置，请新建 client。
 
+## `@` 资源、用量与体检
+
+终端能回答的另外三个问题也各有方法:`@` 能指向什么、工作区花了多少、模型能不能用。
+
+```python
+async with zc.Client(".") as client:
+    for mention in client.mentions("cli", limit=5):
+        print(mention.token, mention.kind, mention.description)
+    ledger = await client.usage_ledger()
+    print(ledger.total.total_tokens)
+    for check in await client.check_models(timeout=15):
+        print(check.model, check.ok, check.detail)
+```
+
+[用量与体检](./usage)讲账本、会话统计和模型体检;[会话](./sessions)讲会话里存了什么。
+
 ## 关闭
 
 ```python

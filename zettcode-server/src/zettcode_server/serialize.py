@@ -14,12 +14,20 @@ from .schemas import (
     ContextOut,
     ContextShareOut,
     CurrentSessionOut,
+    DayTotalsOut,
+    MentionOut,
     MessageOut,
+    ModelCheckOut,
     ModelOut,
+    ModelTotalsOut,
     ResultOut,
     SessionOut,
+    SessionStatsOut,
+    SessionTotalsOut,
     ToolOut,
+    TotalsOut,
     UsageOut,
+    WorkspaceUsageOut,
 )
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
@@ -28,12 +36,84 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zettcode.sdk.types import (
         Compaction,
         ContextReport,
+        MentionInfo,
         Message,
+        ModelCheck,
         ModelInfo,
         RunResult,
         SessionInfo,
+        SessionStatsInfo,
         ToolRecord,
+        Totals,
         Usage,
+        WorkspaceUsage,
+    )
+
+
+def totals_out(totals: Totals) -> TotalsOut:
+    """Return a tally as the API counts it, with the totals the terminal shows worked out."""
+    return TotalsOut(
+        requests=totals.requests,
+        input_tokens=totals.input_tokens,
+        output_tokens=totals.output_tokens,
+        cache_read_tokens=totals.cache_read_tokens,
+        reasoning_tokens=totals.reasoning_tokens,
+        total_tokens=totals.total_tokens,
+        cache_share=totals.cache_share,
+    )
+
+
+def ledger_out(usage: WorkspaceUsage) -> WorkspaceUsageOut:
+    """Return the workspace's usage the way the ``/usage`` page lays it out."""
+    return WorkspaceUsageOut(
+        sessions=[
+            SessionTotalsOut(
+                id=session.id,
+                title=session.title,
+                started=session.started,
+                updated=session.updated,
+                tokens=totals_out(session.tokens),
+                models=list(session.models),
+                entries=session.entries,
+            )
+            for session in usage.sessions
+        ],
+        models=[ModelTotalsOut(model=item.model, tokens=totals_out(item.tokens)) for item in usage.models],
+        days=[DayTotalsOut(day=item.day, tokens=totals_out(item.tokens)) for item in usage.days],
+        total=totals_out(usage.total),
+    )
+
+
+def stats_out(stats: SessionStatsInfo) -> SessionStatsOut:
+    """Return one session's stored totals, with the share the resume panel colours."""
+    return SessionStatsOut(
+        id=stats.id,
+        entries=stats.entries,
+        requests=stats.requests,
+        input_tokens=stats.input_tokens,
+        output_tokens=stats.output_tokens,
+        cache_read_tokens=stats.cache_read_tokens,
+        reasoning_tokens=stats.reasoning_tokens,
+        total_tokens=stats.total_tokens,
+        cache_share=stats.cache_share,
+    )
+
+
+def mention_out(mention: MentionInfo) -> MentionOut:
+    """Return one ``@`` resource as a menu row."""
+    return MentionOut(token=mention.token, kind=mention.kind, name=mention.name, description=mention.description)
+
+
+def check_out(check: ModelCheck) -> ModelCheckOut:
+    """Return one model's doctor result."""
+    return ModelCheckOut(
+        model=check.model,
+        model_id=check.model_id,
+        ok=check.ok,
+        seconds=check.seconds,
+        detail=check.detail,
+        input_tokens=check.input_tokens,
+        output_tokens=check.output_tokens,
     )
 
 

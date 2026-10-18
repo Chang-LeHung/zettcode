@@ -37,7 +37,17 @@ from .errors import (
 from .events import AnyEvent
 from .handlers import ApprovalHandler, QuestionHandler
 from .session import Prompt, RunStream, Session
-from .types import Image, ModelInfo, RunResult, SessionInfo, Usage
+from .types import (
+    Image,
+    MentionInfo,
+    ModelCheck,
+    ModelInfo,
+    RunResult,
+    SessionInfo,
+    SessionStatsInfo,
+    Usage,
+    WorkspaceUsage,
+)
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only; the agent is imported when a client is made
     from ..app.agent.agent import ZettCodeAgent
@@ -311,6 +321,8 @@ class Client:
             self._dispose()
             raise
         self.sessions = Sessions(self)
+        #: One reader for the workspace's ledger, so a second look at the usage reads only what changed.
+        self._ledger_reader: Any = None
 
     # -- process-wide bookkeeping --
     def _register(self, workspace: Path) -> None:
@@ -545,6 +557,105 @@ class Client:
         """Return the plugins that loaded and the ones that did not."""
         bundle = self._agent.runtime.plugins
         return PluginReport(tuple(plugin.name for plugin in bundle.plugins), tuple(bundle.failures))
+
+    def mentions(self, query: str = "", *, limit: int = 50) -> tuple[MentionInfo, ...]:
+        """Return the ``@`` resources whose name matches ``query``, for a completion menu.
+
+        The same resources a prompt resolves: the workspace's files, the skills on the search paths, and whatever a
+        plugin offers. The query is what follows the ``@`` (``"cli"`` for ``@cli``); an empty one lists what the
+        providers consider likeliest. The result is capped, because a menu shows a screenful and a large workspace
+        has more files than one.
+
+        Args:
+            query: What was typed after the ``@``, without it.
+            limit: Most entries to return; a positive integer.
+
+        Raises:
+            ValueError: ``limit`` is not positive.
+        """
+        from ..app.agent.dialogue.mentions import MentionRegistry
+
+        self._check_open()
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+            raise ValueError("limit must be a positive integer")
+        registry = MentionRegistry(self._agent.plugin_mentions)
+        return tuple(
+            MentionInfo(mention.token, mention.kind, mention.name, mention.description)
+            for mention in registry.candidates(query)[:limit]
+        )
+
+    # -- what the workspace spent, and what a session holds --
+    def _ledger(self) -> Any:
+        """Return the reader of this workspace's ledger, made once."""
+        if self._ledger_reader is None:
+            from ..app.agent.storage.ledger import LedgerReader
+
+            self._ledger_reader = LedgerReader(self.config.store, self.config.workspace)
+        return self._ledger_reader
+
+    async def usage_ledger(self) -> WorkspaceUsage:
+        """Return what every stored session of this workspace has spent, as the ``/usage`` page shows it.
+
+        The numbers are read back from the stored conversations, so they cover the whole workspace and not only
+        this conversation, and they agree with the files rather than with what this process remembers. The read runs
+        off the event loop and reads only what changed since the last call on this client.
+        """
+        from ._translate import ledger_from
+
+        self._check_open()
+        return ledger_from(await asyncio.to_thread(self._ledger().read))
+
+    async def session_stats(self, session_ids: Sequence[str] | None = None) -> tuple[SessionStatsInfo, ...]:
+        """Return the stored totals of some sessions: entries, replies, tokens and the cached share.
+
+        This is what the ``/resume`` panel's columns are made of, and it reads a session's file only when that file
+        has changed since it was summarized. The current session is read when no ids are given.
+        """
+        from ._translate import stats_from
+
+        self._check_open()
+        wanted = list(session_ids) if session_ids is not None else [self.session.id]
+        if not wanted:
+            return ()
+        found = await asyncio.to_thread(self._ledger().stats, wanted)
+        return tuple(stats_from(found[session_id]) for session_id in wanted if session_id in found)
+
+    # -- self-compaction --
+    @property
+    def self_compaction(self) -> bool:
+        """Return whether the model may compact this session's context itself."""
+        return self._agent.runtime.self_compacting(self.session.id)
+
+    @property
+    def self_compaction_choice(self) -> bool | None:
+        """Return this session's own choice (``None`` when it follows the configuration's default)."""
+        return self._agent.runtime.self_compaction_choice(self.session.id)
+
+    def use_self_compaction(self, choice: bool | None) -> bool:
+        """Let the model compact this session itself (``True``), stop it (``False``), or follow the default (``None``).
+
+        The choice is stored in the session, so it is there when the session is reopened, and it applies to the next
+        request (the tool is offered when one starts).
+
+        Raises:
+            OSError: The choice could not be written; the one in force is unchanged.
+        """
+        self._check_open()
+        self._agent.runtime.choose_self_compaction(self.session.id, choice)
+        return self.self_compaction
+
+    async def check_models(self, *, timeout: float = 30.0) -> tuple[ModelCheck, ...]:
+        """Ask every configured model one short question, as ``zettcode doctor`` does, and report which answer.
+
+        The questions go to the provider adapters directly: no session is written, no tool is offered, and no
+        extension runs, so what is measured is the entry and the endpoint. They are asked at once, and a model that
+        does not answer within ``timeout`` seconds is reported as not answering rather than raised.
+        """
+        from ..doctor import diagnose
+        from ._translate import checks_from
+
+        self._check_open()
+        return checks_from(await diagnose(self.config.models, timeout=timeout))
 
     # -- running, on the current session --
     def prompt(

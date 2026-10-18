@@ -60,7 +60,19 @@ if TYPE_CHECKING:  # pragma: no cover - for type checkers and editors; at runtim
     )
     from .handlers import approve_all, approve_commands, deny_all
     from .session import RunStream, Session
-    from .types import Image, RunResult, Usage
+    from .types import (
+        DayTotals,
+        Image,
+        MentionInfo,
+        ModelCheck,
+        ModelTotals,
+        RunResult,
+        SessionStatsInfo,
+        SessionTotals,
+        Totals,
+        Usage,
+        WorkspaceUsage,
+    )
 
 #: Where each public name lives. The package resolves a name by importing only that module.
 _EXPORTS: dict[str, str] = {
@@ -72,6 +84,14 @@ _EXPORTS: dict[str, str] = {
     "RunResult": ".types",
     "Usage": ".types",
     "Image": ".types",
+    "MentionInfo": ".types",
+    "DayTotals": ".types",
+    "ModelCheck": ".types",
+    "ModelTotals": ".types",
+    "SessionStatsInfo": ".types",
+    "SessionTotals": ".types",
+    "Totals": ".types",
+    "WorkspaceUsage": ".types",
     "TextDelta": ".events",
     "ReasoningDelta": ".events",
     "ToolStarted": ".events",
@@ -92,18 +112,26 @@ __all__ = [
     "ApprovalRequested",
     "Client",
     "ConfigurationError",
+    "DayTotals",
     "Finished",
     "Image",
+    "MentionInfo",
+    "ModelCheck",
+    "ModelTotals",
     "QuestionAsked",
     "ReasoningDelta",
     "RunError",
     "RunResult",
     "RunStream",
     "Session",
+    "SessionStatsInfo",
+    "SessionTotals",
     "TextDelta",
     "ToolFinished",
     "ToolStarted",
+    "Totals",
     "Usage",
+    "WorkspaceUsage",
     "ZettCodeError",
     "approve_all",
     "approve_commands",

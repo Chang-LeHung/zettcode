@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import mimetypes
 from dataclasses import dataclass, field, fields
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -20,15 +20,23 @@ __all__ = [
     "Compaction",
     "ContextReport",
     "ContextShare",
+    "DayTotals",
     "Image",
+    "MentionInfo",
     "Message",
+    "ModelCheck",
     "ModelInfo",
+    "ModelTotals",
     "ResumeInfo",
     "RunResult",
     "SessionInfo",
+    "SessionStatsInfo",
+    "SessionTotals",
     "ToolCallInfo",
     "ToolRecord",
+    "Totals",
     "Usage",
+    "WorkspaceUsage",
 ]
 
 #: Media types a model accepts as an image; anything else is rejected before it reaches the provider.
@@ -229,6 +237,23 @@ class Message:
 
 
 @dataclass(frozen=True, slots=True)
+class MentionInfo:
+    """One ``@`` resource a prompt can reference, as the completion menu lists it.
+
+    Attributes:
+        token: The text as typed, ``@name``.
+        kind: What owns it: ``"file"``, ``"skill"``, or the name a plugin gives its own kind.
+        name: The resource without the ``@``; a file's path is relative to the workspace.
+        description: One line for a menu.
+    """
+
+    token: str
+    kind: str
+    name: str
+    description: str
+
+
+@dataclass(frozen=True, slots=True)
 class ContextShare:
     """One source's share of the context.
 
@@ -335,3 +360,147 @@ class RunResult:
     def failed_tools(self) -> tuple[ToolRecord, ...]:
         """Return the tool calls that did not succeed."""
         return tuple(tool for tool in self.tools if not tool.ok)
+
+
+@dataclass(frozen=True, slots=True)
+class Totals:
+    """Token counters added up over some replies: what the usage ledger reports.
+
+    A tally is read back from the stored conversations, so it has no wall-clock seconds and no context size — those
+    belong to a call, not to a record. :attr:`Usage` is what one session or run spent now.
+
+    Attributes:
+        requests: Model replies counted.
+        input_tokens: Everything sent, cache reads included.
+        output_tokens: Everything generated, reasoning included.
+        cache_read_tokens: The part of the input the provider served from its cache.
+        reasoning_tokens: The reasoning part of the output.
+    """
+
+    requests: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_tokens: int = 0
+    reasoning_tokens: int = 0
+
+    @property
+    def total_tokens(self) -> int:
+        """Return everything sent plus everything generated."""
+        return self.input_tokens + self.output_tokens
+
+    @property
+    def cache_share(self) -> float | None:
+        """Return the share of the input the provider served from its cache, or ``None`` before there is input."""
+        return self.cache_read_tokens / self.input_tokens if self.input_tokens else None
+
+
+@dataclass(frozen=True, slots=True)
+class SessionTotals:
+    """One session in the workspace's ledger: what it spent, and how long it is.
+
+    Attributes:
+        id: The session's identity.
+        title: Its name, or ``None`` until one was written.
+        started: When its first record was written.
+        updated: When its conversation last changed.
+        tokens: What it spent.
+        models: The models it was charged under, in the order they were used.
+        entries: Message records the conversation file holds.
+    """
+
+    id: str
+    title: str | None
+    started: datetime
+    updated: datetime
+    tokens: Totals
+    models: tuple[str, ...]
+    entries: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class ModelTotals:
+    """What one model was charged across the workspace."""
+
+    model: str
+    tokens: Totals
+
+
+@dataclass(frozen=True, slots=True)
+class DayTotals:
+    """What one day spent across the workspace."""
+
+    day: date
+    tokens: Totals
+
+
+@dataclass(frozen=True, slots=True)
+class WorkspaceUsage:
+    """What a workspace's stored sessions have spent, as the ``/usage`` page shows it.
+
+    Attributes:
+        sessions: One entry per session, most recently active first.
+        models: One entry per model, busiest first.
+        days: One entry per day that spent anything, oldest first.
+        total: Everything together.
+    """
+
+    sessions: tuple[SessionTotals, ...]
+    models: tuple[ModelTotals, ...]
+    days: tuple[DayTotals, ...]
+    total: Totals
+
+
+@dataclass(frozen=True, slots=True)
+class SessionStatsInfo:
+    """The totals one row of the ``/resume`` panel shows, read from the store.
+
+    Attributes:
+        id: The session.
+        entries: Message records its conversation holds.
+        requests: Model replies it was charged for; a fork is not charged for the replies it copied.
+        input_tokens: Everything sent, cache reads included.
+        output_tokens: Everything generated, reasoning included.
+        cache_read_tokens: The part of the input the provider served from its cache.
+        reasoning_tokens: The reasoning part of the output.
+    """
+
+    id: str
+    entries: int = 0
+    requests: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_tokens: int = 0
+    reasoning_tokens: int = 0
+
+    @property
+    def total_tokens(self) -> int:
+        """Return everything sent plus everything generated."""
+        return self.input_tokens + self.output_tokens
+
+    @property
+    def cache_share(self) -> float | None:
+        """Return the cached share of the input, or ``None`` before there was any."""
+        return self.cache_read_tokens / self.input_tokens if self.input_tokens else None
+
+
+@dataclass(frozen=True, slots=True)
+class ModelCheck:
+    """One configured model, asked one short question by :meth:`~zettcode.sdk.Client.check_models`.
+
+    Attributes:
+        model: The name the configuration shows it by.
+        model_id: The id sent to the endpoint.
+        ok: Whether it answered.
+        seconds: How long the answer, or the failure, took.
+        detail: The reply when it answered; the provider's reason when it did not.
+        input_tokens: What the answer cost, when the provider said.
+        output_tokens: What it generated, when the provider said.
+    """
+
+    model: str
+    model_id: str
+    ok: bool
+    seconds: float
+    detail: str = ""
+    input_tokens: int | None = None
+    output_tokens: int | None = None

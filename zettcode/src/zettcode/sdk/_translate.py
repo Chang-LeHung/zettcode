@@ -7,7 +7,8 @@ custom events, so it imports both, and is itself imported only when a run starts
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
+from typing import TYPE_CHECKING
 
 from zett_agent.events import AgentEvent, AgentEventType
 from zett_agent.extensions.shell_approval import SHELL_APPROVAL_EVENT_NAME
@@ -16,6 +17,7 @@ from zett_agent.messages import TextContent
 from ..app.agent.dialogue.ask import question_from
 from ..app.agent.extensions.mcp_notice import notice_from
 from ..app.agent.extensions.usage import USAGE_EVENT_NAME, UsageSnapshot
+from ..app.agent.storage.ledger import Ledger, SessionStats, SessionUsage, Tally
 from .events import (
     AnyEvent,
     ApprovalRequested,
@@ -34,9 +36,19 @@ from .events import (
     UsageUpdated,
     _Reply,
 )
-from .types import Compaction, Usage
+from .types import (
+    Compaction,
+    DayTotals,
+    ModelCheck,
+    ModelTotals,
+    SessionStatsInfo,
+    SessionTotals,
+    Totals,
+    Usage,
+    WorkspaceUsage,
+)
 
-__all__ = ["translate", "usage_from"]
+__all__ = ["checks_from", "ledger_from", "stats_from", "translate", "usage_from"]
 
 
 def usage_from(snapshot: UsageSnapshot) -> Usage:
@@ -75,6 +87,78 @@ def _payload(event: AgentEvent) -> dict[str, object]:
 def _optional_int(value: object) -> int | None:
     """Return ``value`` as an int when it is a real number, else ``None`` (a bool is not a number here)."""
     return int(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+if TYPE_CHECKING:  # pragma: no cover - annotations only
+    from ..doctor import Probe
+
+
+def totals_from(tally: Tally) -> Totals:
+    """Return one tally as the SDK's own counters."""
+    return Totals(
+        requests=tally.requests,
+        input_tokens=tally.input_tokens,
+        output_tokens=tally.output_tokens,
+        cache_read_tokens=tally.cache_read_tokens,
+        reasoning_tokens=tally.reasoning_tokens,
+    )
+
+
+def ledger_from(ledger: Ledger) -> WorkspaceUsage:
+    """Return the workspace ledger as plain SDK values, ordered the way a page shows it."""
+    sessions = sorted(ledger.sessions, key=lambda item: item.updated, reverse=True)
+    models = sorted(ledger.models.items(), key=lambda pair: pair[1].total, reverse=True)
+    return WorkspaceUsage(
+        sessions=tuple(_session_totals(item) for item in sessions),
+        models=tuple(ModelTotals(name, totals_from(tally)) for name, tally in models),
+        days=tuple(DayTotals(day, totals_from(tally)) for day, tally in sorted(ledger.days.items())),
+        total=totals_from(ledger.total),
+    )
+
+
+def _session_totals(usage: SessionUsage) -> SessionTotals:
+    """Return one session's ledger row."""
+    return SessionTotals(
+        id=usage.session_id,
+        title=usage.title,
+        started=usage.started,
+        updated=usage.updated,
+        tokens=totals_from(usage.tally),
+        models=usage.models,
+        entries=usage.entries,
+    )
+
+
+def stats_from(stats: SessionStats) -> SessionStatsInfo:
+    """Return one session's stored totals."""
+    return SessionStatsInfo(
+        id=stats.session_id,
+        entries=stats.entries,
+        requests=stats.requests,
+        input_tokens=stats.input_tokens,
+        output_tokens=stats.output_tokens,
+        cache_read_tokens=stats.cache_read_tokens,
+        reasoning_tokens=stats.reasoning_tokens,
+    )
+
+
+def checks_from(probes: Sequence[Probe]) -> tuple[ModelCheck, ...]:
+    """Return the doctor probes as SDK values."""
+    checks: list[ModelCheck] = []
+    for probe in probes:
+        tokens = probe.tokens
+        checks.append(
+            ModelCheck(
+                model=probe.model.shown_name,
+                model_id=probe.model.model,
+                ok=probe.ok,
+                seconds=probe.seconds,
+                detail=probe.detail,
+                input_tokens=tokens[0] if tokens else None,
+                output_tokens=tokens[1] if tokens else None,
+            )
+        )
+    return tuple(checks)
 
 
 def translate(event: AgentEvent, bridge: Bridge) -> list[AnyEvent]:

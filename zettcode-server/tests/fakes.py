@@ -12,7 +12,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 from collections.abc import AsyncIterator, Sequence
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -22,11 +22,19 @@ from zettcode.sdk.types import (
     Compaction,
     ContextReport,
     ContextShare,
+    DayTotals,
+    MentionInfo,
     Message,
+    ModelCheck,
     ModelInfo,
+    ModelTotals,
     RunResult,
     SessionInfo,
+    SessionStatsInfo,
+    SessionTotals,
+    Totals,
     Usage,
+    WorkspaceUsage,
 )
 
 WHEN = datetime(2026, 10, 18, 12, 0, tzinfo=timezone.utc)
@@ -204,6 +212,13 @@ class FakeClient:
         self.asked: list[str] = []
         self.approvals: list[Any] = []
         self.prompt_options: list[dict[str, object]] = []
+        self.self_choice: bool | None = None
+        self.effective_self_compaction = False
+        self.checks: list[ModelCheck] = [
+            ModelCheck("gpt-5", "gpt-5", True, 0.4, "ok", 5, 1),
+            ModelCheck("fast", "gpt-5-mini", False, 2.0, "401 Unauthorized"),
+        ]
+        self.doctor_timeout: float | None = None
         self.closed = False
 
     @property
@@ -243,3 +258,43 @@ class FakeClient:
 
     async def aclose(self) -> None:
         self.closed = True
+
+    # -- what a terminal shows around the conversation -----------------------
+    def mentions(self, query: str = "", *, limit: int = 50) -> tuple[MentionInfo, ...]:
+        found = (
+            MentionInfo("@src/cli.py", "file", "src/cli.py", "4.2 KB"),
+            MentionInfo("@code-review", "skill", "code-review", "Review a change"),
+        )
+        return tuple(item for item in found if query.lower() in item.name.lower())[:limit]
+
+    async def usage_ledger(self) -> WorkspaceUsage:
+        tokens = Totals(requests=3, input_tokens=1800, output_tokens=180, cache_read_tokens=700)
+        return WorkspaceUsage(
+            sessions=(SessionTotals("session-1", "A conversation", WHEN, WHEN, tokens, ("gpt-5",), entries=4),),
+            models=(ModelTotals("gpt-5", tokens),),
+            days=(DayTotals(date(2026, 10, 18), tokens),),
+            total=tokens,
+        )
+
+    async def session_stats(self, session_ids: Sequence[str] | None = None) -> tuple[SessionStatsInfo, ...]:
+        ids = list(session_ids) if session_ids is not None else [self.session.id]
+        known = SessionStatsInfo(
+            "session-1", entries=4, requests=2, input_tokens=1300, output_tokens=130, cache_read_tokens=600
+        )
+        return tuple(known if session_id == "session-1" else SessionStatsInfo(session_id) for session_id in ids)
+
+    @property
+    def self_compaction_choice(self) -> bool | None:
+        return self.self_choice
+
+    @property
+    def self_compaction(self) -> bool:
+        return self.effective_self_compaction if self.self_choice is None else self.self_choice
+
+    def use_self_compaction(self, choice: bool | None) -> bool:
+        self.self_choice = choice
+        return self.self_compaction
+
+    async def check_models(self, *, timeout: float = 30.0) -> tuple[ModelCheck, ...]:
+        self.doctor_timeout = timeout
+        return tuple(self.checks)

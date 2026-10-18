@@ -215,6 +215,30 @@ else:
 
 Running, renaming, compacting and resuming on a locked session raise `SessionLockedError`. If the terminal is open on a conversation, the SDK can read it and cannot add to it, and the other way round.
 
+## Self-compaction
+
+Self-compaction is the model deciding when to compact its own context: the tool is offered when a request starts, and the model asks when it judges the detail is no longer needed. It has a configuration default (`[compaction] self`) and a choice per session. The terminal edits both in `/self-compact`; from code the session's choice is a property and a method:
+
+```python
+async with zc.Client(".") as client:
+    print(client.self_compaction)          # whether it is in force for this session
+    print(client.self_compaction_choice)   # True, False, or None to follow the default
+    client.use_self_compaction(True)       # this session may compact itself
+    client.use_self_compaction(None)       # follow the configuration again
+```
+
+The choice is written into the session, so it survives a restart; it applies from the next request, because the tool is offered when one starts. `OSError` means the choice could not be written, and the one in force is unchanged.
+
+## What a session holds
+
+`await client.session_stats()` is the stored side of a conversation: how many entries its file holds, how many replies it was charged for, and the tokens and cached share those replies cost. It is what the terminal's `/resume` columns show, and it reads a file only when it has changed. See [Usage and health](./usage).
+
+```python
+async with zc.Client(".") as client:
+    for stats in await client.session_stats([client.session.id]):
+        print(stats.entries, stats.input_tokens, stats.cache_share)
+```
+
 ## Summary of the `Session` API
 
 | Member | Kind | Does |

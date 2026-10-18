@@ -39,6 +39,8 @@ Except on `/health`, every endpoint requires `Authorization: Bearer <token>` whe
 | `GET` | `/settings` | — | `{"model","effort","efforts","permission","permissions"}` |
 | `PATCH` | `/settings` | `{"model"?, "effort"?, "permission"?}` | The same as `GET /settings`, after the change. At least one field. |
 | `GET` | `/plugins` | — | `{"loaded": [...], "failures": [...]}` |
+| `GET` | `/mentions?query=&limit=50` | — | `{"mentions": [{"token","kind","name","description"}]}`: the files, skills and plugin resources an `@` can reference. |
+| `POST` | `/doctor` | `{"timeout"?: 30}` | `{"checks": [{"model","model_id","ok","seconds","detail","input_tokens","output_tokens"}]}`: every configured model asked one short question. |
 
 ```bash
 curl -X PATCH http://127.0.0.1:3290/settings \
@@ -66,6 +68,12 @@ The *current* session is the conversation the next prompt continues. A server st
 | `GET` | `/sessions/current/history` | — | `{"messages": [{"role","text","tool_calls","ok","images"}]}` |
 | `GET` | `/sessions/current/export` | — | The conversation as a standalone HTML page (`text/html`, as a download). |
 | `POST` | `/sessions/current/ask` | `{"question","timeout"?}` | `{"answer"}`; answered beside the conversation, never added to it. 409 while a run is going. |
+| `GET` | `/sessions/current/stats` | — | `{"id","entries","requests","input_tokens","output_tokens","cache_read_tokens","reasoning_tokens","total_tokens","cache_share"}`, or `null` before anything is stored: one row of `/resume`. |
+| `GET` | `/sessions/stats?ids=a,b` | — | `{"stats": [...]}` for the named sessions, same shape; at most 200 ids. |
+| `GET` | `/sessions/current/self-compaction` | — | `{"choice": true\|false\|null, "effective": bool}` |
+| `PUT` | `/sessions/current/self-compaction` | `{"choice": true\|false\|null}` | The same, after the choice is saved in the session; applies from the next request. |
+| `GET` | `/usage` | — | This session's totals. |
+| `GET` | `/usage/ledger` | — | `{"sessions", "models", "days", "total"}`: what the workspace spent, as the terminal's `/usage` page shows it. |
 
 `usage` is the session's totals:
 

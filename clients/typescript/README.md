@@ -79,6 +79,16 @@ const { models, current } = await client.models();
 await client.updateSettings({ model: "fast", effort: "low", permission: "safe" });
 ```
 
+## Usage, mentions and health
+
+```ts
+const ledger = await client.usageLedger();          // by session, model and day
+const rows = await client.sessionStats();           // one row of the terminal's /resume
+const files = await client.mentions("cli");         // the @ completion menu
+const checks = await client.doctor();               // which configured models answer
+await client.setSelfCompaction(true);               // or false, or null for the configuration default
+```
+
 ## Continuing an interrupted request
 
 ```ts

@@ -28,7 +28,15 @@ from .serialize import event_payload, result_out
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zettcode.sdk.client import Client, RunStream
-    from zettcode.sdk.types import Image, ResumeInfo, RunResult
+    from zettcode.sdk.types import (
+        Image,
+        MentionInfo,
+        ModelCheck,
+        ResumeInfo,
+        RunResult,
+        SessionStatsInfo,
+        WorkspaceUsage,
+    )
 
     from .settings import Settings
 
@@ -306,6 +314,31 @@ class Runner:
     async def resumable(self) -> ResumeInfo | None:
         """Return where the conversation was interrupted, or ``None`` when it was not."""
         return await self.client.session.resumable()
+
+    # -- what a terminal shows around the conversation -----------------------
+    async def mentions(self, query: str, limit: int) -> tuple[MentionInfo, ...]:
+        """Return the ``@`` resources matching ``query``; the workspace walk runs off the event loop."""
+        return await asyncio.to_thread(self.client.mentions, query, limit=limit)
+
+    async def usage_ledger(self) -> WorkspaceUsage:
+        """Return what every stored session of the workspace spent."""
+        return await self.client.usage_ledger()
+
+    async def session_stats(self, session_ids: list[str] | None) -> tuple[SessionStatsInfo, ...]:
+        """Return the stored totals of some sessions, or of the current one."""
+        return await self.client.session_stats(session_ids)
+
+    def self_compaction(self) -> tuple[bool | None, bool]:
+        """Return the session's own choice and whether self-compaction is in force."""
+        return self.client.self_compaction_choice, self.client.self_compaction
+
+    async def use_self_compaction(self, choice: bool | None) -> bool:
+        """Save the session's choice; the write runs off the event loop."""
+        return await asyncio.to_thread(self.client.use_self_compaction, choice)
+
+    async def check_models(self, timeout: float) -> tuple[ModelCheck, ...]:
+        """Ask every configured model one short question."""
+        return await self.client.check_models(timeout=timeout)
 
 
 def result_payload(result: RunResult) -> dict[str, object]:

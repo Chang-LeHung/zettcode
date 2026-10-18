@@ -7,7 +7,7 @@ without changing what a client sees, and a field is only published when it is me
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -277,8 +277,8 @@ class ApprovalAnswer(BaseModel):
     """
 
     call_id: str = Field(min_length=1)
-    approve: bool
-    remember: bool = False
+    approve: bool = Field(strict=True)
+    remember: bool = Field(strict=True, default=False)
 
 
 class QuestionAnswer(BaseModel):
@@ -362,6 +362,125 @@ class PluginsOut(BaseModel):
 
     loaded: list[str]
     failures: list[str]
+
+
+class MentionOut(BaseModel):
+    """One ``@`` resource a prompt can carry, as a completion menu lists it."""
+
+    token: str
+    kind: str
+    name: str
+    description: str
+
+
+class MentionsOut(BaseModel):
+    """The ``@`` resources matching what was typed."""
+
+    mentions: list[MentionOut]
+
+
+class TotalsOut(BaseModel):
+    """Token counters added up over some replies, as the usage ledger records them."""
+
+    requests: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_tokens: int = 0
+    reasoning_tokens: int = 0
+    total_tokens: int = 0
+    cache_share: float | None = None
+
+
+class SessionTotalsOut(BaseModel):
+    """One session in the workspace's usage."""
+
+    id: str
+    title: str | None = None
+    started: datetime
+    updated: datetime
+    tokens: TotalsOut
+    models: list[str] = Field(default_factory=list)
+    entries: int = 0
+
+
+class ModelTotalsOut(BaseModel):
+    """What one model was charged across the workspace."""
+
+    model: str
+    tokens: TotalsOut
+
+
+class DayTotalsOut(BaseModel):
+    """What one day spent across the workspace."""
+
+    day: date
+    tokens: TotalsOut
+
+
+class WorkspaceUsageOut(BaseModel):
+    """What the workspace's stored sessions have spent, as the terminal's ``/usage`` page shows it."""
+
+    sessions: list[SessionTotalsOut]
+    models: list[ModelTotalsOut]
+    days: list[DayTotalsOut]
+    total: TotalsOut
+
+
+class SessionStatsOut(BaseModel):
+    """The totals one row of the terminal's ``/resume`` panel shows."""
+
+    id: str
+    entries: int = 0
+    requests: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_tokens: int = 0
+    reasoning_tokens: int = 0
+    total_tokens: int = 0
+    cache_share: float | None = None
+
+
+class SessionStatsListOut(BaseModel):
+    """The stored totals of the sessions asked for."""
+
+    stats: list[SessionStatsOut]
+
+
+class SelfCompactionOut(BaseModel):
+    """Whether the model may compact this session itself, and the session's own choice."""
+
+    choice: bool | None = None
+    effective: bool
+
+
+class SelfCompactionUpdate(BaseModel):
+    """A choice about self-compaction: ``true``, ``false``, or ``null`` to follow the configuration."""
+
+    choice: bool | None = Field(default=None, strict=True)
+
+
+class ModelCheckOut(BaseModel):
+    """One model asked one short question by ``/doctor``."""
+
+    model: str
+    model_id: str
+    ok: bool
+    seconds: float
+    detail: str = ""
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+
+
+class DoctorOut(BaseModel):
+    """Every configured model, and whether it answers."""
+
+    checks: list[ModelCheckOut]
+
+
+class DoctorRequest(BaseModel):
+    """How long each model may take to answer."""
+
+    timeout: float = Field(default=30.0, gt=0, le=300)
 
 
 class ErrorOut(BaseModel):
