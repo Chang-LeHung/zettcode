@@ -8,9 +8,9 @@ import pytest
 from zett_agent.events import AgentEvent, AgentEventType
 from zett_agent.extensions.ask_user import ASK_USER_EVENT_NAME
 
-from zettcode.app.agent import runtime as runtime_module
 from zettcode.app.agent.dialogue.ask import AskUserQuestion, answer_payload, decline_payload, question_from
 from zettcode.config import ModelConfig, ZettCodeConfig
+from zettcode.plugins import load_plugins
 
 
 def _event(payload: object, *, name: str = ASK_USER_EVENT_NAME) -> AgentEvent:
@@ -121,8 +121,8 @@ def _config(tmp_path: Path, **changes: object) -> ZettCodeConfig:
 def test_the_ask_tool_is_composed_by_default_and_can_be_turned_off(tmp_path):
     from zett_agent.extensions.ask_user import AskUserExtension
 
-    composed = runtime_module.integration_extensions(_config(tmp_path))
-    disabled = runtime_module.integration_extensions(_config(tmp_path, ask_user_enabled=False))
+    composed = load_plugins(_config(tmp_path)).contributed
+    disabled = load_plugins(_config(tmp_path, ask_user_enabled=False)).contributed
 
     assert any(isinstance(extension, AskUserExtension) for extension in composed)
     assert not any(isinstance(extension, AskUserExtension) for extension in disabled)

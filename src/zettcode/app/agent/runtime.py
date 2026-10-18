@@ -22,7 +22,6 @@ from typing import TYPE_CHECKING, TypeAlias
 from zett_agent.agent import AgentRunConfig
 from zett_agent.client import AgentClient
 from zett_agent.dispatcher import AgentEventDispatcher
-from zett_agent.extensions.ask_user import AskUserExtension
 from zett_agent.extensions.base import AgentExtension
 from zett_agent.extensions.coding import CodingExtension
 from zett_agent.extensions.shell_approval import ShellApprovalExtension
@@ -33,6 +32,7 @@ from zett_agent.model import ReasoningEffort
 
 from zettcode.config import DEFAULT_ANTHROPIC_BASE_URL, ModelConfig, ZettCodeConfig
 from zettcode.plugins import Plugins, load_plugins
+from zettcode.plugins.builtin_agent import TODOS_SERVICE
 
 from ..pipeline import ImportPipeline
 from .dialogue.side import SideQuestions
@@ -126,32 +126,26 @@ def integration_extensions(config: ZettCodeConfig) -> tuple[AgentExtension, ...]
     """Return the optional extensions this configuration asks for.
 
     They live outside the model loop, so they are built here and handed to
-    :func:`create_agent` with the rest: the ``ask_user`` tool the model asks its
-    questions through, the project instructions, the skills, and MCP. MCP is
+    :func:`create_agent` with the rest: the skills and MCP. MCP is
     skipped when there is no server file to read, so an unconfigured run carries
     no MCP instructions at all rather than a system message saying there is
-    nothing to load. The project instructions are the workspace's ``AGENTS.md``
-    files: the extension reads them again on every request, so an edit applies to
-    the next turn, and its priority keeps them ahead of the tool and skill
-    guidance below.
+    nothing to load. The ``ask_user`` tool and the project instructions (the workspace's
+    ``AGENTS.md`` files, read again on every request so an edit applies to the next
+    turn) are built-in plugins now, see :mod:`zettcode.plugins.builtin_agent`; the
+    instructions' priority still keeps them ahead of the tool and skill guidance below.
 
     Args:
-        config: Settings naming the workspace, what may ask questions, the skill
-            roots, and the MCP server file.
+        config: Settings naming the workspace, the skill roots, and the MCP server
+            file.
 
     Returns:
         The extensions to add, in the order they lead the request.
     """
-    from zett_agent.extensions.agents_md import AgentsMdExtension
     from zett_agent.extensions.skill import SkillExtension
 
     from .extensions.mcp import build_scoped_mcp_extension
 
     extensions: list[AgentExtension] = []
-    if config.ask_user_enabled:
-        extensions.append(AskUserExtension())
-    if config.agents_md_enabled:
-        extensions.append(AgentsMdExtension(config.workspace))
     if config.skills_enabled:
         extensions.append(SkillExtension(config.skill_search_roots()))
     if config.mcp_enabled:
@@ -201,7 +195,6 @@ class ZettCodeRuntime:
     approval: ShellApprovalExtension
     #: The permission level, shared with the approval memory and the deny extension.
     policy: ShellPolicy
-    todos: TodoWriteExtension
     usage: UsageExtension
     context: ContextExtension
     tokenizer: Tokenizer
@@ -262,7 +255,6 @@ class ZettCodeRuntime:
             session_locks=SessionLocks(persistence.session_dir),
             approval=ShellApprovalExtension(ShellApprovalMemory(policy)),
             policy=policy,
-            todos=TodoWriteExtension(),
             usage=UsageExtension(),
             context=ContextExtension(),
             tokenizer=Tokenizer(),
@@ -411,8 +403,6 @@ class ZettCodeRuntime:
 
             extensions.append(SessionMessagingExtension(self.messenger))
         extensions.extend([ShellDenyExtension(self.policy), self.approval, self.persistence])
-        if self.config.todowrite_enabled:
-            extensions.append(self.todos)
         extensions.extend(
             [
                 self.usage,
@@ -420,6 +410,9 @@ class ZettCodeRuntime:
                 self.sides,
                 ToolGuidelinesExtension(),
                 *integration_extensions(self.config),
+                # Whole extensions the plugins registered: the built-in ones (the ask tool, the project
+                # instructions, the todo tool) and any a third-party plugin brings.
+                *self.plugins.contributed,
                 self.compaction,
                 # One host drives every plugin, so the agent sees one extension;
                 # the host places itself at the earliest priority any plugin
@@ -481,6 +474,11 @@ class ZettCodeRuntime:
         runtime = cls.preview(config)
         await runtime.start()
         return runtime
+
+    @property
+    def todos(self) -> TodoWriteExtension | None:
+        """Return the extension that keeps the model's plan, or ``None`` when no plugin provides one."""
+        return self.plugins.find(TODOS_SERVICE, TodoWriteExtension)
 
     @property
     def permission(self) -> Permission:

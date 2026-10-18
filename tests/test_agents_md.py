@@ -14,8 +14,8 @@ from zett_agent.agent import AgentRunConfig, AgentRunContext, AgentState
 from zett_agent.extensions.agents_md import AgentsMdExtension
 from zett_agent.messages import SystemMessage
 
-from zettcode.app.agent import runtime as runtime_module
 from zettcode.config import ModelConfig, ZettCodeConfig
+from zettcode.plugins import load_plugins
 
 INSTRUCTIONS = "# Development Rules\n\nRun `make check` before handing work over.\n"
 
@@ -33,7 +33,7 @@ def _config(tmp_path: Path, **changes) -> ZettCodeConfig:
 
 def _instructions(config: ZettCodeConfig) -> AgentsMdExtension:
     """Return the composed AGENTS.md extension, wherever the tuple puts it."""
-    return next(item for item in runtime_module.integration_extensions(config) if isinstance(item, AgentsMdExtension))
+    return next(item for item in load_plugins(config).contributed if isinstance(item, AgentsMdExtension))
 
 
 def _context() -> AgentRunContext:
@@ -44,7 +44,7 @@ def _context() -> AgentRunContext:
 
 
 def test_the_workspace_instructions_are_composed_by_default(tmp_path):
-    extensions = runtime_module.integration_extensions(_config(tmp_path))
+    extensions = load_plugins(_config(tmp_path)).contributed
     extension = _instructions(_config(tmp_path))
 
     assert extension.directory == tmp_path
@@ -54,7 +54,7 @@ def test_the_workspace_instructions_are_composed_by_default(tmp_path):
 
 
 def test_turning_the_instructions_off_leaves_them_out(tmp_path):
-    extensions = runtime_module.integration_extensions(_config(tmp_path, agents_md_enabled=False))
+    extensions = load_plugins(_config(tmp_path, agents_md_enabled=False)).contributed
 
     assert not any(isinstance(extension, AgentsMdExtension) for extension in extensions)
 

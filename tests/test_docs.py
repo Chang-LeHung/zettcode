@@ -11,6 +11,7 @@ from pathlib import Path
 from xml.etree import ElementTree
 
 import pytest
+from zett_agent.extensions.base import AgentExtension
 
 import zettcode
 from zettcode.app.agent.conversation.entries import TextEntry
@@ -106,7 +107,7 @@ class ExampleCommandUi(CommandUi):
 @pytest.mark.parametrize("path", ["docs/guide/plugins.md", "docs/zh/guide/plugins.md"])
 async def test_documented_plugin_registers_and_runs_its_command(path, tmp_path):
     examples = code_blocks(path, "python")
-    assert len(examples) == 4
+    assert len(examples) == 5
     namespace = {}
     for example in examples:
         exec(compile(example, path, "exec"), namespace)
@@ -139,6 +140,15 @@ async def test_documented_plugin_registers_and_runs_its_command(path, tmp_path):
     (provider,) = described.providers
     assert (provider.name, provider.label, provider.api) == ("acme", "Acme AI", "chat")
     assert provider.base_url == "https://api.acme.example/v1" and provider.token_env == "ACME_API_KEY"
+
+    # The extension example is run as written too, with a stand-in for the extension it names.
+    class AuditExtension(AgentExtension):
+        name = "audit"
+
+    namespace["AuditExtension"] = AuditExtension
+    handed = PluginContainer(config)
+    namespace["Audit"]().activate(handed)
+    assert [type(extension) for extension in handed.extensions] == [AuditExtension]
 
 
 @pytest.fixture

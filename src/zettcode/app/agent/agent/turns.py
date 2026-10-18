@@ -195,7 +195,8 @@ class TurnsMixin(AgentBase):
 
     def tasks(self) -> tuple[tuple[str, str], ...]:
         """Return the current session's plan as display-ready status/content pairs."""
-        progress = self.runtime.todos.todos(self.session_id)
+        todos = self.runtime.todos
+        progress = todos.todos(self.session_id) if todos is not None else None
         return tuple((item.status.value, item.content) for item in progress.todos) if progress else ()
 
     def steer(self, message: str | UserMessage) -> bool:

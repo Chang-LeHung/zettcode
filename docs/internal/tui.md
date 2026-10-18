@@ -523,6 +523,18 @@ activated with; those commands reach the shell after the built-ins
 `PluginContainer` imports `app.commands`, which is why the plugin package is
 part of the application layer rather than the framework.
 
+Two routes lead from a plugin to the agent. The hook methods run inside the one host
+extension. `register_extension` hands the agent a whole `zett-agent` extension instead:
+`Plugins.contributed` holds them, and `ZettCodeRuntime._build` lists them after
+`integration_extensions` and before the compaction, so each is ordered by its own priority.
+`builtin_agent.py` is where the program's own are: `AskUser`, `ProjectInstructions` and
+`TodoPlan`, each reading its switch in `activate` and importing its `zett_agent` module only
+then. What the application needs from such a plugin comes back by name through `provide` and
+`Plugins.service(name, kind)` (`ZettCodeRuntime.todos` is the first reader), not through a
+field on the runtime. The rest of the hard-coded list in `_build` (coding, persistence,
+approval, usage, context, compaction, subagents, messaging, skills, MCP) still moves over one
+at a time; each move is a plugin, its switch, and a service for whatever else holds the instance.
+
 The shell's rows are a plugin too. `PluginUiMixin` names the four slots — the
 header's and the status line's left and right sides — and `ShellRows` fills
 them with the defaults; `app/ui/app.py::_side` is the one renderer, joining the
