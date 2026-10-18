@@ -227,8 +227,13 @@ class CommandRunner:
             words = shlex.split(argument, posix=os.name != "nt")
         except ValueError as error:
             return f"cd: {error}"
-        if os.name == "nt" and words[:1] == ["/d"]:
-            words = words[1:]
+        if os.name == "nt":
+            # Outside POSIX mode shlex keeps the quotes round a word; a shell takes them off.
+            words = [
+                word[1:-1] if len(word) >= 2 and word[0] == word[-1] and word[0] in "\"'" else word for word in words
+            ]
+            if words[:1] == ["/d"]:
+                words = words[1:]
         if len(words) > 1:
             return "cd: too many arguments"
         target = words[0] if words else "~"

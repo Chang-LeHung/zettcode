@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -142,30 +141,34 @@ async def test_escape_stops_a_running_command_first_and_closes_the_page_second()
 
 
 async def test_closing_the_page_while_a_command_runs_stops_the_command(tmp_path: Path):
-    app, harness, page = await open_page()
-    marker = tmp_path / "pid"
-    type_command(
-        harness,
-        f"import os, time; open({str(marker)!r}, 'w').write(str(os.getpid())); print('rea' + 'dy', flush=True); time.sleep(60)",
+    """The command writes a heartbeat; once the page is closed the heartbeat must stop.
+
+    Not a probe of the process id: on Windows `os.kill(pid, 0)` is a Ctrl-C sent to the console.
+    """
+    beat = tmp_path / "beat"
+    script = tmp_path / "heartbeat.py"
+    script.write_text(
+        "import pathlib, time\n"
+        "print('rea' + 'dy', flush=True)\n"
+        f"beat = pathlib.Path({str(beat)!r})\n"
+        "while True:\n"
+        "    beat.write_text(str(time.time()))\n"
+        "    time.sleep(0.1)\n",
+        encoding="utf-8",
     )
+    app, harness, page = await open_page()
+    type_command(harness, f"import runpy; runpy.run_path({str(script)!r})")
     await until(lambda: "ready" in page.buffer.text)
-    pid = int(marker.read_text())
+    await until(beat.exists)
 
     app.close_page()
 
-    async def gone() -> bool:
-        try:
-            os.kill(pid, 0)
-        except OSError:
-            return True
-        return False
-
-    for _ in range(200):
-        if await gone():
-            break
-        await asyncio.sleep(0.05)
-    else:
-        pytest.fail("the command outlived the page that showed it")
+    for _ in range(60):
+        before = beat.read_text()
+        await asyncio.sleep(0.5)
+        if beat.read_text() == before:
+            return
+    pytest.fail("the command outlived the page that showed it")
 
 
 async def test_the_words_clear_and_exit_belong_to_the_page():
