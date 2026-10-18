@@ -28,6 +28,11 @@ from ..agent.permission import Permission
 from .shell import ShellState
 from .widgets.effort_page import heat_colour
 
+#: The columns the status line keeps empty between its two sides, and the parts it gives up first, in order, when
+#: the left side does not fit beside the keys.
+STATUS_GAP = 2
+SPARED_FIRST = ("speed", "cache", "tokens")
+
 
 class BarsMixin(ShellState):
     """Paint each row side from the segments the plugins registered."""
@@ -182,14 +187,28 @@ class BarsMixin(ShellState):
         return heat_colour(theme, heat)
 
     def _status_left(self) -> TextLine:
-        """Return the status line's left side, whatever the plugins put there."""
-        return self._side("status", "left")
+        """Return the status line's left side, whatever the plugins put there.
+
+        The keys on the right win a narrow row and the left is cut from its end, which is where ``ctx`` stands:
+        the figure that says how near the window is to full would be the first thing a narrow terminal lost. So
+        when the side does not fit, the counters that matter least are left out whole — the speed, then the
+        cache share, then the tokens — and the end of the side is only cut when nothing more can be spared.
+        """
+        line = self._side("status", "left")
+        room = self.app.width - self._side("status", "right").width - STATUS_GAP
+        spared: tuple[str, ...] = ()
+        for name in SPARED_FIRST:
+            if line.width <= room:
+                break
+            spared = (*spared, name)
+            line = self._side("status", "left", spare=spared)
+        return line
 
     def _status_right(self) -> TextLine:
         """Return the status line's right side, whatever the plugins put there."""
         return self._side("status", "right")
 
-    def _side(self, region: UiRegion, side: UiSide) -> TextLine:
+    def _side(self, region: UiRegion, side: UiSide, spare: tuple[str, ...] = ()) -> TextLine:
         """Paint one side of one row from the segments the plugins registered.
 
         The shell owns only this loop: the builtin rows are a plugin like any
@@ -198,12 +217,13 @@ class BarsMixin(ShellState):
         dropped for that frame only, and one that returns ``(line, True)`` takes
         the side over — the segments painted before it are dropped. A segment may
         also return a :class:`~zettcode.statusline.Row`, which is written out without the parts the
-        reader switched off in ``/statusline``.
+        reader switched off in ``/statusline``. ``spare`` names parts to leave out as well, for a row that
+        has not the room for them.
         """
         row = next((row for row in self._plugin_rows if row.region == region), None)
         segments = () if row is None else (row.left if side == "left" else row.right)
         style = Style(foreground=self.app.theme.muted)
-        hidden = self.agent.runtime.config.statusline_hidden
+        hidden = (*self.agent.runtime.config.statusline_hidden, *spare)
         spans: list[Span] = []
         context: ShellContext | None = None
         for segment in segments:

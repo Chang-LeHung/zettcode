@@ -11,7 +11,7 @@ from zett_agent.providers.anthropic import AnthropicProvider
 from zett_agent.providers.openai import OpenAIProvider
 
 from zettcode._compat import BaseExceptionGroup
-from zettcode.app.agent.errors import HINTS, MAX_DETAIL, describe_error
+from zettcode.app.agent.errors import HINTS, MAX_DETAIL, describe_error, failure_text, may_pass
 
 FAST = RetryOptions(base_delay=0.0, max_delay=0.0, max_retries=1)
 
@@ -231,3 +231,40 @@ def test_a_wrapper_that_already_says_what_the_cause_says_is_not_followed_by_the_
 
     assert describe_error(longer) == f"request failed: {said}"
     assert describe_error(equal) == said
+
+
+# -- when asking again may work ---------------------------------------------------------------------------------
+
+
+def test_a_provider_that_sent_nothing_in_time_points_to_continue():
+    from zett_agent.providers.base import timeout_error
+
+    text = failure_text(timeout_error("first_byte", 60))
+
+    assert text.startswith("error: The provider sent no response within 60 seconds of the request.")
+    assert text.endswith("/continue tries the request again from where it stopped.")
+    assert ".." not in text
+
+
+@pytest.mark.parametrize("status", [408, 429, 500, 502, 503])
+def test_a_busy_or_broken_server_points_to_continue(status):
+    assert may_pass(Status(status, {"message": "try later"}))
+    assert "/continue" in failure_text(Status(status, {"message": "try later"}))
+
+
+def test_a_dropped_connection_points_to_continue_even_inside_a_group_or_behind_a_wrapper():
+    wrapper = RuntimeError("Provider stream request failed")
+    wrapper.__cause__ = httpx.ConnectError("refused")
+    grouped = BaseExceptionGroup("group", [ConnectionError("All connection attempts failed")])
+
+    assert may_pass(wrapper) and may_pass(grouped)
+    assert "/continue" in failure_text(grouped)
+
+
+@pytest.mark.parametrize("status", [400, 401, 403, 404])
+def test_a_request_that_would_fail_again_says_nothing_of_continue(status):
+    error = Status(status, {"message": "no"})
+
+    assert not may_pass(error)
+    assert "/continue" not in failure_text(error)
+    assert failure_text(ValueError("plain")) == "error: plain"

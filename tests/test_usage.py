@@ -144,3 +144,14 @@ def test_compact_tokens_rounds_into_the_next_unit():
     assert compact_tokens(1_000) == "1.0k"
     assert compact_tokens(12_345) == "12.3k"
     assert compact_tokens(999_999) == "1.0M"
+
+
+def test_a_call_that_reported_no_input_leaves_the_last_reading_of_the_context_in_place():
+    """A gateway that drops the usage of one call must not hide the share until the next answer."""
+    measured = UsageSnapshot().with_usage(ModelUsage(input_tokens=64_000, output_tokens=100), 1.0)
+    silent = measured.with_usage(ModelUsage(input_tokens=0, output_tokens=0), 0.5)
+
+    assert silent.context_tokens == 64_000
+    assert silent.requests == 2
+    assert context_text(silent, 128_000) == " \u00b7 ctx 50.0%"
+    assert UsageSnapshot().with_usage(ModelUsage(), 0.1).context_tokens == 0, "and before any reading, none"

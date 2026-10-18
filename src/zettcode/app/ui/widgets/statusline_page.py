@@ -91,7 +91,7 @@ class StatuslinePage(Widget):
           session: The session's title; New session until it has one
           ↑ ↓ part · ← → hide or show · enter apply · esc cancel
 
-    Up and Down move between the parts, Left and Right (or Space) hide and show the one the marker is on, and
+    Up and Down move between the parts, round from the last to the first and back, Left and Right (or Space) hide and show the one the marker is on, and
     the two rows above the list are what the header and the status line would look like with the choices as
     they stand, the marked part picked out. Nothing changes in the shell until Enter: Escape applies nothing.
     The switches travel the way the other panels' knobs do, from the clock and not from a frame count, and the
@@ -192,9 +192,9 @@ class StatuslinePage(Widget):
         name = PARTS[self.mark].name
         match pressed(event):
             case "up" | "backtab":
-                self.mark = max(0, self.mark - 1)
+                self.mark = (self.mark - 1) % len(PARTS)
             case "down" | "tab":
-                self.mark = min(len(PARTS) - 1, self.mark + 1)
+                self.mark = (self.mark + 1) % len(PARTS)
             case "pageup":
                 self.mark = max(0, self.mark - max(1, self._view() - 1))
             case "pagedown":

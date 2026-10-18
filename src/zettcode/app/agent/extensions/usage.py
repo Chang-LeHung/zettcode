@@ -85,7 +85,9 @@ class UsageSnapshot:
             reasoning_tokens=self.reasoning_tokens + usage.reasoning_tokens,
             seconds=self.seconds + max(0.0, seconds),
             requests=self.requests + 1,
-            context_tokens=usage.input_tokens,
+            # A call that reported no input says nothing about the size of the context, so the last reading stands:
+            # a zero would hide the share until the next answer.
+            context_tokens=usage.input_tokens or self.context_tokens,
         )
 
     def to_payload(self) -> dict[str, int | float]:
