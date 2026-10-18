@@ -4,7 +4,8 @@ Almost everything is configured in ``~/.zettcode/config.toml`` (see
 :mod:`zettcode.config`), not on the command line: ``-w``/``--workspace`` picks
 the directory to work in, ``-v``/``--version`` prints the version, ``-r``/``--resume`` (or the ``resume`` subcommand) picks the stored session to open
 instead of a fresh one, and ``$ZETTCODE_CONFIG`` can point at a different
-config file. ``zettcode update`` installs the newest release and exits.
+config file. ``zettcode update`` (or ``upgrade``) installs the newest release and exits, and ``zettcode doctor``
+asks every configured model a one-line question and reports which of them answer.
 
 Nothing beyond the standard library is imported at module level: ``zettcode
 --help`` prints and exits, and paying for the agent runtime, the widget
@@ -40,7 +41,8 @@ class Options:
         resume: Stored session to open instead of a fresh one, if named.
         auto: Start with the shell permission at ``auto``, so no command asks.
         dry_run: Run the startup and exit instead of taking the terminal.
-        command: The subcommand named (``"update"``), or ``None`` to start a session.
+        command: The subcommand named (``"update"`` for ``update`` and ``upgrade`` alike, or ``"doctor"``), or
+            ``None`` to start a session.
     """
 
     workspace: Path
@@ -126,8 +128,14 @@ def parse_args(argv: list[str] | None = None) -> Options:
     commands = parser.add_subparsers(dest="command", metavar="COMMAND")
     commands.add_parser(
         "update",
-        help="install the newest release and exit",
+        aliases=["upgrade"],
+        help="install the newest release and exit (also: upgrade)",
         description="Install the newest release of ZettCode with the package manager it was installed with.",
+    )
+    commands.add_parser(
+        "doctor",
+        help="check that each configured model answers, and exit",
+        description="Ask every model in the config file one short question and report which of them answer.",
     )
     resume = commands.add_parser(
         "resume",
@@ -138,6 +146,8 @@ def parse_args(argv: list[str] | None = None) -> Options:
     args = parser.parse_args(argv)
     session = args.resume
     command = args.command
+    if command == "upgrade":
+        command = "update"
     if command == "resume":
         # Opening a session is a way of starting one, not a different program, so it is the option's twin.
         if args.resume is not None and args.resume != args.session:
@@ -531,6 +541,10 @@ def main() -> None:
         from .update import update_program
 
         raise SystemExit(update_program())
+    if options.command == "doctor":
+        from .doctor import doctor_program
+
+        raise SystemExit(doctor_program(resolve_config()))
     tune_collector()
     _name_process()
     try:

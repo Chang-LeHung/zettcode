@@ -36,6 +36,15 @@ TIPS: tuple[str, ...] = (
     "Drag in the conversation to copy text. Hold Shift or Alt to use your terminal's own selection.",
     "Put project instructions in AGENTS.md and they are given to the model with every request.",
     "A SKILL.md in ~/.zettcode/skills teaches ZettCode a job it can repeat.",
+    "/usage shows tokens, cache and cost by day, model and session; /resume lists them per session.",
+    "/statusline chooses what the header and the status line show, and turns the pet on.",
+    "/pet picks a companion that sleeps while idle and works while a request runs; drag it anywhere.",
+    "/self-compact lets the model decide for itself when to compact this session.",
+    "zettcode resume <id> opens a stored session; zettcode update installs the newest release.",
+    "zettcode doctor checks every configured model from a shell, with no session started.",
+    "zettcode --auto runs shell commands without asking for that run; /permission can change it later.",
+    "Press Esc to stop a request; /continue picks it up again where it left off.",
+    "A plugin is a Python package: install it and ZettCode gains its commands, tools, themes or pets.",
     "These tips can be turned off: tips = false under [transcript] in the configuration.",
 )
 

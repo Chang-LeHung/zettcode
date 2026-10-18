@@ -40,9 +40,12 @@ command line takes, which is deliberately short:
 | `--auto`, `--yolo` | Run shell commands without asking, for this run. The same as `/permission auto`. |
 | `--dry-run` | Run the startup, paint one frame, and exit. Useful for profiling. |
 
-Two subcommands do the same things by name: `zettcode resume SESSION` is `zettcode --resume SESSION`
-(put `-w DIR` before it, as in `zettcode -w ~/projects/api resume 01a10b75`), and `zettcode update`
-installs the newest release and exits (see the [FAQ](/guide/faq#new-versions)).
+Three subcommands do the same things by name: `zettcode resume SESSION` is `zettcode --resume SESSION`
+(put `-w DIR` before it, as in `zettcode -w ~/projects/api resume 01a10b75`), `zettcode update`
+(or `zettcode upgrade`, the same thing) installs the newest release and exits (see the
+[FAQ](/guide/faq#new-versions)), and `zettcode doctor` asks every model in your config file one short
+question and prints which of them answer and how fast, or why not (a revoked token, a wrong base URL, a model
+the endpoint does not serve), exiting 1 if one does not.
 
 Working from a checkout instead:
 
