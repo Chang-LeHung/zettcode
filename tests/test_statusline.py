@@ -33,6 +33,9 @@ from zettcode.tui import TuiApp
 
 MODEL = '[[models]]\nmodel = "m"\ntoken = "t"\n'
 
+#: What the panel's preview names as the workspace, which is a path of its own and not the test's.
+SAMPLE_WORKSPACE = next(part.text for part in PARTS if part.name == "workspace")
+
 
 @pytest.fixture
 def config_file(tmp_path, monkeypatch):
@@ -240,7 +243,8 @@ async def test_hiding_the_tokens_leaves_the_cache_share_joined_to_nothing_dangli
 def test_the_header_loses_the_parts_it_is_told_to(config_file):
     app = build_app()
     base = app._header_left().text
-    assert "New session" in base and "/tmp/workspace" in base
+    workspace = str(app.agent.workspace)
+    assert "New session" in base and workspace[-12:] in base
     app.agent.runtime.config = type(app.agent.runtime.config)(
         **{
             **app.agent.runtime.config.__dict__,
@@ -391,14 +395,14 @@ async def test_moving_a_switch_changes_nothing_until_enter(config_file):
 
 async def test_the_preview_follows_the_switches_before_anything_is_applied(config_file):
     app, harness = await open_panel(size=(120, 40))
-    assert "~/projects/api" in harness.render().text
+    assert SAMPLE_WORKSPACE in harness.render().text
     for _ in range(3):
         harness.press("down")
     harness.press("left")  # workspace
     text = harness.render().text
-    assert "~/projects/api" not in text
+    assert SAMPLE_WORKSPACE not in text
     assert "Fix the parser" in text
-    assert "~/projects/api" not in app._header_left().text, "and the real row is untouched"
+    assert SAMPLE_WORKSPACE not in app._header_left().text, "and the real row is untouched"
 
 
 async def test_enter_writes_the_hidden_parts_and_the_rows_follow(config_file):
