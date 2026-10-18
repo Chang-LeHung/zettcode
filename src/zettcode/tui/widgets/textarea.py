@@ -114,6 +114,21 @@ class TextArea(Widget):
         """Return the submitted drafts, oldest first."""
         return tuple(self._history)
 
+    def remember(self, entries: Sequence[str]) -> None:
+        """Put earlier drafts at the start of the history, oldest first, as if they had been submitted before.
+
+        For an owner that kept its own record, such as a command line that carries over what was typed in
+        another session. What has already been submitted stays newest, so Up recalls it first.
+        """
+        earlier = [entry for entry in entries if entry.strip()]
+        self._history = (earlier + self._history)[-self.history_limit :]
+
+    @property
+    def completion_menu(self) -> tuple[tuple[CompletionItem, ...], int] | None:
+        """Return the candidates a Tab is cycling through and which one is in the draft, or ``None`` when none is."""
+        state = self._completion_state
+        return None if state is None else (state[1], state[2])
+
     def set_text(self, value: str) -> None:
         """Replace the draft and put the cursor at the end of it."""
         self.show(value)
@@ -557,6 +572,10 @@ class TextArea(Widget):
         self.text = self.text[:start] + value + self.text[self.position :]
         self.position += len(value) - len(current)
         self._completion_state = (original, candidates, index)
+        if len(candidates) == 1:
+            # Nothing to cycle through: the next Tab completes from what is in the draft now, which is how a
+            # directory completed to ``src/`` goes on to what is inside it.
+            self._completion_state = None
         self._changed()
 
     def _changed(self) -> None:

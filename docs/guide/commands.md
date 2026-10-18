@@ -27,6 +27,7 @@ A command is drawn in a different colour as soon as it is one, so you can see wh
 | `/effort` | Choose how much the model reasons with a knob on a rail: `/effort` opens it, ← → slide, `Enter` applies; `/effort high` sets one directly. |
 | `/permission` | Choose how much of the shell may run without asking: `/permission` lists the levels in the menu; `/permission safe` sets one. |
 | `/btw` | Ask something that is answered here but never joins the conversation: `/btw <question>`. |
+| `/bash` | Open a full-screen command line over the workspace: `/bash` opens it empty, `/bash git status` opens it already running that command. It has history, Tab completion and coloured output, and it asks no permission because you are the one typing. See [The shell panel](#bash). |
 | `/theme` | Choose a palette by name: `/theme` opens the menu, which previews each palette as you move through it; `/theme nord` switches in one step. Your own palettes (`~/.zettcode/themes/<name>.toml`) are in the menu too. |
 | `/pet` | Choose the pet over the conversation: `/pet` opens a panel (↑ ↓ put each pet over the conversation as you go, `Enter` keeps it, `Esc` puts the old one back); `/pet whale` switches in one step. Saved to `[ui] pet`. See [The pet](/guide/interface#the-pet). |
 | `/context` | Show how full the context window is, how close it is to being compacted, and what is filling it — as bars, with the file this session is stored in. See [The context window](/guide/context). |
@@ -113,6 +114,7 @@ at once, beside the request.
 | Runs at once | Why it is safe |
 | --- | --- |
 | `/help`, `/context`, `/usage`, `/theme` | They only show something. `/context` reports the last request measured; `/usage` reads what the stored sessions recorded. |
+| `/bash` | It reads nothing of the session and writes nothing to it; its commands are the reader's own, so a request running behind it is not touched. |
 | `/title` | Names the session; nothing running reads it. |
 | `/permission` | The next shell command asks the level again, so a change lands in the request that is already running — `/permission auto` in the middle of a long task is the point. |
 | `/effort` | A request starts with the effort it had, so the change applies from the next request; the running one is not touched. A level the active model does not take (see [`reasoning_efforts`](/guide/config#reasoning-levels-a-model-takes)) is refused with the ones it does. |
@@ -123,6 +125,63 @@ at once, beside the request.
 `/model`, `/config`, `/clear`, `/new`, `/resume`, `/fork`, `/compact` and `/export` still say "busy":
 they change the model a request started with, the transcript it is writing into, or the session it is
 part of. A [plugin](/guide/plugins#while-a-request-is-running) chooses for its own commands.
+
+## The shell panel {#bash}
+
+`/bash` opens a full-screen command line over the workspace, and `/bash <command>` opens it already running
+that command. It is your own shell run by your own hand: it asks no permission, the model sees nothing of it, and
+what it printed is gone when you close the panel. Nothing about it needs the model to be idle, so it opens beside a
+request that is still running.
+
+```text
+Shell (zsh)  ~/projects/api                              exit 0 · 1.2s
+$ pytest -q
+......
+6 passed in 0.24s
+────────────────────────────────────────────────────────────────
+src/  tests/  README.md
+$ git st_
+enter run · tab complete · pgup scroll · esc close
+```
+
+| Key | What it does |
+| --- | --- |
+| <kbd>Enter</kbd> | Run the command. While one is running, the line keeps what you typed until it ends. |
+| <kbd>Tab</kbd> / <kbd>Shift</kbd>+<kbd>Tab</kbd> | Complete the word under the cursor; press again to walk through the candidates, which show above the line. |
+| <kbd>↑</kbd> <kbd>↓</kbd>, <kbd>Ctrl</kbd>+<kbd>R</kbd> | Walk through, or search, earlier commands. |
+| <kbd>Ctrl</kbd>+<kbd>C</kbd> | Stop the running command (a second press kills it, as does waiting three seconds). With nothing running it closes the panel. |
+| <kbd>Esc</kbd> | Stop the running command; with nothing running, close the panel. |
+| <kbd>Ctrl</kbd>+<kbd>D</kbd> | Close the panel, on an empty line, as it ends a shell. |
+| <kbd>Page Up</kbd> / <kbd>Page Down</kbd>, the wheel | Scroll the output. It follows the newest line until you scroll up, and stays where you left it while more arrives. |
+| `clear`, `exit` | Empty the output; close the panel. |
+
+How a command runs:
+
+- **One process per command**, in the workspace, started with your own shell (`$SHELL -c`; PowerShell on Windows,
+  `cmd` if there is none). Variables set by one command are gone for the next, but a bare `cd` is the panel's own and
+  stays: the next command runs where the last one left you, and the heading shows where that is. `cd x && make` changes
+  directory only for that command.
+- **No input.** A program that asks a question gets the end of its input and says so, instead of waiting for a key
+  nobody can press. Programs that take over the screen (`vim`, `top`) are not for this panel.
+- **fish is started without its configuration** (`fish --no-config -c`). Loading `config.fish` takes half a second
+  to a second for every command on a typical setup; `PATH` and the rest of the environment come from the shell you
+  started ZettCode in, so only the aliases and functions defined in `config.fish` are missing.
+- **Colours** are asked for the way a terminal gets them: `ls`, `git`, `pytest`, `cargo` and everything that reads
+  `FORCE_COLOR` or `CLICOLOR_FORCE` print in colour, and carriage-return progress bars update in place. Set
+  `NO_COLOR` in the environment to turn it off. GNU `ls` on Linux colours only with `--color`.
+
+History and completion:
+
+- **History** is read from bash, zsh, fish and PowerShell, whichever you have, with the shell in `$SHELL` last so its
+  commands come first on <kbd>↑</kbd>. What you type in the panel is appended to `~/.zettcode/command_history` and is
+  there next time. A command is offered once, at its newest place.
+- **Tab completes** the first word to a command you have run before, then a program on `PATH`; the words after it to
+  what the program takes (`git` completes its subcommands, and branches, tags and remotes after `checkout`, `merge`,
+  `log` and the like), to the word you typed there the last time you ran the same command (`docker co` finds
+  `compose`), and to the files of the directory. Matching ignores case, with the exact-case match first, and `cd`
+  offers only directories.
+- **Colours in the candidates** tell kinds apart, as `ls` does: directories, links, executables and branches each
+  have a colour of their own, and a plain file is the quiet one.
 
 ## Token usage {#usage}
 

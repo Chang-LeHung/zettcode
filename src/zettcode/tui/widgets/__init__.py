@@ -12,6 +12,7 @@ _EXPORTS = {
     "Completer": ".completion",
     "CompletionItem": ".completion",
     "CompletionPopup": ".completion",
+    "ConsolePanel": ".console",
     "Dialog": ".dialog",
     "DialogAction": ".dialog",
     "DiffLine": ".diff",
@@ -46,6 +47,7 @@ _EXPORTS = {
 if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
     from .collapsible import Collapsible
     from .completion import Completer, CompletionItem, CompletionPopup
+    from .console import ConsolePanel
     from .dialog import Dialog, DialogAction
     from .diff import DiffLine, DiffSegment, DiffView, build_unified, parse_unified, word_diff
     from .list import ListItem, ListView
@@ -87,6 +89,7 @@ __all__ = [
     "Completer",
     "CompletionItem",
     "CompletionPopup",
+    "ConsolePanel",
     "Dialog",
     "DialogAction",
     "DiffLine",

@@ -391,6 +391,9 @@ class KeysMixin(ShellState):
             host.invalidate()
             return True
         if self.app.screens.top.name == PAGE_SCREEN:
+            if self.app.screens.top.widget.interrupt():
+                host.invalidate()
+                return True
             self.close_page()
             host.invalidate()
             return True

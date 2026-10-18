@@ -17,7 +17,11 @@ walked (``/theme``, ``/pet``) and the panels that edit a form of their own (``/c
 
 from __future__ import annotations
 
+import asyncio
+from pathlib import Path
+
 from ..app.commands import CommandContext, CommandHost, CommandResult, Subcommand, subcommand_words
+from ..paths import DEFAULT_COMMAND_HISTORY
 from ..tui import Widget
 from .container import PluginContainer
 from .plugin import Plugin
@@ -354,6 +358,43 @@ class HelpCommand(Plugin):
         from ..app.ui.widgets import help_text
 
         return CommandResult(message=help_text(context.require_host().commands))
+
+
+class BashCommand(Plugin):
+    """``/bash``: a full-screen command line over the workspace.
+
+    ``/bash`` opens it empty and ``/bash <command>`` opens it already running that command. It is the reader's
+    own shell run by the reader's own hand, so it asks no permission and shows nothing to the model; what it prints
+    stays on its screen and is gone when the page closes.
+
+    Args:
+        history_file: Where the commands typed in the panel are kept; ``~/.zettcode/command_history`` by default.
+    """
+
+    name = "bash-command"
+    description = "a shell panel"
+
+    def __init__(self, history_file: Path | None = None) -> None:
+        self.history_file = history_file
+
+    def activate(self, container: PluginContainer) -> None:
+        """Register ``/bash``; it neither reads nor writes the session, so it may open beside a request."""
+        container.register_command(
+            "bash", "run commands in a full-screen shell: /bash [command]", self.bash, when_busy="now"
+        )
+
+    async def bash(self, context: CommandContext) -> CommandResult:
+        """Open the panel in the workspace, with the history of the reader's shells for Up and Tab."""
+        from ..app.commandline import CommandHistory, CommandRunner
+        from ..app.ui.widgets import BashPage
+
+        host = context.require_host()
+        history = CommandHistory(self.history_file or DEFAULT_COMMAND_HISTORY)
+        # A shell history can be megabytes; reading it is not the event loop's to wait for.
+        entries = await asyncio.to_thread(history.load)
+        runner = CommandRunner(host.agent.runtime.config.workspace)
+        page = BashPage(runner, history, entries, on_close=host.close_page, initial=context.argument)
+        return CommandResult(widget=page)
 
 
 class ShellControl(Plugin):

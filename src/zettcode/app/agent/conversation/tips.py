@@ -22,6 +22,8 @@ TIPS: tuple[str, ...] = (
     "Type @ to mention a file or a skill. A file is read when the message is sent.",
     "Start a message with @name to send it to another running ZettCode session.",
     "/btw <question> is answered on the side and never joins the conversation.",
+    "/bash opens a full-screen command line: your shell's history, Tab completion, and coloured output.",
+    "In /bash, Tab completes git subcommands and branches, and Ctrl-C stops a running command.",
     "/compact summarizes the conversation now, instead of waiting for the window to fill.",
     "/context shows what is filling the context window, and where this session is stored.",
     "/effort <level> sets how much the model reasons before it answers.",

@@ -142,6 +142,14 @@ class Widget:
         """Return the terminal cursor this widget wants, if any."""
         return None
 
+    def interrupt(self) -> bool:
+        """Stop what this widget is doing because the reader pressed Ctrl-C; return whether there was anything.
+
+        A page that runs something of its own — a command, a download — answers ``True`` after stopping it, so
+        the key does not also close the page. The default has nothing to stop.
+        """
+        return False
+
     # -- lifecycle hooks ----------------------------------------------------
     def on_mount(self) -> None:
         """Run once after the subtree is attached."""

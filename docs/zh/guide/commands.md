@@ -24,6 +24,7 @@
 | `/effort` | 用轨道上的小圆点选择模型的推理强度：`/effort` 打开，← → 滑动，`Enter` 应用；`/effort high` 直接设置。当前模型不支持的档位（见 [`reasoning_efforts`](/zh/guide/config#reasoning-levels-a-model-takes)）会被拒绝，并列出它支持的档位。 |
 | `/permission` | 选择 shell 命令在多大范围内不用问：`/permission` 在菜单里列出各档，`/permission safe` 直接设置。 |
 | `/btw` | 问一件只在当场回答、不进入对话的事：`/btw <问题>`。 |
+| `/bash` | 在工作区里打开一个全屏命令行：`/bash` 打开空面板，`/bash git status` 打开后立即运行这条命令。有历史、Tab 补全和彩色输出；因为是你自己在敲，所以不需要任何权限确认。见[Shell 面板](#bash)。 |
 | `/theme` | 按名字选配色：`/theme` 打开菜单，在菜单里移动时会预览每一套；`/theme nord` 一步切换。你自己的主题（`~/.zettcode/themes/<name>.toml`）也在菜单里。 |
 | `/pet` | 选择对话上方的宠物：`/pet` 打开面板（↑ ↓ 移动时把每只宠物立即放到对话区里，`Enter` 选定，`Esc` 把原来的放回去）；`/pet whale` 一步切换。保存到 `[ui] pet`。见[宠物](/zh/guide/interface#the-pet)。 |
 | `/context` | 查看上下文窗口有多满、离自动压缩还有多远、被什么占着——用条形图表示，并列出这个会话存在哪里。见[上下文窗口](/zh/guide/context)。 |
@@ -103,6 +104,7 @@ Self-compaction                                     in effect here: on (not appl
 | 立刻运行 | 为什么安全 |
 | --- | --- |
 | `/help`、`/context`、`/usage`、`/theme` | 只是展示。`/context` 报告的是最近一次测量的请求；`/usage` 读的是已保存会话里记下的用量。 |
+| `/bash` | 不读也不写会话；里面的命令是你自己的，所以后台运行的请求不受影响。 |
 | `/title` | 给会话命名，运行中的请求不读它。 |
 | `/permission` | 下一条 shell 命令会重新读取这个级别，所以修改会落在正在运行的请求里 —— 长任务进行到一半时 `/permission auto` 正是为此。 |
 | `/effort` | 请求以它开始时的 effort 运行，所以修改从下一个请求开始生效，正在运行的请求不受影响。 |
@@ -113,6 +115,54 @@ Self-compaction                                     in effect here: on (not appl
 `/model`、`/config`、`/clear`、`/new`、`/resume`、`/fork`、`/compact`、`/export` 仍然提示 “busy”：它们
 会改变请求启动时用的模型、它正在写入的 transcript、或它所属的会话。[插件](/zh/guide/plugins#请求运行期间)
 可以给自己的命令自行选择。
+
+## Shell 面板 {#bash}
+
+`/bash` 在工作区里打开一个全屏命令行，`/bash <命令>` 则打开后立即运行这条命令。它就是你自己的 shell、由你自己动手：
+不需要权限确认，模型看不到其中任何内容，关闭面板后输出也随之消失。它不要求模型空闲，所以请求还在运行时也能打开。
+
+```text
+Shell (zsh)  ~/projects/api                              exit 0 · 1.2s
+$ pytest -q
+......
+6 passed in 0.24s
+────────────────────────────────────────────────────────────────
+src/  tests/  README.md
+$ git st_
+enter run · tab complete · pgup scroll · esc close
+```
+
+| 按键 | 作用 |
+| --- | --- |
+| <kbd>Enter</kbd> | 运行命令。有命令在运行时，输入行保留你敲的内容，等它结束。 |
+| <kbd>Tab</kbd> / <kbd>Shift</kbd>+<kbd>Tab</kbd> | 补全光标处的词；再按一次在候选里往后走，候选显示在输入行上方。 |
+| <kbd>↑</kbd> <kbd>↓</kbd>、<kbd>Ctrl</kbd>+<kbd>R</kbd> | 翻阅、搜索以前的命令。 |
+| <kbd>Ctrl</kbd>+<kbd>C</kbd> | 停止正在运行的命令（再按一次或等三秒会强制结束）。没有命令在运行时，关闭面板。 |
+| <kbd>Esc</kbd> | 停止正在运行的命令；没有命令在运行时，关闭面板。 |
+| <kbd>Ctrl</kbd>+<kbd>D</kbd> | 输入行为空时关闭面板，和结束一个 shell 一样。 |
+| <kbd>Page Up</kbd> / <kbd>Page Down</kbd>、滚轮 | 滚动输出。在你向上滚之前它跟随最新一行；向上滚之后，新输出到来也不会把你正在看的内容挤走。 |
+| `clear`、`exit` | 清空输出；关闭面板。 |
+
+命令是怎么运行的：
+
+- **每条命令一个进程**，在工作区里，用你自己的 shell 启动（`$SHELL -c`；Windows 上是 PowerShell，没有就用 `cmd`）。
+  一条命令里设置的变量不会带到下一条，但单独的 `cd` 由面板自己处理并保留：下一条命令在上一条停下的目录里运行，标题里
+  会显示当前目录。`cd x && make` 只在那一条命令里换目录。
+- **没有输入。** 向程序提问时，它读到的是输入结束，并如实报告，而不是等一个谁也按不了的键。`vim`、`top` 这类接管整个屏幕的
+  程序不适合在这个面板里用。
+- **fish 不加载配置启动**（`fish --no-config -c`）。一般的配置下，加载 `config.fish` 每条命令要花半秒到一秒；`PATH` 和其余环境
+  变量来自你启动 ZettCode 的那个 shell，所以缺的只是 `config.fish` 里定义的别名和函数。
+- **颜色**按终端的方式请求：`ls`、`git`、`pytest`、`cargo` 以及所有读取 `FORCE_COLOR` 或 `CLICOLOR_FORCE` 的程序都会彩色输出，
+  用回车刷新的进度条会原地更新。在环境里设置 `NO_COLOR` 可以关闭。Linux 上的 GNU `ls` 只有加 `--color` 才有颜色。
+
+历史和补全：
+
+- **历史**会读取 bash、zsh、fish 和 PowerShell 中你有的那些，`$SHELL` 对应的放在最后，所以它的命令在 <kbd>↑</kbd> 时排在最前。
+  你在面板里敲的命令会追加到 `~/.zettcode/command_history`，下次还在。同一条命令只提供一次，放在它最新的位置。
+- **Tab 补全**：第一个词补全成你以前运行过的命令，然后是 `PATH` 里的程序；后面的词补全成程序接受的内容（`git` 补全子命令，以及
+  `checkout`、`merge`、`log` 等之后的分支、标签和远端），或者你上次运行同一命令时在那个位置敲过的词（`docker co` 找到 `compose`），
+  以及当前目录里的文件。匹配不区分大小写，大小写完全一致的排在前面；`cd` 只给目录。
+- **候选的颜色**像 `ls` 一样区分类型：目录、链接、可执行文件和分支各有自己的颜色，普通文件是最安静的那种。
 
 ## Token 用量 {#usage}
 
