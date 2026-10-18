@@ -6,7 +6,7 @@ from collections.abc import Callable, Collection
 from pathlib import Path
 from time import monotonic
 
-from zettcode.statusline import GAP, Part, Row
+from zettcode.statusline import GAP, PET, Part, Row
 from zettcode.tui import ARROW_DOWN, ARROW_UP, SEPARATOR, Canvas, Host, MouseAction, MouseEvent, Widget
 from zettcode.tui.render import Style, blend, display_width, truncate
 
@@ -48,14 +48,16 @@ SAMPLE: dict[str, tuple[Row, Row]] = {
     ),
 }
 
-#: Every part, in the order the rows show them, and the title of the row each is on.
-PARTS: tuple[Part, ...] = tuple(part for sides in SAMPLE.values() for side in sides for part in side.parts())
+#: Every part, in the order the rows show them, and the title of the row each is on. The pet is on no row of
+#: the screen; it stands under a heading of its own, last.
+PARTS: tuple[Part, ...] = (*(part for sides in SAMPLE.values() for side in sides for part in side.parts()), PET)
 ROW_OF: dict[str, str] = {
-    part.name: title for title, sides in SAMPLE.items() for side in sides for part in side.parts()
+    **{part.name: title for title, sides in SAMPLE.items() for side in sides for part in side.parts()},
+    PET.name: "Companion",
 }
 
-#: One row for each part, and one heading for each row of the screen the parts belong to.
-LIST_ROWS = len(PARTS) + len(SAMPLE)
+#: One row for each part, and one heading for each group of them.
+LIST_ROWS = len(PARTS) + len(SAMPLE) + 1
 
 #: Columns the part names take, the switch, and the word beside it.
 NAME_WIDTH = 14

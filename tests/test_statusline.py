@@ -331,7 +331,7 @@ async def test_the_panel_lists_every_part_with_its_description_and_a_switch_each
         assert part.name in text, part.name
         assert part.summary[:30] in text, part.name
     assert text.count("\u2501" * 9 + "\u25cf shown") == len(PARTS), "a lit line to the knob on every switch"
-    assert "14 of 14 shown" in text
+    assert f"{len(PARTS)} of {len(PARTS)} shown" in text
     assert "Header" in text and "Status line" in text
     assert "esc cancel" in text
 
@@ -418,7 +418,7 @@ async def test_enter_writes_the_hidden_parts_and_the_rows_follow(config_file):
     assert hidden_in(config_file) == {"session": False, "ctx": False}
     assert app.agent.statusline_hidden == {"session", "ctx"}
     assert app.app.screens.top.name != "page"
-    assert notices(app) == ["Status line: 2 of 14 parts hidden (session, ctx)"]
+    assert notices(app) == [f"Status line: 2 of {len(NAMES)} parts hidden (session, ctx)"]
     assert "New session" not in app._header_left().text
 
 

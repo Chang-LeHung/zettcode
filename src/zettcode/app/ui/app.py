@@ -68,6 +68,7 @@ from ..agent.errors import describe_error
 from ..agent.extensions.messenger import Messenger
 from ..agent.extensions.usage import UsageSnapshot
 from ..commands import Command, CommandContext, CommandList, CommandResult
+from ..pets import DEFAULT_PET
 from ..registry import Registry
 from .bars import BarsMixin
 from .commands import ShellCommands
@@ -86,6 +87,7 @@ from .widgets import (
     CommandCompleter,
     Composer,
     FollowUpQueue,
+    PetView,
     SteeringQueue,
     TranscriptView,
     ZettCodeRoot,
@@ -172,7 +174,14 @@ class ZettCodeApp(
         self.header = StatusBar(self._header_left, self._header_right)
         self.status = StatusBar(self._status_left, self._status_right)
         self.panel = TaskPanel()
-
+        #: The companion over the conversation, which the reader can drag and can switch off in ``/statusline``.
+        self.pet = PetView(
+            DEFAULT_PET,
+            area=lambda: self.view.rect,
+            shown=lambda: "pet" not in self.agent.statusline_hidden,
+            busy=lambda: self._busy,
+            forward=self.view,
+        )
         body = VBox(
             [
                 Slot(self.header, size=1),
@@ -187,7 +196,7 @@ class ZettCodeApp(
                 Slot(self.status, size=1),
             ]
         )
-        self.root = ZettCodeRoot(self, body)
+        self.root = ZettCodeRoot(self, body, self.pet)
         # The listener is installed here for a shell that runs its own app, and
         # again by :meth:`adopt` for one that hands its tree to the boot frame's:
         # the copy is handled by whichever app ends up running. Installing it

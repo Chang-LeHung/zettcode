@@ -705,6 +705,20 @@
 <text x="280" y="336" fill="#7a8478">.</text>
 <text x="290" y="336" fill="#7a8478">0</text>
 <text x="310" y="336" fill="#7a8478">s</text>
+<rect x="890" y="350" width="10" height="10" fill="#558967"/>
+<rect x="900" y="340" width="10" height="20" fill="#84b795"/>
+<rect x="910" y="340" width="10" height="20" fill="#263d34"/>
+<rect x="910" y="340" width="10" height="10" fill="#84b795"/>
+<rect x="920" y="340" width="10" height="20" fill="#b9dfb3"/>
+<rect x="920" y="340" width="10" height="10" fill="#84b795"/>
+<rect x="930" y="340" width="10" height="20" fill="#263d34"/>
+<rect x="930" y="340" width="10" height="10" fill="#84b795"/>
+<rect x="940" y="340" width="10" height="20" fill="#b9dfb3"/>
+<rect x="940" y="340" width="10" height="10" fill="#84b795"/>
+<rect x="950" y="340" width="10" height="20" fill="#263d34"/>
+<rect x="950" y="340" width="10" height="10" fill="#84b795"/>
+<rect x="960" y="340" width="10" height="20" fill="#84b795"/>
+<rect x="970" y="350" width="10" height="10" fill="#558967"/>
 <text x="0" y="376" fill="#b4befe">✓</text>
 <text x="20" y="376" fill="#b4befe">R</text>
 <text x="30" y="376" fill="#b4befe">a</text>
@@ -741,6 +755,17 @@
 <text x="390" y="376" fill="#7a8478">0</text>
 <text x="410" y="376" fill="#7a8478">s</text>
 <text x="430" y="376" fill="#7a8478">▸</text>
+<rect x="890" y="360" width="10" height="20" fill="#558967"/>
+<rect x="900" y="360" width="10" height="20" fill="#84b795"/>
+<rect x="910" y="360" width="10" height="20" fill="#263d34"/>
+<rect x="920" y="360" width="10" height="20" fill="#e4b47c"/>
+<rect x="920" y="360" width="10" height="10" fill="#b9dfb3"/>
+<rect x="930" y="360" width="10" height="20" fill="#263d34"/>
+<rect x="940" y="360" width="10" height="20" fill="#e4b47c"/>
+<rect x="940" y="360" width="10" height="10" fill="#b9dfb3"/>
+<rect x="950" y="360" width="10" height="20" fill="#263d34"/>
+<rect x="960" y="360" width="10" height="20" fill="#84b795"/>
+<rect x="970" y="360" width="10" height="20" fill="#558967"/>
 <text x="20" y="396" fill="#7a8478">└</text>
 <text x="40" y="396" fill="#9da9a0">6</text>
 <text x="60" y="396" fill="#9da9a0">p</text>
@@ -756,6 +781,18 @@
 <text x="180" y="396" fill="#9da9a0">2</text>
 <text x="190" y="396" fill="#9da9a0">4</text>
 <text x="200" y="396" fill="#9da9a0">s</text>
+<rect x="900" y="380" width="10" height="10" fill="#84b795"/>
+<rect x="910" y="380" width="10" height="20" fill="#84b795"/>
+<rect x="910" y="380" width="10" height="10" fill="#263d34"/>
+<rect x="920" y="380" width="10" height="20" fill="#84b795"/>
+<rect x="920" y="380" width="10" height="10" fill="#263d34"/>
+<rect x="930" y="380" width="10" height="20" fill="#84b795"/>
+<rect x="930" y="380" width="10" height="10" fill="#e4b47c"/>
+<rect x="940" y="380" width="10" height="20" fill="#84b795"/>
+<rect x="940" y="380" width="10" height="10" fill="#263d34"/>
+<rect x="950" y="380" width="10" height="20" fill="#84b795"/>
+<rect x="950" y="380" width="10" height="10" fill="#263d34"/>
+<rect x="960" y="380" width="10" height="10" fill="#84b795"/>
 <text x="20" y="436" fill="#f2f5f3">A</text>
 <text x="30" y="436" fill="#f2f5f3">d</text>
 <text x="40" y="436" fill="#f2f5f3">d</text>
