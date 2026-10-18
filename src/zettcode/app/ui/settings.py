@@ -1,4 +1,4 @@
-"""The shell's pickers: model, palette, and reasoning effort.
+"""The shell's pickers: model, palette, pet, and reasoning effort.
 
 A picker page hands its choice back through one of these methods, which applies
 it through the agent and closes the page. Keeping them here leaves the shell
@@ -15,6 +15,8 @@ from .shell import ShellState
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zettcode.config import ModelConfig
+
+    from ..pets import Pet
 
 
 class SettingsMixin(ShellState):
@@ -84,6 +86,43 @@ class SettingsMixin(ShellState):
         if theme != self.app.theme:
             self.app.theme = theme
             self.app.request_layout()
+
+    def apply_pet(self, name: str) -> Pet:
+        """Put the pet called ``name`` over the conversation, where the last one stood.
+
+        Raises:
+            ValueError: There is no such pet, or it cannot be built; the message lists the ones there are.
+        """
+        pet = self.agent.pets.load(name)
+        self._pet_before = None  # what is applied is not a preview to be put back
+        self.pet.set_pet(pet)
+        self.app.invalidate()
+        return pet
+
+    def preview_pet(self, name: str | None) -> None:
+        """Show a pet without choosing it, or put back the one that was there.
+
+        Called as the highlight moves through the ``/pet`` menu, so each pet can be judged where it will stand.
+        The pet that was there is kept to be restored when the menu goes away without a choice. A pet that cannot
+        be built is simply not shown; the error belongs to the reader who picks it.
+
+        Args:
+            name: The pet to show, or ``None`` to end the preview and restore.
+        """
+        if name is None:
+            if self._pet_before is not None:
+                self.pet.set_pet(self._pet_before)
+                self._pet_before = None
+                self.app.invalidate()
+            return
+        try:
+            pet = self.agent.pets.load(name)
+        except ValueError:
+            return
+        if self._pet_before is None:
+            self._pet_before = self.pet.pet
+        self.pet.set_pet(pet)
+        self.app.invalidate()
 
     def change_effort(self, name: str) -> str:
         """Switch reasoning effort, run the header's gauge, and announce the change in the transcript."""

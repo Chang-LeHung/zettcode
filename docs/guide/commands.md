@@ -28,6 +28,7 @@ A command is drawn in a different colour as soon as it is one, so you can see wh
 | `/permission` | Choose how much of the shell may run without asking: `/permission` lists the levels in the menu; `/permission safe` sets one. |
 | `/btw` | Ask something that is answered here but never joins the conversation: `/btw <question>`. |
 | `/theme` | Choose a palette by name: `/theme` opens the menu, which previews each palette as you move through it; `/theme nord` switches in one step. Your own palettes (`~/.zettcode/themes/<name>.toml`) are in the menu too. |
+| `/pet` | Choose the pet over the conversation: `/pet` opens a panel (↑ ↓ put each pet over the conversation as you go, `Enter` keeps it, `Esc` puts the old one back); `/pet whale` switches in one step. Saved to `[ui] pet`. See [The pet](/guide/interface#the-pet). |
 | `/context` | Show how full the context window is, how close it is to being compacted, and what is filling it — as bars, with the file this session is stored in. See [The context window](/guide/context). |
 | `/usage` | Open a page of what this project's sessions have spent: tokens by model, by session, and a calendar of the days. See [Token usage](/guide/usage). |
 | `/compact` | Summarize the conversation now, instead of waiting for the window to fill. |

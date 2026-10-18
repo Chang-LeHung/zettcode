@@ -25,6 +25,7 @@
 | `/permission` | 选择 shell 命令在多大范围内不用问：`/permission` 在菜单里列出各档，`/permission safe` 直接设置。 |
 | `/btw` | 问一件只在当场回答、不进入对话的事：`/btw <问题>`。 |
 | `/theme` | 按名字选配色：`/theme` 打开菜单，在菜单里移动时会预览每一套；`/theme nord` 一步切换。你自己的主题（`~/.zettcode/themes/<name>.toml`）也在菜单里。 |
+| `/pet` | 选择对话上方的宠物：`/pet` 打开面板（↑ ↓ 移动时把每只宠物立即放到对话区里，`Enter` 选定，`Esc` 把原来的放回去）；`/pet whale` 一步切换。保存到 `[ui] pet`。见[宠物](/zh/guide/interface#the-pet)。 |
 | `/context` | 查看上下文窗口有多满、离自动压缩还有多远、被什么占着——用条形图表示，并列出这个会话存在哪里。见[上下文窗口](/zh/guide/context)。 |
 | `/usage` | 打开一个页面，看这个项目的会话花了多少：按模型、按会话统计 token，以及一张按天的日历图。见[Token 用量](/zh/guide/usage)。 |
 | `/compact` | 立即总结对话，而不用等到窗口快满。 |

@@ -13,6 +13,7 @@ from zettcode.config_edit import (
     file_entries,
     remove_model,
     replace_model,
+    set_pet,
     set_self_compaction,
     set_statusline,
     set_theme,
@@ -153,6 +154,27 @@ class SettingsMixin(AgentBase):
             write_text_atomically(self.config_file, text)
         except OSError as error:
             raise ConfigEditError(f"{self.config_file} could not be written: {error}") from error
+        return self.config_file
+
+    def remember_pet(self, name: str) -> Path:
+        """Write ``[ui] pet = name`` into the config file, so the next start opens with that pet.
+
+        Only that line changes, and a config file that does not exist is not created for it. The pet in force
+        for this run is the shell's to switch; what this keeps up to date is the setting the shell reads back.
+
+        Returns:
+            The file written.
+
+        Raises:
+            ConfigEditError: When there is no config file, it cannot be read or edited safely, or it cannot be
+                written. Nothing is written then.
+        """
+        text = set_pet(self._read_config_file(), name, where=self.config_file)
+        try:
+            write_text_atomically(self.config_file, text)
+        except OSError as error:
+            raise ConfigEditError(f"{self.config_file} could not be written: {error}") from error
+        self.runtime.config = replace(self.runtime.config, pet=name)
         return self.config_file
 
     @property

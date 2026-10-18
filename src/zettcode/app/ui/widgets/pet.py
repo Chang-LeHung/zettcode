@@ -6,7 +6,7 @@ from collections.abc import Callable
 from time import monotonic
 
 from zettcode.app.pets import GLAD, IDLE, WORKING, Pet
-from zettcode.tui import Canvas, Host, MouseAction, MouseEvent, Rect, Widget
+from zettcode.tui import Canvas, Host, MouseAction, MouseEvent, Rect, TextLine, Widget
 
 #: Columns left between the pet and the right edge of the conversation at its resting place, the margin the
 #: header, the status line and the composer keep.
@@ -20,6 +20,21 @@ ROOM_HIGH = 3
 #: How long a click leaves the pet pleased, and how long each frame of a mood is held.
 GLAD_SECONDS = 0.9
 FRAME_SECONDS = 0.5
+
+
+def paint_sprite(canvas: Canvas, lines: tuple[TextLine, ...], x: int, y: int) -> None:
+    """Paint a pet's cells with their top left corner at a cell, leaving the cells it does not cover as they were.
+
+    A cell the sprite leaves empty is skipped rather than written as a space, so whatever is under it shows
+    through; a cell with a colour for only one half takes the background that was already there.
+    """
+    for row, line in enumerate(lines):
+        column = x
+        for span in line.spans:
+            for character in span.text:
+                if character != " " or span.style.background is not None:
+                    canvas.set_cell(column, y + row, character, span.style)
+                column += 1
 
 
 class PetView(Widget):
@@ -39,8 +54,8 @@ class PetView(Widget):
     so it keeps its place in the conversation when the terminal is resized or a panel opens under it. It
     starts at the right edge, halfway down. A drag cannot take it out of the conversation, where it would
     cover the composer or a panel; a press that does not move is a pat, and the pet is pleased for a moment.
-    While a request runs its heart beats. Its cells that are empty let the conversation show through, and the
-    wheel over it scrolls the conversation as it would anywhere else.
+    It sleeps while nothing runs, wakes and goes about its business while a request does, and its cells that are
+    empty let the conversation show through. The wheel over it scrolls the conversation as it would anywhere else.
 
     The pet is drawn only when the reader has not hidden it (``pet`` in ``/statusline``) and the
     conversation is wide and tall enough to leave it room; otherwise it takes none and catches no clicks.
@@ -93,9 +108,18 @@ class PetView(Widget):
         area = self._area()
         return area.width >= MIN_WIDTH and area.height >= self.pet.height + ROOM_HIGH
 
+    def set_pet(self, pet: Pet) -> None:
+        """Swap the sprite for another pet's, which stands where the last one did (as a share of the room)."""
+        if pet is self.pet:
+            return
+        self.pet = pet
+        self._drawn = None
+        if self.app is not None:
+            self.app.request_layout()
+
     @property
     def mood(self) -> str:
-        """Return the mood the pet is in: pleased after a pat, working while a request runs, else resting."""
+        """Return the mood the pet is in: pleased after a pat, awake while a request runs, else asleep."""
         if self._glad_since is not None:
             return GLAD
         return WORKING if self._busy() else IDLE
@@ -144,13 +168,7 @@ class PetView(Widget):
         if self.rect.empty or not self.visible:
             return
         self._drawn = self._picture()
-        for row, line in enumerate(self.pet.lines(*self._drawn)):
-            column = self.rect.x
-            for span in line.spans:
-                for character in span.text:
-                    if character != " " or span.style.background is not None:
-                        canvas.set_cell(column, self.rect.y + row, character, span.style)
-                    column += 1
+        paint_sprite(canvas, self.pet.lines(*self._drawn), self.rect.x, self.rect.y)
 
     def handle(self, event, host: Host) -> bool:
         """Take hold on a press, follow the pointer while it is held, and pat the pet if it never moved."""

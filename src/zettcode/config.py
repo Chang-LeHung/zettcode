@@ -110,7 +110,10 @@ UPDATE_KEYS = frozenset({"enabled"})
 SESSIONS_KEYS = frozenset({"enabled"})
 
 #: Keys the ``[ui]`` table may set.
-UI_KEYS = frozenset({"theme"})
+UI_KEYS = frozenset({"theme", "pet"})
+
+#: The statusline parts that are hidden by default and made visible by choice.
+OFF_BY_DEFAULT: frozenset[str] = frozenset({"pet"})
 
 #: Keys the ``[statusline]`` table may set: the name of each part of the header and the status line.
 STATUSLINE_KEYS = frozenset(STATUSLINE_NAMES)
@@ -302,6 +305,8 @@ class ZettCodeConfig:
         theme: Name of the palette to start in (``[ui] theme``): a built-in one, or a file of the reader's in
             ``themes_dir``. ``None`` follows the terminal's light or dark. A ``theme_file`` wins over it.
         themes_dir: Where the reader's own palettes are, one ``<name>.toml`` each.
+        pet: Name of the pet to start with (``[ui] pet``): one the built-in plugin or another plugin offers.
+            ``None`` is the default pet.
         reasoning_effort: How much reasoning budget to request per turn.
         shell_approval: When the agent must ask before running a shell command.
         reduced_motion: Suppress decorative animation.
@@ -359,6 +364,7 @@ class ZettCodeConfig:
     theme_file: Path | None = None
     theme: str | None = None
     themes_dir: Path = DEFAULT_THEMES_DIR
+    pet: str | None = None
     reasoning_effort: ReasoningEffort = ReasoningEffort.MEDIUM
     shell_approval: ShellApprovalMode = ShellApprovalMode.REVIEW
     reduced_motion: bool = False
@@ -638,10 +644,15 @@ def _read_disabled_plugins(raw: object, source: Path) -> tuple[str, ...]:
 
 def _read_theme_name(raw: object, source: Path) -> str | None:
     """Return the palette name ``[ui] theme`` asks for, rejecting what could not be typed after ``/theme``."""
+    return _read_word(raw, "ui.theme", "a palette name", source)
+
+
+def _read_word(raw: object, key: str, what: str, source: Path) -> str | None:
+    """Return a name the reader typed into the config, rejecting what could not be typed after its command."""
     if raw is None:
         return None
     if not isinstance(raw, str) or not raw.strip() or any(character.isspace() for character in raw.strip()):
-        raise ValueError(f"Config key 'ui.theme' in {source} must be a palette name without spaces")
+        raise ValueError(f"Config key '{key}' in {source} must be {what} without spaces")
     return raw.strip()
 
 
@@ -694,6 +705,7 @@ def load_config(
         models=_read_models(data.get("models"), source),
         theme_file=_default_theme_file(),
         theme=_read_theme_name(ui.get("theme"), source),
+        pet=_read_word(ui.get("pet"), "ui.pet", "a pet name", source),
         reduced_motion=reduced_motion_default,
         transcript_max_entries=_typed(
             transcript.get("max_entries", DEFAULT_TRANSCRIPT_MAX_ENTRIES),
@@ -717,7 +729,9 @@ def load_config(
         statusline_hidden=tuple(
             name
             for name in STATUSLINE_NAMES
-            if not _typed(statusline.get(name, True), f"Config key 'statusline.{name}' in {source}", bool)
+            if not _typed(
+                statusline.get(name, name not in OFF_BY_DEFAULT), f"Config key 'statusline.{name}' in {source}", bool
+            )
         ),
         plugins_enabled=bool(_setting(plugins, "enabled", bool, True)),
         disabled_plugins=_read_disabled_plugins(plugins.get("disable"), source),

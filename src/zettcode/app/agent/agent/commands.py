@@ -8,6 +8,7 @@ agent is where the shell asks for everything the runtime loaded.
 from __future__ import annotations
 
 from zettcode.app.commands import Command, CommandContext, CommandResult
+from zettcode.app.pets import PetCatalog, bundled_pets
 from zettcode.plugins import UiRow
 from zettcode.providers import BUILTIN_PROVIDERS, Provider, merge_providers
 from zettcode.statusline import NAMES, unknown
@@ -65,6 +66,15 @@ class CommandsMixin(ExportsMixin):
         gained a file since the last look.
         """
         return ThemeCatalog(self.runtime.plugins.themes, self.runtime.config.themes_dir)
+
+    @property
+    def pets(self) -> PetCatalog:
+        """Return every pet that can be asked for by name: the built-in plugin's, then any other plugin's.
+
+        A plugin bundle that offers none (one built by hand, without the built-in plugin) gets the program's own.
+        """
+        sources = self.runtime.plugins.pets
+        return PetCatalog(sources or bundled_pets())
 
     @property
     def plugin_failures(self) -> tuple[str, ...]:

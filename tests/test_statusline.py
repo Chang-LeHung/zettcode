@@ -157,15 +157,17 @@ def test_a_shown_part_carries_the_glue_in_front_of_it():
 # -- the config -----------------------------------------------------------------------------------------------
 
 
-def test_every_part_is_shown_until_the_config_says_otherwise(tmp_path):
+def test_every_part_but_the_pet_is_shown_until_the_config_says_otherwise(tmp_path):
     path = tmp_path / "config.toml"
     path.write_text(MODEL, encoding="utf-8")
+    assert load_config(tmp_path, path=path).statusline_hidden == ("pet",), "the pet is out only when asked for"
+    path.write_text(MODEL + "\n[statusline]\npet = true\n", encoding="utf-8")
     assert load_config(tmp_path, path=path).statusline_hidden == ()
 
 
 def test_the_statusline_table_hides_the_parts_it_sets_to_false(tmp_path):
     path = tmp_path / "config.toml"
-    path.write_text(MODEL + "\n[statusline]\nspeed = false\nctx = false\ncache = true\n", encoding="utf-8")
+    path.write_text(MODEL + "\n[statusline]\nspeed = false\nctx = false\ncache = true\npet = true\n", encoding="utf-8")
     assert load_config(tmp_path, path=path).statusline_hidden == ("speed", "ctx"), "in the order the rows show them"
 
 

@@ -22,11 +22,13 @@ from .widgets import (
     ContextPage,
     EffortPage,
     ModelPage,
+    PetPage,
     SelfCompactPage,
     SessionsPage,
     StatuslinePage,
     bottom_panel,
     help_text,
+    pet_rows,
     statusline_rows,
 )
 
@@ -115,6 +117,13 @@ class ShellCommands(CommandProvider):
                 when_busy="now",
                 subcommands=self.theme_words,
                 preview=self.shell.preview_theme,
+            ),
+            Command(
+                "/pet",
+                "choose the pet: /pet opens a panel, /pet <name> picks one",
+                "app",
+                self.pet,
+                when_busy="now",
             ),
             Command("/fork", "carry this conversation into a new session", "app", self.fork),
             Command("/context", "what is filling the context window", "app", self.context, when_busy="now"),
@@ -289,6 +298,53 @@ class ShellCommands(CommandProvider):
             context.ui.error(f"{name} is on for this run but will not be remembered: {error}")
             return CommandResult(relayout=True)
         return CommandResult(relayout=True, notification=f"theme {name} — remembered for next time")
+
+    async def pet(self, context: CommandContext) -> CommandResult:
+        """Open the panel of pets, or switch straight to a named one; either way the choice is remembered.
+
+        The panel lists the pets with the marked one shown beside the list and over the conversation; Enter
+        chooses and Escape puts the old one back. The choice is written to ``[ui] pet`` in the config file so the
+        next start opens with it. A file that cannot take the line does not undo the switch: the pet is there,
+        and the reader is told it will not be next time and why. A pet that is switched off in ``/statusline`` is
+        still chosen, and the reader is told why nothing appeared.
+        """
+        shell = self.shell
+        if not context.argument:
+
+            def choose(name: str) -> None:
+                shell.close_page()
+                try:
+                    shell.apply_pet(name)
+                    shell.agent.remember_pet(name)
+                except ValueError as error:
+                    shell.transcript.error(str(error))
+                    return
+                except ConfigEditError as error:
+                    shell.transcript.error(f"{name} is here for this run but will not be remembered: {error}")
+                    return
+                shell.transcript.notice(self._pet_chosen(name))
+
+            def cancel() -> None:
+                shell.preview_pet(None)
+                shell.close_page()
+
+            catalog = shell.agent.pets
+            page = PetPage(catalog, shell.pet.pet.name, on_move=shell.preview_pet, on_select=choose, on_cancel=cancel)
+            return CommandResult(widget=bottom_panel(page, rows=pet_rows(len(catalog.names()), shell.app.height)))
+        name = context.argument.strip()
+        shell.apply_pet(name)
+        try:
+            shell.agent.remember_pet(name)
+        except ConfigEditError as error:
+            context.ui.error(f"{name} is here for this run but will not be remembered: {error}")
+            return CommandResult(relayout=True)
+        return CommandResult(relayout=True, notification=self._pet_chosen(name))
+
+    def _pet_chosen(self, name: str) -> str:
+        """Say which pet was chosen, and why nothing shows if the reader has switched the pet off."""
+        if "pet" in self.shell.agent.statusline_hidden:
+            return f"pet {name} — remembered, but the pet is hidden: /statusline show pet"
+        return f"pet {name} — remembered for next time"
 
     async def context(self, context: CommandContext) -> CommandResult:
         """Show what the next request carries, by source and token share.

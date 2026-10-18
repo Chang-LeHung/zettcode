@@ -281,6 +281,7 @@ class FakeConfig:
     skills_enabled: bool = False
     self_compaction: bool = False
     statusline_hidden: tuple[str, ...] = ()
+    pet: str | None = None
     plugins_enabled: bool = True
     disabled_plugins: tuple[str, ...] = ()
     update_enabled: bool = True
@@ -455,6 +456,7 @@ def rows_and_commands(
         rows=container.rows,
         failures=failures,
         themes=container.themes,
+        pets=container.pets,
         presenters=container.presenters,
     )
 
@@ -7790,6 +7792,7 @@ async def test_every_command_the_shell_runs_beside_a_request_is_one_that_cannot_
         "/exit",
         "/help",
         "/permission",
+        "/pet",
         "/quit",
         "/self-compact",
         "/statusline",
