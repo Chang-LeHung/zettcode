@@ -62,6 +62,7 @@ def shell(tmp_path: Path, monkeypatch):
             skills_enabled=False,
             mcp_enabled=False,
             sessions_enabled=False,
+            statusline_hidden=("pet",),
         )
         app = ZettCodeApp(ZettCodeAgent(runtime_module.ZettCodeRuntime.preview(config)))
         app.app.resize(110, 30)

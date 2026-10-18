@@ -23,7 +23,7 @@ JOIN = f" {SEPARATOR} "
 GAP = "  "
 
 #: Every part, in the order the rows show them: the names ``[statusline]`` may set, and the panel lists.
-#: ``tests/test_statusline.py`` holds this to what the rows actually add.
+#: ``tests/test_statusline.py`` holds this to what the rows actually add, then the pet.
 NAMES: tuple[str, ...] = (
     "app",
     "session",
@@ -39,6 +39,7 @@ NAMES: tuple[str, ...] = (
     "speed",
     "ctx",
     "keys",
+    "pet",
 )
 
 
@@ -55,6 +56,11 @@ class Part:
     name: str
     summary: str
     text: str = ""
+
+
+#: The one part that is not text on a row: the companion that stands over the conversation. It is switched
+#: like the others, with ``[statusline] pet = false``, and the panel lists it under a heading of its own.
+PET = Part("pet", "A small companion over the conversation; drag it anywhere, click it to pat it")
 
 
 class Piece(NamedTuple):

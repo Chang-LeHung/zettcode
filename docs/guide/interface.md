@@ -546,6 +546,7 @@ switch it off. `/statusline` opens a panel listing them:
 | | `speed` | How fast the model generates, in tokens per second |
 | | `ctx` | How much of the model's context window the last request filled |
 | | `keys` | The keys worth remembering: stop and exit |
+| Companion | `pet` | The small pet over the conversation; see [The pet](#the-pet) |
 
 In the panel ↑ ↓ move between the parts and ← → hide or show the one marked (Space flips it). The two rows above the
 list are a preview of the header and the status line with your choices, the marked part picked out, so you see the
@@ -563,3 +564,19 @@ speed = false
 From the keyboard, `/statusline hide ctx speed` and `/statusline show cache` do the same, and `/statusline show all`
 brings every part back. A part with nothing to say right now (`handle` with messaging off, `mode` at `ask`) takes no room
 either way.
+
+### The pet {#the-pet}
+
+A small companion stands over the right-hand side of the conversation, halfway down. It is the ZettCode mark drawn
+small: its eyes and its warm heart are the same, and the heart beats while a request runs.
+
+- **Drag it** with the mouse to put it anywhere in the conversation. It never goes over the composer, a panel or the
+  bars, and it keeps its place, as a share of the room, when you resize the terminal.
+- **Click it** (press and let go without moving) and it narrows its eyes for a moment.
+- The wheel over it still scrolls the conversation, and the cells around its outline show the conversation through.
+- It takes no room: it is drawn over the text, so it hides a few columns of whatever is under it. Drag it aside, or
+  switch it off with `/statusline hide pet` (or the `pet` switch in the panel). It is not drawn at all when the
+  conversation is narrower than 80 columns or too short to leave it room.
+
+It is a part like the others, so `pet = false` under `[statusline]` keeps it away. It does not depend on `app` or on
+anything else in the bars. Its place is not saved: each session starts with it at the right-hand edge.

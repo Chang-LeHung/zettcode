@@ -26,6 +26,7 @@ _EXPORTS = {
     "InputPage": ".input_page",
     "LATER": ".update_page",
     "ModelPage": ".model_page",
+    "PetView": ".pet",
     "SEND_KIND_ROWS": ".send_kind_page",
     "SELF_COMPACT_ROWS": ".self_compact_page",
     "SKIP": ".update_page",
@@ -60,6 +61,7 @@ if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
     from .input_page import INPUT_ROWS, InputPage
     from .model_page import ModelPage
     from .panel import bottom_panel
+    from .pet import PetView
     from .root import ZettCodeRoot
     from .self_compact_page import SELF_COMPACT_ROWS, SelfCompactPage
     from .send_kind_page import SEND_KIND_ROWS, SendKind, SendKindPage
@@ -106,6 +108,7 @@ __all__ = [
     "InputPage",
     "LATER",
     "ModelPage",
+    "PetView",
     "SEND_KIND_ROWS",
     "SELF_COMPACT_ROWS",
     "SKIP",
