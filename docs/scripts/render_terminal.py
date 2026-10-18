@@ -54,6 +54,9 @@ def preview() -> Canvas:
                 workspace=workspace,
                 store=workspace / "sessions",
                 models=(ModelConfig(model="example-model", display_model="Your model", token="example-token"),),
+                # The picture shows the companion: it is off in a real start, and the penguin is the one the README wears.
+                pet="penguin",
+                statusline_hidden=(),
                 plugins_enabled=False,
                 skills_enabled=False,
                 mcp_enabled=False,

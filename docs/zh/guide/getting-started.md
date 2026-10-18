@@ -34,8 +34,9 @@ pip install zettcode
 | `--auto`、`--yolo` | 本轮不再询问就执行 shell 命令，等同于 `/permission auto`。 |
 | `--dry-run` | 跑完启动流程、画一帧就退出，用来做性能分析。 |
 
-有两个子命令按名字做同样的事：`zettcode resume SESSION` 等同于 `zettcode --resume SESSION`（`-w DIR` 要写在它前面，
-例如 `zettcode -w ~/projects/api resume 01a10b75`）；`zettcode update` 安装最新版本后退出（见 FAQ 的“新版本”一节）。
+有三个子命令按名字做事：`zettcode resume SESSION` 等同于 `zettcode --resume SESSION`（`-w DIR` 要写在它前面，
+例如 `zettcode -w ~/projects/api resume 01a10b75`）；`zettcode update`（也可以写成 `zettcode upgrade`，完全一样）安装最新版本后退出（见 FAQ 的“新版本”一节）；
+`zettcode doctor` 对配置文件里的每个模型各问一句话，打印哪些能答，答不了的会说明原因（token 被撤销、base URL 写错、端点没有这个模型等），有一个不能就以退出码 1 结束。
 
 如果你想从源码跑：
 
