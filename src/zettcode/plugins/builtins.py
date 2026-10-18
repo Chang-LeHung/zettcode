@@ -23,7 +23,6 @@ from ..app.ui import labels
 from ..app.ui.widgets import UsagePage
 from ..statusline import Row
 from ..tui import STATUS, bundled_themes
-from .builtin_agent import AskUser, ProjectInstructions, TodoPlan
 from .container import PluginContainer
 from .plugin import Plugin
 from .state import ShellContext
@@ -167,7 +166,8 @@ class BuiltinPresenters(Plugin):
             container.register_presenter(presenter)
 
 
-#: Plugins loaded from the repository itself, never from a distribution.
+#: Plugins loaded from the repository itself, never from a distribution. The agent-side ones, which build on
+#: state the runtime hands over, are :data:`~zettcode.plugins.builtin_agent.AGENT_PLUGINS`.
 BUILTIN_PLUGINS: tuple[Plugin, ...] = (
     ShellRows(),
     SkillResources(),
@@ -176,7 +176,4 @@ BUILTIN_PLUGINS: tuple[Plugin, ...] = (
     BuiltinThemes(),
     BuiltinPets(),
     BuiltinPresenters(),
-    AskUser(),
-    ProjectInstructions(),
-    TodoPlan(),
 )

@@ -148,7 +148,7 @@ async def test_documented_plugin_registers_and_runs_its_command(path, tmp_path):
     namespace["AuditExtension"] = AuditExtension
     handed = PluginContainer(config)
     namespace["Audit"]().activate(handed)
-    assert [type(extension) for extension in handed.extensions] == [AuditExtension]
+    assert [type(contribution.extension) for contribution in handed.extensions] == [AuditExtension]
 
 
 @pytest.fixture

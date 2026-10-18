@@ -8,10 +8,12 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from zett_agent.extensions.agents_md import AgentsMdExtension
+from zett_agent.extensions.ask_user import AskUserExtension
 from zett_agent.extensions.mcp import McpExtension
 from zett_agent.extensions.skill import SkillExtension
 from zett_agent.messages import UserMessage
 
+from plugin_helpers import agent_extensions
 from zettcode._compat import ExceptionGroup
 from zettcode.app import pipeline as pipeline_module
 from zettcode.app.agent import runtime as runtime_module
@@ -96,7 +98,7 @@ def test_configured_skill_roots_are_discovered_and_advertised(tmp_path):
     )
 
     config = _config_with(tmp_path, skill_roots=(tmp_path / "skills",))
-    extension = next(item for item in runtime_module.integration_extensions(config) if isinstance(item, SkillExtension))
+    extension = next(item for item in agent_extensions(config) if isinstance(item, SkillExtension))
 
     catalog = {item.name: item for item in extension.skills}
     assert catalog["review"].description == "Review a diff with the team checklist"
@@ -110,8 +112,8 @@ def test_mcp_is_loaded_only_when_a_server_file_exists(tmp_path):
         encoding="utf-8",
     )
 
-    loaded = runtime_module.integration_extensions(_config_with(tmp_path, mcp_config=servers))
-    missing = runtime_module.integration_extensions(_config_with(tmp_path, mcp_config=tmp_path / "absent.json"))
+    loaded = agent_extensions(_config_with(tmp_path, mcp_config=servers))
+    missing = agent_extensions(_config_with(tmp_path, mcp_config=tmp_path / "absent.json"))
 
     assert [server.name for server in _mcp(loaded).servers] == ["docs"]
     # With no server file there is nothing to load, so no MCP instructions are
@@ -123,7 +125,7 @@ def test_the_optional_integrations_can_be_disabled(tmp_path):
     servers = tmp_path / "mcp.json"
     servers.write_text('{"servers": {}}', encoding="utf-8")
 
-    extensions = runtime_module.integration_extensions(
+    extensions = agent_extensions(
         _config_with(
             tmp_path,
             agents_md_enabled=False,
@@ -134,7 +136,10 @@ def test_the_optional_integrations_can_be_disabled(tmp_path):
         )
     )
 
-    assert extensions == ()
+    assert not any(
+        isinstance(extension, (AgentsMdExtension, AskUserExtension, SkillExtension, McpExtension))
+        for extension in extensions
+    )
 
 
 async def test_the_runtime_starts_loading_its_token_counter_with_the_provider(tmp_path, monkeypatch):
@@ -251,6 +256,7 @@ def test_the_warm_up_names_every_module_a_request_needs(tmp_path, monkeypatch, m
     assert names == (
         *sdks,
         "zett_agent.client",
+        "zett_agent.extensions.coding",
         *(("zett_agent.extensions.subagent",) if subagent else ()),
         *(("zett_agent.extensions.mcp",) if mcp else ()),
     )

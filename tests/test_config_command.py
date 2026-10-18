@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from plugin_helpers import runtime_inputs
 from zettcode._compat import tomllib
 from zettcode.app.agent import runtime as runtime_module
 from zettcode.app.agent.agent import ZettCodeAgent
@@ -20,7 +21,7 @@ from zettcode.app.ui.widgets import InputPage
 from zettcode.app.ui.widgets.input_page import MASK
 from zettcode.config import load_config
 from zettcode.config_edit import ConfigEditError
-from zettcode.plugins import Plugin, PluginContainer, load_plugins
+from zettcode.plugins import AGENT_PLUGINS, Plugin, PluginContainer, load_plugins
 from zettcode.providers import BUILTIN_PROVIDERS, Api, Provider
 from zettcode.tui import ListPage, walk
 from zettcode.tui.testing import Harness
@@ -826,7 +827,10 @@ async def test_a_plugin_provider_works_with_config_add(shell):
     fx = shell()
     runtime = fx.app.agent.runtime
     runtime.plugins = load_plugins(
-        replace(runtime.config, plugins_enabled=True), builtins=(), entry_points=[FakePoint("acme", Acme)]
+        replace(runtime.config, plugins_enabled=True),
+        builtins=AGENT_PLUGINS,
+        entry_points=[FakePoint("acme", Acme)],
+        shared=runtime_inputs(runtime),
     )
 
     await fx.command("/config add acme --model acme-1 --token sk-acme")
