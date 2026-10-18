@@ -32,7 +32,7 @@ jobs:
           tag = os.environ["GITHUB_REF_NAME"]
           # The version is written once, in the package; pyproject asks hatchling
           # to read the same file, so this is what the built distribution carries.
-          tree = ast.parse(pathlib.Path("src/zettcode/__init__.py").read_text(encoding="utf-8"))
+          tree = ast.parse(pathlib.Path("zettcode/src/zettcode/__init__.py").read_text(encoding="utf-8"))
           version = next(
               node.value.value
               for node in tree.body
@@ -46,7 +46,8 @@ jobs:
           PY
 
       - name: Build
-        run: uv build
+        # A v* tag publishes the agent; the server has its own version and is not part of this release.
+        run: uv build --package zettcode
 
       - name: Check distribution metadata
         run: uv run --no-project --with twine twine check dist/*

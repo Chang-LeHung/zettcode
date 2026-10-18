@@ -13,7 +13,6 @@ from xml.etree import ElementTree
 import pytest
 from zett_agent.extensions.base import AgentExtension
 
-import zettcode
 from zettcode.app.agent.conversation.entries import TextEntry
 from zettcode.app.agent.conversation.presenters import WelcomePresenter
 from zettcode.app.brand import LOGO_LINES, LOGO_PALETTE, LOGO_PIXELS
@@ -24,7 +23,8 @@ from zettcode.plugins import PluginContainer
 from zettcode.tui import DARK, Canvas, Style
 from zettcode.tui.theme_file import theme_from_toml
 
-ROOT = Path(zettcode.__file__).resolve().parents[2]
+#: The repository root: the workspace around this package (``zettcode/``), which holds ``docs/``.
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def code_blocks(path: str, language: str) -> list[str]:

@@ -12,10 +12,10 @@ from pathlib import Path
 
 import pytest
 
-import zettcode
 import zettcode.sdk as sdk
 
-ROOT = Path(zettcode.__file__).resolve().parents[2]
+#: The repository root: the workspace around this package (``zettcode/``), which holds ``docs/``.
+ROOT = Path(__file__).resolve().parents[2]
 ENGLISH = sorted((ROOT / "docs/sdk").glob("*.md"))
 CHINESE = sorted((ROOT / "docs/zh/sdk").glob("*.md"))
 PAGES = [str(path.relative_to(ROOT)) for path in ENGLISH + CHINESE]
