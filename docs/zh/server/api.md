@@ -18,6 +18,7 @@ title: HTTP API 参考
 | `busy` | 409 | 有一轮运行正在进行,而这个操作需要这个会话。 |
 | `locked` | 409 | 另一个进程占着这个会话。 |
 | `nothing_to_do` | 409 | 没有可继续的中断请求。 |
+| `no_model` | 409 | 还没有配置模型,没有可用来运行 prompt 的代理。用 `POST /models` 加一个。 |
 | `timeout` | 504 | 运行的截止时间到了。 |
 | `run` | 502 | provider 或这次运行失败。 |
 | `internal` | 500 | 其他情况;消息来自 SDK。 |
@@ -28,14 +29,17 @@ title: HTTP API 参考
 
 | 方法 | 路径 | 返回 |
 | --- | --- | --- |
-| `GET` | `/health` | `{"status","version","workspace","session","busy"}`;唯一不需要 token 的端点。 |
+| `GET` | `/health` | `{"status","version","workspace","ready","session","models","busy"}`;唯一不需要 token 的端点。配置模型之前 `ready` 为 false,`session` 为 null。 |
 | `GET` | `/` | 名称、版本以及文档和健康检查的路径。 |
 
 ## 模型与设置
 
 | 方法 | 路径 | 请求体 | 返回 |
 | --- | --- | --- | --- |
-| `GET` | `/models` | — | `{"models": [{"name","model","context_window","multimodal","efforts","active"}], "current"}` |
+| `GET` | `/models` | — | `{"models": [{"name","model","context_window","multimodal","efforts","active"}], "current"}`;配置模型之前也能用,此时 `current` 为 null。 |
+| `POST` | `/models` | `{"model", "token"?, "display_model"?, "base_url"?, "anthropic"?, "responses_api"?, "multimodal"?, "context_window"?, "compact_percent"?, "reasoning_efforts"?}` | 201,返回新的列表。第一个模型会让服务器变得可用;后续模型供 `PATCH /settings` 选择。写入配置文件,键名与终端 `/config add` 一致。 |
+| `PATCH` | `/models/{name}` | `POST /models` 接受的任意字段 | 新的列表。未给出的键保持不变;没给新 token 就保留旧的。 |
+| `DELETE` | `/models/{name}` | — | 剩下的模型。最后一个不能删(`400 invalid`):client 至少需要一个。 |
 | `GET` | `/settings` | — | `{"model","effort","efforts","permission","permissions"}` |
 | `PATCH` | `/settings` | `{"model"?, "effort"?, "permission"?}` | 更改后与 `GET /settings` 相同;至少给一个字段。 |
 | `GET` | `/plugins` | — | `{"loaded": [...], "failures": [...]}` |

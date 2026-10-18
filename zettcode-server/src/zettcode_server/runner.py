@@ -32,6 +32,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
         Image,
         MentionInfo,
         ModelCheck,
+        ModelInfo,
         ResumeInfo,
         RunResult,
         SessionStatsInfo,
@@ -126,12 +127,25 @@ class Pending:
         )
 
 
+class NoModelError(RuntimeError):
+    """No model is configured yet, so there is nothing to run a prompt with.
+
+    A fresh machine has no ``[[models]]`` entry; the server still starts, lists and edits the configuration, and
+    answers this on what needs an agent. ``POST /models`` is what turns it into a working server.
+    """
+
+
 class Runner:
     """The agent, one run at a time, and the events and answers of the run that is going.
+
+    The client is optional: a workspace with no configured model has none, and the server still serves the
+    configuration endpoints so one can be set up from the editor that is using it. Everything that needs the agent
+    raises :class:`NoModelError`, which the API maps to ``409 no_model``.
 
     Args:
         settings: The workspace and the level a run starts at.
         factory: Builds the client; by default an SDK :class:`~zettcode.sdk.Client` on the settings' workspace.
+            ``None`` from it means "no model configured", which is how the tests cover the setup path.
     """
 
     def __init__(self, settings: Settings, factory: ClientFactory | None = None) -> None:
@@ -144,12 +158,21 @@ class Runner:
 
     # -- life -----------------------------------------------------------------
     async def start(self) -> None:
-        """Open the client. The SDK starts the agent, not a model, so this reaches no provider."""
+        """Open the client, or start without one when no model is configured yet.
+
+        The SDK refuses a configuration with no models, and that is the state of every fresh machine. Rather than
+        refuse to serve, the server keeps the configuration endpoints open and answers what needs a model with
+        ``no_model``.
+        """
         if self._client is not None:
             return
-        if self._factory is None:
-            from zettcode.sdk import Client
+        if self._factory is not None:
+            self._client = self._factory()
+            return
+        from zettcode.sdk import Client
+        from zettcode.sdk.errors import ConfigurationError
 
+        try:
             self._client = await asyncio.to_thread(
                 lambda: Client(
                     self.settings.workspace,
@@ -159,8 +182,15 @@ class Runner:
                     permission=self.settings.permission,
                 )
             )
-        else:
-            self._client = self._factory()
+        except ConfigurationError as error:
+            if "No models configured" not in str(error):
+                raise
+            self._client = None
+
+    @property
+    def ready(self) -> bool:
+        """Return whether a model is configured, so a prompt can run."""
+        return self._client is not None
 
     async def close(self) -> None:
         """Stop anything still running and close the client, which releases the session lock."""
@@ -174,10 +204,15 @@ class Runner:
         """Return the open client.
 
         Raises:
-            RuntimeError: The server was used before its lifespan started.
+            NoModelError: No model is configured yet, so there is no agent to drive.
         """
         if self._client is None:
-            raise RuntimeError("The server has no client: its lifespan did not run")
+            raise NoModelError("No model is configured; add one with POST /models")
+        return self._client
+
+    @property
+    def maybe_client(self) -> Client | None:
+        """Return the client, or ``None`` before a model is configured."""
         return self._client
 
     @property
@@ -314,6 +349,72 @@ class Runner:
     async def resumable(self) -> ResumeInfo | None:
         """Return where the conversation was interrupted, or ``None`` when it was not."""
         return await self.client.session.resumable()
+
+    # -- the models the config file lists ------------------------------------
+    def models_now(self) -> tuple[ModelInfo, ...]:
+        """Return the configured models, from the client when there is one and from the file when there is not."""
+        if self._client is not None:
+            return tuple(self._client.models)
+        from zettcode.sdk import list_models
+
+        return list_models(self.settings.config_path)
+
+    @property
+    def current_model(self) -> str | None:
+        """Return the model a run would use, or ``None`` before one is configured."""
+        return None if self._client is None else self._client.model.name
+
+    async def reload(self, *, model: str | None = None) -> None:
+        """Rebuild the client after the configuration file changed, keeping the conversation and its settings.
+
+        The SDK reads the models when a client is made, so a model added, changed or removed on disk reaches the agent
+        by making the client again. The session id is carried over (a fresh, never-stored one simply starts again), as
+        are the effort and permission, and the model named stays if it is still configured.
+
+                Raises:
+                    SessionBusyError: A run is in progress; the configuration of a running conversation is not swapped.
+        """
+        if self.busy:
+            raise SessionBusyError("A run is in progress; change the models when it ends")
+        previous = self._client
+        session = previous.session.id if previous is not None else None
+        permission = previous.permission if previous is not None else self.settings.permission
+        effort = previous.effort if previous is not None else self.settings.effort
+        wanted = model or (previous.model.name if previous is not None else None)
+        if previous is not None:
+            await previous.aclose()
+        self._client = None
+        if self._factory is not None:
+            self._client = self._factory()
+            if self._client is not None and model is not None:
+                self._client.use_model(model)
+            return
+
+        from zettcode.sdk import Client, list_models
+        from zettcode.sdk.errors import SessionNotFoundError
+
+        models = list_models(self.settings.config_path)
+        if not models:
+            return
+        names = {entry.name for entry in models}
+        chosen = wanted if wanted in names else None
+
+        async def open_client(resume: str | None):
+            return await asyncio.to_thread(
+                lambda: Client(
+                    self.settings.workspace,
+                    config_path=self.settings.config_path,
+                    model=chosen,
+                    effort=effort,
+                    permission=permission,
+                    resume=resume,
+                )
+            )
+
+        try:
+            self._client = await open_client(session)
+        except SessionNotFoundError:
+            self._client = await open_client(None)
 
     # -- what a terminal shows around the conversation -----------------------
     async def mentions(self, query: str, limit: int) -> tuple[MentionInfo, ...]:

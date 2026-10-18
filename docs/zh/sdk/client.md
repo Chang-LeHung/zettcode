@@ -209,6 +209,26 @@ async with zc.Client(".") as client:
 
 [用量与体检](./usage)讲账本、会话统计和模型体检;[会话](./sessions)讲会话里存了什么。
 
+## 还没有 client 时的模型
+
+上面所有方法都需要 client,而 client 至少需要一个模型。新机器上一个都没有,所以这个包也直接编辑配置文件 —— 就是终端
+`/config` 编辑的那些 `[[models]]` 条目:
+
+```python
+import zettcode.sdk as zc
+
+for model in zc.list_models():            # 文件是新的或没有模型时返回 ()
+    print(model.name, model.context_window)
+
+zc.add_model({"model": "gpt-5-mini", "token": "sk-…", "display_model": "Fast"})
+zc.update_model("Fast", {"context_window": 200000})   # token 保留
+zc.remove_model("Fast")                                # 最后一个会被拒绝
+```
+
+`add_model` 的第一条自己写,后面的走终端那套编辑器,所以注释和文件其余部分都保留;写进去的内容在返回前会被读回并校验,
+解析不过的写入会撤销。函数接受 `path=` 指定非默认的配置文件。文件里有了模型之后,就可以创建 `Client(...)`
+(或 `Client(config_path=...)`)。
+
 ## 关闭
 
 ```python

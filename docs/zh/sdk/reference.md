@@ -16,6 +16,7 @@ SDK 的每一个公开名字，按模块分组。签名取自已发布的包；�
 | [`zettcode.sdk.events`](#zettcode-sdk-events) | 所有事件、`AnyEvent` |
 | [`zettcode.sdk.types`](#zettcode-sdk-types) | 方法返回的值 |
 | [`zettcode.sdk.handlers`](#zettcode-sdk-handlers) | 审批规则与处理函数类型 |
+| [`zettcode.sdk.models`](#zettcode-sdk-models) | `list_models`、`add_model`、`update_model`、`remove_model` |
 | [`zettcode.sdk.errors`](#zettcode-sdk-errors) | 所有错误 |
 
 ## zettcode.sdk
@@ -28,6 +29,7 @@ from zettcode.sdk import (
     RunResult, Usage, Image,
     TextDelta, ReasoningDelta, ToolStarted, ToolFinished, ApprovalRequested, QuestionAsked, Finished,
     approve_all, approve_commands, deny_all,
+    add_model, list_models, update_model, remove_model,
     ZettCodeError, ConfigurationError, RunError,
 )
 ```
@@ -132,6 +134,21 @@ class Client:
 ### `PluginReport`
 
 冻结的 dataclass：`loaded: tuple[str, ...]`、`failures: tuple[str, ...]`。
+
+## zettcode.sdk.models
+
+配置文件里的模型,用于在还没有 client 时把一台机器配好。见[还没有 client 时的模型](./client#还没有-client-时的模型)。
+
+```python
+def list_models(path=None) -> tuple[ModelInfo, ...]: ...
+def add_model(entry, *, path=None) -> tuple[ModelInfo, ...]: ...
+def update_model(name, changes, *, path=None) -> tuple[ModelInfo, ...]: ...
+def remove_model(name, *, path=None) -> tuple[ModelInfo, ...]: ...
+```
+
+`entry` 和 `changes` 用文件里的键(`model`、`token`、`display_model`、`base_url`、`anthropic`、`responses_api`、
+`multimodal`、`context_window`、`compact_percent`、`reasoning_efforts`)。`path` 默认是 `$ZETTCODE_CONFIG` 或
+`~/.zettcode/config.toml`。每次调用返回整个列表,没有模型被标为 active;读不回来的文件会被拒绝;最后一个模型不能删。
 
 ## zettcode.sdk.session
 

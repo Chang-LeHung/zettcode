@@ -62,12 +62,28 @@ await run.cancel();
 `client.runState()` says what is going and what it waits on, which is how an editor that reloaded can show the
 question again.
 
+## Setting a model up
+
+A server with no model configured still answers, so the editor can create one:
+
+```ts
+const health = await client.health();      // { ready: false, models: 0, session: null, … }
+if (!health.ready) {
+  await client.addModel({ model: "gpt-5-mini", token: apiKey, display_model: "Fast" });
+}
+await client.updateModel("Fast", { context_window: 200_000 });   // the token is kept
+await client.updateSettings({ model: "Fast" });                  // choose it for the next prompt
+```
+
+`addModel` writes the same `[[models]]` entry `/config add` writes; `removeModel` refuses the last one.
+
 ## The rest of the API
 
 | Client | Endpoint |
 | --- | --- |
 | `health()` | `GET /health` |
-| `models()`, `settings()`, `updateSettings(change)`, `plugins()` | `/models`, `/settings`, `/plugins` |
+| `models()`, `addModel(entry)`, `updateModel(name, changes)`, `removeModel(name)` | `/models`, `/models/{name}` |
+| `settings()`, `updateSettings(change)`, `plugins()` | `/settings`, `/plugins` |
 | `listSessions(limit)`, `createSession(title?)`, `currentSession()` | `/sessions`, `/sessions/current` |
 | `openSession(id)`, `renameSession(title)`, `nameSession()`, `forkSession()` | `/sessions/...` |
 | `compactSession()`, `context()`, `history()`, `exportSession()`, `ask(question)` | `/sessions/current/...` |

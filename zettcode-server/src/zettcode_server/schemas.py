@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 #: The shell permission levels, as the SDK names them.
 PermissionName = Literal["deny", "ask", "safe", "auto"]
@@ -92,12 +92,15 @@ class ResumeRequest(RunOptions):
 
 
 class HealthOut(BaseModel):
-    """What ``/health`` answers: the process is up, and which status it reports."""
+    """What ``/health`` answers: the process is up, and what it has to work with."""
 
     status: Literal["ok"] = "ok"
     version: str
     workspace: str
-    session: str
+    #: Whether a model is configured, so a prompt can run. A fresh machine is ``false`` until ``POST /models``.
+    ready: bool = False
+    session: str | None = None
+    models: int = 0
     busy: bool
 
 
@@ -134,7 +137,7 @@ class ModelsOut(BaseModel):
     """Every configured model, and which one a run would use."""
 
     models: list[ModelOut]
-    current: str
+    current: str | None = None
 
 
 class SettingsOut(BaseModel):
@@ -153,6 +156,58 @@ class SettingsUpdate(BaseModel):
     model: str | None = None
     effort: str | None = None
     permission: PermissionName | None = None
+
+
+class ModelCreate(BaseModel):
+    """One model to write into the configuration file.
+
+    The keys are the file's own, so what is added here is what ``/config add`` writes and what the terminal reads.
+    A token may be left out when the environment names one (``OPENAI_API_KEY``, ``ANTHROPIC_API_KEY``).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    model: str = Field(min_length=1)
+    token: str | None = None
+    display_model: str | None = None
+    base_url: str | None = None
+    anthropic: bool = False
+    responses_api: bool = False
+    multimodal: bool = False
+    context_window: int | None = Field(default=None, ge=1)
+    compact_percent: float | None = Field(default=None, gt=0, le=100)
+    reasoning_efforts: list[str] = Field(default_factory=list)
+
+    def entry(self) -> dict[str, object]:
+        """Return the file keys to write, leaving out what was not given."""
+        data = self.model_dump(exclude_none=True)
+        for flag in ("anthropic", "responses_api", "multimodal"):
+            if not data.get(flag):
+                data.pop(flag, None)
+        if not data.get("reasoning_efforts"):
+            data.pop("reasoning_efforts", None)
+        return data
+
+
+class ModelUpdate(BaseModel):
+    """Changes to one configured model; a key left out stays as it is, and the token is kept."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    model: str | None = Field(default=None, min_length=1)
+    token: str | None = None
+    display_model: str | None = None
+    base_url: str | None = None
+    anthropic: bool | None = None
+    responses_api: bool | None = None
+    multimodal: bool | None = None
+    context_window: int | None = Field(default=None, ge=1)
+    compact_percent: float | None = Field(default=None, gt=0, le=100)
+    reasoning_efforts: list[str] | None = None
+
+    def changes(self) -> dict[str, object]:
+        """Return only the keys the request set, as the file writes them."""
+        return self.model_dump(exclude_unset=True, exclude_none=True)
 
 
 class SessionOut(BaseModel):

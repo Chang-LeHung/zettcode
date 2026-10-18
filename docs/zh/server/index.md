@@ -38,6 +38,21 @@ zettcode-server 0.1.0 (zettcode 0.1.8) · http://127.0.0.1:3290 · workspace /ho
 第二个项目就再起一个服务器。
 :::
 
+## 一台新机器
+
+服务器**在还没有任何模型时也能启动**。`/health` 说 `ready: false`,`/models` 是空的,任何需要代理的端点回答
+`409 no_model` —— 而模型端点照常工作,所以正在用这个服务器的编辑器可以把模型配好:
+
+```bash
+curl -X POST http://127.0.0.1:3290/models \
+  -H 'content-type: application/json' \
+  -d '{"model": "gpt-5-mini", "token": "sk-…", "display_model": "Fast"}'
+```
+
+第一个模型会构建出代理,`/health` 之后就是 `ready: true`。条目写进配置文件,键名和 `/config add` 一致,所以终端也能看到。
+可以继续添加、修改(没给新 token 就保留旧的)或删除 —— 最后一个不能删,因为没有模型的配置无法创建 client。
+`PATCH /settings {"model": "Fast"}` 就是从中选择,选择对下一次 prompt 生效。
+
 ## 第一个请求
 
 ```bash

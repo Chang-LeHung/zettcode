@@ -13,6 +13,8 @@ import type {
   Message,
   ModelCheck,
   ModelInfo,
+  ModelInput,
+  ModelUpdate,
   Permission,
   Plugins,
   PromptOptions,
@@ -112,9 +114,28 @@ export class ZettCodeClient {
     return this.request<Health>("/health");
   }
 
-  /** Every configured model, with the active one marked. */
-  async models(): Promise<{ models: ModelInfo[]; current: string }> {
+  /** Every configured model, with the active one marked; works before a model is configured. */
+  async models(): Promise<{ models: ModelInfo[]; current: string | null }> {
     return this.request("/models");
+  }
+
+  /**
+   * Add a model to the configuration file, and use it when the server had none.
+   *
+   * This is how a fresh server becomes usable: it starts without a model, and the first one added builds the agent.
+   */
+  addModel(model: ModelInput): Promise<{ models: ModelInfo[]; current: string | null }> {
+    return this.request("/models", this.json("POST", model));
+  }
+
+  /** Change one model (named by its display name or its id); the token is kept unless a new one is given. */
+  updateModel(name: string, changes: ModelUpdate): Promise<{ models: ModelInfo[]; current: string | null }> {
+    return this.request(`/models/${encodeURIComponent(name)}`, this.json("PATCH", changes));
+  }
+
+  /** Remove a model; the last one cannot go, because a configuration with no models cannot run. */
+  removeModel(name: string): Promise<{ models: ModelInfo[]; current: string | null }> {
+    return this.request(`/models/${encodeURIComponent(name)}`, { method: "DELETE" });
   }
 
   /** The model, effort and permission the next prompt uses. */

@@ -59,6 +59,7 @@ if TYPE_CHECKING:  # pragma: no cover - for type checkers and editors; at runtim
         ToolStarted,
     )
     from .handlers import approve_all, approve_commands, deny_all
+    from .models import add_model, list_models, remove_model, update_model
     from .session import RunStream, Session
     from .types import (
         DayTotals,
@@ -105,6 +106,10 @@ _EXPORTS: dict[str, str] = {
     "ZettCodeError": ".errors",
     "ConfigurationError": ".errors",
     "RunError": ".errors",
+    "add_model": ".models",
+    "list_models": ".models",
+    "remove_model": ".models",
+    "update_model": ".models",
 }
 
 #: Kept literal so linters and editors can read it; a test checks it names exactly the keys of ``_EXPORTS``.
@@ -133,11 +138,15 @@ __all__ = [
     "Usage",
     "WorkspaceUsage",
     "ZettCodeError",
+    "add_model",
     "approve_all",
     "approve_commands",
     "deny_all",
+    "list_models",
     "prompt",
     "prompt_sync",
+    "remove_model",
+    "update_model",
 ]
 
 
