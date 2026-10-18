@@ -29,6 +29,7 @@ from .builtins import BUILTIN_PLUGINS
 from .container import PluginContainer, UiSlots
 from .extension import HOST_NAME, PluginExtension
 from .plugin import Plugin, Plugins
+from .services import HOST_LINK, HostLink
 from .state import Contribution
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
@@ -93,6 +94,7 @@ def load_plugins(
     loader = _Loader(config, shared)
     for plugin in builtins:
         loader.accept(plugin, origin=plugin.name or type(plugin).__name__)
+    loader.builtin_commands = len(loader.commands)
     if config.plugins_enabled:
         points = tuple(entry_points) if entry_points is not None else installed_entry_points()
         disabled = set(config.disabled_plugins)
@@ -116,6 +118,8 @@ class _Loader:
         self.slots = UiSlots()
         self.plugins: list[Plugin] = []
         self.commands: list[Command] = []
+        #: How many of ``commands`` the built-in plugins registered; they are loaded first.
+        self.builtin_commands = 0
         self.mentions: list[MentionProvider] = []
         self.providers: list[Provider] = []
         self.themes: list[ThemeSource] = []
@@ -123,6 +127,7 @@ class _Loader:
         self.presenters: list[Presenter[Any]] = []
         self.contributed: list[Contribution] = []
         self.services: dict[str, object] = dict(shared or {})
+        self.services.setdefault(HOST_LINK, HostLink())
         self.failures: list[str] = []
         self._identities: set[str] = set()
         self._extension_names: set[str] = {HOST_NAME}
@@ -230,6 +235,7 @@ class _Loader:
         return Plugins(
             host=host,
             commands=tuple(self.commands),
+            builtin_commands=tuple(self.commands[: self.builtin_commands]),
             mentions=tuple(self.mentions),
             providers=tuple(self.providers),
             themes=tuple(self.themes),

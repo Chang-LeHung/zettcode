@@ -148,6 +148,13 @@ gigabytes of them. It then keeps a small `usage.json` beside that project's sess
 reads only what was added since. The file is a shortcut and nothing else: delete it and the next `/usage` rebuilds
 it from the conversations.
 
+The `/resume` panel shows each session's entries, tokens and cached share too. The cached share keeps two decimals,
+as it does here, and each figure column has its own colour: the cached column is brighter the more of the input the
+cache served, so a column of weak caches reads dim at a glance. Those totals are kept in a second,
+much smaller file beside the first, `sessions.json`: one short line per session, so opening the panel does not
+read the index or any conversation unless one of them changed. It is a shortcut in the same way, and deleting it
+loses nothing.
+
 Because the numbers come from the stored conversations, the page is about the project, not the process: a session
 you closed last week is on it, and the one you are in adds to it as it goes.
 

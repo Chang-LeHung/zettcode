@@ -92,6 +92,7 @@ from zettcode.app.ui.widgets import (
 from zettcode.app.ui.widgets.follow_up import OPTION
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.plugins import BUILTIN_PLUGINS, PluginContainer, Plugins, ShellContext, UiBuilder
+from zettcode.plugins.services import HOST_LINK, HostLink
 from zettcode.tui import (
     DARK,
     LIGHT,
@@ -200,6 +201,10 @@ class FakePersistence:
 
     async def list_sessions(self, limit: int | None = None):
         return self.sessions[:limit] if limit is not None else list(self.sessions)
+
+    async def session_stats(self, session_ids):
+        """The real store's totals when the test gave it one, and none otherwise (a row then shows dashes)."""
+        return await self.store.session_stats(session_ids) if self.store is not None else {}
 
     def read(self, session_id: str):
         if self.store is None:
@@ -436,6 +441,7 @@ def rows_and_commands(
     commands: tuple[Command, ...] = (),
     failures: tuple[str, ...] = (),
     presenters: tuple[object, ...] = (),
+    config: object | None = None,
 ) -> Plugins:
     """The shell's builtin rows plus the segments and commands one test adds.
 
@@ -443,7 +449,8 @@ def rows_and_commands(
     the builtin already uses, which replaces it in place — the same merge the
     loader performs when a plugin loads after the builtins.
     """
-    container = PluginContainer(FakeConfig())
+    link = HostLink()
+    container = PluginContainer(config or FakeConfig(), {HOST_LINK: link})  # type: ignore[arg-type]
     for plugin in BUILTIN_PLUGINS:
         plugin.activate(container)
         for region, side, name, builder in plugin.ui_slots():
@@ -455,12 +462,14 @@ def rows_and_commands(
     for presenter in presenters:
         container.register_presenter(presenter)  # type: ignore[arg-type]
     return Plugins(
-        commands=commands,
+        commands=(*container.commands, *commands),
+        builtin_commands=tuple(container.commands),
         rows=container.rows,
         failures=failures,
         themes=container.themes,
         pets=container.pets,
         presenters=container.presenters,
+        services={HOST_LINK: link},
     )
 
 
@@ -4122,11 +4131,11 @@ async def test_the_slash_menu_lists_and_filters_commands():
 
     harness.write("/")
 
-    assert [item.value for item in app.completions.items][:4] == ["/help", "/resume", "/continue", "/model"]
+    assert [item.value for item in app.completions.items][:4] == ["/help", "/resume", "/continue", "/fork"]
     assert "show the commands and the keys" in harness.text()
-    assert "[app]" in harness.text()
-    assert app.completions.items[0].type == "app"
-    assert {item.type for item in app.completions.items} == {"app", "agent"}
+    assert "[plugin]" in harness.text()
+    assert app.completions.items[0].type == "plugin"
+    assert {item.type for item in app.completions.items} == {"app", "agent", "plugin"}
 
     harness.write("cl")
 
@@ -4143,8 +4152,10 @@ async def test_app_and_agent_commands_are_routed_to_their_owners():
     app = build_app()
     harness = _harness(app)
     owners = {item.name: item.type for item in app.commands}
-    assert owners["/help"] == "app"
-    assert owners["/model"] == "app"
+    # The program's own plugins provide most of the commands; the shell keeps the ones that preview as they are walked.
+    assert owners["/help"] == "plugin"
+    assert owners["/model"] == "plugin"
+    assert owners["/theme"] == "app"
     assert owners["/new"] == "agent"
     assert owners["/compact"] == "agent"
 
@@ -4365,7 +4376,7 @@ def test_the_sessions_panel_lines_wide_titles_up_in_one_column():
     assert len({display_width(row[: row.index("ago")]) for row in rows}) == 1
     # ... and the ages are right-aligned, so "3h ago" lines up with "17m ago"
     # and the short id after them never steps in and out of column.
-    assert len({display_width(row[: row.index("\u00b7")]) for row in rows}) == 1
+    assert len({display_width(row[: row.index("01a10")]) for row in rows}) == 1
 
 
 async def test_switching_sessions_replaces_the_transcript_with_stored_history(tmp_path):
@@ -4509,6 +4520,7 @@ async def test_sessions_command_opens_a_panel_with_titles_and_ages(tmp_path):
     app = build_app()
     app.agent.runtime.persistence.sessions = await store.list_sessions()
     app.agent.runtime.persistence.store = store
+    app.app.resize(110, 14)  # wide enough for every column: the default 60 gives up the right-hand ones
     harness = _harness(app)
 
     harness.write("/resume")
@@ -4520,8 +4532,9 @@ async def test_sessions_command_opens_a_panel_with_titles_and_ages(tmp_path):
     assert page.rect.bottom == app.app.height
     assert "Fix the parser crash" in text
     assert text.count("just now") == 2
-    # A session without a title keeps that column empty but still shows its id.
+    # A session without a title reads as New session but still shows its id.
     assert "beta-2" in text
+    assert "Entries" in text and "Cached" in text
     assert [item.value for item in page.list.items] == ["beta-2", "alpha-1"]
 
     harness.press("down")
@@ -4533,6 +4546,25 @@ async def test_sessions_command_opens_a_panel_with_titles_and_ages(tmp_path):
     # Resuming a session puts its stored title, not its id, in the header.
     assert "Fix the parser crash" in app._header_left().text
     assert app.app.title() == "◈ zettcode · Fix the parser crash"
+
+
+async def test_sessions_panel_in_a_narrow_terminal_gives_up_right_hand_columns_then_cuts_the_title(tmp_path):
+    store = SessionStore(tmp_path)
+    await store.append("alpha-1", "req", UserMessage(content="hi"))
+    await store.set_title("alpha-1", "Fix the parser crash")
+    app = build_app()  # 60 columns
+    app.agent.runtime.persistence.sessions = await store.list_sessions()
+    app.agent.runtime.persistence.store = store
+    harness = _harness(app)
+
+    harness.write("/resume")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+    text = harness.render().text
+
+    # The two right-hand columns went first; then the title, which has MIN_TITLE columns left, is cut.
+    assert "Updated" in text and "Entries" in text and "Cached" not in text
+    assert "Fix the parser c\u2026" in text
 
 
 async def test_sessions_command_reports_an_empty_store():
@@ -4606,10 +4638,11 @@ def test_the_sessions_panel_numbers_its_rows_and_fills_the_panel():
     assert [item.label for item in page.list.items][:2] == [" 1. session 0", " 2. session 1"]
     assert page.list.items[9].label == "10. session 9"
 
-    # The list fills the panel it is given rather than stopping at six rows.
+    # The list fills the panel it is given rather than stopping at six rows: the page's height less its title,
+    # the heading over the figures, a blank row and the footer.
     page.layout(Rect(0, 0, 40, 14))
 
-    assert page.list.rect.height == 9
+    assert page.list.rect.height == 8
 
 
 async def test_the_status_line_mirrors_the_usage_extension():
@@ -7803,6 +7836,7 @@ async def test_every_command_the_shell_runs_beside_a_request_is_one_that_cannot_
         "/statusline",
         "/theme",
         "/title",
+        "/usage",
     ]
     assert queued == ["/btw"]
     # What a running request is built on stays out: the transcript it writes into, the session, and
@@ -8338,7 +8372,6 @@ async def test_usage_opens_a_full_screen_page_and_escape_returns_to_the_conversa
 
     from zettcode.app.agent.storage import SessionStore
     from zettcode.app.ui.widgets import UsagePage
-    from zettcode.plugins.builtins import UsageCommand
 
     work = tmp_path / "work"
     work.mkdir()
@@ -8347,18 +8380,15 @@ async def test_usage_opens_a_full_screen_page_and_escape_returns_to_the_conversa
         input_tokens=1500, output_tokens=40, cache_read_tokens=0, cache_write_tokens=0, reasoning_tokens=0
     )
     await store.append("a", "r", AssistantMessage(content="x", model="alpha"), usage=usage)
-    container = PluginContainer(
-        ZettCodeConfig(
-            workspace=work,
-            store=tmp_path / "sessions",
-            models=(ModelConfig(model="m", token="t"),),
-            plugins_enabled=False,
-            skills_enabled=False,
-            mcp_enabled=False,
-        )
+    config = ZettCodeConfig(
+        workspace=work,
+        store=tmp_path / "sessions",
+        models=(ModelConfig(model="m", token="t"),),
+        plugins_enabled=False,
+        skills_enabled=False,
+        mcp_enabled=False,
     )
-    UsageCommand().activate(container)
-    app = build_app(plugins=rows_and_commands(commands=container.commands))
+    app = build_app(plugins=rows_and_commands(config=config))
     harness = _harness(app)
 
     harness.write("/usage")

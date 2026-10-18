@@ -23,6 +23,7 @@ from ..app.ui import labels
 from ..app.ui.widgets import UsagePage
 from ..statusline import Row
 from ..tui import STATUS, bundled_themes
+from .builtin_commands import HelpCommand, ModelCommands, SessionCommands, ShellControl, SideQuestion
 from .container import PluginContainer
 from .plugin import Plugin
 from .state import ShellContext
@@ -172,6 +173,12 @@ BUILTIN_PLUGINS: tuple[Plugin, ...] = (
     ShellRows(),
     SkillResources(),
     FileResources(),
+    # The commands that act on the application, in the order ``/help`` lists them.
+    HelpCommand(),
+    SessionCommands(),
+    ModelCommands(),
+    SideQuestion(),
+    ShellControl(),
     UsageCommand(),
     BuiltinThemes(),
     BuiltinPets(),

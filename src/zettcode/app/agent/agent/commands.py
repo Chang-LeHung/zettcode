@@ -7,9 +7,10 @@ agent is where the shell asks for everything the runtime loaded.
 
 from __future__ import annotations
 
-from zettcode.app.commands import Command, CommandContext, CommandResult
+from zettcode.app.commands import Command, CommandContext, CommandHost, CommandResult
 from zettcode.app.pets import PetCatalog, bundled_pets
 from zettcode.plugins import UiRow
+from zettcode.plugins.services import HOST_LINK, HostLink
 from zettcode.providers import BUILTIN_PROVIDERS, Provider, merge_providers
 from zettcode.statusline import NAMES, unknown
 from zettcode.tui import ThemeCatalog
@@ -38,15 +39,25 @@ class CommandsMixin(ExportsMixin):
             Command("/export", "write this session to an HTML file: /export [path]", "agent", self._command_export),
         )
 
+    def attach_host(self, host: CommandHost) -> None:
+        """Tell the plugins where the shell is, so the words their commands offer can follow the session."""
+        link = self.runtime.plugins.find(HOST_LINK, HostLink)
+        if link is not None:
+            link.attach(host)
+
     @property
     def plugin_commands(self) -> tuple[Command, ...]:
-        """Return the commands the installed plugins registered.
+        """Return the commands the installed plugins registered, not counting the built-in ones.
 
-        The shell keeps them after its own commands, so a plugin cannot take
-        over a built-in name; plugin-versus-plugin duplicates are rejected when
-        the plugins load.
+        The shell keeps them after everything built in, so a plugin cannot take over a built-in name;
+        plugin-versus-plugin duplicates are rejected when the plugins load.
         """
-        return self.runtime.plugins.commands
+        return self.runtime.plugins.installed_commands
+
+    @property
+    def builtin_plugin_commands(self) -> tuple[Command, ...]:
+        """Return the commands the program's own plugins registered: ``/resume``, ``/model``, ``/usage`` and the rest."""
+        return self.runtime.plugins.builtin_commands
 
     @property
     def plugin_mentions(self) -> tuple[MentionProvider, ...]:

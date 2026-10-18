@@ -31,6 +31,18 @@ beginning, and a damaged, foreign, or older index is ignored whole. The index is
 truth, only a way to avoid re-reading it: deleting it costs one slow read, and it is written
 best-effort, so a read-only store or two processes writing at once cost nothing but a re-read.
 A rewrite that keeps both fingerprinted ends is not noticed; nothing in this program makes one.
+
+**Entries.** The same pass counts a session's message records (the system prompt, each user message,
+each reply and each tool result is one), which is what the sessions panel shows as its size. A line is
+recognised by its ``"kind": "message"`` field without being parsed, so counting costs a substring search.
+
+**The summary.** ``usage.json`` keeps every reply of every session, so it grows with the work. The sessions
+panel needs a handful of totals for each of twenty sessions, so :meth:`LedgerReader.stats` keeps those in a
+second, small file, ``sessions.json``, next to it: for each session the size and modification time of its
+conversation file, and the totals found at that size. A session whose file still has that size and time is
+answered from the summary alone, without opening ``usage.json`` or a conversation; any other is answered by the
+ordinary incremental read, which then rewrites the summary. It is a cache like the index and is treated the
+same way: damaged, foreign or older files are ignored whole, and writing it is best-effort.
 """
 
 from __future__ import annotations
@@ -57,6 +69,14 @@ INDEX_FILE = "usage.json"
 
 #: Bumped when the index's shape changes; an index of another version is ignored.
 INDEX_VERSION = 1
+
+#: The per-session totals the sessions panel reads, beside the index, and the version of its shape.
+SUMMARY_FILE = "sessions.json"
+SUMMARY_VERSION = 1
+
+#: What marks a stored line as a message record, with and without the space after the colon. Keys are written
+#: in sorted order and a message's own text is escaped, so the pair never appears inside a message.
+MESSAGE_MARKS = (b'"kind": "message"', b'"kind":"message"')
 
 #: Bytes at the start of a file, and bytes before the read point, that fingerprint a file.
 HEAD_BYTES = 256
@@ -107,7 +127,7 @@ class Tally:
 
 @dataclass(frozen=True, slots=True)
 class SessionUsage:
-    """What one session spent, and when it began and last changed."""
+    """What one session spent, how long it is, and when it began and last changed."""
 
     session_id: str
     title: str | None
@@ -115,6 +135,40 @@ class SessionUsage:
     updated: datetime
     tally: Tally
     models: tuple[str, ...]
+    entries: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class SessionStats:
+    """The totals one row of the sessions panel shows.
+
+    Attributes:
+        session_id: The session.
+        entries: Message records its conversation file holds.
+        requests: Model replies it was charged for (a fork is not charged for the replies it copied).
+        input_tokens: Everything sent to the model, cache reads included.
+        output_tokens: Everything generated, reasoning included.
+        cache_read_tokens: The part of the input the provider served from its cache.
+        reasoning_tokens: The reasoning part of the output.
+    """
+
+    session_id: str
+    entries: int = 0
+    requests: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_tokens: int = 0
+    reasoning_tokens: int = 0
+
+    @property
+    def total(self) -> int:
+        """Return everything sent plus everything generated."""
+        return self.input_tokens + self.output_tokens
+
+    @property
+    def cache_share(self) -> float | None:
+        """Return the cached share of all input, or ``None`` before there is any."""
+        return self.cache_read_tokens / self.input_tokens if self.input_tokens else None
 
 
 @dataclass(slots=True)
@@ -212,6 +266,7 @@ class _File:
         started: The header's ``created_at``, as stored.
         counted: False for a subagent's session, whose replies are never read.
         rows: The replies found so far.
+        entries: The message records found so far.
     """
 
     size: int
@@ -222,6 +277,7 @@ class _File:
     started: str | None
     counted: bool
     rows: tuple[Row, ...]
+    entries: int = 0
 
 
 def _fingerprint(handle: BinaryIO, start: int, end: int) -> int:
@@ -261,6 +317,7 @@ def _scan(path: Path, previous: _File | None) -> _File | None:
                 if not previous.counted:
                     return replace(previous, size=stat.st_size, mtime_ns=stat.st_mtime_ns)
                 offset, started, counted, rows = previous.offset, previous.started, True, list(previous.rows)
+                entries = previous.entries
             else:
                 handle.seek(0)
                 first = handle.readline()
@@ -268,6 +325,7 @@ def _scan(path: Path, previous: _File | None) -> _File | None:
                 offset = len(first) if first.endswith(b"\n") else 0
                 started, counted = _header_of(first)
                 rows = []
+                entries = 0
             if counted and offset:
                 handle.seek(offset)
                 for raw in handle:
@@ -275,13 +333,15 @@ def _scan(path: Path, previous: _File | None) -> _File | None:
                     if not raw.endswith(b"\n"):
                         break
                     offset += len(raw)
+                    if any(mark in raw for mark in MESSAGE_MARKS):
+                        entries += 1
                     row = _row_of(raw.decode("utf-8", errors="replace"))
                     if row is not None:
                         rows.append(row)
             tail = _fingerprint(handle, offset - TAIL_BYTES, offset)
     except OSError:
         return None
-    return _File(stat.st_size, stat.st_mtime_ns, offset, head, tail, started, counted, tuple(rows))
+    return _File(stat.st_size, stat.st_mtime_ns, offset, head, tail, started, counted, tuple(rows), entries)
 
 
 def _title_of(folder: Path) -> str | None:
@@ -318,14 +378,15 @@ def _file_from_index(item: object) -> _File | None:
     try:
         size, mtime_ns, offset, head, tail = (item[name] for name in ("size", "mtime_ns", "offset", "head", "tail"))
         started, counted = item["started"], item["counted"]
-        if not all(_whole(number) for number in (size, mtime_ns, offset, head, tail)):
+        entries = item["entries"]
+        if not all(_whole(number) for number in (size, mtime_ns, offset, head, tail, entries)) or entries < 0:
             return None
         if not isinstance(counted, bool) or not (started is None or isinstance(started, str)):
             return None
         rows = tuple(_row_from_index(row) for row in item["rows"])
     except (KeyError, TypeError, ValueError):
         return None
-    return _File(size, mtime_ns, offset, head, tail, started, counted, rows)
+    return _File(size, mtime_ns, offset, head, tail, started, counted, rows, entries)
 
 
 class LedgerReader:
@@ -348,6 +409,7 @@ class LedgerReader:
         """
         self.directory = find_workspace(Path(root).expanduser(), workspace)
         self.index_path = self.directory / INDEX_FILE
+        self.summary_path = self.directory / SUMMARY_FILE
         self._use_index = index
         self._files: dict[str, _File] = {}
         self._loaded = False
@@ -420,20 +482,125 @@ class LedgerReader:
                     "tail": item.tail,
                     "started": item.started,
                     "counted": item.counted,
+                    "entries": item.entries,
                     "rows": [list(row) for row in item.rows],
                 }
                 for session_id, item in files.items()
             },
         }
-        temporary = self.index_path.with_name(f"{INDEX_FILE}.{os.getpid()}.tmp")
+        self._write(self.index_path, payload)
+
+    def _write(self, path: Path, payload: dict[str, object]) -> None:
+        """Write a cache file whole and atomically; a store that cannot be written is left alone."""
+        temporary = path.with_name(f"{path.name}.{os.getpid()}.tmp")
         try:
             temporary.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
-            os.replace(temporary, self.index_path)
+            os.replace(temporary, path)
         except OSError:
             try:
                 temporary.unlink()
             except OSError:
                 pass
+
+    # -- the summary ----------------------------------------------------------
+    def stats(self, session_ids: Iterable[str]) -> dict[str, SessionStats]:
+        """Return the totals of the given sessions, reading as little as it can.
+
+        A session whose conversation file still has the size and modification time the summary recorded
+        is answered from the summary, so listing twenty sessions costs twenty ``stat`` calls however long
+        their conversations are. If any asked-for session has changed, or was never summarised, or a summarised
+        session has gone (which can move a reply from a fork back to the session that held it first), the
+        incremental read runs once and the summary is rewritten whole.
+
+        A session that is not counted (a subagent's) or cannot be read has no entry in the answer.
+        """
+        wanted = [
+            session_id for session_id in session_ids if SAFE_SESSION_ID.match(session_id) and ".." not in session_id
+        ]
+        summary = self._load_summary()
+        answer: dict[str, SessionStats] = {}
+        if summary and self._summary_is_current(summary):
+            for session_id in wanted:
+                entry = summary.get(session_id)
+                if entry is None:
+                    break
+                if self._unchanged(session_id, entry):
+                    answer[session_id] = entry[1]
+                    continue
+                break
+            else:
+                return answer
+        ledger = self.read()
+        counted = {row.session_id: row for row in ledger.sessions}
+        fresh: dict[str, tuple[tuple[int, int], SessionStats]] = {}
+        for session_id, row in counted.items():
+            # The stamp is the one the read itself took, before it read: a file that grew since is then seen to
+            # differ, where a stamp taken now would pair the new size with the old totals.
+            scanned = self._files.get(session_id)
+            if scanned is not None:
+                fresh[session_id] = ((scanned.size, scanned.mtime_ns), _stats_of(row))
+        if self._use_index and fresh:
+            self._save_summary(fresh)
+        return {session_id: fresh[session_id][1] for session_id in wanted if session_id in fresh}
+
+    def _stamp(self, session_id: str) -> tuple[int, int] | None:
+        """Return a conversation file's size and modification time, or ``None`` when it cannot be seen."""
+        try:
+            stat = (self.directory / session_id / STORE_FILE).stat()
+        except OSError:
+            return None
+        return stat.st_size, stat.st_mtime_ns
+
+    def _unchanged(self, session_id: str, entry: tuple[tuple[int, int], SessionStats]) -> bool:
+        return self._stamp(session_id) == entry[0]
+
+    def _summary_is_current(self, summary: dict[str, tuple[tuple[int, int], SessionStats]]) -> bool:
+        """Say whether every session the summary names still has a conversation file."""
+        present = {path.parent.name for path in self.directory.glob(f"*/{STORE_FILE}")}
+        return summary.keys() <= present
+
+    def _load_summary(self) -> dict[str, tuple[tuple[int, int], SessionStats]]:
+        """Return what the summary file holds, or nothing when it cannot be trusted."""
+        if not self._use_index:
+            return {}
+        try:
+            data = json.loads(self.summary_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        if not isinstance(data, dict) or data.get("version") != SUMMARY_VERSION:
+            return {}
+        sessions = data.get("sessions")
+        if not isinstance(sessions, dict):
+            return {}
+        found: dict[str, tuple[tuple[int, int], SessionStats]] = {}
+        for session_id, item in sessions.items():
+            if not isinstance(session_id, str) or not isinstance(item, list) or len(item) != 8:
+                continue
+            if not all(_whole(number) and number >= 0 for number in item):
+                continue
+            size, mtime_ns, *counters = item
+            found[session_id] = ((size, mtime_ns), SessionStats(session_id, *counters))
+        return found
+
+    def _save_summary(self, fresh: dict[str, tuple[tuple[int, int], SessionStats]]) -> None:
+        """Write the summary: for each session its stamp, then the seven numbers a row shows."""
+        payload = {
+            "version": SUMMARY_VERSION,
+            "sessions": {
+                session_id: [
+                    stamp[0],
+                    stamp[1],
+                    stats.entries,
+                    stats.requests,
+                    stats.input_tokens,
+                    stats.output_tokens,
+                    stats.cache_read_tokens,
+                    stats.reasoning_tokens,
+                ]
+                for session_id, (stamp, stats) in fresh.items()
+            },
+        }
+        self._write(self.summary_path, payload)
 
 
 def _fold(found: Iterable[tuple[datetime, str, Path, _File]]) -> Ledger:
@@ -464,7 +631,21 @@ def _fold(found: Iterable[tuple[datetime, str, Path, _File]]) -> Ledger:
         except OSError:
             updated = started
         title = _title_of(path.parent)
-        ledger.sessions.append(SessionUsage(session_id, title, started, updated, tally, tuple(models)))
+        ledger.sessions.append(SessionUsage(session_id, title, started, updated, tally, tuple(models), read.entries))
     # The list answers "what was I working on", so it is ordered by the last change, not by the first word.
     ledger.sessions.sort(key=lambda row: (row.updated, row.started, row.session_id), reverse=True)
     return ledger
+
+
+def _stats_of(row: SessionUsage) -> SessionStats:
+    """Return the totals of one session's row of the ledger."""
+    tally = row.tally
+    return SessionStats(
+        row.session_id,
+        row.entries,
+        tally.requests,
+        tally.input_tokens,
+        tally.output_tokens,
+        tally.cache_read_tokens,
+        tally.reasoning_tokens,
+    )

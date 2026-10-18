@@ -3,16 +3,44 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from zettcode.tui import MARKER
 
 from ..core.events import KeyEvent, MouseAction, MouseEvent
 from ..core.geometry import Constraints, Size
 from ..core.host import Host
+from ..core.theme import Theme
 from ..core.widget import Widget
 from ..render import Canvas, Style, truncate
 from ..render.text import display_width
+
+#: Text and the colour to draw it in; ``None`` leaves the colour the row would have had.
+Part = tuple[str, str | None]
+
+#: Pieces of a line in the active theme's colours, which only the theme can say.
+Parts = Callable[[Theme], Sequence[Part]]
+
+
+def draw_parts(canvas: Canvas, x: int, y: int, parts: Sequence[Part], style: Style, *, max_width: int) -> int:
+    """Draw coloured pieces one after another and return the columns used.
+
+    Args:
+        canvas: Where to paint.
+        x: Column of the first piece.
+        y: Row.
+        parts: Text and foreground colour of each piece, in order; a ``None`` colour keeps ``style``'s.
+        style: Everything but the foreground: background, weight.
+        max_width: Column budget for all the pieces together; the one that does not fit is cut, the rest dropped.
+    """
+    used = 0
+    for text, colour in parts:
+        room = max_width - used
+        if room <= 0:
+            break
+        piece = style if colour is None else Style(foreground=colour, background=style.background, bold=style.bold)
+        used += canvas.draw_text(x + used, y, truncate(text, room), piece, max_width=room)
+    return used
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,12 +52,15 @@ class ListItem:
         label: Left-hand text of the row.
         description: Secondary text drawn after the label when space allows.
         disabled: Skipped by navigation and refused by ``activate``.
+        parts: The same description in colours. It must read as ``description`` when its pieces are joined, which
+            is what sizes the column; ``None`` draws ``description`` in the muted colour.
     """
 
     value: object = None
     label: str = ""
     description: str = ""
     disabled: bool = False
+    parts: Parts | None = field(default=None, compare=False)
 
 
 class ListView(Widget):
@@ -203,14 +234,24 @@ class ListView(Widget):
                 # description left by one column per wide glyph.
                 room = self.rect.width - start
                 if room > 3:
-                    text = truncate(item.description, room)
-                    canvas.draw_text(
-                        self.rect.x + start,
-                        self.rect.y + row,
-                        text,
-                        Style(foreground=theme.muted, background=style.background),
-                        max_width=room,
-                    )
+                    quiet = Style(foreground=theme.muted, background=style.background)
+                    if item.parts is None or item.disabled:
+                        canvas.draw_text(
+                            self.rect.x + start,
+                            self.rect.y + row,
+                            truncate(item.description, room),
+                            quiet,
+                            max_width=room,
+                        )
+                    else:
+                        draw_parts(
+                            canvas,
+                            self.rect.x + start,
+                            self.rect.y + row,
+                            item.parts(theme),
+                            Style(background=style.background, bold=False),
+                            max_width=room,
+                        )
 
     def handle(self, event, host: Host) -> bool:
         """Select the clicked row, or move with the arrow and page keys."""

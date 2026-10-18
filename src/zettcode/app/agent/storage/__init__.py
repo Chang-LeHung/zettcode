@@ -6,6 +6,7 @@ One folder per workspace, one folder per session, and everything about a session
     ├── workspace.txt               <- the path the folder belongs to (see :mod:`layout`)
     ├── metadata.jsonl              <- the old index; read for sessions that predate their own file
     ├── usage.json                  <- what ``/usage`` has counted so far, so it reads only what is new (see :mod:`ledger`)
+    ├── sessions.json               <- each session's entry count and token totals, so ``/resume`` reads no conversation
     └── <session-id>/
         ├── data.jsonl              <- the append-only message tree
         ├── metadata.json           <- title and times: written on creation and rename only
@@ -19,6 +20,7 @@ workspace folder, and renames one that an older version named with base64.
 """
 
 from .layout import claim_workspace, find_workspace, legacy_workspace_key, open_workspace, workspace_key
+from .ledger import SessionStats
 from .locks import LOCK_FILE, LOCKED_MESSAGE, NoLocks, SessionGuard, SessionLocked, SessionLocks, prune_empty
 from .metadata import MAX_TITLE, SessionInfo
 from .records import STORE_FILE, MessageLine, Session, now
@@ -37,6 +39,7 @@ __all__ = [
     "SessionLocked",
     "SessionLocks",
     "SessionPersistenceMixin",
+    "SessionStats",
     "SessionStore",
     "claim_workspace",
     "find_workspace",

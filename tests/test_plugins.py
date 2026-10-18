@@ -36,6 +36,7 @@ from zettcode.plugins import (
     load_plugins,
 )
 from zettcode.plugins import loader as loader_module
+from zettcode.plugins.services import HOST_LINK
 from zettcode.providers import Provider
 from zettcode.tui import DARK, Span, Style, TextLine
 
@@ -412,9 +413,19 @@ async def test_registering_reports_whether_it_displaced_a_segment(tmp_path: Path
 
 async def test_disabled_and_switched_off_plugins_are_not_loaded(tmp_path: Path):
     one = FakeEntryPoint("greeter", Greeter)
-    assert load_plugins(make_config(tmp_path, plugins_enabled=False), entry_points=[one], builtins=()) == Plugins()
+
+    def nothing(plugins: Plugins) -> Plugins:
+        """Return the bundle without the link to the shell, which every load provides and which holds no plugin."""
+        assert set(plugins.services) == {HOST_LINK}
+        return replace(plugins, services={})
+
     assert (
-        load_plugins(make_config(tmp_path, disabled_plugins=("greeter",)), entry_points=[one], builtins=()) == Plugins()
+        nothing(load_plugins(make_config(tmp_path, plugins_enabled=False), entry_points=[one], builtins=()))
+        == Plugins()
+    )
+    assert (
+        nothing(load_plugins(make_config(tmp_path, disabled_plugins=("greeter",)), entry_points=[one], builtins=()))
+        == Plugins()
     )
 
     # The switch only governs distributions: the builtin rows still load.
@@ -423,6 +434,11 @@ async def test_disabled_and_switched_off_plugins_are_not_loaded(tmp_path: Path):
         "shell",
         "skills",
         "files",
+        "help-command",
+        "session-commands",
+        "model-commands",
+        "side-question-command",
+        "shell-control",
         "usage",
         "themes",
         "pets",
@@ -586,6 +602,11 @@ async def test_the_runtime_preview_installs_plugin_extensions_and_commands(tmp_p
         "shell",
         "skills",
         "files",
+        "help-command",
+        "session-commands",
+        "model-commands",
+        "side-question-command",
+        "shell-control",
         "usage",
         "themes",
         "pets",
@@ -593,7 +614,25 @@ async def test_the_runtime_preview_installs_plugin_extensions_and_commands(tmp_p
         *(plugin.name for plugin in AGENT_PLUGINS),
     ]
     assert len(runtime.plugins.extensions) == 1
-    assert [command.name for command in runtime.plugins.commands] == ["/usage", "/greet"]
+    # The program's own commands come first, in the order /help lists them, and the installed plugin's after them.
+    assert [command.name for command in runtime.plugins.builtin_commands] == [
+        "/help",
+        "/resume",
+        "/continue",
+        "/fork",
+        "/context",
+        "/title",
+        "/model",
+        "/effort",
+        "/permission",
+        "/btw",
+        "/clear",
+        "/quit",
+        "/exit",
+        "/usage",
+    ]
+    assert [command.name for command in runtime.plugins.installed_commands] == ["/greet"]
+    assert runtime.plugins.commands == (*runtime.plugins.builtin_commands, *runtime.plugins.installed_commands)
     assert [row.region for row in runtime.plugins.rows] == ["header", "status"]
 
 

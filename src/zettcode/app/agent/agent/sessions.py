@@ -8,6 +8,7 @@ the rest of the shell does.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -17,7 +18,7 @@ from zett_agent.model import ReasoningEffort
 from ..conversation.replay import Replayed, replay
 from ..conversation.transcript import Transcript
 from ..dialogue.title import summarize_title
-from ..storage import Session, SessionInfo
+from ..storage import Session, SessionInfo, SessionStats
 from .context import ContextMixin
 
 #: The name a session shows before the agent has given it a title.
@@ -170,6 +171,13 @@ class SessionsMixin(ContextMixin):
     async def list_sessions(self, *, limit: int = 20) -> list[SessionInfo]:
         """List persisted session metadata by recent activity."""
         return await self.runtime.persistence.list_sessions(limit=limit)
+
+    async def session_stats(self, sessions: Sequence[SessionInfo]) -> dict[str, SessionStats]:
+        """Return the entry count and token totals of listed sessions, keyed by session id.
+
+        A session missing from the answer has no totals to show.
+        """
+        return await self.runtime.persistence.session_stats([session.session_id for session in sessions])
 
     async def rename_session(self, title: str) -> str:
         """Store a display title for the active session and return it cleaned.

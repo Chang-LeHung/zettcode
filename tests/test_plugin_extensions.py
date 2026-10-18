@@ -132,7 +132,7 @@ def test_a_plugin_that_fails_after_registering_leaves_nothing_behind(tmp_path):
 
     plugins = load(tmp_path, Late)
 
-    assert plugins.contributed == () and plugins.services == {}
+    assert plugins.contributed == () and set(plugins.services) == {names.HOST_LINK}
     assert any("boom" in f for f in plugins.failures)
 
 
@@ -293,7 +293,7 @@ def test_a_service_name_is_provided_once(tmp_path):
 
     plugins = load(tmp_path, Twice, offering("one", service="shared"), offering("two", service="shared"))
 
-    assert set(plugins.services) == {"shared"}
+    assert set(plugins.services) == {"shared", names.HOST_LINK}
     assert any("Service already provided: x" in f for f in plugins.failures)
     assert any("two: service shared is already provided" in f for f in plugins.failures)
 
@@ -308,7 +308,9 @@ def test_a_plugin_cannot_provide_a_name_the_runtime_handed_over(tmp_path):
 def test_a_service_name_cannot_be_blank(tmp_path):
     plugins = load(tmp_path, offering("blank", service=" "))
 
-    assert plugins.services == {} and any("Service name cannot be empty" in f for f in plugins.failures)
+    assert set(plugins.services) == {names.HOST_LINK} and any(
+        "Service name cannot be empty" in f for f in plugins.failures
+    )
 
 
 # -- the built-in plugins that carry the agent's own extensions -----------------------------------

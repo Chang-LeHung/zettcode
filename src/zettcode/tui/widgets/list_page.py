@@ -11,7 +11,7 @@ from ..core.geometry import Rect
 from ..core.host import Host
 from ..core.widget import Widget
 from ..render import Canvas, Style
-from .list import ListItem, ListView
+from .list import ListItem, ListView, Parts, draw_parts
 
 
 class ListPage(Widget):
@@ -45,6 +45,8 @@ class ListPage(Widget):
         subtitle: Drawn under the title for a page with a second fact to name —
             the file a report came from, say. It costs one row of the page's
             height, and is left out of the layout entirely when absent.
+        subtitle_parts: The subtitle in colours, which must read as ``subtitle`` when joined; ``None`` draws the
+            subtitle in the muted colour.
         footer: Hint drawn on the bottom row.
         on_select: Receives the row committed with Enter.
         on_cancel: Called when the user presses Escape; ``None`` lets the key
@@ -61,6 +63,7 @@ class ListPage(Widget):
         *,
         title: str,
         subtitle: str | None = None,
+        subtitle_parts: Parts | None = None,
         footer: str = f"enter select {SEPARATOR} esc back",
         on_select: Callable[[ListItem], None] | None = None,
         on_cancel: Callable[[], None] | None = None,
@@ -71,6 +74,7 @@ class ListPage(Widget):
         super().__init__()
         self.title = title
         self.subtitle = subtitle
+        self.subtitle_parts = subtitle_parts
         self.footer = footer
         self.on_cancel = on_cancel
         self.visible_rows = None if visible_rows is None else max(1, visible_rows)
@@ -102,7 +106,10 @@ class ListPage(Widget):
         room = max(0, self.rect.width - 4)
         canvas.draw_text(self.rect.x + 2, self.rect.y + 1, self.title, heading, max_width=room)
         if self.subtitle is not None:
-            canvas.draw_text(self.rect.x + 2, self.rect.y + 2, self.subtitle, hint, max_width=room)
+            if self.subtitle_parts is None:
+                canvas.draw_text(self.rect.x + 2, self.rect.y + 2, self.subtitle, hint, max_width=room)
+            else:
+                draw_parts(canvas, self.rect.x + 2, self.rect.y + 2, self.subtitle_parts(theme), hint, max_width=room)
         self.list.render(canvas)
         canvas.draw_text(self.rect.x + 2, self.rect.bottom - 1, self.footer, hint, max_width=room)
 
