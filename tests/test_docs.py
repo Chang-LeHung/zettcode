@@ -384,7 +384,7 @@ def test_every_guide_link_points_at_a_page_and_an_anchor_that_exists():
     for path in sorted((ROOT / "docs/guide").glob("*.md")) + sorted((ROOT / "docs/zh/guide").glob("*.md")):
         text = path.read_text(encoding="utf-8")
         for link in re.findall(r"\]\((/[^)\s]+)\)", text):
-            if link.startswith(("#", "/screens/")):
+            if link.startswith(("#", "/screens/", "/sdk/", "/zh/sdk/")):  # the SDK pages are checked by test_sdk_docs
                 continue
             target, _, anchor = link.partition("#")
             page = target.removeprefix("/zh/guide/") if target.startswith("/zh/") else target.removeprefix("/guide/")

@@ -31,6 +31,7 @@ ZettCode 在终端里工作，操作当前工作区中的文件。这份指南�
 - **[项目指令](/zh/guide/instructions)：** 用 `AGENTS.md` 说明工作区的约定、测试命令和边界。
 - **[Skills 与 MCP](/zh/guide/skills-and-mcp)：** 给智能体可复用的指令，或接入外部工具。
 - **[插件](/zh/guide/plugins)：** 安装 Python 扩展，增加命令、定制界面。
+- **[SDK](/zh/sdk/)：** 在 Python 程序里驱动智能体，不需要终端。
 
 ## 遇到问题？
 

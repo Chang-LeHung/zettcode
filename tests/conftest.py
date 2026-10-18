@@ -68,6 +68,28 @@ def _a_local_session(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _no_sdk_client_outlives_its_test():
+    """Fail a test that leaves an SDK client open, and put the process back where it was.
+
+    A client changes the process's working directory and registers its workspace, so one that is not closed would
+    make every later test that makes a client fail for a reason that has nothing to do with it.
+    """
+    import os
+    import sys
+
+    before = os.getcwd()
+    yield
+    module = sys.modules.get("zettcode.sdk.client")
+    if module is None:
+        return
+    leaked = [client for client in list(module._OPEN) if not client._closed]
+    for client in leaked:
+        client._dispose()
+    os.chdir(before)
+    assert not leaked, f"a test left {len(leaked)} SDK client(s) open: {leaked}"
+
+
+@pytest.fixture(autouse=True)
 def _offline_tokenizers(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep every tokenizer in the suite off the network.
 
