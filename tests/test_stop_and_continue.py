@@ -244,7 +244,7 @@ async def test_continue_in_a_session_with_nothing_in_it_says_so(shell):
 async def test_continue_is_a_command_the_menu_offers_and_help_lists(shell):
     app, _ = shell(answering())
 
-    from zettcode.app.ui.commands import help_text
+    from zettcode.app.ui.widgets import help_text
 
     assert any(c.name == "/continue" for c in app.commands)
     assert "`/continue`" in help_text(app.commands)

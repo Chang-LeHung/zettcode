@@ -119,13 +119,20 @@ class ZettCodeApp(
         """
         self.agent = agent
         self._plugin_rows: tuple[UiRow, ...] = agent.plugin_rows
+        # The program's own plugins come first, then the shell's commands, then the agent's, and the installed
+        # plugins last: the first to claim a name owns it, so an installed plugin can add a command and can never
+        # shadow one the program has.
         self.commands = Registry(
             [
+                CommandList(agent.builtin_plugin_commands),
                 ShellCommands(self),
                 CommandList(agent.commands),
                 CommandList(agent.plugin_commands),
             ]
         ).items()
+        # The plugins' commands reach the shell through the context they are run with, and the words their menus
+        # offer through this link; the shell is built enough by now that either may follow it.
+        agent.attach_host(self)
         #: The line to the other sessions, when the configuration has one; the session names it offers
         #: for ``@`` come first, because a draft that begins with one is a message to that session.
         self.messenger: Messenger | None = agent.runtime.messenger
@@ -717,7 +724,7 @@ class ZettCodeApp(
     async def _execute_now(self, command: Command, argument: str) -> None:
         """Await one handler and show what it returned, or why it could not."""
         try:
-            result = await command.handler(CommandContext(argument=argument, ui=self))
+            result = await command.handler(CommandContext(argument=argument, ui=self, host=self))
         except ValueError as error:
             self.transcript.error(str(error))
         except Exception as error:  # noqa: BLE001 - a command's bug is reported, never swallowed
@@ -1036,7 +1043,7 @@ class ZettCodeApp(
                 self.transcript.error(f"Unknown command: {name}. Try /help.")
             else:
                 try:
-                    result = await command.handler(CommandContext(argument=argument, ui=self))
+                    result = await command.handler(CommandContext(argument=argument, ui=self, host=self))
                     if name == "/new" and self.agent.session_id != previous_session:
                         self.transcript.clear()
                         self.transcript.welcome(WELCOME)

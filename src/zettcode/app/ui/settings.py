@@ -27,6 +27,18 @@ class SettingsMixin(ShellState):
         self.app.pop_screen()
         self.app.request_layout()
 
+    def request_layout(self) -> None:
+        """Lay the screen out again; the one call a command makes when what it changed alters the rows."""
+        self.app.request_layout()
+
+    def offer(self, command: str) -> None:
+        """Put the command and a space in the draft, which opens the menu of the words it takes."""
+        self.composer.set_text(f"{command} ")
+
+    def quit(self) -> None:
+        """Leave the application."""
+        self.app.exit()
+
     def change_model(self, name: ModelConfig | str) -> ModelConfig:
         """Switch models and announce the change in the transcript."""
         previous = self.agent.active_model

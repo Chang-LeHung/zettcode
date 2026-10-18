@@ -1,12 +1,19 @@
 """Slash commands shared by the application and coding agent."""
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
-from typing import Literal, TypeAlias
+from typing import TYPE_CHECKING, Literal, Protocol, TypeAlias
 
 from ..tui import Widget
 from .registry import Provider
+
+if TYPE_CHECKING:  # pragma: no cover - annotations only; the agent and the config are not imported by this module
+    from ..config import ModelConfig
+    from .agent.agent import ZettCodeAgent
+    from .agent.conversation.transcript import Transcript
 
 
 class CommandUi(ABC):
@@ -36,6 +43,68 @@ class CommandUi(ABC):
         """Show a one-off toast, replacing any that is still on screen."""
 
 
+class CommandHost(Protocol):
+    """What a command that acts on the application, and not only on the agent, may ask of the shell.
+
+    A command that opens a panel, switches the session or changes the model needs more than a place to write:
+    it needs the agent, the transcript it is drawn into, and the few shell operations that change what is on
+    screen. This is that list and no more. The shell is what a plugin's command gets (it is the object the
+    context calls ``host``), so a plugin can provide ``/resume`` or ``/model`` without importing the shell, and
+    the shell stays free to change everything that is not named here.
+
+    Attributes:
+        agent: The application agent: models, sessions, effort, permission, the context report.
+        transcript: The conversation as drawn; a command reports into it with ``notice`` and ``error``.
+        commands: Every command the shell knows, in the order ``/help`` lists them.
+    """
+
+    agent: ZettCodeAgent
+    transcript: Transcript
+    commands: tuple[Command, ...]
+
+    def close_page(self) -> None:
+        """Close the page a command presented and return to the composer."""
+
+    def request_layout(self) -> None:
+        """Ask for the screen to be laid out again, after a change in what it shows."""
+
+    def offer(self, command: str) -> None:
+        """Put ``command`` and a space in the draft, which opens the menu of the words it takes."""
+
+    def quit(self) -> None:
+        """Leave the application."""
+
+    def select_session(self, session_id: str) -> None:
+        """Switch to a session picked in a panel: close the panel and resume behind the interface."""
+
+    async def resume_session(self, session_id: str) -> None:
+        """Restore a stored session without holding the event loop for the work."""
+
+    async def fork_session(self) -> str:
+        """Carry this conversation into a new session and continue there; return the new id."""
+
+    async def rename_session(self, title: str) -> str:
+        """Name the active session and return the name as stored."""
+
+    async def run_continue(self) -> None:
+        """Carry on the request that was interrupted."""
+
+    async def run_side_question(self, question: str) -> None:
+        """Answer a question that is kept out of the conversation."""
+
+    def change_model(self, name: ModelConfig | str) -> ModelConfig:
+        """Switch models and announce the change in the transcript."""
+
+    def select_model(self, name: ModelConfig) -> None:
+        """Apply a model picked in a panel and close the panel."""
+
+    def change_effort(self, name: str) -> str:
+        """Switch reasoning effort and announce the change."""
+
+    def change_permission(self, name: str) -> str:
+        """Set how much of the shell may run unasked and announce the change."""
+
+
 @dataclass(frozen=True, slots=True)
 class CommandContext:
     """What one command handler is handed.
@@ -43,10 +112,19 @@ class CommandContext:
     Attributes:
         argument: Trimmed text after the command name; ``""`` when none.
         ui: Surfaces the command may write to while it runs.
+        host: The shell, for a command that acts on the application itself; ``None`` where there is no shell,
+            such as a handler called directly in a test. Use :meth:`require_host` in a command that needs it.
     """
 
     argument: str
     ui: CommandUi
+    host: CommandHost | None = None
+
+    def require_host(self) -> CommandHost:
+        """Return the shell, or raise ``RuntimeError`` when the command was run without one."""
+        if self.host is None:
+            raise RuntimeError("This command acts on the application and needs the shell to run it")
+        return self.host
 
 
 #: Signature of a slash-command handler: its context in, what to show next out.
@@ -119,6 +197,11 @@ class Subcommand:
 #: list that depends on the session (the models configured, the reasoning levels the model takes). A bare
 #: string is a subcommand with no description.
 Subcommands: TypeAlias = Sequence[Subcommand | str] | Callable[[], Sequence[Subcommand | str]]
+
+
+def subcommand_words(names: Sequence[str], notes: dict[str, str], current: str = "") -> tuple[Subcommand, ...]:
+    """Offer each name a command takes, with its note and a mark on the one in force."""
+    return tuple(Subcommand(name, notes.get(name, ""), current=name == current) for name in names)
 
 
 @dataclass(frozen=True, slots=True)

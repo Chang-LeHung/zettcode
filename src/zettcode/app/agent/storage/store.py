@@ -54,6 +54,7 @@ from zett_agent.model import ModelUsage
 
 from ..dialogue.side import SIDE, is_side
 from .layout import claim_workspace, open_workspace
+from .ledger import LedgerReader, SessionStats
 from .locks import prune_empty
 from .metadata import (
     MAX_MODEL,
@@ -160,6 +161,8 @@ class SessionPersistenceMixin:
         self._legacy: tuple[tuple[int, int] | None, dict[str, SessionInfo]] | None = None
         #: Whether the workspace folder has been made and marked as ours; the first write does it, once.
         self._claimed = False
+        #: Reads the totals the sessions panel shows; made on the first ask, since most runs never list.
+        self._ledger: LedgerReader | None = None
         super().__init__()
 
     # -- files --------------------------------------------------------------
@@ -614,6 +617,18 @@ class SessionPersistenceMixin:
         # from the interface. The first listing after an upgrade also writes a file per old
         # session, once.
         return await asyncio.to_thread(self._listing, limit, offset)
+
+    async def session_stats(self, session_ids: Sequence[str]) -> dict[str, SessionStats]:
+        """Return the entry count and the token totals of the given sessions.
+
+        Answered from ``sessions.json`` beside the session folders while a conversation file is as the
+        summary last saw it, so the cost of a listing does not grow with the length of the conversations
+        (see :mod:`.ledger`); a changed one is read from where it was last read. A session with no totals
+        (a subagent's, or one that cannot be read) is missing from the answer.
+        """
+        if self._ledger is None:
+            self._ledger = LedgerReader(self.root, self.workspace)
+        return await asyncio.to_thread(self._ledger.stats, tuple(session_ids))
 
     def _listing(self, limit: int, offset: int) -> list[SessionInfo]:
         """Read every session's row and return one page of them, newest activity first."""

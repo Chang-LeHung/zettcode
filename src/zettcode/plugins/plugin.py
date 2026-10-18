@@ -84,6 +84,9 @@ class Plugins:
             plugin, so plugin-wide behaviour has one place to live.
         commands: Commands the plugins registered, in load and registration
             order, each typed ``"plugin"``.
+        builtin_commands: The first of ``commands`` that came from the plugins compiled into the program, in the same
+            order. The shell lists them ahead of its own and puts the rest after everything built in, so an installed
+            plugin can add a command but never shadow one of the program's.
         mentions: ``@`` resource providers the plugins registered, in load and
             registration order; the shell merges them with the builtin skills.
         providers: Model providers the plugins described, in load and registration order; the
@@ -109,6 +112,7 @@ class Plugins:
 
     host: PluginExtension | None = None
     commands: tuple[Command, ...] = ()
+    builtin_commands: tuple[Command, ...] = ()
     mentions: tuple[MentionProvider, ...] = ()
     providers: tuple[Provider, ...] = ()
     themes: tuple[ThemeSource, ...] = ()
@@ -118,6 +122,11 @@ class Plugins:
     services: Mapping[str, object] = field(default_factory=dict)
     rows: tuple[UiRow, ...] = ()
     failures: tuple[str, ...] = ()
+
+    @property
+    def installed_commands(self) -> tuple[Command, ...]:
+        """Return the commands of the installed plugins: ``commands`` without the built-in ones."""
+        return self.commands[len(self.builtin_commands) :]
 
     def find(self, name: str, kind: type[_T]) -> _T | None:
         """Return the service under ``name``, or ``None`` when no loaded plugin provides it.
