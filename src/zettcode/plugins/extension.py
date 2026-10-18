@@ -31,6 +31,9 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
 #: built-in extensions, so an empty bundle changes nothing.
 DEFAULT_PRIORITY = 100
 
+#: The host's name as the agent sees it; an extension a plugin registers cannot take it.
+HOST_NAME = "plugins"
+
 
 class PluginExtension(AgentExtension):
     """One extension that drives every installed plugin.
@@ -48,7 +51,7 @@ class PluginExtension(AgentExtension):
     def __init__(self, plugins: Sequence[Plugin]) -> None:
         """Keep the plugins in hook order and adopt their earliest priority."""
         self.plugins = tuple(sorted(plugins, key=lambda plugin: plugin.priority))
-        self.name = "plugins"
+        self.name = HOST_NAME
         self.priority = min((plugin.priority for plugin in self.plugins), default=DEFAULT_PRIORITY)
 
     # -- setup -------------------------------------------------------------

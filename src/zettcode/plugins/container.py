@@ -28,6 +28,8 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
     from collections.abc import Callable
     from pathlib import Path
 
+    from zett_agent.extensions.base import AgentExtension
+
     from ..app.agent.dialogue.mentions import MentionProvider
     from ..config import ZettCodeConfig
     from .state import UiBuilder, UiRegion, UiSide
@@ -141,7 +143,19 @@ class PluginContainer:
         self._themes: list[ThemeSource] = []
         self._pets: list[PetSource] = []
         self._presenters: list[Presenter[Any]] = []
+        self._extensions: list[AgentExtension] = []
+        self._services: dict[str, object] = {}
         self._slots = UiSlots()
+
+    @property
+    def extensions(self) -> tuple[AgentExtension, ...]:
+        """Return the agent extensions registered so far, in registration order."""
+        return tuple(self._extensions)
+
+    @property
+    def services(self) -> dict[str, object]:
+        """Return a copy of the services provided so far, by name."""
+        return dict(self._services)
 
     @property
     def commands(self) -> tuple[Command, ...]:
@@ -458,6 +472,61 @@ class PluginContainer:
             raise ValueError("A presenter must name the kind of entry it draws")
         self._presenters.append(presenter)
         return presenter
+
+    def register_extension(self, extension: AgentExtension) -> AgentExtension:
+        """Hand the agent one ``zett-agent`` extension of the plugin's own.
+
+        Use this when the plugin is, or wraps, a whole extension rather than a set of hooks: the
+        agent receives it as a separate extension, ordered by the priority it declares and, among
+        equals, by registration order, exactly as if the application had listed it itself. The hook
+        methods on :class:`~zettcode.plugins.Plugin` are the other route, for a plugin that only
+        needs to watch a stage; they run inside the one host extension.
+
+        Args:
+            extension: The extension to add. Its ``name`` must be unique among the agent's
+                extensions; a clash fails the plugin when it loads.
+
+        Returns:
+            The extension, in case the plugin wants to keep it.
+
+        Raises:
+            ValueError: When the name is blank or this plugin already registered it.
+        """
+        name = getattr(extension, "name", "")
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("An extension must have a non-empty name")
+        if any(existing.name == name for existing in self._extensions):
+            raise ValueError(f"Extension already registered: {name}")
+        self._extensions.append(extension)
+        return extension
+
+    def provide(self, name: str, service: object) -> object:
+        """Register an object under a name, so other parts of the application can look it up.
+
+        Use it when the plugin creates something that the shell or the runtime also needs to reach,
+        for example the todo extension, whose plan the shell draws. The application looks it up with
+        ``Plugins.service(name, kind)`` or ``Plugins.find(name, kind)``, so it needs no field of its
+        own for it. This is separate from :meth:`register_extension`: that one gives the agent an
+        extension to run, this one only makes an object findable. A plugin can provide an object
+        it does not register with the agent, such as the todo extension while the tool is switched off.
+
+        Args:
+            name: Identity of the service; unique across the loaded plugins.
+            service: The object itself.
+
+        Returns:
+            The service, in case the plugin wants to keep it.
+
+        Raises:
+            ValueError: When the name is blank or this plugin already provided it.
+        """
+        name = name.strip()
+        if not name:
+            raise ValueError("Service name cannot be empty")
+        if name in self._services:
+            raise ValueError(f"Service already provided: {name}")
+        self._services[name] = service
+        return service
 
     def register_mention(self, provider: MentionProvider) -> MentionProvider:
         """Register one kind of ``@`` resource the composer can offer.

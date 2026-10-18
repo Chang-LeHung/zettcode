@@ -302,6 +302,29 @@ narrower claim. A presenter for a whole kind
 claims every row of it, so it beats the families registered before it at its priority; a family
 registered after it, or at a higher priority, keeps its own rows.
 
+## Handing the agent a whole extension {#extensions}
+
+The hook methods above run inside one extension that ZettCode hosts for all plugins. A plugin that
+already *is* an extension, or wraps one from `zett-agent`, can hand it over whole:
+
+```python
+from zettcode.plugins import Plugin, PluginContainer
+
+
+class Audit(Plugin):
+    name = "audit"
+
+    def activate(self, container: PluginContainer) -> None:
+        if container.config.workspace.name != "scratch":
+            container.register_extension(AuditExtension())  # a zett_agent AgentExtension
+```
+
+The agent receives it beside the others, ordered by the `priority` the extension declares and, among
+equals, by the order plugins were loaded. Its `name` must be unique: a plugin that repeats one already
+registered, or `plugins`, is skipped and reported. ZettCode's own `ask_user` tool, project instructions
+and todo tool are built-in plugins that register this way, so the switches under `[agent]` simply decide
+whether their plugin registers.
+
 ## When something goes wrong
 
 A plugin that cannot be imported or activated is skipped, not fatal: the shell

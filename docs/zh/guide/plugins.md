@@ -272,6 +272,27 @@ presenter 指定一个 `kind`（`EntryKind` 的一项）；如果只画某一种
 优先级，注册子行本身就是更窄的声明。为整个 kind 注册的 presenter 声明接管它的每一行，所以会压过在它之前、
 同级注册的子行；在那之后注册、或优先级更高的子行仍然保留自己的行。
 
+## 把整个扩展交给代理 {#extensions}
+
+上面的钩子方法，运行在 ZettCode 为所有插件承载的同一个扩展里。如果一个插件本身就是一个扩展，或者包装了
+`zett-agent` 的某个扩展，可以把它整个交出去：
+
+```python
+from zettcode.plugins import Plugin, PluginContainer
+
+
+class Audit(Plugin):
+    name = "audit"
+
+    def activate(self, container: PluginContainer) -> None:
+        if container.config.workspace.name != "scratch":
+            container.register_extension(AuditExtension())  # zett_agent 的 AgentExtension
+```
+
+代理会把它和其他扩展并列收下，按扩展自己声明的 `priority` 排序，同级则按插件加载的先后。它的 `name`
+必须唯一：重复了已注册的名字，或者叫 `plugins`，该插件会被跳过并报告。ZettCode 自带的 `ask_user` 工具、
+项目指令和待办工具就是这样注册的内置插件，所以 `[agent]` 下的开关只是决定它们的插件注册与否。
+
 ## 出问题的时候
 
 导入或激活失败的插件会被跳过，而不是让程序挂掉：对话里出现一行 `plugin: …`，会话继续正常

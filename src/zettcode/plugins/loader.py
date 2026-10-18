@@ -27,12 +27,14 @@ from ..providers import BUILTIN_PROVIDERS
 from ..tui import RESERVED_THEMES
 from .builtins import BUILTIN_PLUGINS
 from .container import PluginContainer, UiSlots
-from .extension import PluginExtension
+from .extension import HOST_NAME, PluginExtension
 from .plugin import Plugin, Plugins
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from collections.abc import Iterable, Sequence
     from importlib.metadata import EntryPoint
+
+    from zett_agent.extensions.base import AgentExtension
 
     from ..app.agent.conversation.presenters import Presenter
     from ..app.agent.dialogue.mentions import MentionProvider
@@ -116,8 +118,11 @@ class _Loader:
         self.themes: list[ThemeSource] = []
         self.pets: list[PetSource] = []
         self.presenters: list[Presenter[Any]] = []
+        self.contributed: list[AgentExtension] = []
+        self.services: dict[str, object] = {}
         self.failures: list[str] = []
         self._identities: set[str] = set()
+        self._extension_names: set[str] = {HOST_NAME}
         self._claimed: set[str] = set()
         self._mention_kinds: set[str] = set()
         self._provider_names: set[str] = {provider.name for provider in BUILTIN_PROVIDERS}
@@ -184,7 +189,24 @@ class _Loader:
         if pet_clash is not None:
             self.failures.append(f"{origin}: pet {pet_clash} is already registered")
             return
+        # The agent refuses two extensions with one name, and that would fail the first turn rather than
+        # the load, so the clash is caught here; the name of the host itself counts.
+        extension_clash = next(
+            (extension.name for extension in container.extensions if extension.name in self._extension_names),
+            None,
+        )
+        if extension_clash is not None:
+            self.failures.append(f"{origin}: extension {extension_clash} is already registered")
+            return
+        # A service is looked up by its name, so a second provider would be unreachable behind the first.
+        service_clash = next((name for name in container.services if name in self.services), None)
+        if service_clash is not None:
+            self.failures.append(f"{origin}: service {service_clash} is already provided")
+            return
         self._identities.add(name)
+        self._extension_names.update(extension.name for extension in container.extensions)
+        self.contributed.extend(container.extensions)
+        self.services.update(container.services)
         self._theme_names.update(source.name for source in container.themes)
         self.themes.extend(container.themes)
         self._pet_names.update(source.name for source in container.pets)
@@ -210,6 +232,8 @@ class _Loader:
             themes=tuple(self.themes),
             pets=tuple(self.pets),
             presenters=tuple(self.presenters),
+            contributed=tuple(self.contributed),
+            services=dict(self.services),
             rows=self.slots.rows(),
             failures=tuple(self.failures),
         )

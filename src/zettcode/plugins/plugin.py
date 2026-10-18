@@ -9,13 +9,17 @@ segments the loader hands the application, plus whatever failed to load.
 from __future__ import annotations
 
 from abc import ABC
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, ClassVar
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, ClassVar, TypeVar
 
 from .mixins import PluginAgentMixin, PluginUiMixin
 from .state import UiRow
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay lazy
+    from collections.abc import Mapping
+
+    from zett_agent.extensions.base import AgentExtension
+
     from ..app.agent.conversation.presenters import Presenter
     from ..app.agent.dialogue.mentions import MentionProvider
     from ..app.commands import Command
@@ -66,6 +70,9 @@ class Plugin(PluginAgentMixin, PluginUiMixin, ABC):
         """
 
 
+_T = TypeVar("_T")
+
+
 @dataclass(frozen=True, slots=True)
 class Plugins:
     """Everything the installed plugins contributed, and what failed to load.
@@ -84,6 +91,10 @@ class Plugins:
             first. ``/theme`` lists, previews and switches to them, after ``dark`` and ``light``.
         presenters: How plugins asked for entries to be drawn, in load and registration order; the built-in
             presenters come first, at the lowest priority, so a plugin's claim on the same rows wins.
+        contributed: The ``zett-agent`` extensions the plugins registered whole through
+            ``register_extension``, in load and registration order. The agent gets them as separate
+            extensions beside the host, so each keeps the priority it declares.
+        services: Objects the plugins provided by name; read them with :meth:`service`.
         pets: Pets the plugins offered by name, in load and registration order; the built-in plugin's come first.
             ``/pet`` lists, previews and switches to them.
         rows: The header and status rows the plugins fill, each with its left
@@ -101,8 +112,35 @@ class Plugins:
     themes: tuple[ThemeSource, ...] = ()
     pets: tuple[PetSource, ...] = ()
     presenters: tuple[Presenter, ...] = ()
+    contributed: tuple[AgentExtension, ...] = ()
+    services: Mapping[str, object] = field(default_factory=dict)
     rows: tuple[UiRow, ...] = ()
     failures: tuple[str, ...] = ()
+
+    def find(self, name: str, kind: type[_T]) -> _T | None:
+        """Return the service under ``name``, or ``None`` when no loaded plugin provides it.
+
+        For what the application can do without: the plan panel has nothing to show when nobody keeps a
+        plan. A service that exists but is the wrong type is still an error, because that is a plugin
+        bug and not an absence.
+        """
+        return self.service(name, kind) if name in self.services else None
+
+    def service(self, name: str, kind: type[_T]) -> _T:
+        """Return the service a plugin provided under ``name``, checked to be a ``kind``.
+
+        Raises:
+            LookupError: When no loaded plugin provides it; a plugin that failed to load provides
+                nothing, and the message says which service is missing.
+            TypeError: When the name is taken by an object of another type.
+        """
+        try:
+            found = self.services[name]
+        except KeyError:
+            raise LookupError(f"No plugin provides the {name!r} service") from None
+        if not isinstance(found, kind):
+            raise TypeError(f"Service {name!r} is a {type(found).__name__}, not a {kind.__name__}")
+        return found
 
     @property
     def plugins(self) -> tuple[Plugin, ...]:

@@ -279,6 +279,9 @@ class FakeConfig:
     mouse_scroll_speed: float = 1.0
     tips: bool = False
     skills_enabled: bool = False
+    ask_user_enabled: bool = False
+    agents_md_enabled: bool = False
+    todowrite_enabled: bool = False
     self_compaction: bool = False
     statusline_hidden: tuple[str, ...] = ()
     pet: str | None = None
