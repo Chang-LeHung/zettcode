@@ -125,7 +125,10 @@ Every kind of output has its own row, in the order it happened:
 - **A request that fails** says why in the conversation, in the error colour: what the library reported and, in
   brackets, what the server answered — `error: Provider stream request failed (HTTP 404: The model gpt-9 does
   not exist — check the model id and the address with /config)`. For a refused token, a missing model or an
-  address that cannot be reached it also says which setting to look at. Anything in the server's reply that looks
+  address that cannot be reached it also says which setting to look at. When the failure is the provider's or the
+  network's — no response in time, a dropped connection, a 408, 429 or 5xx — the line ends with `/continue tries the
+  request again from where it stopped.`, because the request is stored and trying again often works; a wrong token or
+  a missing model says nothing of the kind. Anything in the server's reply that looks
   like a credential is replaced with `…`, so an error can be pasted into an issue. A request that ends with an
   empty reply says that instead of leaving a line with only a time on it.
 - **A reply that did not finish normally** is followed by a line saying why, in the error colour, so that what
@@ -548,7 +551,7 @@ switch it off. `/statusline` opens a panel listing them:
 | | `keys` | The keys worth remembering: stop and exit |
 | Companion | `pet` | The small pet over the conversation; see [The pet](#the-pet) |
 
-In the panel ↑ ↓ move between the parts and ← → hide or show the one marked (Space flips it). The two rows above the
+In the panel ↑ ↓ move between the parts — past the last goes round to the first, and past the first to the last — and ← → hide or show the one marked (Space flips it). The two rows above the
 list are a preview of the header and the status line with your choices, the marked part picked out, so you see the
 effect before applying it. `Enter` writes the choice and the bars change; `Esc` leaves everything as it was. On a
 short terminal the list scrolls.
@@ -564,6 +567,11 @@ speed = false
 From the keyboard, `/statusline hide ctx speed` and `/statusline show cache` do the same, and `/statusline show all`
 brings every part back. A part with nothing to say right now (`handle` with messaging off, `mode` at `ask`) takes no room
 either way.
+
+On a narrow terminal the keys on the right keep their room, and the left side would be cut at its end, which is
+where `ctx` stands. So when the status line does not fit, the figures that matter least are left out whole — `speed`
+first, then `cache`, then `tokens` — and `ctx` stays. Widen the terminal and they come back. A request whose
+provider reported no token count does not blank `ctx` either: the last reading stands until the next one.
 
 ### The pet {#the-pet}
 

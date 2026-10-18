@@ -211,6 +211,7 @@ def test_a_file_that_spells_the_table_as_an_inline_table_is_refused_not_guessed_
 
 async def test_a_part_the_config_hides_leaves_the_status_line_and_the_rest_stays(config_file):
     app = build_app()
+    app.app.resize(200, 14)  # wide enough that no part is spared for room
     await _measured(app)
     assert "ctx 50.0%" in app._status_left().text and "tok/s" in app._status_left().text
 
@@ -227,8 +228,26 @@ async def test_a_part_the_config_hides_leaves_the_status_line_and_the_rest_stays
     assert status.startswith("  \u25cf ")
 
 
+async def test_a_narrow_status_line_spares_the_counters_before_it_loses_the_context_share(config_file):
+    app = build_app()  # 60 columns, with the keys on the right winning what they need
+    await _measured(app)
+
+    narrow = app._status_left().text
+    assert "ctx 50.0%" in narrow and "tok/s" not in narrow, "the speed goes first"
+    assert narrow.rstrip().endswith("ctx 50.0%"), "and the share is not the end that is cut"
+
+    app.app.resize(36, 14)
+    tight = app._status_left().text
+    assert "ctx 50.0%" in tight and "cached" not in tight and "\u2191" not in tight
+
+    app.app.resize(200, 14)
+    wide = app._status_left().text
+    assert all(part in wide for part in ("\u219122.0k", "77.3% cached", "100 tok/s", "ctx 50.0%"))
+
+
 async def test_hiding_the_tokens_leaves_the_cache_share_joined_to_nothing_dangling(config_file):
     app = build_app()
+    app.app.resize(200, 14)
     await _measured(app)
     app.agent.runtime.config = type(app.agent.runtime.config)(
         **{
@@ -368,11 +387,14 @@ async def test_up_and_down_choose_a_part_and_left_and_right_hide_and_show_it(con
     assert page.shown["handle"] is True
     harness.press("up")
     harness.press("up")
+    assert PARTS[page.mark].name == "app", "up from the third goes to the first"
     harness.press("up")
-    assert PARTS[page.mark].name == "app", "the marker stops at the first part"
-    for _ in range(40):
+    assert PARTS[page.mark].name == PARTS[-1].name, "and up from the first goes round to the last"
+    harness.press("down")
+    assert PARTS[page.mark].name == "app", "and down from the last, to the first"
+    for _ in range(len(PARTS)):
         harness.press("down")
-    assert PARTS[page.mark].name == PARTS[-1].name, "and at the last"
+    assert PARTS[page.mark].name == "app", "a whole turn of the list comes back to where it began"
 
 
 async def test_space_flips_the_part_the_marker_is_on(config_file):

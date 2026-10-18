@@ -44,6 +44,16 @@ That point is `compact_percent` of the window — 80% here, so 160,000 of 200,00
 window is full: it is the point where ZettCode stops sending more and compacts first, so that a long turn never
 ends in the provider's "context length exceeded". See [Compaction](#compaction) below.
 
+### Moving the mark {#moving-the-mark}
+
+The row above the keys, `Compress at`, is a rail with a knob on it: where the window is compacted, as a share of
+it. ← and → move the knob by five percent (a click on the rail sends it there). The knob is one dot that slides along
+a rail running from calm green through amber to red, and the `▲` under the gauge, the number and the
+`Until compaction` line travel with it, so you see what the new point does to the request in front of you before
+you decide. Nothing is written until `Enter`, which writes `compact_percent` into this model's entry in
+`config.toml` and applies it to the next request; `Esc` leaves it as it was. If the file cannot be edited the change
+holds for this run and the line says it was not remembered. With reduced motion the knob is simply there.
+
 Then the same budget as three numbers, each a share of the window:
 
 | Line | What it is |

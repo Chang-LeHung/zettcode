@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import re
 
+from zett_agent.providers.base import ProviderTimeoutError
+
 from zettcode._compat import BaseExceptionGroup
 
 #: The most characters of what a server said that an error carries: enough for a sentence, not a page of HTML.
@@ -25,6 +27,50 @@ HINTS = {
 #: ``sk-proj-****abcd`` is how a provider says which key it refused, and the end of a key is still part of it.
 _SECRET = re.compile(r"\b(?:sk|pk|rk|key|tok|ghp|xox[a-z])[-_][A-Za-z0-9_*.\-]{4,}|Bearer\s+\S+", re.IGNORECASE)
 _TAGS = re.compile(r"<[^>]+>")
+
+
+#: The statuses that say the server was too busy or too broken to answer, and not that the request was wrong.
+TRANSIENT_STATUSES = frozenset({408, 409, 425, 429})
+
+#: What a failure that may pass says to do: the request is stored, and the library knows where it stopped.
+CONTINUE_HINT = "/continue tries the request again from where it stopped."
+
+
+def failure_text(error: BaseException) -> str:
+    """Return the line a failed request is shown as: what failed, and ``/continue`` when trying again may work."""
+    text = f"error: {describe_error(error)}"
+    if not may_pass(error):
+        return text
+    return f"{text.rstrip('.')}. {CONTINUE_HINT}"
+
+
+def may_pass(error: BaseException) -> bool:
+    """Return whether a failure is the provider's or the network's, so the same request may well succeed later.
+
+    A provider that sent nothing in time, a connection that dropped, a server that answered 5xx, 429 or 408: asking
+    again is what the reader would do. A wrong token, a model that is not there or a request the server refused
+    would fail again, so those say nothing of the kind.
+    """
+    pending: list[BaseException] = [error]
+    seen: set[int] = set()
+    while pending:
+        current = pending.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        if isinstance(current, BaseExceptionGroup):
+            pending.extend(current.exceptions)
+            continue
+        status = getattr(current, "status_code", None)
+        if isinstance(status, int) and not isinstance(status, bool) and (status >= 500 or status in TRANSIENT_STATUSES):
+            return True
+        if isinstance(current, (ProviderTimeoutError, OSError, TimeoutError)):
+            return True
+        if type(current).__module__.startswith("httpx"):
+            return True
+        if current.__cause__ is not None:
+            pending.append(current.__cause__)
+    return False
 
 
 def describe_error(error: BaseException) -> str:

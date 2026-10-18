@@ -2,21 +2,42 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable
 from pathlib import Path
+from time import monotonic
 
 from zettcode.app.agent.extensions.context import ContextReport
 from zettcode.tui import SEPARATOR, KeyEvent, MouseAction, MouseEvent, Style, Widget
-from zettcode.tui.render import blend
+from zettcode.tui.render import blend, display_width
 
 from ..labels import compact_path
 from . import context_charts as charts
+from .effort_page import heat_colour
 
 #: Rows above the body: a blank, the title, and the file the session is stored in.
 HEAD_ROWS = 3
 
 #: How far a mouse-wheel notch moves the body.
 WHEEL_ROWS = 3
+
+#: How far ← and → move the share the window is compacted at: five percent a press, to a multiple of five.
+PERCENT_STEP = 5
+PERCENT_LEAST = 1
+
+#: Seconds the knob takes to travel to the share it was sent to; the same as the other panels' knobs.
+SLIDE_SECONDS = 0.42
+
+#: The columns the label before the rail takes, the most the rail is drawn across, and the least.
+LABEL_WIDTH = 13
+RAIL_MAX = 72
+RAIL_MIN = 10
+
+#: Columns kept beside the number for what the share was, when the rail has room to spare for it.
+NOTE_WIDTH = 10
+
+#: Characters of the rail: the lit stretch, the groove ahead, the knob, and the mark where it began.
+LIT, GROOVE, KNOB, ORIGIN = "\u2501", "\u2500", "\u25cf", "\u2506"
 
 
 class ContextPage(Widget):
@@ -49,6 +70,12 @@ class ContextPage(Widget):
 
     The page paints on every frame from the lines the chart module describes, so a resize costs
     nothing but a repaint, and a terminal too short for all of it scrolls.
+
+    When it is given the share the window is compacted at, a row above the keys shows it as a rail with
+    a knob, and ← → slide the knob by five percent (a click on the rail sends it there):
+    the rail runs through the theme's colours from calm to hot, the knob is a single dot that slides along it,
+    and the mark under the gauge glides with it, from the clock and not from a frame count. Nothing is
+    written until Enter, and Escape leaves the model as it was.
     """
 
     def __init__(
@@ -58,6 +85,8 @@ class ContextPage(Widget):
         path: Path | None = None,
         model: str = "",
         trigger: int | None = None,
+        compact_percent: float | None = None,
+        on_apply: Callable[[float], None] | None = None,
         on_cancel: Callable[[], None] | None = None,
     ) -> None:
         """Hold the report to draw.
@@ -70,6 +99,9 @@ class ContextPage(Widget):
             model: The model the window belongs to, shown beside the title.
             trigger: Tokens at which a request is compacted; the gauge marks it. ``None`` for a
                 model that is never compacted.
+            compact_percent: The share of the window at which a request is compacted, to be moved with ← →.
+                ``None`` leaves the page a read-only report, and the mark is drawn at ``trigger``.
+            on_apply: Receives the share when Enter is pressed on one that was moved; it owns closing the page.
             on_cancel: Called on Escape instead of the page popping itself, for an owner that
                 keeps its own screen stack.
         """
@@ -78,6 +110,16 @@ class ContextPage(Widget):
         self.path = compact_path(path, limit=None) if path is not None else ""
         self.model = model
         self.trigger = trigger
+        self.start_percent = compact_percent
+        self.percent = compact_percent
+        #: Where the knob set off from, when it set off, and whether it is still on its way.
+        self._origin = compact_percent
+        self._set_off = 0.0
+        self._moving = False
+        self._token = f"context-panel:{id(self)}"
+        #: Where the rail was drawn last (left column, row, width), for a click to land on.
+        self._rail: tuple[int, int, int] | None = None
+        self.on_apply = on_apply
         self.on_cancel = on_cancel
         self.offset = 0
         self._body_rows = 0
@@ -94,7 +136,81 @@ class ContextPage(Widget):
 
     def lines(self, width: int) -> list[charts.Line]:
         """Return the body at ``width`` columns."""
-        return charts.context_lines(self.report, self.trigger, width)
+        return charts.context_lines(self.report, self._trigger(), width)
+
+    def _trigger(self) -> int | None:
+        """Return the tokens a request is compacted at: where the knob is now, else the point given."""
+        if self.percent is None or not self.report.window:
+            return self.trigger
+        return max(1, round(self.report.window * self.knob_at(self._now()) / 100))
+
+    def _now(self) -> float:
+        return self.app.clock() if self.app is not None else monotonic()
+
+    def knob_at(self, now: float) -> float:
+        """Return the share the knob is at, which is between where it set off and where it is going while it travels."""
+        assert self.percent is not None
+        if not self._moving or self._origin is None:
+            return self.percent
+        progress = (now - self._set_off) / SLIDE_SECONDS
+        if progress >= 1.0:
+            return self.percent
+        eased = 1 - (1 - max(0.0, progress)) ** 3
+        return self._origin + (self.percent - self._origin) * eased
+
+    def _slide_to(self, share: float) -> None:
+        """Send the knob to a share, from wherever it is now; with reduced motion it is simply there."""
+        assert self.percent is not None
+        share = float(min(100, max(PERCENT_LEAST, share)))
+        if share == self.percent:
+            return
+        now = self._now()
+        self._origin = self.knob_at(now)
+        self.percent = share
+        self._set_off = now
+        if self.app is not None and self.app.reduced_motion:
+            self._moving = False
+            self._origin = share
+            return
+        self._moving = True
+        if self.app is not None:
+            self.app.scheduler.animate(self._token)
+
+    def on_tick(self) -> bool:
+        """Hand the frame loop back once the knob has arrived; say whether the picture is still changing."""
+        if not self._moving:
+            return False
+        if self._now() - self._set_off >= SLIDE_SECONDS:
+            self._moving = False
+            self._origin = self.percent
+            if self.app is not None:
+                self.app.scheduler.animate(self._token, active=False)
+        return True
+
+    def on_unmount(self) -> None:
+        """Release the frame loop, so a page put away mid-slide stops costing frames."""
+        self._moving = False
+        if self.app is not None:
+            self.app.scheduler.animate(self._token, active=False)
+
+    @property
+    def adjustable(self) -> bool:
+        """Return whether the share can be moved here."""
+        return self.percent is not None and self.on_apply is not None
+
+    @property
+    def changed(self) -> bool:
+        """Return whether the share is anywhere but where it started."""
+        return self.percent != self.start_percent
+
+    def _move_percent(self, direction: int) -> None:
+        """Move the share to the next multiple of five in ``direction``, and never off 1 to 100."""
+        assert self.percent is not None
+        if direction > 0:
+            moved = math.floor(self.percent / PERCENT_STEP + 1) * PERCENT_STEP
+        else:
+            moved = (math.ceil(self.percent / PERCENT_STEP) - 1) * PERCENT_STEP
+        self._slide_to(moved)
 
     # -- input --------------------------------------------------------------
     def close(self) -> None:
@@ -119,11 +235,25 @@ class ContextPage(Widget):
                 self._scroll(-WHEEL_ROWS)
             elif event.action is MouseAction.SCROLL_DOWN:
                 self._scroll(WHEEL_ROWS)
+            elif event.action is MouseAction.DOWN and self._rail is not None and self.adjustable:
+                left, row, width = self._rail
+                if event.y != row or not left <= event.x < left + width:
+                    return False
+                self._slide_to(round((event.x - left) / max(1, width - 1) * 100))
             else:
                 return False
             host.invalidate()
             return True
         key = self._key_of(event)
+        if self.adjustable and key in ("left", "right", "enter"):
+            if key == "enter":
+                if self.changed:
+                    assert self.percent is not None and self.on_apply is not None
+                    self.on_apply(self.percent)
+            else:
+                self._move_percent(-1 if key == "left" else 1)
+            host.invalidate()
+            return True
         if key in ("up", "k"):
             self._scroll(-1)
         elif key in ("down", "j"):
@@ -201,13 +331,83 @@ class ContextPage(Widget):
             canvas.draw_text(rect.x + 2, rect.y + 2, self.path, self.style_of("muted"), max_width=room)
         body = self.lines(room)
         top = rect.y + HEAD_ROWS + 1
-        self._body_rows = max(0, rect.bottom - 2 - top)
+        control = self.adjustable
+        self._body_rows = max(0, rect.bottom - 2 - top - (1 if control else 0))
         self.offset = min(self.offset, max(0, len(body) - self._body_rows))
         for row, line in enumerate(body[self.offset : self.offset + self._body_rows]):
             self._draw(canvas, rect.x + 2, top + row, line, room)
         keys = "\u2191\u2193 scroll" if len(body) > self._body_rows else ""
+        if control:
+            self._draw_control(canvas, rect.x + 2, rect.bottom - 2, room)
+            keys = f" {SEPARATOR} ".join(part for part in (keys, "\u2190 \u2192 compress at", "enter apply") if part)
         hint = f" {SEPARATOR} ".join(part for part in (keys, "esc back") if part)
         canvas.draw_text(rect.x + 2, rect.bottom - 1, hint, self.style_of("muted"), max_width=room)
+
+    def _draw_control(self, canvas, x: int, y: int, room: int) -> None:
+        """Draw the share the window is compacted at as a rail with a knob, its value, and what it was until Enter.
+
+        The rail is the theme's own ramp, calm to hot, drawn lit up to the knob and dimmed beyond it, so
+        where the knob stands is told by colour as well as place. The knob is one dot on one cell, and nothing
+        follows it: the rail is as wide as the page allows, so five percent is several cells of travel.
+        """
+        assert self.percent is not None and self.start_percent is not None
+        theme = self.theme
+        surface = theme.surface_alt
+        now = self._now()
+        shown = self.knob_at(now)
+        # By the clock, not by the flag: the frame after the knob lands is drawn before the tick that clears it.
+        travelling = self._moving and now - self._set_off < SLIDE_SECONDS
+        canvas.draw_text(x, y, "Compress at", self.style_of("heading"), max_width=room)
+        width = min(RAIL_MAX, room - LABEL_WIDTH - 6 - NOTE_WIDTH)
+        if width < RAIL_MIN:
+            width = min(RAIL_MAX, room - LABEL_WIDTH - 6)
+        value = self._shown(self.percent) if not travelling else f"{round(shown)}"
+        hue = heat_colour(theme, shown / 100)
+        if width < RAIL_MIN:
+            self._rail = None
+            canvas.draw_text(
+                x + LABEL_WIDTH,
+                y,
+                f"{value}%",
+                Style(foreground=hue, background=surface, bold=True),
+                max_width=max(0, room - LABEL_WIDTH),
+            )
+            return
+        left = x + LABEL_WIDTH
+        self._rail = (left, y, width)
+        last = width - 1
+        # One knob on one cell, and nothing trailing it: the rail is wide enough that five percent is several cells,
+        # and the colour of the knob and of the number follows the position exactly, so the glide reads as one move.
+        knob = round(shown / 100 * last)
+        glow = blend(hue, theme.text, 0.35)
+        for cell in range(width):
+            base = heat_colour(theme, cell / last)
+            if cell == knob:
+                canvas.draw_text(left + cell, y, KNOB, Style(foreground=glow, background=surface, bold=True))
+                continue
+            colour, glyph = (base, LIT) if cell < knob else (blend(base, surface, 0.5), GROOVE)
+            canvas.draw_text(left + cell, y, glyph, Style(foreground=colour, background=surface))
+        began = round(self.start_percent / 100 * last)
+        if self.changed and began != knob:
+            canvas.draw_text(left + began, y, ORIGIN, Style(foreground=theme.muted, background=surface, bold=True))
+        after = left + width + 1
+        number = f"{value}%"
+        canvas.draw_text(after, y, number, Style(foreground=hue, background=surface, bold=True), max_width=5)
+        beyond = after + max(4, display_width(number)) + 2
+        note = f"was {self._shown(self.start_percent)}%" if self.changed else ""
+        if note and x + room - beyond >= display_width(note):
+            canvas.draw_text(
+                beyond,
+                y,
+                note,
+                Style(foreground=theme.accent if self.changed else theme.muted, background=surface),
+                max_width=x + room - beyond,
+            )
+
+    @staticmethod
+    def _shown(percent: float) -> str:
+        """Return a share without a pointless decimal: ``80`` for 80.0, ``82.5`` as it is."""
+        return f"{percent:g}"
 
     def _draw(self, canvas, x: int, y: int, line: charts.Line, room: int) -> None:
         """Draw one line of roles from ``x``, stopping at the edge of the page."""

@@ -16,6 +16,7 @@ from zettcode.config_edit import ConfigEditError
 from zettcode.tui import Widget
 
 from ..commands import Command, CommandContext, CommandProvider, CommandResult, Subcommand
+from .config_form import whole_if_whole
 from .widgets import (
     EFFORT_ROWS,
     SELF_COMPACT_ROWS,
@@ -353,18 +354,38 @@ class ShellCommands(CommandProvider):
         model call, so it needs one turn before it exists: before that there is
         nothing measured to show, and the panel would be a page of zeroes.
         """
-        report = await self.shell.agent.context_report()
+        shell = self.shell
+        report = await shell.agent.context_report()
         if report is None:
             return CommandResult(
                 message="No request yet \u2014 send one (or resume a session), then `/context` shows the breakdown."
             )
+
+        def apply(percent: float) -> None:
+            shell.close_page()
+            try:
+                model, unwritten = shell.agent.change_compact_percent(percent)
+            except ValueError as error:
+                shell.transcript.error(str(error))
+                return
+            said = f"{model.shown_name}: compacts at {whole_if_whole(model.compact_percent)}% of the window"
+            said += f" ({model.compaction_max_tokens:,} tokens)"
+            if unwritten is None:
+                shell.transcript.notice(said)
+            else:
+                shell.transcript.notice(f"{said} for this run; not remembered: {unwritten}")
+            shell.app.request_layout()
+
+        model = shell.agent.active_model
         return CommandResult(
             widget=ContextPage(
                 report,
-                path=self.shell.agent.session_path(),
-                model=self.shell.agent.active_model.shown_name,
-                trigger=self.shell.agent.active_model.compaction_max_tokens,
-                on_cancel=self.shell.close_page,
+                path=shell.agent.session_path(),
+                model=model.shown_name,
+                trigger=model.compaction_max_tokens,
+                compact_percent=model.compact_percent,
+                on_apply=apply,
+                on_cancel=shell.close_page,
             )
         )
 

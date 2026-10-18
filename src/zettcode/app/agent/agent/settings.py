@@ -124,6 +124,37 @@ class SettingsMixin(AgentBase):
         self._commit_models(text)
         return self.runtime.config.models[index]
 
+    def change_compact_percent(self, percent: float) -> tuple[ModelConfig, str | None]:
+        """Compact the model in use at ``percent`` of its window from the next request, and write it to the config file.
+
+        The running session is changed whatever becomes of the file, since the reader asked for it now: a file
+        that cannot be edited (no file, a layout the editor refuses) leaves the change for this run only, and the
+        reason is returned beside the model so it can be said.
+
+        Args:
+            percent: Share of the window, more than 0 and at most 100.
+
+        Returns:
+            The model now in use, and why the file was not changed (``None`` when it was).
+
+        Raises:
+            ValueError: ``percent`` is not between 0 and 100.
+        """
+        if not 0 < percent <= 100:
+            raise ValueError("The compression share must be more than 0 and at most 100.")
+        active = self.active_model
+        value = int(percent) if float(percent).is_integer() else percent
+        try:
+            for index, (model, entry) in enumerate(self.file_models()):
+                if model == active:
+                    return self.update_configured_model(index, {**entry, "compact_percent": value}), None
+            reason = "the model in use is not in the config file"
+        except ConfigEditError as error:
+            reason = str(error)
+        edited = replace(active, compact_percent=float(percent))
+        models = tuple(edited if model is active else model for model in self.models)
+        return self.runtime.replace_models(models), reason
+
     def remove_configured_model(self, index: int) -> ModelConfig:
         """Remove model number ``index`` (from zero) from the file and this session.
 

@@ -1352,7 +1352,7 @@ async def test_a_failed_request_shows_the_reason_not_the_task_group():
     await asyncio.wait_for(app.task, 2.0)
 
     notices = [entry.text for entry in app.transcript.entries if entry.kind == "notice"]
-    assert any(text == "error: All connection attempts failed" for text in notices)
+    assert any(text.startswith("error: All connection attempts failed. /continue") for text in notices), notices
     assert not any("TaskGroup" in text for text in notices)
     failed = [entry for entry in app.transcript.entries if entry.kind == "notice" and entry.level == "error"]
     assert any(entry.text.startswith("error: ") for entry in failed)
@@ -4611,6 +4611,7 @@ def test_the_sessions_panel_numbers_its_rows_and_fills_the_panel():
 
 async def test_the_status_line_mirrors_the_usage_extension():
     app = build_app()
+    app.app.resize(200, 14)
     payload = UsageSnapshot(
         input_tokens=22_000,
         output_tokens=600,
@@ -4649,6 +4650,7 @@ async def test_resuming_a_session_restores_its_token_totals(tmp_path):
         usage=ModelUsage(input_tokens=10_000, output_tokens=500, cache_read_tokens=8_000),
     )
     app = build_app()
+    app.app.resize(200, 14)
     app.agent.runtime.persistence.store = store
     harness = _harness(app)
 

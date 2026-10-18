@@ -64,7 +64,7 @@ from ..agent.conversation.transcript import Transcript
 from ..agent.dialogue.ask import AskUserQuestion
 from ..agent.dialogue.mentions import MentionRegistry, SessionMentions
 from ..agent.dialogue.relay import Relayed
-from ..agent.errors import describe_error
+from ..agent.errors import describe_error, failure_text
 from ..agent.extensions.messenger import Messenger
 from ..agent.extensions.usage import UsageSnapshot
 from ..commands import Command, CommandContext, CommandList, CommandResult
@@ -658,7 +658,7 @@ class ZettCodeApp(
             raise
         except Exception as error:
             self.transcript.complete_thinking()
-            self.transcript.error(f"error: {describe_error(error)}")
+            self.transcript.error(failure_text(error))
         else:
             completed = True
             self._follow_ups_held = False
@@ -960,7 +960,7 @@ class ZettCodeApp(
             self.transcript.notice("stopped")
         except Exception as error:
             self.transcript.complete_thinking()
-            self.transcript.error(f"error: {describe_error(error)}")
+            self.transcript.error(failure_text(error))
         else:
             completed = True
             if self.transcript.turn_said_nothing():
