@@ -30,6 +30,7 @@ from ..app.agent.conversation.presenters import Presenter
 from ..app.commands import Command, CommandResult
 from ..app.pets import Pet
 from ..tui import Span, Style, TextLine, Theme
+from .builtin_agent import AGENT_PLUGINS
 from .builtins import BUILTIN_PLUGINS
 from .container import CommandHandler, PluginContainer
 from .extension import PluginExtension
@@ -50,7 +51,10 @@ from .plugin import Plugin, Plugins
 from .state import (
     Activity,
     ActivityState,
+    AgentBuild,
+    Contribution,
     DisplayState,
+    ExtensionFactory,
     ModelState,
     SessionState,
     ShellContext,
@@ -62,10 +66,14 @@ from .state import (
 )
 
 __all__ = [
+    "AGENT_PLUGINS",
     "PLUGIN_ENTRY_POINT_GROUP",
     "Activity",
     "ActivityState",
+    "AgentBuild",
     "BUILTIN_PLUGINS",
+    "Contribution",
+    "ExtensionFactory",
     "UiBuilder",
     "UiRegion",
     "UiRow",

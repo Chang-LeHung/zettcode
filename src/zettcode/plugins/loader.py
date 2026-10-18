@@ -29,12 +29,11 @@ from .builtins import BUILTIN_PLUGINS
 from .container import PluginContainer, UiSlots
 from .extension import HOST_NAME, PluginExtension
 from .plugin import Plugin, Plugins
+from .state import Contribution
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
-    from collections.abc import Iterable, Sequence
+    from collections.abc import Iterable, Mapping, Sequence
     from importlib.metadata import EntryPoint
-
-    from zett_agent.extensions.base import AgentExtension
 
     from ..app.agent.conversation.presenters import Presenter
     from ..app.agent.dialogue.mentions import MentionProvider
@@ -65,6 +64,7 @@ def load_plugins(
     *,
     entry_points: Iterable[EntryPoint] | None = None,
     builtins: Sequence[Plugin] = BUILTIN_PLUGINS,
+    shared: Mapping[str, object] | None = None,
 ) -> Plugins:
     """Load the builtin plugins and every enabled distribution into one bundle.
 
@@ -82,12 +82,15 @@ def load_plugins(
             installing a distribution.
         builtins: Plugins compiled into the repository; tests pass ``()`` to
             exercise a load without the shell's own rows.
+        shared: Objects the runtime hands over by name before any plugin activates (see
+            :mod:`zettcode.plugins.services`); a plugin reads them with ``container.service``, and they
+            stay findable on the returned bundle. A plugin cannot provide a name that is taken here.
 
     Returns:
         The host extension, commands, rows, and load failures the plugins
         produced.
     """
-    loader = _Loader(config)
+    loader = _Loader(config, shared)
     for plugin in builtins:
         loader.accept(plugin, origin=plugin.name or type(plugin).__name__)
     if config.plugins_enabled:
@@ -108,7 +111,7 @@ def load_plugins(
 class _Loader:
     """Accumulate accepted plugins into the one bundle the application gets."""
 
-    def __init__(self, config: ZettCodeConfig) -> None:
+    def __init__(self, config: ZettCodeConfig, shared: Mapping[str, object] | None = None) -> None:
         self.config = config
         self.slots = UiSlots()
         self.plugins: list[Plugin] = []
@@ -118,8 +121,8 @@ class _Loader:
         self.themes: list[ThemeSource] = []
         self.pets: list[PetSource] = []
         self.presenters: list[Presenter[Any]] = []
-        self.contributed: list[AgentExtension] = []
-        self.services: dict[str, object] = {}
+        self.contributed: list[Contribution] = []
+        self.services: dict[str, object] = dict(shared or {})
         self.failures: list[str] = []
         self._identities: set[str] = set()
         self._extension_names: set[str] = {HOST_NAME}
@@ -141,7 +144,7 @@ class _Loader:
             return
         if not plugin.name:
             plugin.name = name
-        container = PluginContainer(self.config)
+        container = PluginContainer(self.config, self.services)
         # Seed the registry with what is already loaded, so a segment that
         # reuses a name — or asks to override a side — acts on the real rows
         # instead of on an empty copy. A failure below leaves it untouched.

@@ -321,9 +321,12 @@ class Audit(Plugin):
 
 The agent receives it beside the others, ordered by the `priority` the extension declares and, among
 equals, by the order plugins were loaded. Its `name` must be unique: a plugin that repeats one already
-registered, or `plugins`, is skipped and reported. ZettCode's own `ask_user` tool, project instructions
-and todo tool are built-in plugins that register this way, so the switches under `[agent]` simply decide
-whether their plugin registers.
+registered, or `plugins`, is skipped and reported. An extension that is slow to import, or that needs
+the model the agent starts on, is better registered with `container.register_extension_factory(name, build)`:
+`build` is called when the agent is built, not while the screen is still being drawn, and may return `None`
+to add nothing. Everything the agent runs is registered this way: ZettCode's own coding tools, session log,
+shell approval, compaction, `ask_user` tool, project instructions, skills, MCP and todo tool are built-in
+plugins, so the switches under `[harness]` and the others simply decide whether their plugin registers.
 
 ## When something goes wrong
 

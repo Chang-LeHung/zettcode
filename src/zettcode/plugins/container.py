@@ -14,7 +14,7 @@ reusing its segment names is what taking a slot over means.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from ..app.agent.conversation.entries import EntryKind
 from ..app.agent.conversation.presenters import Presenter
@@ -22,10 +22,11 @@ from ..app.commands import BusyPolicy, Command, CommandHandler, CommandList, Com
 from ..app.pets import PET_NAME, Pet, PetSource
 from ..providers import Provider
 from ..tui import RESERVED_THEMES, THEME_NAME, Theme, ThemeSource, file_theme
-from .state import UiRow, UiSegment
+from .services import lookup, require
+from .state import Contribution, ExtensionFactory, UiRow, UiSegment
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay lazy
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
     from pathlib import Path
 
     from zett_agent.extensions.base import AgentExtension
@@ -34,6 +35,8 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
     from ..config import ZettCodeConfig
     from .state import UiBuilder, UiRegion, UiSide
 
+
+_T = TypeVar("_T")
 
 #: Rows and sides in paint order; the shell's frame, fixed by the application.
 UI_REGIONS: tuple[UiRegion, ...] = ("header", "status")
@@ -133,22 +136,29 @@ class PluginContainer:
     plugin can decide what to register from the configuration it is given.
     """
 
-    def __init__(self, config: ZettCodeConfig) -> None:
-        """Keep the resolved settings and open an empty command list."""
+    def __init__(self, config: ZettCodeConfig, services: Mapping[str, object] | None = None) -> None:
+        """Keep the resolved settings and open an empty command list.
+
+        Args:
+            config: The resolved settings.
+            services: What is already findable by name: the objects the runtime hands over, and what the
+                plugins loaded before this one provided. Read with :meth:`service` and :meth:`find`.
+        """
         self.config = config
         self.workspace = config.workspace
+        self._available: Mapping[str, object] = services if services is not None else {}
         self._command_providers: list[CommandProvider] = []
         self._mentions: list[MentionProvider] = []
         self._providers: list[Provider] = []
         self._themes: list[ThemeSource] = []
         self._pets: list[PetSource] = []
         self._presenters: list[Presenter[Any]] = []
-        self._extensions: list[AgentExtension] = []
+        self._extensions: list[Contribution] = []
         self._services: dict[str, object] = {}
         self._slots = UiSlots()
 
     @property
-    def extensions(self) -> tuple[AgentExtension, ...]:
+    def extensions(self) -> tuple[Contribution, ...]:
         """Return the agent extensions registered so far, in registration order."""
         return tuple(self._extensions)
 
@@ -495,10 +505,54 @@ class PluginContainer:
         name = getattr(extension, "name", "")
         if not isinstance(name, str) or not name.strip():
             raise ValueError("An extension must have a non-empty name")
+        self._claim_extension(name)
+        self._extensions.append(Contribution(name, extension=extension))
+        return extension
+
+    def register_extension_factory(self, name: str, factory: ExtensionFactory) -> None:
+        """Hand the agent an extension that is built when the agent is, not when the plugin activates.
+
+        Use it for an extension that needs something only a running agent has (the provider it starts
+        on), or that is costly to import: a plugin activates while the shell is still being drawn, so
+        importing a large module there delays the first frame. The factory is called with an
+        :class:`~zettcode.plugins.AgentBuild` after the imports the runtime warms up have finished,
+        and may return ``None`` for a run that has nothing to add. Where the extension lands in the
+        order is where it was registered, as for :meth:`register_extension`.
+
+        Args:
+            name: The name of the extension the factory builds, given up front so that a clash is
+                caught when the plugin loads. A factory that builds it under another name fails the build.
+            factory: Called once per agent build.
+
+        Raises:
+            ValueError: When the name is blank or this plugin already registered it.
+        """
+        if not name.strip():
+            raise ValueError("An extension must have a non-empty name")
+        self._claim_extension(name)
+        self._extensions.append(Contribution(name, factory=factory))
+
+    def _claim_extension(self, name: str) -> None:
+        """Refuse an extension name this plugin has already registered."""
         if any(existing.name == name for existing in self._extensions):
             raise ValueError(f"Extension already registered: {name}")
-        self._extensions.append(extension)
-        return extension
+
+    def service(self, name: str, kind: type[_T]) -> _T:
+        """Return an object another part of the application or an earlier plugin made available.
+
+        This is how a plugin gets hold of the state it builds on: the session's permission policy, the
+        session store, or a service a plugin loaded before it provided. Order matters, because only
+        what is already there can be found.
+
+        Raises:
+            LookupError: When nothing is available under the name.
+            TypeError: When what is there is not a ``kind``.
+        """
+        return require({**self._available, **self._services}, name, kind)
+
+    def find(self, name: str, kind: type[_T]) -> _T | None:
+        """Return the object available under ``name``, or ``None`` when there is none (see :meth:`service`)."""
+        return lookup({**self._available, **self._services}, name, kind)
 
     def provide(self, name: str, service: object) -> object:
         """Register an object under a name, so other parts of the application can look it up.

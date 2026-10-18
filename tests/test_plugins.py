@@ -13,6 +13,7 @@ from zettcode.app.agent.extensions.usage import UsageSnapshot
 from zettcode.app.commands import CommandResult
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.plugins import (
+    AGENT_PLUGINS,
     Activity,
     ActivityState,
     EntryKind,
@@ -426,9 +427,6 @@ async def test_disabled_and_switched_off_plugins_are_not_loaded(tmp_path: Path):
         "themes",
         "pets",
         "presenters",
-        "ask-user",
-        "project-instructions",
-        "todos",
     ]
     assert [row.region for row in loaded.rows] == ["header", "status"]
     assert all(row.left for row in loaded.rows)
@@ -592,9 +590,7 @@ async def test_the_runtime_preview_installs_plugin_extensions_and_commands(tmp_p
         "themes",
         "pets",
         "presenters",
-        "ask-user",
-        "project-instructions",
-        "todos",
+        *(plugin.name for plugin in AGENT_PLUGINS),
     ]
     assert len(runtime.plugins.extensions) == 1
     assert [command.name for command in runtime.plugins.commands] == ["/usage", "/greet"]

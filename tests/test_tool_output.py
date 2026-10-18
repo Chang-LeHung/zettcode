@@ -346,15 +346,17 @@ async def test_in_a_real_agent_the_model_and_the_stored_session_both_see_the_new
     assert len(list(keep.glob("*/*"))) == 2
 
 
-def test_the_runtime_installs_it_after_the_coding_bundle():
+def test_the_runtime_installs_it_after_the_coding_bundle(tmp_path):
     """It acts on that bundle's tool, so it has to be registered with it."""
-    import inspect
+    from plugin_helpers import agent_extensions
+    from zettcode.config import ModelConfig, ZettCodeConfig
 
-    from zettcode.app.agent import runtime
+    config = ZettCodeConfig(
+        workspace=tmp_path, models=(ModelConfig(model="m", token="t"),), store=tmp_path / "sessions"
+    )
+    names = [extension.name for extension in agent_extensions(config)]
 
-    source = inspect.getsource(runtime.ZettCodeRuntime._build)
-    assert "ToolOutputExtension(self.persistence)" in source
-    assert source.index("CodingExtension()") < source.index("ToolOutputExtension(self.persistence)")
+    assert names.index("CodingExtension") < names.index("ToolOutputExtension")
 
 
 async def test_the_tidy_up_runs_on_the_event_loop_because_a_thread_doing_it_fails_other_commands(workspace, store):
