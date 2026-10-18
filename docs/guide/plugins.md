@@ -235,6 +235,36 @@ load. A file of the reader's in `~/.zettcode/themes/` with the same name wins ov
 reader can always adjust a palette they were given. A plugin can also be the palette the reader starts
 in: `[ui] theme = "acme"` finds it.
 
+## Offering a pet {#pets}
+
+Pets are offered the way palettes are, and the seven ZettCode ships (`cat`, `dog`, `tiger`, `whale`, `chibi`,
+`slime`, `sprout`) are offered by a built-in plugin through the same call. A pet is a palette and the pixel maps of
+its moods; each character of a map names a colour, `.` is transparent, and two rows of pixels make one row of
+cells, so a map has an even number of rows and every frame of a pet is the same size:
+
+```text
+from zettcode.plugins import Pet, Plugin, PluginContainer
+
+PALETTE = {"G": "#84b795", "D": "#263d34", "H": "#e4b47c"}
+ASLEEP = ("..GGGG..", ".GGGGGG.", "GGGGGGGG", "GDDGGDDG", "GGGHHGGG", ".GGGGGG.")
+AWAKE = ("..GGGG..", ".GGGGGG.", "GGGGGGGG", "GGDGGDGG", "GGGHHGGG", ".GGGGGG.")
+
+
+class Blobs(Plugin):
+    name = "acme-blobs"
+
+    def activate(self, container: PluginContainer) -> None:
+        # The moods are "idle" (required: it is the pet asleep), "working" (while a request runs) and "glad"
+        # (when it is patted); a pet that lacks the others stays as it is. A mood with several frames cycles.
+        pet = Pet("blob", PALETTE, {"idle": (ASLEEP,), "working": (AWAKE, ASLEEP), "glad": (AWAKE,)})
+        container.register_pet("blob", pet, description="a quiet green blob")
+```
+
+The pet can also be a function that builds one, called the first time it is asked for. A name is one word
+(letters, digits, `.`, `_`, `-`); a name a built-in pet or an earlier plugin already has is skipped and reported, like
+any plugin that cannot load. The pet appears in the `/pet` panel and can be the one the reader starts with:
+`[ui] pet = "blob"`.
+
 ## Drawing a row {#presenters}
 
 Every row of the conversation is drawn by a *presenter*: an object that turns one kind of entry

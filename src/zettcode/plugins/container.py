@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any
 from ..app.agent.conversation.entries import EntryKind
 from ..app.agent.conversation.presenters import Presenter
 from ..app.commands import BusyPolicy, Command, CommandHandler, CommandList, CommandProvider, Subcommands
+from ..app.pets import PET_NAME, Pet, PetSource
 from ..providers import Provider
 from ..tui import RESERVED_THEMES, THEME_NAME, Theme, ThemeSource, file_theme
 from .state import UiRow, UiSegment
@@ -138,6 +139,7 @@ class PluginContainer:
         self._mentions: list[MentionProvider] = []
         self._providers: list[Provider] = []
         self._themes: list[ThemeSource] = []
+        self._pets: list[PetSource] = []
         self._presenters: list[Presenter[Any]] = []
         self._slots = UiSlots()
 
@@ -175,6 +177,11 @@ class PluginContainer:
     def themes(self) -> tuple[ThemeSource, ...]:
         """Return the palettes registered so far, in registration order."""
         return tuple(self._themes)
+
+    @property
+    def pets(self) -> tuple[PetSource, ...]:
+        """Return the pets registered so far, in registration order."""
+        return tuple(self._pets)
 
     @property
     def rows(self) -> tuple[UiRow, ...]:
@@ -382,6 +389,46 @@ class PluginContainer:
             if description:
                 source = ThemeSource(name, source.load, description)
         self._themes.append(source)
+        return source
+
+    def register_pet(
+        self,
+        name: str,
+        pet: Pet | Callable[[], Pet],
+        *,
+        description: str | Callable[[], str] = "",
+    ) -> PetSource:
+        """Offer a pet by name, so ``/pet <name>`` switches to it and the menu lists and previews it.
+
+        The pet is a :class:`~zettcode.app.pets.Pet`, or a function that builds one (called when the pet is
+        first asked for, so offering many costs nothing until one is picked). The name is one word, and the
+        ones the program ships (``slime``, ``cat``, ``sprout``) are taken: a pet that shares a name with an
+        earlier one is not offered.
+
+        Args:
+            name: What ``/pet`` is typed with: letters, digits, ``.``, ``_`` and ``-``.
+            pet: The pet, or a function that returns it.
+            description: One line shown beside the name in the menu (or a function returning it).
+
+        Returns:
+            The registered source, in case the plugin wants to keep it.
+
+        Raises:
+            ValueError: When the name is not one word, or this plugin already registered it.
+        """
+        name = name.strip()
+        if not PET_NAME.fullmatch(name):
+            raise ValueError(f"Pet name must be one word of letters, digits, '.', '_' or '-': {name!r}")
+        if any(existing.name == name for existing in self._pets):
+            raise ValueError(f"Pet already registered: {name}")
+        if isinstance(pet, Pet):
+            fixed = pet
+            source = PetSource(name, lambda: fixed, description)
+        elif callable(pet):
+            source = PetSource(name, pet, description)
+        else:
+            raise ValueError("A pet must be a zettcode.app.pets.Pet or a function that returns one")
+        self._pets.append(source)
         return source
 
     def register_presenter(self, presenter: Presenter[Any]) -> Presenter[Any]:

@@ -19,6 +19,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
     from ..app.agent.conversation.presenters import Presenter
     from ..app.agent.dialogue.mentions import MentionProvider
     from ..app.commands import Command
+    from ..app.pets import PetSource
     from ..providers import Provider
     from ..tui import ThemeSource
     from .container import PluginContainer
@@ -83,6 +84,8 @@ class Plugins:
             first. ``/theme`` lists, previews and switches to them, after ``dark`` and ``light``.
         presenters: How plugins asked for entries to be drawn, in load and registration order; the built-in
             presenters come first, at the lowest priority, so a plugin's claim on the same rows wins.
+        pets: Pets the plugins offered by name, in load and registration order; the built-in plugin's come first.
+            ``/pet`` lists, previews and switches to them.
         rows: The header and status rows the plugins fill, each with its left
             and right segments in paint order. The builtin rows are merged in
             first, so an overridden segment keeps its place.
@@ -96,6 +99,7 @@ class Plugins:
     mentions: tuple[MentionProvider, ...] = ()
     providers: tuple[Provider, ...] = ()
     themes: tuple[ThemeSource, ...] = ()
+    pets: tuple[PetSource, ...] = ()
     presenters: tuple[Presenter, ...] = ()
     rows: tuple[UiRow, ...] = ()
     failures: tuple[str, ...] = ()

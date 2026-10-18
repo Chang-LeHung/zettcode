@@ -386,6 +386,7 @@ enabled = true                 # background PyPI version checks
 
 [ui]
 # theme = "nord"               # start in a palette by name (see Colours); unset follows the terminal
+# pet = "cat"                  # which pet stands over the conversation (see The pet); unset is the cat
 
 [statusline]
 # Every part of the header and status line is shown. Name one to hide it; /statusline edits these.
@@ -421,7 +422,7 @@ belong to the most recent table heading; an `enabled` key immediately under
 | `mcp.config` | `~/.zettcode/mcp.json` | Path to the user's JSON server configuration. Use an absolute path or `~` to make its location unambiguous. |
 | `mcp.scope` | `"both"` | Which server files to read: `"both"` (the default) merges the user's file and `<workspace>/.zettcode/mcp.json`, the project's entry winning a name; `"workspace"` or `"global"` reads just one. A workspace file is a command a checkout asks you to run, so set `"global"` if you do not want a repository's servers started. |
 | `compaction.self` | `false` | Whether a session lets the model compact its own context unless it chose otherwise. `/self-compact` opens a panel to set it for one session or for all; see [Self-compaction](/guide/commands#self-compaction). |
-| `statusline.<part>` | `true` | Set a part of the header or the status line to `false` to hide it; every part not named is shown. The parts are `app`, `session`, `handle`, `workspace`, `model`, `effort`, `state`, `mode`, `self-compact`, `tokens`, `cache`, `speed`, `ctx`, `keys` and `pet` (the small companion over the conversation, see [The pet](/guide/interface#the-pet)); an unknown name is an error. `/statusline` edits the table for you. See [Choosing what is shown](/guide/interface#choosing-what-is-shown). |
+| `statusline.<part>` | `true` | Set a part of the header or the status line to `false` to hide it; every part not named is shown, except `pet`, which is hidden until you set it to `true`. The parts are `app`, `session`, `handle`, `workspace`, `model`, `effort`, `state`, `mode`, `self-compact`, `tokens`, `cache`, `speed`, `ctx`, `keys` and `pet` (the small companion over the conversation, see [The pet](/guide/interface#the-pet)); an unknown name is an error. `/statusline` edits the table for you. See [Choosing what is shown](/guide/interface#choosing-what-is-shown). |
 | `plugins.enabled` | `true` | Load installed third-party plugins. Built-in UI functionality remains available when false. |
 | `plugins.disable` | `[]` | Array of plugin **entry-point names** to skip, not necessarily their pip package names. |
 | `update.enabled` | `true` | Check PyPI in the background and offer newer releases on a later start; does not automatically install them. |

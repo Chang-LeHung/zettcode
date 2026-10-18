@@ -216,6 +216,30 @@ class Palettes(Plugin):
 优先于插件提供的，所以读者总能改动别人给的配色。插件提供的配色也可以作为启动配色：
 `[ui] theme = "acme"` 能找到它。
 
+## 提供宠物 {#pets}
+
+宠物和配色一样按名字提供，ZettCode 自带的七只（`cat`、`dog`、`tiger`、`whale`、`chibi`、`slime`、`sprout`）也是由一个内置插件通过同一个调用提供的。一只宠物就是一张调色板，加上它各种心情的像素图：图里的每个字符对应一种颜色，`.` 是透明，两行像素组成一行字符单元格，所以行数必须是偶数，而且同一只宠物的每一帧大小相同：
+
+```text
+from zettcode.plugins import Pet, Plugin, PluginContainer
+
+PALETTE = {"G": "#84b795", "D": "#263d34", "H": "#e4b47c"}
+ASLEEP = ("..GGGG..", ".GGGGGG.", "GGGGGGGG", "GDDGGDDG", "GGGHHGGG", ".GGGGGG.")
+AWAKE = ("..GGGG..", ".GGGGGG.", "GGGGGGGG", "GGDGGDGG", "GGGHHGGG", ".GGGGGG.")
+
+
+class Blobs(Plugin):
+    name = "acme-blobs"
+
+    def activate(self, container: PluginContainer) -> None:
+        # 心情有 "idle"（必须有：即睡着）、"working"（请求运行时）和 "glad"（被拍时）；
+        # 缺少的心情就保持原样。一种心情有多帧时会循环播放。
+        pet = Pet("blob", PALETTE, {"idle": (ASLEEP,), "working": (AWAKE, ASLEEP), "glad": (AWAKE,)})
+        container.register_pet("blob", pet, description="一只安静的绿色团子")
+```
+
+也可以传一个构造宠物的函数，第一次用到时才会调用。名字是一个词（字母、数字、`.`、`_`、`-`）；名字如果已被内置宠物或更早加载的插件占用，就会被跳过并像其他加载失败的插件一样报告。宠物会出现在 `/pet` 面板里，也可以作为启动时的宠物：`[ui] pet = "blob"`。
+
 ## 绘制一行 {#presenters}
 
 对话里的每一行都由一个 *presenter* 绘制：它把一种 entry 变成带样式的行。ZettCode 自带的 presenter

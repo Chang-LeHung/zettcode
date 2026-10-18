@@ -68,7 +68,7 @@ from ..agent.errors import describe_error
 from ..agent.extensions.messenger import Messenger
 from ..agent.extensions.usage import UsageSnapshot
 from ..commands import Command, CommandContext, CommandList, CommandResult
-from ..pets import DEFAULT_PET
+from ..pets import DEFAULT_PET_NAME, Pet
 from ..registry import Registry
 from .bars import BarsMixin
 from .commands import ShellCommands
@@ -174,9 +174,11 @@ class ZettCodeApp(
         self.header = StatusBar(self._header_left, self._header_right)
         self.status = StatusBar(self._status_left, self._status_right)
         self.panel = TaskPanel()
-        #: The companion over the conversation, which the reader can drag and can switch off in ``/statusline``.
+        #: The companion over the conversation, which the reader can drag, choose with ``/pet`` and switch off in
+        #: ``/statusline``.
+        self._pet_before: Pet | None = None
         self.pet = PetView(
-            DEFAULT_PET,
+            self._starting_pet(),
             area=lambda: self.view.rect,
             shown=lambda: "pet" not in self.agent.statusline_hidden,
             busy=lambda: self._busy,
@@ -266,6 +268,21 @@ class ZettCodeApp(
     def busy(self) -> bool:
         """Return whether a turn or command is in flight."""
         return self._busy
+
+    def _starting_pet(self) -> Pet:
+        """Return the pet the configuration names, or the default one when it names none that exists.
+
+        A name nobody offers is the reader's typo, or a plugin that was uninstalled; it is said in the conversation
+        rather than ending the start, because a pet is not worth a refusal to run.
+        """
+        catalog = self.agent.pets
+        wanted = self.agent.runtime.config.pet
+        if wanted:
+            try:
+                return catalog.load(wanted)
+            except ValueError as error:
+                self.transcript.error(f"pet: {error}")
+        return catalog.load(DEFAULT_PET_NAME)
 
     @property
     def task(self) -> asyncio.Task[None] | None:

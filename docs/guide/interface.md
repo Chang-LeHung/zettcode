@@ -567,16 +567,46 @@ either way.
 
 ### The pet {#the-pet}
 
-A small companion stands over the right-hand side of the conversation, halfway down. It is the ZettCode mark drawn
-small: its eyes and its warm heart are the same, and the heart beats while a request runs.
+A small companion can stand over the right-hand side of the conversation, halfway down. **It is off until you switch
+it on**: turn on the `pet` part in `/statusline`, or set `pet = true` under `[statusline]`. It is a pixel sprite, nine to
+eleven pixels across and drawn with half blocks, each pet in its own small palette, and you choose which one with
+`/pet`:
+
+| Pet | What it is |
+| --- | --- |
+| `cat` | A ginger cat with pricked ears and a pink mouth. **The default.** |
+| `dog` | A tan dog with long floppy ears. |
+| `tiger` | An orange tiger with stripes on its brow. |
+| `whale` | A blue whale that spouts. |
+| `chibi` | An original anime-style girl with a violet bob. |
+| `slime` | A round green slime that hops. |
+| `sprout` | A seedling in a pot whose leaves lift. |
+
+It is **asleep** while nothing runs, so it is a still picture and costs nothing; it wakes and goes about its
+business while a request runs (the cat watches, the whale spouts, the slime hops); and when you pat it, it closes its
+eyes and blushes for a moment. With reduced motion it holds still.
+
+`/pet` opens a panel. ↑ ↓ move through the list (up from the first goes round to the last, and down from the last to
+the first) and **the pet you are on is put over the conversation at once**, where
+it will stand, while a stage at the right shows it asleep, at work and pleased in turn, tinted with its own colour.
+`Enter` keeps it and `Esc` puts the old one back. `/pet whale` switches in one step. The choice is written to `[ui] pet`
+in `config.toml`:
+
+```toml
+[ui]
+pet = "whale"
+```
+
+Plugins can offer more pets; see [Offering a pet](/guide/plugins#pets).
 
 - **Drag it** with the mouse to put it anywhere in the conversation. It never goes over the composer, a panel or the
-  bars, and it keeps its place, as a share of the room, when you resize the terminal.
-- **Click it** (press and let go without moving) and it narrows its eyes for a moment.
+  bars, and it keeps its place, as a share of the room, when you resize the terminal or change pets.
+- **Click it** (press and let go without moving) to pat it.
 - The wheel over it still scrolls the conversation, and the cells around its outline show the conversation through.
 - It takes no room: it is drawn over the text, so it hides a few columns of whatever is under it. Drag it aside, or
-  switch it off with `/statusline hide pet` (or the `pet` switch in the panel). It is not drawn at all when the
+  switch it off again with `/statusline hide pet` (or the `pet` switch in the panel). It is not drawn at all when the
   conversation is narrower than 80 columns or too short to leave it room.
 
-It is a part like the others, so `pet = false` under `[statusline]` keeps it away. It does not depend on `app` or on
+It is a part like the others, but the only one that starts hidden: `pet = true` under `[statusline]` brings it out, and
+`pet = false` puts it away. It does not depend on `app` or on
 anything else in the bars. Its place is not saved: each session starts with it at the right-hand edge.

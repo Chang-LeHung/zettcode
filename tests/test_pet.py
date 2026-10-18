@@ -1,19 +1,19 @@
-"""The pet: its sprite and moods, where it stands, how the mouse moves it, and the switch that hides it."""
+"""The pet over the conversation: where it stands, how the mouse moves it, its moods, and the switch that hides it."""
 
 from __future__ import annotations
 
 from dataclasses import replace
 
-import pytest
-
 from test_statusline import config_file, hidden_in, notices, open_panel  # noqa: F401 - the fixture is used by name
 from test_zettcode_app import _harness, build_app
-from zettcode.app.pets import DEFAULT_PET, GLAD, IDLE, WORKING, Pet
-from zettcode.app.ui.widgets.pet import GLAD_SECONDS, MARGIN, MIN_WIDTH
+from zettcode.app.pets import GLAD, IDLE, WORKING, PetCatalog, bundled_pets
+from zettcode.app.ui.widgets.pet import FRAME_SECONDS, GLAD_SECONDS, MARGIN, MIN_WIDTH
 from zettcode.app.ui.widgets.statusline_page import PARTS, ROW_OF
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.statusline import NAMES, PET, unknown
-from zettcode.tui.render import display_width
+
+#: The pet a shell starts with when nothing says otherwise.
+CAT = PetCatalog(bundled_pets()).load("cat")
 
 
 class Clock:
@@ -41,13 +41,36 @@ def stands(app, harness):
     return app.pet.rect
 
 
-def row_text(app, rect, row: int) -> str:
-    cells = app.app.render().cells[rect.y + row][rect.x : rect.x + rect.width]
-    return "".join(cell.character for cell in cells)
+def painted(app, rect) -> list[list[tuple]]:
+    """What the frame holds where the pet stands: each cell's character and colours."""
+    rows = app.app.render().cells[rect.y : rect.bottom]
+    return [[(c.character, c.style.foreground, c.style.background) for c in row[rect.x : rect.right]] for row in rows]
 
 
-def sprite_row(pose: str, step: int, row: int) -> str:
-    return "".join(span.text for span in DEFAULT_PET.lines(pose, step)[row].spans)
+def sprite(pose: str, step: int = 0, pet=CAT) -> list[list[tuple | None]]:
+    """The sprite's cells as the canvas would hold them; a cell it leaves empty is ``None``."""
+    rows = []
+    for line in pet.lines(pose, step):
+        row: list[tuple | None] = []
+        for span in line.spans:
+            for character in span.text:
+                empty = character == " " and span.style.background is None
+                row.append(None if empty else (character, span.style.foreground, span.style.background))
+        rows.append(row)
+    return rows
+
+
+def shows(app, rect, pose: str, step: int = 0, pet=CAT) -> bool:
+    """Whether the cells where the pet stands are those of one frame of the sprite.
+
+    A cell the sprite leaves empty is the conversation's, and a cell with no background of its own takes the
+    one that was under it.
+    """
+    return all(
+        want is None or (want[:2] == got[:2] and (want[2] is None or want[2] == got[2]))
+        for wanted, held in zip(sprite(pose, step, pet), painted(app, rect), strict=True)
+        for want, got in zip(wanted, held, strict=True)
+    )
 
 
 def drag(harness, rect, dx: int, dy: int, *, grab: tuple[int, int] = (2, 1)) -> None:
@@ -57,53 +80,18 @@ def drag(harness, rect, dx: int, dy: int, *, grab: tuple[int, int] = (2, 1)) -> 
     harness.mouse_up(x + dx, y + dy)
 
 
-# -- the sprite ------------------------------------------------------------------------------------------------
-
-
-def test_the_default_pet_is_the_mark_drawn_small_with_a_mood_for_work_and_for_a_pat():
-    assert DEFAULT_PET.name == "zett"
-    assert (DEFAULT_PET.width, DEFAULT_PET.height) == (9, 3)
-    assert DEFAULT_PET.frames(IDLE) == 1 and DEFAULT_PET.frames(WORKING) > 1 and DEFAULT_PET.frames(GLAD) > 1
-    for pose in (IDLE, WORKING, GLAD):
-        for step in range(DEFAULT_PET.frames(pose)):
-            lines = DEFAULT_PET.lines(pose, step)
-            assert len(lines) == DEFAULT_PET.height
-            assert all(display_width(sprite_row(pose, step, row)) == DEFAULT_PET.width for row in range(len(lines)))
-    assert DEFAULT_PET.lines(WORKING, 0) != DEFAULT_PET.lines(WORKING, 1), "the heart beats"
-    assert DEFAULT_PET.lines(WORKING, 2) == DEFAULT_PET.lines(WORKING, 0), "and the steps go round"
-
-
-def test_a_pet_without_a_rest_or_with_frames_that_disagree_is_refused():
-    palette = {"A": "#ffffff"}
-    with pytest.raises(ValueError, match="no 'idle' pose"):
-        Pet("x", palette, {GLAD: (("AA", "AA"),)})
-    with pytest.raises(ValueError, match="not 2x2"):
-        Pet("x", palette, {IDLE: (("AA", "AA"),), GLAD: (("AAA", "AAA"),)})
-    with pytest.raises(ValueError, match="whole cells"):
-        Pet("x", palette, {IDLE: (("AA", "AA", "AA"),)})
-    with pytest.raises(ValueError, match="no frames"):
-        Pet("x", palette, {IDLE: (("AA", "AA"),), GLAD: ()})
-
-
-def test_a_mood_the_pet_lacks_shows_its_rest():
-    plain = Pet("plain", {"A": "#ffffff"}, {IDLE: (("AA", "AA"),)})
-    assert plain.lines(GLAD, 3) == plain.lines(IDLE)
-    assert plain.frames(WORKING) == 1
-
-
 # -- where it stands --------------------------------------------------------------------------------------------
 
 
-def test_the_pet_stands_at_the_right_edge_halfway_down_the_conversation_and_is_painted_there():
+def test_the_pet_starts_as_the_cat_at_the_right_edge_halfway_down_the_conversation():
     app, harness, _ = shell()
     rect, view = stands(app, harness), app.view.rect
 
-    assert (rect.width, rect.height) == (9, 3)
+    assert app.pet.pet.name == "cat"
+    assert (rect.width, rect.height) == (CAT.width, CAT.height)
     assert rect.right == view.right - MARGIN
     assert abs((rect.y - view.y) - (view.height - rect.height) / 2) <= 1
-    assert [row_text(app, rect, row) for row in range(3)] == [sprite_row(IDLE, 0, row) for row in range(3)], (
-        "the cells of the frame are the cells of the sprite"
-    )
+    assert shows(app, rect, IDLE), "the cells of the frame are the cells of the sprite"
 
 
 def test_the_pet_is_not_drawn_where_the_conversation_is_too_narrow_or_too_short_for_it():
@@ -138,10 +126,7 @@ def test_the_conversation_shows_through_the_cells_the_pet_leaves_empty():
     without = [[cell.character for cell in row] for row in app.app.render().cells]
 
     empty = [
-        (row, column)
-        for row in range(rect.height)
-        for column in range(rect.width)
-        if sprite_row(IDLE, 0, row)[column] == " "
+        (row, column) for row in range(rect.height) for column in range(rect.width) if sprite(IDLE)[row][column] is None
     ]
     assert empty, "the sprite has corners with nothing in them"
     for row, column in empty:
@@ -153,6 +138,19 @@ def test_the_conversation_shows_through_the_cells_the_pet_leaves_empty():
         if not (rect.y <= y < rect.bottom and rect.x <= x < rect.right)
     ]
     assert all(with_pet[y][x] == without[y][x] for y, x in outside), "and nothing else is touched"
+
+
+def test_another_pet_stands_where_the_last_one_did():
+    app, harness, _ = shell()
+    drag(harness, stands(app, harness), -20, 3)
+    before = (app.pet.fx, app.pet.fy)
+    dog = app.agent.pets.load("dog")
+
+    app.pet.set_pet(dog)
+
+    rect = stands(app, harness)
+    assert app.pet.pet is dog and (app.pet.fx, app.pet.fy) == before
+    assert shows(app, rect, IDLE, pet=dog) and not shows(app, rect, IDLE, pet=CAT)
 
 
 # -- the mouse --------------------------------------------------------------------------------------------------
@@ -216,14 +214,14 @@ def test_a_pat_pleases_the_pet_and_the_clock_ends_it():
 
     assert app.pet.mood == GLAD and token in app.app.scheduler.animations
     harness.render()
-    assert [row_text(app, rect, row) for row in range(3)] == [sprite_row(GLAD, 0, row) for row in range(3)]
-    clock.now += GLAD_SECONDS / 2
+    assert shows(app, rect, GLAD, 0)
+    clock.now += FRAME_SECONDS
     harness.render()
-    assert row_text(app, rect, 1) == sprite_row(GLAD, 1, 1), "the second frame of the mood"
+    assert shows(app, rect, GLAD, 1) and not shows(app, rect, GLAD, 0), "the second frame of the mood"
     clock.now += GLAD_SECONDS
     harness.render()
     assert app.pet.mood == IDLE and token not in app.app.scheduler.animations
-    assert row_text(app, rect, 1) == sprite_row(IDLE, 0, 1)
+    assert shows(app, rect, IDLE)
 
 
 def test_the_wheel_over_the_pet_scrolls_the_conversation_as_it_would_anywhere_else():
@@ -241,25 +239,26 @@ def test_the_wheel_over_the_pet_scrolls_the_conversation_as_it_would_anywhere_el
 # -- the moods --------------------------------------------------------------------------------------------------
 
 
-def test_the_heart_beats_while_a_request_runs_and_stays_still_with_reduced_motion():
+def test_the_pet_wakes_while_a_request_runs_and_stays_still_with_reduced_motion():
     app, harness, clock = shell()
-    rect = stands(app, harness)
     assert app.pet.mood == IDLE
     app._busy = True
     harness.render()
     assert app.pet.mood == WORKING
-    first = [row_text(app, rect, row) for row in range(3)]
+    rect = stands(app, harness)
+    first = painted(app, rect)
+    mood, step = app.pet._drawn
+    assert mood == WORKING and shows(app, rect, WORKING, step)
     clock.now += 0.5
     assert app.pet.on_tick(), "the next frame is a different picture, and the loop is told so"
     harness.render()
-    second = [row_text(app, rect, row) for row in range(3)]
-    assert first == [sprite_row(WORKING, 0, row) for row in range(3)]
-    assert second == [sprite_row(WORKING, 1, row) for row in range(3)] and first != second
+    second = painted(app, rect)
+    assert shows(app, rect, WORKING, step + 1) and first != second
 
     app.app.reduced_motion = True
     clock.now += 0.5
     harness.render()
-    assert [row_text(app, rect, row) for row in range(3)] == first
+    assert shows(app, rect, WORKING, 0), "with reduced motion the pet keeps the first frame of the mood"
 
 
 # -- the switch -------------------------------------------------------------------------------------------------

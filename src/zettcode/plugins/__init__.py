@@ -28,6 +28,7 @@ from __future__ import annotations
 from ..app.agent.conversation.entries import EntryKind
 from ..app.agent.conversation.presenters import Presenter
 from ..app.commands import Command, CommandResult
+from ..app.pets import Pet
 from ..tui import Span, Style, TextLine, Theme
 from .builtins import BUILTIN_PLUGINS
 from .container import CommandHandler, PluginContainer
@@ -77,6 +78,7 @@ __all__ = [
     "Presenter",
     "ModelState",
     "Plugin",
+    "Pet",
     "PluginAgentMixin",
     "PluginContainer",
     "PluginEventMixin",

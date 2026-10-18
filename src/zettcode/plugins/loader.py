@@ -37,6 +37,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
     from ..app.agent.conversation.presenters import Presenter
     from ..app.agent.dialogue.mentions import MentionProvider
     from ..app.commands import Command
+    from ..app.pets import PetSource
     from ..config import ZettCodeConfig
     from ..providers import Provider
     from ..tui import ThemeSource
@@ -113,6 +114,7 @@ class _Loader:
         self.mentions: list[MentionProvider] = []
         self.providers: list[Provider] = []
         self.themes: list[ThemeSource] = []
+        self.pets: list[PetSource] = []
         self.presenters: list[Presenter[Any]] = []
         self.failures: list[str] = []
         self._identities: set[str] = set()
@@ -120,6 +122,7 @@ class _Loader:
         self._mention_kinds: set[str] = set()
         self._provider_names: set[str] = {provider.name for provider in BUILTIN_PROVIDERS}
         self._theme_names: set[str] = set(RESERVED_THEMES)
+        self._pet_names: set[str] = set()
 
     def fail(self, origin: str, error: BaseException) -> None:
         """Record one plugin that could not be prepared."""
@@ -175,9 +178,17 @@ class _Loader:
         if theme_clash is not None:
             self.failures.append(f"{origin}: theme {theme_clash} is already registered")
             return
+        # `/pet <name>` has to mean one pet, so a name an earlier plugin (the built-in one first) already has is not
+        # shared out a second time.
+        pet_clash = next((source.name for source in container.pets if source.name in self._pet_names), None)
+        if pet_clash is not None:
+            self.failures.append(f"{origin}: pet {pet_clash} is already registered")
+            return
         self._identities.add(name)
         self._theme_names.update(source.name for source in container.themes)
         self.themes.extend(container.themes)
+        self._pet_names.update(source.name for source in container.pets)
+        self.pets.extend(container.pets)
         self.presenters.extend(container.presenters)
         self._provider_names.update(provider.name for provider in container.providers)
         self.providers.extend(container.providers)
@@ -197,6 +208,7 @@ class _Loader:
             mentions=tuple(self.mentions),
             providers=tuple(self.providers),
             themes=tuple(self.themes),
+            pets=tuple(self.pets),
             presenters=tuple(self.presenters),
             rows=self.slots.rows(),
             failures=tuple(self.failures),

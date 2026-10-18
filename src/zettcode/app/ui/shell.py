@@ -71,9 +71,10 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
     from ..agent.extensions.messenger import Messenger
     from ..agent.extensions.usage import UsageSnapshot
     from ..commands import Command
+    from ..pets import Pet
     from .followups import FollowUp
     from .gc_policy import CollectorPolicy
-    from .widgets import Composer, FollowUpQueue, SteeringQueue, TranscriptView, ZettCodeRoot
+    from .widgets import Composer, FollowUpQueue, PetView, SteeringQueue, TranscriptView, ZettCodeRoot
 
 
 class ShellState:
@@ -110,6 +111,10 @@ class ShellState:
     mentions: MentionRegistry
     #: The palette in force before the ``/theme`` menu started showing others, or ``None`` when nothing is previewed.
     _theme_before: Theme | None
+    #: The pet in front of the one the ``/pet`` menu is previewing, or ``None`` when nothing is previewed.
+    _pet_before: Pet | None
+    #: The pet over the conversation.
+    pet: PetView
     #: The command whose menu is showing its words as it is walked (see ``Command.preview``).
     _previewing: Command | None
     #: The plugin rows, in paint order.

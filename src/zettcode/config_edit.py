@@ -303,6 +303,11 @@ def set_theme(text: str, name: str, *, where: Path) -> str:
     return _set_key(text, "ui", "theme", toml_string(name), name, where=where, command="/theme")
 
 
+def set_pet(text: str, name: str, *, where: Path) -> str:
+    """Return ``text`` with ``[ui] pet`` set to ``name``, touching nothing else."""
+    return _set_key(text, "ui", "pet", toml_string(name), name, where=where, command="/pet")
+
+
 def set_self_compaction(text: str, enabled: bool, *, where: Path) -> str:
     """Return ``text`` with ``[compaction] self`` set to ``enabled``, touching nothing else."""
     return _set_key(

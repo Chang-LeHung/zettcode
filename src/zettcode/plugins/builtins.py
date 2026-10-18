@@ -18,6 +18,7 @@ from ..app.agent.dialogue.mentions import FileMentions, SkillMentions
 from ..app.agent.extensions.usage import context_share, usage_parts
 from ..app.agent.storage.ledger import LedgerReader
 from ..app.commands import CommandContext, CommandResult
+from ..app.pets import bundled_pets
 from ..app.ui import labels
 from ..app.ui.widgets import UsagePage
 from ..statusline import Row
@@ -132,6 +133,22 @@ class BuiltinThemes(Plugin):
             container.register_theme(source.name, source.load, description=source.description)
 
 
+class BuiltinPets(Plugin):
+    """The pets that ship with the program, offered the way any plugin offers one.
+
+    They are registered first, so they are listed first in the ``/pet`` menu, and a plugin cannot register a name
+    they hold. Adding a built-in pet is adding a module beside the others and its name to ``BUNDLED``; nothing
+    here knows what a pet looks like.
+    """
+
+    name = "pets"
+
+    def activate(self, container: PluginContainer) -> None:
+        """Offer each pet by name. Nothing is built until one is asked for."""
+        for source in bundled_pets():
+            container.register_pet(source.name, source.load, description=source.description)
+
+
 class BuiltinPresenters(Plugin):
     """How the program draws its own rows, offered the way any plugin offers a presenter.
 
@@ -156,5 +173,6 @@ BUILTIN_PLUGINS: tuple[Plugin, ...] = (
     FileResources(),
     UsageCommand(),
     BuiltinThemes(),
+    BuiltinPets(),
     BuiltinPresenters(),
 )
