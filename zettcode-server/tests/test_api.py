@@ -31,7 +31,7 @@ async def test_health_says_which_session_and_workspace_it_serves_and_that_nothin
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "ok" and body["busy"] is False
-    assert body["session"] == "session-1" and body["workspace"] == "/tmp/zettcode-server-test"
+    assert body["session"] == "session-1" and body["workspace"] == str(Path("/tmp/zettcode-server-test"))
     assert body["version"]
 
 
