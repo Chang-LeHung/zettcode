@@ -18,6 +18,10 @@ zettcode-server 0.1.0 (zettcode 0.1.8) · http://127.0.0.1:3290 · workspace /ho
 It binds loopback on port **3290**, denies shell commands by default, and asks for a bearer token only when one is
 configured (`--token`, `$ZETTCODE_SERVER_TOKEN`).
 
+A machine with no model configured is still served: `/health` says `ready: false` and `POST /models` writes the
+`[[models]]` entry (the same one `/config add` writes) and builds the agent, so an editor can set ZettCode up without
+touching a file by hand.
+
 ```bash
 curl http://127.0.0.1:3290/health
 curl -N -X POST http://127.0.0.1:3290/prompts \

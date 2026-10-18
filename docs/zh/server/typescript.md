@@ -58,12 +58,28 @@ await run.cancel();
 
 `client.runState()` 说明是否有运行在跑、它在等什么 —— 重新加载的编辑器可以据此重新展示问题。
 
+## 配一个模型
+
+还没有配置模型的服务器也能应答,所以编辑器可以先建一个:
+
+```ts
+const health = await client.health();      // { ready: false, models: 0, session: null, … }
+if (!health.ready) {
+  await client.addModel({ model: "gpt-5-mini", token: apiKey, display_model: "Fast" });
+}
+await client.updateModel("Fast", { context_window: 200_000 });   // token 保留
+await client.updateSettings({ model: "Fast" });                  // 下一次 prompt 用它
+```
+
+`addModel` 写入的就是 `/config add` 写的那条 `[[models]]`;`removeModel` 拒绝删掉最后一个。
+
 ## 其余 API
 
 | 客户端方法 | 端点 |
 | --- | --- |
 | `health()` | `GET /health` |
-| `models()`、`settings()`、`updateSettings(change)`、`plugins()` | `/models`、`/settings`、`/plugins` |
+| `models()`、`addModel(entry)`、`updateModel(name, changes)`、`removeModel(name)` | `/models`、`/models/{name}` |
+| `settings()`、`updateSettings(change)`、`plugins()` | `/settings`、`/plugins` |
 | `listSessions(limit)`、`createSession(title?)`、`currentSession()` | `/sessions`、`/sessions/current` |
 | `openSession(id)`、`renameSession(title)`、`nameSession()`、`forkSession()` | `/sessions/...` |
 | `compactSession()`、`context()`、`history()`、`exportSession()`、`ask(question)` | `/sessions/current/...` |

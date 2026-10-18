@@ -6,6 +6,7 @@ a stream frame looks like, and that a second prompt while one runs is refused ra
 
 from __future__ import annotations
 
+import asyncio
 import hmac
 import json
 import tempfile
@@ -29,10 +30,13 @@ from zettcode.sdk.errors import (
     SessionNotFoundError,
     ZettCodeError,
 )
+from zettcode.sdk.models import add_model as add_model_entry
+from zettcode.sdk.models import remove_model as remove_model_entry
+from zettcode.sdk.models import update_model as update_model_entry
 
 from . import __version__
+from .runner import NoModelError, Runner, prepare, result_payload
 from .runner import Request as RunRequest
-from .runner import Runner, prepare, result_payload
 from .schemas import (
     AnswerOut,
     ApprovalAnswer,
@@ -47,7 +51,9 @@ from .schemas import (
     HealthOut,
     HistoryOut,
     MentionsOut,
+    ModelCreate,
     ModelsOut,
+    ModelUpdate,
     PluginsOut,
     PromptRequest,
     QuestionAnswer,
@@ -95,6 +101,7 @@ FAILURES: tuple[tuple[type[BaseException], int, str], ...] = (
     (SessionLockedError, 409, "locked"),
     (SessionBusyError, 409, "busy"),
     (NothingToDoError, 409, "nothing_to_do"),
+    (NoModelError, 409, "no_model"),
     (ConfigurationError, 400, "invalid"),
     (RunTimeoutError, 504, "timeout"),
     (RunError, 502, "run"),
@@ -131,6 +138,8 @@ def stream_of(runner: Runner, request: RunRequest, *, resume: bool = False) -> S
     """
     if runner.busy:
         raise SessionBusyError("A run is already in progress; wait for it or cancel it")
+    if not runner.ready:
+        raise NoModelError("No model is configured; add one with POST /models")
     prepare(request)
 
     async def frames() -> AsyncIterator[bytes]:
@@ -208,19 +217,62 @@ def create_app(settings: Settings, *, client_factory: ClientFactory | None = Non
 
     @app.get("/health", response_model=HealthOut, tags=["health"])
     async def health(runner: RunnerDep) -> HealthOut:
-        """Say that the server is up, and which session and workspace it serves."""
+        """Say that the server is up, whether it has a model to work with, and which session it serves."""
+        client = runner.maybe_client
+        models = client.models if client is not None else runner.models_now()
         return HealthOut(
             version=__version__,
             workspace=str(settings.workspace),
-            session=runner.client.session.id,
+            ready=client is not None,
+            session=None if client is None else client.session.id,
+            models=len(models),
             busy=runner.busy,
         )
 
     @protected.get("/models", response_model=ModelsOut, tags=["models"])
     async def models(runner: RunnerDep) -> ModelsOut:
-        """List the configured models and say which one the next prompt would use."""
-        client = runner.client
-        return ModelsOut(models=[model_out(model) for model in client.models], current=client.model.name)
+        """List the configured models and say which one the next prompt would use.
+
+        This works before a model is configured: the list then comes from the configuration file, and ``current`` is
+        null until one is added.
+        """
+        return ModelsOut(models=[model_out(model) for model in runner.models_now()], current=runner.current_model)
+
+    @protected.post("/models", response_model=ModelsOut, status_code=201, tags=["models"])
+    async def add_model(body: ModelCreate, runner: RunnerDep) -> ModelsOut:
+        """Add a model to the configuration file, and use it when the server had none.
+
+        The first model is what turns a fresh server into a working one: the client is built as soon as the file
+        holds it. A model added while another is in use is available for ``PATCH /settings``, and the conversation
+        carries on with the one it was using.
+        """
+        if runner.busy:
+            raise SessionBusyError("A run is in progress; change the models when it ends")
+        added = await asyncio.to_thread(add_model_entry, body.entry(), path=settings.config_path)
+        if not runner.ready:
+            await runner.reload(model=added[-1].name)
+        return ModelsOut(models=[model_out(model) for model in runner.models_now()], current=runner.current_model)
+
+    @protected.patch("/models/{name}", response_model=ModelsOut, tags=["models"])
+    async def change_model(name: str, body: ModelUpdate, runner: RunnerDep) -> ModelsOut:
+        """Change one model in the configuration file; the token is kept unless a new one is given."""
+        if runner.busy:
+            raise SessionBusyError("A run is in progress; change the models when it ends")
+        changes = body.changes()
+        if not changes:
+            raise ValueError("Name at least one field to change")
+        await asyncio.to_thread(update_model_entry, name, changes, path=settings.config_path)
+        await runner.reload(model=runner.current_model)
+        return ModelsOut(models=[model_out(model) for model in runner.models_now()], current=runner.current_model)
+
+    @protected.delete("/models/{name}", response_model=ModelsOut, tags=["models"])
+    async def delete_model(name: str, runner: RunnerDep) -> ModelsOut:
+        """Remove one model from the configuration file; the last one cannot go, since a client needs one."""
+        if runner.busy:
+            raise SessionBusyError("A run is in progress; change the models when it ends")
+        await asyncio.to_thread(remove_model_entry, name, path=settings.config_path)
+        await runner.reload()
+        return ModelsOut(models=[model_out(model) for model in runner.models_now()], current=runner.current_model)
 
     @protected.get("/settings", response_model=SettingsOut, tags=["models"])
     async def settings_out(runner: RunnerDep) -> SettingsOut:

@@ -40,6 +40,23 @@ A server serves the workspace it was started in. Running two workspaces in one p
 the agent's tools resolve paths against the process's working directory. Start a second server for a second project.
 :::
 
+## A fresh machine
+
+The server starts **without any model configured**. `/health` says `ready: false`, `/models` is empty, and anything
+that needs an agent answers `409 no_model` — while the model endpoints work, so the editor that is using the server
+can set one up:
+
+```bash
+curl -X POST http://127.0.0.1:3290/models \
+  -H 'content-type: application/json' \
+  -d '{"model": "gpt-5-mini", "token": "sk-…", "display_model": "Fast"}'
+```
+
+The first model builds the agent; `/health` then says `ready: true`. The entry is written to the configuration file
+with the same keys `/config add` uses, so the terminal sees it too. Add more, change one (the token is kept unless a new
+one is given), or remove one — the last cannot go, because a configuration with no models is one no client can be made
+from. `PATCH /settings {"model": "Fast"}` is how you choose among them, and the choice holds for the next prompt.
+
 ## A first request
 
 ```bash

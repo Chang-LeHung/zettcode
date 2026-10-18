@@ -217,6 +217,41 @@ describe("the JSON API", () => {
     });
   });
 
+  test("models can be added, changed and removed, and health says whether one exists", async () => {
+    const model = { name: "Fast", model: "gpt-5", context_window: 128000, multimodal: false, efforts: ["low"], active: true };
+    const server = await start((request, response) => {
+      if (request.url === "/models" && request.method === "POST") {
+        assert.deepEqual(JSON.parse(request.body), { model: "gpt-5", token: "sk-1", display_model: "Fast" });
+        return json(response, { models: [model], current: "Fast" }, 201);
+      }
+      if (request.url === "/models/Fast" && request.method === "PATCH") {
+        assert.deepEqual(JSON.parse(request.body), { context_window: 200000 });
+        return json(response, { models: [{ ...model, context_window: 200000 }], current: "Fast" });
+      }
+      if (request.url === "/models/Fast" && request.method === "DELETE") {
+        return json(response, { error: "invalid", message: "that is the only model; add another before removing it" }, 400);
+      }
+      if (request.url === "/health") {
+        return json(response, { status: "ok", version: "0.1.0", workspace: "/w", ready: true, session: "s", models: 1, busy: false });
+      }
+      json(response, { error: "not_found", message: request.url }, 404);
+    });
+    const client = new ZettCodeClient({ baseUrl: server.url });
+
+    const added = await client.addModel({ model: "gpt-5", token: "sk-1", display_model: "Fast" });
+    assert.equal(added.current, "Fast");
+    assert.equal((await client.updateModel("Fast", { context_window: 200000 })).models[0]?.context_window, 200000);
+    await assert.rejects(client.removeModel("Fast"), (error: unknown) => {
+      assert.ok(error instanceof ZettCodeError);
+      assert.equal(error.code, "invalid");
+      return true;
+    });
+    const health = await client.health();
+    assert.equal(health.ready, true);
+    assert.equal(health.session, "s");
+    assert.equal(health.models, 1);
+  });
+
   test("mentions, the usage ledger, session stats, self-compaction and doctor are all reachable", async () => {
     const server = await start((request, response) => {
       if (request.url === "/mentions?query=cli&limit=5") {

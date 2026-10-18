@@ -577,6 +577,33 @@ def _read_models(raw: object, source: Path) -> tuple[ModelConfig, ...]:
     return tuple(models)
 
 
+def read_models(path: str | Path | None = None) -> tuple[ModelConfig, ...]:
+    """Return the models a config file lists, and nothing else it holds.
+
+    Unlike :func:`load_config`, no models is an answer (the file is new, or a program is being set up) and a
+    missing file is an empty one. A model that is configured wrongly is still an error, because it would fail on
+    the first request otherwise.
+
+    Args:
+        path: The file to read; ``$ZETTCODE_CONFIG`` or ``~/.zettcode/config.toml`` by default.
+    """
+    source = config_path(path)
+    if not source.is_file():
+        return ()
+    try:
+        data = tomllib.loads(source.read_text(encoding="utf-8"))
+    except tomllib.TOMLDecodeError as error:
+        raise ValueError(f"Invalid config file {source}: {error}") from error
+    raw = data.get("models", [])
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        raise ValueError("Config key 'models' must be an array of tables ([[models]])")
+    if any(not isinstance(entry, dict) for entry in raw):
+        raise ValueError("Config key 'models' must be an array of tables ([[models]])")
+    return tuple(_entry_model(entry, index) for index, entry in enumerate(raw, start=1))
+
+
 def _read_table(raw: object, key: str, source: Path, allowed: frozenset[str]) -> dict[str, object]:
     """Return one optional config table, rejecting unknown keys and wrong shapes."""
     if raw is None:

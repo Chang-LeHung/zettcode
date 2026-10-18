@@ -18,6 +18,7 @@ Every endpoint answers JSON unless it says otherwise, and every failure uses the
 | `busy` | 409 | A run is in progress and this needs the conversation. |
 | `locked` | 409 | Another process has the session open. |
 | `nothing_to_do` | 409 | There is no interrupted request to continue. |
+| `no_model` | 409 | No model is configured yet, so there is no agent to run a prompt with. Add one with `POST /models`. |
 | `timeout` | 504 | The run's deadline passed. |
 | `run` | 502 | The provider, or the run, failed. |
 | `internal` | 500 | Anything else; the message is the SDK's. |
@@ -28,14 +29,17 @@ Except on `/health`, every endpoint requires `Authorization: Bearer <token>` whe
 
 | Method | Path | Answers |
 | --- | --- | --- |
-| `GET` | `/health` | `{"status","version","workspace","session","busy"}`; the only endpoint a token does not guard. |
+| `GET` | `/health` | `{"status","version","workspace","ready","session","models","busy"}`; the only endpoint a token does not guard. `ready` is false until a model is configured, and `session` is null then. |
 | `GET` | `/` | The name, version and the paths of the docs and health endpoints. |
 
 ## Models and settings
 
 | Method | Path | Body | Answers |
 | --- | --- | --- | --- |
-| `GET` | `/models` | — | `{"models": [{"name","model","context_window","multimodal","efforts","active"}], "current"}` |
+| `GET` | `/models` | — | `{"models": [{"name","model","context_window","multimodal","efforts","active"}], "current"}`; works before a model is configured, where `current` is null. |
+| `POST` | `/models` | `{"model", "token"?, "display_model"?, "base_url"?, "anthropic"?, "responses_api"?, "multimodal"?, "context_window"?, "compact_percent"?, "reasoning_efforts"?}` | 201 with the new list. The first model makes the server ready; later ones are available for `PATCH /settings`. Written to the configuration file, with the keys the terminal's `/config add` uses. |
+| `PATCH` | `/models/{name}` | Any of the fields `POST /models` takes | The new list. A key left out stays as it is; the token is kept unless a new one is given. |
+| `DELETE` | `/models/{name}` | — | The remaining models. The last one cannot be removed (`400 invalid`): a client needs one. |
 | `GET` | `/settings` | — | `{"model","effort","efforts","permission","permissions"}` |
 | `PATCH` | `/settings` | `{"model"?, "effort"?, "permission"?}` | The same as `GET /settings`, after the change. At least one field. |
 | `GET` | `/plugins` | — | `{"loaded": [...], "failures": [...]}` |

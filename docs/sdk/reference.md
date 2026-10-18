@@ -16,6 +16,7 @@ The package exports the everyday names from `zettcode.sdk`. Everything else is i
 | [`zettcode.sdk.events`](#zettcode-sdk-events) | every event, `AnyEvent` |
 | [`zettcode.sdk.types`](#zettcode-sdk-types) | the values methods return |
 | [`zettcode.sdk.handlers`](#zettcode-sdk-handlers) | approval rules and handler types |
+| [`zettcode.sdk.models`](#zettcode-sdk-models) | `list_models`, `add_model`, `update_model`, `remove_model` |
 | [`zettcode.sdk.errors`](#zettcode-sdk-errors) | every error |
 
 ## zettcode.sdk
@@ -28,6 +29,7 @@ from zettcode.sdk import (
     RunResult, Usage, Image,
     TextDelta, ReasoningDelta, ToolStarted, ToolFinished, ApprovalRequested, QuestionAsked, Finished,
     approve_all, approve_commands, deny_all,
+    add_model, list_models, update_model, remove_model,
     ZettCodeError, ConfigurationError, RunError,
 )
 ```
@@ -132,6 +134,19 @@ The agent for one workspace. An async context manager. See [Client & configurati
 ### `PluginReport`
 
 Frozen dataclass: `loaded: tuple[str, ...]`, `failures: tuple[str, ...]`.
+
+## zettcode.sdk.models
+
+The configuration file's models, for setting up a machine before there is a client. See [Models before there is a client](./client#models-before-there-is-a-client).
+
+```python
+def list_models(path=None) -> tuple[ModelInfo, ...]: ...
+def add_model(entry, *, path=None) -> tuple[ModelInfo, ...]: ...
+def update_model(name, changes, *, path=None) -> tuple[ModelInfo, ...]: ...
+def remove_model(name, *, path=None) -> tuple[ModelInfo, ...]: ...
+```
+
+`entry` and `changes` are the file's keys (`model`, `token`, `display_model`, `base_url`, `anthropic`, `responses_api`, `multimodal`, `context_window`, `compact_percent`, `reasoning_efforts`). `path` defaults to `$ZETTCODE_CONFIG` or `~/.zettcode/config.toml`. Every call returns the whole list, with no model marked active, and refuses a file it cannot read back; the last model cannot be removed.
 
 ## zettcode.sdk.session
 

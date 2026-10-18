@@ -209,6 +209,27 @@ async with zc.Client(".") as client:
 
 [Usage and health](./usage) explains the ledger, session stats and the model check; [Sessions](./sessions) covers what a session holds.
 
+## Models before there is a client
+
+The functions above all need a client, and a client needs at least one model. A fresh machine has none, which is why
+the package also edits the configuration file itself — the same `[[models]]` entries the terminal's `/config` edits:
+
+```python
+import zettcode.sdk as zc
+
+for model in zc.list_models():            # (), when the file is new or has no models
+    print(model.name, model.context_window)
+
+zc.add_model({"model": "gpt-5-mini", "token": "sk-…", "display_model": "Fast"})
+zc.update_model("Fast", {"context_window": 200000})   # the token is kept
+zc.remove_model("Fast")                                # refused for the last one
+```
+
+`add_model` writes the first entry itself and later ones through the terminal's editor, so comments and the rest of
+the file are kept; what it writes is read back and validated before it returns, and a write that would not parse is
+undone. The functions take `path=` for a configuration file other than the default. Once a model is in the file,
+`Client(...)` (or `Client(config_path=...)`) can be made.
+
 ## Closing
 
 ```python

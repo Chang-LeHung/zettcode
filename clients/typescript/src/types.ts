@@ -42,6 +42,23 @@ export interface ModelInfo {
   active: boolean;
 }
 
+/** One model to add to the configuration file; the keys are the file's own. */
+export interface ModelInput {
+  model: string;
+  token?: string;
+  display_model?: string;
+  base_url?: string;
+  anthropic?: boolean;
+  responses_api?: boolean;
+  multimodal?: boolean;
+  context_window?: number;
+  compact_percent?: number;
+  reasoning_efforts?: string[];
+}
+
+/** Changes to one configured model; a key left out stays as it is, the token included. */
+export type ModelUpdate = Partial<ModelInput>;
+
 export interface Settings {
   model: ModelInfo;
   effort: string;
@@ -60,7 +77,10 @@ export interface Health {
   status: "ok";
   version: string;
   workspace: string;
-  session: string;
+  /** Whether a model is configured, so a prompt can run; a fresh machine is false until `addModel`. */
+  ready: boolean;
+  session: string | null;
+  models: number;
   busy: boolean;
 }
 
