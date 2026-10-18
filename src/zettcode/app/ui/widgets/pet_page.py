@@ -32,7 +32,7 @@ MIN_WIDTH_FOR_BOX = 62
 LEFT_FOR_CONVERSATION = 8
 
 #: Columns a pet's name takes in the list, and the colour chip before it.
-NAME_WIDTH = 9
+NAME_WIDTH = 11
 CHIP = 3
 
 #: How long the stage holds each step of the mood it shows the marked pet in.

@@ -577,6 +577,12 @@ eleven pixels across and drawn with half blocks, each pet in its own small palet
 | `cat` | A ginger cat with pricked ears and a pink mouth. **The default.** |
 | `dog` | A tan dog with long floppy ears. |
 | `tiger` | An orange tiger with stripes on its brow. |
+| `polarbear` | A white polar bear with round ears. |
+| `snowbear` | A big white bear sitting side on; an ear flicks. |
+| `penguin` | A navy penguin that flaps its flippers. |
+| `scarfy` | A penguin in a red scarf that swings. |
+| `kangaroo` | A russet kangaroo that hops. |
+| `seagull` | A pale seagull that flaps its wings. |
 | `whale` | A blue whale that spouts. |
 | `chibi` | An original anime-style girl with a violet bob. |
 | `slime` | A round green slime that hops. |
