@@ -84,19 +84,30 @@ zettcode
 | [常见问题](https://chang-lehung.github.io/zettcode/zh/guide/faq) | [会话管理](https://chang-lehung.github.io/zettcode/zh/guide/sessions) | [项目指令](https://chang-lehung.github.io/zettcode/zh/guide/instructions) |
 | | | [Skills 与 MCP](https://chang-lehung.github.io/zettcode/zh/guide/skills-and-mcp) · [插件](https://chang-lehung.github.io/zettcode/zh/guide/plugins) |
 
+嵌入到别处:[**SDK**](https://chang-lehung.github.io/zettcode/zh/sdk/) 用 Python 驱动代理,
+[**服务器**](https://chang-lehung.github.io/zettcode/zh/server/) 把它放到 HTTP 后面 —— 运行中的 prompt 流式返回,
+包含会话、审批、steer 和模型切换。
+
+```bash
+uv tool install zettcode-server
+zettcode-server --workspace ~/projects/api --port 8000
+```
+
 ## 开发
 
 ```bash
-uv sync                         # 安装依赖
-make check                      # Ruff、mypy 与测试
+uv sync --all-packages           # 安装两个包
+make check                      # Ruff、mypy 与两套测试
+make client                     # 构建并测试 TypeScript 客户端
 make hooks                      # 每次提交前强制检查 mypy
 make demo                       # 浏览终端组件
 make docs                       # 本地预览使用文档
 uv run zettcode --workspace .    # 从源码运行
 ```
 
-ZettCode 提供终端应用，智能体运行时来自
-[`zett-agent`](https://github.com/Chang-LeHung/zett-agent)。贡献者约定和不变量放在
+ZettCode 提供终端应用和它的 HTTP 服务器;智能体运行时来自
+[`zett-agent`](https://github.com/Chang-LeHung/zett-agent)。仓库是一个 uv workspace:`zettcode/` 是代理,
+`zettcode-server/` 是 API,`clients/typescript/` 是它的 TypeScript 客户端。贡献者约定和不变量放在
 [`AGENTS.md`](AGENTS.md) 与 [`docs/internal/`](docs/internal/)，不进入用户指南。
 本地预览、重新生成效果图的方法见
 [`docs/internal/site-design.md`](docs/internal/site-design.md)。

@@ -31,6 +31,9 @@ tool configuration (Ruff, mypy, the dev dependency group) and the member list. N
   `zettcode.sdk`, which drives the released `zett-agent` runtime. It is one process per workspace, because the SDK
   keeps the process's working directory. Do not re-implement tools, sessions, model calls, or the SDK's event
   translation there; add a method to the SDK first when the server needs something it does not have.
+- `clients/typescript/` is the TypeScript client for the server, and only a client: it speaks the HTTP API, has no
+  runtime dependency, and parses the event stream itself. A capability the client needs is an endpoint on the server
+  first, never a shortcut through the SDK.
 - Keep Zett application vocabulary (artifacts, tags, cards, channels, scheduled
   tasks) out of this repository. ZettCode is a coding agent, not a host app.
 

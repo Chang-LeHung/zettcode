@@ -38,6 +38,11 @@ const translations = {
         reference: "API reference",
       },
     },
+    server: {
+      menu: "Server",
+      groups: ["Get started", "Reference"],
+      pages: { index: "Overview", api: "HTTP API", events: "Event stream", typescript: "TypeScript client" },
+    },
     guide: "Guide", reference: "Reference", setup: "Configure", install: "Get started",
     edit: "Edit this page on GitHub", license: "Released under the MIT license.", footer: "ZettCode — your terminal, your coding partner.",
     prev: "Previous", next: "Next", outline: "On this page", updated: "Last updated", top: "Back to top", menu: "Guide menu",
@@ -81,6 +86,11 @@ const translations = {
         reference: "API 参考",
       },
     },
+    server: {
+      menu: "服务器",
+      groups: ["开始", "参考"],
+      pages: { index: "概览", api: "HTTP API", events: "事件流", typescript: "TypeScript 客户端" },
+    },
     guide: "使用指南", reference: "操作参考", setup: "配置与扩展", install: "快速开始",
     edit: "在 GitHub 上编辑此页", license: "以 MIT 许可证发布。", footer: "ZettCode —— 你的终端，你的编码伙伴。",
     prev: "上一篇", next: "下一篇", outline: "本页目录", updated: "最近更新", top: "回到顶部", menu: "指南目录",
@@ -116,6 +126,13 @@ const sdkLayout = [
   { group: 2, pages: ["cookbook", "reference"] },
 ];
 
+// The server has its own sidebar for the same reason the SDK does: it is read by someone embedding ZettCode in
+// another program, not by someone using the terminal.
+const serverLayout = [
+  { group: 0, pages: ["index"] },
+  { group: 1, pages: ["api", "events", "typescript"] },
+];
+
 export function navigation(language: keyof typeof translations) {
   const text = translations[language];
   const prefix = language === "zh" ? "/zh/guide/" : "/guide/";
@@ -128,6 +145,17 @@ export function navigation(language: keyof typeof translations) {
     link: slug === "index" ? sdkPrefix : sdkPrefix + slug,
   });
   const sdkSidebar = sdkLayout.map(({ group, pages }) => ({ text: sdkText.groups[group], items: pages.map(sdkPage) }));
+
+  const serverText = text.server;
+  const serverPrefix = language === "zh" ? "/zh/server/" : "/server/";
+  const serverPage = (slug: string) => ({
+    text: serverText.pages[slug as keyof typeof serverText.pages],
+    link: slug === "index" ? serverPrefix : serverPrefix + slug,
+  });
+  const serverSidebar = serverLayout.map(({ group, pages }) => ({
+    text: serverText.groups[group],
+    items: pages.map(serverPage),
+  }));
 
   const sidebar = layout.map(({ group, pages }) => ({
     text: text.groups[group],
@@ -146,9 +174,10 @@ export function navigation(language: keyof typeof translations) {
       { text: text.reference, activeMatch: `${prefix}(${pageSlugs(1).join("|")})`, items: byGroup(1) },
       { text: text.setup, activeMatch: `${prefix}(${pageSlugs(2).join("|")})`, items: byGroup(2) },
       { text: sdkText.menu, link: sdkPrefix, activeMatch: sdkPrefix },
+      { text: serverText.menu, link: serverPrefix, activeMatch: serverPrefix },
       { text: text.install, link: prefix + "getting-started" },
     ],
-    sidebar: { [prefix]: sidebar, [sdkPrefix]: sdkSidebar },
+    sidebar: { [prefix]: sidebar, [sdkPrefix]: sdkSidebar, [serverPrefix]: serverSidebar },
     editLink: { pattern: `${REPO}/edit/main/docs/:path`, text: text.edit },
     footer: { message: text.license, copyright: text.footer },
     docFooter: { prev: text.prev, next: text.next },

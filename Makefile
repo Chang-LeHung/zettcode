@@ -11,7 +11,7 @@ SMOKE_DIR := .smoke
 PACKAGE_DIRS := zettcode zettcode-server
 LINT_PATHS := zettcode/src zettcode/tests zettcode/perf zettcode-server/src zettcode-server/tests docs/scripts
 
-.PHONY: help install lint typecheck test test-zettcode test-server build build-all smoke check hooks docs docs-build docs-preview demo demo-all demos demo-thinking palettes themes perf perf-scaling perf-store perf-profile perf-startup perf-imports FORCE
+.PHONY: help install lint typecheck test test-zettcode test-server client build build-all smoke check hooks docs docs-build docs-preview demo demo-all demos demo-thinking palettes themes perf perf-scaling perf-store perf-profile perf-startup perf-imports FORCE
 
 DEMOS := text status_bar spinner progress_bar list table diff markdown textarea completion dialog collapsible toast tasks scroll layout
 
@@ -21,9 +21,10 @@ help:
 	@echo "  make lint     Check formatting and linting with Ruff"
 	@echo "  make typecheck Check the shipped code of both packages with mypy"
 	@echo "  make test     Run both test suites"
+	@echo "  make client   Build and test the TypeScript client"
 	@echo "  make build    Build the zettcode sdist and wheel into dist/"
 	@echo "  make build-all  Build the sdist and wheel of both packages into dist/"
-	@echo "  make smoke    Build both wheels into $(SMOKE_DIR)/ and run 'zettcode --help' from it"
+	@echo "  make smoke    Build both wheels into $(SMOKE_DIR)/ and run each program's --help from them"
 	@echo "  make check    Run lint, typecheck, and tests"
 	@echo "  make hooks    Install the git hooks (blocks a commit that fails mypy)"
 	@echo "  make docs     Serve the user guide at http://localhost:5173"
@@ -61,6 +62,10 @@ test-zettcode:
 test-server:
 	cd zettcode-server && $(UV) run --no-sync pytest
 
+# The TypeScript client has its own toolchain: Node 20+, no runtime dependencies.
+client:
+	cd clients/typescript && npm install --no-audit --no-fund && npm test
+
 build:
 	$(UV) build --package zettcode
 
@@ -73,10 +78,11 @@ build-all:
 smoke:
 	rm -rf $(SMOKE_DIR)
 	$(UV) build --all-packages --out-dir $(SMOKE_DIR)
-	$(UV) run --no-sync --no-project --python 3.14 --with ./$(SMOKE_DIR)/zettcode-*.whl zettcode --help
+	$(UV) run --no-project --python 3.14 --with ./$(SMOKE_DIR)/zettcode-*.whl zettcode --help
+	$(UV) run --no-project --python 3.14 --with ./$(SMOKE_DIR)/zettcode-*.whl --with ./$(SMOKE_DIR)/zettcode_server-*.whl zettcode-server --help
 	@# The HTML trace ships as package data: a packaging change that drops the
 	@# template, its stylesheet, or its script has to fail here, not at export time.
-	$(UV) run --no-sync --no-project --python 3.14 --with ./$(SMOKE_DIR)/zettcode-*.whl python -c "from importlib.resources import files; names = sorted(p.name for p in files('zettcode.app.agent.export').joinpath('trace').iterdir()); assert names == ['script.js', 'style.css', 'template.html'], names; print('trace assets:', names)"
+	$(UV) run --no-project --python 3.14 --with ./$(SMOKE_DIR)/zettcode-*.whl python -c "from importlib.resources import files; names = sorted(p.name for p in files('zettcode.app.agent.export').joinpath('trace').iterdir()); assert names == ['script.js', 'style.css', 'template.html'], names; print('trace assets:', names)"
 
 check: lint typecheck test
 

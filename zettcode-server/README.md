@@ -1,7 +1,34 @@
 # zettcode-server
 
-The HTTP face of the ZettCode coding agent, in the same repository as the terminal program and its Python SDK.
+The ZettCode coding agent behind an HTTP API, in the same repository as the terminal program and its SDK.
 
-The package is the second member of the workspace, next to [`zettcode/`](../zettcode). It is built against the released
-`zettcode` SDK and holds no agent of its own: one process serves one workspace, and every request drives the same
-runtime the terminal does.
+One process serves one workspace. Every endpoint drives the released `zettcode` SDK — the same tools, plugins, MCP
+servers, skills, project instructions and session store as the terminal — so a conversation begun here can be reopened
+in `zettcode`, and the other way round. The package holds no agent of its own.
+
+```bash
+uv tool install zettcode-server
+zettcode-server --workspace ~/projects/api
+```
+
+```text
+zettcode-server 0.1.0 (zettcode 0.1.8) · http://127.0.0.1:3290 · workspace /home/you/projects/api · permission deny · token off
+```
+
+It binds loopback on port **3290**, denies shell commands by default, and asks for a bearer token only when one is
+configured (`--token`, `$ZETTCODE_SERVER_TOKEN`).
+
+```bash
+curl http://127.0.0.1:3290/health
+curl -N -X POST http://127.0.0.1:3290/prompts \
+  -H 'content-type: application/json' \
+  -d '{"text": "summarize the README", "approvals": {"mode": "deny"}}'
+```
+
+The stream carries the run's events and ends with its result. A run that needs an answer — a shell command, a
+question — is suspended and answered through `POST /runs/approvals` or `POST /runs/questions`, so a client stays in
+the conversation instead of guessing.
+
+- [The guide](https://chang-lehung.github.io/zettcode/server/): install, endpoints, event stream
+- [TypeScript client](../clients/typescript): `npm install zettcode-client`
+- [Python SDK](https://chang-lehung.github.io/zettcode/sdk/): the same agent from Python
