@@ -21,6 +21,23 @@ const translations = {
       faq: "Problems & questions",
     },
     subgroups: { context: "Models & context" },
+    sdk: {
+      menu: "SDK",
+      groups: ["Get started", "Guides", "Examples & reference"],
+      pages: {
+        index: "Overview",
+        quickstart: "Quickstart",
+        concepts: "Core concepts",
+        client: "Client & configuration",
+        running: "Running prompts",
+        events: "Streaming events",
+        approvals: "Approvals & questions",
+        sessions: "Sessions",
+        errors: "Errors & timeouts",
+        cookbook: "Cookbook",
+        reference: "API reference",
+      },
+    },
     guide: "Guide", reference: "Reference", setup: "Configure", install: "Get started",
     edit: "Edit this page on GitHub", license: "Released under the MIT license.", footer: "ZettCode — your terminal, your coding partner.",
     prev: "Previous", next: "Next", outline: "On this page", updated: "Last updated", top: "Back to top", menu: "Guide menu",
@@ -47,6 +64,23 @@ const translations = {
       faq: "常见问题",
     },
     subgroups: { context: "模型与上下文" },
+    sdk: {
+      menu: "SDK",
+      groups: ["开始", "使用指南", "示例与参考"],
+      pages: {
+        index: "概览",
+        quickstart: "快速上手",
+        concepts: "核心概念",
+        client: "Client 与配置",
+        running: "运行 Prompt",
+        events: "事件流",
+        approvals: "审批与提问",
+        sessions: "会话",
+        errors: "错误与超时",
+        cookbook: "示例集",
+        reference: "API 参考",
+      },
+    },
     guide: "使用指南", reference: "操作参考", setup: "配置与扩展", install: "快速开始",
     edit: "在 GitHub 上编辑此页", license: "以 MIT 许可证发布。", footer: "ZettCode —— 你的终端，你的编码伙伴。",
     prev: "上一篇", next: "下一篇", outline: "本页目录", updated: "最近更新", top: "回到顶部", menu: "指南目录",
@@ -74,10 +108,26 @@ const layout = [
   { group: 3, pages: ["faq"] },
 ];
 
+// The SDK is documented apart from the user guide: it is read by a different person, for a different reason, and has
+// its own sidebar. `index` is the section's front page, so it answers at the section's own address.
+const sdkLayout = [
+  { group: 0, pages: ["index", "quickstart", "concepts"] },
+  { group: 1, pages: ["client", "running", "events", "approvals", "sessions", "errors"] },
+  { group: 2, pages: ["cookbook", "reference"] },
+];
+
 export function navigation(language: keyof typeof translations) {
   const text = translations[language];
   const prefix = language === "zh" ? "/zh/guide/" : "/guide/";
   const page = (slug: string) => ({ text: text.pages[slug as keyof typeof text.pages], link: prefix + slug });
+
+  const sdkText = text.sdk;
+  const sdkPrefix = language === "zh" ? "/zh/sdk/" : "/sdk/";
+  const sdkPage = (slug: string) => ({
+    text: sdkText.pages[slug as keyof typeof sdkText.pages],
+    link: slug === "index" ? sdkPrefix : sdkPrefix + slug,
+  });
+  const sdkSidebar = sdkLayout.map(({ group, pages }) => ({ text: sdkText.groups[group], items: pages.map(sdkPage) }));
 
   const sidebar = layout.map(({ group, pages }) => ({
     text: text.groups[group],
@@ -95,9 +145,10 @@ export function navigation(language: keyof typeof translations) {
       { text: text.guide, link: prefix + "overview", activeMatch: `${prefix}(overview|getting-started|interface)` },
       { text: text.reference, activeMatch: `${prefix}(${pageSlugs(1).join("|")})`, items: byGroup(1) },
       { text: text.setup, activeMatch: `${prefix}(${pageSlugs(2).join("|")})`, items: byGroup(2) },
+      { text: sdkText.menu, link: sdkPrefix, activeMatch: sdkPrefix },
       { text: text.install, link: prefix + "getting-started" },
     ],
-    sidebar: { [prefix]: sidebar },
+    sidebar: { [prefix]: sidebar, [sdkPrefix]: sdkSidebar },
     editLink: { pattern: `${REPO}/edit/main/docs/:path`, text: text.edit },
     footer: { message: text.license, copyright: text.footer },
     docFooter: { prev: text.prev, next: text.next },

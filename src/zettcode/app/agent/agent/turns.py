@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncGenerator, AsyncIterator, Sequence
+from contextlib import aclosing
 from dataclasses import replace
+from typing import cast
 
 from zett_agent.agent import AgentRunConfig
 from zett_agent.dispatcher import AgentEventDispatcher
@@ -60,13 +62,22 @@ class TurnsMixin(AgentBase):
         used = self.runtime.active_model.shown_name
         session_id = self.session_id
         try:
-            async for event in client.stream(
-                self.request(parts, hint=hint, side=side) if relayed is None else relayed.message(),
-                config=AgentRunConfig(session_id=session_id),
-                model=self.runtime.provider,
-                reasoning_effort=self.runtime.effort,
-            ):
-                yield event
+            # Closed here, not left to the garbage collector: a consumer that stops early (a `break`, `aclose()`)
+            # throws GeneratorExit in at the `yield`, and the library's stream must unwind then, or the agent is
+            # left in its "generating" phase and refuses the next request.
+            async with aclosing(
+                cast(
+                    "AsyncGenerator[AgentEvent]",
+                    client.stream(
+                        self.request(parts, hint=hint, side=side) if relayed is None else relayed.message(),
+                        config=AgentRunConfig(session_id=session_id),
+                        model=self.runtime.provider,
+                        reasoning_effort=self.runtime.effort,
+                    ),
+                )
+            ) as events:
+                async for event in events:
+                    yield event
         finally:
             if not side:
                 self._remember_model(session_id, used)
@@ -121,12 +132,18 @@ class TurnsMixin(AgentBase):
         used = self.runtime.active_model.shown_name
         session_id = self.session_id
         try:
-            async for event in client.stream_resume(
-                config=AgentRunConfig(session_id=session_id),
-                model=self.runtime.provider,
-                reasoning_effort=self.runtime.effort,
-            ):
-                yield event
+            async with aclosing(
+                cast(
+                    "AsyncGenerator[AgentEvent]",
+                    client.stream_resume(
+                        config=AgentRunConfig(session_id=session_id),
+                        model=self.runtime.provider,
+                        reasoning_effort=self.runtime.effort,
+                    ),
+                )
+            ) as events:
+                async for event in events:
+                    yield event
         finally:
             self._remember_model(session_id, used)
 

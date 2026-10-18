@@ -1,0 +1,236 @@
+---
+title: Client 与配置
+---
+
+# Client 与配置
+
+`Client` 是程序的起点。本页讲怎么创建一个 client、它的配置从哪里来、怎么选择模型、推理强度和权限级别，以及怎么关闭。
+
+## 创建 client
+
+```python
+import zettcode.sdk as zc
+
+async with zc.Client("~/project", model="gpt-5", effort="high", permission="safe") as client:
+    print(client)       # Client('/Users/me/project', session='...')
+```
+
+| 参数 | 含义 |
+| --- | --- |
+| `workspace` | agent 工作的目录。`None` 表示当前目录（或 `config.workspace`）。会展开 `~`，且必须存在。 |
+| `config` | 现成的 `ZettCodeConfig`。不读磁盘，也不应用嵌入场景的默认值。 |
+| `config_path` | 要读取的配置文件，代替 `$ZETTCODE_CONFIG` 或 `~/.zettcode/config.toml`。 |
+| `models` | 不用配置文件时直接指定的模型，第一个是当前模型。见[下文](#不用配置文件指定模型)。 |
+| `model` | 起始使用的模型，用 `client.models` 列出的名字。 |
+| `effort` | 起始的推理级别。 |
+| `permission` | shell 权限级别：`deny`、`ask`、`safe` 或 `auto`。 |
+| `resume` | 要继续的会话 id，而不是新开一段对话。 |
+| `**settings` | 其他任意配置字段，按字段名传入：`store=`、`mcp_enabled=`、`max_iterations=` 等。 |
+
+构造函数是同步的，立即完成工作：错误的值在这里就会抛出，而不是等到第一个 prompt。
+
+```python
+try:
+    zc.Client(".", permission="sometimes")
+except zc.ConfigurationError as error:
+    print(error)       # Unknown permission: sometimes. Try one of: deny, ask, safe, auto
+```
+
+## 配置从哪里来
+
+按优先级：
+
+1. **`config=`**，一份现成的 `ZettCodeConfig`，原样使用。
+2. **`models=`**，叠加在默认值之上，完全不读配置文件。
+3. **配置文件**：`config_path=`，否则 `$ZETTCODE_CONFIG`，否则 `~/.zettcode/config.toml`。这就是终端读的那个文件，所以你已经配好的[模型](/zh/guide/models)和[设置](/zh/guide/config)都会生效。
+
+关键字设置会叠加在你用的那一种之上。故事就是这些，没有隐藏的第四个来源。
+
+## 不用配置文件指定模型
+
+当程序不该依赖机器上装了什么时（比如 CI 或容器里），直接传模型：
+
+```python
+async with zc.Client(
+    ".",
+    models=[
+        {"model": "claude-sonnet-4-5", "token": "sk-ant-...", "anthropic": True, "multimodal": True},
+        {"model": "gpt-5", "token": "sk-...", "context_window": 400_000},
+    ],
+    store="/tmp/zettcode-sessions",
+) as client:
+    print([m.name for m in client.models])       # ['claude-sonnet-4-5', 'gpt-5']
+```
+
+一个条目是 `ModelConfig`，或者字段相同的 dict：
+
+| 字段 | 默认值 | 含义 |
+| --- | --- | --- |
+| `model` | 必填 | 发给端点的模型 id。 |
+| `token` | 必填 | 凭证。请从环境变量读取，不要写进代码。 |
+| `display_model` | `None` | 展示用的名字，也是传给 `use_model` 的名字。两个条目模型 id 相同时给其中一个起别名。 |
+| `base_url` | `None` | API 根地址。末尾的 `/chat/completions`、`/v1/messages` 或 `/responses` 会被去掉。 |
+| `anthropic` | `False` | 使用 Anthropic 的 Messages API。 |
+| `responses_api` | `False` | 在 OpenAI 兼容端点上使用 Responses API。不能与 `anthropic` 同时使用。 |
+| `multimodal` | `False` | 模型是否接受图片。 |
+| `context_window` | `128000` | 模型能承载的 token 数。 |
+| `compact_percent` | `80.0` | 占窗口多大比例时压缩对话。 |
+| `reasoning_efforts` | 全部级别 | 模型接受的推理级别。 |
+
+::: warning
+写进源码的 token 会进入版本控制。请从环境变量读取：`{"model": "gpt-5", "token": os.environ["OPENAI_API_KEY"]}`。
+:::
+
+格式错误的条目会抛出 `ConfigurationError`，指明是哪个条目、什么问题。
+
+## 设置
+
+其余任何关键字都是 `ZettCodeConfig` 的字段，所以配置文件能表达的，client 在代码里也能表达。程序常用的几项：
+
+| 设置 | 默认值 | 作用 |
+| --- | --- | --- |
+| `store` | `~/.zettcode/sessions` | 会话保存的位置。测试里请指向临时目录。 |
+| `max_iterations` | `360` | 一轮里允许的工具调用轮数。 |
+| `mcp_enabled` | `True` | 加载 MCP 服务器。 |
+| `skills_enabled` | `True` | 发现本地 skills 并提供给模型。 |
+| `agents_md_enabled` | `True` | 把适用于工作区的 `AGENTS.md` 交给模型。 |
+| `ask_user_enabled` | `True` | 给模型 `ask_user` 工具。没人能回答的运行请关掉。 |
+| `subagent_enabled` | `True` | 提供运行子 agent 的 `task` 工具。 |
+| `todowrite_enabled` | `False` | 提供 `todo_write` 工具。 |
+| `plugins_enabled` | `True` | 加载第三方插件。 |
+| `parallel_tool_call` | `True` | 允许模型并行发起工具调用。 |
+| `sessions_enabled` | 此处为 `False` | 连接 broker，让终端会话可以给它发消息。 |
+| `update_enabled` | 此处为 `False` | 向 PyPI 检查新版本。 |
+
+需要路径的地方可以传字符串（`store="~/runs"`），选项不区分大小写（`reasoning_effort="HIGH"`）。拼错的名字会附带建议：
+
+```python
+zc.Client(".", max_iteration=50)
+# ConfigurationError: Unknown setting: 'max_iteration' (did you mean 'max_iterations'?)
+```
+
+配置拒绝的值会报成 `ConfigurationError("Invalid configuration: ...")`，原始错误保存在 `__cause__`。
+
+### 封闭的 client
+
+测试或沙箱任务里，把所有会读取或触及工作区之外的东西都关掉：
+
+```python
+client = zc.Client(
+    workspace,
+    models=[{"model": "gpt-5", "token": token}],
+    store=scratch / "sessions",
+    mcp_enabled=False,
+    skills_enabled=False,
+    agents_md_enabled=False,
+    plugins_enabled=False,
+    subagent_enabled=False,
+)
+```
+
+## 选择模型、推理强度和权限
+
+创建 client 时设置，也可以在两次 run 之间随时更改。
+
+```python
+async with zc.Client(".") as client:
+    for info in client.models:
+        marker = "*" if info.active else " "
+        print(marker, info.name, info.context_window, info.efforts)
+
+    client.use_model("gpt-5")
+    client.use_effort("high")
+    client.use_permission("safe")
+
+    print(client.model.name, client.effort, client.permission)
+```
+
+| 成员 | 返回 |
+| --- | --- |
+| `client.models` | 一组 `ModelInfo(name, model, context_window, multimodal, efforts, active)`。 |
+| `client.model` | 当前模型的 `ModelInfo`。 |
+| `client.use_model(name)` | 让某个模型成为当前模型并返回它的 `ModelInfo`。接受名字或 `ModelInfo`。 |
+| `client.effort`、`client.efforts` | 当前级别，以及当前模型接受的级别。 |
+| `client.use_effort(name)` | 设置级别并返回。 |
+| `client.permission`、`client.permissions` | 当前级别，以及 `("deny", "ask", "safe", "auto")`。 |
+| `client.use_permission(name)` | 设置级别；从下一条 shell 命令起生效，正在进行的 run 里也一样。 |
+
+不存在的名字，或当前模型不接受的推理级别，会抛出 `ConfigurationError`，消息里列出可选项。
+
+```python
+async with zc.Client(".", models=[{"model": "a", "token": "t"}, {"model": "b", "token": "t"}]) as client:
+    try:
+        client.use_model("c")
+    except zc.ConfigurationError as error:
+        print(error)       # Unknown model: c. Configured: a, b
+```
+
+模型的切换对下一次 run 生效。同一段对话可以在不同模型之间移动，历史会保留。
+
+### 权限级别
+
+权限级别决定模型想运行 shell 命令时由谁来回答。它只管 shell；文件工具和 MCP 工具不受它约束。
+
+| 级别 | shell 命令…… |
+| --- | --- |
+| `deny` | ……永远不运行。模型会被告知，改用文件工具继续。 |
+| `ask` | ……交给你决定（`ApprovalRequested` 事件）。这是默认值。 |
+| `safe` | ……在确实不会改变任何东西时（`git status`、`ls`）直接运行；其他的交给你决定。 |
+| `auto` | ……直接运行。只用于你信任其 shell 的工作区和模型。 |
+
+如何回答，见[审批与提问](./approvals)。
+
+## 查看加载了什么
+
+```python
+async with zc.Client(".") as client:
+    report = client.plugins
+    print(report.loaded)       # ('shell', 'skills', ..., 'coding', ..., 'ask-user', 'mcp', 'compaction')
+    print(report.failures)     # one message per plugin that could not load; never fatal
+    print(client.config.workspace, client.config.store)
+    print(client.usage)        # what the current session has spent
+```
+
+`client.config` 是生效的 `ZettCodeConfig`，它是冻结的：要改 `use_*` 方法之外的设置，请新建 client。
+
+## 关闭
+
+```python
+client = zc.Client(".")
+try:
+    await client.prompt("hello")
+finally:
+    await client.aclose()
+```
+
+`async with` 会替你做这件事。关闭会停止进行中的 run，释放模型连接和会话锁，并在最后一个 client 关闭时恢复进程的工作目录。重复调用是安全的。关闭之后，所有方法都会抛出 `ClientClosedError`。
+
+::: tip
+构造函数如果抛出错误，不会留下任何打开的东西：在错误到达你之前，锁和工作目录已经释放。
+:::
+
+## 一个进程只有一个工作区
+
+client 会把进程的工作目录切到它的工作区，因为编码工具按它解析相对路径。**同一个**工作区上的两个 client 没问题。**不同**工作区的 client 会抛出 `WorkspaceConflictError`，直到第一个关闭。
+
+```python
+from zettcode.sdk.errors import WorkspaceConflictError
+
+async with zc.Client("/work/a") as a:
+    try:
+        zc.Client("/work/b")
+    except WorkspaceConflictError as error:
+        print(error)
+```
+
+要同时处理两个工作区，用两个进程：`multiprocessing`、子进程或任务队列。
+
+## 恢复已保存的会话
+
+```python
+async with zc.Client(".", resume="3f8a1c20") as client:
+    print(client.session.title)
+    result = await client.prompt("where were we?")
+```
+
+读不出来的 id 会让构造函数抛出 `SessionNotFoundError`。怎么找到 id，见[会话](./sessions)。

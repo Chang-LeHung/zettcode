@@ -39,6 +39,7 @@ See [The interface](/guide/interface) for all three.
   or connect external tools.
 - **[Plugins](/guide/plugins):** install Python extensions that add commands and
   customize the interface.
+- **[SDK](/sdk/):** drive the agent from Python programs, without a terminal.
 
 ## Something not working?
 
