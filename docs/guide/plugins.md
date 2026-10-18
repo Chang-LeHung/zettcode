@@ -237,8 +237,8 @@ in: `[ui] theme = "acme"` finds it.
 
 ## Offering a pet {#pets}
 
-Pets are offered the way palettes are, and the seven ZettCode ships (`cat`, `dog`, `tiger`, `whale`, `chibi`,
-`slime`, `sprout`) are offered by a built-in plugin through the same call. A pet is a palette and the pixel maps of
+Pets are offered the way palettes are, and the thirteen ZettCode ships (`cat`, `dog`, `tiger`, `polarbear`, `snowbear`, `penguin`,
+`scarfy`, `kangaroo`, `seagull`, `whale`, `chibi`, `slime`, `sprout`) are offered by a built-in plugin through the same call. A pet is a palette and the pixel maps of
 its moods; each character of a map names a colour, `.` is transparent, and two rows of pixels make one row of
 cells, so a map has an even number of rows and every frame of a pet is the same size:
 

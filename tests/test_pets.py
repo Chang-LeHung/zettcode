@@ -83,7 +83,25 @@ def test_the_colours_that_stand_for_a_pet_are_the_ones_it_is_mostly_made_of_and_
 
 
 def test_the_pets_that_ship_are_listed_in_order_and_the_default_is_the_cat():
-    assert CATALOG.names() == BUNDLED == ("cat", "dog", "tiger", "whale", "chibi", "slime", "sprout")
+    assert (
+        CATALOG.names()
+        == BUNDLED
+        == (
+            "cat",
+            "dog",
+            "tiger",
+            "polarbear",
+            "snowbear",
+            "penguin",
+            "scarfy",
+            "kangaroo",
+            "seagull",
+            "whale",
+            "chibi",
+            "slime",
+            "sprout",
+        )
+    )
     assert DEFAULT_PET_NAME == "cat"
     assert len(set(BUNDLED)) == len(BUNDLED)
 
@@ -396,7 +414,7 @@ async def test_the_panel_lists_every_pet_with_its_note_and_marks_the_one_that_is
         assert name in text
     for note in CATALOG.notes().values():
         assert note[:30] in text
-    assert "7 pets" in text and "\u25b8" in text
+    assert "13 pets" in text and "\u25b8" in text
     page = page_of(app)
     assert page.marked == "cat" and page.current == "cat"
     assert "cat \u25cf" in text, "the dot says which one is out now"
@@ -442,9 +460,8 @@ async def test_escape_puts_the_old_pet_back_and_writes_nothing(config_file):  # 
 
 async def test_enter_chooses_the_marked_pet_remembers_it_and_says_so(config_file):  # noqa: F811
     app, harness, _ = await open_panel()
-    harness.press("down")
-    harness.press("down")
-    harness.press("down")
+    for _ in range(BUNDLED.index("whale")):
+        harness.press("down")
 
     harness.press("enter")
 
@@ -461,9 +478,10 @@ async def test_the_panel_works_with_the_wheel_and_a_click_chooses_the_pet_alread
 
     harness.scroll(page.rect.x + 10, top, up=False)
     assert page.marked == "dog"
-    harness.click(page.rect.x + 10, top + 3)  # the third row, not the marked one: it only marks
+    row = BUNDLED.index("whale")
+    harness.click(page.rect.x + 10, top + row)  # a row that is not the marked one: it only marks
     assert page.marked == "whale" and app.app.screens.top.name == "page"
-    harness.click(page.rect.x + 10, top + 3)  # the same row again chooses it
+    harness.click(page.rect.x + 10, top + row)  # the same row again chooses it
     assert app.pet.pet.name == "whale"
 
 

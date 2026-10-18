@@ -218,7 +218,7 @@ class Palettes(Plugin):
 
 ## 提供宠物 {#pets}
 
-宠物和配色一样按名字提供，ZettCode 自带的七只（`cat`、`dog`、`tiger`、`whale`、`chibi`、`slime`、`sprout`）也是由一个内置插件通过同一个调用提供的。一只宠物就是一张调色板，加上它各种心情的像素图：图里的每个字符对应一种颜色，`.` 是透明，两行像素组成一行字符单元格，所以行数必须是偶数，而且同一只宠物的每一帧大小相同：
+宠物和配色一样按名字提供，ZettCode 自带的十三只（`cat`、`dog`、`tiger`、`polarbear`、`snowbear`、`penguin`、`scarfy`、`kangaroo`、`seagull`、`whale`、`chibi`、`slime`、`sprout`）也是由一个内置插件通过同一个调用提供的。一只宠物就是一张调色板，加上它各种心情的像素图：图里的每个字符对应一种颜色，`.` 是透明，两行像素组成一行字符单元格，所以行数必须是偶数，而且同一只宠物的每一帧大小相同：
 
 ```text
 from zettcode.plugins import Pet, Plugin, PluginContainer
