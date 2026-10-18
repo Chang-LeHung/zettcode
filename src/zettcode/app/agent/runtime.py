@@ -22,28 +22,35 @@ from typing import TYPE_CHECKING, TypeAlias
 from zett_agent.agent import AgentRunConfig
 from zett_agent.client import AgentClient
 from zett_agent.dispatcher import AgentEventDispatcher
-from zett_agent.extensions.base import AgentExtension
-from zett_agent.extensions.coding import CodingExtension
 from zett_agent.extensions.shell_approval import ShellApprovalExtension
 from zett_agent.extensions.todo import TodoWriteExtension
-from zett_agent.extensions.tool_guidelines import ToolGuidelinesExtension
 from zett_agent.ids import new_uuid7
 from zett_agent.model import ReasoningEffort
 
 from zettcode.config import DEFAULT_ANTHROPIC_BASE_URL, ModelConfig, ZettCodeConfig
-from zettcode.plugins import Plugins, load_plugins
-from zettcode.plugins.builtin_agent import TODOS_SERVICE
+from zettcode.plugins import AGENT_PLUGINS, BUILTIN_PLUGINS, AgentBuild, Plugins, load_plugins
+from zettcode.plugins.services import (
+    APPROVAL,
+    COMPACTION,
+    COMPACTION_COUNTER,
+    CONTEXT,
+    MESSENGER,
+    MODELS,
+    PERSISTENCE,
+    POLICY,
+    SELECTED_MODEL,
+    SIDES,
+    TODOS,
+    USAGE,
+)
 
 from ..pipeline import ImportPipeline
 from .dialogue.side import SideQuestions
-from .extensions.capabilities import ModelCapabilities
 from .extensions.compaction import COUNTER_WAIT, CompactionCounter, OnDemandCompaction
 from .extensions.context import ContextExtension, Tokenizer
 from .extensions.messenger import Messenger
-from .extensions.tool_output import ToolOutputExtension
 from .extensions.usage import UsageExtension
-from .permission import Permission, ShellDenyExtension, ShellPolicy, parse_permission
-from .permission.approval import ShellApprovalMemory
+from .permission import Permission, ShellPolicy, parse_permission
 from .storage import NoLocks, SessionGuard, SessionLocks, SessionStore
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only; the imports are the cost
@@ -60,7 +67,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only; the imports are the co
 #: cached — and the zett-agent module is what :meth:`ZettCodeRuntime._build`
 #: would otherwise import on the event loop. A name added here moves its import
 #: off the first turn and onto the pipeline's thread.
-WARM_MODULES = ("zett_agent.client",)
+WARM_MODULES = ("zett_agent.client", "zett_agent.extensions.coding")
 
 #: What each model SDK needs imported before its first request, in order. ``openai`` alone is not
 #: enough: its resource tree (``openai.resources``) is imported the first time a client touches
@@ -122,39 +129,6 @@ Treat the workspace as the current working directory. Prefer relative paths in t
 calls. Verify mutable facts with tools instead of assuming this startup snapshot is current."""
 
 
-def integration_extensions(config: ZettCodeConfig) -> tuple[AgentExtension, ...]:
-    """Return the optional extensions this configuration asks for.
-
-    They live outside the model loop, so they are built here and handed to
-    :func:`create_agent` with the rest: the skills and MCP. MCP is
-    skipped when there is no server file to read, so an unconfigured run carries
-    no MCP instructions at all rather than a system message saying there is
-    nothing to load. The ``ask_user`` tool and the project instructions (the workspace's
-    ``AGENTS.md`` files, read again on every request so an edit applies to the next
-    turn) are built-in plugins now, see :mod:`zettcode.plugins.builtin_agent`; the
-    instructions' priority still keeps them ahead of the tool and skill guidance below.
-
-    Args:
-        config: Settings naming the workspace, the skill roots, and the MCP server
-            file.
-
-    Returns:
-        The extensions to add, in the order they lead the request.
-    """
-    from zett_agent.extensions.skill import SkillExtension
-
-    from .extensions.mcp import build_scoped_mcp_extension
-
-    extensions: list[AgentExtension] = []
-    if config.skills_enabled:
-        extensions.append(SkillExtension(config.skill_search_roots()))
-    if config.mcp_enabled:
-        mcp = build_scoped_mcp_extension(config.mcp_files())
-        if mcp is not None:
-            extensions.append(mcp)
-    return tuple(extensions)
-
-
 def _build_provider(selected: ModelConfig) -> Adapter:
     """Build the adapter one model entry asks for, importing only its SDK.
 
@@ -192,22 +166,15 @@ class ZettCodeRuntime:
 
     config: ZettCodeConfig
     persistence: SessionStore
-    approval: ShellApprovalExtension
     #: The permission level, shared with the approval memory and the deny extension.
     policy: ShellPolicy
-    usage: UsageExtension
-    context: ContextExtension
     tokenizer: Tokenizer
     effort: ReasoningEffort
     session_id: str
     active_model: ModelConfig
-    compaction: OnDemandCompaction
     #: What the compaction counts the context with; loaded on a thread of its own so that the
     #: first turn does not load it on the event loop. See :class:`CompactionCounter`.
     compaction_counter: CompactionCounter
-    #: The read-only boundary a side question runs behind; the shell keeps it to
-    #: mark the run it is about to start.
-    sides: SideQuestions = field(default_factory=SideQuestions)
     plugins: Plugins = field(default_factory=Plugins)
     #: The lock on the session this process has open: only the process that holds it writes to the session.
     #: A runtime that was not given one (a test's) shares nothing, so every claim is granted.
@@ -249,27 +216,32 @@ class ZettCodeRuntime:
         policy = ShellPolicy.from_mode(config.shell_approval, config.workspace)
         counter = CompactionCounter()
         persistence = SessionStore(config.store, config.workspace)
+        models: dict[ModelConfig, Adapter] = {}
+        messenger = Messenger.create(config)
+        # What the built-in agent plugins build on, handed over by name: they own the extensions, the
+        # runtime owns this state and goes on using it. See `zettcode.plugins.services`.
+        shared: dict[str, object] = {
+            POLICY: policy,
+            PERSISTENCE: persistence,
+            MODELS: models,
+            COMPACTION_COUNTER: counter,
+            SELECTED_MODEL: selected,
+        }
+        if messenger is not None:
+            shared[MESSENGER] = messenger
         runtime = cls(
             config=config,
             persistence=persistence,
             session_locks=SessionLocks(persistence.session_dir),
-            approval=ShellApprovalExtension(ShellApprovalMemory(policy)),
             policy=policy,
-            usage=UsageExtension(),
-            context=ContextExtension(),
             tokenizer=Tokenizer(),
             effort=selected.accepted_effort(config.reasoning_effort),
             session_id=new_uuid7(),
             active_model=selected,
-            compaction=OnDemandCompaction(
-                None,
-                max_tokens=selected.compaction_max_tokens,
-                keep_recent_tokens=selected.compaction_keep_tokens,
-                count_tokens=counter.count,
-            ),
             compaction_counter=counter,
-            plugins=load_plugins(config),
-            messenger=Messenger.create(config),
+            plugins=load_plugins(config, builtins=(*BUILTIN_PLUGINS, *AGENT_PLUGINS), shared=shared),
+            messenger=messenger,
+            _models=models,
         )
         # The session a launch starts in is a new one, so this always succeeds; a launch that resumes
         # another moves the lock when it installs it.
@@ -376,50 +348,11 @@ class ZettCodeRuntime:
 
         selected = self.active_model
         model = self._provider(selected)
-        capabilities = ModelCapabilities(self._models)
-        # The coding bundle's shell tool keeps long output inside the project it runs in; this moves
-        # it into the session's folder before the result is stored or sent anywhere.
-        extensions: list[AgentExtension] = [CodingExtension(), ToolOutputExtension(self.persistence), capabilities]
-        if self.config.subagent_enabled:
-            # Imported with the runtime, not with the module: the subagent
-            # extension pulls in its SQLite store and SQLAlchemy, which a launch
-            # that never runs a child should not pay for on the way to the first
-            # frame. Before ToolGuidelinesExtension, so the task tool's own
-            # guidance reaches the prompt it is registered for.
-            from .extensions.subagents import subagent_extension
-
-            extensions.append(
-                subagent_extension(
-                    model=model,
-                    persistence=self.persistence,
-                    capabilities=capabilities,
-                    # The parent's project instructions go to its children too.
-                    workspace=self.config.workspace if self.config.agents_md_enabled else None,
-                    max_iterations=self.config.subagent_max_iterations,
-                )
-            )
-        if self.messenger is not None:
-            from .extensions.messaging import SessionMessagingExtension
-
-            extensions.append(SessionMessagingExtension(self.messenger))
-        extensions.extend([ShellDenyExtension(self.policy), self.approval, self.persistence])
-        extensions.extend(
-            [
-                self.usage,
-                self.context,
-                self.sides,
-                ToolGuidelinesExtension(),
-                *integration_extensions(self.config),
-                # Whole extensions the plugins registered: the built-in ones (the ask tool, the project
-                # instructions, the todo tool) and any a third-party plugin brings.
-                *self.plugins.contributed,
-                self.compaction,
-                # One host drives every plugin, so the agent sees one extension;
-                # the host places itself at the earliest priority any plugin
-                # asked for.
-                *self.plugins.extensions,
-            ]
-        )
+        # Every extension the agent runs is a plugin's: the built-in ones (the coding tools, the session
+        # store, the shell approval, the compaction ... see `zettcode.plugins.builtin_agent`) in the order
+        # they are listed there, then any a third-party plugin brings, and last the one host that drives
+        # the plugins' hooks, which places itself at the earliest priority any plugin asked for.
+        extensions = [*self.plugins.agent_extensions(AgentBuild(model=model)), *self.plugins.extensions]
         client = await create_agent(
             model,
             config=AgentRunConfig(session_id=self.session_id),
@@ -478,7 +411,32 @@ class ZettCodeRuntime:
     @property
     def todos(self) -> TodoWriteExtension | None:
         """Return the extension that keeps the model's plan, or ``None`` when no plugin provides one."""
-        return self.plugins.find(TODOS_SERVICE, TodoWriteExtension)
+        return self.plugins.find(TODOS, TodoWriteExtension)
+
+    @property
+    def approval(self) -> ShellApprovalExtension:
+        """Return the shell approval extension, whose memory the shell reads and resets."""
+        return self.plugins.service(APPROVAL, ShellApprovalExtension)
+
+    @property
+    def usage(self) -> UsageExtension:
+        """Return the token accounting the status line and ``/usage`` read."""
+        return self.plugins.service(USAGE, UsageExtension)
+
+    @property
+    def context(self) -> ContextExtension:
+        """Return the recorder of what each session's last request was made of."""
+        return self.plugins.service(CONTEXT, ContextExtension)
+
+    @property
+    def sides(self) -> SideQuestions:
+        """Return the read-only boundary a side question runs behind; the shell marks the run it starts."""
+        return self.plugins.service(SIDES, SideQuestions)
+
+    @property
+    def compaction(self) -> OnDemandCompaction:
+        """Return the compaction policy, which a model switch resizes."""
+        return self.plugins.service(COMPACTION, OnDemandCompaction)
 
     @property
     def permission(self) -> Permission:

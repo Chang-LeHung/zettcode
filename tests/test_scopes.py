@@ -13,7 +13,7 @@ import pytest
 from zett_agent.extensions.mcp import McpExtension
 from zett_agent.extensions.skill import SkillExtension
 
-from zettcode.app.agent import runtime as runtime_module
+from plugin_helpers import agent_extensions
 from zettcode.app.agent.extensions.mcp import build_scoped_mcp_extension
 from zettcode.config import ModelConfig, ZettCodeConfig, load_config
 
@@ -149,7 +149,7 @@ def test_a_scope_the_file_cannot_mean_is_refused_and_named(tmp_path: Path, table
 
 
 def _skills(config: ZettCodeConfig) -> dict[str, str]:
-    extension = next(item for item in runtime_module.integration_extensions(config) if isinstance(item, SkillExtension))
+    extension = next(item for item in agent_extensions(config) if isinstance(item, SkillExtension))
     return {skill.name: skill.description for skill in extension.skills}
 
 
@@ -267,7 +267,7 @@ def test_the_runtime_reads_the_files_its_scope_names(tmp_path: Path, home: Path)
 
     def servers(scope: str) -> set[str]:
         config = _config(tmp_path, home, mcp_scope=scope)
-        found = [e for e in runtime_module.integration_extensions(config) if isinstance(e, McpExtension)]
+        found = [e for e in agent_extensions(config) if isinstance(e, McpExtension)]
         return {server.name for extension in found for server in extension.servers}
 
     assert servers("global") == {"mine"}
@@ -281,13 +281,13 @@ def test_global_scope_does_not_start_the_servers_a_checkout_carries(tmp_path: Pa
 
     config = _config(tmp_path, home, mcp_scope="global")
 
-    assert not [e for e in runtime_module.integration_extensions(config) if isinstance(e, McpExtension)]
+    assert not [e for e in agent_extensions(config) if isinstance(e, McpExtension)]
 
 
 def test_by_default_a_checkouts_servers_are_read_too(tmp_path: Path, home: Path):
     _servers(tmp_path / "project" / ".zettcode" / "mcp.json", local="http://127.0.0.1:9/local")
     _servers(home / "mcp.json", mine="http://127.0.0.1:9/mine")
 
-    found = [e for e in runtime_module.integration_extensions(_config(tmp_path, home)) if isinstance(e, McpExtension)]
+    found = [e for e in agent_extensions(_config(tmp_path, home)) if isinstance(e, McpExtension)]
 
     assert {server.name for extension in found for server in extension.servers} == {"local", "mine"}

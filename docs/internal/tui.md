@@ -376,8 +376,8 @@ the two files at the top are the composition and the thing it composes.
 | Where | What is in it |
 | --- | --- |
 | `agent/` | `ZettCodeAgent`, the application's one entry point, assembled from mixins: `base` (runtime, workspace, session id), `settings` (model, effort, shell permission), `context` (the next request, compaction), `sessions` (switch, resume, fork, title), `turns` (build, stream, steer), `interaction` (answer an approval or a question), `exports`, `commands`; and `prompt`, the parts of a user turn |
-| `runtime.py` | `ZettCodeRuntime`: composes the vendor client with the extensions below |
-| `extensions/` | What the runtime plugs into zett-agent that is ours: `capabilities`, `compaction`, `context`, `mcp` (and `mcp_notice`, the event it reports through), `messenger` (the line to the other sessions) and `messaging` (the two tools), `subagents`, `tool_output`, `usage` |
+| `runtime.py` | `ZettCodeRuntime`: owns the session state (policy, store, model table, counter, messenger) and the provider, and builds the client from the extensions the plugins hand it |
+| `extensions/` | What the plugins plug into zett-agent that is ours: `capabilities`, `compaction`, `context`, `mcp` (and `mcp_notice`, the event it reports through), `messenger` (the line to the other sessions) and `messaging` (the two tools), `subagents`, `tool_output`, `usage`; `plugins/builtin_agent.py` registers them |
 | `permission/` | How much of the shell may run unasked: the levels and what enforces them (`__init__`), the fail-closed read-only classifier (`readonly`), what an approval may remember (`approval`) |
 | `conversation/` | The conversation as the screen shows it: `entries`, `transcript/`, `presenters`, `rendering`, `text` (the words and bounds of a row), `pulse` (how the waiting row and status icon move), `effort_gauge` and `shimmer` (the header's two effort animations), `projection` (agent events fill it), `replay` (a stored branch rebuilds it) |
 | `dialogue/` | What is said besides the turns: `mentions` (`@`, including the names of other sessions), `ask`, `side`, `title`, `relay` (a message from another session: what the model reads, what is stored) |
@@ -524,16 +524,29 @@ activated with; those commands reach the shell after the built-ins
 part of the application layer rather than the framework.
 
 Two routes lead from a plugin to the agent. The hook methods run inside the one host
-extension. `register_extension` hands the agent a whole `zett-agent` extension instead:
-`Plugins.contributed` holds them, and `ZettCodeRuntime._build` lists them after
-`integration_extensions` and before the compaction, so each is ordered by its own priority.
-`builtin_agent.py` is where the program's own are: `AskUser`, `ProjectInstructions` and
-`TodoPlan`, each reading its switch in `activate` and importing its `zett_agent` module only
-then. What the application needs from such a plugin comes back by name through `provide` and
-`Plugins.service(name, kind)` (`ZettCodeRuntime.todos` is the first reader), not through a
-field on the runtime. The rest of the hard-coded list in `_build` (coding, persistence,
-approval, usage, context, compaction, subagents, messaging, skills, MCP) still moves over one
-at a time; each move is a plugin, its switch, and a service for whatever else holds the instance.
+extension. `register_extension` and `register_extension_factory` hand the agent a whole
+`zett-agent` extension instead; `Plugins.contributed` holds them as `Contribution`s and
+`Plugins.agent_extensions(AgentBuild)` turns them into the extensions `ZettCodeRuntime._build`
+gives `create_agent`, built-ins first, then any third-party plugin's, then the one host. The
+runtime lists no extension itself.
+
+`builtin_agent.py` is where the program's own are, in `AGENT_PLUGINS` in the order the agent
+receives them (extensions that share a priority keep it, so the order is the one `_build` used to
+write out). They are not in `BUILTIN_PLUGINS`: they build on state only a runtime has, so the
+runtime loads both, and a test that wants the shell's rows alone does not need a store. Each
+reads its switch in `activate`. One that imports something costly (the coding bundle) or needs
+the provider (the subagents) registers a *factory*, called with an `AgentBuild` when the agent is
+built; the coding bundle is also in `WARM_MODULES` so its import happens on the pipeline's thread.
+
+State goes both ways by name (`plugins/services.py` lists the names). The runtime hands over the
+session's `policy`, `persistence`, the `models` table, the `compaction-counter`, the
+`selected-model` and, when messaging is on, the `messenger`, through `load_plugins(shared=...)`;
+a plugin reads them, and what an earlier plugin provided, with `container.service` or
+`container.find`, so a plugin's place in the order is a dependency. What the application needs
+back (`approval`, `usage`, `context`, `sides`, `compaction`, `todos`) a plugin offers with
+`provide`, and `ZettCodeRuntime` exposes each as a property over `Plugins.service`, not as a
+field. The things the runtime keeps for itself are the ones it uses with no extension in sight:
+the policy, the store, the model table, the counter and the messenger.
 
 The shell's rows are a plugin too. `PluginUiMixin` names the four slots — the
 header's and the status line's left and right sides — and `ShellRows` fills
