@@ -217,6 +217,50 @@ describe("the JSON API", () => {
     });
   });
 
+  test("mentions, the usage ledger, session stats, self-compaction and doctor are all reachable", async () => {
+    const server = await start((request, response) => {
+      if (request.url === "/mentions?query=cli&limit=5") {
+        return json(response, { mentions: [{ token: "@src/cli.py", kind: "file", name: "src/cli.py", description: "4 KB" }] });
+      }
+      if (request.url === "/usage/ledger") {
+        return json(response, {
+          sessions: [],
+          models: [],
+          days: [],
+          total: { requests: 1, input_tokens: 10, output_tokens: 2, cache_read_tokens: 0, reasoning_tokens: 0, total_tokens: 12, cache_share: 0 },
+        });
+      }
+      if (request.url === "/sessions/stats?ids=a%2Cb") {
+        return json(response, { stats: [{ id: "a", entries: 4, requests: 2, input_tokens: 10, output_tokens: 2, cache_read_tokens: 0, reasoning_tokens: 0, total_tokens: 12, cache_share: 0 }] });
+      }
+      if (request.url === "/sessions/current/stats") {
+        return json(response, { id: "a", entries: 1, requests: 1, input_tokens: 5, output_tokens: 1, cache_read_tokens: 0, reasoning_tokens: 0, total_tokens: 6, cache_share: null });
+      }
+      if (request.url === "/sessions/current/self-compaction") {
+        if (request.method === "PUT") {
+          assert.deepEqual(JSON.parse(request.body), { choice: true });
+          return json(response, { choice: true, effective: true });
+        }
+        return json(response, { choice: null, effective: false });
+      }
+      if (request.url === "/doctor") {
+        assert.deepEqual(JSON.parse(request.body), { timeout: 7 });
+        return json(response, { checks: [{ model: "m", model_id: "m", ok: true, seconds: 0.4, detail: "ok", input_tokens: 1, output_tokens: 1 }] });
+      }
+      json(response, { error: "not_found", message: request.url }, 404);
+    });
+    const client = new ZettCodeClient({ baseUrl: server.url });
+
+    assert.equal((await client.mentions("cli", 5))[0]?.name, "src/cli.py");
+    assert.equal((await client.usageLedger()).total.total_tokens, 12);
+    assert.deepEqual((await client.sessionStats(["a", "b"])).map((item) => item.id), ["a"]);
+    assert.equal((await client.sessionStats())[0]?.id, "a");
+    assert.deepEqual(await client.sessionStats([]), []);
+    assert.deepEqual(await client.selfCompaction(), { choice: null, effective: false });
+    assert.deepEqual(await client.setSelfCompaction(true), { choice: true, effective: true });
+    assert.equal((await client.doctor(7))[0]?.ok, true);
+  });
+
   test("an HTML answer is returned as text, not parsed as JSON", async () => {
     const server = await start((_request, response) => {
       response.writeHead(200, { "content-type": "text/html; charset=utf-8" });

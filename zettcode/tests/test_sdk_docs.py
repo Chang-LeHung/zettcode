@@ -50,6 +50,7 @@ def test_there_is_a_page_for_every_part_of_the_sdk():
         "events",
         "approvals",
         "sessions",
+        "usage",
         "errors",
         "cookbook",
         "reference",

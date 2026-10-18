@@ -9,7 +9,9 @@ import type {
   CurrentSession,
   Health,
   ImageInput,
+  Mention,
   Message,
+  ModelCheck,
   ModelInfo,
   Permission,
   Plugins,
@@ -19,11 +21,14 @@ import type {
   RunResult,
   RunState,
   Resumable,
+  SelfCompaction,
   SessionInfo,
+  SessionStatsInfo,
   Settings,
   SettingsUpdate,
   StreamFrame,
   Usage,
+  WorkspaceUsage,
 } from "./types.js";
 
 /** Where the client points, and how it authenticates. */
@@ -198,6 +203,49 @@ export class ZettCodeClient {
   /** What this session has spent. */
   usage(): Promise<Usage> {
     return this.request<Usage>("/usage");
+  }
+
+  /** What every stored session of the workspace spent, as the terminal's `/usage` page shows it. */
+  usageLedger(): Promise<WorkspaceUsage> {
+    return this.request<WorkspaceUsage>("/usage/ledger");
+  }
+
+  /** The stored totals of some sessions, or of the current one: the `/resume` panel's columns. */
+  async sessionStats(ids?: string[]): Promise<SessionStatsInfo[]> {
+    if (ids === undefined) {
+      const current = await this.request<SessionStatsInfo | null>("/sessions/current/stats");
+      return current === null ? [] : [current];
+    }
+    if (ids.length === 0) {
+      return [];
+    }
+    const query = encodeURIComponent(ids.join(","));
+    const body = await this.request<{ stats: SessionStatsInfo[] }>(`/sessions/stats?ids=${query}`);
+    return body.stats;
+  }
+
+  /** Whether the model may compact this session itself, and the session's own choice. */
+  selfCompaction(): Promise<SelfCompaction> {
+    return this.request<SelfCompaction>("/sessions/current/self-compaction");
+  }
+
+  /** Let the model compact this session itself, stop it, or follow the configuration with `null`. */
+  setSelfCompaction(choice: boolean | null): Promise<SelfCompaction> {
+    return this.request<SelfCompaction>("/sessions/current/self-compaction", this.json("PUT", { choice }));
+  }
+
+  /** The files, skills and plugin resources an `@` in a prompt can reference. */
+  async mentions(query = "", limit = 50): Promise<Mention[]> {
+    const body = await this.request<{ mentions: Mention[] }>(
+      `/mentions?query=${encodeURIComponent(query)}&limit=${encodeURIComponent(String(limit))}`,
+    );
+    return body.mentions;
+  }
+
+  /** Ask every configured model one short question and report which of them answer, as `zettcode doctor`. */
+  async doctor(timeout = 30): Promise<ModelCheck[]> {
+    const body = await this.request<{ checks: ModelCheck[] }>("/doctor", this.json("POST", { timeout }));
+    return body.checks;
   }
 
   // -- running -----------------------------------------------------------

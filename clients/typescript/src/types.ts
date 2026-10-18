@@ -135,6 +135,83 @@ export interface Plugins {
   failures: string[];
 }
 
+/** One `@` resource a prompt can carry. */
+export interface Mention {
+  token: string;
+  kind: string;
+  name: string;
+  description: string;
+}
+
+/** Token counters added up over some replies, as the usage ledger records them. */
+export interface Totals {
+  requests: number;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  reasoning_tokens: number;
+  total_tokens: number;
+  cache_share: number | null;
+}
+
+export interface SessionTotals {
+  id: string;
+  title: string | null;
+  started: string;
+  updated: string;
+  tokens: Totals;
+  models: string[];
+  entries: number;
+}
+
+export interface ModelTotals {
+  model: string;
+  tokens: Totals;
+}
+
+export interface DayTotals {
+  day: string;
+  tokens: Totals;
+}
+
+/** What the workspace's stored sessions have spent, as the terminal's `/usage` page shows it. */
+export interface WorkspaceUsage {
+  sessions: SessionTotals[];
+  models: ModelTotals[];
+  days: DayTotals[];
+  total: Totals;
+}
+
+/** The totals one row of the terminal's `/resume` panel shows. */
+export interface SessionStatsInfo {
+  id: string;
+  entries: number;
+  requests: number;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  reasoning_tokens: number;
+  total_tokens: number;
+  cache_share: number | null;
+}
+
+/** Whether the model may compact this session itself, and the session's own choice. */
+export interface SelfCompaction {
+  choice: boolean | null;
+  effective: boolean;
+}
+
+/** One model asked one short question by `client.doctor()`. */
+export interface ModelCheck {
+  model: string;
+  model_id: string;
+  ok: boolean;
+  seconds: number;
+  detail: string;
+  input_tokens: number | null;
+  output_tokens: number | null;
+}
+
 export interface RunState {
   running: boolean;
   pending: PendingRequest | null;

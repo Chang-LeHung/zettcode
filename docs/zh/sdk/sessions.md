@@ -215,6 +215,33 @@ else:
 
 在被锁定的会话上运行、重命名、压缩和恢复，会抛出 `SessionLockedError`。如果终端正开着某段对话，SDK 可以读它但不能往里加东西，反过来也是如此。
 
+## 自我压缩
+
+自我压缩是由模型自己决定何时压缩上下文:请求开始时提供这个工具,模型认为细节不再需要时就会请求。它有一个配置默认值
+(`[compaction] self`),以及每个会话自己的选择。终端在 `/self-compact` 里编辑两者;在代码里,会话的选择是一个属性和一个方法:
+
+```python
+async with zc.Client(".") as client:
+    print(client.self_compaction)          # 这个会话当前是否生效
+    print(client.self_compaction_choice)   # True、False,或 None 表示跟随默认值
+    client.use_self_compaction(True)       # 这个会话允许模型自己压缩
+    client.use_self_compaction(None)       # 重新跟随配置
+```
+
+选择会写进会话,重启后仍在;它从下一次请求开始生效,因为工具是在请求开始时提供的。`OSError` 表示选择没能写入,当前生效的
+选择不变。
+
+## 会话里存了什么
+
+`await client.session_stats()` 是对话在存储里的一面:文件里有多少条目、被计费了多少次回复,以及这些回复花掉的 token 和
+缓存占比。这就是终端 `/resume` 的列,只在文件变过时重读。见[用量与体检](./usage)。
+
+```python
+async with zc.Client(".") as client:
+    for stats in await client.session_stats([client.session.id]):
+        print(stats.entries, stats.input_tokens, stats.cache_share)
+```
+
 ## `Session` API 汇总
 
 | 成员 | 类别 | 作用 |

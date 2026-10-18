@@ -193,6 +193,22 @@ async with zc.Client(".") as client:
 
 `client.config` is the `ZettCodeConfig` in force, which is frozen: build a new client to change a setting that is not one of the `use_*` methods.
 
+## `@` resources, usage and health
+
+Three more questions the terminal answers have their own methods: what an `@` can point at, what the workspace spent, and whether the models answer.
+
+```python
+async with zc.Client(".") as client:
+    for mention in client.mentions("cli", limit=5):
+        print(mention.token, mention.kind, mention.description)
+    ledger = await client.usage_ledger()
+    print(ledger.total.total_tokens)
+    for check in await client.check_models(timeout=15):
+        print(check.model, check.ok, check.detail)
+```
+
+[Usage and health](./usage) explains the ledger, session stats and the model check; [Sessions](./sessions) covers what a session holds.
+
 ## Closing
 
 ```python
