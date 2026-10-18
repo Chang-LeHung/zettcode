@@ -18,8 +18,11 @@ import sys
 import zettcode
 from zettcode._compat import tomllib
 
-#: Repository root, three levels above the package's ``__init__.py``.
-ROOT = pathlib.Path(zettcode.__file__).resolve().parent.parent.parent
+#: The repository root, two levels above the tests (``zettcode/tests`` here).
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+
+#: The package's own project directory, where its sources, probes and ``pyproject.toml`` live.
+PROJECT = ROOT / "zettcode"
 
 #: One piece of evidence in ``docs/internal/invariants.md``: a test file and,
 #: within the same row, the bare names that follow it.
@@ -56,7 +59,7 @@ def test_every_invariant_cites_a_test_that_exists():
             else:
                 continue
             checked += 1
-            source = (ROOT / "tests" / f"{current}.py").read_text(encoding="utf-8")
+            source = (PROJECT / "tests" / f"{current}.py").read_text(encoding="utf-8")
             if not re.search(rf"^\s*(?:async )?def {re.escape(name)}\(", source, re.MULTILINE):
                 missing.append(f"{current}::{name}")
 
@@ -142,7 +145,7 @@ def test_every_relative_import_resolves_to_a_real_module():
 def test_no_import_climbs_more_than_two_packages_by_dots():
     """`from ...x` and deeper are written `from zettcode.x`; `.` and `..` stay relative."""
     deep: list[str] = []
-    for path in sorted((ROOT / "src" / "zettcode").rglob("*.py")):
+    for path in sorted((PROJECT / "src" / "zettcode").rglob("*.py")):
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if isinstance(node, ast.ImportFrom) and node.level > 2:
                 deep.append(f"{path.relative_to(ROOT)}:{node.lineno} {'.' * node.level}{node.module or ''}")
@@ -246,7 +249,7 @@ def test_the_version_is_written_once_and_the_distribution_carries_it():
     fails here until ``uv sync --reinstall-package zettcode`` runs; CI installs
     from scratch, so there the two always agree.
     """
-    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    project = tomllib.loads((PROJECT / "pyproject.toml").read_text(encoding="utf-8"))
 
     assert project["project"]["dynamic"] == ["version"]
     assert project["tool"]["hatch"]["version"]["path"] == "src/zettcode/__init__.py"

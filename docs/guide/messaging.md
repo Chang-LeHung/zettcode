@@ -134,7 +134,7 @@ agent, whatever it claims.
 A program that wants to be listed, and to be answered, registers like a session: it opens a WebSocket at `/inbox` with
 the same token, says `{"op": "session", "session_id": "...", "title": "...", "kind": "external"}`, and is then in the
 list for everyone to write to. The messages it is sent arrive on that connection, and it sends back with the `key` it
-was given. The whole exchange is described at the top of `src/zettcode/broker/protocol.py`.
+was given. The whole exchange is described at the top of `zettcode/src/zettcode/broker/protocol.py`.
 
 ## Limits and care
 

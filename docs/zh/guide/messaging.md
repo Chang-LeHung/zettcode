@@ -108,7 +108,7 @@ curl -s -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
 
 会话收下消息（或说明为什么不收）之后才会返回结果。对方会把它显示成来自**外部来源**，并告诉自己的模型：发送者没有经过验证——模型会像对待任何外部请求那样权衡它，而不是当成用户在打字。不管消息自称什么，它都不能说自己来自某位用户或另一个智能体。
 
-想出现在名单里、也想被回复的程序，要像会话一样注册：用同一个令牌打开 `/inbox` 的 WebSocket，发送 `{"op": "session", "session_id": "...", "title": "...", "kind": "external"}`，之后大家就能给它写消息了。发给它的消息从这条连接上到达，它用拿到的 `key` 发消息。完整的交互写在 `src/zettcode/broker/protocol.py` 开头。
+想出现在名单里、也想被回复的程序，要像会话一样注册：用同一个令牌打开 `/inbox` 的 WebSocket，发送 `{"op": "session", "session_id": "...", "title": "...", "kind": "external"}`，之后大家就能给它写消息了。发给它的消息从这条连接上到达，它用拿到的 `key` 发消息。完整的交互写在 `zettcode/src/zettcode/broker/protocol.py` 开头。
 
 ## 限制与注意
 

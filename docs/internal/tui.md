@@ -1,6 +1,6 @@
 # TUI Framework
 
-`src/zettcode/tui` is a terminal UI toolkit that knows nothing about
+`zettcode/src/zettcode/tui` is a terminal UI toolkit that knows nothing about
 the coding agent. ZettCode is its first consumer, not its definition. This
 document is the contract and the roadmap for that framework.
 
@@ -60,10 +60,13 @@ input        byte-stream decoding, key tables, paste/mouse/resize/focus events
 terminal     raw mode, alternate screen, size, capability detection
 ```
 
-Layout as of M6:
+The repository is a uv workspace: the agent is `zettcode/`, the HTTP server is `zettcode-server/`, and the shared
+tool configuration is the root `pyproject.toml`.
+
+Layout as of the workspace split:
 
 ```
-src/zettcode/
+zettcode/src/zettcode/
   cli.py, config.py  the outermost layer: entry point and validated settings
   app/               the ZettCode application, built on the framework
     agent/           transcript.py (the conversation model and its render
@@ -125,7 +128,7 @@ tui/
 
 The framework is complete for the shipping application and holds no reference to
 the agent or to `zettcode.app`. The old `components.py`, `application.py`, and
-`tui.py` are gone: `src/zettcode/app/` is the only implementation of the
+`tui.py` are gone: `zettcode/src/zettcode/app/` is the only implementation of the
 application now.
 
 ## Core contracts
@@ -369,7 +372,7 @@ cached prefix plus the open tail, and only the visible rows are ever built.
 
 ## The application
 
-`src/zettcode/app/` is the only consumer of the framework, and the only place
+`zettcode/src/zettcode/app/` is the only consumer of the framework, and the only place
 that knows about agents, sessions, and tools.
 
 ### How `app/agent/` is laid out
@@ -431,10 +434,10 @@ rather than on a user's screen.
 ### Messages between sessions
 
 A second process, the broker, lets one session message another, and lets anything that holds its token do
-the same; invariants B1-B16 hold it. It is one package, `src/zettcode/broker/`: a Starlette application served
+the same; invariants B1-B16 hold it. It is one package, `zettcode/src/zettcode/broker/`: a Starlette application served
 by uvicorn on a loopback port, and the client a session reaches it with. A session is a WebSocket
 (`/inbox`: registered while it is open), sending is `POST /messages`, and who a message is from is the
-session its key belongs to or an external source that names itself. `src/zettcode/filelock.py` is the
+session its key belongs to or an external source that names itself. `zettcode/src/zettcode/filelock.py` is the
 operating-system file lock the broker is made a singleton with, shared with the session store's own lock.
 
 - Server side, one job each: `protocol` is what is said and the limits on it (the routes and the WebSocket

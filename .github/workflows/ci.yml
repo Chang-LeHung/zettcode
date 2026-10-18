@@ -25,13 +25,17 @@ jobs:
           enable-cache: true
 
       - name: Sync dependencies
-        run: uv sync --locked --group dev
+        run: uv sync --locked --all-packages
 
       - name: Check formatting
-        run: uv run --no-sync ruff format --check src tests
+        run: uv run --no-sync ruff format --check zettcode/src zettcode/tests zettcode/perf zettcode-server/src zettcode-server/tests docs/scripts
 
       - name: Lint
-        run: uv run --no-sync ruff check src tests
+        run: uv run --no-sync ruff check zettcode/src zettcode/tests zettcode/perf zettcode-server/src zettcode-server/tests docs/scripts
+
+      # The configuration at the workspace root covers both packages.
+      - name: Type-check
+        run: uv run --no-sync mypy
 
   test:
     name: Tests (Python ${{ matrix.python-version }})
@@ -51,9 +55,14 @@ jobs:
           enable-cache: true
 
       - name: Sync dependencies
-        run: uv sync --locked --group dev
+        run: uv sync --locked --all-packages
 
-      - name: Run tests
+      - name: Run tests (the agent)
+        working-directory: zettcode
+        run: uv run --no-sync pytest
+
+      - name: Run tests (the server)
+        working-directory: zettcode-server
         run: uv run --no-sync pytest
 
   test-windows:
@@ -74,16 +83,21 @@ jobs:
           enable-cache: true
 
       - name: Sync dependencies
-        run: uv sync --locked --group dev
+        run: uv sync --locked --all-packages
 
       # The console layer has a Windows path with no POSIX equivalent, so the
       # suite runs there too: the platform seam, the reader thread, and the
       # resize poll are exercised on the platform that needs them.
-      - name: Run tests
+      - name: Run tests (the agent)
+        working-directory: zettcode
+        run: uv run --no-sync pytest
+
+      - name: Run tests (the server)
+        working-directory: zettcode-server
         run: uv run --no-sync pytest
 
   package:
-    name: Build and smoke-test the wheel
+    name: Build and smoke-test the wheels
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -99,13 +113,16 @@ jobs:
       - name: Build and smoke-test the wheel
         run: make smoke
 
-      - name: Verify the wheel ships the TUI package
+      - name: Build and smoke-test the wheels
+        run: make smoke
+
+      - name: Verify the wheel ships the agent package
         run: |
           python3 - <<'PY'
           import glob
           import zipfile
 
-          wheel = glob.glob(".smoke/*.whl")[0]
+          wheel = glob.glob(".smoke/zettcode-*.whl")[0]
           names = zipfile.ZipFile(wheel).namelist()
           assert any(name.startswith("zettcode/") for name in names), names
           entry_points = [name for name in names if name.endswith("entry_points.txt")]

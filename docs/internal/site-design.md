@@ -12,12 +12,12 @@ publishes them from `main`. Internal notes in this directory remain excluded.
 
 ## Design responsibilities
 
-- `src/zettcode/app/brand.py` holds the single 15×10 pixel map and fixed brand
+- `zettcode/src/zettcode/app/brand.py` holds the single 15×10 pixel map and fixed brand
   palette used by every surface. There is no separate website interpretation.
   `docs/public/logo.svg` is generated from it: a green pixel robot
   with square eyes, side ears, and a warm heart. The navigation, favicon, and
   README use the same asset. Keep the silhouette recognizable at 16 and 32 px.
-- `src/zettcode/app/ui/widgets/welcome.py` is the terminal interpretation.
+- `zettcode/src/zettcode/app/ui/widgets/welcome.py` is the terminal interpretation.
   Its five-row, fifteen-column mark uses the same pixels as the website, with square
   eyes and a heart tapering to a single pixel rather than a blunt stem. It packs
   two pixels per cell without resampling the eyes, ears, or heart. Terminal

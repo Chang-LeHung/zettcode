@@ -302,7 +302,7 @@ invariant breaks, not merely that the code is exercised.
 
 ## Messages between sessions
 
-Several sessions on one machine talk through a background broker (`src/zettcode/broker`, standard library only; the application imports it and it imports nothing of the application). The rules below are the ones whose breaking is silent: a message that is lost, a loop that never ends, a terminal driven by text from another process, a session that waits on something that is not there.
+Several sessions on one machine talk through a background broker (`zettcode/src/zettcode/broker`, standard library only; the application imports it and it imports nothing of the application). The rules below are the ones whose breaking is silent: a message that is lost, a loop that never ends, a terminal driven by text from another process, a session that waits on something that is not there.
 
 | # | Rule and what breaks | Status | Evidence |
 | --- | --- | --- | --- |
