@@ -9,6 +9,7 @@ being forwarded.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from typing import Any
 
 import pytest
@@ -122,9 +123,22 @@ async def test_a_message_past_the_limit_ends_the_connection_with_1009_and_does_n
     peer = await running.peer(A, "a")
     other = await running.peer(B, "b")
 
-    await peer.send_raw('{"op": "session", "title": "' + "x" * (MAX_BODY + 10) + '"}')
+    await peer.announce_frame(MAX_BODY + 10)
 
     assert await peer.ended() and peer.close_code == 1009
+    await eventually(lambda: [e.session_id for e in running.broker.roster.entries()] == [B])
+    assert "error" not in await other.register(B, "b")
+
+
+async def test_a_whole_message_past_the_limit_still_ends_only_that_connection(running):
+    """The same refusal when the sender really writes the body: it may see a reset, and the others never do."""
+    peer = await running.peer(A, "a")
+    other = await running.peer(B, "b")
+
+    with contextlib.suppress(Exception):  # the server hangs up mid-write, which the sender may see as a reset
+        await peer.send_raw('{"op": "session", "title": "' + "x" * (MAX_BODY + 10) + '"}')
+
+    assert await peer.ended()
     await eventually(lambda: [e.session_id for e in running.broker.roster.entries()] == [B])
     assert "error" not in await other.register(B, "b")
 
