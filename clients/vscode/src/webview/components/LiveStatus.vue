@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 
-import { describeTool, noticePlain, withoutEllipsis } from "../../core/format.js";
+import { describeTool, formatClock, noticePlain, withoutEllipsis } from "../../core/format.js";
 import { state } from "../store.js";
 import Shimmer from "./Shimmer.vue";
 
@@ -62,9 +62,8 @@ const elapsed = computed(() => {
   if (turn === null) {
     return "";
   }
-  const seconds = Math.max(0, Math.floor((now.value - turn.startedAt) / 1000));
-  const minutes = Math.floor(seconds / 60);
-  return minutes > 0 ? `${minutes}:${String(seconds % 60).padStart(2, "0")}` : `${seconds}s`;
+  // `1m 19s`, not `1:19`: the words say what the number is, as the receipt's do.
+  return formatClock(Math.max(0, now.value - turn.startedAt));
 });
 
 /** The clock ticks only while a request does, so an idle view holds no timer. */

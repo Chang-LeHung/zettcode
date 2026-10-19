@@ -199,6 +199,22 @@ export function formatDuration(milliseconds: number): string {
   return `${minutes}m ${rest}s`;
 }
 
+/**
+ * A running clock, in whole seconds with its units: `8s`, `1m 19s`, `1h 4m`. It is what the status line ticks with,
+ * so it never shows a decimal or a bare `1:19` that a reader has to read as minutes and seconds.
+ */
+export function formatClock(milliseconds: number): string {
+  const total = Math.max(0, Math.floor(milliseconds / 1000));
+  if (total < 60) {
+    return `${total}s`;
+  }
+  const minutes = Math.floor(total / 60);
+  if (minutes < 60) {
+    return `${minutes}m ${total % 60}s`;
+  }
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+}
+
 /** When a session was last active, in the words a history row uses. */
 export function relativeTime(value: string | null | undefined, now = Date.now()): string {
   if (!value) {
