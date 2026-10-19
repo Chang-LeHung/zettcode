@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/public/logo.svg" width="88" height="88" alt="ZettCode 像素机器人，中间是一颗暖色的心" />
+  <img src="clients/vscode/media/logo.svg" width="120" alt="ZettCode 吉祥物：骑着剑飞过月亮的机器人" />
 </p>
 <h1 align="center">ZettCode</h1>
 <p align="center"><strong>你的终端。你的编码伙伴。</strong></p>
@@ -93,12 +93,16 @@ uv tool install zettcode-server
 zettcode-server --workspace ~/projects/api --port 8000
 ```
 
+VS Code 用户可以使用 [`clients/vscode/`](clients/vscode/README.md):同一个服务器和客户端之上的侧边栏对话,
+包含流式回合、串联的工具调用、可点击的文件、审批、模型/effort/权限切换和最近会话历史。`make vscode` 会构建并测试它。
+
 ## 开发
 
 ```bash
 uv sync --all-packages           # 安装两个包
-make check                      # Ruff、mypy 与两套测试
+make check                      # Ruff、mypy、两套测试与 VS Code 扩展
 make client                     # 构建并测试 TypeScript 客户端
+make vscode                     # 类型检查、测试并构建 VS Code 扩展
 make hooks                      # 每次提交前强制检查 mypy
 make demo                       # 浏览终端组件
 make docs                       # 本地预览使用文档
@@ -107,7 +111,8 @@ uv run zettcode --workspace .    # 从源码运行
 
 ZettCode 提供终端应用和它的 HTTP 服务器;智能体运行时来自
 [`zett-agent`](https://github.com/Chang-LeHung/zett-agent)。仓库是一个 uv workspace:`zettcode/` 是代理,
-`zettcode-server/` 是 API,`clients/typescript/` 是它的 TypeScript 客户端。贡献者约定和不变量放在
+`zettcode-server/` 是 API,`clients/typescript/` 是它的 TypeScript 客户端,`clients/vscode/` 是基于该客户端的
+VS Code 侧边栏。贡献者约定和不变量放在
 [`AGENTS.md`](AGENTS.md) 与 [`docs/internal/`](docs/internal/)，不进入用户指南。
 本地预览、重新生成效果图的方法见
 [`docs/internal/site-design.md`](docs/internal/site-design.md)。
