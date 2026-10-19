@@ -370,7 +370,12 @@ def test_the_word_after_git_is_one_of_its_subcommands_not_a_file(tmp_path: Path)
     assert "statt" not in found, "a typo that once ran is not a candidate"
     assert found.index("status") < found.index("stash"), "the one the reader uses comes first"
     assert {item.type for item in completer("git st", 6)} == {COMMAND}
-    assert complete(completer, "git CHECK") == ["checkout"], "whatever the case"
+    # The case is ignored. Which commands share the prefix depends on the git that answers (`check-attr` and its
+    # fellows are in some builds' "others" and not others'), so what is asserted is that the slot holds git's own names,
+    # each of them a command beginning with what was typed, and nothing from the directory.
+    found = complete(completer, "git CHECK")
+    assert "checkout" in found, "whatever the case"
+    assert all(name.casefold().startswith("check") and "." not in name for name in found), found
     assert "commit" in complete(completer, "git ") and "clone" in complete(completer, "git c")
 
 
