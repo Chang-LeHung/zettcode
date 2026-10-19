@@ -149,6 +149,7 @@ class ModelInfo:
         multimodal: Whether it accepts images.
         efforts: The reasoning levels it accepts, cheapest first.
         active: Whether it is the model the next run uses.
+        compact_percent: Share of the window, in percent, at which a request is summarized first (80 by default).
     """
 
     name: str
@@ -157,6 +158,7 @@ class ModelInfo:
     multimodal: bool
     efforts: tuple[str, ...]
     active: bool = False
+    compact_percent: float = 80.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -217,7 +219,8 @@ class Message:
     """One message of a stored conversation.
 
     Attributes:
-        role: ``user``, ``assistant`` or ``tool``.
+        role: ``user``, ``assistant`` or ``tool``; ``summary`` for the text a compaction left in place of the
+            older messages, which nobody typed.
         text: What was said. For a user message it is what the person typed, not the instructions an ``@``
             reference added behind it.
         tool_calls: For an assistant message, the tools it asked for.
@@ -225,6 +228,9 @@ class Message:
         tool_name: For a tool message, the tool.
         ok: For a tool message, whether the call succeeded.
         images: How many images the message carries; their bytes are not kept in the history.
+        usage: For an assistant message, what its model call spent, when the store recorded it.
+        seconds: How long the message took to produce: the model call for an assistant message, the run for a tool
+            message, and nothing for a user message.
     """
 
     role: str
@@ -234,6 +240,8 @@ class Message:
     tool_name: str | None = None
     ok: bool = True
     images: int = 0
+    usage: Usage | None = None
+    seconds: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)

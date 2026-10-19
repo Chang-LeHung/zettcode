@@ -297,9 +297,12 @@ class Notice(Event):
 
     Attributes:
         text: One readable line.
+        level: How serious it is: ``"info"`` for progress (an MCP server is starting, or ready) and ``"warn"`` for
+            something the reader may need to act on (a server is down, a configuration entry is ignored).
     """
 
     text: str
+    level: str = "info"
 
 
 @dataclass(frozen=True, slots=True)

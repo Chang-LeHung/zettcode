@@ -259,6 +259,19 @@ async def test_history_is_what_was_said_in_order_with_tool_calls_and_results(tmp
     assert "contents" in history[2].text and history[3].text == "done reading"
 
 
+async def test_history_carries_what_each_reply_spent_and_how_long_it_took(tmp_path, monkeypatch):
+    wire(monkeypatch, ScriptedModel("an answer"))
+    async with make(tmp_path) as client:
+        await client.prompt("hello")
+        history = await client.session.history()
+
+    user, reply = history
+    assert user.usage is None and user.seconds == 0.0
+    assert reply.usage is not None and reply.usage.requests == 1
+    assert reply.usage.input_tokens > 0 and reply.usage.output_tokens > 0
+    assert reply.seconds >= 0.0 and reply.usage.seconds == reply.seconds
+
+
 async def test_history_of_a_session_never_written_is_a_not_found_error(tmp_path):
     async with make(tmp_path) as client:
         with pytest.raises(SessionNotFoundError):
@@ -403,6 +416,31 @@ async def test_an_empty_side_question_is_refused(tmp_path, empty):
     async with make(tmp_path) as client:
         with pytest.raises(ValueError, match="empty"):
             await client.session.ask(empty)
+
+
+async def test_a_side_question_can_be_streamed_and_still_adds_nothing_to_the_conversation(tmp_path, monkeypatch):
+    from zettcode.sdk.events import TextDelta
+
+    wire(monkeypatch, ScriptedModel("main", "the side reply", "next main"))
+    async with make(tmp_path) as client:
+        await client.prompt("the project is called Zeta")
+        stream = client.session.ask_stream("what is the project called")
+        written = [event.text async for event in stream if isinstance(event, TextDelta)]
+        await client.prompt("continue")
+
+        assert "".join(written) == "the side reply"
+        assert stream.result is not None and stream.result.text == "the side reply"
+        assert [m.text for m in await client.session.history() if m.role == "user"] == [
+            "the project is called Zeta",
+            "continue",
+        ]
+
+
+async def test_a_streamed_side_question_that_is_empty_is_refused_before_anything_starts(tmp_path, monkeypatch):
+    wire(monkeypatch, ScriptedModel("x"))
+    async with make(tmp_path) as client:
+        with pytest.raises(ValueError, match="empty"):
+            client.session.ask_stream("  ")
 
 
 async def test_a_side_question_is_not_a_conversation_and_does_not_leave_the_side_mode_on(tmp_path, monkeypatch):
@@ -565,6 +603,42 @@ async def test_compacting_replaces_the_older_messages_with_a_summary(tmp_path, m
         await client.prompt("what now")
 
     assert "SUMMARY of the work so far" in str(model.requests[-1].messages)
+
+
+async def test_the_history_of_a_compacted_session_starts_with_the_summary_not_a_user_message(tmp_path, monkeypatch):
+    steps = [f"reply {number}" for number in range(6)] + ["SUMMARY of the work so far", "after"]
+    wire(monkeypatch, ScriptedModel(*steps))
+    async with make(tmp_path) as client:
+        for number in range(6):
+            await client.prompt(f"question {number} " + "padding " * 30)
+        await client.session.compact()
+
+        history = await client.session.history()
+
+    assert history[0].role == "summary" and "SUMMARY of the work so far" in history[0].text
+    assert [m.role for m in history].count("summary") == 1
+
+
+async def test_the_full_history_of_a_compacted_session_keeps_what_was_folded_away(tmp_path, monkeypatch):
+    steps = [f"reply {number}" for number in range(6)] + ["SUMMARY of the work so far", "after"]
+    wire(monkeypatch, ScriptedModel(*steps))
+    async with make(tmp_path) as client:
+        for number in range(6):
+            await client.prompt(f"question {number} " + "padding " * 30)
+        await client.session.compact()
+        await client.prompt("what now")
+
+        working = await client.session.history()
+        full = await client.session.history(full=True)
+
+    typed = [m.text.split(" padding")[0] for m in full if m.role == "user"]
+    assert typed == [f"question {n}" for n in range(6)] + ["what now"], "nothing the person said is lost"
+    roles = [m.role for m in full]
+    assert roles.count("summary") == 1
+    marker = roles.index("summary")
+    assert 0 < marker < roles.index("user", marker) < len(roles), "the summary stands where the compaction happened"
+    assert len(full) > len(working), "the model's own list is the shorter one"
+    assert [m.role for m in working].count("user") < 7
 
 
 async def test_compacting_twice_in_a_row_says_it_is_already_compacted(tmp_path, monkeypatch):

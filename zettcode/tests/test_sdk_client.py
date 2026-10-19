@@ -97,6 +97,21 @@ async def test_the_starting_model_effort_and_permission_can_be_given_when_the_cl
         assert (client.model.name, client.effort, client.permission) == ("beta", "low", "deny")
 
 
+async def test_the_compaction_point_moves_for_the_run_and_a_bad_share_is_refused(tmp_path):
+    async with client_for(tmp_path, models=models("alpha")) as client:
+        assert client.model.compact_percent == 80
+
+        model, unwritten = client.use_compact_percent(55)
+
+        assert model.compact_percent == 55 and client.model.compact_percent == 55
+        # This client was built from models in memory, so there is no file to write it to, and it says so.
+        assert unwritten
+        for bad in (0, -5, 101):
+            with pytest.raises(ConfigurationError, match="at most 100"):
+                client.use_compact_percent(bad)
+        assert client.model.compact_percent == 55
+
+
 async def test_effort_can_be_changed_and_listed(tmp_path):
     async with client_for(tmp_path) as client:
         assert client.use_effort("high") == "high" and client.effort == "high"

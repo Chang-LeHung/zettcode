@@ -16,7 +16,7 @@ from zett_agent.extensions.shell_approval import SHELL_APPROVAL_EVENT_NAME, Shel
 from zett_agent.messages import AssistantMessage, TextContent, ToolCall, ToolMessage, UserMessage
 from zett_agent.stop import StopInfo, StopReason
 
-from zettcode.app.agent.extensions.mcp_notice import MCP_NOTICE_EVENT_NAME
+from zettcode.app.agent.extensions.mcp_notice import MCP_NOTICE_EVENT_NAME, notice_payload
 from zettcode.app.agent.extensions.usage import USAGE_EVENT_NAME
 from zettcode.sdk import events as sdk
 from zettcode.sdk._translate import translate
@@ -409,6 +409,17 @@ def test_an_mcp_notice_is_a_notice():
     assert one(custom(MCP_NOTICE_EVENT_NAME, {"text": "  server docs is down  "})) == sdk.Notice(
         "s1", "server docs is down"
     )
+
+
+def test_a_notice_says_how_serious_it_is_and_one_that_does_not_is_progress():
+    warning = one(custom(MCP_NOTICE_EVENT_NAME, notice_payload("server docs is down", "warn")))
+    progress = one(custom(MCP_NOTICE_EVENT_NAME, notice_payload("Starting MCP server 'docs' (process)…")))
+    assert (warning.text, warning.level) == ("server docs is down", "warn")
+    assert progress.level == "info"
+    # An older payload with no level, and a level nobody defined, are both progress rather than an alarm.
+    assert one(custom(MCP_NOTICE_EVENT_NAME, {"text": "x"})).level == "info"
+    assert one(custom(MCP_NOTICE_EVENT_NAME, {"text": "x", "level": "catastrophe"})).level == "info"
+    assert notice_payload("x", "catastrophe") == {"text": "x", "level": "info"}
 
 
 def test_a_blank_or_malformed_notice_is_dropped():

@@ -137,12 +137,15 @@ class ReportingMcpExtension(McpExtension):
         """Return whether this is the first request its session has made, in a session the reader is in."""
         return self._is_a_reader_session(context) and cast(str, context.config.session_id) not in self._narrated
 
-    async def _say_quietly(self, context: AgentRunContext | None, text: str) -> None:
-        """Say a line without letting the saying fail the discovery it reports on."""
+    async def _say_quietly(self, context: AgentRunContext | None, text: str, level: str = "info") -> None:
+        """Say a line without letting the saying fail the discovery it reports on.
+
+        These are progress lines (a server is starting, or ready), so they are ``info`` unless said otherwise.
+        """
         if context is None:
             return
         try:
-            await self._say(context, text)
+            await self._say(context, text, level)
         except Exception:  # noqa: BLE001 - news about a server must never be what stops it
             pass
 
@@ -188,14 +191,19 @@ class ReportingMcpExtension(McpExtension):
         return [f"MCP server {name!r} in {path.name} is ignored: {reason}" for name, reason in skipped.items()]
 
     @staticmethod
-    async def _say(context: AgentRunContext, text: str) -> None:
-        """Publish one line for the transcript."""
+    async def _say(context: AgentRunContext, text: str, level: str = "warn") -> None:
+        """Publish one line for the transcript.
+
+        A line is a warning unless it says otherwise: what reaches here from the checks (a server that is down, an
+        entry that is ignored, a file that cannot be read) is something the reader may need to act on, and only the
+        progress lines of a start say ``info``.
+        """
         await context.emit(
             AgentEvent(
                 type=AgentEventType.CUSTOM,
                 session_id=cast(str, context.config.session_id),
                 name=MCP_NOTICE_EVENT_NAME,
-                payload=notice_payload(text),
+                payload=notice_payload(text, level),
             )
         )
 

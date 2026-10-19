@@ -77,11 +77,11 @@ for message in messages:
     print(f"{message.role:>9}: {message.text[:80]!r}")
 ```
 
-`history()` 返回模型正在使用的消息：如果有压缩摘要则摘要在最前，然后是它之后的内容。它不含系统消息和旁路提问；用户消息显示的是人输入的原文，而不是 `@` 引用附加在后面的说明。读取不需要锁，所以对另一个进程打开着的会话也能用。
+`history()` 返回模型正在使用的消息:如果有压缩摘要则摘要在最前,然后是它之后的内容。`history(full=True)` 则返回当前分支上按写入原样的整段对话:被压缩折叠掉的消息都在,每个摘要作为一条 `summary` 消息出现在压缩发生的位置;客户端重新打开会话时显示的是这一份。它不含系统消息和旁路提问;用户消息显示的是人输入的原文,而不是 `@` 引用附加在后面的说明。读取不需要锁,所以对另一个进程打开着的会话也能用。
 
 | `Message` 字段 | 含义 |
 | --- | --- |
-| `role` | `user`、`assistant` 或 `tool`。 |
+| `role` | `user`、`assistant` 或 `tool`;压缩后代替较早消息的那段文字为 `summary`,不是任何人输入的。 |
 | `text` | 说了什么。 |
 | `tool_calls` | 对 assistant 消息，是一组 `ToolCallInfo(id, name, arguments)`。 |
 | `tool_call_id`、`tool_name`、`ok` | 对 tool 消息，是它回应的调用、工具名，以及是否成功。 |
@@ -249,8 +249,9 @@ async with zc.Client(".") as client:
 | `id`、`title`、`usage`、`path`、`current`、`locked` | 属性 | 身份与状态。 |
 | `prompt`、`stream`、`run` | 方法 | [运行 prompt](./running)。 |
 | `ask(question)` | 异步 | 不往对话里添加内容的旁路提问。 |
+| `ask_stream(question)` | 同步 | 同样的旁路提问,以流的形式返回,答案可以边写边显示。 |
 | `steer(message)` | 同步 | 向进行中的请求发一条消息。 |
-| `history()` | 异步 | 模型使用的消息。 |
+| `history(full=False)` | 异步 | 模型使用的消息;`full=True` 时为整段对话。 |
 | `rename(title)`、`name_it()` | 异步 | 给它起名字。 |
 | `fork()` | 异步 | 把上下文复制到新会话。 |
 | `export(path)` | 异步 | 写出 HTML 页面。 |

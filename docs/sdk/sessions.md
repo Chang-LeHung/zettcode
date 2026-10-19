@@ -77,11 +77,11 @@ for message in messages:
     print(f"{message.role:>9}: {message.text[:80]!r}")
 ```
 
-`history()` returns the messages the model is working with: the compaction summary first if there is one, then what followed it. It does not include system messages or side questions, and a user message shows what the person typed, not the instructions an `@` reference added behind it. Reading takes no lock, so it works on a session another process has open.
+`history()` returns the messages the model is working with: the compaction summary first if there is one, then what followed it. `history(full=True)` returns the whole conversation on the active branch as it was written instead: the messages a compaction folded away are there, and each summary stands, as a `summary` message, where the compaction happened. A client that reopens a session shows that one. It does not include system messages or side questions, and a user message shows what the person typed, not the instructions an `@` reference added behind it. Reading takes no lock, so it works on a session another process has open.
 
 | `Message` field | Meaning |
 | --- | --- |
-| `role` | `user`, `assistant` or `tool`. |
+| `role` | `user`, `assistant` or `tool`; `summary` for the text a compaction left in place of the older messages, which nobody typed. |
 | `text` | What was said. |
 | `tool_calls` | For an assistant message, a tuple of `ToolCallInfo(id, name, arguments)`. |
 | `tool_call_id`, `tool_name`, `ok` | For a tool message, the call it answers, the tool, and whether it succeeded. |
@@ -246,8 +246,9 @@ async with zc.Client(".") as client:
 | `id`, `title`, `usage`, `path`, `current`, `locked` | properties | Identity and state. |
 | `prompt`, `stream`, `run` | methods | [Run a prompt](./running). |
 | `ask(question)` | async | A side question that adds nothing to the conversation. |
+| `ask_stream(question)` | sync | The same side question, returned as a stream so the answer can be shown as it is written. |
 | `steer(message)` | sync | Send a message to the request in progress. |
-| `history()` | async | The messages the model works with. |
+| `history(full=False)` | async | The messages the model works with; the whole conversation with `full=True`. |
 | `rename(title)`, `name_it()` | async | Give it a name. |
 | `fork()` | async | Copy the context into a new session. |
 | `export(path)` | async | Write an HTML page. |

@@ -476,6 +476,7 @@ class Client:
                 multimodal=entry.multimodal,
                 efforts=tuple(level.value for level in entry.efforts),
                 active=entry is active,
+                compact_percent=entry.compact_percent,
             )
             for entry in self._agent.models
         )
@@ -498,6 +499,29 @@ class Client:
         except ValueError as error:
             raise ConfigurationError(f"{error}. Configured: {', '.join(info.name for info in self.models)}") from error
         return self.model
+
+    def use_compact_percent(self, percent: float) -> tuple[ModelInfo, str | None]:
+        """Summarize the conversation at ``percent`` of the active model's window, from the next request on.
+
+        This is the terminal's ``/context`` slider. The running session changes at once; the configuration file is
+        rewritten too, so the point survives a restart.
+
+        Args:
+            percent: Share of the window, more than 0 and at most 100.
+
+        Returns:
+            The active model as it is now, and why the file was not written (``None`` when it was): the change then
+            holds for this run only.
+
+        Raises:
+            ConfigurationError: ``percent`` is not between 0 and 100.
+        """
+        self._check_open()
+        try:
+            _, unwritten = self._agent.change_compact_percent(percent)
+        except ValueError as error:
+            raise ConfigurationError(str(error)) from error
+        return self.model, unwritten
 
     @property
     def effort(self) -> str:

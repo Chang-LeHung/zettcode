@@ -13,9 +13,21 @@ from zett_agent.events import AgentEvent
 MCP_NOTICE_EVENT_NAME = "mcp_notice"
 
 
-def notice_payload(text: str) -> dict[str, str]:
-    """Return the JSON-serializable payload that carries one line of MCP news."""
-    return {"text": text}
+#: How serious a line of news is: ``info`` is progress (a server is starting, or ready), ``warn`` is something the
+#: reader may need to act on (a server is down, an entry is ignored). A payload that names neither is ``info``.
+LEVELS = ("info", "warn")
+
+
+def notice_payload(text: str, level: str = "info") -> dict[str, str]:
+    """Return the JSON-serializable payload that carries one line of MCP news and how serious it is."""
+    return {"text": text, "level": level if level in LEVELS else "info"}
+
+
+def notice_level_from(event: AgentEvent) -> str:
+    """Return how serious the notice an event carries is; ``info`` for a payload that does not say."""
+    payload = event.payload
+    level = payload.get("level") if isinstance(payload, dict) else None
+    return level if level in LEVELS else "info"
 
 
 def notice_from(event: AgentEvent) -> str | None:
