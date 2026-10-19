@@ -87,8 +87,8 @@ function key(event: KeyboardEvent): void {
 </script>
 
 <template>
-  <div id="compaction" class="compaction">
-    <div class="compaction-head">
+  <div id="compaction" class="compaction-point">
+    <div class="compaction-point-head">
       <span class="compaction-title">Compaction point</span>
       <span class="compaction-value"
         ><strong>{{ draft }}%</strong><span class="muted"> · {{ formatTokens(tokens) }} tokens</span></span
@@ -136,13 +136,13 @@ function key(event: KeyboardEvent): void {
 </template>
 
 <style>
-.compaction {
+.compaction-point {
   margin-top: 12px;
   padding-top: 12px;
   border-top: 1px solid var(--line);
 }
 
-.compaction-head {
+.compaction-point-head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;

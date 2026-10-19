@@ -821,6 +821,20 @@ test("reasoning reads as Thinking only while it is the live step", async () => {
   assert.equal(ui.text('[data-id="turn-thought"] [data-reasoning-label]'), "Thought");
 });
 
+test("a step that is thinking carries no class another part of the view lays out", async () => {
+  const ui = await harness();
+  const turn = createTurn("go", [], 1000, "turn-classes");
+  applyEvent(turn, { type: "reasoning_delta", text: "a plan" }, 1100);
+  await ui.send({ type: "turn", turn });
+  const step = ui.one('[data-id="turn-classes"] .reasoning');
+  assert.ok(step?.classList.contains("thinking"), "the live step is marked thinking");
+  // `.live` was the status row's class as well, and its `display: flex` laid the thought out beside its label.
+  assert.equal(step?.classList.contains("live"), false);
+  const status = await readFile("src/webview/components/LiveStatus.vue", "utf8");
+  assert.ok(status.includes('class="live-row"'), "the status row keeps a class of its own");
+  assert.equal(/^\.live\s*\{/m.test(status), false, "and nothing lays out a bare `.live`");
+});
+
 test("what a request changed is listed, opens in the editor, and expands in place", async () => {
   const ui = await harness();
   const turn = createTurn("edit it", [], 8000, "turn-edit");

@@ -87,7 +87,7 @@ onBeforeUnmount(() => window.clearInterval(timer));
 </script>
 
 <template>
-  <div v-if="visible" id="live-status" class="live" aria-live="polite">
+  <div v-if="visible" id="live-status" class="live-row" aria-live="polite">
     <span v-if="waiting" class="dot pulse waiting" />
     <span class="live-label"><Shimmer v-if="!waiting" :text="label" /><template v-else>{{ label }}</template></span>
     <span v-if="detail" class="live-detail"><Shimmer :text="detail" /></span>
@@ -97,7 +97,8 @@ onBeforeUnmount(() => window.clearInterval(timer));
 </template>
 
 <style>
-.live {
+/* A class of its own rather than `.live`: a block elsewhere in the transcript may well mark itself live too. */
+.live-row {
   display: flex;
   align-items: center;
   gap: 9px;
@@ -106,7 +107,7 @@ onBeforeUnmount(() => window.clearInterval(timer));
   font-size: var(--small);
 }
 
-.live .dot.waiting {
+.live-row .dot.waiting {
   background: var(--amber);
 }
 
