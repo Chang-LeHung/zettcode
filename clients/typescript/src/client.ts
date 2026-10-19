@@ -200,9 +200,13 @@ export class ZettCodeClient {
     return this.request<ContextReport | null>("/sessions/current/context");
   }
 
-  /** The messages the model is working with, oldest first. */
-  async history(): Promise<Message[]> {
-    const body = await this.request<{ messages: Message[] }>("/sessions/current/history");
+  /**
+   * The messages the model is working with, oldest first. With `full`, the whole conversation as it was written: what a
+   * compaction folded away is there, and each summary (role `summary`) stands where it was made.
+   */
+  async history(options: { full?: boolean } = {}): Promise<Message[]> {
+    const query = options.full === true ? "?full=true" : "";
+    const body = await this.request<{ messages: Message[] }>(`/sessions/current/history${query}`);
     return body.messages;
   }
 
@@ -219,6 +223,16 @@ export class ZettCodeClient {
       this.json("POST", timeout === undefined ? { question } : { question, timeout }),
     );
     return body.answer;
+  }
+
+  /** `ask`, with the answer streamed: iterate the run for `text_delta` events, or await `run.result`. */
+  askStream(question: string, timeout?: number, options: RunOptions = {}): Run {
+    return new Run(
+      this,
+      "/sessions/current/ask/stream",
+      timeout === undefined ? { question } : { question, timeout },
+      options,
+    );
   }
 
   /** What this session has spent. */

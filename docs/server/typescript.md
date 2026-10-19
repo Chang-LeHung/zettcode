@@ -73,6 +73,7 @@ if (!health.ready) {
 }
 await client.updateModel("Fast", { context_window: 200_000 });   // the token is kept
 await client.updateSettings({ model: "Fast" });                  // choose it for the next prompt
+await client.updateSettings({ compact_percent: 70 });            // summarize at 70% of the window; `unsaved` says if the file could not be written
 ```
 
 `addModel` writes the same `[[models]]` entry `/config add` writes; `removeModel` refuses the last one.
@@ -86,7 +87,7 @@ await client.updateSettings({ model: "Fast" });                  // choose it fo
 | `settings()`, `updateSettings(change)`, `plugins()` | `/settings`, `/plugins` |
 | `listSessions(limit)`, `createSession(title?)`, `currentSession()` | `/sessions`, `/sessions/current` |
 | `openSession(id)`, `renameSession(title)`, `nameSession()`, `forkSession()` | `/sessions/...` |
-| `compactSession()`, `context()`, `history()`, `exportSession()`, `ask(question)` | `/sessions/current/...` |
+| `compactSession()`, `context()`, `history()`, `exportSession()`, `ask(question)`, `askStream(question)` | `/sessions/current/...` |
 | `usage()`, `usageLedger()`, `sessionStats(ids?)` | `/usage`, `/usage/ledger`, `/sessions/.../stats` |
 | `selfCompaction()`, `setSelfCompaction(choice)`, `mentions(query)`, `doctor(timeout)` | `/sessions/current/self-compaction`, `/mentions`, `/doctor` |
 | `prompt(text, options)`, `resume(options)` | `POST /prompts`, `POST /runs/resume` |
@@ -103,3 +104,11 @@ await client.updateSettings({ model: "Fast" });                  // choose it fo
 The client is in [`clients/typescript`](https://github.com/Chang-LeHung/zettcode/tree/main/clients/typescript) in the
 same repository, next to the server it speaks to. Run its tests with `make client`; they compile the sources and talk
 to a real local HTTP server, split SSE chunks included.
+
+## A complete editor face
+
+The [VS Code extension](https://github.com/Chang-LeHung/zettcode/tree/main/clients/vscode) bundles this client's
+sources directly, so its chat speaks the same API and shares the same wire types. It adds the parts an editor owns:
+a webview transcript, a session drawer, file links, approval cards, and commands for models, effort and permission.
+See its [`README`](https://github.com/Chang-LeHung/zettcode/blob/main/clients/vscode/README.md) for the controls and
+settings.
