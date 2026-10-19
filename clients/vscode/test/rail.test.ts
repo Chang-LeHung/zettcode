@@ -21,8 +21,8 @@ function layout(ui: Ui, tops: Record<string, number>): { scrolled: { id: string 
   const proto = ui.window.HTMLElement.prototype as unknown as Record<string, unknown>;
   const rect = (top: number, height = 0) => ({ top, bottom: top + height, left: 0, right: 0, width: 0, height, x: 0, y: top });
   proto.getBoundingClientRect = function (this: HTMLElement) {
-    if (this.classList.contains("tick")) {
-      const index = Array.from(this.parentElement?.querySelectorAll(".tick") ?? []).indexOf(this);
+    if (this.classList.contains("rail-tick")) {
+      const index = Array.from(this.parentElement?.querySelectorAll(".rail-tick") ?? []).indexOf(this);
       return rect(100 + index * 10, 2);
     }
     if (this.classList.contains("rail-nav")) {
@@ -62,7 +62,7 @@ test("a tick for each message you sent, and none for what you did not", async ()
     empty,
     said("turn-b", "second"),
   ]);
-  assert.equal(ui.all(".rail-nav .tick").length, 2);
+  assert.equal(ui.all(".rail-nav .rail-tick").length, 2);
   assert.equal(ui.one(".rail-nav")?.getAttribute("aria-label"), "Jump to one of your messages");
 });
 
@@ -76,12 +76,12 @@ test("ticks swell toward the pointer like a dock, and the nearest shows its mess
   layout(ui, {});
   await move(ui, 120);
 
-  const k = ui.all<HTMLElement>(".rail-nav .tick").map((tick) => Number(tick.style.getPropertyValue("--k")));
+  const k = ui.all<HTMLElement>(".rail-nav .rail-tick").map((tick) => Number(tick.style.getPropertyValue("--k")));
   assert.equal(k.length, 4);
   assert.ok(k[2]! > 0.99, "the nearest swells fully");
   // From the pointer at y=120 the ticks (centred at 101, 111, 121, 131) are 19, 9, 1 and 11 away: nearer swells more.
   assert.ok(k[2]! > k[1]! && k[1]! > k[3]! && k[3]! > k[0]!, `neighbours swell less the farther they are: ${k.join(", ")}`);
-  assert.ok(ui.one(".rail-nav .tick.hover") === ui.all(".rail-nav .tick")[2]);
+  assert.ok(ui.one(".rail-nav .rail-tick.hover") === ui.all(".rail-nav .rail-tick")[2]);
 
   const tip = ui.one(".rail-tip");
   assert.ok(tip, "a preview opens");
@@ -99,8 +99,8 @@ test("leaving the rail puts the ticks back and closes the preview", async () => 
   ui.one(".rail-nav")!.dispatchEvent(new ui.window.MouseEvent("pointerleave", { bubbles: true }));
   await wait(0);
   assert.equal(ui.one(".rail-tip"), null);
-  assert.equal(ui.one(".rail-nav .tick.hover"), null);
-  for (const tick of ui.all<HTMLElement>(".rail-nav .tick")) {
+  assert.equal(ui.one(".rail-nav .rail-tick.hover"), null);
+  for (const tick of ui.all<HTMLElement>(".rail-nav .rail-tick")) {
     assert.equal(Number(tick.style.getPropertyValue("--k") || 0), 0);
   }
 });
@@ -118,7 +118,7 @@ test("clicking a tick scrolls to that message and makes it flash once", async ()
   assert.equal((scrolled[0]?.options as { behavior: string }).behavior, "smooth");
   assert.ok(ui.one('[data-id="turn-d"] .user-bubble.flash'), "the message it landed on flashes");
   assert.equal(ui.all(".user-bubble.flash").length, 1);
-  assert.ok(ui.one(".rail-nav .tick.active") === ui.all(".rail-nav .tick")[3]);
+  assert.ok(ui.one(".rail-nav .rail-tick.active") === ui.all(".rail-nav .rail-tick")[3]);
 });
 
 test("the tick for the message you are at is marked, and follows the scrolling", async () => {
@@ -126,7 +126,7 @@ test("the tick for the message you are at is marked, and follows the scrolling",
   layout(ui, { "turn-a": -900, "turn-b": -400, "turn-c": -20, "turn-d": 500 });
   ui.one("#transcript")!.dispatchEvent(new ui.window.Event("scroll"));
   await wait(60);
-  const active = () => ui.all(".rail-nav .tick").findIndex((tick) => tick.classList.contains("active"));
+  const active = () => ui.all(".rail-nav .rail-tick").findIndex((tick) => tick.classList.contains("active"));
   assert.equal(active(), 2, "the last message that has reached the top of the view");
 
   layout(ui, { "turn-a": -20, "turn-b": 300, "turn-c": 600, "turn-d": 900 });
@@ -162,7 +162,7 @@ test("the arrow keys step between messages, and Home and End go to the ends", as
 test("a side question, a command's row or an announcement is not something the rail leads to", async () => {
   const ui = await open([said("turn-a", "first"), announcement("Reasoning effort changed from low to high.", 3, "turn-announce-1"), said("turn-b", "second")]);
   const { scrolled } = layout(ui, {});
-  assert.equal(ui.all(".rail-nav .tick").length, 2);
+  assert.equal(ui.all(".rail-nav .rail-tick").length, 2);
   await move(ui, 111);
   ui.one(".rail-nav")!.dispatchEvent(new ui.window.MouseEvent("click", { clientY: 111, bubbles: true }));
   await wait(40);

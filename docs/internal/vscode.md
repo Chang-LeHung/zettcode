@@ -81,13 +81,14 @@ this client's load-bearing rules live here and are named by the `npm test` case 
 | V31 | The conversation and the message box fill a wider panel up to one shared width, with a margin that grows with the panel but stays small; an edit's row shows the lines it added and removed. | `steer-paging.test.ts` — "the conversation and the message box grow with the panel and keep a margin at both sides", "an edit row shows the lines it added and removed, and a file written whole the lines it holds" |
 | V32 | `Ctrl+F` (`Cmd+F` on a Mac) opens a search over the conversation on show, with the cursor in it and a short selection as the query. It counts the matches ignoring case, never in buttons or scripts; `Enter`/`Shift+Enter` (or `F3`) step through them and wrap round, `Escape` closes it and returns to the message box, and the matches are found again as the conversation grows. | `find.test.ts` — "a query is found wherever it occurs…", "stepping wraps round at both ends…", "Ctrl+F opens a search that counts the matches, steps through them and closes with Escape", "Cmd+F does the same on a Mac…", "an open search follows the conversation as it grows" |
 | V33 | The shell permission the reader chooses is remembered by the extension, not left to the server (which forgets it on every restart): each session gets back the level it was last set to, a session with none starts from the last level chosen in the workspace, a level the server does not offer or a damaged stored value is ignored, and only the newest 200 sessions are kept. | `remember.test.ts` — "a session gets back the permission it was last set to, and a new one the last choice made here", "a level the server does not offer is not asked for", "what was stored is read back through a filter…", "only the newest sessions are kept…", "the chat view puts the remembered permission back whenever a session is read, and saves each choice" |
+| V34 | A component's `<style>` block is global, so a class it lays out is its own: no bare `.name` rule may be shared with another component's template unless it is one of the small primitives listed in the test. (`.live` was the status row's `display: flex` and laid a thought out beside its own label; `.tick` was the rail's bar and flattened the check marks in the menus; `.compaction`, `.compaction-head` and `.box` leaked the same way.) | `style.test.ts` — "a class a component lays out is its own, unless it is one of the shared primitives", "the status row and the message rail keep their own class names"; `webview.test.ts` — "a step that is thinking carries no class another part of the view lays out" |
 
 ## Building, trying and packaging it
 
 ```bash
 make vscode           # install, type-check, test and build the extension
-make vscode-package   # also write clients/vscode/zettcode-0.1.1.vsix
-code --install-extension clients/vscode/zettcode-0.1.1.vsix --force
+make vscode-package   # also write clients/vscode/zettcode-0.1.2.vsix
+code --install-extension clients/vscode/zettcode-0.1.2.vsix --force
 ```
 
 Or open `clients/vscode` in VS Code and press **F5** to run it in an Extension Development Host. From

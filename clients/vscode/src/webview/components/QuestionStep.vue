@@ -54,7 +54,7 @@ function submit(): void {
             :disabled="!live"
             @click="pick(option)"
           >
-            <span v-if="block.allowMultiple" class="box" />{{ option }}
+            <span v-if="block.allowMultiple" class="checkbox" />{{ option }}
           </button>
         </div>
         <div class="answer-row">
@@ -139,14 +139,14 @@ function submit(): void {
   background: color-mix(in srgb, var(--blue) 12%, transparent);
 }
 
-.choice .box {
+.choice .checkbox {
   width: 12px;
   height: 12px;
   border: 1.5px solid var(--faint);
   border-radius: 3px;
 }
 
-.choice.selected .box {
+.choice.selected .checkbox {
   background: var(--blue);
   border-color: var(--blue);
 }

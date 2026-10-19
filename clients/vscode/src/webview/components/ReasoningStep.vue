@@ -16,7 +16,9 @@ const live = computed(() => props.turn.status === "running" && props.index === p
 </script>
 
 <template>
-  <div class="reasoning step" :class="{ live, open }" :data-reasoning="id">
+  <!-- `thinking` rather than `live`: the status line below the transcript is `.live`, and a shared class name would give
+       this block its row layout. -->
+  <div class="reasoning step" :class="{ thinking: live, open }" :data-reasoning="id">
     <button class="reasoning-head" type="button" :aria-expanded="open" @click="toggleIn(state.openReasoning, id)">
       <span class="step-dot teal" />
       <span class="reasoning-label" data-reasoning-label><Shimmer v-if="live" text="Thinking" /><template v-else>Thought</template></span>

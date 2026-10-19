@@ -25,7 +25,7 @@ const items = computed(() =>
 const shown = computed(() => items.value.length >= 2);
 
 function ticks(): HTMLElement[] {
-  return Array.from(rail.value?.querySelectorAll<HTMLElement>(".tick") ?? []);
+  return Array.from(rail.value?.querySelectorAll<HTMLElement>(".rail-tick") ?? []);
 }
 
 /** The vertical middle of every tick, on the screen. */
@@ -176,7 +176,7 @@ onBeforeUnmount(() => {
     <i
       v-for="(item, index) in items"
       :key="item.id"
-      class="tick"
+      class="rail-tick"
       :class="{ active: index === active, hover: index === hovered }"
       :style="{ '--k': levels[index] ?? 0 }"
     />
@@ -212,7 +212,7 @@ onBeforeUnmount(() => {
   box-shadow: 0 0 0 1px var(--accent);
 }
 
-.tick {
+.rail-tick {
   display: block;
   flex: 0 0 auto;
   width: calc(6px + 10px * var(--k, 0));
@@ -227,17 +227,17 @@ onBeforeUnmount(() => {
     opacity 0.12s ease-out;
 }
 
-.tick.active {
+.rail-tick.active {
   width: calc(10px + 6px * var(--k, 0));
   background: var(--accent);
   opacity: 1;
 }
 
-.tick.hover {
+.rail-tick.hover {
   background: var(--fg);
 }
 
-.tick.hover.active {
+.rail-tick.hover.active {
   background: var(--accent);
 }
 
