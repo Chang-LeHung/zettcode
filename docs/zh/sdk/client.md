@@ -147,11 +147,12 @@ async with zc.Client(".") as client:
 
 | 成员 | 返回 |
 | --- | --- |
-| `client.models` | 一组 `ModelInfo(name, model, context_window, multimodal, efforts, active)`。 |
+| `client.models` | 一组 `ModelInfo(name, model, context_window, multimodal, efforts, active, compact_percent)`。 |
 | `client.model` | 当前模型的 `ModelInfo`。 |
 | `client.use_model(name)` | 让某个模型成为当前模型并返回它的 `ModelInfo`。接受名字或 `ModelInfo`。 |
 | `client.effort`、`client.efforts` | 当前级别，以及当前模型接受的级别。 |
 | `client.use_effort(name)` | 设置级别并返回。 |
+| `client.use_compact_percent(percent)` | 从下一次请求起,改变对话在窗口的多大比例(大于 0、至多 100)时被总结。返回当前的 `ModelInfo`,以及配置文件没有被改写的原因(改写了就是 `None`):那样这次改动只在本次运行有效。 |
 | `client.permission`、`client.permissions` | 当前级别，以及 `("deny", "ask", "safe", "auto")`。 |
 | `client.use_permission(name)` | 设置级别；从下一条 shell 命令起生效，正在进行的 run 里也一样。 |
 

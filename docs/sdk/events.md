@@ -46,7 +46,7 @@ The first seven are exported from `zettcode.sdk`; the rest live in `zettcode.sdk
 | `CompactionFinished` | `applied`, `compaction` | A compaction ended. |
 | `ModelStopped` | `reason`, `message` | A step ended for a reason other than finishing. |
 | `Steered` | `text` | A message sent with `steer` reached the request. |
-| `Notice` | `text` | News that is not part of the answer, such as an MCP server that could not be reached. |
+| `Notice` | `text`, `level` | News that is not part of the answer, such as an MCP server starting or one that could not be reached. `level` is `"info"` for progress and `"warn"` for something you may need to act on. |
 | `RawEvent` | `event` | The underlying `zett-agent` event. Only with `raw=True`. |
 
 `AnyEvent` is the union of all of them, for annotations:

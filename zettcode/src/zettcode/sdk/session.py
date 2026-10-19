@@ -620,6 +620,35 @@ class Session:
             keep_events=keep_events,
         )
 
+    def ask_stream(
+        self, question: str, *, on_event: EventCallback | None = None, timeout: float | None = None
+    ) -> RunStream:
+        """Ask a side question and return the stream of its answer, so it can be shown as it is written.
+
+        The same side question as :meth:`ask`: the model sees the whole conversation and answers on a read-only
+        footing, and neither the question nor the answer joins the history. Iterate the stream for its events
+        (``TextDelta`` carries the answer as it arrives), or await it for the result.
+
+        Raises:
+            ValueError: The question is empty.
+            SessionBusyError: A run is in progress.
+        """
+        client = self._client
+        client._check_open()
+        client._check_free()
+        if not isinstance(question, str) or not question.strip():
+            raise ValueError("The question is empty")
+        parts: tuple[Any, ...] = (question,)
+        return RunStream(
+            self,
+            lambda: client._agent.stream(parts, side=True),
+            on_approval=None,
+            on_question=None,
+            on_event=on_event,
+            timeout=timeout,
+            side=True,
+        )
+
     async def ask(
         self,
         question: str,
@@ -630,27 +659,13 @@ class Session:
         """Ask a side question about the conversation and return the answer, without adding to it.
 
         The model sees the whole conversation and answers on a read-only footing; neither the question nor the
-        answer joins the history the next run is built from.
+        answer joins the history the next run is built from. :meth:`ask_stream` is the same question with the
+        answer streamed.
 
         Raises:
             ValueError: The question is empty.
         """
-        client = self._client
-        client._check_open()
-        client._check_free()
-        if not isinstance(question, str) or not question.strip():
-            raise ValueError("The question is empty")
-        parts: tuple[Any, ...] = (question,)
-        stream = RunStream(
-            self,
-            lambda: client._agent.stream(parts, side=True),
-            on_approval=None,
-            on_question=None,
-            on_event=on_event,
-            timeout=timeout,
-            side=True,
-        )
-        return (await stream).text
+        return (await self.ask_stream(question, on_event=on_event, timeout=timeout)).text
 
     def steer(self, message: str) -> bool:
         """Send a message to the run in progress, which drops what it was doing to take it into account.
@@ -821,8 +836,13 @@ class Session:
             raise SessionNotFoundError(str(error)) from error
         return client._handle(new_id)
 
-    async def history(self) -> list[Message]:
+    async def history(self, *, full: bool = False) -> list[Message]:
         """Return the messages the model is working with: the compaction summary if any, then what followed it.
+
+        With ``full=True`` it returns the whole conversation on the active branch instead, as it was written: the
+        messages a compaction folded away are there, and each summary stands (as a ``summary`` message) at the
+        point where it was made. That is what a client shows when it reopens a session; the model still works from
+        the shorter list.
 
         Reading needs no lock, so this works on a session another process has open.
 
@@ -837,10 +857,28 @@ class Session:
             raise SessionNotFoundError(f"Cannot read session {self.id}: {error}") from error
         if stored.header is None:
             raise SessionNotFoundError(f"Session {self.id} has no messages yet")
-        checkpoint, tail = stored.active()
-        lines: list[Any] = [checkpoint.message[0]] if checkpoint is not None else []
-        lines.extend(line.message[0] for line in tail if line.message[0].include_in_messages)
-        return [message for item in lines if (message := _message_of(item)) is not None]
+        entries: list[tuple[Any, Any, float]] = []
+        if full:
+            branch = stored.branch()
+            on_branch = {line.id for line in branch}
+            summaries: dict[str, list[Any]] = {}
+            for compaction in sorted(stored.compactions, key=lambda line: line.version):
+                if compaction.parent in on_branch:
+                    summaries.setdefault(compaction.parent, []).append(compaction)
+            for line in branch:
+                if line.message[0].include_in_messages:
+                    entries.append((line.message[0], line.usage, line.timing.duration_ns / 1e9))
+                entries.extend((compaction.message[0], None, 0.0) for compaction in summaries.get(line.id, []))
+        else:
+            checkpoint, tail = stored.active()
+            if checkpoint is not None:
+                entries.append((checkpoint.message[0], None, 0.0))
+            for line in tail:
+                if line.message[0].include_in_messages:
+                    entries.append((line.message[0], line.usage, line.timing.duration_ns / 1e9))
+        return [
+            message for item, usage, seconds in entries if (message := _message_of(item, usage, seconds)) is not None
+        ]
 
     # -- becoming the current conversation --
     async def _activate(self, by: RunStream | None = None) -> None:
@@ -848,10 +886,17 @@ class Session:
         await self._client._switch_to(self.id, by)
 
 
-def _message_of(item: object) -> Message | None:
-    """Return the SDK's view of one stored message; system and bookkeeping messages are not part of the history."""
+def _message_of(item: object, usage: Any = None, seconds: float = 0.0) -> Message | None:
+    """Return the SDK's view of one stored message; system and bookkeeping messages are not part of the history.
+
+    ``usage`` is what the store recorded for the model call that produced the message, and ``seconds`` how long it took.
+    """
+    from zett_agent.extensions.compaction import CompactedMessage
     from zett_agent.messages import AssistantMessage, ImageContent, ToolMessage, UserMessage
 
+    # The summary that stands in for the older messages is a user message to the model, but nobody typed it.
+    if isinstance(item, CompactedMessage):
+        return Message("summary", item.text)
     if isinstance(item, UserMessage):
         typed = item.attributes.get("prompt")
         text = typed if isinstance(typed, str) else item.text
@@ -859,7 +904,26 @@ def _message_of(item: object) -> Message | None:
         return Message("user", text, images=images)
     if isinstance(item, AssistantMessage):
         calls = tuple(ToolCallInfo(call.id, call.name, dict(call.arguments)) for call in item.tool_calls)
-        return Message("assistant", item.content if isinstance(item.content, str) else "", tool_calls=calls)
+        spent = (
+            None
+            if usage is None
+            else Usage(
+                input_tokens=usage.input_tokens,
+                output_tokens=usage.output_tokens,
+                cache_read_tokens=usage.cache_read_tokens,
+                cache_write_tokens=usage.cache_write_tokens,
+                reasoning_tokens=usage.reasoning_tokens,
+                seconds=seconds,
+                requests=1,
+            )
+        )
+        return Message(
+            "assistant",
+            item.content if isinstance(item.content, str) else "",
+            tool_calls=calls,
+            usage=spent,
+            seconds=seconds,
+        )
     if isinstance(item, ToolMessage):
         images = (
             0 if isinstance(item.content, str) else sum(1 for part in item.content if isinstance(part, ImageContent))
@@ -871,5 +935,6 @@ def _message_of(item: object) -> Message | None:
             tool_name=item.name,
             ok=item.success,
             images=images,
+            seconds=seconds,
         )
     return None

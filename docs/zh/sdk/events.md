@@ -46,7 +46,7 @@ async with client.prompt("fix the failing test") as run:
 | `CompactionFinished` | `applied`、`compaction` | 一次压缩结束。 |
 | `ModelStopped` | `reason`、`message` | 某一步因为非正常结束的原因停止。 |
 | `Steered` | `text` | 用 `steer` 发出的消息到达了请求。 |
-| `Notice` | `text` | 不属于回答的消息，比如某个 MCP 服务器连不上。 |
+| `Notice` | `text`, `level` | 不属于回答的消息，比如某个 MCP 服务器正在启动，或连不上。`level` 为 `"info"` 表示进度，`"warn"` 表示你可能需要处理的事。 |
 | `RawEvent` | `event` | 底层的 `zett-agent` 事件。仅在 `raw=True` 时产生。 |
 
 `AnyEvent` 是它们的联合类型，用于类型标注：

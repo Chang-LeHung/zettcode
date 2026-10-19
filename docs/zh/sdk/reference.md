@@ -110,6 +110,7 @@ class Client:
 | `run(prompt, *, images, mentions, on_approval, on_question, on_event, timeout, keep_events)` | `RunResult`（可 await） | 把 `await client.prompt(...)` 写成调用。没有 `raw`。 |
 | `use_model(name)` | `ModelInfo` | 选择模型；接受名字或 `ModelInfo`。 |
 | `use_effort(name)` | `str` | 选择推理级别。 |
+| `use_compact_percent(percent)` | `tuple[ModelInfo, str \| None]` | 从下一次请求起改变压缩点(占窗口的比例,大于 0、至多 100),并改写配置文件。第二个值说明文件为什么没有写入,写入了就是 `None`。 |
 | `use_permission(name)` | `str` | 选择权限级别；从下一条 shell 命令起生效。 |
 | `mentions(query="", *, limit=50)` | `tuple[MentionInfo, ...]` | 匹配查询的 `@` 资源，用于补全菜单。 |
 | `await usage_ledger()` | `WorkspaceUsage` | 工作区每个已存会话花的用量，按会话、模型和天。 |
@@ -175,6 +176,7 @@ def remove_model(name, *, path=None) -> tuple[ModelInfo, ...]: ...
 | `stream(...)` | `RunStream`（同一个方法） |
 | `await run(prompt, *, images, mentions, on_approval, on_question, on_event, timeout, keep_events)` | `RunResult` |
 | `await ask(question, *, on_event=None, timeout=None)` | `str` |
+| `ask_stream(question, *, on_event=None, timeout=None)` | `RunStream` |
 | `steer(message)` | `bool` |
 | `await resumable()` | `ResumeInfo \| None` |
 | `resume_stream(*, on_approval, on_question, on_event, timeout, raw, keep_events)` | `RunStream` |
@@ -225,7 +227,7 @@ def remove_model(name, *, path=None) -> tuple[ModelInfo, ...]: ...
 | `CompactionFinished` | `applied`、`compaction=None` |
 | `ModelStopped` | `reason`、`message=None` |
 | `Steered` | `text` |
-| `Notice` | `text` |
+| `Notice` | `text`, `level` |
 | `Finished` | `text` |
 | `RawEvent` | `event` |
 

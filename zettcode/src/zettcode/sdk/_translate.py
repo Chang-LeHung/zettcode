@@ -15,7 +15,7 @@ from zett_agent.extensions.shell_approval import SHELL_APPROVAL_EVENT_NAME
 from zett_agent.messages import TextContent
 
 from ..app.agent.dialogue.ask import question_from
-from ..app.agent.extensions.mcp_notice import notice_from
+from ..app.agent.extensions.mcp_notice import notice_from, notice_level_from
 from ..app.agent.extensions.usage import USAGE_EVENT_NAME, UsageSnapshot
 from ..app.agent.storage.ledger import Ledger, SessionStats, SessionUsage, Tally
 from .events import (
@@ -260,4 +260,4 @@ def _custom(event: AgentEvent, session: str, bridge: Bridge) -> list[AnyEvent]:
             )
         ]
     line = notice_from(event)
-    return [Notice(session, line)] if line is not None else []
+    return [Notice(session, line, notice_level_from(event))] if line is not None else []

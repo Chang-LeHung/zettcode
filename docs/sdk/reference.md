@@ -110,6 +110,7 @@ The agent for one workspace. An async context manager. See [Client & configurati
 | `run(prompt, *, images, mentions, on_approval, on_question, on_event, timeout, keep_events)` | `RunResult` (awaitable) | `await client.prompt(...)` as a call. Has no `raw`. |
 | `use_model(name)` | `ModelInfo` | Chooses the model; takes a name or a `ModelInfo`. |
 | `use_effort(name)` | `str` | Chooses the reasoning level. |
+| `use_compact_percent(percent)` | `tuple[ModelInfo, str \| None]` | Moves the compaction point (a share of the window, above 0 and at most 100) from the next request on, and rewrites the configuration file. The second value says why the file was not written, or is `None`. |
 | `use_permission(name)` | `str` | Chooses the permission level; applies from the next shell command. |
 | `mentions(query="", *, limit=50)` | `tuple[MentionInfo, ...]` | The `@` resources matching a query, for a completion menu. |
 | `await usage_ledger()` | `WorkspaceUsage` | What every stored session of the workspace spent, by session, model and day. |
@@ -173,6 +174,7 @@ A handle on one stored conversation. Obtain it from `client.session`, `client.se
 | `stream(...)` | `RunStream` (same method) |
 | `await run(prompt, *, images, mentions, on_approval, on_question, on_event, timeout, keep_events)` | `RunResult` |
 | `await ask(question, *, on_event=None, timeout=None)` | `str` |
+| `ask_stream(question, *, on_event=None, timeout=None)` | `RunStream` |
 | `steer(message)` | `bool` |
 | `await resumable()` | `ResumeInfo \| None` |
 | `resume_stream(*, on_approval, on_question, on_event, timeout, raw, keep_events)` | `RunStream` |
@@ -223,7 +225,7 @@ Every event is a frozen dataclass deriving from `Event(session_id: str)`.
 | `CompactionFinished` | `applied`, `compaction=None` |
 | `ModelStopped` | `reason`, `message=None` |
 | `Steered` | `text` |
-| `Notice` | `text` |
+| `Notice` | `text`, `level` |
 | `Finished` | `text` |
 | `RawEvent` | `event` |
 

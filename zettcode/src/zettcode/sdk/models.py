@@ -31,6 +31,7 @@ def _infos(models: tuple[_config.ModelConfig, ...]) -> tuple[ModelInfo, ...]:
             context_window=model.context_window,
             multimodal=model.multimodal,
             efforts=tuple(level.value for level in model.efforts),
+            compact_percent=model.compact_percent,
         )
         for model in models
     )
