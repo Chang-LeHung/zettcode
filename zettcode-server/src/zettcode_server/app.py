@@ -288,9 +288,14 @@ def create_app(settings: Settings, *, client_factory: ClientFactory | None = Non
 
     @protected.patch("/settings", response_model=SettingsOut, tags=["models"])
     async def change_settings(update: SettingsUpdate, runner: RunnerDep) -> SettingsOut:
-        """Change the model, the reasoning effort or the permission level for the prompts that follow."""
-        if update.model is None and update.effort is None and update.permission is None:
-            raise ValueError("Name at least one of model, effort or permission")
+        """Change the model, the reasoning effort, the permission level or the compaction point for the prompts that follow."""
+        if (
+            update.model is None
+            and update.effort is None
+            and update.permission is None
+            and update.compact_percent is None
+        ):
+            raise ValueError("Name at least one of model, effort, permission or compact_percent")
         client = runner.client
         if update.model is not None:
             client.use_model(update.model)
@@ -298,7 +303,13 @@ def create_app(settings: Settings, *, client_factory: ClientFactory | None = Non
             client.use_effort(update.effort)
         if update.permission is not None:
             client.use_permission(update.permission)
-        return await settings_out(runner)
+        unsaved: str | None = None
+        if update.compact_percent is not None:
+            if runner.busy:
+                raise SessionBusyError("A run is in progress; move the compaction point when it ends")
+            _, unsaved = await asyncio.to_thread(client.use_compact_percent, update.compact_percent)
+        current = await settings_out(runner)
+        return current.model_copy(update={"unsaved": unsaved}) if unsaved else current
 
     @protected.get("/sessions", response_model=SessionsOut, tags=["sessions"])
     async def list_sessions(runner: RunnerDep, limit: Annotated[int, Query(ge=1, le=200)] = 20) -> SessionsOut:
@@ -351,9 +362,13 @@ def create_app(settings: Settings, *, client_factory: ClientFactory | None = Non
         return None if report is None else context_out(report)
 
     @protected.get("/sessions/current/history", response_model=HistoryOut, tags=["sessions"])
-    async def history_of_session(runner: RunnerDep) -> HistoryOut:
-        """Return the stored conversation of the current session, oldest message first."""
-        messages = await runner.client.session.history()
+    async def history_of_session(runner: RunnerDep, full: bool = False) -> HistoryOut:
+        """Return the conversation of the current session, oldest message first.
+
+        By default these are the messages the model is working with. `full=true` returns the whole conversation as it was
+        written, with each compaction's summary (role `summary`) where it was made.
+        """
+        messages = await runner.client.session.history(full=full)
         return HistoryOut(messages=[message_out(message) for message in messages])
 
     @protected.get("/usage", response_model=UsageOut, tags=["usage"])
@@ -454,6 +469,34 @@ def create_app(settings: Settings, *, client_factory: ClientFactory | None = Non
         if runner.busy:
             raise SessionBusyError("A run is already in progress; ask again when it ends")
         return AnswerOut(answer=await runner.client.session.ask(body.question, timeout=body.timeout))
+
+    @protected.post(
+        "/sessions/current/ask/stream", tags=["sessions"], responses={200: {"content": {"text/event-stream": {}}}}
+    )
+    async def ask_side_question_stream(body: SideQuestionRequest, runner: RunnerDep) -> StreamingResponse:
+        """Ask a side question and stream the answer as it is written, in the frames ``/prompts`` uses.
+
+        The answer arrives as ``text_delta`` events and the stream ends with ``result``, ``error`` or ``cancelled``;
+        ``/runs/cancel`` stops it. Like the plain endpoint, nothing of it joins the conversation.
+        """
+        if runner.busy:
+            raise SessionBusyError("A run is already in progress; ask again when it ends")
+        if not runner.ready:
+            raise NoModelError("No model is configured; add one with POST /models")
+
+        async def frames() -> AsyncIterator[bytes]:
+            try:
+                async for name, payload in runner.ask_stream(body.question, body.timeout):
+                    yield sse_frame(name, payload)
+            except Exception as error:  # noqa: BLE001 - the status line is gone; the failure goes down the stream
+                _, code = failure_of(error)
+                yield sse_frame("error", error_body(code, str(error)))
+
+        return StreamingResponse(
+            frames(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+        )
 
     @protected.post("/sessions/current/name", response_model=SessionOut, tags=["sessions"])
     async def name_session(runner: RunnerDep) -> SessionOut:

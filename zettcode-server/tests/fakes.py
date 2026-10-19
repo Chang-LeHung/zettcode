@@ -142,6 +142,17 @@ class FakeSession:
         self.asked_side.append(question)
         return f"about {question}"
 
+    #: What the next streamed side question does; a test sets it to hold the answer open.
+    side_hold: asyncio.Event | None = None
+
+    def ask_stream(self, question: str, *, timeout: float | None = None) -> FakeRun:
+        self.asked_side.append(question)
+        return FakeRun(
+            [TextDelta(self.id, "about "), TextDelta(self.id, question)],
+            result=RunResult(text=f"about {question}", session_id=self.id),
+            hold=self.side_hold,
+        )
+
     def steer(self, message: str) -> bool:
         self.steered.append(message)
         return self.steering
@@ -162,7 +173,9 @@ class FakeSession:
     async def context(self) -> ContextReport | None:
         return self.report
 
-    async def history(self) -> list[Message]:
+    async def history(self, *, full: bool = False) -> list[Message]:
+        if full:
+            return [*self.messages, Message(role="summary", text="an older summary")]
         return list(self.messages)
 
 
@@ -219,6 +232,7 @@ class FakeClient:
             ModelCheck("fast", "gpt-5-mini", False, 2.0, "401 Unauthorized"),
         ]
         self.doctor_timeout: float | None = None
+        self.unwritten: str | None = None
         self.closed = False
 
     @property
@@ -247,6 +261,21 @@ class FakeClient:
             raise ValueError(f"Unknown permission {name!r}")
         self.permission = name
         return name
+
+    def use_compact_percent(self, percent: float) -> tuple[ModelInfo, str | None]:
+        if not 0 < percent <= 100:
+            raise ValueError("The compression share must be more than 0 and at most 100.")
+        self.model = ModelInfo(
+            self.model.name,
+            self.model.model,
+            self.model.context_window,
+            self.model.multimodal,
+            self.model.efforts,
+            active=True,
+            compact_percent=percent,
+        )
+        self.models = tuple(self.model if item.name == self.model.name else item for item in self.models)
+        return self.model, self.unwritten
 
     def prompt(self, text: str, **options: object) -> FakeRun:
         self.asked.append(text)

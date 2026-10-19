@@ -42,7 +42,7 @@ data: {"text":"已经加上分页 …","session_id":"01a15…","usage":{…},"to
 | `compaction_finished` | `applied`, `summary` | 总结结束。 |
 | `model_stopped` | `reason`, `message` | 某一步不是因为正常结束而停止:`refusal`、`max_output`、`context_full`、`paused`、`interrupted`、`other`。 |
 | `steered` | `text` | 通过 `/runs/steer` 发的消息到达了正在运行的请求。 |
-| `notice` | `text` | 不属于答案的消息,比如某个 MCP 服务连不上,或者等待回答超时。 |
+| `notice` | `text`, `level` | 不属于答案的消息,比如某个 MCP 服务正在启动或连不上,或者等待回答超时。`level` 为 `"info"` 表示进度,`"warn"` 表示你可能需要处理的事;没带 `level` 的帧按进度处理。 |
 | `finished` | `text` | 结果之前运行的最后一个事件。 |
 | `event` | `name` | 服务器不认识的事件;保留而不是丢弃,这样新版本 SDK 不会看起来像什么都没发生。 |
 

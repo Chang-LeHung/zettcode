@@ -87,7 +87,9 @@ data: {"text":"The README describes …","session_id":"01a15…","usage":{…},"
 ```
 
 [The event stream](/server/events) explains every frame; [the API reference](/server/api) lists every endpoint, and
-the [TypeScript client](/server/typescript) wraps all of it for an editor or a Node program.
+the [TypeScript client](/server/typescript) wraps all of it for an editor or a Node program. The
+[VS Code extension](https://github.com/Chang-LeHung/zettcode/tree/main/clients/vscode) is a complete editor face built
+on that client: chained tool calls, clickable files, approvals and recent sessions.
 
 ## What a client can do
 

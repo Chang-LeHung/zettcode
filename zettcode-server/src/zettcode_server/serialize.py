@@ -140,6 +140,7 @@ def model_out(model: ModelInfo) -> ModelOut:
         multimodal=model.multimodal,
         efforts=list(model.efforts),
         active=model.active,
+        compact_percent=model.compact_percent,
     )
 
 
@@ -189,6 +190,8 @@ def message_out(message: Message) -> MessageOut:
         tool_name=message.tool_name,
         ok=message.ok,
         images=message.images,
+        usage=None if message.usage is None else usage_out(message.usage),
+        seconds=message.seconds,
     )
 
 
@@ -279,8 +282,8 @@ def event_payload(event: AnyEvent) -> dict[str, Any]:
             return {"type": "model_stopped", "reason": reason, "message": message}
         case events.Steered(text=text):
             return {"type": "steered", "text": text}
-        case events.Notice(text=text):
-            return {"type": "notice", "text": text}
+        case events.Notice(text=text, level=level):
+            return {"type": "notice", "text": text, "level": level}
         case events.Finished(text=text):
             return {"type": "finished", "text": text}
         case events.RawEvent():

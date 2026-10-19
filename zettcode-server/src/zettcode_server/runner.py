@@ -245,7 +245,7 @@ class Runner:
                 yield "event", event_payload(event)
                 note = await self._settle(event, request)
                 if note:
-                    yield "event", {"type": "notice", "text": note}
+                    yield "event", {"type": "notice", "text": note, "level": "warn"}
             result = run.result
             if result is None:
                 yield "cancelled", {"type": "cancelled"}
@@ -256,6 +256,31 @@ class Runner:
             run, self._run = self._run, None
             if run is not None:
                 await run.aclose()
+            self._lock.release()
+
+    async def ask_stream(self, question: str, timeout: float | None) -> AsyncIterator[Frame]:
+        """Answer a side question and yield the answer as it is written, in the frames a prompt uses.
+
+        The question holds the run lock while it is answered, so a prompt cannot start under it and
+        ``/runs/cancel`` stops it like any other run; it ends in ``result``, ``error`` or ``cancelled``.
+        """
+        if self._lock.locked():
+            raise SessionBusyError("A run is already in progress; ask again when it ends")
+        await self._lock.acquire()
+        try:
+            run = self.client.session.ask_stream(question, timeout=timeout)
+            self._run = run
+            async for event in run:
+                yield "event", event_payload(event)
+            result = run.result
+            if result is None:
+                yield "cancelled", {"type": "cancelled"}
+            else:
+                yield "result", result_payload(result)
+        finally:
+            current, self._run = self._run, None
+            if current is not None:
+                await current.aclose()
             self._lock.release()
 
     def _start(

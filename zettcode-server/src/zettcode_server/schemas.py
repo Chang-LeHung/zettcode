@@ -131,6 +131,7 @@ class ModelOut(BaseModel):
     multimodal: bool
     efforts: list[str]
     active: bool = False
+    compact_percent: float = 80.0
 
 
 class ModelsOut(BaseModel):
@@ -148,6 +149,7 @@ class SettingsOut(BaseModel):
     efforts: list[str]
     permission: PermissionName
     permissions: list[str]
+    unsaved: str | None = None
 
 
 class SettingsUpdate(BaseModel):
@@ -156,6 +158,7 @@ class SettingsUpdate(BaseModel):
     model: str | None = None
     effort: str | None = None
     permission: PermissionName | None = None
+    compact_percent: float | None = Field(default=None, gt=0, le=100)
 
 
 class ModelCreate(BaseModel):
@@ -268,6 +271,8 @@ class MessageOut(BaseModel):
     tool_name: str | None = None
     ok: bool = True
     images: int = 0
+    usage: UsageOut | None = None
+    seconds: float = 0.0
 
 
 class HistoryOut(BaseModel):

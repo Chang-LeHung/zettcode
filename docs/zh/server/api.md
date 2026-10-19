@@ -36,12 +36,12 @@ title: HTTP API 参考
 
 | 方法 | 路径 | 请求体 | 返回 |
 | --- | --- | --- | --- |
-| `GET` | `/models` | — | `{"models": [{"name","model","context_window","multimodal","efforts","active"}], "current"}`;配置模型之前也能用,此时 `current` 为 null。 |
+| `GET` | `/models` | — | `{"models": [{"name","model","context_window","multimodal","efforts","active","compact_percent"}], "current"}`;配置模型之前也能用,此时 `current` 为 null。 |
 | `POST` | `/models` | `{"model", "token"?, "display_model"?, "base_url"?, "anthropic"?, "responses_api"?, "multimodal"?, "context_window"?, "compact_percent"?, "reasoning_efforts"?}` | 201,返回新的列表。第一个模型会让服务器变得可用;后续模型供 `PATCH /settings` 选择。写入配置文件,键名与终端 `/config add` 一致。 |
 | `PATCH` | `/models/{name}` | `POST /models` 接受的任意字段 | 新的列表。未给出的键保持不变;没给新 token 就保留旧的。 |
 | `DELETE` | `/models/{name}` | — | 剩下的模型。最后一个不能删(`400 invalid`):client 至少需要一个。 |
-| `GET` | `/settings` | — | `{"model","effort","efforts","permission","permissions"}` |
-| `PATCH` | `/settings` | `{"model"?, "effort"?, "permission"?}` | 更改后与 `GET /settings` 相同;至少给一个字段。 |
+| `GET` | `/settings` | — | `{"model","effort","efforts","permission","permissions"}`;改动过压缩点的 `PATCH` 之后还会带 `"unsaved"`(见下)。 |
+| `PATCH` | `/settings` | `{"model"?, "effort"?, "permission"?, "compact_percent"?}` | 更改后与 `GET /settings` 相同;至少给一个字段。`compact_percent` 大于 0、至多 100,从下一次请求起生效并写入配置文件;文件写不进去时,返回里带 `"unsaved": "<原因>"`,改动只在本次运行有效。有 run 在进行时返回 `409`。 |
 | `GET` | `/plugins` | — | `{"loaded": [...], "failures": [...]}` |
 | `GET` | `/mentions?query=&limit=50` | — | `{"mentions": [{"token","kind","name","description"}]}`:`@` 能指向的文件、skills 和插件资源。 |
 | `POST` | `/doctor` | `{"timeout"?: 30}` | `{"checks": [{"model","model_id","ok","seconds","detail","input_tokens","output_tokens"}]}`:对每个配置的模型各问一个短问题。 |
@@ -69,9 +69,10 @@ curl -X PATCH http://127.0.0.1:3290/settings \
 | `POST` | `/sessions/current/fork` | — | 新会话,延续这个对话的上下文。 |
 | `POST` | `/sessions/current/compact` | — | `{"applied","summary","compressed","kept"}`;没有可折叠内容时 `applied:false`。 |
 | `GET` | `/sessions/current/context` | — | `{"window","used","measured_by","shares","partial","from_provider"}`,测量前为 `null`。 |
-| `GET` | `/sessions/current/history` | — | `{"messages": [{"role","text","tool_calls","ok","images"}]}` |
+| `GET` | `/sessions/current/history` | `?full=true`(可选) | `{"messages": [{"role","text","tool_calls","ok","images"}]}`:模型正在使用的消息;带 `full=true` 时返回整段对话,每次压缩的摘要(角色 `summary`)出现在压缩发生的位置。 |
 | `GET` | `/sessions/current/export` | — | 对话导出成独立的 HTML 页面(`text/html`,按下载处理)。 |
 | `POST` | `/sessions/current/ask` | `{"question","timeout"?}` | `{"answer"}`;在旁边回答,不进入对话。运行进行中返回 409。 |
+| `POST` | `/sessions/current/ask/stream` | `{"question","timeout"?}` | 同样的旁路提问,答案以流的形式返回,帧的格式与 `/prompts` 相同:先是 `text_delta` 事件,再是 `result`(出错是 `error`,被 `/runs/cancel` 停止是 `cancelled`)。回答期间这个提问占用运行位。运行进行中返回 409。 |
 | `GET` | `/sessions/current/stats` | — | `{"id","entries","requests","input_tokens","output_tokens","cache_read_tokens","reasoning_tokens","total_tokens","cache_share"}`,还没存任何东西时为 `null`:即 `/resume` 的一行。 |
 | `GET` | `/sessions/stats?ids=a,b` | — | 指定会话的 `{"stats": [...]}`,形状相同;最多 200 个 id。 |
 | `GET` | `/sessions/current/self-compaction` | — | `{"choice": true\|false\|null, "effective": bool}` |
