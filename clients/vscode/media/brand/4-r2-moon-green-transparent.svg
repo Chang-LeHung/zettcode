@@ -1,0 +1,289 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="455" height="436" viewBox="0 0 455 436">
+  <defs>
+    <!-- 背景 -->
+    <radialGradient id="bgDark" cx="45%" cy="35%" r="80%">
+      <stop offset="0" stop-color="#18213a"/>
+      <stop offset="1" stop-color="#0d1322"/>
+    </radialGradient>
+    <radialGradient id="bgGreen" cx="45%" cy="30%" r="80%">
+      <stop offset="0" stop-color="#173a30"/>
+      <stop offset="1" stop-color="#0b1f1a"/>
+    </radialGradient>
+    <radialGradient id="halo" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#3a7a68" stop-opacity="0.32"/>
+      <stop offset="1" stop-color="#3a7a68" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- 剑 -->
+    <linearGradient id="blade" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#cdeee6"/>
+      <stop offset="0.35" stop-color="#f4fbf8"/>
+      <stop offset="0.62" stop-color="#f8f3dc"/>
+      <stop offset="0.82" stop-color="#f6cf78"/>
+      <stop offset="1" stop-color="#f09a26"/>
+    </linearGradient>
+    <linearGradient id="bladeShade" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#7fcabd"/>
+      <stop offset="0.5" stop-color="#a9dccf"/>
+      <stop offset="0.8" stop-color="#e9c27a"/>
+      <stop offset="1" stop-color="#e48a1c"/>
+    </linearGradient>
+    <linearGradient id="bladeHi" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.9"/>
+      <stop offset="0.7" stop-color="#fff" stop-opacity="0.6"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="grip" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6fd09b"/>
+      <stop offset="1" stop-color="#2b8f5e"/>
+    </linearGradient>
+    <radialGradient id="pommel" cx="35%" cy="30%" r="75%">
+      <stop offset="0" stop-color="#8fe6b4"/>
+      <stop offset="1" stop-color="#2a8a5a"/>
+    </radialGradient>
+    <linearGradient id="guard" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#b6e3d8"/>
+    </linearGradient>
+
+    <!-- 机器人 -->
+    <linearGradient id="botHead" x1="0.2" y1="0" x2="0.6" y2="1">
+      <stop offset="0" stop-color="#b4ead0"/>
+      <stop offset="0.45" stop-color="#7fcca0"/>
+      <stop offset="1" stop-color="#4a9a6e"/>
+    </linearGradient>
+    <linearGradient id="botEar" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5eaa7f"/>
+      <stop offset="1" stop-color="#3a7d5a"/>
+    </linearGradient>
+    <linearGradient id="botBody" x1="0.2" y1="0" x2="0.6" y2="1">
+      <stop offset="0" stop-color="#9cdcb8"/>
+      <stop offset="1" stop-color="#4a9a6e"/>
+    </linearGradient>
+    <linearGradient id="botLimb" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4f9f73"/>
+      <stop offset="1" stop-color="#9adab6"/>
+    </linearGradient>
+    <linearGradient id="botArm" gradientUnits="userSpaceOnUse" x1="20" y1="-58" x2="60" y2="-92">
+      <stop offset="0" stop-color="#6cbf91"/>
+      <stop offset="1" stop-color="#c4f0da"/>
+    </linearGradient>
+    <linearGradient id="botArmBack" gradientUnits="userSpaceOnUse" x1="-20" y1="-56" x2="-48" y2="-38">
+      <stop offset="0" stop-color="#4f9f73"/>
+      <stop offset="1" stop-color="#7cc49c"/>
+    </linearGradient>
+    <linearGradient id="screen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#22362d"/>
+      <stop offset="1" stop-color="#14221c"/>
+    </linearGradient>
+    <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="botEye" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e2fbdc"/>
+      <stop offset="1" stop-color="#a6dd9f"/>
+    </linearGradient>
+    <linearGradient id="mouth" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f7c987"/>
+      <stop offset="1" stop-color="#e0994f"/>
+    </linearGradient>
+    <linearGradient id="neckScarf" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#3fa877"/>
+      <stop offset="1" stop-color="#6fd4a2"/>
+    </linearGradient>
+
+    <!-- 飘带：贴身处浅而可见 → 中段最亮 → 尾端渐隐 -->
+    <linearGradient id="ribbonMain" gradientUnits="userSpaceOnUse" x1="-4" y1="0" x2="-192" y2="0">
+      <stop offset="0" stop-color="#9fe3c6" stop-opacity="0.55"/>
+      <stop offset="0.18" stop-color="#4fbf88" stop-opacity="0.9"/>
+      <stop offset="0.5" stop-color="#5fca94"/>
+      <stop offset="0.8" stop-color="#5fca94" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#7fd9b0" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="ribbonEdge" gradientUnits="userSpaceOnUse" x1="-10" y1="0" x2="-170" y2="0">
+      <stop offset="0" stop-color="#d4f7e8" stop-opacity="0.2"/>
+      <stop offset="0.4" stop-color="#d4f7e8" stop-opacity="0.75"/>
+      <stop offset="1" stop-color="#d4f7e8" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="ribbonSub" gradientUnits="userSpaceOnUse" x1="-10" y1="0" x2="-142" y2="0">
+      <stop offset="0" stop-color="#9fe3c6" stop-opacity="0.5"/>
+      <stop offset="0.25" stop-color="#3fa877" stop-opacity="0.85"/>
+      <stop offset="0.6" stop-color="#46b47f" stop-opacity="0.8"/>
+      <stop offset="1" stop-color="#5cc794" stop-opacity="0"/>
+    </linearGradient>
+
+    <!-- 腿部沿剑身法线方向渐隐，融入剑身 -->
+    <linearGradient id="legFadeG" gradientUnits="userSpaceOnUse" x1="221" y1="222" x2="233" y2="248">
+      <stop offset="0" stop-color="#fff"/>
+      <stop offset="1" stop-color="#555"/>
+    </linearGradient>
+    <mask id="legFade" maskUnits="userSpaceOnUse" x="0" y="0" width="455" height="436">
+      <rect width="455" height="436" fill="url(#legFadeG)"/>
+    </mask>
+
+    <!-- 风线：远端渐隐，贴身端浅而可见 -->
+    <linearGradient id="windL" gradientUnits="userSpaceOnUse" x1="40" y1="0" x2="224" y2="0">
+      <stop offset="0" stop-color="#4fbf94" stop-opacity="0"/>
+      <stop offset="0.45" stop-color="#4fbf94" stop-opacity="0.6"/>
+      <stop offset="0.8" stop-color="#7fd6b2" stop-opacity="0.42"/>
+      <stop offset="1" stop-color="#a8e8cf" stop-opacity="0.32"/>
+    </linearGradient>
+    <linearGradient id="windR" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#5cc7a0" stop-opacity="0"/>
+      <stop offset="0.4" stop-color="#5cc7a0" stop-opacity="0.7"/>
+      <stop offset="1" stop-color="#5cc7a0" stop-opacity="0.1"/>
+    </linearGradient>
+
+    <radialGradient id="dot" cx="38%" cy="32%" r="70%">
+      <stop offset="0" stop-color="#ffd977"/>
+      <stop offset="1" stop-color="#f0951c"/>
+    </radialGradient>
+
+    <!-- 云 -->
+    <radialGradient id="cdPuff" gradientUnits="userSpaceOnUse" cx="330" cy="295" r="190" fx="330" fy="290">
+      <stop offset="0" stop-color="#b3dccd"/>
+      <stop offset="0.4" stop-color="#4d7f7e"/>
+      <stop offset="1" stop-color="#1f3745"/>
+    </radialGradient>
+    <radialGradient id="cdPuffBack" gradientUnits="userSpaceOnUse" cx="300" cy="320" r="200">
+      <stop offset="0" stop-color="#4d7f7e" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#1a2c3c" stop-opacity="0.6"/>
+    </radialGradient>
+    <linearGradient id="cdSwirl" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#b3dccd" stop-opacity="0"/>
+      <stop offset="0.5" stop-color="#b3dccd" stop-opacity="0.75"/>
+      <stop offset="1" stop-color="#b3dccd" stop-opacity="0.2"/>
+    </linearGradient>
+    <radialGradient id="cgPuff" gradientUnits="userSpaceOnUse" cx="330" cy="295" r="190" fx="330" fy="290">
+      <stop offset="0" stop-color="#a8e8c4"/>
+      <stop offset="0.4" stop-color="#3d9670"/>
+      <stop offset="1" stop-color="#174536"/>
+    </radialGradient>
+    <radialGradient id="cgPuffBack" gradientUnits="userSpaceOnUse" cx="300" cy="320" r="200">
+      <stop offset="0" stop-color="#3d9670" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#143a2e" stop-opacity="0.6"/>
+    </radialGradient>
+    <linearGradient id="cgSwirl" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#a8e8c4" stop-opacity="0"/>
+      <stop offset="0.5" stop-color="#a8e8c4" stop-opacity="0.75"/>
+      <stop offset="1" stop-color="#a8e8c4" stop-opacity="0.2"/>
+    </linearGradient>
+    <linearGradient id="cloudFade" gradientUnits="userSpaceOnUse" x1="0" y1="300" x2="0" y2="420">
+      <stop offset="0" stop-color="#fff"/>
+      <stop offset="0.45" stop-color="#fff"/>
+      <stop offset="1" stop-color="#000"/>
+    </linearGradient>
+    <mask id="cloudMask" maskUnits="userSpaceOnUse" x="0" y="0" width="455" height="436">
+      <rect width="455" height="436" fill="url(#cloudFade)"/>
+    </mask>
+
+    <!-- 月亮 -->
+    <radialGradient id="moonWarm" cx="42%" cy="35%" r="72%">
+      <stop offset="0" stop-color="#fff6d2"/>
+      <stop offset="0.6" stop-color="#fbe6a4"/>
+      <stop offset="1" stop-color="#f5cf74"/>
+    </radialGradient>
+    <radialGradient id="moonGreen" cx="42%" cy="35%" r="72%">
+      <stop offset="0" stop-color="#e6f8dc"/>
+      <stop offset="0.6" stop-color="#c2ecbc"/>
+      <stop offset="1" stop-color="#97d99c"/>
+    </radialGradient>
+
+    <filter id="soft1" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="1.6"/></filter>
+    <filter id="soft2" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="4"/></filter>
+    <filter id="blur6" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="6"/></filter>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="18"/></filter>
+    <filter id="dotGlow" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="4"/></filter>
+    <filter id="eyeGlow" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="3"/></filter>
+    <filter id="iconShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#000" flood-opacity="0.12"/>
+    </filter>
+
+    <filter id="botShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#1f4a38" flood-opacity="0.18"/>
+    </filter>
+
+    <clipPath id="iconClip"><rect width="455" height="436" rx="105"/></clipPath>
+
+    <!-- 左侧风线（R1），一直连到机器人身上 -->
+    <g id="wind" fill="none" stroke="url(#windL)" stroke-linecap="round">
+      <path d="M44,250 C90,236 140,222 186,211 C196,209 206,206 216,204" stroke-width="5"/>
+      <path d="M66,270 C110,258 156,244 196,233 C206,230 214,228 222,226" stroke-width="4.5"/>
+      <path d="M96,226 C134,216 170,206 214,194" stroke-width="3" opacity="0.7"/>
+    </g>
+
+    <!-- 御剑机器人 -->
+    <g id="rider">
+      <!-- 剑 -->
+      <g transform="translate(55,335) rotate(-24.4)">
+        <ellipse cx="200" cy="34" rx="190" ry="12" fill="#2a5a48" opacity="0.14" filter="url(#blur6)"/>
+        <path d="M92,-22 L330,-18 L398,0 L330,18 L92,22 Z" fill="url(#blade)" stroke="#9cd2c4" stroke-width="1.6" stroke-linejoin="round"/>
+        <path d="M92,4 L396,0 L330,18 L92,22 Z" fill="url(#bladeShade)" opacity="0.6"/>
+        <path d="M100,-16 L320,-13 L370,-4" fill="none" stroke="url(#bladeHi)" stroke-width="3" stroke-linecap="round"/>
+        <rect x="6" y="-8" width="70" height="16" rx="8" fill="url(#grip)"/>
+        <circle cx="0" cy="0" r="16" fill="url(#pommel)"/>
+        <ellipse cx="88" cy="4" rx="12" ry="32" fill="#000" opacity="0.18" filter="url(#soft2)"/>
+        <rect x="72" y="-31" width="22" height="62" rx="11" fill="url(#guard)" stroke="#9cd2c4" stroke-width="1.5"/>
+      </g>
+
+      <!-- 机器人：以脚底为原点，整体前倾 -->
+      <g mask="url(#legFade)">
+      <g transform="translate(238,238) rotate(-12)" filter="url(#botShadow)">
+        <!-- 身后飘带（从颈部围巾延伸出去） -->
+        <path d="M-12,-66 C-40,-60 -62,-50 -84,-36 C-100,-26 -118,-20 -140,-20 C-118,-28 -100,-40 -84,-54 C-62,-70 -36,-76 -12,-76 Z" fill="url(#ribbonSub)"/>
+        <path d="M-6,-66 C-40,-74 -72,-82 -102,-76 C-128,-70 -154,-66 -190,-76 C-158,-88 -132,-98 -104,-98 C-72,-98 -40,-88 -6,-80 Z" fill="url(#ribbonMain)"/>
+        <path d="M-10,-79 C-40,-87 -72,-96 -104,-96 C-128,-96 -150,-88 -170,-82" fill="none" stroke="url(#ribbonEdge)" stroke-width="2.4" stroke-linecap="round"/>
+
+        <!-- 冲浪式站姿：双腿前后分开微屈，双臂张开保持平衡 -->
+        <path d="M-20,-58 C-34,-56 -46,-50 -56,-40" fill="none" stroke="url(#botArmBack)" stroke-width="10" stroke-linecap="round"/>
+        <circle cx="-58" cy="-38" r="6.5" fill="#7cc49c"/>
+        <path d="M-10,-28 C-14,-18 -20,-8 -24,2" fill="none" stroke="url(#botLimb)" stroke-width="13" stroke-linecap="round"/>
+        <path d="M10,-28 C16,-22 20,-14 22,-6" fill="none" stroke="url(#botLimb)" stroke-width="13" stroke-linecap="round"/>
+        <ellipse cx="-24" cy="4" rx="11" ry="5.5" transform="rotate(-12 -24 4)" fill="#9adab6"/>
+        <ellipse cx="24" cy="-6" rx="11" ry="5.5" transform="rotate(-12 24 -6)" fill="#9adab6"/>
+        <rect x="-25" y="-72" width="50" height="50" rx="17" fill="url(#botBody)"/>
+        <rect x="-19" y="-68" width="38" height="12" rx="6" fill="#ffffff" opacity="0.18"/>
+        <rect x="-12" y="-52" width="24" height="16" rx="5" fill="url(#screen)"/>
+        <rect x="-7" y="-46" width="10" height="4" rx="2" fill="url(#mouth)"/>
+        <circle cx="7" cy="-44" r="1.8" fill="#b8e6b0"/>
+        <path d="M20,-60 C32,-60 44,-56 54,-50" fill="none" stroke="url(#botArm)" stroke-width="10" stroke-linecap="round"/>
+        <circle cx="57" cy="-48" r="7" fill="#d9f6e8"/>
+        <!-- 颈部围巾 -->
+        <path d="M-27,-78 C-10,-70 10,-70 27,-78 L26,-67 C10,-60 -10,-60 -26,-67 Z" fill="url(#neckScarf)"/>
+        <circle cx="-24" cy="-71" r="5" fill="#3fa877"/>
+
+        <!-- 头 -->
+        <rect x="-57" y="-128" width="11" height="32" rx="5" fill="url(#botEar)"/>
+        <rect x="46" y="-128" width="11" height="32" rx="5" fill="url(#botEar)"/>
+        <rect x="-49" y="-156" width="98" height="82" rx="28" fill="url(#botHead)"/>
+        <path d="M-34,-150 C-20,-154 20,-154 34,-150" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" opacity="0.45"/>
+        <rect x="-37" y="-143" width="74" height="56" rx="17" fill="url(#screen)"/>
+        <path d="M-37,-126 C-37,-136 -30,-143 -20,-143 L28,-143 C20,-136 0,-130 -37,-122 Z" fill="url(#gloss)"/>
+        <!-- 笑眼：目视前方（略偏向剑尖），下缘上弯 -->
+        <path d="M-17,-131 H-9 Q-5,-131 -5,-127 V-115 Q-13,-122 -21,-115 V-127 Q-21,-131 -17,-131 Z" fill="#b8eab0" opacity="0.55" filter="url(#eyeGlow)"/>
+        <path d="M15,-131 H23 Q27,-131 27,-127 V-115 Q19,-122 11,-115 V-127 Q11,-131 15,-131 Z" fill="#b8eab0" opacity="0.55" filter="url(#eyeGlow)"/>
+        <path d="M-17,-131 H-9 Q-5,-131 -5,-127 V-115 Q-13,-122 -21,-115 V-127 Q-21,-131 -17,-131 Z" fill="url(#botEye)"/>
+        <path d="M15,-131 H23 Q27,-131 27,-127 V-115 Q19,-122 11,-115 V-127 Q11,-131 15,-131 Z" fill="url(#botEye)"/>
+        <!-- 腮红 + 橙色微笑 -->
+        <rect x="-31" y="-110" width="9" height="4" rx="2" fill="#ff9f8a" opacity="0.6"/>
+        <rect x="26" y="-110" width="9" height="4" rx="2" fill="#ff9f8a" opacity="0.6"/>
+        <path d="M-5,-104 Q3,-95 11,-104" fill="none" stroke="url(#mouth)" stroke-width="4" stroke-linecap="round"/>
+      </g>
+      </g>
+
+      <!-- 金色小点 -->
+      <circle cx="348" cy="60" r="11" fill="#f5a623" opacity="0.35" filter="url(#dotGlow)"/>
+      <circle cx="390" cy="92" r="14" fill="#f5a623" opacity="0.35" filter="url(#dotGlow)"/>
+      <circle cx="348" cy="60" r="9" fill="url(#dot)"/>
+      <circle cx="390" cy="92" r="12" fill="url(#dot)"/>
+      <circle cx="418" cy="132" r="7.5" fill="url(#dot)"/>
+    </g>
+  </defs>
+  <g>
+      
+      <circle cx="238" cy="182" r="138" fill="#9fdc94" opacity="0.35" filter="url(#glow)"/>
+      <circle cx="234" cy="182" r="134" fill="url(#moonGreen)"/>
+      <use href="#rider" xlink:href="#rider"/>
+    </g>
+</svg>

@@ -1,0 +1,11 @@
+.gitignore
+.vscode/**
+src/**
+test/**
+scripts/**
+tsconfig.json
+node_modules/**
+build/**
+**/*.map
+media/brand/**
+README.md
