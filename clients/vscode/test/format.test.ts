@@ -5,6 +5,7 @@ import { renderMarkdown } from "../src/core/markdown.js";
 import {
   describeTool,
   escapeHtml,
+  formatClock,
   formatDuration,
   formatTokens,
   permissionDescription,
@@ -116,4 +117,13 @@ test("numbers, times and names read the way the UI shows them", () => {
 test("an output summary is one flat line", () => {
   assert.equal(summariseOutput("\n\n  hello   world\nsecond", 40), "hello world");
   assert.ok(summariseOutput("x".repeat(200), 20).endsWith("…"));
+});
+
+test("a running clock says its units, and never a decimal", () => {
+  assert.equal(formatClock(0), "0s");
+  assert.equal(formatClock(8_400), "8s");
+  assert.equal(formatClock(59_999), "59s");
+  assert.equal(formatClock(79_000), "1m 19s");
+  assert.equal(formatClock(3_600_000), "1h 0m");
+  assert.equal(formatClock(-5), "0s");
 });

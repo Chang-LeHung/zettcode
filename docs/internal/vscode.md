@@ -87,8 +87,8 @@ this client's load-bearing rules live here and are named by the `npm test` case 
 
 ```bash
 make vscode           # install, type-check, test and build the extension
-make vscode-package   # also write clients/vscode/zettcode-0.1.2.vsix
-code --install-extension clients/vscode/zettcode-0.1.2.vsix --force
+make vscode-package   # also write clients/vscode/zettcode-0.1.3.vsix
+code --install-extension clients/vscode/zettcode-0.1.3.vsix --force
 ```
 
 Or open `clients/vscode` in VS Code and press **F5** to run it in an Extension Development Host. From
