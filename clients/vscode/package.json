@@ -2,7 +2,7 @@
   "name": "zettcode",
   "displayName": "ZettCode",
   "description": "The ZettCode coding agent in VS Code: streamed turns, chained tool calls, file jumps, approvals, sessions, models and effort.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "zettcode",
   "author": {
     "name": "Chang LeHung",
