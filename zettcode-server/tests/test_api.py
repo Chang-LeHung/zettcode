@@ -82,6 +82,35 @@ async def test_settings_can_be_read_and_changed():
     assert body["model"]["active"] is True
 
 
+async def test_the_compaction_point_is_listed_and_can_be_moved_from_the_settings():
+    fake = FakeClient()
+    async with serve(fake) as http:
+        before = (await http.get("/settings")).json()
+        assert before["model"]["compact_percent"] == 80 and before["unsaved"] is None
+
+        moved = await http.patch("/settings", json={"compact_percent": 55})
+        listed = (await http.get("/models")).json()
+        too_far = await http.patch("/settings", json={"compact_percent": 120})
+        nothing = await http.patch("/settings", json={"compact_percent": 0})
+
+    assert moved.status_code == 200
+    assert moved.json()["model"]["compact_percent"] == 55 and moved.json()["unsaved"] is None
+    assert listed["models"][0]["compact_percent"] == 55
+    assert too_far.status_code == 422 and nothing.status_code == 422
+    assert fake.model.compact_percent == 55
+
+
+async def test_a_compaction_point_that_could_not_be_written_says_why():
+    fake = FakeClient()
+    fake.unwritten = "the model in use is not in the config file"
+    async with serve(fake) as http:
+        moved = await http.patch("/settings", json={"compact_percent": 40})
+
+    assert moved.status_code == 200
+    assert moved.json()["model"]["compact_percent"] == 40
+    assert "not in the config file" in moved.json()["unsaved"]
+
+
 async def test_a_setting_that_changes_nothing_is_a_client_error_and_so_is_an_unknown_value():
     async with serve(FakeClient()) as http:
         empty = await http.patch("/settings", json={})
@@ -178,6 +207,15 @@ async def test_the_context_report_and_the_history_of_the_current_session():
 
     assert context["window"] == 200_000 and context["shares"][0]["name"] == "System"
     assert history["messages"][0]["role"] == "user" and history["messages"][0]["text"] == "hello"
+
+
+async def test_the_full_history_includes_what_a_compaction_folded_away_and_the_default_does_not():
+    async with serve(FakeClient()) as http:
+        default = (await http.get("/sessions/current/history")).json()
+        full = (await http.get("/sessions/current/history", params={"full": "true"})).json()
+
+    assert [m["role"] for m in default["messages"]] == ["user"]
+    assert [m["role"] for m in full["messages"]] == ["user", "summary"]
 
 
 async def test_before_anything_was_measured_the_context_report_is_null_and_not_an_error():

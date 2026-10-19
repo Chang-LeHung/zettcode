@@ -42,7 +42,7 @@ A blank line ends a frame. The stream closes after its terminal frame. Three nam
 | `compaction_finished` | `applied`, `summary` | It ended. |
 | `model_stopped` | `reason`, `message` | A step stopped for something other than finishing: `refusal`, `max_output`, `context_full`, `paused`, `interrupted`, `other`. |
 | `steered` | `text` | A message sent with `/runs/steer` reached the running request. |
-| `notice` | `text` | News that is not part of the answer, such as an MCP server that is down, or an answer that timed out. |
+| `notice` | `text`, `level` | News that is not part of the answer, such as an MCP server starting or down, or an answer that timed out. `level` is `"info"` for progress and `"warn"` for something you may need to act on; a frame without one is progress. |
 | `finished` | `text` | The run's last event before its result. |
 | `event` | `name` | An event this server does not know; kept rather than dropped, so a newer SDK does not look like silence. |
 

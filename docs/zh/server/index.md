@@ -84,6 +84,8 @@ data: {"text":"README 说明了 …","session_id":"01a15…","usage":{…},"tool
 
 每一帧的含义见[事件流](/zh/server/events),端点清单见 [API 参考](/zh/server/api),
 [TypeScript 客户端](/zh/server/typescript)把这一切包好,供编辑器或 Node 程序使用。
+[VS Code 扩展](https://github.com/Chang-LeHung/zettcode/tree/main/clients/vscode) 就是基于该客户端的完整编辑器界面:
+串联的工具调用、可点击的文件、审批和最近会话。
 
 ## 客户端能做什么
 

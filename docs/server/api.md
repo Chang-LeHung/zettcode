@@ -36,12 +36,12 @@ Except on `/health`, every endpoint requires `Authorization: Bearer <token>` whe
 
 | Method | Path | Body | Answers |
 | --- | --- | --- | --- |
-| `GET` | `/models` | — | `{"models": [{"name","model","context_window","multimodal","efforts","active"}], "current"}`; works before a model is configured, where `current` is null. |
+| `GET` | `/models` | — | `{"models": [{"name","model","context_window","multimodal","efforts","active","compact_percent"}], "current"}`; works before a model is configured, where `current` is null. |
 | `POST` | `/models` | `{"model", "token"?, "display_model"?, "base_url"?, "anthropic"?, "responses_api"?, "multimodal"?, "context_window"?, "compact_percent"?, "reasoning_efforts"?}` | 201 with the new list. The first model makes the server ready; later ones are available for `PATCH /settings`. Written to the configuration file, with the keys the terminal's `/config add` uses. |
 | `PATCH` | `/models/{name}` | Any of the fields `POST /models` takes | The new list. A key left out stays as it is; the token is kept unless a new one is given. |
 | `DELETE` | `/models/{name}` | — | The remaining models. The last one cannot be removed (`400 invalid`): a client needs one. |
-| `GET` | `/settings` | — | `{"model","effort","efforts","permission","permissions"}` |
-| `PATCH` | `/settings` | `{"model"?, "effort"?, "permission"?}` | The same as `GET /settings`, after the change. At least one field. |
+| `GET` | `/settings` | — | `{"model","effort","efforts","permission","permissions"}`; after a `PATCH` that moved the compaction point it also has `"unsaved"` (see below). |
+| `PATCH` | `/settings` | `{"model"?, "effort"?, "permission"?, "compact_percent"?}` | The same as `GET /settings`, after the change. At least one field. `compact_percent` is above 0 and at most 100, applies from the next request and is written to the configuration file; when the file cannot be written the answer carries `"unsaved": "<why>"` and the change holds for this run only. Refused with `409` while a run is in progress. |
 | `GET` | `/plugins` | — | `{"loaded": [...], "failures": [...]}` |
 | `GET` | `/mentions?query=&limit=50` | — | `{"mentions": [{"token","kind","name","description"}]}`: the files, skills and plugin resources an `@` can reference. |
 | `POST` | `/doctor` | `{"timeout"?: 30}` | `{"checks": [{"model","model_id","ok","seconds","detail","input_tokens","output_tokens"}]}`: every configured model asked one short question. |
@@ -69,9 +69,10 @@ The *current* session is the conversation the next prompt continues. A server st
 | `POST` | `/sessions/current/fork` | — | The new session, which continues this conversation's context. |
 | `POST` | `/sessions/current/compact` | — | `{"applied","summary","compressed","kept"}`; `applied:false` when there was nothing to fold. |
 | `GET` | `/sessions/current/context` | — | `{"window","used","measured_by","shares","partial","from_provider"}`, or `null` before a request is measured. |
-| `GET` | `/sessions/current/history` | — | `{"messages": [{"role","text","tool_calls","ok","images"}]}` |
+| `GET` | `/sessions/current/history` | `?full=true` (optional) | `{"messages": [{"role","text","tool_calls","ok","images"}]}`: the messages the model works with, or with `full=true` the whole conversation, each compaction's summary (role `summary`) where it was made. |
 | `GET` | `/sessions/current/export` | — | The conversation as a standalone HTML page (`text/html`, as a download). |
 | `POST` | `/sessions/current/ask` | `{"question","timeout"?}` | `{"answer"}`; answered beside the conversation, never added to it. 409 while a run is going. |
+| `POST` | `/sessions/current/ask/stream` | `{"question","timeout"?}` | The same side question with the answer streamed, in the frames `/prompts` uses: `text_delta` events, then `result` (or `error`, or `cancelled` when `/runs/cancel` stops it). The question holds the run slot while it is answered. 409 while a run is going. |
 | `GET` | `/sessions/current/stats` | — | `{"id","entries","requests","input_tokens","output_tokens","cache_read_tokens","reasoning_tokens","total_tokens","cache_share"}`, or `null` before anything is stored: one row of `/resume`. |
 | `GET` | `/sessions/stats?ids=a,b` | — | `{"stats": [...]}` for the named sessions, same shape; at most 200 ids. |
 | `GET` | `/sessions/current/self-compaction` | — | `{"choice": true\|false\|null, "effective": bool}` |

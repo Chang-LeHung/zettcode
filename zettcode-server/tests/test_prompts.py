@@ -119,7 +119,8 @@ async def test_the_rest_of_the_events_keep_their_fields():
     run = FakeRun(
         [
             CompactionFinished(SESSION, True, Compaction("summary", 10, 2)),
-            Notice(SESSION, "an MCP server is down"),
+            Notice(SESSION, "an MCP server is down", "warn"),
+            Notice(SESSION, "Starting MCP server 'docs' (process)…"),
             Steered(SESSION, "one more thing"),
             TextDelta(SESSION, "done"),
         ]
@@ -129,9 +130,10 @@ async def test_the_rest_of_the_events_keep_their_fields():
 
     events = payloads(body, "event")
     assert events[0] == {"type": "compaction_finished", "applied": True, "summary": "summary"}
-    assert events[1] == {"type": "notice", "text": "an MCP server is down"}
-    assert events[2] == {"type": "steered", "text": "one more thing"}
-    assert events[3] == {"type": "text_delta", "text": "done"}
+    assert events[1] == {"type": "notice", "text": "an MCP server is down", "level": "warn"}
+    assert events[2] == {"type": "notice", "text": "Starting MCP server 'docs' (process)…", "level": "info"}
+    assert events[3] == {"type": "steered", "text": "one more thing"}
+    assert events[4] == {"type": "text_delta", "text": "done"}
 
 
 async def test_the_approval_rule_of_the_request_is_the_one_the_run_answers_with():
@@ -202,6 +204,45 @@ async def test_a_failure_inside_the_run_ends_the_stream_with_an_error_frame():
     assert error["error"] == "run" and "the model went away" in error["message"]
 
 
+async def test_a_side_question_streams_its_answer_in_the_frames_a_prompt_uses_and_joins_nothing():
+    client = FakeClient()
+
+    async with serve(client) as http:
+        response = await http.post("/sessions/current/ask/stream", json={"question": "the pager"})
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    deltas = [event["text"] for event in payloads(response.text, "event") if event["type"] == "text_delta"]
+    assert deltas == ["about ", "the pager"], "the answer arrives in pieces, not once at the end"
+    assert payloads(response.text, "result")[0]["text"] == "about the pager"
+    assert client.session.asked_side == ["the pager"]
+    assert client.asked == [], "a side question is not a prompt"
+
+
+async def test_a_side_question_is_refused_while_a_run_goes_and_cancel_stops_a_streamed_one():
+    hold = asyncio.Event()
+    client = FakeClient(runs=[FakeRun([TextDelta(SESSION, "working")], hold=hold)])
+
+    async with serve(client) as http:
+        first = asyncio.ensure_future(http.post("/prompts", json={"text": "the long one"}))
+        await until(lambda: client.asked)
+        refused = await http.post("/sessions/current/ask/stream", json={"question": "meanwhile"})
+        await http.post("/runs/cancel")
+        await first
+
+        client.session.side_hold = asyncio.Event()
+        side = asyncio.ensure_future(http.post("/sessions/current/ask/stream", json={"question": "slowly"}))
+        await until(lambda: client.session.asked_side == ["slowly"])
+        during = await http.post("/prompts", json={"text": "too soon"})
+        stopped = await http.post("/runs/cancel")
+        body = (await side).text
+
+    assert refused.status_code == 409 and refused.json()["error"] == "busy"
+    assert during.status_code == 409, "a prompt cannot start under a side question that is being answered"
+    assert stopped.json() == {"cancelled": True}
+    assert payloads(body, "cancelled") and not payloads(body, "result")
+
+
 async def test_a_second_prompt_while_one_runs_is_refused_with_409_and_the_draft_never_reaches_the_agent():
     hold = asyncio.Event()
     client = FakeClient(runs=[FakeRun([TextDelta(SESSION, "working")], hold=hold)])
@@ -216,6 +257,22 @@ async def test_a_second_prompt_while_one_runs_is_refused_with_409_and_the_draft_
     assert refused.status_code == 409
     assert refused.json()["error"] == "busy"
     assert client.asked == ["the long one"], "the refused prompt never started"
+
+
+async def test_the_compaction_point_cannot_move_while_a_run_is_going_and_other_settings_still_can():
+    hold = asyncio.Event()
+    client = FakeClient(runs=[FakeRun([TextDelta(SESSION, "working")], hold=hold)])
+
+    async with serve(client) as http:
+        first = asyncio.ensure_future(http.post("/prompts", json={"text": "the long one"}))
+        await until(lambda: client.asked)
+        refused = await http.patch("/settings", json={"compact_percent": 50})
+        await http.post("/runs/cancel")
+        await first
+        moved = await http.patch("/settings", json={"compact_percent": 50})
+
+    assert refused.status_code == 409 and refused.json()["error"] == "busy"
+    assert moved.status_code == 200 and moved.json()["model"]["compact_percent"] == 50
 
 
 async def test_cancelling_a_run_ends_its_stream_as_cancelled_and_leaves_the_server_ready():
