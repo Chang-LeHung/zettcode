@@ -40,6 +40,8 @@ export interface ModelInfo {
   multimodal: boolean;
   efforts: string[];
   active: boolean;
+  /** Share of the window, in percent, at which a request is summarized first. */
+  compact_percent: number;
 }
 
 /** One model to add to the configuration file; the keys are the file's own. */
@@ -65,12 +67,16 @@ export interface Settings {
   efforts: string[];
   permission: Permission;
   permissions: string[];
+  /** Why a compaction point set by `updateSettings` was not written to the configuration file; it then holds for this run only. */
+  unsaved?: string | null;
 }
 
 export interface SettingsUpdate {
   model?: string;
   effort?: string;
   permission?: Permission;
+  /** Move the active model's compaction point; more than 0 and at most 100. Refused while a run is in progress. */
+  compact_percent?: number;
 }
 
 export interface Health {
@@ -109,6 +115,7 @@ export interface ToolRecord {
 }
 
 export interface Message {
+  /** `user`, `assistant` or `tool`; `summary` is what a compaction left in place of the older messages. */
   role: string;
   text: string;
   tool_calls: ToolRecord[];
@@ -116,6 +123,10 @@ export interface Message {
   tool_name: string | null;
   ok: boolean;
   images: number;
+  /** What the model call that wrote an assistant message spent, when the store recorded it. */
+  usage?: Usage | null;
+  /** How long the message took to produce; zero for a message typed by a person. */
+  seconds?: number;
 }
 
 export interface Compaction {
@@ -274,7 +285,7 @@ export type RunEvent =
   | { type: "compaction_finished"; applied: boolean; summary: string }
   | { type: "model_stopped"; reason: string; message: string | null }
   | { type: "steered"; text: string }
-  | { type: "notice"; text: string }
+  | { type: "notice"; text: string; level?: "info" | "warn" }
   | { type: "finished"; text: string }
   | { type: "event"; name: string };
 

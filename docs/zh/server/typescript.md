@@ -69,6 +69,7 @@ if (!health.ready) {
 }
 await client.updateModel("Fast", { context_window: 200_000 });   // token 保留
 await client.updateSettings({ model: "Fast" });                  // 下一次 prompt 用它
+await client.updateSettings({ compact_percent: 70 });            // 到窗口的 70% 时总结;文件写不进去时 `unsaved` 会说明
 ```
 
 `addModel` 写入的就是 `/config add` 写的那条 `[[models]]`;`removeModel` 拒绝删掉最后一个。
@@ -82,7 +83,7 @@ await client.updateSettings({ model: "Fast" });                  // 下一次 pr
 | `settings()`、`updateSettings(change)`、`plugins()` | `/settings`、`/plugins` |
 | `listSessions(limit)`、`createSession(title?)`、`currentSession()` | `/sessions`、`/sessions/current` |
 | `openSession(id)`、`renameSession(title)`、`nameSession()`、`forkSession()` | `/sessions/...` |
-| `compactSession()`、`context()`、`history()`、`exportSession()`、`ask(question)` | `/sessions/current/...` |
+| `compactSession()`、`context()`、`history()`、`exportSession()`、`ask(question)`、`askStream(question)` | `/sessions/current/...` |
 | `usage()`、`usageLedger()`、`sessionStats(ids?)` | `/usage`、`/usage/ledger`、`/sessions/.../stats` |
 | `selfCompaction()`、`setSelfCompaction(choice)`、`mentions(query)`、`doctor(timeout)` | `/sessions/current/self-compaction`、`/mentions`、`/doctor` |
 | `prompt(text, options)`、`resume(options)` | `POST /prompts`、`POST /runs/resume` |
@@ -99,3 +100,10 @@ await client.updateSettings({ model: "Fast" });                  // 下一次 pr
 客户端在同一个仓库的
 [`clients/typescript`](https://github.com/Chang-LeHung/zettcode/tree/main/clients/typescript),紧挨着它调用的服务器。
 用 `make client` 跑测试:先编译源码,再对着真实的本地 HTTP 服务器说话,包括被拆开的 SSE 块。
+
+## 完整的编辑器界面
+
+[VS Code 扩展](https://github.com/Chang-LeHung/zettcode/tree/main/clients/vscode) 直接打包这份客户端的源码,
+所以它的对话使用同一套 API 和类型。它补上编辑器负责的部分:webview 对话、会话抽屉、文件跳转、审批卡片,
+以及模型、effort 和权限命令。控制项与设置见其
+[`README`](https://github.com/Chang-LeHung/zettcode/blob/main/clients/vscode/README.md)。

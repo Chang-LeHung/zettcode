@@ -127,6 +127,7 @@ describe("the JSON API", () => {
       multimodal: false,
       efforts: ["low", "medium"],
       active: true,
+      compact_percent: 80,
     };
     const settings = {
       model,
@@ -138,7 +139,12 @@ describe("the JSON API", () => {
     const server = await start((request, response) => {
       if (request.url === "/models") return json(response, { models: [model], current: "fast" });
       if (request.url === "/settings" && request.method === "PATCH") {
-        assert.deepEqual(JSON.parse(request.body), { permission: "safe" });
+        const sent = JSON.parse(request.body);
+        if (sent.compact_percent !== undefined) {
+          assert.deepEqual(sent, { compact_percent: 55 });
+          return json(response, { ...settings, model: { ...model, compact_percent: 55 } });
+        }
+        assert.deepEqual(sent, { permission: "safe" });
         return json(response, { ...settings, permission: "safe" });
       }
       if (request.url === "/settings") return json(response, settings);
@@ -150,6 +156,7 @@ describe("the JSON API", () => {
     assert.equal((await client.models()).current, "fast");
     assert.equal((await client.settings()).effort, "medium");
     assert.equal((await client.updateSettings({ permission: "safe" })).permission, "safe");
+    assert.equal((await client.updateSettings({ compact_percent: 55 })).model.compact_percent, 55);
     assert.deepEqual((await client.plugins()).loaded, ["shell"]);
   });
 
@@ -182,6 +189,9 @@ describe("the JSON API", () => {
       }
       if (request.url === "/sessions/current/context") return json(response, null);
       if (request.url === "/sessions/current/history") return json(response, { messages: [] });
+      if (request.url === "/sessions/current/history?full=true") {
+        return json(response, { messages: [{ role: "summary", text: "s" }] });
+      }
       if (request.url === "/sessions/current/ask") {
         assert.deepEqual(JSON.parse(request.body), { question: "why?", timeout: 5 });
         return json(response, { answer: "because" });
@@ -197,6 +207,7 @@ describe("the JSON API", () => {
     assert.equal((await client.compactSession()).compressed, 10);
     assert.equal(await client.context(), null);
     assert.deepEqual(await client.history(), []);
+    assert.equal((await client.history({ full: true }))[0]?.role, "summary");
     assert.equal(await client.ask("why?", 5), "because");
     assert.equal((await client.usage()).input_tokens, 10);
     assert.deepEqual(await client.resumable(), { resumable: false, kind: null, description: null });
@@ -218,7 +229,7 @@ describe("the JSON API", () => {
   });
 
   test("models can be added, changed and removed, and health says whether one exists", async () => {
-    const model = { name: "Fast", model: "gpt-5", context_window: 128000, multimodal: false, efforts: ["low"], active: true };
+    const model = { name: "Fast", model: "gpt-5", context_window: 128000, multimodal: false, efforts: ["low"], active: true, compact_percent: 80 };
     const server = await start((request, response) => {
       if (request.url === "/models" && request.method === "POST") {
         assert.deepEqual(JSON.parse(request.body), { model: "gpt-5", token: "sk-1", display_model: "Fast" });
@@ -425,6 +436,32 @@ describe("a prompt", () => {
     const run = new ZettCodeClient({ baseUrl: server.url }).prompt("go", { questions: "ask", onQuestion: () => null });
 
     await assert.rejects(run.result, RunCancelledError);
+  });
+
+  test("a side question streams its answer from the ask endpoint and sends the question", async () => {
+    let seen: { url?: string; body?: unknown } = {};
+    const server = await start((request, response) => {
+      seen = { url: request.url, body: JSON.parse(request.body) };
+      stream(response);
+      response.write(frame("event", { type: "text_delta", text: "about " }));
+      setTimeout(() => {
+        response.write(frame("event", { type: "text_delta", text: "pagers" }));
+        response.end(frame("result", { ...result, text: "about pagers" }));
+      }, 5);
+    });
+    const run = new ZettCodeClient({ baseUrl: server.url }).askStream("pagers", 60);
+    const pieces: string[] = [];
+    for await (const item of run) {
+      const event = eventOf(item);
+      if (event?.type === "text_delta") {
+        pieces.push(event.text);
+      }
+    }
+
+    assert.deepEqual(pieces, ["about ", "pagers"], "the answer arrives in pieces");
+    assert.equal((await run.result).text, "about pagers");
+    assert.equal(seen.url, "/sessions/current/ask/stream");
+    assert.deepEqual(seen.body, { question: "pagers", timeout: 60 });
   });
 
   test("parses frames split across chunks and resolves the result", async () => {
