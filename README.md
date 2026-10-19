@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/public/logo.svg" width="88" height="88" alt="ZettCode pixel robot with a warm heart" />
+  <img src="clients/vscode/media/logo.svg" width="120" alt="ZettCode mascot riding a sword past the moon" />
 </p>
 <h1 align="center">ZettCode</h1>
 <p align="center"><strong>Your terminal. Your coding partner.</strong></p>
@@ -98,12 +98,17 @@ uv tool install zettcode-server
 zettcode-server --workspace ~/projects/api --port 8000
 ```
 
+For VS Code, [`clients/vscode/`](clients/vscode/README.md) is a sidebar chat built on the same server and client:
+streamed turns, chained tool calls, clickable files, approvals, model/effort/permission switching and recent-session
+history. `make vscode` builds and tests it.
+
 ## Development
 
 ```bash
 uv sync --all-packages           # install both packages
-make check                      # Ruff, mypy, and both test suites
+make check                      # Ruff, mypy, both test suites, and the VS Code extension
 make client                     # build and test the TypeScript client
+make vscode                     # type-check, test and build the VS Code extension
 make hooks                      # enforce mypy before commits
 make demo                       # browse terminal widgets
 make docs                       # preview the user guide locally
@@ -112,7 +117,8 @@ uv run zettcode --workspace .    # run from the checkout
 
 ZettCode provides the terminal application and its HTTP server; the agent runtime is
 [`zett-agent`](https://github.com/Chang-LeHung/zett-agent). The repository is a uv workspace: `zettcode/` is the
-agent, `zettcode-server/` the API, and `clients/typescript/` the TypeScript client for it. Contributor notes and
+agent, `zettcode-server/` the API, and `clients/typescript/` the TypeScript client for it. `clients/vscode/` is the
+VS Code sidebar built on that client. Contributor notes and
 invariants live in [`AGENTS.md`](AGENTS.md) and
 [`docs/internal/`](docs/internal/), separately from the user guide. See
 [`docs/internal/site-design.md`](docs/internal/site-design.md) for preview and
