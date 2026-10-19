@@ -34,6 +34,11 @@ tool configuration (Ruff, mypy, the dev dependency group) and the member list. N
 - `clients/typescript/` is the TypeScript client for the server, and only a client: it speaks the HTTP API, has no
   runtime dependency, and parses the event stream itself. A capability the client needs is an endpoint on the server
   first, never a shortcut through the SDK.
+- `clients/vscode/` is the VS Code face of that server, and only a client: a webview chat that bundles the TypeScript
+  client's source and speaks HTTP, never the SDK or the agent. The token, the server's process and every editor action
+  live in the extension host; the webview posts messages and receives state. It also must not re-implement the event
+  translation, sessions, or models — a missing capability is a server endpoint, then a TypeScript client method.
+  `docs/internal/vscode.md` has the map and the rules its tests pin.
 - Keep Zett application vocabulary (artifacts, tags, cards, channels, scheduled
   tasks) out of this repository. ZettCode is a coding agent, not a host app.
 
@@ -44,8 +49,11 @@ tool configuration (Ruff, mypy, the dev dependency group) and the member list. N
   `zettcode/src`, `zettcode/perf` and `zettcode-server/src`. Both tools target 3.10 and CI runs 3.10 through 3.14, so
   keep the source free of newer syntax and standard-library APIs; the version shims live in
   `zettcode/src/zettcode/_compat.py`.
-- Run `make check` (Ruff, mypy, and both test suites) before handing work over, and
-  `make smoke` when packaging changes so each console script is exercised from the built wheels.
+- Run `make check` (Ruff, mypy, both test suites, and the VS Code extension) before handing work over, and
+  `make smoke` when packaging changes so each console script is exercised from the built wheels. `make vscode`
+  runs the extension's type-check, jsdom tests and build on its own, and `make vscode-package` writes a `.vsix`.
+- Node 20+ builds both JavaScript clients. `clients/typescript` is dependency-free at runtime; `clients/vscode`
+  has dev dependencies only (esbuild, TypeScript, jsdom) and bundles everything it runs into `dist/`.
 - Run `make hooks` once per checkout: the installed pre-commit hook runs mypy
   and refuses a commit that does not type-check. Keep `make check` green rather
   than bypassing the hook.

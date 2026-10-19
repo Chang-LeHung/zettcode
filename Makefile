@@ -11,7 +11,7 @@ SMOKE_DIR := .smoke
 PACKAGE_DIRS := zettcode zettcode-server
 LINT_PATHS := zettcode/src zettcode/tests zettcode/perf zettcode-server/src zettcode-server/tests docs/scripts
 
-.PHONY: help install lint typecheck test test-zettcode test-server client build build-all smoke check hooks docs docs-build docs-preview demo demo-all demos demo-thinking palettes themes perf perf-scaling perf-store perf-profile perf-startup perf-imports FORCE
+.PHONY: help install lint typecheck test test-zettcode test-server client vscode vscode-package build build-all smoke check hooks docs docs-build docs-preview demo demo-all demos demo-thinking palettes themes perf perf-scaling perf-store perf-profile perf-startup perf-imports FORCE
 
 DEMOS := text status_bar spinner progress_bar list table diff markdown textarea completion dialog collapsible toast tasks scroll layout
 
@@ -22,6 +22,8 @@ help:
 	@echo "  make typecheck Check the shipped code of both packages with mypy"
 	@echo "  make test     Run both test suites"
 	@echo "  make client   Build and test the TypeScript client"
+	@echo "  make vscode   Type-check, test and build the VS Code extension"
+	@echo "  make vscode-package   Also package the extension as a .vsix"
 	@echo "  make build    Build the zettcode sdist and wheel into dist/"
 	@echo "  make build-all  Build the sdist and wheel of both packages into dist/"
 	@echo "  make smoke    Build both wheels into $(SMOKE_DIR)/ and run each program's --help from them"
@@ -66,6 +68,15 @@ test-server:
 client:
 	cd clients/typescript && npm install --no-audit --no-fund && npm test
 
+# The VS Code extension is a webview client for the server. Its test runner bundles the
+# webview into a temporary directory and drives it in jsdom, so no editor is needed to run the suite.
+vscode:
+	cd clients/vscode && npm install --no-audit --no-fund
+	cd clients/vscode && npm run check && npm test && npm run build
+
+vscode-package: vscode
+	cd clients/vscode && npx --yes @vscode/vsce package --no-dependencies
+
 build:
 	$(UV) build --package zettcode
 
@@ -84,7 +95,7 @@ smoke:
 	@# template, its stylesheet, or its script has to fail here, not at export time.
 	$(UV) run --no-project --python 3.14 --with ./$(SMOKE_DIR)/zettcode-*.whl python -c "from importlib.resources import files; names = sorted(p.name for p in files('zettcode.app.agent.export').joinpath('trace').iterdir()); assert names == ['script.js', 'style.css', 'template.html'], names; print('trace assets:', names)"
 
-check: lint typecheck test
+check: lint typecheck test vscode
 
 # The guide is a VitePress site in docs/; its own package.json pins it.
 docs:

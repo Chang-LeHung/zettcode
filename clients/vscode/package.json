@@ -1,0 +1,292 @@
+{
+  "name": "zettcode",
+  "displayName": "ZettCode",
+  "description": "The ZettCode coding agent in VS Code: streamed turns, chained tool calls, file jumps, approvals, sessions, models and effort.",
+  "version": "0.1.0",
+  "publisher": "zettcode",
+  "license": "MIT",
+  "icon": "media/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Chang-LeHung/zettcode.git",
+    "directory": "clients/vscode"
+  },
+  "bugs": {
+    "url": "https://github.com/Chang-LeHung/zettcode/issues"
+  },
+  "homepage": "https://github.com/Chang-LeHung/zettcode/tree/main/clients/vscode#readme",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "AI",
+    "Chat",
+    "Programming Languages"
+  ],
+  "keywords": [
+    "agent",
+    "ai",
+    "coding",
+    "claude",
+    "codex",
+    "zettcode"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onView:zettcode.chat",
+    "onCommand:zettcode.openChat",
+    "onCommand:zettcode.newSession",
+    "onCommand:zettcode.usage",
+    "onCommand:zettcode.doctor",
+    "onCommand:zettcode.plugins"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "secondarySidebar": [
+        {
+          "id": "zettcode",
+          "title": "ZettCode",
+          "icon": "media/sidebar.svg"
+        }
+      ]
+    },
+    "views": {
+      "zettcode": [
+        {
+          "type": "webview",
+          "id": "zettcode.chat",
+          "name": "Chat",
+          "icon": "media/sidebar.svg",
+          "contextualTitle": "ZettCode"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "zettcode.openChat",
+        "title": "ZettCode: Focus Chat",
+        "icon": {
+          "light": "media/logo.svg",
+          "dark": "media/logo.svg"
+        }
+      },
+      {
+        "command": "zettcode.newSession",
+        "title": "ZettCode: New Session"
+      },
+      {
+        "command": "zettcode.resumeSession",
+        "title": "ZettCode: Recent Sessions"
+      },
+      {
+        "command": "zettcode.selectModel",
+        "title": "ZettCode: Select Model"
+      },
+      {
+        "command": "zettcode.addModel",
+        "title": "ZettCode: Add Model"
+      },
+      {
+        "command": "zettcode.editModel",
+        "title": "ZettCode: Edit Model"
+      },
+      {
+        "command": "zettcode.selectEffort",
+        "title": "ZettCode: Select Reasoning Effort"
+      },
+      {
+        "command": "zettcode.selectPermission",
+        "title": "ZettCode: Select Shell Permission"
+      },
+      {
+        "command": "zettcode.compact",
+        "title": "ZettCode: Compact Session"
+      },
+      {
+        "command": "zettcode.forkSession",
+        "title": "ZettCode: Fork Session"
+      },
+      {
+        "command": "zettcode.renameSession",
+        "title": "ZettCode: Rename Session"
+      },
+      {
+        "command": "zettcode.exportSession",
+        "title": "ZettCode: Export Session as HTML"
+      },
+      {
+        "command": "zettcode.stop",
+        "title": "ZettCode: Stop the Run"
+      },
+      {
+        "command": "zettcode.find",
+        "title": "ZettCode: Find in Conversation"
+      },
+      {
+        "command": "zettcode.usage",
+        "title": "ZettCode: Usage"
+      },
+      {
+        "command": "zettcode.doctor",
+        "title": "ZettCode: Check Models"
+      },
+      {
+        "command": "zettcode.plugins",
+        "title": "ZettCode: Show Plugins"
+      },
+      {
+        "command": "zettcode.restartServer",
+        "title": "ZettCode: Restart Server"
+      },
+      {
+        "command": "zettcode.showLog",
+        "title": "ZettCode: Show Server Log"
+      },
+      {
+        "command": "zettcode.openSettings",
+        "title": "ZettCode: Open Settings"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "zettcode.find",
+        "key": "ctrl+f",
+        "mac": "cmd+f",
+        "when": "zettcode.chatFocused"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "zettcode.newSession",
+          "when": "view == zettcode.chat",
+          "group": "navigation@1"
+        },
+        {
+          "command": "zettcode.resumeSession",
+          "when": "view == zettcode.chat",
+          "group": "navigation@2"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "zettcode.openChat"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "zettcode.openChat",
+          "group": "navigation@1"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "ZettCode",
+      "properties": {
+        "zettcode.server.autoStart": {
+          "type": "boolean",
+          "default": true,
+          "description": "Start a ZettCode server for the workspace when the chat opens."
+        },
+        "zettcode.server.command": {
+          "type": "string",
+          "default": "zettcode-server",
+          "description": "The zettcode-server command. A path is used as given; a bare name is looked up in the workspace's .venv, then on PATH."
+        },
+        "zettcode.server.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Extra arguments passed to zettcode-server, such as --config."
+        },
+        "zettcode.server.port": {
+          "type": "number",
+          "default": 3290,
+          "minimum": 1,
+          "maximum": 65535,
+          "description": "The loopback port to try first. Another free port is chosen when it is taken."
+        },
+        "zettcode.server.externalUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Connect to a server someone else started instead of launching one, for example http://127.0.0.1:3290."
+        },
+        "zettcode.server.externalToken": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "The bearer token of the external server. The ZETTCODE_SERVER_TOKEN environment variable is used when this is empty."
+        },
+        "zettcode.server.useToken": {
+          "type": "boolean",
+          "default": true,
+          "description": "Guard the server this extension launches with a token generated for this window."
+        },
+        "zettcode.permission": {
+          "type": "string",
+          "enum": [
+            "deny",
+            "ask",
+            "safe",
+            "auto"
+          ],
+          "default": "ask",
+          "description": "How shell commands start: deny refuses, ask asks each time, safe runs read-only ones, auto runs all. A level chosen in the chat is remembered for that session, and starts the next new session in this workspace."
+        },
+        "zettcode.answerTimeout": {
+          "type": "number",
+          "default": 300,
+          "minimum": 5,
+          "description": "Seconds an approval or question waits before the safe answer is applied."
+        },
+        "zettcode.autoTitle": {
+          "type": "boolean",
+          "default": true,
+          "description": "Let the model name an untitled conversation after its first answer, as the terminal does."
+        },
+        "zettcode.restoreSession": {
+          "type": "boolean",
+          "default": true,
+          "description": "Reopen the session this workspace had last when the chat starts."
+        },
+        "zettcode.historyLimit": {
+          "type": "number",
+          "default": 50,
+          "minimum": 5,
+          "maximum": 200,
+          "description": "How many recent sessions the history drawer lists."
+        }
+      }
+    }
+  },
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "The agent runs tools and shell commands in the workspace."
+    }
+  },
+  "scripts": {
+    "check": "vue-tsc --noEmit -p tsconfig.json",
+    "build": "node scripts/build.mjs",
+    "watch": "node scripts/build.mjs --watch",
+    "test": "node scripts/test.mjs",
+    "vscode:prepublish": "npm run build",
+    "package": "npm run build && node scripts/package.mjs"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21.1.7",
+    "@types/katex": "^0.16.8",
+    "@types/node": "^22.10.0",
+    "@types/vscode": "^1.90.0",
+    "esbuild": "^0.25.0",
+    "highlight.js": "^11.12.0",
+    "jsdom": "^26.0.0",
+    "katex": "^0.19.0",
+    "marked": "^18.1.1",
+    "typescript": "^5.7.0",
+    "vue": "^3.5.44",
+    "vue-tsc": "^2.2.12"
+  }
+}
