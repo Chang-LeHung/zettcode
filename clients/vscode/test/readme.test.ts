@@ -55,3 +55,21 @@ test("the picture is put into the packaged README as the file's own bytes, and S
   assert.equal(inlineImages(other, "."), other);
   assert.throws(() => inlineImages('<img src="media/logo.svg" />', "."), /SVG/);
 });
+
+test("the manifest names the author and points every link at the repository", async () => {
+  const manifest = JSON.parse(await readFile("package.json", "utf8")) as {
+    author?: { name?: string; url?: string };
+    publisher?: string;
+    repository?: { url?: string };
+    bugs?: { url?: string };
+    homepage?: string;
+  };
+  assert.equal(manifest.author?.name, "Chang LeHung");
+  assert.equal(manifest.author?.url, "https://github.com/Chang-LeHung");
+  for (const url of [manifest.repository?.url, manifest.bugs?.url, manifest.homepage]) {
+    assert.ok(url?.includes("github.com/Chang-LeHung/zettcode"), `a link to the repository: ${url}`);
+  }
+  // The publisher is an ID on the marketplace, not a person's name: it must be the one the extension is uploaded
+  // under, and it never changes.
+  assert.equal(manifest.publisher, "zettcode");
+});
