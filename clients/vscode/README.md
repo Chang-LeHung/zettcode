@@ -1,7 +1,7 @@
 # ZettCode for VS Code
 
 <p align="center">
-  <img src="media/icon.png" width="128" height="128" alt="ZettCode: the mascot riding a sword past the moon" />
+  <img src="https://raw.githubusercontent.com/Chang-LeHung/zettcode/main/clients/vscode/media/icon.png" width="128" height="128" alt="ZettCode: the mascot riding a sword past the moon" />
 </p>
 
 <p align="center"><strong>A coding agent next to your code.</strong></p>
