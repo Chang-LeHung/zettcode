@@ -45,7 +45,7 @@ jobs:
       matrix:
         # Every claimed version, starting at the floor: a construct or a stdlib
         # name the oldest runtime lacks only fails there.
-        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14", "3.15"]
     steps:
       - uses: actions/checkout@v7
 
@@ -73,7 +73,7 @@ jobs:
       matrix:
         # 3.10 is the version that also installs the ``exceptiongroup`` and
         # ``tomli`` backports, so the old path is exercised here as well.
-        python-version: ["3.10", "3.14"]
+        python-version: ["3.10", "3.14", "3.15"]
     steps:
       - uses: actions/checkout@v7
 
@@ -150,7 +150,7 @@ jobs:
 
       - uses: astral-sh/setup-uv@v10.2.0
         with:
-          python-version: "3.14"
+          python-version: "3.15"
           enable-cache: true
 
       # The Makefile target owns the smoke test, so the thing a contributor runs

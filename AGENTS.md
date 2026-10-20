@@ -46,7 +46,7 @@ tool configuration (Ruff, mypy, the dev dependency group) and the member list. N
 
 - Python 3.10+ and `uv` for dependency management; Ruff for formatting and
   linting with `line-length = 120`, and mypy for the shipped code of both packages under
-  `zettcode/src`, `zettcode/perf` and `zettcode-server/src`. Both tools target 3.10 and CI runs 3.10 through 3.14, so
+  `zettcode/src`, `zettcode/perf` and `zettcode-server/src`. Both tools target 3.10 and CI runs 3.10 through 3.15, so
   keep the source free of newer syntax and standard-library APIs; the version shims live in
   `zettcode/src/zettcode/_compat.py`.
 - Run `make check` (Ruff, mypy, both test suites, and the VS Code extension) before handing work over, and
