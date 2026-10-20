@@ -19,7 +19,7 @@ zettcode-server --workspace ~/projects/api --port 3290
 ```
 
 ```text
-zettcode-server 0.1.0 (zettcode 0.1.8) · http://127.0.0.1:3290 · workspace /home/you/projects/api · permission deny · token off
+zettcode-server 0.1.1 (zettcode 0.1.9) · http://127.0.0.1:3290 · workspace /home/you/projects/api · permission deny · token off
 ```
 
 The command binds **127.0.0.1** by default. Nothing is reachable from another machine until `--host` says so, and then

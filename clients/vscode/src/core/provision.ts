@@ -10,7 +10,7 @@
 import * as path from "node:path";
 
 /** The package installed, with the floor the extension is written against. */
-export const PACKAGE = "zettcode-server>=0.1.0";
+export const PACKAGE = "zettcode-server>=0.1.1";
 
 /** One command of an install, with what to say about it. */
 export interface Step {

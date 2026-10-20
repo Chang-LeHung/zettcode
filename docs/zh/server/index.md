@@ -18,7 +18,7 @@ zettcode-server --workspace ~/projects/api --port 3290
 ```
 
 ```text
-zettcode-server 0.1.0 (zettcode 0.1.8) · http://127.0.0.1:3290 · workspace /home/you/projects/api · permission deny · token off
+zettcode-server 0.1.1 (zettcode 0.1.9) · http://127.0.0.1:3290 · workspace /home/you/projects/api · permission deny · token off
 ```
 
 默认只绑定 **127.0.0.1**。在 `--host` 指定之前,别的机器访问不到;一旦对外开放,就应该同时给出 token。

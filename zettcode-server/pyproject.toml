@@ -25,7 +25,7 @@ classifiers = [
 dependencies = [
   # The agent, as a released package: the server drives it through its SDK and
   # carries no copy of the model loop, the tools, or the session store.
-  "zettcode>=0.1.8",
+  "zettcode>=0.1.9",
   "fastapi>=0.115,<1",
   "uvicorn>=0.35,<1",
   # Returned by every endpoint and read back by the tests; the SDK's own runs
