@@ -197,7 +197,9 @@ def test_switching_the_theme_repaints_the_whole_frame():
     app.theme = LIGHT
     harness.render()
 
-    assert harness.last_frame.startswith("\x1b[2J")
+    # The whole screen is erased and repainted, inside one synchronized update, with the cursor hidden while it is.
+    assert harness.last_frame.startswith("\x1b[?2026h\x1b[?25l\x1b[2J")
+    assert harness.last_frame.endswith("\x1b[?2026l")
 
 
 def test_scheduler_frames_repaints_and_animation_budget():
