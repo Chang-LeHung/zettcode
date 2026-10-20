@@ -80,10 +80,19 @@ const client = {
 };
 
 test("the usage page has the terminal's three tabs under one line that totals the workspace", async () => {
-  await showUsagePanel(client as never, { toString: () => "file:///extension" } as never, "zettcode");
+  await showUsagePanel(client as never, { toString: () => "file:///extension" } as never, "zettcode", "/work/my project");
   assert.ok(lastPanel !== null);
   assert.equal(lastPanel.title, "ZettCode: Usage");
   const document = new JSDOM(lastPanel.webview.html).window.document;
+  // Whose numbers these are is said before the numbers: the ledger is kept for each workspace.
+  const note = document.querySelector(".scope")?.textContent ?? "";
+  assert.ok(note.includes("Only this workspace") && note.includes("/work/my project"), note);
+  assert.ok(
+    (document.querySelector("h1")?.compareDocumentPosition(document.querySelector(".scope")!) ?? 0) &
+      document.DOCUMENT_POSITION_FOLLOWING,
+    "under the title",
+  );
+  assert.equal(document.querySelector("code")?.textContent, "/work/my project");
   const summary = document.querySelector(".summary")?.textContent?.replace(/\s+/g, " ") ?? "";
   assert.ok(summary.includes("All models") && summary.includes("160k tokens"), summary);
   assert.ok(summary.includes("cached 28.6%") && summary.includes("2 sessions"), summary);

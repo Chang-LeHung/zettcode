@@ -18,6 +18,17 @@ export interface Page {
   body: string;
   /** The one line under the title. */
   summary: string;
+  /** Whether the numbers are those of one workspace, which the page then says before anything else. */
+  scoped?: boolean;
+}
+
+/**
+ * The sentence that tells the reader whose numbers these are. The usage ledger is kept for each workspace, so a window
+ * opened on another folder shows a different page, and nothing on the page used to say so.
+ */
+export function scopeNote(path: string): string {
+  const where = path ? ` <code>${escapeHtml(path)}</code>` : "";
+  return `<p class="scope">Only this workspace:${where}. It counts the sessions stored for this folder; other folders keep their own usage.</p>`;
 }
 
 const percent = (fraction: number): string => `${Math.max(0, Math.min(100, fraction * 100)).toFixed(1)}%`;
@@ -197,6 +208,7 @@ export function usagePage(usage: WorkspaceUsage | null, now = new Date()): Page 
   if (usage === null) {
     return {
       title: "Usage",
+      scoped: true,
       summary: `<span class="muted">Nothing has been measured yet.</span>`,
       body: `<div class="empty">The usage ledger is not available; add a model first and try again.</div>`,
     };
@@ -218,7 +230,7 @@ export function usagePage(usage: WorkspaceUsage | null, now = new Date()): Page 
       .join("")}</div>
     ${tabs.map((tab) => `<section class="tab-body" id="body-${tab.id}">${tab.body}</section>`).join("")}
   </div>`;
-  return { title: "Usage", summary: summary(usage), body };
+  return { title: "Usage", summary: summary(usage), body, scoped: true };
 }
 
 /** The model check: one card for each model, with its answer or its error. */
@@ -292,6 +304,8 @@ body { margin: 0; padding: 26px 30px 56px; color: var(--ink); background: var(--
 .brand strong { color: var(--ink); font-weight: 600; }
 h1 { margin: 0 0 6px; font-size: 22px; font-weight: 650; letter-spacing: -.02em; }
 .summary { margin-bottom: 18px; font-variant-numeric: tabular-nums; }
+.scope { margin: 0 0 12px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.scope code { padding: 1px 5px; border-radius: 4px; background: color-mix(in srgb, var(--ink) 9%, transparent); font-family: var(--vscode-editor-font-family, monospace); font-size: 11.5px; overflow-wrap: anywhere; }
 .summary b { font-weight: 650; }
 .sum-name { font-weight: 600; margin-right: 8px; }
 .sum-in { color: var(--in); margin-left: 8px; }
