@@ -18,7 +18,7 @@
 .install-feedback { min-height: 36px; max-width: 460px; margin-top: 10px; color: var(--vp-c-text-3); font-size: 11px; line-height: 1.7; }
 .brand-stage { display: flex; min-height: 320px; flex-direction: column; justify-content: center; align-items: center; border: 1px solid var(--vp-c-divider); border-radius: 24px; background-color: var(--zc-stage); background-image: linear-gradient(var(--zc-stage-grid) 1px, transparent 1px), linear-gradient(90deg, var(--zc-stage-grid) 1px, transparent 1px); background-size: 24px 24px; }
 .brand-orbit { display: grid; place-items: center; }
-.brand-orbit img { image-rendering: pixelated; }
+.brand-orbit img { filter: drop-shadow(0 10px 24px rgba(31, 74, 56, 0.18)); }
 .brand-wordmark { margin-top: 8px; color: var(--vp-c-text-1); font: 600 28px var(--vp-font-family-mono); letter-spacing: -0.06em; }
 .brand-caret { color: var(--vp-c-brand-1); }
 .brand-caption { margin-top: 14px; color: var(--vp-c-text-3); font: 11px var(--vp-font-family-mono); }
