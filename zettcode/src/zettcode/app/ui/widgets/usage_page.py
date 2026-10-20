@@ -7,7 +7,7 @@ from collections.abc import Callable
 from datetime import date, timedelta
 
 from zettcode.app.agent.storage.ledger import Ledger
-from zettcode.tui import SEPARATOR, KeyEvent, MouseAction, MouseEvent, Style, Widget
+from zettcode.tui import SEPARATOR, KeyEvent, MouseAction, MouseEvent, Style, Theme, Widget
 from zettcode.tui.render import blend, parse_hex
 
 from . import usage_charts as charts
@@ -21,11 +21,16 @@ HEAD_ROWS = 4
 #: How far a mouse-wheel notch moves the body.
 WHEEL_ROWS = 3
 
-#: Shade of each calendar level, as how far it sits from the page colour towards the deepest accent.
+#: Shade of each calendar level, as how far it sits from the page colour towards the busiest day's colour.
 #: The first level starts well clear of the empty cell, as GitHub's does: an active day must not read as
 #: a quiet one, on a dark page least of all, where a faint blend vanishes into the background. The steps
-#: still grow towards the top, so the busiest days pull away from the ones below them.
-HEAT = (0.0, 0.34, 0.56, 0.78, 1.0)
+#: still grow towards the top, so the busiest days pull away from the ones below them. They are wide at the
+#: bottom (a pale green was hard to tell from the level above it) and narrow at the top.
+HEAT = (0.0, 0.45, 0.65, 0.83, 1.0)
+
+#: How far the calendar's colour sits between the palette's warning yellow (0) and its orange, the write colour (1):
+#: an orange-gold that no other part of the page uses for data, and one every palette defines.
+HEAT_ORANGE = 0.5
 
 #: How the busiest day deepens the accent: more saturation and less lightness, so the top of
 #: the ramp reads as a deeper colour than the accent the rest of the page draws.
@@ -36,7 +41,7 @@ DEEPER_LIGHTNESS = 0.88
 def deepened_accent(colour: str) -> str:
     """Return ``colour`` deeper and more saturated: the shade of the busiest calendar day.
 
-    The ramp runs from the page towards this shade rather than towards the accent itself, so
+    The ramp runs from the page towards this shade rather than towards the colour itself, so
     the four levels spread over a wider range and the top one is deeper than anything else on
     the page. A colour that cannot be parsed is returned unchanged, as :func:`blend` does.
     """
@@ -46,6 +51,16 @@ def deepened_accent(colour: str) -> str:
     hue, lightness, saturation = colorsys.rgb_to_hls(*(channel / 255 for channel in rgb))
     deepened = colorsys.hls_to_rgb(hue, lightness * DEEPER_LIGHTNESS, min(1.0, saturation * DEEPER_SATURATION))
     return "#" + "".join(f"{round(channel * 255):02x}" for channel in deepened)
+
+
+def heat_colour(theme: Theme) -> str:
+    """Return the colour of the busiest calendar day in a palette: a deepened orange-gold.
+
+    The calendar used to be shades of the accent, and the accent is a green made for text on a dark page; its four
+    levels sat close together and close to the empty cell. An orange-gold is told apart from the grey of an empty
+    day and from its own neighbours, and it takes nothing from the green the rest of the page draws.
+    """
+    return deepened_accent(blend(theme.warning, theme.tools.write, HEAT_ORANGE))
 
 
 class UsagePage(Widget):
@@ -216,8 +231,11 @@ class UsagePage(Widget):
             if level == 0:
                 colour = blend(page, theme.text, 0.14)
             else:
-                colour = blend(page, deepened_accent(theme.accent), HEAT[level])
-            return Style(foreground=colour, background=theme.selection if chosen else page, bold=chosen)
+                colour = blend(page, heat_colour(theme), HEAT[level])
+            # The day the arrow keys are on sits on a neutral lift of the page: the ramp's own colours are the data,
+            # and a tinted ground would pull the cell towards one of its neighbours.
+            ground = blend(page, theme.text, 0.2) if chosen else page
+            return Style(foreground=colour, background=ground, bold=chosen)
         colours = {
             "text": theme.text,
             "heading": theme.text,
