@@ -36,6 +36,7 @@ Discover them in two ways:
 | --- | --- |
 | `~/.zettcode/skills/` | You, in every project. |
 | `<workspace>/.zettcode/skills/` | One project, checked in with it. Read by default; `[skills] scope` can turn that off. |
+| `~/.agents/skills/` and `<workspace>/.agents/skills/` | The same two places under the `.agents` directory other coding agents share, so a skill written for one of them is found without copying. Each is read right after the `.zettcode` directory of its own scope. |
 | `[skills] roots` | A team directory, or any other: `roots = ["~/team-skills"]`. A relative entry resolves against the workspace. |
 
 Configured roots are searched first, then the scope's directories, and the earlier one wins a name clash.
@@ -48,8 +49,8 @@ Configured roots are searched first, then the scope's directories, and the earli
 | `scope` | Skills read from | MCP servers read from |
 | --- | --- | --- |
 | `"both"` (default) | The project's first, then yours | Both, merged; the project's entry wins a server name |
-| `"workspace"` | `<workspace>/.zettcode/skills` | `<workspace>/.zettcode/mcp.json` |
-| `"global"` | `~/.zettcode/skills` | `~/.zettcode/mcp.json` (or `[mcp] config`) |
+| `"workspace"` | `<workspace>/.zettcode/skills`, `<workspace>/.agents/skills` | `<workspace>/.zettcode/mcp.json`, `<workspace>/.agents/mcp.json` |
+| `"global"` | `~/.zettcode/skills`, `~/.agents/skills` | `~/.zettcode/mcp.json` (or `[mcp] config`), and `~/.agents/mcp.json` unless `[mcp] config` names a file |
 
 Both are used together unless you say otherwise, so a project can carry its own skills and servers without any
 configuration. To choose one side:

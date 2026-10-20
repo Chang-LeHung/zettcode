@@ -135,9 +135,22 @@ DEFAULT_SKILL_ROOT = "~/.zettcode/skills"
 #: or ``both``, ahead of the user's own, so a project's version of a skill wins in that project.
 WORKSPACE_SKILL_ROOT = ".zettcode/skills"
 
+#: The same two places under the ``.agents`` directory that other coding agents share: ``~/.agents/skills`` for
+#: the user and ``<workspace>/.agents/skills`` for a project. Each is scanned right after the ``.zettcode``
+#: directory of its own scope, so a skill written for one of those tools is found with no copying, and a
+#: ZettCode skill of the same name in the same scope still wins.
+DEFAULT_AGENTS_SKILL_ROOT = "~/.agents/skills"
+WORKSPACE_AGENTS_SKILL_ROOT = ".agents/skills"
+
 #: The MCP server file a workspace may ship, relative to it. Read for ``[mcp] scope`` of
 #: ``workspace`` or ``both``, and merged over the user's file by server name.
 WORKSPACE_MCP_CONFIG = ".zettcode/mcp.json"
+
+#: The same file under the shared ``.agents`` directory, for the workspace and for the user. Each is read right
+#: after the ``.zettcode`` file of its own scope, so it only adds servers a ZettCode file does not name. The user's
+#: is not read when ``[mcp] config`` names a file: whoever points at a team file means that file.
+WORKSPACE_AGENTS_MCP_CONFIG = ".agents/mcp.json"
+DEFAULT_AGENTS_MCP_CONFIG = "~/.agents/mcp.json"
 
 #: API root of an Anthropic model whose entry names no ``base_url``. The
 #: Messages API lives at the root itself, not under ``/v1``.
@@ -326,8 +339,8 @@ class ZettCodeConfig:
         skills_enabled: Discover local skills and advertise them to the model.
         skill_roots: Extra skill directories, searched before the directory :attr:`skills_scope`
             names; a relative entry is resolved against the workspace.
-        skills_scope: Which of the workspace's ``.zettcode/skills`` and the user's
-            ``~/.zettcode/skills`` to scan: ``"both"`` (the default) the project's first, so its version of
+        skills_scope: Which of the workspace's ``.zettcode/skills`` and ``.agents/skills`` and the user's
+            ``~/.zettcode/skills`` and ``~/.agents/skills`` to scan: ``"both"`` (the default) the project's first, so its version of
             a skill wins inside it; ``"workspace"`` the project's only, ``"global"`` the user's only.
         mcp_enabled: Load MCP servers from :attr:`mcp_config` and the workspace's ``.zettcode/mcp.json``.
         mcp_config: JSON file naming MCP servers; ``None`` uses ``~/.zettcode/mcp.json``.
@@ -440,8 +453,10 @@ class ZettCodeConfig:
         roots: list[Path] = list(self.skill_roots)
         if scope in ("workspace", "both"):
             roots.append(_resolve_root(WORKSPACE_SKILL_ROOT, self.workspace))
+            roots.append(_resolve_root(WORKSPACE_AGENTS_SKILL_ROOT, self.workspace))
         if scope in ("global", "both"):
             roots.append(_resolve_root(DEFAULT_SKILL_ROOT, self.workspace))
+            roots.append(_resolve_root(DEFAULT_AGENTS_SKILL_ROOT, self.workspace))
         # Ordered, one of each: a configured root may name the same directory a scope does.
         return tuple(dict.fromkeys(roots))
 
@@ -456,8 +471,11 @@ class ZettCodeConfig:
         files: list[Path] = []
         if scope in ("workspace", "both"):
             files.append(_resolve_root(WORKSPACE_MCP_CONFIG, self.workspace))
+            files.append(_resolve_root(WORKSPACE_AGENTS_MCP_CONFIG, self.workspace))
         if scope in ("global", "both"):
             files.append((self.mcp_config or Path(DEFAULT_MCP_CONFIG)).expanduser().resolve())
+            if self.mcp_config is None:
+                files.append(_resolve_root(DEFAULT_AGENTS_MCP_CONFIG, self.workspace))
         return tuple(dict.fromkeys(files))
 
 

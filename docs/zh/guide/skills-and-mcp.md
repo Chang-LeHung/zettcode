@@ -33,6 +33,7 @@ skills 再多也不会把上下文占满的原因。
 | --- | --- |
 | `~/.zettcode/skills/` | 你自己，在所有项目里都生效。 |
 | `<工作区>/.zettcode/skills/` | 某一个项目，随项目一起提交。默认会读取；可用 `[skills] scope` 关掉。 |
+| `~/.agents/skills/` 和 `<工作区>/.agents/skills/` | 其他编码 agent 共用的 `.agents` 目录下的同样两个位置，为它们写的 skill 不用复制就能被找到。各自排在所属范围的 `.zettcode` 目录之后读取。 |
 | `[skills] roots` | 团队目录或任何其他目录：`roots = ["~/team-skills"]`。相对路径按工作区解析。 |
 
 先搜索配置的根目录，再搜索 scope 对应的目录；名字冲突时前面的优先。`[skills] enabled = false` 可以
@@ -45,8 +46,8 @@ skills 再多也不会把上下文占满的原因。
 | `scope` | skills 从哪里读 | MCP 服务器从哪里读 |
 | --- | --- | --- |
 | `"both"`（默认） | 先项目的，再你的 | 两个都读并合并；同名服务器以项目的为准 |
-| `"workspace"` | `<工作区>/.zettcode/skills` | `<工作区>/.zettcode/mcp.json` |
-| `"global"` | `~/.zettcode/skills` | `~/.zettcode/mcp.json`（或 `[mcp] config`） |
+| `"workspace"` | `<工作区>/.zettcode/skills`、`<工作区>/.agents/skills` | `<工作区>/.zettcode/mcp.json`、`<工作区>/.agents/mcp.json` |
+| `"global"` | `~/.zettcode/skills`、`~/.agents/skills` | `~/.zettcode/mcp.json`（或 `[mcp] config`），以及 `~/.agents/mcp.json`（`[mcp] config` 指定了文件时不读） |
 
 除非你另行指定，两边会一起使用，所以项目不用任何配置就能带上自己的 skills 和服务器。想只用一边：
 

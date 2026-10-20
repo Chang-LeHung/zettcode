@@ -272,7 +272,9 @@ def test_skill_roots_are_searched_before_the_default_directory(tmp_path: Path):
         (tmp_path / ".agent" / "skills").resolve(),
         # The default scope reads the project's own skills, then the user's.
         (tmp_path / ".zettcode" / "skills").resolve(),
+        (tmp_path / ".agents" / "skills").resolve(),
         (home / ".zettcode" / "skills").resolve(),
+        (home / ".agents" / "skills").resolve(),
     )
 
 
