@@ -19,11 +19,17 @@ HTTP on your own machine, and the server does the work.
 
 ## Install
 
-1. Install **ZettCode** from the extensions view, or from a `.vsix`:
+The extension is on the [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=zettcode.zettcode),
+under the publisher **zettcode**.
+
+1. Open the extensions view (`Ctrl/Cmd+Shift+X`), search for **ZettCode**, and install it. Or install the `.vsix`:
 
    ```bash
    code --install-extension zettcode-0.1.5.vsix
    ```
+
+   The [marketplace page](https://marketplace.visualstudio.com/items?itemName=zettcode.zettcode) says which version is
+   the newest; a `.vsix` from the [releases page](https://github.com/Chang-LeHung/zettcode/releases) can be newer still.
 
 2. Open a folder. The extension serves one folder per window; in a multi-root workspace the first folder is used.
 3. Click the ZettCode icon in the secondary side bar on the right, or run **ZettCode: Focus Chat**. Prefer the left
