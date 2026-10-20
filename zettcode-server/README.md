@@ -12,7 +12,7 @@ zettcode-server --workspace ~/projects/api
 ```
 
 ```text
-zettcode-server 0.1.0 (zettcode 0.1.8) · http://127.0.0.1:3290 · workspace /home/you/projects/api · permission deny · token off
+zettcode-server 0.1.1 (zettcode 0.1.9) · http://127.0.0.1:3290 · workspace /home/you/projects/api · permission deny · token off
 ```
 
 It binds loopback on port **3290**, denies shell commands by default, and asks for a bearer token only when one is

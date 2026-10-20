@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only; importing the app costs FastAPI
     from .app import create_app
