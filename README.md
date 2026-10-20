@@ -8,7 +8,8 @@
   <strong>English</strong> · <a href="README.zh-CN.md">简体中文</a><br />
   <a href="https://chang-lehung.github.io/zettcode/guide/getting-started">Get started</a> ·
   <a href="https://chang-lehung.github.io/zettcode/">Documentation</a> ·
-  <a href="https://chang-lehung.github.io/zettcode/guide/commands">Commands</a>
+  <a href="https://chang-lehung.github.io/zettcode/guide/commands">Commands</a> ·
+  <a href="https://marketplace.visualstudio.com/items?itemName=zettcode.zettcode">VS Code extension</a>
 </p>
 
 <p align="center">
@@ -98,9 +99,11 @@ uv tool install zettcode-server
 zettcode-server --workspace ~/projects/api --port 8000
 ```
 
-For VS Code, [`clients/vscode/`](clients/vscode/README.md) is a sidebar chat built on the same server and client:
-streamed turns, chained tool calls, clickable files, approvals, model/effort/permission switching and recent-session
-history. `make vscode` builds and tests it.
+For VS Code, the [extension](https://marketplace.visualstudio.com/items?itemName=zettcode.zettcode) is a sidebar chat
+built on the same server and client: streamed turns, chained tool calls, clickable files, approvals,
+model/effort/permission switching and recent-session history. Its sources are in
+[`clients/vscode/`](clients/vscode/README.md); `make vscode` builds and tests it. The guide has a
+[page for it](https://chang-lehung.github.io/zettcode/vscode/).
 
 ## Development
 

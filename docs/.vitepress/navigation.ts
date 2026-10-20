@@ -196,6 +196,9 @@ export function navigation(language: keyof typeof translations) {
 
   return {
     nav: [
+      // "Get started" leads the bar: it is what a first-time reader wants, and the last place a nav item is looked for
+      // is the far right.
+      { text: text.install, link: prefix + "getting-started" },
       { text: text.guide, link: prefix + "overview", activeMatch: `${prefix}(overview|getting-started|interface)` },
       { text: text.reference, activeMatch: `${prefix}(${pageSlugs(1).join("|")})`, items: byGroup(1) },
       { text: text.setup, activeMatch: `${prefix}(${pageSlugs(2).join("|")})`, items: byGroup(2) },
@@ -209,7 +212,6 @@ export function navigation(language: keyof typeof translations) {
           { text: text.clients.typescript, link: typescriptPrefix },
         ],
       },
-      { text: text.install, link: prefix + "getting-started" },
     ],
     sidebar: {
       [prefix]: sidebar,

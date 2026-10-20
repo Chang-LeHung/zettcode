@@ -16,11 +16,17 @@ shell 命令都在你的控制之下。它通过 HTTP 和本机的 `zettcode-ser
 
 ## 安装
 
-1. 在扩展视图里安装 **ZettCode**，或者从 `.vsix` 安装：
+扩展已经上架 [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=zettcode.zettcode)，发布者
+是 **zettcode**。
+
+1. 打开扩展视图（`Ctrl/Cmd+Shift+X`），搜 **ZettCode**，安装。或者装 `.vsix`：
 
    ```bash
    code --install-extension zettcode-0.1.5.vsix
    ```
+
+   [市场页面](https://marketplace.visualstudio.com/items?itemName=zettcode.zettcode)上写着最新版本；
+   [releases 页面](https://github.com/Chang-LeHung/zettcode/releases)上的 `.vsix` 可能更新。
 
 2. 打开一个文件夹。一个窗口服务一个文件夹；多根工作区用第一个。
 3. 点右侧二级侧边栏里的 ZettCode 图标，或者运行 **ZettCode: Focus Chat**。想放左边？把图标拖过去。

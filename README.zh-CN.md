@@ -8,7 +8,8 @@
   <a href="README.md">English</a> · <strong>简体中文</strong><br />
   <a href="https://chang-lehung.github.io/zettcode/zh/guide/getting-started">快速开始</a> ·
   <a href="https://chang-lehung.github.io/zettcode/zh/">使用文档</a> ·
-  <a href="https://chang-lehung.github.io/zettcode/zh/guide/commands">命令参考</a>
+  <a href="https://chang-lehung.github.io/zettcode/zh/guide/commands">命令参考</a> ·
+  <a href="https://marketplace.visualstudio.com/items?itemName=zettcode.zettcode">VS Code 扩展</a>
 </p>
 
 <p align="center">
@@ -93,8 +94,10 @@ uv tool install zettcode-server
 zettcode-server --workspace ~/projects/api --port 8000
 ```
 
-VS Code 用户可以使用 [`clients/vscode/`](clients/vscode/README.md):同一个服务器和客户端之上的侧边栏对话,
-包含流式回合、串联的工具调用、可点击的文件、审批、模型/effort/权限切换和最近会话历史。`make vscode` 会构建并测试它。
+VS Code 用户在扩展市场安装[扩展](https://marketplace.visualstudio.com/items?itemName=zettcode.zettcode),
+它是在同一个服务器和客户端之上的侧边栏对话:流式回合、串联的工具调用、可点击的文件、审批、模型/effort/权限切换和
+最近会话历史。源码在 [`clients/vscode/`](clients/vscode/README.md),`make vscode` 会构建并测试它;
+指南里有[它的一页](https://chang-lehung.github.io/zettcode/zh/vscode/)。
 
 ## 开发
 
