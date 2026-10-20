@@ -42,7 +42,14 @@ const translations = {
     server: {
       menu: "Server",
       groups: ["Get started", "Reference"],
-      pages: { index: "Overview", api: "HTTP API", events: "Event stream", typescript: "TypeScript client" },
+      pages: { index: "Overview", api: "HTTP API", events: "Event stream" },
+    },
+    clients: {
+      menu: "Clients",
+      vscode: "VS Code extension",
+      typescript: "TypeScript client",
+      group: "In the editor",
+      clientGroup: "Client library",
     },
     guide: "Guide", reference: "Reference", setup: "Configure", install: "Get started",
     edit: "Edit this page on GitHub", license: "Released under the MIT license.", footer: "ZettCode — your terminal, your coding partner.",
@@ -91,7 +98,14 @@ const translations = {
     server: {
       menu: "服务器",
       groups: ["开始", "参考"],
-      pages: { index: "概览", api: "HTTP API", events: "事件流", typescript: "TypeScript 客户端" },
+      pages: { index: "概览", api: "HTTP API", events: "事件流" },
+    },
+    clients: {
+      menu: "客户端",
+      vscode: "VS Code 扩展",
+      typescript: "TypeScript 客户端",
+      group: "在编辑器里",
+      clientGroup: "客户端库",
     },
     guide: "使用指南", reference: "操作参考", setup: "配置与扩展", install: "快速开始",
     edit: "在 GitHub 上编辑此页", license: "以 MIT 许可证发布。", footer: "ZettCode —— 你的终端，你的编码伙伴。",
@@ -132,8 +146,11 @@ const sdkLayout = [
 // another program, not by someone using the terminal.
 const serverLayout = [
   { group: 0, pages: ["index"] },
-  { group: 1, pages: ["api", "events", "typescript"] },
+  { group: 1, pages: ["api", "events"] },
 ];
+
+// The two clients have sidebars of their own, because they are used, not administered: one reader wants to put the
+// editor to work, the other wants to drive the server from a program of their own.
 
 export function navigation(language: keyof typeof translations) {
   const text = translations[language];
@@ -159,6 +176,13 @@ export function navigation(language: keyof typeof translations) {
     items: pages.map(serverPage),
   }));
 
+  const vscodePrefix = language === "zh" ? "/zh/vscode/" : "/vscode/";
+  const typescriptPrefix = language === "zh" ? "/zh/typescript/" : "/typescript/";
+  const vscodeSidebar = [{ text: text.clients.group, items: [{ text: text.clients.vscode, link: vscodePrefix }] }];
+  const typescriptSidebar = [
+    { text: text.clients.clientGroup, items: [{ text: text.clients.typescript, link: typescriptPrefix }] },
+  ];
+
   const sidebar = layout.map(({ group, pages }) => ({
     text: text.groups[group],
     items: pages.map((entry) => (typeof entry === "string" ? page(entry) : { text: text.subgroups.context, collapsed: false, items: entry.pages.map(page) })),
@@ -177,9 +201,23 @@ export function navigation(language: keyof typeof translations) {
       { text: text.setup, activeMatch: `${prefix}(${pageSlugs(2).join("|")})`, items: byGroup(2) },
       { text: sdkText.menu, link: sdkPrefix, activeMatch: sdkPrefix },
       { text: serverText.menu, link: serverPrefix, activeMatch: serverPrefix },
+      {
+        text: text.clients.menu,
+        activeMatch: `${vscodePrefix}|${typescriptPrefix}`,
+        items: [
+          { text: text.clients.vscode, link: vscodePrefix },
+          { text: text.clients.typescript, link: typescriptPrefix },
+        ],
+      },
       { text: text.install, link: prefix + "getting-started" },
     ],
-    sidebar: { [prefix]: sidebar, [sdkPrefix]: sdkSidebar, [serverPrefix]: serverSidebar },
+    sidebar: {
+      [prefix]: sidebar,
+      [sdkPrefix]: sdkSidebar,
+      [serverPrefix]: serverSidebar,
+      [vscodePrefix]: vscodeSidebar,
+      [typescriptPrefix]: typescriptSidebar,
+    },
     editLink: { pattern: `${REPO}/edit/main/docs/:path`, text: text.edit },
     footer: { message: text.license, copyright: text.footer },
     docFooter: { prev: text.prev, next: text.next },

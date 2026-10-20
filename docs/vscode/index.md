@@ -1,0 +1,153 @@
+---
+title: ZettCode in VS Code
+---
+
+# ZettCode in VS Code
+
+The extension puts the same agent the terminal app runs into the editor's secondary side bar: ask for a change, watch
+it work, review the files it touched, and keep control of every shell command. It speaks to `zettcode-server` over
+HTTP on your own machine, and the server does the work.
+
+- **Ask and watch.** Answers stream in with coloured code, tables, formulas and diagrams. Every file read, edit and
+  command is a row you can open to see what happened; a failed one opens with the reason.
+- **Jump to the code.** A path in an answer is a link: it opens the file at the line.
+- **Review what changed.** Each request ends with a card of the files it changed, with lines added and removed, and a
+  normal VS Code diff behind each one.
+- **Stay in control.** Shell commands ask before they run, questions wait for an answer, and you can steer a request
+  while it is going.
+- **Reopen, and the pictures are there.** A stored conversation comes back whole, images included.
+
+## Install
+
+1. Install **ZettCode** from the extensions view, or from a `.vsix`:
+
+   ```bash
+   code --install-extension zettcode-0.1.5.vsix
+   ```
+
+2. Open a folder. The extension serves one folder per window; in a multi-root workspace the first folder is used.
+3. Click the ZettCode icon in the secondary side bar on the right, or run **ZettCode: Focus Chat**. Prefer the left
+   side? Drag the icon there.
+4. **Nothing else to install.** The first time the chat starts, the extension looks for a `zettcode-server` on your
+   `PATH` or in the folder's `.venv`; if there is none, it installs one into an environment of its own
+   (`globalStorage/server/venv`), with `uv` or your `python3`. The server and the agent it drives live together there,
+   apart from your project. To do it by hand instead:
+
+   ```bash
+   uv tool install zettcode-server
+   ```
+
+   Turn that off with `zettcode.server.autoInstall` if you would rather it never did.
+
+5. **Add a model** from the welcome card: the model name and an API key. Models you set up in the terminal app are
+   used as they are, because the configuration file is the same one.
+6. Ask something, for example *Explain this codebase*.
+
+VS Code asks you to trust the folder first: the agent runs commands and edits files in it.
+
+## Asking for work
+
+| You want to | Do this |
+| --- | --- |
+| Send | `Enter`; `Shift+Enter` for another line |
+| Say something while it works | `Enter` queues a follow-up; `Ctrl/Cmd+Enter` steers the request that is going |
+| Stop | `Esc`, or the stop button |
+| Find in the conversation | `Ctrl/Cmd+F` while the chat has the cursor; `Enter` / `Shift+Enter` for the next and previous match, `Esc` to close |
+| Mention a file | Type `@` and pick one |
+| Attach a picture | Paste it, drop it on the view, or press the paperclip |
+| Attach any other file | Press the paperclip and pick it: a PDF or an archive goes into the message as its **path**, which the agent opens with its own tools |
+| Run a command | Type `/`: `new`, `resume`, `continue`, `compact`, `fork`, `rename`, `export`, `model`, `effort`, `permission`, `usage`, `context`, `doctor`, `btw` |
+| Ask without adding to the conversation | `/btw your question` |
+
+The pictures you attach are sent to a model that can see images, and are kept with the conversation, so reopening the
+session shows them again instead of only counting them.
+
+### Moving around the conversation
+
+- **The rail** on the left edge marks each message you sent. Point at it and the bars near the pointer swell and show
+  their message; press one to go there. When there are so many that the bars would touch, one bar stands for ten
+  messages: press it and the ten are listed beside the rail, and you pick one.
+- **Show earlier requests** loads older messages a page at a time, keeping your place.
+- **Compaction** appears as a row where it happened; press it to read the summary it left.
+
+### Approvals, questions, steering
+
+The shell permission decides what the agent may run on its own:
+
+| Level | What happens |
+| --- | --- |
+| `deny` | No shell commands at all. |
+| `ask` | Every command waits for your approval. |
+| `safe` | Read-only commands run; anything else asks. |
+| `auto` | Every command runs without asking. |
+
+The level chosen in the chat is remembered for the next new session in the workspace. An approval or a question waits
+`zettcode.answerTimeout` seconds, then the safe answer is used.
+
+## Pictures, diagrams and code
+
+Anything too small for the column opens in one lightbox over the conversation: a picture, a Mermaid diagram, a table
+or a code block. What it is decides how much it can be enlarged.
+
+| What | What happens |
+| --- | --- |
+| A picture you sent | Press it (in the message, or in the strip under the box) to open it over the conversation, fitted to the window |
+| A Mermaid diagram | A ```` ```mermaid ```` fence is drawn, not shown as code. Press it, or the expand button in its header, to open it larger |
+| A table | The expand button in its corner opens it at full width |
+| A code block | The expand button in its header opens it at full width, without the column's narrow limit |
+
+In the lightbox, the mouse wheel zooms at the pointer, `+` and `−` zoom, `0` fits the content again, dragging
+moves it, and a double click switches between fitted and real size. `Esc` closes it, and does not reach the message
+box, so it never stops a request running behind it. A diagram that cannot be drawn stays as its code with the first
+line of the reason, and the source of any diagram is one press away.
+
+## Models, effort and permission
+
+The chips under the message box pick the model, the reasoning effort and the shell permission; the same three are in
+the Command Palette as **Select Model**, **Select Reasoning Effort** and **Select Shell Permission**. **Add Model**
+writes a new entry to the same `config.toml` the terminal app uses.
+
+## Spending
+
+**ZettCode: Usage** opens a page with the terminal's three tabs — models, sessions and calendar — for **this
+workspace only**: each folder keeps its own ledger, so another project's spending is not in it. The page says which
+folder it is for, under its title.
+
+## Settings
+
+Search for *ZettCode* in Settings:
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `zettcode.permission` | `ask` | The shell permission a session starts with when you have not chosen one |
+| `zettcode.restoreSession` | `true` | Reopen the conversation this folder had last |
+| `zettcode.autoTitle` | `true` | Let the model name an untitled conversation after its first answer |
+| `zettcode.answerTimeout` | `300` | Seconds an approval or a question waits |
+| `zettcode.historyLimit` | `50` | How many stored conversations **Recent Sessions** lists |
+| `zettcode.server.command` | `zettcode-server` | Where the server is, if not on your `PATH` or in the folder's `.venv` |
+| `zettcode.server.args` | `[]` | Extra arguments for it |
+| `zettcode.server.port` | `0` | A fixed port; `0` picks a free one |
+| `zettcode.server.autoStart` | `true` | Start the server with the chat |
+| `zettcode.server.autoInstall` | `true` | Install the server into the extension's own environment when it cannot be found |
+| `zettcode.server.externalUrl` | empty | Use a server you started yourself instead of launching one |
+| `zettcode.server.externalToken` | empty | Its token, when it needs one |
+| `zettcode.server.useToken` | `true` | Protect the server the extension starts with a token per window |
+
+Skills, MCP servers and `AGENTS.md` work in the editor exactly as they do in the terminal: see
+[Skills & MCP](/guide/skills-and-mcp) and [Project instructions](/guide/instructions). `<workspace>/.agents/skills`,
+`~/.agents/skills` and the matching `mcp.json` files are read too, so a skill written for another coding agent is
+found without copying it.
+
+## When something goes wrong
+
+| What you see | What to do |
+| --- | --- |
+| The chat says the server is not running | **ZettCode: Show Server Log** has the reason; **ZettCode: Restart Server** after fixing it |
+| No model | **ZettCode: Add Model**, or copy the `[[models]]` entry from `~/.zettcode/config.toml` |
+| A command was refused | The shell permission is `deny`; pick `ask` or `auto` under the message box |
+| A diagram says it could not be drawn | The fence is not valid Mermaid; the source is in the block, and the reason is on its first line |
+
+## Only in the terminal
+
+`/theme`, `/pet` and the rest of the full-screen interface belong to the terminal app. The editor has its own theme,
+and its own shortcuts.
