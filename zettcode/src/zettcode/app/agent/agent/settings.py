@@ -14,6 +14,7 @@ from zettcode.config_edit import (
     remove_model,
     replace_model,
     set_pet,
+    set_pet_position,
     set_self_compaction,
     set_statusline,
     set_theme,
@@ -206,6 +207,29 @@ class SettingsMixin(AgentBase):
         except OSError as error:
             raise ConfigEditError(f"{self.config_file} could not be written: {error}") from error
         self.runtime.config = replace(self.runtime.config, pet=name)
+        return self.config_file
+
+    def remember_pet_position(self, across: float, down: float) -> Path:
+        """Write ``[ui] pet_position`` into the config file, so the next start puts the pet back where it was left.
+
+        The file is global to the reader (``~/.zettcode/config.toml``), not to a project: a pet is the reader's
+        companion, and it does not move house when they open another folder. Only that line changes, and a
+        config file that does not exist is not created for it.
+
+        Returns:
+            The file written.
+
+        Raises:
+            ConfigEditError: When there is no config file, it cannot be read or edited safely, or it cannot be
+                written. Nothing is written then.
+        """
+        text = set_pet_position(self._read_config_file(), across, down, where=self.config_file)
+        try:
+            write_text_atomically(self.config_file, text)
+        except OSError as error:
+            raise ConfigEditError(f"{self.config_file} could not be written: {error}") from error
+        position = (round(min(1.0, max(0.0, across)), 3), round(min(1.0, max(0.0, down)), 3))
+        self.runtime.config = replace(self.runtime.config, pet_position=position)
         return self.config_file
 
     @property

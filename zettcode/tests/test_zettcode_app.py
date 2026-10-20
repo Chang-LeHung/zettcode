@@ -290,6 +290,7 @@ class FakeConfig:
     self_compaction: bool = False
     statusline_hidden: tuple[str, ...] = ()
     pet: str | None = None
+    pet_position: tuple[float, float] | None = None
     plugins_enabled: bool = True
     disabled_plugins: tuple[str, ...] = ()
     update_enabled: bool = True

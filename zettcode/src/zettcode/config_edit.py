@@ -308,6 +308,17 @@ def set_pet(text: str, name: str, *, where: Path) -> str:
     return _set_key(text, "ui", "pet", toml_string(name), name, where=where, command="/pet")
 
 
+def set_pet_position(text: str, across: float, down: float, *, where: Path) -> str:
+    """Return ``text`` with ``[ui] pet_position`` set to where the pet was left, touching nothing else.
+
+    The shares are rounded to three places: a pet moves a cell at a time, and a number such as
+    ``0.8571428571428571`` in a file the reader reads and edits is noise.
+    """
+    shares = [round(min(1.0, max(0.0, across)), 3), round(min(1.0, max(0.0, down)), 3)]
+    literal = "[" + ", ".join(repr(share) for share in shares) + "]"
+    return _set_key(text, "ui", "pet_position", literal, shares, where=where, command="the pet")
+
+
 def set_self_compaction(text: str, enabled: bool, *, where: Path) -> str:
     """Return ``text`` with ``[compaction] self`` set to ``enabled``, touching nothing else."""
     return _set_key(

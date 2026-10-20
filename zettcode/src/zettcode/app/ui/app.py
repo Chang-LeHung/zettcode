@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, cast
 
 from zett_agent.events import AgentEvent
 
+from zettcode.config_edit import ConfigEditError
 from zettcode.paths import DEFAULT_LOG
 from zettcode.plugins import (
     Activity,
@@ -190,6 +191,8 @@ class ZettCodeApp(
             shown=lambda: "pet" not in self.agent.statusline_hidden,
             busy=lambda: self._busy,
             forward=self.view,
+            position=self.agent.runtime.config.pet_position,
+            on_moved=self._remember_pet_position,
         )
         body = VBox(
             [
@@ -275,6 +278,18 @@ class ZettCodeApp(
     def busy(self) -> bool:
         """Return whether a turn or command is in flight."""
         return self._busy
+
+    def _remember_pet_position(self, across: float, down: float) -> None:
+        """Keep where the pet was left in the config file, so the next start puts it back.
+
+        A pet is not worth an error: a reader whose configuration is the environment has no file to write it to,
+        and a file that cannot be edited safely is the reader's to fix by hand. The pet simply starts at its
+        usual place the next time, which is what it did before it could remember.
+        """
+        try:
+            self.agent.remember_pet_position(across, down)
+        except ConfigEditError:
+            return
 
     def _starting_pet(self) -> Pet:
         """Return the pet the configuration names, or the default one when it names none that exists.

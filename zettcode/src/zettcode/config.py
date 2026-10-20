@@ -110,7 +110,7 @@ UPDATE_KEYS = frozenset({"enabled"})
 SESSIONS_KEYS = frozenset({"enabled"})
 
 #: Keys the ``[ui]`` table may set.
-UI_KEYS = frozenset({"theme", "pet"})
+UI_KEYS = frozenset({"theme", "pet", "pet_position"})
 
 #: The statusline parts that are hidden by default and made visible by choice.
 OFF_BY_DEFAULT: frozenset[str] = frozenset({"pet"})
@@ -320,6 +320,9 @@ class ZettCodeConfig:
         themes_dir: Where the reader's own palettes are, one ``<name>.toml`` each.
         pet: Name of the pet to start with (``[ui] pet``): one the built-in plugin or another plugin offers.
             ``None`` is the default pet.
+        pet_position: Where the pet stands, as the share of the free room it is at, left to right and top to
+            bottom (``[ui] pet_position = [1.0, 0.5]``). Dragging the pet writes it, so the next start puts
+            the pet back where it was left; ``None`` is the default place, the right edge halfway down.
         reasoning_effort: How much reasoning budget to request per turn.
         shell_approval: When the agent must ask before running a shell command.
         reduced_motion: Suppress decorative animation.
@@ -378,6 +381,7 @@ class ZettCodeConfig:
     theme: str | None = None
     themes_dir: Path = DEFAULT_THEMES_DIR
     pet: str | None = None
+    pet_position: tuple[float, float] | None = None
     reasoning_effort: ReasoningEffort = ReasoningEffort.MEDIUM
     shell_approval: ShellApprovalMode = ShellApprovalMode.REVIEW
     reduced_motion: bool = False
@@ -701,6 +705,19 @@ def _read_word(raw: object, key: str, what: str, source: Path) -> str | None:
     return raw.strip()
 
 
+def _read_pet_position(raw: object, source: Path) -> tuple[float, float] | None:
+    """Return where the pet was left, as two shares from 0 to 1, or ``None`` when the file says nothing."""
+    if raw is None:
+        return None
+    shares = raw if isinstance(raw, list) and len(raw) == 2 else None
+    if shares is None or any(isinstance(item, bool) or not isinstance(item, (int, float)) for item in shares):
+        raise ValueError(f"Config key 'ui.pet_position' in {source} must be two numbers from 0 to 1: [across, down]")
+    across, down = float(shares[0]), float(shares[1])
+    if not (0.0 <= across <= 1.0 and 0.0 <= down <= 1.0):
+        raise ValueError(f"Config key 'ui.pet_position' in {source} must be two numbers from 0 to 1: [across, down]")
+    return across, down
+
+
 def load_config(
     workspace: str | Path,
     *,
@@ -751,6 +768,7 @@ def load_config(
         theme_file=_default_theme_file(),
         theme=_read_theme_name(ui.get("theme"), source),
         pet=_read_word(ui.get("pet"), "ui.pet", "a pet name", source),
+        pet_position=_read_pet_position(ui.get("pet_position"), source),
         reduced_motion=reduced_motion_default,
         transcript_max_entries=_typed(
             transcript.get("max_entries", DEFAULT_TRANSCRIPT_MAX_ENTRIES),
