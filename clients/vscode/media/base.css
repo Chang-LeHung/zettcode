@@ -107,8 +107,22 @@ button {
   cursor: pointer;
 }
 
+/* Something that opens larger in the lightbox says so before it is pressed. */
+.zoomable {
+  cursor: zoom-in;
+}
+
+/* A selection is a wash over the letters, never a block that hides them: the editor's own colour would sit opaque over
+   the text, and the message box draws its text in a layer behind the textarea, so an opaque selection hides it. */
 ::selection {
-  background: var(--vscode-editor-selectionBackground, color-mix(in srgb, var(--blue) 35%, transparent));
+  background: color-mix(in srgb, var(--vscode-editor-selectionBackground, #264f78) 45%, transparent);
+  color: inherit;
+}
+
+/* The box itself draws no text (the layer behind does), so its selection must not paint letters of its own. */
+#input::selection {
+  background: color-mix(in srgb, var(--vscode-editor-selectionBackground, #264f78) 45%, transparent);
+  color: transparent;
 }
 
 * {

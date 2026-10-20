@@ -455,8 +455,13 @@ export function restoreTurns(messages: Message[], now = Date.now()): Turn[] {
     }
     if (message.role === "user") {
       const turn = start(message.text, `history-${index}`);
-      if (message.images > 0) {
-        turn.imageCount = message.images;
+      // The pictures come back with the history; a count is all that is left when the store could not give them.
+      const pictures = message.pictures ?? [];
+      if (pictures.length > 0) {
+        turn.images = pictures.map((picture) => ({ data: picture.data, mediaType: picture.media_type }));
+      }
+      if (message.images > pictures.length) {
+        turn.imageCount = message.images - pictures.length;
       }
       return;
     }

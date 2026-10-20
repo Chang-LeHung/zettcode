@@ -155,6 +155,49 @@ test("a command and an @ mention are coloured, and the layer repeats the draft l
   assert.deepEqual(ui.pieces("command").concat(ui.pieces("mention")), []);
 });
 
+test("an address in the draft is coloured as a link, without the punctuation that ends the sentence", async () => {
+  const ui = await open();
+  await ui.type("see https://example.com/a?b=1, and (https://x.dev/y). also @src/a.ts");
+  assert.deepEqual(ui.pieces("link"), ["https://example.com/a?b=1", "https://x.dev/y"]);
+  assert.deepEqual(ui.pieces("mention"), ["@src/a.ts"]);
+  assert.equal(ui.layer(), "see https://example.com/a?b=1, and (https://x.dev/y). also @src/a.ts");
+});
+
+test("the paperclip asks the host for any file, and a file that is not a picture comes back as its path", async () => {
+  const ui = await open();
+  ui.window.document.querySelector<HTMLElement>("#attach")?.click();
+  assert.ok(ui.messages.some((message) => message.type === "pick-files"));
+  await ui.type("summarise");
+  ui.window.dispatchEvent(
+    new ui.window.MessageEvent("message", { data: { type: "files", paths: ["/tmp/report.pdf", "/tmp/my notes.pdf"] } }),
+  );
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(ui.input.value, 'summarise /tmp/report.pdf "/tmp/my notes.pdf" ');
+});
+
+test("a skill is coloured as a skill and a file as a file, once the host has said which is which", async () => {
+  const ui = await open();
+  // On load the composer asks the host what `@` offers, so skills are known before the menu is ever opened.
+  assert.ok(ui.messages.some((message) => message.type === "mentions" && message.query === ""));
+  ui.window.dispatchEvent(
+    new ui.window.MessageEvent("message", {
+      data: {
+        type: "mentions",
+        query: "",
+        items: [
+          { token: "@grill-me", kind: "skill", name: "grill-me", description: "Interview" },
+          { token: "@src/app.ts", kind: "file", name: "src/app.ts", description: "" },
+        ],
+      },
+    }),
+  );
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await ui.type("use @grill-me on @src/app.ts and @unknown");
+  assert.deepEqual(ui.pieces("skill"), ["@grill-me"]);
+  assert.deepEqual(ui.pieces("mention"), ["@src/app.ts", "@unknown"]);
+  assert.equal(ui.layer(), "use @grill-me on @src/app.ts and @unknown");
+});
+
 test("every command is offered after a bare slash, and the list narrows as you type", async () => {
   const ui = await open();
   await ui.type("/");

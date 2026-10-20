@@ -70,6 +70,7 @@ export type HostMessage =
   | { type: "sessions"; sessions: SessionRow[] }
   | { type: "mentions"; query: string; items: Mention[] }
   | { type: "images"; images: AttachedImage[] }
+  | { type: "files"; paths: string[] }
   | { type: "notice"; level: "info" | "warn" | "error"; text: string; summary?: string }
   | { type: "changes"; turnId: string; files: ChangeSummary[] }
   | { type: "diff-rows"; turnId: string; path: string; rows: DiffRow[]; truncated: boolean }
@@ -111,7 +112,7 @@ export type WebviewMessage =
   | { type: "resume" }
   | { type: "ask"; question: string }
   | { type: "mentions"; query: string }
-  | { type: "pick-images" }
+  | { type: "pick-files" }
   | { type: "copy"; text: string }
   | { type: "open-settings" }
   | { type: "open-diff"; turnId: string; path: string }
