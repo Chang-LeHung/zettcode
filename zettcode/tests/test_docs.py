@@ -195,7 +195,11 @@ def test_the_terminal_preview_is_offline_deterministic_and_leaves_no_workspace(r
 
 
 def test_published_brand_assets_match_the_shared_terminal_pixels(render_terminal):
-    assert (ROOT / "docs/public/logo.svg").read_text(encoding="utf-8") == render_terminal.logo_svg()
+    # The site's logo is the brand mark (the same file the editor extension ships); the pixel robot is the terminal's
+    # own face and appears only in the terminal preview.
+    assert (ROOT / "docs/public/logo.svg").read_text(encoding="utf-8").replace("<title>ZettCode</title>\n  ", "") == (
+        ROOT / "clients/vscode/media/logo.svg"
+    ).read_text(encoding="utf-8").replace("<title>ZettCode</title>\n  ", "")
     canvas = render_terminal.preview()
     assert (ROOT / "docs/public/terminal.svg").read_text(encoding="utf-8") == render_terminal.svg(canvas)
     lines = WelcomePresenter().lines(TextEntry(id=0, kind="welcome", text=WELCOME), 60, DARK, 0)
