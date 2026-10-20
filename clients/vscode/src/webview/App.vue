@@ -5,6 +5,7 @@ import { addFiles } from "./images.js";
 import { closeOverlay, openFind, state } from "./store.js";
 import Banner from "./components/Banner.vue";
 import Composer from "./components/Composer.vue";
+import Lightbox from "./components/Lightbox.vue";
 import SessionDrawer from "./components/SessionDrawer.vue";
 import Splash from "./components/Splash.vue";
 import Toasts from "./components/Toasts.vue";
@@ -112,7 +113,8 @@ onBeforeUnmount(() => listeners.forEach(([name, handler, capture]) => document.r
     <div v-if="state.overlay === 'drawer'" id="scrim" class="scrim" @click="closeOverlay" />
     <SessionDrawer v-if="state.overlay === 'drawer'" />
     <Toasts />
-    <div v-if="state.dragging" class="drop-hint">Drop an image to attach it</div>
+    <Lightbox />
+    <div v-if="state.dragging" class="drop-hint">Drop a picture to attach it</div>
   </div>
 </template>
 

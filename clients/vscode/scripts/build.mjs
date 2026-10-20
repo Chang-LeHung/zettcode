@@ -32,6 +32,19 @@ const options = [
     plugins: [vuePlugin({ cssFile: "dist/webview.css" })],
     logLevel: "info",
   },
+  {
+    // Mermaid, as a script of its own that the view adds when an answer holds a diagram: about three megabytes the view
+    // should not parse at startup.
+    entryPoints: ["src/webview/mermaid-entry.ts"],
+    bundle: true,
+    platform: "browser",
+    format: "iife",
+    target: "es2022",
+    outfile: "dist/mermaid.js",
+    minify: !watch,
+    legalComments: "none",
+    logLevel: "info",
+  },
 ];
 
 if (watch) {

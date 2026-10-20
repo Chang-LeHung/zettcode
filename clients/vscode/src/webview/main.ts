@@ -3,8 +3,12 @@
 import { createApp } from "vue";
 
 import App from "./App.vue";
+import { setDiagramEngine } from "../core/diagram.js";
+import { mermaidEngine } from "./mermaid.js";
 import { handleHost, post } from "./store.js";
 import type { HostMessage } from "../core/protocol.js";
+
+setDiagramEngine(mermaidEngine);
 
 window.addEventListener("message", (event: MessageEvent<HostMessage>) => handleHost(event.data));
 

@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, ref } from "vue";
 
 import { formatDuration, formatTokens } from "../../core/format.js";
 import { isAnnouncement, type AnnouncementBlock, type Turn } from "../../core/state.js";
-import { COMPACT_TURN, post, state, toggleTurn } from "../store.js";
+import { COMPACT_TURN, openLightbox, post, state, toggleTurn } from "../store.js";
 import BlockView from "./BlockView.vue";
 import ChangesCard from "./ChangesCard.vue";
 import Icon from "./Icon.vue";
@@ -119,9 +119,11 @@ const summary = computed(() => {
           <img
             v-for="(image, index) in turn.images"
             :key="index"
-            class="thumb"
+            class="thumb zoomable"
             :src="`data:${image.mediaType};base64,${image.data}`"
             alt="attached image"
+            title="Open the picture"
+            @click="openLightbox({ kind: 'image', src: `data:${image.mediaType};base64,${image.data}`, title: `Picture ${index + 1} of ${turn.images.length}` })"
           />
         </div>
         <div v-if="turn.imageCount" class="image-count">{{ turn.imageCount }} image(s)</div>

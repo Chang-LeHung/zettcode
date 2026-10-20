@@ -76,11 +76,13 @@
       },
       {
         "command": "zettcode.newSession",
-        "title": "ZettCode: New Session"
+        "title": "ZettCode: New Session",
+        "icon": "$(add)"
       },
       {
         "command": "zettcode.resumeSession",
-        "title": "ZettCode: Recent Sessions"
+        "title": "ZettCode: Recent Sessions",
+        "icon": "$(history)"
       },
       {
         "command": "zettcode.selectModel",
@@ -294,6 +296,7 @@
     "jsdom": "^26.0.0",
     "katex": "^0.19.0",
     "marked": "^18.1.1",
+    "mermaid": "^12.2.0",
     "typescript": "^5.7.0",
     "vue": "^3.5.44",
     "vue-tsc": "^2.2.12"

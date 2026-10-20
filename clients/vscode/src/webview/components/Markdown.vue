@@ -1,19 +1,73 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, onBeforeUnmount, onMounted, onUpdated, ref } from "vue";
 
+import { currentTheme, ensureDrawn, onDiagramDrawn } from "../../core/diagram.js";
 import { renderMarkdown, renderStreaming } from "../../core/markdown.js";
-import { post } from "../store.js";
+import { openLightbox, post } from "../store.js";
 
 const props = defineProps<{ text: string; live?: boolean }>();
+const root = ref<HTMLElement | null>(null);
+/** Bumped when a diagram finishes, so the answer is rendered again with the drawing in place of its code. */
+const drawn = ref(0);
 
-const html = computed(
-  () => (props.live ? renderStreaming(props.text) : renderMarkdown(props.text)) + (props.live ? '<span class="caret"></span>' : ""),
-);
+const html = computed(() => {
+  void drawn.value;
+  return (props.live ? renderStreaming(props.text) : renderMarkdown(props.text)) + (props.live ? '<span class="caret"></span>' : "");
+});
+
+/** Ask for the drawing of every diagram the answer holds that has not been drawn yet. */
+function drawPending(): void {
+  for (const block of root.value?.querySelectorAll<HTMLElement>(".diagram-pending[data-diagram]") ?? []) {
+    const source = block.dataset.diagram;
+    if (source) {
+      void ensureDrawn(source, currentTheme());
+    }
+  }
+}
+
+let stop: (() => void) | null = null;
+onMounted(() => {
+  stop = onDiagramDrawn(() => {
+    drawn.value += 1;
+  });
+  drawPending();
+});
+onUpdated(drawPending);
+onBeforeUnmount(() => stop?.());
+
+/**
+ * Open a block of the answer larger: a drawing (zoomable), or a code block or table as it is, without the room the
+ * column leaves it. The buttons are not carried over, because the copy of the block would not be wired to anything.
+ */
+function expand(from: Element): void {
+  const block = from.closest<HTMLElement>(".code-block, .table-box");
+  if (block === null) {
+    return;
+  }
+  const drawing = block.classList.contains("diagram") ? block.querySelector(".diagram-body svg") : null;
+  if (drawing !== null) {
+    openLightbox({ kind: "drawing", html: drawing.outerHTML, title: "Mermaid diagram" });
+    return;
+  }
+  const copy = (block.classList.contains("table-box") ? block.querySelector(".table-wrap") : block)?.cloneNode(true);
+  if (!(copy instanceof HTMLElement)) {
+    return;
+  }
+  copy.querySelectorAll(".code-actions, .diagram-note").forEach((node) => node.remove());
+  const title = block.classList.contains("table-box") ? "Table" : (block.querySelector(".code-lang span")?.textContent ?? "Code");
+  openLightbox({ kind: "block", html: copy.outerHTML, title });
+}
 
 /** Links and copy buttons in rendered Markdown carry data attributes; one handler serves them all. */
 function onClick(event: MouseEvent): void {
   const target = event.target as HTMLElement | null;
   if (target === null) {
+    return;
+  }
+  const bigger = target.closest("[data-expand]") ?? target.closest(".diagram-body");
+  if (bigger !== null) {
+    event.preventDefault();
+    expand(bigger);
     return;
   }
   const open = target.closest<HTMLElement>("[data-open]");
@@ -42,12 +96,21 @@ function onClick(event: MouseEvent): void {
   if (wrap) {
     const on = wrap.closest(".code-block")?.classList.toggle("wrap") ?? false;
     wrap.classList.toggle("on", on);
+    return;
+  }
+  const source = target.closest<HTMLElement>("[data-source]");
+  if (source) {
+    // A drawing and its code are two faces of one block.
+    const block = source.closest(".code-block");
+    const showing = block?.classList.toggle("show-source") ?? false;
+    source.classList.toggle("on", showing);
+    block?.querySelector(".diagram-source")?.toggleAttribute("hidden", !showing);
   }
 }
 </script>
 
 <template>
-  <div class="md" @click="onClick" v-html="html" />
+  <div ref="root" class="md" @click="onClick" v-html="html" />
 </template>
 
 <style>
@@ -169,5 +232,57 @@ body.vscode-light .md .code-block {
 .md .code-block.wrap pre code {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+/* A drawn diagram: the drawing is the block, the code one press behind it. */
+.md .diagram-body {
+  padding: 14px 16px 16px;
+  overflow-x: auto;
+  text-align: center;
+  cursor: zoom-in;
+}
+
+/* The table's own button for opening it larger: beside the table, shown when it is pointed at. */
+.md .table-box {
+  position: relative;
+}
+
+.md .table-expand {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  opacity: 0;
+  background: var(--raised);
+  transition: opacity 0.12s;
+}
+
+.md .table-box:hover .table-expand,
+.md .table-expand:focus-visible {
+  opacity: 1;
+}
+
+.md .diagram-body svg {
+  display: inline-block;
+  max-width: 100%;
+  height: auto;
+}
+
+.md .code-block.show-source .diagram-body {
+  display: none;
+}
+
+.md .diagram-source {
+  margin: 0;
+}
+
+.md .diagram-source[hidden] {
+  display: none;
+}
+
+.md .diagram-note {
+  padding: 8px 16px 0;
+  color: var(--amber);
+  font-size: var(--small);
 }
 </style>

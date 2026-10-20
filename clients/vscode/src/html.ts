@@ -11,7 +11,10 @@ export interface ChatHtmlOptions {
   nonce: string;
 }
 
-/** Return the document the webview program mounts into. */
+/** Return the document the webview program mounts into.
+ *
+ * Styles may be inline because a diagram's drawing is an SVG that carries its own `<style>`; scripts may not: the one
+ * nonce is the only way any code runs, and raw HTML in an answer is shown as text. */
 export function chatHtml(options: ChatHtmlOptions): string {
   const links = options.styles.map((href) => `<link rel="stylesheet" href="${href}">`).join("\n");
   return `<!DOCTYPE html>
@@ -19,7 +22,7 @@ export function chatHtml(options: ChatHtmlOptions): string {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${options.cspSource} data:; style-src ${options.cspSource}; script-src 'nonce-${options.nonce}'; font-src ${options.cspSource};">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${options.cspSource} data:; style-src ${options.cspSource} 'unsafe-inline'; script-src 'nonce-${options.nonce}'; font-src ${options.cspSource};">
 ${links}
 <title>ZettCode</title>
 </head>

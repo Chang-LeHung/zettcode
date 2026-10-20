@@ -2,6 +2,7 @@
 
 import { Marked, Renderer, type Tokens, type TokenizerAndRendererExtension } from "marked";
 
+import { briefly, currentTheme, drawnFor } from "./diagram.js";
 import { escapeHtml } from "./escape.js";
 import { highlight, resolveLanguage } from "./highlight.js";
 import { renderMath } from "./math.js";
@@ -154,6 +155,9 @@ const SVG = (paths: string, extra = ""): string =>
   `<svg class="i" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"${extra}>${paths}</svg>`;
 const ICON_CODE = SVG('<path d="m5.5 4-3.5 4 3.5 4M10.5 4l3.5 4-3.5 4M9 3 7 13"/>');
 const ICON_WRAP = SVG('<path d="M2 4h12M2 8h9a2 2 0 0 1 0 4H8M9.5 10.5 8 12l1.5 1.5M2 12h2"/>');
+const ICON_EXPAND = SVG('<path d="M9.5 2.5h4v4M6.5 13.5h-4v-4M13.5 2.5 9 7M2.5 13.5 7 9"/>');
+const EXPAND = (what: string): string =>
+  `<button class="code-btn" data-expand type="button" title="Open ${what} larger" aria-label="Open ${what} larger">${ICON_EXPAND}</button>`;
 const ICON_COPY = SVG('<path d="M5.5 5.5h7v8h-7zM3.5 10.5v-8h7"/>', ' data-icon="copy"');
 const ICON_CHECK = SVG('<path d="m3.5 8.5 3 3 6-7"/>', ' data-icon="check"');
 
@@ -168,11 +172,49 @@ function codeBlock(code: string, label: string): string {
       languageName(language, resolved),
     )}</span></span>` +
     `<span class="code-actions">` +
+    EXPAND("the code") +
     `<button class="code-btn" data-wrap type="button" title="Wrap long lines" aria-label="Wrap long lines">${ICON_WRAP}</button>` +
     `<button class="code-btn" data-copy type="button" title="Copy" aria-label="Copy">${ICON_COPY}${ICON_CHECK}</button>` +
     `</span></div>` +
     `<pre><code class="code${mark}">${body}</code></pre></div>`
   );
+}
+
+/** Whether the fence being rendered may become a drawing; an answer still being typed holds its open fence back. */
+let drawDiagrams = true;
+
+const ICON_DIAGRAM = SVG('<circle cx="3.5" cy="3.5" r="1.5"/><circle cx="12.5" cy="3.5" r="1.5"/><circle cx="8" cy="12.5" r="1.5"/><path d="M5 3.5h6M4.3 4.8 7 11M11.7 4.8 9 11"/>');
+
+/**
+ * A ```` ```mermaid ```` fence. Drawn, it is the drawing; not drawn yet, it is the code with the source on the block so
+ * the page can ask for it; refused, it is the code with the reason above it. The code is never lost: it is always one
+ * press away, and the copy button gives the source.
+ */
+function diagramBlock(code: string): string | null {
+  const known = drawnFor(code, currentTheme());
+  if (known?.ok === true) {
+    return (
+      `<div class="code-block diagram"><div class="code-head"><span class="code-lang">${ICON_DIAGRAM}<span>Mermaid</span></span>` +
+      `<span class="code-actions">` +
+      EXPAND("the diagram") +
+      `<button class="code-btn" data-source type="button" title="Show the source" aria-label="Show the source">${ICON_CODE}</button>` +
+      `<button class="code-btn" data-copy type="button" title="Copy the source" aria-label="Copy the source">${ICON_COPY}${ICON_CHECK}</button>` +
+      `</span></div>` +
+      `<div class="diagram-body">${known.svg}</div>` +
+      `<pre class="diagram-source" hidden><code class="code">${escapeHtml(code)}</code></pre></div>`
+    );
+  }
+  const plain = codeBlock(code, "mermaid");
+  if (known?.ok === false) {
+    return plain.replace(
+      '<div class="code-block">',
+      `<div class="code-block diagram-failed" title="${escapeHtml(briefly(known.message))}">`,
+    ).replace(
+      /<pre>/,
+      `<div class="diagram-note">This diagram could not be drawn: ${escapeHtml(briefly(known.message))}</div><pre>`,
+    );
+  }
+  return plain.replace('<div class="code-block">', `<div class="code-block diagram-pending" data-diagram="${escapeHtml(code)}">`);
 }
 
 const marked = new Marked({
@@ -181,6 +223,9 @@ const marked = new Marked({
   extensions: [strongAnywhere, mathBlock, mathInline],
   renderer: {
     code({ text, lang }: Tokens.Code): string {
+      if (drawDiagrams && /^mermaid\b/i.test((lang ?? "").trim())) {
+        return diagramBlock(text) ?? codeBlock(text, lang ?? "");
+      }
       return codeBlock(text, lang ?? "");
     },
 
@@ -217,7 +262,7 @@ const marked = new Marked({
     },
 
     table(this: Renderer, token: Tokens.Table): string {
-      return `<div class="table-wrap">${Renderer.prototype.table.call(this, token)}</div>`;
+      return `<div class="table-box">${EXPAND("the table").replace("code-btn", "code-btn table-expand")}<div class="table-wrap">${Renderer.prototype.table.call(this, token)}</div></div>`;
     },
   },
 });
@@ -236,7 +281,30 @@ export function renderStreaming(text: string): string {
   const source = text.replace(/\r\n?/g, "\n");
   const fences = source.match(/^ {0,3}(?:`{3,}|~{3,})/gm)?.length ?? 0;
   const open = fences % 2 === 1;
-  return renderMarkdown(open ? source.replace(/\n {0,3}(?:`{1,2}|~{1,2})$/, "") : source);
+  if (!open) {
+    return renderMarkdown(source);
+  }
+  const trimmed = source.replace(/\n {0,3}(?:`{1,2}|~{1,2})$/, "");
+  // What comes before the open fence is finished and may hold drawings; the open fence itself is only code until it
+  // closes, or the diagram would be drawn, and fail, with every letter typed into it.
+  let start = -1;
+  for (const match of trimmed.matchAll(/^ {0,3}(?:`{3,}|~{3,})/gm)) {
+    start = match.index ?? start;
+  }
+  if (start <= 0) {
+    return renderUndrawn(trimmed);
+  }
+  const head = renderMarkdown(trimmed.slice(0, start));
+  return `${head}\n${renderUndrawn(trimmed.slice(start))}`;
+}
+
+function renderUndrawn(text: string): string {
+  drawDiagrams = false;
+  try {
+    return renderMarkdown(text);
+  } finally {
+    drawDiagrams = true;
+  }
 }
 
 /** Render one line of Markdown without the paragraph around it. */
