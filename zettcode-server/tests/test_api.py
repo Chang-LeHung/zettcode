@@ -218,6 +218,20 @@ async def test_the_full_history_includes_what_a_compaction_folded_away_and_the_d
     assert [m["role"] for m in full["messages"]] == ["user", "summary"]
 
 
+async def test_a_user_message_comes_back_with_its_pictures_encoded():
+    from zettcode.sdk.types import Image, Message
+
+    client = FakeClient()
+    client.session.messages = [
+        Message(role="user", text="look", images=1, pictures=(Image(b"\x89PNG1234", "image/png"),))
+    ]
+    async with serve(client) as http:
+        (message,) = (await http.get("/sessions/current/history")).json()["messages"]
+
+    assert message["images"] == 1
+    assert message["pictures"] == [{"data": "iVBORzEyMzQ=", "media_type": "image/png"}]
+
+
 async def test_before_anything_was_measured_the_context_report_is_null_and_not_an_error():
     client = FakeClient()
     client.session.report = None
