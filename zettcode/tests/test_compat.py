@@ -1,4 +1,4 @@
-"""The language floor: every module has to run on Python 3.10 through 3.14.
+"""The language floor: every module has to run on Python 3.10 through 3.15.
 
 CI runs the suite on each version, but syntax only breaks on the oldest one, and
 a module no test happens to import would fail there and nowhere else. The check

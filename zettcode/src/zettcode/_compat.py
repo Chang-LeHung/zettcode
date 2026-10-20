@@ -1,6 +1,6 @@
 """Small shims for the language versions this project supports.
 
-ZettCode runs on Python 3.10 through 3.14, so the few things the standard
+ZettCode runs on Python 3.10 through 3.15, so the few things the standard
 library grew in between live here instead of behind version checks at each use.
 """
 
