@@ -4,12 +4,16 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+import pytest
+
 from test_statusline import config_file, hidden_in, notices, open_panel  # noqa: F401 - the fixture is used by name
 from test_zettcode_app import _harness, build_app
+from zettcode._compat import tomllib
 from zettcode.app.pets import GLAD, IDLE, WORKING, PetCatalog, bundled_pets
 from zettcode.app.ui.widgets.pet import FRAME_SECONDS, GLAD_SECONDS, MARGIN, MIN_WIDTH
 from zettcode.app.ui.widgets.statusline_page import PARTS, ROW_OF
 from zettcode.config import ModelConfig, ZettCodeConfig
+from zettcode.config_edit import set_pet_position
 from zettcode.statusline import NAMES, PET, unknown
 
 #: The pet a shell starts with when nothing says otherwise.
@@ -202,6 +206,146 @@ def test_the_pet_keeps_its_place_in_the_conversation_when_the_terminal_is_resize
     harness.resize(100, 30)
     stands(app, harness)
     assert (app.pet.fx, app.pet.fy) == (fx, fy)
+
+
+def test_the_pet_follows_the_pointer_back_at_once_after_the_pointer_went_past_the_edge():
+    """The pointer went on after the pet stopped at the edge; the way back must not first cross the overshoot."""
+    app, harness, _ = shell(width=100, height=30)
+    start = stands(app, harness)
+    edge = start.x
+    x, y = start.x + 7, start.y + 3  # held at its middle
+    assert harness.mouse_down(x, y)
+
+    for pointer in (x + 20, x + 60, x + 400):
+        harness.mouse_move(pointer, y)
+        assert stands(app, harness).x == edge, "the edge stops it"
+
+    harness.mouse_move(x + 399, y)
+    assert stands(app, harness).x == edge - 1, "and one cell back moves it one cell"
+    harness.mouse_move(x + 390, y)
+    assert stands(app, harness).x == edge - 10
+    harness.mouse_up(x + 390, y)
+
+
+def test_the_same_holds_for_the_other_edges_and_for_a_hold_at_the_far_side_of_the_pet():
+    app, harness, _ = shell(width=100, height=30)
+    view = app.view.rect
+    rect = stands(app, harness)
+    # Held at its right-hand column and its bottom row, and pushed into the bottom-right corner.
+    x, y = rect.right - 1, rect.bottom - 1
+    assert harness.mouse_down(x, y)
+    harness.mouse_move(x + 200, y + 200)
+    corner = stands(app, harness)
+    assert corner.right == view.right - MARGIN and corner.bottom == view.bottom
+
+    harness.mouse_move(x + 199, y + 198)
+    back = stands(app, harness)
+    assert (back.x, back.y) == (corner.x - 1, corner.y - 2), "both directions come back at the first step"
+
+    # And into the top-left corner, from there.
+    harness.mouse_move(x - 500, y - 500)
+    top_left = stands(app, harness)
+    assert (top_left.x, top_left.y) == (view.x, view.y)
+    harness.mouse_move(x - 497, y - 499)
+    moved = stands(app, harness)
+    assert (moved.x, moved.y) == (view.x + 3, view.y + 1)
+    harness.mouse_up(x - 497, y - 499)
+
+
+def test_a_drag_the_edge_swallows_whole_is_still_a_drag_and_not_a_pat():
+    """Whether the pointer moved is decided by the pointer, not by whether the area let the pet follow it."""
+    app, harness, _ = shell()
+    rect = stands(app, harness)  # at the right edge already, so a move to the right goes nowhere
+    x, y = rect.x + 3, rect.y + 1
+    assert harness.mouse_down(x, y)
+    harness.mouse_move(x + 6, y)
+    assert stands(app, harness) == rect
+    harness.mouse_up(x + 6, y)
+
+    assert app.pet.mood == IDLE, "nothing patted it"
+
+
+def test_a_press_that_never_leaves_its_cell_is_still_a_pat():
+    app, harness, _ = shell()
+    rect = stands(app, harness)
+    x, y = rect.x + 3, rect.y + 1
+    harness.mouse_down(x, y)
+    harness.mouse_move(x, y)
+    harness.mouse_up(x, y)
+    assert app.pet.mood == GLAD
+
+
+# -- remembering where it was left ------------------------------------------------------------------------------
+
+
+def test_where_the_pet_was_left_is_written_to_the_config_file_when_the_drag_ends(config_file):  # noqa: F811
+    app, harness, _ = shell()
+    rect = stands(app, harness)
+    assert harness.mouse_down(rect.x + 2, rect.y + 1)
+    harness.mouse_move(rect.x - 28, rect.y + 5)
+    assert "pet_position" not in config_file.read_text(encoding="utf-8"), "nothing is written while it is held"
+    harness.mouse_up(rect.x - 28, rect.y + 5)
+
+    saved = tomllib.loads(config_file.read_text(encoding="utf-8"))["ui"]["pet_position"]
+    assert saved == [round(app.pet.fx, 3), round(app.pet.fy, 3)]
+    assert app.agent.runtime.config.pet_position == tuple(saved)
+    assert config_file.read_text(encoding="utf-8").count("[[models]]") == 1, "and the rest of the file is as it was"
+
+
+def test_a_pat_writes_nothing(config_file):  # noqa: F811
+    app, harness, _ = shell()
+    rect = stands(app, harness)
+    harness.mouse_down(rect.x + 2, rect.y + 1)
+    harness.mouse_up(rect.x + 2, rect.y + 1)
+    assert "pet_position" not in config_file.read_text(encoding="utf-8")
+
+
+def test_the_pet_starts_where_it_was_left_and_that_place_is_a_share_of_the_room_so_it_survives_a_resize():
+    app = build_app()
+    app.agent.runtime.config = replace(app.agent.runtime.config, pet_position=(0.25, 0.75))
+    app = type(app)(app.agent)
+    harness = _harness(app)
+    harness.resize(100, 30)
+    harness.render()
+    small = app.pet.rect
+    harness.resize(140, 44)
+    harness.render()
+
+    assert (app.pet.fx, app.pet.fy) == (0.25, 0.75)
+    view = app.view.rect
+    assert abs((app.pet.rect.x - view.x) - round(0.25 * (view.width - app.pet.rect.width - MARGIN))) <= 1
+    assert abs((small.x - 0) - round(0.25 * (100 - small.width - MARGIN))) <= 1, "and before the resize too"
+
+
+def test_a_reader_with_no_config_file_loses_nothing_but_the_memory():
+    """The environment can be the whole configuration; a drag then has nowhere to be written, and says nothing."""
+    app, harness, _ = shell()
+    rect = stands(app, harness)
+    harness.mouse_down(rect.x + 2, rect.y + 1)
+    harness.mouse_move(rect.x - 10, rect.y)
+    harness.mouse_up(rect.x - 10, rect.y)
+    assert not any(getattr(entry, "level", None) == "error" for entry in app.transcript.entries)
+
+
+def test_the_config_reads_the_position_and_refuses_what_is_not_two_shares(tmp_path):
+    from test_pets import config_in
+
+    assert config_in(tmp_path, "").pet_position is None
+    assert config_in(tmp_path, "[ui]\npet_position = [0.25, 1]\n").pet_position == (0.25, 1.0)
+    for bad in ("[0.5]", "[1.5, 0.5]", "[0.5, -0.1]", '["a", "b"]', "0.5", "[true, 0.5]"):
+        with pytest.raises(ValueError, match="pet_position"):
+            config_in(tmp_path, f"[ui]\npet_position = {bad}\n")
+
+
+def test_the_edit_changes_one_line_and_nothing_else(tmp_path):
+    where = tmp_path / "config.toml"
+    original = '[[models]]\nmodel = "m"\ntoken = "t"\n\n[ui]\npet = "dog"  # mine\n'
+
+    edited_text = set_pet_position(original, 0.123456, 0.9, where=where)
+
+    assert edited_text == original.replace("[ui]\n", "[ui]\npet_position = [0.123, 0.9]\n")
+    assert set_pet_position(edited_text, 1.0, 0.0, where=where).count("pet_position") == 1
+    assert tomllib.loads(set_pet_position("", 7.0, -3.0, where=where))["ui"]["pet_position"] == [1.0, 0.0]
 
 
 def test_a_pat_pleases_the_pet_and_the_clock_ends_it():

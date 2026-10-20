@@ -52,7 +52,9 @@ class PetView(Widget):
 
     The pet's place is kept as the fraction of the free room it stands at, left to right and top to bottom,
     so it keeps its place in the conversation when the terminal is resized or a panel opens under it. It
-    starts at the right edge, halfway down. A drag cannot take it out of the conversation, where it would
+    starts at the right edge, halfway down, or where it was last left: a drag that moved it reports the place
+    through ``on_moved``, and the next start passes it back as ``position``. A drag cannot take it out of the
+    conversation, where it would
     cover the composer or a panel; a press that does not move is a pat, and the pet is pleased for a moment.
     It sleeps while nothing runs, wakes and goes about its business while a request does, and its cells that are
     empty let the conversation show through. The wheel over it scrolls the conversation as it would anywhere else.
@@ -66,6 +68,9 @@ class PetView(Widget):
         shown: Whether the reader wants a pet at all.
         busy: Whether a request is running.
         forward: The widget a wheel turn over the pet is handed to.
+        position: Where the pet stood when it was last left, as the two shares described above; ``None`` starts
+            it at the right edge, halfway down.
+        on_moved: Called with the two shares when a drag that moved the pet ends, so the place can be remembered.
     """
 
     def __init__(
@@ -76,19 +81,26 @@ class PetView(Widget):
         shown: Callable[[], bool] = lambda: True,
         busy: Callable[[], bool] = lambda: False,
         forward: Widget | None = None,
+        position: tuple[float, float] | None = None,
+        on_moved: Callable[[float, float], None] | None = None,
     ) -> None:
-        """Start at the right edge, halfway down, resting."""
+        """Start where it was left, or at the right edge halfway down, resting."""
         super().__init__()
         self.pet = pet
         self._area = area
         self._shown = shown
         self._busy = busy
         self._forward = forward
+        self._on_moved = on_moved
         #: Where the pet stands in the free room, from 0 (left, top) to 1 (right, bottom).
-        self.fx = 1.0
-        self.fy = 0.5
-        #: Where inside the pet the pointer took hold of it, while a press is down.
+        self.fx, self.fy = position if position is not None else (1.0, 0.5)
+        #: Where inside the pet the pointer holds it, while a press is down. It follows the pet and not the press:
+        #: when the area stops the pet, the pointer goes on and this grows by what the area took, so the way back
+        #: starts at once instead of after the whole distance the pointer went past the edge.
         self._grab: tuple[int, int] | None = None
+        #: The cell the press landed on, so "did the pointer move" is a question about the pointer and not about
+        #: whether the area let the pet follow it.
+        self._pressed_at: tuple[int, int] | None = None
         self._moved = False
         self._glad_since: float | None = None
         #: The mood and frame the last paint drew, so a tick can tell whether anything moved.
@@ -178,32 +190,43 @@ class PetView(Widget):
             return self._forward is not None and self._forward.handle(event, host)
         if event.action is MouseAction.DOWN and event.button == 0:
             self._grab = (event.x - self.rect.x, event.y - self.rect.y)
+            self._pressed_at = (event.x, event.y)
             self._moved = False
             return True
         if self._grab is None:
             return False
         if event.action is MouseAction.MOVE:
-            self._drag_to(event.x - self._grab[0], event.y - self._grab[1])
+            if (event.x, event.y) != self._pressed_at:
+                self._moved = True
+            self._drag_to(event.x, event.y)
             return True
         if event.action is MouseAction.UP:
             if not self._moved:
                 self._pat()
+            elif self._on_moved is not None:
+                self._on_moved(self.fx, self.fy)
             self._grab = None
+            self._pressed_at = None
             return True
         return False
 
-    def _drag_to(self, x: int, y: int) -> None:
-        """Move the pet's corner towards a cell, as far as the area lets it, and remember it as fractions."""
+    def _drag_to(self, pointer_x: int, pointer_y: int) -> None:
+        """Put the pet under the pointer, as far as the area lets it, and remember where it stands as fractions.
+
+        What the area takes off the move is added to the grab, so the pointer is again over the same place on the
+        pet that it would be if the pet had reached it: coming back from past the edge moves the pet at the first
+        cell, and not after the pointer has crossed everything it overshot.
+        """
         area = self._area()
+        grab_x, grab_y = self._grab or (0, 0)
         free_x = max(0, area.width - self.pet.width - MARGIN)
         free_y = max(0, area.height - self.pet.height)
-        fx = min(1.0, max(0.0, (x - area.x) / free_x)) if free_x else self.fx
-        fy = min(1.0, max(0.0, (y - area.y) / free_y)) if free_y else self.fy
-        if (fx, fy) == (self.fx, self.fy):
-            return
-        self.fx, self.fy = fx, fy
-        self._moved = True
+        if free_x:
+            self.fx = min(1.0, max(0.0, (pointer_x - grab_x - area.x) / free_x))
+        if free_y:
+            self.fy = min(1.0, max(0.0, (pointer_y - grab_y - area.y) / free_y))
         self.rect = self._stand()
+        self._grab = (pointer_x - self.rect.x, pointer_y - self.rect.y)
 
     def _pat(self) -> None:
         """Please the pet for a moment; the clock ends it, so it passes without any further input."""
