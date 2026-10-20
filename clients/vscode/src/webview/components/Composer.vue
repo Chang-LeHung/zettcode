@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
 import { formatTokens, permissionDescription, permissionLabel } from "../../core/format.js";
 import { effortMeta, permissionMeta } from "../../core/levels.js";
@@ -138,7 +138,7 @@ function choose(index: number, completeOnly = false): void {
 
 interface Piece {
   text: string;
-  kind: "plain" | "command" | "mention" | "ghost";
+  kind: "plain" | "command" | "mention" | "skill" | "link" | "ghost";
 }
 
 /**
@@ -157,16 +157,20 @@ const pieces = computed<Piece[]>(() => {
     start = lead[0].length;
   }
   const rest = value.slice(start);
-  const mentions = /(^|\s)(@[\w./-]+)/g;
+  // An address is coloured like a link; the punctuation that ends a sentence after it is not part of it.
+  const marked = /(^|[\s(\[<"'])(@[\w./-]+|https?:\/\/\S+)/g;
   let cursor = 0;
-  for (let match = mentions.exec(rest); match !== null; match = mentions.exec(rest)) {
-    const token = match[2] ?? "";
+  for (let match = marked.exec(rest); match !== null; match = marked.exec(rest)) {
+    const raw = match[2] ?? "";
+    const isLink = !raw.startsWith("@");
+    const token = isLink ? raw.replace(/[.,;:!?)\]}>"'\u3002\uff0c\uff1b\uff01\uff1f]+$/u, "") : raw;
     const at = match.index + (match[1] ?? "").length;
     if (at > cursor) {
       out.push({ text: rest.slice(cursor, at), kind: "plain" });
     }
-    out.push({ text: token, kind: "mention" });
+    out.push({ text: token, kind: isLink ? "link" : state.mentionKinds[token] === "skill" ? "skill" : "mention" });
     cursor = at + token.length;
+    marked.lastIndex = cursor;
   }
   if (cursor < rest.length) {
     out.push({ text: rest.slice(cursor), kind: "plain" });
@@ -312,6 +316,10 @@ watch(
   },
 );
 
+// Learn the skills up front: with an empty query the host lists what `@` offers, skills included, so a skill typed
+// in full is coloured as one even though the menu was never opened for it.
+onMounted(() => post({ type: "mentions", query: "" }));
+
 onBeforeUnmount(() => window.clearTimeout(mentionTimer));
 
 // -- the menus that open over the box ----------------------------------------------
@@ -448,7 +456,7 @@ const hint = computed(() =>
       </div>
 
       <div class="bar">
-        <button id="attach" class="icon-btn" type="button" title="Attach an image" aria-label="Attach an image" @click="post({ type: 'pick-images' })">
+        <button id="attach" class="icon-btn" type="button" title="Attach a file or an image" aria-label="Attach a file or an image" @click="post({ type: 'pick-files' })">
           <Icon name="clip" />
         </button>
         <button id="model-chip" class="chip strong" type="button" title="Model (/model)" :aria-expanded="state.overlay === 'models'" @click.stop="toggle('models')">
@@ -587,6 +595,21 @@ const hint = computed(() =>
   border-radius: 3px;
 }
 
+/* A skill is a thing you invoke, not a file you point at, so it takes the brand's warm colour and not the file blue. */
+.piece-skill {
+  color: var(--accent-2);
+  background: color-mix(in srgb, var(--accent-2) 16%, transparent);
+  border-radius: 3px;
+  font-weight: 550;
+}
+
+.piece-link {
+  color: var(--link, var(--sky));
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--link, var(--sky)) 55%, transparent);
+  text-underline-offset: 2px;
+}
+
 .piece-ghost {
   color: var(--faint);
 }
@@ -612,8 +635,9 @@ const hint = computed(() =>
 
 .bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 2px;
+  gap: 2px 4px;
   padding: 4px 6px 6px 6px;
   min-height: 38px;
 }
@@ -626,7 +650,11 @@ const hint = computed(() =>
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  /* A narrow view squeezes the chips instead of letting them run into each other: each one gives way, and the words
+     inside end in an ellipsis. */
   max-width: 150px;
+  min-width: 0;
+  flex: 0 1 auto;
   height: 26px;
   padding: 0 8px;
   border: 0;
@@ -638,6 +666,12 @@ const hint = computed(() =>
   overflow: hidden;
   text-overflow: ellipsis;
   transition: background 0.12s, color 0.12s;
+}
+
+.chip > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .chip:hover {

@@ -97,6 +97,18 @@ function withPlace(path: string, line: number, column: number | undefined): Path
   return target;
 }
 
+/**
+ * Put attached files into a draft as their paths, one separated from the next and from what was already typed. A path
+ * with a space in it is quoted so it still reads as one.
+ */
+export function withPaths(draft: string, paths: readonly string[]): string {
+  const text = paths.map((path) => (/\s/.test(path) ? `"${path}"` : path)).join(" ");
+  if (text === "") {
+    return draft;
+  }
+  return draft === "" || /\s$/.test(draft) ? `${draft}${text} ` : `${draft} ${text} `;
+}
+
 function stripWrapping(value: string): string {
   if (value.length >= 2) {
     const first = value[0];

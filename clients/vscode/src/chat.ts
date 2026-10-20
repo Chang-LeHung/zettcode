@@ -63,6 +63,8 @@ const SESSION_KEY = "zettcode.sessionId";
 /** The shell permissions the reader chose, per session and last (see core/remember.ts). */
 const PERMISSION_KEY = "zettcode.permissions";
 const MAX_IMAGES = 4;
+/** What a model takes as a picture; every other file is attached by its path. */
+const IMAGE_EXTENSION = /\.(?:png|jpe?g|gif|webp)$/i;
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
 const IMMEDIATE_EVENTS = new Set([
@@ -552,8 +554,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       case "mentions":
         await this.lookupMentions(message.query);
         return;
-      case "pick-images":
-        await this.pickImages();
+      case "pick-files":
+        await this.pickFiles();
         return;
       case "copy":
         await vscode.env.clipboard.writeText(message.text);
@@ -1513,9 +1515,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
   // -- editor integration ------------------------------------------------
 
   private async openTarget(target: string): Promise<void> {
+    // An address is not a file: a link the reader pressed that reached here by way of a tool's output still opens in
+    // the browser rather than failing with a sentence about paths.
+    if (/^https?:\/\//i.test(target.trim())) {
+      await this.openExternal(target.trim());
+      return;
+    }
     const parsed = parsePathTarget(target);
     if (parsed === null) {
-      this.post({ type: "notice", level: "warn", text: `That is not a path this window can open: ${target}` });
+      this.post({ type: "notice", level: "warn", text: `That is not a path this window can open: ${shorten(target)}` });
       return;
     }
     const folder = vscode.workspace.workspaceFolders?.[0]?.uri;
@@ -1604,17 +1612,22 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     await vscode.env.openExternal(vscode.Uri.parse(url));
   }
 
-  private async pickImages(): Promise<void> {
-    const picked = await vscode.window.showOpenDialog({
-      canSelectMany: true,
-      openLabel: "Attach",
-      filters: { Images: ["png", "jpg", "jpeg", "gif", "webp"] },
-    });
+  /**
+   * Attach files. A picture is sent as a picture; anything else (a PDF, an archive, a spreadsheet) cannot be read by
+   * the model from here, so what goes into the message is its path, which the agent can open with its own tools.
+   */
+  private async pickFiles(): Promise<void> {
+    const picked = await vscode.window.showOpenDialog({ canSelectMany: true, openLabel: "Attach" });
     if (!picked?.length) {
       return;
     }
+    const pictures = picked.filter((uri) => IMAGE_EXTENSION.test(uri.fsPath));
+    const others = picked.filter((uri) => !IMAGE_EXTENSION.test(uri.fsPath));
+    if (others.length) {
+      this.post({ type: "files", paths: others.map((uri) => uri.fsPath) });
+    }
     const images: AttachedImage[] = [];
-    for (const uri of picked.slice(0, MAX_IMAGES)) {
+    for (const uri of pictures.slice(0, MAX_IMAGES)) {
       const data = await vscode.workspace.fs.readFile(uri);
       if (data.byteLength > MAX_IMAGE_BYTES) {
         this.post({ type: "notice", level: "warn", text: `${path.basename(uri.fsPath)} is larger than 8 MB.` });
@@ -1642,7 +1655,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       this.readyForPrompt();
       return;
     }
-    await showUsagePanel(client, this.extensionUri, this.workspaceName()).catch((error: unknown) => this.report(error));
+    await showUsagePanel(client, this.extensionUri, this.workspaceName(), this.workspacePath()).catch((error: unknown) => this.report(error));
   }
 
   async showDoctor(): Promise<void> {
@@ -1685,6 +1698,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
 
   private workspaceName(): string {
     return vscode.workspace.workspaceFolders?.[0]?.name ?? "workspace";
+  }
+
+  private workspacePath(): string {
+    return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? "";
   }
 
   private configuredPermission(): Permission {
@@ -1852,6 +1869,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       nonce: randomBytes(16).toString("base64"),
     });
   }
+}
+
+/** A long address inside a sentence: its beginning, with an ellipsis where the rest was left out. */
+function shorten(text: string, limit = 100): string {
+  const clean = text.trim();
+  return clean.length <= limit ? clean : `${clean.slice(0, limit)}…`;
 }
 
 /** Whether a path already names a place: absolute, a drive path, or home-relative. */

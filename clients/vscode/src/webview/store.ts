@@ -5,6 +5,7 @@ import { reactive } from "vue";
 import type { Mention } from "../../../typescript/src/types.js";
 import type { DiffRow } from "../core/diff.js";
 import type { ChangeSummary } from "../core/ledger.js";
+import { withPaths } from "../core/paths.js";
 import type { AttachedImage, HostMessage, WebviewMessage, WebviewState } from "../core/protocol.js";
 import { COMPACT_TURN, createTurn, isAnnouncement, type CompactionBlock, type Turn } from "../core/state.js";
 
@@ -53,6 +54,8 @@ export const state = reactive({
   changes: {} as Record<string, ChangeSummary[]>,
   diffs: {} as Record<string, DiffPayload>,
   mentions: null as { query: string; items: Mention[] } | null,
+  /** What each `@token` the host has listed is (`file`, `skill`, …), so a typed one is coloured for what it is. */
+  mentionKinds: {} as Record<string, string>,
   collapsed: new Set<string>(),
   openTools: new Set<string>(),
   /** Commands open their card by default; the ones the reader folded. */
@@ -77,7 +80,23 @@ export const state = reactive({
   find: { open: false, query: "", index: 0, count: 0, focus: 0 },
   /** Bumped whenever the transcript grew, so the view can follow it to the bottom. */
   tick: 0,
+  /** What is shown enlarged over the conversation, if anything: a picture, a drawing, or a block of the answer. */
+  lightbox: null as Lightbox | null,
 });
+
+/** A thing opened in the lightbox. A picture and a drawing zoom and move; a block of the answer is simply bigger. */
+export type Lightbox =
+  | { kind: "image"; src: string; title: string }
+  | { kind: "drawing"; html: string; title: string }
+  | { kind: "block"; html: string; title: string };
+
+export function openLightbox(content: Lightbox): void {
+  state.lightbox = content;
+}
+
+export function closeLightbox(): void {
+  state.lightbox = null;
+}
 
 let nextId = 0;
 const toastTimers = new Map<number, number>();
@@ -364,9 +383,16 @@ export function handleHost(message: HostMessage): void {
       break;
     case "mentions":
       state.mentions = { query: message.query, items: message.items };
+      for (const item of message.items) {
+        state.mentionKinds[item.token] = item.kind;
+      }
       break;
     case "images":
       state.attachments = [...state.attachments, ...message.images].slice(0, MAX_IMAGES);
+      break;
+    case "files":
+      // A file a model cannot read from here is attached by its path, which the agent opens with its own tools.
+      state.draft = withPaths(state.draft, message.paths);
       break;
     case "notice":
       // While a compaction is out, the host's next notice is its answer, and it belongs in the row, not a toast.

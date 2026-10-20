@@ -2,6 +2,9 @@
 
 export const ICONS: Record<string, string[]> = {
   plus: ["M8 3v10M3 8h10"],
+  minus: ["M3 8h10"],
+  expand: ["M9.5 2.5h4v4M6.5 13.5h-4v-4M13.5 2.5 9 7M2.5 13.5 7 9"],
+  fit: ["M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10"],
   history: ["M2.5 8a5.5 5.5 0 1 0 1.7-4M2.5 2.5v3h3M8 5v3.2l2 1.3"],
   pencil: ["m11.2 2.3 2.5 2.5M3 10.9 2.4 13.6l2.7-.6 7.6-7.6-2.1-2.1z"],
   fold: ["m4 6 4-3 4 3M4 10l4 3 4-3"],

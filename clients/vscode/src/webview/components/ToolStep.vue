@@ -30,12 +30,17 @@ const display = computed(() => describeTool(props.tool.name, props.tool.argument
 const detail = computed(() => toolDetail(props.tool.name, props.tool.arguments));
 const language = computed(() => toolLanguage(props.tool.name, props.tool.arguments));
 const isBash = computed(() => /(^|__)(bash|shell)$/i.test(props.tool.name));
-/** A command's card is open until you fold it; every other tool's body opens when you ask. */
-const open = computed(() => (isBash.value ? !state.closedTools.has(props.tool.callId) : state.openTools.has(props.tool.callId)));
-const hasBody = computed(() => Boolean(detail.value || props.tool.output) || (isBash.value && props.tool.status === "running"));
+/** A command's card, and a failed call's, is open until you fold it; every other tool's body opens when you ask. */
+const opensByDefault = computed(() => isBash.value || props.tool.status === "failed");
+const open = computed(() =>
+  opensByDefault.value ? !state.closedTools.has(props.tool.callId) : state.openTools.has(props.tool.callId),
+);
+const hasBody = computed(
+  () => Boolean(detail.value || props.tool.output) || props.tool.status === "failed" || (isBash.value && props.tool.status === "running"),
+);
 
 function toggle(): void {
-  toggleIn(isBash.value ? state.closedTools : state.openTools, props.tool.callId);
+  toggleIn(opensByDefault.value ? state.closedTools : state.openTools, props.tool.callId);
 }
 const tone = computed(() => (props.tool.status === "failed" ? "red" : toneOf(props.tool.name)));
 const target = computed(() => display.value.target || summariseOutput(props.tool.output, 90));
@@ -64,7 +69,12 @@ const diffRows = computed(() =>
 const adds = computed(() => diffRows.value.filter((row) => row.kind === "add").length);
 const dels = computed(() => diffRows.value.filter((row) => row.kind === "del").length);
 /** Lines an edit added and removed, shown on its row so the size of a change is known without opening it. */
-const stats = computed(() => lineStats(props.tool.name, props.tool.arguments));
+const stats = computed(() =>
+  props.tool.status === "failed" || props.tool.status === "skipped" ? null : lineStats(props.tool.name, props.tool.arguments),
+);
+const failed = computed(() => props.tool.status === "failed");
+/** Why a call failed, in the tool's own words; a failure that said nothing still says that it failed. */
+const reason = computed(() => props.tool.output.trim() || "The call failed without giving a reason.");
 
 /** A file this request changed gets a link to its real diff. */
 const changedPath = computed(() => {
@@ -89,7 +99,7 @@ const changedPath = computed(() => {
         v-if="display.path && display.target"
         class="tool-target link"
         role="link"
-        :title="display.path"
+        :title="`Open ${display.path}`"
         @click.stop="post({ type: 'open', target: display.path })"
         >{{ display.target }}</span
       >
@@ -121,17 +131,23 @@ const changedPath = computed(() => {
         :failed="tool.status === 'failed'"
         empty-label="No output"
       />
-      <div v-else-if="diffRows.length" class="out diffcard">
-        <div class="out-head">
-          <span class="out-title">{{ display.path || display.target }}</span>
-          <span class="plus">+{{ adds }}</span>
-          <span class="minus">−{{ dels }}</span>
+      <template v-else-if="diffRows.length">
+        <!-- A failed edit says why before it shows what it tried to change, and shows nothing as if it had landed. -->
+        <OutputBlock v-if="failed" :text="reason" title="Why it failed" :failed="true" />
+        <div class="out diffcard" :class="{ attempted: failed }">
+          <div class="out-head">
+            <span class="out-title">{{ failed ? "Not applied · " : "" }}{{ display.path || display.target }}</span>
+            <template v-if="!failed">
+              <span class="plus">+{{ adds }}</span>
+              <span class="minus">−{{ dels }}</span>
+            </template>
+          </div>
+          <pre class="diff-body"><span v-for="(row, index) in diffRows" :key="index" :class="row.kind">{{ row.text || " " }}</span></pre>
         </div>
-        <pre class="diff-body"><span v-for="(row, index) in diffRows" :key="index" :class="row.kind">{{ row.text || " " }}</span></pre>
-      </div>
+      </template>
       <template v-else>
         <OutputBlock v-if="!tool.output && detail" :text="detail" title="Arguments" :limit="8" />
-        <OutputBlock v-if="tool.output" :text="tool.output" :failed="tool.status === 'failed'" />
+        <OutputBlock v-if="tool.output || failed" :text="failed ? reason : tool.output" :failed="failed" />
       </template>
     </div>
   </div>
@@ -302,5 +318,11 @@ const changedPath = computed(() => {
 
 .diffcard .out-head {
   align-items: center;
+}
+
+/* What a failed edit tried to change: shown, but quieter than a change that happened. */
+.diffcard.attempted {
+  margin-top: 8px;
+  opacity: 0.7;
 }
 </style>

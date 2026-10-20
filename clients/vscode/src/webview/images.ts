@@ -20,6 +20,8 @@ export async function addFiles(files: FileList | File[] | undefined): Promise<vo
   }
   for (const file of Array.from(files).slice(0, MAX_IMAGES)) {
     if (!file.type.startsWith("image/")) {
+      // A dropped file has no path in a webview, so it cannot be sent by name; the paperclip can.
+      toast(`${file.name} is not a picture. Attach it with the paperclip to send its path.`, "info");
       continue;
     }
     if (file.size > MAX_BYTES) {

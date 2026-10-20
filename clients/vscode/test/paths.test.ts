@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { looksLikePath, parsePathTarget, pathLabel } from "../src/core/paths.js";
+import { looksLikePath, parsePathTarget, pathLabel, withPaths } from "../src/core/paths.js";
+
+test("attached files join a draft as paths, quoted when a space would split them", () => {
+  assert.equal(withPaths("", ["/a/b.pdf"]), "/a/b.pdf ");
+  assert.equal(withPaths("read", ["/a/b.pdf", "/c d/e.zip"]), 'read /a/b.pdf "/c d/e.zip" ');
+  assert.equal(withPaths("read ", ["/a/b.pdf"]), "read /a/b.pdf ");
+  assert.equal(withPaths("keep", []), "keep");
+});
 
 test("a path carries a line and a column", () => {
   assert.deepEqual(parsePathTarget("src/app.ts:12:3"), { path: "src/app.ts", line: 12, column: 3 });
