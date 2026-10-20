@@ -168,3 +168,63 @@ test("a side question, a command's row or an announcement is not something the r
   await wait(40);
   assert.equal(scrolled[0]?.id, "turn-b");
 });
+
+const many = (count: number): Turn[] => Array.from({ length: count }, (_, index) => said(`turn-${index}`, `Message number ${index + 1}`));
+
+/** A view 400px high, so a rail may take 288px: room for 26 bars at 11px, and the pitch drops below 6px past 48. */
+async function dense(count: number): Promise<{ ui: Ui; scrolled: { id: string | undefined; options: unknown }[] }> {
+  const ui = await open(many(count));
+  const { scrolled } = layout(ui, {});
+  Object.defineProperty(ui.window.HTMLElement.prototype, "clientHeight", { configurable: true, get: () => 400 });
+  ui.one("#transcript")!.dispatchEvent(new ui.window.Event("scroll"));
+  await wait(60);
+  return { ui, scrolled };
+}
+
+test("with a bar for each message the rail stays as it was", async () => {
+  const { ui } = await dense(30);
+  assert.equal(ui.all(".rail-nav .rail-tick").length, 30);
+  assert.equal(ui.one(".rail-nav.dense"), null);
+});
+
+test("when the bars would touch, a bar stands for ten messages", async () => {
+  const { ui } = await dense(95);
+  assert.ok(ui.one(".rail-nav.dense"));
+  const ticks = ui.all(".rail-nav .rail-tick");
+  assert.equal(ticks.length, 10, "ninety-five messages are nine groups of ten and one of five");
+  assert.ok(ticks.slice(0, 9).every((tick) => tick.classList.contains("group")));
+
+  await move(ui, 100 + 3 * 10 + 1);
+  assert.equal(ui.one(".rail-tip .rail-tip-count")?.textContent, "31–40 / 95");
+  assert.match(ui.one(".rail-tip .rail-tip-more")?.textContent ?? "", /choose one of these 10/);
+});
+
+test("pressing a group lists its messages, and picking one scrolls to it", async () => {
+  const { ui, scrolled } = await dense(95);
+  await move(ui, 100 + 3 * 10 + 1);
+  ui.one(".rail-nav")!.dispatchEvent(new ui.window.MouseEvent("click", { clientY: 131, bubbles: true }));
+  await wait(20);
+
+  assert.equal(scrolled.length, 0, "the group itself does not scroll anywhere");
+  const rows = ui.all(".rail-pick .rail-pick-row");
+  assert.equal(rows.length, 10);
+  assert.equal(rows[0]?.querySelector(".rail-pick-n")?.textContent, "31");
+  assert.equal(rows[9]?.querySelector(".rail-pick-text")?.textContent, "Message number 40");
+
+  (rows[4] as HTMLElement).click();
+  await wait(40);
+  assert.equal(scrolled[0]?.id, "turn-34");
+  assert.equal(ui.one(".rail-pick"), null, "the list closes once one is chosen");
+});
+
+test("the last group holds what is left, and Escape closes the list", async () => {
+  const { ui } = await dense(95);
+  await move(ui, 100 + 9 * 10 + 1);
+  ui.one(".rail-nav")!.dispatchEvent(new ui.window.MouseEvent("click", { clientY: 191, bubbles: true }));
+  await wait(20);
+  assert.equal(ui.all(".rail-pick .rail-pick-row").length, 5);
+
+  ui.one(".rail-nav")!.dispatchEvent(new ui.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  await wait(20);
+  assert.equal(ui.one(".rail-pick"), null);
+});
