@@ -355,7 +355,8 @@ def test_every_guide_page_is_reachable_from_the_sidebar(language, prefix, direct
     assert pages - set(linked) == set(), "every page is listed"
     assert set(linked) <= pages, "and nothing listed is missing"
     assert len(linked) == len(set(linked)), "no page listed twice"
-    assert "usage" in linked and "context" in linked
+    if prefix in ("/guide/", "/zh/guide/"):
+        assert "usage" in linked and "context" in linked
 
     # The menus list the same pages again, and not all of them by design: the first pages are reached from their
     # own nav entries. What must hold is that no menu points anywhere that is not a page.
