@@ -6,7 +6,7 @@ import test from "node:test";
 const SOURCE = "src";
 
 /** The modules allowed to import `vscode` and the HTTP client: everything on the host side. */
-const HOST = new Set(["extension.ts", "server.ts", "chat.ts", "usage.ts", "diffs.ts"]);
+const HOST = new Set(["extension.ts", "server.ts", "chat.ts", "usage.ts", "diffs.ts", "provision.ts"]);
 
 async function sources(folder = SOURCE): Promise<{ file: string; text: string }[]> {
   const found: { file: string; text: string }[] = [];

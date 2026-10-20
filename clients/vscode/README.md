@@ -30,7 +30,10 @@ side bar, so you can ask for a change and watch it happen without leaving the ed
 
 ## Getting started
 
-1. **Install the server** that runs the agent (needs Python 3.10 or newer):
+1. **Nothing to install first.** The first time the chat starts, the extension installs its server into a folder of
+   its own, with `uv` if you have it and your `python3` otherwise; the server and the agent it drives live together in
+   that one environment, apart from your project. To use a server you already have (a `zettcode-server` on your
+   `PATH`, or in the workspace's `.venv`), it is found first and nothing is installed. To do it by hand instead:
 
    ```bash
    uv tool install zettcode-server
@@ -79,6 +82,7 @@ Open **Settings** and search for *ZettCode*. The ones you are most likely to wan
 | `zettcode.autoTitle` | `true` | Let the model name an untitled conversation after its first answer. |
 | `zettcode.answerTimeout` | `300` | Seconds an approval or question waits before the safe answer is used. |
 | `zettcode.server.command` | `zettcode-server` | Where the server is, if it is not on your `PATH` or in the workspace's `.venv`. |
+| `zettcode.server.autoInstall` | `true` | Install the server into the extension's own environment when the command cannot be found. |
 | `zettcode.server.externalUrl` | empty | Connect to a server you started yourself instead of launching one. |
 
 ## Your code and your keys
