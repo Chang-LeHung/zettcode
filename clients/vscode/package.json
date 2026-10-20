@@ -2,7 +2,7 @@
   "name": "zettcode",
   "displayName": "ZettCode",
   "description": "The ZettCode coding agent in VS Code: streamed turns, chained tool calls, file jumps, approvals, sessions, models and effort.",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "publisher": "zettcode",
   "author": {
     "name": "Chang LeHung",
@@ -192,10 +192,15 @@
           "default": true,
           "description": "Start a ZettCode server for the workspace when the chat opens."
         },
+        "zettcode.server.autoInstall": {
+          "type": "boolean",
+          "default": true,
+          "description": "When the zettcode-server command cannot be found, install the server once into the extension's own environment (with uv when it is available, otherwise with python3), beside the agent it drives."
+        },
         "zettcode.server.command": {
           "type": "string",
           "default": "zettcode-server",
-          "description": "The zettcode-server command. A path is used as given; a bare name is looked up in the workspace's .venv, then on PATH."
+          "description": "The zettcode-server command. A path is used as given; a bare name is looked up in the workspace's .venv, then on PATH, and when it is nowhere the extension installs one (see zettcode.server.autoInstall)."
         },
         "zettcode.server.args": {
           "type": "array",

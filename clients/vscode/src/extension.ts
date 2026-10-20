@@ -5,6 +5,7 @@ import * as vscode from "vscode";
 import { ChatViewProvider } from "./chat.js";
 import { DIFF_SCHEME, DiffContentProvider } from "./diffs.js";
 import { ServerManager } from "./server.js";
+import { installServer } from "./provision.js";
 
 let server: ServerManager | null = null;
 
@@ -21,7 +22,14 @@ export function activate(context: vscode.ExtensionContext): void {
     output.appendLine("[warn] No workspace folder is open; the agent needs one.");
   }
 
-  server = new ServerManager(workspace, output);
+  // The server is installed once, into the extension's own environment, unless the reader turned that off or named a
+  // command of their own somewhere the extension can reach.
+  const autoInstall = vscode.workspace.getConfiguration("zettcode").get<boolean>("server.autoInstall", true);
+  server = new ServerManager(
+    workspace,
+    output,
+    autoInstall ? () => installServer({ storage: context.globalStorageUri.fsPath, output }) : null,
+  );
   const provider = new ChatViewProvider(context.extensionUri, server, context, output);
   context.subscriptions.push(
     server,

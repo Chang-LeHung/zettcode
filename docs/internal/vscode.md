@@ -9,6 +9,7 @@ through `clients/typescript`, and holds no agent, tools, or session store of its
 | --- | --- |
 | `src/extension.ts` | Activation, the status bar, the command palette, and the one `ServerManager`. |
 | `src/server.ts` | One `zettcode-server` child: command lookup, free port, a per-window token, health polling, restarts. |
+| `src/provision.ts` | Installing the server once into the extension's own environment (`globalStorage/server/venv`), with `uv` when it is there and the machine's `python3` otherwise; `src/core/provision.ts` holds the paths and the commands, so a test can read them. |
 | `src/chat.ts` | The webview provider: runs a prompt, folds its frames into a turn, and answers the webview's actions. |
 | `src/html.ts` | The document skeleton, free of the VS Code API so a test can render it. |
 | `src/usage.ts` | The panel around the read-only pages (usage, model check, plugins). It only creates the panel and wraps the HTML; it has no script, because the tabs are radio buttons. |
@@ -82,13 +83,14 @@ this client's load-bearing rules live here and are named by the `npm test` case 
 | V32 | `Ctrl+F` (`Cmd+F` on a Mac) opens a search over the conversation on show, with the cursor in it and a short selection as the query. It counts the matches ignoring case, never in buttons or scripts; `Enter`/`Shift+Enter` (or `F3`) step through them and wrap round, `Escape` closes it and returns to the message box, and the matches are found again as the conversation grows. | `find.test.ts` — "a query is found wherever it occurs…", "stepping wraps round at both ends…", "Ctrl+F opens a search that counts the matches, steps through them and closes with Escape", "Cmd+F does the same on a Mac…", "an open search follows the conversation as it grows" |
 | V33 | The shell permission the reader chooses is remembered by the extension, not left to the server (which forgets it on every restart): each session gets back the level it was last set to, a session with none starts from the last level chosen in the workspace, a level the server does not offer or a damaged stored value is ignored, and only the newest 200 sessions are kept. | `remember.test.ts` — "a session gets back the permission it was last set to, and a new one the last choice made here", "a level the server does not offer is not asked for", "what was stored is read back through a filter…", "only the newest sessions are kept…", "the chat view puts the remembered permission back whenever a session is read, and saves each choice" |
 | V34 | A component's `<style>` block is global, so a class it lays out is its own: no bare `.name` rule may be shared with another component's template unless it is one of the small primitives listed in the test. (`.live` was the status row's `display: flex` and laid a thought out beside its own label; `.tick` was the rail's bar and flattened the check marks in the menus; `.compaction`, `.compaction-head` and `.box` leaked the same way.) | `style.test.ts` — "a class a component lays out is its own, unless it is one of the shared primitives", "the status row and the message rail keep their own class names"; `webview.test.ts` — "a step that is thinking carries no class another part of the view lays out" |
+| V35 | The extension installs the server it runs, once, into an environment of its own (`globalStorage/server/venv`) where the server and the agent it drives live together: `uv` makes it when the PATH has `uv`, the machine's `python3` otherwise, and a machine with neither is told how to install it. An existing `zettcode-server` (configured, in the workspace's `.venv`, or on the PATH) is always used first and never replaced, and `zettcode.server.autoInstall` turns the install off. | `provision.test.ts` — "the server lives in an environment of the extension's own…", "uv makes the environment and installs into it, and is used before python", "without uv, python's own venv and pip do the same…", "a machine with neither uv nor python has no plan…", "the extension installs only when the command is nowhere, and only if the reader allows it" |
 
 ## Building, trying and packaging it
 
 ```bash
 make vscode           # install, type-check, test and build the extension
-make vscode-package   # also write clients/vscode/zettcode-0.1.3.vsix
-code --install-extension clients/vscode/zettcode-0.1.3.vsix --force
+make vscode-package   # also write clients/vscode/zettcode-0.1.4.vsix
+code --install-extension clients/vscode/zettcode-0.1.4.vsix --force
 ```
 
 Or open `clients/vscode` in VS Code and press **F5** to run it in an Extension Development Host. From

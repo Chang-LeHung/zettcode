@@ -46,6 +46,11 @@ export class ServerManager implements vscode.Disposable {
   constructor(
     private readonly workspace: string,
     private readonly output: vscode.OutputChannel,
+    /**
+     * Install the server the extension runs itself, answering its path, or `null` when it could not be installed. Called
+     * only when the configured command is nowhere to be found; `null` means the reader has to install it.
+     */
+    private readonly provision: (() => Promise<string | null>) | null = null,
   ) {}
 
   /** The current state, for the status bar and a newly opened webview. */
@@ -149,7 +154,20 @@ export class ServerManager implements vscode.Disposable {
     const port = (await isPortBusy(configuredPort)) ? await freePort() : configuredPort;
     const baseUrl = `http://127.0.0.1:${port}`;
     const token = options.useToken ? randomBytes(24).toString("hex") : "";
-    const command = resolveCommand(options.command, this.workspace);
+    const configured = resolveCommand(options.command, this.workspace);
+    let command = configured;
+    if (!isAvailable(configured)) {
+      const installed = this.provision === null ? null : await this.provision();
+      if (installed === null) {
+        throw this.failed(
+          new Error(
+            `zettcode-server was not found. Install it with “uv tool install zettcode-server” (or “pip install zettcode-server”), or point zettcode.server.command at it.`,
+          ),
+          this.generation + 1,
+        );
+      }
+      command = installed;
+    }
     const args = [
       "--workspace",
       this.workspace,
@@ -426,6 +444,18 @@ function resolveCommand(command: string, workspace: string): string {
     }
   }
   return trimmed;
+}
+
+/** Whether a resolved command is something that can be run: a path that is there, or a name the PATH has. */
+function isAvailable(command: string): boolean {
+  if (command.includes("/") || command.includes("\\")) {
+    return existsSync(command);
+  }
+  const suffixes = process.platform === "win32" ? [".exe", ".cmd", ".bat", ""] : [""];
+  return (process.env.PATH ?? "")
+    .split(path.delimiter)
+    .filter(Boolean)
+    .some((directory) => suffixes.some((suffix) => existsSync(path.join(directory, command + suffix))));
 }
 
 function samePath(left: string, right: string): boolean {
