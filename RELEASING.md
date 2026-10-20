@@ -2,8 +2,9 @@
 
 `zettcode` is published from this repository to PyPI by
 `.github/workflows/release.yml`. The repository is a uv workspace: the agent is
-`zettcode/`, the HTTP server is `zettcode-server/`, and only the agent is
-published by a `v*` tag.
+`zettcode/`, the HTTP server is `zettcode-server/`. A `v*` tag publishes the agent;
+the server has its own version and its own tag, `zettcode-server-v*`, which
+`.github/workflows/release-server.yml` publishes and neither tag publishes the other.
 
 ## One-time setup
 
@@ -37,6 +38,26 @@ requests `id-token: write`.
 
 A manual `workflow_dispatch` run only builds and uploads the artifacts;
 publishing and the GitHub release both require a tag push.
+
+## Cutting a server release
+
+The VS Code extension installs `zettcode-server` from PyPI, so the server has to be
+there for the extension to work on a machine that has never seen this repository.
+
+1. Keep the `zettcode>=` floor in `zettcode-server/pyproject.toml` at the released
+   agent whose SDK it was built against, then set the version in
+   `zettcode-server/src/zettcode_server/__init__.py`.
+2. Tag with the server's own prefix, so the agent's workflow is not triggered:
+
+   ```bash
+   git tag zettcode-server-v0.1.0
+   git push origin main
+   git push origin zettcode-server-v0.1.0
+   ```
+
+The workflow builds only the server, checks the tag against its version, publishes,
+and opens a GitHub release. The same `PYPI_API_TOKEN` is used, so it has to cover both
+projects — a project-scoped token for `zettcode` alone will not publish this one.
 
 ## CI
 
