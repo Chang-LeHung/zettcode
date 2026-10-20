@@ -37,6 +37,7 @@ def home(tmp_path: Path, monkeypatch) -> Path:
     directory = tmp_path / "home"
     directory.mkdir()
     monkeypatch.setattr("zettcode.config.DEFAULT_SKILL_ROOT", str(directory / "skills"))
+    monkeypatch.setattr("zettcode.config.DEFAULT_AGENTS_SKILL_ROOT", str(directory / "agents" / "skills"))
     return directory
 
 
@@ -62,14 +63,23 @@ def test_the_default_scope_is_both_the_users_files_and_the_projects(tmp_path: Pa
     project = config.workspace
 
     assert (config.skills_scope, config.mcp_scope) == ("both", "both")
-    assert config.skill_search_roots() == ((project / ".zettcode" / "skills").resolve(), (home / "skills").resolve())
-    assert config.mcp_files() == ((project / ".zettcode" / "mcp.json").resolve(), (home / "mcp.json").resolve())
+    assert config.skill_search_roots() == (
+        (project / ".zettcode" / "skills").resolve(),
+        (project / ".agents" / "skills").resolve(),
+        (home / "skills").resolve(),
+        (home / "agents" / "skills").resolve(),
+    )
+    assert config.mcp_files() == (
+        (project / ".zettcode" / "mcp.json").resolve(),
+        (project / ".agents" / "mcp.json").resolve(),
+        (home / "mcp.json").resolve(),
+    )
 
 
 def test_global_scope_reads_only_the_users_own_files(tmp_path: Path, home: Path):
     config = _config(tmp_path, home, skills_scope="global", mcp_scope="global")
 
-    assert config.skill_search_roots() == ((home / "skills").resolve(),)
+    assert config.skill_search_roots() == ((home / "skills").resolve(), (home / "agents" / "skills").resolve())
     assert config.mcp_files() == ((home / "mcp.json").resolve(),)
 
 
@@ -77,8 +87,14 @@ def test_workspace_scope_reads_only_the_projects_files(tmp_path: Path, home: Pat
     config = _config(tmp_path, home, skills_scope="workspace", mcp_scope="workspace")
     project = config.workspace
 
-    assert config.skill_search_roots() == ((project / ".zettcode" / "skills").resolve(),)
-    assert config.mcp_files() == ((project / ".zettcode" / "mcp.json").resolve(),)
+    assert config.skill_search_roots() == (
+        (project / ".zettcode" / "skills").resolve(),
+        (project / ".agents" / "skills").resolve(),
+    )
+    assert config.mcp_files() == (
+        (project / ".zettcode" / "mcp.json").resolve(),
+        (project / ".agents" / "mcp.json").resolve(),
+    )
 
 
 def test_both_puts_the_project_first_so_its_version_wins(tmp_path: Path, home: Path):
@@ -87,9 +103,15 @@ def test_both_puts_the_project_first_so_its_version_wins(tmp_path: Path, home: P
 
     assert config.skill_search_roots() == (
         (project / ".zettcode" / "skills").resolve(),
+        (project / ".agents" / "skills").resolve(),
         (home / "skills").resolve(),
+        (home / "agents" / "skills").resolve(),
     )
-    assert config.mcp_files() == ((project / ".zettcode" / "mcp.json").resolve(), (home / "mcp.json").resolve())
+    assert config.mcp_files() == (
+        (project / ".zettcode" / "mcp.json").resolve(),
+        (project / ".agents" / "mcp.json").resolve(),
+        (home / "mcp.json").resolve(),
+    )
 
 
 def test_configured_roots_still_come_before_either_scope(tmp_path: Path, home: Path):
@@ -103,7 +125,30 @@ def test_a_root_that_names_a_directory_a_scope_also_names_is_scanned_once(tmp_pa
     config = _config(tmp_path, home, skills_scope="both", skill_roots=(Path(".zettcode/skills"),))
 
     roots = config.skill_search_roots()
-    assert len(roots) == len(set(roots)) == 2
+    assert len(roots) == len(set(roots)) == 4
+
+
+def test_skills_under_dot_agents_are_found_in_the_project_and_for_the_user(tmp_path: Path, home: Path):
+    project = tmp_path / "project"
+    _skill(project / ".agents" / "skills", "shared-local", "from the project's .agents")
+    _skill(home / "agents" / "skills", "shared-mine", "from the user's .agents")
+
+    assert _skills(_config(tmp_path, home)) == {
+        "shared-local": "from the project's .agents",
+        "shared-mine": "from the user's .agents",
+    }
+    assert _skills(_config(tmp_path, home, skills_scope="workspace")) == {"shared-local": "from the project's .agents"}
+    assert _skills(_config(tmp_path, home, skills_scope="global")) == {"shared-mine": "from the user's .agents"}
+
+
+def test_a_zettcode_skill_wins_over_a_dot_agents_skill_of_the_same_name_in_the_same_scope(tmp_path: Path, home: Path):
+    project = tmp_path / "project"
+    _skill(project / ".zettcode" / "skills", "review", "ZettCode's")
+    _skill(project / ".agents" / "skills", "review", "the shared one")
+    _skill(home / "agents" / "skills", "review", "the user's shared one")
+
+    assert _skills(_config(tmp_path, home)) == {"review": "ZettCode's"}
+    assert _skills(_config(tmp_path, home, skills_scope="global")) == {"review": "the user's shared one"}
 
 
 def test_an_unknown_scope_is_refused():
@@ -258,6 +303,31 @@ def test_an_entry_that_cannot_be_used_is_named_with_the_file_it_is_in(tmp_path: 
 
     assert _names(extension) == {"mine": "http://127.0.0.1:9/mine"}
     assert any("'typo'" in line and ".zettcode/mcp.json" in line for line in extension.startup_issues)
+
+
+def test_servers_under_dot_agents_are_read_in_the_project_and_for_the_user(tmp_path: Path, home: Path, monkeypatch):
+    monkeypatch.setattr("zettcode.config.DEFAULT_MCP_CONFIG", str(home / "mcp.json"))
+    monkeypatch.setattr("zettcode.config.DEFAULT_AGENTS_MCP_CONFIG", str(home / "agents" / "mcp.json"))
+    project = tmp_path / "project"
+    _servers(project / ".agents" / "mcp.json", shared="http://127.0.0.1:9/shared", docs="http://127.0.0.1:9/agents")
+    _servers(project / ".zettcode" / "mcp.json", docs="http://127.0.0.1:9/zettcode")
+    _servers(home / "agents" / "mcp.json", mine="http://127.0.0.1:9/mine")
+
+    config = _config(tmp_path, home)
+    object.__setattr__(config, "mcp_config", None)
+    extension = build_scoped_mcp_extension(config.mcp_files())
+
+    assert _names(extension) == {
+        "docs": "http://127.0.0.1:9/zettcode",
+        "shared": "http://127.0.0.1:9/shared",
+        "mine": "http://127.0.0.1:9/mine",
+    }
+
+
+def test_a_team_file_named_in_the_configuration_replaces_the_users_agents_file(tmp_path: Path, home: Path):
+    config = _config(tmp_path, home)
+
+    assert (home / "agents" / "mcp.json").resolve() not in config.mcp_files()
 
 
 def test_the_runtime_reads_the_files_its_scope_names(tmp_path: Path, home: Path):
