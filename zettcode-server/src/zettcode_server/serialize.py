@@ -7,6 +7,7 @@ result are shaped by the same rules.
 
 from __future__ import annotations
 
+import base64
 from typing import TYPE_CHECKING, Any
 
 from .schemas import (
@@ -15,6 +16,7 @@ from .schemas import (
     ContextShareOut,
     CurrentSessionOut,
     DayTotalsOut,
+    ImageIn,
     MentionOut,
     MessageOut,
     ModelCheckOut,
@@ -190,6 +192,10 @@ def message_out(message: Message) -> MessageOut:
         tool_name=message.tool_name,
         ok=message.ok,
         images=message.images,
+        pictures=[
+            ImageIn(data=base64.b64encode(picture.data).decode("ascii"), media_type=picture.media_type)
+            for picture in message.pictures
+        ],
         usage=None if message.usage is None else usage_out(message.usage),
         seconds=message.seconds,
     )

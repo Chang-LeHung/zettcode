@@ -892,7 +892,7 @@ def _message_of(item: object, usage: Any = None, seconds: float = 0.0) -> Messag
     ``usage`` is what the store recorded for the model call that produced the message, and ``seconds`` how long it took.
     """
     from zett_agent.extensions.compaction import CompactedMessage
-    from zett_agent.messages import AssistantMessage, ImageContent, ToolMessage, UserMessage
+    from zett_agent.messages import AssistantMessage, ImageBytesSource, ImageContent, ToolMessage, UserMessage
 
     # The summary that stands in for the older messages is a user message to the model, but nobody typed it.
     if isinstance(item, CompactedMessage):
@@ -900,8 +900,13 @@ def _message_of(item: object, usage: Any = None, seconds: float = 0.0) -> Messag
     if isinstance(item, UserMessage):
         typed = item.attributes.get("prompt")
         text = typed if isinstance(typed, str) else item.text
+        pictures = tuple(
+            Image(part.source.data, part.source.media_type)
+            for part in item.parts
+            if isinstance(part, ImageContent) and isinstance(part.source, ImageBytesSource) and part.source.data
+        )
         images = sum(1 for part in item.parts if isinstance(part, ImageContent))
-        return Message("user", text, images=images)
+        return Message("user", text, images=images, pictures=pictures)
     if isinstance(item, AssistantMessage):
         calls = tuple(ToolCallInfo(call.id, call.name, dict(call.arguments)) for call in item.tool_calls)
         spent = (

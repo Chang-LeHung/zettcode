@@ -304,13 +304,15 @@ async def test_a_prompt_with_a_resolved_mention_is_shown_in_history_as_it_was_ty
         assert (await client.session.history())[0].text == "plain words"
 
 
-async def test_images_in_history_are_counted_not_embedded(tmp_path, monkeypatch):
+async def test_a_user_message_in_history_carries_its_pictures_back(tmp_path, monkeypatch):
     wire(monkeypatch, ScriptedModel("a dot"))
+    data = b"\x89PNG" + b"1" * 20
     async with make(tmp_path, models=models("eyes", multimodal=True)) as client:
-        await client.prompt(["look ", zc.Image(b"\x89PNG" + b"1" * 20, "image/png")])
+        await client.prompt(["look ", zc.Image(data, "image/png")])
         user = (await client.session.history())[0]
 
     assert user.images == 1 and user.text.startswith("look")
+    assert user.pictures == (zc.Image(data, "image/png"),)
 
 
 # -- naming, forking, exporting -------------------------------------------------------------------

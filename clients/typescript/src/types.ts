@@ -123,6 +123,8 @@ export interface Message {
   tool_name: string | null;
   ok: boolean;
   images: number;
+  /** A user message's images, base64 encoded, so a reopened session can show them again. */
+  pictures?: { data: string; media_type: string }[];
   /** What the model call that wrote an assistant message spent, when the store recorded it. */
   usage?: Usage | null;
   /** How long the message took to produce; zero for a message typed by a person. */

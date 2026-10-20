@@ -227,7 +227,9 @@ class Message:
         tool_call_id: For a tool message, the call it answers.
         tool_name: For a tool message, the tool.
         ok: For a tool message, whether the call succeeded.
-        images: How many images the message carries; their bytes are not kept in the history.
+        images: How many images the message carries.
+        pictures: For a user message, the images themselves, so a client that reopens the session can show them
+            again. A tool message's images are counted but not returned.
         usage: For an assistant message, what its model call spent, when the store recorded it.
         seconds: How long the message took to produce: the model call for an assistant message, the run for a tool
             message, and nothing for a user message.
@@ -242,6 +244,7 @@ class Message:
     images: int = 0
     usage: Usage | None = None
     seconds: float = 0.0
+    pictures: tuple[Image, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

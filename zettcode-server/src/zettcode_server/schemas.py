@@ -271,6 +271,7 @@ class MessageOut(BaseModel):
     tool_name: str | None = None
     ok: bool = True
     images: int = 0
+    pictures: list[ImageIn] = Field(default_factory=list)
     usage: UsageOut | None = None
     seconds: float = 0.0
 
