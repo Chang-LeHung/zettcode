@@ -1,12 +1,18 @@
 <script setup lang="ts">
-import { state } from "../store.js";
+import { openLightbox, state } from "../store.js";
 import Icon from "./Icon.vue";
 </script>
 
 <template>
   <div v-if="state.attachments.length" id="attachments" class="attachments">
     <div v-for="(image, index) in state.attachments" :key="index" class="attachment">
-      <img :src="`data:${image.mediaType};base64,${image.data}`" alt="" />
+      <img
+        class="zoomable"
+        :src="`data:${image.mediaType};base64,${image.data}`"
+        alt=""
+        title="Open the picture"
+        @click="openLightbox({ kind: 'image', src: `data:${image.mediaType};base64,${image.data}`, title: image.name })"
+      />
       <span>{{ image.name }}</span>
       <button class="icon-btn" type="button" title="Remove" aria-label="Remove" @click="state.attachments.splice(index, 1)">
         <Icon name="x" :size="11" />
