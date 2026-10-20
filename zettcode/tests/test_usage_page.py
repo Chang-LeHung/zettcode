@@ -20,7 +20,7 @@ from zettcode.plugins import PluginContainer
 from zettcode.plugins.builtins import BUILTIN_PLUGINS, UsageCommand
 from zettcode.tui import DARK, LIGHT, TuiApp
 from zettcode.tui.core.events import MouseAction, MouseEvent
-from zettcode.tui.render import parse_hex
+from zettcode.tui.render import blend, parse_hex
 from zettcode.tui.testing import Harness
 from zettcode.tui.testing.snapshot import render_block
 
@@ -275,7 +275,27 @@ def test_the_calendar_shades_are_five_distinct_colours_in_either_theme(theme):
     colours = {page.style_of(f"heat{level}").foreground for level in range(5)}
 
     assert len(colours) == 5
-    assert page.style_of("heat2*").background == theme.selection != page.style_of("heat2").background
+    chosen = page.style_of("heat2*")
+    assert chosen.background != page.style_of("heat2").background and chosen.bold, (
+        "the chosen day is lifted off the page"
+    )
+    assert chosen.foreground == page.style_of("heat2").foreground, "and keeps its own shade"
+
+
+@pytest.mark.parametrize("theme", [DARK, LIGHT])
+def test_the_calendar_is_orange_gold_and_told_apart_from_an_empty_day_and_from_its_neighbours(theme):
+    page = page_of(sample(), tab="Calendar")
+    TuiApp(page, width=60, height=20, theme=theme).mount()
+
+    empty = page.style_of("heat0").foreground
+    shades = [page.style_of(f"heat{level}").foreground for level in range(1, charts.LEVELS)]
+
+    for shade in shades:
+        hue = hls(shade)[0] * 360
+        assert 20 <= hue <= 45, f"{theme.name}: {shade} is hue {hue:.0f}, not orange-gold"
+    assert distance(empty, shades[0]) >= 40, "the quietest active day is not mistaken for an empty one"
+    steps = [distance(first, second) for first, second in zip(shades, shades[1:], strict=False)]
+    assert min(steps) >= 22, f"{theme.name}: neighbouring levels are {steps} apart"
 
 
 @pytest.mark.parametrize("theme", [DARK, LIGHT])
@@ -287,8 +307,9 @@ def test_every_calendar_level_stands_deeper_and_further_from_the_page_than_the_o
     distances = [distance(theme.surface_alt, shade) for shade in shades]
 
     assert distances == sorted(distances) and len(set(shades)) == len(shades)
-    assert hls(shades[-1])[1] < hls(theme.accent)[1], "the busiest day is deeper than the accent"
-    assert hls(shades[-1])[2] > hls(theme.accent)[2], "and more saturated"
+    base = blend(theme.warning, theme.tools.write, 0.5)
+    assert hls(shades[-1])[1] < hls(base)[1], "the busiest day is deeper than the colour it is made from"
+    assert hls(shades[-1])[2] > hls(base)[2], "and more saturated"
 
 
 def test_tab_and_the_number_keys_switch_views_and_start_each_at_its_top():
