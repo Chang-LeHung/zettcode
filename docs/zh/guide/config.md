@@ -75,14 +75,18 @@ SDK 自带一个。插件可以往这个列表里添加 provider，见[插件](/
 
 ```text
 Add a model at DeepSeek
-Tab moves between the lines; Enter saves them all.
 
-› Model id *    deepseek-chat
-  Token         ••••••••••••••
-  Address       https://api.deepseek.com
-  Shown name    the model id
-  Temperature   the provider's default
+╭─ Model id * ────────────────────────────────────────╮
+│ deepseek-chat                                  │
+╰────────────────────────────────────────────────╯
+╭─ Token ──────────────────────────────────────────╮
+│ ••••••••••••••                                 │
+╰────────────────────────────────────────────────╯
+   … Address、Shown name 和 Temperature，各自一个方框
 ```
+
+每一行都是一个**方框**，标签在上边框上，光标所在的那个框会变成亮绿色，一眼就能看出这是要输入的地方；点击方框的任何位置（包括边框）都会把光标放到那里。
+表单大约需要 20 行；终端不够高时，每一行改成占一行、文字带底色，用法不变。
 
 **Tab**（或 **↓**）移到下一行，**Shift-Tab**（或 **↑**）回到上一行，到尽头会绕回来；**Enter** 一次保存全部；表单下面的提示会解释光标所在的那一行。只有**模型 id** 是必填的
 （`custom` 还要地址）。**token 可以留空**：本地服务器（Ollama、LM Studio、vLLM）不需要，环境里有 `OPENAI_API_KEY` 时就用它。

@@ -80,14 +80,20 @@ A provider is added on **one form**, not a question at a time:
 
 ```text
 Add a model at DeepSeek
-Tab moves between the lines; Enter saves them all.
 
-› Model id *    deepseek-chat
-  Token         ••••••••••••••
-  Address       https://api.deepseek.com
-  Shown name    the model id
-  Temperature   the provider's default
+╭─ Model id * ────────────────────────────────────────╮
+│ deepseek-chat                                  │
+╰────────────────────────────────────────────────╯
+╭─ Token ──────────────────────────────────────────╮
+│ ••••••••••••••                                 │
+╰────────────────────────────────────────────────╯
+   … Address, Shown name and Temperature, each in a box of its own
 ```
+
+Every line is a **box** with its label on the top border, bright green while the cursor is in it, so it reads as
+something to type into; a click anywhere on a box, its border included, puts the cursor there. The form needs about
+20 rows; on a terminal too short for that, the lines are drawn one row each instead, the text on a band of its own,
+and work the same.
 
 **Tab** (or **↓**) moves to the next line and **Shift-Tab** (or **↑**) to the previous one, going round at the ends;
 **Enter** saves all of it; a hint under the form explains the line the cursor is in. Only the **model id** is required

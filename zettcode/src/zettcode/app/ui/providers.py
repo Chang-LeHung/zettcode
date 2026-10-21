@@ -235,7 +235,6 @@ class ConfigMixin(ShellState):
             fields,
             on_submit=lambda values: self._config_added(draft, values),
             on_cancel=lambda: self._config_step_back(draft),
-            note="Tab moves between the lines; Enter saves them all.",
             cancel_label="esc back" if draft.trail or draft.from_panel else "esc cancel",
         )
         self._config_show(page, rows=form_rows(len(fields)), replace=replace)

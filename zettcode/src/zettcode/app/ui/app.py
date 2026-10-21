@@ -28,6 +28,7 @@ from zettcode.tui import (
     PROMPT,
     SEPARATOR,
     CompletionPopup,
+    Rect,
     RichText,
     Screen,
     Span,
@@ -182,12 +183,12 @@ class ZettCodeApp(
         self.header = StatusBar(self._header_left, self._header_right)
         self.status = StatusBar(self._status_left, self._status_right)
         self.panel = TaskPanel()
-        #: The companion over the conversation, which the reader can drag, choose with ``/pet`` and switch off in
-        #: ``/statusline``.
+        #: The companion over the conversation and the composer, which the reader can drag, choose with ``/pet`` and
+        #: switch off in ``/statusline``.
         self._pet_before: Pet | None = None
         self.pet = PetView(
             self._starting_pet(),
-            area=lambda: self.view.rect,
+            area=self._pet_area,
             shown=lambda: "pet" not in self.agent.statusline_hidden,
             busy=lambda: self._busy,
             forward=self.view,
@@ -278,6 +279,19 @@ class ZettCodeApp(
     def busy(self) -> bool:
         """Return whether a turn or command is in flight."""
         return self._busy
+
+    def _pet_area(self) -> Rect:
+        """Return where the pet may stand: from the top of the conversation to the bottom of the composer.
+
+        That takes in the rows between them (the flash line, the menu, the queued messages) and the composer itself,
+        so the pet can sit on the box the reader types in, in the empty space to the right of the draft. It stops at
+        the bars: the header and the status line are not its ground. A panel that is open covers it, as it covers
+        everything under it, because the panel is a screen above this one.
+        """
+        view, composer = self.view.rect, self.composer.rect
+        if composer.empty or composer.bottom <= view.y:
+            return view
+        return Rect(view.x, view.y, view.width, max(view.height, composer.bottom - view.y))
 
     def _remember_pet_position(self, across: float, down: float) -> None:
         """Keep where the pet was left in the config file, so the next start puts it back.
