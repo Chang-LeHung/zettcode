@@ -37,7 +37,7 @@ class TextArea(Widget):
     for a fresh layout, which is what makes a composer grow in its box.
     """
 
-    NEWLINE_KEYS = ("alt_enter", "shift_enter")
+    NEWLINE_KEYS: tuple[str, ...] = ("alt_enter", "shift_enter")
 
     def __init__(
         self,

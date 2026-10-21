@@ -17,7 +17,7 @@ from zettcode.app.agent import runtime as runtime_module
 from zettcode.app.agent.agent import ZettCodeAgent
 from zettcode.app.agent.runtime import ZettCodeRuntime
 from zettcode.app.ui import ZettCodeApp
-from zettcode.app.ui.widgets import InputPage
+from zettcode.app.ui.widgets import FormPage, InputPage
 from zettcode.app.ui.widgets.input_page import MASK
 from zettcode.config import load_config
 from zettcode.config_edit import ConfigEditError
@@ -234,28 +234,100 @@ async def test_a_token_typed_on_the_line_is_not_echoed_into_the_conversation_or_
     assert "sk-SECRET-123" not in shown and "sk-SECRET-123" not in fx.screen()
 
 
-# -- /config add: the questions ------------------------------------------------------------------------
+# -- /config add: the form ----------------------------------------------------------------------------
 
 
-async def test_add_with_a_provider_only_asks_for_the_model_then_the_token(shell):
+def form_of(fx):
+    page = fx.page(FormPage)
+    assert page is not None, fx.screen()
+    return page
+
+
+async def test_add_with_a_provider_shows_one_form_and_only_the_model_id_is_required(shell):
     fx = shell()
 
     await fx.command("/config add deepseek")
-    page = fx.page(InputPage)
-    assert page is not None and "Model id" in page.title
-    fx.type("deepseek-chat")
-    page = fx.page(InputPage)
-    assert page is not None and "Token" in page.title
-    fx.type("sk-typed")
+    page = form_of(fx)
 
-    assert fx.page(InputPage) is None, "the panel closed when the last answer was in"
+    assert [field.key for field in page.fields] == ["model", "token", "url", "name", "temperature"]
+    assert [field.key for field in page.fields if field.required] == ["model"]
+    assert page.focus_key() == "model", "the cursor starts in the first line"
+    assert fx.page(InputPage) is None
+
+
+async def test_tab_moves_between_the_lines_and_enter_saves_them_all_at_once(shell):
+    fx = shell()
+    await fx.command("/config add deepseek")
+
+    fx.harness.write("deepseek-chat")
+    fx.harness.press("tab")
+    assert form_of(fx).focus_key() == "token"
+    fx.harness.write("sk-typed")
+    fx.harness.press("enter")
+
+    assert fx.page(FormPage) is None, "the panel closed when it was saved"
     assert fx.models[-1] == {"model": "deepseek-chat", "token": "sk-typed", "base_url": "https://api.deepseek.com"}
     assert fx.configured[-1] == "deepseek-chat"
 
 
-async def test_the_token_question_hides_what_is_typed(shell):
+async def test_the_token_may_be_left_empty_and_then_none_is_written(shell, monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    fx = shell()
+    await fx.command("/config add custom --api chat --url http://localhost:11434/v1")
+
+    fx.harness.write("llama3")
+    fx.harness.press("enter")
+
+    assert fx.models[-1] == {"model": "llama3", "base_url": "http://localhost:11434/v1", "chat": True}
+    assert fx.configured[-1] == "llama3" and fx.errors() == []
+
+
+async def test_the_model_id_may_not_be_empty_and_the_cursor_goes_to_it(shell):
+    fx = shell()
+    await fx.command("/config add deepseek")
+    fx.harness.press("tab")
+    fx.harness.write("sk-kept")
+
+    fx.harness.press("enter")
+    page = form_of(fx)
+
+    assert page.refusal == "model id is required" and "model id is required" in fx.screen()
+    assert page.focus_key() == "model", "back to the line that is wrong"
+    assert page.values["token"] == "sk-kept", "and nothing that was typed is lost"
+    assert fx.configured == ("gpt-5-mini", "gpt-4o")
+
+
+async def test_the_refusal_goes_once_the_reader_starts_correcting(shell):
+    fx = shell()
+    await fx.command("/config add deepseek")
+    fx.harness.press("enter")
+    assert form_of(fx).refusal
+
+    fx.harness.write("d")
+
+    assert form_of(fx).refusal == ""
+
+
+async def test_shift_tab_and_the_arrow_keys_move_too_and_go_round_at_either_end(shell):
+    fx = shell()
+    await fx.command("/config add deepseek")
+    keys = [field.key for field in form_of(fx).fields]
+
+    fx.harness.press("backtab")
+    assert form_of(fx).focus_key() == keys[-1], "back from the first goes to the last"
+    fx.harness.press("tab")
+    assert form_of(fx).focus_key() == keys[0], "and forward from the last goes to the first"
+    fx.harness.press("down")
+    assert form_of(fx).focus_key() == keys[1]
+    fx.harness.press("up")
+    assert form_of(fx).focus_key() == keys[0]
+
+
+async def test_the_token_line_hides_what_is_typed(shell):
     fx = shell()
     await fx.command("/config add deepseek --model deepseek-chat")
+    fx.harness.press("tab")
+    assert form_of(fx).focus_key() == "token"
 
     fx.harness.write("sk-hidden-token")
     screen = fx.screen()
@@ -264,67 +336,117 @@ async def test_the_token_question_hides_what_is_typed(shell):
     assert MASK * len("sk-hidden-token") in screen
 
 
-async def test_the_token_is_masked_but_what_is_submitted_is_what_was_typed(shell):
+async def test_the_token_is_masked_but_what_is_saved_is_what_was_typed(shell):
     fx = shell()
     await fx.command("/config add deepseek --model deepseek-chat")
-
-    fx.type("sk-exact")
+    fx.harness.press("tab")
+    fx.harness.write("sk-exact")
+    fx.harness.press("enter")
 
     assert fx.models[-1]["token"] == "sk-exact"
 
 
-async def test_a_custom_endpoint_asks_for_its_api_then_address_then_model_then_token(shell):
+async def test_a_pasted_newline_does_not_end_up_inside_a_line(shell):
+    fx = shell()
+    await fx.command("/config add deepseek")
+    fx.harness.press("tab")
+    fx.harness.paste("sk-pasted\n")
+    fx.harness.press("shift_enter")
+
+    assert form_of(fx).areas["token"].text == "sk-pasted"
+
+
+async def test_a_custom_endpoint_asks_which_api_and_then_shows_one_form(shell):
     fx = shell()
 
     await fx.command("/config add custom")
     assert fx.page(ListPage) is not None and "Which API" in fx.screen()
     fx.choose("anthropic")
-    assert "Address" not in fx.page(InputPage).title, "an Anthropic endpoint has an address of its own"
-    assert "Model id" in fx.page(InputPage).title
-    fx.type("claude-x")
-    fx.type("sk-a")
+    page = form_of(fx)
+    assert "url" not in [field.key for field in page.fields], "an Anthropic endpoint has an address of its own"
+    fx.harness.write("claude-x")
+    fx.harness.press("tab")
+    fx.harness.write("sk-a")
+    fx.harness.press("enter")
 
     assert fx.models[-1] == {"model": "claude-x", "token": "sk-a", "anthropic": True}
 
 
-async def test_a_custom_chat_endpoint_asks_for_the_address(shell):
+async def test_a_custom_chat_endpoint_needs_its_address_and_says_chat_in_the_file(shell):
     fx = shell()
     await fx.command("/config add custom")
 
     fx.choose("chat")
-    assert "Address" in fx.page(InputPage).title
-    fx.type("https://llm.example/v1")
-    fx.type("my-model")
-    fx.type("sk-a")
+    page = form_of(fx)
+    assert [field.key for field in page.fields if field.required] == ["model", "url"]
+    fx.harness.write("my-model")
+    fx.harness.press("tab")
+    fx.harness.write("sk-a")
+    fx.harness.press("tab")
+    fx.harness.write("https://llm.example/v1")
+    fx.harness.press("enter")
 
-    assert fx.models[-1] == {"model": "my-model", "token": "sk-a", "base_url": "https://llm.example/v1"}
+    assert fx.models[-1] == {"model": "my-model", "token": "sk-a", "base_url": "https://llm.example/v1", "chat": True}
+
+
+async def test_a_custom_endpoint_without_an_address_is_refused_at_that_line(shell):
+    fx = shell()
+    await fx.command("/config add custom --api chat")
+    fx.harness.write("my-model")
+
+    fx.harness.press("enter")
+
+    assert form_of(fx).refusal == "address is required" and form_of(fx).focus_key() == "url"
 
 
 async def test_a_bad_address_is_refused_in_place_and_can_be_corrected(shell):
     fx = shell()
     await fx.command("/config add custom --api chat")
+    fx.harness.write("my-model")
+    fx.harness.press("tab")
+    fx.harness.press("tab")
+    fx.harness.write("llm.example")
+    fx.harness.press("enter")
+    page = form_of(fx)
 
-    fx.type("llm.example")
-    page = fx.page(InputPage)
-
-    assert page is not None and "http or https" in page.note
-    assert "http or https" in fx.screen(), "the reason is on screen"
-    assert page.answer.text == "llm.example", "the text stays so only the slip needs fixing"
+    assert "http or https" in page.refusal and "http or https" in fx.screen(), "the reason is on screen"
+    assert page.focus_key() == "url" and page.areas["url"].text == "llm.example", "the slip is what is left to fix"
+    assert page.areas["model"].text == "my-model"
     for _ in range(len("llm.example")):
         fx.harness.press("backspace")
-    assert fx.page(InputPage).note == "", "and the reason goes once it is being corrected"
-    fx.type("https://llm.example/v1")
-    assert "Model id" in fx.page(InputPage).title
+    assert form_of(fx).refusal == "", "and the reason goes once it is being corrected"
+    fx.harness.write("https://llm.example/v1")
+    fx.harness.press("enter")
+    assert fx.page(FormPage) is None and fx.models[-1]["base_url"] == "https://llm.example/v1"
 
 
-async def test_an_empty_answer_is_not_taken(shell):
+async def test_a_temperature_is_checked_for_the_api_and_written_when_given(shell):
+    fx = shell()
+    await fx.command("/config add anthropic --model claude-x")
+    for _ in range(3):
+        fx.harness.press("tab")
+    assert form_of(fx).focus_key() == "temperature"
+
+    fx.harness.write("1.5")
+    fx.harness.press("enter")
+    assert "0 to 1" in form_of(fx).refusal and fx.configured == ("gpt-5-mini", "gpt-4o")
+    for _ in range(3):
+        fx.harness.press("backspace")
+    fx.harness.write("0.3")
+    fx.harness.press("enter")
+
+    assert fx.models[-1]["temperature"] == 0.3
+    assert fx.app.agent.models[-1].temperature == 0.3
+
+
+async def test_the_hint_under_the_form_follows_the_cursor(shell):
     fx = shell()
     await fx.command("/config add deepseek")
 
-    fx.harness.press("enter")
-
-    assert "Model id" in fx.page(InputPage).title and fx.page(InputPage).note
-    assert fx.configured == ("gpt-5-mini", "gpt-4o")
+    assert "exactly as its documentation writes it" in fx.screen()
+    fx.harness.press("tab")
+    assert "Leave it empty for a local server" in fx.screen()
+    assert "exactly as its documentation writes it" not in fx.screen()
 
 
 # -- /config: the panel ------------------------------------------------------------------------------------
@@ -396,23 +518,19 @@ async def test_the_api_question_names_each_protocol_without_an_article(shell):
     ]
 
 
-async def test_the_questions_after_the_provider_are_worded_alike(shell):
-    """Each help line is a sentence that ends with a full stop, or an example that does not."""
+async def test_the_form_after_the_provider_is_worded_alike(shell):
+    """Each hint is a sentence that ends with a full stop and starts with a capital."""
     fx = shell()
     await fx.command("/config add custom")
     fx.choose("chat")
-    url_help = fx.page(InputPage).help_lines
-    fx.type("https://api.example.com/v1")
-    model_help = fx.page(InputPage).help_lines
-    fx.type("some-model")
-    token_help = fx.page(InputPage).help_lines
+    page = form_of(fx)
 
-    assert url_help == ("The address the client appends its route to.", "For example: https://api.example.com/v1")
-    for line in (*url_help, *model_help, *token_help):
-        assert line[0].isupper(), line
-        assert line.endswith(".") or line.startswith("For example:"), line
-    assert model_help[0] == "The id the provider calls the model, exactly as its documentation writes it."
-    assert token_help[0] == "Your key for this endpoint."
+    for field in page.fields:
+        assert field.hint[0].isupper() and field.hint.endswith((".", "1.", "2.")) or field.hint.endswith("."), field
+    hints = {field.key: field.hint for field in page.fields}
+    assert hints["model"] == "The id the provider calls the model, exactly as its documentation writes it."
+    assert hints["url"] == "The address the client appends its route to, such as https://api.example.com/v1."
+    assert hints["token"].startswith("Your key for this endpoint.")
 
 
 async def test_a_provider_with_suggested_models_gives_them_as_an_example(shell):
@@ -423,20 +541,22 @@ async def test_a_provider_with_suggested_models_gives_them_as_an_example(shell):
     )
     await fx.command("/config add suggests")
 
-    assert fx.page(InputPage).help_lines[-1] == "For example: one, two, three"
+    page = form_of(fx)
+    assert page.fields[0].hint.endswith("For example: one, two, three")
+    assert page.fields[0].placeholder == "one"
 
 
-async def test_adding_from_the_panel_goes_provider_then_model_then_token(shell):
+async def test_adding_from_the_panel_goes_provider_then_one_form(shell):
     fx = shell()
     await fx.command("/config")
 
     fx.choose("+ Add")
     assert "which provider" in fx.screen()
-    for provider in BUILTIN_PROVIDERS:
-        assert provider.label in fx.screen() or True
     fx.choose("DeepSeek")
-    fx.type("deepseek-chat")
-    fx.type("sk-panel")
+    fx.harness.write("deepseek-chat")
+    fx.harness.press("tab")
+    fx.harness.write("sk-panel")
+    fx.harness.press("enter")
 
     assert fx.models[-1]["token"] == "sk-panel" and fx.configured[-1] == "deepseek-chat"
     assert any("added" in notice and "deepseek-chat" in notice for notice in fx.notices())
@@ -835,7 +955,11 @@ async def test_a_plugin_provider_works_with_config_add(shell):
 
     await fx.command("/config add acme --model acme-1 --token sk-acme")
 
-    assert fx.models[-1] == {"model": "acme-1", "token": "sk-acme", "base_url": "https://api.acme.example/v1"}
+    assert fx.models[-1] == {
+        "model": "acme-1",
+        "token": "sk-acme",
+        "base_url": "https://api.acme.example/v1",
+    }
 
 
 async def test_a_plugin_provider_is_a_row_in_the_panel(shell):
@@ -854,13 +978,13 @@ async def test_a_plugin_provider_is_a_row_in_the_panel(shell):
 # -- the panel is a surface of its own -----------------------------------------------------------------------
 
 
-async def test_the_input_panel_hides_what_is_underneath_it(shell):
+async def test_the_form_panel_hides_what_is_underneath_it(shell):
     """The status line's keys must not show beside the panel's own text."""
     fx = shell()
     await fx.command("/config add deepseek --model deepseek-chat")
 
     rows = fx.screen().splitlines()
-    panel = [row for row in rows if "enter confirm" in row]
+    panel = [row for row in rows if "enter save" in row]
 
     assert panel and "interrupt" not in panel[0] and "^D" not in panel[0]
 
@@ -868,56 +992,38 @@ async def test_the_input_panel_hides_what_is_underneath_it(shell):
 # -- Escape goes back one step; it never throws the whole thing away -------------------------------------------
 
 
-async def test_escape_from_the_token_question_goes_back_to_the_model_question_with_its_answer(shell):
+async def test_escape_from_the_form_of_a_custom_endpoint_goes_back_to_the_api_list_and_writes_nothing(shell):
     fx = shell()
-    await fx.command("/config add deepseek")
-    fx.type("deepseek-chat")
-    assert "Token" in fx.page(InputPage).title
     before = fx.text
+    await fx.command("/config add custom")
+    fx.choose("chat")
+    fx.harness.write("my-model")
 
     fx.harness.press("escape")
 
-    page = fx.page(InputPage)
-    assert "Model id" in page.title and page.answer.text == "deepseek-chat", "the answer comes back to be changed"
+    assert fx.page(ListPage) is not None and "Which API" in fx.screen()
     assert fx.text == before and fx.app.app.screens.top.name == "page"
 
 
-async def test_the_answer_can_be_changed_and_the_flow_goes_on_from_there(shell):
-    fx = shell()
-    await fx.command("/config add deepseek")
-    fx.type("wrong-model")
-    fx.harness.press("escape")
-    for _ in range(len("wrong-model")):
-        fx.harness.press("backspace")
-
-    fx.type("deepseek-chat")
-    fx.type("sk-1")
-
-    assert fx.models[-1]["model"] == "deepseek-chat" and fx.models[-1]["token"] == "sk-1"
-
-
-async def test_escape_steps_back_through_every_question_of_a_custom_endpoint(shell):
+async def test_the_api_can_be_chosen_again_and_the_form_goes_on_from_there(shell):
     fx = shell()
     await fx.command("/config add custom")
     fx.choose("chat")
-    fx.type("https://llm.example/v1")
-    fx.type("my-model")
-    assert "Token" in fx.page(InputPage).title
+    fx.harness.press("escape")
 
-    fx.harness.press("escape")
-    assert fx.page(InputPage).answer.text == "my-model"
-    fx.harness.press("escape")
-    assert "Address" in fx.page(InputPage).title and fx.page(InputPage).answer.text == "https://llm.example/v1"
-    fx.harness.press("escape")
-    assert fx.page(ListPage) is not None and "Which API" in fx.screen()
+    fx.choose("anthropic")
+    fx.harness.write("claude-x")
+    fx.harness.press("enter")
+
+    assert fx.models[-1] == {"model": "claude-x", "anthropic": True}
 
 
-async def test_escape_from_the_first_question_of_the_panel_goes_back_to_the_provider_list(shell):
+async def test_escape_from_the_form_of_the_panel_goes_back_to_the_provider_list(shell):
     fx = shell()
     await fx.command("/config")
     fx.choose("+ Add")
     fx.choose("DeepSeek")
-    assert "Model id" in fx.page(InputPage).title
+    assert fx.page(FormPage) is not None
 
     fx.harness.press("escape")
 
@@ -928,7 +1034,7 @@ async def test_escape_from_the_first_question_of_the_panel_goes_back_to_the_prov
     assert fx.app.app.screens.top.name == "main", "and only from the very first page does it close"
 
 
-async def test_escape_from_the_first_question_of_a_typed_line_closes_because_nothing_is_behind_it(shell):
+async def test_escape_from_the_form_of_a_typed_line_closes_because_nothing_is_behind_it(shell):
     fx = shell()
     before = fx.text
     await fx.command("/config add deepseek")
@@ -938,22 +1044,25 @@ async def test_escape_from_the_first_question_of_a_typed_line_closes_because_not
     assert fx.app.app.screens.top.name == "main" and fx.text == before
 
 
-async def test_going_back_writes_nothing_and_a_token_is_never_put_back_in_the_box(shell):
+async def test_going_back_writes_nothing(shell):
     fx = shell()
     before = fx.text
     await fx.command("/config add deepseek --model deepseek-chat")
+    fx.harness.press("tab")
     fx.harness.write("sk-secret")
     fx.harness.press("escape")
 
-    assert fx.page(InputPage) is None or fx.page(InputPage).answer.text != "sk-secret"
-    assert fx.text == before
+    assert fx.text == before and "sk-secret" not in fx.text
 
 
 async def test_the_keys_line_says_back_when_there_is_a_step_behind_and_cancel_when_there_is_not(shell):
     fx = shell()
     await fx.command("/config add deepseek")
-    assert "esc cancel" in fx.screen()
-    fx.type("deepseek-chat")
+    assert "esc cancel" in fx.screen() and "tab next line" in fx.screen() and "enter save" in fx.screen()
+    fx.harness.press("escape")
+    await fx.command("/config")
+    fx.choose("+ Add")
+    fx.choose("DeepSeek")
 
     assert "esc back" in fx.screen()
 
@@ -1003,18 +1112,20 @@ async def test_keeping_a_model_returns_to_its_actions_too(shell):
     assert "Use this model" in fx.screen() and fx.configured == ("gpt-5-mini", "gpt-4o")
 
 
-async def test_a_token_is_kept_out_of_the_trail_even_if_a_later_question_were_added(shell):
-    """The token is the last question today, so nothing backs into it; this is the rule for the day one does."""
-    from zettcode.app.ui.config_form import Draft
-
+async def test_a_token_is_never_put_back_in_the_form_after_going_back(shell):
+    """The api list is behind the form of a custom endpoint; coming back to the form shows no token the reader typed."""
     fx = shell()
-    draft = Draft.for_provider(BUILTIN_PROVIDERS[2])
-    draft.model = "m"
-    fx.app._config_write = lambda _draft: None  # stop at recording the answer
+    await fx.command("/config add custom")
+    fx.choose("chat")
+    fx.harness.write("my-model")
+    fx.harness.press("tab")
+    fx.harness.write("sk-never-shown-again")
+    fx.harness.press("escape")
 
-    fx.app._config_set(draft, "token", "sk-never-shown-again")
+    fx.choose("chat")
 
-    assert draft.trail[-1] == ("token", "")
+    assert form_of(fx).areas["token"].text == ""
+    assert "sk-never-shown-again" not in fx.screen()
 
 
 # -- changing the protocol of a model already in the file ---------------------------------------------------

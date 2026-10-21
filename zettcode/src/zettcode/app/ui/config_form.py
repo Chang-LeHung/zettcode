@@ -22,7 +22,7 @@ T = TypeVar("T")
 
 USAGE = (
     "/config add <provider> [--model ID] [--token KEY] [--url URL] [--api chat|responses|anthropic] "
-    "[--name SHOWN] [--multimodal] [--context TOKENS] [--compact PERCENT]"
+    "[--name SHOWN] [--multimodal] [--context TOKENS] [--compact PERCENT] [--temperature T]"
 )
 
 #: The smallest context window the panel accepts. A window is counted in tokens, so a small number is nearly always a
@@ -39,6 +39,7 @@ _FLAGS = {
     "--multimodal": False,
     "--context": True,
     "--compact": True,
+    "--temperature": True,
 }
 
 
@@ -51,11 +52,12 @@ class Draft:
         api: Which protocol it speaks. Starts as the provider's, and a reader may change it.
         url: The address; ``None`` is the SDK's own default.
         model: The model id sent to the endpoint.
-        token: The credential.
+        token: The credential. May stay empty: a local server wants none, and the environment can supply one.
         name: What the picker shows; empty means the model id.
         multimodal: Whether it takes images.
         context_window: Tokens it can carry; ``None`` leaves the default.
         compact_percent: The share of the window at which a request is summarized first; ``None`` leaves the default.
+        temperature: The sampling temperature; ``None`` sends none.
     """
 
     provider: Provider | None = None
@@ -67,6 +69,10 @@ class Draft:
     multimodal: bool = False
     context_window: int | None = None
     compact_percent: float | None = None
+    temperature: float | None = None
+    #: Whether the reader picked chat completions outright (from the list, or ``--api chat``), which is written as
+    #: ``chat = true``; a provider whose protocol is chat by default does not ask, and writes nothing.
+    chat: bool = False
     #: Which values the reader already gave on the command line, so the panel does not ask again.
     given: set[str] = field(default_factory=set)
     #: The questions answered in the panel, newest last, each with what was typed, so that
@@ -86,6 +92,7 @@ class Draft:
         name, previous = self.trail.pop()
         if name == "api":
             self.api = Api.CHAT
+            self.chat = False
         elif name == "url":
             self.url = None
         elif name == "model":
@@ -113,7 +120,11 @@ class Draft:
         return self.provider is None
 
     def missing(self) -> list[str]:
-        """Return what still has to be asked, in the order to ask it."""
+        """Return what still has to be asked, in the order to ask it.
+
+        The token is asked about, not required: a draft that was not told one (``--token``) is shown to the reader
+        with the line empty, and an empty line is a valid answer.
+        """
         wanted: list[str] = []
         if self.custom and "api" not in self.given:
             wanted.append("api")
@@ -121,7 +132,7 @@ class Draft:
             wanted.append("url")
         if not self.model:
             wanted.append("model")
-        if not self.token:
+        if "token" not in self.given:
             wanted.append("token")
         return wanted
 
@@ -129,14 +140,16 @@ class Draft:
 def entry_for(draft: Draft) -> dict[str, object]:
     """Return the ``[[models]]`` keys a finished draft stands for.
 
+    Only the model id is required.
+
     Raises:
-        ValueError: When something required is missing or is not usable.
+        ValueError: When the model id is missing, or something given is not usable.
     """
     if not draft.model.strip():
         raise ValueError("A model id is required (--model)")
-    if not draft.token.strip():
-        raise ValueError("A token is required (--token)")
-    entry: dict[str, object] = {"model": draft.model.strip(), "token": draft.token.strip()}
+    entry: dict[str, object] = {"model": draft.model.strip()}
+    if draft.token.strip():
+        entry["token"] = draft.token.strip()
     if draft.name.strip():
         entry["display_model"] = draft.name.strip()
     if draft.url:
@@ -144,12 +157,16 @@ def entry_for(draft: Draft) -> dict[str, object]:
     elif draft.custom and draft.api is not Api.ANTHROPIC:
         raise ValueError("A custom provider needs an address (--url)")
     entry.update(draft.api.keys)
+    if draft.chat and draft.api is Api.CHAT:
+        entry["chat"] = True
     if draft.multimodal:
         entry["multimodal"] = True
     if draft.context_window is not None:
         entry["context_window"] = draft.context_window
     if draft.compact_percent is not None:
         entry["compact_percent"] = whole_if_whole(draft.compact_percent)
+    if draft.temperature is not None:
+        entry["temperature"] = whole_if_whole(draft.temperature)
     return entry
 
 
@@ -181,6 +198,7 @@ def parse_add(argument: str, providers: Sequence[Provider]) -> Draft:
             draft.api = Api.parse(flags["--api"])
         except ValueError as error:
             raise ValueError(f"--api: {error}") from None
+        draft.chat = draft.api is Api.CHAT
         draft.given.add("api")
     if "--url" in flags:
         draft.url = check_url(flags["--url"], what="--url")
@@ -189,6 +207,7 @@ def parse_add(argument: str, providers: Sequence[Provider]) -> Draft:
         draft.model = flags["--model"].strip()
     if "--token" in flags:
         draft.token = flags["--token"].strip()
+        draft.given.add("token")
     if "--name" in flags:
         draft.name = flags["--name"].strip()
     if "--multimodal" in flags:
@@ -197,6 +216,10 @@ def parse_add(argument: str, providers: Sequence[Provider]) -> Draft:
         draft.context_window = _flag(parse_tokens, flags["--context"], "--context")
     if "--compact" in flags:
         draft.compact_percent = _flag(parse_percent, flags["--compact"], "--compact")
+    if "--temperature" in flags:
+        draft.temperature = _flag(
+            lambda text: parse_temperature(text, draft.api), flags["--temperature"], "--temperature"
+        )
     return draft
 
 
@@ -225,6 +248,22 @@ def parse_tokens(text: str) -> int:
             "write 200k for two hundred thousand"
         )
     return tokens
+
+
+def parse_temperature(text: str, api: Api = Api.CHAT) -> float:
+    """Read a sampling temperature: from 0 to 2, or from 0 to 1 for the Anthropic API.
+
+    Raises:
+        ValueError: With a sentence saying what is allowed.
+    """
+    limit = 1.0 if api is Api.ANTHROPIC else 2.0
+    try:
+        value = float(text.strip())
+    except ValueError:
+        raise ValueError(f"write the temperature as a number from 0 to {limit:g}, such as 0.2") from None
+    if not 0.0 <= value <= limit:
+        raise ValueError(f"the temperature is from 0 to {limit:g}" + (" for the Anthropic API" if limit == 1.0 else ""))
+    return value
 
 
 def parse_percent(text: str) -> float:

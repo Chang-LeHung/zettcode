@@ -68,7 +68,8 @@ def test_a_custom_endpoint_given_everything_on_one_line_needs_nothing_more():
         "token": "t",
         "display_model": "Mine",
         "base_url": "https://llm.example/v1",
-    }
+        "chat": True,
+    }, "--api chat is said outright in the file"
 
 
 def test_the_responses_api_is_written_as_responses_api():
@@ -142,13 +143,18 @@ def test_the_error_for_a_missing_provider_lists_the_ones_that_exist():
 # -- turning a draft into an entry --------------------------------------------------------------------------
 
 
-def test_a_draft_without_a_model_or_a_token_is_not_an_entry():
+def test_a_draft_needs_a_model_id_and_nothing_else_the_token_may_be_empty():
     draft = Draft.for_provider(find_provider("deepseek", PROVIDERS))
     with pytest.raises(ValueError, match="model id is required"):
         entry_for(draft)
     draft.model = "m"
-    with pytest.raises(ValueError, match="token is required"):
-        entry_for(draft)
+
+    assert entry_for(draft) == {"model": "m", "base_url": "https://api.deepseek.com"}, "no token key is written"
+    assert Draft.for_provider(find_provider("deepseek", PROVIDERS)).missing() == ["model", "token"], (
+        "the form still shows the token line, and an empty answer is a valid one"
+    )
+    given = parse_add('deepseek --model m --token ""', PROVIDERS)
+    assert given.missing() == [] and "token" not in entry_for(given)
 
 
 def test_a_custom_draft_without_an_address_is_not_an_entry():

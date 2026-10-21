@@ -45,7 +45,9 @@ class Api(StrEnum):
     def keys(self) -> dict[str, object]:
         """Return the ``[[models]]`` keys that select this protocol: none for chat, one for the others.
 
-        The two flags are alternatives, never layers, so a rewrite clears both before it sets one.
+        The three flags (``chat`` is the third) are alternatives, never layers, so a rewrite clears all of them before
+        it sets one. Chat completions is what an entry that sets none already is, so it needs no key; a reader who
+        picks it outright is given ``chat = true`` by the editor (see ``Draft.chat``), to say so in the file.
         """
         if self is Api.ANTHROPIC:
             return {"anthropic": True}
