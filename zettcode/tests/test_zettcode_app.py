@@ -6675,9 +6675,14 @@ async def test_the_alt_and_control_spellings_end_in_exactly_the_same_place():
     assert ends[0] == ends[1]
 
 
-async def test_control_up_is_left_for_anyone_else_when_there_is_no_list_and_taken_only_while_there_is_one():
-    """The binding must not swallow a key nothing here needs. A handler that is always on would say
-    "handled" with nothing done, and anything else that wants Ctrl-Up would never hear of it."""
+async def test_control_up_is_the_lists_while_there_is_one_and_otherwise_walks_back_through_the_messages():
+    """The list takes Ctrl-Up only while it has something in it; with none, the key goes back a message.
+
+    A handler that was always on would say "handled" with nothing done. These two uses of the key share it, and which
+    one applies is decided by whether there is a list: with one, the list; without, the jump (which handles the key
+    even at the top of a short conversation, where there is no further to go, so that it is never the composer's
+    history and never reaches a binding below).
+    """
     app, harness = await _running_with("a", "b")
     heard: list[str] = []
 
@@ -6702,7 +6707,9 @@ async def test_control_up_is_left_for_anyone_else_when_there_is_no_list_and_take
 
     _press_bytes(harness2, b"\x1b[1;5A")
 
-    assert heard == ["probe"], "with no list, the key goes on to whoever else wanted it"
+    assert heard == [], "with no list, the key is the jump to the previous message, not anyone else's"
+    assert app2.follow_ups.selected is None
+    await _stop(app2)
     await _stop(app2)
 
 

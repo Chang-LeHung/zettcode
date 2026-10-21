@@ -59,6 +59,7 @@ approval and question panels, read the hint printed at the bottom.
 | <kbd>Ctrl</kbd>+<kbd>T</kbd> | Expand or collapse the newest thinking block. |
 | <kbd>Ctrl</kbd>+<kbd>V</kbd> | Attach an image from the clipboard. |
 | <kbd>Page Up</kbd> / <kbd>Page Down</kbd> | Scroll the conversation, keeping the composer focused. |
+| <kbd>Alt</kbd>+<kbd>Up</kbd> / <kbd>Alt</kbd>+<kbd>Down</kbd> (also <kbd>Ctrl</kbd>+<kbd>Up</kbd> / <kbd>Ctrl</kbd>+<kbd>Down</kbd>) | Jump to the previous or next message you sent, putting it at the top of the view; after the last one, back to the newest line. While follow-ups are waiting the same keys walk that list instead (see below). |
 | <kbd>Esc</kbd> | Stop the running request; or, first, jump back to the newest line when scrolled up, close a panel or the command menu, or let go of a highlighted follow-up. Stopping keeps your follow-ups. |
 | <kbd>Tab</kbd> | Accept the highlighted row in a panel or the command menu. |
 

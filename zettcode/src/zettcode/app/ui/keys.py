@@ -32,6 +32,8 @@ class KeysMixin(ShellState):
         self.app.commands.add("scroll_up", self._scroll_up)
         self.app.commands.add("scroll_down", self._scroll_down)
         self.app.commands.add("scroll_end", self._scroll_end)
+        self.app.commands.add("previous_message", self._previous_message)
+        self.app.commands.add("next_message", self._next_message)
         self.app.commands.add("attach_image", self._attach_image)
         self.app.commands.add("quit", self._quit)
         self.app.commands.add("complete_next", self._complete_next)
@@ -95,6 +97,18 @@ class KeysMixin(ShellState):
         self.app.keymap.bind("escape", "interrupt_run", priority="capture", when=self._escaping_a_run)
         self.app.keymap.bind("page_up", "scroll_up")
         self.app.keymap.bind("page_down", "scroll_down")
+        # Alt (Option) and Ctrl with Up and Down walk through the messages the reader sent: the previous one goes
+        # to the top of the view, and past the last one the view returns to the newest line. They are the follow-up
+        # list's keys too, and the list wins them while it has something in it (bound above, with a predicate), so a
+        # reader with follow-ups queued keeps what they had and everyone else gets the jump. Capture priority, or the
+        # composer would read Up and Down as history.
+        for key, command in (
+            ("alt_up", "previous_message"),
+            ("ctrl_up", "previous_message"),
+            ("alt_down", "next_message"),
+            ("ctrl_down", "next_message"),
+        ):
+            self.app.keymap.bind(key, command, priority="capture", when=self._messages_can_be_walked)
         # Escape is the keyboard twin of the transcript's return badge; capture
         # priority lets it win, because the composer would otherwise swallow Esc.
         self.app.keymap.bind("escape", "scroll_end", priority="capture", when=self._transcript_scrolled_up)
@@ -109,6 +123,20 @@ class KeysMixin(ShellState):
         self.app.keymap.bind("escape", "complete_dismiss", priority="capture", when=self._menu_open)
         self.app.keymap.bind("enter", "complete_run", priority="capture", when=self._run_on_enter)
         self.app.keymap.bind("enter", "complete_accept", priority="capture", when=self._accept_on_enter)
+
+    def _messages_can_be_walked(self) -> bool:
+        """Return whether Alt/Ctrl with Up or Down mean "another message of mine": no page is open, no follow-up list."""
+        return self.app.screens.top.name not in (PAGE_SCREEN, ASK_SCREEN) and not self._follow_ups
+
+    def _previous_message(self, event: AnyEvent, host: Host) -> bool:
+        """Scroll back to the message the reader sent before the one at the top of the view."""
+        self.view.jump_to_message(-1)
+        return True
+
+    def _next_message(self, event: AnyEvent, host: Host) -> bool:
+        """Scroll forward to the next message the reader sent, or to the newest line after the last."""
+        self.view.jump_to_message(1)
+        return True
 
     def _follow_ups_listed(self) -> bool:
         """Return whether there are follow-ups to move through, and nothing is on top of them."""

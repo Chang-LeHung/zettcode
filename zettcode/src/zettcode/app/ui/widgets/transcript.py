@@ -10,7 +10,7 @@ from __future__ import annotations
 from bisect import bisect_right
 from collections.abc import Callable
 
-from zettcode.app.agent.conversation.entries import Entry
+from zettcode.app.agent.conversation.entries import Entry, EntryKind
 from zettcode.app.agent.conversation.presenters import Presenters, block_for
 from zettcode.app.agent.conversation.transcript import Transcript
 from zettcode.tui import (
@@ -85,6 +85,19 @@ class TranscriptSource(LineSource):
         if not self._blocks:
             return None
         return self.transcript.entries[self._owner(index)]
+
+    def user_starts(self, width: int) -> list[int]:
+        """Return the line each message the reader sent begins on, in order.
+
+        A side question is not one of them: it is answered apart from the conversation and is not something the
+        reader would be looking for when they go back through what they asked.
+        """
+        self._sync(width)
+        return [
+            self._starts[position]
+            for position, entry in enumerate(self.transcript.entries[: len(self._starts)])
+            if entry.kind is EntryKind.USER and not getattr(entry, "side", False)
+        ]
 
     def _owner(self, index: int) -> int:
         """Return the position of the block that owns a line.
@@ -187,6 +200,39 @@ class TranscriptView(ScrollView):
     def scrolled_up(self) -> bool:
         """Return whether the newest lines are out of view."""
         return not self.follow_tail
+
+    def jump_to_message(self, direction: int) -> bool:
+        """Scroll so a message the reader sent is the first row: the one above the view, or the one below it.
+
+        Going back, the target is the nearest message that begins above the first visible row, so pressing again
+        walks back one message at a time; with none above, the view goes to the top of the conversation. Going
+        forward, it is the nearest one that begins below the first row, and with none left the view goes back to
+        the newest line and follows it again.
+
+        Args:
+            direction: ``-1`` for the previous message, ``1`` for the next.
+
+        Returns:
+            Whether the view moved, which is false only when there is nothing to move to.
+        """
+        starts = self.transcript_source.user_starts(self.line_width)
+        if direction < 0:
+            above = [start for start in starts if start < self.top]
+            if not above:
+                if self.top == 0:
+                    return False
+                self.scroll_to(0)
+                return True
+            self.scroll_to(above[-1])
+            return True
+        below = [start for start in starts if start > self.top]
+        if below:
+            self.scroll_to(below[0])
+            return True
+        if self.follow_tail:
+            return False
+        self.scroll_end()
+        return True
 
     def badge_rect(self) -> Rect | None:
         """Return the cell rectangle of the return badge, or None while at the tail.

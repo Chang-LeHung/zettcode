@@ -51,6 +51,7 @@
 | <kbd>Ctrl</kbd>+<kbd>T</kbd> | 展开 / 收起最新的一段思考。 |
 | <kbd>Ctrl</kbd>+<kbd>V</kbd> | 从剪贴板附上一张图片。 |
 | <kbd>Page Up</kbd> / <kbd>Page Down</kbd> | 滚动对话，输入框仍然保持聚焦。 |
+| <kbd>Alt</kbd>+<kbd>Up</kbd> / <kbd>Alt</kbd>+<kbd>Down</kbd>（也可用 <kbd>Ctrl</kbd>+<kbd>Up</kbd> / <kbd>Ctrl</kbd>+<kbd>Down</kbd>） | 跳到你发送的上一条或下一条消息，让它停在视图顶部；越过最后一条就回到最新一行。有后续消息在等待时，这几个键改为在那个列表里移动（见下文）。 |
 | <kbd>Esc</kbd> | 停止正在跑的请求；或者先于它：向上滚动时跳回最新一行、关闭弹窗或命令菜单、取消高亮的后续消息。停止不会丢掉后续消息。 |
 | <kbd>Tab</kbd> | 接受弹窗或命令菜单里高亮的那一项。 |
 
