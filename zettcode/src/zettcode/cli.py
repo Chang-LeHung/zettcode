@@ -5,7 +5,8 @@ Almost everything is configured in ``~/.zettcode/config.toml`` (see
 the directory to work in, ``-v``/``--version`` prints the version, ``-r``/``--resume`` (or the ``resume`` subcommand) picks the stored session to open
 instead of a fresh one, and ``$ZETTCODE_CONFIG`` can point at a different
 config file. ``zettcode update`` (or ``upgrade``) installs the newest release and exits, and ``zettcode doctor``
-asks every configured model a one-line question and reports which of them answer.
+asks every configured model a one-line question and reports which of them answer. ``zettcode prompt`` sends one prompt
+without opening the terminal and prints the answer (see :mod:`zettcode.oneshot`).
 
 Nothing beyond the standard library is imported at module level: ``zettcode
 --help`` prints and exits, and paying for the agent runtime, the widget
@@ -26,6 +27,11 @@ from typing import TYPE_CHECKING
 from .paths import resume_command
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    #: What ``add_subparsers`` returns, which the standard library gives no public name to.
+    Subcommands = argparse._SubParsersAction[argparse.ArgumentParser]
+
     from .app.agent.agent import ZettCodeAgent
     from .app.ui.app import ZettCodeApp
     from .config import ZettCodeConfig
@@ -41,8 +47,12 @@ class Options:
         resume: Stored session to open instead of a fresh one, if named.
         auto: Start with the shell permission at ``auto``, so no command asks.
         dry_run: Run the startup and exit instead of taking the terminal.
-        command: The subcommand named (``"update"`` for ``update`` and ``upgrade`` alike, or ``"doctor"``), or
-            ``None`` to start a session.
+        command: The subcommand named (``"update"`` for ``update`` and ``upgrade`` alike, ``"doctor"`` or ``"prompt"``),
+            or ``None`` to start a session.
+        prompt: For ``prompt``, the text to send; ``None`` reads it from standard input.
+        model: For ``prompt``, the model to use by the name ``/model`` lists, instead of the first one.
+        effort: For ``prompt``, the reasoning level, instead of the config file's.
+        continue_request: For ``prompt``, pick up the request that was cut short instead of sending ``prompt``.
     """
 
     workspace: Path
@@ -50,6 +60,10 @@ class Options:
     auto: bool = False
     dry_run: bool = False
     command: str | None = None
+    prompt: str | None = None
+    model: str | None = None
+    effort: str | None = None
+    continue_request: bool = False
 
 
 def version_text() -> str:
@@ -86,10 +100,30 @@ def parse_args(argv: list[str] | None = None) -> Options:
     Args:
         argv: Arguments to parse; ``None`` reads the process's own.
     """
+    parser = _build_parser()
+    args = parser.parse_args(argv)
+    # `upgrade` is another name for `update`; nothing after this point needs to know it was used.
+    command = "update" if args.command == "upgrade" else args.command
+    return _OPTIONS.get(command, _plain_options)(parser, args, command)
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    """Return the parser: the options every start takes, and one subparser for each subcommand."""
     parser = argparse.ArgumentParser(
         prog="zettcode",
         description="Run the ZettCode terminal coding agent",
     )
+    _add_global_options(parser)
+    commands = parser.add_subparsers(dest="command", metavar="COMMAND")
+    _add_update(commands)
+    _add_doctor(commands)
+    _add_resume(commands)
+    _add_prompt(commands)
+    return parser
+
+
+def _add_global_options(parser: argparse.ArgumentParser) -> None:
+    """Add the options that apply to starting a session, and that ``-w`` and ``--auto`` of a subcommand mean as well."""
     parser.add_argument(
         "-v",
         "-V",
@@ -125,35 +159,125 @@ def parse_args(argv: list[str] | None = None) -> Options:
         action="store_true",
         help="run the startup, paint one frame, and exit quietly (for profiling)",
     )
-    commands = parser.add_subparsers(dest="command", metavar="COMMAND")
+
+
+def _add_update(commands: Subcommands) -> None:
+    """Add ``update``, and ``upgrade`` as another name for it."""
     commands.add_parser(
         "update",
         aliases=["upgrade"],
         help="install the newest release and exit (also: upgrade)",
         description="Install the newest release of ZettCode with the package manager it was installed with.",
     )
+
+
+def _add_doctor(commands: Subcommands) -> None:
+    """Add ``doctor``."""
     commands.add_parser(
         "doctor",
         help="check that each configured model answers, and exit",
         description="Ask every model in the config file one short question and report which of them answer.",
     )
+
+
+def _add_resume(commands: Subcommands) -> None:
+    """Add ``resume SESSION``."""
     resume = commands.add_parser(
         "resume",
         help="open a stored session by id (same as --resume)",
         description="Open a stored session instead of starting a new one; the same as `zettcode --resume SESSION`.",
     )
     resume.add_argument("session", metavar="SESSION", help="the session's id, as printed when it ended")
-    args = parser.parse_args(argv)
-    session = args.resume
-    command = args.command
-    if command == "upgrade":
-        command = "update"
-    if command == "resume":
-        # Opening a session is a way of starting one, not a different program, so it is the option's twin.
-        if args.resume is not None and args.resume != args.session:
-            parser.error(f"--resume {args.resume} and resume {args.session} name different sessions")
-        session, command = args.session, None
-    return Options(workspace=args.workspace, resume=session, auto=args.auto, dry_run=args.dry_run, command=command)
+
+
+def _add_prompt(commands: Subcommands) -> None:
+    """Add ``prompt``: one prompt, no terminal."""
+    ask = commands.add_parser(
+        "prompt",
+        help="send one prompt without opening the terminal, and print the answer",
+        description=(
+            "Send one prompt, print the answer on stdout, and exit. Uses the first model and a new session\n"
+            "unless -m and -s say otherwise. Everything but the answer goes to stderr; shell commands\n"
+            "run without asking.\n\n"
+            "Exit status: 0 answered, 1 failed or stopped early, 2 bad arguments, 3 nothing to continue."
+        ),
+        epilog=(
+            "examples:\n"
+            "  zettcode prompt 'explain this repo'\n"
+            "  git diff | zettcode prompt 'review this change'\n"
+            "  zettcode prompt --continue -s 01a10b75"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    ask.add_argument(
+        "text",
+        nargs="?",
+        metavar="PROMPT",
+        help="what to ask; omit it, or give -, to read it from standard input",
+    )
+    ask.add_argument(
+        "-c",
+        "--continue",
+        dest="continue_request",
+        action="store_true",
+        help="pick up the request that was cut short, as /continue does (takes no prompt; needs -s)",
+    )
+    ask.add_argument(
+        "-m",
+        "--model",
+        metavar="NAME",
+        help="model to use, by the name /model lists (default: the first one)",
+    )
+    ask.add_argument(
+        "-s",
+        "--session",
+        metavar="SESSION",
+        help="stored session to continue (default: a new one)",
+    )
+    ask.add_argument("-e", "--effort", metavar="LEVEL", help="the reasoning level (default: the config file's)")
+    # Also accepted after the word, where it is natural to type it; unset here so it does not undo the one before it.
+    ask.add_argument(
+        "-w", "--workspace", metavar="DIR", type=Path, default=argparse.SUPPRESS, help="directory to work in"
+    )
+
+
+def _plain_options(parser: argparse.ArgumentParser, args: argparse.Namespace, command: str | None) -> Options:
+    """Return the options of a start with no subcommand, and of the subcommands that take none of their own."""
+    return Options(workspace=args.workspace, resume=args.resume, auto=args.auto, dry_run=args.dry_run, command=command)
+
+
+def _resume_options(parser: argparse.ArgumentParser, args: argparse.Namespace, command: str | None) -> Options:
+    """Return the options of ``resume SESSION``, which is ``--resume SESSION`` spelled as a word."""
+    # Opening a session is a way of starting one, not a different program, so it is the option's twin.
+    if args.resume is not None and args.resume != args.session:
+        parser.error(f"--resume {args.resume} and resume {args.session} name different sessions")
+    return Options(workspace=args.workspace, resume=args.session, auto=args.auto, dry_run=args.dry_run)
+
+
+def _prompt_options(parser: argparse.ArgumentParser, args: argparse.Namespace, command: str | None) -> Options:
+    """Return the options of ``prompt``, refusing what cannot be meant: two sessions, or a prompt to continue with."""
+    if args.session is not None and args.resume is not None and args.session != args.resume:
+        parser.error(f"--resume {args.resume} and --session {args.session} name different sessions")
+    if args.continue_request and args.text is not None:
+        parser.error("--continue takes no prompt: it picks up the request that was cut short")
+    if args.continue_request and args.session is None and args.resume is None:
+        parser.error("--continue needs --session: name the session whose request was cut short")
+    return Options(
+        workspace=args.workspace,
+        resume=args.session if args.session is not None else args.resume,
+        command=command,
+        prompt=args.text,
+        model=args.model,
+        effort=args.effort,
+        continue_request=args.continue_request,
+    )
+
+
+#: How the arguments of a subcommand become :class:`Options`; a command that is not here takes :func:`_plain_options`.
+_OPTIONS: dict[str, Callable[[argparse.ArgumentParser, argparse.Namespace, str | None], Options]] = {
+    "resume": _resume_options,
+    "prompt": _prompt_options,
+}
 
 
 def workspace_from_args(argv: list[str] | None = None) -> Path:
@@ -545,6 +669,10 @@ def main() -> None:
         from .doctor import doctor_program
 
         raise SystemExit(doctor_program(resolve_config()))
+    if options.command == "prompt":
+        from .oneshot import prompt_program
+
+        raise SystemExit(prompt_program(options))
     tune_collector()
     _name_process()
     try:

@@ -34,9 +34,34 @@ pip install zettcode
 | `--auto`、`--yolo` | 本轮不再询问就执行 shell 命令，等同于 `/permission auto`。 |
 | `--dry-run` | 跑完启动流程、画一帧就退出，用来做性能分析。 |
 
-有三个子命令按名字做事：`zettcode resume SESSION` 等同于 `zettcode --resume SESSION`（`-w DIR` 要写在它前面，
+有四个子命令按名字做事：`zettcode resume SESSION` 等同于 `zettcode --resume SESSION`（`-w DIR` 要写在它前面，
 例如 `zettcode -w ~/projects/api resume 01a10b75`）；`zettcode update`（也可以写成 `zettcode upgrade`，完全一样）安装最新版本后退出（见 FAQ 的“新版本”一节）；
-`zettcode doctor` 对配置文件里的每个模型各问一句话，打印哪些能答，答不了的会说明原因（token 被撤销、base URL 写错、端点没有这个模型等），有一个不能就以退出码 1 结束。
+`zettcode doctor` 对配置文件里的每个模型各问一句话，打印哪些能答，答不了的会说明原因（token 被撤销、base URL 写错、端点没有这个模型等），有一个不能就以退出码 1 结束；`zettcode prompt` 不打开终端界面，只让 agent 跑一次，见下一节。
+
+### 从脚本里问一个问题
+
+`zettcode prompt` 发送一条 prompt、打印答案后退出。不写 `-m` 和 `-s` 时，用配置文件里的第一个模型和一个新会话：
+
+```bash
+zettcode prompt "解释一下这个仓库是做什么的"
+git diff | zettcode prompt "review 这次改动"          # 命令行没有 prompt 时，从标准输入读取
+zettcode prompt -m "Claude Sonnet" -s 01a10b75 "那测试呢？"
+zettcode prompt --continue -s 01a10b75             # 把被中断的请求接着做
+```
+
+| 选项 | 作用 |
+| --- | --- |
+| `PROMPT` | 要问的内容。不写，或写成 `-`，就从标准输入读取。 |
+| `-m`、`--model NAME` | 使用的模型，名字就是 `/model` 里列出的。 |
+| `-s`、`--session ID` | 接着一个已保存的会话。 |
+| `-c`、`--continue` | 不带 prompt，像 [`/continue`](/zh/guide/commands#continue) 一样把被中断的请求接着做。必须配合 `-s`。 |
+| `-e`、`--effort LEVEL` | 推理强度。 |
+| `-w`、`--workspace DIR` | 工作的目录。 |
+
+标准输出里只有答案，用过的工具和最后一行 `session: <id>` 写到标准错误。退出码 `0` 表示得到了答案，`1` 表示运行失败或提前停止，
+`2` 表示参数不能用，`3` 表示 `--continue` 没有可接着做的请求。
+
+这里没有人能回答问题，所以 shell 权限始终是 `auto`：模型要跑的命令会直接执行。只在你信得过的工作区里使用。
 
 如果你想从源码跑：
 
