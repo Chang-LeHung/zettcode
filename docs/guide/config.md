@@ -389,6 +389,7 @@ enabled = true                 # background PyPI version checks
 [ui]
 # theme = "nord"               # start in a palette by name (see Colours); unset follows the terminal
 # pet = "cat"                  # which pet stands over the conversation (see The pet); unset is the cat
+# pet_position = [1.0, 0.5]    # where it stands, across and down from 0 to 1; written when you drag it
 
 [statusline]
 # Every part of the header and status line is shown. Name one to hide it; /statusline edits these.

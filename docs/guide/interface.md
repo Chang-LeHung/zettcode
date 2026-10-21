@@ -614,7 +614,10 @@ pet = "whale"
 Plugins can offer more pets; see [Offering a pet](/guide/plugins#pets).
 
 - **Drag it** with the mouse to put it anywhere in the conversation. It never goes over the composer, a panel or the
-  bars, and it keeps its place, as a share of the room, when you resize the terminal or change pets.
+  bars, and it keeps its place, as a share of the room, when you resize the terminal or change pets. The pointer and
+  the pet stay together: drag it past an edge and bring the pointer back, and it follows at the first step. Where you
+  leave it is remembered in the global `config.toml` (`[ui] pet_position = [0.82, 0.4]`, across and down, each from 0
+  to 1), and the next start puts it back there. It is the same in every project, because the pet is yours.
 - **Click it** (press and let go without moving) to pat it.
 - The wheel over it still scrolls the conversation, and the cells around its outline show the conversation through.
 - It takes no room: it is drawn over the text, so it hides a few columns of whatever is under it. Drag it aside, or
