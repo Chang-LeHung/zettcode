@@ -381,14 +381,68 @@ def test_the_pet_starts_where_it_was_left_and_that_place_is_a_share_of_the_room_
     assert abs((small.x - 0) - round(0.25 * (100 - small.width - MARGIN))) <= 1, "and before the resize too"
 
 
-def test_a_reader_with_no_config_file_loses_nothing_but_the_memory():
-    """The environment can be the whole configuration; a drag then has nowhere to be written, and says nothing."""
+def test_a_reader_with_no_config_file_is_told_once_that_the_place_was_not_saved(tmp_path, monkeypatch):
+    """The environment can be the whole configuration; a drag then has nowhere to be written, and says so once."""
+    monkeypatch.setenv("ZETTCODE_CONFIG", str(tmp_path / "absent.toml"))
     app, harness, _ = shell()
-    rect = stands(app, harness)
-    harness.mouse_down(rect.x + 2, rect.y + 1)
-    harness.mouse_move(rect.x - 10, rect.y)
-    harness.mouse_up(rect.x - 10, rect.y)
+    for _ in range(2):
+        rect = stands(app, harness)
+        harness.mouse_down(rect.x + 2, rect.y + 1)
+        harness.mouse_move(rect.x - 10, rect.y)
+        harness.mouse_up(rect.x - 10, rect.y)
+
     assert not any(getattr(entry, "level", None) == "error" for entry in app.transcript.entries)
+    told = [entry.text for entry in app.transcript.entries if "was not saved" in getattr(entry, "text", "")]
+    assert len(told) == 1 and "absent.toml" in told[0], told
+
+
+def test_the_place_a_drag_left_is_the_place_the_next_start_opens_in(tmp_path, monkeypatch):
+    """End to end, on a real file: drag, let the file be written, load it again, build another shell."""
+    from zettcode.app.agent.agent import ZettCodeAgent
+    from zettcode.app.agent.runtime import ZettCodeRuntime
+    from zettcode.app.ui import ZettCodeApp
+    from zettcode.config import load_config
+
+    path = tmp_path / "config.toml"
+    path.write_text(
+        '[[models]]\nmodel = "m"\ntoken = "t"\n\n[ui]\npet = "penguin"\n\n[statusline]\npet = true\n', encoding="utf-8"
+    )
+    monkeypatch.setenv("ZETTCODE_CONFIG", str(path))
+    workspace = tmp_path / "work"
+    workspace.mkdir()
+
+    def start() -> tuple[ZettCodeApp, object]:
+        config = replace(
+            load_config(workspace, path=path),
+            store=tmp_path / "sessions",
+            plugins_enabled=True,
+            skills_enabled=False,
+            mcp_enabled=False,
+        )
+        shell_app = ZettCodeApp(ZettCodeAgent(ZettCodeRuntime.preview(config)))
+        shell_app.app.resize(120, 40)
+        shell_app.app.mount()
+        from zettcode.tui.testing import Harness
+
+        harness = Harness(app=shell_app.app)
+        harness.render()
+        return shell_app, harness
+
+    first, harness = start()
+    assert (first.pet.fx, first.pet.fy) == (1.0, 0.5), "nothing remembered yet: the right edge, halfway down"
+    rect = first.pet.rect
+    harness.mouse_down(rect.x + 3, rect.y + 2)
+    harness.mouse_move(rect.x - 40, rect.y - 6)
+    harness.mouse_up(rect.x - 40, rect.y - 6)
+    harness.render()
+    moved = first.pet.rect
+    assert moved != rect
+    assert "pet_position" in path.read_text(encoding="utf-8")
+
+    second, _ = start()
+
+    assert second.pet.rect == moved, "the next start puts the pet where it was left"
+    assert second.pet.pet.name == "penguin"
 
 
 def test_the_config_reads_the_position_and_refuses_what_is_not_two_shares(tmp_path):
