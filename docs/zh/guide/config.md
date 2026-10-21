@@ -67,16 +67,32 @@ Models
 | `ollama` | chat completions | `http://localhost:11434/v1` |
 | `custom` | **你选择** | **你填写** |
 
-`custom` 是任何其他端点，会问四件事：它用哪种 **API**（`chat` 是 chat completions，`responses` 是
-Responses API，`anthropic` 是 Messages API）、**地址**、**模型 id** 和 **token**。Anthropic API 的端点
-不会问地址：SDK 自带一个。插件可以往这个列表里添加 provider，见[插件](/zh/guide/plugins#providers)。
+`custom` 是任何其他端点。它先在单独的列表里问它用哪种 **API**（`chat` 是 chat completions，`responses` 是
+Responses API，`anthropic` 是 Messages API），然后显示下面的表单。Anthropic API 的端点没有地址这一行：
+SDK 自带一个。插件可以往这个列表里添加 provider，见[插件](/zh/guide/plugins#providers)。
+
+添加一个 provider 用的是**一个表单**，而不是一个一个地问：
+
+```text
+Add a model at DeepSeek
+Tab moves between the lines; Enter saves them all.
+
+› Model id *    deepseek-chat
+  Token         ••••••••••••••
+  Address       https://api.deepseek.com
+  Shown name    the model id
+  Temperature   the provider's default
+```
+
+**Tab**（或 **↓**）移到下一行，**Shift-Tab**（或 **↑**）回到上一行，到尽头会绕回来；**Enter** 一次保存全部；表单下面的提示会解释光标所在的那一行。只有**模型 id** 是必填的
+（`custom` 还要地址）。**token 可以留空**：本地服务器（Ollama、LM Studio、vLLM）不需要，环境里有 `OPENAI_API_KEY` 时就用它。
+保存不了的那一行——比如不是 http 或 https 的地址、超出范围的温度——会在表单上方点名，光标跳到那一行，你输入过的内容都不会丢。
 
 token 输入时显示为圆点，之后也不会再显示 —— 面板里没有，`/config list` 里没有，提示“已添加”的那一行
-里也没有。**Escape 是退回上一步**：从 token 退到模型 id（带着你刚才输入的内容，可以直接改），从第一个问题退到
-provider 列表，从列表退到模型列表，只有在模型列表按 Escape 才会关闭。最后一个答案提交之前什么都不会
-写入，所以退回去不会有任何损失。
+里也没有。**Escape 是退回上一步**：从表单退到 provider 列表（`custom` 退到 API 列表），从列表退到模型列表，只有在模型列表按 Escape 才会关闭。
+在表单里按 Enter 之前什么都不会写入，所以退回去不会有任何损失。
 
-在面板里选中一个模型可以**使用**它、修改它的 **token**、**API**（`chat`、`responses` 或 `anthropic`）、**地址**、**模型 id** 或**显示名**，或者**删除**
+在面板里选中一个模型可以**使用**它、修改它的 **token**、**API**（`chat`、`responses` 或 `anthropic`）、**地址**、**模型 id**、**显示名**或**温度**，或者**删除**
 它（删除前会先确认，Enter 默认的答案是 *Keep it*）。
 
 另外三行是关于模型能装多少的，改完立刻在当前会话里生效：
@@ -95,7 +111,7 @@ provider 列表，从列表退到模型列表，只有在模型列表按 Escape 
 ```text
 /config add deepseek --model deepseek-chat --token sk-...
 /config add custom --api chat --url https://llm.example/v1 --model my-model --token sk-... --name "My model"
-/config add anthropic --model claude-sonnet-4-5          # 会询问 token
+/config add anthropic --model claude-sonnet-4-5          # 打开表单填其余的
 /config remove 3          # 也可以用名字：/config remove "My model"
 /config add custom --api chat --url https://llm.example/v1 --model big --token sk-... --context 1m --compact 60
 /config add custom --api chat --url https://llm.example/v1 --model big --token sk-... --context 1m --compact 60
@@ -106,13 +122,14 @@ provider 列表，从列表退到模型列表，只有在模型列表按 Escape 
 | 选项 | 含义 |
 | --- | --- |
 | `--model ID` | provider 称呼这个模型的 id。 |
-| `--token KEY` | 凭据。不写的话会用隐藏输入来询问。 |
+| `--token KEY` | 凭据。不写的话，表单里有一行隐藏输入的 token，也可以留空。 |
 | `--url URL` | 地址，替换 provider 自带的。`custom` 必须给（`--api anthropic` 除外）。 |
 | `--api chat\|responses\|anthropic` | 用哪种 API。provider 有自己的默认值，这里可以覆盖，例如 `openai --api responses`。 |
 | `--name SHOWN` | 在标题栏和 `/model` 里显示的名字（`display_model`）。 |
 | `--multimodal` | 模型接受图片。 |
 | `--context TOKENS` | 上下文窗口：`200000`、`200k`、`1m`。 |
 | `--compact PERCENT` | 达到窗口的这个比例时做摘要：`75` 或 `75%`。 |
+| `--temperature T` | 采样温度，0 到 2（`anthropic` 为 0 到 1）。 |
 
 ::: tip token 优先用面板输入
 你输入过的一行会留在输入框的内存历史里，按 `↑` 能再看到它，直到退出。不写 `--token`，在隐藏提示里输入

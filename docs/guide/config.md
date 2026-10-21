@@ -71,19 +71,38 @@ your **token**:
 | `ollama` | chat completions | `http://localhost:11434/v1` |
 | `custom` | **you choose** | **you give it** |
 
-`custom` is any other endpoint, and asks four things: which **API** it speaks (`chat` for
-chat completions, `responses` for the Responses API, `anthropic` for the Messages API), its
-**address**, the **model id**, and the **token**. An Anthropic-API endpoint does not ask for an
-address: the SDK has one. Plugins can add providers to this list; see
-[Plugins](/guide/plugins#providers).
+`custom` is any other endpoint. It first asks which **API** it speaks (`chat` for chat completions,
+`responses` for the Responses API, `anthropic` for the Messages API), on a list of its own, and then shows
+the form below. An Anthropic-API endpoint has no address line: the SDK has one. Plugins can add providers to
+this list; see [Plugins](/guide/plugins#providers).
+
+A provider is added on **one form**, not a question at a time:
+
+```text
+Add a model at DeepSeek
+Tab moves between the lines; Enter saves them all.
+
+› Model id *    deepseek-chat
+  Token         ••••••••••••••
+  Address       https://api.deepseek.com
+  Shown name    the model id
+  Temperature   the provider's default
+```
+
+**Tab** (or **↓**) moves to the next line and **Shift-Tab** (or **↑**) to the previous one, going round at the ends;
+**Enter** saves all of it; a hint under the form explains the line the cursor is in. Only the **model id** is required
+(and the address for `custom`). The **token may be empty**: a local server (Ollama, LM Studio, vLLM) wants none, and
+the environment's `OPENAI_API_KEY` is used when there is one. A line that cannot be saved — an address that is not
+http or https, a temperature out of range — is named above the form, the cursor goes to it, and everything you typed
+stays.
 
 The token is typed as bullets and never shown again — not in the panel, not in `/config list`, not
-in the line that says the model was added. **Escape goes back one step**: from the token to the model id (with what you typed there, to change),
-from the first question to the provider list, from the list to the models, and only from the models
-panel does it close. Nothing is written until the last answer is in, so going back never costs anything.
+in the line that says the model was added. **Escape goes back one step**: from the form to the provider list (for
+`custom`, to the list of APIs), from the list to the models, and only from the models
+panel does it close. Nothing is written until you press Enter on the form, so going back never costs anything.
 
 Choose a model in the panel to **use** it, change its **token**, **API** (`chat`, `responses` or
-`anthropic`), **address**, **model id** or **shown name**, or **remove** it (it asks first, and *Keep it* is the answer Enter gives).
+`anthropic`), **address**, **model id**, **shown name** or **temperature**, or **remove** it (it asks first, and *Keep it* is the answer Enter gives).
 
 Three more rows are about what the model can carry, and each takes effect in the running session at once:
 
@@ -102,7 +121,7 @@ The same thing on one line, asking only for what the line leaves out:
 ```text
 /config add deepseek --model deepseek-chat --token sk-...
 /config add custom --api chat --url https://llm.example/v1 --model my-model --token sk-... --name "My model"
-/config add anthropic --model claude-sonnet-4-5          # asks for the token
+/config add anthropic --model claude-sonnet-4-5          # opens the form for the rest
 /config remove 3          # or the name: /config remove "My model"
 /config add custom --api chat --url https://llm.example/v1 --model big --token sk-... --context 1m --compact 60
 /config list              # the models, what they take and where they compress, never a token
@@ -112,13 +131,14 @@ The same thing on one line, asking only for what the line leaves out:
 | Option | Meaning |
 | --- | --- |
 | `--model ID` | The model id the provider calls it. |
-| `--token KEY` | The credential. Left out, it is asked for with the input hidden. |
+| `--token KEY` | The credential. Left out, the form has a hidden token line, which may stay empty. |
 | `--url URL` | The address, replacing the provider's. Required for `custom` (except `--api anthropic`). |
 | `--api chat\|responses\|anthropic` | Which API. A provider has its own; this overrides it, e.g. `openai --api responses`. |
 | `--name SHOWN` | The name in the header and `/model` (`display_model`). |
 | `--multimodal` | The model accepts images. |
 | `--context TOKENS` | The context window: `200000`, `200k`, `1m`. |
 | `--compact PERCENT` | Summarize at this share of the window: `75` or `75%`. |
+| `--temperature T` | The sampling temperature, from 0 to 2 (0 to 1 for `anthropic`). |
 
 ::: tip Prefer the panel for a token
 A line you type stays in the composer's in-memory history, so pressing `Up` shows it again until

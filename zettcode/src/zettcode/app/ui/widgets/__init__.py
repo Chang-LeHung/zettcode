@@ -23,6 +23,10 @@ _EXPORTS = {
     "EFFORT_ROWS": ".effort_page",
     "EffortPage": ".effort_page",
     "FollowUpQueue": ".follow_up",
+    "FORM_CHROME_ROWS": ".form_page",
+    "Field": ".form_page",
+    "FormPage": ".form_page",
+    "form_rows": ".form_page",
     "INPUT_ROWS": ".input_page",
     "InputPage": ".input_page",
     "LATER": ".update_page",
@@ -62,6 +66,7 @@ if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
     from .context_page import ContextPage
     from .effort_page import EFFORT_ROWS, EffortPage
     from .follow_up import FollowUpQueue
+    from .form_page import FORM_CHROME_ROWS, Field, FormPage, form_rows
     from .input_page import INPUT_ROWS, InputPage
     from .model_page import ModelPage
     from .panel import bottom_panel
@@ -110,6 +115,10 @@ __all__ = [
     "EFFORT_ROWS",
     "EffortPage",
     "FollowUpQueue",
+    "FORM_CHROME_ROWS",
+    "Field",
+    "FormPage",
+    "form_rows",
     "INPUT_ROWS",
     "InputPage",
     "LATER",
