@@ -22,7 +22,7 @@ shell 命令都在你的控制之下。它通过 HTTP 和本机的 `zettcode-ser
 1. 打开扩展视图（`Ctrl/Cmd+Shift+X`），搜 **ZettCode**，安装。或者装 `.vsix`：
 
    ```bash
-   code --install-extension zettcode-0.1.5.vsix
+   code --install-extension zettcode-0.1.6.vsix
    ```
 
    [市场页面](https://marketplace.visualstudio.com/items?itemName=zettcode.zettcode)上写着最新版本；
@@ -56,6 +56,7 @@ VS Code 会先请你信任这个文件夹：agent 要在里面跑命令、改文
 | 提到一个文件 | 输入 `@` 再选 |
 | 附一张图 | 粘贴、拖到视图里，或者点回形针 |
 | 附别的东西 | 点回形针选择：PDF、压缩包之类会以**路径**写进消息，agent 用工具自己打开 |
+| 粘贴复制的文件 | 在资源管理器或文件管理器里复制文件再粘贴，写进输入框的是完整**路径**，不再是单独的文件名。网页拿得到文件名和内容，拿不到路径，所以插件直接向系统剪贴板要真实路径（macOS、Windows、Linux；任意大小、任意位置的文件都行，比如桌面上的 PDF）。要不到时，用工作区里内容完全相同的那个文件，再不行就把内容在插件自己的存储里存一份；超过 10 MB 的文件只能按名字查找。远程窗口（SSH、WSL、容器）里的剪贴板不是你复制文件时的那个，所以直接用内容 |
 | 运行命令 | 输入 `/`：`new`、`resume`、`continue`、`compact`、`fork`、`rename`、`export`、`model`、`effort`、`permission`、`usage`、`context`、`doctor`、`btw` |
 | 不加入对话地问一句 | `/btw 你的问题` |
 

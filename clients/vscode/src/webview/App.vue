@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted } from "vue";
 
-import { addFiles } from "./images.js";
+import { addFiles, pasteFiles } from "./images.js";
 import { closeOverlay, openFind, state } from "./store.js";
 import Banner from "./components/Banner.vue";
 import Composer from "./components/Composer.vue";
@@ -48,11 +48,21 @@ function onClick(event: MouseEvent): void {
   }
 }
 
+/**
+ * Pictures are attached. Any other file is not pasted as its bare name, which is all the browser would put in the box:
+ * the host is given its name and bytes and answers with a path, which is what the agent can open.
+ */
 function onPaste(event: ClipboardEvent): void {
-  const files = Array.from(event.clipboardData?.files ?? []).filter((file) => file.type.startsWith("image/"));
-  if (files.length) {
+  const files = Array.from(event.clipboardData?.files ?? []);
+  const pictures = files.filter((file) => file.type.startsWith("image/"));
+  const others = files.filter((file) => !file.type.startsWith("image/"));
+  if (pictures.length) {
     event.preventDefault();
-    void addFiles(files);
+    void addFiles(pictures);
+  }
+  if (others.length) {
+    event.preventDefault();
+    void pasteFiles(others);
   }
 }
 

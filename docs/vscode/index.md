@@ -25,7 +25,7 @@ under the publisher **zettcode**.
 1. Open the extensions view (`Ctrl/Cmd+Shift+X`), search for **ZettCode**, and install it. Or install the `.vsix`:
 
    ```bash
-   code --install-extension zettcode-0.1.5.vsix
+   code --install-extension zettcode-0.1.6.vsix
    ```
 
    The [marketplace page](https://marketplace.visualstudio.com/items?itemName=zettcode.zettcode) says which version is
@@ -62,6 +62,7 @@ VS Code asks you to trust the folder first: the agent runs commands and edits fi
 | Mention a file | Type `@` and pick one |
 | Attach a picture | Paste it, drop it on the view, or press the paperclip |
 | Attach any other file | Press the paperclip and pick it: a PDF or an archive goes into the message as its **path**, which the agent opens with its own tools |
+| Paste a copied file | Copy a file in the explorer or the file manager and paste it: its full **path** goes into the box, not its bare name. A page is given a file's name and contents but no path, so the extension asks the system's clipboard for the real one (macOS, Windows and Linux; a file of any size, from anywhere, such as a PDF on the Desktop). Failing that it uses the workspace file with the very same contents, else keeps a copy of the contents in its own storage; a file over 10 MB can only be found by name. In a remote window (SSH, WSL, a container) the clipboard is not the one you copied on, so the contents are used |
 | Run a command | Type `/`: `new`, `resume`, `continue`, `compact`, `fork`, `rename`, `export`, `model`, `effort`, `permission`, `usage`, `context`, `doctor`, `btw` |
 | Ask without adding to the conversation | `/btw your question` |
 

@@ -60,6 +60,14 @@ export interface WebviewState {
   version: string | null;
 }
 
+/** A file the reader pasted, as the page knows it. */
+export interface PastedFile {
+  name: string;
+  size: number;
+  /** The bytes as base64, when the file is small enough to send. */
+  data?: string;
+}
+
 /** A picture the webview is about to send, with a name for its chip. */
 export interface AttachedImage extends ImageInput {
   name: string;
@@ -118,6 +126,11 @@ export type WebviewMessage =
   | { type: "ask"; question: string }
   | { type: "mentions"; query: string }
   | { type: "pick-files" }
+  /**
+   * Files the reader pasted that are not pictures. The page has each one's name and bytes (base64, up to a limit; a
+   * larger file has only its size) but no path, so the host finds or makes one.
+   */
+  | { type: "paste-files"; files: PastedFile[] }
   | { type: "copy"; text: string }
   | { type: "open-settings" }
   | { type: "open-diff"; turnId: string; path: string }

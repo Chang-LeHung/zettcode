@@ -1,12 +1,13 @@
 /** The chat view: one webview, the state it shows, and the server calls behind its buttons. */
 
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import * as path from "node:path";
 import * as vscode from "vscode";
 
 import { ChangeLedger, changesFile, MAX_TRACKED_BYTES, type EditPair } from "./core/ledger.js";
 import { diffText } from "./core/diff.js";
 import { type Api, APIS, apiChange, apiKeys, maxTemperature, parseTemperature } from "./core/model-form.js";
+import { copiedFilePaths } from "./clipboard.js";
 import { diffUri } from "./diffs.js";
 import { RunFailedError, RunCancelledError, ZettCodeClient, ZettCodeError } from "../../typescript/src/index.js";
 import type {
@@ -33,6 +34,7 @@ import type {
 import type {
   AttachedImage,
   HostMessage,
+  PastedFile,
   SessionRow,
   WebviewMessage,
   WebviewState,
@@ -40,6 +42,7 @@ import type {
 import { parsePathTarget } from "./core/paths.js";
 import { approvalsFor } from "./core/permission.js";
 import { pageStart, requestsBefore } from "./core/paging.js";
+import { baseName, PASTE_FILES, pathsOnClipboard, plan, safeFileName, searchPattern } from "./core/pasted.js";
 import { readRemembered, remember, wantedPermission } from "./core/remember.js";
 import { chatHtml } from "./html.js";
 import {
@@ -585,6 +588,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         return;
       case "pick-files":
         await this.pickFiles();
+        return;
+      case "paste-files":
+        await this.pasteFiles(message.files);
         return;
       case "copy":
         await vscode.env.clipboard.writeText(message.text);
@@ -1686,6 +1692,87 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
   }
 
   /**
+   * Files the reader copied and pasted. The page has their names and bytes but no path, so one is found or made here
+   * (see `plan` in core/pasted.ts): the path the system clipboard holds for the file (the real one, of any size, from
+   * anywhere), else the file in the workspace with the very same bytes, else a copy of the bytes kept in the extension's
+   * storage. What cannot be done is said, with the way that always works.
+   */
+  private async pasteFiles(files: PastedFile[]): Promise<void> {
+    const wanted = files.slice(0, PASTE_FILES);
+    const onClipboard = pathsOnClipboard(
+      await vscode.env.clipboard.readText().then((text) => text, () => ""),
+      wanted.map((file) => file.name),
+    );
+    // The system's clipboard is the reader's own only when the window is local; over SSH or in WSL it is another machine's.
+    const system = vscode.env.remoteName === undefined ? await copiedFilePaths() : [];
+    const preferred = [
+      ...vscode.window.tabGroups.all.flatMap((group) => group.tabs.map((tab) => tabPath(tab.input))),
+      vscode.window.activeTextEditor?.document.uri.fsPath ?? "",
+    ].filter(Boolean);
+    const paths: string[] = [];
+    const missing: string[] = [];
+    for (const file of wanted) {
+      const bytes = file.data === undefined ? undefined : Buffer.from(file.data, "base64");
+      const byName = (await vscode.workspace.findFiles(searchPattern(file.name), "**/{node_modules,.git}/**", 40))
+        .map((uri) => uri.fsPath)
+        .filter((candidate) => baseName(candidate) === file.name);
+      const decision = plan({
+        known: onClipboard.get(file.name) ?? system.find((candidate) => baseName(candidate) === file.name),
+        identical: bytes === undefined ? [] : await sameBytes(byName, bytes),
+        byName,
+        hasBytes: bytes !== undefined,
+        preferred,
+      });
+      let found: string | undefined;
+      if (decision.kind === "path") {
+        found = decision.path;
+      } else if (decision.kind === "ask") {
+        found = (
+          await vscode.window.showQuickPick(
+            decision.paths.map((candidate) => ({ label: vscode.workspace.asRelativePath(candidate), description: candidate, candidate })),
+            { placeHolder: `Which ${file.name} did you copy?` },
+          )
+        )?.candidate;
+      } else if (decision.kind === "save" && bytes !== undefined) {
+        found = await this.keepCopy(file.name, bytes);
+      }
+      if (found === undefined) {
+        missing.push(file.name);
+      } else {
+        paths.push(found);
+      }
+    }
+    if (paths.length) {
+      this.post({ type: "files", paths });
+    }
+    if (missing.length) {
+      this.post({
+        type: "notice",
+        level: "warn",
+        text: `No path found for ${missing.join(", ")}. Attach ${missing.length === 1 ? "it" : "them"} with the paperclip to send the path.`,
+      });
+    }
+  }
+
+  /**
+   * Keep the bytes of a pasted file that is not in the workspace, in the extension's own storage, and return the path of
+   * the copy. The folder is named for the bytes, so two files of one name never overwrite each other and pasting the
+   * same file again finds the copy already there.
+   */
+  private async keepCopy(name: string, bytes: Buffer): Promise<string | undefined> {
+    try {
+      const folder = vscode.Uri.joinPath(this.context.globalStorageUri, "pasted", createHash("sha256").update(bytes).digest("hex").slice(0, 16));
+      await vscode.workspace.fs.createDirectory(folder);
+      const target = vscode.Uri.joinPath(folder, safeFileName(name));
+      await vscode.workspace.fs.writeFile(target, bytes);
+      return target.fsPath;
+    } catch (error) {
+      this.output.appendLine(`[paste] could not keep ${name}: ${messageOf(error)}`);
+      return undefined;
+    }
+  }
+
+  /**
    * Attach files. A picture is sent as a picture; anything else (a PDF, an archive, a spreadsheet) cannot be read by
    * the model from here, so what goes into the message is its path, which the agent can open with its own tools.
    */
@@ -1991,6 +2078,27 @@ function findTool(turn: Turn, callId: string): { arguments: Record<string, unkno
     }
   }
   return null;
+}
+
+/** The files among `candidates` whose bytes are exactly `bytes`; a file of another size is not read. */
+async function sameBytes(candidates: readonly string[], bytes: Buffer): Promise<string[]> {
+  const same: string[] = [];
+  for (const candidate of candidates) {
+    try {
+      const uri = vscode.Uri.file(candidate);
+      if ((await vscode.workspace.fs.stat(uri)).size === bytes.length && Buffer.from(await vscode.workspace.fs.readFile(uri)).equals(bytes)) {
+        same.push(candidate);
+      }
+    } catch {
+      // A file that cannot be read is not the one that was copied.
+    }
+  }
+  return same;
+}
+
+/** The file an editor tab shows, or an empty string for a tab that is not one (a webview, a diff, a terminal). */
+function tabPath(input: unknown): string {
+  return input instanceof vscode.TabInputText ? input.uri.fsPath : "";
 }
 
 function messageOf(error: unknown): string {
