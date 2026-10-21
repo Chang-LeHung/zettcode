@@ -61,7 +61,7 @@ def test_an_entry_that_is_not_a_usable_model_leaves_the_existing_file_as_it_was(
     before = path.read_text(encoding="utf-8")
 
     with pytest.raises(ValueError):
-        add({"model": "b"}, path=path)  # no token
+        add({"model": "", "token": "t"}, path=path)  # no model id
 
     assert path.read_text(encoding="utf-8") == before
 

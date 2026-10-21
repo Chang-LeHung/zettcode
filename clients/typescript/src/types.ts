@@ -52,7 +52,11 @@ export interface ModelInput {
   base_url?: string;
   anthropic?: boolean;
   responses_api?: boolean;
+  /** Say that the endpoint speaks chat completions (the default); not combinable with `anthropic` or `responses_api`. */
+  chat?: boolean;
   multimodal?: boolean;
+  /** Sampling temperature, from 0 to 2 (to 1 for an Anthropic model). Left out, the provider's own default is used. */
+  temperature?: number;
   context_window?: number;
   compact_percent?: number;
   reasoning_efforts?: string[];

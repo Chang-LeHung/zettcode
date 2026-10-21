@@ -133,7 +133,8 @@ def test_each_protocol_selects_itself_with_the_keys_the_loader_reads(api, keys):
 def test_the_keys_of_every_protocol_are_among_the_ones_a_rewrite_clears():
     from zettcode.providers import API_FLAG_KEYS
 
-    assert {key for api in Api for key in api.keys} == set(API_FLAG_KEYS)
+    assert {key for api in Api for key in api.keys} <= set(API_FLAG_KEYS)
+    assert "chat" in API_FLAG_KEYS, "a file that spells the default out loses it when the protocol changes"
 
 
 def test_every_protocol_has_a_description():

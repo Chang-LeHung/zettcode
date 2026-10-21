@@ -243,16 +243,22 @@ def test_a_model_entry_that_is_neither_a_model_nor_a_dict_is_reported_by_type(wo
 @pytest.mark.parametrize(
     "entry",
     [
-        {"model": "m"},
         {"token": "t"},
         {"model": "", "token": "t"},
-        {"model": "m", "token": " "},
         {"model": "m", "token": "t", "nope": 1},
+        {"model": "m", "chat": True, "anthropic": True},
+        {"model": "m", "temperature": 9},
     ],
 )
 def test_an_incomplete_or_invalid_model_entry_is_reported_with_the_entry(workspace, entry):
     with pytest.raises(ConfigurationError, match="Invalid model entry"):
         build(workspace, models=[entry])
+
+
+@pytest.mark.parametrize("entry", [{"model": "m"}, {"model": "m", "token": " "}])
+def test_a_model_with_no_token_is_a_local_model_and_builds(workspace, entry, monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    assert build(workspace, models=[entry]) is not None
 
 
 # -- the file -------------------------------------------------------------------------------------

@@ -67,12 +67,14 @@ An entry is a `ModelConfig` or a dict of the same fields:
 | Field | Default | Meaning |
 | --- | --- | --- |
 | `model` | required | The model id sent to the endpoint. |
-| `token` | required | The credential. Read it from the environment rather than writing it into code. |
+| `token` | `""` | The credential. May be left out for a local server that wants none, or taken from `OPENAI_API_KEY` (`ANTHROPIC_API_KEY` for an Anthropic model). Read it from the environment rather than writing it into code. |
 | `display_model` | `None` | The name to show and to pass to `use_model`. Give one when two entries share a model id. |
 | `base_url` | `None` | The API root. A trailing `/chat/completions`, `/v1/messages` or `/responses` is dropped. |
 | `anthropic` | `False` | Speak Anthropic's Messages API. |
 | `responses_api` | `False` | Use the Responses API on an OpenAI-compatible endpoint. Not combinable with `anthropic`. |
+| `chat` | `False` | Say that the endpoint speaks chat completions, which is what an entry with neither of the other two already is. Not combinable with `anthropic` or `responses_api`. |
 | `multimodal` | `False` | Whether the model accepts images. |
+| `temperature` | `None` | Sampling temperature sent with every request, from 0 to 2 (0 to 1 for an Anthropic model). Left out, the provider's default is used. |
 | `context_window` | `128000` | Tokens the model can carry. |
 | `compact_percent` | `80.0` | The share of the window at which the conversation is compacted. |
 | `reasoning_efforts` | all levels | The reasoning levels the model accepts. |

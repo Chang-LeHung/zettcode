@@ -37,7 +37,7 @@ Except on `/health`, every endpoint requires `Authorization: Bearer <token>` whe
 | Method | Path | Body | Answers |
 | --- | --- | --- | --- |
 | `GET` | `/models` | — | `{"models": [{"name","model","context_window","multimodal","efforts","active","compact_percent"}], "current"}`; works before a model is configured, where `current` is null. |
-| `POST` | `/models` | `{"model", "token"?, "display_model"?, "base_url"?, "anthropic"?, "responses_api"?, "multimodal"?, "context_window"?, "compact_percent"?, "reasoning_efforts"?}` | 201 with the new list. The first model makes the server ready; later ones are available for `PATCH /settings`. Written to the configuration file, with the keys the terminal's `/config add` uses. |
+| `POST` | `/models` | `{"model", "token"?, "display_model"?, "base_url"?, "anthropic"?, "responses_api"?, "chat"?, "multimodal"?, "temperature"?, "context_window"?, "compact_percent"?, "reasoning_efforts"?}` | 201 with the new list. The first model makes the server ready; later ones are available for `PATCH /settings`. Written to the configuration file, with the keys the terminal's `/config add` uses. |
 | `PATCH` | `/models/{name}` | Any of the fields `POST /models` takes | The new list. A key left out stays as it is; the token is kept unless a new one is given. |
 | `DELETE` | `/models/{name}` | — | The remaining models. The last one cannot be removed (`400 invalid`): a client needs one. |
 | `GET` | `/settings` | — | `{"model","effort","efforts","permission","permissions"}`; after a `PATCH` that moved the compaction point it also has `"unsaved"` (see below). |

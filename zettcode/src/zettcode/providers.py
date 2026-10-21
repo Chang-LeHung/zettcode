@@ -71,8 +71,9 @@ _DESCRIPTIONS = {
     Api.ANTHROPIC: "Anthropic Messages API",
 }
 
-#: The flags a ``[[models]]`` entry sets to choose a protocol; every one is cleared before one is set.
-API_FLAG_KEYS = ("anthropic", "responses_api")
+#: The flags a ``[[models]]`` entry sets to choose a protocol; every one is cleared before one is set. ``chat`` is
+#: among them because a file may spell the default out, and a rewrite to another protocol must not leave it behind.
+API_FLAG_KEYS = ("chat", "anthropic", "responses_api")
 
 #: What a provider is called when typed: lower case, so ``/config add deepseek`` has one spelling.
 NAME = re.compile(r"[a-z][a-z0-9_-]{0,31}\Z")
