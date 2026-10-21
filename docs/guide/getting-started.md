@@ -40,12 +40,41 @@ command line takes, which is deliberately short:
 | `--auto`, `--yolo` | Run shell commands without asking, for this run. The same as `/permission auto`. |
 | `--dry-run` | Run the startup, paint one frame, and exit. Useful for profiling. |
 
-Three subcommands do the same things by name: `zettcode resume SESSION` is `zettcode --resume SESSION`
+Four subcommands do their work by name: `zettcode resume SESSION` is `zettcode --resume SESSION`
 (put `-w DIR` before it, as in `zettcode -w ~/projects/api resume 01a10b75`), `zettcode update`
 (or `zettcode upgrade`, the same thing) installs the newest release and exits (see the
 [FAQ](/guide/faq#new-versions)), and `zettcode doctor` asks every model in your config file one short
 question and prints which of them answer and how fast, or why not (a revoked token, a wrong base URL, a model
-the endpoint does not serve), exiting 1 if one does not.
+the endpoint does not serve), exiting 1 if one does not. `zettcode prompt` runs the agent once
+without opening the terminal, below.
+
+### One question, from a script
+
+`zettcode prompt` sends one prompt, prints the answer, and exits. Without `-m` and `-s` it uses the first model in the
+config file and a new session:
+
+```bash
+zettcode prompt "explain what this repository does"
+git diff | zettcode prompt "review this change"          # no prompt on the line: it is read from standard input
+zettcode prompt -m "Claude Sonnet" -s 01a10b75 "and the tests?"
+zettcode prompt --continue -s 01a10b75             # pick up a request that was cut short
+```
+
+| Option | What it does |
+| --- | --- |
+| `PROMPT` | What to ask. Leave it out, or give `-`, to read it from standard input. |
+| `-m`, `--model NAME` | The model, by the name `/model` lists. |
+| `-s`, `--session ID` | Continue a stored session. |
+| `-c`, `--continue` | No prompt: pick up the request that was cut short, as [`/continue`](/guide/commands#continue) does. Needs `-s`. |
+| `-e`, `--effort LEVEL` | The reasoning level. |
+| `-w`, `--workspace DIR` | The directory to work in. |
+
+Standard output holds the answer and nothing else. The tools used and, last, `session: <id>` go to standard error.
+The exit status is `0` for an answer, `1` when the run failed or stopped early, `2` for arguments that cannot be used,
+and `3` when `--continue` finds nothing to pick up.
+
+Nobody can be asked here, so the shell permission is always `auto`: the model's commands run without asking. Use it
+only in a workspace you would trust with a shell.
 
 Working from a checkout instead:
 
