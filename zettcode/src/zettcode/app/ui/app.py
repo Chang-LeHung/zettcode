@@ -186,6 +186,8 @@ class ZettCodeApp(
         #: The companion over the conversation and the composer, which the reader can drag, choose with ``/pet`` and
         #: switch off in ``/statusline``.
         self._pet_before: Pet | None = None
+        #: Whether the pet's place failed to be saved and the reader was told, so it is said once.
+        self._pet_unsaved = False
         self.pet = PetView(
             self._starting_pet(),
             area=self._pet_area,
@@ -296,14 +298,18 @@ class ZettCodeApp(
     def _remember_pet_position(self, across: float, down: float) -> None:
         """Keep where the pet was left in the config file, so the next start puts it back.
 
-        A pet is not worth an error: a reader whose configuration is the environment has no file to write it to,
-        and a file that cannot be edited safely is the reader's to fix by hand. The pet simply starts at its
-        usual place the next time, which is what it did before it could remember.
+        A pet is not worth an error, so a failure is a notice and not an error row, and it is said once a session: a
+        reader whose configuration is the environment has no file to write it to, and a file that cannot be edited
+        safely is theirs to fix by hand. Said nothing, they would only find the pet at its usual place the next
+        time and not know why.
         """
         try:
             self.agent.remember_pet_position(across, down)
-        except ConfigEditError:
-            return
+        except ConfigEditError as error:
+            if not self._pet_unsaved:
+                self._pet_unsaved = True
+                self.transcript.notice(f"The pet's place was not saved: {error}")
+                self.app.invalidate()
 
     def _starting_pet(self) -> Pet:
         """Return the pet the configuration names, or the default one when it names none that exists.
