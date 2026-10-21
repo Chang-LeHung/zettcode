@@ -149,7 +149,7 @@ def remove_model(name, *, path=None) -> tuple[ModelInfo, ...]: ...
 
 `entry` 和 `changes` 用文件里的键(`model`、`token`、`display_model`、`base_url`、`anthropic`、`responses_api`、
 `chat`、`multimodal`、`temperature`、`context_window`、`compact_percent`、`reasoning_efforts`)。`path` 默认是 `$ZETTCODE_CONFIG` 或
-`~/.zettcode/config.toml`。每次调用返回整个列表,没有模型被标为 active;读不回来的文件会被拒绝;最后一个模型不能删。
+`~/.zettcode/config.toml`。每次调用返回整个列表,没有模型被标为 active;读不回来的文件会被拒绝;最后一个模型不能删。`changes` 里值为 `None` 的键会从条目里删掉:`{"temperature": None}` 回到提供商自己的默认值,`{"anthropic": None, "chat": True}` 把模型改成 chat completions,而不会留下 `anthropic = false`。
 
 ## zettcode.sdk.session
 

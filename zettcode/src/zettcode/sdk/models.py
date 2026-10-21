@@ -108,7 +108,8 @@ def update_model(name: str, changes: Mapping[str, object], *, path: str | Path |
     """Change the model called ``name``, leaving every key not named as it is, and return the new list.
 
     ``changes`` holds the file's keys. The token is kept unless a new one is given, so a window or a display name can
-    be changed without repeating a secret.
+    be changed without repeating a secret. A key whose value is ``None`` is removed from the entry, which is how a
+    temperature is cleared and how one protocol flag gives way to another without being left behind as ``false``.
 
     Raises:
         ValueError: No model is called ``name``, or the result is not usable.
@@ -117,7 +118,11 @@ def update_model(name: str, changes: Mapping[str, object], *, path: str | Path |
     models = _config.read_models(target)
     index = _find(models, name)
     entry = entry_from_model(models[index])
-    entry.update(changes)
+    for key, value in changes.items():
+        if value is None:
+            entry.pop(key, None)
+        else:
+            entry[key] = value
     before = _read_text(target)
     text = replace_model(before, index, entry, where=target)
     return _infos(_write(target, before, text))

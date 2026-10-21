@@ -6,6 +6,7 @@ import * as vscode from "vscode";
 
 import { ChangeLedger, changesFile, MAX_TRACKED_BYTES, type EditPair } from "./core/ledger.js";
 import { diffText } from "./core/diff.js";
+import { type Api, APIS, apiChange, apiKeys, maxTemperature, parseTemperature } from "./core/model-form.js";
 import { diffUri } from "./diffs.js";
 import { RunFailedError, RunCancelledError, ZettCodeClient, ZettCodeError } from "../../typescript/src/index.js";
 import type {
@@ -1240,6 +1241,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     if (input.responses_api !== undefined) {
       clean.responses_api = input.responses_api;
     }
+    if (input.chat !== undefined) {
+      clean.chat = input.chat;
+    }
+    if (input.temperature !== undefined && input.temperature >= 0) {
+      clean.temperature = input.temperature;
+    }
     if (input.reasoning_efforts !== undefined && input.reasoning_efforts.length > 0) {
       clean.reasoning_efforts = input.reasoning_efforts;
     }
@@ -1297,11 +1304,29 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       ignoreFocusOut: true,
       validateInput: (value) => (!value.trim() || Number.isFinite(Number(value)) ? undefined : "A number is required"),
     });
+    const api = await vscode.window.showQuickPick(
+      APIS.map((item) => ({ label: item.label, description: item.detail, api: item.value })),
+      { placeHolder: "Which API does the endpoint speak?", ignoreFocusOut: true },
+    );
+    const chosen: Api = api?.api ?? "chat";
+    const temperature = await vscode.window.showInputBox({
+      prompt: `Temperature, 0 to ${maxTemperature(chosen)} (optional; empty uses the provider's own)`,
+      placeHolder: "0.2",
+      ignoreFocusOut: true,
+      validateInput: (value) => {
+        const read = parseTemperature(value, chosen);
+        return read.kind === "error" ? read.message : undefined;
+      },
+    });
     const multimodal = await vscode.window.showQuickPick(["No", "Yes"], {
       placeHolder: "Does this model accept images?",
       ignoreFocusOut: true,
     });
-    const input: ModelInput = { model: model.trim() };
+    const input: ModelInput = { model: model.trim(), ...apiKeys(chosen) };
+    const read = parseTemperature(temperature ?? "", chosen);
+    if (read.kind === "value") {
+      input.temperature = read.value;
+    }
     if (displayModel?.trim()) {
       input.display_model = displayModel.trim();
     }
@@ -1408,29 +1433,45 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         { label: "Reasoning efforts", value: "reasoning_efforts" },
         { label: "Compact percent", value: "compact_percent" },
         { label: "Multimodal", value: "multimodal" },
-        { label: "Anthropic Messages API", value: "anthropic" },
-        { label: "OpenAI Responses API", value: "responses_api" },
+        { label: "API (chat, Responses or Anthropic)", value: "api" },
+        { label: "Temperature", value: "temperature" },
       ],
       { placeHolder: `Change what on ${model.label}?` },
     );
     if (field === undefined) {
       return;
     }
-    if (field.value === "multimodal" || field.value === "anthropic" || field.value === "responses_api") {
+    if (field.value === "api") {
+      const api = await vscode.window.showQuickPick(
+        APIS.map((item) => ({ label: item.label, description: item.detail, api: item.value })),
+        { placeHolder: `Which API does ${model.label} speak?` },
+      );
+      if (api === undefined) {
+        return;
+      }
+      await client.updateModel(model.label, apiChange(api.api));
+    } else if (field.value === "temperature") {
+      const value = await vscode.window.showInputBox({
+        prompt: `Temperature, 0 to ${maxTemperature(null)} (1 for an Anthropic model); empty goes back to the provider's own`,
+        placeHolder: "0.2",
+        validateInput: (text) => {
+          const read = parseTemperature(text, null);
+          return read.kind === "error" ? read.message : undefined;
+        },
+      });
+      if (value === undefined) {
+        return;
+      }
+      const read = parseTemperature(value, null);
+      await client.updateModel(model.label, { temperature: read.kind === "value" ? read.value : null });
+    } else if (field.value === "multimodal") {
       const answer = await vscode.window.showQuickPick(["Yes", "No"], {
-        placeHolder: field.value === "multimodal" ? "Does this model accept images?" : "Is this API shape in use?",
+        placeHolder: "Does this model accept images?",
       });
       if (answer === undefined) {
         return;
       }
-      const enabled = answer === "Yes";
-      if (field.value === "multimodal") {
-        await client.updateModel(model.label, { multimodal: enabled });
-      } else if (field.value === "anthropic") {
-        await client.updateModel(model.label, { anthropic: enabled });
-      } else {
-        await client.updateModel(model.label, { responses_api: enabled });
-      }
+      await client.updateModel(model.label, { multimodal: answer === "Yes" });
     } else if (field.value === "compact_percent") {
       const value = await vscode.window.showInputBox({
         prompt: "Compact when this percent of the window is used",

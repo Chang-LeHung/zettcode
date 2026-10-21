@@ -7,8 +7,10 @@ withDefaults(
     /** Pixels from the left edge, so the card sits over the control that opened it. */
     offset?: number;
     width?: number;
+    /** The tallest the card grows before it scrolls, in pixels; a form that is longer than a menu asks for more. */
+    tall?: number;
   }>(),
-  { title: "", align: "left", offset: 0, width: 320 },
+  { title: "", align: "left", offset: 0, width: 320, tall: 420 },
 );
 </script>
 
@@ -16,7 +18,7 @@ withDefaults(
   <div
     class="dropdown"
     :class="align"
-    :style="{ '--offset': `${offset}px`, '--width': `${width}px` }"
+    :style="{ '--offset': `${offset}px`, '--width': `${width}px`, '--tall': `${tall}px` }"
     role="dialog"
     tabindex="-1"
     :aria-label="title || undefined"
@@ -33,7 +35,7 @@ withDefaults(
   left: var(--offset);
   z-index: 40;
   width: min(var(--width), 100%);
-  max-height: min(420px, calc(100vh - 150px));
+  max-height: min(var(--tall, 420px), calc(100vh - 150px));
   overflow-y: auto;
   padding: 6px;
   border: 1px solid var(--line-strong);

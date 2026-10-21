@@ -898,5 +898,84 @@ test("a server with no model offers the setup form", async () => {
   token.value = "sk-test";
   token.dispatchEvent(new ui.window.Event("input", { bubbles: true }));
   await ui.click('[data-action="submit-model"]');
-  assert.deepEqual(ui.messages.at(-1), { type: "add-model", model: { model: "gpt-5", token: "sk-test" } });
+  assert.deepEqual(ui.messages.at(-1), {
+    type: "add-model",
+    model: { model: "gpt-5", token: "sk-test", chat: true },
+  });
+});
+
+test("the add-model form sends the API it was given as one flag, a temperature, and no key when there is none", async () => {
+  const cold: WebviewState = {
+    ...state,
+    ready: false,
+    health: state.health === null ? null : { ...state.health, ready: false, session: null, models: 0 },
+    settings: null,
+    models: [],
+    currentModel: null,
+    session: null,
+    sessions: [],
+    context: null,
+    selfCompaction: null,
+  };
+  const ui = await harness([], cold);
+  await ui.click("#setup .btn");
+  const fill = (selector: string, value: string): void => {
+    const field = ui.one<HTMLInputElement | HTMLSelectElement>(selector);
+    assert.ok(field, selector);
+    field.value = value;
+    field.dispatchEvent(new ui.window.Event(selector === "#m-api" ? "change" : "input", { bubbles: true }));
+  };
+
+  fill("#m-model", "llama3");
+  fill("#m-url", "http://localhost:11434/v1");
+  fill("#m-temperature", "0");
+  await ui.click('[data-action="submit-model"]');
+  assert.deepEqual(ui.messages.at(-1), {
+    type: "add-model",
+    model: { model: "llama3", base_url: "http://localhost:11434/v1", temperature: 0, chat: true },
+  }, "no token key, and a temperature of zero is sent");
+
+  fill("#m-api", "anthropic");
+  fill("#m-temperature", "0.4");
+  await ui.click('[data-action="submit-model"]');
+  assert.deepEqual(ui.messages.at(-1), {
+    type: "add-model",
+    model: { model: "llama3", base_url: "http://localhost:11434/v1", temperature: 0.4, anthropic: true },
+  }, "one protocol flag, and chat is not sent beside it");
+
+  fill("#m-api", "responses");
+  fill("#m-temperature", "");
+  await ui.click('[data-action="submit-model"]');
+  const sent = ui.messages.at(-1) as { model: Record<string, unknown> };
+  assert.equal(sent.model.responses_api, true);
+  assert.ok(!("temperature" in sent.model) && !("chat" in sent.model), "an empty temperature sends none");
+});
+
+test("a temperature out of range is refused in the form and nothing is sent", async () => {
+  const cold: WebviewState = {
+    ...state,
+    ready: false,
+    health: state.health === null ? null : { ...state.health, ready: false, session: null, models: 0 },
+    settings: null,
+    models: [],
+    currentModel: null,
+    session: null,
+    sessions: [],
+    context: null,
+    selfCompaction: null,
+  };
+  const ui = await harness([], cold);
+  await ui.click("#setup .btn");
+  const model = ui.one<HTMLInputElement>("#m-model");
+  const temperature = ui.one<HTMLInputElement>("#m-temperature");
+  assert.ok(model && temperature);
+  model.value = "m";
+  model.dispatchEvent(new ui.window.Event("input", { bubbles: true }));
+  temperature.value = "3";
+  temperature.dispatchEvent(new ui.window.Event("input", { bubbles: true }));
+  const before = ui.messages.length;
+  await ui.click('[data-action="submit-model"]');
+
+  assert.equal(ui.messages.length, before, "nothing was sent");
+  assert.ok(ui.one(".toast")?.textContent?.includes("temperature"));
 });

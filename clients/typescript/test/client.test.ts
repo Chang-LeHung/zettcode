@@ -228,6 +228,29 @@ describe("the JSON API", () => {
     });
   });
 
+  test("a model update can carry chat, a temperature, and a null that removes a key", async () => {
+    const model = { name: "Fast", model: "gpt-5", context_window: 128000, multimodal: false, efforts: ["low"], active: true, compact_percent: 80 };
+    let sent: unknown = null;
+    const server = await start((request, response) => {
+      if (request.url === "/models/Fast" && request.method === "PATCH") {
+        sent = JSON.parse(request.body);
+        return json(response, { models: [model], current: "Fast" });
+      }
+      if (request.url === "/models" && request.method === "POST") {
+        sent = JSON.parse(request.body);
+        return json(response, { models: [model], current: "Fast" }, 201);
+      }
+      json(response, { error: "not_found", message: request.url }, 404);
+    });
+    const client = new ZettCodeClient({ baseUrl: server.url });
+
+    await client.addModel({ model: "llama3", chat: true, temperature: 0, base_url: "http://localhost:11434/v1" });
+    assert.deepEqual(sent, { model: "llama3", chat: true, temperature: 0, base_url: "http://localhost:11434/v1" });
+
+    await client.updateModel("Fast", { temperature: null, anthropic: null, chat: true });
+    assert.deepEqual(sent, { temperature: null, anthropic: null, chat: true }, "null reaches the server as null");
+  });
+
   test("models can be added, changed and removed, and health says whether one exists", async () => {
     const model = { name: "Fast", model: "gpt-5", context_window: 128000, multimodal: false, efforts: ["low"], active: true, compact_percent: 80 };
     const server = await start((request, response) => {
