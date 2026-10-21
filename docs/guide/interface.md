@@ -613,8 +613,10 @@ pet = "whale"
 
 Plugins can offer more pets; see [Offering a pet](/guide/plugins#pets).
 
-- **Drag it** with the mouse to put it anywhere in the conversation. It never goes over the composer, a panel or the
-  bars, and it keeps its place, as a share of the room, when you resize the terminal or change pets. The pointer and
+- **Drag it** with the mouse to put it anywhere from the top of the conversation to the bottom of the composer, so it
+  can stand on the composer too, in the empty space beside your draft. It never goes onto the header or the status
+  line, and a panel that opens covers it like everything else under it. It keeps its place, as a share of the room,
+  when you resize the terminal or change pets. The pointer and
   the pet stay together: drag it past an edge and bring the pointer back, and it follows at the first step. Where you
   leave it is remembered in the global `config.toml` (`[ui] pet_position = [0.82, 0.4]`, across and down, each from 0
   to 1), and the next start puts it back there. It is the same in every project, because the pet is yours.

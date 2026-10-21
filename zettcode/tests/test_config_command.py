@@ -449,6 +449,83 @@ async def test_the_hint_under_the_form_follows_the_cursor(shell):
     assert "exactly as its documentation writes it" not in fx.screen()
 
 
+async def test_every_line_is_a_box_with_its_label_on_the_border(shell):
+    fx = shell()
+    await fx.command("/config add deepseek")
+    page = form_of(fx)
+    screen = fx.screen()
+
+    for field in page.fields:
+        assert f"\u2500 {page.label_of(field)} " in screen, f"{field.key}: the label is on the top border"
+    assert screen.count("\u256d") == screen.count("\u2570") == len(page.fields), "one box a line"
+    assert page.boxed and all(box.rect.height == 3 for box in page.children if hasattr(box, "area"))
+
+
+async def test_the_box_the_cursor_is_in_is_bright_and_the_others_are_not(shell):
+    fx = shell()
+    await fx.command("/config add deepseek")
+    theme = fx.app.app.theme
+
+    def border_of(key: str):
+        box = next(b for b in form_of(fx).children if getattr(b, "field", None) and b.field.key == key)
+        canvas = fx.app.app.render()
+        return canvas.cells[box.rect.y][box.rect.x].style.foreground
+
+    assert border_of("model") == theme.accent_bright and border_of("token") == theme.muted
+    fx.harness.press("tab")
+    assert border_of("model") == theme.muted and border_of("token") == theme.accent_bright
+
+
+async def test_a_press_on_a_box_puts_the_cursor_in_it_the_border_included(shell):
+    fx = shell()
+    await fx.command("/config add deepseek")
+    fx.screen()  # a frame, so the page has been laid out
+    box = next(b for b in form_of(fx).children if getattr(b, "field", None) and b.field.key == "url")
+
+    fx.harness.mouse_down(box.rect.x, box.rect.y + 1)  # the left border
+    fx.harness.mouse_up(box.rect.x, box.rect.y + 1)
+    assert form_of(fx).focus_key() == "url"
+
+    fx.harness.mouse_down(box.rect.x + 6, box.rect.y)  # the top border, on the label
+    fx.harness.mouse_up(box.rect.x + 6, box.rect.y)
+    assert form_of(fx).focus_key() == "url"
+    other = next(b for b in form_of(fx).children if getattr(b, "field", None) and b.field.key == "token")
+    fx.harness.mouse_down(other.rect.x + 4, other.rect.y + 1)  # the editor itself
+    fx.harness.mouse_up(other.rect.x + 4, other.rect.y + 1)
+    assert form_of(fx).focus_key() == "token"
+
+
+async def test_a_terminal_too_short_for_boxes_gets_one_row_a_line_and_everything_still_works(shell):
+    fx = shell()
+    fx.app.app.resize(110, 14)
+    await fx.command("/config add deepseek")
+    screen = fx.screen()
+    page = form_of(fx)
+
+    assert not page.boxed and "\u256d" not in screen, "no room for boxes"
+    for field in page.fields:
+        assert page.label_of(field) in screen
+    fx.harness.write("deepseek-chat")
+    fx.harness.press("tab")
+    fx.harness.write("sk-short")
+    fx.harness.press("enter")
+
+    assert fx.models[-1] == {"model": "deepseek-chat", "token": "sk-short", "base_url": "https://api.deepseek.com"}
+
+
+async def test_the_boxes_come_back_when_the_terminal_grows_again(shell):
+    fx = shell()
+    fx.app.app.resize(110, 14)
+    await fx.command("/config add deepseek")
+    fx.screen()
+    assert not form_of(fx).boxed
+
+    fx.app.app.resize(110, 40)
+    fx.screen()
+
+    assert form_of(fx).boxed and "\u256d" in fx.screen()
+
+
 # -- /config: the panel ------------------------------------------------------------------------------------
 
 

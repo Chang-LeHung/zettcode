@@ -8,7 +8,7 @@ from time import monotonic
 from zettcode.app.pets import GLAD, IDLE, WORKING, Pet
 from zettcode.tui import Canvas, Host, MouseAction, MouseEvent, Rect, TextLine, Widget
 
-#: Columns left between the pet and the right edge of the conversation at its resting place, the margin the
+#: Columns left between the pet and the right edge of its ground at its resting place, the margin the
 #: header, the status line and the composer keep.
 MARGIN = 2
 
@@ -38,7 +38,7 @@ def paint_sprite(canvas: Canvas, lines: tuple[TextLine, ...], x: int, y: int) ->
 
 
 class PetView(Widget):
-    """Draw a pet over the right-hand middle of the conversation, and move it with the mouse.
+    """Draw a pet over the right-hand middle of its ground, and move it with the mouse.
 
     Shape::
 
@@ -46,16 +46,18 @@ class PetView(Widget):
         │  ...                                         │
         │  ...                                  ▄█▀▀▀█▄ │
         │  ...                                  ██▀█▀██ │   <- press on it and drag it anywhere
-        │  ...                                   ▀▀▀▀▀  │      within the conversation
+        │  ...                                   ▀▀▀▀▀  │      on its ground
         │  ...                                         │
+        ├ composer ────────────────────────────────────┤   <- which is part of the ground
         └──────────────────────────────────────────────┘
 
     The pet's place is kept as the fraction of the free room it stands at, left to right and top to bottom,
-    so it keeps its place in the conversation when the terminal is resized or a panel opens under it. It
+    so it keeps its place when the terminal is resized or a panel opens over it. It
     starts at the right edge, halfway down, or where it was last left: a drag that moved it reports the place
-    through ``on_moved``, and the next start passes it back as ``position``. A drag cannot take it out of the
-    conversation, where it would
-    cover the composer or a panel; a press that does not move is a pat, and the pet is pleased for a moment.
+    through ``on_moved``, and the next start passes it back as ``position``. The ground is what ``area`` says:
+    the shell gives it the conversation and the composer, so the pet can stand on the box the reader types in; a drag
+    cannot take it onto the bars. A panel is a screen above this one and covers it. A press that does not move is a
+    pat, and the pet is pleased for a moment.
     It sleeps while nothing runs, wakes and goes about its business while a request does, and its cells that are
     empty let the conversation show through. The wheel over it scrolls the conversation as it would anywhere else.
 

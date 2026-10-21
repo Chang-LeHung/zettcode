@@ -7,7 +7,7 @@ from dataclasses import replace
 import pytest
 
 from test_statusline import config_file, hidden_in, notices, open_panel  # noqa: F401 - the fixture is used by name
-from test_zettcode_app import _harness, build_app
+from test_zettcode_app import _harness, _type_command, build_app
 from zettcode._compat import tomllib
 from zettcode.app.pets import GLAD, IDLE, WORKING, PetCatalog, bundled_pets
 from zettcode.app.ui.widgets.pet import FRAME_SECONDS, GLAD_SECONDS, MARGIN, MIN_WIDTH
@@ -87,14 +87,14 @@ def drag(harness, rect, dx: int, dy: int, *, grab: tuple[int, int] = (2, 1)) -> 
 # -- where it stands --------------------------------------------------------------------------------------------
 
 
-def test_the_pet_starts_as_the_cat_at_the_right_edge_halfway_down_the_conversation():
+def test_the_pet_starts_as_the_cat_at_the_right_edge_halfway_down_its_ground():
     app, harness, _ = shell()
-    rect, view = stands(app, harness), app.view.rect
+    rect, ground = stands(app, harness), app._pet_area()
 
     assert app.pet.pet.name == "cat"
     assert (rect.width, rect.height) == (CAT.width, CAT.height)
-    assert rect.right == view.right - MARGIN
-    assert abs((rect.y - view.y) - (view.height - rect.height) / 2) <= 1
+    assert rect.right == ground.right - MARGIN
+    assert abs((rect.y - ground.y) - (ground.height - rect.height) / 2) <= 1
     assert shows(app, rect, IDLE), "the cells of the frame are the cells of the sprite"
 
 
@@ -182,16 +182,80 @@ def test_a_press_beside_the_pet_is_not_the_pets():
     assert app.pet._grab is None and app.pet.mood == IDLE
 
 
-def test_a_drag_cannot_take_the_pet_out_of_the_conversation():
+def test_a_drag_cannot_take_the_pet_out_of_the_conversation_and_the_composer_or_onto_the_bars():
     app, harness, _ = shell()
-    view = app.view.rect
+    ground = app._pet_area()
     drag(harness, stands(app, harness), -500, -500)
     rect = stands(app, harness)
-    assert (rect.x, rect.y) == (view.x, view.y)
+    assert (rect.x, rect.y) == (ground.x, ground.y)
+    assert rect.y == app.view.rect.y and rect.y > app.header.rect.y, "the header is not its ground"
 
     drag(harness, rect, 500, 500)
     rect = stands(app, harness)
-    assert rect.right == view.right - MARGIN and rect.bottom == view.bottom, "the composer below is not covered"
+    assert rect.right == ground.right - MARGIN and rect.bottom == ground.bottom
+    assert rect.bottom == app.composer.rect.bottom and rect.bottom <= app.status.rect.y, "nor is the status line"
+
+
+def test_the_pet_can_be_put_on_the_composer_and_what_it_leaves_empty_shows_the_draft():
+    app, harness, _ = shell()
+    app.composer.set_text("a draft that is long enough to reach the right-hand side of the box " * 2)
+    harness.render()
+    composer = app.composer.rect
+    rect = stands(app, harness)
+    # Pick the pet up and put it as low as it goes: the bottom of its ground is the bottom of the composer.
+    x, y = rect.x + 3, rect.y + 1
+    assert harness.mouse_down(x, y)
+    harness.mouse_move(x, y + 500)
+    harness.mouse_up(x, y + 500)
+
+    rect = stands(app, harness)
+    assert rect.bottom == composer.bottom and rect.bottom > composer.y, "it stands on the composer"
+    assert rect.right == app._pet_area().right - MARGIN
+    assert shows(app, rect, IDLE), "and is drawn over it"
+    assert app.composer.text.startswith("a draft"), "the draft itself is untouched"
+
+
+def test_a_press_on_the_pet_over_the_composer_is_the_pets_and_a_press_beside_it_is_the_composers():
+    app, harness, _ = shell()
+    composer = app.composer.rect
+    rect = stands(app, harness)
+    drag(harness, rect, 0, 500, grab=(2, 1))
+    rect = stands(app, harness)
+    assert rect.bottom > composer.y, "it stands on the composer"
+
+    harness.mouse_down(rect.x - 3, composer.bottom - 1)
+    harness.mouse_up(rect.x - 3, composer.bottom - 1)
+    assert app.pet._grab is None, "beside it, the composer is pressed and the pet is not"
+    assert app.composer.focused
+
+    harness.mouse_down(rect.x + 3, composer.bottom - 1)
+    assert app.pet._grab is not None, "on it, the pet"
+    harness.mouse_up(rect.x + 3, composer.bottom - 1)
+
+
+def test_the_ground_runs_from_the_top_of_the_conversation_to_the_bottom_of_the_composer_and_follows_it():
+    app, harness, _ = shell()
+    ground = app._pet_area()
+    assert ground.y == app.view.rect.y and ground.bottom == app.composer.rect.bottom
+
+    app.composer.set_text("one\ntwo\nthree")
+    harness.render()
+    grown = app._pet_area()
+    assert grown.bottom == app.composer.rect.bottom and grown.y == ground.y
+    assert grown.height >= ground.height - 3, "the composer took rows from the conversation but not from the ground"
+
+
+async def test_an_open_panel_covers_the_pet_wherever_it_stands(config_file):  # noqa: F811
+    app, harness, _ = shell(width=120, height=44)
+    drag(harness, stands(app, harness), 0, 500)
+    rect = stands(app, harness)
+    assert shows(app, rect, IDLE), "on the composer, the pet is drawn"
+
+    await _type_command(app, harness, "/statusline")
+    harness.render()
+
+    assert app.app.screens.top.name == "page"
+    assert not shows(app, rect, IDLE), "a panel opened over it hides it, as it hides the conversation"
 
 
 def test_the_pet_keeps_its_place_in_the_conversation_when_the_terminal_is_resized():
@@ -229,7 +293,7 @@ def test_the_pet_follows_the_pointer_back_at_once_after_the_pointer_went_past_th
 
 def test_the_same_holds_for_the_other_edges_and_for_a_hold_at_the_far_side_of_the_pet():
     app, harness, _ = shell(width=100, height=30)
-    view = app.view.rect
+    view = app._pet_area()
     rect = stands(app, harness)
     # Held at its right-hand column and its bottom row, and pushed into the bottom-right corner.
     x, y = rect.right - 1, rect.bottom - 1
