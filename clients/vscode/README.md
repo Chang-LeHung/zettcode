@@ -80,7 +80,7 @@ Open **Settings** and search for *ZettCode*. The ones you are most likely to wan
 | `zettcode.permission` | `ask` | The shell permission a session starts with when you have not chosen one. A level you pick in the chat is remembered for that session, and starts the next new session in the workspace. |
 | `zettcode.restoreSession` | `true` | Reopen the conversation this folder had last. |
 | `zettcode.autoTitle` | `true` | Let the model name an untitled conversation after its first answer. |
-| `zettcode.answerTimeout` | `300` | Seconds an approval or question waits before the safe answer is used. |
+| `zettcode.answerTimeout` | `90` | Seconds an approval or question waits before the safe answer is used. |
 | `zettcode.server.command` | `zettcode-server` | Where the server is, if it is not on your `PATH` or in the workspace's `.venv`. |
 | `zettcode.server.autoInstall` | `true` | Install the server into the extension's own environment when the command cannot be found. |
 | `zettcode.server.externalUrl` | empty | Connect to a server you started yourself instead of launching one. |

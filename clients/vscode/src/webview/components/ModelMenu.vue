@@ -9,6 +9,15 @@ import Popover from "./Popover.vue";
 defineProps<{ offset: number }>();
 
 const models = computed(() => state.ui?.models ?? []);
+
+/**
+ * The model in use is the one the chip names, so the tick can never be somewhere else. The list's own `active` flag is
+ * what the server said when the list was read, and a session that is opened puts back the model it last used.
+ */
+function inUse(model: { name: string; active: boolean }): boolean {
+  const named = state.ui?.currentModel ?? null;
+  return named === null ? model.active : model.name === named;
+}
 /** The model whose row is asking "remove it?" right where it sits; there is no dialog for this. */
 const confirming = ref<string | null>(null);
 const cancel = ref<HTMLButtonElement[] | HTMLButtonElement | null>(null);
@@ -43,14 +52,14 @@ function use(name: string, active: boolean): void {
           <button class="btn small danger-solid" type="button" data-confirm="remove" @click="remove(model.name)">Remove</button>
         </div>
         <template v-else>
-          <button type="button" class="option" :class="{ current: model.active }" @click="use(model.name, model.active)">
+          <button type="button" class="option" :class="{ current: inUse(model) }" @click="use(model.name, inUse(model))">
             <span class="option-copy">
               <span class="option-name">{{ model.name }}</span>
               <span class="option-desc"
                 >{{ model.model }} · {{ formatTokens(model.context_window) }}{{ model.multimodal ? " · images" : "" }}</span
               >
             </span>
-            <Icon v-if="model.active" name="check" :size="14" class="tick" />
+            <Icon v-if="inUse(model)" name="check" :size="14" class="tick" />
           </button>
           <button
             class="icon-btn row-remove"

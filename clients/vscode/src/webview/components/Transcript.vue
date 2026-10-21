@@ -6,6 +6,7 @@ import Icon from "./Icon.vue";
 import FindBar from "./FindBar.vue";
 import LiveStatus from "./LiveStatus.vue";
 import MessageRail from "./MessageRail.vue";
+import Opening from "./Opening.vue";
 import TurnView from "./TurnView.vue";
 import Welcome from "./Welcome.vue";
 
@@ -110,6 +111,7 @@ onMounted(toBottom);
     </main>
     <MessageRail :scroller="scroller" />
     <FindBar />
+    <Opening v-if="state.ui?.loading" :text="state.ui.loading" />
   </div>
 </template>
 

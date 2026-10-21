@@ -135,7 +135,7 @@ Search for *ZettCode* in Settings:
 | `zettcode.permission` | `ask` | The shell permission a session starts with when you have not chosen one |
 | `zettcode.restoreSession` | `true` | Reopen the conversation this folder had last |
 | `zettcode.autoTitle` | `true` | Let the model name an untitled conversation after its first answer |
-| `zettcode.answerTimeout` | `300` | Seconds an approval or a question waits |
+| `zettcode.answerTimeout` | `90` | Seconds an approval or a question waits |
 | `zettcode.historyLimit` | `50` | How many stored conversations **Recent Sessions** lists |
 | `zettcode.server.command` | `zettcode-server` | Where the server is, if not on your `PATH` or in the folder's `.venv` |
 | `zettcode.server.args` | `[]` | Extra arguments for it |

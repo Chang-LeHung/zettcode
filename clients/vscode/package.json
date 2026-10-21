@@ -248,7 +248,7 @@
         },
         "zettcode.answerTimeout": {
           "type": "number",
-          "default": 300,
+          "default": 90,
           "minimum": 5,
           "description": "Seconds an approval or question waits before the safe answer is applied."
         },

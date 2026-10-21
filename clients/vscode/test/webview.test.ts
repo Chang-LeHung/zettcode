@@ -39,6 +39,7 @@ const settings: Settings = {
 const state: WebviewState = {
   server: { status: "ready", message: "Ready" },
   loaded: true,
+  loading: null,
   ready: true,
   health: {
     status: "ok",
@@ -372,6 +373,47 @@ test("a click outside, or Escape, puts a menu away", async () => {
   ui.window.document.dispatchEvent(new ui.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
   await new Promise((resolve) => setTimeout(resolve, 0));
   assert.equal(ui.one("#permission-menu"), null);
+});
+
+test("opening a conversation says so over the one on show, in the words of every other wait, and clears when it is open", async () => {
+  const ui = await harness();
+  assert.equal(ui.one("#opening"), null, "nothing is loading at rest");
+
+  await ui.send({ type: "state", state: { ...state, loading: "Opening the conversation" } });
+
+  const veil = ui.one("#opening");
+  assert.ok(veil, "the view says something is going on, so it does not look stuck");
+  assert.equal(veil.getAttribute("role"), "status");
+  assert.ok(veil.querySelector(".shimmer"), "the words shimmer, like every other wait; nothing spins");
+  assert.equal(veil.querySelector(".spinner"), null);
+  assert.ok(veil.textContent?.includes("Opening the conversation"));
+  assert.ok(ui.one("#transcript"), "the conversation is still there under it, scroll and all");
+
+  await ui.send({ type: "state", state: { ...state, loading: null } });
+  assert.equal(ui.one("#opening"), null);
+});
+
+test("the tick in the model menu is on the model the chip names, even when the list still marks another", async () => {
+  // A session that is opened puts back the model it last used; a list read before that still says the first is active.
+  const stale = [settings.model, { ...settings.model, name: "deep", model: "deepseek-v4", active: false }];
+  const ui = await harness(fixtureTurns(), {
+    ...state,
+    models: stale,
+    currentModel: "deep",
+    settings: { ...settings, model: { ...stale[1]!, active: true } },
+  });
+  assert.equal(ui.text("#model-chip").trim(), "deep");
+  await ui.click("#model-chip");
+
+  const rows = ui.all("#model-menu .option-row");
+  assert.equal(rows[0]?.querySelector(".tick"), null, "no tick on the first model");
+  assert.ok(rows[1]?.querySelector(".tick"), "the tick is on the model in use");
+  assert.ok(rows[1]?.querySelector(".option.current"));
+
+  // Choosing the one in use sends nothing, and choosing the other does.
+  const before = ui.messages.length;
+  await ui.click("#model-menu .option-row:nth-child(2) .option");
+  assert.equal(ui.messages.length, before);
 });
 
 test("removing a model asks inside its own row, with no dialog", async () => {
