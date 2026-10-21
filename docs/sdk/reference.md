@@ -147,7 +147,7 @@ def update_model(name, changes, *, path=None) -> tuple[ModelInfo, ...]: ...
 def remove_model(name, *, path=None) -> tuple[ModelInfo, ...]: ...
 ```
 
-`entry` and `changes` are the file's keys (`model`, `token`, `display_model`, `base_url`, `anthropic`, `responses_api`, `multimodal`, `context_window`, `compact_percent`, `reasoning_efforts`). `path` defaults to `$ZETTCODE_CONFIG` or `~/.zettcode/config.toml`. Every call returns the whole list, with no model marked active, and refuses a file it cannot read back; the last model cannot be removed.
+`entry` and `changes` are the file's keys (`model`, `token`, `display_model`, `base_url`, `anthropic`, `responses_api`, `chat`, `multimodal`, `temperature`, `context_window`, `compact_percent`, `reasoning_efforts`). `path` defaults to `$ZETTCODE_CONFIG` or `~/.zettcode/config.toml`. Every call returns the whole list, with no model marked active, and refuses a file it cannot read back; the last model cannot be removed.
 
 ## zettcode.sdk.session
 

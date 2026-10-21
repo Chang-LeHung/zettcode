@@ -172,12 +172,14 @@ is not an API key. On macOS/Linux you can restrict file access with
 
 | Key | Type | Default | What to put here |
 | --- | --- | --- | --- |
-| `model` | string | Required | Exact model id accepted by the API, such as `deepseek-v4-pro`. Non-empty. |
+| `model` | string | Required | Exact model id accepted by the API, such as `deepseek-v4-pro`. Non-empty; the only key a model has to have. |
 | `display_model` | string | Model id | Your readable label, such as `DeepSeek Pro`. It is not sent as the model id. |
-| `token` | string | `OPENAI_API_KEY` | API key for this endpoint. A non-empty file value takes precedence over the environment. An `anthropic` entry reads `ANTHROPIC_API_KEY` instead. |
+| `token` | string | `OPENAI_API_KEY`, else none | API key for this endpoint. A non-empty file value takes precedence over the environment. An `anthropic` entry reads `ANTHROPIC_API_KEY` instead. May be left out: a local server (Ollama, LM Studio, vLLM) wants no key, and the model is called without one. A server that does want one answers `401`. |
 | `base_url` | string | The vendor's address | Where the client appends its route. Set it explicitly for DeepSeek or another non-OpenAI endpoint. Defaults to `https://api.openai.com/v1`, or to `https://api.anthropic.com` for an `anthropic` entry. |
-| `anthropic` | boolean | `false` | `true` calls Anthropic's Messages API instead of an OpenAI-compatible one. Cannot be combined with `responses_api`. |
+| `anthropic` | boolean | `false` | `true` calls Anthropic's Messages API instead of an OpenAI-compatible one. Cannot be combined with `responses_api` or `chat`. |
 | `responses_api` | boolean | `false` | `false` uses Chat Completions; `true` uses Responses. Choose a protocol the endpoint supports. Not available for an `anthropic` entry. |
+| `chat` | boolean | `false` | `true` says outright that the endpoint speaks Chat Completions, which is what an entry with neither of the other two already does. It is for the reader of the file; it cannot be combined with `anthropic` or `responses_api`. |
+| `temperature` | number | the provider's own | Sampling temperature sent with every request, from `0` (the most deterministic) to `2`; an `anthropic` entry stops at `1`. Left out, none is sent. Some reasoning models reject a temperature, so set it only for a model that takes one. |
 | `multimodal` | boolean | `false` | Enable only for a model and endpoint that accept image input. |
 | `context_window` | integer | `128000` | Positive context-window size in tokens, not characters or the output limit. |
 | `compact_percent` | number | `80` | Automatic compaction threshold: greater than `0`, at most `100`. Decimals such as `75.5` are allowed. |

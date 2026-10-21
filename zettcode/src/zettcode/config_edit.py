@@ -37,9 +37,11 @@ _KEY_ORDER = (
     "model",
     "base_url",
     "token",
+    "chat",
     "anthropic",
     "responses_api",
     "multimodal",
+    "temperature",
     "context_window",
     "compact_percent",
     "reasoning_efforts",
@@ -109,7 +111,10 @@ def entry_from_model(model: ModelConfig, *, token: str | None = None) -> dict[st
     """
     from .config import DEFAULT_COMPACT_PERCENT, DEFAULT_CONTEXT_WINDOW
 
-    entry: dict[str, object] = {"model": model.model, "token": model.token if token is None else token}
+    written = model.token if token is None else token
+    entry: dict[str, object] = {"model": model.model}
+    if written:
+        entry["token"] = written
     if model.display_model:
         entry["display_model"] = model.display_model
     if model.base_url:
@@ -118,8 +123,12 @@ def entry_from_model(model: ModelConfig, *, token: str | None = None) -> dict[st
         entry["anthropic"] = True
     if model.responses_api:
         entry["responses_api"] = True
+    if model.chat:
+        entry["chat"] = True
     if model.multimodal:
         entry["multimodal"] = True
+    if model.temperature is not None:
+        entry["temperature"] = model.temperature
     if model.context_window != DEFAULT_CONTEXT_WINDOW:
         entry["context_window"] = model.context_window
     if model.compact_percent != DEFAULT_COMPACT_PERCENT:

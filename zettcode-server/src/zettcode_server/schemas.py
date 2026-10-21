@@ -176,7 +176,9 @@ class ModelCreate(BaseModel):
     base_url: str | None = None
     anthropic: bool = False
     responses_api: bool = False
+    chat: bool = False
     multimodal: bool = False
+    temperature: float | None = Field(default=None, ge=0, le=2)
     context_window: int | None = Field(default=None, ge=1)
     compact_percent: float | None = Field(default=None, gt=0, le=100)
     reasoning_efforts: list[str] = Field(default_factory=list)
@@ -184,7 +186,7 @@ class ModelCreate(BaseModel):
     def entry(self) -> dict[str, object]:
         """Return the file keys to write, leaving out what was not given."""
         data = self.model_dump(exclude_none=True)
-        for flag in ("anthropic", "responses_api", "multimodal"):
+        for flag in ("anthropic", "responses_api", "chat", "multimodal"):
             if not data.get(flag):
                 data.pop(flag, None)
         if not data.get("reasoning_efforts"):
@@ -203,7 +205,9 @@ class ModelUpdate(BaseModel):
     base_url: str | None = None
     anthropic: bool | None = None
     responses_api: bool | None = None
+    chat: bool | None = None
     multimodal: bool | None = None
+    temperature: float | None = Field(default=None, ge=0, le=2)
     context_window: int | None = Field(default=None, ge=1)
     compact_percent: float | None = Field(default=None, gt=0, le=100)
     reasoning_efforts: list[str] | None = None

@@ -67,12 +67,14 @@ async with zc.Client(
 | 字段 | 默认值 | 含义 |
 | --- | --- | --- |
 | `model` | 必填 | 发给端点的模型 id。 |
-| `token` | 必填 | 凭证。请从环境变量读取，不要写进代码。 |
+| `token` | `""` | 凭证。本地服务器不需要时可以留空，也可以取自 `OPENAI_API_KEY`（Anthropic 模型取自 `ANTHROPIC_API_KEY`）。请从环境变量读取，不要写进代码。 |
 | `display_model` | `None` | 展示用的名字，也是传给 `use_model` 的名字。两个条目模型 id 相同时给其中一个起别名。 |
 | `base_url` | `None` | API 根地址。末尾的 `/chat/completions`、`/v1/messages` 或 `/responses` 会被去掉。 |
 | `anthropic` | `False` | 使用 Anthropic 的 Messages API。 |
 | `responses_api` | `False` | 在 OpenAI 兼容端点上使用 Responses API。不能与 `anthropic` 同时使用。 |
+| `chat` | `False` | 明确写出端点使用 chat completions，这也是前两者都没设置时本来的含义。不能与 `anthropic` 或 `responses_api` 同时使用。 |
 | `multimodal` | `False` | 模型是否接受图片。 |
+| `temperature` | `None` | 随每个请求发送的采样温度，0 到 2（Anthropic 模型为 0 到 1）。不写就用提供商的默认值。 |
 | `context_window` | `128000` | 模型能承载的 token 数。 |
 | `compact_percent` | `80.0` | 占窗口多大比例时压缩对话。 |
 | `reasoning_efforts` | 全部级别 | 模型接受的推理级别。 |

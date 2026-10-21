@@ -37,7 +37,7 @@ title: HTTP API 参考
 | 方法 | 路径 | 请求体 | 返回 |
 | --- | --- | --- | --- |
 | `GET` | `/models` | — | `{"models": [{"name","model","context_window","multimodal","efforts","active","compact_percent"}], "current"}`;配置模型之前也能用,此时 `current` 为 null。 |
-| `POST` | `/models` | `{"model", "token"?, "display_model"?, "base_url"?, "anthropic"?, "responses_api"?, "multimodal"?, "context_window"?, "compact_percent"?, "reasoning_efforts"?}` | 201,返回新的列表。第一个模型会让服务器变得可用;后续模型供 `PATCH /settings` 选择。写入配置文件,键名与终端 `/config add` 一致。 |
+| `POST` | `/models` | `{"model", "token"?, "display_model"?, "base_url"?, "anthropic"?, "responses_api"?, "chat"?, "multimodal"?, "temperature"?, "context_window"?, "compact_percent"?, "reasoning_efforts"?}` | 201,返回新的列表。第一个模型会让服务器变得可用;后续模型供 `PATCH /settings` 选择。写入配置文件,键名与终端 `/config add` 一致。 |
 | `PATCH` | `/models/{name}` | `POST /models` 接受的任意字段 | 新的列表。未给出的键保持不变;没给新 token 就保留旧的。 |
 | `DELETE` | `/models/{name}` | — | 剩下的模型。最后一个不能删(`400 invalid`):client 至少需要一个。 |
 | `GET` | `/settings` | — | `{"model","effort","efforts","permission","permissions"}`;改动过压缩点的 `PATCH` 之后还会带 `"unsaved"`(见下)。 |

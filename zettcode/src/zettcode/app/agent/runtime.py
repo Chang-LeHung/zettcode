@@ -27,7 +27,7 @@ from zett_agent.extensions.todo import TodoWriteExtension
 from zett_agent.ids import new_uuid7
 from zett_agent.model import ReasoningEffort
 
-from zettcode.config import DEFAULT_ANTHROPIC_BASE_URL, ModelConfig, ZettCodeConfig
+from zettcode.config import DEFAULT_ANTHROPIC_BASE_URL, KEYLESS_TOKEN, ModelConfig, ZettCodeConfig
 from zettcode.plugins import AGENT_PLUGINS, BUILTIN_PLUGINS, AgentBuild, Plugins, load_plugins
 from zettcode.plugins.services import (
     APPROVAL,
@@ -135,22 +135,35 @@ def _build_provider(selected: ModelConfig) -> Adapter:
     The import lives in this function rather than at module level because it is
     the cost the first frame may not pay; the runtime's import pipeline warms the
     same module on its own thread before this runs.
+
+    A model with no key is called with :data:`KEYLESS_TOKEN`, because the adapters refuse to be built without one and a
+    local server ignores what it is sent. The temperature is the adapter's own argument on an OpenAI-compatible
+    endpoint; Anthropic's adapter has none, so it goes in the body of the request, where the API reads it.
     """
+    token = selected.token or KEYLESS_TOKEN
     if selected.anthropic:
         from zett_agent.providers.anthropic import AnthropicProvider
 
+        extra: dict[str, object] = {}
+        if selected.temperature is not None:
+            extra["extra_body"] = {"temperature": selected.temperature}
         return AnthropicProvider(
             selected.model,
-            selected.token,
+            token,
             base_url=selected.base_url or DEFAULT_ANTHROPIC_BASE_URL,
+            **extra,  # type: ignore[arg-type]
         )
     from zett_agent.providers.openai import OpenAIProvider
 
+    options: dict[str, object] = {}
+    if selected.temperature is not None:
+        options["temperature"] = selected.temperature
     return OpenAIProvider(
         selected.model,
-        selected.token,
+        token,
         base_url=selected.base_url,
         response=selected.responses_api,
+        **options,  # type: ignore[arg-type]
     )
 
 

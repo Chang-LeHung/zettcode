@@ -63,7 +63,9 @@ MODEL_KEYS = frozenset(
         "base_url",
         "anthropic",
         "responses_api",
+        "chat",
         "multimodal",
+        "temperature",
         "context_window",
         "compact_percent",
         "reasoning_efforts",
@@ -169,6 +171,16 @@ DEFAULT_CONTEXT_WINDOW = 128_000
 DEFAULT_COMPACT_PERCENT = 80.0
 KEEP_SHARE = 4
 
+#: The sampling temperature a model may be given: 0 is the most deterministic. OpenAI-compatible endpoints take up to
+#: 2; Anthropic's Messages API stops at 1, which is checked for an ``anthropic`` entry.
+MAX_TEMPERATURE = 2.0
+MAX_ANTHROPIC_TEMPERATURE = 1.0
+
+#: What is sent as the key of a model that has none: a local server (Ollama, LM Studio, vLLM) asks for no key, but
+#: the clients that speak to it refuse to be built without one. A server that does want a key answers 401, which is
+#: the message the reader needs.
+KEYLESS_TOKEN = "none"
+
 #: Conversation entries kept on screen before the oldest are dropped. The
 #: session file keeps the whole tree, so this bounds scrollback, not history.
 DEFAULT_TRANSCRIPT_MAX_ENTRIES = 1024
@@ -185,14 +197,17 @@ class ModelConfig:
     """One configured model: what to call, where, with which token, over which API.
 
     Three request protocols are reachable from one entry. The default is an
-    OpenAI-compatible chat-completions endpoint; ``responses_api`` chooses the
+    OpenAI-compatible chat-completions endpoint, which ``chat = true`` can also
+    say outright; ``responses_api`` chooses the
     Responses protocol on such an endpoint; ``anthropic`` chooses Anthropic's
     Messages API, which is not OpenAI-compatible and is served by its own
-    adapter. The last two are alternatives, not layers.
+    adapter. The three are alternatives, not layers.
 
     Attributes:
         model: Model id sent to the endpoint; must not be blank.
-        token: Credential for the endpoint; must not be blank.
+        token: Credential for the endpoint. May be empty: the entry then takes the key from
+            ``OPENAI_API_KEY`` (``ANTHROPIC_API_KEY`` for an Anthropic model), and when there is none either, the
+            model is called without one, as a local server wants.
         display_model: Name shown in the UI; ``None`` shows :attr:`model`.
         base_url: Address the client appends its route to; a trailing route the
             entry wrote out is dropped. ``None`` uses the client's default,
@@ -202,7 +217,11 @@ class ModelConfig:
             OpenAI-compatible one.
         responses_api: Use the Responses API rather than chat completions, on
             an OpenAI-compatible endpoint.
+        chat: Say that the endpoint speaks chat completions. It is what an entry that sets neither of the other two
+            already means; writing it makes the choice readable in the file and is refused beside either of them.
         multimodal: Whether the model accepts images as well as text.
+        temperature: Sampling temperature sent with every request, from 0 (the most deterministic) to 2, or to 1 for
+            an Anthropic model. ``None`` sends none, and the provider uses its own default.
         context_window: Tokens the model can carry, which is what ``/context``
             measures against.
         compact_percent: Share of :attr:`context_window` at which a request is
@@ -214,7 +233,7 @@ class ModelConfig:
     """
 
     model: str
-    token: str
+    token: str = ""
     display_model: str | None = None
     base_url: str | None = None
     anthropic: bool = False
@@ -223,9 +242,14 @@ class ModelConfig:
     context_window: int = DEFAULT_CONTEXT_WINDOW
     compact_percent: float = DEFAULT_COMPACT_PERCENT
     reasoning_efforts: tuple[ReasoningEffort, ...] = ()
+    chat: bool = False
+    temperature: float | None = None
 
     def __post_init__(self) -> None:
         """Reject a model that cannot be called."""
+        if self.token != self.token.strip():
+            # Whitespace around a key is a paste that took the newline with it, never part of the key.
+            object.__setattr__(self, "token", self.token.strip())
         if not self.model.strip():
             raise ValueError("Model cannot be empty")
         if self.anthropic and self.responses_api:
@@ -233,9 +257,17 @@ class ModelConfig:
                 f"Model {self.model!r} cannot use both APIs: the Responses API is OpenAI-compatible only, "
                 "so clear 'responses_api' or 'anthropic'"
             )
-        if not self.token.strip():
-            variable = "ANTHROPIC_API_KEY" if self.anthropic else "OPENAI_API_KEY"
-            raise ValueError(f"Missing token for model {self.model!r}; set 'token' or {variable}")
+        if self.chat and (self.anthropic or self.responses_api):
+            other = "anthropic" if self.anthropic else "responses_api"
+            raise ValueError(
+                f"Model {self.model!r} sets both 'chat' and {other!r}: they are alternatives, so keep one of them"
+            )
+        if self.temperature is not None:
+            limit = MAX_ANTHROPIC_TEMPERATURE if self.anthropic else MAX_TEMPERATURE
+            if isinstance(self.temperature, bool) or not 0.0 <= self.temperature <= limit:
+                raise ValueError(
+                    f"temperature must be from 0 to {limit:g} for model {self.model!r}, not {self.temperature!r}"
+                )
         if self.base_url is not None:
             root = _without_client_route(self.base_url)
             if root != self.base_url:
@@ -568,7 +600,11 @@ def _entry_model(entry: dict[str, object], index: int) -> ModelConfig:
             base_url=_setting(entry, "base_url", str, None),
             anthropic=anthropic,
             responses_api=_setting(entry, "responses_api", bool, False),
+            chat=_setting(entry, "chat", bool, False),
             multimodal=_setting(entry, "multimodal", bool, False),
+            temperature=None
+            if entry.get("temperature") is None
+            else _number(entry["temperature"], f"{label} key 'temperature'"),
             context_window=_typed(
                 entry.get("context_window", DEFAULT_CONTEXT_WINDOW), f"{label} key 'context_window'", int
             ),

@@ -45,14 +45,75 @@ def test_shown_model_falls_back_to_the_model_id(tmp_path: Path):
     ("changes", "message"),
     [
         ({"model": ""}, "Model cannot be empty"),
-        ({"token": ""}, "Missing token"),
-        ({"anthropic": True, "token": ""}, "ANTHROPIC_API_KEY"),
         ({"anthropic": True, "responses_api": True}, "cannot use both APIs"),
+        ({"chat": True, "anthropic": True}, "sets both 'chat' and 'anthropic'"),
+        ({"chat": True, "responses_api": True}, "sets both 'chat' and 'responses_api'"),
+        ({"temperature": -0.1}, "temperature must be from 0 to 2"),
+        ({"temperature": 2.5}, "temperature must be from 0 to 2"),
+        ({"anthropic": True, "temperature": 1.5}, "temperature must be from 0 to 1"),
     ],
 )
 def test_model_config_rejects_invalid_values(changes, message):
     with pytest.raises(ValueError, match=message):
         ModelConfig(**{"model": "m", "token": "t", **changes})
+
+
+def test_a_model_needs_an_id_and_nothing_else_the_token_may_be_empty(monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    assert ModelConfig(model="llama3").token == ""
+    assert ModelConfig(model="llama3", token="  sk-1\n").token == "sk-1", "a pasted newline is not part of a key"
+    assert ModelConfig(model="llama3", token="   ").token == ""
+    with pytest.raises(ValueError, match="Model cannot be empty"):
+        ModelConfig(model="  ", token="t")
+
+
+def test_an_entry_with_no_token_takes_the_one_in_the_environment_and_else_has_none(tmp_path, monkeypatch):
+    path = tmp_path / "config.toml"
+    path.write_text('[[models]]\nmodel = "llama3"\nbase_url = "http://localhost:11434/v1"\n', encoding="utf-8")
+
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    assert load_config(tmp_path, path=path).models[0].token == ""
+    monkeypatch.setenv("OPENAI_API_KEY", "from-env")
+    assert load_config(tmp_path, path=path).models[0].token == "from-env"
+
+
+def test_chat_is_a_protocol_a_file_may_say_and_is_the_default_one(tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text(
+        '[[models]]\nmodel = "a"\ntoken = "t"\nchat = true\n\n[[models]]\nmodel = "b"\ntoken = "t"\n',
+        encoding="utf-8",
+    )
+    a, b = load_config(tmp_path, path=path).models
+
+    assert a.chat and not b.chat
+    assert a.api == b.api == "chat"
+
+
+@pytest.mark.parametrize("other", ["anthropic", "responses_api"])
+def test_chat_beside_another_protocol_is_refused_and_names_the_entry(tmp_path, other):
+    path = tmp_path / "config.toml"
+    path.write_text(f'[[models]]\nmodel = "a"\ntoken = "t"\nchat = true\n{other} = true\n', encoding="utf-8")
+
+    with pytest.raises(ValueError, match=rf"models\[1\].*'chat' and '{other}'"):
+        load_config(tmp_path, path=path)
+
+
+def test_the_temperature_is_read_as_a_number_and_not_a_bool_or_a_string(tmp_path):
+    def load(value: str):
+        path = tmp_path / "config.toml"
+        path.write_text(f'[[models]]\nmodel = "a"\ntoken = "t"\ntemperature = {value}\n', encoding="utf-8")
+        return load_config(tmp_path, path=path).models[0]
+
+    assert load("0").temperature == 0.0
+    assert load("0.2").temperature == 0.2
+    assert load("2").temperature == 2.0
+    for bad in ("true", '"warm"', "3", "-1"):
+        with pytest.raises(ValueError, match="temperature"):
+            load(bad)
+    path = tmp_path / "config.toml"
+    path.write_text('[[models]]\nmodel = "a"\ntoken = "t"\n', encoding="utf-8")
+    assert load_config(tmp_path, path=path).models[0].temperature is None, "left out, none is sent"
 
 
 @pytest.mark.parametrize(
