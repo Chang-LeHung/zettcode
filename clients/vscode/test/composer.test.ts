@@ -38,6 +38,7 @@ const settings: Settings = {
 const state: WebviewState = {
   server: { status: "ready", message: "Ready" },
   loaded: true,
+  loading: null,
   ready: true,
   health: {
     status: "ok",

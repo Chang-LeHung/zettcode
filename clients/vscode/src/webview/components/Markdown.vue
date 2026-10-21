@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, onUpdated, ref } from "vue";
+import { computed, onBeforeUnmount, onBeforeUpdate, onMounted, onUpdated, ref } from "vue";
 
 import { currentTheme, ensureDrawn, onDiagramDrawn } from "../../core/diagram.js";
 import { renderMarkdown, renderStreaming } from "../../core/markdown.js";
+import { restoreSelection, type Saved, saveSelection } from "../selection.js";
 import { openLightbox, post } from "../store.js";
 
 const props = defineProps<{ text: string; live?: boolean }>();
@@ -32,7 +33,22 @@ onMounted(() => {
   });
   drawPending();
 });
-onUpdated(drawPending);
+
+/**
+ * The block's HTML is replaced whenever its text changes, which an answer still being written does every few words. The
+ * nodes a selection pointed into go with it, so a sentence the reader selected would be gone before they could copy it.
+ */
+let selected: Saved | null = null;
+onBeforeUpdate(() => {
+  selected = root.value === null ? null : saveSelection(root.value);
+});
+onUpdated(() => {
+  if (root.value !== null) {
+    restoreSelection(root.value, selected);
+  }
+  selected = null;
+  drawPending();
+});
 onBeforeUnmount(() => stop?.());
 
 /**

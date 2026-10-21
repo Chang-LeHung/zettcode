@@ -121,7 +121,7 @@ Reasoning Effort** 和 **Select Shell Permission**。**Add Model** 会往终端�
 | `zettcode.permission` | `ask` | 没有手动选过时，会话启动用的 shell 权限 |
 | `zettcode.restoreSession` | `true` | 重新打开这个文件夹上次的会话 |
 | `zettcode.autoTitle` | `true` | 让模型在第一次回答后给没有标题的会话起名 |
-| `zettcode.answerTimeout` | `300` | 审批或提问等待的秒数 |
+| `zettcode.answerTimeout` | `90` | 审批或提问等待的秒数 |
 | `zettcode.historyLimit` | `50` | **Recent Sessions** 列出的历史会话条数 |
 | `zettcode.server.command` | `zettcode-server` | 服务器在哪，如果不在 `PATH` 或文件夹 `.venv` 里 |
 | `zettcode.server.args` | `[]` | 给它的额外参数 |

@@ -105,6 +105,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
   private disposed = false;
   /** The first load failed for a reason other than the server, so the view must not wait for it any longer. */
   private loadFailed = false;
+  /** What is being loaded after the first load, for the view to say; see `WebviewState.loading`. */
+  private loading: string | null = null;
   private readonly turnTimers = new Map<string, NodeJS.Timeout>();
   private deltaTimer: NodeJS.Timeout | null = null;
   private deltaTurn: Turn | null = null;
@@ -370,12 +372,35 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     void this.refreshSessions(false).catch(() => undefined);
   }
 
+  /** Say that a load is going on while `work` runs, so the view can show it; it is said again, empty, however `work` ends. */
+  private async whileLoading<T>(text: string, work: () => Promise<T>): Promise<T> {
+    this.loading = text;
+    this.postState();
+    try {
+      return await work();
+    } finally {
+      this.loading = null;
+      this.postState();
+    }
+  }
+
   private async ensureClient(): Promise<ZettCodeClient> {
     if (this.client !== null && this.health?.status === "ok" && this.server.current.status === "ready") {
       return this.client;
     }
     this.client = await this.server.getClient();
     return this.client;
+  }
+
+  /** Read which model is in use and the list that marks it, together, so the two always agree. */
+  private async readModels(client: ZettCodeClient): Promise<void> {
+    try {
+      const [models, settings] = await Promise.all([client.models(), client.settings()]);
+      this.models = models.models;
+      this.settings = settings;
+    } catch (error) {
+      this.output.appendLine(`[models] ${messageOf(error)}`);
+    }
   }
 
   private async readSettings(): Promise<void> {
@@ -431,6 +456,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       return;
     }
     const client = this.client;
+    // Every way into a session ends here, and opening one puts back the model it last used: read the model, and the
+    // list that marks it, only now, or the chip and the menu would show the model from before the switch.
+    await this.readModels(client);
     await this.applyRememberedPermission();
     const [selfCompaction, contextReport, resumable, runState] = await Promise.all([
       client.selfCompaction().catch(() => null),
@@ -759,7 +787,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     images?: ImageInput[];
   } {
     const permission = this.settings?.permission ?? this.configuredPermission();
-    const answerTimeout = vscode.workspace.getConfiguration("zettcode").get<number>("answerTimeout", 300);
+    const answerTimeout = vscode.workspace.getConfiguration("zettcode").get<number>("answerTimeout", 90);
     const options: {
       approvals: ApprovalPolicy;
       questions: "ask";
@@ -938,18 +966,21 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       return;
     }
     const client = await this.ensureClient();
-    this.session = await client.openSession(id);
-    this.context.workspaceState.update(SESSION_KEY, id);
-    this.pending = null;
-    this.resumable = null;
-    await this.loadHistory();
-    await this.readExtras();
-    this.postTurns();
-    this.postState();
-    await this.refreshSessions(true);
     if (closeDrawer) {
+      // The list goes away at once, so what the reader sees next is the conversation being opened and not a list that
+      // has stopped answering.
       this.post({ type: "history", open: false });
     }
+    await this.whileLoading("Opening the conversation", async () => {
+      this.session = await client.openSession(id);
+      this.context.workspaceState.update(SESSION_KEY, id);
+      this.pending = null;
+      this.resumable = null;
+      await this.loadHistory();
+      await this.readExtras();
+      this.postTurns();
+    });
+    await this.refreshSessions(true);
   }
 
   async refreshSessions(postToView: boolean): Promise<void> {
@@ -1028,12 +1059,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       return;
     }
     const client = await this.ensureClient();
-    this.session = await client.forkSession();
-    this.context.workspaceState.update(SESSION_KEY, this.session.id);
-    await this.loadHistory();
-    await this.readExtras();
-    this.postTurns();
-    this.postState();
+    await this.whileLoading("Forking the conversation", async () => {
+      this.session = await client.forkSession();
+      this.context.workspaceState.update(SESSION_KEY, this.session.id);
+      await this.loadHistory();
+      await this.readExtras();
+      this.postTurns();
+    });
     await this.refreshSessions(true);
     this.post({ type: "notice", level: "info", text: "Forked this conversation into a new session." });
   }
@@ -1757,6 +1789,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     return {
       server: { status: server.status, message: server.message },
       loaded: this.initialized || this.loadFailed,
+      loading: this.loading,
       ready: this.health?.ready === true,
       health: this.health,
       settings: this.settings,

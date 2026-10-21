@@ -38,6 +38,11 @@ export interface WebviewState {
    * so the view shows the mark and nothing it could get wrong, like "no model".
    */
   loaded: boolean;
+  /**
+   * What the host is busy loading after the first load, such as "Opening the conversation", or null. A long conversation
+   * takes a moment to read back, and without a word about it the view looks stuck on the old one.
+   */
+  loading: string | null;
   /** False until a model is configured, which is when a prompt can run. */
   ready: boolean;
   health: Health | null;
