@@ -62,8 +62,14 @@ export interface ModelInput {
   reasoning_efforts?: string[];
 }
 
-/** Changes to one configured model; a key left out stays as it is, the token included. */
-export type ModelUpdate = Partial<ModelInput>;
+/**
+ * Changes to one configured model; a key left out stays as it is, the token included. A key sent as `null` is
+ * removed from the entry (everything but the model id and the token can be): `temperature: null` goes back to the
+ * provider's own, and `anthropic: null` takes the flag out of the file rather than leaving `anthropic = false`.
+ */
+export type ModelUpdate = Partial<Pick<ModelInput, "model" | "token">> & {
+  [K in Exclude<keyof ModelInput, "model" | "token">]?: ModelInput[K] | null;
+};
 
 export interface Settings {
   model: ModelInfo;

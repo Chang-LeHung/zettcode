@@ -40,7 +40,7 @@ shell 命令都在你的控制之下。它通过 HTTP 和本机的 `zettcode-ser
 
    不想让它自动装，就把 `zettcode.server.autoInstall` 关掉。
 
-5. **加一个模型**：在欢迎卡片里填模型名和 API key。终端应用里配置好的模型直接可用，因为用的是同一个配置文件。
+5. **加一个模型**：在欢迎卡片里填模型 id，API key 可以不填。终端应用里配置好的模型直接可用，因为用的是同一个配置文件。
 6. 问点什么，比如 *给我讲讲这个代码库*。
 
 VS Code 会先请你信任这个文件夹：agent 要在里面跑命令、改文件。
@@ -100,6 +100,12 @@ shell 权限决定 agent 能自己跑什么：
 
 输入框下面那排 chip 用来选模型、推理 effort 和 shell 权限；命令面板里对应的是 **Select Model**、**Select
 Reasoning Effort** 和 **Select Shell Permission**。**Add Model** 会往终端应用用的同一个 `config.toml` 里写新条目。
+
+添加模型的表单和终端的 `/config` 用同样的键。只有**模型 id** 是必填的；**API key** 对本地服务器（Ollama、LM Studio、vLLM）
+可以留空，也可以改用环境变量 `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`。**API** 在 **Chat completions**（写成 `chat = true`）、
+**Responses API** 和 **Anthropic Messages API** 三者里选一个。**Temperature** 是 0 到 2 的数字（Anthropic 为 0 到 1），
+留空就不发送。**Edit Model** 可以改已有模型的这些项：换一种 API 会把旧的标记从文件里删掉，而不是留下 `anthropic = false`；
+清空 temperature 会删掉这个键。
 
 ## 花了多少
 

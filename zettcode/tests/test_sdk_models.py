@@ -79,6 +79,52 @@ def test_updating_a_model_keeps_every_key_it_did_not_name_and_the_token(tmp_path
     assert 'token = "secret"' in text and 'display_model = "A"' in text
 
 
+def test_a_model_with_only_an_id_is_a_model_and_its_token_is_not_written(tmp_path: Path, monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    path = config_file(tmp_path)
+
+    models = add({"model": "llama3", "base_url": "http://localhost:11434/v1", "chat": True}, path=path)
+
+    assert [model.model for model in models] == ["llama3"]
+    text = path.read_text(encoding="utf-8")
+    assert "token" not in text and "chat = true" in text
+
+
+def test_chat_and_temperature_are_written_and_read_back(tmp_path: Path):
+    path = config_file(tmp_path)
+    path.write_text('[[models]]\nmodel = "a"\ntoken = "t"\n', encoding="utf-8")
+
+    update_model("a", {"chat": True, "temperature": 0.2}, path=path)
+
+    text = path.read_text(encoding="utf-8")
+    assert "chat = true" in text and "temperature = 0.2" in text
+    read = config.read_models(path)[0]
+    assert read.chat is True and read.temperature == 0.2
+
+
+def test_a_key_changed_to_none_is_taken_out_of_the_entry(tmp_path: Path):
+    path = config_file(tmp_path)
+    path.write_text(
+        '[[models]]\nmodel = "a"\ntoken = "secret"\nanthropic = true\ntemperature = 0.5\n', encoding="utf-8"
+    )
+
+    update_model("a", {"anthropic": None, "temperature": None, "chat": True}, path=path)
+
+    text = path.read_text(encoding="utf-8")
+    assert "anthropic" not in text and "temperature" not in text, "removed, not left as false"
+    assert 'token = "secret"' in text and "chat = true" in text
+    assert config.read_models(path)[0].api == "chat"
+
+
+def test_a_temperature_of_zero_is_kept_and_is_not_the_same_as_none(tmp_path: Path):
+    path = config_file(tmp_path)
+    path.write_text('[[models]]\nmodel = "a"\ntoken = "t"\n', encoding="utf-8")
+
+    update_model("a", {"temperature": 0}, path=path)
+
+    assert config.read_models(path)[0].temperature == 0.0
+
+
 def test_a_model_can_be_named_by_its_id_when_it_has_a_display_name(tmp_path: Path):
     path = config_file(tmp_path)
     path.write_text('[[models]]\nmodel = "gpt-5"\ntoken = "t"\ndisplay_model = "Fast"\n', encoding="utf-8")

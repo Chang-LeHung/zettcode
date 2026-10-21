@@ -195,7 +195,12 @@ class ModelCreate(BaseModel):
 
 
 class ModelUpdate(BaseModel):
-    """Changes to one configured model; a key left out stays as it is, and the token is kept."""
+    """Changes to one configured model; a key left out stays as it is, and the token is kept.
+
+    A key sent as ``null`` is removed from the entry, for the keys that can be left out of one (everything but the
+    model id and the token): ``"temperature": null`` goes back to the provider's own, and ``"anthropic": null`` takes
+    the flag out of the file instead of leaving ``anthropic = false`` in it.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -213,8 +218,9 @@ class ModelUpdate(BaseModel):
     reasoning_efforts: list[str] | None = None
 
     def changes(self) -> dict[str, object]:
-        """Return only the keys the request set, as the file writes them."""
-        return self.model_dump(exclude_unset=True, exclude_none=True)
+        """Return the keys the request set, as the file writes them; ``None`` stands for "remove it"."""
+        sent = self.model_dump(exclude_unset=True)
+        return {key: value for key, value in sent.items() if value is not None or key not in ("model", "token")}
 
 
 class SessionOut(BaseModel):

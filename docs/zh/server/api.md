@@ -38,7 +38,7 @@ title: HTTP API 参考
 | --- | --- | --- | --- |
 | `GET` | `/models` | — | `{"models": [{"name","model","context_window","multimodal","efforts","active","compact_percent"}], "current"}`;配置模型之前也能用,此时 `current` 为 null。 |
 | `POST` | `/models` | `{"model", "token"?, "display_model"?, "base_url"?, "anthropic"?, "responses_api"?, "chat"?, "multimodal"?, "temperature"?, "context_window"?, "compact_percent"?, "reasoning_efforts"?}` | 201,返回新的列表。第一个模型会让服务器变得可用;后续模型供 `PATCH /settings` 选择。写入配置文件,键名与终端 `/config add` 一致。 |
-| `PATCH` | `/models/{name}` | `POST /models` 接受的任意字段 | 新的列表。未给出的键保持不变;没给新 token 就保留旧的。 |
+| `PATCH` | `/models/{name}` | `POST /models` 接受的任意字段 | 新的列表。未给出的键保持不变;没给新 token 就保留旧的。值为 `null` 的键会从条目里删掉(`model` 和 `token` 除外):`"temperature": null` 回到提供商自己的默认值,`"anthropic": null` 把这个标记从文件里删掉,而不是留下 `anthropic = false`。 |
 | `DELETE` | `/models/{name}` | — | 剩下的模型。最后一个不能删(`400 invalid`):client 至少需要一个。 |
 | `GET` | `/settings` | — | `{"model","effort","efforts","permission","permissions"}`;改动过压缩点的 `PATCH` 之后还会带 `"unsaved"`(见下)。 |
 | `PATCH` | `/settings` | `{"model"?, "effort"?, "permission"?, "compact_percent"?}` | 更改后与 `GET /settings` 相同;至少给一个字段。`compact_percent` 大于 0、至多 100,从下一次请求起生效并写入配置文件;文件写不进去时,返回里带 `"unsaved": "<原因>"`,改动只在本次运行有效。有 run 在进行时返回 `409`。 |

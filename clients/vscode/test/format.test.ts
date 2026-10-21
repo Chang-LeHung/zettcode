@@ -95,6 +95,21 @@ test("a tool body is the command or the edit", () => {
   assert.ok(toolDetail("read_file", { path: "a" }).includes("\"path\": \"a\""));
 });
 
+test("a figure of a thousand millions is written in billions, and no figure is ever written as 1000 of a unit", () => {
+  // The numbers from a real ledger: 4064.4M total, 4052.9M in, 11.5M out.
+  assert.equal(formatTokens(4_064_400_000), "4.06B");
+  assert.equal(formatTokens(4_052_900_000), "4.05B");
+  assert.equal(formatTokens(11_500_000), "11.5M", "the part that is still millions stays in millions");
+  assert.equal(formatTokens(1_000_000_000), "1B");
+  assert.equal(formatTokens(1_100_000_000), "1.1B", "no zero that adds nothing");
+  assert.equal(formatTokens(12_340_000_000), "12.3B");
+  assert.equal(formatTokens(123_400_000_000), "123B");
+  assert.equal(formatTokens(999_000_000), "999M", "just under a billion is still millions");
+  assert.equal(formatTokens(999_960_000), "1B", "and one that would round to 1000.0M steps up");
+  assert.equal(formatTokens(999_500), "1M", "as one that would round to 1000k does");
+  assert.equal(formatTokens(999_499), "999k");
+});
+
 test("numbers, times and names read the way the UI shows them", () => {
   assert.equal(formatTokens(0), "0");
   assert.equal(formatTokens(999), "999");

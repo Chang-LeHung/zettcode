@@ -167,7 +167,13 @@ export function toolLanguage(name: string, args: Record<string, unknown>): strin
   return "json";
 }
 
-/** `1234` as `1.2k`, and `1234567` as `1.2M`. */
+/**
+ * `1234` as `1.2k`, `1234567` as `1.2M`, and `4064400000` as `4.06B`.
+ *
+ * A figure steps up to the next unit as soon as it would round to 1000 of the one below, so it is never written as
+ * `1000k` or `1000.0M`. Billions keep two decimals under ten, one under a hundred, and none past that, because a
+ * ledger that has counted thousands of millions needs the third digit to tell two models apart.
+ */
 export function formatTokens(value: number): string {
   if (!Number.isFinite(value) || value <= 0) {
     return "0";
@@ -175,11 +181,21 @@ export function formatTokens(value: number): string {
   if (value < 1000) {
     return String(Math.round(value));
   }
-  if (value < 1_000_000) {
-    const thousands = value / 1000;
-    return `${thousands >= 100 ? Math.round(thousands) : thousands.toFixed(1).replace(/\.0$/, "")}k`;
+  const thousands = value / 1000;
+  if (thousands < 999.5) {
+    return `${thousands >= 100 ? Math.round(thousands) : trimmed(thousands, 1)}k`;
   }
-  return `${(value / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+  const millions = value / 1_000_000;
+  if (millions < 999.95) {
+    return `${trimmed(millions, 1)}M`;
+  }
+  const billions = value / 1_000_000_000;
+  return `${trimmed(billions, billions >= 100 ? 0 : billions >= 10 ? 1 : 2)}B`;
+}
+
+/** A number to a fixed number of decimals, without the zeros that add nothing: `4.10` is `4.1`, `4.00` is `4`. */
+function trimmed(value: number, digits: number): string {
+  return String(Number(value.toFixed(digits)));
 }
 
 /** A duration as the smallest useful unit. */

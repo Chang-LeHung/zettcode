@@ -45,8 +45,8 @@ under the publisher **zettcode**.
 
    Turn that off with `zettcode.server.autoInstall` if you would rather it never did.
 
-5. **Add a model** from the welcome card: the model name and an API key. Models you set up in the terminal app are
-   used as they are, because the configuration file is the same one.
+5. **Add a model** from the welcome card: the model id, and optionally an API key. Models you set up in the terminal
+   app are used as they are, because the configuration file is the same one.
 6. Ask something, for example *Explain this codebase*.
 
 VS Code asks you to trust the folder first: the agent runs commands and edits files in it.
@@ -112,6 +112,13 @@ line of the reason, and the source of any diagram is one press away.
 The chips under the message box pick the model, the reasoning effort and the shell permission; the same three are in
 the Command Palette as **Select Model**, **Select Reasoning Effort** and **Select Shell Permission**. **Add Model**
 writes a new entry to the same `config.toml` the terminal app uses.
+
+The add-model form takes the same keys as the terminal's `/config`. Only the **model id** is required; the **API key**
+can be left empty for a local server (Ollama, LM Studio, vLLM), or to use `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`.
+**API** is a choice of **Chat completions** (written as `chat = true`), the **Responses API** or the **Anthropic
+Messages API**, one of the three. **Temperature** is a number from 0 to 2 (0 to 1 for Anthropic), and left empty none is
+sent. **Edit Model** changes the same things on a model that is already there: choosing another API takes the old
+flag out of the file instead of leaving `anthropic = false` behind, and clearing the temperature removes the key.
 
 ## Spending
 

@@ -94,6 +94,26 @@ async def test_a_model_is_changed_and_its_token_kept_unless_a_new_one_is_given(t
     assert empty.status_code == 400 and "at least one field" in empty.json()["message"]
 
 
+async def test_chat_and_temperature_are_taken_and_a_null_removes_a_key(tmp_path: Path):
+    path = write_config(tmp_path, "a")
+    async with serve(tmp_path) as http:
+        added = await http.post(
+            "/models",
+            json={"model": "local", "chat": True, "temperature": 0.3, "base_url": "http://localhost:11434/v1"},
+        )
+        too_hot = await http.post("/models", json={"model": "x", "temperature": 3})
+        cleared = await http.patch("/models/local", json={"temperature": None, "chat": None, "anthropic": True})
+        empty = await http.patch("/models/local", json={"token": None})
+
+    assert added.status_code == 201
+    assert too_hot.status_code == 422 and "temperature" in too_hot.json()["message"]
+    text = path.read_text(encoding="utf-8")
+    assert cleared.status_code == 200
+    local = text.split('model = "local"')[1]
+    assert "temperature" not in local and "chat" not in local and "anthropic = true" in local
+    assert empty.status_code == 400, "a null token or model id is not a change"
+
+
 async def test_a_model_that_is_not_configured_is_a_400_with_the_ones_that_are(tmp_path: Path):
     write_config(tmp_path, "a")
     async with serve(tmp_path) as http:

@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { reactive } from "vue";
+import { computed, reactive } from "vue";
 
 import type { ModelInput } from "../../../../typescript/src/types.js";
+import { type Api, APIS, apiKeys, maxTemperature, parseTemperature } from "../../core/model-form.js";
 import { closeOverlay, post, toast } from "../store.js";
 import Popover from "./Popover.vue";
 
@@ -13,10 +14,12 @@ const form = reactive({
   context: "",
   efforts: "",
   compact: "",
+  temperature: "",
   multimodal: false,
-  anthropic: false,
-  responses: false,
+  api: "chat" as Api,
 });
+
+const temperatureLabel = computed(() => `Temperature (0 to ${maxTemperature(form.api)})`);
 
 function number(value: string): number | undefined {
   const trimmed = value.trim();
@@ -27,6 +30,11 @@ function submit(): void {
   const model = form.model.trim();
   if (!model) {
     toast("A model id is required.", "warn");
+    return;
+  }
+  const temperature = parseTemperature(form.temperature, form.api);
+  if (temperature.kind === "error") {
+    toast(temperature.message, "warn");
     return;
   }
   const input: ModelInput = { model };
@@ -47,6 +55,9 @@ function submit(): void {
   if (compact !== undefined) {
     input.compact_percent = compact;
   }
+  if (temperature.kind === "value") {
+    input.temperature = temperature.value;
+  }
   const efforts = form.efforts
     .split(",")
     .map((item) => item.trim())
@@ -57,23 +68,26 @@ function submit(): void {
   if (form.multimodal) {
     input.multimodal = true;
   }
-  if (form.anthropic) {
-    input.anthropic = true;
-  }
-  if (form.responses) {
-    input.responses_api = true;
-  }
+  Object.assign(input, apiKeys(form.api));
   post({ type: "add-model", model: input });
 }
 </script>
 
 <template>
-  <Popover id="add-model-panel" title="Add a model" :width="420">
+  <Popover id="add-model-panel" title="Add a model" :width="420" :tall="680">
     <form class="form" @submit.prevent="submit">
       <label>Model id<input id="m-model" v-model="form.model" placeholder="claude-sonnet-4-5" autocomplete="off" autofocus /></label>
       <div class="form-pair">
         <label>Display name<input id="m-name" v-model="form.name" placeholder="sonnet" autocomplete="off" /></label>
         <label>API key<input id="m-token" v-model="form.token" type="password" placeholder="optional" autocomplete="off" /></label>
+      </div>
+      <div class="form-pair">
+        <label>API
+          <select id="m-api" v-model="form.api">
+            <option v-for="api in APIS" :key="api.value" :value="api.value">{{ api.label }}</option>
+          </select>
+        </label>
+        <label>{{ temperatureLabel }}<input id="m-temperature" v-model="form.temperature" inputmode="decimal" placeholder="optional" autocomplete="off" /></label>
       </div>
       <label>Base URL<input id="m-url" v-model="form.url" placeholder="optional" autocomplete="off" /></label>
       <div class="form-pair">
@@ -83,10 +97,8 @@ function submit(): void {
       <label>Reasoning efforts<input id="m-efforts" v-model="form.efforts" placeholder="low, medium, high" autocomplete="off" /></label>
       <div class="form-checks">
         <label class="check"><input id="m-multimodal" v-model="form.multimodal" type="checkbox" /> Images</label>
-        <label class="check"><input id="m-anthropic" v-model="form.anthropic" type="checkbox" /> Anthropic API</label>
-        <label class="check"><input id="m-responses" v-model="form.responses" type="checkbox" /> Responses API</label>
       </div>
-      <p class="form-note">Written to the ZettCode configuration file. The token is stored there and never returned by the server.</p>
+      <p class="form-note">Written to the ZettCode configuration file. Only the model id is required: leave the key empty for a local server (Ollama, LM Studio, vLLM) or to use the environment's. The key is stored there and never returned by the server.</p>
       <div class="form-actions">
         <button class="btn solid" type="submit" data-action="submit-model">Add model</button>
         <button class="btn ghost" type="button" @click="closeOverlay">Cancel</button>
@@ -113,7 +125,8 @@ function submit(): void {
   font-weight: 600;
 }
 
-.form input:not([type="checkbox"]) {
+.form input:not([type="checkbox"]),
+.form select {
   height: 30px;
   padding: 0 10px;
   border: 1px solid var(--line-strong);
@@ -125,7 +138,8 @@ function submit(): void {
   outline: none;
 }
 
-.form input:not([type="checkbox"]):focus {
+.form input:not([type="checkbox"]):focus,
+.form select:focus {
   border-color: color-mix(in srgb, var(--fg) 45%, transparent);
 }
 
