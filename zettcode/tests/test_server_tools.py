@@ -11,7 +11,7 @@ from pathlib import Path
 
 from zett_agent.events import AgentEvent, AgentEventType
 from zett_agent.messages import AssistantMessage, UserMessage
-from zett_agent.model import ServerToolCall, ServerToolResult
+from zett_agent.model import ServerToolCall, ServerToolInputDelta, ServerToolResult
 
 from zettcode.app.agent.conversation.projection import TranscriptProjector
 from zettcode.app.agent.conversation.replay import replay
@@ -60,18 +60,32 @@ def _rows(transcript: Transcript) -> list[tuple[str, str, str]]:
     ]
 
 
-async def _live() -> Transcript:
-    """Run the events one hosted search emits through the projector the shell installs."""
+async def _live(streamed: bool = False) -> Transcript:
+    """Run the events one hosted search emits through the projector the shell installs.
+
+    Args:
+        streamed: Open the call with no input and send the query in fragments, the way an endpoint may.
+    """
     transcript = Transcript()
     projector = TranscriptProjector(transcript)
     projector.begin_turn("search for zettcode")
+    opening = None if streamed else {"query": "zettcode github"}
     await projector.dispatch(
         AgentEvent(
             AgentEventType.SERVER_TOOL_STARTED,
             "s",
-            server_tool_call=ServerToolCall("call-1", "web_search", {"query": "zettcode github"}),
+            server_tool_call=ServerToolCall("call-1", "web_search", opening),
         )
     )
+    if streamed:
+        for fragment in ('{"quer', 'y": "zett', 'code github"}'):
+            await projector.dispatch(
+                AgentEvent(
+                    AgentEventType.SERVER_TOOL_INPUT_DELTA,
+                    "s",
+                    server_tool_input_delta=ServerToolInputDelta("call-1", fragment),
+                )
+            )
     await projector.dispatch(
         AgentEvent(
             AgentEventType.SERVER_TOOL_COMPLETED,
@@ -100,6 +114,14 @@ async def _stored(tmp_path: Path) -> Transcript:
 
 
 # -- the row -------------------------------------------------------------------------------------------------------
+
+
+async def test_a_query_that_streams_in_still_reaches_the_row(tmp_path: Path):
+    """An endpoint may open the call with no input and send the query in fragments; the row says what was searched."""
+    rows = _rows(await _live(streamed=True))
+
+    assert rows[0][1] == 'Searched the web for "zettcode github"'
+    assert _rows(await _stored(tmp_path)) == rows, "and a reopened session reads the same"
 
 
 async def test_live_the_row_says_what_was_searched_for_and_which_pages_came_back():
