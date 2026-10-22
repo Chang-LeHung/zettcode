@@ -338,7 +338,9 @@ at, and offers:
 `s` and `a` are the same change `/permission safe` and `/permission full` make:
 the level, the line in the conversation, and the status line all agree whichever
 door you used. Mid-request they are the way to change it, because a typed
-command waits for the request to end.
+command waits for the request to end. The level belongs to the session, so the
+next time you open this conversation it starts there; a new session starts at
+the level a run begins with.
 
 For a command such as `pytest tests/test_users.py`, choose `y` if you want to
 review the next command separately. Choose `p` only when you want that exact

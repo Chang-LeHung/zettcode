@@ -17,14 +17,14 @@ class ApprovalChoice(StrEnum):
 
     The rows are the same ladder ``/permission`` offers, seen from one command: a
     choice either leaves the level alone (``RUN``, ``ALWAYS``, ``ABORT``) or moves
-    it up a rung for the rest of the run (``RUN_SAFE`` to ``safe``, ``RUN_AUTO`` to
-    ``full``). Neither ``deny`` nor ``full`` ever shows the prompt, so there is no
-    row that goes down.
+    it up a rung, which is a change to the session (``RUN_SAFE`` to ``safe``,
+    ``RUN_AUTO`` to ``full``). Neither ``deny`` nor ``full`` ever shows the prompt,
+    so there is no row that goes down.
 
     Attributes:
         RUN: Execute this command once; the next one asks again.
         RUN_SAFE: Execute it and stop asking: later commands run in the sandbox.
-        RUN_AUTO: Execute it and stop asking for any later command this run, with full access.
+        RUN_AUTO: Execute it and stop asking for any later command, with full access; the session remembers it.
         ALWAYS: Execute it and remember this exact command for the session.
         ABORT: Do not execute it; the agent sees a normal tool failure.
     """

@@ -423,8 +423,9 @@ class FakeRuntime:
         self.auto_approved = True
         self.permission = Permission.AUTO
 
-    def use_permission(self, name):
+    def use_permission(self, name, *, remember: bool = True):
         self.permission = name if isinstance(name, Permission) else parse_permission(name)
+        self.remembered_permission = name if remember else None
         self.auto_approved = self.permission is Permission.FULL
         return self.permission
 
@@ -3091,6 +3092,7 @@ async def test_auto_mode_approves_every_later_command():
     event, _ = app.agent.runtime.client.agent.emitted[0]
     assert event.payload == {"tool_call_id": "call-1", "decision": "execute", "remember": False}
     assert app.agent.runtime.auto_approved is True
+    assert app.agent.runtime.remembered_permission == "full", "the rung is the session's level too"
     assert any("permission changed from ask to full" in entry.text for entry in app.transcript.entries)
     assert "full" in harness.render().text.strip().splitlines()[-1]
 
@@ -7963,6 +7965,7 @@ async def test_permission_changes_while_the_request_runs_and_says_so():
     await _typed_while_running(app, harness, "/permission full")
 
     assert app.agent.permission.value == "full"
+    assert app.agent.runtime.remembered_permission == "full", "the command sets the session's level"
     assert any("full" in row for row in _rows(app)) and app._busy is True
     await _stop(app)
 

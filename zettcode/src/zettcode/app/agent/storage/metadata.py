@@ -43,7 +43,7 @@ import tempfile
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Annotated, Literal, TypeAlias
+from typing import Annotated, Any, Literal, TypeAlias, cast
 
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
@@ -90,6 +90,10 @@ class SessionMetadata(BaseModel):
     #: This session's own choice about letting the model request compaction: ``True`` or ``False``, or
     #: ``None`` when it never chose and follows the configuration's default. Older files hold no choice.
     self_compact: bool | None = Field(default=None, strict=True)
+    #: The permission level this session last ran at — ``ask``, ``safe``, ``full`` or ``deny`` — or ``None`` when
+    #: it never chose one and a run starts at the level it was built with. Resuming the session puts it back in
+    #: force, so a reader who chose ``full`` for a job does not answer the question again on the next start.
+    permission: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -231,7 +235,8 @@ class SessionTitle(BaseModel):
 
 
 MetadataRecord: TypeAlias = Annotated[SessionStarted | SessionActivity | SessionTitle, Field(discriminator="kind")]
-METADATA: TypeAdapter[SessionStarted | SessionActivity | SessionTitle] = TypeAdapter(MetadataRecord)
+# The alias is a ``TypeForm`` pydantic accepts; mypy 1.20 does not read an ``Annotated`` union as one.
+METADATA: TypeAdapter[SessionStarted | SessionActivity | SessionTitle] = TypeAdapter(cast(Any, MetadataRecord))
 
 
 def read_metadata(path: Path) -> list[SessionInfo]:
