@@ -10,7 +10,7 @@ start pays for no palette it does not use.
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, fields, replace
 from functools import partial
 from importlib import resources
@@ -108,7 +108,11 @@ def theme_from_toml(text: str, *, base: Theme | None = None) -> Theme:
             raise ThemeFileError(str(error)) from error
 
     ui = _select(data.get("ui", {}), {field.name for field in fields(Theme)} - {"code", "tools"})
-    tools = _select(data.get("tools", {}), {field.name for field in fields(ToolTheme)})
+    tools = _select(
+        data.get("tools", {}),
+        {field.name for field in fields(ToolTheme)},
+        hyphenated={"web-search": "web_search", "ask-user": "ask_user"},
+    )
     code = _select(data.get("code", {}), {field.name for field in fields(CodeTheme)})
     return replace(palette, **ui, tools=replace(palette.tools, **tools), code=replace(palette.code, **code))
 
@@ -274,17 +278,23 @@ class ThemeCatalog:
         return notes
 
 
-def _select(values: object, allowed: set[str]) -> dict[str, str]:
-    """Validate one palette table against the keys the theme knows."""
+def _select(values: object, allowed: set[str], *, hyphenated: Mapping[str, str] | None = None) -> dict[str, str]:
+    """Validate one palette table against the keys the theme knows.
+
+    A role whose name is a word rather than an identifier is written with a hyphen in the file (``web-search``)
+    and kept as the field it names (``web_search``); ``hyphenated`` is that spelling, when a table has one.
+    """
     if not isinstance(values, dict):
         raise ThemeFileError("Palette sections must be tables")
+    spelled = hyphenated or {}
     chosen: dict[str, str] = {}
     for key, value in values.items():
-        if key not in allowed:
+        name = spelled.get(key, key)
+        if name not in allowed:
             raise ThemeFileError(f"Unknown theme key: {key!r}")
         if not isinstance(value, str):
             raise ThemeFileError(f"{key} must be a string colour")
-        if key != "name" and parse_hex(value) is None:
+        if name != "name" and parse_hex(value) is None:
             raise ThemeFileError(f"{key} must be a #rrggbb colour, got {value!r}")
-        chosen[str(key)] = value
+        chosen[name] = value
     return chosen

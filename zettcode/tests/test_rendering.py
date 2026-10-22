@@ -34,7 +34,7 @@ def opened(name: str, **arguments: object):
 
 def test_the_chain_phrases_the_coding_tools():
     assert describe("read_file", path="src/app.py") == "Read src/app.py"
-    assert describe("write_file", path="notes/plan.md") == "Wrote notes/plan.md"
+    assert describe("write_file", path="notes/plan.md") == "Write notes/plan.md"
     assert describe("replace_in_file", path="app.py", edits=[{"old": "a"}, {"old": "b"}]) == "Edited app.py (2 edits)"
     assert describe("replace_in_file", path="app.py", edits=[{"old": "a"}]) == "Edited app.py (1 edit)"
     assert describe("replace_in_file", path="app.py") == "Edited app.py"
@@ -42,6 +42,12 @@ def test_the_chain_phrases_the_coding_tools():
     assert describe("bash", command="pwd && ls -la") == "Ran pwd && ls -la"
     assert describe("glob", pattern="**/*.py") == "Listed **/*.py"
     assert describe("grep", pattern="TODO", path="src") == "Searched TODO in src"
+    assert describe("web_search", query="zettcode github") == 'Searched the web for "zettcode github"'
+    assert describe("web_search") == "Searched the web"
+    # A question is the one row that waited for a person: it is named as a thing, with a capital.
+    assert describe("ask_user", question="which file?") == "Ask-User: which file?"
+    assert describe("ask_user") == "Ask-User"
+    assert describe("ask_user", question="  ") == "Ask-User"
     # ``name`` is both the helper's parameter and the tool's argument, so this
     # one goes through the chain directly.
     assert DEFAULT_RENDERERS.describe("read_skill", {"name": "code-review"}).title == "Read skill code-review"
@@ -183,7 +189,7 @@ def test_the_chain_asks_handlers_in_order():
     chained = Renderers((First(), *DEFAULT_RENDERERS.handlers))
 
     assert chained.describe("read_file", {}).title == "mine"
-    assert chained.describe("write_file", {"path": "x"}).title == "Wrote x"
+    assert chained.describe("write_file", {"path": "x"}).title == "Write x"
     # The fallback link claims whatever the ones before it passed over, so an
     # unknown tool still renders as its bare name.
     fallback = next(handler for handler in chained.handlers if isinstance(handler, FallbackTool))

@@ -34,7 +34,7 @@ from zettcode.tui import ELLIPSIS, SEPARATOR
 from zettcode.tui.render import GENERIC, language_for
 
 from .entries import DeleteEntry, EditEntry, MessageEntry, ReadEntry, ToolEntry, WriteEntry
-from .text import limit_output
+from .text import DECLINED_NOTE, limit_output
 
 #: Output kinds the chain shapes; a link claims one or more of them.
 TOOL = "tool"
@@ -386,8 +386,8 @@ class WriteTool(ToolHandler):
     names = frozenset({"write_file"})
 
     def describe(self, name: str, arguments: Mapping[str, object]) -> ToolRow:
-        """Show the file being written."""
-        return ToolRow(f"Wrote {argument(arguments, 'path', '(unknown file)')}")
+        """Show the file being written: the row is the call, so it says what the call does, not what it did."""
+        return ToolRow(f"Write {argument(arguments, 'path', '(unknown file)')}")
 
     def open_tool(
         self, name: str, arguments: Mapping[str, object], *, id: int, call_id: str, started_at: float
@@ -495,6 +495,60 @@ class SearchTool(ToolHandler):
             return ToolRow(f"Listed {pattern}" if pattern else "Listed files")
         where = argument(arguments, "path")
         return ToolRow(f"Searched {pattern or 'the workspace'}" + (f" in {where}" if where else ""))
+
+
+class WebSearchTool(ToolHandler):
+    """``web_search``: a search the endpoint ran, so the row says what was searched for."""
+
+    names = frozenset({"web_search"})
+
+    def describe(self, name: str, arguments: Mapping[str, object]) -> ToolRow:
+        """Name the query; the call is the endpoint's, so nothing else of it is ours to show."""
+        query = argument(arguments, "query")
+        return ToolRow(f'Searched the web for "{query}"' if query else "Searched the web")
+
+
+class AskUserTool(ToolHandler):
+    """``ask_user``: the one row that waited for a person, so it is named as a thing, not as a verb.
+
+    The body is what the person did, not the protocol: the tool answers with the payload the shell sent, and that
+    JSON is neither readable nor useful in a transcript.
+    """
+
+    names = frozenset({"ask_user"})
+
+    def describe(self, name: str, arguments: Mapping[str, object]) -> ToolRow:
+        """Show the question that was put, under the name the shell gives that tool."""
+        question = argument(arguments, "question")
+        return ToolRow(f"Ask-User: {question}" if question else "Ask-User")
+
+    def body(self, name: str, output: str) -> str:
+        """Say what the person did: declined, answered, or answered with a picture.
+
+        Anything that is not the answer payload is left exactly as it came, so a failure or another tool's result
+        is never rewritten by this row.
+        """
+        payload = _ask_payload(output)
+        if payload is None:
+            return output
+        if payload.get("declined") is True:
+            return DECLINED_NOTE
+        answer = payload.get("answer")
+        if isinstance(answer, str) and answer.strip():
+            return f"You answered: {answer.strip()}"
+        if isinstance(payload.get("parts"), list) and payload["parts"]:
+            return "You answered with a picture."
+        return output
+
+
+def _ask_payload(output: str) -> Mapping[str, object] | None:
+    """Return the payload of an ``ask_user`` result, or ``None`` when the text is not one."""
+    try:
+        result = json.loads(output)
+    except ValueError:
+        return None
+    payload = result.get("payload") if isinstance(result, Mapping) else None
+    return payload if isinstance(payload, Mapping) else None
 
 
 class TodoTool(ToolHandler):
@@ -645,6 +699,8 @@ DEFAULT_RENDERERS = Renderers(
         DeleteTool(),
         ShellTool(),
         SearchTool(),
+        WebSearchTool(),
+        AskUserTool(),
         TodoTool(),
         SkillTool(),
         TaskTool(),

@@ -40,6 +40,12 @@ class ToolTheme:
         message: Talking to another session: ``send_message`` and ``list_sessions``, and the
             header of a message another session's agent sent. One hue for both directions, so a
             conversation between sessions reads as one thing.
+        web_search: A search the endpoint ran on the model's behalf (``web_search``). Its own
+            role rather than ``search``: it leaves the workspace for the open web, and a theme
+            may say so. Spelled ``web-search`` in a theme file's ``[tools]`` table.
+        ask_user: A question the model put to the reader (``ask_user``). Its own role rather than
+            ``plan``: it is the one row that waits for a person, and a theme may colour it apart.
+            Spelled ``ask-user`` in a theme file's ``[tools]`` table.
     """
 
     read: str = "#b4befe"
@@ -51,6 +57,8 @@ class ToolTheme:
     plan: str = "#b4befe"
     subagent: str = "#94e2d5"
     message: str = "#cba6f7"
+    web_search: str = "#b4befe"
+    ask_user: str = "#b4befe"
 
 
 @dataclass(frozen=True, slots=True)

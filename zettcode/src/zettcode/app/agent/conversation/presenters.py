@@ -106,6 +106,8 @@ TOOL_ROLES = {
     "view_image": "image",
     "glob": "search",
     "grep": "search",
+    "web_search": "web-search",
+    "ask_user": "ask-user",
     "write_file": "write",
     "edit": "write",
     "replace_in_file": "write",  # what a session stored before the rename called it
@@ -120,8 +122,12 @@ TOOL_ROLES = {
 
 
 def tool_color(tool: str, theme: Theme) -> str:
-    """Return the colour one tool paints its rows with."""
-    return getattr(theme.tools, TOOL_ROLES.get(tool, ""), theme.accent)
+    """Return the colour one tool paints its rows with.
+
+    A role spelled with a hyphen (``web-search``) names the theme field it stands for (``web_search``).
+    """
+    role = TOOL_ROLES.get(tool, "").replace("-", "_")
+    return getattr(theme.tools, role, theme.accent)
 
 
 #: The entry fields that are not part of how a row looks: its identity, and the
@@ -575,7 +581,12 @@ class ToolPresenter(Presenter[T]):
             }.get(entry.status, STATUS)
         )
         hue = tool_color(entry.tool, theme)
-        colour = theme.error if entry.status is EntryStatus.FAILED else hue
+        # A failure is the error colour, and a row that did not happen at all — a skipped tool, a cancelled
+        # question — is a caution rather than a result, so it is amber and not the tool's own hue.
+        colour = {
+            EntryStatus.FAILED: theme.error,
+            EntryStatus.SKIPPED: theme.warning,
+        }.get(entry.status, hue)
         marker = Style(foreground=colour)
         label = Style(foreground=colour)
         muted = Style(foreground=theme.muted)

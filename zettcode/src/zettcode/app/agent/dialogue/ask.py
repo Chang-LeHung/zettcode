@@ -8,6 +8,7 @@ panel never reads a raw payload and the agent never invents one.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Any
 
@@ -19,6 +20,7 @@ __all__ = [
     "AskUserQuestion",
     "answer_payload",
     "decline_payload",
+    "declined_answer",
     "question_from",
 ]
 
@@ -94,3 +96,18 @@ def decline_payload(question: AskUserQuestion) -> dict[str, Any]:
         "declined": True,
         "reason": "the user cancelled the question",
     }
+
+
+def declined_answer(text: str) -> bool:
+    """Return whether a tool result is the one a cancelled question leaves behind.
+
+    The tool answers with the payload the shell sent, serialized as JSON. A cancelled question carries
+    ``"declined": true`` and no answer; a row that has one is not a row that failed, it is a question nobody
+    needed to answer, and the transcript says so.
+    """
+    try:
+        result = json.loads(text)
+    except ValueError:
+        return False
+    payload = result.get("payload") if isinstance(result, dict) else None
+    return isinstance(payload, dict) and payload.get("declined") is True

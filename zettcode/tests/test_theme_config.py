@@ -223,6 +223,50 @@ def test_a_theme_file_can_recolour_one_tool_family(tmp_path):
     assert theme.tools.read == DARK.tools.read  # untouched roles keep the base palette
 
 
+def test_a_web_search_has_a_role_of_its_own_spelled_with_a_hyphen(tmp_path):
+    """It leaves the workspace for the open web, so a theme may colour it apart from `search`."""
+    path = tmp_path / "theme.toml"
+    path.write_text('[tools]\nweb-search = "#123456"\n', encoding="utf-8")
+
+    theme = load_theme(path)
+
+    assert theme.tools.web_search == "#123456" != theme.tools.search
+    assert theme.tools.search == DARK.tools.search, "search itself is untouched"
+
+
+def test_the_web_search_role_can_also_be_written_as_a_field_name(tmp_path):
+    path = tmp_path / "theme.toml"
+    path.write_text('[tools]\nweb_search = "#654321"\n', encoding="utf-8")
+
+    assert load_theme(path).tools.web_search == "#654321"
+
+
+def test_a_question_to_the_reader_has_a_role_of_its_own_too(tmp_path):
+    """``ask-user`` is the one row that waited for a person; a theme may colour it apart from the plan."""
+    path = tmp_path / "theme.toml"
+    path.write_text('[tools]\nask-user = "#0aa0a0"\n', encoding="utf-8")
+
+    theme = load_theme(path)
+
+    assert theme.tools.ask_user == "#0aa0a0" != theme.tools.plan
+    assert theme.tools.plan == DARK.tools.plan, "the plan itself is untouched"
+
+
+def test_the_ask_user_role_can_also_be_written_as_a_field_name(tmp_path):
+    path = tmp_path / "theme.toml"
+    path.write_text('[tools]\nask_user = "#0a0a0a"\n', encoding="utf-8")
+
+    assert load_theme(path).tools.ask_user == "#0a0a0a"
+
+
+def test_a_role_the_theme_does_not_know_is_still_refused(tmp_path):
+    path = tmp_path / "theme.toml"
+    path.write_text('[tools]\nweb-fetch = "#123456"\n', encoding="utf-8")
+
+    with pytest.raises(ThemeFileError, match="Unknown theme key"):
+        load_theme(path)
+
+
 def test_load_theme_reports_a_missing_file(tmp_path):
     with pytest.raises(ThemeFileError, match="Cannot read"):
         load_theme(tmp_path / "missing.toml")

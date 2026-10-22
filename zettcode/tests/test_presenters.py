@@ -405,6 +405,12 @@ def test_tool_rows_are_painted_by_what_the_tool_did():
     # Talking to another session is its own colour, the one the header of a message from one is drawn in.
     assert tool_color("send_message", DARK) == tool_color("list_sessions", DARK) == DARK.tools.message
     assert DARK.tools.message != DARK.tools.subagent and LIGHT.tools.message != LIGHT.tools.subagent
+    # A search the endpoint ran has a role of its own, spelled with a hyphen where the role does not fall back.
+    assert tool_color("web_search", DARK) == DARK.tools.web_search
+    assert DARK.tools.web_search == DARK.tools.search, "the same hue until a theme pulls them apart"
+    # Asking the reader is its own role too: the one row that waits for a person.
+    assert tool_color("ask_user", DARK) == DARK.tools.ask_user
+    assert DARK.tools.ask_user == DARK.tools.plan, "the same hue until a theme pulls them apart"
     # An unfamiliar tool still gets a colour rather than no style at all.
     assert tool_color("mcp__something", DARK) == DARK.accent
 

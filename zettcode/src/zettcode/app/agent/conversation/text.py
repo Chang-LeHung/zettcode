@@ -45,6 +45,9 @@ PROCESSING = "Processing"
 #: reserved for it.
 STOP_HINT = "^C/Esc to interrupt"
 
+#: What the row of a question the reader cancelled says under its title.
+DECLINED_NOTE = "You declined; the model was told and carries on."
+
 # Matches both escape families a tool can smuggle into its output: CSI
 # (``ESC [`` parameters and a final byte) and OSC (``ESC ]`` up to BEL or ST).
 # Stripping them keeps a coloured compiler message from repainting the canvas.
