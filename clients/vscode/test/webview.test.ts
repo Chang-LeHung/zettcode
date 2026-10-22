@@ -29,11 +29,14 @@ const settings: Settings = {
     efforts: ["low", "high"],
     active: true,
     compact_percent: 80,
+    web_search: false,
+    web_search_name: null,
   },
   effort: "low",
   efforts: ["low", "high"],
   permission: "ask",
-  permissions: ["deny", "ask", "safe", "auto"],
+  permissions: ["deny", "ask", "safe", "full"],
+  harness: false,
 };
 
 const state: WebviewState = {
@@ -991,6 +994,79 @@ test("the add-model form sends the API it was given as one flag, a temperature, 
   const sent = ui.messages.at(-1) as { model: Record<string, unknown> };
   assert.equal(sent.model.responses_api, true);
   assert.ok(!("temperature" in sent.model) && !("chat" in sent.model), "an empty temperature sends none");
+});
+
+const coldState = (): WebviewState => ({
+  ...state,
+  ready: false,
+  health: state.health === null ? null : { ...state.health, ready: false, session: null, models: 0 },
+  settings: null,
+  models: [],
+  currentModel: null,
+  session: null,
+  sessions: [],
+  context: null,
+  selfCompaction: null,
+});
+
+test("the add-model form offers web search, shows the default tool name, and sends the flag and a name only when typed", async () => {
+  const ui = await harness([], coldState());
+  await ui.click("#setup .btn");
+  const fill = (selector: string, value: string): void => {
+    const field = ui.one<HTMLInputElement | HTMLSelectElement>(selector);
+    assert.ok(field, selector);
+    field.value = value;
+    field.dispatchEvent(new ui.window.Event(selector === "#m-api" ? "change" : "input", { bubbles: true }));
+  };
+  assert.equal(ui.one("#m-search-name"), null, "the tool name is asked only once search is on");
+
+  fill("#m-model", "claude");
+  fill("#m-api", "anthropic");
+  await ui.click("#m-search");
+  const name = ui.one<HTMLInputElement>("#m-search-name");
+  assert.equal(name?.placeholder, "web_search_20260318", "the default for the API is the placeholder");
+  await ui.click('[data-action="submit-model"]');
+  assert.deepEqual(ui.messages.at(-1), { type: "add-model", model: { model: "claude", web_search: true, anthropic: true } });
+
+  fill("#m-search-name", "web_search_20250305");
+  await ui.click('[data-action="submit-model"]');
+  assert.deepEqual(ui.messages.at(-1), {
+    type: "add-model",
+    model: { model: "claude", web_search: true, web_search_name: "web_search_20250305", anthropic: true },
+  });
+
+  await ui.click("#m-search");
+  await ui.click('[data-action="submit-model"]');
+  assert.deepEqual(ui.messages.at(-1), { type: "add-model", model: { model: "claude", anthropic: true } }, "off sends neither key");
+});
+
+test("the form refuses web search on DeepSeek's chat endpoint before anything is sent, and allows it over Anthropic", async () => {
+  const ui = await harness([], coldState());
+  await ui.click("#setup .btn");
+  const fill = (selector: string, value: string): void => {
+    const field = ui.one<HTMLInputElement | HTMLSelectElement>(selector);
+    assert.ok(field, selector);
+    field.value = value;
+    field.dispatchEvent(new ui.window.Event(selector === "#m-api" ? "change" : "input", { bubbles: true }));
+  };
+  fill("#m-model", "deepseek-chat");
+  await ui.click("#m-search");
+  assert.ok(ui.one("#m-search-warning")?.textContent?.includes("Anthropic-compatible"), "the reason shows as it is typed");
+
+  const before = ui.messages.length;
+  await ui.click('[data-action="submit-model"]');
+  assert.equal(ui.messages.length, before, "nothing was sent");
+  assert.ok(ui.one(".toast")?.textContent?.includes("Anthropic"));
+
+  fill("#m-api", "anthropic");
+  await settle();
+  assert.equal(ui.one("#m-search-warning"), null);
+  assert.equal(ui.one<HTMLInputElement>("#m-search-name")?.placeholder, "web_search_20250305", "DeepSeek's own dated type");
+  await ui.click('[data-action="submit-model"]');
+  assert.deepEqual(ui.messages.at(-1), {
+    type: "add-model",
+    model: { model: "deepseek-chat", web_search: true, anthropic: true },
+  });
 });
 
 test("a temperature out of range is refused in the form and nothing is sent", async () => {

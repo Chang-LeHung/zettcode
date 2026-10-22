@@ -143,6 +143,8 @@ def model_out(model: ModelInfo) -> ModelOut:
         efforts=list(model.efforts),
         active=model.active,
         compact_percent=model.compact_percent,
+        web_search=model.web_search,
+        web_search_name=model.web_search_name,
     )
 
 

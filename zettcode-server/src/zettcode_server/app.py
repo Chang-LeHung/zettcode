@@ -276,7 +276,7 @@ def create_app(settings: Settings, *, client_factory: ClientFactory | None = Non
 
     @protected.get("/settings", response_model=SettingsOut, tags=["models"])
     async def settings_out(runner: RunnerDep) -> SettingsOut:
-        """Return the model, effort and permission a run starts with."""
+        """Return the model, effort, permission and harness a run starts with."""
         client = runner.client
         return SettingsOut(
             model=model_out(client.model),
@@ -284,18 +284,20 @@ def create_app(settings: Settings, *, client_factory: ClientFactory | None = Non
             efforts=list(client.efforts),
             permission=client.permission,
             permissions=list(client.permissions),
+            harness=client.harness,
         )
 
     @protected.patch("/settings", response_model=SettingsOut, tags=["models"])
     async def change_settings(update: SettingsUpdate, runner: RunnerDep) -> SettingsOut:
-        """Change the model, the reasoning effort, the permission level or the compaction point for the prompts that follow."""
+        """Change the model, effort, permission level, harness or compaction point for the prompts that follow."""
         if (
             update.model is None
             and update.effort is None
             and update.permission is None
+            and update.harness is None
             and update.compact_percent is None
         ):
-            raise ValueError("Name at least one of model, effort, permission or compact_percent")
+            raise ValueError("Name at least one of model, effort, permission, harness or compact_percent")
         client = runner.client
         if update.model is not None:
             client.use_model(update.model)
@@ -303,6 +305,8 @@ def create_app(settings: Settings, *, client_factory: ClientFactory | None = Non
             client.use_effort(update.effort)
         if update.permission is not None:
             client.use_permission(update.permission)
+        if update.harness is not None:
+            client.use_harness(update.harness)
         unsaved: str | None = None
         if update.compact_percent is not None:
             if runner.busy:

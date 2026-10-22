@@ -13,7 +13,10 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 #: The shell permission levels, as the SDK names them.
-PermissionName = Literal["deny", "ask", "safe", "auto"]
+PermissionName = Literal["deny", "ask", "safe", "full"]
+
+#: What a client may send for one: ``auto``, the old name of ``full``, is still taken and answered as ``full``.
+PermissionInput = Literal["deny", "ask", "safe", "full", "auto"]
 
 #: How a run answers the shell commands the model asks to run.
 ApprovalMode = Literal["deny", "auto", "commands", "ask"]
@@ -132,6 +135,8 @@ class ModelOut(BaseModel):
     efforts: list[str]
     active: bool = False
     compact_percent: float = 80.0
+    web_search: bool = False
+    web_search_name: str | None = None
 
 
 class ModelsOut(BaseModel):
@@ -142,13 +147,14 @@ class ModelsOut(BaseModel):
 
 
 class SettingsOut(BaseModel):
-    """The model, reasoning effort and permission a run starts with."""
+    """The model, reasoning effort, permission and harness a run starts with."""
 
     model: ModelOut
     effort: str
     efforts: list[str]
     permission: PermissionName
     permissions: list[str]
+    harness: bool = False
     unsaved: str | None = None
 
 
@@ -157,7 +163,8 @@ class SettingsUpdate(BaseModel):
 
     model: str | None = None
     effort: str | None = None
-    permission: PermissionName | None = None
+    permission: PermissionInput | None = None
+    harness: bool | None = None
     compact_percent: float | None = Field(default=None, gt=0, le=100)
 
 
@@ -179,6 +186,8 @@ class ModelCreate(BaseModel):
     chat: bool = False
     multimodal: bool = False
     temperature: float | None = Field(default=None, ge=0, le=2)
+    web_search: bool = False
+    web_search_name: str | None = None
     context_window: int | None = Field(default=None, ge=1)
     compact_percent: float | None = Field(default=None, gt=0, le=100)
     reasoning_efforts: list[str] = Field(default_factory=list)
@@ -186,7 +195,7 @@ class ModelCreate(BaseModel):
     def entry(self) -> dict[str, object]:
         """Return the file keys to write, leaving out what was not given."""
         data = self.model_dump(exclude_none=True)
-        for flag in ("anthropic", "responses_api", "chat", "multimodal"):
+        for flag in ("anthropic", "responses_api", "chat", "multimodal", "web_search"):
             if not data.get(flag):
                 data.pop(flag, None)
         if not data.get("reasoning_efforts"):
@@ -213,6 +222,8 @@ class ModelUpdate(BaseModel):
     chat: bool | None = None
     multimodal: bool | None = None
     temperature: float | None = Field(default=None, ge=0, le=2)
+    web_search: bool | None = None
+    web_search_name: str | None = None
     context_window: int | None = Field(default=None, ge=1)
     compact_percent: float | None = Field(default=None, gt=0, le=100)
     reasoning_efforts: list[str] | None = None

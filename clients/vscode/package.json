@@ -105,6 +105,10 @@
         "title": "ZettCode: Select Shell Permission"
       },
       {
+        "command": "zettcode.toggleHarness",
+        "title": "ZettCode: Turn the Tool Harness On or Off"
+      },
+      {
         "command": "zettcode.compact",
         "title": "ZettCode: Compact Session"
       },
@@ -241,10 +245,23 @@
             "deny",
             "ask",
             "safe",
+            "full",
             "auto"
           ],
+          "enumDescriptions": [
+            "Refuse every shell command.",
+            "Ask before each shell command.",
+            "Run every command in a sandbox that writes only the workspace and /tmp, with no network.",
+            "Run every command with your own access, without asking.",
+            "The old name of full."
+          ],
           "default": "ask",
-          "description": "How shell commands start: deny refuses, ask asks each time, safe runs read-only ones, auto runs all. A level chosen in the chat is remembered for that session, and starts the next new session in this workspace."
+          "description": "How shell commands start: deny refuses, ask asks each time, safe runs them in a sandbox that writes only the workspace and /tmp (on macOS and Linux; elsewhere it runs read-only ones and asks for the rest), full runs them with your own access. A level chosen in the chat is remembered for that session, and starts the next new session in this workspace."
+        },
+        "zettcode.harness": {
+          "type": "boolean",
+          "default": false,
+          "description": "Start with the tool harness on: the model may write small Python tools of its own and run them. What it writes runs on this machine with your access, outside the shell permission, so it is off unless you turn it on. Switch it per session with /harness."
         },
         "zettcode.answerTimeout": {
           "type": "number",

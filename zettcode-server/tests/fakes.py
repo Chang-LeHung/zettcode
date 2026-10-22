@@ -217,7 +217,8 @@ class FakeClient:
         self.effort = "medium"
         self.efforts = ("low", "medium", "high")
         self.permission = "deny"
-        self.permissions = ("deny", "ask", "safe", "auto")
+        self.permissions = ("deny", "ask", "safe", "full")
+        self.harness = False
         self.usage = Usage(input_tokens=100, output_tokens=20, requests=2)
         self.session = FakeSession()
         self.sessions = FakeSessions(self)
@@ -257,10 +258,15 @@ class FakeClient:
         return name
 
     def use_permission(self, name: str) -> str:
+        name = "full" if name == "auto" else name  # the SDK takes the old name of `full` and answers with the new
         if name not in self.permissions:
             raise ValueError(f"Unknown permission {name!r}")
         self.permission = name
         return name
+
+    def use_harness(self, on: bool) -> bool:
+        self.harness = bool(on)
+        return self.harness
 
     def use_compact_percent(self, percent: float) -> tuple[ModelInfo, str | None]:
         if not 0 < percent <= 100:

@@ -48,9 +48,11 @@ const PERMISSIONS: Record<Permission, PermissionMeta> = {
   deny: { icon: "ban", tone: "rose", risk: 0 },
   ask: { icon: "hand", tone: "amber", risk: 1 },
   safe: { icon: "shield-check", tone: "teal", risk: 2 },
-  auto: { icon: "bolt", tone: "orange", risk: 3 },
+  full: { icon: "bolt", tone: "orange", risk: 3 },
 };
 
 export function permissionMeta(permission: string): PermissionMeta {
-  return PERMISSIONS[permission as Permission] ?? { icon: "shield", tone: "faint", risk: 1 };
+  // `auto` is what `full` was called; a server that still says it is read as the same level.
+  const level = permission === "auto" ? "full" : permission;
+  return PERMISSIONS[level as Permission] ?? { icon: "shield", tone: "faint", risk: 1 };
 }

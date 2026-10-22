@@ -30,11 +30,14 @@ const settings: Settings = {
     efforts: ["low", "high"],
     active: true,
     compact_percent: 80,
+    web_search: false,
+    web_search_name: null,
   },
   effort: "low",
   efforts: ["low", "high"],
   permission: "ask",
-  permissions: ["deny", "ask", "safe", "auto"],
+  permissions: ["deny", "ask", "safe", "full"],
+  harness: false,
 };
 
 export const baseState: WebviewState = {

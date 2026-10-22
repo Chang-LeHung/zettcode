@@ -6,7 +6,10 @@
 
 import type { Permission } from "../../../typescript/src/types.js";
 
-const LEVELS: readonly string[] = ["deny", "ask", "safe", "auto"];
+const LEVELS: readonly string[] = ["deny", "ask", "safe", "full"];
+
+/** What `full` was called until `safe` became a sandbox; a choice stored under it is read as `full`. */
+const OLD_NAMES: Record<string, Permission> = { auto: "full" };
 
 /** What is kept in the workspace's state. */
 export interface RememberedPermissions {
@@ -23,6 +26,14 @@ function valid(value: unknown): value is Permission {
   return typeof value === "string" && LEVELS.includes(value);
 }
 
+/** The level a stored value stands for, under its current name; `undefined` for anything that is not one. */
+function level(value: unknown): Permission | undefined {
+  if (valid(value)) {
+    return value;
+  }
+  return typeof value === "string" ? OLD_NAMES[value] : undefined;
+}
+
 /** Read what was stored, ignoring anything that is not a permission level (an old or hand-edited value). */
 export function readRemembered(stored: unknown): RememberedPermissions {
   const out: RememberedPermissions = { bySession: {} };
@@ -32,13 +43,15 @@ export function readRemembered(stored: unknown): RememberedPermissions {
   const record = stored as { bySession?: unknown; last?: unknown };
   if (typeof record.bySession === "object" && record.bySession !== null) {
     for (const [id, value] of Object.entries(record.bySession)) {
-      if (valid(value)) {
-        out.bySession[id] = value;
+      const named = level(value);
+      if (named !== undefined) {
+        out.bySession[id] = named;
       }
     }
   }
-  if (valid(record.last)) {
-    out.last = record.last;
+  const last = level(record.last);
+  if (last !== undefined) {
+    out.last = last;
   }
   return out;
 }

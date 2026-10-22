@@ -72,7 +72,8 @@ async def test_settings_can_be_read_and_changed():
         before = (await http.get("/settings")).json()
         assert before["model"]["name"] == "gpt-5" and before["effort"] == "medium"
         assert before["permission"] == "deny"
-        assert set(before["permissions"]) == {"deny", "ask", "safe", "auto"}
+        assert set(before["permissions"]) == {"deny", "ask", "safe", "full"}
+        assert before["harness"] is False, "the harness starts off"
 
         changed = await http.patch("/settings", json={"model": "fast", "effort": "low", "permission": "safe"})
 
@@ -80,6 +81,29 @@ async def test_settings_can_be_read_and_changed():
     body = changed.json()
     assert body["model"]["name"] == "fast" and body["effort"] == "low" and body["permission"] == "safe"
     assert body["model"]["active"] is True
+
+
+async def test_the_old_name_of_the_full_level_is_still_taken_and_answered_as_the_new_one():
+    async with serve(FakeClient()) as http:
+        changed = await http.patch("/settings", json={"permission": "auto"})
+        refused = await http.patch("/settings", json={"permission": "yolo"})
+
+    assert changed.status_code == 200 and changed.json()["permission"] == "full"
+    assert refused.status_code == 422
+
+
+async def test_the_harness_is_switched_through_the_settings_and_a_change_may_name_only_it():
+    fake = FakeClient()
+    async with serve(fake) as http:
+        on = await http.patch("/settings", json={"harness": True})
+        read = (await http.get("/settings")).json()
+        off = await http.patch("/settings", json={"harness": False})
+        nothing = await http.patch("/settings", json={})
+
+    assert on.status_code == 200 and on.json()["harness"] is True and read["harness"] is True
+    assert off.json()["harness"] is False and fake.harness is False
+    assert nothing.status_code == 422 or nothing.status_code == 400
+    assert "harness" in nothing.text
 
 
 async def test_the_compaction_point_is_listed_and_can_be_moved_from_the_settings():

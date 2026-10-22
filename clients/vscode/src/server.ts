@@ -25,6 +25,8 @@ interface LaunchOptions {
   externalToken: string;
   useToken: boolean;
   permission: string;
+  /** Whether the server starts with the just-in-time harness on. */
+  harness: boolean;
 }
 
 /** Owns the child process, its token, and the client the rest of the extension uses. */
@@ -175,6 +177,7 @@ export class ServerManager implements vscode.Disposable {
       String(port),
       "--permission",
       options.permission,
+      ...(options.harness ? ["--harness"] : []),
       "--log-level",
       "warning",
       ...options.args,
@@ -401,7 +404,8 @@ export class ServerManager implements vscode.Disposable {
       externalUrl: config.get<string>("server.externalUrl", ""),
       externalToken: config.get<string>("server.externalToken", ""),
       useToken: config.get<boolean>("server.useToken", true),
-      permission: ["deny", "ask", "safe", "auto"].includes(permission) ? permission : "ask",
+      permission: ["deny", "ask", "safe", "full"].includes(permission) ? permission : permission === "auto" ? "full" : "ask",
+      harness: config.get<boolean>("harness", false),
     };
   }
 }

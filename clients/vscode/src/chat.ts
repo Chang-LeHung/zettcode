@@ -6,7 +6,16 @@ import * as vscode from "vscode";
 
 import { ChangeLedger, changesFile, MAX_TRACKED_BYTES, type EditPair } from "./core/ledger.js";
 import { diffText } from "./core/diff.js";
-import { type Api, APIS, apiChange, apiKeys, maxTemperature, parseTemperature } from "./core/model-form.js";
+import {
+  type Api,
+  APIS,
+  apiChange,
+  apiKeys,
+  maxTemperature,
+  parseTemperature,
+  searchKeys,
+  searchProblem,
+} from "./core/model-form.js";
 import { copiedFilePaths } from "./clipboard.js";
 import { diffUri } from "./diffs.js";
 import { RunFailedError, RunCancelledError, ZettCodeClient, ZettCodeError } from "../../typescript/src/index.js";
@@ -563,6 +572,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         return;
       case "set-permission":
         await this.updateSettings({ permission: message.permission });
+        return;
+      case "set-harness":
+        await this.updateSettings({ harness: message.on });
         return;
       case "set-compact":
         await this.updateSettings({ compact_percent: message.percent });
@@ -1175,6 +1187,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     model?: string;
     effort?: string;
     permission?: Permission;
+    harness?: boolean;
     compact_percent?: number;
   }): Promise<void> {
     const client = await this.ensureClient();
@@ -1245,6 +1258,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     if (before.permission !== after.permission) {
       lines.push(`Shell permission changed from ${before.permission} to ${after.permission}.`);
     }
+    if (before.harness !== after.harness) {
+      lines.push(`Tool harness turned ${after.harness ? "on" : "off"}.`);
+    }
     for (const text of lines) {
       const turn = announcement(text, Date.now(), newTurnId("turn-announce"));
       this.turns.push(turn);
@@ -1272,6 +1288,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     }
     if (input.multimodal !== undefined) {
       clean.multimodal = input.multimodal;
+    }
+    if (input.web_search === true) {
+      clean.web_search = true;
+      if (input.web_search_name?.trim()) {
+        clean.web_search_name = input.web_search_name.trim();
+      }
     }
     if (input.anthropic !== undefined) {
       clean.anthropic = input.anthropic;
@@ -1360,6 +1382,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       placeHolder: "Does this model accept images?",
       ignoreFocusOut: true,
     });
+    const search = await vscode.window.showQuickPick(["No", "Yes"], {
+      placeHolder: "Let the provider search the web for it?",
+      ignoreFocusOut: true,
+    });
     const input: ModelInput = { model: model.trim(), ...apiKeys(chosen) };
     const read = parseTemperature(temperature ?? "", chosen);
     if (read.kind === "value") {
@@ -1380,6 +1406,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     if (multimodal === "Yes") {
       input.multimodal = true;
     }
+    if (search === "Yes") {
+      const problem = searchProblem(chosen, model.trim(), baseUrl?.trim() ?? "");
+      if (problem !== null) {
+        void vscode.window.showWarningMessage(problem);
+        return;
+      }
+      Object.assign(input, searchKeys(true, ""));
+    }
     await this.addModel(input);
   }
 
@@ -1389,7 +1423,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     this.models = models;
     const items: (vscode.QuickPickItem & { name?: string; add?: boolean })[] = models.map((model) => ({
       label: `${model.active ? "$(check) " : ""}${model.name}`,
-      description: `${model.model} · ${model.context_window} tokens${model.multimodal ? " · images" : ""}`,
+      description: `${model.model} · ${model.context_window} tokens${model.multimodal ? " · images" : ""}${model.web_search ? " · search" : ""}`,
       detail: model.efforts.length ? `Effort: ${model.efforts.join(", ")}` : undefined,
       name: model.name,
     }));
@@ -1436,8 +1470,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     const descriptions: Record<string, string> = {
       deny: "Refuse every shell command",
       ask: "Ask before every shell command",
-      safe: "Run read-only commands; ask for the rest",
-      auto: "Run every shell command",
+      safe: "Run every command in a sandbox: writes only the workspace and /tmp, no network",
+      full: "Run every command with your own access, without asking",
     };
     const picked = await vscode.window.showQuickPick(
       settings.permissions.map((permission) => ({
@@ -1449,6 +1483,31 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     if (picked !== undefined) {
       const permission = picked.label.replace("$(check) ", "") as Permission;
       await this.updateSettings({ permission });
+    }
+  }
+
+  /** Turn the tool harness on or off, or flip it when no answer is given. The server keeps it for the run. */
+  async toggleHarness(): Promise<void> {
+    const client = await this.ensureClient();
+    const settings = await client.settings();
+    this.settings = settings;
+    const picked = await vscode.window.showQuickPick(
+      [
+        {
+          label: `${settings.harness ? "" : "$(check) "}Off`,
+          description: "The model has no harness (the default)",
+          on: false,
+        },
+        {
+          label: `${settings.harness ? "$(check) " : ""}On`,
+          description: "The model may write small Python tools and run them, outside the shell permission",
+          on: true,
+        },
+      ],
+      { placeHolder: `Tool harness (now ${settings.harness ? "on" : "off"})` },
+    );
+    if (picked !== undefined && picked.on !== settings.harness) {
+      await this.updateSettings({ harness: picked.on });
     }
   }
 
@@ -1471,6 +1530,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         { label: "Reasoning efforts", value: "reasoning_efforts" },
         { label: "Compact percent", value: "compact_percent" },
         { label: "Multimodal", value: "multimodal" },
+        { label: "Web search", value: "web_search" },
+        { label: "Web search tool name", value: "web_search_name" },
         { label: "API (chat, Responses or Anthropic)", value: "api" },
         { label: "Temperature", value: "temperature" },
       ],
@@ -1510,6 +1571,24 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         return;
       }
       await client.updateModel(model.label, { multimodal: answer === "Yes" });
+    } else if (field.value === "web_search") {
+      const answer = await vscode.window.showQuickPick(["Yes", "No"], {
+        placeHolder: "Let the provider search the web for this model?",
+      });
+      if (answer === undefined) {
+        return;
+      }
+      // Off removes the key, so the file never holds `web_search = false`; the server refuses DeepSeek's chat endpoint.
+      await client.updateModel(model.label, { web_search: answer === "Yes" ? true : null });
+    } else if (field.value === "web_search_name") {
+      const value = await vscode.window.showInputBox({
+        prompt: "The tool type the search is sent as; empty sends the default for the API",
+        placeHolder: "web_search_20260318",
+      });
+      if (value === undefined) {
+        return;
+      }
+      await client.updateModel(model.label, { web_search_name: value.trim() ? value.trim() : null });
     } else if (field.value === "compact_percent") {
       const value = await vscode.window.showInputBox({
         prompt: "Compact when this percent of the window is used",
@@ -1866,7 +1945,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
 
   private configuredPermission(): Permission {
     const value = vscode.workspace.getConfiguration("zettcode").get<string>("permission", "ask");
-    return (["deny", "ask", "safe", "auto"].includes(value) ? value : "ask") as Permission;
+    // `auto` is what `full` was called; a setting written under the old name still means it.
+    const level = value === "auto" ? "full" : value;
+    return (["deny", "ask", "safe", "full"].includes(level) ? level : "ask") as Permission;
   }
 
   // -- webview state -----------------------------------------------------

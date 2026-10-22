@@ -53,9 +53,6 @@ export function describeTool(name: string, args: Record<string, unknown>): ToolD
     case "edit":
     case "replace_in_file":
       return pathRow("Edit", path);
-    case "delete_file":
-    case "delete":
-      return pathRow("Delete", path);
     case "glob":
       return { verb: "Glob", target: pattern || path || "files" };
     case "grep":
@@ -67,9 +64,6 @@ export function describeTool(name: string, args: Record<string, unknown>): ToolD
     case "bash":
     case "shell":
       return { verb: "Bash", target: command || "(command)" };
-    case "view_image":
-    case "read_image":
-      return pathRow("Viewed", path || url);
     case "web_search":
       return { verb: "Searched the web", target: pattern || command || "" };
     case "fetch":
@@ -310,8 +304,9 @@ export function permissionLabel(permission: string): string {
       return "Deny";
     case "safe":
       return "Safe";
+    case "full":
     case "auto":
-      return "Auto";
+      return "Full";
     default:
       return "Ask";
   }
@@ -323,9 +318,10 @@ export function permissionDescription(permission: string): string {
     case "deny":
       return "Shell commands are refused; the model uses the file tools instead.";
     case "safe":
-      return "Commands that cannot change anything run; anything else asks.";
+      return "Every command runs in a sandbox: it can write the workspace and /tmp only, and has no network.";
+    case "full":
     case "auto":
-      return "Every shell command runs without asking.";
+      return "Every command runs with your own access, without asking.";
     default:
       return "Every shell command waits for your approval.";
   }

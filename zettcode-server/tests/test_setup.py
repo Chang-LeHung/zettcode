@@ -114,6 +114,35 @@ async def test_chat_and_temperature_are_taken_and_a_null_removes_a_key(tmp_path:
     assert empty.status_code == 400, "a null token or model id is not a change"
 
 
+async def test_web_search_is_taken_listed_named_and_removed_and_deepseek_chat_is_refused(tmp_path: Path):
+    path = write_config(tmp_path, "a")
+    async with serve(tmp_path) as http:
+        added = await http.post(
+            "/models",
+            json={"model": "claude", "anthropic": True, "web_search": True, "web_search_name": "web_search_20260318"},
+        )
+        listed = (await http.get("/models")).json()["models"]
+        deepseek_chat = await http.post("/models", json={"model": "deepseek-chat", "web_search": True})
+        deepseek_messages = await http.post(
+            "/models", json={"model": "deepseek-v4", "anthropic": True, "web_search": True}
+        )
+        unknown = await http.post("/models", json={"model": "y", "web_serach": True})
+        cleared = await http.patch("/models/claude", json={"web_search": None, "web_search_name": None})
+        after = (await http.get("/models")).json()["models"]
+
+    assert added.status_code == 201
+    claude = next(model for model in listed if model["name"] == "claude")
+    assert claude["web_search"] is True and claude["web_search_name"] == "web_search_20260318"
+    assert next(model for model in listed if model["name"] == "a")["web_search"] is False
+    assert deepseek_chat.status_code in (400, 422) and "DeepSeek" in deepseek_chat.text
+    assert deepseek_messages.status_code == 201
+    assert unknown.status_code == 422, "a misspelt key is refused, not ignored"
+    assert cleared.status_code == 200
+    gone = next(model for model in after if model["name"] == "claude")
+    assert gone["web_search"] is False and gone["web_search_name"] is None
+    assert "web_search" not in path.read_text(encoding="utf-8").split('model = "claude"')[1].split("[[models]]")[0]
+
+
 async def test_a_model_that_is_not_configured_is_a_400_with_the_ones_that_are(tmp_path: Path):
     write_config(tmp_path, "a")
     async with serve(tmp_path) as http:

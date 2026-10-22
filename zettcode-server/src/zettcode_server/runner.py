@@ -180,6 +180,7 @@ class Runner:
                     model=self.settings.model,
                     effort=self.settings.effort,
                     permission=self.settings.permission,
+                    jit_harness=self.settings.harness,
                 )
             )
         except ConfigurationError as error:
@@ -394,7 +395,7 @@ class Runner:
 
         The SDK reads the models when a client is made, so a model added, changed or removed on disk reaches the agent
         by making the client again. The session id is carried over (a fresh, never-stored one simply starts again), as
-        are the effort and permission, and the model named stays if it is still configured.
+        are the effort, permission and harness, and the model named stays if it is still configured.
 
                 Raises:
                     SessionBusyError: A run is in progress; the configuration of a running conversation is not swapped.
@@ -404,6 +405,7 @@ class Runner:
         previous = self._client
         session = previous.session.id if previous is not None else None
         permission = previous.permission if previous is not None else self.settings.permission
+        harness = previous.harness if previous is not None else self.settings.harness
         effort = previous.effort if previous is not None else self.settings.effort
         wanted = model or (previous.model.name if previous is not None else None)
         if previous is not None:
@@ -432,6 +434,7 @@ class Runner:
                     model=chosen,
                     effort=effort,
                     permission=permission,
+                    jit_harness=harness,
                     resume=resume,
                 )
             )

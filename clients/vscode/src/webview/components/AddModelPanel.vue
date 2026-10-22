@@ -2,7 +2,16 @@
 import { computed, reactive } from "vue";
 
 import type { ModelInput } from "../../../../typescript/src/types.js";
-import { type Api, APIS, apiKeys, maxTemperature, parseTemperature } from "../../core/model-form.js";
+import {
+  type Api,
+  APIS,
+  apiKeys,
+  defaultSearchName,
+  maxTemperature,
+  parseTemperature,
+  searchKeys,
+  searchProblem,
+} from "../../core/model-form.js";
 import { closeOverlay, post, toast } from "../store.js";
 import Popover from "./Popover.vue";
 
@@ -16,10 +25,16 @@ const form = reactive({
   compact: "",
   temperature: "",
   multimodal: false,
+  webSearch: false,
+  searchName: "",
   api: "chat" as Api,
 });
 
 const temperatureLabel = computed(() => `Temperature (0 to ${maxTemperature(form.api)})`);
+/** The tool type a search is sent as when none is typed, shown as the placeholder of its field. */
+const searchDefault = computed(() => defaultSearchName(form.api, form.model, form.url));
+/** Why search cannot be switched on for what is typed so far, or `null`. */
+const searchWarning = computed(() => (form.webSearch ? searchProblem(form.api, form.model, form.url) : null));
 
 function number(value: string): number | undefined {
   const trimmed = value.trim();
@@ -35,6 +50,11 @@ function submit(): void {
   const temperature = parseTemperature(form.temperature, form.api);
   if (temperature.kind === "error") {
     toast(temperature.message, "warn");
+    return;
+  }
+  const problem = form.webSearch ? searchProblem(form.api, model, form.url) : null;
+  if (problem !== null) {
+    toast(problem, "warn");
     return;
   }
   const input: ModelInput = { model };
@@ -68,6 +88,7 @@ function submit(): void {
   if (form.multimodal) {
     input.multimodal = true;
   }
+  Object.assign(input, searchKeys(form.webSearch, form.searchName));
   Object.assign(input, apiKeys(form.api));
   post({ type: "add-model", model: input });
 }
@@ -97,7 +118,11 @@ function submit(): void {
       <label>Reasoning efforts<input id="m-efforts" v-model="form.efforts" placeholder="low, medium, high" autocomplete="off" /></label>
       <div class="form-checks">
         <label class="check"><input id="m-multimodal" v-model="form.multimodal" type="checkbox" /> Images</label>
+        <label class="check"><input id="m-search" v-model="form.webSearch" type="checkbox" /> Web search</label>
       </div>
+      <label v-if="form.webSearch">Search tool name<input id="m-search-name" v-model="form.searchName" :placeholder="searchDefault" autocomplete="off" /></label>
+      <p v-if="searchWarning" id="m-search-warning" class="form-note warn">{{ searchWarning }}</p>
+      <p v-else-if="form.webSearch" class="form-note">The provider runs the search; nothing is fetched here. Leave the name empty to send {{ searchDefault }}.</p>
       <p class="form-note">Written to the ZettCode configuration file. Only the model id is required: leave the key empty for a local server (Ollama, LM Studio, vLLM) or to use the environment's. The key is stored there and never returned by the server.</p>
       <div class="form-actions">
         <button class="btn solid" type="submit" data-action="submit-model">Add model</button>
@@ -169,6 +194,10 @@ function submit(): void {
   color: var(--faint);
   font-size: var(--tiny);
   line-height: 1.5;
+}
+
+.form-note.warn {
+  color: var(--amber);
 }
 
 .form-actions {

@@ -23,12 +23,13 @@ test("a level the table does not know is placed by its position", () => {
 });
 
 test("each permission has its own icon and tone, and a louder risk the more it allows", () => {
-  const levels = ["deny", "ask", "safe", "auto"].map(permissionMeta);
+  const levels = ["deny", "ask", "safe", "full"].map(permissionMeta);
   assert.equal(new Set(levels.map((level) => level.icon)).size, 4);
   assert.equal(new Set(levels.map((level) => level.tone)).size, 4);
   assert.deepEqual(
     levels.map((level) => level.risk),
     [0, 1, 2, 3],
   );
+  assert.equal(permissionMeta("auto"), permissionMeta("full"), "the old name reads as the same level");
   assert.equal(permissionMeta("nonsense").icon, "shield");
 });
