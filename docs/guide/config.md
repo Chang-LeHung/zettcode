@@ -657,6 +657,8 @@ surface_peer = "#313244"       # background for messages between sessions
 [tools]
 read = "#89b4fa"
 shell = "#fab387"
+web-search = "#89b4fa"     # a search the endpoint ran; its own role, spelled with a hyphen
+ask-user = "#89b4fa"       # a question put to you, which is the one row that waits for a person
 
 [code]
 keyword = "#e58fa8"
@@ -676,7 +678,7 @@ palette during that run; it does not rewrite any file.
 | Section | Colour keys |
 | --- | --- |
 | `ui` | `background`, `surface`, `surface_alt`, `surface_side`, `surface_peer`, `text`, `muted`, `subtle`, `accent`, `accent_bright`, `warning`, `error`, `diff_added`, `diff_removed`, `diff_added_fill`, `diff_removed_fill`, `border`, `focus`, `selection` |
-| `tools` | `read`, `search`, `image`, `write`, `delete`, `shell`, `plan`, `subagent`, `message` |
+| `tools` | `read`, `search`, `image`, `write`, `delete`, `shell`, `plan`, `subagent`, `message`, `web-search`, `ask-user` |
 | `code` | `inline`, `text`, `keyword`, `string`, `comment`, `number`, `function`, `builtin`, `operator`, `punctuator` |
 
 `diff_added` and `diff_removed` colour the lines of an edit's diff and the `+N -M` beside a file. Left out,

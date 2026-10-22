@@ -62,7 +62,7 @@ Every kind of output has its own row, in the order it happened:
 - **Thinking** is collapsed to one row. `Ctrl-T` or a click opens the newest one;
   each block can be opened on its own.
 - **Tool calls** read like a log — `Read src/app.py`, `Ran pwd`, `Edited
-  app.py (2 edits) +24 -6`, `Wrote src/new.py +40`, `Searched TODO in src`. An edit's added lines
+  app.py (2 edits) +24 -6`, `Write src/new.py +40`, `Searched TODO in src`. An edit's added lines
   are painted green and its removed ones red, whether the call is still running or done, and a
   write says how many lines the file now holds. Once an edit or a write has succeeded the row shows
   **the change itself** under the title, instead of the tool's one-line answer:
@@ -84,7 +84,8 @@ Every kind of output has its own row, in the order it happened:
 - **Tool rows use a few colours**, so a long transcript stays calm: lavender for everything the agent looks at or runs
   (reading, searching, pictures, commands, the plan), orange for writing and editing (not green, which is an added line in its diff), red for deleting (and for any
   call that failed), teal for a delegated subagent, and mauve for talking to another session. A theme file can change
-  each one under `[tools]`.
+  each one under `[tools]`. A web search the endpoint ran and a question put to you have roles of their own there,
+  `web-search` and `ask-user`.
 - **The files a request changed** are listed once when it ends, above the `Processed for …` line, and only
   when there are any:
 
