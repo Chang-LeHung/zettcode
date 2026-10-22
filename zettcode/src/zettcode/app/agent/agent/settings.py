@@ -346,9 +346,9 @@ class SettingsMixin(AgentBase):
         """Return the permission levels, strictest first."""
         return tuple(level.value for level in PERMISSION_LEVELS)
 
-    def use_permission(self, name: str | Permission) -> Permission:
-        """Set how much of the shell may run without asking, for the rest of this run."""
-        return self.runtime.use_permission(name)
+    def use_permission(self, name: str | Permission, *, remember: bool = True) -> Permission:
+        """Set how much of the shell may run without asking, and by default remember it for this session."""
+        return self.runtime.use_permission(name, remember=remember)
 
     @property
     def harness(self) -> bool:

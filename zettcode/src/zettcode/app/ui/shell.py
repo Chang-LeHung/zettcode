@@ -248,7 +248,7 @@ class ShellState:
     def flash(self, message: str, *, seconds: float = FLASH_SECONDS, level: str = "info") -> None:
         """Say something in the row above the composer, for a few seconds."""
 
-    def change_permission(self, name: str) -> str:
+    def change_permission(self, name: str, *, remember: bool = True) -> str:
         """Set how much of the shell may run unasked, and announce the change."""
         return name
 

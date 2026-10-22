@@ -22,7 +22,7 @@
 | `/model` | 用面板选择后续请求使用的模型。 |
 | `/config` | 不用改文件就能添加、修改、删除模型，并设置它是否接受图片、上下文窗口多大、什么时候压缩：`/config`、`/config add <provider> …`、`/config remove <序号>`。见[用 /config 添加模型](/zh/guide/config#adding-models-with-config)。 |
 | `/effort` | 用轨道上的小圆点选择模型的推理强度：`/effort` 打开，← → 滑动，`Enter` 应用；`/effort high` 直接设置。当前模型不支持的档位（见 [`reasoning_efforts`](/zh/guide/config#reasoning-levels-a-model-takes)）会被拒绝，并列出它支持的档位。 |
-| `/permission` | 选择 shell 命令在多大范围内不用问：`/permission` 在菜单里列出各档，`/permission safe` 直接设置。`safe` 把每条命令放进只能写工作区和 `/tmp` 的沙箱里跑，`full` 用你自己的权限跑。 |
+| `/permission` | 选择 shell 命令在多大范围内不用问：`/permission` 在菜单里列出各档，`/permission safe` 直接设置。`safe` 把每条命令放进只能写工作区和 `/tmp` 的沙箱里跑，`full` 用你自己的权限跑。档位属于这个会话：下次打开它就从这一档开始，新会话则从本次运行开始时的档位开始。 |
 | `/harness` | 让模型自己写小的 Python 工具并运行：`/harness on` 或 `/harness off`，单独输入 `/harness` 会告诉你当前状态。默认关闭，请求进行中不接受。见[可选参数参考](/zh/guide/config#可选参数参考)。 |
 | `/btw` | 问一件只在当场回答、不进入对话的事：`/btw <问题>`。 |
 | `/bash` | 在工作区里打开一个全屏命令行：`/bash` 打开空面板，`/bash git status` 打开后立即运行这条命令。有历史、Tab 补全和彩色输出；因为是你自己在敲，所以不需要任何权限确认。见[Shell 面板](#bash)。 |

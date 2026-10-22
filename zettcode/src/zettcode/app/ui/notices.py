@@ -78,8 +78,8 @@ class NoticesMixin(CommandUi, ShellState):
             session_id: Session the approval belongs to, echoed back to the agent.
             call_id: Tool call the decision applies to.
             choice: What the user picked; ``safe`` and ``auto`` also move the
-                permission level up a rung for the rest of the run, which is the
-                same change ``/permission`` makes.
+                permission level up a rung, which is the same change ``/permission``
+                makes — including that the session remembers it.
         """
         decision = "abort" if choice is ApprovalChoice.ABORT else "execute"
         remember = choice is ApprovalChoice.ALWAYS

@@ -465,6 +465,7 @@ class SessionPersistenceMixin:
                 title=carried,
                 model=self.session_model(session_id),
                 self_compact=self.session_self_compact(session_id),
+                permission=self.session_permission(session_id),
             )
         parent: str | None = None
         if checkpoint is not None:
@@ -600,6 +601,50 @@ class SessionPersistenceMixin:
         if not write_session_metadata(self._metadata_file(session_id), updated):
             raise OSError(f"Could not save the self-compaction setting for session {session_id!r}")
 
+    def session_permission(self, session_id: str) -> str | None:
+        """Return the permission level one session last ran at, or ``None`` when it never chose.
+
+        ``None`` is the answer of every session whose file predates the setting, and of every session nobody
+        changed the level in; a run of one of those starts at the level it was built with.
+        """
+        metadata = self._metadata(session_id)
+        return metadata.permission if metadata is not None else None
+
+    def set_permission(self, session_id: str, level: str | None, *, default: str) -> None:
+        """Record the permission level one session last ran at.
+
+        The level is metadata, not conversation: this rewrites the session's small metadata file and leaves the
+        title, the model and the times as they were. A level equal to the default records nothing — and takes back
+        a level recorded before, so a session set back to the default really does follow it — because a session
+        that holds no level behaves that way. A level recorded before the first message is about a session that
+        does not exist yet, so one that differs from the default creates it, the header going in first.
+
+        Args:
+            session_id: The session the level belongs to.
+            level: The level's name, or ``None`` to forget the choice.
+            default: What a session with no level runs at, to tell a choice that changes something from one
+                that does not.
+
+        Raises:
+            OSError: The metadata file could not be replaced, so nothing was saved.
+        """
+        stored = level if level != default else None
+        metadata = self._metadata(session_id)
+        if metadata is None:
+            if stored is None:
+                return
+            created_at = self._write_header(self.read(session_id), session_id, None, None)
+            metadata = (
+                SessionMetadata(session_id=session_id, created_at=created_at, updated_at=created_at)
+                if created_at is not None
+                else self._metadata(session_id)
+            )
+        if metadata is None or metadata.permission == stored:
+            return
+        updated = metadata.model_copy(update={"permission": stored})
+        if not write_session_metadata(self._metadata_file(session_id), updated):
+            raise OSError(f"Could not save the permission level for session {session_id!r}")
+
     async def list_sessions(self, *, limit: int = 100, offset: int = 0) -> list[SessionInfo]:
         """Return session metadata by latest activity, newest first.
 
@@ -653,6 +698,7 @@ class SessionPersistenceMixin:
         title: str | None = None,
         model: str | None = None,
         self_compact: bool | None = None,
+        permission: str | None = None,
     ) -> SessionMetadata:
         """Write the metadata of a session that has just been created, and return it."""
         metadata = SessionMetadata(
@@ -662,6 +708,7 @@ class SessionPersistenceMixin:
             title=title,
             model=model,
             self_compact=self_compact,
+            permission=permission,
         )
         write_session_metadata(self._metadata_file(session_id), metadata)
         return metadata

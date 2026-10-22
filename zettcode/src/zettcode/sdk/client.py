@@ -314,7 +314,12 @@ class Client:
             if effort is not None:
                 self.use_effort(effort)
             if permission is not None:
-                self.use_permission(permission)
+                # The client's setting, not a decision about the session: a prompt that asks for `deny` must not
+                # leave the session on `deny` for the next reader of it.
+                try:
+                    self._agent.runtime.use_permission(permission, remember=False)
+                except ValueError as error:
+                    raise ConfigurationError(str(error)) from error
             if resume is not None:
                 self._resume_now(resume)
         except BaseException:
@@ -563,7 +568,8 @@ class Client:
 
         ``safe`` runs every command in an operating-system sandbox that writes only the workspace and ``/tmp`` (where
         the machine has one); ``full`` runs them with the user's own access. ``auto``, the old name of ``full``, is
-        still taken.
+        still taken. The level is remembered by the session, so opening it again starts there; ``permission=`` on the
+        client itself is for that client's runs and is not written down.
 
         Raises:
             ConfigurationError: Not one of the levels.

@@ -185,6 +185,8 @@ class ZettCodeRuntime:
     persistence: SessionStore
     #: The permission level, shared with the approval memory and the deny extension.
     policy: ShellPolicy
+    #: The level a run starts at, and what a session that never chose one goes back to when it is opened again.
+    default_permission: Permission
     tokenizer: Tokenizer
     effort: ReasoningEffort
     session_id: str
@@ -209,6 +211,11 @@ class ZettCodeRuntime:
     _models: dict[ModelConfig, Adapter] = field(default_factory=dict)
     #: Each session's own self-compaction choice as last read or written; see :meth:`self_compaction_choice`.
     _self_choices: dict[str, bool | None] = field(default_factory=dict, repr=False)
+    #: Each session's own permission level as last read or written; see :meth:`permission_choice`.
+    _permissions: dict[str, str | None] = field(default_factory=dict, repr=False)
+    #: Whether a level was chosen for this process rather than for a session (``--full``, a client's
+    #: ``permission=``): while it is set, opening a session does not put that session's level back.
+    _permission_override: bool = field(default=False, repr=False)
     #: The warm-up imports, running on a daemon thread, and the loop-side event
     #: that releases whoever is waiting for them.
     _imports: ImportPipeline | None = field(default=None, repr=False)
@@ -255,6 +262,7 @@ class ZettCodeRuntime:
             persistence=persistence,
             session_locks=SessionLocks(persistence.session_dir),
             policy=policy,
+            default_permission=policy.level,
             tokenizer=Tokenizer(),
             effort=selected.accepted_effort(config.reasoning_effort),
             session_id=new_uuid7(),
@@ -479,26 +487,60 @@ class ZettCodeRuntime:
         """Return how much of the shell may run without asking, right now."""
         return self.policy.level
 
-    def use_permission(self, name: str | Permission) -> Permission:
-        """Set how much of the shell may run without asking, for the rest of this run.
+    def use_permission(self, name: str | Permission, *, remember: bool = True) -> Permission:
+        """Set how much of the shell may run without asking, and remember it for this session.
 
-        Like the approval choices before it the level is a per-run policy and is
-        deliberately not persisted: the next start begins at ``ask`` again, which
-        matches the fresh session the shell opens on launch. It takes effect on
-        the next command, including one in the request that is running now.
+        The level is written to the session's own metadata, so opening the session again puts it back in force
+        instead of asking all over again; a session set back to the level a run starts at forgets the choice and
+        follows the default. A new session begins at the default, so one job's decision does not leak into the
+        next. It takes effect on the next command, including one in the request that is running now.
 
         Args:
             name: A level, or its name; case and surrounding space do not matter.
+            remember: Whether the level belongs to the session. ``False`` is for a decision that covers this run
+                only, such as "approve every command" from the approval panel.
 
         Raises:
             ValueError: The name is not one of the four levels.
+            OSError: The level could not be written to the session; nothing changed, so a caller that reported
+                success would be reporting a setting that is not on disk.
         """
-        self.policy.level = name if isinstance(name, Permission) else parse_permission(name)
-        return self.policy.level
+        selected = name if isinstance(name, Permission) else parse_permission(name)
+        if remember:
+            self.persistence.set_permission(self.session_id, selected.value, default=self.default_permission.value)
+            self._permissions[self.session_id] = selected.value
+            # The level belongs to the session again, so opening another one puts that one's level back.
+            self._permission_override = False
+        else:
+            # A level chosen for this process wins over what a session remembers, for as long as it runs.
+            self._permission_override = True
+        self.policy.level = selected
+        return selected
+
+    def permission_choice(self, session_id: str) -> str | None:
+        """Return the level one session last ran at, ``None`` when it never chose one.
+
+        Read from the session's file once and remembered: opening a session asks for it on every start, and the
+        only writer is the process holding the session's lock.
+        """
+        if session_id not in self._permissions:
+            self._permissions[session_id] = self.persistence.session_permission(session_id)
+        return self._permissions[session_id]
+
+    def _adopt_permission(self) -> None:
+        """Put the active session's own level in force, or the one a run starts at when it has none."""
+        if self._permission_override:
+            return
+        stored = self.permission_choice(self.session_id)
+        try:
+            self.policy.level = self.default_permission if stored is None else Permission(stored)
+        except ValueError:
+            # A level a newer version wrote, or a damaged file: the default is the honest answer.
+            self.policy.level = self.default_permission
 
     def approve_all_shell_commands(self) -> None:
         """Stop asking for shell approval for the rest of this process."""
-        self.use_permission(Permission.FULL)
+        self.use_permission(Permission.FULL, remember=False)
 
     def self_compaction_choice(self, session_id: str) -> bool | None:
         """Return the choice one session made about self-compaction, ``None`` when it follows the default.
@@ -641,6 +683,7 @@ class ZettCodeRuntime:
         """Switch future requests to a fresh session identity, and lock it."""
         self.session_id = new_uuid7()
         self.session_locks.claim(self.session_id)
+        self._adopt_permission()
         return self.session_id
 
     def use_session(self, session_id: str) -> None:
@@ -653,6 +696,7 @@ class ZettCodeRuntime:
             raise ValueError("Session ID cannot be empty")
         self.session_id = session_id.strip()
         self.session_locks.claim(self.session_id)
+        self._adopt_permission()
 
     @property
     def session_locked(self) -> bool:
