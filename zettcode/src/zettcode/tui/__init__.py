@@ -79,6 +79,7 @@ _EXPORTS = {
     "RichText": ".widgets",
     "Rule": ".widgets",
     "SEPARATOR": ".glyphs",
+    "OPTION": ".capabilities",
     "SKIPPED": ".glyphs",
     "SPINNER": ".glyphs",
     "STATUS": ".glyphs",
@@ -140,7 +141,7 @@ _EXPORTS = {
 
 
 if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
-    from .capabilities import TerminalCapabilities, detect_capabilities, detect_reduced_motion
+    from .capabilities import OPTION, TerminalCapabilities, detect_capabilities, detect_reduced_motion
     from .core import (
         DARK,
         LIGHT,
@@ -299,6 +300,7 @@ __all__ = [
     "FAILED",
     "HEADER",
     "MARKER",
+    "OPTION",
     "PENDING",
     "PROMPT",
     "RULE",

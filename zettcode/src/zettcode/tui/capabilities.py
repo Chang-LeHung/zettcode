@@ -3,10 +3,16 @@
 from __future__ import annotations
 
 import os
+import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
 
 from .render.color import ColorDepth
+
+#: What the modifier that sends ``alt``-prefixed keys is called on this machine: the Option key on a Mac, Alt
+#: elsewhere. The same physical key sends the same bytes; only its name differs, and a hint that says "alt" to
+#: someone looking at a key marked "option" is a hint they have to translate.
+OPTION = "option" if sys.platform == "darwin" else "alt"
 
 _TRUECOLOR_COLORTERM = {"truecolor", "24bit"}
 _MOTION_VARIABLES = ("ZETTCODE_REDUCED_MOTION", "NO_MOTION", "REDUCED_MOTION")
