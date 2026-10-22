@@ -116,15 +116,38 @@ async def test_a_side_question_only_gets_the_reading_tools():
     extension = SideQuestions()
     context = _context()
     context.input_message = question("what does parse() do?")
-    context.tools.update({"read_file": object(), "grep": object(), "write_file": object(), "bash": object()})
+    context.tools.update({"read_file": object(), "write_file": object(), "bash": object()})
 
     await extension.before_turn(context)
 
-    assert set(context.tools) == READ_ONLY_TOOLS - {"view_image", "glob", "read_skill", "list_sessions"} | {
-        "read_file",
-        "grep",
-    }
+    assert set(context.tools) == {"read_file", "glob", "grep"}
     assert set(context.tools) <= READ_ONLY_TOOLS
+
+
+async def test_a_side_question_can_search_although_the_main_agent_has_no_search_tool():
+    """The main agent searches with its shell; a side question has none, so it is given `glob` and `grep` itself."""
+    extension = SideQuestions()
+    context = _context()
+    context.tools.update({"read": object(), "write_file": object(), "edit": object(), "bash": object()})
+
+    extension.begin()
+    await extension.on_tool(context)
+
+    assert set(context.tools) == {"read", "glob", "grep"}
+    assert callable(context.tools["grep"].handler)
+
+
+async def test_a_search_tool_the_agent_already_has_is_not_registered_twice():
+    extension = SideQuestions()
+    context = _context()
+    extension.begin()
+    await extension.on_tool(context)
+
+    await extension.on_tool(context)
+    context.input_message = question("again?")
+    await extension.before_turn(context)
+
+    assert set(context.tools) == {"glob", "grep"}
 
 
 async def test_a_run_marked_by_the_shell_is_pruned_before_the_model_sees_it():
@@ -137,7 +160,7 @@ async def test_a_run_marked_by_the_shell_is_pruned_before_the_model_sees_it():
     extension.end()
     await extension.on_tool(context)
 
-    assert set(context.tools) == {"read_file"}
+    assert set(context.tools) == {"read_file", "glob", "grep"}
     assert extension.pending is False
 
 

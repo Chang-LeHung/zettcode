@@ -6,13 +6,13 @@ from pathlib import Path
 
 import pytest
 from zett_agent.agent import Agent, AgentRunConfig
-from zett_agent.extensions.file_system import FileSystemExtension
 from zett_agent.extensions.subagent import SubAgentExtension
 from zett_agent.extensions.tool_guidelines import ToolGuidelinesExtension
 from zett_agent.messages import AssistantMessage, ToolCall, ToolMessage
 from zett_agent.model import ModelEvent, ModelRequest, ModelResponse, ReasoningEffort, RetryOptions
 
 from zettcode.app.agent.extensions.capabilities import ModelCapabilities
+from zettcode.app.agent.extensions.files import FileTools
 from zettcode.app.agent.extensions.subagents import build_subagents, subagent_extension
 from zettcode.app.agent.storage import SessionStore
 from zettcode.config import ModelConfig
@@ -44,12 +44,12 @@ def test_subagent_profiles_split_the_tools_by_what_a_child_may_touch(tmp_path):
     assert set(profiles) == {"explore", "reasoning", "coding"}
     # Exploration reads and searches, but never writes or runs anything.
     explore = profiles["explore"]
-    files = next(extension for extension in explore.extensions if isinstance(extension, FileSystemExtension))
+    files = next(extension for extension in explore.extensions if isinstance(extension, FileTools))
     assert files.read_only is True
     # Reasoning has no tools at all.
-    assert not any(isinstance(extension, FileSystemExtension) for extension in profiles["reasoning"].extensions)
+    assert not any(isinstance(extension, FileTools) for extension in profiles["reasoning"].extensions)
     # Coding edits, but no child is offered shell; it has no approval channel.
-    write = next(extension for extension in profiles["coding"].extensions if isinstance(extension, FileSystemExtension))
+    write = next(extension for extension in profiles["coding"].extensions if isinstance(extension, FileTools))
     assert write.read_only is False
     assert "bash" not in {tool.name for tool in write.tools}
     # Every child writes its own log into this application's store.
@@ -133,7 +133,7 @@ async def test_the_task_tool_runs_an_explore_child_and_links_its_session(tmp_pat
 
     assert result.content == "parent done"
     # The explore profile offers exactly the read-only filesystem tools.
-    assert {tool.name for tool in provider.children[0].tools} == {"read_file", "view_image", "glob", "grep"}
+    assert {tool.name for tool in provider.children[0].tools} == {"read", "glob", "grep"}
     child_ids = [session_id for session_id in store.session_ids() if session_id != "parent"]
     assert len(child_ids) == 1
     child = store.read(child_ids[0])
@@ -304,7 +304,7 @@ def test_every_prompt_says_the_report_is_all_the_parent_gets(tmp_path, name):
 def test_the_explore_prompt_names_its_tools_and_asks_for_evidence_with_locations(tmp_path):
     prompt = _profiles(tmp_path)["explore"].system_prompt
 
-    for tool in ("read_file", "view_image", "glob", "grep"):
+    for tool in ("read", "glob", "grep"):
         assert tool in prompt
     assert "path:line" in prompt and "cannot change files or run commands" in prompt
 
@@ -339,6 +339,30 @@ def test_the_coding_description_says_the_parent_runs_the_checks(tmp_path):
     description = _profiles(tmp_path)["coding"].description
 
     assert "cannot run commands" in description and "run the tests" in description
+
+
+def test_a_coding_child_with_a_shell_is_told_it_works_under_the_users_permission_level(tmp_path):
+    profile = _profiles(tmp_path, shell=True)["coding"]
+
+    assert "Tools: read, write_file, edit and bash" in profile.system_prompt
+    assert "permission level" in profile.system_prompt and "cannot start another subagent" in profile.system_prompt
+    assert "cannot run commands" not in profile.system_prompt
+    assert "glob" not in profile.system_prompt and "grep" not in profile.system_prompt.replace("rg, grep", "")
+    assert "permission level" in profile.description and "cannot run commands" not in profile.description
+
+
+def test_a_coding_child_with_a_shell_gets_its_file_tools_from_the_parent_and_not_from_its_own_list(tmp_path):
+    with_shell = _profiles(tmp_path, shell=True)["coding"]
+    without = _profiles(tmp_path)["coding"]
+
+    assert not any(isinstance(extension, FileTools) for extension in with_shell.extensions)
+    assert any(isinstance(extension, FileTools) for extension in without.extensions)
+
+
+def test_only_the_coding_profile_takes_what_the_parent_has():
+    from zettcode.app.agent.extensions.subagents import INHERITING
+
+    assert INHERITING == {"coding"}
 
 
 def test_the_reasoning_description_says_it_can_read_nothing(tmp_path):

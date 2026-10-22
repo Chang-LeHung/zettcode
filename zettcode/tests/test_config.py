@@ -377,14 +377,16 @@ def test_the_harness_switches_default_to_a_task_tool_without_a_plan(tmp_path: Pa
     defaults = load_config(tmp_path, path=path)
     assert defaults.subagent_enabled is True
     assert defaults.todowrite_enabled is False
+    assert defaults.subagent_messaging is False, "a child does not message the other sessions unless asked"
 
     path.write_text(
-        '[[models]]\nmodel = "m"\ntoken = "t"\n\n[harness]\nsubagent = false\ntodowrite = true\n',
+        '[[models]]\nmodel = "m"\ntoken = "t"\n\n[harness]\nsubagent = false\ntodowrite = true\nsubagent_messaging = true\n',
         encoding="utf-8",
     )
     configured = load_config(tmp_path, path=path)
     assert configured.subagent_enabled is False
     assert configured.todowrite_enabled is True
+    assert configured.subagent_messaging is True
 
 
 def test_the_release_check_is_on_unless_the_config_turns_it_off(tmp_path: Path):

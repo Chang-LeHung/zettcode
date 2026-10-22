@@ -10,6 +10,9 @@ stored branch.
 The tools are reading ones for the same reason. An edit made while asking a side
 question would be invisible to the conversation that continues after it, so the
 model would carry on with a false picture of the workspace.
+
+Searching is one of them. The main agent searches with its shell and has no ``glob`` or ``grep``, but a side
+question has no shell, so it is given the two search tools here.
 """
 
 from __future__ import annotations
@@ -24,7 +27,7 @@ from zett_agent.messages import UserMessage
 SIDE = "side"
 
 #: Tools a side question may use: the ones that only read.
-READ_ONLY_TOOLS = frozenset({"read_file", "view_image", "glob", "grep", "read_skill", "list_sessions"})
+READ_ONLY_TOOLS = frozenset({"read", "read_file", "glob", "grep", "read_skill", "list_sessions"})
 
 
 def question(text: str) -> UserMessage:
@@ -103,7 +106,13 @@ class SideQuestions(AgentExtension):
 
     @staticmethod
     def _read_only(context: AgentRunContext) -> None:
-        """Drop every registered tool that is not one of the reading ones."""
+        """Drop every registered tool that is not one of the reading ones, and make sure the two search tools are there."""
+        # Imported here: the tools bring the schema library, which a request that is not a side question never needs.
+        from ..tools.files import glob, grep
+
         for name in tuple(context.tools):
             if name not in READ_ONLY_TOOLS:
                 context.tools.pop(name, None)
+        for search in (glob, grep):
+            if search.name not in context.tools:
+                context.register_tool(search)

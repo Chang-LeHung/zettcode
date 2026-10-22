@@ -1,14 +1,14 @@
 """What the model is offered: the tools this client registers, and their schemas.
 
-Every tool argument schema is built by one function in the runtime, so the
-filesystem bundle it produces is what this suite can check without a request.
+Every tool argument schema is built from the signature of a function in this repository, so the bundle is what this
+suite can check without a request.
 """
 
 from __future__ import annotations
 
 import json
 
-from zett_agent.extensions.coding import CodingExtension
+from zettcode.app.agent.extensions.files import CodingBundle
 
 
 def test_every_tool_schema_stands_on_its_own():
@@ -22,7 +22,7 @@ def test_every_tool_schema_stands_on_its_own():
     expanded form is the same schema written out longhand, so nothing is lost by
     sending it: what has to hold is that no self-reference reaches the wire.
     """
-    schemas = {tool.name: json.dumps(tool.parameters) for tool in CodingExtension().tools}
+    schemas = {tool.name: json.dumps(tool.parameters) for tool in CodingBundle().tools}
 
     # ``edit`` is the tool with a nested model, so it is the one whose
     # rendering this test is about; a rename that emptied the bundle would

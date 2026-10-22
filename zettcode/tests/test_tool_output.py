@@ -10,16 +10,18 @@ from types import SimpleNamespace
 import pytest
 from zett_agent.agent import AgentRunConfig
 from zett_agent.client import create_agent
-from zett_agent.extensions.coding import CodingExtension
 from zett_agent.messages import AssistantMessage, ToolCall, ToolMessage
 from zett_agent.model import ModelEvent, ModelResponse, RetryOptions
-from zett_agent.tools.coding import bash
 
 from zettcode.app.agent.extensions import tool_output as tool_output_module
+from zettcode.app.agent.extensions.files import CodingBundle
 from zettcode.app.agent.extensions.tool_output import OUTPUT_ROOT, ToolOutputExtension
 from zettcode.app.agent.storage import SessionStore
+from zettcode.app.agent.tools.shell import shell_tool
 
-# These run the framework's real `bash` tool with POSIX commands (`yes`, `head`, single-quoted
+bash = shell_tool()
+
+# These run the real `bash` tool with POSIX commands (`yes`, `head`, single-quoted
 # `echo`), which Windows' shell does not have. What they pin — that a kept output moves into the
 # session's folder — is about paths and text, and holds on every platform the tool runs on.
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="drives the bash tool with POSIX shell commands")
@@ -332,7 +334,7 @@ async def test_in_a_real_agent_the_model_and_the_stored_session_both_see_the_new
         model,
         config=AgentRunConfig(session_id="s1"),
         system_prompt="x",
-        extensions=[CodingExtension(), ToolOutputExtension(store), store],
+        extensions=[CodingBundle(), ToolOutputExtension(store), store],
     )
 
     async for _ in client.stream("run it", config=AgentRunConfig(session_id="s1"), model=model):
@@ -356,7 +358,7 @@ def test_the_runtime_installs_it_after_the_coding_bundle(tmp_path):
     )
     names = [extension.name for extension in agent_extensions(config)]
 
-    assert names.index("CodingExtension") < names.index("ToolOutputExtension")
+    assert names.index("CodingBundle") < names.index("ToolOutputExtension")
 
 
 async def test_the_tidy_up_runs_on_the_event_loop_because_a_thread_doing_it_fails_other_commands(workspace, store):

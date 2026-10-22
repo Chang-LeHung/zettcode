@@ -39,7 +39,8 @@ class Options:
     Attributes:
         workspace: Directory the agent works in; the current one by default.
         resume: Stored session to open instead of a fresh one, if named.
-        auto: Start with the shell permission at ``auto``, so no command asks.
+        auto: Start with the shell permission at ``full`` (``--full``, or its old name ``--auto``), so no command
+            asks and none is sandboxed.
         dry_run: Run the startup and exit instead of taking the terminal.
         command: The subcommand named (``"update"`` for ``update`` and ``upgrade`` alike, or ``"doctor"``), or
             ``None`` to start a session.
@@ -114,11 +115,12 @@ def parse_args(argv: list[str] | None = None) -> Options:
         help="open a stored session by id instead of starting a new one",
     )
     parser.add_argument(
+        "--full",
         "--auto",
         "--yolo",
         dest="auto",
         action="store_true",
-        help="run shell commands without asking for the rest of this run",
+        help="run shell commands with full access and without asking, for the rest of this run",
     )
     parser.add_argument(
         "--dry-run",
@@ -272,7 +274,7 @@ async def async_main(
         config: Settings loaded from the config file.
         resume: Stored session to open instead of a fresh one; an id the store
             does not hold is reported before the terminal is taken over.
-        auto: Start with the shell permission at ``auto``, so no command asks.
+        auto: Start with the shell permission at ``full``, so no command asks and none is sandboxed.
         dry_run: Run the startup and exit without taking the terminal and
             without printing anything, so a profiler's output stands alone.
     """
@@ -350,9 +352,9 @@ def build_application(options: Options, *, terminal: TuiApp | None = None) -> Ze
     chosen = chosen_theme(agent)
     theme = chosen if chosen is not None else DARK
     if options.auto:
-        # The rung the prompt's `a` and `/permission auto` both reach, taken before
+        # The rung the prompt's `a` and `/permission full` both reach, taken before
         # the shell exists: nothing is announced, because there is no conversation
-        # to announce it in and the status line already reads `· auto`.
+        # to announce it in and the status line already reads `· full`.
         agent.runtime.approve_all_shell_commands()
     app = ZettCodeApp(agent, theme=theme, auto_theme=chosen is None)
     if options.resume is not None:

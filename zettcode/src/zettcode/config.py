@@ -22,6 +22,7 @@ from zett_agent.model import ReasoningEffort
 
 from ._compat import tomllib
 from .paths import (
+    DEFAULT_HARNESS_DIR,
     DEFAULT_MCP_CONFIG,
     DEFAULT_STORE,
     DEFAULT_THEME_FILE,
@@ -47,6 +48,7 @@ CONFIGURABLE = frozenset(
         "plugins",
         "update",
         "harness",
+        "shell",
         "sessions",
         "compaction",
         "ui",
@@ -66,6 +68,8 @@ MODEL_KEYS = frozenset(
         "chat",
         "multimodal",
         "temperature",
+        "web_search",
+        "web_search_name",
         "context_window",
         "compact_percent",
         "reasoning_efforts",
@@ -120,8 +124,11 @@ OFF_BY_DEFAULT: frozenset[str] = frozenset({"pet"})
 #: Keys the ``[statusline]`` table may set: the name of each part of the header and the status line.
 STATUSLINE_KEYS = frozenset(STATUSLINE_NAMES)
 
+#: Keys the ``[shell]`` table may set.
+SHELL_KEYS = frozenset({"network"})
+
 #: Keys the ``[harness]`` table may set.
-HARNESS_KEYS = frozenset({"subagent", "subagent_max_iterations", "todowrite"})
+HARNESS_KEYS = frozenset({"subagent", "subagent_max_iterations", "subagent_messaging", "todowrite", "jit"})
 
 #: Model calls one subagent may make for the task it was given. A child that is exploring or editing
 #: a real codebase makes dozens (a search, a read, an edit, a re-read, for each file), and the framework's
@@ -176,6 +183,14 @@ KEEP_SHARE = 4
 MAX_TEMPERATURE = 2.0
 MAX_ANTHROPIC_TEMPERATURE = 1.0
 
+#: The hosted search tool an entry gets when it switches ``web_search`` on and names no ``web_search_name``. The
+#: type is the provider's own wire name, so it differs by API: Anthropic's carries a version, and DeepSeek's
+#: Anthropic-compatible endpoint knows only the older one. Every other API is sent plain ``web_search``, which is what
+#: OpenAI's Responses API and the gateways that copy it call it.
+DEFAULT_WEB_SEARCH_NAME = "web_search"
+DEFAULT_ANTHROPIC_WEB_SEARCH_NAME = "web_search_20260318"
+DEFAULT_DEEPSEEK_ANTHROPIC_WEB_SEARCH_NAME = "web_search_20250305"
+
 #: What is sent as the key of a model that has none: a local server (Ollama, LM Studio, vLLM) asks for no key, but
 #: the clients that speak to it refuse to be built without one. A server that does want a key answers 401, which is
 #: the message the reader needs.
@@ -222,6 +237,11 @@ class ModelConfig:
         multimodal: Whether the model accepts images as well as text.
         temperature: Sampling temperature sent with every request, from 0 (the most deterministic) to 2, or to 1 for
             an Anthropic model. ``None`` sends none, and the provider uses its own default.
+        web_search: Let the provider search the web for the model. The search is hosted: the endpoint runs it and
+            the model answers from the results, so ZettCode fetches nothing itself. DeepSeek is searched only over
+            its Anthropic-compatible endpoint (``anthropic = true``); its chat endpoint is refused.
+        web_search_name: The exact tool type the endpoint expects for that search, for a model whose provider names
+            it differently. ``None`` takes :attr:`search_name`'s default for the API.
         context_window: Tokens the model can carry, which is what ``/context``
             measures against.
         compact_percent: Share of :attr:`context_window` at which a request is
@@ -244,6 +264,8 @@ class ModelConfig:
     reasoning_efforts: tuple[ReasoningEffort, ...] = ()
     chat: bool = False
     temperature: float | None = None
+    web_search: bool = False
+    web_search_name: str | None = None
 
     def __post_init__(self) -> None:
         """Reject a model that cannot be called."""
@@ -268,6 +290,14 @@ class ModelConfig:
                 raise ValueError(
                     f"temperature must be from 0 to {limit:g} for model {self.model!r}, not {self.temperature!r}"
                 )
+        if self.web_search_name is not None:
+            name = self.web_search_name.strip()
+            object.__setattr__(self, "web_search_name", name or None)
+        if self.web_search and self.deepseek and not self.anthropic:
+            raise ValueError(
+                f"Model {self.model!r} cannot search the web: DeepSeek serves web search only on its "
+                "Anthropic-compatible endpoint, so set 'anthropic = true' with that base_url, or clear 'web_search'"
+            )
         if self.base_url is not None:
             root = _without_client_route(self.base_url)
             if root != self.base_url:
@@ -286,6 +316,29 @@ class ModelConfig:
     def shown_name(self) -> str:
         """Return the name to display for the model."""
         return self.display_model or self.model
+
+    @property
+    def deepseek(self) -> bool:
+        """Return whether this entry is a DeepSeek model, by its id or by the address it is served from."""
+        return "deepseek" in self.model.lower() or "deepseek" in (self.base_url or "").lower()
+
+    @property
+    def search_name(self) -> str:
+        """Return the hosted search tool type to send: the entry's own, or the default for its API."""
+        if self.web_search_name:
+            return self.web_search_name
+        if not self.anthropic:
+            return DEFAULT_WEB_SEARCH_NAME
+        return DEFAULT_DEEPSEEK_ANTHROPIC_WEB_SEARCH_NAME if self.deepseek else DEFAULT_ANTHROPIC_WEB_SEARCH_NAME
+
+    @property
+    def can_search(self) -> bool:
+        """Return whether the endpoint this entry names serves hosted web search at all.
+
+        What a form shows as available: DeepSeek's chat endpoint does not, every other combination is left to the
+        endpoint, since a gateway may serve what its vendor does not.
+        """
+        return not (self.deepseek and not self.anthropic)
 
     @property
     def api(self) -> Api:
@@ -395,15 +448,24 @@ class ZettCodeConfig:
         subagent_enabled: Offer the ``task`` tool, whose profiles run a child
             agent with its own context and session log.
         subagent_max_iterations: Model calls one such child may make for one task.
+        subagent_messaging: Give the ``coding`` child ``list_sessions`` and ``send_message`` too. Off by default: a
+            child works for one task of one session, and speaking to other sessions is that session's own business.
         todowrite_enabled: Offer the ``todo_write`` tool, whose list the shell
             shows in its plan panel. Off by default: a plan is a turn spent
             updating it, and not every session wants one.
+        jit_harness: Start with the just-in-time harness on: the model may write small Python tools of its own
+            and run them. Off by default, because what it writes runs in this process, outside the shell's
+            permission; ``/harness on`` and ``/harness off`` change it for a run.
+        shell_network: Let a command that runs in the ``safe`` sandbox use the network. Off by default; ``[shell]
+            network = true`` turns it on. ``full`` always has the network, and so does a machine with no sandbox.
         sessions_enabled: Register with the background session broker, so this session can be
             messaged by the others and message them: ``@name`` in the composer and the
             ``send_message`` and ``list_sessions`` tools.
         update_enabled: Ask PyPI, in the background, whether a newer release
             exists, and offer it on a later start.
         update_file: Where that check leaves what it found; one small JSON file.
+        harness_dir: Where the just-in-time harness keeps each session's tools, one folder per session id. Directly
+            under ``~/.zettcode`` by default, not inside the session store, so clearing sessions does not take them.
     """
 
     workspace: Path
@@ -436,10 +498,14 @@ class ZettCodeConfig:
     disabled_plugins: tuple[str, ...] = ()
     subagent_enabled: bool = True
     subagent_max_iterations: int = DEFAULT_SUBAGENT_MAX_ITERATIONS
+    subagent_messaging: bool = False
     todowrite_enabled: bool = False
+    jit_harness: bool = False
+    shell_network: bool = False
     sessions_enabled: bool = True
     update_enabled: bool = True
     update_file: Path = DEFAULT_UPDATE_FILE
+    harness_dir: Path = DEFAULT_HARNESS_DIR
 
     def __post_init__(self) -> None:
         """Normalize the paths and reject settings that cannot build a runtime."""
@@ -475,6 +541,7 @@ class ZettCodeConfig:
         if self.mcp_config is not None:
             object.__setattr__(self, "mcp_config", self.mcp_config.expanduser().resolve())
         object.__setattr__(self, "update_file", self.update_file.expanduser().resolve())
+        object.__setattr__(self, "harness_dir", self.harness_dir.expanduser().resolve())
         object.__setattr__(self, "themes_dir", self.themes_dir.expanduser().resolve())
 
     def skill_search_roots(self) -> tuple[Path, ...]:
@@ -605,6 +672,8 @@ def _entry_model(entry: dict[str, object], index: int) -> ModelConfig:
             temperature=None
             if entry.get("temperature") is None
             else _number(entry["temperature"], f"{label} key 'temperature'"),
+            web_search=_setting(entry, "web_search", bool, False),
+            web_search_name=_setting(entry, "web_search_name", str, None),
             context_window=_typed(
                 entry.get("context_window", DEFAULT_CONTEXT_WINDOW), f"{label} key 'context_window'", int
             ),
@@ -793,6 +862,7 @@ def load_config(
     transcript = _read_table(data.get("transcript"), "transcript", source, TRANSCRIPT_KEYS)
     update = _read_table(data.get("update"), "update", source, UPDATE_KEYS)
     harness = _read_table(data.get("harness"), "harness", source, HARNESS_KEYS)
+    shell = _read_table(data.get("shell"), "shell", source, SHELL_KEYS)
     compaction = _read_table(data.get("compaction"), "compaction", source, COMPACTION_KEYS)
     sessions = _read_table(data.get("sessions"), "sessions", source, SESSIONS_KEYS)
     ui = _read_table(data.get("ui"), "ui", source, UI_KEYS)
@@ -840,7 +910,10 @@ def load_config(
             f"Config key 'harness.subagent_max_iterations' in {source}",
             int,
         ),
+        subagent_messaging=bool(_setting(harness, "subagent_messaging", bool, False)),
         todowrite_enabled=bool(_setting(harness, "todowrite", bool, False)),
+        jit_harness=bool(_setting(harness, "jit", bool, False)),
+        shell_network=bool(_setting(shell, "network", bool, False)),
         sessions_enabled=bool(_setting(sessions, "enabled", bool, True)),
         update_enabled=bool(_setting(update, "enabled", bool, True)),
     )

@@ -8,10 +8,10 @@ application's JSONL session store, and so each profile's tool boundary is a
 decision made here rather than a zett-agent default.
 
 The profiles are deliberately asymmetric. Exploration cannot write anything;
-reasoning has no tools at all; coding may edit files. No profile may run shell:
-a child has no channel back to the parent's approval prompt, so a command would
-wait forever instead of asking — the parent runs commands itself. No profile
-carries a ``task`` tool of its own, so a child cannot delegate to another child.
+reasoning has no tools at all; coding may edit files, and when the parent has a shell it has the parent's own
+tools, the shell included, under the parent's permission level (a command that needs approval is put to the
+person through the parent, see :mod:`.relay`). No profile carries a ``task`` tool of its own, so a child cannot
+delegate to another child.
 
 A child is given the same project instructions the parent has (the workspace's ``AGENTS.md``): one
 that edits files and does not know the project's rules is the child most in need of them.
@@ -33,7 +33,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from contextvars import ContextVar
 from copy import deepcopy
-from dataclasses import replace
 from functools import cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -65,7 +64,7 @@ _ISOLATION = (
 EXPLORE_PROMPT = (
     "You are ZettCode's exploration subagent. "
     + _ISOLATION
-    + "\n\nTools: read_file, view_image, glob, grep. You cannot change files or run commands."
+    + "\n\nTools: read, glob, grep. You cannot change files or run commands."
     "\n\nHow to work:\n"
     "- Start broad and narrow quickly: glob for the shape of the project, grep for symbols and strings, then "
     "read only the parts that matter (use line ranges for a large file).\n"
@@ -91,11 +90,10 @@ REASONING_PROMPT = (
 )
 
 CODING_PROMPT = (
-    "You are ZettCode's coding subagent. "
-    + _ISOLATION
-    + "\n\nTools: read_file, view_image, glob, grep, write_file, edit, delete_file. You cannot "
+    "You are ZettCode's coding subagent. " + _ISOLATION + "\n\nTools: read, glob, grep, write_file, edit. You cannot "
     "run commands, not even tests or a formatter: a command needs the user's approval and you have no way to "
-    "ask for it. The parent runs them after it reads your report."
+    "ask for it. It also has no file-deletion tool: deleting is a command too. The parent runs them after it "
+    "reads your report."
     "\n\nHow to work:\n"
     "- Read before you edit: the file, and enough of its neighbours to match their conventions (naming, "
     "imports, error handling, tests). Follow the project instructions you were given.\n"
@@ -107,6 +105,31 @@ CODING_PROMPT = (
     "what you did not do and why. Never guess at a requirement.\n"
     "\nReport what you changed (each path, and the substance of the change), anything you left alone on "
     "purpose, and the exact commands the parent should run to check it."
+)
+
+#: The coding child of an agent that has a shell: it is given the parent's own tools and permission level.
+CODING_SHELL_PROMPT = (
+    "You are ZettCode's coding subagent. "
+    + _ISOLATION
+    + "\n\nTools: read, write_file, edit and bash, and whatever else the user has set up for the parent (skills, "
+    "MCP servers). You cannot start another subagent, and you cannot put a question to the user: what you need to "
+    "know has to be in the task, and anything else is for the parent to ask."
+    "\n\nbash runs under the user's permission level, exactly as it does for the parent: a command that level "
+    "does not allow unasked is put to the user for approval, and at `deny` it is refused. Search with rg, grep "
+    "and find. There is no file-deletion tool: remove a file with rm, which follows the same rule."
+    "\n\nHow to work:\n"
+    "- Read before you edit: the file, and enough of its neighbours to match their conventions (naming, "
+    "imports, error handling, tests). Follow the project instructions you were given.\n"
+    "- Make the smallest change that does what was asked. Do not refactor, rename, reformat or fix what you "
+    "were not asked to touch; mention it instead.\n"
+    "- Prefer edit with a short, unique old_text to rewriting a whole file, and read the result "
+    "back after a change that is not trivial.\n"
+    "- Run the tests or the formatter when the task calls for it, and report what they printed. When a command "
+    "was refused or declined, say so instead of guessing at its result.\n"
+    "- When the request is ambiguous, or the code contradicts it, do the part that is clear and say exactly "
+    "what you did not do and why. Never guess at a requirement.\n"
+    "\nReport what you changed (each path, and the substance of the change), anything you left alone on "
+    "purpose, what you ran and what it showed, and any command you could not run."
 )
 
 #: What the parent model reads when it decides whether to delegate. A child sees none of the parent's
@@ -125,6 +148,16 @@ CODING_DESCRIPTION = (
     "commands, so you run the tests and linters after reading its report. It sees none of this conversation: "
     "name the files and the exact change in the prompt."
 )
+CODING_SHELL_DESCRIPTION = (
+    "make a bounded change to files in the workspace, run what the change needs (tests, a formatter), and "
+    "report exactly what it changed and what it ran. It works under the user's permission level as you do, so "
+    "a command may be put to the user for approval. It sees none of this conversation: name the files and the "
+    "exact change in the prompt."
+)
+
+#: The profiles that are given the parent's own extensions (its tools and its permission level), and not only
+#: what a profile lists. The others are deliberately small: one only reads, one has no tools at all.
+INHERITING = frozenset({"coding"})
 
 
 def build_subagents(
@@ -134,6 +167,7 @@ def build_subagents(
     capabilities: ModelCapabilities,
     workspace: Path | None = None,
     max_iterations: int = DEFAULT_SUBAGENT_MAX_ITERATIONS,
+    shell: bool = False,
 ) -> tuple[SubAgentDefinition, ...]:
     """Return the profiles the ``task`` tool offers, one per tool boundary.
 
@@ -141,17 +175,20 @@ def build_subagents(
         model: Provider the children run on; the caller owns its resources.
         persistence: Session store that writes each child's own log, linked to
             the calling session through ``parent_session_id``.
-        capabilities: Parent's capability filter, so a text-only model is not
-            offered ``view_image`` inside a child either.
+        capabilities: Parent's capability filter, so a text-only model is given the text reader inside a child
+            too.
         workspace: Directory whose ``AGENTS.md`` files every child is given, as the parent has
             them; ``None`` gives a child no project instructions.
         max_iterations: Model calls one child may make for one task.
+        shell: Whether the ``coding`` child is given the parent's own tools, shell included, when it is created
+            (see :data:`INHERITING`). Without it the child edits files and nothing else, and says so in its prompt.
     """
     from zett_agent.extensions.agents_md import AgentsMdExtension
-    from zett_agent.extensions.file_system import FileSystemExtension
     from zett_agent.extensions.subagent import SubAgentDefinition
     from zett_agent.extensions.tool_guidelines import ToolGuidelinesExtension
     from zett_agent.model import ReasoningEffort
+
+    from .files import FileTools
 
     def instructions() -> tuple[AgentExtension, ...]:
         """A fresh project-instructions extension per child: it reads the files on every request."""
@@ -165,7 +202,7 @@ def build_subagents(
             model=model,
             extensions=(
                 persistence,
-                FileSystemExtension(read_only=True),
+                FileTools(read_only=True),
                 capabilities,
                 *instructions(),
                 ToolGuidelinesExtension(),
@@ -184,12 +221,13 @@ def build_subagents(
         ),
         SubAgentDefinition(
             name="coding",
-            description=CODING_DESCRIPTION,
-            system_prompt=CODING_PROMPT,
+            description=CODING_SHELL_DESCRIPTION if shell else CODING_DESCRIPTION,
+            system_prompt=CODING_SHELL_PROMPT if shell else CODING_PROMPT,
             model=model,
             extensions=(
                 persistence,
-                FileSystemExtension(read_only=False),
+                # With a shell the file tools come from the parent's own bundle, which has the shell in it.
+                *(() if shell else (FileTools(read_only=False),)),
                 capabilities,
                 *instructions(),
                 ToolGuidelinesExtension(),
@@ -207,21 +245,42 @@ def _extension_class() -> Callable[..., SubAgentExtension]:
     Built on first use for the reason the rest of this module imports late: the framework's module is
     what pulls in the database layer.
     """
+    from zett_agent.agent import AgentRunConfig
     from zett_agent.extensions.subagent import SubAgentExtension
     from zett_agent.model import ReasoningEffort
     from zett_agent.tools.base import AgentTool as Tool
 
+    from .relay import RelayingAgent, relay_to
+
     class ParentModelSubAgents(SubAgentExtension):
         """The framework's ``task`` tool, with the child on the parent's model and an optional effort."""
 
-        def __init__(self, subagents: Any, *, capabilities: ModelCapabilities) -> None:
+        def __init__(
+            self,
+            subagents: Any,
+            *,
+            capabilities: ModelCapabilities,
+            shares: Callable[[AgentExtension], bool] | None = None,
+        ) -> None:
             super().__init__(subagents)
             self._capabilities = capabilities
+            self._shares = shares
 
         def _levels(self, context: AgentRunContext) -> tuple[ReasoningEffort, ...]:
             """Return the levels the parent's model takes: every one for a model the runtime has no entry for."""
             config = self._capabilities.config_of(context.model)
             return config.efforts if config is not None else tuple(ReasoningEffort)
+
+        def _inherited(self, definition: SubAgentDefinition, context: AgentRunContext) -> tuple[AgentExtension, ...]:
+            """Return the parent's own extensions that a child of this profile is given as well.
+
+            The parent's extension instances are shared, not copied: they are written to serve several sessions at
+            once, and sharing is what puts the child under the same permission level, the same approval memory and
+            the same skills and servers as the parent.
+            """
+            if self._shares is None or definition.name not in INHERITING:
+                return ()
+            return tuple(extension for extension in context.extensions if self._shares(extension))
 
         async def _create_child(
             self, definition: SubAgentDefinition, child_session_id: str, context: AgentRunContext
@@ -233,9 +292,17 @@ def _extension_class() -> Callable[..., SubAgentExtension]:
             config = self._capabilities.config_of(parent)
             if config is not None:
                 effort = config.accepted_effort(effort)
-            return await super()._create_child(
-                replace(definition, model=parent, reasoning_effort=effort), child_session_id, context
+            child = await RelayingAgent.create(
+                parent,
+                config=AgentRunConfig(session_id=child_session_id, parent_session_id=context.session_id),
+                system_prompt=definition.system_prompt,
+                tools=definition.tools,
+                extensions=(*definition.extensions, *self._inherited(definition, context)),
+                reasoning_effort=effort,
+                max_iterations=definition.max_iterations,
             )
+            child.relay = relay_to(context)
+            return child
 
         def _build_tool(self, context: AgentRunContext, subagents: Any) -> AgentTool:
             """Add an optional ``reasoning_effort`` to the framework's tool, listing what this model takes."""
@@ -287,6 +354,7 @@ def subagent_extension(
     capabilities: ModelCapabilities,
     workspace: Path | None = None,
     max_iterations: int = DEFAULT_SUBAGENT_MAX_ITERATIONS,
+    shares: Callable[[AgentExtension], bool] | None = None,
 ) -> AgentExtension:
     """Return the ``task`` tool with ZettCode's profiles and their tool boundaries.
 
@@ -299,10 +367,14 @@ def subagent_extension(
             children use the parent request's own.
         persistence: Session store that writes each child's own log, linked to
             the calling session through ``parent_session_id``.
-        capabilities: Parent's capability filter, so a text-only model is not offered ``view_image``
-            inside a child either, and the lookup of which levels a model takes.
+        capabilities: Parent's capability filter, so a text-only model is given the text reader inside a child
+            too, and the lookup of which levels a model takes.
         workspace: Directory whose ``AGENTS.md`` files every child is given; ``None`` for none.
         max_iterations: Model calls one child may make for one task.
+        shares: Says, of each extension the parent runs, whether the ``coding`` child is given it too. That is what
+            gives the child the parent's tools and puts its shell under the parent's permission level; the caller,
+            which knows what every extension is, decides (the ``task`` tool itself and the harness are not shared).
+            ``None`` shares nothing, and the child then edits files and has no shell.
     """
     return _extension_class()(
         build_subagents(
@@ -311,6 +383,8 @@ def subagent_extension(
             capabilities=capabilities,
             workspace=workspace,
             max_iterations=max_iterations,
+            shell=shares is not None,
         ),
         capabilities=capabilities,
+        shares=shares,
     )

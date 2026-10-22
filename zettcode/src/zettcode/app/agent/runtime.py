@@ -34,6 +34,7 @@ from zettcode.plugins.services import (
     COMPACTION,
     COMPACTION_COUNTER,
     CONTEXT,
+    HARNESS,
     MESSENGER,
     MODELS,
     PERSISTENCE,
@@ -48,9 +49,11 @@ from ..pipeline import ImportPipeline
 from .dialogue.side import SideQuestions
 from .extensions.compaction import COUNTER_WAIT, CompactionCounter, OnDemandCompaction
 from .extensions.context import ContextExtension, Tokenizer
+from .extensions.harness_switch import HarnessSwitch
 from .extensions.messenger import Messenger
 from .extensions.usage import UsageExtension
 from .permission import Permission, ShellPolicy, parse_permission
+from .permission.sandbox import ShellSandbox
 from .storage import NoLocks, SessionGuard, SessionLocks, SessionStore
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only; the imports are the cost
@@ -67,7 +70,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only; the imports are the co
 #: cached — and the zett-agent module is what :meth:`ZettCodeRuntime._build`
 #: would otherwise import on the event loop. A name added here moves its import
 #: off the first turn and onto the pipeline's thread.
-WARM_MODULES = ("zett_agent.client", "zett_agent.extensions.coding")
+WARM_MODULES = ("zett_agent.client", "zettcode.app.agent.extensions.files")
 
 #: What each model SDK needs imported before its first request, in order. ``openai`` alone is not
 #: enough: its resource tree (``openai.resources``) is imported the first time a client touches
@@ -108,10 +111,11 @@ destructive actions unless the user explicitly requests them.
 
 Changing files: use the file tools, and only them. To edit a file that exists, call
 edit directly: read the lines first, copy old_text exactly, and send every change
-to that file in one call. Use write_file for a new file or a deliberate whole-file rewrite, and
-delete_file to remove one. Never change a file through the shell: no sed, awk, perl -i,
+to that file in one call. Use write_file for a new file or a deliberate whole-file rewrite.
+Never change a file's contents through the shell: no sed, awk, perl -i,
 python -c, a script you write to do the editing, cat or echo with a redirection, a heredoc,
-or tee. The shell is for running things (tests, builds, git, searches), not for editing; the
+or tee. There is no delete tool: remove a file with rm in the shell, like any command.
+The shell is for running things (tests, builds, git, searches, removing files), not for editing; the
 file tools show the user exactly what changed and the shell commands do not. If
 edit fails, read the file again and retry it with corrected old_text; do not fall
 back to a shell command.
@@ -226,15 +230,19 @@ class ZettCodeRuntime:
         # One policy, read by everything that decides whether a command is asked
         # about: the memory lets `safe` and `auto` through, the deny extension
         # refuses for `deny`, and the shell changes it from `/permission`.
-        policy = ShellPolicy.from_mode(config.shell_approval, config.workspace)
+        policy = ShellPolicy.from_mode(
+            config.shell_approval, config.workspace, ShellSandbox(config.workspace, network=config.shell_network)
+        )
         counter = CompactionCounter()
         persistence = SessionStore(config.store, config.workspace)
         models: dict[ModelConfig, Adapter] = {}
         messenger = Messenger.create(config)
+        harness = HarnessSwitch(on=config.jit_harness)
         # What the built-in agent plugins build on, handed over by name: they own the extensions, the
         # runtime owns this state and goes on using it. See `zettcode.plugins.services`.
         shared: dict[str, object] = {
             POLICY: policy,
+            HARNESS: harness,
             PERSISTENCE: persistence,
             MODELS: models,
             COMPACTION_COUNTER: counter,
@@ -452,6 +460,21 @@ class ZettCodeRuntime:
         return self.plugins.service(COMPACTION, OnDemandCompaction)
 
     @property
+    def harness(self) -> HarnessSwitch:
+        """Return the switch of the just-in-time harness, which the next request reads."""
+        return self.plugins.service(HARNESS, HarnessSwitch)
+
+    def use_harness(self, on: bool) -> bool:
+        """Turn the just-in-time harness on or off for later requests, and return whether it is on.
+
+        Like the permission level this is per run and not written to the configuration: ``[harness] jit`` is the
+        default a run starts with. It takes effect on the next request, because a request mounts the harness's
+        tools when it starts.
+        """
+        self.harness.on = bool(on)
+        return self.harness.on
+
+    @property
     def permission(self) -> Permission:
         """Return how much of the shell may run without asking, right now."""
         return self.policy.level
@@ -475,7 +498,7 @@ class ZettCodeRuntime:
 
     def approve_all_shell_commands(self) -> None:
         """Stop asking for shell approval for the rest of this process."""
-        self.use_permission(Permission.AUTO)
+        self.use_permission(Permission.FULL)
 
     def self_compaction_choice(self, session_id: str) -> bool | None:
         """Return the choice one session made about self-compaction, ``None`` when it follows the default.

@@ -40,8 +40,8 @@ RESUME_LIMIT = 20
 PERMISSION_NOTES = {
     "deny": "no shell commands run; the model is told and carries on without",
     "ask": "each command waits for your answer (the default)",
-    "safe": "commands that only read run; anything else asks",
-    "auto": "every command runs without asking",
+    "safe": "every command runs in a sandbox: writes only the workspace and /tmp, no network",
+    "full": "every command runs with your own access, without asking",
 }
 
 #: One-line note per reasoning level, shown next to its name in the menu.
@@ -212,6 +212,20 @@ def model_words(host: CommandHost | None) -> tuple[Subcommand, ...]:
     )
 
 
+#: The two words ``/harness`` takes, with what each does.
+HARNESS_NOTES = {
+    "on": "the model may write small Python tools of its own and run them",
+    "off": "the model has no harness (the default)",
+}
+
+
+def harness_words(host: CommandHost | None) -> tuple[Subcommand, ...]:
+    """Offer ``on`` and ``off``, with a mark on the one in force."""
+    if host is None:
+        return ()
+    return subcommand_words(("on", "off"), HARNESS_NOTES, "on" if host.agent.harness else "off")
+
+
 def permission_words(host: CommandHost | None) -> tuple[Subcommand, ...]:
     """Offer the four levels strictest first, each with what it does to a command and a mark on the one in force."""
     if host is None:
@@ -220,13 +234,13 @@ def permission_words(host: CommandHost | None) -> tuple[Subcommand, ...]:
 
 
 class ModelCommands(Plugin):
-    """``/model``, ``/effort`` and ``/permission``: what the next request runs on and how far it may go."""
+    """``/model``, ``/effort``, ``/permission`` and ``/harness``: what the next request runs on and how far it may go."""
 
     name = "model-commands"
-    description = "model, effort and permission"
+    description = "model, effort, permission and harness"
 
     def activate(self, container: PluginContainer) -> None:
-        """Register the three commands; the two that are a choice among words read the shell for those words."""
+        """Register the commands; the ones that are a choice among words read the shell for those words."""
         # A container built by hand has no link to follow; the menus then offer no words, and the commands still run.
         link = container.find(HOST_LINK, HostLink) or HostLink()
         container.register_command("model", "choose a model", self.model, subcommands=lambda: model_words(link.host))
@@ -237,6 +251,13 @@ class ModelCommands(Plugin):
             self.permission,
             when_busy="now",
             subcommands=lambda: permission_words(link.host),
+        )
+        container.register_command(
+            "harness",
+            "let the model write and run its own tools: /harness on|off",
+            self.harness,
+            when_busy="refuse",
+            subcommands=lambda: harness_words(link.host),
         )
 
     async def model(self, context: CommandContext) -> CommandResult:
@@ -305,6 +326,26 @@ class ModelCommands(Plugin):
             return CommandResult(relayout=True)
         host.offer("/permission")
         return CommandResult()
+
+    async def harness(self, context: CommandContext) -> CommandResult:
+        """Turn the just-in-time harness on or off, or say which it is.
+
+        Refused while a request runs: the harness's tools are mounted when a request starts, so a change made
+        halfway would be announced and not be true until the next one.
+        """
+        host = context.require_host()
+        word = context.argument.strip().lower()
+        if word not in ("", "on", "off"):
+            return CommandResult(message="Usage: /harness on|off")
+        if word:
+            host.agent.use_harness(word == "on")
+        state = "on" if host.agent.harness else "off"
+        notes = {
+            "on": "The model can write Python tools and run them; they live in ~/.zettcode/harness. "
+            "Starts with the next request.",
+            "off": "The model has no harness.",
+        }
+        return CommandResult(message=f"Harness is {state}. {notes[state]}", relayout=bool(word))
 
 
 # -- asking, and leaving ----------------------------------------------------------------------------

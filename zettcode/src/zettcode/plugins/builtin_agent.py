@@ -23,12 +23,14 @@ builds on (the session store, the permission policy) is handed over by the runti
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from ..app.agent.dialogue.side import SideQuestions
 from ..app.agent.extensions.capabilities import ModelCapabilities
 from ..app.agent.extensions.compaction import CompactionCounter, OnDemandCompaction
 from ..app.agent.extensions.context import ContextExtension
+from ..app.agent.extensions.harness_switch import HarnessSwitch
 from ..app.agent.extensions.messenger import Messenger
 from ..app.agent.extensions.tool_output import ToolOutputExtension
 from ..app.agent.extensions.usage import UsageExtension
@@ -44,6 +46,7 @@ from .services import (
     COMPACTION,
     COMPACTION_COUNTER,
     CONTEXT,
+    HARNESS,
     MESSENGER,
     MODELS,
     PERSISTENCE,
@@ -69,12 +72,14 @@ class CodingTools(Plugin):
     def activate(self, container: PluginContainer) -> None:
         """Register the bundle; it is the largest import the agent needs, so it waits for the build."""
 
+        policy = container.service(POLICY, ShellPolicy)
+
         def build(_: AgentBuild) -> AgentExtension:
-            from zett_agent.extensions.coding import CodingExtension
+            from ..app.agent.extensions.files import CodingBundle
 
-            return CodingExtension()
+            return CodingBundle(policy)
 
-        container.register_extension_factory("CodingExtension", build)
+        container.register_extension_factory("CodingBundle", build)
 
 
 class ToolOutput(Plugin):
@@ -114,6 +119,7 @@ class Subagents(Plugin):
             return
         persistence = container.service(PERSISTENCE, SessionStore)
         capabilities = container.service(CAPABILITIES, ModelCapabilities)
+        messaging = config.subagent_messaging
 
         def build(agent: AgentBuild) -> AgentExtension:
             # Imported here: the module pulls in the SQLite store and SQLAlchemy, which a launch that
@@ -127,9 +133,67 @@ class Subagents(Plugin):
                 # The parent's project instructions go to its children too.
                 workspace=config.workspace if config.agents_md_enabled else None,
                 max_iterations=config.subagent_max_iterations,
+                shares=_shared_with_children(messaging=messaging),
             )
 
         container.register_extension_factory("ParentModelSubAgents", build)
+
+
+def _shared_with_children(*, messaging: bool) -> Callable[[AgentExtension], bool]:
+    """Return what decides, for each extension the parent runs, whether a ``coding`` child gets it too.
+
+    A child is the parent without the complicated parts, so this lists what is *not* shared:
+
+    * what is part of every agent and is not its to share: the framework's own internal-message and steering
+      extensions, which an agent adds for itself and refuses to be given;
+    * ``task``, so a child cannot start another child;
+    * the just-in-time harness, whose tools are code the model writes and runs in this process;
+    * ``list_sessions`` and ``send_message``, unless ``[harness] subagent_messaging`` asks for them;
+    * ``ask_user``: a child works until it has finished and answers the parent, so a question put to the person
+      in the middle of it would be a conversation the person never started. What it needs to know has to be in
+      the task;
+    * what belongs to the conversation the person is having: the plan panel (``todo_write``, whose list the shell
+      draws for the parent's session and would never show for a child's), the ``/btw`` boundary, the token and
+      context counters of the session, the plugin host that drives third-party hooks;
+    * what a child is given of its own in another form: its session store, the capability filter, and the
+      project instructions and tool guidance (each child reads and renders its own).
+
+    Everything else is shared as it is, which is what puts the child's shell under the parent's permission
+    level and approval memory, and gives it the parent's skills, questions and MCP servers.
+    """
+    # Imported here: the framework's subagent and harness modules are what a launch that never delegates
+    # should not load.
+    from zett_agent.extensions.agents_md import AgentsMdExtension
+    from zett_agent.extensions.ask_user import AskUserExtension
+    from zett_agent.extensions.internal_message import InternalMessageExtension
+    from zett_agent.extensions.steering import SteeringExtension
+    from zett_agent.extensions.subagent import SubAgentExtension
+    from zett_agent.extensions.todo import TodoWriteExtension
+    from zett_agent.extensions.tool_guidelines import ToolGuidelinesExtension
+
+    from ..app.agent.extensions.harness import SwitchedHarness
+    from ..app.agent.extensions.messaging import SessionMessagingExtension
+    from .extension import PluginExtension
+
+    private: tuple[type, ...] = (
+        InternalMessageExtension,
+        SteeringExtension,
+        SubAgentExtension,
+        SwitchedHarness,
+        AskUserExtension,
+        TodoWriteExtension,
+        SideQuestions,
+        UsageExtension,
+        ContextExtension,
+        PluginExtension,
+        SessionStore,
+        ModelCapabilities,
+        AgentsMdExtension,
+        ToolGuidelinesExtension,
+    )
+    if not messaging:
+        private = (*private, SessionMessagingExtension)
+    return lambda extension: not isinstance(extension, private)
 
 
 class Messaging(Plugin):
@@ -172,6 +236,30 @@ class ShellPermission(Plugin):
         container.provide(APPROVAL, approval)
         container.register_extension(ShellDenyExtension(policy))
         container.register_extension(approval)
+
+
+class Harness(Plugin):
+    """The just-in-time harness: the model keeps small Python tools of its own, when the reader has it on.
+
+    The extension is always registered and inert until the switch is on, so ``/harness on`` reaches the next
+    request of a client that was already built. Each session keeps its tools in its own folder under
+    ``config.harness_dir``, which is ``~/.zettcode/harness`` unless the configuration object says otherwise.
+    """
+
+    name = "harness"
+    description = "The just-in-time tool harness, off by default"
+
+    def activate(self, container: PluginContainer) -> None:
+        """Register the switchable extension; the framework's harness is imported when the agent is built."""
+        switch = container.service(HARNESS, HarnessSwitch)
+        root = container.config.harness_dir
+
+        def build(_: AgentBuild) -> AgentExtension:
+            from ..app.agent.extensions.harness import SwitchedHarness
+
+            return SwitchedHarness(root, switch)
+
+        container.register_extension_factory("SwitchedHarness", build)
 
 
 class SessionLog(Plugin):
@@ -369,6 +457,7 @@ AGENT_PLUGINS: tuple[Plugin, ...] = (
     Subagents(),
     Messaging(),
     ShellPermission(),
+    Harness(),
     SessionLog(),
     TodoPlan(),
     UsageTracking(),
