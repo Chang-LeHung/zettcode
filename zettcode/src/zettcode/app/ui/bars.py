@@ -269,7 +269,7 @@ class BarsMixin(ShellState):
                 busy=self._busy,
                 status=self._activity,
                 note=self._note,
-                auto_shell=self.agent.permission is Permission.AUTO,
+                auto_shell=self.agent.permission is Permission.FULL,
                 permission=self.agent.permission.value,
                 self_compact=self.agent.self_compaction,
                 usage=self._usage,

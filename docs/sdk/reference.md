@@ -25,12 +25,31 @@ The names importable from the package itself:
 
 ```python
 from zettcode.sdk import (
-    Client, Session, RunStream, prompt, prompt_sync,
-    RunResult, Usage, Image,
-    TextDelta, ReasoningDelta, ToolStarted, ToolFinished, ApprovalRequested, QuestionAsked, Finished,
-    approve_all, approve_commands, deny_all,
-    add_model, list_models, update_model, remove_model,
-    ZettCodeError, ConfigurationError, RunError,
+    Client,
+    Session,
+    RunStream,
+    prompt,
+    prompt_sync,
+    RunResult,
+    Usage,
+    Image,
+    TextDelta,
+    ReasoningDelta,
+    ToolStarted,
+    ToolFinished,
+    ApprovalRequested,
+    QuestionAsked,
+    Finished,
+    approve_all,
+    approve_commands,
+    deny_all,
+    add_model,
+    list_models,
+    update_model,
+    remove_model,
+    ZettCodeError,
+    ConfigurationError,
+    RunError,
 )
 ```
 
@@ -42,10 +61,23 @@ They are loaded on first use, so importing the package costs next to nothing. `d
 
 ```python
 async def prompt(
-    text, /, *,
-    workspace=None, config=None, config_path=None, models=None,
-    model=None, effort=None, permission=None, resume=None,
-    images=(), mentions=False, on_approval=None, on_question=None, on_event=None, timeout=None,
+    text,
+    /,
+    *,
+    workspace=None,
+    config=None,
+    config_path=None,
+    models=None,
+    model=None,
+    effort=None,
+    permission=None,
+    resume=None,
+    images=(),
+    mentions=False,
+    on_approval=None,
+    on_question=None,
+    on_event=None,
+    timeout=None,
     **settings,
 ) -> RunResult: ...
 ```
@@ -66,9 +98,15 @@ The blocking form of `prompt`, for code that is not async. Raises `RuntimeError`
 class Client:
     def __init__(
         self,
-        workspace=None, *,
-        config=None, config_path=None, models=None,
-        model=None, effort=None, permission=None, resume=None,
+        workspace=None,
+        *,
+        config=None,
+        config_path=None,
+        models=None,
+        model=None,
+        effort=None,
+        permission=None,
+        resume=None,
         **settings,
     ) -> None: ...
 ```
@@ -95,7 +133,8 @@ The agent for one workspace. An async context manager. See [Client & configurati
 | `effort` | `str` | The reasoning level the next run uses. |
 | `efforts` | `tuple[str, ...]` | The levels the active model accepts. |
 | `permission` | `str` | The shell permission level. |
-| `permissions` | `tuple[str, ...]` | `("deny", "ask", "safe", "auto")`. |
+| `permissions` | `tuple[str, ...]` | `("deny", "ask", "safe", "full")`. |
+| `harness` | `bool` | Whether the just-in-time harness is on. |
 | `usage` | `Usage` | What the current session has spent. |
 | `plugins` | `PluginReport` | The plugins that loaded, and the failures. |
 | `self_compaction` | `bool` | Whether the model may compact this session itself. |

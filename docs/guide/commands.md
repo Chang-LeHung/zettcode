@@ -25,7 +25,8 @@ A command is drawn in a different colour as soon as it is one, so you can see wh
 | `/model` | Pick the model for later requests from a panel. |
 | `/config` | Add, change or remove models, and set whether one takes images, its context window and when it is compressed, without editing the file: `/config`, `/config add <provider> …`, `/config remove <n>`. See [Adding models with /config](/guide/config#adding-models-with-config). |
 | `/effort` | Choose how much the model reasons with a knob on a rail: `/effort` opens it, ← → slide, `Enter` applies; `/effort high` sets one directly. |
-| `/permission` | Choose how much of the shell may run without asking: `/permission` lists the levels in the menu; `/permission safe` sets one. |
+| `/permission` | Choose how much of the shell may run without asking: `/permission` lists the levels in the menu; `/permission safe` sets one. `safe` runs every command in a sandbox that writes only the workspace and `/tmp`; `full` runs them with your own access. |
+| `/harness` | Let the model write small Python tools of its own and run them: `/harness on` or `/harness off`; `/harness` alone says which. Off unless you turn it on, and not taken while a request runs. See [Optional settings](/guide/config#optional-settings-reference). |
 | `/btw` | Ask something that is answered here but never joins the conversation: `/btw <question>`. |
 | `/bash` | Open a full-screen command line over the workspace: `/bash` opens it empty, `/bash git status` opens it already running that command. It has history, Tab completion and coloured output, and it asks no permission because you are the one typing. See [The shell panel](#bash). |
 | `/theme` | Choose a palette by name: `/theme` opens the menu, which previews each palette as you move through it; `/theme nord` switches in one step. Your own palettes (`~/.zettcode/themes/<name>.toml`) are in the menu too. |
@@ -116,7 +117,7 @@ at once, beside the request.
 | `/help`, `/context`, `/usage`, `/theme` | They only show something. `/context` reports the last request measured; `/usage` reads what the stored sessions recorded. |
 | `/bash` | It reads nothing of the session and writes nothing to it; its commands are the reader's own, so a request running behind it is not touched. |
 | `/title` | Names the session; nothing running reads it. |
-| `/permission` | The next shell command asks the level again, so a change lands in the request that is already running — `/permission auto` in the middle of a long task is the point. |
+| `/permission` | The next shell command asks the level again, so a change lands in the request that is already running — `/permission full` in the middle of a long task is the point. |
 | `/effort` | A request starts with the effort it had, so the change applies from the next request; the running one is not touched. A level the active model does not take (see [`reasoning_efforts`](/guide/config#reasoning-levels-a-model-takes)) is refused with the ones it does. |
 | `/self-compact` | The tool is offered when a request starts, so a change applies from the next request; one the model has already asked for is dropped if you switch it off. |
 | `/quit`, `/exit` | Leaving does not wait for the answer. |

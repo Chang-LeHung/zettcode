@@ -96,14 +96,45 @@ token 输入时显示为圆点，之后也不会再显示 —— 面板里没有
 里也没有。**Escape 是退回上一步**：从表单退到 provider 列表（`custom` 退到 API 列表），从列表退到模型列表，只有在模型列表按 Escape 才会关闭。
 在表单里按 Enter 之前什么都不会写入，所以退回去不会有任何损失。
 
-在面板里选中一个模型可以**使用**它、修改它的 **token**、**API**（`chat`、`responses` 或 `anthropic`）、**地址**、**模型 id**、**显示名**或**温度**，或者**删除**
-它（删除前会先确认，Enter 默认的答案是 *Keep it*）。
+在面板里选中一个模型，它的所有设置都在同一页上，左边是条目，右边是值：
 
-另外三行是关于模型能装多少的，改完立刻在当前会话里生效：
+```text
+GPT-4o
+
+› Token           unchanged
+  API             ◉ chat   ○ responses   ○ anthropic
+  Address         https://proxy.example.com/v1
+  Model id *      gpt-4o
+  Shown name      GPT-4o
+  Images          ●───────── text only
+  Web search      ━━━━━━━━━● on
+  Search tool     the default: web_search
+  Temperature     the provider's default
+  Context window  128,000 tokens
+  Compress at     80 (% of the window)
+
+  Use this model  save any change, then switch to it now
+  Remove          delete it from the file
+```
+
+要输入的条目是一行输入框；**Images** 和 **Web search** 是和 [`/statusline`](/zh/guide/commands) 里一样的滑动开关
+（**←** / **→** 或 **空格** 切换）；**API** 是在 `chat`、`responses`、`anthropic` 里选一个，选中的会被标出（**←** / **→** 移动）。
+**↑** / **↓**（或 **Tab**）在各行之间移动，到头会绕回来，鼠标点一行就把光标放进去。页面下方有一行说明解释当前所在的这一行。
+
+**Enter 一次保存所有行**并关闭页面；**Escape** 关闭页面且什么都不写。只写入你改过的内容——没动过的行保持文件里原来的写法——
+某一行留空会删掉对应的键，于是用默认值。**Token** 一行一开始是空的，因为当前的 token 永远不会显示：留空就是保留它。
+保存不了的那一行（不是 http 或 https 的地址、小于 1,000 的窗口、在 DeepSeek 的 chat 接入点上开启联网搜索）会在标题下点名，
+光标跳到那一行，你输入的内容都还在。
+
+底部两行是要做的事：**Use this model** 先保存你改的内容再切换到这个模型，**Remove** 删除它（删除前会先确认，
+Enter 默认的答案是 *Keep it*）。屏幕太矮放不下所有行时，页面会滚动，让光标所在的行始终可见。
+
+有些行是关于模型能装多少的，改完立刻在当前会话里生效：
 
 | 行 | 设置什么 | 怎么写 |
 | --- | --- | --- |
-| **Images** | 模型是否接受图片（`multimodal`）。选 *No* 时，图片会在本地被拒绝，模型也拿不到 `view_image`。 | 选 *Yes* 或 *No*，默认停在当前答案上。 |
+| **Images** | 模型是否接受图片（`multimodal`）。关闭时，图片会在本地被拒绝，模型改用只返回文本的 `read_file` 读文件，而不是 `read`。 | 一个开关，默认停在当前答案上。 |
+| **Web search** | 供应商是否替模型联网搜索（`web_search`）；**Search tool** 是搜索以什么工具类型发送（`web_search_name`）。见[联网搜索](#web-search)。 | 一个开关，加一行输入框填类型；留空用该 API 的默认值。 |
 | **Context window** | 模型能装多少 token（`context_window`），`/context` 就是对着它衡量的。 | `128000`、`128,000`、`128k`、`1m` 或 `1.5m`。小于 1,000 会被拒绝，因为那几乎一定是按“千”写的窗口 —— 请写 `200k`。留空用 128,000。 |
 | **Compress at** | 对话占到窗口的多少时，在下一次请求前先做摘要（`compact_percent`）。 | 大于 0、不超过 100 的百分比：`80` 或 `80%`。留空用 80。 |
 
@@ -134,6 +165,8 @@ token 输入时显示为圆点，之后也不会再显示 —— 面板里没有
 | `--context TOKENS` | 上下文窗口：`200000`、`200k`、`1m`。 |
 | `--compact PERCENT` | 达到窗口的这个比例时做摘要：`75` 或 `75%`。 |
 | `--temperature T` | 采样温度，0 到 2（`anthropic` 为 0 到 1）。 |
+| `--web-search` | 让供应商替模型联网搜索；DeepSeek 在 API 不是 `anthropic` 时会被拒绝。 |
+| `--search-tool TYPE` | 搜索以什么工具类型发送（隐含 `--web-search`）；省略则用该 API 的默认值。 |
 
 ::: tip token 优先用面板输入
 你输入过的一行会留在输入框的内存历史里，按 `↑` 能再看到它，直到退出。不写 `--token`，在隐藏提示里输入
@@ -192,6 +225,8 @@ compact_percent = 80                  # 达到窗口的 80% 时压缩
 | `chat` | 布尔值 | `false` | `true` 明确写出接入点使用 Chat Completions，这也是两个选项都没设置时本来的含义，只是方便读这个文件的人。不能与 `anthropic` 或 `responses_api` 同时开启。 |
 | `temperature` | 数字 | 提供商自己的默认值 | 随每个请求发送的采样温度，从 `0`（最确定）到 `2`；`anthropic` 项最大为 `1`。不写就不发送。有些推理模型会拒绝温度参数，只给接受它的模型设置。 |
 | `multimodal` | 布尔值 | `false` | 只有模型和接口都支持图片输入时才开启。 |
+| `web_search` | 布尔值 | `false` | 让供应商替这个模型联网搜索。搜索由端点执行，ZettCode 不抓取任何东西。DeepSeek 只在 `anthropic = true` 时接受。见[联网搜索](#web-search)。 |
+| `web_search_name` | 字符串 | 该 API 的默认值 | 端点对这个搜索期望的确切工具类型，给命名不同的供应商用。省略则发送该 API 的默认值。 |
 | `context_window` | 整数 | `128000` | 正整数，表示上下文窗口的 token 数，不是字符数，也不是最大输出长度。 |
 | `compact_percent` | 数值 | `80` | 自动压缩触发百分比，大于 `0` 且不超过 `100`。支持 `75.5` 这样的小数。 |
 | `reasoning_efforts` | 字符串数组 | 全部档位 | 这个模型支持的推理档位，取自 `off`、`minimal`、`low`、`medium`、`high`、`xhigh`、`max`、`ultra`。接入点会拒绝其余档位时才需要填写；见[模型支持的推理档位](#reasoning-levels-a-model-takes)。 |
@@ -203,9 +238,42 @@ compact_percent = 80                  # 达到窗口的 80% 时压缩
 示例中的 DeepSeek 地址不需要 `/v1`，但其他服务可能需要。按供应商说的 **API 根地址**填，
 不要根据聊天网页的 URL 猜。
 
-`multimodal = false` 时，提交图片会在本地被拒绝并显示错误，模型也不会拿到 `view_image`
-工具。把它改成 `true` 不会让纯文本模型获得视觉能力。
+`multimodal = false` 时，提交图片会在本地被拒绝并显示错误，模型会用只返回文本的 `read_file`
+代替也能返回图片的 `read`。把它改成 `true` 不会让纯文本模型获得视觉能力。
 具体操作见[图片与粘贴](/zh/guide/interface#图片与粘贴)。
+
+### 联网搜索 {#web-search}
+
+模型条目里写 `web_search = true`，供应商就会替它联网搜索。搜索是**托管**的：由端点执行，模型根据结果作答，
+ZettCode 自己不抓取任何东西，也不需要搜索 key。不同 API 对这个工具的叫法不同，所以每种都有默认值，
+条目可以用 `web_search_name` 覆盖：
+
+| 条目使用的协议 | 默认发送的类型 |
+| --- | --- |
+| Chat Completions 或 Responses API | `web_search` |
+| Anthropic Messages API（`anthropic = true`） | `web_search_20260318` |
+| DeepSeek 的 Anthropic 兼容端点 | `web_search_20250305` |
+
+```toml
+[[models]]
+model = "claude-sonnet-4-5"
+anthropic = true
+web_search = true
+
+[[models]]
+model = "deepseek-v4-flash"
+base_url = "https://api.deepseek.com/anthropic"
+anthropic = true
+web_search = true
+web_search_name = "web_search_20250305"   # 可选：这已经是它的默认值
+```
+
+**DeepSeek 只在它的 Anthropic 兼容端点上支持搜索。** DeepSeek 模型（id 或地址里带 deepseek）如果写了
+`web_search = true` 却没有 `anthropic = true`，读文件时、用 `/config` 添加时、通过服务器 HTTP API 时都会被拒绝，
+并说明原因。这个设置跟着当前使用的模型走，所以 `/model` 切换后下一次请求就生效。
+
+网关可能提供它的厂商没有的搜索，所以其他组合不会被提前拒绝：如果端点不认识这个工具类型，请求会带着它自己的
+错误失败，这时用 `web_search_name` 给它它认识的那个。
 
 ### 模型支持的推理档位 {#reasoning-levels-a-model-takes}
 
@@ -231,6 +299,26 @@ reasoning_efforts = ["low", "high", "max"]
   `reasoning_effort`，自己决定这个子 agent 想多深；提供给它的只有当前模型支持的档位。
 
 两个档位距离相同时取更便宜的那个。
+
+### 子 agent 能做什么 {#what-a-child-agent-can-do}
+
+`task` 工具会启动一个带独立上下文和会话日志的子 agent。它有三种，能力是有意做得不一样的：
+
+| 子 agent | 工具 |
+| --- | --- |
+| `explore` | `read`、`glob`、`grep`，只读。 |
+| `reasoning` | 没有工具，只凭任务描述推理。 |
+| `coding` | 和主 agent 一样：`read`、`write_file`、`edit`、`bash`，以及你配置的 skills 和 MCP 服务器。 |
+
+`coding` 子 agent 拥有主 agent 的全部能力，**除了** `task`（子 agent 不能再启动子 agent）、即时 harness、
+`ask_user`（它靠自己手上的任务做完，不会中途打断你；它需要的信息必须写进父 agent 交给它的任务里）、
+`todo_write`（它的计划没有人看），以及
+`list_sessions` / `send_message`。在 `[harness]` 里设 `subagent_messaging = true` 可以把最后两个也给它。它和主
+agent 一样没有 `glob` 和 `grep`，而是在 shell 里用 `rg`、`grep`、`find` 搜索。
+
+它的 shell 受**你的权限级别**约束，和主 agent 完全一样：`ask` 时，子 agent 想运行的命令会在同一个面板里问你，
+你的回答会回到子 agent；`safe` 时在沙箱里运行；`full` 时直接运行；`deny` 时被拒绝。`/permission` 对已经在工作
+的子 agent 从它的下一条命令起生效。
 
 ### Anthropic 模型
 
@@ -392,10 +480,15 @@ enabled = true                 # 后台检查 PyPI 新版本
 [sessions]
 enabled = true                 # 会话之间可以互发消息；false 则不加入 broker
 
+[shell]
+network = false                # 让在 `safe` 档跑的命令可以访问网络；见“审批”
+
 [harness]
 subagent = true                # 提供 task 工具及其子 agent 档位
 subagent_max_iterations = 512  # 一个子 agent 完成一个任务最多调用模型的次数
+subagent_messaging = false     # 让 coding 子 agent 也有 list_sessions 和 send_message
 todowrite = false              # 提供 todo_write，界面会画出计划面板
+jit = false                    # 模型可以写并运行小的 Python 工具；/harness on|off
 ```
 
 这些顶层段落应该像示例一样放在模型表之外。TOML 的键属于最近的表头：如果直接在
@@ -424,7 +517,10 @@ todowrite = false              # 提供 todo_write，界面会画出计划面板
 | `sessions.enabled` | `true` | 向后台会话 broker 登记，使本会话可以被 `@名字` 发消息，也可以给其他会话发消息；模型会多出 `list_sessions` 和 `send_message` 两个工具。见[会话之间互发消息](/zh/guide/messaging)。 |
 | `harness.subagent` | `true` | 提供 `task` 工具：模型可以把任务交给带独立上下文和会话日志的子 agent。 |
 | `harness.subagent_max_iterations` | `512` | 一个子 agent 完成一个任务最多可以调用模型的次数。子 agent 在真实代码库里探索或修改要调用几十次（库自带的默认值 18 会让这类任务做到一半就结束）；这个值是防止它停不下来的上限，不是目标。子 agent 也会拿到你项目的 `AGENTS.md`。 |
+| `harness.subagent_messaging` | `false` | 让 `coding` 子 agent 也拥有 `list_sessions` 和 `send_message`。默认关闭：子 agent 只为一个会话做一件事，和其他会话对话是那个会话自己的事。见[子 agent 能做什么](#what-a-child-agent-can-do)。 |
 | `harness.todowrite` | `false` | 提供 `todo_write`，清单由界面画在计划面板里。维护计划要花轮次，所以默认关闭。 |
+| `harness.jit` | `false` | 启动时就打开 just-in-time harness：模型可以自己写小的 Python 工具，存在 `~/.zettcode/harness`（每个会话一个文件夹）里并运行它们。它写的代码用你的权限在这台机器上运行，不受 shell 权限档管辖，所以默认关闭。`/harness on` 和 `/harness off` 在本轮切换，从下一次请求起生效。 |
+| `shell.network` | `false` | 让在 `safe` 沙箱里跑的命令可以访问网络。默认关闭；`full` 永远有网络，没有沙箱的机器也一样。见[审批](/zh/guide/interface#审批)。 |
 
 例如，减少回看内容、添加项目内 skills，再关闭远程工具服务器：
 

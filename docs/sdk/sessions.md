@@ -16,7 +16,7 @@ import zettcode.sdk as zc
 async with zc.Client(".") as client:
     session = client.session
     print(session.id, session.title, session.current)
-    print(session.path)         # the file the conversation is stored in
+    print(session.path)  # the file the conversation is stored in
 ```
 
 Sessions are written in the terminal's own format, in the same store. A conversation begun in code can be continued in the terminal with `/resume`, and one begun in the terminal can be continued here.
@@ -47,7 +47,7 @@ async with zc.Client(".") as client:
 async with zc.Client(".") as client:
     session = await client.sessions.latest()
     if session is None:
-        session = client.session            # nothing stored; start fresh
+        session = client.session  # nothing stored; start fresh
     result = await session.prompt("where did we leave off?")
 ```
 
@@ -63,7 +63,7 @@ async with zc.Client(".") as client:
     feature = client.sessions.new()
     await feature.prompt("sketch a design for caching")
 
-    await review.prompt("one more point on the parser")     # back to the first
+    await review.prompt("one more point on the parser")  # back to the first
     print(review.usage.total_tokens, feature.usage.total_tokens)
 ```
 
@@ -100,8 +100,8 @@ for message in await session.history():
 ## Titles
 
 ```python
-await session.rename("Parser refactor")             # returns the title as stored (trimmed)
-title = await session.name_it()                     # asks the model, unless it already has one
+await session.rename("Parser refactor")  # returns the title as stored (trimmed)
+title = await session.name_it()  # asks the model, unless it already has one
 print(session.title)
 ```
 
@@ -128,7 +128,7 @@ This is the way to try two approaches from one understanding. The context the fo
 
 ```python
 path = await session.export("reports/refactor.html")
-print(path)                       # absolute path that was written
+print(path)  # absolute path that was written
 ```
 
 The conversation is written as a single HTML page rendered like the terminal shows it, with the request the next turn would send beside it. Without a path, the file is `zettcode-<id8>.html` in the workspace. A relative path is taken from the working directory, which is the workspace while a client is open. A session with nothing stored raises `ValueError`.
@@ -208,7 +208,7 @@ A session is locked by the process that has it open. Another process may read it
 ```python
 if session.locked:
     print("open in another process; reading only")
-    messages = await session.history()        # fine
+    messages = await session.history()  # fine
 else:
     await session.prompt("...")
 ```
@@ -221,10 +221,10 @@ Self-compaction is the model deciding when to compact its own context: the tool 
 
 ```python
 async with zc.Client(".") as client:
-    print(client.self_compaction)          # whether it is in force for this session
-    print(client.self_compaction_choice)   # True, False, or None to follow the default
-    client.use_self_compaction(True)       # this session may compact itself
-    client.use_self_compaction(None)       # follow the configuration again
+    print(client.self_compaction)  # whether it is in force for this session
+    print(client.self_compaction_choice)  # True, False, or None to follow the default
+    client.use_self_compaction(True)  # this session may compact itself
+    client.use_self_compaction(None)  # follow the configuration again
 ```
 
 The choice is written into the session, so it survives a restart; it applies from the next request, because the tool is offered when one starts. `OSError` means the choice could not be written, and the one in force is unchanged.

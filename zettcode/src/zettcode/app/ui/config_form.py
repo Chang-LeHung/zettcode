@@ -22,7 +22,8 @@ T = TypeVar("T")
 
 USAGE = (
     "/config add <provider> [--model ID] [--token KEY] [--url URL] [--api chat|responses|anthropic] "
-    "[--name SHOWN] [--multimodal] [--context TOKENS] [--compact PERCENT] [--temperature T]"
+    "[--name SHOWN] [--multimodal] [--context TOKENS] [--compact PERCENT] [--temperature T] "
+    "[--web-search] [--search-tool TYPE]"
 )
 
 #: The smallest context window the panel accepts. A window is counted in tokens, so a small number is nearly always a
@@ -40,6 +41,8 @@ _FLAGS = {
     "--context": True,
     "--compact": True,
     "--temperature": True,
+    "--web-search": False,
+    "--search-tool": True,
 }
 
 
@@ -58,6 +61,8 @@ class Draft:
         context_window: Tokens it can carry; ``None`` leaves the default.
         compact_percent: The share of the window at which a request is summarized first; ``None`` leaves the default.
         temperature: The sampling temperature; ``None`` sends none.
+        web_search: Whether the provider searches the web for the model.
+        search_tool: The tool type that search is sent as; empty takes the default for the API.
     """
 
     provider: Provider | None = None
@@ -70,6 +75,8 @@ class Draft:
     context_window: int | None = None
     compact_percent: float | None = None
     temperature: float | None = None
+    web_search: bool = False
+    search_tool: str = ""
     #: Whether the reader picked chat completions outright (from the list, or ``--api chat``), which is written as
     #: ``chat = true``; a provider whose protocol is chat by default does not ask, and writes nothing.
     chat: bool = False
@@ -167,6 +174,10 @@ def entry_for(draft: Draft) -> dict[str, object]:
         entry["compact_percent"] = whole_if_whole(draft.compact_percent)
     if draft.temperature is not None:
         entry["temperature"] = whole_if_whole(draft.temperature)
+    if draft.web_search:
+        entry["web_search"] = True
+        if draft.search_tool.strip():
+            entry["web_search_name"] = draft.search_tool.strip()
     return entry
 
 
@@ -212,6 +223,11 @@ def parse_add(argument: str, providers: Sequence[Provider]) -> Draft:
         draft.name = flags["--name"].strip()
     if "--multimodal" in flags:
         draft.multimodal = True
+    if "--web-search" in flags:
+        draft.web_search = True
+    if "--search-tool" in flags:
+        draft.search_tool = flags["--search-tool"].strip()
+        draft.web_search = True
     if "--context" in flags:
         draft.context_window = _flag(parse_tokens, flags["--context"], "--context")
     if "--compact" in flags:

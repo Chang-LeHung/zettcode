@@ -30,7 +30,8 @@ a token should say who may.
 | `-w`, `--workspace DIR` | The directory the agent works in. One process serves one workspace, because the SDK keeps the process's working directory. |
 | `--host`, `--port` | Where to listen; `127.0.0.1:3290` by default. |
 | `--token` | A bearer token every endpoint but `/health` requires. Defaults to `$ZETTCODE_SERVER_TOKEN`. |
-| `--permission {deny,ask,safe,auto}` | The shell permission a run starts at; `deny` by default. A client changes it per request. |
+| `--permission {deny,ask,safe,full}` | The shell permission a run starts at; `deny` by default. `safe` runs every command in a sandbox that writes only the workspace and `/tmp`; `full` runs them with your own access. `auto`, the old name of `full`, is still taken. A client changes it per request. |
+| `--harness` | Start with the just-in-time harness on: the model may write and run small Python tools. Off by default; `PATCH /settings` with `{"harness": true}` changes it. |
 | `--model`, `--effort` | What the first run starts with. |
 | `--config FILE` | A configuration file instead of `~/.zettcode/config.toml`. |
 | `--log-level` | uvicorn's log level. |

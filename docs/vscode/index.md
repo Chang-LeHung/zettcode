@@ -63,7 +63,7 @@ VS Code asks you to trust the folder first: the agent runs commands and edits fi
 | Attach a picture | Paste it, drop it on the view, or press the paperclip |
 | Attach any other file | Press the paperclip and pick it: a PDF or an archive goes into the message as its **path**, which the agent opens with its own tools |
 | Paste a copied file | Copy a file in the explorer or the file manager and paste it: its full **path** goes into the box, not its bare name. A page is given a file's name and contents but no path, so the extension asks the system's clipboard for the real one (macOS, Windows and Linux; a file of any size, from anywhere, such as a PDF on the Desktop). Failing that it uses the workspace file with the very same contents, else keeps a copy of the contents in its own storage; a file over 10 MB can only be found by name. In a remote window (SSH, WSL, a container) the clipboard is not the one you copied on, so the contents are used |
-| Run a command | Type `/`: `new`, `resume`, `continue`, `compact`, `fork`, `rename`, `export`, `model`, `effort`, `permission`, `usage`, `context`, `doctor`, `btw` |
+| Run a command | Type `/`: `new`, `resume`, `continue`, `compact`, `fork`, `rename`, `export`, `model`, `effort`, `permission`, `harness`, `usage`, `context`, `doctor`, `btw` |
 | Ask without adding to the conversation | `/btw your question` |
 
 The pictures you attach are sent to a model that can see images, and are kept with the conversation, so reopening the
@@ -85,8 +85,8 @@ The shell permission decides what the agent may run on its own:
 | --- | --- |
 | `deny` | No shell commands at all. |
 | `ask` | Every command waits for your approval. |
-| `safe` | Read-only commands run; anything else asks. |
-| `auto` | Every command runs without asking. |
+| `safe` | Every command runs in a sandbox that writes only the workspace and `/tmp`, with no network. |
+| `full` | Every command runs with your own access, without asking. (`auto` is the old name.) |
 
 The level chosen in the chat is remembered for the next new session in the workspace. An approval or a question waits
 `zettcode.answerTimeout` seconds, then the safe answer is used.
@@ -118,8 +118,12 @@ The add-model form takes the same keys as the terminal's `/config`. Only the **m
 can be left empty for a local server (Ollama, LM Studio, vLLM), or to use `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`.
 **API** is a choice of **Chat completions** (written as `chat = true`), the **Responses API** or the **Anthropic
 Messages API**, one of the three. **Temperature** is a number from 0 to 2 (0 to 1 for Anthropic), and left empty none is
-sent. **Edit Model** changes the same things on a model that is already there: choosing another API takes the old
-flag out of the file instead of leaving `anthropic = false` behind, and clearing the temperature removes the key.
+sent. **Web search** lets the provider search the web for the model, and a **tool name** overrides what its API sends
+by default (`web_search`, `web_search_20260318` for Anthropic, `web_search_20250305` for DeepSeek); DeepSeek is accepted
+only over the Anthropic API, and the form says so before anything is sent. **Edit Model** changes the same things on a
+model that is already there: choosing another API takes the old
+flag out of the file instead of leaving `anthropic = false` behind, and clearing the temperature or turning search off
+removes the key.
 
 ## Spending
 
@@ -133,7 +137,8 @@ Search for *ZettCode* in Settings:
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
-| `zettcode.permission` | `ask` | The shell permission a session starts with when you have not chosen one |
+| `zettcode.permission` | `ask` | The shell permission a session starts with when you have not chosen one: `deny`, `ask`, `safe` (a sandbox) or `full` |
+| `zettcode.harness` | `false` | Start with the tool harness on: the model may write small Python tools of its own and run them, outside the shell permission. `/harness on` or `/harness off` switches it for a session |
 | `zettcode.restoreSession` | `true` | Reopen the conversation this folder had last |
 | `zettcode.autoTitle` | `true` | Let the model name an untitled conversation after its first answer |
 | `zettcode.answerTimeout` | `90` | Seconds an approval or a question waits |
@@ -158,7 +163,7 @@ found without copying it.
 | --- | --- |
 | The chat says the server is not running | **ZettCode: Show Server Log** has the reason; **ZettCode: Restart Server** after fixing it |
 | No model | **ZettCode: Add Model**, or copy the `[[models]]` entry from `~/.zettcode/config.toml` |
-| A command was refused | The shell permission is `deny`; pick `ask` or `auto` under the message box |
+| A command was refused | The shell permission is `deny`; pick `ask`, `safe` or `full` under the message box |
 | A diagram says it could not be drawn | The fence is not valid Mermaid; the source is in the block, and the reason is on its first line |
 
 ## Only in the terminal

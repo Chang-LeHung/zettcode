@@ -26,9 +26,9 @@ Client ──────────────► 一个工作区、一份配
 import zettcode.sdk as zc
 
 async with zc.Client(".", permission="safe") as client:
-    print(client.workspace)      # the resolved directory
-    print(client.model.name)     # the active model
-    print(client.permission)     # "safe"
+    print(client.workspace)  # the resolved directory
+    print(client.model.name)  # the active model
+    print(client.permission)  # "safe"
 ```
 
 长期持有一个 client 很便宜，创建却不便宜：创建时要加载 agent、读取配置、连接各种扩展。所以一个程序或一个工作区只建一个，不要每个 prompt 建一个。只发一个 prompt 的话，`zc.prompt()` 会替你走完整个生命周期。
@@ -40,9 +40,9 @@ async with zc.Client(".", permission="safe") as client:
 ```python
 async with zc.Client(".") as client:
     session = client.session
-    print(session.id)        # the identity you can resume later
-    print(session.title)     # None until it has a name
-    print(session.current)   # True: the next run would use this one
+    print(session.id)  # the identity you can resume later
+    print(session.title)  # None until it has a name
+    print(session.current)  # True: the next run would use this one
 ```
 
 会话以终端相同的格式保存在磁盘上，所以在这里开始的对话可以在终端里用 `/resume` 继续，反之亦然。
@@ -56,7 +56,7 @@ async with zc.Client(".") as client:
 
 ```python
 async with zc.Client(".") as client:
-    result = await client.prompt("explain this module")      # wait for the end
+    result = await client.prompt("explain this module")  # wait for the end
 
     async with client.prompt("explain this module") as run:  # or watch it happen
         async for event in run:
@@ -86,12 +86,12 @@ async for event in run:
 
 ```python
 result = await client.prompt("run the tests")
-result.text            # the answer
-result.usage           # what this run spent (not the session's total)
-result.tools           # every tool call, in order
-result.failed_tools    # the ones that did not succeed
-result.stop            # None, or "refusal", "max_output", ...
-result.ok              # True exactly when stop is None
+result.text  # the answer
+result.usage  # what this run spent (not the session's total)
+result.tools  # every tool call, in order
+result.failed_tools  # the ones that did not succeed
+result.stop  # None, or "refusal", "max_output", ...
+result.ok  # True exactly when stop is None
 ```
 
 ## 由此得出的规则
@@ -114,7 +114,7 @@ result.ok              # True exactly when stop is None
 | 插件、MCP 服务器、skills | 从同样的位置加载，受同样的设置约束。 |
 | `AGENTS.md` 项目指令 | `agents_md_enabled` 开启时读取，默认开启。 |
 | 会话存储 | 同样的文件与格式；会话可以在代码和终端之间流转。 |
-| 权限级别 | `deny`、`ask`、`safe`、`auto`，含义相同。 |
+| 权限级别 | `deny`、`ask`、`safe`、`full`（`auto` 是 `full` 的旧名），含义相同。 |
 | 配置文件 | `~/.zettcode/config.toml`，除非你自己传入 models 或 config。 |
 
 ## 它默认关掉了什么

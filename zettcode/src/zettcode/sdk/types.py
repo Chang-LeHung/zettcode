@@ -150,6 +150,9 @@ class ModelInfo:
         efforts: The reasoning levels it accepts, cheapest first.
         active: Whether it is the model the next run uses.
         compact_percent: Share of the window, in percent, at which a request is summarized first (80 by default).
+        web_search: Whether the provider searches the web for this model.
+        web_search_name: The tool type that search is sent as, when the entry names one; ``None`` takes the default
+            for the API it speaks.
     """
 
     name: str
@@ -159,6 +162,8 @@ class ModelInfo:
     efforts: tuple[str, ...]
     active: bool = False
     compact_percent: float = 80.0
+    web_search: bool = False
+    web_search_name: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

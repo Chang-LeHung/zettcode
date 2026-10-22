@@ -27,10 +27,12 @@ _EXPORTS = {
     "Field": ".form_page",
     "FormPage": ".form_page",
     "form_rows": ".form_page",
+    "model_settings_rows": ".model_settings_page",
     "INPUT_ROWS": ".input_page",
     "InputPage": ".input_page",
     "LATER": ".update_page",
     "ModelPage": ".model_page",
+    "ModelSettingsPage": ".model_settings_page",
     "PetView": ".pet",
     "PetPage": ".pet_page",
     "SEND_KIND_ROWS": ".send_kind_page",
@@ -69,6 +71,7 @@ if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
     from .form_page import FORM_CHROME_ROWS, Field, FormPage, form_rows
     from .input_page import INPUT_ROWS, InputPage
     from .model_page import ModelPage
+    from .model_settings_page import ModelSettingsPage, model_settings_rows
     from .panel import bottom_panel
     from .pet import PetView
     from .pet_page import PetPage, pet_rows
@@ -123,6 +126,7 @@ __all__ = [
     "InputPage",
     "LATER",
     "ModelPage",
+    "ModelSettingsPage",
     "PetView",
     "PetPage",
     "SEND_KIND_ROWS",
@@ -144,6 +148,7 @@ __all__ = [
     "bottom_panel",
     "format_ago",
     "help_text",
+    "model_settings_rows",
     "pet_rows",
     "statusline_rows",
 ]

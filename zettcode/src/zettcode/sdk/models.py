@@ -32,6 +32,8 @@ def _infos(models: tuple[_config.ModelConfig, ...]) -> tuple[ModelInfo, ...]:
             multimodal=model.multimodal,
             efforts=tuple(level.value for level in model.efforts),
             compact_percent=model.compact_percent,
+            web_search=model.web_search,
+            web_search_name=model.web_search_name,
         )
         for model in models
     )
@@ -74,7 +76,8 @@ def add_model(entry: Mapping[str, object], *, path: str | Path | None = None) ->
     """Add one model to the config file and return every model it now lists.
 
     The entry uses the file's own keys — ``model``, ``token``, and optionally ``display_model``, ``base_url``,
-    ``anthropic``, ``responses_api``, ``multimodal``, ``context_window``, ``compact_percent``,
+    ``anthropic``, ``responses_api``, ``multimodal``, ``web_search``, ``web_search_name``, ``context_window``,
+    ``compact_percent``,
     ``reasoning_efforts`` — and is validated by reading the file back before returning. The first model is written
     by hand (the file has no block to insert after); later ones go through the same editor the terminal's ``/config``
     uses, so the rest of the file, comments included, is left as it was.

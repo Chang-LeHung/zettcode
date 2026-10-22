@@ -15,7 +15,7 @@ title: 审批与提问
 
 agent 被挂起在*工具调用内部*，直到其中之一被处理。正因如此，没有任何规则的 run 也不会卡死：到向流要下一个事件时仍未处理的，一律被拒绝或拒答。
 
-审批只会出现在 `ask` 和 `safe` [权限级别](./client#权限级别)下。`deny` 时什么都不运行也不询问；`auto` 时全部运行也不询问。
+审批只会出现在 `ask` [权限级别](./client#权限级别)下。`deny` 时什么都不运行也不询问；`safe` 时每条命令在操作系统沙箱里直接运行；`full` 时全部运行也不询问。
 
 ## 三种作答方式
 
@@ -26,8 +26,10 @@ agent 被挂起在*工具调用内部*，直到其中之一被处理。正因如
 ```python
 import zettcode.sdk as zc
 
+
 def only_tests(request: zc.ApprovalRequested) -> bool:
     return request.command.startswith("pytest")
+
 
 result = await client.prompt("make the tests pass", on_approval=only_tests)
 ```
@@ -45,6 +47,7 @@ result = await client.prompt("make the tests pass", on_approval=only_tests)
 ```python
 async def ask_a_person(question: zc.QuestionAsked) -> str | None:
     return await my_ui.prompt(question.question, choices=question.options)
+
 
 result = await client.prompt("set up the project", on_question=ask_a_person)
 ```
@@ -79,7 +82,7 @@ async with client.prompt("deploy to staging") as run:
 不作答就是拒绝和拒答。无人值守的任务可以依赖这一点。
 
 ```python
-result = await client.prompt("clean up the build directory")        # shell requests are denied
+result = await client.prompt("clean up the build directory")  # shell requests are denied
 ```
 
 也可以组合使用：处理函数回答它认识的命令，其余返回 `None`，剩下的由循环处理。
@@ -125,8 +128,8 @@ result = await client.prompt("fix the lint errors and run the tests", on_approva
 同样的检查也适用于你写的规则。含 shell 字符的规则或空白规则，会在你创建处理函数时抛出 `ValueError`，而不是等到命令到来时：
 
 ```python
-zc.approve_commands("git status; ls")      # ValueError: 'git status; ls' holds a shell character; ...
-zc.approve_commands("   ")                 # ValueError: A command to allow cannot be blank
+zc.approve_commands("git status; ls")  # ValueError: 'git status; ls' holds a shell character; ...
+zc.approve_commands("   ")  # ValueError: A command to allow cannot be blank
 ```
 
 ## 写自己的规则
@@ -147,6 +150,7 @@ import logging
 
 log = logging.getLogger("agent.shell")
 ALLOWED = zc.approve_commands("pytest", "ruff check", "git diff")
+
 
 def audited(request: zc.ApprovalRequested) -> bool:
     allowed = ALLOWED(request)
@@ -180,7 +184,7 @@ async for event in run:
 
 ```python
 def careless(request):
-    return "no"                        # TypeError: An approval handler returns True, False or None, not str
+    return "no"  # TypeError: An approval handler returns True, False or None, not str
 ```
 
 处理函数如果抛出异常，命令被拒绝，run 停止，错误原样到达 `await` 的调用方。规则里的 bug 不会让命令继续运行。
@@ -193,8 +197,8 @@ def careless(request):
 
 ```python
 ask.approve()
-ask.approve()          # fine
-ask.deny()             # ValueError: Already answered ...
+ask.approve()  # fine
+ask.deny()  # ValueError: Already answered ...
 ```
 
 `ask.answered` 告诉你它是否已被处理（无论是你还是 run 的处理函数），`ask.approved` 是 `True`、`False`，未作答时为 `None`。

@@ -12,7 +12,7 @@ title: Client 与配置
 import zettcode.sdk as zc
 
 async with zc.Client("~/project", model="gpt-5", effort="high", permission="safe") as client:
-    print(client)       # Client('/Users/me/project', session='...')
+    print(client)  # Client('/Users/me/project', session='...')
 ```
 
 | 参数 | 含义 |
@@ -23,7 +23,7 @@ async with zc.Client("~/project", model="gpt-5", effort="high", permission="safe
 | `models` | 不用配置文件时直接指定的模型，第一个是当前模型。见[下文](#不用配置文件指定模型)。 |
 | `model` | 起始使用的模型，用 `client.models` 列出的名字。 |
 | `effort` | 起始的推理级别。 |
-| `permission` | shell 权限级别：`deny`、`ask`、`safe` 或 `auto`。 |
+| `permission` | shell 权限级别：`deny`、`ask`、`safe` 或 `full`（`full` 的旧名 `auto` 仍然可用）。 |
 | `resume` | 要继续的会话 id，而不是新开一段对话。 |
 | `**settings` | 其他任意配置字段，按字段名传入：`store=`、`mcp_enabled=`、`max_iterations=` 等。 |
 
@@ -33,7 +33,7 @@ async with zc.Client("~/project", model="gpt-5", effort="high", permission="safe
 try:
     zc.Client(".", permission="sometimes")
 except zc.ConfigurationError as error:
-    print(error)       # Unknown permission: sometimes. Try one of: deny, ask, safe, auto
+    print(error)  # Unknown permission: sometimes. Try one of: deny, ask, safe, full
 ```
 
 ## 配置从哪里来
@@ -59,7 +59,7 @@ async with zc.Client(
     ],
     store="/tmp/zettcode-sessions",
 ) as client:
-    print([m.name for m in client.models])       # ['claude-sonnet-4-5', 'gpt-5']
+    print([m.name for m in client.models])  # ['claude-sonnet-4-5', 'gpt-5']
 ```
 
 一个条目是 `ModelConfig`，或者字段相同的 dict：
@@ -155,7 +155,9 @@ async with zc.Client(".") as client:
 | `client.effort`、`client.efforts` | 当前级别，以及当前模型接受的级别。 |
 | `client.use_effort(name)` | 设置级别并返回。 |
 | `client.use_compact_percent(percent)` | 从下一次请求起,改变对话在窗口的多大比例(大于 0、至多 100)时被总结。返回当前的 `ModelInfo`,以及配置文件没有被改写的原因(改写了就是 `None`):那样这次改动只在本次运行有效。 |
-| `client.permission`、`client.permissions` | 当前级别，以及 `("deny", "ask", "safe", "auto")`。 |
+| `client.permission`、`client.permissions` | 当前级别，以及 `("deny", "ask", "safe", "full")`。 |
+| `client.harness` | just-in-time harness 是否开启：模型可以自己写小的 Python 工具并运行。默认关闭；`Client(jit_harness=True)` 让客户端一开始就开启。 |
+| `client.use_harness(on)` | 从下一次 prompt 起开启或关闭，返回新状态。 |
 | `client.use_permission(name)` | 设置级别；从下一条 shell 命令起生效，正在进行的 run 里也一样。 |
 
 不存在的名字，或当前模型不接受的推理级别，会抛出 `ConfigurationError`，消息里列出可选项。
@@ -165,7 +167,7 @@ async with zc.Client(".", models=[{"model": "a", "token": "t"}, {"model": "b", "
     try:
         client.use_model("c")
     except zc.ConfigurationError as error:
-        print(error)       # Unknown model: c. Configured: a, b
+        print(error)  # Unknown model: c. Configured: a, b
 ```
 
 模型的切换对下一次 run 生效。同一段对话可以在不同模型之间移动，历史会保留。
@@ -178,8 +180,8 @@ async with zc.Client(".", models=[{"model": "a", "token": "t"}, {"model": "b", "
 | --- | --- |
 | `deny` | ……永远不运行。模型会被告知，改用文件工具继续。 |
 | `ask` | ……交给你决定（`ApprovalRequested` 事件）。这是默认值。 |
-| `safe` | ……在确实不会改变任何东西时（`git status`、`ls`）直接运行；其他的交给你决定。 |
-| `auto` | ……直接运行。只用于你信任其 shell 的工作区和模型。 |
+| `safe` | ……在操作系统沙箱（macOS 上是 Seatbelt，Linux 上是 bubblewrap）里直接运行：只能写工作区和 `/tmp`，没有网络，也碰不到凭据文件。机器没有沙箱（Windows，或没有 `bwrap` 的 Linux）时，确实不会改变任何东西的命令直接运行，其他的交给你决定。 |
+| `full` | ……用你自己的权限直接运行，没有沙箱。只用于你信任其 shell 的工作区和模型。旧名 `auto` 仍然可用。 |
 
 如何回答，见[审批与提问](./approvals)。
 
@@ -188,10 +190,10 @@ async with zc.Client(".", models=[{"model": "a", "token": "t"}, {"model": "b", "
 ```python
 async with zc.Client(".") as client:
     report = client.plugins
-    print(report.loaded)       # ('shell', 'skills', ..., 'coding', ..., 'ask-user', 'mcp', 'compaction')
-    print(report.failures)     # one message per plugin that could not load; never fatal
+    print(report.loaded)  # ('shell', 'skills', ..., 'coding', ..., 'ask-user', 'mcp', 'compaction')
+    print(report.failures)  # one message per plugin that could not load; never fatal
     print(client.config.workspace, client.config.store)
-    print(client.usage)        # what the current session has spent
+    print(client.usage)  # what the current session has spent
 ```
 
 `client.config` 是生效的 `ZettCodeConfig`，它是冻结的：要改 `use_*` 方法之外的设置，请新建 client。
@@ -220,12 +222,12 @@ async with zc.Client(".") as client:
 ```python
 import zettcode.sdk as zc
 
-for model in zc.list_models():            # 文件是新的或没有模型时返回 ()
+for model in zc.list_models():  # 文件是新的或没有模型时返回 ()
     print(model.name, model.context_window)
 
 zc.add_model({"model": "gpt-5-mini", "token": "sk-…", "display_model": "Fast"})
-zc.update_model("Fast", {"context_window": 200000})   # token 保留
-zc.remove_model("Fast")                                # 最后一个会被拒绝
+zc.update_model("Fast", {"context_window": 200000})  # token 保留
+zc.remove_model("Fast")  # 最后一个会被拒绝
 ```
 
 `add_model` 的第一条自己写,后面的走终端那套编辑器,所以注释和文件其余部分都保留;写进去的内容在返回前会被读回并校验,

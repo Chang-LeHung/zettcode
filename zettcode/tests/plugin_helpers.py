@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from zettcode.app.agent.extensions.compaction import CompactionCounter
+from zettcode.app.agent.extensions.harness_switch import HarnessSwitch
 from zettcode.app.agent.permission import ShellPolicy
 from zettcode.app.agent.storage import SessionStore
 from zettcode.plugins import AGENT_PLUGINS, AgentBuild, Plugins, load_plugins
@@ -25,6 +26,7 @@ def runtime_inputs(runtime: ZettCodeRuntime) -> dict[str, object]:
     """Return what a runtime hands its plugins, so a test can load another bundle over the same state."""
     return {
         names.POLICY: runtime.policy,
+        names.HARNESS: runtime.harness,
         names.PERSISTENCE: runtime.persistence,
         names.MODELS: runtime._models,
         names.COMPACTION_COUNTER: runtime.compaction_counter,
@@ -36,6 +38,7 @@ def agent_plugins(config: ZettCodeConfig, **shared: object) -> Plugins:
     """Load only the agent-side built-in plugins for ``config``, over fresh state; ``shared`` adds or replaces."""
     state: dict[str, object] = {
         names.POLICY: ShellPolicy.from_mode(config.shell_approval, config.workspace),
+        names.HARNESS: HarnessSwitch(on=config.jit_harness),
         names.PERSISTENCE: SessionStore(config.store, config.workspace),
         names.MODELS: {},
         names.COMPACTION_COUNTER: CompactionCounter(),

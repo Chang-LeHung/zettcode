@@ -657,7 +657,7 @@ async def test_a_handler_returning_the_wrong_kind_of_thing_is_a_type_error_and_n
 
 
 @posix_shell
-async def test_the_auto_level_never_asks_and_the_deny_level_never_runs(tmp_path, monkeypatch):
+async def test_the_full_level_never_asks_and_the_deny_level_never_runs(tmp_path, monkeypatch):
     wire(
         monkeypatch,
         ScriptedModel(
@@ -669,7 +669,7 @@ async def test_the_auto_level_never_asks_and_the_deny_level_never_runs(tmp_path,
     )
     asked = []
     async with make(tmp_path) as client:
-        client.use_permission("auto")
+        client.use_permission("full")
         auto = await client.prompt("go", on_approval=asked.append)
         client.use_permission("deny")
         denied = await client.prompt("go again", on_approval=asked.append)

@@ -719,11 +719,12 @@ async def test_the_runtime_warms_up_after_the_real_frame_is_painted_not_when_it_
     assert started == ["started"], "and what was queued is the start of the background work"
 
 
-# -- starting with the shell permission already at auto --------------------------
+# -- starting with the shell permission already at full --------------------------
 
 
-def test_the_auto_flag_has_two_spellings_and_sets_the_starting_level(tmp_path, monkeypatch):
-    """`--auto` and `--yolo` are one setting, because nobody types the long one twice."""
+def test_the_full_flag_has_three_spellings_and_sets_the_starting_level(tmp_path, monkeypatch):
+    """`--full` is the name; `--auto` is what it was called, and `--yolo` stays, because nobody types the long one twice."""
+    assert cli.parse_args(["--full"]).auto is True
     assert cli.parse_args(["--auto"]).auto is True
     assert cli.parse_args(["--yolo"]).auto is True
     assert cli.parse_args([]).auto is False
@@ -738,10 +739,10 @@ def test_the_auto_flag_has_two_spellings_and_sets_the_starting_level(tmp_path, m
     wild = cli.build_application(Options(workspace=tmp_path, auto=True))
 
     assert plain.agent.permission is Permission.ASK, "a launch asks unless it is told not to"
-    assert wild.agent.permission is Permission.AUTO
+    assert wild.agent.permission is Permission.FULL
     announced = [entry for entry in wild.transcript.entries if entry.kind != "welcome"]
     assert announced == [], "nothing is announced: there is no conversation yet"
-    assert "auto" in wild._status_left().text, "the status line says so instead"
+    assert "full" in wild._status_left().text, "the status line says so instead"
 
 
 async def test_the_auto_flag_reaches_the_dry_run_path_too(tmp_path, monkeypatch):
@@ -768,7 +769,7 @@ async def test_the_auto_flag_reaches_the_dry_run_path_too(tmp_path, monkeypatch)
     settings = resolve_config(["-w", str(tmp_path)])
 
     await cli.async_main(settings, auto=True, dry_run=True)
-    assert seen["permission"] is Permission.AUTO
+    assert seen["permission"] is Permission.FULL
 
     await cli.async_main(settings, dry_run=True)
     assert seen["permission"] is Permission.ASK

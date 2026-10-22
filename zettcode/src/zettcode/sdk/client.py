@@ -255,7 +255,7 @@ class Client:
             same fields (``{"model": "gpt-5", "token": "sk-..."}``). The first is the active one.
         model: The model to start on, by the name :attr:`models` lists.
         effort: The reasoning level to start on.
-        permission: The shell permission level: ``deny``, ``ask``, ``safe`` or ``auto``.
+        permission: The shell permission level: ``deny``, ``ask``, ``safe`` (every command in a sandbox) or ``full``.
         resume: A session id to continue instead of starting a new conversation.
         **settings: Any other :class:`~zettcode.config.ZettCodeConfig` field, such as ``store=``, ``skills_enabled=``,
             ``mcp_enabled=``, ``subagent_enabled=``, ``todowrite_enabled=``, ``max_iterations=``. A misspelt name is
@@ -477,6 +477,8 @@ class Client:
                 efforts=tuple(level.value for level in entry.efforts),
                 active=entry is active,
                 compact_percent=entry.compact_percent,
+                web_search=entry.web_search,
+                web_search_name=entry.web_search_name,
             )
             for entry in self._agent.models
         )
@@ -548,7 +550,7 @@ class Client:
 
     @property
     def permission(self) -> str:
-        """Return how much of the shell may run without asking: ``deny``, ``ask``, ``safe`` or ``auto``."""
+        """Return how much of the shell may run without asking: ``deny``, ``ask``, ``safe`` or ``full``."""
         return str(self._agent.permission.value)
 
     @property
@@ -559,6 +561,10 @@ class Client:
     def use_permission(self, name: str) -> str:
         """Choose how much of the shell may run without asking, from the next command on.
 
+        ``safe`` runs every command in an operating-system sandbox that writes only the workspace and ``/tmp`` (where
+        the machine has one); ``full`` runs them with the user's own access. ``auto``, the old name of ``full``, is
+        still taken.
+
         Raises:
             ConfigurationError: Not one of the levels.
         """
@@ -567,6 +573,16 @@ class Client:
             return str(self._agent.use_permission(name).value)
         except ValueError as error:
             raise ConfigurationError(str(error)) from error
+
+    @property
+    def harness(self) -> bool:
+        """Return whether the just-in-time harness is on: the model may write small Python tools and run them."""
+        return self._agent.harness
+
+    def use_harness(self, on: bool) -> bool:
+        """Turn the just-in-time harness on or off, from the next prompt on. It starts off."""
+        self._check_open()
+        return self._agent.use_harness(on)
 
     # -- what is loaded --
     @property

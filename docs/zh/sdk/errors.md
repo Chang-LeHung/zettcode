@@ -53,9 +53,9 @@ from zettcode.sdk.errors import SessionBusyError, SessionNotFoundError
 **返回 run 的调用**（`prompt`、`stream`、`resume_stream`）会立即检查参数，有问题就在那里抛出。凡是涉及模型的，都在你 **await 或迭代** run 时才抛出：
 
 ```python
-run = client.prompt("")                    # ValueError raised here
-run = client.prompt("explain this")        # nothing has happened yet
-result = await run                         # RunError, RunTimeoutError, ... raised here
+run = client.prompt("")  # ValueError raised here
+run = client.prompt("explain this")  # nothing has happened yet
+result = await run  # RunError, RunTimeoutError, ... raised here
 ```
 
 所以要包住 `await` 或 `async for`，而不是创建 run 的那个调用：
@@ -225,12 +225,13 @@ if __name__ == "__main__":
 ```python
 async def reader(run):
     async for event in run:
-        ...                                   # ends when the client closes
+        ...  # ends when the client closes
+
 
 task = asyncio.create_task(reader(client.prompt("...")))
 await asyncio.sleep(5)
 await client.aclose()
-await task                                    # returns; no error
+await task  # returns; no error
 ```
 
 ## 不该捕获的错误
@@ -248,13 +249,14 @@ from zettcode.sdk.errors import (
     ZettCodeError,
 )
 
+
 async def safe_prompt(client, text, **options):
     try:
         return await client.prompt(text, **options)
     except ConfigurationError:
-        raise                                  # a bug in how it is called: let it fail loudly
+        raise  # a bug in how it is called: let it fail loudly
     except SessionLockedError:
-        return None                            # someone else has the session
+        return None  # someone else has the session
     except RunError as error:
         log.warning("run failed (retryable=%s): %s", error.retryable, error)
         return None

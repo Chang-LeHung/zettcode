@@ -132,14 +132,43 @@ async def test_an_effort_that_does_not_exist_or_is_not_taken_is_refused_with_the
         assert client.efforts == ("low", "medium")
 
 
+async def test_the_harness_starts_off_and_is_switched_on_and_off_for_the_next_prompt(tmp_path):
+    async with client_for(tmp_path) as client:
+        assert client.harness is False, "off unless asked for"
+        assert client.use_harness(True) is True and client.harness is True
+        assert client.use_harness(False) is False and client.harness is False
+
+    async with client_for(tmp_path, jit_harness=True) as started_on:
+        assert started_on.harness is True, "the config can start a run with it on"
+
+    with pytest.raises(ClientClosedError):
+        started_on.use_harness(True)
+
+
+async def test_a_models_search_is_listed_with_the_models(tmp_path):
+    async with zc.Client(
+        tmp_path / "project" if (tmp_path / "project").mkdir() is None else None,
+        models=[
+            {"model": "a", "token": "t"},
+            {"model": "b", "token": "t", "web_search": True, "web_search_name": "web_search_x"},
+        ],
+        store=tmp_path / "s",
+    ) as client:
+        plain, searching = client.models
+
+        assert (plain.web_search, plain.web_search_name) == (False, None)
+        assert (searching.web_search, searching.web_search_name) == (True, "web_search_x")
+
+
 async def test_the_permission_levels_are_the_four_there_are_and_a_fifth_is_refused(tmp_path):
     async with client_for(tmp_path) as client:
-        assert set(client.permissions) == {"deny", "ask", "safe", "auto"}
+        assert set(client.permissions) == {"deny", "ask", "safe", "full"}
         for level in client.permissions:
             assert client.use_permission(level) == level and client.permission == level
+        assert client.use_permission("auto") == "full", "the old name still sets the level that replaced it"
         with pytest.raises(ConfigurationError):
             client.use_permission("yolo")
-        assert client.permission == "auto", "a refused level changes nothing"
+        assert client.permission == "full", "a refused level changes nothing"
 
 
 @pytest.mark.parametrize(

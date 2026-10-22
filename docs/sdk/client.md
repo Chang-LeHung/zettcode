@@ -12,7 +12,7 @@ title: Client & configuration
 import zettcode.sdk as zc
 
 async with zc.Client("~/project", model="gpt-5", effort="high", permission="safe") as client:
-    print(client)       # Client('/Users/me/project', session='...')
+    print(client)  # Client('/Users/me/project', session='...')
 ```
 
 | Argument | Meaning |
@@ -23,7 +23,7 @@ async with zc.Client("~/project", model="gpt-5", effort="high", permission="safe
 | `models` | Models to use without any config file; the first is active. See [below](#models-without-a-config-file). |
 | `model` | The model to start on, by the name `client.models` lists. |
 | `effort` | The reasoning level to start on. |
-| `permission` | The shell permission level: `deny`, `ask`, `safe` or `auto`. |
+| `permission` | The shell permission level: `deny`, `ask`, `safe` or `full` (`auto`, the old name of `full`, is still taken). |
 | `resume` | A session id to continue instead of starting a new conversation. |
 | `**settings` | Any other configuration field by name: `store=`, `mcp_enabled=`, `max_iterations=`, and so on. |
 
@@ -33,7 +33,7 @@ The constructor is synchronous and does its work at once: a bad value raises her
 try:
     zc.Client(".", permission="sometimes")
 except zc.ConfigurationError as error:
-    print(error)       # Unknown permission: sometimes. Try one of: deny, ask, safe, auto
+    print(error)  # Unknown permission: sometimes. Try one of: deny, ask, safe, full
 ```
 
 ## Where the configuration comes from
@@ -59,7 +59,7 @@ async with zc.Client(
     ],
     store="/tmp/zettcode-sessions",
 ) as client:
-    print([m.name for m in client.models])       # ['claude-sonnet-4-5', 'gpt-5']
+    print([m.name for m in client.models])  # ['claude-sonnet-4-5', 'gpt-5']
 ```
 
 An entry is a `ModelConfig` or a dict of the same fields:
@@ -149,14 +149,16 @@ async with zc.Client(".") as client:
 
 | Member | Returns |
 | --- | --- |
-| `client.models` | A tuple of `ModelInfo(name, model, context_window, multimodal, efforts, active, compact_percent)`. |
+| `client.models` | A tuple of `ModelInfo(name, model, context_window, multimodal, efforts, active, compact_percent, web_search, web_search_name)`. |
 | `client.model` | The `ModelInfo` of the active model. |
 | `client.use_model(name)` | Makes a model active and returns its `ModelInfo`. Takes the name or a `ModelInfo`. |
 | `client.effort`, `client.efforts` | The current level, and the levels the active model accepts. |
 | `client.use_effort(name)` | Sets the level and returns it. |
 | `client.use_compact_percent(percent)` | Moves the point, as a share of the window (above 0, at most 100), at which the conversation is summarized, from the next request on. Returns the active `ModelInfo` and why the configuration file was not rewritten (`None` when it was): the change then holds for this run only. |
-| `client.permission`, `client.permissions` | The current level, and `("deny", "ask", "safe", "auto")`. |
-| `client.use_permission(name)` | Sets the level; it applies from the next shell command, even in a run that is already going. |
+| `client.permission`, `client.permissions` | The current level, and `("deny", "ask", "safe", "full")`. |
+| `client.use_permission(name)` | Sets the level; it applies from the next shell command, even in a run that is already going. `"auto"` is taken as `"full"`. |
+| `client.harness` | Whether the just-in-time harness is on: the model may write small Python tools of its own and run them. Off by default; `Client(jit_harness=True)` starts a client with it on. |
+| `client.use_harness(on)` | Turns it on or off from the next prompt. Returns the new state. |
 
 A name that does not exist, or a reasoning level the active model does not take, raises `ConfigurationError` with the valid choices in the message.
 
@@ -165,7 +167,7 @@ async with zc.Client(".", models=[{"model": "a", "token": "t"}, {"model": "b", "
     try:
         client.use_model("c")
     except zc.ConfigurationError as error:
-        print(error)       # Unknown model: c. Configured: a, b
+        print(error)  # Unknown model: c. Configured: a, b
 ```
 
 The model change takes effect for the next run. A conversation can move between models: the history is kept.
@@ -178,8 +180,8 @@ The permission level decides who answers when the model wants to run a shell com
 | --- | --- |
 | `deny` | …never runs. The model is told and carries on with the file tools. |
 | `ask` | …is put to you (the `ApprovalRequested` event). This is the default. |
-| `safe` | …runs unasked when it provably cannot change anything (`git status`, `ls`); anything else is put to you. |
-| `auto` | …runs unasked. Only for a workspace and a model you would trust with a shell. |
+| `safe` | …runs unasked, inside an operating-system sandbox (Seatbelt on macOS, bubblewrap on Linux): it can write the workspace and `/tmp` only, has no network, and cannot reach credential files. Where the machine has no sandbox (Windows, or Linux without `bwrap`) it runs the commands that provably cannot change anything and puts the rest to you. |
+| `full` | …runs unasked with your own access and no sandbox. Only for a workspace and a model you would trust with a shell. Its old name, `auto`, still works. |
 
 See [Approvals & questions](./approvals) for how to answer.
 
@@ -188,10 +190,10 @@ See [Approvals & questions](./approvals) for how to answer.
 ```python
 async with zc.Client(".") as client:
     report = client.plugins
-    print(report.loaded)       # ('shell', 'skills', ..., 'coding', ..., 'ask-user', 'mcp', 'compaction')
-    print(report.failures)     # one message per plugin that could not load; never fatal
+    print(report.loaded)  # ('shell', 'skills', ..., 'coding', ..., 'ask-user', 'mcp', 'compaction')
+    print(report.failures)  # one message per plugin that could not load; never fatal
     print(client.config.workspace, client.config.store)
-    print(client.usage)        # what the current session has spent
+    print(client.usage)  # what the current session has spent
 ```
 
 `client.config` is the `ZettCodeConfig` in force, which is frozen: build a new client to change a setting that is not one of the `use_*` methods.
@@ -220,12 +222,12 @@ the package also edits the configuration file itself — the same `[[models]]` e
 ```python
 import zettcode.sdk as zc
 
-for model in zc.list_models():            # (), when the file is new or has no models
+for model in zc.list_models():  # (), when the file is new or has no models
     print(model.name, model.context_window)
 
 zc.add_model({"model": "gpt-5-mini", "token": "sk-…", "display_model": "Fast"})
-zc.update_model("Fast", {"context_window": 200000})   # the token is kept
-zc.remove_model("Fast")                                # refused for the last one
+zc.update_model("Fast", {"context_window": 200000})  # the token is kept
+zc.remove_model("Fast")  # refused for the last one
 ```
 
 `add_model` writes the first entry itself and later ones through the terminal's editor, so comments and the rest of

@@ -297,25 +297,44 @@ levels, which `/permission` changes at any time between requests:
 | --- | --- |
 | `deny` | None runs. The model is told the commands are off, and carries on with the file tools. |
 | `ask` | Each one waits for your answer. This is where every run starts. |
-| `safe` | Commands that only read run; anything else asks. |
-| `auto` | Every command runs without asking. |
+| `safe` | Every command runs without asking, inside an operating-system sandbox: it can write the workspace and `/tmp` and nothing else, and it has no network. |
+| `full` | Every command runs with your own access, without asking and without a sandbox. (Called `auto` before; `auto` still works.) |
 
 The level covers the shell only. File edits and MCP tools are not behind a
 prompt in ZettCode, so `deny` is not a read-only mode for your workspace. It is
 not saved across restarts either: the next run starts at `ask` again.
 
-At `ask` and `safe` the panel shows the exact command, the level it is asking
+### What the `safe` sandbox allows {#the-safe-sandbox}
+
+On macOS the sandbox is Seatbelt (`sandbox-exec`); on Linux it is bubblewrap
+(`bwrap`). Inside it a command can:
+
+- **write** the workspace and the temporary directory (`/tmp`, and `$TMPDIR` on macOS) — nowhere else, so a
+  stray `rm -rf ~` or a write to your home directory is refused by the kernel;
+- **read** the rest of the machine, except where credentials live (`~/.ssh`, `~/.aws`, `~/.gnupg` and the like);
+- not reach the network, unless you set `network = true` under `[shell]` in the [configuration](/guide/config);
+- not rewrite an existing `.git/hooks`, `.git/config` or shell start-up file (such as `.zshrc`), even inside the
+  workspace. macOS also stops one being created; on Linux bubblewrap can only protect a file that already exists;
+- see only a short list of environment variables, so an API key in yours does not reach it.
+
+A command that fails there ends with a note naming the boundary, so the model tells you which command needs
+more instead of trying the same wall again — and you can choose `/permission full` for it.
+
+Windows has no such sandbox, and neither does a Linux machine without `bwrap`. There `safe` is what it used to
+be: commands that only read run, and anything else asks. It never claims a boundary the machine cannot draw.
+
+At `ask` the panel shows the exact command, the level it is asking
 at, and offers:
 
 | Key | Meaning |
 | --- | --- |
 | `y` | Run it this once. |
 | `p` | Run it, and remember this exact command for the session. |
-| `s` | Run it, and stop asking for read-only commands (switches to `safe`). Not offered at `safe`, where it would change nothing. |
-| `a` | Run it, and stop asking for any command this run (switches to `auto`). |
+| `s` | Run it, and stop asking: later commands run in the sandbox (switches to `safe`). Not offered at `safe`, where it would change nothing. |
+| `a` | Run it, and stop asking: full access, no sandbox (switches to `full`). |
 | `Esc` | Refuse. The agent is told the command failed, and can react. |
 
-`s` and `a` are the same change `/permission safe` and `/permission auto` make:
+`s` and `a` are the same change `/permission safe` and `/permission full` make:
 the level, the line in the conversation, and the status line all agree whichever
 door you used. Mid-request they are the way to change it, because a typed
 command waits for the request to end.
@@ -457,7 +476,7 @@ Two things follow from the chip being text:
 - a restored session shows `[image #3]` where the picture was, and does not
   re-send it;
 - a model configured with `multimodal = false` refuses the attach with a notice
-  instead of failing later, and is never offered the `view_image` tool.
+  instead of failing later, and is never given the picture-reading `read` tool: it reads with `read_file`, which returns text only.
 
 Every other paste still goes through the terminal's own paste key
 (`Cmd-V` on macOS, `Ctrl-Shift-V` or `Alt-V` elsewhere). A terminal that pastes
@@ -518,7 +537,7 @@ half keeps the two keys worth remembering (`^C/Esc to interrupt`, `^D exit`) in 
 | --- | --- |
 | `●` / a blinking `✦` | The dot is idle; the blinking sparkle is work in progress. |
 | `ready`, `running` | The current state — or a one-off note, such as the command being run or a copied selection. |
-| `· deny`, `· safe`, `· auto` | The shell permission, when it is not the default `ask`. |
+| `· deny`, `· safe`, `· full` | The shell permission, when it is not the default `ask`. |
 | `↑18.4k ↓900` | Tokens sent to the model, and tokens it generated, this session. |
 | `71.2% cached` | The share of the input the provider served from its cache. |
 | `74 tok/s` | Generated tokens per second of model time, averaged over the session. |

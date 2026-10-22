@@ -28,7 +28,8 @@ zettcode-server 0.1.1 (zettcode 0.1.9) · http://127.0.0.1:3290 · workspace /ho
 | `-w`, `--workspace DIR` | 代理工作的目录。一个进程服务一个工作区,因为 SDK 使用进程的工作目录。 |
 | `--host`, `--port` | 监听地址;默认 `127.0.0.1:3290`。 |
 | `--token` | 除 `/health` 外每个端点要求的 Bearer token;默认取 `$ZETTCODE_SERVER_TOKEN`。 |
-| `--permission {deny,ask,safe,auto}` | 运行开始时的 shell 权限,默认 `deny`;客户端可以按请求更改。 |
+| `--permission {deny,ask,safe,full}` | 运行开始时的 shell 权限,默认 `deny`。`safe` 把每条命令放进只能写工作区和 `/tmp` 的沙箱里跑,`full` 用你自己的权限跑;`full` 的旧名 `auto` 仍然可用;客户端可以按请求更改。 |
+| `--harness` | 启动时就打开 just-in-time harness:模型可以写并运行小的 Python 工具。默认关闭;`PATCH /settings` 发 `{"harness": true}` 可以改。 |
 | `--model`, `--effort` | 第一次运行使用的模型和推理强度。 |
 | `--config FILE` | 使用指定的配置文件代替 `~/.zettcode/config.toml`。 |
 | `--log-level` | uvicorn 的日志级别。 |

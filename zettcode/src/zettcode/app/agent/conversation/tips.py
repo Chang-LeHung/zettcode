@@ -44,7 +44,7 @@ TIPS: tuple[str, ...] = (
     "/self-compact lets the model decide for itself when to compact this session.",
     "zettcode resume <id> opens a stored session; zettcode update installs the newest release.",
     "zettcode doctor checks every configured model from a shell, with no session started.",
-    "zettcode --auto runs shell commands without asking for that run; /permission can change it later.",
+    "zettcode --full skips every shell question and the sandbox for that run; /permission can change it later.",
     "Press Esc to stop a request; /continue picks it up again where it left off.",
     "A plugin is a Python package: install it and ZettCode gains its commands, tools, themes or pets.",
     "These tips can be turned off: tips = false under [transcript] in the configuration.",

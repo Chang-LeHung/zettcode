@@ -107,14 +107,48 @@ in the line that says the model was added. **Escape goes back one step**: from t
 `custom`, to the list of APIs), from the list to the models, and only from the models
 panel does it close. Nothing is written until you press Enter on the form, so going back never costs anything.
 
-Choose a model in the panel to **use** it, change its **token**, **API** (`chat`, `responses` or
-`anthropic`), **address**, **model id**, **shown name** or **temperature**, or **remove** it (it asks first, and *Keep it* is the answer Enter gives).
+Choose a model in the panel and every setting of it is on one page, the name on the left and its value on the right:
 
-Three more rows are about what the model can carry, and each takes effect in the running session at once:
+```text
+GPT-4o
+
+› Token           unchanged
+  API             ◉ chat   ○ responses   ○ anthropic
+  Address         https://proxy.example.com/v1
+  Model id *      gpt-4o
+  Shown name      GPT-4o
+  Images          ●───────── text only
+  Web search      ━━━━━━━━━● on
+  Search tool     the default: web_search
+  Temperature     the provider's default
+  Context window  128,000 tokens
+  Compress at     80 (% of the window)
+
+  Use this model  save any change, then switch to it now
+  Remove          delete it from the file
+```
+
+What is typed is a line to type in; **Images** and **Web search** are the same sliding switch as in
+[`/statusline`](/guide/commands) (**←** / **→** or **Space** turns it over); **API** is a choice among `chat`,
+`responses` and `anthropic`, with the chosen one marked (**←** / **→** moves it). **↑** / **↓** (or **Tab**) move between
+rows, going round at the ends, and a click puts the cursor in a row. A line under the page explains the row you are on.
+
+**Enter saves every row at once** and closes the page; **Escape** closes it and writes nothing. Only what you changed is
+written — a row you left alone keeps the way the file spells it — and an empty row removes its key, so the default
+applies. The **token** row starts empty because the current token is never shown: leave it empty to keep it. A row that
+cannot be saved (an address that is not http or https, a window under 1,000 tokens, web search on DeepSeek's chat
+endpoint) is named under the title and the cursor goes to it; everything you typed stays.
+
+The two rows at the bottom are things to do: **Use this model** saves what you changed and switches to the model, and
+**Remove** deletes it (it asks first, and *Keep it* is the answer Enter gives). On a screen too short for every row the
+page scrolls to keep the row you are on in view.
+
+Some rows are about what the model can carry, and each takes effect in the running session at once:
 
 | Row | What it sets | How to write it |
 | --- | --- | --- |
-| **Images** | Whether the model accepts images (`multimodal`). With *No*, a picture is refused here and the model gets no `view_image`. | Pick *Yes* or *No*; it starts on the current answer. |
+| **Images** | Whether the model accepts images (`multimodal`). Off, a picture is refused here and the model reads files with `read_file`, which returns text only, instead of `read`. | A switch; it starts on the current answer. |
+| **Web search** | Whether the provider searches the web for the model (`web_search`); **Search tool** is the exact tool type it is sent as (`web_search_name`). See [Web search](#web-search). | A switch, and a line to type the type in; empty takes the default for the API. |
 | **Context window** | How many tokens the model can carry (`context_window`), which `/context` measures against. | `128000`, `128,000`, `128k`, `1m` or `1.5m`. Under 1,000 is refused, because it is nearly always a window written in thousands — write `200k`. Empty uses 128,000. |
 | **Compress at** | The share of the window at which the conversation is summarized before the next request (`compact_percent`). | A percentage above 0 and up to 100: `80` or `80%`. Empty uses 80. |
 
@@ -145,6 +179,8 @@ The same thing on one line, asking only for what the line leaves out:
 | `--context TOKENS` | The context window: `200000`, `200k`, `1m`. |
 | `--compact PERCENT` | Summarize at this share of the window: `75` or `75%`. |
 | `--temperature T` | The sampling temperature, from 0 to 2 (0 to 1 for `anthropic`). |
+| `--web-search` | Let the provider search the web for the model; refused for DeepSeek unless the API is `anthropic`. |
+| `--search-tool TYPE` | The tool type the search is sent as (implies `--web-search`); left out, the API's default. |
 
 ::: tip Prefer the panel for a token
 A line you type stays in the composer's in-memory history, so pressing `Up` shows it again until
@@ -207,6 +243,8 @@ is not an API key. On macOS/Linux you can restrict file access with
 | `chat` | boolean | `false` | `true` says outright that the endpoint speaks Chat Completions, which is what an entry with neither of the other two already does. It is for the reader of the file; it cannot be combined with `anthropic` or `responses_api`. |
 | `temperature` | number | the provider's own | Sampling temperature sent with every request, from `0` (the most deterministic) to `2`; an `anthropic` entry stops at `1`. Left out, none is sent. Some reasoning models reject a temperature, so set it only for a model that takes one. |
 | `multimodal` | boolean | `false` | Enable only for a model and endpoint that accept image input. |
+| `web_search` | boolean | `false` | Let the provider search the web for this model. The endpoint runs the search; ZettCode fetches nothing. DeepSeek is accepted only with `anthropic = true`. See [Web search](#web-search). |
+| `web_search_name` | string | the API's own | The exact tool type the endpoint expects for that search, for a provider that names it differently. Left out, the default for the API is sent. |
 | `context_window` | integer | `128000` | Positive context-window size in tokens, not characters or the output limit. |
 | `compact_percent` | number | `80` | Automatic compaction threshold: greater than `0`, at most `100`. Decimals such as `75.5` are allowed. |
 | `reasoning_efforts` | array of strings | every level | The reasoning levels this model accepts, from `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, `ultra`. List them when the endpoint rejects the rest; see [Reasoning levels a model takes](#reasoning-levels-a-model-takes). |
@@ -221,8 +259,43 @@ example does not need `/v1`; other services often do. Copy the address your
 provider calls the **API root** rather than guessing from its website URL.
 
 When `multimodal` is false, image submission is refused locally with an error,
-and the model is not offered the `view_image` tool. Setting it to true does not
+and the model reads files with `read_file`, which returns text only, in place of `read`, which also returns
+pictures. Setting it to true does not
 add vision to a text-only model. See [Pictures and pastes](/guide/interface#pictures-and-pastes).
+
+### Web search {#web-search}
+
+`web_search = true` on a model entry lets the provider search the web for it. The search is **hosted**: the endpoint
+runs it and the model answers from the results, so ZettCode fetches nothing itself and needs no search key. What
+the endpoint calls the tool differs by API, so each has a default and an entry can override it with `web_search_name`:
+
+| The entry speaks | Sent as by default |
+| --- | --- |
+| Chat Completions or the Responses API | `web_search` |
+| Anthropic's Messages API (`anthropic = true`) | `web_search_20260318` |
+| DeepSeek over its Anthropic-compatible endpoint | `web_search_20250305` |
+
+```toml
+[[models]]
+model = "claude-sonnet-4-5"
+anthropic = true
+web_search = true
+
+[[models]]
+model = "deepseek-v4-flash"
+base_url = "https://api.deepseek.com/anthropic"
+anthropic = true
+web_search = true
+web_search_name = "web_search_20250305"   # optional: this is already its default
+```
+
+**DeepSeek is searched only over its Anthropic-compatible endpoint.** An entry with `web_search = true` on a
+DeepSeek model (its id or its address says so) that is not `anthropic = true` is refused with that reason when the
+file is read, when you add it with `/config`, and over the server's HTTP API. The setting follows the model in use,
+so `/model` takes effect on the next request.
+
+A gateway may serve a search its vendor does not, so nothing else is refused up front: if the endpoint does not
+know the tool type, the request fails with its own message, and `web_search_name` is how you give it the one it does.
 
 ### Reasoning levels a model takes {#reasoning-levels-a-model-takes}
 
@@ -251,6 +324,27 @@ Leave the key out and every level is offered. When it is set:
   this model takes are offered to it.
 
 A tie between two levels goes to the cheaper one.
+
+### What a child agent can do {#what-a-child-agent-can-do}
+
+The `task` tool starts a child with its own context and session log. There are three kinds, and they are not equally
+capable on purpose:
+
+| Child | Tools |
+| --- | --- |
+| `explore` | `read`, `glob`, `grep`. It only reads. |
+| `reasoning` | None. It reasons from what the task says. |
+| `coding` | The same as the main agent: `read`, `write_file`, `edit`, `bash`, and your skills and MCP servers. |
+
+The `coding` child has everything the main agent has **except** `task` (a child cannot start another child), the
+just-in-time harness, `ask_user` (it works through its task and does not interrupt you; whatever it needs has to be in
+the task the parent writes), `todo_write` (its plan would be drawn for nobody), and `list_sessions` / `send_message`.
+Set `subagent_messaging = true` under `[harness]` to give it the last two. It also has no `glob` or `grep`, for the
+same reason the main agent has none: it searches with `rg`, `grep` and `find` in its shell.
+
+Its shell is under **your permission level**, exactly as the main agent's is. At `ask`, a command the child wants to run
+is put to you in the same panel, and the answer goes back to the child; at `safe` it runs in the sandbox; at `full` it
+runs; at `deny` it is refused. `/permission` applies to a child already working, from its next command.
 
 ### Anthropic models
 
@@ -425,10 +519,15 @@ enabled = true                 # background PyPI version checks
 [sessions]
 enabled = true                 # let sessions message each other; `false` joins no broker
 
+[shell]
+network = false                # let commands run at the `safe` level reach the network; see Approvals
+
 [harness]
 subagent = true                # offer the `task` tool and its child profiles
 subagent_max_iterations = 512  # model calls one child may make for one task
+subagent_messaging = false     # give the `coding` child list_sessions and send_message too
 todowrite = false              # offer `todo_write`, which draws the plan panel
+jit = false                    # the model may write and run small Python tools; /harness on|off
 ```
 
 Put these top-level sections outside the model table, as shown. In TOML, keys
@@ -458,7 +557,10 @@ belong to the most recent table heading; an `enabled` key immediately under
 | `sessions.enabled` | `true` | Register with the background session broker so this session can be messaged with `@name` and can message others; the model gets `list_sessions` and `send_message`. See [Talking between sessions](/guide/messaging). |
 | `harness.subagent` | `true` | Offer the `task` tool, so the model can delegate to a child agent with its own context and session log. |
 | `harness.subagent_max_iterations` | `512` | Model calls one child agent may make for one task. A child exploring or editing a real codebase makes dozens (the library's own default of 18 ended such tasks halfway); this is a ceiling against one that never stops, not a target. Children are also given your project's `AGENTS.md`. |
+| `harness.subagent_messaging` | `false` | Give the `coding` child `list_sessions` and `send_message` as well. Off by default: a child works on one task for one session, and talking to the other sessions is that session's own business. See [What a child agent can do](#what-a-child-agent-can-do). |
 | `harness.todowrite` | `false` | Offer `todo_write`, whose checklist the shell draws in its plan panel. Keeping a plan costs turns, so it is off unless asked for. |
+| `harness.jit` | `false` | Start with the just-in-time harness on: the model may write small Python tools of its own, keep them in `~/.zettcode/harness` (one folder per session), and run them. What it writes runs on this machine with your access, outside the shell permission level, so it is off unless you ask. `/harness on` and `/harness off` switch it for a run; it takes effect from the next request. |
+| `shell.network` | `false` | Let a command that runs in the `safe` sandbox use the network. Off by default; `full` always has it, and so does a machine with no sandbox. See [Approvals](/guide/interface#approvals). |
 
 Example: keep less scrollback, add project-local skills, and disable remote
 tool servers for a run configured from this file:

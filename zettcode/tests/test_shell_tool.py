@@ -38,14 +38,22 @@ def here(tmp_path: Path, monkeypatch) -> Path:
 
 def test_a_short_stream_is_returned_whole(tmp_path: Path):
     path = tmp_path / "out.txt"
-    path.write_text("hello\nworld\n")
+    path.write_text("hello\nworld\n", newline="")
 
     assert stream_preview(path) == Preview("hello\nworld\n", False)
 
 
+def test_a_tool_written_stream_is_returned_as_it_is_on_every_platform(tmp_path: Path):
+    """A command on Windows ends its lines with `\\r\\n`; the preview hands back what the command wrote."""
+    path = tmp_path / "out.txt"
+    path.write_bytes(b"hello\r\nworld\r\n")
+
+    assert stream_preview(path) == Preview("hello\r\nworld\r\n", False)
+
+
 def test_a_long_stream_keeps_its_start_and_its_end_and_marks_the_middle(tmp_path: Path):
     path = tmp_path / "out.txt"
-    path.write_text("".join(f"line {n}\n" for n in range(1, 20_001)))
+    path.write_text("".join(f"line {n}\n" for n in range(1, 20_001)), newline="")
 
     preview = stream_preview(path)
 
@@ -53,7 +61,7 @@ def test_a_long_stream_keeps_its_start_and_its_end_and_marks_the_middle(tmp_path
     assert preview.text.startswith("line 1\n") and preview.text.endswith("line 20000\n")
     assert len(preview.text.encode()) <= MAX_OUTPUT_BYTES
     assert len(preview.text.splitlines()) <= MAX_OUTPUT_LINES
-    assert path.read_text().count("\n") == 20_000, "the file itself is never changed"
+    assert path.read_bytes().count(b"\n") == 20_000, "the file itself is never changed"
 
 
 def test_a_stream_of_few_but_huge_lines_is_cut_by_bytes(tmp_path: Path):

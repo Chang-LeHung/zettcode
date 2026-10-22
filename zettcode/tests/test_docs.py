@@ -65,7 +65,12 @@ def test_documented_config_examples_load_with_the_real_parser(path, tmp_path, mo
         config = load_config(tmp_path, path=target)
         assert config.workspace == tmp_path.resolve()
         for model in config.models:
-            if model.model.startswith("deepseek"):
+            if model.model.startswith("deepseek") and model.anthropic:
+                # The web-search example: DeepSeek's Anthropic-compatible endpoint, the only one it is searched on.
+                assert model.base_url == "https://api.deepseek.com/anthropic"
+                assert model.web_search is True and model.can_search is True
+                assert model.search_name == "web_search_20250305"
+            elif model.model.startswith("deepseek"):
                 assert model.base_url == "https://api.deepseek.com"
                 assert model.responses_api is False
                 assert model.compaction_max_tokens == 800_000

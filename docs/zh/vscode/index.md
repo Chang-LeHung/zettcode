@@ -57,7 +57,7 @@ VS Code 会先请你信任这个文件夹：agent 要在里面跑命令、改文
 | 附一张图 | 粘贴、拖到视图里，或者点回形针 |
 | 附别的东西 | 点回形针选择：PDF、压缩包之类会以**路径**写进消息，agent 用工具自己打开 |
 | 粘贴复制的文件 | 在资源管理器或文件管理器里复制文件再粘贴，写进输入框的是完整**路径**，不再是单独的文件名。网页拿得到文件名和内容，拿不到路径，所以插件直接向系统剪贴板要真实路径（macOS、Windows、Linux；任意大小、任意位置的文件都行，比如桌面上的 PDF）。要不到时，用工作区里内容完全相同的那个文件，再不行就把内容在插件自己的存储里存一份；超过 10 MB 的文件只能按名字查找。远程窗口（SSH、WSL、容器）里的剪贴板不是你复制文件时的那个，所以直接用内容 |
-| 运行命令 | 输入 `/`：`new`、`resume`、`continue`、`compact`、`fork`、`rename`、`export`、`model`、`effort`、`permission`、`usage`、`context`、`doctor`、`btw` |
+| 运行命令 | 输入 `/`：`new`、`resume`、`continue`、`compact`、`fork`、`rename`、`export`、`model`、`effort`、`permission`、`harness`、`usage`、`context`、`doctor`、`btw` |
 | 不加入对话地问一句 | `/btw 你的问题` |
 
 附上的图片会发给能看图的模型，并随会话保存，所以重新打开会话时显示的是图片本身，而不是只数一数有几张。
@@ -77,8 +77,8 @@ shell 权限决定 agent 能自己跑什么：
 | --- | --- |
 | `deny` | 完全不跑 shell 命令。 |
 | `ask` | 每条命令都等你批准。 |
-| `safe` | 只读命令直接跑，其他要问。 |
-| `auto` | 所有命令都不问。 |
+| `safe` | 每条命令在只能写工作区和 `/tmp`、没有网络的沙箱里跑。 |
+| `full` | 所有命令都用你自己的权限跑，不问。（`auto` 是旧名。） |
 
 在聊天里选的级别会在工作区里下一次新会话时沿用。审批和提问会等 `zettcode.answerTimeout` 秒，然后采用安全的答案。
 
@@ -105,8 +105,10 @@ Reasoning Effort** 和 **Select Shell Permission**。**Add Model** 会往终端�
 添加模型的表单和终端的 `/config` 用同样的键。只有**模型 id** 是必填的；**API key** 对本地服务器（Ollama、LM Studio、vLLM）
 可以留空，也可以改用环境变量 `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`。**API** 在 **Chat completions**（写成 `chat = true`）、
 **Responses API** 和 **Anthropic Messages API** 三者里选一个。**Temperature** 是 0 到 2 的数字（Anthropic 为 0 到 1），
-留空就不发送。**Edit Model** 可以改已有模型的这些项：换一种 API 会把旧的标记从文件里删掉，而不是留下 `anthropic = false`；
-清空 temperature 会删掉这个键。
+留空就不发送。**Web search** 让供应商替模型联网搜索，**tool name** 可以覆盖各 API 默认发送的类型
+（`web_search`；Anthropic 用 `web_search_20260318`；DeepSeek 用 `web_search_20250305`）；DeepSeek 只在 Anthropic API 下接受，
+表单会在发出之前就告诉你。**Edit Model** 可以改已有模型的这些项：换一种 API 会把旧的标记从文件里删掉，而不是留下 `anthropic = false`；
+清空 temperature 或关掉搜索会删掉这个键。
 
 ## 花了多少
 
@@ -119,7 +121,8 @@ Reasoning Effort** 和 **Select Shell Permission**。**Add Model** 会往终端�
 
 | 设置 | 默认 | 含义 |
 | --- | --- | --- |
-| `zettcode.permission` | `ask` | 没有手动选过时，会话启动用的 shell 权限 |
+| `zettcode.permission` | `ask` | 没有手动选过时，会话启动用的 shell 权限：`deny`、`ask`、`safe`（沙箱）或 `full` |
+| `zettcode.harness` | `false` | 启动时就打开工具 harness：模型可以自己写小的 Python 工具并运行，不受 shell 权限管辖。`/harness on` 或 `/harness off` 在一个会话里切换 |
 | `zettcode.restoreSession` | `true` | 重新打开这个文件夹上次的会话 |
 | `zettcode.autoTitle` | `true` | 让模型在第一次回答后给没有标题的会话起名 |
 | `zettcode.answerTimeout` | `90` | 审批或提问等待的秒数 |
@@ -143,7 +146,7 @@ Skills、MCP 服务器和 `AGENTS.md` 在编辑器里和终端里完全一样：
 | --- | --- |
 | 聊天说服务器没跑起来 | **ZettCode: Show Server Log** 里有原因；处理好之后用 **ZettCode: Restart Server** |
 | 没有模型 | **ZettCode: Add Model**，或者把 `~/.zettcode/config.toml` 里的 `[[models]]` 条目抄过来 |
-| 命令被拒绝 | shell 权限是 `deny`；在输入框下面选 `ask` 或 `auto` |
+| 命令被拒绝 | shell 权限是 `deny`；在输入框下面选 `ask`、`safe` 或 `full` |
 | 图提示画不出来 | 那段围栏不是合法的 Mermaid；代码就在块里，原因在第一行 |
 
 ## 只有终端才有

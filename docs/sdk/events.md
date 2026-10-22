@@ -54,6 +54,7 @@ The first seven are exported from `zettcode.sdk`; the rest live in `zettcode.sdk
 ```python
 from zettcode.sdk.events import AnyEvent
 
+
 def log(event: AnyEvent) -> None:
     print(type(event).__name__)
 ```
@@ -164,11 +165,13 @@ If the loop is not the right place to look at events, give the run a callback. T
 ```python
 counts: dict[str, int] = {}
 
+
 def count(event):
     counts[type(event).__name__] = counts.get(type(event).__name__, 0) + 1
 
+
 result = await client.prompt("...", on_event=count)
-print(counts)      # {'TextDelta': 41, 'ToolStarted': 3, 'ToolFinished': 3, 'Finished': 1, ...}
+print(counts)  # {'TextDelta': 41, 'ToolStarted': 3, 'ToolFinished': 3, 'Finished': 1, ...}
 ```
 
 ### Keep the whole stream
@@ -202,9 +205,11 @@ Events are plain frozen dataclasses, so `dataclasses.fields` reads them. An answ
 import dataclasses, json
 from zettcode.sdk.events import RawEvent
 
+
 def record(event) -> dict:
     fields = {f.name: getattr(event, f.name) for f in dataclasses.fields(event) if not f.name.startswith("_")}
     return {"type": type(event).__name__, **fields}
+
 
 async for event in run:
     if not isinstance(event, RawEvent):

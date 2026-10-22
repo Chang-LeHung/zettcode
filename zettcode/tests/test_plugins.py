@@ -627,6 +627,7 @@ async def test_the_runtime_preview_installs_plugin_extensions_and_commands(tmp_p
         "/model",
         "/effort",
         "/permission",
+        "/harness",
         "/btw",
         "/bash",
         "/clear",

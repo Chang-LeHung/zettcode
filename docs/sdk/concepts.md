@@ -26,9 +26,9 @@ A `Client` is the agent for one workspace. It owns the configuration, the model 
 import zettcode.sdk as zc
 
 async with zc.Client(".", permission="safe") as client:
-    print(client.workspace)      # the resolved directory
-    print(client.model.name)     # the active model
-    print(client.permission)     # "safe"
+    print(client.workspace)  # the resolved directory
+    print(client.model.name)  # the active model
+    print(client.permission)  # "safe"
 ```
 
 A client is cheap to keep around and not cheap to create: making one loads the agent, reads the configuration and connects the extensions. Create one per program or per workspace, not one per prompt. For a single prompt, `zc.prompt()` does the whole lifecycle for you.
@@ -40,9 +40,9 @@ A `Session` is a handle on one stored conversation. The client always has a curr
 ```python
 async with zc.Client(".") as client:
     session = client.session
-    print(session.id)        # the identity you can resume later
-    print(session.title)     # None until it has a name
-    print(session.current)   # True: the next run would use this one
+    print(session.id)  # the identity you can resume later
+    print(session.title)  # None until it has a name
+    print(session.current)  # True: the next run would use this one
 ```
 
 Sessions are stored on disk in the same format the terminal uses, so a conversation started here can be continued in the terminal with `/resume`, and the other way round.
@@ -56,7 +56,7 @@ A run is one request to the agent: you send a prompt, the model works, calls too
 
 ```python
 async with zc.Client(".") as client:
-    result = await client.prompt("explain this module")      # wait for the end
+    result = await client.prompt("explain this module")  # wait for the end
 
     async with client.prompt("explain this module") as run:  # or watch it happen
         async for event in run:
@@ -86,12 +86,12 @@ Two events ask something of your program: `ApprovalRequested` and `QuestionAsked
 
 ```python
 result = await client.prompt("run the tests")
-result.text            # the answer
-result.usage           # what this run spent (not the session's total)
-result.tools           # every tool call, in order
-result.failed_tools    # the ones that did not succeed
-result.stop            # None, or "refusal", "max_output", ...
-result.ok              # True exactly when stop is None
+result.text  # the answer
+result.usage  # what this run spent (not the session's total)
+result.tools  # every tool call, in order
+result.failed_tools  # the ones that did not succeed
+result.stop  # None, or "refusal", "max_output", ...
+result.ok  # True exactly when stop is None
 ```
 
 ## The rules that follow from this
@@ -114,7 +114,7 @@ result.ok              # True exactly when stop is None
 | Plugins, MCP servers, skills | Loaded from the same places, subject to the same settings. |
 | `AGENTS.md` project instructions | Read when `agents_md_enabled` is on, which it is by default. |
 | Session store | Same files and format; sessions move between code and terminal. |
-| Permission levels | `deny`, `ask`, `safe`, `auto`, with the same meaning. |
+| Permission levels | `deny`, `ask`, `safe`, `full` (`auto` is the old name of `full`), with the same meaning. |
 | Config file | `~/.zettcode/config.toml`, unless you pass models or a config yourself. |
 
 ## What it switches off

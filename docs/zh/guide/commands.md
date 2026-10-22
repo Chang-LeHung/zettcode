@@ -22,7 +22,8 @@
 | `/model` | 用面板选择后续请求使用的模型。 |
 | `/config` | 不用改文件就能添加、修改、删除模型，并设置它是否接受图片、上下文窗口多大、什么时候压缩：`/config`、`/config add <provider> …`、`/config remove <序号>`。见[用 /config 添加模型](/zh/guide/config#adding-models-with-config)。 |
 | `/effort` | 用轨道上的小圆点选择模型的推理强度：`/effort` 打开，← → 滑动，`Enter` 应用；`/effort high` 直接设置。当前模型不支持的档位（见 [`reasoning_efforts`](/zh/guide/config#reasoning-levels-a-model-takes)）会被拒绝，并列出它支持的档位。 |
-| `/permission` | 选择 shell 命令在多大范围内不用问：`/permission` 在菜单里列出各档，`/permission safe` 直接设置。 |
+| `/permission` | 选择 shell 命令在多大范围内不用问：`/permission` 在菜单里列出各档，`/permission safe` 直接设置。`safe` 把每条命令放进只能写工作区和 `/tmp` 的沙箱里跑，`full` 用你自己的权限跑。 |
+| `/harness` | 让模型自己写小的 Python 工具并运行：`/harness on` 或 `/harness off`，单独输入 `/harness` 会告诉你当前状态。默认关闭，请求进行中不接受。见[可选参数参考](/zh/guide/config#可选参数参考)。 |
 | `/btw` | 问一件只在当场回答、不进入对话的事：`/btw <问题>`。 |
 | `/bash` | 在工作区里打开一个全屏命令行：`/bash` 打开空面板，`/bash git status` 打开后立即运行这条命令。有历史、Tab 补全和彩色输出；因为是你自己在敲，所以不需要任何权限确认。见[Shell 面板](#bash)。 |
 | `/theme` | 按名字选配色：`/theme` 打开菜单，在菜单里移动时会预览每一套；`/theme nord` 一步切换。你自己的主题（`~/.zettcode/themes/<name>.toml`）也在菜单里。 |
@@ -106,7 +107,7 @@ Self-compaction                                     in effect here: on (not appl
 | `/help`、`/context`、`/usage`、`/theme` | 只是展示。`/context` 报告的是最近一次测量的请求；`/usage` 读的是已保存会话里记下的用量。 |
 | `/bash` | 不读也不写会话；里面的命令是你自己的，所以后台运行的请求不受影响。 |
 | `/title` | 给会话命名，运行中的请求不读它。 |
-| `/permission` | 下一条 shell 命令会重新读取这个级别，所以修改会落在正在运行的请求里 —— 长任务进行到一半时 `/permission auto` 正是为此。 |
+| `/permission` | 下一条 shell 命令会重新读取这个级别，所以修改会落在正在运行的请求里 —— 长任务进行到一半时 `/permission full` 正是为此。 |
 | `/effort` | 请求以它开始时的 effort 运行，所以修改从下一个请求开始生效，正在运行的请求不受影响。 |
 | `/self-compact` | 工具在请求开始时提供，所以修改从下一个请求开始生效；模型已经提出的申请，如果你随后关掉它就会被放弃。 |
 | `/quit`、`/exit` | 离开不用等回答。 |
