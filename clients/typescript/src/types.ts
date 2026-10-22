@@ -1,7 +1,11 @@
 /** What the server sends and accepts: the wire format of `zettcode-server`, in TypeScript. */
 
-/** The shell permission levels. */
-export type Permission = "deny" | "ask" | "safe" | "auto";
+/**
+ * The shell permission levels. `safe` runs every command in an operating-system sandbox that writes only the workspace
+ * and `/tmp`; `full` runs them with the user's own access. A server also takes `auto`, the old name of `full`, and
+ * answers with `full`.
+ */
+export type Permission = "deny" | "ask" | "safe" | "full";
 
 /** How a run answers the shell commands the model asks to run. */
 export type ApprovalMode = "deny" | "auto" | "commands" | "ask";
@@ -42,6 +46,10 @@ export interface ModelInfo {
   active: boolean;
   /** Share of the window, in percent, at which a request is summarized first. */
   compact_percent: number;
+  /** Whether the provider searches the web for this model. */
+  web_search: boolean;
+  /** The tool type that search is sent as; `null` takes the default for the API the model speaks. */
+  web_search_name: string | null;
 }
 
 /** One model to add to the configuration file; the keys are the file's own. */
@@ -57,6 +65,13 @@ export interface ModelInput {
   multimodal?: boolean;
   /** Sampling temperature, from 0 to 2 (to 1 for an Anthropic model). Left out, the provider's own default is used. */
   temperature?: number;
+  /**
+   * Let the provider search the web for the model. DeepSeek is searched only over its Anthropic-compatible endpoint
+   * (`anthropic: true`); on its chat endpoint the server refuses it.
+   */
+  web_search?: boolean;
+  /** The exact tool type the endpoint expects for that search; left out, the default for the API is sent. */
+  web_search_name?: string;
   context_window?: number;
   compact_percent?: number;
   reasoning_efforts?: string[];
@@ -77,6 +92,8 @@ export interface Settings {
   efforts: string[];
   permission: Permission;
   permissions: string[];
+  /** Whether the just-in-time harness is on: the model may write small Python tools of its own and run them. */
+  harness: boolean;
   /** Why a compaction point set by `updateSettings` was not written to the configuration file; it then holds for this run only. */
   unsaved?: string | null;
 }
@@ -84,7 +101,9 @@ export interface Settings {
 export interface SettingsUpdate {
   model?: string;
   effort?: string;
-  permission?: Permission;
+  permission?: Permission | "auto";
+  /** Turn the just-in-time harness on or off for the prompts that follow. It starts off. */
+  harness?: boolean;
   /** Move the active model's compaction point; more than 0 and at most 100. Refused while a run is in progress. */
   compact_percent?: number;
 }

@@ -21,6 +21,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   { name: "model", description: "Choose a model or add one" },
   { name: "effort", description: "Choose the reasoning effort" },
   { name: "permission", description: "Choose the shell permission" },
+  { name: "harness", description: "Let the model write and run its own tools: on or off", args: "on or off" },
   { name: "usage", description: "Workspace usage and tokens" },
   { name: "context", description: "The context window and what fills it" },
   { name: "doctor", description: "Check that every model answers" },
@@ -89,6 +90,18 @@ export function runSlash(name: string, rest = ""): void {
     case "permission":
       openOverlay("permission");
       break;
+    case "harness": {
+      const word = rest.trim().toLowerCase();
+      const now = state.ui?.settings?.harness === true;
+      if (word === "on" || word === "off") {
+        post({ type: "set-harness", on: word === "on" });
+      } else if (word === "") {
+        toast(`The tool harness is ${now ? "on" : "off"}. Use /harness on or /harness off.`, "info");
+      } else {
+        toast("Use /harness on or /harness off.", "info");
+      }
+      break;
+    }
     case "usage":
       post({ type: "usage" });
       break;

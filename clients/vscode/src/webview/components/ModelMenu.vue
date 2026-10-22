@@ -56,7 +56,7 @@ function use(name: string, active: boolean): void {
             <span class="option-copy">
               <span class="option-name">{{ model.name }}</span>
               <span class="option-desc"
-                >{{ model.model }} · {{ formatTokens(model.context_window) }}{{ model.multimodal ? " · images" : "" }}</span
+                >{{ model.model }} · {{ formatTokens(model.context_window) }}{{ model.multimodal ? " · images" : "" }}{{ model.web_search ? " · search" : "" }}</span
               >
             </span>
             <Icon v-if="inUse(model)" name="check" :size="14" class="tick" />

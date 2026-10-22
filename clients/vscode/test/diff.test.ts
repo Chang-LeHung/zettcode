@@ -76,9 +76,28 @@ test("the ledger snapshots a file once, then keeps only what really changed", as
 test("only the file-changing tools are tracked", () => {
   assert.equal(changesFile("edit"), true);
   assert.equal(changesFile("write_file"), true);
-  assert.equal(changesFile("mcp__fs__delete_file"), true);
+  assert.equal(changesFile("replace_in_file"), true);
   assert.equal(changesFile("bash"), false);
   assert.equal(changesFile("read_file"), false);
+  assert.equal(changesFile("read"), false);
+});
+
+test("there is no delete tool to follow: a deletion is only ever seen as the real difference in the file", async () => {
+  assert.equal(changesFile("delete_file"), false);
+  assert.equal(changesFile("mcp__fs__delete_file"), false);
+  assert.equal(changesFile("delete"), false);
+
+  // A file the request edited and then removed (with `rm`, which is how it is removed now) still shows as deleted,
+  // because the card compares what the file held with what it holds, whatever removed it.
+  let present: string | null = "one\ntwo\n";
+  const ledger = new ChangeLedger(async () => present, "/work");
+  await ledger.touch("t1", "a.ts", [{ oldText: "two", newText: "2" }]);
+  present = null;
+  await ledger.settle("t1");
+  const [change] = ledger.summaries("t1");
+  assert.equal(change?.status, "deleted");
+  assert.equal(change?.removed, 2);
+  assert.equal(ledger.find("t1", "a.ts")?.after, null);
 });
 
 test("the ledger forgets the oldest requests", async () => {

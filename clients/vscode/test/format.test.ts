@@ -122,6 +122,10 @@ test("numbers, times and names read the way the UI shows them", () => {
   assert.equal(sessionLabel(null), "Untitled session");
   assert.equal(sessionLabel("  Work  "), "Work");
   assert.equal(permissionLabel("safe"), "Safe");
+  assert.equal(permissionLabel("full"), "Full");
+  assert.equal(permissionLabel("auto"), "Full", "the old name reads as full");
+  assert.ok(permissionDescription("safe").includes("sandbox") && permissionDescription("safe").includes("/tmp"));
+  assert.ok(permissionDescription("full").includes("your own access"));
   assert.ok(permissionDescription("deny").includes("refused"));
   const now = Date.parse("2026-10-18T12:00:00Z");
   assert.equal(relativeTime("2026-10-18T11:59:30Z", now), "just now");

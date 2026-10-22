@@ -11,10 +11,10 @@ const props = defineProps<{ tool: ToolNode; turnId: string }>();
 
 function toneOf(name: string): string {
   const bare = name.replace(/^.*__/, "").toLowerCase();
-  if (["read_file", "read", "glob", "grep", "view_image", "read_image", "read_skill", "web_search", "fetch"].includes(bare)) {
+  if (["read_file", "read", "glob", "grep", "read_skill", "web_search", "fetch"].includes(bare)) {
     return "green";
   }
-  if (["edit", "replace_in_file", "write_file", "write", "delete_file", "delete"].includes(bare)) {
+  if (["edit", "replace_in_file", "write_file", "write"].includes(bare)) {
     return "amber";
   }
   if (bare === "bash" || bare === "shell") {

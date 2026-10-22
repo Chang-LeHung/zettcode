@@ -4,15 +4,15 @@ import test from "node:test";
 
 import { readRemembered, remember, REMEMBERED_SESSIONS, wantedPermission } from "../src/core/remember.js";
 
-const levels = ["deny", "ask", "safe", "auto"];
+const levels = ["deny", "ask", "safe", "full"];
 
 test("a session gets back the permission it was last set to, and a new one the last choice made here", () => {
   let stored = readRemembered(undefined);
   assert.equal(wantedPermission(stored, "a", levels), null, "nothing chosen yet: leave the server's own");
 
-  stored = remember(stored, "a", "auto");
+  stored = remember(stored, "a", "full");
   stored = remember(stored, "b", "safe");
-  assert.equal(wantedPermission(stored, "a", levels), "auto");
+  assert.equal(wantedPermission(stored, "a", levels), "full");
   assert.equal(wantedPermission(stored, "b", levels), "safe");
   assert.equal(wantedPermission(stored, "new", levels), "safe", "a session with none starts from the last choice");
   assert.equal(wantedPermission(stored, null, levels), "safe");
@@ -23,15 +23,24 @@ test("a session gets back the permission it was last set to, and a new one the l
 });
 
 test("a level the server does not offer is not asked for", () => {
-  const stored = remember(readRemembered(undefined), "a", "auto");
+  const stored = remember(readRemembered(undefined), "a", "full");
   assert.equal(wantedPermission(stored, "a", ["deny", "ask"]), null);
+});
+
+test("a choice stored under the old name of full is read as full, so nobody loses the level they picked", () => {
+  assert.deepEqual(readRemembered({ bySession: { a: "auto", b: "safe" }, last: "auto" }), {
+    bySession: { a: "full", b: "safe" },
+    last: "full",
+  });
+  const stored = readRemembered({ bySession: { a: "auto" } });
+  assert.equal(wantedPermission(stored, "a", levels), "full", "and the server, which offers full, is asked for it");
 });
 
 test("what was stored is read back through a filter: a bad value, a bad shape, nothing at all", () => {
   assert.deepEqual(readRemembered("nonsense"), { bySession: {} });
   assert.deepEqual(readRemembered(null), { bySession: {} });
   assert.deepEqual(readRemembered({ bySession: { a: "auto", b: "root", c: 3 }, last: "yolo" }), {
-    bySession: { a: "auto" },
+    bySession: { a: "full" },
   });
   assert.deepEqual(readRemembered({ bySession: "x", last: "ask" }), { bySession: {}, last: "ask" });
 });
@@ -45,11 +54,11 @@ test("only the newest sessions are kept, and choosing again counts as newest", (
   assert.equal(stored.bySession["s0"], undefined, "the oldest went first");
   assert.equal(stored.bySession[`s${REMEMBERED_SESSIONS + 4}`], "safe");
 
-  stored = remember(stored, "s5", "auto");
+  stored = remember(stored, "s5", "full");
   for (let n = 0; n < 10; n += 1) {
     stored = remember(stored, `t${n}`, "ask");
   }
-  assert.equal(stored.bySession["s5"], "auto", "a session chosen again is not the next to be forgotten");
+  assert.equal(stored.bySession["s5"], "full", "a session chosen again is not the next to be forgotten");
 });
 
 test("the chat view puts the remembered permission back whenever a session is read, and saves each choice", async () => {

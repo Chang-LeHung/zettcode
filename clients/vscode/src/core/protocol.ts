@@ -118,6 +118,7 @@ export type WebviewMessage =
   | { type: "set-model"; name: string }
   | { type: "set-effort"; effort: string }
   | { type: "set-permission"; permission: Permission }
+  | { type: "set-harness"; on: boolean }
   | { type: "set-compact"; percent: number }
   | { type: "set-self-compaction"; choice: boolean | null }
   | { type: "refresh" }

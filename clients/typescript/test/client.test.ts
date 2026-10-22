@@ -128,13 +128,16 @@ describe("the JSON API", () => {
       efforts: ["low", "medium"],
       active: true,
       compact_percent: 80,
+      web_search: false,
+      web_search_name: null,
     };
     const settings = {
       model,
       effort: "medium",
       efforts: ["low", "medium"],
       permission: "deny",
-      permissions: ["deny", "ask", "safe", "auto"],
+      permissions: ["deny", "ask", "safe", "full"],
+      harness: false,
     };
     const server = await start((request, response) => {
       if (request.url === "/models") return json(response, { models: [model], current: "fast" });
@@ -144,6 +147,11 @@ describe("the JSON API", () => {
           assert.deepEqual(sent, { compact_percent: 55 });
           return json(response, { ...settings, model: { ...model, compact_percent: 55 } });
         }
+        if (sent.harness !== undefined) {
+          assert.deepEqual(sent, { harness: true });
+          return json(response, { ...settings, harness: true });
+        }
+        if (sent.permission === "auto") return json(response, { ...settings, permission: "full" });
         assert.deepEqual(sent, { permission: "safe" });
         return json(response, { ...settings, permission: "safe" });
       }
@@ -156,6 +164,10 @@ describe("the JSON API", () => {
     assert.equal((await client.models()).current, "fast");
     assert.equal((await client.settings()).effort, "medium");
     assert.equal((await client.updateSettings({ permission: "safe" })).permission, "safe");
+    assert.equal((await client.updateSettings({ permission: "auto" })).permission, "full");
+    assert.equal((await client.updateSettings({ harness: true })).harness, true);
+    assert.equal((await client.settings()).harness, false);
+    assert.equal((await client.models()).models[0]?.web_search, false);
     assert.equal((await client.updateSettings({ compact_percent: 55 })).model.compact_percent, 55);
     assert.deepEqual((await client.plugins()).loaded, ["shell"]);
   });

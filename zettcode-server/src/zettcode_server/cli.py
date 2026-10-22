@@ -41,9 +41,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--permission",
-        choices=("deny", "ask", "safe", "auto"),
+        choices=("deny", "ask", "safe", "full", "auto"),
         default=DEFAULT_PERMISSION,
-        help=f"shell permission a run starts at (default: {DEFAULT_PERMISSION})",
+        help=f"shell permission a run starts at (default: {DEFAULT_PERMISSION}); auto is the old name of full",
+    )
+    parser.add_argument(
+        "--harness",
+        action="store_true",
+        help="start with the just-in-time harness on: the model may write and run its own Python tools (default: off)",
     )
     parser.add_argument("--model", default=None, help="model to start on, by name (default: the first configured)")
     parser.add_argument("--effort", default=None, help="reasoning effort to start on (default: the model's own)")
@@ -79,6 +84,7 @@ def settings_from(argv: list[str] | None = None) -> Settings:
         port=args.port,
         token=args.token or os.environ.get(TOKEN_VARIABLE) or None,
         permission=args.permission,
+        harness=args.harness,
         model=args.model,
         effort=args.effort,
         config_path=args.config.expanduser() if args.config is not None else None,

@@ -29,8 +29,8 @@ export const MAX_TRACKED_BYTES = 1_000_000;
 /** Requests whose snapshots are kept; older ones are forgotten so a long day stays small. */
 export const MAX_TRACKED_TURNS = 40;
 
-/** Tools whose arguments name a file they change. */
-const FILE_TOOLS = new Set(["write_file", "write", "edit", "replace_in_file", "delete_file", "delete"]);
+/** Tools whose arguments name a file they change. Removing a file is a shell command, not a tool, so it is not here. */
+const FILE_TOOLS = new Set(["write_file", "write", "edit", "replace_in_file"]);
 
 /** Whether a tool call changes the file its `path` argument names. */
 export function changesFile(toolName: string): boolean {

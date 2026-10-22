@@ -33,7 +33,7 @@ const options = computed(() => {
     });
   }
   const current = settings.value?.permission ?? "ask";
-  return (settings.value?.permissions ?? ["deny", "ask", "safe", "auto"]).map((value, index, all) => {
+  return (settings.value?.permissions ?? ["deny", "ask", "safe", "full"]).map((value, index, all) => {
     const meta = permissionMeta(value);
     return {
       value,

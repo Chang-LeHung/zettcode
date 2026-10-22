@@ -68,8 +68,8 @@ The agent can run commands in your workspace. You decide how freely:
 | --- | --- |
 | `deny` | No shell commands at all. |
 | `ask` | Every command waits for your approval. |
-| `safe` | Read-only commands run; anything else asks. |
-| `auto` | Every command runs without asking. |
+| `safe` | Every command runs in a sandbox that writes only the workspace and `/tmp`, with no network. |
+| `full` | Every command runs with your own access, without asking. (`auto` is the old name.) |
 
 ## Settings
 

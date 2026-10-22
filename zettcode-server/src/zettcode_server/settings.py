@@ -32,7 +32,9 @@ class Settings:
         port: The port to bind.
         token: The bearer token every endpoint but ``/health`` requires; ``None`` requires none. It defaults to
             ``$ZETTCODE_SERVER_TOKEN``, so a token can be kept out of the command line.
-        permission: The shell permission level a run starts at.
+        permission: The shell permission level a run starts at: ``deny``, ``ask``, ``safe`` (every command in a
+            sandbox that writes only the workspace and ``/tmp``) or ``full``. ``auto`` is the old name of ``full``.
+        harness: Whether the just-in-time harness, which lets the model write and run small Python tools, starts on.
         model: The model to start on, by name, or ``None`` for the first configured one.
         effort: The reasoning level to start on, or ``None`` for the model's own.
         config_path: A configuration file to read instead of ``~/.zettcode/config.toml``.
@@ -45,6 +47,7 @@ class Settings:
     port: int = DEFAULT_PORT
     token: str | None = field(default_factory=lambda: os.environ.get(TOKEN_VARIABLE) or None)
     permission: str = DEFAULT_PERMISSION
+    harness: bool = False
     model: str | None = None
     effort: str | None = None
     config_path: Path | None = None

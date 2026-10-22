@@ -92,6 +92,7 @@ export function activate(context: vscode.ExtensionContext): void {
     command("zettcode.editModel", () => provider.editModelInteractive()),
     command("zettcode.selectEffort", () => provider.selectEffort()),
     command("zettcode.selectPermission", () => provider.selectPermission()),
+    command("zettcode.toggleHarness", () => provider.toggleHarness()),
     command("zettcode.compact", () => provider.compactSession()),
     command("zettcode.forkSession", () => provider.forkSession()),
     command("zettcode.renameSession", () => provider.renameSession()),
