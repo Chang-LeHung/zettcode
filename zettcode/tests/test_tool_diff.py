@@ -138,7 +138,7 @@ def _open(handler, name, **arguments):
 def test_a_write_says_how_many_lines_it_wrote_beside_the_file():
     entry = _open(WriteTool(), "write_file", path="src/app.py", content="a\nb\nc\n")
 
-    assert isinstance(entry, WriteEntry) and entry.title == "Wrote src/app.py" and entry.added == 3
+    assert isinstance(entry, WriteEntry) and entry.title == "Write src/app.py" and entry.added == 3
     assert not hasattr(entry, "removed"), "a write has no deletions to count"
 
 
@@ -312,7 +312,7 @@ def test_a_write_row_shows_the_count_in_the_addition_colour_and_no_body():
     colours = {span.text.strip(): span.style.foreground for line in lines for span in line.spans}
 
     assert colours["+2"] == DARK.addition
-    assert any("Wrote new.py" in line.text for line in lines)
+    assert any("Write new.py" in line.text for line in lines)
 
 
 async def test_an_edit_replayed_from_a_stored_session_shows_its_diff_too(tmp_path):
@@ -431,7 +431,7 @@ def test_a_file_exactly_at_the_limit_is_kept_whole_with_no_note():
 def test_a_finished_write_shows_the_new_file_under_its_title_as_additions():
     screen = _screen(_write_transcript("def f():\n    return 1\n"))
 
-    assert any("Wrote new.py +2" in row for row in screen)
+    assert any("Write new.py +2" in row for row in screen)
     assert any("+ def f():" in row for row in screen) and any("+     return 1" in row for row in screen)
 
 

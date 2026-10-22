@@ -10,11 +10,12 @@ from zett_agent.events import AgentEvent
 from zett_agent.extensions.shell_approval import SHELL_APPROVAL_EVENT_NAME
 from zett_agent.messages import ToolMessage
 
-from ..dialogue.ask import AskUserQuestion, question_from
+from ..dialogue.ask import AskUserQuestion, declined_answer, question_from
 from ..dialogue.relay import Relayed
 from ..extensions.mcp_notice import MCP_NOTICE_EVENT_NAME, notice_from
 from ..extensions.usage import USAGE_EVENT_NAME
 from .entries import EntryStatus
+from .server_tools import ServerToolRun, describe_output
 from .stops import stop_text
 from .transcript import Transcript
 
@@ -171,9 +172,19 @@ class TranscriptProjector(AgentEventDispatcher):
             self.transcript.start_tool(call.id, call.name, call.arguments)
 
     async def on_tool_completed_event(self, event: AgentEvent) -> None:
-        """Attach the returned message to the row of the call it answers."""
+        """Attach the returned message to the row of the call it answers.
+
+        A question the reader cancelled comes back as a result, not a failure: the model reads that it was declined
+        and carries on. The row is marked skipped so it does not look like a question that was answered.
+        """
         if isinstance(event.message, ToolMessage):
-            self.transcript.complete_tool(event.message.tool_call_id, tool_output(event.message))
+            output = tool_output(event.message)
+            declined = event.message.name == "ask_user" and declined_answer(output)
+            self.transcript.complete_tool(
+                event.message.tool_call_id,
+                output,
+                status=EntryStatus.SKIPPED if declined else EntryStatus.COMPLETED,
+            )
 
     async def on_tool_failed_event(self, event: AgentEvent) -> None:
         """Fail every call in the batch and record the error text."""
@@ -188,23 +199,26 @@ class TranscriptProjector(AgentEventDispatcher):
             self.transcript.complete_tool(call.id, output, status=EntryStatus.SKIPPED)
 
     async def on_server_tool_started_event(self, event: AgentEvent) -> None:
-        """Open a row for a tool the server runs on the agent's behalf."""
-        if event.server_tool_call is not None:
-            self.transcript.start_tool(event.server_tool_call.id, event.server_tool_call.name, {})
+        """Open a row for a tool the server runs on the agent's behalf, with what it was asked."""
+        call = event.server_tool_call
+        if call is not None:
+            self.transcript.start_tool(call.id, call.name, dict(call.input or {}))
 
     async def on_server_tool_completed_event(self, event: AgentEvent) -> None:
-        """Attach a server tool result to its row."""
+        """Attach a hosted tool's result to its row: the pages it found, never the provider's payload."""
         result = event.server_tool_result
         if result is not None:
-            self.transcript.complete_tool(result.call_id, serialize(result.output))
+            run = ServerToolRun(result.call_id, result.name, {}, output=result.output, error=result.error_code)
+            self.transcript.complete_tool(result.call_id, describe_output(run) or serialize(result.output))
 
     async def on_server_tool_failed_event(self, event: AgentEvent) -> None:
-        """Attach a server tool failure, preferring the error code over the payload."""
+        """Attach a hosted tool's failure, preferring the error code over the payload."""
         result = event.server_tool_result
         if result is not None:
+            run = ServerToolRun(result.call_id, result.name, {}, output=result.output, error=result.error_code)
             self.transcript.complete_tool(
                 result.call_id,
-                result.error_code or serialize(result.output),
+                describe_output(run) or serialize(result.output),
                 status=EntryStatus.FAILED,
             )
 

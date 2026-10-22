@@ -19,6 +19,7 @@ from zett_agent.messages import AnyMessage, AssistantMessage, SystemMessage, Too
 
 from zettcode.config import DEFAULT_TRANSCRIPT_MAX_ENTRIES
 
+from ..dialogue.ask import declined_answer
 from ..dialogue.relay import relay_of
 from ..dialogue.side import is_side_line
 from ..extensions.usage import UsageSnapshot
@@ -26,6 +27,7 @@ from ..storage import MessageLine, Session
 from .entries import EntryStatus
 from .presenters import DEFAULT_PRESENTERS, Presenters
 from .rendering import DEFAULT_RENDERERS, Renderers
+from .server_tools import ServerToolRun, answer_after_tools, describe_output, runs_in_blocks
 from .stops import stop_text
 from .transcript import Transcript
 
@@ -75,7 +77,13 @@ def entries_added_by(message: AnyMessage) -> int:
             return 1
         case AssistantMessage():
             stopped = message.stop is not None and not message.stop.ok
-            return bool(message.reasoning) + bool(message.content) + len(message.tool_calls) + stopped
+            return (
+                bool(message.reasoning)
+                + bool(message.content)
+                + len(message.tool_calls)
+                + len(runs_in_blocks(message.replay_blocks))
+                + stopped
+            )
         case _:
             return 0
 
@@ -152,7 +160,26 @@ def replay(
             case AssistantMessage():
                 if message.reasoning:
                     transcript.restore_thinking(message.reasoning, line.timing.reasoning_duration_ns)
-                if message.content:
+                runs = runs_in_blocks(message.replay_blocks)
+
+                def hosted(rows: Sequence[ServerToolRun] = runs) -> None:
+                    """Add the rows of the tools the endpoint ran, each closed by its own result."""
+                    for run in rows:
+                        transcript.start_tool(run.call_id, run.name, run.arguments)
+                        transcript.complete_tool(
+                            run.call_id,
+                            describe_output(run),
+                            status=EntryStatus.FAILED if run.error else EntryStatus.COMPLETED,
+                            wait=False,
+                        )
+
+                # A hosted tool has no message of its own: its call and result are both in the answer's blocks, kept
+                # because the provider needs them back. Where the answer's text sits in those blocks is where the row
+                # goes relative to it, so a reopened session reads in the order the run did.
+                if not answer_after_tools(message.replay_blocks) and message.content:
+                    transcript.append_answer(message.content)
+                hosted()
+                if answer_after_tools(message.replay_blocks) and message.content:
                     transcript.append_answer(message.content)
                 for call in message.tool_calls:
                     transcript.start_tool(call.id, call.name, call.arguments)
@@ -160,6 +187,9 @@ def replay(
                     transcript.error(stop_text(message.stop))
             case ToolMessage():
                 status = EntryStatus.COMPLETED if message.success else EntryStatus.FAILED
+                if message.name == "ask_user" and declined_answer(message.text):
+                    # A cancelled question is an answer of its own, not a failure.
+                    status = EntryStatus.SKIPPED
                 transcript.complete_tool(message.tool_call_id, message.text, status=status, wait=False)
             case _:
                 continue
