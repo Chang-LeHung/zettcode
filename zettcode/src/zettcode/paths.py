@@ -21,6 +21,10 @@ DEFAULT_STORE = Path.home() / ".zettcode" / "sessions"
 #: whatever other zett tools read.
 DEFAULT_MCP_CONFIG = Path.home() / ".zettcode" / "mcp.json"
 
+#: Where the just-in-time harness keeps the tools a model wrote, one folder per session. Beside the sessions, not in
+#: them: it is the model's own code, and clearing or moving the session store should not take it along.
+DEFAULT_HARNESS_DIR = Path.home() / ".zettcode" / "harness"
+
 #: What the background release check leaves behind: the newest version it saw
 #: and the version the reader asked not to hear about again.
 DEFAULT_UPDATE_FILE = Path.home() / ".zettcode" / "update.json"

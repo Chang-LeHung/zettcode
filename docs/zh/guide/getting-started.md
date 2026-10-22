@@ -31,7 +31,7 @@ pip install zettcode
 | `-v`、`-V`、`--version` | 打印版本 —— ZettCode、它所用的 zett-agent 和 Python —— 然后退出。报告问题时请带上它。 |
 | `-w`、`--workspace DIR` | 工作的目录，默认是当前目录。 |
 | `-r`、`--resume SESSION` | 打开一个已保存的会话，而不是新建一个。 |
-| `--auto`、`--yolo` | 本轮不再询问就执行 shell 命令，等同于 `/permission auto`。 |
+| `--full`、`--auto`、`--yolo` | 本轮用完整权限、不再询问就执行 shell 命令，等同于 `/permission full`。（`--auto` 是旧名字。） |
 | `--dry-run` | 跑完启动流程、画一帧就退出，用来做性能分析。 |
 
 有四个子命令按名字做事：`zettcode resume SESSION` 等同于 `zettcode --resume SESSION`（`-w DIR` 要写在它前面，

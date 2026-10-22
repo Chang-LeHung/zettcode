@@ -16,7 +16,7 @@ import zettcode.sdk as zc
 async with zc.Client(".") as client:
     session = client.session
     print(session.id, session.title, session.current)
-    print(session.path)         # the file the conversation is stored in
+    print(session.path)  # the file the conversation is stored in
 ```
 
 会话以终端自己的格式写在同一个存储里。在代码里开始的对话可以在终端里用 `/resume` 继续，在终端里开始的也可以在这里继续。
@@ -47,7 +47,7 @@ id 不存在、读不出来或会指向存储之外时，`open()` 会抛出 `Ses
 async with zc.Client(".") as client:
     session = await client.sessions.latest()
     if session is None:
-        session = client.session            # nothing stored; start fresh
+        session = client.session  # nothing stored; start fresh
     result = await session.prompt("where did we leave off?")
 ```
 
@@ -63,7 +63,7 @@ async with zc.Client(".") as client:
     feature = client.sessions.new()
     await feature.prompt("sketch a design for caching")
 
-    await review.prompt("one more point on the parser")     # back to the first
+    await review.prompt("one more point on the parser")  # back to the first
     print(review.usage.total_tokens, feature.usage.total_tokens)
 ```
 
@@ -100,8 +100,8 @@ for message in await session.history():
 ## 标题
 
 ```python
-await session.rename("Parser refactor")             # returns the title as stored (trimmed)
-title = await session.name_it()                     # asks the model, unless it already has one
+await session.rename("Parser refactor")  # returns the title as stored (trimmed)
+title = await session.name_it()  # asks the model, unless it already has one
 print(session.title)
 ```
 
@@ -128,7 +128,7 @@ await attempt_b.prompt("refactor with attrs")
 
 ```python
 path = await session.export("reports/refactor.html")
-print(path)                       # absolute path that was written
+print(path)  # absolute path that was written
 ```
 
 对话被写成单个 HTML 页面，渲染得和终端里显示的一样，旁边还附上下一轮会发出的请求。不给路径时，文件是工作区里的 `zettcode-<id8>.html`。相对路径从工作目录算起，而 client 打开期间工作目录就是工作区。没有任何已保存内容的会话会抛出 `ValueError`。
@@ -208,7 +208,7 @@ except RunTimeoutError:
 ```python
 if session.locked:
     print("open in another process; reading only")
-    messages = await session.history()        # fine
+    messages = await session.history()  # fine
 else:
     await session.prompt("...")
 ```
@@ -222,10 +222,10 @@ else:
 
 ```python
 async with zc.Client(".") as client:
-    print(client.self_compaction)          # 这个会话当前是否生效
-    print(client.self_compaction_choice)   # True、False,或 None 表示跟随默认值
-    client.use_self_compaction(True)       # 这个会话允许模型自己压缩
-    client.use_self_compaction(None)       # 重新跟随配置
+    print(client.self_compaction)  # 这个会话当前是否生效
+    print(client.self_compaction_choice)  # True、False,或 None 表示跟随默认值
+    client.use_self_compaction(True)  # 这个会话允许模型自己压缩
+    client.use_self_compaction(None)  # 重新跟随配置
 ```
 
 选择会写进会话,重启后仍在;它从下一次请求开始生效,因为工具是在请求开始时提供的。`OSError` 表示选择没能写入,当前生效的

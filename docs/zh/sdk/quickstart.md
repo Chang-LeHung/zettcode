@@ -75,6 +75,7 @@ run 既可以 await（得到结果），也可以 async 迭代（得到事件）
 def only_read_commands(request):
     return request.command.startswith(("git status", "git diff", "cat ", "ls "))
 
+
 result = await client.prompt("check the diff", on_approval=only_read_commands)
 ```
 

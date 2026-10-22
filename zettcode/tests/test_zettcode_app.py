@@ -58,6 +58,7 @@ from zettcode.app.agent.conversation.text import (
 from zettcode.app.agent.dialogue.mentions import Mention, MentionProvider, MentionRegistry
 from zettcode.app.agent.dialogue.side import SideQuestions
 from zettcode.app.agent.extensions.context import IMAGE_TOKENS, SOURCES, ContextExtension, Tokenizer
+from zettcode.app.agent.extensions.harness_switch import HarnessSwitch
 from zettcode.app.agent.extensions.usage import USAGE_EVENT_NAME, UsageExtension, UsageSnapshot, context_text
 from zettcode.app.agent.permission import Permission, parse_permission
 from zettcode.app.agent.runtime import ZettCodeRuntime
@@ -334,6 +335,7 @@ class FakeRuntime:
     model: object = field(init=False)
     auto_approved: bool = field(default=False, init=False)
     permission: Permission = field(default=Permission.ASK, init=False)
+    harness: HarnessSwitch = field(default_factory=HarnessSwitch, init=False)
     start_calls: int = field(default=0, init=False)
 
     def __post_init__(self) -> None:
@@ -423,8 +425,12 @@ class FakeRuntime:
 
     def use_permission(self, name):
         self.permission = name if isinstance(name, Permission) else parse_permission(name)
-        self.auto_approved = self.permission is Permission.AUTO
+        self.auto_approved = self.permission is Permission.FULL
         return self.permission
+
+    def use_harness(self, on):
+        self.harness.on = bool(on)
+        return self.harness.on
 
     def use_effort(self, name):
         try:
@@ -2464,9 +2470,49 @@ async def test_a_wrong_permission_name_lists_the_right_ones_and_changes_nothing(
 
     assert app.agent.permission is Permission.SAFE
     assert any(
-        "Unknown permission: yolo. Try one of: deny, ask, safe, auto" in getattr(entry, "text", "")
+        "Unknown permission: yolo. Try one of: deny, ask, safe, full" in getattr(entry, "text", "")
         for entry in app.transcript.entries
     )
+
+
+async def test_the_harness_command_turns_it_on_and_off_and_says_what_it_did():
+    app = build_app()
+    harness = _harness(app)
+    assert app.agent.harness is False, "off unless asked for"
+
+    await _type_command(app, harness, "/harness")
+    assert app.agent.harness is False
+    assert any("Harness is off" in getattr(entry, "text", "") for entry in app.transcript.entries)
+
+    await _type_command(app, harness, "/harness on")
+    assert app.agent.harness is True
+    assert any("Harness is on" in getattr(entry, "text", "") for entry in app.transcript.entries)
+
+    await _type_command(app, harness, "/harness OFF")
+    assert app.agent.harness is False
+
+
+async def test_a_wrong_harness_word_says_the_usage_and_changes_nothing():
+    app = build_app()
+    harness = _harness(app)
+    await _type_command(app, harness, "/harness on")
+
+    await _type_command(app, harness, "/harness maybe")
+
+    assert app.agent.harness is True
+    assert any("Usage: /harness on|off" in getattr(entry, "text", "") for entry in app.transcript.entries)
+
+
+async def test_the_harness_command_offers_on_and_off_with_the_one_in_force_marked():
+    app = build_app()
+    harness = _harness(app)
+    await _type_command(app, harness, "/harness on")
+
+    harness.write("/harness ")
+
+    items = app.completions.items
+    assert [item.value for item in items] == ["on", "off"]
+    assert [item.value for item in items if "(current)" in item.description] == ["on"]
 
 
 async def test_the_permission_command_offers_the_four_levels_with_the_current_one_marked():
@@ -2479,10 +2525,10 @@ async def test_the_permission_command_offers_the_four_levels_with_the_current_on
     assert app.app.screens.top.name == "main", "no panel: the menu is the choice"
     assert app.composer.text == "/permission "
     items = app.completions.items
-    assert [item.value for item in items] == ["deny", "ask", "safe", "auto"]
+    assert [item.value for item in items] == ["deny", "ask", "safe", "full"]
     assert [item.value for item in items if "(current)" in item.description] == ["safe"]
     text = harness.render().text
-    assert "every command runs without asking" in text, "each row says what happens to a command"
+    assert "every command runs with your own access" in text, "each row says what happens to a command"
     assert app.completions.current.value == "safe", "the highlight starts on what is in force"
 
     harness.press("up")
@@ -2502,14 +2548,14 @@ async def test_the_status_line_names_every_level_but_the_default():
     def status() -> str:
         return harness.render().text.strip().splitlines()[-1]
 
-    assert all(word not in status() for word in ("deny", "safe", "auto")), "ask is the unmarked default"
-    for level in ("deny", "safe", "auto"):
+    assert all(word not in status() for word in ("deny", "safe", "full")), "ask is the unmarked default"
+    for level in ("deny", "safe", "full"):
         app.agent.use_permission(level)
         app.app.invalidate()
         assert level in status(), level
     app.agent.use_permission("ask")
     app.app.invalidate()
-    assert all(word not in status() for word in ("deny", "safe", "auto"))
+    assert all(word not in status() for word in ("deny", "safe", "full"))
 
 
 async def test_the_prompt_says_which_level_it_is_asking_at():
@@ -2555,7 +2601,7 @@ async def test_the_prompt_leaves_out_the_rung_it_is_already_standing_on():
 
 @pytest.mark.parametrize(
     ("key", "level"),
-    [("s", "safe"), ("a", "auto")],
+    [("s", "safe"), ("a", "full")],
 )
 async def test_a_prompt_choice_lands_where_the_command_of_that_name_does(key: str, level: str):
     """The prompt and `/permission` are two doors to one setting.
@@ -2979,8 +3025,8 @@ async def test_app_asks_for_approval_in_a_bottom_panel():
     assert "$ rm -rf build" in text
     assert "1. Yes, proceed (y)" in text
     assert "2. Yes, and don't ask again for this command (p)" in text
-    assert "3. Yes, and stop asking for read-only commands (s)" in text
-    assert "4. Yes, and stop asking for any command this run (a)" in text
+    assert "3. Yes, and stop asking; run commands sandboxed (s)" in text
+    assert "4. Yes, and stop asking; full access, no sandbox (a)" in text
     assert "5. No, and say what to do differently (esc)" in text
 
     harness.press("enter")
@@ -3045,8 +3091,8 @@ async def test_auto_mode_approves_every_later_command():
     event, _ = app.agent.runtime.client.agent.emitted[0]
     assert event.payload == {"tool_call_id": "call-1", "decision": "execute", "remember": False}
     assert app.agent.runtime.auto_approved is True
-    assert any("permission changed from ask to auto" in entry.text for entry in app.transcript.entries)
-    assert "auto" in harness.render().text.strip().splitlines()[-1]
+    assert any("permission changed from ask to full" in entry.text for entry in app.transcript.entries)
+    assert "full" in harness.render().text.strip().splitlines()[-1]
 
 
 async def test_the_approval_panel_hides_always_when_the_runtime_cannot_remember():
@@ -3057,8 +3103,8 @@ async def test_the_approval_panel_hides_always_when_the_runtime_cannot_remember(
 
     text = harness.render().text
     assert "don't ask again for this command" not in text
-    assert "2. Yes, and stop asking for read-only commands (s)" in text
-    assert "3. Yes, and stop asking for any command this run (a)" in text
+    assert "2. Yes, and stop asking; run commands sandboxed (s)" in text
+    assert "3. Yes, and stop asking; full access, no sandbox (a)" in text
 
 
 async def test_escape_aborts_the_pending_command():
@@ -7850,10 +7896,22 @@ async def test_every_command_the_shell_runs_beside_a_request_is_one_that_cannot_
     assert queued == ["/btw"]
     # What a running request is built on stays out: the transcript it writes into, the session, and
     # the model it started with together with the window its compaction is sized to.
-    assert {"/clear", "/new", "/resume", "/fork", "/model", "/config", "/compact", "/export"} <= set(refused)
+    assert {
+        "/clear",
+        "/new",
+        "/resume",
+        "/fork",
+        "/model",
+        "/config",
+        "/compact",
+        "/export",
+        "/harness",
+    } <= set(refused)
 
 
-@pytest.mark.parametrize("command", ["/model", "/config", "/clear", "/new", "/resume", "/fork", "/compact", "/export"])
+@pytest.mark.parametrize(
+    "command", ["/model", "/config", "/clear", "/new", "/resume", "/fork", "/compact", "/export", "/harness on"]
+)
 async def test_a_command_that_touches_what_the_request_stands_on_is_still_turned_away(command):
     app = build_app(block=True)
     harness = _harness(app)
@@ -7902,10 +7960,10 @@ async def test_permission_changes_while_the_request_runs_and_says_so():
     harness = _harness(app)
     await _start_a_request(harness)
 
-    await _typed_while_running(app, harness, "/permission auto")
+    await _typed_while_running(app, harness, "/permission full")
 
-    assert app.agent.permission.value == "auto"
-    assert any("auto" in row for row in _rows(app)) and app._busy is True
+    assert app.agent.permission.value == "full"
+    assert any("full" in row for row in _rows(app)) and app._busy is True
     await _stop(app)
 
 
@@ -8225,9 +8283,9 @@ def test_the_status_line_keeps_the_counters_and_has_no_gap_where_the_session_was
 
 def test_the_permission_mode_stays_in_the_status_line():
     app = build_app()
-    app.change_permission("auto")
+    app.change_permission("full")
 
-    assert app._status_left().text.startswith("  \u25cf ready \u00b7 auto")
+    assert app._status_left().text.startswith("  \u25cf ready \u00b7 full")
 
 
 # -- text that begins with a slash is not a command unless it names one --------------------------------------

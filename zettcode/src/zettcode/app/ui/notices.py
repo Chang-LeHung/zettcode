@@ -92,7 +92,7 @@ class NoticesMixin(CommandUi, ShellState):
             if choice is ApprovalChoice.RUN_SAFE:
                 self.change_permission("safe")
             elif choice is ApprovalChoice.RUN_AUTO:
-                self.change_permission("auto")
+                self.change_permission("full")
         self.app.invalidate()
 
     # -- questions from the model -------------------------------------------

@@ -12,7 +12,6 @@ from mcp.types import CallToolResult, ListToolsResult, TextContent, Tool
 from zett_agent.agent import AgentRunConfig
 from zett_agent.client import create_agent
 from zett_agent.events import AgentEvent, AgentEventType
-from zett_agent.extensions.coding import CodingExtension
 from zett_agent.extensions.mcp import McpExtension
 from zett_agent.messages import AssistantMessage, ToolCall, ToolMessage
 from zett_agent.model import ModelEvent, ModelResponse, RetryOptions
@@ -20,6 +19,7 @@ from zett_agent.model import ModelEvent, ModelResponse, RetryOptions
 from zettcode._compat import ExceptionGroup
 from zettcode.app.agent.conversation.projection import TranscriptProjector
 from zettcode.app.agent.conversation.transcript import Transcript
+from zettcode.app.agent.extensions.files import CodingBundle
 from zettcode.app.agent.extensions.mcp import ReportingMcpExtension, build_mcp_extension
 from zettcode.app.agent.extensions.mcp_notice import MCP_NOTICE_EVENT_NAME, notice_from, notice_payload
 
@@ -353,7 +353,7 @@ class _ScriptedModel:
 
 async def _run(extension, model, *, transcript: Transcript | None = None):
     client = await create_agent(
-        model, config=AgentRunConfig(session_id="s1"), system_prompt="x", extensions=[CodingExtension(), extension]
+        model, config=AgentRunConfig(session_id="s1"), system_prompt="x", extensions=[CodingBundle(), extension]
     )
     if transcript is not None:
         client.event_dispatcher = TranscriptProjector(transcript)

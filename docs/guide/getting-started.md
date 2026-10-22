@@ -37,7 +37,7 @@ command line takes, which is deliberately short:
 | `-v`, `-V`, `--version` | Print the version — ZettCode, the zett-agent it runs on, and Python — and exit. Quote it when you report a problem. |
 | `-w`, `--workspace DIR` | The directory to work in. Defaults to the current directory. |
 | `-r`, `--resume SESSION` | Open a stored session instead of starting a new one. |
-| `--auto`, `--yolo` | Run shell commands without asking, for this run. The same as `/permission auto`. |
+| `--full`, `--auto`, `--yolo` | Run shell commands with full access and without asking, for this run. The same as `/permission full`. (`--auto` is the old name.) |
 | `--dry-run` | Run the startup, paint one frame, and exit. Useful for profiling. |
 
 Four subcommands do their work by name: `zettcode resume SESSION` is `zettcode --resume SESSION`

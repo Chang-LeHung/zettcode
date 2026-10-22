@@ -92,16 +92,17 @@ instructions can lower it, and cache lifetime depends on the provider. There
 is no universal expected percentage. See the
 [calculation and examples](/guide/models#reading-the-status-line).
 
-**A command ran that I did not want.** Check the level in the status line: `· auto`
-runs every command and `· safe` runs the ones it recognises as read-only, while
+**A command ran that I did not want.** Check the level in the status line: `· full`
+runs every command with your own access and `· safe` runs them in a sandbox that can write only the
+workspace and `/tmp` (on Windows, or Linux without `bwrap`, it runs the ones it recognises as read-only), while
 no marker means `ask`. `/permission ask` puts the question back, and
 `/permission deny` stops shell commands altogether. A run started with
-`--auto` (or `--yolo`) begins at `auto` for the same reason, without a line
+`--full` (or `--auto`, `--yolo`) begins at `full` for the same reason, without a line
 in the conversation to say so. Earlier approval choices
-matter too: `a` switched to `auto`, `s` to `safe`, and `p` remembers an exact
+matter too: `a` switched to `full`, `s` to `safe`, and `p` remembers an exact
 command for the current process. Restarting clears all of it. The level applies
-to the built-in shell tool, not to file-editing or MCP tools. ZettCode does not
-sandbox tools; use version control and review the diff.
+to the built-in shell tool, not to file-editing or MCP tools, and only `safe` sandboxes anything;
+use version control and review the diff.
 
 ## Skills, MCP, and plugins
 

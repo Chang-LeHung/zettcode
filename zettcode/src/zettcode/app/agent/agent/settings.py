@@ -349,3 +349,12 @@ class SettingsMixin(AgentBase):
     def use_permission(self, name: str | Permission) -> Permission:
         """Set how much of the shell may run without asking, for the rest of this run."""
         return self.runtime.use_permission(name)
+
+    @property
+    def harness(self) -> bool:
+        """Return whether the just-in-time harness is on for the next request."""
+        return self.runtime.harness.on
+
+    def use_harness(self, on: bool) -> bool:
+        """Turn the just-in-time harness on or off for later requests, for the rest of this run."""
+        return self.runtime.use_harness(on)

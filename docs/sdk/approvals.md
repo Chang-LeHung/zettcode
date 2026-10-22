@@ -15,7 +15,7 @@ An agent that can run shell commands and ask questions has to be able to wait fo
 
 The agent is suspended *inside the tool call* until one of these is settled. That is why a run with no rule for them still cannot hang: anything unanswered by the time the stream is asked for its next event is denied or declined.
 
-Approvals only arise at the `ask` and `safe` [permission levels](./client#permission-levels). At `deny` nothing runs and nothing is asked; at `auto` everything runs and nothing is asked.
+Approvals only arise at the `ask` [permission level](./client#permission-levels). At `deny` nothing runs and nothing is asked; at `safe` every command runs, unasked, inside an operating-system sandbox; at `full` everything runs and nothing is asked.
 
 ## Three ways to answer
 
@@ -26,8 +26,10 @@ Pass a function or a coroutine function to the run. It is called before the even
 ```python
 import zettcode.sdk as zc
 
+
 def only_tests(request: zc.ApprovalRequested) -> bool:
     return request.command.startswith("pytest")
+
 
 result = await client.prompt("make the tests pass", on_approval=only_tests)
 ```
@@ -45,6 +47,7 @@ A question handler returns text to answer with, or `None` to leave it.
 ```python
 async def ask_a_person(question: zc.QuestionAsked) -> str | None:
     return await my_ui.prompt(question.question, choices=question.options)
+
 
 result = await client.prompt("set up the project", on_question=ask_a_person)
 ```
@@ -79,7 +82,7 @@ On an approval: `approve()`, `approve(remember=True)`, `deny()`. On a question: 
 Unanswered means denied and declined. An unattended job can rely on this.
 
 ```python
-result = await client.prompt("clean up the build directory")        # shell requests are denied
+result = await client.prompt("clean up the build directory")  # shell requests are denied
 ```
 
 You may combine them: a handler answers the commands it recognizes and returns `None` for the rest, and the loop deals with what remains.
@@ -125,8 +128,8 @@ That excludes pipelines, chaining, redirection, substitution and subshells. If y
 The same check applies to the rules you write. A rule containing a shell character, or a blank one, raises `ValueError` when you make the handler, not when a command arrives:
 
 ```python
-zc.approve_commands("git status; ls")      # ValueError: 'git status; ls' holds a shell character; ...
-zc.approve_commands("   ")                 # ValueError: A command to allow cannot be blank
+zc.approve_commands("git status; ls")  # ValueError: 'git status; ls' holds a shell character; ...
+zc.approve_commands("   ")  # ValueError: A command to allow cannot be blank
 ```
 
 ## Writing your own rule
@@ -147,6 +150,7 @@ import logging
 
 log = logging.getLogger("agent.shell")
 ALLOWED = zc.approve_commands("pytest", "ruff check", "git diff")
+
 
 def audited(request: zc.ApprovalRequested) -> bool:
     allowed = ALLOWED(request)
@@ -180,7 +184,7 @@ A handler must return exactly `True`, `False` or `None`. Anything else raises `T
 
 ```python
 def careless(request):
-    return "no"                        # TypeError: An approval handler returns True, False or None, not str
+    return "no"  # TypeError: An approval handler returns True, False or None, not str
 ```
 
 If a handler raises, the command is denied, the run stops, and the error reaches the caller of `await` unchanged. A bug in a rule does not leave a command running.
@@ -193,8 +197,8 @@ The first answer wins and is sent exactly once. Answering the same way again is 
 
 ```python
 ask.approve()
-ask.approve()          # fine
-ask.deny()             # ValueError: Already answered ...
+ask.approve()  # fine
+ask.deny()  # ValueError: Already answered ...
 ```
 
 `ask.answered` tells you whether it was settled, by you or by the run's handler, and `ask.approved` is `True`, `False` or `None` while unanswered.

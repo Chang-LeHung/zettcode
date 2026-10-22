@@ -16,7 +16,7 @@ import zettcode.sdk as zc
 async with zc.Client(".") as client:
     spent = client.usage
     print(spent.input_tokens, spent.output_tokens, spent.total_tokens)
-    print(spent.cache_hit_rate)      # 输入中命中缓存的比例,没有输入时为 None
+    print(spent.cache_hit_rate)  # 输入中命中缓存的比例,没有输入时为 None
 ```
 
 ## 这个工作区花了多少
@@ -67,9 +67,9 @@ async with zc.Client(".") as client:
 
 ```python
 async with zc.Client(".") as client:
-    print(client.self_compaction, client.self_compaction_choice)   # 当前是否生效,以及这个会话自己的选择
-    client.use_self_compaction(True)                               # 这个会话允许模型自己压缩
-    client.use_self_compaction(None)                               # 重新跟随配置默认值
+    print(client.self_compaction, client.self_compaction_choice)  # 当前是否生效,以及这个会话自己的选择
+    client.use_self_compaction(True)  # 这个会话允许模型自己压缩
+    client.use_self_compaction(None)  # 重新跟随配置默认值
 ```
 
 选择保存在会话里,重新打开时还在;它从下一次请求开始生效,因为工具是在请求开始时提供的。

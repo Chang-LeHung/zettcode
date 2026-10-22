@@ -17,7 +17,7 @@ from zettcode.app.agent import runtime as runtime_module
 from zettcode.app.agent.agent import ZettCodeAgent
 from zettcode.app.agent.runtime import ZettCodeRuntime
 from zettcode.app.ui import ZettCodeApp
-from zettcode.app.ui.widgets import FormPage, InputPage
+from zettcode.app.ui.widgets import FormPage, InputPage, ModelSettingsPage
 from zettcode.app.ui.widgets.input_page import MASK
 from zettcode.config import load_config
 from zettcode.config_edit import ConfigEditError
@@ -90,6 +90,40 @@ class Fixture:
 
     def type(self, text: str) -> None:
         self.harness.write(text)
+        self.harness.press("enter")
+
+    # -- the panel of one model: names on the left, values on the right ---------------------------------
+
+    @property
+    def panel(self) -> ModelSettingsPage:
+        page = self.page(ModelSettingsPage)
+        assert page is not None, self.screen()
+        return page
+
+    def go(self, key: str) -> None:
+        """Move the cursor to a row of the panel the way a reader does, with Down."""
+        for _ in range(len(self.panel.children) + 1):
+            if self.panel.focus_key() == key:
+                return
+            self.harness.press("down")
+        raise AssertionError(f"the cursor never reached {key!r}\n{self.screen()}")
+
+    def edit(self, key: str, text: str) -> None:
+        """Replace what a typed row holds."""
+        self.go(key)
+        self.panel.editor(key).set_text("")
+        self.harness.write(text)
+
+    def pick(self, key: str, word: str) -> None:
+        """Put a choice on a word: to the first with Home, then right."""
+        self.go(key)
+        self.harness.press("home")
+        for _ in range(next(s.words.index(word) for s in self.panel.settings if s.key == key)):
+            self.harness.press("right")
+
+    def act(self, key: str) -> None:
+        """Do one of the actions at the foot of the panel."""
+        self.go(key)
         self.harness.press("enter")
 
 
@@ -194,6 +228,21 @@ async def test_add_for_each_protocol_writes_the_flag_that_selects_it(shell):
     assert {m.model: m.api for m in fx.app.agent.models} == {
         "gpt-5-mini": "chat", "gpt-4o": "chat", "claude-x": "anthropic", "r1": "responses", "c1": "chat",
     }  # fmt: skip
+
+
+async def test_add_can_turn_web_search_on_and_refuses_it_on_deepseeks_chat_endpoint(shell):
+    fx = shell()
+
+    await fx.command("/config add anthropic --model claude-x --token k1 --web-search")
+    by_model = {m["model"]: m for m in fx.models}
+    assert by_model["claude-x"]["web_search"] is True and "web_search_name" not in by_model["claude-x"]
+    assert fx.errors() == []
+
+    before = fx.text
+    await fx.command("/config add deepseek --model deepseek-chat --token sk-new --web-search")
+
+    assert any("DeepSeek serves web search only on its Anthropic-compatible endpoint" in e for e in fx.errors())
+    assert fx.text == before, "nothing was written for a model that cannot search"
 
 
 async def test_add_refuses_a_bad_address_and_writes_nothing(shell):
@@ -661,16 +710,138 @@ async def test_escape_in_the_provider_list_goes_back_to_the_model_list(shell):
     assert "Models" in fx.screen() and "which provider" not in fx.screen()
 
 
-async def test_a_model_in_the_panel_offers_what_can_be_done_to_it(shell):
+async def test_a_model_in_the_panel_has_every_setting_on_a_row_with_its_name_on_the_left(shell):
     fx = shell()
     await fx.command("/config")
 
     fx.choose("GPT-4o")
 
     screen = fx.screen()
-    for action in ("Use this model", "Change the token", "Change the address", "Change the model id", "Remove"):
-        assert action in screen
-    assert "sk-two" not in screen
+    for label in (
+        "Token",
+        "API",
+        "Address",
+        "Model id",
+        "Shown name",
+        "Images",
+        "Web search",
+        "Search tool",
+        "Temperature",
+        "Context window",
+        "Compress at",
+        "Use this model",
+        "Remove",
+    ):
+        assert label in screen
+    row = next(line for line in screen.splitlines() if "Address" in line)
+    assert row.index("Address") < row.index("https://proxy.example.com/v1"), "the name is left of the value"
+    assert "sk-two" not in screen, "the token is never shown"
+    assert fx.panel.focus_key() == "token", "the cursor starts in the first row"
+
+
+async def test_images_and_web_search_are_the_rail_of_the_statusline_with_a_word_beside_it(shell):
+    fx = shell()
+    await fx.command("/config")
+    fx.choose("GPT-4o")
+
+    off = next(line for line in fx.screen().splitlines() if "Web search" in line)
+    fx.go("web_search")
+    fx.harness.write(" ")
+    on = next(line for line in fx.screen().splitlines() if "Web search" in line)
+
+    assert "\u25cf" + "\u2500" * 9 in off and off.rstrip().endswith("off")
+    assert on.rstrip().endswith("on")
+    assert fx.panel.values["web_search"] is True
+
+
+async def test_the_api_is_a_choice_that_marks_the_word_it_is_on(shell):
+    fx = shell()
+    await fx.command("/config")
+    fx.choose("GPT-4o")
+
+    row = next(line for line in fx.screen().splitlines() if "API" in line.split("chat")[0])
+
+    assert "\u25c9 chat" in row and "\u25cb responses" in row and "\u25cb anthropic" in row
+    fx.go("api")
+    fx.harness.press("right")
+    assert fx.panel.values["api"] == "responses" and "\u25c9 responses" in fx.screen()
+    fx.harness.press("end")
+    assert fx.panel.values["api"] == "anthropic"
+
+
+async def test_up_and_down_move_between_rows_and_go_round_at_the_ends(shell):
+    fx = shell()
+    await fx.command("/config")
+    fx.choose("GPT-4o")
+
+    fx.harness.press("up")
+    assert fx.panel.focus_key() == "remove"
+    fx.harness.press("down")
+    assert fx.panel.focus_key() == "token"
+    fx.harness.press("tab")
+    assert fx.panel.focus_key() == "api"
+    fx.harness.press("backtab")
+    assert fx.panel.focus_key() == "token"
+
+
+async def test_a_press_on_a_row_puts_the_cursor_in_it_and_a_press_on_a_switch_turns_it_over(shell):
+    fx = shell()
+    await fx.command("/config")
+    fx.choose("GPT-4o")
+    rows = fx.screen().splitlines()
+    y = next(i for i, line in enumerate(rows) if "Address" in line)
+    fx.harness.mouse_down(5, y)
+    assert fx.panel.focus_key() == "base_url"
+
+    y = next(i for i, line in enumerate(fx.screen().splitlines()) if "Web search" in line)
+    x = fx.screen().splitlines()[y].index("\u25cf")
+    fx.harness.mouse_down(x, y)
+
+    assert fx.panel.focus_key() == "web_search" and fx.panel.values["web_search"] is True
+
+
+async def test_the_panel_turns_a_models_web_search_on_and_off_and_names_its_tool(shell):
+    fx = shell()
+    await fx.command("/config")
+    fx.choose("GPT-4o")
+    fx.go("web_search")
+    fx.harness.press("right")
+
+    fx.harness.press("enter")
+
+    gpt = next(model for model in fx.models if model["model"] == "gpt-4o")
+    assert gpt["web_search"] is True and "web_search_name" not in gpt
+    assert next(m for m in fx.app.agent.models if m.model == "gpt-4o").web_search is True
+
+    await fx.command("/config")
+    fx.choose("GPT-4o")
+    assert fx.panel.values["web_search"] is True, "the switch starts where the file has it"
+    fx.edit("web_search_name", "web_search_20250305")
+    fx.harness.press("enter")
+    assert next(m for m in fx.models if m["model"] == "gpt-4o")["web_search_name"] == "web_search_20250305"
+
+    await fx.command("/config")
+    fx.choose("GPT-4o")
+    fx.go("web_search")
+    fx.harness.press("left")
+    fx.harness.press("enter")
+
+    assert "web_search" not in next(model for model in fx.models if model["model"] == "gpt-4o")
+    assert fx.errors() == []
+
+
+async def test_web_search_is_refused_on_deepseeks_chat_endpoint_at_the_row_that_asked_for_it(shell):
+    fx = shell('[[models]]\nmodel = "deepseek-chat"\ntoken = "t"\nbase_url = "https://api.deepseek.com"\n')
+    await fx.command("/config")
+    fx.choose("deepseek-chat")
+    fx.go("web_search")
+    fx.harness.press("right")
+
+    fx.harness.press("enter")
+
+    assert "Anthropic" in fx.panel.refusal and fx.panel.focus_key() == "web_search"
+    assert "web_search" not in fx.models[0], "nothing was written"
+    assert fx.panel.values["web_search"] is True, "and the row stays as it was set"
 
 
 async def test_use_this_model_switches_to_it_and_closes_the_panel(shell):
@@ -678,24 +849,47 @@ async def test_use_this_model_switches_to_it_and_closes_the_panel(shell):
     await fx.command("/config")
     fx.choose("GPT-4o")
 
-    fx.choose("Use this model")
+    fx.act("use")
 
     assert fx.app.agent.active_model.model == "gpt-4o" and fx.app.app.screens.top.name == "main"
+
+
+async def test_use_this_model_saves_what_was_changed_first(shell):
+    fx = shell()
+    await fx.command("/config")
+    fx.choose("GPT-4o")
+    fx.edit("token", "sk-fresh")
+
+    fx.act("use")
+
+    assert fx.models[1]["token"] == "sk-fresh"
+    assert fx.app.agent.active_model.model == "gpt-4o" and fx.app.agent.active_model.token == "sk-fresh"
 
 
 async def test_changing_a_token_rewrites_only_that_key_of_that_model(shell):
     fx = shell()
     await fx.command("/config")
     fx.choose("GPT-4o")
-    fx.choose("Change the token")
-    assert isinstance(fx.page(InputPage).answer, type(fx.page(InputPage).answer))
-    assert fx.page(InputPage).answer.text == "", "the existing token is never put in the box"
+    assert fx.panel.editor("token").text == "", "the existing token is never put in the box"
 
-    fx.type("sk-rotated")
+    fx.edit("token", "sk-rotated")
+    assert "sk-rotated" not in fx.screen(), "what is typed as a token is painted as bullets"
+    fx.harness.press("enter")
 
     assert fx.models[1]["token"] == "sk-rotated" and fx.models[0]["token"] == "sk-one"
     assert fx.models[1]["base_url"] == "https://proxy.example.com/v1" and fx.models[1]["display_model"] == "GPT-4o"
     assert "# second" in fx.text and fx.text.startswith("# my config")
+
+
+async def test_an_empty_token_row_leaves_the_token_alone(shell):
+    fx = shell()
+    await fx.command("/config")
+    fx.choose("GPT-4o")
+    fx.edit("temperature", "0.5")
+
+    fx.harness.press("enter")
+
+    assert fx.models[1]["token"] == "sk-two" and fx.models[1]["temperature"] == 0.5
 
 
 async def test_changing_the_token_of_the_model_in_use_keeps_it_in_use(shell):
@@ -703,24 +897,26 @@ async def test_changing_the_token_of_the_model_in_use_keeps_it_in_use(shell):
     fx.app.change_model("gpt-4o")
     await fx.command("/config")
     fx.choose("GPT-4o")
-    fx.choose("Change the token")
+    fx.edit("token", "sk-rotated")
 
-    fx.type("sk-rotated")
+    fx.harness.press("enter")
 
     assert fx.app.agent.active_model.model == "gpt-4o" and fx.app.agent.active_model.token == "sk-rotated"
 
 
-async def test_changing_the_address_shows_the_current_one_and_refuses_a_bad_one(shell):
+async def test_the_address_shows_the_current_one_and_a_bad_one_is_refused_where_it_was_typed(shell):
     fx = shell()
     await fx.command("/config")
     fx.choose("GPT-4o")
-    fx.choose("Change the address")
-    assert fx.page(InputPage).answer.text == "https://proxy.example.com/v1"
+    assert fx.panel.editor("base_url").text == "https://proxy.example.com/v1"
+    fx.edit("token", "sk-keep-me")
+    fx.edit("base_url", "proxy2.example.com")
 
-    for _ in range(len("https://proxy.example.com/v1")):
-        fx.harness.press("backspace")
-    fx.type("proxy2.example.com")
-    assert "http or https" in fx.page(InputPage).note
+    fx.harness.press("enter")
+
+    assert "http or https" in fx.panel.refusal and fx.panel.focus_key() == "base_url"
+    assert "http or https" in fx.screen()
+    assert fx.panel.editor("token").text == "sk-keep-me", "every row stays as typed"
     assert fx.models[1]["base_url"] == "https://proxy.example.com/v1", "nothing was written"
 
 
@@ -728,38 +924,66 @@ async def test_clearing_the_address_removes_the_key(shell):
     fx = shell()
     await fx.command("/config")
     fx.choose("GPT-4o")
-    fx.choose("Change the address")
-    for _ in range(len("https://proxy.example.com/v1")):
-        fx.harness.press("backspace")
+    fx.edit("base_url", "")
 
     fx.harness.press("enter")
 
     assert "base_url" not in fx.models[1] and fx.app.agent.models[1].base_url is None
 
 
-async def test_changing_the_shown_name_and_the_model_id(shell):
+async def test_the_shown_name_and_the_model_id_are_saved_together_with_one_enter(shell):
     fx = shell()
     await fx.command("/config")
     fx.choose("GPT-4o")
-    fx.choose("Change the shown name")
-    for _ in range(len("GPT-4o")):
-        fx.harness.press("backspace")
-    fx.type("Fast")
-    await fx.command("/config")
-    fx.choose("Fast")
-    fx.choose("Change the model id")
-    for _ in range(len("gpt-4o")):
-        fx.harness.press("backspace")
-    fx.type("gpt-4.1")
+    fx.edit("display_model", "Fast")
+    fx.edit("model", "gpt-4.1")
+
+    fx.harness.press("enter")
 
     assert fx.models[1]["display_model"] == "Fast" and fx.models[1]["model"] == "gpt-4.1"
+    assert any("updated Fast" in notice for notice in fx.notices())
+
+
+async def test_the_model_id_cannot_be_left_empty(shell):
+    fx = shell()
+    await fx.command("/config")
+    fx.choose("GPT-4o")
+    fx.edit("model", "")
+
+    fx.harness.press("enter")
+
+    assert "model id is required" in fx.panel.refusal and fx.panel.focus_key() == "model"
+    assert fx.models[1]["model"] == "gpt-4o"
+
+
+async def test_saving_with_nothing_changed_writes_nothing_and_says_so(shell):
+    fx = shell()
+    before = fx.text
+    await fx.command("/config")
+    fx.choose("GPT-4o")
+
+    fx.harness.press("enter")
+
+    assert fx.text == before and any("nothing changed" in notice for notice in fx.notices())
+    assert fx.app.app.screens.top.name == "main"
+
+
+async def test_the_title_says_when_a_row_was_edited(shell):
+    fx = shell()
+    await fx.command("/config")
+    fx.choose("GPT-4o")
+    assert "edited" not in fx.screen().split("Token")[0]
+
+    fx.edit("temperature", "1")
+
+    assert "edited" in fx.screen().split("Token")[0]
 
 
 async def test_removing_asks_first_and_keep_is_the_default(shell):
     fx = shell()
     await fx.command("/config")
     fx.choose("GPT-4o")
-    fx.choose("Remove")
+    fx.act("remove")
 
     assert "Remove this model?" in fx.screen()
     fx.harness.press("enter")  # the highlighted row
@@ -771,7 +995,7 @@ async def test_removing_a_model_edits_the_file_and_the_session(shell):
     fx = shell()
     await fx.command("/config")
     fx.choose("GPT-4o")
-    fx.choose("Remove")
+    fx.act("remove")
 
     fx.choose("Remove GPT-4o")
 
@@ -1144,17 +1368,19 @@ async def test_the_keys_line_says_back_when_there_is_a_step_behind_and_cancel_wh
     assert "esc back" in fx.screen()
 
 
-async def test_escape_while_changing_a_token_goes_back_to_that_models_actions(shell):
+async def test_escape_in_the_panel_of_a_model_goes_back_to_the_list_and_writes_nothing_of_what_was_typed(shell):
     fx = shell()
     await fx.command("/config")
     fx.choose("GPT-4o")
-    fx.choose("Change the token")
+    fx.edit("token", "sk-abandoned")
+    fx.go("web_search")
+    fx.harness.press("right")
     before = fx.text
 
     fx.harness.press("escape")
 
-    assert "Use this model" in fx.screen() and "Change the token" in fx.screen()
-    assert fx.text == before
+    assert "+ Add a model" in fx.screen() and fx.page(ModelSettingsPage) is None
+    assert fx.text == before and "sk-abandoned" not in fx.text
 
 
 async def test_escape_in_the_actions_goes_back_to_the_model_list(shell):
@@ -1171,7 +1397,7 @@ async def test_escape_in_the_remove_question_goes_back_to_the_models_actions_and
     fx = shell()
     await fx.command("/config")
     fx.choose("GPT-4o")
-    fx.choose("Remove")
+    fx.act("remove")
 
     fx.harness.press("escape")
 
@@ -1182,7 +1408,7 @@ async def test_keeping_a_model_returns_to_its_actions_too(shell):
     fx = shell()
     await fx.command("/config")
     fx.choose("GPT-4o")
-    fx.choose("Remove")
+    fx.act("remove")
 
     fx.choose("Keep it")
 
@@ -1211,8 +1437,8 @@ async def test_a_token_is_never_put_back_in_the_form_after_going_back(shell):
 async def _to_api(fx, model: str, api: str) -> None:
     await fx.command("/config")
     fx.choose(model)
-    fx.choose("Change the API")
-    fx.choose(api)
+    fx.pick("api", api)
+    fx.harness.press("enter")
 
 
 @pytest.mark.parametrize(
@@ -1228,7 +1454,7 @@ async def test_the_protocol_of_a_model_can_be_changed_to_each_of_the_three(shell
     assert {k: v for k, v in entry.items() if k in ("anthropic", "responses_api")} == keys
     assert entry["token"] == "sk-two" and entry["base_url"] == "https://proxy.example.com/v1"
     assert fx.app.agent.models[1].api == api
-    assert any(api in notice for notice in fx.notices())
+    assert any((api in notice) if api != "responses" else ("nothing changed" in notice) for notice in fx.notices())
 
 
 async def test_changing_between_anthropic_and_responses_never_leaves_both_set(shell):
@@ -1240,25 +1466,13 @@ async def test_changing_between_anthropic_and_responses_never_leaves_both_set(sh
     assert fx.errors() == []
 
 
-async def test_the_protocol_page_starts_on_the_current_one_and_marks_it(shell):
-    fx = shell()
-    await fx.command("/config")
-    fx.choose("GPT-4o")
-    fx.choose("Change the API")
-
-    page = fx.page(ListPage)
-
-    assert page.list.items[page.list.selected].value == "chat"
-    assert "chat (current)" in fx.screen() and "Which API does it speak?" in fx.screen()
-
-
-async def test_the_actions_show_the_current_protocol(shell):
+async def test_the_api_row_starts_on_the_current_protocol(shell):
     fx = shell()
     await fx.command("/config")
 
     fx.choose("GPT-4o")
 
-    assert "Change the API" in fx.screen() and "chat" in fx.screen()
+    assert fx.panel.values["api"] == "chat" and "\u25c9 chat" in fx.screen()
 
 
 async def test_changing_the_protocol_of_the_model_in_use_keeps_it_in_use(shell):
@@ -1270,16 +1484,17 @@ async def test_changing_the_protocol_of_the_model_in_use_keeps_it_in_use(shell):
     assert fx.app.agent.active_model.model == "gpt-4o" and fx.app.agent.active_model.api == "responses"
 
 
-async def test_escape_in_the_protocol_page_goes_back_to_the_actions_and_writes_nothing(shell):
+async def test_moving_the_api_changes_nothing_until_enter(shell):
     fx = shell()
     await fx.command("/config")
     fx.choose("GPT-4o")
-    fx.choose("Change the API")
     before = fx.text
+    fx.pick("api", "anthropic")
 
+    assert fx.text == before and fx.app.agent.models[1].api == "chat"
     fx.harness.press("escape")
 
-    assert "Use this model" in fx.screen() and fx.text == before
+    assert fx.text == before
 
 
 async def test_choosing_the_protocol_it_already_has_changes_nothing_in_the_file(shell):
@@ -1291,12 +1506,9 @@ async def test_choosing_the_protocol_it_already_has_changes_nothing_in_the_file(
     assert fx.models == before
 
 
-async def test_the_protocol_page_starts_on_the_current_one_when_it_is_not_the_first(shell):
+async def test_the_api_row_starts_on_the_current_one_when_it_is_not_the_first(shell):
     fx = shell(BASE.replace('token = "sk-two"', 'token = "sk-two"\nanthropic = true'))
     await fx.command("/config")
     fx.choose("GPT-4o")
-    fx.choose("Change the API")
 
-    page = fx.page(ListPage)
-
-    assert page.list.items[page.list.selected].value == "anthropic" and "anthropic (current)" in fx.screen()
+    assert fx.panel.values["api"] == "anthropic" and "\u25c9 anthropic" in fx.screen()

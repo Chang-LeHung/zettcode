@@ -53,9 +53,9 @@ Invalid *arguments* are the built-in errors: `ValueError` for an empty prompt, a
 A call that **returns a run** (`prompt`, `stream`, `resume_stream`) checks its arguments at once and raises for a bad one there. Everything that touches the model raises when you **await or iterate** the run:
 
 ```python
-run = client.prompt("")                    # ValueError raised here
-run = client.prompt("explain this")        # nothing has happened yet
-result = await run                         # RunError, RunTimeoutError, ... raised here
+run = client.prompt("")  # ValueError raised here
+run = client.prompt("explain this")  # nothing has happened yet
+result = await run  # RunError, RunTimeoutError, ... raised here
 ```
 
 So wrap the `await` or the `async for`, not the call that creates the run:
@@ -225,12 +225,13 @@ Closing a client while another task is reading a run ends that task's loop clean
 ```python
 async def reader(run):
     async for event in run:
-        ...                                   # ends when the client closes
+        ...  # ends when the client closes
+
 
 task = asyncio.create_task(reader(client.prompt("...")))
 await asyncio.sleep(5)
 await client.aclose()
-await task                                    # returns; no error
+await task  # returns; no error
 ```
 
 ## Errors you should not catch
@@ -248,13 +249,14 @@ from zettcode.sdk.errors import (
     ZettCodeError,
 )
 
+
 async def safe_prompt(client, text, **options):
     try:
         return await client.prompt(text, **options)
     except ConfigurationError:
-        raise                                  # a bug in how it is called: let it fail loudly
+        raise  # a bug in how it is called: let it fail loudly
     except SessionLockedError:
-        return None                            # someone else has the session
+        return None  # someone else has the session
     except RunError as error:
         log.warning("run failed (retryable=%s): %s", error.retryable, error)
         return None

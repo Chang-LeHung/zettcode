@@ -18,13 +18,13 @@ class ApprovalChoice(StrEnum):
     The rows are the same ladder ``/permission`` offers, seen from one command: a
     choice either leaves the level alone (``RUN``, ``ALWAYS``, ``ABORT``) or moves
     it up a rung for the rest of the run (``RUN_SAFE`` to ``safe``, ``RUN_AUTO`` to
-    ``auto``). Neither ``deny`` nor ``auto`` ever shows the prompt, so there is no
+    ``full``). Neither ``deny`` nor ``full`` ever shows the prompt, so there is no
     row that goes down.
 
     Attributes:
         RUN: Execute this command once; the next one asks again.
-        RUN_SAFE: Execute it and stop asking for commands that only read.
-        RUN_AUTO: Execute it and stop asking for any later command this run.
+        RUN_SAFE: Execute it and stop asking: later commands run in the sandbox.
+        RUN_AUTO: Execute it and stop asking for any later command this run, with full access.
         ALWAYS: Execute it and remember this exact command for the session.
         ABORT: Do not execute it; the agent sees a normal tool failure.
     """
@@ -68,8 +68,8 @@ class ApprovalPage(Widget):
 
         \u25b8 1. Yes, proceed (y)          <- selected row is banded
           2. Yes, and don't ask again for this command (p)
-          3. Yes, and stop asking for read-only commands (s)
-          4. Yes, and stop asking for any command this run (a)
+          3. Yes, and stop asking; run commands sandboxed (s)
+          4. Yes, and stop asking; full access, no sandbox (a)
           5. No, and say what to do differently (esc)
 
     The ``s`` row is offered only while the level is ``ask``: at ``safe`` it would
@@ -136,8 +136,8 @@ class ApprovalPage(Widget):
         if remember_supported:
             options.append(ApprovalOption(ApprovalChoice.ALWAYS, "p", "Yes, and don't ask again for this command"))
         if permission == "ask":
-            options.append(ApprovalOption(ApprovalChoice.RUN_SAFE, "s", "Yes, and stop asking for read-only commands"))
-        options.append(ApprovalOption(ApprovalChoice.RUN_AUTO, "a", "Yes, and stop asking for any command this run"))
+            options.append(ApprovalOption(ApprovalChoice.RUN_SAFE, "s", "Yes, and stop asking; run commands sandboxed"))
+        options.append(ApprovalOption(ApprovalChoice.RUN_AUTO, "a", "Yes, and stop asking; full access, no sandbox"))
         options.append(ApprovalOption(ApprovalChoice.ABORT, "escape", "No, and say what to do differently"))
         return tuple(options)
 

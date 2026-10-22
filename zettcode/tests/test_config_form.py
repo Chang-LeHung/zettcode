@@ -103,6 +103,16 @@ def test_multimodal_is_a_flag_with_no_value():
     assert entry["multimodal"] is True
 
 
+def test_web_search_is_a_flag_and_naming_the_tool_turns_it_on():
+    plain = entry_for(parse_add("anthropic --model m --token t", PROVIDERS))
+    flagged = entry_for(parse_add("anthropic --model m --token t --web-search", PROVIDERS))
+    named = entry_for(parse_add("anthropic --model m --token t --search-tool web_search_20250305", PROVIDERS))
+
+    assert "web_search" not in plain and "web_search_name" not in plain
+    assert flagged["web_search"] is True and "web_search_name" not in flagged, "the default needs no name written"
+    assert named["web_search"] is True and named["web_search_name"] == "web_search_20250305"
+
+
 def test_values_with_spaces_can_be_quoted():
     entry = entry_for(parse_add('deepseek --model m --token t --name "My Fast Model"', PROVIDERS))
 

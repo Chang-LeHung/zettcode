@@ -158,7 +158,9 @@ async def compare(client: zc.Client, task: str, approaches: list[str]) -> dict[s
     results: dict[str, str] = {}
     for approach in approaches:
         attempt = await base.fork()
-        result = await attempt.prompt(f"{task}\n\nApproach: {approach}. Describe the diff you would make, but make no edits.")
+        result = await attempt.prompt(
+            f"{task}\n\nApproach: {approach}. Describe the diff you would make, but make no edits."
+        )
         results[approach] = result.text
     return results
 ```
@@ -322,7 +324,7 @@ import zettcode.sdk as zc
 
 async def today(client: zc.Client) -> str:
     result = await client.prompt("Start migrating the settings module to dataclasses.")
-    return result.session_id          # save it
+    return result.session_id  # save it
 
 
 async def tomorrow(session_id: str) -> None:

@@ -18,7 +18,7 @@ import zettcode.sdk as zc
 async with zc.Client(".") as client:
     spent = client.usage
     print(spent.input_tokens, spent.output_tokens, spent.total_tokens)
-    print(spent.cache_hit_rate)      # the cached share of the input, or None
+    print(spent.cache_hit_rate)  # the cached share of the input, or None
 ```
 
 ## What the workspace spent
@@ -71,9 +71,9 @@ per-session choice, which the terminal's `/self-compact` panel edits:
 
 ```python
 async with zc.Client(".") as client:
-    print(client.self_compaction, client.self_compaction_choice)   # in force, and this session's own choice
-    client.use_self_compaction(True)                               # this session may compact itself
-    client.use_self_compaction(None)                               # follow the configuration again
+    print(client.self_compaction, client.self_compaction_choice)  # in force, and this session's own choice
+    client.use_self_compaction(True)  # this session may compact itself
+    client.use_self_compaction(None)  # follow the configuration again
 ```
 
 The choice is stored in the session, so it is there when the conversation is reopened, and it applies from the next

@@ -75,6 +75,7 @@ Shell commands need approval unless the permission level says otherwise. Pass a 
 def only_read_commands(request):
     return request.command.startswith(("git status", "git diff", "cat ", "ls "))
 
+
 result = await client.prompt("check the diff", on_approval=only_read_commands)
 ```
 

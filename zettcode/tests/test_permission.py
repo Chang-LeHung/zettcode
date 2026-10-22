@@ -19,6 +19,25 @@ from zettcode.app.agent.permission import (
     parse_permission,
 )
 from zettcode.app.agent.permission.approval import ShellApprovalMemory
+from zettcode.app.agent.permission.sandbox import ShellSandbox
+
+
+class _Sandbox(ShellSandbox):
+    """A sandbox that is, or is not, there, without asking the machine: ``safe`` depends on which."""
+
+    def __init__(self, available: bool) -> None:
+        super().__init__(Path.cwd())
+        self._probed = True
+        self._available = available
+
+    @property
+    def available(self) -> bool:
+        return self._available
+
+
+def _policy(repo: Path, *, sandbox: bool, level: Permission = Permission.ASK) -> ShellPolicy:
+    """A policy over a sandbox this machine does or does not have."""
+    return ShellPolicy(level, repo, _Sandbox(sandbox))
 
 
 class _AskedTheReader(Exception):
@@ -67,22 +86,32 @@ def repo(tmp_path: Path) -> Path:
 
 
 def test_there_are_four_levels_strictest_first():
-    assert [level.value for level in PERMISSION_LEVELS] == ["deny", "ask", "safe", "auto"]
+    assert [level.value for level in PERMISSION_LEVELS] == ["deny", "ask", "safe", "full"]
 
 
 def test_a_level_is_parsed_by_name_and_a_wrong_name_lists_the_right_ones():
     assert parse_permission("  SAFE ") is Permission.SAFE
-    with pytest.raises(ValueError, match="Try one of: deny, ask, safe, auto"):
+    assert parse_permission("full") is Permission.FULL
+    with pytest.raises(ValueError, match="Try one of: deny, ask, safe, full"):
         parse_permission("yolo")
+
+
+def test_auto_is_still_taken_as_the_old_name_of_full():
+    """The level was called ``auto`` until ``safe`` became a sandbox; configs, scripts and the SDK still say so."""
+    assert parse_permission("auto") is Permission.FULL
+    assert parse_permission(" AUTO ") is Permission.FULL
+    assert Permission.AUTO is Permission.FULL
+    assert Permission.FULL.value == "full"
 
 
 def test_the_configured_approval_mode_picks_the_starting_level():
     assert ShellPolicy.from_mode(ShellApprovalMode.REVIEW).level is Permission.ASK
-    assert ShellPolicy.from_mode(ShellApprovalMode.ALLOW_ALL).level is Permission.AUTO
+    assert ShellPolicy.from_mode(ShellApprovalMode.ALLOW_ALL).level is Permission.FULL
 
 
-def test_each_level_answers_whether_a_command_may_run_unasked(repo: Path):
-    policy = ShellPolicy(workspace=repo)
+def test_each_level_answers_whether_a_command_may_run_unasked_with_no_sandbox(repo: Path):
+    """Where the machine has no sandbox, `safe` is what it was before one existed: reads run, the rest ask."""
+    policy = _policy(repo, sandbox=False)
     answers = {}
     for level in PERMISSION_LEVELS:
         policy.level = level
@@ -92,19 +121,52 @@ def test_each_level_answers_whether_a_command_may_run_unasked(repo: Path):
         "deny": (False, False),
         "ask": (False, False),
         "safe": (True, False),
-        "auto": (True, True),
+        "full": (True, True),
     }
 
 
+def test_with_a_sandbox_safe_lets_every_command_run_because_the_kernel_is_the_boundary(repo: Path):
+    policy = _policy(repo, sandbox=True, level=Permission.SAFE)
+
+    assert policy.sandboxed is True
+    assert policy.allows_unasked("git status") is True
+    assert policy.allows_unasked("rm -rf build") is True, (
+        "it runs, inside a boundary that cannot reach past the workspace"
+    )
+
+
+def test_only_safe_is_ever_sandboxed_and_only_where_the_machine_has_one(repo: Path):
+    with_one = _policy(repo, sandbox=True)
+    without = _policy(repo, sandbox=False)
+    seen = {}
+    for level in PERMISSION_LEVELS:
+        with_one.level = without.level = level
+        seen[level.value] = (with_one.sandboxed, without.sandboxed)
+
+    assert seen == {
+        "deny": (False, False),
+        "ask": (False, False),
+        "safe": (True, False),
+        "full": (False, False),
+    }
+
+
+def test_a_policy_with_no_workspace_has_no_sandbox_to_offer():
+    policy = ShellPolicy(Permission.SAFE)
+
+    assert policy.sandbox is None and policy.sandboxed is False
+    assert policy.allows_unasked("ls") is True and policy.allows_unasked("rm x") is False
+
+
 async def test_the_approval_memory_lets_the_level_skip_the_prompt(repo: Path):
-    policy = ShellPolicy(workspace=repo)
+    policy = _policy(repo, sandbox=False)
     memory = ShellApprovalMemory(policy)
 
     assert await memory.is_allowed("s", "ls") is False, "ask: nothing is allowed until it is approved"
     policy.level = Permission.SAFE
     assert await memory.is_allowed("s", "ls") is True
     assert await memory.is_allowed("s", "rm x") is False
-    policy.level = Permission.AUTO
+    policy.level = Permission.FULL
     assert await memory.is_allowed("s", "rm x") is True
 
 
@@ -126,22 +188,24 @@ async def test_without_a_policy_the_memory_behaves_as_it_did_before_levels():
     assert await memory.is_allowed("s", "ls") is True
 
 
-async def test_ask_puts_a_command_to_the_reader_and_safe_and_auto_do_not(repo: Path):
+async def test_ask_puts_a_command_to_the_reader_and_safe_and_full_do_not(repo: Path):
     """The real approval extension, driven through the real memory.
 
     The fake context raises when the extension emits its request, which is how the
     test knows the command reached the prompt without a prompt having to exist.
     """
-    policy = ShellPolicy(workspace=repo)
+    policy = _policy(repo, sandbox=False)
     approval = ShellApprovalExtension(ShellApprovalMemory(policy))
 
     assert await _ran(approval, "ls") == ["asked"], "ask"
     policy.level = Permission.SAFE
-    assert await _ran(approval, "ls") == ["ls"], "safe: a read runs"
-    assert await _ran(approval, "rm -rf build") == ["asked"], "safe: a write still asks"
-    assert await _ran(approval, "ls; rm x") == ["asked"], "safe: a read chained to a write still asks"
-    policy.level = Permission.AUTO
-    assert await _ran(approval, "rm -rf build") == ["rm -rf build"], "auto"
+    assert await _ran(approval, "ls") == ["ls"], "safe without a sandbox: a read runs"
+    assert await _ran(approval, "rm -rf build") == ["asked"], "safe without a sandbox: a write still asks"
+    assert await _ran(approval, "ls; rm x") == ["asked"], "safe without a sandbox: a read chained to a write asks"
+    policy.sandbox = _Sandbox(True)
+    assert await _ran(approval, "rm -rf build") == ["rm -rf build"], "safe with a sandbox: the boundary decides"
+    policy.level = Permission.FULL
+    assert await _ran(approval, "rm -rf build") == ["rm -rf build"], "full"
 
 
 async def test_deny_refuses_a_shell_command_and_tells_the_model_why():
@@ -162,7 +226,7 @@ async def test_deny_leaves_every_other_tool_alone():
     assert await _ran(deny, "x", tool="replace_in_file") == ["x"]
 
 
-@pytest.mark.parametrize("level", [Permission.ASK, Permission.SAFE, Permission.AUTO])
+@pytest.mark.parametrize("level", [Permission.ASK, Permission.SAFE, Permission.FULL])
 async def test_only_deny_refuses(level: Permission):
     deny = ShellDenyExtension(ShellPolicy(level))
 
@@ -182,7 +246,7 @@ async def test_a_command_remembered_by_hand_does_not_get_past_deny():
 
 async def test_a_change_of_level_applies_to_the_next_command_in_flight(repo: Path):
     """The level is read at each shell call, not when a request starts."""
-    policy = ShellPolicy(Permission.ASK, repo)
+    policy = _policy(repo, sandbox=False, level=Permission.ASK)
     deny = ShellDenyExtension(policy)
     approval = ShellApprovalExtension(ShellApprovalMemory(policy))
 
@@ -231,7 +295,10 @@ async def test_the_level_the_command_sets_is_the_one_object_the_guard_the_runtim
     assert await shell_call() == "ran"
     runtime.use_permission("deny")
     assert await shell_call() == "refused"
+    runtime.use_permission("full")
+    assert await shell_call() == "ran"
     runtime.use_permission("auto")
+    assert runtime.permission is Permission.FULL, "the old name still sets the level"
     assert await shell_call() == "ran"
 
 

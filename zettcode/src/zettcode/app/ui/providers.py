@@ -1,15 +1,14 @@
 """``/config``: add, change and remove the models in the config file from inside the shell.
 
-The pages are the shell's usual ones — a list to choose from, a line to answer — stacked one after
-another; this module is the order they come in. Each step replaces the page before it, Escape on any
-step abandons the whole thing, and nothing is written until the last answer is in. What is written is
-decided by :mod:`.config_form` and :mod:`zettcode.config_edit`; what this module adds is only the
-sequence and the sentence the reader is left with.
+The pages are the shell's usual ones — a list to choose from, a form to fill in — stacked one after another; this
+module is the order they come in. Each step replaces the page before it, Escape on any step abandons the whole thing,
+and nothing is written until the last answer is in. What is written is decided by :mod:`.config_form` and
+:mod:`zettcode.config_edit`; what this module adds is only the sequence and the sentence the reader is left with.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING, cast
 
 from zettcode.config_edit import ConfigEditError
@@ -26,11 +25,11 @@ from .config_form import (
     parse_percent,
     parse_temperature,
     parse_tokens,
-    tokens_text,
     whole_if_whole,
 )
 from .shell import PAGE_SCREEN, ShellState
-from .widgets import INPUT_ROWS, Field, FormPage, InputPage, bottom_panel, form_rows
+from .widgets import Field, FormPage, ModelSettingsPage, bottom_panel, form_rows, model_settings_rows
+from .widgets.model_settings_page import Action, Answer, Setting
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zettcode.config import ModelConfig
@@ -39,11 +38,18 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
 #: Rows the list pages take: the title, a blank, up to eight rows, the keys.
 LIST_ROWS = 13
 
-#: Rows the list of things to do with one model takes: ten of them.
-ACTION_ROWS = 16
-
 #: Columns the file's path may take under the title; a longer one keeps its end, where the name is.
 SUBTITLE_COLUMNS = 70
+
+
+class _Refused(Exception):
+    """A change the file would not take, and the row of the panel that has to be corrected for it to be."""
+
+    def __init__(self, key: str, reason: str) -> None:
+        """Hold the key of the row (empty when it is none) and the sentence that says what is wrong."""
+        super().__init__(reason)
+        self.key = key
+        self.reason = reason
 
 
 class ConfigMixin(ShellState):
@@ -284,36 +290,6 @@ class ConfigMixin(ShellState):
         draft.trail.append(("api", api.value))
         self._config_ask(draft)
 
-    def _config_ask_text(
-        self,
-        title: str,
-        draft: Draft,
-        accept: Callable[[str], str | None],
-        *,
-        help_lines: tuple[str, ...] = (),
-        secret: bool = False,
-        initial: str = "",
-        allow_empty: bool = False,
-        replace: bool,
-        on_cancel: Callable[[], None] | None = None,
-    ) -> None:
-        """Show one line to answer; ``accept`` takes the text or answers why not.
-
-        ``on_cancel`` is where Escape goes; by default it takes back the draft's last answer.
-        """
-        behind = bool(draft.trail) or draft.from_panel
-        page = InputPage(
-            title,
-            on_submit=accept,
-            on_cancel=on_cancel or (lambda: self._config_step_back(draft)),
-            cancel_label="esc back" if on_cancel or behind else "esc cancel",
-            help_lines=help_lines,
-            secret=secret,
-            initial=initial,
-            allow_empty=allow_empty,
-        )
-        self._config_show(page, rows=INPUT_ROWS, replace=replace)
-
     def _config_write(self, draft: Draft) -> None:
         """Write the finished draft to the file, and announce it."""
         try:
@@ -330,234 +306,215 @@ class ConfigMixin(ShellState):
 
     # -- changing one --------------------------------------------------------------------
     def _config_actions(self, index: int, *, replace: bool) -> None:
-        """Offer what can be done to one model."""
-        try:
-            model, _ = self.agent.file_models()[index]
-        except (ConfigEditError, IndexError) as error:
-            self._config_failed(error)
-            return
-        rows = [
-            ListItem("use", "Use this model", "switch to it now"),
-            ListItem("token", "Change the token", "the current one is not shown"),
-            ListItem("api", "Change the API", f"{model.api} \u2014 chat, responses or anthropic"),
-            ListItem("base_url", "Change the address", model.base_url or "default address"),
-            ListItem("model", "Change the model id", model.model),
-            ListItem("display_model", "Change the shown name", model.display_model or "(the model id)"),
-            ListItem("multimodal", "Images", "accepted" if model.multimodal else "not accepted \u2014 text only"),
-            ListItem(
-                "temperature",
-                "Temperature",
-                "the provider's default" if model.temperature is None else f"{whole_if_whole(model.temperature)}",
-            ),
-            ListItem("context_window", "Context window", tokens_text(model.context_window)),
-            ListItem(
-                "compact_percent",
-                "Compress at",
-                f"{whole_if_whole(model.compact_percent)}% of the window \u2014 {model.compaction_max_tokens:,} tokens",
-            ),
-            ListItem("remove", "Remove", "delete it from the file"),
-        ]
-        page = ListPage(
-            rows,
-            title=model.shown_name,
-            on_select=lambda item: self._config_act(index, str(item.value)),
-            on_cancel=self._config_back,
-        )
-        self._config_show(page, rows=ACTION_ROWS, replace=replace)
+        """Show every setting of one model on one page, with what can be done to it under them.
 
-    def _config_act(self, index: int, action: str) -> None:
-        """Do one of the things offered for a model."""
+        The names are on the left and the values on the right: what is typed is an editor, whether images are accepted
+        and whether the provider searches the web are switches, the API is a choice among its three. Enter saves all of
+        them at once; the two actions at the bottom are switching to the model and removing it.
+        """
         try:
             model, entry = self.agent.file_models()[index]
         except (ConfigEditError, IndexError) as error:
             self._config_failed(error)
             return
-        if action == "use":
-            self._config_end()
-            self.change_model(model)
-        elif action == "remove":
-            self._config_confirm_remove(index, model)
-        elif action == "api":
-            self._config_pick_api(index, model.api, dict(entry))
-        elif action == "multimodal":
-            self._config_pick_images(index, model, dict(entry))
-        elif action == "temperature":
-            self._config_ask_temperature(index, model, dict(entry))
-        elif action in ("context_window", "compact_percent"):
-            self._config_ask_limit(index, model, dict(entry), action)
-        else:
-            secret = action == "token"
-            self._config_ask_text(
-                {
-                    "token": "New token",
-                    "base_url": "New address",
-                    "model": "New model id",
-                    "display_model": "New shown name",
-                }[action],
-                Draft(),
-                lambda text: self._config_change(index, dict(entry), action, text),
-                help_lines=("Leave it empty to clear it.",) if action in ("base_url", "display_model") else (),
-                secret=secret,
-                initial="" if secret else str(entry.get(action, "")),
-                allow_empty=action in ("base_url", "display_model"),
-                replace=True,
-                on_cancel=lambda: self._config_actions(index, replace=True),
-            )
-
-    def _config_pick_api(self, index: int, current: Api, entry: dict[str, object]) -> None:
-        """Ask which protocol a model speaks, starting on the one it has."""
-        rows = [ListItem(api, f"{api}{' (current)' if api == current else ''}", api.description) for api in Api]
-        page = ListPage(
-            rows,
-            title="Which API does it speak?",
-            subtitle="The address stays as it is; change it too if this host uses another.",
-            on_select=lambda item: self._config_set_api(index, entry, cast(Api, item.value), current),
-            on_cancel=lambda: self._config_actions(index, replace=True),
-            selected=list(Api).index(current),
-        )
-        self._config_show(page, rows=LIST_ROWS, replace=True)
-
-    def _config_pick_images(self, index: int, model: ModelConfig, entry: dict[str, object]) -> None:
-        """Ask whether a model takes images, starting on the answer it has."""
-        rows = [
-            ListItem(True, "Yes" + (" (current)" if model.multimodal else ""), "pictures can be attached with Ctrl-V"),
-            ListItem(False, "No" + ("" if model.multimodal else " (current)"), "text only: a picture is refused"),
+        settings = [
+            Setting(
+                "token",
+                "Token",
+                "secret",
+                placeholder="unchanged",
+                hint="Your key. The current one is never shown; leave this empty to keep it.",
+            ),
+            Setting(
+                "api",
+                "API",
+                "choice",
+                words=tuple(api.value for api in Api),
+                value=list(Api).index(model.api),
+                hint="The protocol the endpoint speaks. The address stays as it is; change it too if this host uses another.",
+            ),
+            Setting(
+                "base_url",
+                "Address",
+                initial=str(entry.get("base_url", "")),
+                placeholder="default address",
+                hint="Where requests go, such as https://api.example.com/v1. Leave it empty for the API's own.",
+            ),
+            Setting(
+                "model",
+                "Model id",
+                initial=str(entry.get("model", "")),
+                hint="The id the provider calls the model, exactly as its documentation writes it.",
+                required=True,
+            ),
+            Setting(
+                "display_model",
+                "Shown name",
+                initial=str(entry.get("display_model", "")),
+                placeholder="the model id",
+                hint="What the header and /model show for it. Leave it empty to show the model id.",
+            ),
+            Setting(
+                "multimodal",
+                "Images",
+                "switch",
+                words=("text only", "accepted"),
+                value=int(model.multimodal),
+                hint="Only the model's documentation knows; a model that cannot read a picture fails the request.",
+            ),
+            Setting(
+                "web_search",
+                "Web search",
+                "switch",
+                words=("off", "on"),
+                value=int(model.web_search),
+                hint="The endpoint runs the search; ZettCode fetches nothing."
+                + ("" if model.can_search else " DeepSeek searches only over the Anthropic API."),
+            ),
+            Setting(
+                "web_search_name",
+                "Search tool",
+                initial=str(entry.get("web_search_name", "")),
+                placeholder=f"the default: {model.search_name}",
+                hint="The exact tool type the endpoint expects. Leave it empty to send the default for the API.",
+            ),
+            Setting(
+                "temperature",
+                "Temperature",
+                initial=str(entry.get("temperature", "")),
+                placeholder="the provider's default",
+                hint=f"From 0 (the most deterministic) to {1 if model.anthropic else 2}. Leave it empty to send none.",
+            ),
+            Setting(
+                "context_window",
+                "Context window",
+                initial=str(entry.get("context_window", "")),
+                placeholder="128,000 tokens",
+                hint="How many tokens the model can carry: 128000, 128k or 1m. Leave it empty to use 128,000.",
+            ),
+            Setting(
+                "compact_percent",
+                "Compress at",
+                initial=str(entry.get("compact_percent", "")),
+                placeholder="80 (% of the window)",
+                hint="When the conversation fills this share of the window it is summarized first: more than 0, at most 100.",
+            ),
         ]
-        page = ListPage(
-            rows,
-            title="Does it accept images?",
-            subtitle="Only the model's documentation knows; a model that cannot read one fails the request.",
-            on_select=lambda item: self._config_set_images(index, entry, bool(item.value)),
-            on_cancel=lambda: self._config_actions(index, replace=True),
-            selected=0 if model.multimodal else 1,
+        actions = [
+            Action("use", "Use this model", "save any change, then switch to it now", saves=True),
+            Action("remove", "Remove", "delete it from the file"),
+        ]
+        page = ModelSettingsPage(
+            f"{model.shown_name}{' (current)' if model == self.agent.active_model else ''}",
+            settings,
+            actions,
+            on_save=lambda values: self._config_saved(index, values),
+            on_action=lambda action, values: self._config_acted(index, action, values),
+            on_cancel=self._config_back,
         )
-        self._config_show(page, rows=LIST_ROWS, replace=True)
+        self._config_show(page, rows=model_settings_rows(len(settings), len(actions)), replace=replace)
 
-    def _config_set_images(self, index: int, entry: dict[str, object], accepts: bool) -> None:
-        """Write whether the model takes images; the default is no, so no is written as nothing."""
-        if accepts:
-            entry["multimodal"] = True
-        else:
-            entry.pop("multimodal", None)
-        refused = self._config_save(
-            index, entry, lambda model: f"{model.shown_name}: images {'accepted' if accepts else 'not accepted'}"
-        )
-        if refused is not None:
-            self._config_failed(ValueError(refused))
-
-    def _config_ask_temperature(self, index: int, model: ModelConfig, entry: dict[str, object]) -> None:
-        """Ask for the sampling temperature of a model, or for none."""
-        top = 1 if model.anthropic else 2
-        self._config_ask_text(
-            "Temperature",
-            Draft(),
-            lambda text: self._config_change_temperature(index, entry, model, text),
-            help_lines=(
-                f"How random the answers are, from 0 (the most deterministic) to {top}.",
-                "Leave it empty to send none, and the provider uses its own.",
-            ),
-            initial=str(entry.get("temperature", "")),
-            allow_empty=True,
-            replace=True,
-            on_cancel=lambda: self._config_actions(index, replace=True),
-        )
-
-    def _config_change_temperature(
-        self, index: int, entry: dict[str, object], model: ModelConfig, text: str
-    ) -> str | None:
-        """Write the temperature; answer why not when the text is not one the model can take."""
-        if text:
-            try:
-                entry["temperature"] = whole_if_whole(parse_temperature(text, model.api))
-            except ValueError as error:
-                return str(error)
-        else:
-            entry.pop("temperature", None)
-        return self._config_save(
-            index,
-            entry,
-            lambda saved: (
-                f"{saved.shown_name}: temperature "
-                + ("left to the provider" if saved.temperature is None else f"{whole_if_whole(saved.temperature)}")
-            ),
-        )
-
-    def _config_ask_limit(self, index: int, model: ModelConfig, entry: dict[str, object], key: str) -> None:
-        """Ask for the size of a model's window, or the share of it at which a request is summarized."""
-        window = key == "context_window"
-        self._config_ask_text(
-            "Context window" if window else "Compress at",
-            Draft(),
-            lambda text: self._config_change_limit(index, entry, key, text),
-            help_lines=(
-                (
-                    "How many tokens the model can carry: 128000, 128k or 1m.",
-                    "Leave it empty to use 128,000.",
-                )
-                if window
-                else (
-                    "When the conversation fills this share of the window, it is summarized before the next request.",
-                    "A percentage, more than 0 and at most 100. Leave it empty to use 80.",
-                )
-            ),
-            initial=str(entry.get(key, "")),
-            allow_empty=True,
-            replace=True,
-            on_cancel=lambda: self._config_actions(index, replace=True),
-        )
-
-    def _config_change_limit(self, index: int, entry: dict[str, object], key: str, text: str) -> str | None:
-        """Write one of the two limits; answer why not when the text is not one."""
-        if text:
-            try:
-                entry[key] = parse_tokens(text) if key == "context_window" else whole_if_whole(parse_percent(text))
-            except ValueError as error:
-                return str(error)
-        else:
-            entry.pop(key, None)
-        return self._config_save(index, entry, lambda model: f"{model.shown_name}: {limits_text(model)}")
-
-    def _config_save(self, index: int, entry: dict[str, object], say: Callable[[ModelConfig], str]) -> str | None:
-        """Rewrite the entry in the file and in this session, and say what it came to; answer why not on a refusal."""
+    def _config_saved(self, index: int, values: dict[str, Answer]) -> tuple[str, str] | None:
+        """Write what the page holds, and close it; answer which row is wrong when one is."""
         try:
-            model = self.agent.update_configured_model(index, entry)
-        except ValueError as error:
-            return str(error)
-        self._config_end(say(model))
+            model, entry, before = self._config_update(index, values)
+        except _Refused as refused:
+            return (refused.key, refused.reason)
+        except (ConfigEditError, IndexError) as error:
+            self._config_failed(error)
+            return None
+        if entry == before:
+            self._config_end(f"{model.shown_name}: nothing changed")
+        else:
+            limits = any(entry.get(key) != before.get(key) for key in ("context_window", "compact_percent"))
+            self._config_end(f"updated {describe(entry)}" + (f" {SEPARATOR} {limits_text(model)}" if limits else ""))
         self.app.request_layout()
         return None
 
-    def _config_set_api(self, index: int, entry: dict[str, object], api: Api, current: Api) -> None:
-        """Write the protocol as the keys the loader reads, clearing the ones it no longer is.
+    def _config_acted(self, index: int, action: Action, values: dict[str, Answer]) -> tuple[str, str] | None:
+        """Do what one of the page's actions says: switch to the model, after saving it, or ask about removing it."""
+        try:
+            if action.key == "remove":
+                model, _ = self.agent.file_models()[index]
+                self._config_confirm_remove(index, model)
+                return None
+            model, _, _ = self._config_update(index, values)
+        except _Refused as refused:
+            return (refused.key, refused.reason)
+        except (ConfigEditError, IndexError) as error:
+            self._config_failed(error)
+            return None
+        self._config_end()
+        self.change_model(model)
+        return None
 
-        Choosing the protocol the entry already speaks rewrites it as it was (and says so). Choosing chat from another
-        one writes ``chat = true``, so the file says which protocol the entry speaks; an entry that already had it keeps
-        it, and one that never had it is not given it by a choice that changed nothing.
+    def _config_update(
+        self, index: int, values: dict[str, Answer]
+    ) -> tuple[ModelConfig, dict[str, object], Mapping[str, object]]:
+        """Rewrite the entry the page was opened on with every answer it holds, in the file and in this session.
+
+        Only what differs from the entry is touched: a key the reader never changed is not written, and an empty row
+        removes its key so the default applies. The token is the exception to "empty clears": the current one is never
+        shown, so an empty row means it was left alone.
+
+        Returns:
+            The model as it is now, the entry as written, and the entry as it was.
+
+        Raises:
+            _Refused: With the row to correct, when an answer is not one the model can take.
         """
-        had_chat = bool(entry.get("chat"))
-        for key in API_FLAG_KEYS:
+        model, current = self.agent.file_models()[index]
+        entry = dict(current)
+        api = Api.parse(str(values["api"]))
+        if api != model.api:
+            for key in API_FLAG_KEYS:
+                entry.pop(key, None)
+            entry.update(api.keys)
+            if api is Api.CHAT:
+                entry["chat"] = True
+        readers: dict[str, Callable[[str], object]] = {
+            "base_url": lambda text: check_url(text, what="the address"),
+            "temperature": lambda text: whole_if_whole(parse_temperature(text, api)),
+            "context_window": parse_tokens,
+            "compact_percent": lambda text: whole_if_whole(parse_percent(text)),
+        }
+        for key in (
+            "base_url",
+            "model",
+            "display_model",
+            "web_search_name",
+            "temperature",
+            "context_window",
+            "compact_percent",
+        ):
+            text = str(values[key])
+            if text == str(current.get(key, "")):
+                continue  # a row the reader did not touch is not rewritten, however the file happens to spell it
+            try:
+                self._set(entry, key, readers.get(key, str)(text) if text else None)
+            except ValueError as error:
+                raise _Refused(key, str(error)) from None
+        if values["token"]:
+            entry["token"] = str(values["token"])
+        self._set(entry, "multimodal", True if values["multimodal"] else None)
+        self._set(entry, "web_search", True if values["web_search"] else None)
+        if entry == current:
+            return model, entry, current
+        try:
+            return self.agent.update_configured_model(index, entry), entry, current
+        except ValueError as error:
+            sentence = str(error).lower()
+            raise _Refused(
+                next((key for key in ("temperature", "search") if key in sentence), ""), str(error)
+            ) from None
+
+    @staticmethod
+    def _set(entry: dict[str, object], key: str, value: object | None) -> None:
+        """Set a key, or take it out of the entry when there is nothing to say."""
+        if value is None:
             entry.pop(key, None)
-        entry.update(api.keys)
-        if api is Api.CHAT and (api != current or had_chat):
-            entry["chat"] = True
-        refused = self._config_save(index, entry, lambda model: f"updated {describe(entry)}")
-        if refused is not None:
-            self._config_failed(ValueError(refused))
-
-    def _config_change(self, index: int, entry: dict[str, object], key: str, value: str) -> str | None:
-        """Rewrite one key of one entry; answer why not when the new value is refused."""
-        if value:
-            if key == "base_url":
-                from zettcode.providers import check_url
-
-                try:
-                    value = check_url(value, what="the address")
-                except ValueError as error:
-                    return str(error)
-            entry[key] = value
         else:
-            entry.pop(key, None)
-        return self._config_save(index, entry, lambda model: f"updated {describe(entry)}")
+            entry[key] = value
 
     def _config_confirm_remove(self, index: int, model: ModelConfig) -> None:
         """Ask once before deleting, with the safe answer first."""

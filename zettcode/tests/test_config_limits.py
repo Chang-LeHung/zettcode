@@ -14,10 +14,8 @@ from zettcode.app.ui.config_form import (
     parse_tokens,
     whole_if_whole,
 )
-from zettcode.app.ui.widgets import InputPage
 from zettcode.config import DEFAULT_COMPACT_PERCENT, DEFAULT_CONTEXT_WINDOW, ModelConfig
 from zettcode.providers import BUILTIN_PROVIDERS
-from zettcode.tui import ListPage
 
 # -- how a size and a share are written -----------------------------------------------------------------------
 
@@ -130,55 +128,54 @@ async def test_a_model_in_the_panel_offers_images_the_window_and_when_to_compres
     fx.choose("GPT-4o")
 
     screen = fx.screen()
-    assert "Images" in screen and "not accepted" in screen
-    assert "Context window" in screen and "128,000 tokens" in screen
-    assert "Compress at" in screen and "80% of the window" in screen and "102,400 tokens" in screen
+    assert "Images" in screen and "text only" in screen
+    assert "Context window" in screen and "128,000 tokens" in screen, "the default is the placeholder"
+    assert "Compress at" in screen and "80 (% of the window)" in screen
 
 
-async def test_images_are_chosen_from_a_yes_or_a_no_that_starts_on_the_current_answer(shell):  # noqa: F811
+async def test_images_are_a_switch_that_starts_on_the_current_answer(shell):  # noqa: F811
     fx = shell()
     await fx.command("/config")
     fx.choose("GPT-4o")
 
-    fx.choose("Images")
-
-    page = fx.page(ListPage)
-    assert [item.label for item in page.list.items] == ["Yes", "No (current)"]
-    assert page.list.selected == 1
+    assert fx.panel.values["multimodal"] is False
+    row = next(line for line in fx.screen().splitlines() if "Images" in line)
+    assert "\u25cf" + "\u2500" * 9 in row and row.rstrip().endswith("text only")
 
 
-async def test_saying_yes_writes_multimodal_and_the_session_takes_images_at_once(shell):  # noqa: F811
+async def test_turning_images_on_writes_multimodal_and_the_session_takes_images_at_once(shell):  # noqa: F811
     fx = shell()
     await fx.command("/config")
     fx.choose("GPT-4o")
-    fx.choose("Images")
+    fx.go("multimodal")
 
-    fx.choose("Yes")
+    fx.harness.press("right")
+    fx.harness.press("enter")
 
     assert fx.models[1]["multimodal"] is True and fx.app.agent.models[1].multimodal is True
-    assert "images accepted" in " ".join(fx.notices())
+    assert "updated GPT-4o" in " ".join(fx.notices())
 
 
-async def test_saying_no_removes_the_key_because_no_is_the_default(shell):  # noqa: F811
+async def test_turning_images_off_removes_the_key_because_off_is_the_default(shell):  # noqa: F811
     fx = shell(BASE + '\n[[models]]\nmodel = "vision"\ntoken = "sk-v"\nmultimodal = true\n')
     await fx.command("/config")
     fx.choose("vision")
-    fx.choose("Images")
-    assert [item.label for item in fx.page(ListPage).list.items][0] == "Yes (current)"
+    assert fx.panel.values["multimodal"] is True
+    fx.go("multimodal")
 
-    fx.choose("No")
+    fx.harness.write(" ")
+    fx.harness.press("enter")
 
     assert "multimodal" not in fx.models[2] and fx.app.agent.models[2].multimodal is False
 
 
-async def test_the_window_shows_the_current_size_and_takes_k_and_m(shell):  # noqa: F811
+async def test_the_window_takes_k_and_m_and_the_notice_says_where_it_compresses(shell):  # noqa: F811
     fx = shell()
     await fx.command("/config")
     fx.choose("GPT-4o")
-    fx.choose("Context window")
-    assert "tokens" in "\n".join(fx.page(InputPage).help_lines)
+    fx.edit("context_window", "200k")
 
-    fx.type("200k")
+    fx.harness.press("enter")
 
     assert fx.models[1]["context_window"] == 200_000 and fx.app.agent.models[1].context_window == 200_000
     assert "200,000 tokens" in " ".join(fx.notices()) and "160,000 tokens" in " ".join(fx.notices())
@@ -188,11 +185,11 @@ async def test_a_window_written_as_a_few_hundred_is_refused_with_how_to_write_it
     fx = shell()
     await fx.command("/config")
     fx.choose("GPT-4o")
-    fx.choose("Context window")
+    fx.edit("context_window", "200")
 
-    fx.type("200")
+    fx.harness.press("enter")
 
-    assert "write 200k" in fx.page(InputPage).note
+    assert "write 200k" in fx.panel.refusal and fx.panel.focus_key() == "context_window"
     assert "context_window" not in fx.models[1]
 
 
@@ -200,10 +197,8 @@ async def test_clearing_the_window_goes_back_to_the_default(shell):  # noqa: F81
     fx = shell(BASE.replace('token = "sk-two"', 'token = "sk-two"\ncontext_window = 200000'))
     await fx.command("/config")
     fx.choose("GPT-4o")
-    fx.choose("Context window")
-    assert fx.page(InputPage).answer.text == "200000"
-    for _ in range(len("200000")):
-        fx.harness.press("backspace")
+    assert fx.panel.editor("context_window").text == "200000"
+    fx.edit("context_window", "")
 
     fx.harness.press("enter")
 
@@ -211,13 +206,24 @@ async def test_clearing_the_window_goes_back_to_the_default(shell):  # noqa: F81
     assert fx.app.agent.models[1].context_window == DEFAULT_CONTEXT_WINDOW
 
 
+async def test_a_window_the_reader_did_not_touch_is_not_rewritten_however_the_file_spells_it(shell):  # noqa: F811
+    fx = shell(BASE.replace('token = "sk-two"', 'token = "sk-two"\ncompact_percent = 75.0'))
+    await fx.command("/config")
+    fx.choose("GPT-4o")
+    fx.edit("temperature", "0.3")
+
+    fx.harness.press("enter")
+
+    assert "compact_percent = 75.0" in fx.text and fx.models[1]["temperature"] == 0.3
+
+
 async def test_the_share_takes_a_percentage_and_moves_the_point_a_request_is_summarized_at(shell):  # noqa: F811
     fx = shell()
     await fx.command("/config")
     fx.choose("GPT-4o")
-    fx.choose("Compress at")
+    fx.edit("compact_percent", "50%")
 
-    fx.type("50%")
+    fx.harness.press("enter")
 
     assert fx.models[1]["compact_percent"] == 50
     assert fx.app.agent.models[1].compaction_max_tokens == 64_000
@@ -229,11 +235,11 @@ async def test_a_share_that_is_not_one_is_refused_and_nothing_is_written(shell, 
     fx = shell()
     await fx.command("/config")
     fx.choose("GPT-4o")
-    fx.choose("Compress at")
+    fx.edit("compact_percent", text)
 
-    fx.type(text)
+    fx.harness.press("enter")
 
-    assert fx.page(InputPage).note
+    assert fx.panel.refusal and fx.panel.focus_key() == "compact_percent"
     assert "compact_percent" not in fx.models[1]
 
 
@@ -241,9 +247,7 @@ async def test_clearing_the_share_goes_back_to_the_default(shell):  # noqa: F811
     fx = shell(BASE.replace('token = "sk-two"', 'token = "sk-two"\ncompact_percent = 50'))
     await fx.command("/config")
     fx.choose("GPT-4o")
-    fx.choose("Compress at")
-    for _ in range(2):
-        fx.harness.press("backspace")
+    fx.edit("compact_percent", "")
 
     fx.harness.press("enter")
 
@@ -255,33 +259,36 @@ async def test_changing_the_model_in_use_moves_its_compaction_point_in_the_runni
     fx = shell()
     await fx.command("/config")
     fx.choose("gpt-5-mini")
-    fx.choose("Context window")
+    fx.edit("context_window", "1m")
 
-    fx.type("1m")
+    fx.harness.press("enter")
 
     assert fx.app.agent.active_model.context_window == 1_000_000
     assert fx.app.agent.runtime.compaction.max_tokens == 800_000
 
 
-async def test_escape_from_the_question_goes_back_to_the_things_to_do_with_the_model(shell):  # noqa: F811
+async def test_the_window_and_the_share_are_saved_by_one_enter_with_the_other_rows(shell):  # noqa: F811
     fx = shell()
     await fx.command("/config")
     fx.choose("GPT-4o")
-    fx.choose("Context window")
+    fx.edit("context_window", "1m")
+    fx.edit("compact_percent", "60")
+    fx.go("multimodal")
+    fx.harness.press("right")
 
-    fx.harness.press("escape")
+    fx.harness.press("enter")
 
-    assert "Compress at" in fx.screen() and fx.page(InputPage) is None
-    assert "context_window" not in fx.models[1]
+    written = fx.models[1]
+    assert written["context_window"] == 1_000_000 and written["compact_percent"] == 60 and written["multimodal"] is True
 
 
 async def test_the_rest_of_the_file_is_left_as_it_was(shell):  # noqa: F811
     fx = shell()
     await fx.command("/config")
     fx.choose("GPT-4o")
-    fx.choose("Context window")
+    fx.edit("context_window", "200k")
 
-    fx.type("200k")
+    fx.harness.press("enter")
 
     assert "# my config" in fx.text and "# second" in fx.text and "[skills]" in fx.text
     assert fx.models[0] == {"model": "gpt-5-mini", "token": "sk-one"}

@@ -25,12 +25,31 @@ SDK 的每一个公开名字，按模块分组。签名取自已发布的包；�
 
 ```python
 from zettcode.sdk import (
-    Client, Session, RunStream, prompt, prompt_sync,
-    RunResult, Usage, Image,
-    TextDelta, ReasoningDelta, ToolStarted, ToolFinished, ApprovalRequested, QuestionAsked, Finished,
-    approve_all, approve_commands, deny_all,
-    add_model, list_models, update_model, remove_model,
-    ZettCodeError, ConfigurationError, RunError,
+    Client,
+    Session,
+    RunStream,
+    prompt,
+    prompt_sync,
+    RunResult,
+    Usage,
+    Image,
+    TextDelta,
+    ReasoningDelta,
+    ToolStarted,
+    ToolFinished,
+    ApprovalRequested,
+    QuestionAsked,
+    Finished,
+    approve_all,
+    approve_commands,
+    deny_all,
+    add_model,
+    list_models,
+    update_model,
+    remove_model,
+    ZettCodeError,
+    ConfigurationError,
+    RunError,
 )
 ```
 
@@ -42,10 +61,23 @@ from zettcode.sdk import (
 
 ```python
 async def prompt(
-    text, /, *,
-    workspace=None, config=None, config_path=None, models=None,
-    model=None, effort=None, permission=None, resume=None,
-    images=(), mentions=False, on_approval=None, on_question=None, on_event=None, timeout=None,
+    text,
+    /,
+    *,
+    workspace=None,
+    config=None,
+    config_path=None,
+    models=None,
+    model=None,
+    effort=None,
+    permission=None,
+    resume=None,
+    images=(),
+    mentions=False,
+    on_approval=None,
+    on_question=None,
+    on_event=None,
+    timeout=None,
     **settings,
 ) -> RunResult: ...
 ```
@@ -66,9 +98,15 @@ def prompt_sync(text, /, **options) -> RunResult: ...
 class Client:
     def __init__(
         self,
-        workspace=None, *,
-        config=None, config_path=None, models=None,
-        model=None, effort=None, permission=None, resume=None,
+        workspace=None,
+        *,
+        config=None,
+        config_path=None,
+        models=None,
+        model=None,
+        effort=None,
+        permission=None,
+        resume=None,
         **settings,
     ) -> None: ...
 ```
@@ -95,7 +133,8 @@ class Client:
 | `effort` | `str` | 下一次 run 使用的推理级别。 |
 | `efforts` | `tuple[str, ...]` | 当前模型接受的级别。 |
 | `permission` | `str` | shell 权限级别。 |
-| `permissions` | `tuple[str, ...]` | `("deny", "ask", "safe", "auto")`。 |
+| `permissions` | `tuple[str, ...]` | `("deny", "ask", "safe", "full")`。 |
+| `harness` | `bool` | just-in-time harness 是否开启。 |
 | `usage` | `Usage` | 当前会话已花的用量。 |
 | `plugins` | `PluginReport` | 已加载的插件，以及失败的。 |
 | `self_compaction` | `bool` | 模型是否可以自己压缩这个会话。 |

@@ -55,7 +55,7 @@ A prompt that is empty, a `timeout` that is not a positive number, or a list hol
 try:
     client.prompt("   ")
 except ValueError as error:
-    print(error)       # The prompt is empty
+    print(error)  # The prompt is empty
 ```
 
 ## The result
@@ -116,8 +116,8 @@ The values are `refusal`, `max_output`, `context_full`, `paused`, `interrupted` 
 before = client.usage
 result = await client.prompt("...")
 
-print(result.usage.total_tokens)         # this run
-print(client.usage.total_tokens)         # the session so far
+print(result.usage.total_tokens)  # this run
+print(client.usage.total_tokens)  # the session so far
 print(f"{result.usage.cache_hit_rate:.0%} of the input came from cache")
 print(f"{result.usage.output_rate:.0f} tokens/s")
 ```
@@ -171,7 +171,7 @@ await client.prompt("refactor the parser")
 answer = await client.session.ask("which functions did you touch?")
 print(answer)
 
-await client.prompt("now add tests")        # the model never saw the side question
+await client.prompt("now add tests")  # the model never saw the side question
 ```
 
 It returns the answer text and raises `ValueError` for an empty question. Like any run, it needs the client to be free.
@@ -202,7 +202,7 @@ async with client.prompt("write a long essay") as run:
         if isinstance(event, zc.TextDelta):
             print(event.text, end="")
             if "TODO" in event.text:
-                break                    # the run is closed on leaving the block
+                break  # the run is closed on leaving the block
 ```
 
 After a break, the client is free for the next prompt. What the run had already added to the conversation stays.
@@ -221,8 +221,8 @@ You can iterate part of a run and then await the rest:
 async with client.prompt("explain the design") as run:
     async for event in run:
         if isinstance(event, zc.ToolStarted):
-            break                         # I have seen enough to know it is working
-    result = await run                    # take the remainder
+            break  # I have seen enough to know it is working
+    result = await run  # take the remainder
 ```
 
 Awaiting a run that has already finished and been read is an error rather than a hang. Iterating a finished run ends immediately.
@@ -234,9 +234,11 @@ Awaiting a run that has already finished and been read is an error rather than a
 ```python
 events = []
 
+
 async def record(event):
     events.append(event)
     await send_to_dashboard(event)
+
 
 result = await client.prompt("...", on_event=record)
 ```
