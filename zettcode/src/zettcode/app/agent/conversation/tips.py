@@ -15,6 +15,8 @@ from __future__ import annotations
 import random
 from collections.abc import Callable, MutableSequence, Sequence
 
+from zettcode.tui import OPTION
+
 #: What the reader may be told, in the words they will see.
 TIPS: tuple[str, ...] = (
     "Type while it works: your message can steer this request, or wait and follow it.",
@@ -35,7 +37,7 @@ TIPS: tuple[str, ...] = (
     "Ctrl-R searches what you have sent before; Up recalls the last message.",
     "Ctrl-V attaches an image from the clipboard, for a model that takes images.",
     "Page Up scrolls the conversation, and Esc jumps back to the newest line.",
-    "Alt-\u2191/\u2193 (or Ctrl-\u2191/\u2193) jumps to the previous or next message you sent.",
+    f"{OPTION.capitalize()}-\u2191/\u2193 (or Ctrl-\u2191/\u2193) jumps to the previous or next message you sent.",
     "Drag in the conversation to copy text. Hold Shift or Alt to use your terminal's own selection.",
     "Put project instructions in AGENTS.md and they are given to the model with every request.",
     "A SKILL.md in ~/.zettcode/skills teaches ZettCode a job it can repeat.",

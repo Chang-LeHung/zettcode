@@ -10,21 +10,19 @@ and the row under the list says which keys use it.
 
 from __future__ import annotations
 
-import sys
 from collections.abc import Sequence
 
 from zettcode.app.agent.conversation.text import CONTENT_INDENT
-from zettcode.tui import MARKER, SEPARATOR, Canvas, Constraints, Size, Style, Widget
+from zettcode.tui import MARKER, OPTION, SEPARATOR, Canvas, Constraints, Size, Style, Widget
 from zettcode.tui.render import ELLIPSIS, display_width, truncate
 
 #: Right-aligned badge that says a row is a follow-up.
 FOLLOW_UP_BADGE = "follow-up"
 #: What stands before a waiting message: a bullet, because it is an item in a list.
 BULLET = "\u2022"
-#: What the modifier key is called on this machine's keyboard. The same physical key sends
-#: the same bytes everywhere; only its name differs, and a hint that says "alt" to someone
-#: looking at a key marked "option" is a hint they have to translate.
-OPTION = "option" if sys.platform == "darwin" else "alt"
+#: What the modifier key is called on this machine's keyboard, from :mod:`zettcode.tui`.
+#: The same physical key sends the same bytes everywhere; only its name differs, and a hint
+#: that says "alt" to someone looking at a key marked "option" is a hint they translate.
 #: The row under the list when nothing is highlighted: what the container is, and the
 #: key that reaches the rest.
 HINT_IDLE = f"sent in order after a reply completes {SEPARATOR} {OPTION}+\u2191/\u2193 to select"

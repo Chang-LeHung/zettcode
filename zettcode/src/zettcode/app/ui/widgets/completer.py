@@ -7,16 +7,14 @@ from collections.abc import Sequence
 
 from zettcode.app.agent.dialogue.mentions import MentionRegistry
 from zettcode.app.commands import Command
-from zettcode.tui import SEPARATOR, Completer, CompletionItem
-
-from .follow_up import OPTION
+from zettcode.tui import OPTION, SEPARATOR, Completer, CompletionItem
 
 #: A draft's text before the word under the cursor, when that word is the one right after a command.
 COMMAND_PREFIX = re.compile(r"(/\S+)[ \t]+")
 
 KEY_HELP = (
     f"  Enter send {SEPARATOR} Shift-Enter or Alt-Enter newline {SEPARATOR} Ctrl-C stop or clear\n"
-    f"  Ctrl-T thinking {SEPARATOR} PgUp/PgDn scroll {SEPARATOR} Alt-\u2191/\u2193 jump to a message\n"
+    f"  Ctrl-T thinking {SEPARATOR} PgUp/PgDn scroll {SEPARATOR} {OPTION.capitalize()}-\u2191/\u2193 jump to a message\n"
     f"  Ctrl-L redraw {SEPARATOR} Ctrl-D exit\n"
     f"  While a request runs, Enter asks whether a message should steer it or follow up after it;\n"
     f"  {OPTION.capitalize()}-\u2191/\u2193 select a follow-up {SEPARATOR} \u2191/\u2193 move the highlight "
