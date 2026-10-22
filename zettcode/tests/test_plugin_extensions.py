@@ -328,11 +328,12 @@ def test_a_run_with_the_optional_tools_off_hands_the_agent_the_extensions_the_ru
     extensions = agent_extensions(make_config(tmp_path, skills_enabled=False, subagent_enabled=False))
 
     assert [extension.name for extension in extensions] == [
-        "CodingExtension",
+        "CodingBundle",
         "ToolOutputExtension",
         "ModelCapabilities",
         "ShellDenyExtension",
         "ShellApprovalExtension",
+        "SwitchedHarness",
         "SessionStore",
         "UsageExtension",
         "ContextExtension",
@@ -344,19 +345,45 @@ def test_a_run_with_the_optional_tools_off_hands_the_agent_the_extensions_the_ru
     ]
 
 
+def test_a_coding_child_is_given_these_of_the_extensions_the_parent_runs_and_not_those(tmp_path):
+    """The parent's real list, with every switch on: a child is the parent without the complicated parts."""
+    from zettcode.plugins.builtin_agent import _shared_with_children
+
+    messenger = object.__new__(Messenger)
+    config = make_config(tmp_path, todowrite_enabled=True, subagent_enabled=True, skills_enabled=True)
+    parent = agent_extensions(config, **{names.MESSENGER: messenger})
+
+    shared = [e.name for e in parent if _shared_with_children(messaging=False)(e)]
+    with_messaging = [e.name for e in parent if _shared_with_children(messaging=True)(e)]
+
+    assert shared == [
+        "CodingBundle",
+        "ToolOutputExtension",
+        "ShellDenyExtension",
+        "ShellApprovalExtension",
+        "SkillExtension",
+        "OnDemandCompaction",
+    ]
+    assert "ParentModelSubAgents" not in shared and "SwitchedHarness" not in shared, "no task, no harness"
+    assert "AskUserExtension" not in shared, "a child works through its task; it does not ask the person"
+    assert "TodoWriteExtension" not in shared, "its plan would be drawn for nobody"
+    assert with_messaging == [*shared[:2], "SessionMessagingExtension", *shared[2:]]
+
+
 def test_every_switch_adds_its_extension_at_its_place(tmp_path):
     messenger = object.__new__(Messenger)
     config = make_config(tmp_path, todowrite_enabled=True, subagent_enabled=True, skills_enabled=True)
     names_ = [extension.name for extension in agent_extensions(config, **{names.MESSENGER: messenger})]
 
     assert names_ == [
-        "CodingExtension",
+        "CodingBundle",
         "ToolOutputExtension",
         "ModelCapabilities",
         "ParentModelSubAgents",
         "SessionMessagingExtension",
         "ShellDenyExtension",
         "ShellApprovalExtension",
+        "SwitchedHarness",
         "SessionStore",
         "TodoWriteExtension",
         "UsageExtension",
@@ -464,7 +491,7 @@ async def test_the_runtime_gives_the_agent_the_plugins_extensions_then_the_host(
     (extensions,) = given
     listed = [extension.name for extension in extensions]
     # The built-in ones first, the compaction the last of them; a third-party one after, the host last.
-    assert listed[0] == "CodingExtension"
+    assert listed[0] == "CodingBundle"
     assert listed.index("OnDemandCompaction") < listed.index("extra-ext") < listed.index("plugins")
     assert listed[-1] == "plugins"
     # The plan the shell reads is the extension the agent runs, and the usage it shows is what is counted.

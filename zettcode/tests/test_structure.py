@@ -175,7 +175,9 @@ def test_layers_only_import_downwards():
 
 
 #: What each part of ``zettcode.app.agent`` may import from its siblings, and nothing more.
-#: The order runs one way: ``dialogue`` and ``errors`` stand alone, ``storage`` builds on
+#: The order runs one way: ``errors`` and ``tools`` stand alone (the tools are written here and know
+#: nothing of the rest, only ``permission`` knows what a tool asks of it), ``dialogue`` takes the two search tools a
+#: side question is given, ``storage`` builds on
 #: the dialogue's side questions, ``extensions`` and ``conversation`` on those, ``runtime``
 #: composes the extensions, and ``agent`` composes everything. A part that needed to import
 #: *up* this table would be a cycle waiting for the first function-level import to hide it —
@@ -183,10 +185,11 @@ def test_layers_only_import_downwards():
 #: moved to ``errors``.
 AGENT_PARTS: dict[str, frozenset[str]] = {
     "errors": frozenset(),
-    "dialogue": frozenset(),
-    "permission": frozenset(),
+    "dialogue": frozenset({"tools"}),
+    "tools": frozenset(),
+    "permission": frozenset({"tools"}),
     "storage": frozenset({"dialogue"}),
-    "extensions": frozenset({"dialogue", "errors", "storage"}),
+    "extensions": frozenset({"dialogue", "errors", "storage", "tools"}),
     "conversation": frozenset({"dialogue", "extensions", "storage"}),
     "export": frozenset({"dialogue", "extensions", "storage"}),
     "runtime": frozenset({"dialogue", "extensions", "permission", "storage"}),

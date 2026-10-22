@@ -23,6 +23,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
 
 #: Handed over by the runtime.
 POLICY = "policy"
+HARNESS = "harness"
 PERSISTENCE = "persistence"
 MODELS = "models"
 COMPACTION_COUNTER = "compaction-counter"

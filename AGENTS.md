@@ -19,11 +19,20 @@ tool configuration (Ruff, mypy, the dev dependency group) and the member list. N
   and the client a session reaches it with; there is no RPC layer of our own in
   it, and none should be added.
 - The agent runtime is an external dependency: depend on released `zett-agent`
-  versions and never vendor or re-implement the model loop, tools, compaction,
-  or message types. Session persistence is the deliberate exception —
+  versions and never vendor or re-implement the model loop, compaction, or
+  message types. Two things are the deliberate exceptions. Session persistence —
   `app/agent/` owns the storage format *and* the lifecycle adapter that drives
   it, built only on the released hook contract and context/event types, so
-  storage policy moves with this repository.
+  storage policy moves with this repository. And the coding tools (`read`,
+  `read_file`, `glob`, `grep`, `write_file`, `edit`, `bash`), which are
+  `app/agent/tools`: ours, fully type-hinted, registered through the framework's
+  `@tool` and `AgentTool` contract but run by nothing from the framework. Do not
+  import a tool from `zett_agent.tools.coding` or a file-system extension.
+- A new interface between our own parts is an abstract base class, not a
+  `typing.Protocol`: a subclass that forgets a method fails when it is built, and
+  the implementation says what it implements. (`CommandHost`, `Peer`, `Bridge`
+  and `SessionGuard` are older structural protocols that have not been
+  converted.)
 - The TUI owns the terminal. Raw mode, input decoding, layout, and differential
   cell rendering live in `zettcode/src/zettcode/tui`; do not add prompt-toolkit
   or another TUI framework.

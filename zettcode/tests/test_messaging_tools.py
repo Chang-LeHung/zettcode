@@ -229,7 +229,7 @@ async def test_a_side_question_keeps_the_listing_and_loses_the_sending(world):
 
     await SideQuestions().before_turn(ctx)
 
-    assert set(ctx.tools) == {LIST_SESSIONS_TOOL_NAME}
+    assert set(ctx.tools) == {LIST_SESSIONS_TOOL_NAME, "glob", "grep"}
 
 
 # -- hops: what keeps two agents from answering each other for ever ------------------------------------

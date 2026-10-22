@@ -106,7 +106,7 @@ class ActivityState:
             running command's name or ``"copied 12 characters"``; ``None``
             shows the status word itself.
         auto_shell: Whether shell commands are approved for the rest of the run.
-            ``True`` exactly when ``permission`` is ``"auto"``; kept for plugins
+            ``True`` exactly when ``permission`` is ``"full"``; kept for plugins
             written before the other levels existed.
         usage: Cumulative token counters for the active session.
         tasks: The session's plan as ``(status, content)`` pairs, empty when the
@@ -114,7 +114,7 @@ class ActivityState:
         frame: Animation frame counter; it advances only while something is
             busy, which is what a plugin animates against.
         permission: How much of the shell may run unasked: ``"deny"``, ``"ask"``,
-            ``"safe"``, or ``"auto"``.
+            ``"safe"``, or ``"full"``.
         self_compact: Whether the model may compact its own context in this session.
     """
 

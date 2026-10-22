@@ -50,10 +50,11 @@ def test_the_system_prompt_tells_the_model_to_change_files_with_the_file_tools_a
     flat = " ".join(prompt.split())
 
     assert "To edit a file that exists, call edit directly" in flat
-    assert "Use write_file for a new file" in flat and "delete_file to remove one" in flat
+    assert "Use write_file for a new file" in flat and "There is no delete tool" in flat
+    assert "delete_file" not in flat
     for forbidden in ("sed", "awk", "perl -i", "python -c", "cat or echo with a redirection", "a heredoc", "tee"):
         assert forbidden in flat, forbidden
-    assert "Never change a file through the shell" in flat
+    assert "Never change a file's contents through the shell" in flat
     assert "retry it with corrected old_text; do not fall back to a shell command" in flat
 
 
@@ -256,7 +257,7 @@ def test_the_warm_up_names_every_module_a_request_needs(tmp_path, monkeypatch, m
     assert names == (
         *sdks,
         "zett_agent.client",
-        "zett_agent.extensions.coding",
+        "zettcode.app.agent.extensions.files",
         *(("zett_agent.extensions.subagent",) if subagent else ()),
         *(("zett_agent.extensions.mcp",) if mcp else ()),
     )
@@ -525,27 +526,34 @@ async def test_the_warm_up_never_blocks_the_event_loop(tmp_path, monkeypatch):
     assert max(gaps) < WARM_UP_LOOP_LIMIT
 
 
-async def test_a_text_only_model_is_not_offered_the_image_tool():
-    """`view_image` reads a picture; a model that cannot take one is not offered it."""
+async def test_a_text_only_model_reads_with_the_text_reader_and_a_model_with_search_gets_it_declared():
+    """`read` returns a picture as an image part; a model that cannot take one is given `read_file` instead."""
     from zett_agent.agent import Agent, AgentRunConfig
     from zett_agent.events import AgentEventType
     from zett_agent.extensions.base import AgentExtension
-    from zett_agent.extensions.coding import CodingExtension
     from zett_agent.messages import AssistantMessage
     from zett_agent.model import ModelEvent, ModelResponse, RetryOptions
-    from zett_agent.tools.images import view_image
 
     from zettcode.app.agent.extensions.capabilities import ModelCapabilities
+    from zettcode.app.agent.extensions.files import CodingBundle
+    from zettcode.app.agent.tools.files import read, read_file
 
     class Context:
-        """The two things the filter reads."""
+        """The things the filter reads and changes."""
 
         def __init__(self, model: object) -> None:
             self.model = model
-            self.tools = {view_image.name: view_image, "read_file": object()}
+            self.tools = {read.name: read}
+            self.server_tools: dict[str, object] = {}
+
+        def register_tool(self, tool) -> None:
+            self.tools[tool.name] = tool
+
+        def register_server_tool(self, tool) -> None:
+            self.server_tools[tool.type] = tool
 
     text_only = ModelConfig(model="text", token="t")
-    takes_images = ModelConfig(model="vision", token="t", multimodal=True)
+    takes_images = ModelConfig(model="vision", token="t", multimodal=True, web_search=True)
 
     class Model:
         retry = RetryOptions(max_retries=0)
@@ -559,16 +567,18 @@ async def test_a_text_only_model_is_not_offered_the_image_tool():
 
     gated = Context(providers[text_only])
     await capabilities.on_tool(gated)
-    assert view_image.name not in gated.tools and "read_file" in gated.tools
+    assert gated.tools == {read_file.name: read_file}
+    assert gated.server_tools == {}
 
     allowed = Context(providers[takes_images])
     await capabilities.on_tool(allowed)
-    assert view_image.name in allowed.tools
+    assert read.name in allowed.tools and read_file.name not in allowed.tools
+    assert list(allowed.server_tools) == ["web_search"]
 
     # A request whose model this runtime did not build keeps the tools it has.
     unknown = Context(object())
     await capabilities.on_tool(unknown)
-    assert view_image.name in unknown.tools
+    assert read.name in unknown.tools and unknown.server_tools == {}
 
     # Through the real hooks the filter runs after the bundle that registers the
     # tool, which is the ordering the whole thing depends on.
@@ -585,14 +595,15 @@ async def test_a_text_only_model_is_not_offered_the_image_tool():
     agent = await Agent.create(
         model,
         config=AgentRunConfig(session_id="test"),
-        extensions=[CodingExtension(), capabilities, probe],
+        extensions=[CodingBundle(), capabilities, probe],
     )
 
     streamed = [event async for event in agent.stream("hello", config=AgentRunConfig(session_id="test"))]
 
     assert streamed[-1].type is AgentEventType.RUN_COMPLETED
-    assert view_image.name not in probe.offered[0]
+    assert "read" not in probe.offered[0]
     assert "read_file" in probe.offered[0]
+    assert "view_image" not in probe.offered[0] and "delete_file" not in probe.offered[0]
 
 
 async def test_the_approval_memory_remembers_exact_commands_for_the_run():
@@ -753,12 +764,12 @@ async def test_the_runtime_shares_one_permission_policy_with_the_layers_that_enf
 
     assert runtime.use_permission(" SAFE ") is Permission.SAFE
     assert runtime.policy.level is Permission.SAFE, "the level the layers read is the one that was set"
-    with pytest.raises(ValueError, match="Try one of: deny, ask, safe, auto"):
+    with pytest.raises(ValueError, match="Try one of: deny, ask, safe, full"):
         runtime.use_permission("yolo")
     assert runtime.permission is Permission.SAFE, "a refused name leaves the level alone"
 
     runtime.approve_all_shell_commands()
-    assert runtime.permission is Permission.AUTO, "the old entry point is the auto rung"
+    assert runtime.permission is Permission.FULL, "the old entry point is the full rung"
     await runtime.aclose()
 
 
@@ -767,7 +778,7 @@ def ordered(extensions):
     return sorted(extensions, key=lambda extension: extension.priority)
 
 
-def test_the_configured_allow_all_mode_starts_a_run_at_auto(tmp_path, monkeypatch):
+def test_the_configured_allow_all_mode_starts_a_run_at_full(tmp_path, monkeypatch):
     from zett_agent.extensions.shell_approval import ShellApprovalMode
 
     from zettcode.app.agent.permission import Permission
@@ -780,20 +791,21 @@ def test_the_configured_allow_all_mode_starts_a_run_at_auto(tmp_path, monkeypatc
     )
 
     assert default.permission is Permission.ASK
-    assert allowing.permission is Permission.AUTO
+    assert allowing.permission is Permission.FULL
     assert default.policy.workspace == tmp_path, "git is judged against this workspace"
 
 
 def test_the_tool_the_prompt_names_for_editing_is_one_the_agent_really_has(tmp_path):
     """The library renamed ``replace_in_file`` to ``edit``; a prompt naming a tool that is not offered sends the
     model looking for it."""
-    from zett_agent.extensions.coding import CodingExtension
+    from zettcode.app.agent.extensions.files import CodingBundle
 
-    names = {tool.name for tool in CodingExtension().tools}
+    names = {tool.name for tool in CodingBundle().tools}
     prompt = runtime_module.build_system_prompt(
         ZettCodeConfig(workspace=tmp_path, models=(ModelConfig(model="m", token="t"),), store=tmp_path / "s")
     )
 
-    for named in ("edit", "write_file", "delete_file"):
+    for named in ("edit", "write_file"):
         assert named in names and named in prompt
+    assert {"read", "bash"} <= names and not {"view_image", "read_file", "delete_file"} & names
     assert "replace_in_file" not in prompt

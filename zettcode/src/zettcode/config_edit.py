@@ -42,6 +42,8 @@ _KEY_ORDER = (
     "responses_api",
     "multimodal",
     "temperature",
+    "web_search",
+    "web_search_name",
     "context_window",
     "compact_percent",
     "reasoning_efforts",
@@ -129,6 +131,10 @@ def entry_from_model(model: ModelConfig, *, token: str | None = None) -> dict[st
         entry["multimodal"] = True
     if model.temperature is not None:
         entry["temperature"] = model.temperature
+    if model.web_search:
+        entry["web_search"] = True
+    if model.web_search_name:
+        entry["web_search_name"] = model.web_search_name
     if model.context_window != DEFAULT_CONTEXT_WINDOW:
         entry["context_window"] = model.context_window
     if model.compact_percent != DEFAULT_COMPACT_PERCENT:

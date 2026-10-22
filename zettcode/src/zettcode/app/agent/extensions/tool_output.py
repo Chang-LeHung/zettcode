@@ -1,6 +1,6 @@
 """Keep what a shell command printed out of the reader's workspace.
 
-zett-agent's ``bash`` tool keeps a command's full output when the preview it returns is cut
+The ``bash`` tool keeps a command's full output when the preview it returns is cut
 short, so the model can read the rest. It keeps it in a ``.zett-tool-output`` folder *inside the
 directory it runs in* — the reader's own project — and names the files in the text it returns::
 
@@ -8,12 +8,11 @@ directory it runs in* — the reader's own project — and names the files in th
     .zett-tool-output/shell-ab12cd/stderr.txt]
 
 That puts files the reader never asked for among their source, where they turn up in a status
-listing, a search, a backup, or a commit. The path is hard-coded in the tool, and the tool is
-zett-agent's to own, so it is not re-implemented here; and the folder cannot simply be made a
-link to somewhere else, because the tool resolves it and then asks for the result relative to the
-working directory, which a link out of it breaks the moment output is truncated.
+listing, a search, a backup, or a commit. The folder cannot simply be made a link to somewhere
+else, because the tool resolves it and then asks for the result relative to the working
+directory, which a link out of it breaks the moment output is truncated.
 
-What can be done, and is done here, is to deal with the result: after the tool has run and before
+What is done here is to deal with the result: after the tool has run and before
 its result is stored or sent anywhere, the folder it named is moved into the session's own folder
 under the store — ``~/.zettcode/sessions/<workspace>/<session>/tool-output/`` — and the paths in
 the text are rewritten to where the files now are. The model reads them with ``read_file`` by
@@ -37,7 +36,9 @@ from ..storage import SessionStore
 #: The tool whose output is moved.
 SHELL_TOOL = "bash"
 
-#: The folder the tool makes inside the directory it runs in.
+#: The folder the tool makes inside the directory it runs in. It is written out here, and not imported from the tool,
+#: because the tool's module brings the schema library with it and this one is loaded at start-up; a test holds the two
+#: equal.
 OUTPUT_ROOT = ".zett-tool-output"
 
 #: Where, inside a session's folder, the moved output is kept.
