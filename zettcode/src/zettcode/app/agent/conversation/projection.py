@@ -83,6 +83,10 @@ class TranscriptProjector(AgentEventDispatcher):
         self.on_usage = on_usage
         self.on_steering_started = on_steering_started
         self.on_steering_interrupted = on_steering_interrupted
+        #: What a hosted tool was called with while it streams: a start may carry the whole input, or only its
+        #: opening and then fragments. Kept per request and dropped when the call reports back.
+        self._server_inputs: dict[str, dict[str, object]] = {}
+        self._server_fragments: dict[str, str] = {}
 
     def begin_turn(self, prompt: str, *, side: bool = False, relayed: Relayed | None = None) -> None:
         """Echo the prompt into the transcript before the run starts.
@@ -201,21 +205,51 @@ class TranscriptProjector(AgentEventDispatcher):
     async def on_server_tool_started_event(self, event: AgentEvent) -> None:
         """Open a row for a tool the server runs on the agent's behalf, with what it was asked."""
         call = event.server_tool_call
-        if call is not None:
-            self.transcript.start_tool(call.id, call.name, dict(call.input or {}))
+        if call is None:
+            return
+        arguments = dict(call.input or {})
+        self._server_inputs[call.id] = arguments
+        self._server_fragments.pop(call.id, None)
+        self.transcript.start_tool(call.id, call.name, arguments)
+
+    async def on_server_tool_input_delta_event(self, event: AgentEvent) -> None:
+        """Keep the fragments of a hosted call's input; the query a search ran is in there."""
+        delta = event.server_tool_input_delta
+        if delta is not None:
+            self._server_fragments[delta.call_id] = self._server_fragments.get(delta.call_id, "") + delta.delta
+
+    def _server_arguments(self, call_id: str) -> dict[str, object]:
+        """Return what a hosted call turned out to be called with: its opening input and its fragments."""
+        arguments = dict(self._server_inputs.pop(call_id, {}))
+        fragments = self._server_fragments.pop(call_id, "")
+        if fragments:
+            try:
+                parsed = json.loads(fragments)
+            except ValueError:
+                parsed = None
+            if isinstance(parsed, dict):
+                arguments.update(parsed)
+        return arguments
 
     async def on_server_tool_completed_event(self, event: AgentEvent) -> None:
         """Attach a hosted tool's result to its row: the pages it found, never the provider's payload."""
         result = event.server_tool_result
         if result is not None:
-            run = ServerToolRun(result.call_id, result.name, {}, output=result.output, error=result.error_code)
+            arguments = self._server_arguments(result.call_id)
+            if arguments:
+                # The row opened before its input had streamed in; now it knows what was searched for.
+                self.transcript.restate_tool(result.call_id, arguments)
+            run = ServerToolRun(result.call_id, result.name, arguments, output=result.output, error=result.error_code)
             self.transcript.complete_tool(result.call_id, describe_output(run) or serialize(result.output))
 
     async def on_server_tool_failed_event(self, event: AgentEvent) -> None:
         """Attach a hosted tool's failure, preferring the error code over the payload."""
         result = event.server_tool_result
         if result is not None:
-            run = ServerToolRun(result.call_id, result.name, {}, output=result.output, error=result.error_code)
+            arguments = self._server_arguments(result.call_id)
+            if arguments:
+                self.transcript.restate_tool(result.call_id, arguments)
+            run = ServerToolRun(result.call_id, result.name, arguments, output=result.output, error=result.error_code)
             self.transcript.complete_tool(
                 result.call_id,
                 describe_output(run) or serialize(result.output),

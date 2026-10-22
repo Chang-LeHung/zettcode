@@ -128,6 +128,24 @@ class StreamMixin(TurnMixin):
         # tool's business and this opens every one the same way.
         self._add(self.renderers.open_tool(name, arguments, id=self._next_id, call_id=call_id, started_at=self.clock()))
 
+    def restate_tool(self, call_id: str, arguments: Mapping[str, object]) -> None:
+        """Phrase a row again with arguments that arrived after it opened.
+
+        A hosted tool's input may stream in fragments after the call started, so the row opens knowing only the tool's
+        name. This is where the query it really ran appears, before the row is closed.
+
+        Args:
+            call_id: Identifier the matching result will carry.
+            arguments: What the call turned out to be, which the chain phrases.
+        """
+        entry = next(
+            (item for item in reversed(self.entries) if isinstance(item, ToolEntry) and item.call_id == call_id), None
+        )
+        if entry is None:
+            return
+        entry.title = self.renderers.describe(entry.tool, arguments).title
+        self._changed(entry)
+
     def complete_tool(
         self, call_id: str, output: str, *, status: EntryStatus = EntryStatus.COMPLETED, wait: bool = True
     ) -> None:
