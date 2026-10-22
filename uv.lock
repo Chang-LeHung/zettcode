@@ -2857,7 +2857,7 @@ wheels = [
 
 [[package]]
 name = "zett-agent"
-version = "0.1.17"
+version = "0.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiosqlite" },
@@ -2882,9 +2882,9 @@ dependencies = [
     { name = "typing-extensions", marker = "python_full_version < '3.12'" },
     { name = "uuid6" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/75/c3/7a7ff6ee89645ea0a3faf53775c69105ac32d7fe66adece18798ecaaec41/zett_agent-0.1.17.tar.gz", hash = "sha256:d153003312f9c8035e2b4aea8c979cbb7afca0c8796d24902cecc51637ee70f9", size = 285225, upload-time = "2026-10-16T02:01:46.773Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d6/19/a3843b71a4f78c4450d842c3f253a7ac2d99eea773e9b9406fa8a654a7dd/zett_agent-0.2.0.tar.gz", hash = "sha256:827d0d3dcd8cba9ec71618cb186b35bff13026eecb185c8d11d03bc26dd1082d", size = 310085, upload-time = "2026-10-21T15:42:01.529Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/64/37/3f3e0841613a972480d105c681ad4ed51d40abcb80df5e17a6f37f303e24/zett_agent-0.1.17-py3-none-any.whl", hash = "sha256:f31ec717db981cad8a61fd784fcf34e75eb32c8e951f08717398bdab8505645b", size = 355471, upload-time = "2026-10-16T02:01:45.382Z" },
+    { url = "https://files.pythonhosted.org/packages/48/3d/9f0933ddf86f2dfb6a0485bc88e3d61de07d58ddc9d2897cdba39746bfba/zett_agent-0.2.0-py3-none-any.whl", hash = "sha256:fd7766a09a43b7cea60792083e66b5809a576863c1a382f7ec2a9f677995fca1", size = 390598, upload-time = "2026-10-21T15:42:00.174Z" },
 ]
 
 [[package]]
@@ -2921,7 +2921,7 @@ requires-dist = [
     { name = "uvicorn", specifier = ">=0.35,<1" },
     { name = "wcwidth", specifier = ">=0.2,<1" },
     { name = "websockets", specifier = ">=15,<17" },
-    { name = "zett-agent", specifier = ">=0.1.17,<0.2" },
+    { name = "zett-agent", specifier = ">=0.2.0,<0.3" },
 ]
 
 [[package]]

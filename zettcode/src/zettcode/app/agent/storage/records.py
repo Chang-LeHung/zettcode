@@ -260,7 +260,9 @@ class CompactionLine(BaseModel):
 
 
 Line: TypeAlias = Annotated[SessionLine | MessageLine | CompactionLine, Field(discriminator="kind")]
-LINES: TypeAdapter[SessionLine | MessageLine | CompactionLine] = TypeAdapter(Line)
+# `TypeAdapter` takes a `TypeForm`, which mypy does not recognise in an `Annotated` union alias; the declared type
+# on the left is what callers get.
+LINES: TypeAdapter[SessionLine | MessageLine | CompactionLine] = TypeAdapter(cast(Any, Line))
 
 
 @dataclass(frozen=True, slots=True)
