@@ -188,6 +188,11 @@ def test_the_tips_are_unique_single_sentences_short_enough_to_read_in_a_glance()
         assert len(tip) <= 110, f"too long: {tip}"
 
 
+def test_the_tips_name_the_jump_between_what_the_reader_sent():
+    """The shortcut exists; a reader who never opens /help should still hear of it."""
+    assert any("\u2191/\u2193" in tip and "message you sent" in tip for tip in TIPS)
+
+
 def test_every_command_a_tip_names_is_one_the_shell_has():
     from test_zettcode_app import build_app
 

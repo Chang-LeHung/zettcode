@@ -35,6 +35,7 @@ TIPS: tuple[str, ...] = (
     "Ctrl-R searches what you have sent before; Up recalls the last message.",
     "Ctrl-V attaches an image from the clipboard, for a model that takes images.",
     "Page Up scrolls the conversation, and Esc jumps back to the newest line.",
+    "Alt-\u2191/\u2193 (or Ctrl-\u2191/\u2193) jumps to the previous or next message you sent.",
     "Drag in the conversation to copy text. Hold Shift or Alt to use your terminal's own selection.",
     "Put project instructions in AGENTS.md and they are given to the model with every request.",
     "A SKILL.md in ~/.zettcode/skills teaches ZettCode a job it can repeat.",
