@@ -626,7 +626,7 @@ inline = "#9bddad"            # Markdown `行内代码`
 | 段落 | 颜色参数 |
 | --- | --- |
 | `ui` | `background`, `surface`, `surface_alt`, `surface_side`, `surface_peer`, `text`, `muted`, `subtle`, `accent`, `accent_bright`, `warning`, `error`, `diff_added`, `diff_removed`, `diff_added_fill`, `diff_removed_fill`, `border`, `focus`, `selection` |
-| `tools` | `read`, `search`, `image`, `write`, `delete`, `shell`, `plan`, `subagent`, `message` |
+| `tools` | `read`, `search`, `image`, `write`, `delete`, `shell`, `plan`, `subagent`, `message`, `web-search`, `ask-user` |
 | `code` | `inline`, `text`, `keyword`, `string`, `comment`, `number`, `function`, `builtin`, `operator`, `punctuator` |
 
 `diff_added` 和 `diff_removed` 给编辑 diff 的行和文件旁边的 `+N -M` 上色。不写时分别跟随 `accent` 和 `error`，
