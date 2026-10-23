@@ -124,6 +124,8 @@ test("numbers, times and names read the way the UI shows them", () => {
   assert.equal(permissionLabel("safe"), "Safe");
   assert.equal(permissionLabel("full"), "Full");
   assert.equal(permissionLabel("auto"), "Full", "the old name reads as full");
+  assert.equal(permissionLabel("ask"), "Ask");
+  assert.equal(permissionLabel("yolo"), "Yolo", "a level this build does not know is shown as itself, not as Ask");
   assert.ok(permissionDescription("safe").includes("sandbox") && permissionDescription("safe").includes("/tmp"));
   assert.ok(permissionDescription("full").includes("your own access"));
   assert.ok(permissionDescription("deny").includes("refused"));
