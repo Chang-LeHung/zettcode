@@ -9,9 +9,9 @@ from pathlib import Path
 import httpx
 import pytest
 
-from fakes import FakeClient
-from zettcode_server.app import create_app
-from zettcode_server.settings import Settings
+from server_fakes import FakeClient
+from zettcode.server.app import create_app
+from zettcode.server.settings import Settings
 
 
 @asynccontextmanager

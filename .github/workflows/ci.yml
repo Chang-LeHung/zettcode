@@ -28,12 +28,12 @@ jobs:
         run: uv sync --locked --all-packages
 
       - name: Check formatting
-        run: uv run --no-sync ruff format --check zettcode/src zettcode/tests zettcode/perf zettcode-server/src zettcode-server/tests docs/scripts
+        run: uv run --no-sync ruff format --check zettcode/src zettcode/tests zettcode/perf docs/scripts
 
       - name: Lint
-        run: uv run --no-sync ruff check zettcode/src zettcode/tests zettcode/perf zettcode-server/src zettcode-server/tests docs/scripts
+        run: uv run --no-sync ruff check zettcode/src zettcode/tests zettcode/perf docs/scripts
 
-      # The configuration at the workspace root covers both packages.
+      # The configuration at the workspace root covers the package.
       - name: Type-check
         run: uv run --no-sync mypy
 
@@ -57,12 +57,8 @@ jobs:
       - name: Sync dependencies
         run: uv sync --locked --all-packages
 
-      - name: Run tests (the agent)
+      - name: Run tests
         working-directory: zettcode
-        run: uv run --no-sync pytest
-
-      - name: Run tests (the server)
-        working-directory: zettcode-server
         run: uv run --no-sync pytest
 
   test-windows:
@@ -88,12 +84,8 @@ jobs:
       # The console layer has a Windows path with no POSIX equivalent, so the
       # suite runs there too: the platform seam, the reader thread, and the
       # resize poll are exercised on the platform that needs them.
-      - name: Run tests (the agent)
+      - name: Run tests
         working-directory: zettcode
-        run: uv run --no-sync pytest
-
-      - name: Run tests (the server)
-        working-directory: zettcode-server
         run: uv run --no-sync pytest
 
   typescript:
@@ -159,24 +151,22 @@ jobs:
       - name: Build and smoke-test the wheel
         run: make smoke
 
-      - name: Build and smoke-test the wheels
-        run: make smoke
-
-      - name: Verify the wheel ships the agent package
+      - name: Verify the wheel ships both programs
         run: |
           python3 - <<'PY'
           import glob
           import zipfile
 
-          wheel = glob.glob(".smoke/zettcode-*.whl")[0]
-          names = zipfile.ZipFile(wheel).namelist()
-          assert any(name.startswith("zettcode/") for name in names), names
+          wheels = glob.glob(".smoke/zettcode-*.whl")
+          assert len(wheels) == 1, wheels
+          wheel = wheels[0]
+          archive = zipfile.ZipFile(wheel)
+          names = archive.namelist()
+          assert any(name.startswith("zettcode/server/") for name in names), names
           entry_points = [name for name in names if name.endswith("entry_points.txt")]
-          assert entry_points, names
-          print(f"{wheel}: {len(names)} files")
-
-          wheel = glob.glob(".smoke/zettcode_server-*.whl")[0]
-          names = zipfile.ZipFile(wheel).namelist()
-          assert any(name.startswith("zettcode_server/") for name in names), names
-          print(f"{wheel}: {len(names)} files")
+          assert len(entry_points) == 1, names
+          written = archive.read(entry_points[0]).decode()
+          assert "zettcode = zettcode.cli:main" in written, written
+          assert "zettcode-server = zettcode.server.cli:main" in written, written
+          print(f"{wheel}: {len(names)} files, both console scripts")
           PY

@@ -13,12 +13,15 @@ skills、项目指令和会话存储 —— 所以从 HTTP 开始的对话可以
 ## 安装与运行
 
 ```bash
-uv tool install zettcode-server
+uv tool install zettcode
 zettcode-server --workspace ~/projects/api --port 3290
 ```
 
+一个包,两个命令:`uv tool install zettcode` 会装上终端的 `zettcode` 和这里的 `zettcode-server`,所以服务器不用另装,
+而且永远和 agent 是同一个版本。
+
 ```text
-zettcode-server 0.1.1 (zettcode 0.1.9) · http://127.0.0.1:3290 · workspace /home/you/projects/api · permission deny · token off
+zettcode-server 0.1.11 · http://127.0.0.1:3290 · workspace /home/you/projects/api · permission deny · token off
 ```
 
 默认只绑定 **127.0.0.1**。在 `--host` 指定之前,别的机器访问不到;一旦对外开放,就应该同时给出 token。

@@ -1,21 +1,18 @@
 [project]
 name = "zettcode-workspace"
 version = "0.0.0"
-description = "The ZettCode workspace: the terminal coding agent and its server"
+description = "The ZettCode workspace: the terminal coding agent and the HTTP server it ships"
 requires-python = ">=3.10"
 
-# A virtual project: nothing here is published, and `uv build` builds the members.
+# A virtual project: nothing here is published, and `uv build` builds the member.
 [tool.uv]
 package = false
 
 [tool.uv.workspace]
-members = ["zettcode", "zettcode-server"]
-
-[tool.uv.sources]
-zettcode = { workspace = true }
+members = ["zettcode"]
 
 [dependency-groups]
-# Shared by both packages, so the tools are installed once and the same versions check everything.
+# One package, so the tools are installed once and the same versions check everything.
 dev = [
   # Unlike the conditional runtime deps, these are installed on every
   # interpreter so mypy can check the 3.10 branch of ``_compat`` for real.
@@ -31,7 +28,7 @@ dev = [
 
 [tool.mypy]
 python_version = "3.10"
-files = ["zettcode/src", "zettcode/perf", "zettcode-server/src"]
+files = ["zettcode/src", "zettcode/perf"]
 # Check the pydantic storage models as models, not as plain classes.
 plugins = ["pydantic.mypy"]
 warn_unused_ignores = true
@@ -46,14 +43,14 @@ ignore_missing_imports = true
 [tool.ruff]
 line-length = 120
 target-version = "py310"
-src = ["zettcode/src", "zettcode/tests", "zettcode/perf", "zettcode-server/src", "zettcode-server/tests"]
+src = ["zettcode/src", "zettcode/tests", "zettcode/perf"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 ignore = ["E501"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["zettcode", "zettcode_server"]
+known-first-party = ["zettcode"]
 
 [tool.ruff.format]
 quote-style = "double"

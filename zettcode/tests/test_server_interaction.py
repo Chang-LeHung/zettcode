@@ -11,11 +11,11 @@ from pathlib import Path
 
 import httpx
 
-from fakes import FakeClient, FakeRun
+from server_fakes import FakeClient, FakeRun
 from zettcode.sdk.events import ApprovalRequested, QuestionAsked, TextDelta
 from zettcode.sdk.types import ResumeInfo, RunResult
-from zettcode_server.app import create_app
-from zettcode_server.settings import Settings
+from zettcode.server.app import create_app
+from zettcode.server.settings import Settings
 
 SESSION = "session-1"
 

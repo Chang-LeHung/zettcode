@@ -90,7 +90,7 @@ zettcode
 包含会话、审批、steer 和模型切换。
 
 ```bash
-uv tool install zettcode-server
+uv tool install zettcode          # 一个包,两个命令:zettcode 和 zettcode-server
 zettcode-server --workspace ~/projects/api --port 8000
 ```
 
@@ -102,8 +102,8 @@ VS Code 用户在扩展市场安装[扩展](https://marketplace.visualstudio.com
 ## 开发
 
 ```bash
-uv sync --all-packages           # 安装两个包
-make check                      # Ruff、mypy、两套测试与 VS Code 扩展
+uv sync                          # 安装这个包
+make check                      # Ruff、mypy、测试与 VS Code 扩展
 make client                     # 构建并测试 TypeScript 客户端
 make vscode                     # 类型检查、测试并构建 VS Code 扩展
 make hooks                      # 每次提交前强制检查 mypy
@@ -113,8 +113,8 @@ uv run zettcode --workspace .    # 从源码运行
 ```
 
 ZettCode 提供终端应用和它的 HTTP 服务器;智能体运行时来自
-[`zett-agent`](https://github.com/Chang-LeHung/zett-agent)。仓库是一个 uv workspace:`zettcode/` 是代理,
-`zettcode-server/` 是 API,`clients/typescript/` 是它的 TypeScript 客户端,`clients/vscode/` 是基于该客户端的
+[`zett-agent`](https://github.com/Chang-LeHung/zett-agent)。仓库是一个 uv workspace:`zettcode/` 是这个包 —— 终端代理,
+以及 `src/zettcode/server/` 里的 API;`clients/typescript/` 是它的 TypeScript 客户端,`clients/vscode/` 是基于该客户端的
 VS Code 侧边栏。贡献者约定和不变量放在
 [`AGENTS.md`](AGENTS.md) 与 [`docs/internal/`](docs/internal/)，不进入用户指南。
 本地预览、重新生成效果图的方法见

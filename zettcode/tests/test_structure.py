@@ -42,12 +42,10 @@ def test_every_invariant_cites_a_test_that_exists():
     reader looking for evidence that is not where the row says it is.
     """
     document = (ROOT / "docs/internal/invariants.md").read_text(encoding="utf-8")
-    # The evidence lives with the package it pins: the agent's tests in zettcode/, the server's in zettcode-server/.
-    # A name both packages use (``test_cli.py``) may be either, so a citation is looked for in both.
+    # The evidence lives in one suite now: the server's tests sit beside the agent's, under ``zettcode/tests``.
     evidence: dict[str, list[pathlib.Path]] = {}
-    for folder in (PROJECT / "tests", ROOT / "zettcode-server" / "tests"):
-        for path in folder.glob("test_*.py"):
-            evidence.setdefault(path.name, []).append(path)
+    for path in (PROJECT / "tests").glob("test_*.py"):
+        evidence.setdefault(path.name, []).append(path)
     missing: list[str] = []
     unqualified: list[str] = []
     checked = 0

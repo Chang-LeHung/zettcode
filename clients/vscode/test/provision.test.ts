@@ -13,6 +13,11 @@ test("the server lives in an environment of the extension's own, beside the agen
   assert.equal(executable(directory, "win32"), "\\storage\\server\\venv\\Scripts\\zettcode-server.exe");
 });
 
+test("the server and the agent are one package, so the install names zettcode", () => {
+  assert.match(PACKAGE, /^zettcode>=/);
+  assert.ok(!PACKAGE.includes("zettcode-server"), "a separate server package would be a second version to keep in step");
+});
+
 test("uv makes the environment and installs into it, and is used before python", () => {
   const directory = "/storage/server/venv";
   const plan = installPlan({

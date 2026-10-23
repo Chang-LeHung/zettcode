@@ -36,11 +36,11 @@ under the publisher **zettcode**.
    side? Drag the icon there.
 4. **Nothing else to install.** The first time the chat starts, the extension looks for a `zettcode-server` on your
    `PATH` or in the folder's `.venv`; if there is none, it installs one into an environment of its own
-   (`globalStorage/server/venv`), with `uv` or your `python3`. The server and the agent it drives live together there,
-   apart from your project. To do it by hand instead:
+   (`globalStorage/server/venv`), with `uv` or your `python3`. It is the same package as the terminal's agent, in an
+   environment of its own, apart from your project. To do it by hand instead:
 
    ```bash
-   uv tool install zettcode-server
+   uv tool install zettcode
    ```
 
    Turn that off with `zettcode.server.autoInstall` if you would rather it never did.

@@ -14,12 +14,15 @@ server owns no model loop, no tools and no session format of its own.
 ## Install and run
 
 ```bash
-uv tool install zettcode-server
+uv tool install zettcode
 zettcode-server --workspace ~/projects/api --port 3290
 ```
 
+One package, two commands: `uv tool install zettcode` writes the terminal's `zettcode` and this `zettcode-server`,
+so the server is never a second install and always the same version as the agent.
+
 ```text
-zettcode-server 0.1.1 (zettcode 0.1.9) · http://127.0.0.1:3290 · workspace /home/you/projects/api · permission deny · token off
+zettcode-server 0.1.11 · http://127.0.0.1:3290 · workspace /home/you/projects/api · permission deny · token off
 ```
 
 The command binds **127.0.0.1** by default. Nothing is reachable from another machine until `--host` says so, and then

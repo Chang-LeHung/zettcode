@@ -163,7 +163,7 @@ export class ServerManager implements vscode.Disposable {
       if (installed === null) {
         throw this.failed(
           new Error(
-            `zettcode-server was not found. Install it with “uv tool install zettcode-server” (or “pip install zettcode-server”), or point zettcode.server.command at it.`,
+            `zettcode-server was not found. Install it with “uv tool install zettcode” (or “pip install zettcode”), or point zettcode.server.command at it.`,
           ),
           this.generation + 1,
         );
@@ -435,7 +435,7 @@ function resolveCommand(command: string, workspace: string): string {
   const directories = [
     ...roots.flatMap((root) => [path.join(root, ".venv", "bin"), path.join(root, ".venv", "Scripts")]),
     ...(home
-      ? [path.join(home, ".local", "bin"), path.join(home, ".local", "share", "uv", "tools", "zettcode-server", "bin")]
+      ? [path.join(home, ".local", "bin"), path.join(home, ".local", "share", "uv", "tools", "zettcode", "bin")]
       : []),
     ...(process.env.PATH ?? "").split(path.delimiter).filter(Boolean),
   ];

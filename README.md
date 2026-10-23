@@ -95,7 +95,7 @@ Embedding it elsewhere: the [**SDK**](https://chang-lehung.github.io/zettcode/sd
 with sessions, approvals, steering and models.
 
 ```bash
-uv tool install zettcode-server
+uv tool install zettcode          # one package, two commands: zettcode and zettcode-server
 zettcode-server --workspace ~/projects/api --port 8000
 ```
 
@@ -108,8 +108,8 @@ model/effort/permission switching and recent-session history. Its sources are in
 ## Development
 
 ```bash
-uv sync --all-packages           # install both packages
-make check                      # Ruff, mypy, both test suites, and the VS Code extension
+uv sync                          # install the package
+make check                      # Ruff, mypy, the test suite, and the VS Code extension
 make client                     # build and test the TypeScript client
 make vscode                     # type-check, test and build the VS Code extension
 make hooks                      # enforce mypy before commits
@@ -120,7 +120,8 @@ uv run zettcode --workspace .    # run from the checkout
 
 ZettCode provides the terminal application and its HTTP server; the agent runtime is
 [`zett-agent`](https://github.com/Chang-LeHung/zett-agent). The repository is a uv workspace: `zettcode/` is the
-agent, `zettcode-server/` the API, and `clients/typescript/` the TypeScript client for it. `clients/vscode/` is the
+package — the terminal agent, and the API in `src/zettcode/server/` — and `clients/typescript/` is the TypeScript
+client for it. `clients/vscode/` is the
 VS Code sidebar built on that client. Contributor notes and
 invariants live in [`AGENTS.md`](AGENTS.md) and
 [`docs/internal/`](docs/internal/), separately from the user guide. See

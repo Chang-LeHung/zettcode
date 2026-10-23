@@ -13,7 +13,6 @@ resolution-markers = [
 [manifest]
 members = [
     "zettcode",
-    "zettcode-server",
     "zettcode-workspace",
 ]
 
@@ -2892,6 +2891,7 @@ name = "zettcode"
 source = { editable = "zettcode" }
 dependencies = [
     { name = "exceptiongroup", marker = "python_full_version < '3.11'" },
+    { name = "fastapi" },
     { name = "httpx" },
     { name = "pydantic" },
     { name = "pyperclip" },
@@ -2910,6 +2910,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "exceptiongroup", marker = "python_full_version < '3.11'", specifier = ">=1.2,<2" },
+    { name = "fastapi", specifier = ">=0.115,<1" },
     { name = "httpx", specifier = ">=0.27,<1" },
     { name = "pydantic", specifier = ">=2,<3" },
     { name = "pyperclip", specifier = ">=1.9,<2" },
@@ -2922,24 +2923,6 @@ requires-dist = [
     { name = "wcwidth", specifier = ">=0.2,<1" },
     { name = "websockets", specifier = ">=15,<17" },
     { name = "zett-agent", specifier = ">=0.2.0,<0.3" },
-]
-
-[[package]]
-name = "zettcode-server"
-source = { editable = "zettcode-server" }
-dependencies = [
-    { name = "fastapi" },
-    { name = "httpx" },
-    { name = "uvicorn" },
-    { name = "zettcode" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "fastapi", specifier = ">=0.115,<1" },
-    { name = "httpx", specifier = ">=0.27,<1" },
-    { name = "uvicorn", specifier = ">=0.35,<1" },
-    { name = "zettcode", editable = "zettcode" },
 ]
 
 [[package]]

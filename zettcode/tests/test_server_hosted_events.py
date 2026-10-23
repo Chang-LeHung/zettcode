@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from zettcode.sdk.events import ServerToolFinished, ServerToolStarted
-from zettcode_server.serialize import event_payload
+from zettcode.server.serialize import event_payload
 
 
 def test_a_hosted_start_carries_the_name_and_what_it_was_asked():

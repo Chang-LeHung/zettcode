@@ -1,16 +1,16 @@
 /**
  * Where the extension keeps the server it installs for itself, and the commands that put it there.
  *
- * `zettcode-server` is a small Python program that depends on `zettcode` (the agent) and FastAPI; it is not a binary and
- * nothing about it is compiled for a platform. So "downloading it with the extension" means installing it once, into an
- * environment of the extension's own, where it lives beside the agent it drives — the same packages, the same versions,
- * outside the reader's project.
+ * `zettcode-server` is the HTTP face of `zettcode`, and the two ship in one distribution: installing `zettcode` writes
+ * both console scripts. It is not a binary and nothing about it is compiled for a platform, so "downloading it with the
+ * extension" means installing that package once, into an environment of the extension's own, where it lives beside the
+ * agent it drives — the same version, outside the reader's project.
  */
 
 import * as path from "node:path";
 
-/** The package installed, with the floor the extension is written against. */
-export const PACKAGE = "zettcode-server>=0.1.1";
+/** The package installed, with the floor the extension is written against: 0.1.11 is the first release with a server. */
+export const PACKAGE = "zettcode>=0.1.11";
 
 /** One command of an install, with what to say about it. */
 export interface Step {

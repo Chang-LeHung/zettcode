@@ -20,6 +20,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from zettcode import __version__
 from zettcode.sdk.errors import (
     ConfigurationError,
     NothingToDoError,
@@ -34,7 +35,6 @@ from zettcode.sdk.models import add_model as add_model_entry
 from zettcode.sdk.models import remove_model as remove_model_entry
 from zettcode.sdk.models import update_model as update_model_entry
 
-from . import __version__
 from .runner import NoModelError, Runner, prepare, result_payload
 from .runner import Request as RunRequest
 from .schemas import (

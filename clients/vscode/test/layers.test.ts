@@ -33,7 +33,7 @@ test("the extension speaks HTTP through the TypeScript client", async () => {
   for (const file of files) {
     for (const specifier of imports(file.text)) {
       assert.ok(
-        !/^(zettcode|zettcode_server|zettcode\.)/.test(specifier),
+        !/^(zettcode|zettcode\.)/.test(specifier),
         `${file.file} imports ${specifier}; the extension must reach the agent over HTTP`,
       );
       // The highlighter ships a grammar called python; a bridge would be a path or a process, never that.

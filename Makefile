@@ -2,34 +2,32 @@ UV ?= uv
 #: The editor CLI `make install-vscode` installs into: `code`, `code-insiders`, `cursor`, or a path to one.
 CODE ?= code
 
-# The repository is a uv workspace of two packages: the terminal agent in
-# `zettcode/` and the HTTP server in `zettcode-server/`. Tooling is shared and
-# configured once, in the root `pyproject.toml`; `make check` runs it all.
+# The repository is a uv workspace of one package, `zettcode/`: the terminal agent and the HTTP server it serves
+# are one distribution, so one `pip install` writes both `zettcode` and `zettcode-server`. Tooling is configured once,
+# in the root `pyproject.toml`; `make check` runs it all.
 #
-# `make smoke` builds here rather than into dist/, so the wheels it installs are
-# the ones it just built and not release wheels left over from an earlier run.
+# `make smoke` builds here rather than into dist/, so the wheel it installs is
+# the one it just built and not a release wheel left over from an earlier run.
 SMOKE_DIR := .smoke
 
-PACKAGE_DIRS := zettcode zettcode-server
-LINT_PATHS := zettcode/src zettcode/tests zettcode/perf zettcode-server/src zettcode-server/tests docs/scripts
+LINT_PATHS := zettcode/src zettcode/tests zettcode/perf docs/scripts
 
-.PHONY: help install lint typecheck test test-zettcode test-server client vscode vscode-package install-vscode build build-all smoke check hooks docs docs-build docs-preview demo demo-all demos demo-thinking palettes themes perf perf-scaling perf-store perf-profile perf-startup perf-imports FORCE
+.PHONY: help install lint typecheck test client vscode vscode-package install-vscode build smoke check hooks docs docs-build docs-preview demo demo-all demos demo-thinking palettes themes perf perf-scaling perf-store perf-profile perf-startup perf-imports FORCE
 
 DEMOS := text status_bar spinner progress_bar list table diff markdown textarea completion dialog collapsible toast tasks scroll layout
 
 help:
 	@echo "Available targets:"
-	@echo "  make install  Sync the whole workspace from uv.lock"
+	@echo "  make install  Sync the workspace from uv.lock"
 	@echo "  make lint     Check formatting and linting with Ruff"
-	@echo "  make typecheck Check the shipped code of both packages with mypy"
-	@echo "  make test     Run both test suites"
+	@echo "  make typecheck Check the shipped code with mypy"
+	@echo "  make test     Run the test suite"
 	@echo "  make client   Build and test the TypeScript client"
 	@echo "  make vscode   Type-check, test and build the VS Code extension"
 	@echo "  make vscode-package   Also package the extension as a .vsix"
 	@echo "  make install-vscode  Package it and install it into the editor $(CODE); reinstall is forced"
-	@echo "  make build    Build the zettcode sdist and wheel into dist/"
-	@echo "  make build-all  Build the sdist and wheel of both packages into dist/"
-	@echo "  make smoke    Build both wheels into $(SMOKE_DIR)/ and run each program's --help from them"
+	@echo "  make build    Build the sdist and wheel into dist/"
+	@echo "  make smoke    Build the wheel into $(SMOKE_DIR)/ and run both programs' --help from it"
 	@echo "  make check    Run lint, typecheck, and tests"
 	@echo "  make hooks    Install the git hooks (blocks a commit that fails mypy)"
 	@echo "  make docs     Serve the user guide at http://localhost:5173"
@@ -59,13 +57,8 @@ lint:
 typecheck:
 	$(UV) run --no-sync mypy
 
-test: test-zettcode test-server
-
-test-zettcode:
+test:
 	cd zettcode && $(UV) run --no-sync pytest
-
-test-server:
-	cd zettcode-server && $(UV) run --no-sync pytest
 
 # The TypeScript client has its own toolchain: Node 20+, no runtime dependencies.
 client:
@@ -92,17 +85,14 @@ install-vscode: vscode-package
 build:
 	$(UV) build --package zettcode
 
-build-all:
-	$(UV) build --all-packages
-
-# The wheels are built, not found: a glob over dist/ would happily install an older
+# The wheel is built, not found: a glob over dist/ would happily install an older
 # version that happens to be lying there, and a wheel that is not the one just
-# built proves nothing about the build.
+# built proves nothing about the build. One wheel, two programs.
 smoke:
 	rm -rf $(SMOKE_DIR)
-	$(UV) build --all-packages --out-dir $(SMOKE_DIR)
+	$(UV) build --package zettcode --out-dir $(SMOKE_DIR)
 	$(UV) run --no-project --python 3.14 --with ./$(SMOKE_DIR)/zettcode-*.whl zettcode --help
-	$(UV) run --no-project --python 3.14 --with ./$(SMOKE_DIR)/zettcode-*.whl --with ./$(SMOKE_DIR)/zettcode_server-*.whl zettcode-server --help
+	$(UV) run --no-project --python 3.14 --with ./$(SMOKE_DIR)/zettcode-*.whl zettcode-server --help
 	@# The HTML trace ships as package data: a packaging change that drops the
 	@# template, its stylesheet, or its script has to fail here, not at export time.
 	$(UV) run --no-project --python 3.14 --with ./$(SMOKE_DIR)/zettcode-*.whl python -c "from importlib.resources import files; names = sorted(p.name for p in files('zettcode.app.agent.export').joinpath('trace').iterdir()); assert names == ['script.js', 'style.css', 'template.html'], names; print('trace assets:', names)"
