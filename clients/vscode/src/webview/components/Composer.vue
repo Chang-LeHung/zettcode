@@ -4,7 +4,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { formatTokens, permissionDescription, permissionLabel } from "../../core/format.js";
 import { effortMeta, permissionMeta } from "../../core/levels.js";
 import { contextPercent, contextRows, formatPercent } from "../context.js";
-import { commandOf, parseSlash, runSlash, SLASH_COMMANDS } from "../commands.js";
+import { commandOf, argumentsOf, parseSlash, runSlash, SLASH_COMMANDS } from "../commands.js";
 import { closeOverlay, enqueue, openOverlay, post, state, toast } from "../store.js";
 import AttachmentStrip from "./AttachmentStrip.vue";
 import ChoiceMenu from "./ChoiceMenu.vue";
@@ -50,6 +50,8 @@ const text = computed(() => state.draft.trim());
 
 const before = computed(() => state.draft.slice(0, caret.value));
 const slash = computed(() => /^\/([\w-]*)$/.exec(before.value));
+/** `/name word`: the second level, for commands whose words can be listed. */
+const argument = computed(() => /^\/([\w-]+)\s+([\w-]*)$/.exec(before.value));
 const mention = computed(() => /(?:^|\s)@([\w./-]*)$/.exec(before.value));
 
 const items = computed<MenuItem[]>(() => {
@@ -65,6 +67,18 @@ const items = computed<MenuItem[]>(() => {
       badge: "",
     }));
   }
+  if (argument.value !== null) {
+    const name = argument.value[1] ?? "";
+    const query = (argument.value[2] ?? "").toLowerCase();
+    return argumentsOf(name)
+      .filter((option) => option.word.toLowerCase().startsWith(query))
+      .map((option) => ({
+        id: `${name} ${option.word}`,
+        label: `/${name} ${option.word}`,
+        description: option.description,
+        badge: "",
+      }));
+  }
   if (mention.value !== null && state.mentions?.query === (mention.value[1] ?? "")) {
     return state.mentions.items.map((item) => ({
       id: item.token,
@@ -77,7 +91,7 @@ const items = computed<MenuItem[]>(() => {
 });
 
 watch(
-  () => [slash.value?.[1], mention.value?.[1]],
+  () => [slash.value?.[1], argument.value?.[2], mention.value?.[1]],
   () => {
     active.value = 0;
     dismissed.value = false;
@@ -127,6 +141,21 @@ function choose(index: number, completeOnly = false): void {
     }
     state.draft = "";
     runSlash(item.id);
+    return;
+  }
+  if (argument.value !== null) {
+    const [name, word] = item.id.split(" ");
+    if (name === undefined || word === undefined) {
+      return;
+    }
+    if (completeOnly) {
+      // Tab fills the word in, so the reader can go on editing it; Enter runs it, the way choosing a row in a menu does.
+      state.draft = `/${name} ${word}`;
+      caretToEnd();
+      return;
+    }
+    state.draft = "";
+    runSlash(name, word);
     return;
   }
   const at = before.value.lastIndexOf("@");

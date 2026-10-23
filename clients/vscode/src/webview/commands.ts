@@ -1,5 +1,7 @@
 /** The slash commands the composer offers: the terminal's, as far as the server reaches. */
 
+import { formatTokens, permissionDescription } from "../core/format.js";
+import type { Permission } from "../../../typescript/src/types.js";
 import { openOverlay, post, state, toast } from "./store.js";
 
 export interface SlashCommand {
@@ -33,6 +35,44 @@ export const SLASH_COMMANDS: SlashCommand[] = [
 /** The command with this name, if we know it. */
 export function commandOf(name: string): SlashCommand | undefined {
   return SLASH_COMMANDS.find((command) => command.name === name);
+}
+
+export interface CommandArgument {
+  /** The word typed after the command, such as `on` for `/harness on`. */
+  word: string;
+  /** What it does, in the line the menu shows beside it. */
+  description: string;
+}
+
+/**
+ * The words one command takes, when they can be listed: the levels, the models, `on` and `off`.
+ *
+ * A command whose argument is free text (`/rename`, `/btw`) has none, and gets no second-level menu; the list is read
+ * from the state the host last sent, so `/model ` offers the models that are configured now.
+ */
+export function argumentsOf(name: string): CommandArgument[] {
+  const settings = state.ui?.settings ?? null;
+  switch (name) {
+    case "harness":
+      return [
+        { word: "on", description: "Let the model write and run small Python tools of its own" },
+        { word: "off", description: "The model has only the tools ZettCode ships" },
+      ];
+    case "permission":
+      return (settings?.permissions ?? []).map((level) => ({ word: level, description: permissionDescription(level) }));
+    case "effort":
+      return (settings?.efforts ?? []).map((level) => ({ word: level, description: "" }));
+    case "model":
+      return [
+        ...(state.ui?.models ?? []).map((model) => ({
+          word: model.name,
+          description: `${model.model} \u00b7 ${formatTokens(model.context_window)}`,
+        })),
+        { word: "add", description: "Add a model to the configuration file" },
+      ];
+    default:
+      return [];
+  }
 }
 
 /** `/name rest`, when `name` is a command we know; anything else is a message. */
@@ -82,13 +122,28 @@ export function runSlash(name: string, rest = ""): void {
       post({ type: "export" });
       break;
     case "model":
-      openOverlay("models");
+      if (rest.trim() === "add") {
+        state.editingModel = null;
+        openOverlay("add-model");
+      } else if (rest.trim()) {
+        post({ type: "set-model", name: rest.trim() });
+      } else {
+        openOverlay("models");
+      }
       break;
     case "effort":
-      openOverlay("effort");
+      if (rest.trim()) {
+        post({ type: "set-effort", effort: rest.trim() });
+      } else {
+        openOverlay("effort");
+      }
       break;
     case "permission":
-      openOverlay("permission");
+      if (rest.trim()) {
+        post({ type: "set-permission", permission: rest.trim() as Permission });
+      } else {
+        openOverlay("permission");
+      }
       break;
     case "harness": {
       const word = rest.trim().toLowerCase();
