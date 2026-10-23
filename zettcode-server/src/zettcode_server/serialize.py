@@ -265,6 +265,22 @@ def event_payload(event: AnyEvent) -> dict[str, Any]:
                 "ok": ok,
                 "skipped": skipped,
             }
+        case events.ServerToolStarted(call_id=call_id, name=name, arguments=arguments):
+            return {
+                "type": "server_tool_started",
+                "call_id": call_id,
+                "name": name,
+                "arguments": dict(arguments),
+            }
+        case events.ServerToolFinished(call_id=call_id, name=name, arguments=arguments, output=output, ok=ok):
+            return {
+                "type": "server_tool_finished",
+                "call_id": call_id,
+                "name": name,
+                "arguments": dict(arguments),
+                "output": output,
+                "ok": ok,
+            }
         case events.ApprovalRequested(call_id=call_id, command=command):
             return {"type": "approval_requested", "call_id": call_id, "command": command, "approved": event.approved}
         case events.QuestionAsked(call_id=call_id, question=question, options=options, allow_multiple=allow_multiple):

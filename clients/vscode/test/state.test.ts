@@ -74,6 +74,40 @@ test("a tool starts running and finishes in place", () => {
   assert.equal(running?.finishedAt, 1500);
 });
 
+test("a hosted tool is a row like any other, and its query arrives with its end", () => {
+  const turn = createTurn("go", [], 1000, "t");
+  applyEvent(turn, { type: "server_tool_started", call_id: "s1", name: "web_search", arguments: {} }, 1100);
+  applyEvent(
+    turn,
+    {
+      type: "server_tool_finished",
+      call_id: "s1",
+      name: "web_search",
+      arguments: { query: "zettcode github" },
+      output: "1 page\n- Page 1 — https://example.com/1",
+      ok: true,
+    },
+    1600,
+  );
+  const tool = findTool(turn, "s1");
+  assert.equal(turn.blocks.length, 1);
+  assert.equal(tool?.status, "ok");
+  assert.deepEqual(tool?.arguments, { query: "zettcode github" });
+  assert.match(tool?.output ?? "", /example\.com\/1/);
+  assert.equal(tool?.finishedAt, 1600);
+});
+
+test("a hosted tool that failed says so", () => {
+  const turn = createTurn("go", [], 1000, "t");
+  applyEvent(
+    turn,
+    { type: "server_tool_finished", call_id: "s1", name: "web_search", arguments: {}, output: "max_uses", ok: false },
+    1200,
+  );
+
+  assert.equal(findTool(turn, "s1")?.status, "failed");
+});
+
 test("a skipped or failed tool keeps its ending", () => {
   const turn = createTurn("go", [], 1000, "t");
   applyEvent(turn, { type: "tool_finished", call_id: "a", name: "bash", output: "", ok: false, skipped: false });

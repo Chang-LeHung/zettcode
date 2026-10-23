@@ -302,6 +302,15 @@ export type RunEvent =
   | { type: "reasoning_delta"; text: string }
   | { type: "tool_started"; call_id: string; name: string; arguments: Record<string, unknown> }
   | { type: "tool_finished"; call_id: string; name: string; output: string; ok: boolean; skipped: boolean }
+  | { type: "server_tool_started"; call_id: string; name: string; arguments: Record<string, unknown> }
+  | {
+      type: "server_tool_finished";
+      call_id: string;
+      name: string;
+      arguments: Record<string, unknown>;
+      output: string;
+      ok: boolean;
+    }
   | { type: "approval_requested"; call_id: string; command: string; approved: boolean | null }
   | {
       type: "question_asked";

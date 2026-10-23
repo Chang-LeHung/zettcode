@@ -14,6 +14,7 @@ from zett_agent.events import AgentEvent, AgentEventType
 from zett_agent.extensions.shell_approval import SHELL_APPROVAL_EVENT_NAME
 from zett_agent.messages import TextContent
 
+from ..app.agent.conversation.server_tools import ServerToolRun, describe_output
 from ..app.agent.dialogue.ask import question_from
 from ..app.agent.extensions.mcp_notice import notice_from, notice_level_from
 from ..app.agent.extensions.usage import USAGE_EVENT_NAME, UsageSnapshot
@@ -29,6 +30,8 @@ from .events import (
     Notice,
     QuestionAsked,
     ReasoningDelta,
+    ServerToolFinished,
+    ServerToolStarted,
     Steered,
     TextDelta,
     ToolFinished,
@@ -161,11 +164,18 @@ def checks_from(probes: Sequence[Probe]) -> tuple[ModelCheck, ...]:
     return tuple(checks)
 
 
-def translate(event: AgentEvent, bridge: Bridge) -> list[AnyEvent]:
+def translate(event: AgentEvent, bridge: Bridge, hosted: dict[str, str] | None = None) -> list[AnyEvent]:
     """Return the SDK events one ``zett-agent`` event stands for; usually one, sometimes none or several.
 
     Anything malformed is dropped rather than raised: this runs inside the stream of a live request, and a
     partly-formed custom event from an extension must not be able to fail it.
+
+    Args:
+        event: The event to translate.
+        bridge: How an answer reaches the suspended agent.
+        hosted: What a hosted tool's input has streamed so far, by call, for the caller that keeps it across the run.
+            It is how a search that sends its query in fragments still shows the query; without it the start's own
+            input is all there is.
     """
     session = event.session_id or ""
     kind = event.type
@@ -177,6 +187,15 @@ def translate(event: AgentEvent, bridge: Bridge) -> list[AnyEvent]:
         return [ToolStarted(session, call.id, call.name, _arguments(call.arguments)) for call in event.tool_calls]
     if kind in (AgentEventType.TOOL_COMPLETED, AgentEventType.TOOL_FAILED, AgentEventType.TOOL_SKIPPED):
         return _tool_finished(event, session)
+    if kind is AgentEventType.SERVER_TOOL_STARTED:
+        return _server_tool_started(event, session, hosted)
+    if kind is AgentEventType.SERVER_TOOL_INPUT_DELTA:
+        delta = event.server_tool_input_delta
+        if delta is not None and hosted is not None:
+            hosted[delta.call_id] = hosted.get(delta.call_id, "") + delta.delta
+        return []
+    if kind in (AgentEventType.SERVER_TOOL_COMPLETED, AgentEventType.SERVER_TOOL_FAILED):
+        return _server_tool_finished(event, session, hosted)
     if kind is AgentEventType.COMPACTION_STARTED:
         return [CompactionStarted(session)]
     if kind is AgentEventType.COMPACTION_COMPLETED:
@@ -193,6 +212,38 @@ def translate(event: AgentEvent, bridge: Bridge) -> list[AnyEvent]:
     if kind is AgentEventType.CUSTOM:
         return _custom(event, session, bridge)
     return []
+
+
+def _server_tool_started(event: AgentEvent, session: str, hosted: dict[str, str] | None) -> list[AnyEvent]:
+    """Return the start of a hosted call: its name and whatever input the provider gave up front."""
+    call = event.server_tool_call
+    if call is None:
+        return []
+    if hosted is not None:
+        hosted.setdefault(call.id, "")
+    return [ServerToolStarted(session, call.id, call.name, dict(call.input or {}))]
+
+
+def _server_tool_finished(event: AgentEvent, session: str, hosted: dict[str, str] | None) -> list[AnyEvent]:
+    """Return the end of a hosted call: its query, gathered from the fragments, and a readable result."""
+    import json
+
+    result = event.server_tool_result
+    if result is None:
+        return []
+    arguments: dict[str, object] = {}
+    if hosted is not None:
+        fragments = hosted.pop(result.call_id, "")
+        if fragments:
+            try:
+                parsed = json.loads(fragments)
+            except ValueError:
+                parsed = None
+            if isinstance(parsed, dict):
+                arguments.update(parsed)
+    ok = event.type is AgentEventType.SERVER_TOOL_COMPLETED
+    run = ServerToolRun(result.call_id, result.name, arguments, output=result.output, error=result.error_code)
+    return [ServerToolFinished(session, result.call_id, result.name, arguments, describe_output(run), ok)]
 
 
 def _tool_finished(event: AgentEvent, session: str) -> list[AnyEvent]:
