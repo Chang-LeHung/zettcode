@@ -1,7 +1,7 @@
 """The shapes the HTTP API promises, so a client has a schema and not a guess.
 
 These are the server's own types. The SDK's values are converted into them at the edge (see
-:mod:`zettcode_server.serialize`), which keeps the wire format a decision of this package: the SDK may gain a field
+:mod:`zettcode.server.serialize`), which keeps the wire format a decision of this package: the SDK may gain a field
 without changing what a client sees, and a field is only published when it is meant.
 """
 

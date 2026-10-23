@@ -10,6 +10,8 @@ keywords = ["agent", "llm", "tui", "terminal", "coding-agent"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Environment :: Console",
+  "Environment :: Web Environment",
+  "Framework :: FastAPI",
   "Operating System :: MacOS",
   "Operating System :: Microsoft :: Windows :: Windows 10",
   "Operating System :: POSIX :: Linux",
@@ -36,6 +38,9 @@ dependencies = [
   "uvicorn>=0.35,<1",
   "httpx>=0.27,<1",
   "websockets>=15,<17",
+  # The HTTP server is part of this package and always installed: `pip install zettcode` writes both console
+  # scripts, so `zettcode-server` may not be a command whose dependencies are an optional extra.
+  "fastapi>=0.115,<1",
   # The counter behind ``/context`` measures a request with it, and imports it
   # itself: the floor matches the runtime's, so neither resolver has to fight.
   "tiktoken>=0.12,<1",
@@ -58,6 +63,7 @@ dependencies = [
 
 [project.scripts]
 zettcode = "zettcode.cli:main"
+zettcode-server = "zettcode.server.cli:main"
 
 [project.urls]
 Repository = "https://github.com/Chang-LeHung/zettcode"

@@ -31,12 +31,12 @@ side bar, so you can ask for a change and watch it happen without leaving the ed
 ## Getting started
 
 1. **Nothing to install first.** The first time the chat starts, the extension installs its server into a folder of
-   its own, with `uv` if you have it and your `python3` otherwise; the server and the agent it drives live together in
-   that one environment, apart from your project. To use a server you already have (a `zettcode-server` on your
+   its own, with `uv` if you have it and your `python3` otherwise; the server ships in the same package as the agent,
+   in that one environment, apart from your project. To use a server you already have (a `zettcode-server` on your
    `PATH`, or in the workspace's `.venv`), it is found first and nothing is installed. To do it by hand instead:
 
    ```bash
-   uv tool install zettcode-server
+   uv tool install zettcode
    ```
 
 2. **Open a folder** in VS Code and click the ZettCode icon in the side bar on the right, or run

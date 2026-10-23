@@ -10,7 +10,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-from fakes import FakeClient, FakeRun
+from server_fakes import FakeClient, FakeRun
 from zettcode.sdk.errors import RunError, SessionBusyError
 from zettcode.sdk.events import (
     ApprovalRequested,
@@ -25,10 +25,10 @@ from zettcode.sdk.events import (
     UsageUpdated,
 )
 from zettcode.sdk.types import Compaction, RunResult, ToolRecord, Usage
-from zettcode_server.app import error_body, failure_of, sse_frame
-from zettcode_server.runner import approval_handler
-from zettcode_server.schemas import ApprovalPolicy
-from zettcode_server.settings import Settings
+from zettcode.server.app import error_body, failure_of, sse_frame
+from zettcode.server.runner import approval_handler
+from zettcode.server.schemas import ApprovalPolicy
+from zettcode.server.settings import Settings
 
 #: The session every event in this file belongs to.
 SESSION = "session-1"
@@ -36,7 +36,7 @@ SESSION = "session-1"
 
 @asynccontextmanager
 async def serve(client: FakeClient) -> AsyncIterator[httpx.AsyncClient]:
-    from zettcode_server.app import create_app
+    from zettcode.server.app import create_app
 
     app = create_app(Settings(workspace=Path("/tmp/zettcode-server-test")), client_factory=lambda: client)
     async with app.router.lifespan_context(app):

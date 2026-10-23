@@ -1,6 +1,6 @@
 # zettcode-client
 
-The TypeScript client for [`zettcode-server`](../../zettcode-server): the ZettCode coding agent behind HTTP, driven
+The TypeScript client for [`zettcode-server`](../../docs/server/index.md): the ZettCode coding agent behind HTTP, driven
 from Node, a VS Code extension, or anything with `fetch`.
 
 It is one dependency-free module: the JSON endpoints, a real server-sent-events parser, and a `Run` that streams one

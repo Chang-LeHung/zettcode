@@ -31,11 +31,11 @@ shell 命令都在你的控制之下。它通过 HTTP 和本机的 `zettcode-ser
 2. 打开一个文件夹。一个窗口服务一个文件夹；多根工作区用第一个。
 3. 点右侧二级侧边栏里的 ZettCode 图标，或者运行 **ZettCode: Focus Chat**。想放左边？把图标拖过去。
 4. **不用另外装东西。** 聊天第一次启动时，扩展会先找 `PATH` 上或文件夹 `.venv` 里的 `zettcode-server`；找不到就
-   用自己的目录（`globalStorage/server/venv`）装一个，用 `uv` 或你的 `python3`。服务器和它驱动的 agent 一起住在
-   那里，跟你的项目分开。想自己装：
+   用自己的目录（`globalStorage/server/venv`）装一个，用 `uv` 或你的 `python3`。它和终端用的 agent 是同一个包，只是
+   装在单独的目录里，跟你的项目分开。想自己装：
 
    ```bash
-   uv tool install zettcode-server
+   uv tool install zettcode
    ```
 
    不想让它自动装，就把 `zettcode.server.autoInstall` 关掉。

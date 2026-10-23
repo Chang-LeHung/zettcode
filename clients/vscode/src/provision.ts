@@ -81,7 +81,7 @@ export async function installServer(options: {
   }
   const plan = installPlan({ directory, tools: findTools() });
   if (plan === null) {
-    options.output.appendLine("[install] neither uv nor Python 3 is on the PATH; install zettcode-server yourself");
+    options.output.appendLine("[install] neither uv nor Python 3 is on the PATH; install zettcode yourself");
     return null;
   }
   options.output.appendLine(`[install] zettcode-server into ${directory}`);
@@ -104,7 +104,7 @@ export async function installServer(options: {
     const message = error instanceof Error ? error.message : String(error);
     options.output.appendLine(`[install] failed: ${message}`);
     void vscode.window.showWarningMessage(
-      `ZettCode could not install its server: ${message}. Install it yourself with “uv tool install zettcode-server”, or set zettcode.server.command.`,
+      `ZettCode could not install its server: ${message}. Install it yourself with “uv tool install zettcode”, or set zettcode.server.command.`,
     );
     return null;
   }

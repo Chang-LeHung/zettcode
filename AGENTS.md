@@ -2,7 +2,7 @@
 
 ## Scope
 
-The repository is a uv workspace of two packages, and the root `pyproject.toml` is only the workspace: the shared
+The repository is a uv workspace of one package, and the root `pyproject.toml` is only the workspace: the shared
 tool configuration (Ruff, mypy, the dev dependency group) and the member list. Nothing is published from the root.
 
 - `zettcode/` is the terminal coding agent. `src/zettcode` holds `cli.py` and
@@ -36,8 +36,11 @@ tool configuration (Ruff, mypy, the dev dependency group) and the member list. N
 - The TUI owns the terminal. Raw mode, input decoding, layout, and differential
   cell rendering live in `zettcode/src/zettcode/tui`; do not add prompt-toolkit
   or another TUI framework.
-- `zettcode-server/` is the HTTP face of the same agent, and holds no agent of its own: every endpoint drives
-  `zettcode.sdk`, which drives the released `zett-agent` runtime. It is one process per workspace, because the SDK
+- `zettcode-server` is the HTTP face of the same agent, in `src/zettcode/server/`, and holds no agent of its own:
+  every endpoint drives
+  `zettcode.sdk`, which drives the released `zett-agent` runtime. It ships in the same distribution as the terminal —
+  `pip install zettcode` writes both console scripts — so `fastapi` is a core dependency, not an extra, and the two
+  share one version. It is one process per workspace, because the SDK
   keeps the process's working directory. Do not re-implement tools, sessions, model calls, or the SDK's event
   translation there; add a method to the SDK first when the server needs something it does not have.
 - `clients/typescript/` is the TypeScript client for the server, and only a client: it speaks the HTTP API, has no
@@ -54,12 +57,12 @@ tool configuration (Ruff, mypy, the dev dependency group) and the member list. N
 ## Tooling
 
 - Python 3.10+ and `uv` for dependency management; Ruff for formatting and
-  linting with `line-length = 120`, and mypy for the shipped code of both packages under
-  `zettcode/src`, `zettcode/perf` and `zettcode-server/src`. Both tools target 3.10 and CI runs 3.10 through 3.15, so
+  linting with `line-length = 120`, and mypy for the shipped code under
+  `zettcode/src` and `zettcode/perf`. Both tools target 3.10 and CI runs 3.10 through 3.15, so
   keep the source free of newer syntax and standard-library APIs; the version shims live in
   `zettcode/src/zettcode/_compat.py`.
-- Run `make check` (Ruff, mypy, both test suites, and the VS Code extension) before handing work over, and
-  `make smoke` when packaging changes so each console script is exercised from the built wheels. `make vscode`
+- Run `make check` (Ruff, mypy, the test suite, and the VS Code extension) before handing work over, and
+  `make smoke` when packaging changes so both console scripts are exercised from the built wheel. `make vscode`
   runs the extension's type-check, jsdom tests and build on its own, and `make vscode-package` writes a `.vsix`.
 - Node 20+ builds both JavaScript clients. `clients/typescript` is dependency-free at runtime; `clients/vscode`
   has dev dependencies only (esbuild, TypeScript, jsdom) and bundles everything it runs into `dist/`.
@@ -96,12 +99,10 @@ tool configuration (Ruff, mypy, the dev dependency group) and the member list. N
 
 ## Releases
 
-- The version of the agent lives in `zettcode/src/zettcode/__init__.py`; `zettcode/pyproject.toml` asks hatchling to
+- The version lives in `zettcode/src/zettcode/__init__.py`; `zettcode/pyproject.toml` asks hatchling to
   read it from there, and a release is a commit that sets it plus a `v<version>` tag. The release workflow reads the
-  same file and refuses to publish when the tag and it disagree. `zettcode-server` has its own version in
-  `zettcode-server/src/zettcode_server/__init__.py` and is not published by that tag.
-- A `zettcode-server` release must keep its `zettcode>=` floor at the version whose SDK it was built against, the
-  same rule `zett-agent` follows below.
+  same file and refuses to publish when the tag and it disagree. The terminal and the server are one distribution and
+  one version; there is no second tag.
 - Publishing requires the `PYPI_API_TOKEN` repository secret; see `RELEASING.md`.
 - When `zett-agent` is released, raise the `zett-agent` floor in the same change
   — the dependency is a range (`>=0.1.13,<0.2`), never an exact pin, because

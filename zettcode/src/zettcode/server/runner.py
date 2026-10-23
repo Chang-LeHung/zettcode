@@ -5,7 +5,7 @@ the SDK follow. A prompt that arrives while another runs is refused with ``busy`
 see that nothing happened, and a long run is never silently joined by a second.
 
 A run started over HTTP has no terminal to answer it, so the answers travel with the request or over the endpoints
-that post back into the run: :class:`~zettcode_server.schemas.ApprovalPolicy` decides shell commands up front
+that post back into the run: :class:`~zettcode.server.schemas.ApprovalPolicy` decides shell commands up front
 (``deny``, ``auto``, ``commands``) or defers each one to the client (``ask``); questions are declined unless the
 request says ``questions: ask``. A deferred request waits for ``POST /runs/approvals`` or ``POST /runs/questions``
 for ``answer_timeout`` seconds and then takes the safe default, so no client can leave a run suspended forever.

@@ -46,7 +46,7 @@ jobs:
           PY
 
       - name: Build
-        # A v* tag publishes the agent; the server has its own version and is not part of this release.
+        # A v* tag publishes the package: the terminal agent and the HTTP server ship together, with one version.
         run: uv build --package zettcode
 
       - name: Check distribution metadata

@@ -11,7 +11,8 @@ import os
 import sys
 from pathlib import Path
 
-from . import __version__
+from zettcode import __version__
+
 from .settings import DEFAULT_HOST, DEFAULT_PERMISSION, DEFAULT_PORT, TOKEN_VARIABLE, Settings
 
 
@@ -64,10 +65,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def version_text() -> str:
-    """Return the line ``--version`` prints: the server, and the agent it serves."""
-    from zettcode import __version__ as agent
-
-    return f"zettcode-server {__version__} (zettcode {agent})"
+    """Return the line ``--version`` prints: the server and the agent are one package, so one version."""
+    return f"zettcode-server {__version__}"
 
 
 def settings_from(argv: list[str] | None = None) -> Settings:

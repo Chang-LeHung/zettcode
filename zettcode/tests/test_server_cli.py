@@ -9,15 +9,14 @@ from pathlib import Path
 
 import pytest
 
-from zettcode_server import __version__
-from zettcode_server.cli import build_parser, main, settings_from, version_text
+from zettcode import __version__
+from zettcode.server.cli import build_parser, main, settings_from, version_text
 
 
-def test_the_version_names_the_server_and_the_agent_it_serves():
+def test_the_version_is_the_one_package_it_ships_in():
     text = version_text()
 
-    assert text.startswith(f"zettcode-server {__version__}")
-    assert "(zettcode " in text
+    assert text == f"zettcode-server {__version__}"
 
 
 def test_the_defaults_serve_the_current_directory_on_loopback_denying_shell_commands():
@@ -96,7 +95,7 @@ def test_arguments_that_cannot_work_stop_before_a_socket_is_opened(arguments, me
 def test_help_exits_without_importing_fastapi_or_the_agent():
     """The command that explains the program must not load the server it explains."""
     script = (
-        "import sys; from zettcode_server.cli import main; "
+        "import sys; from zettcode.server.cli import main; "
         "sys.argv = ['zettcode-server', '--help'];\n"
         "try:\n    main()\nexcept SystemExit:\n    pass\n"
         "print('fastapi' in sys.modules, 'zettcode.sdk' in sys.modules)\n"
@@ -116,7 +115,7 @@ def test_serving_builds_the_app_and_hands_it_to_uvicorn(monkeypatch, tmp_path: P
         served.update(options)
 
     monkeypatch.setitem(sys.modules, "uvicorn", types.SimpleNamespace(run=fake_run))
-    monkeypatch.setattr("zettcode_server.app.create_app", lambda settings: ("app for", settings.workspace))
+    monkeypatch.setattr("zettcode.server.app.create_app", lambda settings: ("app for", settings.workspace))
 
     main(["-w", str(tmp_path), "--port", "9100", "--log-level", "warning"])
 
