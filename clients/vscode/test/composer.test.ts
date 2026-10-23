@@ -74,7 +74,7 @@ after(() => {
 
 const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
-async function open() {
+async function open(turns: unknown[] = []) {
   const html = chatHtml({
     styles: ["file:///base.css", "file:///webview.css"],
     script: "file:///webview.js",
@@ -92,7 +92,7 @@ async function open() {
   });
   (window.HTMLElement.prototype as unknown as { scrollIntoView: () => void }).scrollIntoView = () => undefined;
   window.eval(await readFile(process.env.ZETTCODE_WEBVIEW_BUNDLE ?? "build/webview.js", "utf8"));
-  window.dispatchEvent(new window.MessageEvent("message", { data: { type: "init", state, turns: [] } }));
+  window.dispatchEvent(new window.MessageEvent("message", { data: { type: "init", state, turns } }));
   await settle();
   const input = window.document.getElementById("input") as HTMLTextAreaElement;
   return {
@@ -105,8 +105,10 @@ async function open() {
       input.dispatchEvent(new window.Event("input", { bubbles: true }));
       await settle();
     },
-    async key(name: string) {
-      input.dispatchEvent(new window.KeyboardEvent("keydown", { key: name, bubbles: true, cancelable: true }));
+    async key(name: string, modifiers: { shiftKey?: boolean; altKey?: boolean; ctrlKey?: boolean } = {}) {
+      input.dispatchEvent(
+        new window.KeyboardEvent("keydown", { key: name, bubbles: true, cancelable: true, ...modifiers }),
+      );
       await settle();
     },
     labels: () => Array.from(window.document.querySelectorAll("#menu .menu-label")).map((node) => node.textContent),
@@ -208,4 +210,84 @@ test("every command is offered after a bare slash, and the list narrows as you t
   assert.ok(ui.labels().length >= 15);
   await ui.type("/c");
   assert.deepEqual(ui.labels(), ["/continue", "/compact", "/context", "/clear"]);
+});
+
+const sent = (...prompts: string[]): unknown[] =>
+  prompts.map((prompt, index) => ({
+    id: `t${index + 1}`,
+    prompt,
+    images: [],
+    startedAt: index,
+    status: "done",
+    blocks: [],
+  }));
+
+test("Up brings back what was sent before, and Down walks forward to the draft again", async () => {
+  const ui = await open(sent("first", "second"));
+  await ui.type("a draft");
+
+  await ui.key("ArrowUp");
+  assert.equal(ui.input.value, "second", "the newest message first");
+
+  await ui.key("ArrowUp");
+  assert.equal(ui.input.value, "first");
+
+  await ui.key("ArrowUp");
+  assert.equal(ui.input.value, "first", "and it stops at the oldest");
+
+  await ui.key("ArrowDown");
+  assert.equal(ui.input.value, "second");
+
+  await ui.key("ArrowDown");
+  assert.equal(ui.input.value, "a draft", "then the draft comes back exactly as it was");
+});
+
+test("with nothing sent there is nothing to bring back, and the caret stays the caret's", async () => {
+  const ui = await open();
+  await ui.type("hello");
+
+  await ui.key("ArrowUp");
+
+  assert.equal(ui.input.value, "hello");
+});
+
+test("a side question is not a message of the conversation and is not offered back", async () => {
+  const turns = [...sent("asked"), { ...(sent("aside")[0] as object), aside: true }];
+  const ui = await open(turns);
+
+  await ui.key("ArrowUp");
+
+  assert.equal(ui.input.value, "asked");
+});
+
+test("a command's arrows stay in the menu and never bring a message back", async () => {
+  const ui = await open(sent("first"));
+  await ui.type("/c");
+  const before = ui.labels().length;
+
+  await ui.key("ArrowDown");
+  await ui.key("ArrowUp");
+
+  assert.equal(ui.input.value, "/c");
+  assert.equal(ui.labels().length, before, "the menu is still the thing moving");
+});
+
+test("a dismissed menu leaves the command's arrows meaning nothing", async () => {
+  const ui = await open(sent("first"));
+  await ui.type("/c");
+  await ui.key("Escape");
+
+  await ui.key("ArrowUp");
+
+  assert.equal(ui.input.value, "/c");
+});
+
+test("shift with an arrow still selects text rather than bringing a message back", async () => {
+  const ui = await open(sent("first"));
+  await ui.type("one two");
+
+  await ui.key("ArrowUp", { shiftKey: true });
+  await ui.key("ArrowDown", { ctrlKey: true });
+
+  assert.equal(ui.input.value, "one two");
 });

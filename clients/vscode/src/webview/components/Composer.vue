@@ -89,6 +89,12 @@ watch(
   },
 );
 
+/** Where the reader is in the messages they sent: null while the box holds the draft they were writing. */
+let browsing: number | null = null;
+let saved = "";
+/** What recall last put in the box, so an input event it did not cause does not end the walk. */
+let shown = state.draft;
+
 /** Put the caret at the end of the draft, once the box has the new text. */
 function caretToEnd(): void {
   void nextTick(() => {
@@ -210,6 +216,7 @@ function submit(steer = false): void {
   }
   const command = parseSlash(message);
   if (command !== null && state.attachments.length === 0) {
+    browsing = null;
     state.draft = "";
     runSlash(command.name, command.rest);
     return;
@@ -222,6 +229,7 @@ function submit(steer = false): void {
       state.attachments = [];
     }
     state.draft = "";
+    browsing = null;
     return;
   }
   post({
@@ -231,6 +239,7 @@ function submit(steer = false): void {
   });
   state.draft = "";
   state.attachments = [];
+  browsing = null;
 }
 
 function onKeydown(event: KeyboardEvent): void {
@@ -259,14 +268,80 @@ function onKeydown(event: KeyboardEvent): void {
     submit(event.metaKey || event.ctrlKey);
     return;
   }
+  const plainArrow =
+    (event.key === "ArrowUp" || event.key === "ArrowDown") &&
+    !event.shiftKey &&
+    !event.altKey &&
+    !event.ctrlKey &&
+    !event.metaKey;
+  if (plainArrow && !commandMode()) {
+    // Up brings back a message the reader sent, one at a time, and Down walks forward again to the draft they were
+    // writing — the composer's history, as the terminal's Up and Down are. Command mode keeps the arrows: while `/`
+    // is being typed they belong to the menu, and once it is dismissed they mean "no more commands", not "the
+    // previous message".
+    event.preventDefault();
+    recall(event.key === "ArrowUp" ? -1 : 1);
+    return;
+  }
   if (event.key === "Escape" && busy.value && state.overlay === null) {
     post({ type: "cancel" });
   }
 }
 
 function track(): void {
+  const value = field.value?.value ?? state.draft;
+  if (value !== shown) {
+    browsing = null;
+  }
+  shown = value;
   caret.value = field.value?.selectionStart ?? state.draft.length;
   follow();
+}
+
+/**
+ * The messages the reader sent, oldest first: what Up and Down walk through.
+ *
+ * A side question and a resumed request are not messages they typed to start a task, so neither is offered back.
+ */
+function recalled(): string[] {
+  return state.turns
+    .filter((turn) => !turn.aside && !turn.resumed && turn.prompt.trim() !== "")
+    .map((turn) => turn.prompt);
+}
+
+/**
+ * Put a message the reader sent back in the box, or return to what they were writing.
+ *
+ * The walk starts one past the last message, which is the draft; going up from there reaches the newest message, and
+ * coming back down past the oldest returns the draft exactly as it was.
+ */
+function recall(step: number): void {
+  const history = recalled();
+  if (browsing === null) {
+    if (step > 0 || history.length === 0) {
+      return;
+    }
+    saved = state.draft;
+    browsing = history.length;
+  }
+  const next = Math.min(history.length, Math.max(0, browsing + step));
+  if (next === browsing) {
+    return;
+  }
+  browsing = next;
+  state.draft = next === history.length ? saved : (history[next] ?? "");
+  shown = state.draft;
+  caretToEnd();
+}
+
+/**
+ * Whether the draft is a command being typed.
+ *
+ * The arrows belong to the command menu while it is open (handled above); once it is dismissed they mean nothing at
+ * all rather than "the previous message", because a reader typing `/` is not walking the conversation.
+ */
+function commandMode(): boolean {
+  return live.value.trimStart().startsWith("/");
 }
 
 /**
