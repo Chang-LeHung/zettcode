@@ -8,6 +8,7 @@ import type {
   Mention,
   ModelInfo,
   ModelInput,
+  ModelUpdate,
   PendingRequest,
   Permission,
   Resumable,
@@ -114,6 +115,7 @@ export type WebviewMessage =
   | { type: "doctor" }
   | { type: "plugins" }
   | { type: "add-model"; model: ModelInput }
+  | { type: "update-model"; name: string; changes: ModelUpdate }
   | { type: "remove-model"; name: string }
   | { type: "set-model"; name: string }
   | { type: "set-effort"; effort: string }

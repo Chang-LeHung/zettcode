@@ -42,7 +42,7 @@ function onKeydown(event: KeyboardEvent): void {
  */
 function onClick(event: MouseEvent): void {
   const target = event.target as HTMLElement | null;
-  const menus = ["context", "models", "effort", "permission", "add-model"];
+  const menus = ["context", "models", "effort", "permission", "add-model", "edit-model"];
   if (state.overlay !== null && menus.includes(state.overlay) && target !== null && !target.closest(".dropdown, .chip, .ctx")) {
     closeOverlay();
   }

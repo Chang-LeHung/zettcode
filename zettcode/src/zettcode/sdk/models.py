@@ -34,6 +34,10 @@ def _infos(models: tuple[_config.ModelConfig, ...]) -> tuple[ModelInfo, ...]:
             compact_percent=model.compact_percent,
             web_search=model.web_search,
             web_search_name=model.web_search_name,
+            display_model=model.display_model,
+            base_url=model.base_url,
+            api=model.api.value,
+            temperature=model.temperature,
         )
         for model in models
     )

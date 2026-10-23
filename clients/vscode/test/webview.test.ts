@@ -1097,3 +1097,43 @@ test("a temperature out of range is refused in the form and nothing is sent", as
   assert.equal(ui.messages.length, before, "nothing was sent");
   assert.ok(ui.one(".toast")?.textContent?.includes("temperature"));
 });
+
+
+test("a model's row opens its own settings and sends the whole entry back", async () => {
+  const ui = await harness();
+  await ui.click("#model-chip");
+  ui.one<HTMLElement>("#model-menu .row-edit")?.click();
+  await settle();
+
+  const id = ui.one<HTMLInputElement>("#m-model");
+  assert.ok(id && id.value === "gpt-5", "the form is filled in from the entry");
+  assert.equal(ui.one<HTMLInputElement>("#m-context")?.value, "200000");
+  assert.equal(ui.one<HTMLInputElement>("#m-search")?.checked, false);
+
+  const search = ui.one<HTMLInputElement>("#m-search");
+  assert.ok(search);
+  search.checked = true;
+  search.dispatchEvent(new ui.window.Event("change", { bubbles: true }));
+  ui.one<HTMLFormElement>(".form")?.dispatchEvent(new ui.window.Event("submit", { bubbles: true, cancelable: true }));
+  await settle();
+
+  const sent = ui.messages.at(-1) as { type: string; name: string; changes: Record<string, unknown> };
+  assert.equal(sent.type, "update-model");
+  assert.equal(sent.name, "fast", "the entry is named by what the picker shows");
+  assert.equal(sent.changes.model, "gpt-5");
+  assert.equal(sent.changes.web_search, true);
+  assert.equal(sent.changes.context_window, 200_000);
+});
+
+test("the interrupted bar steps aside after a couple of seconds", async () => {
+  const ui = await harness();
+  await ui.send({
+    type: "state",
+    state: { ...state, resumable: { resumable: true, kind: "interrupted", description: "cut short" } },
+  });
+  assert.ok(ui.one("#resume-bar"));
+
+  await new Promise((resolve) => setTimeout(resolve, 2100));
+
+  assert.equal(ui.one("#resume-bar"), null, "the announcement goes; /continue still works");
+});

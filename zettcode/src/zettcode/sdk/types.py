@@ -153,6 +153,10 @@ class ModelInfo:
         web_search: Whether the provider searches the web for this model.
         web_search_name: The tool type that search is sent as, when the entry names one; ``None`` takes the default
             for the API it speaks.
+        display_model: The name the picker shows, when the entry has one.
+        base_url: The address requests go to, or ``None`` for the API's own.
+        api: The protocol the entry speaks: ``chat``, ``responses`` or ``anthropic``.
+        temperature: The sampling temperature the entry sends, or ``None`` for the provider's own.
     """
 
     name: str
@@ -164,6 +168,10 @@ class ModelInfo:
     compact_percent: float = 80.0
     web_search: bool = False
     web_search_name: str | None = None
+    display_model: str | None = None
+    base_url: str | None = None
+    api: str = "chat"
+    temperature: float | None = None
 
 
 @dataclass(frozen=True, slots=True)

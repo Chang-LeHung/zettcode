@@ -1,10 +1,40 @@
 <script setup lang="ts">
+import { onBeforeUnmount, ref, watch } from "vue";
+
 import { post, state } from "../store.js";
 import Icon from "./Icon.vue";
+
+/** How long the bar stays: long enough to read once, short enough not to sit over the conversation. */
+const VISIBLE_MS = 2000;
+
+/**
+ * The bar announces one interruption and then gets out of the way.
+ *
+ * It used to stay for as long as the request could be resumed, which is until the next prompt — permanently, from the
+ * reader's side. `/continue` still works after it has gone; what is temporary is the announcement, not the ability.
+ */
+const visible = ref(false);
+let timer: number | undefined;
+
+watch(
+  () => [state.ui?.resumable?.resumable === true && state.ui?.busy !== true, state.ui?.resumable?.description] as const,
+  ([resumable]) => {
+    window.clearTimeout(timer);
+    visible.value = resumable;
+    if (resumable) {
+      timer = window.setTimeout(() => {
+        visible.value = false;
+      }, VISIBLE_MS);
+    }
+  },
+  { immediate: true },
+);
+
+onBeforeUnmount(() => window.clearTimeout(timer));
 </script>
 
 <template>
-  <div v-if="state.ui?.resumable?.resumable === true && state.ui?.busy !== true" id="resume-bar" class="resume">
+  <div v-if="visible" id="resume-bar" class="resume">
     <span class="resume-icon"><Icon name="refresh" :size="13" /></span>
     <span class="resume-copy">
       <strong>Request interrupted</strong>
