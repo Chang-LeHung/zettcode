@@ -60,6 +60,7 @@ from .types import (
     ContextReport,
     ContextShare,
     Image,
+    IncomingMessage,
     Message,
     ResumeInfo,
     RunResult,
@@ -567,13 +568,11 @@ class Session:
             RunError: (when awaited or iterated) the model, the provider or the network failed; ``retryable`` says
                 whether trying again may help.
         """
-        from ..app.agent.dialogue.mentions import MentionRegistry
-
         client = self._client
         client._check_open()
         client._check_free()
         _check_timeout(timeout)
-        registry = MentionRegistry(client._agent.plugin_mentions) if mentions else None
+        registry = client._mention_registry() if mentions else None
         model = client._agent.active_model
         parts, hint = prompt_parts(
             prompt,
@@ -595,6 +594,52 @@ class Session:
 
     #: The same method as :meth:`prompt`; it returns a stream you can iterate, which is what the name says.
     stream = prompt
+
+    def relay(
+        self,
+        message: IncomingMessage,
+        *,
+        on_approval: ApprovalHandler | None = None,
+        on_question: QuestionHandler | None = None,
+        on_event: EventCallback | None = None,
+        timeout: float | None = None,
+        raw: bool = False,
+        keep_events: bool = False,
+    ) -> RunStream:
+        """Run one turn for a message another session sent.
+
+        The message is what the model reads — framed with where it came from, and with the instruction that an
+        answer here goes only to this session's reader — and the text as sent is what a restored conversation
+        shows.
+
+        Raises:
+            ClientClosedError: The client was closed.
+            SessionBusyError: Another run is in progress (checked again when the run starts).
+            ValueError: ``timeout`` is not a positive number.
+        """
+        from ..app.agent.dialogue.relay import Relayed
+
+        client = self._client
+        client._check_open()
+        client._check_free()
+        _check_timeout(timeout)
+        relayed = Relayed(
+            sender_id=message.sender_id,
+            sender=message.sender,
+            text=message.text,
+            via=message.via,
+            hops=message.hops,
+        )
+        return RunStream(
+            self,
+            lambda: client._agent.stream((), relayed=relayed),
+            on_approval=on_approval,
+            on_question=on_question,
+            on_event=on_event,
+            timeout=timeout,
+            raw=raw,
+            keep_events=keep_events,
+        )
 
     async def run(
         self,

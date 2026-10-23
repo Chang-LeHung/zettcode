@@ -465,6 +465,23 @@ class MentionsOut(BaseModel):
     mentions: list[MentionOut]
 
 
+class InboxMessageOut(BaseModel):
+    """A message another session sent, waiting for this chat to answer it."""
+
+    id: str
+    sender_id: str
+    sender: str
+    text: str
+    via: str
+    hops: int
+
+
+class InboxOut(BaseModel):
+    """The messages waiting to be answered, oldest first."""
+
+    messages: list[InboxMessageOut]
+
+
 class TotalsOut(BaseModel):
     """Token counters added up over some replies, as the usage ledger records them."""
 

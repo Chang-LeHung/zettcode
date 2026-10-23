@@ -213,6 +213,16 @@ export interface Mention {
   description: string;
 }
 
+/** A message another session sent, waiting for this chat to answer it. */
+export interface WaitingMessage {
+  id: string;
+  sender_id: string;
+  sender: string;
+  text: string;
+  via: string;
+  hops: number;
+}
+
 /** Token counters added up over some replies, as the usage ledger records them. */
 export interface Totals {
   requests: number;

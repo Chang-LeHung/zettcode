@@ -50,6 +50,15 @@ is pinned by `test_server_api.py` (JSON endpoints, auth, errors), `test_server_p
 `test_server_interaction.py` (answering, steering, resuming, export), and `test_server_cli.py` (the command).
 `docs/internal/invariants.md` rows H1-H8 cite them.
 
+## Messages from other sessions
+
+The server is a session, not a reader of the broker's list: `Runner` builds its client with `sessions_enabled=True`
+and hands it :meth:`Client.join_sessions`, so a terminal (or another editor) can address this chat and a message sent
+to it arrives here. Holding a message instead of running it at once is what lets the editor draw the turn: the server
+keeps what arrives (`GET /messages` lists it, oldest first, at most 16) and the extension answers each with
+`POST /messages/{id}`, which streams the turn in the same frames as `/prompts`. The model reads the message framed
+with who sent it, and the sender hears back only if the model calls `send_message`; the answer is this chat's own.
+
 ## What is deliberately absent
 
 - **The `/usage` ledger and the `/resume` table** (`app/agent/storage/ledger.py`, session stats) are not exposed: they

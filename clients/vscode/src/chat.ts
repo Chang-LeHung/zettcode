@@ -131,6 +131,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
   private ledgerValue: ChangeLedger | null = null;
   private titleTask: Promise<void> | null = null;
   private contextTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Asks the server for messages other sessions sent, which are answered as ordinary turns. */
+  private messageTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -298,6 +300,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       clearTimeout(this.contextTimer);
       this.contextTimer = null;
     }
+    if (this.messageTimer !== null) {
+      clearInterval(this.messageTimer);
+      this.messageTimer = null;
+    }
     this.clearDeltas();
     this.run?.abort();
     this.run = null;
@@ -385,6 +391,40 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     }
     this.postState();
     void this.refreshSessions(false).catch(() => undefined);
+    this.watchMessages();
+  }
+
+  /**
+   * Look for messages from other sessions, and answer each as a turn of its own.
+   *
+   * A received message is meant to behave like one the reader typed, so it goes through the same stream a prompt
+   * does: the sender's name on the row, the answer streamed into the transcript, approvals and questions answered the
+   * way a prompt's are. The server holds it until the chat asks, which is what keeps the transcript in one place.
+   */
+  private watchMessages(): void {
+    if (this.messageTimer !== null) {
+      return;
+    }
+    this.messageTimer = setInterval(() => {
+      void this.takeMessage().catch(() => undefined);
+    }, 2500);
+  }
+
+  private async takeMessage(): Promise<void> {
+    if (this.busy || !this.initialized || !this.readyForPrompt()) {
+      return;
+    }
+    const client = await this.ensureClient();
+    const waiting = await client.messages();
+    const first = waiting[0];
+    if (first === undefined || this.busy) {
+      return;
+    }
+    const turn = createTurn(first.text, [], Date.now());
+    turn.from = { id: first.sender_id, name: first.sender };
+    this.turns.push(turn);
+    this.postTurn(turn, true);
+    await this.startRun(client.answerMessage(first.id, this.runOptions([])), turn);
   }
 
   /** Say that a load is going on while `work` runs, so the view can show it; it is said again, empty, however `work` ends. */

@@ -109,6 +109,8 @@ export interface Turn {
   aside?: boolean;
   /** This turn continued an interrupted request instead of starting one. */
   resumed?: boolean;
+  /** Set when another session sent the message this turn answers. */
+  from?: { id: string; name: string };
 }
 
 /** How much of one tool's output a transcript keeps; a runaway build log must not become the webview. */

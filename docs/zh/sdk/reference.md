@@ -350,6 +350,10 @@ def remove_model(name, *, path=None) -> tuple[ModelInfo, ...]: ...
 
 `token`、`kind`、`name`、`description`。
 
+### `IncomingMessage`
+
+`sender_id`、`sender`、`text`、`via`、`hops`。另一个 ZettCode 会话发来的消息:`join_sessions` 交给回调的就是它,`relay` 回答的也是它。`via` 为 `"user"` 表示对方读者亲手所写,`"agent"` 表示对方 agent 所写,`"external"` 表示发消息的不是 ZettCode 会话。
+
 ### `Totals`
 
 用量账本里一份计数:`requests`、`input_tokens`、`output_tokens`、`cache_read_tokens`、`reasoning_tokens`（都是 `int`），并提供算好的 `total_tokens` 与 `cache_share`（没有输入时为 `None`）。

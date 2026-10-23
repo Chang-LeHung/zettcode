@@ -278,6 +278,27 @@ class MentionInfo:
 
 
 @dataclass(frozen=True, slots=True)
+class IncomingMessage:
+    """A message another ZettCode session sent, as the broker delivered it.
+
+    Attributes:
+        sender_id: The sending session's id; the stable way to answer it, because a handle can change.
+        sender: The sender's handle when it sent the message.
+        text: What it said.
+        via: ``"user"`` when its reader typed it, ``"agent"`` when its agent sent it, ``"external"`` when the
+            sender is a program that is not a ZettCode session.
+        hops: How many sessions the message has passed through; an agent's answer carries it on, which ends two
+            agents that keep answering each other.
+    """
+
+    sender_id: str
+    sender: str
+    text: str
+    via: str = "agent"
+    hops: int = 1
+
+
+@dataclass(frozen=True, slots=True)
 class ContextShare:
     """One source's share of the context.
 

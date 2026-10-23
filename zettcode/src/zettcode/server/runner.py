@@ -19,6 +19,7 @@ from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal, cast
 
+from zettcode.broker.client import Receipt
 from zettcode.sdk.errors import SessionBusyError
 from zettcode.sdk.events import ApprovalRequested, QuestionAsked
 from zettcode.sdk.handlers import ApprovalHandler, approve_all, approve_commands, deny_all
@@ -30,6 +31,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zettcode.sdk.client import Client, RunStream
     from zettcode.sdk.types import (
         Image,
+        IncomingMessage,
         MentionInfo,
         ModelCheck,
         ModelInfo,
@@ -41,14 +43,25 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
 
     from .settings import Settings
 
+#: What a run may be asked to do, whether it starts a prompt or continues one.
+Request = PromptRequest | ResumeRequest
+
 #: Builds the client the server runs on; the tests pass one that answers without a model.
 ClientFactory = Callable[[], "Client"]
 
 #: One frame of a run: its SSE event name, and the JSON payload under it.
 Frame = tuple[str, dict[str, object]]
 
-#: What a run may be asked to do, whether it starts a prompt or continues one.
-Request = PromptRequest | ResumeRequest
+#: Messages another session may leave waiting for this chat; beyond it the sender is refused, as in the terminal.
+MAX_INBOX = 16
+
+
+@dataclass(frozen=True, slots=True)
+class Waiting:
+    """A message another session sent, waiting for this chat to answer it."""
+
+    id: str
+    message: IncomingMessage
 
 
 def approval_handler(policy: ApprovalPolicy) -> ApprovalHandler | None:
@@ -155,6 +168,8 @@ class Runner:
         self._run: RunStream | None = None
         self._pending: Pending | None = None
         self._lock = asyncio.Lock()
+        self._messages: list[Waiting] = []
+        self._sequence = 0
 
     # -- life -----------------------------------------------------------------
     async def start(self) -> None:
@@ -181,12 +196,15 @@ class Runner:
                     effort=self.settings.effort,
                     permission=self.settings.permission,
                     jit_harness=self.settings.harness,
+                    sessions_enabled=True,
                 )
             )
         except ConfigurationError as error:
             if "No models configured" not in str(error):
                 raise
             self._client = None
+        else:
+            await self._join(self._client)
 
     @property
     def ready(self) -> bool:
@@ -258,6 +276,52 @@ class Runner:
             if run is not None:
                 await run.aclose()
             self._lock.release()
+
+    def stream_message(self, message_id: str) -> AsyncIterator[Frame]:
+        """Answer one message another session sent, in the frames a prompt's stream uses.
+
+        The turn is the terminal's: the message is what the model reads, framed with where it came from, and the
+        answer belongs to this chat's own reader. The sender hears back only if the model sends it something with
+        ``send_message``.
+
+        Raises:
+            KeyError: No such message is waiting; it was answered, or never arrived.
+            SessionBusyError: A run is already in progress.
+        """
+        if self._lock.locked():
+            raise SessionBusyError("A run is already in progress; wait for it or cancel it")
+        return self._stream_waiting(self._take(message_id))
+
+    async def _stream_waiting(self, waiting: Waiting) -> AsyncIterator[Frame]:
+        """Run one waiting message as a turn, holding the run slot until it ends."""
+        await self._lock.acquire()
+        run: RunStream | None = None
+        try:
+            run = self.client.relay(waiting.message)
+            self._run = run
+            async for event in run:
+                yield "event", event_payload(event)
+            result = run.result
+            if result is None:
+                yield "cancelled", {"type": "cancelled"}
+            else:
+                yield "result", result_payload(result)
+        finally:
+            current, self._run = self._run, None
+            if current is not None:
+                await current.aclose()
+            self._lock.release()
+
+    def _take(self, message_id: str) -> Waiting:
+        """Remove and return a waiting message.
+
+        Raises:
+            KeyError: Nothing with that id is waiting.
+        """
+        for index, waiting in enumerate(self._messages):
+            if waiting.id == message_id:
+                return self._messages.pop(index)
+        raise KeyError(message_id)
 
     async def ask_stream(self, question: str, timeout: float | None) -> AsyncIterator[Frame]:
         """Answer a side question and yield the answer as it is written, in the frames a prompt uses.
@@ -436,6 +500,7 @@ class Runner:
                     permission=permission,
                     jit_harness=harness,
                     resume=resume,
+                    sessions_enabled=True,
                 )
             )
 
@@ -443,6 +508,28 @@ class Runner:
             self._client = await open_client(session)
         except SessionNotFoundError:
             self._client = await open_client(None)
+        await self._join(self._client)
+
+    async def _join(self, client: Client) -> None:
+        """Become a session the others can address, so a message sent to this chat arrives here."""
+        await client.join_sessions(self.received)
+
+    def received(self, message: IncomingMessage) -> Receipt:
+        """Take a message another session sent; the chat answers it when its next poll asks for one.
+
+        Called by the SDK on the event loop with the sender waiting for the answer, so it must not block. Holding
+        the message rather than starting a run here is what lets the editor draw the turn as one of its own, with
+        the sender's name on it and the same stream a prompt uses.
+        """
+        if len(self._messages) >= MAX_INBOX:
+            return Receipt(False, f"this chat already has {len(self._messages)} messages waiting")
+        self._sequence += 1
+        self._messages.append(Waiting(f"message-{self._sequence}", message))
+        return Receipt(True, disposition="queued")
+
+    def waiting(self) -> tuple[Waiting, ...]:
+        """Return the messages waiting to be answered, oldest first."""
+        return tuple(self._messages)
 
     # -- what a terminal shows around the conversation -----------------------
     async def mentions(self, query: str, limit: int) -> tuple[MentionInfo, ...]:

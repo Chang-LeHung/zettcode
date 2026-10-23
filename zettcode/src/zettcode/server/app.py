@@ -50,6 +50,8 @@ from .schemas import (
     ErrorOut,
     HealthOut,
     HistoryOut,
+    InboxMessageOut,
+    InboxOut,
     MentionsOut,
     ModelCreate,
     ModelsOut,
@@ -152,6 +154,34 @@ def stream_of(runner: Runner, request: RunRequest, *, resume: bool = False) -> S
 
     return StreamingResponse(
         frames(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+    )
+
+
+def message_stream_of(runner: Runner, message_id: str) -> StreamingResponse:
+    """Answer one message another session sent, and stream the turn as ``/prompts`` streams one.
+
+    A message that is not waiting any more — answered already, or never arrived — is a 404, decided here, while a
+    status line is still possible; what fails once the stream is open becomes an ``error`` frame.
+    """
+    if not runner.ready:
+        raise NoModelError("No model is configured; add one with POST /models")
+    try:
+        frames = runner.stream_message(message_id)
+    except KeyError:
+        raise StarletteHTTPException(status_code=404, detail="No message with that id is waiting") from None
+
+    async def body() -> AsyncIterator[bytes]:
+        try:
+            async for name, payload in frames:
+                yield sse_frame(name, payload)
+        except Exception as error:  # noqa: BLE001 - the status line is gone; the failure goes down the stream
+            _, code = failure_of(error)
+            yield sse_frame("error", error_body(code, str(error)))
+
+    return StreamingResponse(
+        body(),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
     )
@@ -538,8 +568,30 @@ def create_app(settings: Settings, *, client_factory: ClientFactory | None = Non
         query: Annotated[str, Query(description="What was typed after the @, without it")] = "",
         limit: Annotated[int, Query(ge=1, le=200)] = 50,
     ) -> MentionsOut:
-        """List the files, skills and plugin resources an ``@`` in the prompt can reference."""
+        """List the files, skills, sessions and plugin resources an ``@`` in the prompt can reference."""
         return MentionsOut(mentions=[mention_out(item) for item in await runner.mentions(query, limit)])
+
+    @protected.get("/messages", response_model=InboxOut, tags=["prompts"])
+    async def messages(runner: RunnerDep) -> InboxOut:
+        """List the messages other sessions sent that this chat has not answered yet, oldest first."""
+        return InboxOut(
+            messages=[
+                InboxMessageOut(
+                    id=waiting.id,
+                    sender_id=waiting.message.sender_id,
+                    sender=waiting.message.sender,
+                    text=waiting.message.text,
+                    via=waiting.message.via,
+                    hops=waiting.message.hops,
+                )
+                for waiting in runner.waiting()
+            ]
+        )
+
+    @protected.post("/messages/{message_id}", tags=["prompts"], responses={200: {"content": {"text/event-stream": {}}}})
+    async def answer_message(message_id: str, runner: RunnerDep) -> StreamingResponse:
+        """Answer one message another session sent, streaming the turn exactly as ``/prompts`` does."""
+        return message_stream_of(runner, message_id)
 
     @protected.post("/doctor", response_model=DoctorOut, tags=["models"])
     async def doctor(runner: RunnerDep, body: DoctorRequest | None = None) -> DoctorOut:
