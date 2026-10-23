@@ -404,8 +404,14 @@ async def test_a_thread_removing_the_root_does_fail_commands_which_is_why_the_ti
     of the test and not of the race; and only the two errors the race produces are counted — the
     root gone before the folder is made inside it (``FileNotFoundError``, or ``Invalid argument``
     on a system that reports a directory removed under it that way).
+
+    How often the two land in the wrong order is the machine's business: the same code raced in
+    nine of three hundred commands on one runner and in far more elsewhere. So the sample is
+    measured until it is big enough to mean something, rather than fixed at a size that made a
+    fast or a lucky machine look like a broken one.
     """
     import threading
+    import time
 
     stop = threading.Event()
 
@@ -417,17 +423,20 @@ async def test_a_thread_removing_the_root_does_fail_commands_which_is_why_the_ti
             except OSError:
                 pass
 
+    def lost_the_race(error: BaseException) -> bool:
+        return isinstance(error, FileNotFoundError) or "Invalid argument" in str(error)
+
     thread = threading.Thread(target=hammer)
     thread.start()
-    failures: list[BaseException] = []
+    raced: list[BaseException] = []
+    deadline = time.monotonic() + 20
     try:
-        for _ in range(15):
+        while len(raced) < 10 and time.monotonic() < deadline:
             outcomes = await asyncio.gather(*(_real_result("echo hi") for _ in range(20)))
-            failures += [error for _, error in outcomes if error is not None]
+            raced += [error for _, error in outcomes if error is not None and lost_the_race(error)]
     finally:
         stop.set()
         thread.join()
 
-    raced = [e for e in failures if isinstance(e, FileNotFoundError) or "Invalid argument" in str(e)]
     assert raced, "no command lost the race: it is gone, and the reason for the rule with it"
-    assert len(raced) >= 10, f"only {len(raced)} of 300 lost it; the test is too weak to mean anything"
+    assert len(raced) >= 10, f"only {len(raced)} lost it before the deadline; the test is too weak to mean anything"
