@@ -7,9 +7,9 @@ a connection that is refused. A broker is started only when the lock is free, so
 instead of being "replaced" by a second one that would just exit.
 
 A broker of another version is not spoken to. An *older* one is ended (only if it is recognised as ZettCode's own, see
-:mod:`.process`, and only once per process) and replaced, because it would otherwise stay until its last session left,
-which can be hours; a *newer* one is waited for, and never ended, or sessions of two versions would end each other's
-brokers in turn for ever.
+:mod:`.process`, and at most a few times per process) and replaced, because it would otherwise stay until its last
+session left, which can be hours; a *newer* one is waited for, and never ended, or sessions of two versions would end
+each other's brokers in turn for ever.
 
 ``websockets`` is imported where it is first used: the shell imports this module with the rest of the application,
 and the library is only wanted once there is a broker to talk to.
@@ -33,6 +33,15 @@ from .protocol import MAX_BODY, PROTOCOL_VERSION
 
 #: A broker is started at most this often, so one that dies at once is not restarted in a loop.
 SPAWN_INTERVAL = 3.0
+
+#: Seconds between attempts to end the same older broker. Ending it starts a process lookup, which on Windows is a
+#: PowerShell call that can be slow or time out under load; a lookup that failed says nothing about the process, so
+#: the attempt is made again rather than the broker being left in the way for ever.
+REPLACE_RETRY = 2.0
+
+#: How many times one process is asked to end. A pid is not a name, and the note naming it may have been written by
+#: anything, so a process that has refused this many times is left alone.
+REPLACE_ATTEMPTS = 3
 
 #: The log is cut to nothing when it passes this size as a broker is started.
 MAX_LOG = 512 * 1024
@@ -92,8 +101,9 @@ class Finder:
         self.last_error: str | None = None
         self.incompatible = False
         self._last_spawn = float("-inf")
-        #: The processes already ended, or found not to be ours to end, so each is tried once.
-        self._tried: set[int] = set()
+        #: Each process asked to end: how many times, and when the last attempt began. A failed attempt is retried,
+        #: but not on every look, and not for ever: the note may name a process that is not ours.
+        self._tried: dict[int, tuple[int, float]] = {}
 
     async def open(self, giving_up: Callable[[], bool]) -> tuple[Any, Note]:
         """Return a connection to the broker and its note, for as long as ``giving_up()`` is false.
@@ -126,10 +136,13 @@ class Finder:
         if note is None:
             return None
         if note.version != PROTOCOL_VERSION:
-            # Another version's broker: its wire is not this one, so there is nothing to say to it.
+            # Another version's wire is not this one, so there is nothing to say to it. An older broker is ours to
+            # end, which is not a protocol to wait on: an attempt that fails is retried with the ordinary backoff,
+            # not reported as an incompatibility and then left alone for seconds at a time.
             if note.version < PROTOCOL_VERSION:
                 await self._replace(directory, note)
-            # Incompatible only while one is still there in the way: an older broker that was ended, or a note it
+                return None
+            # Incompatible only while one is still there in the way: a newer broker that was killed, or a note it
             # left behind, is just an absence, and the start that follows is not a failure to report.
             self.incompatible = is_held(lock_path(directory))
             return None
@@ -169,11 +182,14 @@ class Finder:
         """Say why no broker could be reached, from what is on disk."""
         note = read_note(directory)
         if is_held(lock_path(directory)):
-            if note is not None and note.version != PROTOCOL_VERSION:
+            if note is not None and note.version > PROTOCOL_VERSION:
                 self.incompatible = True
                 return (
                     f"the session broker (pid {note.pid}) speaks another protocol and is still serving other sessions"
                 )
+            if note is not None and note.version < PROTOCOL_VERSION:
+                # Ours to end: a failure here is an outage that is being retried, not one this session waits on.
+                return f"the session broker (pid {note.pid}) speaks an older protocol and could not be ended yet"
             where = f" (pid {note.pid})" if note is not None else ""
             return f"the session broker{where} is running but does not answer"
         return "no session broker answered"
@@ -181,10 +197,16 @@ class Finder:
     async def _replace(self, directory: Path, note: Note) -> None:
         """End an older broker that holds the lock, so that this session can start one of its own.
 
-        The wait for it runs off the loop, because it can take seconds and the session is drawn on it.
+        The wait for it runs off the loop, because it can take seconds and the session is drawn on it. An attempt
+        that did not free the lock is retried: recognising the process can fail for a reason that is not the
+        process's own (a command-line lookup that timed out on a busy machine), and one such failure must not leave
+        the session reporting an incompatible broker while that broker keeps the next one out.
         """
         lock = lock_path(directory)
-        if note.pid in self._tried or not is_held(lock):
+        if not is_held(lock):
             return
-        self._tried.add(note.pid)
+        attempts, last = self._tried.get(note.pid, (0, float("-inf")))
+        if attempts >= REPLACE_ATTEMPTS or time.monotonic() - last < REPLACE_RETRY:
+            return
+        self._tried[note.pid] = (attempts + 1, time.monotonic())
         await asyncio.to_thread(process.end, note.pid, MODULE, released=lambda: not is_held(lock))
