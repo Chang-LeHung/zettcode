@@ -83,6 +83,8 @@ const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const IMMEDIATE_EVENTS = new Set([
   "tool_started",
   "tool_finished",
+  "server_tool_started",
+  "server_tool_finished",
   "approval_requested",
   "question_asked",
   "compaction_finished",
@@ -713,7 +715,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
           options: event.options,
           allow_multiple: event.allow_multiple,
         };
-      } else if (event.type === "tool_started" || event.type === "tool_finished") {
+      } else if (
+        event.type === "tool_started" ||
+        event.type === "tool_finished" ||
+        event.type === "server_tool_started" ||
+        event.type === "server_tool_finished"
+      ) {
         if (this.pending !== null && this.pending.call_id !== event.call_id) {
           this.pending = null;
         }

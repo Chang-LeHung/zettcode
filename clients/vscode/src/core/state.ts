@@ -208,6 +208,52 @@ export function applyEvent(turn: Turn, event: RunEvent, now = Date.now()): void 
       settleCall(turn, event.call_id);
       return;
     }
+    case "server_tool_started": {
+      // A hosted tool — a web search, a fetch — is run by the endpoint: it has no permission and no skip, and its
+      // row is the same shape as a local tool's, so one renderer draws both.
+      const existing = findTool(turn, event.call_id);
+      if (existing) {
+        existing.name = event.name;
+        existing.arguments = event.arguments;
+        existing.status = "running";
+        existing.startedAt = now;
+      } else {
+        turn.blocks.push({
+          kind: "tool",
+          tool: {
+            callId: event.call_id,
+            name: event.name,
+            arguments: event.arguments,
+            output: "",
+            status: "running",
+            startedAt: now,
+          },
+        });
+      }
+      return;
+    }
+    case "server_tool_finished": {
+      const tool = findTool(turn, event.call_id);
+      const node: ToolNode =
+        tool ?? {
+          callId: event.call_id,
+          name: event.name,
+          arguments: {},
+          output: "",
+          status: "running",
+          startedAt: now,
+        };
+      if (!tool) {
+        turn.blocks.push({ kind: "tool", tool: node });
+      }
+      node.name = event.name;
+      node.arguments = { ...node.arguments, ...event.arguments };
+      node.output = capOutput(event.output);
+      node.status = event.ok ? "ok" : "failed";
+      node.finishedAt = now;
+      settleCall(turn, event.call_id);
+      return;
+    }
     case "approval_requested": {
       const block: ApprovalBlock = {
         kind: "approval",

@@ -42,6 +42,8 @@ __all__ = [
     "QuestionAsked",
     "RawEvent",
     "ReasoningDelta",
+    "ServerToolFinished",
+    "ServerToolStarted",
     "Steered",
     "TextDelta",
     "ToolFinished",
@@ -148,6 +150,43 @@ class ToolFinished(Event):
     output: str
     ok: bool
     skipped: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class ServerToolStarted(Event):
+    """A tool the endpoint runs on the model's behalf started, such as a web search.
+
+    The agent never calls these: the provider does, and reports them for display. A search is the one a reader cares
+    about, because the query and the pages are the story of the answer.
+
+    Attributes:
+        call_id: Identity that ties this to its :class:`ServerToolFinished`.
+        name: The tool, such as ``web_search``.
+        arguments: What it was asked, when the provider said at the start; ``{"query": ...}`` for a search.
+    """
+
+    call_id: str
+    name: str
+    arguments: dict[str, object]
+
+
+@dataclass(frozen=True, slots=True)
+class ServerToolFinished(Event):
+    """A hosted tool ended: the pages a search found, or the provider's error code.
+
+    Attributes:
+        call_id: The call it answers.
+        name: The tool.
+        arguments: What it was asked, gathered across the input the provider streamed.
+        output: A readable summary of the result — for a search, the pages — never the provider's opaque payload.
+        ok: Whether it succeeded.
+    """
+
+    call_id: str
+    name: str
+    arguments: dict[str, object]
+    output: str
+    ok: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -335,6 +374,8 @@ AnyEvent: TypeAlias = (
     | ReasoningDelta
     | ToolStarted
     | ToolFinished
+    | ServerToolStarted
+    | ServerToolFinished
     | ApprovalRequested
     | QuestionAsked
     | UsageUpdated

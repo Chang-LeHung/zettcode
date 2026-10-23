@@ -14,6 +14,7 @@ from zett_agent.extensions.ask_user import ASK_USER_EVENT_NAME
 from zett_agent.extensions.events import CompactionEvent
 from zett_agent.extensions.shell_approval import SHELL_APPROVAL_EVENT_NAME, ShellApprovalRequestedEvent
 from zett_agent.messages import AssistantMessage, TextContent, ToolCall, ToolMessage, UserMessage
+from zett_agent.model import ServerToolCall, ServerToolInputDelta, ServerToolResult
 from zett_agent.stop import StopInfo, StopReason
 
 from zettcode.app.agent.extensions.mcp_notice import MCP_NOTICE_EVENT_NAME, notice_payload
@@ -443,6 +444,56 @@ def test_events_are_immutable_and_comparable_by_content():
     with pytest.raises(dataclasses.FrozenInstanceError):
         delta.text = "y"  # type: ignore[misc]
     assert delta == sdk.TextDelta("s", "x") and delta != sdk.TextDelta("s", "z")
+
+
+def test_a_hosted_tool_starts_with_what_the_provider_said():
+    call = ServerToolCall("c1", "web_search", {"query": "zettcode"})
+
+    started = one(event(AgentEventType.SERVER_TOOL_STARTED, server_tool_call=call))
+
+    assert started == sdk.ServerToolStarted("s1", "c1", "web_search", {"query": "zettcode"})
+
+
+def test_a_search_that_sends_its_query_in_fragments_ends_with_the_query_and_its_pages():
+    hosted: dict[str, str] = {}
+    translate(
+        event(AgentEventType.SERVER_TOOL_STARTED, server_tool_call=ServerToolCall("c1", "web_search", None)),
+        Bridge(),
+        hosted,
+    )
+    for fragment in ('{"query": "zett', 'code"}'):
+        assert (
+            translate(
+                event(
+                    AgentEventType.SERVER_TOOL_INPUT_DELTA, server_tool_input_delta=ServerToolInputDelta("c1", fragment)
+                ),
+                Bridge(),
+                hosted,
+            )
+            == []
+        )
+    result = ServerToolResult(
+        "c1",
+        "web_search",
+        [{"type": "web_search_result", "title": "Page 1", "url": "https://example.com/1", "encrypted_content": "x"}],
+    )
+
+    (finished,) = translate(event(AgentEventType.SERVER_TOOL_COMPLETED, server_tool_result=result), Bridge(), hosted)
+
+    assert isinstance(finished, sdk.ServerToolFinished)
+    assert finished.arguments == {"query": "zettcode"}
+    assert finished.ok is True
+    assert "1 page" in finished.output and "https://example.com/1" in finished.output
+    assert "encrypted" not in finished.output
+
+
+def test_a_failed_hosted_tool_carries_the_providers_code():
+    result = ServerToolResult("c1", "web_search", None, "max_uses_exceeded")
+
+    (finished,) = translate(event(AgentEventType.SERVER_TOOL_FAILED, server_tool_result=result), Bridge())
+
+    assert isinstance(finished, sdk.ServerToolFinished)
+    assert finished.ok is False and finished.output == "max_uses_exceeded"
 
 
 def test_a_pattern_match_on_the_event_classes_reads_the_fields():

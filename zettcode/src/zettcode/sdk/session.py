@@ -411,6 +411,9 @@ class RunStream:
         agent = self._client._agent
         bridge = self._client._bridge
         runtime = agent.runtime
+        # What a hosted tool's input has streamed so far, by call: a search may send its query in fragments, and the
+        # end of the call is where the query is read.
+        hosted: dict[str, str] = {}
         try:
             if self._side:
                 runtime.sides.begin()
@@ -419,7 +422,7 @@ class RunStream:
                     async for raw in events:
                         if self._raw:
                             yield self._seen(RawEvent(raw.session_id or self._session.id, raw))
-                        for event in translate(raw, bridge):
+                        for event in translate(raw, bridge, hosted):
                             await self._answer(event)
                             yield self._seen(event)
                             self._default(event)
