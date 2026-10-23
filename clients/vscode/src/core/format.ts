@@ -302,19 +302,25 @@ export function permissionLabel(permission: string): string {
   switch (permission) {
     case "deny":
       return "Deny";
+    case "ask":
+      return "Ask";
     case "safe":
       return "Safe";
     case "full":
     case "auto":
       return "Full";
     default:
-      return "Ask";
+      // A level this build has never heard of is shown as itself. Calling it "Ask" made a server that sends a newer
+      // level look like a second Ask in the menu, which is worse than an unfamiliar word.
+      return permission.trim() === "" ? "Unknown" : permission.charAt(0).toUpperCase() + permission.slice(1);
   }
 }
 
 /** What a permission level means, in the line the picker shows under it. */
 export function permissionDescription(permission: string): string {
   switch (permission) {
+    case "ask":
+      return "Every shell command waits for your approval.";
     case "deny":
       return "Shell commands are refused; the model uses the file tools instead.";
     case "safe":
@@ -323,7 +329,7 @@ export function permissionDescription(permission: string): string {
     case "auto":
       return "Every command runs with your own access, without asking.";
     default:
-      return "Every shell command waits for your approval.";
+      return "This editor does not know this level; update the extension to see what it does.";
   }
 }
 
