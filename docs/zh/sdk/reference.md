@@ -37,6 +37,8 @@ from zettcode.sdk import (
     ReasoningDelta,
     ToolStarted,
     ToolFinished,
+    ServerToolStarted,
+    ServerToolFinished,
     ApprovalRequested,
     QuestionAsked,
     Finished,
@@ -259,6 +261,8 @@ def remove_model(name, *, path=None) -> tuple[ModelInfo, ...]: ...
 | `ReasoningDelta` | `text` |
 | `ToolStarted` | `call_id`、`name`、`arguments` |
 | `ToolFinished` | `call_id`、`name`、`output`、`ok`、`skipped=False` |
+| `ServerToolStarted` | `call_id`、`name`、`arguments` —— 由端点执行的工具，例如联网搜索 |
+| `ServerToolFinished` | `call_id`、`name`、`arguments`、`output`、`ok` —— 查询词、结果页面，以及是否成功 |
 | `ApprovalRequested` | `call_id`、`command`、`timeout_seconds=None`、`remember_supported=False` |
 | `QuestionAsked` | `call_id`、`question`、`options=()`、`allow_multiple=False` |
 | `UsageUpdated` | `usage` |
