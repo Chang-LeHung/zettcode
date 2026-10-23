@@ -222,6 +222,37 @@ const sent = (...prompts: string[]): unknown[] =>
     blocks: [],
   }));
 
+test("a command that takes words offers them once the name and a space are typed", async () => {
+  const ui = await open();
+  await ui.type("/model ");
+  assert.deepEqual(ui.labels(), ["/model fast", "/model add"]);
+
+  await ui.type("/model f");
+  assert.deepEqual(ui.labels(), ["/model fast"]);
+  await ui.key("Enter");
+  assert.deepEqual(ui.messages.filter((message) => message.type === "set-model"), [{ type: "set-model", name: "fast" }]);
+});
+
+test("a word is completed with Tab and run with Enter, as a command name is", async () => {
+  const ui = await open();
+  await ui.type("/harness ");
+  assert.deepEqual(ui.labels(), ["/harness on", "/harness off"]);
+
+  await ui.key("Tab");
+  assert.equal(ui.input.value, "/harness on", "filled in, not run");
+  assert.equal(ui.messages.some((message) => message.type === "set-harness"), false);
+
+  await ui.key("Enter");
+  assert.deepEqual(ui.messages.filter((message) => message.type === "set-harness"), [{ type: "set-harness", on: true }]);
+});
+
+test("a command whose argument is free text offers no list", async () => {
+  const ui = await open();
+  await ui.type("/btw ");
+
+  assert.deepEqual(ui.labels(), []);
+});
+
 test("Up brings back what was sent before, and Down walks forward to the draft again", async () => {
   const ui = await open(sent("first", "second"));
   await ui.type("a draft");
