@@ -190,6 +190,16 @@ def _add_resume(commands: Subcommands) -> None:
         description="Open a stored session instead of starting a new one; the same as `zettcode --resume SESSION`.",
     )
     resume.add_argument("session", metavar="SESSION", help="the session's id, as printed when it ended")
+    # Written after the word, the way the line the shell prints on exit reads: `zettcode resume ID -w DIR`. The
+    # default is suppressed so it does not overwrite the directory the top-level `-w` already chose.
+    resume.add_argument(
+        "-w",
+        "--workspace",
+        metavar="DIR",
+        type=Path,
+        default=argparse.SUPPRESS,
+        help="directory the session belongs to (default: the current directory)",
+    )
 
 
 def _add_prompt(commands: Subcommands) -> None:

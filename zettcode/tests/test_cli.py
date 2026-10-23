@@ -184,7 +184,22 @@ def test_the_resume_command_survives_a_workspace_with_spaces(tmp_path: Path):
 
     parts = shlex.split(resume_command("01a10b75", workspace))
 
-    assert parts == ["zettcode", "--resume", "01a10b75", "--workspace", str(workspace)]
+    assert parts == ["zettcode", "resume", "01a10b75", "--workspace", str(workspace)]
+
+
+def test_the_resume_subcommand_takes_the_workspace_after_the_word(tmp_path: Path):
+    """The printed line has to parse as it stands, with the directory where it is written."""
+    from zettcode.cli import parse_args
+
+    options = parse_args(["resume", "01a10b75", "--workspace", str(tmp_path)])
+
+    assert options.resume == "01a10b75" and options.workspace == tmp_path
+
+
+def test_the_resume_subcommand_keeps_the_directory_the_global_flag_chose(tmp_path: Path):
+    options = parse_args(["-w", str(tmp_path), "resume", "01a10b75"])
+
+    assert options.workspace == tmp_path and options.resume == "01a10b75"
 
 
 def test_session_exists_finds_a_stored_session(tmp_path: Path, monkeypatch):

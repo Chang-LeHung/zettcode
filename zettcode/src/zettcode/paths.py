@@ -70,4 +70,4 @@ def resume_command(session_id: str, workspace: Path) -> str:
     because the store is keyed by workspace — the same id means nothing in another
     checkout — and it is quoted, because a path may hold a space.
     """
-    return f"zettcode --resume {shlex.quote(session_id)} --workspace {shlex.quote(str(workspace))}"
+    return f"zettcode resume {shlex.quote(session_id)} --workspace {shlex.quote(str(workspace))}"

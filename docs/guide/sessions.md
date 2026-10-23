@@ -108,7 +108,7 @@ without deleting anything.
 On exit the shell prints the way back in:
 
 ```
-resume this session: zettcode --resume 01a10b75 --workspace ~/projects/api
+resume this session: zettcode resume 01a10b75 --workspace ~/projects/api
 ```
 
 Inside the program, `/resume` opens a panel of recent sessions for this
@@ -195,7 +195,7 @@ The fork says all of this in the conversation, so nothing has to be remembered:
 Forked into a new session: "Fix the parser (fork)" · 01a12dd8-2d6d-70b2
 resume this session: /resume 01a12dd8-2d6d-70b2
 back to the previous session: /resume 01a10b75-c3a1-4d2e · "Parser rewrite"
-from a shell: zettcode --resume <session id> --workspace ~/projects/api
+from a shell: zettcode resume <session id> --workspace ~/projects/api
 ```
 
 The session you left is named with it, because that is where the work which led here

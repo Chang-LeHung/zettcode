@@ -82,7 +82,7 @@ ZettCode 打开，或者目录里有文件正被占用而系统拒绝改名（Wi
 退出时会打印回来的路：
 
 ```
-resume this session: zettcode --resume 01a10b75 --workspace ~/projects/api
+resume this session: zettcode resume 01a10b75 --workspace ~/projects/api
 ```
 
 在程序里，`/resume` 会弹出这个工作区最近的会话（新的在前，带标题和上次变动距今多久）；
@@ -149,7 +149,7 @@ fork 成"模型仍在阅读的那部分"，而不是一个满是已被摘要取�
 Forked into a new session: "Fix the parser (fork)" · 01a12dd8-2d6d-70b2
 resume this session: /resume 01a12dd8-2d6d-70b2
 back to the previous session: /resume 01a10b75-c3a1-4d2e · "Parser rewrite"
-from a shell: zettcode --resume <session id> --workspace ~/projects/api
+from a shell: zettcode resume <session id> --workspace ~/projects/api
 ```
 
 这条通知里也写上了你离开的那个会话：那段把工作带到这里的对话就在里面，回去只需要一次 `/resume`，
