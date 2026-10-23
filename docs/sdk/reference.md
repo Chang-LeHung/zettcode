@@ -37,6 +37,8 @@ from zettcode.sdk import (
     ReasoningDelta,
     ToolStarted,
     ToolFinished,
+    ServerToolStarted,
+    ServerToolFinished,
     ApprovalRequested,
     QuestionAsked,
     Finished,
@@ -257,6 +259,8 @@ Every event is a frozen dataclass deriving from `Event(session_id: str)`.
 | `ReasoningDelta` | `text` |
 | `ToolStarted` | `call_id`, `name`, `arguments` |
 | `ToolFinished` | `call_id`, `name`, `output`, `ok`, `skipped=False` |
+| `ServerToolStarted` | `call_id`, `name`, `arguments` — a tool the endpoint runs, such as a web search |
+| `ServerToolFinished` | `call_id`, `name`, `arguments`, `output`, `ok` — the query, the pages, and whether it worked |
 | `ApprovalRequested` | `call_id`, `command`, `timeout_seconds=None`, `remember_supported=False` |
 | `QuestionAsked` | `call_id`, `question`, `options=()`, `allow_multiple=False` |
 | `UsageUpdated` | `usage` |
