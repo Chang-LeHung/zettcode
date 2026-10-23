@@ -259,6 +259,14 @@ function onKeydown(event: KeyboardEvent): void {
     submit(event.metaKey || event.ctrlKey);
     return;
   }
+  if ((event.key === "ArrowUp" || event.key === "ArrowDown") && canJump(event.key)) {
+    // Plain arrows walk the reader's messages, as the terminal's do, but only while the box has nothing to move
+    // the caret through on that side — and never in command mode: while `/` is being typed the arrows belong to
+    // the command menu, and once it is dismissed they keep meaning "no more commands", not "the previous message".
+    event.preventDefault();
+    window.dispatchEvent(new CustomEvent("zc-jump-message", { detail: event.key === "ArrowUp" ? -1 : 1 }));
+    return;
+  }
   if (event.key === "Escape" && busy.value && state.overlay === null) {
     post({ type: "cancel" });
   }
@@ -267,6 +275,26 @@ function onKeydown(event: KeyboardEvent): void {
 function track(): void {
   caret.value = field.value?.selectionStart ?? state.draft.length;
   follow();
+}
+
+/**
+ * Whether an arrow should walk the conversation rather than the caret.
+ *
+ * Up moves the caret within the box until it is on the first line, and Down until it is on the last; only then do they
+ * mean "the message before or after this one". Command mode is not the conversation: with a `/` draft the arrows belong
+ * to the command menu while it is open, and to nothing once it is dismissed.
+ */
+function canJump(key: string): boolean {
+  if (live.value.trimStart().startsWith("/")) {
+    return false;
+  }
+  const element = field.value;
+  if (element === null) {
+    return false;
+  }
+  const at = element.selectionStart ?? 0;
+  const value = element.value;
+  return key === "ArrowUp" ? !value.slice(0, at).includes("\n") : !value.slice(at).includes("\n");
 }
 
 /**

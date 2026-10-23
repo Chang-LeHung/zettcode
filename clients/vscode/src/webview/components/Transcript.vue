@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onMounted, ref, watch } from "vue";
+import { nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 
 import { post, state } from "../store.js";
 import Icon from "./Icon.vue";
@@ -37,6 +37,58 @@ function toBottom(): void {
 function jump(): void {
   pinned.value = true;
   toBottom();
+}
+
+/**
+ * The bubbles the reader wrote, in the order they appear. A command's row and a side question have a prompt too, but
+ * neither is a message of the conversation the arrows walk.
+ */
+function prompts(): HTMLElement[] {
+  const element = scroller.value;
+  if (element === null) {
+    return [];
+  }
+  return Array.from(element.querySelectorAll<HTMLElement>(".turn[data-id]")).filter(
+    (turn) => turn.querySelector(".user-bubble") !== null && !turn.classList.contains("command") && !turn.classList.contains("aside"),
+  );
+}
+
+/**
+ * Walk to the previous or the next message the reader sent, the way the terminal's Option-Up and Option-Down do: the
+ * message goes to the top of the view, and past the last one the view returns to the newest line.
+ */
+function jumpMessage(step: number): void {
+  const element = scroller.value;
+  if (element === null) {
+    return;
+  }
+  const messages = prompts();
+  if (messages.length === 0) {
+    return;
+  }
+  const top = element.scrollTop;
+  const tops = messages.map((message) => message.offsetTop);
+  if (step < 0) {
+    const earlier = tops.filter((at) => at < top - 4);
+    element.scrollTo({ top: earlier.length > 0 ? earlier[earlier.length - 1] : 0, behavior: "smooth" });
+  } else {
+    const later = tops.filter((at) => at > top + 4);
+    if (later.length === 0) {
+      pinned.value = true;
+      toBottom();
+      return;
+    }
+    element.scrollTo({ top: later[0], behavior: "smooth" });
+  }
+  pinned.value = false;
+  away.value = true;
+}
+
+function onJump(event: Event): void {
+  const step = (event as CustomEvent<number>).detail;
+  if (step === -1 || step === 1) {
+    jumpMessage(step);
+  }
 }
 
 /**
@@ -88,7 +140,14 @@ watch(
   },
 );
 
-onMounted(toBottom);
+onMounted(() => {
+  toBottom();
+  window.addEventListener("zc-jump-message", onJump);
+});
+
+onUnmounted(() => {
+  window.removeEventListener("zc-jump-message", onJump);
+});
 </script>
 
 <template>

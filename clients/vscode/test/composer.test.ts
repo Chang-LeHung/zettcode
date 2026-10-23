@@ -95,10 +95,13 @@ async function open() {
   window.dispatchEvent(new window.MessageEvent("message", { data: { type: "init", state, turns: [] } }));
   await settle();
   const input = window.document.getElementById("input") as HTMLTextAreaElement;
+  const jumps: number[] = [];
+  window.addEventListener("zc-jump-message", (event) => jumps.push((event as CustomEvent<number>).detail));
   return {
     window,
     messages,
     input,
+    jumps,
     async type(value: string) {
       input.value = value;
       input.setSelectionRange(value.length, value.length);
@@ -208,4 +211,45 @@ test("every command is offered after a bare slash, and the list narrows as you t
   assert.ok(ui.labels().length >= 15);
   await ui.type("/c");
   assert.deepEqual(ui.labels(), ["/continue", "/compact", "/context", "/clear"]);
+});
+
+test("an empty box walks the reader's messages with the arrows, as the terminal does", async () => {
+  const ui = await open();
+
+  await ui.key("ArrowUp");
+  await ui.key("ArrowDown");
+
+  assert.deepEqual(ui.jumps, [-1, 1]);
+});
+
+test("a box with lines to move through keeps the arrows for the caret", async () => {
+  const ui = await open();
+  await ui.type("one\ntwo");
+  ui.input.setSelectionRange(5, 5);
+
+  await ui.key("ArrowUp");
+
+  assert.deepEqual(ui.jumps, [], "the caret is not on the first line");
+});
+
+test("a command's arrows stay in the menu: they never walk the conversation", async () => {
+  const ui = await open();
+  await ui.type("/c");
+  const before = ui.labels().length;
+
+  await ui.key("ArrowDown");
+  await ui.key("ArrowUp");
+
+  assert.deepEqual(ui.jumps, []);
+  assert.equal(ui.labels().length, before, "the menu is still the thing moving");
+});
+
+test("a dismissed menu leaves the command's arrows meaning nothing, not the previous message", async () => {
+  const ui = await open();
+  await ui.type("/c");
+  await ui.key("Escape");
+
+  await ui.key("ArrowUp");
+
+  assert.deepEqual(ui.jumps, []);
 });
