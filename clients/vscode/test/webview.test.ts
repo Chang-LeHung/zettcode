@@ -1125,6 +1125,21 @@ test("a model's row opens its own settings and sends the whole entry back", asyn
   assert.equal(sent.changes.context_window, 200_000);
 });
 
+test("a setting changed after the bar has gone does not bring it back", async () => {
+  const ui = await harness();
+  const interrupted = { ...state, resumable: { resumable: true, kind: "interrupted", description: "cut short" } };
+  await ui.send({ type: "state", state: interrupted });
+  assert.ok(ui.one("#resume-bar"));
+  await new Promise((resolve) => setTimeout(resolve, 2100));
+  assert.equal(ui.one("#resume-bar"), null);
+
+  // Switching the effort sends the whole state again, with the same interruption in it.
+  await ui.send({ type: "state", state: { ...interrupted, settings: { ...interrupted.settings, effort: "high" } } });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+
+  assert.equal(ui.one("#resume-bar"), null, "the same interruption is announced once, not on every change");
+});
+
 test("the interrupted bar steps aside after a couple of seconds", async () => {
   const ui = await harness();
   await ui.send({

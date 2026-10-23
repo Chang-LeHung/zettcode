@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref, watch } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 
 import { post, state } from "../store.js";
 import Icon from "./Icon.vue";
@@ -8,24 +8,35 @@ import Icon from "./Icon.vue";
 const VISIBLE_MS = 2000;
 
 /**
- * The bar announces one interruption and then gets out of the way.
+ * What is being announced, as one value: the interruption's kind and wording.
  *
- * It used to stay for as long as the request could be resumed, which is until the next prompt — permanently, from the
- * reader's side. `/continue` still works after it has gone; what is temporary is the announcement, not the ability.
+ * A string, not an array: the host sends the whole state again whenever anything changes — a model, an effort, a
+ * permission — and a watcher that builds a fresh array says "changed" every time, so switching the effort put the bar
+ * back on screen after it had gone. The identity of an interruption does not change because something else did.
  */
+const announcing = computed(() => {
+  const resumable = state.ui?.resumable;
+  if (resumable?.resumable !== true || state.ui?.busy === true) {
+    return null;
+  }
+  return `${resumable.kind ?? ""}\u0000${resumable.description ?? ""}`;
+});
+
 const visible = ref(false);
 let timer: number | undefined;
 
 watch(
-  () => [state.ui?.resumable?.resumable === true && state.ui?.busy !== true, state.ui?.resumable?.description] as const,
-  ([resumable]) => {
+  announcing,
+  (next) => {
     window.clearTimeout(timer);
-    visible.value = resumable;
-    if (resumable) {
-      timer = window.setTimeout(() => {
-        visible.value = false;
-      }, VISIBLE_MS);
+    visible.value = false;
+    if (next === null) {
+      return;
     }
+    visible.value = true;
+    timer = window.setTimeout(() => {
+      visible.value = false;
+    }, VISIBLE_MS);
   },
   { immediate: true },
 );
