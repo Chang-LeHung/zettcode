@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, reactive } from "vue";
 
-import type { ModelInput } from "../../../../typescript/src/types.js";
+import type { ModelInfo, ModelInput, ModelUpdate } from "../../../../typescript/src/types.js";
 import {
   type Api,
   APIS,
+  apiChange,
   apiKeys,
   defaultSearchName,
   maxTemperature,
@@ -12,22 +13,28 @@ import {
   searchKeys,
   searchProblem,
 } from "../../core/model-form.js";
-import { closeOverlay, post, toast } from "../store.js";
+import { closeOverlay, post, state, toast } from "../store.js";
 import Popover from "./Popover.vue";
 
+/** The model whose settings the form is editing, or `null` while it adds one. */
+const editing = computed<ModelInfo | null>(() => {
+  const name = state.editingModel;
+  return name === null ? null : (state.ui?.models.find((model) => model.name === name) ?? null);
+});
+
 const form = reactive({
-  model: "",
-  name: "",
+  model: editing.value?.model ?? "",
+  name: editing.value?.display_model ?? "",
   token: "",
-  url: "",
-  context: "",
-  efforts: "",
-  compact: "",
-  temperature: "",
-  multimodal: false,
-  webSearch: false,
-  searchName: "",
-  api: "chat" as Api,
+  url: editing.value?.base_url ?? "",
+  context: editing.value === null ? "" : String(editing.value.context_window),
+  efforts: editing.value?.efforts.join(", ") ?? "",
+  compact: editing.value === null ? "" : String(editing.value.compact_percent),
+  temperature: editing.value?.temperature === null || editing.value?.temperature === undefined ? "" : String(editing.value.temperature),
+  multimodal: editing.value?.multimodal ?? false,
+  webSearch: editing.value?.web_search ?? false,
+  searchName: editing.value?.web_search_name ?? "",
+  api: (editing.value?.api ?? "chat") as Api,
 });
 
 const temperatureLabel = computed(() => `Temperature (0 to ${maxTemperature(form.api)})`);
@@ -57,6 +64,37 @@ function submit(): void {
     toast(problem, "warn");
     return;
   }
+  const current = editing.value;
+  const efforts = form.efforts
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  if (current !== null) {
+    // An edit sends every field, with `null` where the entry should hold nothing: an emptied box really clears the
+    // key, which is the difference between editing a setting and adding one.
+    const changes: ModelUpdate = {
+      model,
+      display_model: form.name.trim() || null,
+      base_url: form.url.trim() || null,
+      context_window: number(form.context) ?? null,
+      compact_percent: number(form.compact) ?? null,
+      temperature: temperature.kind === "value" ? temperature.value : null,
+      multimodal: form.multimodal,
+      reasoning_efforts: efforts.length ? efforts : null,
+      ...apiChange(form.api),
+      ...searchKeys(form.webSearch, form.searchName),
+    };
+    if (!form.webSearch) {
+      changes.web_search = false;
+      changes.web_search_name = null;
+    }
+    if (form.token.trim()) {
+      // Left empty, the key is not touched: the current one is never sent to the editor in the first place.
+      changes.token = form.token.trim();
+    }
+    post({ type: "update-model", name: current.name, changes });
+    return;
+  }
   const input: ModelInput = { model };
   if (form.name.trim()) {
     input.display_model = form.name.trim();
@@ -78,10 +116,6 @@ function submit(): void {
   if (temperature.kind === "value") {
     input.temperature = temperature.value;
   }
-  const efforts = form.efforts
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
   if (efforts.length) {
     input.reasoning_efforts = efforts;
   }
@@ -95,7 +129,7 @@ function submit(): void {
 </script>
 
 <template>
-  <Popover id="add-model-panel" title="Add a model" :width="420" :tall="680">
+  <Popover id="add-model-panel" :title="editing === null ? 'Add a model' : 'Edit model'" :width="420" :tall="680">
     <form class="form" @submit.prevent="submit">
       <label>Model id<input id="m-model" v-model="form.model" placeholder="claude-sonnet-4-5" autocomplete="off" autofocus /></label>
       <div class="form-pair">
@@ -125,7 +159,9 @@ function submit(): void {
       <p v-else-if="form.webSearch" class="form-note">The provider runs the search; nothing is fetched here. Leave the name empty to send {{ searchDefault }}.</p>
       <p class="form-note">Written to the ZettCode configuration file. Only the model id is required: leave the key empty for a local server (Ollama, LM Studio, vLLM) or to use the environment's. The key is stored there and never returned by the server.</p>
       <div class="form-actions">
-        <button class="btn solid" type="submit" data-action="submit-model">Add model</button>
+        <button class="btn solid" type="submit" data-action="submit-model">
+          {{ editing === null ? "Add model" : "Save changes" }}
+        </button>
         <button class="btn ghost" type="button" @click="closeOverlay">Cancel</button>
       </div>
     </form>

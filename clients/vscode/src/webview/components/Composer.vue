@@ -483,7 +483,7 @@ const hint = computed(() =>
       <ModelMenu v-else-if="state.overlay === 'models'" :offset="offset" />
       <ChoiceMenu v-else-if="state.overlay === 'effort'" kind="effort" :offset="offset" />
       <ChoiceMenu v-else-if="state.overlay === 'permission'" kind="permission" :offset="offset" />
-      <AddModelPanel v-else-if="state.overlay === 'add-model'" />
+      <AddModelPanel v-else-if="state.overlay === 'add-model' || state.overlay === 'edit-model'" />
 
       <div v-if="items.length" id="menu" class="menu" role="listbox" @mousedown.prevent>
         <button

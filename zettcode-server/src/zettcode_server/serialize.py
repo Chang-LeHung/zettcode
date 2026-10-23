@@ -145,6 +145,10 @@ def model_out(model: ModelInfo) -> ModelOut:
         compact_percent=model.compact_percent,
         web_search=model.web_search,
         web_search_name=model.web_search_name,
+        display_model=model.display_model,
+        base_url=model.base_url,
+        api=model.api,
+        temperature=model.temperature,
     )
 
 

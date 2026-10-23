@@ -50,6 +50,14 @@ export interface ModelInfo {
   web_search: boolean;
   /** The tool type that search is sent as; `null` takes the default for the API the model speaks. */
   web_search_name: string | null;
+  /** The name the picker shows, when the entry has one. */
+  display_model?: string | null;
+  /** The address requests go to; `null` takes the API's own. The token is never sent. */
+  base_url?: string | null;
+  /** The protocol the entry speaks. */
+  api?: "chat" | "responses" | "anthropic";
+  /** The sampling temperature the entry sends; `null` for the provider's own. */
+  temperature?: number | null;
 }
 
 /** One model to add to the configuration file; the keys are the file's own. */

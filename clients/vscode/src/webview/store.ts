@@ -21,7 +21,7 @@ export function post(message: WebviewMessage): void {
   host.postMessage(message);
 }
 
-export type Overlay = "drawer" | "context" | "models" | "effort" | "permission" | "add-model" | null;
+export type Overlay = "drawer" | "context" | "models" | "effort" | "permission" | "add-model" | "edit-model" | null;
 export type ToastLevel = "info" | "warn" | "error";
 
 export interface QueuedMessage {
@@ -65,6 +65,8 @@ export const state = reactive({
   openNotes: new Set<string>(),
   openFiles: new Set<string>(),
   overlay: null as Overlay,
+  /** The model whose settings the form is editing, by the name the picker shows; null while adding one. */
+  editingModel: null as string | null,
   sessionsLoading: false,
   renaming: false,
   dragging: false,
@@ -142,6 +144,7 @@ export function openOverlay(overlay: Overlay): void {
 
 export function closeOverlay(): void {
   state.overlay = null;
+  state.editingModel = null;
 }
 
 /** Open the search bar and put the cursor in it; a short selection in the view becomes the query. */

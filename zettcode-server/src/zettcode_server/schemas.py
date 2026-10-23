@@ -137,6 +137,10 @@ class ModelOut(BaseModel):
     compact_percent: float = 80.0
     web_search: bool = False
     web_search_name: str | None = None
+    display_model: str | None = None
+    base_url: str | None = None
+    api: str = "chat"
+    temperature: float | None = None
 
 
 class ModelsOut(BaseModel):

@@ -29,6 +29,7 @@ import type {
   Message,
   ModelInfo,
   ModelInput,
+  ModelUpdate,
   Permission,
   PendingRequest,
   Resumable,
@@ -562,6 +563,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         return;
       case "add-model":
         await this.addModel(message.model);
+        return;
+      case "update-model":
+        await this.editModel(message.name, message.changes);
         return;
       case "remove-model":
         await this.removeModel(message.name);
@@ -1273,6 +1277,30 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       this.turns.push(turn);
       this.postTurn(turn, true);
     }
+  }
+
+  private async editModel(name: string, changes: ModelUpdate): Promise<void> {
+    const client = await this.ensureClient();
+    const clean: Record<string, unknown> = { ...changes };
+    if (typeof clean.model === "string") {
+      clean.model = clean.model.trim();
+      if (!clean.model) {
+        throw new Error("A model id is required.");
+      }
+    }
+    for (const key of ["token", "display_model", "base_url", "web_search_name"] as const) {
+      const value = clean[key];
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        // An empty name or address clears the key; an empty token means "keep it", because the current one is never
+        // sent to the editor in the first place.
+        clean[key] = key === "token" ? (trimmed ? trimmed : undefined) : trimmed ? trimmed : null;
+      }
+    }
+    await client.updateModel(name, clean as ModelUpdate);
+    this.models = (await client.models()).models;
+    this.health = await client.health();
+    this.postState();
   }
 
   private async addModel(input: ModelInput): Promise<void> {

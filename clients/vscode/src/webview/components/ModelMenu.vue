@@ -33,6 +33,17 @@ function remove(name: string): void {
   post({ type: "remove-model", name });
 }
 
+/** Open the form on one model's own settings, the way its row is read: what the entry says, filled in. */
+function edit(name: string): void {
+  state.editingModel = name;
+  openOverlay("edit-model");
+}
+
+function add(): void {
+  state.editingModel = null;
+  openOverlay("add-model");
+}
+
 function use(name: string, active: boolean): void {
   if (!active) {
     post({ type: "set-model", name });
@@ -62,6 +73,15 @@ function use(name: string, active: boolean): void {
             <Icon v-if="inUse(model)" name="check" :size="14" class="tick" />
           </button>
           <button
+            class="icon-btn row-edit"
+            type="button"
+            title="Edit this model"
+            aria-label="Edit this model"
+            @click="edit(model.name)"
+          >
+            <Icon name="pencil" :size="12" />
+          </button>
+          <button
             class="icon-btn row-remove"
             type="button"
             title="Remove this model"
@@ -74,7 +94,7 @@ function use(name: string, active: boolean): void {
       </div>
     </div>
     <div class="dropdown-rule" />
-    <button type="button" class="option" @click="openOverlay('add-model')">
+    <button type="button" class="option" @click="add()">
       <Icon name="plus" :size="14" />
       <span class="option-copy"><span class="option-name">Add a model…</span></span>
     </button>
@@ -133,6 +153,19 @@ function use(name: string, active: boolean): void {
   width: 22px;
   height: 22px;
   opacity: 0;
+}
+
+.row-edit {
+  position: absolute;
+  right: 54px;
+  width: 22px;
+  height: 22px;
+  opacity: 0;
+}
+
+.option-row:hover .row-edit,
+.row-edit:focus-visible {
+  opacity: 1;
 }
 
 .option-row:hover .row-remove,
