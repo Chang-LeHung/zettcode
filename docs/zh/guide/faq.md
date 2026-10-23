@@ -113,4 +113,4 @@ macOS/Linux 可以用 `time zettcode --dry-run`，PowerShell 可以用
 ## 退出
 
 **怎么退出？** `/quit`，或者在输入框为空时按 `Ctrl-D`。**Ctrl-C** 是停止正在跑的请求、请求为
-空时清空草稿 —— 它不是退出。退出时会打印恢复当前会话的 `zettcode --resume …` 命令。
+空时清空草稿 —— 它不是退出。退出时会打印恢复当前会话的 `zettcode resume …` 命令。

@@ -41,7 +41,7 @@ command line takes, which is deliberately short:
 | `--dry-run` | Run the startup, paint one frame, and exit. Useful for profiling. |
 
 Four subcommands do their work by name: `zettcode resume SESSION` is `zettcode --resume SESSION`
-(put `-w DIR` before it, as in `zettcode -w ~/projects/api resume 01a10b75`), `zettcode update`
+(`-w DIR` may go before or after it, as in `zettcode resume 01a10b75 -w ~/projects/api`), `zettcode update`
 (or `zettcode upgrade`, the same thing) installs the newest release and exits (see the
 [FAQ](/guide/faq#new-versions)), and `zettcode doctor` asks every model in your config file one short
 question and prints which of them answer and how fast, or why not (a revoked token, a wrong base URL, a model
@@ -189,7 +189,7 @@ up** once it is done. Everything is explained in [The interface](/guide/interfac
 that reopens that session, so the way back is one copy and paste:
 
 ```
-resume this session: zettcode --resume 01a10b75 --workspace ~/projects/api
+resume this session: zettcode resume 01a10b75 --workspace ~/projects/api
 ```
 
 ## Check the result

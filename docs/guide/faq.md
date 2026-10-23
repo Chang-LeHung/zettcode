@@ -164,5 +164,5 @@ as usual, and the command it shows is the one for the copy that is running.
 
 **How do I exit?** `/quit`, or `Ctrl-D` on an empty composer. **Ctrl-C** stops
 the running request, and on an empty request clears the draft — it does not
-quit. On exit the shell prints the `zettcode --resume …` line for the session
+quit. On exit the shell prints the `zettcode resume …` line for the session
 you were in.
