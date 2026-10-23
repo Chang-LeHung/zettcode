@@ -1,4 +1,6 @@
 UV ?= uv
+#: The editor CLI `make install-vscode` installs into: `code`, `code-insiders`, `cursor`, or a path to one.
+CODE ?= code
 
 # The repository is a uv workspace of two packages: the terminal agent in
 # `zettcode/` and the HTTP server in `zettcode-server/`. Tooling is shared and
@@ -11,7 +13,7 @@ SMOKE_DIR := .smoke
 PACKAGE_DIRS := zettcode zettcode-server
 LINT_PATHS := zettcode/src zettcode/tests zettcode/perf zettcode-server/src zettcode-server/tests docs/scripts
 
-.PHONY: help install lint typecheck test test-zettcode test-server client vscode vscode-package build build-all smoke check hooks docs docs-build docs-preview demo demo-all demos demo-thinking palettes themes perf perf-scaling perf-store perf-profile perf-startup perf-imports FORCE
+.PHONY: help install lint typecheck test test-zettcode test-server client vscode vscode-package install-vscode build build-all smoke check hooks docs docs-build docs-preview demo demo-all demos demo-thinking palettes themes perf perf-scaling perf-store perf-profile perf-startup perf-imports FORCE
 
 DEMOS := text status_bar spinner progress_bar list table diff markdown textarea completion dialog collapsible toast tasks scroll layout
 
@@ -24,6 +26,7 @@ help:
 	@echo "  make client   Build and test the TypeScript client"
 	@echo "  make vscode   Type-check, test and build the VS Code extension"
 	@echo "  make vscode-package   Also package the extension as a .vsix"
+	@echo "  make install-vscode  Package it and install it into the editor $(CODE); reinstall is forced"
 	@echo "  make build    Build the zettcode sdist and wheel into dist/"
 	@echo "  make build-all  Build the sdist and wheel of both packages into dist/"
 	@echo "  make smoke    Build both wheels into $(SMOKE_DIR)/ and run each program's --help from them"
@@ -76,6 +79,15 @@ vscode:
 
 vscode-package: vscode
 	cd clients/vscode && npx --yes @vscode/vsce package --no-dependencies
+
+# What a reader with the extension installed needs after a change: the same package, installed over the old one.
+# The version comes from the extension's own package.json, and the install is forced because reinstalling the same
+# version is exactly what a local build is. `CODE` picks the CLI, for an editor that is not called `code`.
+install-vscode: vscode-package
+	@command -v $(CODE) >/dev/null || { \
+		echo "$(CODE) is not on PATH: set CODE to the editor's CLI, such as CODE=code-insiders or CODE=cursor"; \
+		exit 1; }
+	cd clients/vscode && $(CODE) --install-extension "zettcode-$$(node -p 'require("./package.json").version').vsix" --force
 
 build:
 	$(UV) build --package zettcode
