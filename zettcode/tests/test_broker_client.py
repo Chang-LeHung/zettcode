@@ -871,6 +871,38 @@ async def test_a_note_of_another_protocol_whose_broker_is_gone_is_replaced(tmp_p
         await client.close()
 
 
+async def test_a_replacement_that_did_not_free_the_lock_is_tried_again_and_then_left_alone(tmp_path: Path, monkeypatch):
+    """Recognising the process can fail for a reason that is not its own: the command-line lookup on Windows is a
+    PowerShell call that can time out on a busy machine. One such failure must not leave the pid marked as tried, so
+    that the session reports "another protocol" for ever while the old broker keeps the next one out."""
+    from zettcode.broker import finder as broker_finder
+
+    holder = hold_lock(tmp_path / LOCK_FILE)
+    write_note(tmp_path, Note(pid=holder.pid, port=1, token="x", version=PROTOCOL_VERSION - 1))
+    attempts: list[int] = []
+
+    def never_ends(pid: int, module: str, *, released: Any) -> bool:
+        attempts.append(pid)
+        return False
+
+    monkeypatch.setattr(broker_finder.process, "end", never_ends)
+    monkeypatch.setattr(broker_finder, "REPLACE_RETRY", 0.0)
+    finder = broker_finder.Finder(directory=tmp_path, spawn_wait=0.05)
+    try:
+        for _ in range(broker_finder.REPLACE_ATTEMPTS):
+            with pytest.raises(ConnectionError):
+                await finder.open(lambda: True)
+        assert attempts == [holder.pid] * broker_finder.REPLACE_ATTEMPTS
+        assert not finder.incompatible, "an older broker that is being ended is not a protocol to wait on"
+
+        with pytest.raises(ConnectionError):
+            await finder.open(lambda: True)
+        assert len(attempts) == broker_finder.REPLACE_ATTEMPTS, "a process that has refused this often is left alone"
+    finally:
+        holder.kill()
+        holder.wait()
+
+
 async def test_reconnecting_over_and_over_leaves_no_tasks_or_connections_behind(host):
     before = {t for t in asyncio.all_tasks() if not t.done()}
     client = await connected(host, session(A, "a"))
