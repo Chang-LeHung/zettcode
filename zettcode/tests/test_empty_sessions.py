@@ -31,7 +31,7 @@ def runtime(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         mcp_config=tmp_path / "absent-mcp.json",
         sessions_enabled=False,
     )
-    return runtime_module.ZettCodeRuntime.preview(config)
+    return runtime_module.ZettCodeEngine.preview(config)
 
 
 def entries(root: Path) -> list[str]:
@@ -147,7 +147,7 @@ async def test_starting_a_launch_sweeps_what_an_earlier_one_left(tmp_path: Path,
     started = runtime(tmp_path, monkeypatch)
     old = stale(started.persistence, C)
 
-    monkeypatch.setattr(runtime_module.ZettCodeRuntime, "_build", _no_build)
+    monkeypatch.setattr(runtime_module.ZettCodeEngine, "_build", _no_build)
     await started.start()
     await started._tidying
 

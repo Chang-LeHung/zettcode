@@ -89,7 +89,7 @@ async def test_command_reads_and_sets_the_current_sessions_choice():
 
 
 async def test_a_fresh_runtime_reads_the_saved_choice_and_new_sessions_stay_disabled(tmp_path, monkeypatch):
-    from zettcode.app.agent.runtime import ZettCodeRuntime
+    from zettcode.app.agent.runtime import ZettCodeEngine
     from zettcode.config import ModelConfig, ZettCodeConfig
 
     monkeypatch.setattr("zettcode.app.agent.runtime.os.chdir", lambda path: None)
@@ -98,7 +98,7 @@ async def test_a_fresh_runtime_reads_the_saved_choice_and_new_sessions_stay_disa
     )
     store = SessionStore(config.store, config.workspace)
     store.set_self_compact("s1", True)
-    runtime = ZettCodeRuntime.preview(config)
+    runtime = ZettCodeEngine.preview(config)
     try:
         ctx = context()
         await runtime.compaction.on_tool(ctx)

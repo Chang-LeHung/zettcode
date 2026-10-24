@@ -100,8 +100,8 @@ library for the same reason — the flag that explains the program should not
 build the runtime.
 
 The application runtime is lazy in the same way, one level up:
-`ZettCodeRuntime.preview` assembles the settings, the session store, and the
-extensions ZettCode owns, and `ZettCodeRuntime.start` imports the provider SDK,
+`ZettCodeEngine.preview` assembles the settings, the session store, and the
+extensions ZettCode owns, and `ZettCodeEngine.start` imports the provider SDK,
 the MCP client, and the compaction tokenizer to build the agent client. The
 shell paints from the preview and the first turn awaits the start, which is
 what keeps a few hundred milliseconds of imports out of time-to-first-frame.
@@ -384,7 +384,7 @@ the two files at the top are the composition and the thing it composes.
 | Where | What is in it |
 | --- | --- |
 | `agent/` | `ZettCodeAgent`, the application's one entry point, assembled from mixins: `base` (runtime, workspace, session id), `settings` (model, effort, shell permission), `context` (the next request, compaction), `sessions` (switch, resume, fork, title), `turns` (build, stream, steer), `interaction` (answer an approval or a question), `exports`, `commands`; and `prompt`, the parts of a user turn |
-| `runtime.py` | `ZettCodeRuntime`: owns the session state (policy, store, model table, counter, messenger) and the provider, and builds the client from the extensions the plugins hand it |
+| `runtime.py` | `ZettCodeEngine`: owns the session state (policy, store, model table, counter, messenger) and the provider, and builds the client from the extensions the plugins hand it |
 | `extensions/` | What the plugins plug into zett-agent that is ours: `capabilities`, `compaction`, `context`, `files` (`FileTools` and `CodingBundle`, which register the tools),  `mcp` (and `mcp_notice`, the event it reports through), `messenger` (the line to the other sessions) and `messaging` (the two tools), `subagents`, `tool_output`, `usage`; `plugins/builtin_agent.py` registers them |
 | `tools/` | The coding tools, written here and typed: `files` (`read`, `read_file`, `glob`, `grep`, `write_file`, `edit`; the main agent is given `read`, `write_file` and `edit` and searches with its shell, a subagent and a side question keep `glob` and `grep`), `shell` (`bash` and the command runner), `workspace` (paths, ranged reads, atomic writes, edits), `output` (bounded previews), `images` (what an image file starts with), `boundary` (the abstract classes the shell tool asks the permission level and a sandbox through) |
 | `permission/` | How much of the shell may run unasked: the levels and what enforces them (`__init__`), the fail-closed read-only classifier (`readonly`), what an approval may remember (`approval`) |
@@ -535,7 +535,7 @@ part of the application layer rather than the framework.
 Two routes lead from a plugin to the agent. The hook methods run inside the one host
 extension. `register_extension` and `register_extension_factory` hand the agent a whole
 `zett-agent` extension instead; `Plugins.contributed` holds them as `Contribution`s and
-`Plugins.agent_extensions(AgentBuild)` turns them into the extensions `ZettCodeRuntime._build`
+`Plugins.agent_extensions(AgentBuild)` turns them into the extensions `ZettCodeEngine._build`
 gives `create_agent`, built-ins first, then any third-party plugin's, then the one host. The
 runtime lists no extension itself.
 
@@ -553,7 +553,7 @@ session's `policy`, `persistence`, the `models` table, the `compaction-counter`,
 a plugin reads them, and what an earlier plugin provided, with `container.service` or
 `container.find`, so a plugin's place in the order is a dependency. What the application needs
 back (`approval`, `usage`, `context`, `sides`, `compaction`, `todos`) a plugin offers with
-`provide`, and `ZettCodeRuntime` exposes each as a property over `Plugins.service`, not as a
+`provide`, and `ZettCodeEngine` exposes each as a property over `Plugins.service`, not as a
 field. The things the runtime keeps for itself are the ones it uses with no extension in sight:
 the policy, the store, the model table, the counter and the messenger.
 

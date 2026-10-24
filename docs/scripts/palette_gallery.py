@@ -38,7 +38,7 @@ from palette_data import NOTES, Palette, palettes  # noqa: E402
 from zettcode.app.agent.agent import ZettCodeAgent  # noqa: E402
 from zettcode.app.agent.conversation.entries import EntryStatus  # noqa: E402
 from zettcode.app.agent.dialogue.relay import Relayed  # noqa: E402
-from zettcode.app.agent.runtime import ZettCodeRuntime  # noqa: E402
+from zettcode.app.agent.runtime import ZettCodeEngine  # noqa: E402
 from zettcode.app.ui import app as app_module  # noqa: E402
 from zettcode.app.ui.app import ZettCodeApp  # noqa: E402
 from zettcode.app.ui.labels import header_left  # noqa: E402
@@ -98,7 +98,7 @@ class Env:
             skills_enabled=False,
             mcp_enabled=False,
         )
-        self.runtime = ZettCodeRuntime.preview(config)
+        self.runtime = ZettCodeEngine.preview(config)
         self.runtime.plugins = load_plugins(config, builtins=preview_plugins())
         self.workspace = workspace
 

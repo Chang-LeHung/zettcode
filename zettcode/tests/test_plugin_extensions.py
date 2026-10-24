@@ -437,7 +437,7 @@ def test_the_plan_is_always_reachable_yet_only_handed_to_the_agent_when_the_tool
 
 def test_the_runtime_reads_its_extensions_back_from_the_plugins_that_made_them(tmp_path, monkeypatch):
     monkeypatch.setattr(runtime_module.os, "chdir", lambda path: None)
-    runtime = runtime_module.ZettCodeRuntime.preview(make_config(tmp_path))
+    runtime = runtime_module.ZettCodeEngine.preview(make_config(tmp_path))
     plugins = runtime.plugins
 
     assert runtime.usage is plugins.service(names.USAGE, object)
@@ -455,7 +455,7 @@ def test_the_runtime_reads_its_extensions_back_from_the_plugins_that_made_them(t
 
 def test_a_bundle_without_the_todo_plugin_shows_no_plan_instead_of_failing(tmp_path, monkeypatch):
     monkeypatch.setattr(runtime_module.os, "chdir", lambda path: None)
-    runtime = runtime_module.ZettCodeRuntime.preview(make_config(tmp_path))
+    runtime = runtime_module.ZettCodeEngine.preview(make_config(tmp_path))
     runtime.plugins = Plugins()
 
     assert runtime.todos is None
@@ -481,7 +481,7 @@ async def test_the_runtime_gives_the_agent_the_plugins_extensions_then_the_host(
     monkeypatch.setattr(runtime_module.os, "chdir", lambda path: None)
 
     config = make_config(tmp_path, todowrite_enabled=True)
-    runtime = runtime_module.ZettCodeRuntime.preview(config)
+    runtime = runtime_module.ZettCodeEngine.preview(config)
     extra = FakeEntryPoint("extra", offering("extra", "extra-ext"))
     runtime.plugins = load_plugins(
         config, builtins=(*BUILTIN_PLUGINS, *AGENT_PLUGINS), entry_points=[extra], shared=runtime_inputs(runtime)

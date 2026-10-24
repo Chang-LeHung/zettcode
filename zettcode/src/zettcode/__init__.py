@@ -14,13 +14,16 @@ _EXPORTS = {
     "ModelConfig": ".config",
     "ZettCodeAgent": ".app.agent.agent",
     "ZettCodeConfig": ".config",
-    "ZettCodeRuntime": ".app.agent.runtime",
+    "ZettCodeEngine": ".app.agent.runtime",
 }
+
+#: Names that were published and have been renamed: old name -> new name. Reading one still works and warns.
+_RENAMED = {"ZettCodeRuntime": "ZettCodeEngine"}
 
 
 if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
     from .app.agent.agent import ZettCodeAgent
-    from .app.agent.runtime import ZettCodeRuntime
+    from .app.agent.runtime import ZettCodeEngine
     from .config import ModelConfig, ZettCodeConfig
 
 
@@ -32,6 +35,12 @@ def __getattr__(name: str) -> object:
     widget library, the Markdown parser, the diff viewer, and the syntax
     scanners. ``__all__`` is still the public surface.
     """
+    if name in _RENAMED:
+        import warnings
+
+        new = _RENAMED[name]
+        warnings.warn(f"zettcode.{name} is now zettcode.{new}", DeprecationWarning, stacklevel=2)
+        name = new
     try:
         module = _EXPORTS[name]
     except KeyError:
@@ -44,4 +53,4 @@ def __dir__() -> list[str]:
     return sorted(__all__)
 
 
-__all__ = ["ModelConfig", "ZettCodeAgent", "ZettCodeConfig", "ZettCodeRuntime"]
+__all__ = ["ModelConfig", "ZettCodeAgent", "ZettCodeConfig", "ZettCodeEngine"]

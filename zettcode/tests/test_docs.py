@@ -177,7 +177,7 @@ def test_the_terminal_preview_is_offline_deterministic_and_leaves_no_workspace(r
     def refuse_start(*args, **kwargs):
         raise AssertionError("Documentation assets must never start a model or contact an API")
 
-    monkeypatch.setattr(render_terminal.ZettCodeRuntime, "start", refuse_start)
+    monkeypatch.setattr(render_terminal.ZettCodeEngine, "start", refuse_start)
     before = Path.cwd()
     real_cleanup = render_terminal.tempfile.TemporaryDirectory.cleanup
 

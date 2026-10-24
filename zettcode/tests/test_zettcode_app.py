@@ -61,7 +61,7 @@ from zettcode.app.agent.extensions.context import IMAGE_TOKENS, SOURCES, Context
 from zettcode.app.agent.extensions.harness_switch import HarnessSwitch
 from zettcode.app.agent.extensions.usage import USAGE_EVENT_NAME, UsageExtension, UsageSnapshot, context_text
 from zettcode.app.agent.permission import Permission, parse_permission
-from zettcode.app.agent.runtime import ZettCodeRuntime
+from zettcode.app.agent.runtime import ZettCodeEngine
 from zettcode.app.agent.storage import STORE_FILE, SessionInfo, SessionStore
 from zettcode.app.brand import LOGO_LINES, LOGO_PALETTE, LOGO_PIXELS
 from zettcode.app.commands import Command, CommandContext, CommandResult
@@ -393,7 +393,7 @@ class FakeRuntime:
 
     #: The real lookup, borrowed rather than rewritten: it only needs ``config.models``, which
     #: the fake has, and a second copy here would test itself.
-    find_model = ZettCodeRuntime.find_model
+    find_model = ZettCodeEngine.find_model
 
     def use_model(self, name: str | ModelConfig) -> ModelConfig:
         entry = next(
@@ -7031,27 +7031,27 @@ async def test_a_session_recorded_under_the_raw_model_name_still_finds_its_model
 
 def test_the_name_the_picker_showed_wins_over_a_model_that_happens_to_be_called_the_same():
     """A is shown as "b"; B's raw name is "b". Looking only by raw or display name would find both."""
-    from zettcode.app.agent.runtime import ZettCodeRuntime
+    from zettcode.app.agent.runtime import ZettCodeEngine
 
     a = ModelConfig(model="a", display_model="b", token="t")
     b = ModelConfig(model="b", display_model="c", token="t")
     holder = type("Holder", (), {"config": type("C", (), {"models": (a, b)})()})()
 
-    assert ZettCodeRuntime.find_model(holder, "b") is a
-    assert ZettCodeRuntime.find_model(holder, "c") is b, "and a display name is still found"
-    assert ZettCodeRuntime.find_model(holder, "a") is a, "and so is a raw one"
+    assert ZettCodeEngine.find_model(holder, "b") is a
+    assert ZettCodeEngine.find_model(holder, "c") is b, "and a display name is still found"
+    assert ZettCodeEngine.find_model(holder, "a") is a, "and so is a raw one"
 
 
 def test_a_name_two_entries_answer_to_in_the_second_step_is_not_guessed():
-    from zettcode.app.agent.runtime import ZettCodeRuntime
+    from zettcode.app.agent.runtime import ZettCodeEngine
 
     a = ModelConfig(model="x", display_model="one", token="t")
     b = ModelConfig(model="x", display_model="two", token="t")
     holder = type("Holder", (), {"config": type("C", (), {"models": (a, b)})()})()
 
-    assert ZettCodeRuntime.find_model(holder, "x") is None
-    assert ZettCodeRuntime.find_model(holder, "one") is a
-    assert ZettCodeRuntime.find_model(holder, "missing") is None
+    assert ZettCodeEngine.find_model(holder, "x") is None
+    assert ZettCodeEngine.find_model(holder, "one") is a
+    assert ZettCodeEngine.find_model(holder, "missing") is None
 
 
 # -- what was typed before the application arrived is not lost when it does ----------------------------

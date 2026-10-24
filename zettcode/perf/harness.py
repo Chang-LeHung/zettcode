@@ -2,7 +2,7 @@
 
 Every probe needs the same two things: the real application running against a
 throwaway workspace and store, and a clock around each phase of a frame. This
-module builds the first with :meth:`ZettCodeRuntime.preview` — the same seam the
+module builds the first with :meth:`ZettCodeEngine.preview` — the same seam the
 shell uses to paint before the provider exists — and wraps the second in
 :class:`Painter`, which mirrors ``TerminalRunner.paint`` stage for stage.
 
@@ -21,7 +21,7 @@ from time import perf_counter
 
 from zettcode.app.agent.agent import ZettCodeAgent
 from zettcode.app.agent.conversation.transcript import Transcript
-from zettcode.app.agent.runtime import ZettCodeRuntime
+from zettcode.app.agent.runtime import ZettCodeEngine
 from zettcode.app.ui import ZettCodeApp
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.tui import DifferentialRenderer, TextEvent
@@ -246,7 +246,7 @@ def build(
         skills_enabled=False,
         mcp_enabled=False,
     )
-    app = ZettCodeApp(ZettCodeAgent(ZettCodeRuntime.preview(config)))
+    app = ZettCodeApp(ZettCodeAgent(ZettCodeEngine.preview(config)))
     clock = Clock()
     app.app.clock = clock
     app.transcript.clock = clock

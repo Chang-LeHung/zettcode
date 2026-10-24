@@ -41,7 +41,7 @@ def _no_broker_process(monkeypatch: pytest.MonkeyPatch) -> None:
 def _no_installed_plugins(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep the suite hermetic: an installed plugin must not join a test run.
 
-    ``ZettCodeRuntime.preview`` loads every ``zettcode.plugins`` entry point the
+    ``ZettCodeEngine.preview`` loads every ``zettcode.plugins`` entry point the
     environment advertises, which would make tests depend on whatever the
     developer happens to have installed. The plugin tests inject their own entry
     points, so discovery is only stubbed here, never removed.

@@ -349,7 +349,7 @@ def test_a_runtime_hands_its_sandbox_the_workspace_and_the_configured_network(tm
         shell_network=True,
     )
 
-    runtime = runtime_module.ZettCodeRuntime.preview(config)
+    runtime = runtime_module.ZettCodeEngine.preview(config)
 
     assert runtime.policy.sandbox is not None
     assert runtime.policy.sandbox.workspace == tmp_path.resolve()

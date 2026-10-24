@@ -397,7 +397,7 @@ async def test_the_runtime_gives_the_agent_the_tools_only_when_the_configuration
 
     monkeypatch.setattr("zett_agent.client.create_agent", fake_create_agent)
     monkeypatch.setattr(runtime_module.os, "chdir", lambda path: None)
-    runtime = runtime_module.ZettCodeRuntime.preview(_config_with(tmp_path, sessions_enabled=enabled))
+    runtime = runtime_module.ZettCodeEngine.preview(_config_with(tmp_path, sessions_enabled=enabled))
     assert (runtime.messenger is not None) is enabled
     await runtime.start()
     try:

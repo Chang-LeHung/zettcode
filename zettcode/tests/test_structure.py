@@ -80,6 +80,8 @@ def test_every_invariant_cites_a_test_that_exists():
 LAYERS = (
     ("zettcode.tui", ("zettcode.app", "zettcode.cli", "zettcode.config")),
     ("zettcode.app.agent", ("zettcode.app.ui",)),
+    # The engine is what the terminal and the SDK both drive, so it knows neither of them.
+    ("zettcode.engine", ("zettcode.app.ui", "zettcode.sdk", "zettcode.server")),
     # The broker is standard library only, and the shell imports it, never the other way round.
     ("zettcode.broker", ("zettcode.app", "zettcode.cli", "zettcode.config", "zettcode.tui")),
     ("zettcode.filelock", ("zettcode.app", "zettcode.cli", "zettcode.config", "zettcode.tui", "zettcode.broker")),
@@ -296,6 +298,22 @@ def test_a_facade_maps_every_name_to_the_module_it_statically_imports():
             drifted.append(f"{name}: static {sorted(static)} vs map {sorted(mapping)}")
 
     assert drifted == []
+
+
+def test_the_old_name_of_the_engine_still_resolves_and_says_it_was_renamed():
+    """``ZettCodeRuntime`` was published, so a program that imports it keeps working for a while, and is told."""
+    import warnings
+
+    from zettcode.engine import ZettCodeEngine
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        old = zettcode.ZettCodeRuntime  # type: ignore[attr-defined]
+
+    assert old is ZettCodeEngine
+    assert [w.category for w in caught] == [DeprecationWarning]
+    assert "ZettCodeEngine" in str(caught[0].message)
+    assert "ZettCodeRuntime" not in zettcode.__all__
 
 
 def test_the_hub_and_the_roster_know_nothing_of_the_web():

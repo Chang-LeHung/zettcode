@@ -11,7 +11,7 @@ _EXPORTS = {
     "Transcript": ".conversation.transcript",
     "TranscriptProjector": ".conversation.projection",
     "ZettCodeAgent": ".agent",
-    "ZettCodeRuntime": ".runtime",
+    "ZettCodeEngine": ".runtime",
 }
 
 
@@ -20,7 +20,7 @@ if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
     from .conversation.entries import Entry
     from .conversation.projection import TranscriptProjector
     from .conversation.transcript import Transcript
-    from .runtime import ZettCodeRuntime
+    from .runtime import ZettCodeEngine
 
 
 def __getattr__(name: str) -> object:
@@ -43,4 +43,4 @@ def __dir__() -> list[str]:
     return sorted(__all__)
 
 
-__all__ = ["Entry", "Transcript", "TranscriptProjector", "ZettCodeAgent", "ZettCodeRuntime"]
+__all__ = ["Entry", "Transcript", "TranscriptProjector", "ZettCodeAgent", "ZettCodeEngine"]

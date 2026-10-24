@@ -304,10 +304,10 @@ class Client:
         self._register(resolved.workspace)
         # Imported here, not at the top of the module: importing the SDK costs nothing until a client is made.
         from ..app.agent.agent import ZettCodeAgent
-        from ..app.agent.runtime import ZettCodeRuntime
+        from ..app.agent.runtime import ZettCodeEngine
 
         try:
-            runtime = ZettCodeRuntime.preview(resolved)
+            runtime = ZettCodeEngine.preview(resolved)
         except BaseException:
             self._unregister()
             raise

@@ -18,11 +18,11 @@ from zettcode.plugins import services as names
 if TYPE_CHECKING:
     from zett_agent.extensions.base import AgentExtension
 
-    from zettcode.app.agent.runtime import ZettCodeRuntime
+    from zettcode.app.agent.runtime import ZettCodeEngine
     from zettcode.config import ZettCodeConfig
 
 
-def runtime_inputs(runtime: ZettCodeRuntime) -> dict[str, object]:
+def runtime_inputs(runtime: ZettCodeEngine) -> dict[str, object]:
     """Return what a runtime hands its plugins, so a test can load another bundle over the same state."""
     return {
         names.POLICY: runtime.policy,

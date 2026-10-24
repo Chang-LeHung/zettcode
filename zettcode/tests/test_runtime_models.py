@@ -159,7 +159,7 @@ async def test_the_runtime_starts_loading_its_token_counter_with_the_provider(tm
 
     monkeypatch.setattr(runtime_module.os, "chdir", lambda path: None)
     monkeypatch.setattr("zett_agent.client.create_agent", lambda model, **kwargs: type("C", (), {})())
-    runtime = runtime_module.ZettCodeRuntime.preview(_config_with(tmp_path))
+    runtime = runtime_module.ZettCodeEngine.preview(_config_with(tmp_path))
     runtime.tokenizer = runtime_module.Tokenizer(deadline=5.0, loader=loader)
 
     runtime.start()
@@ -175,7 +175,7 @@ async def test_closing_a_runtime_does_not_wait_for_a_counter_still_loading(tmp_p
     """A vocabulary still downloading is nobody's answer once the shell has gone."""
     monkeypatch.setattr(runtime_module.os, "chdir", lambda path: None)
     monkeypatch.setattr("zett_agent.client.create_agent", lambda model, **kwargs: type("C", (), {})())
-    runtime = runtime_module.ZettCodeRuntime.preview(_config_with(tmp_path))
+    runtime = runtime_module.ZettCodeEngine.preview(_config_with(tmp_path))
     runtime.tokenizer = runtime_module.Tokenizer(deadline=30.0, loader=lambda name: time.sleep(30.0))
     runtime.start()
     await asyncio.sleep(0.02)
@@ -205,7 +205,7 @@ def test_the_runtime_module_costs_nothing_until_it_starts(tmp_path):
             "    models=(ModelConfig(model='m', token='t'),),",
             "    store=Path(sys.argv[1]),",
             ")",
-            "runtime_module.ZettCodeRuntime.preview(config)",
+            "runtime_module.ZettCodeEngine.preview(config)",
             "heavy = ('anthropic', 'openai', 'mcp', 'sqlalchemy', 'zett_agent.extensions.subagent')",
             "print(*(name in sys.modules for name in heavy))",
         ]
@@ -252,7 +252,7 @@ def test_the_warm_up_names_every_module_a_request_needs(tmp_path, monkeypatch, m
         mcp_config=tmp_path / "absent-mcp.json",
     )
 
-    names = runtime_module.ZettCodeRuntime.preview(config).warm_modules()
+    names = runtime_module.ZettCodeEngine.preview(config).warm_modules()
 
     assert names == (
         *sdks,
@@ -280,7 +280,7 @@ async def test_a_close_while_the_imports_are_running_does_not_wait_for_them(tmp_
     monkeypatch.setattr(pipeline_module, "importlib", SlowImports())
     monkeypatch.setattr("zett_agent.client.create_agent", fake_create_agent)
     monkeypatch.setattr(runtime_module.os, "chdir", lambda path: None)
-    runtime = runtime_module.ZettCodeRuntime.preview(_config_with(tmp_path))
+    runtime = runtime_module.ZettCodeEngine.preview(_config_with(tmp_path))
     warm = runtime.start()
     await asyncio.sleep(0)
 
@@ -331,7 +331,7 @@ async def test_an_anthropic_model_builds_the_messages_adapter(tmp_path, monkeypa
         store=tmp_path / "sessions",
     )
 
-    runtime = await runtime_module.ZettCodeRuntime.create(config)
+    runtime = await runtime_module.ZettCodeEngine.create(config)
 
     # The Messages API lives at the Anthropic root itself, so an entry that
     # names no base_url is called there rather than at an OpenAI default.
@@ -372,7 +372,7 @@ async def test_an_anthropic_entry_hands_the_adapter_the_corrected_base_url(tmp_p
         store=tmp_path / "sessions",
     )
 
-    runtime = await runtime_module.ZettCodeRuntime.create(config)
+    runtime = await runtime_module.ZettCodeEngine.create(config)
 
     assert built == [called]
     await runtime.aclose()
@@ -413,7 +413,7 @@ async def test_a_preview_runtime_starts_once_and_only_then(tmp_path, monkeypatch
     monkeypatch.setattr("zett_agent.client.create_agent", fake_create_agent)
     monkeypatch.setattr(runtime_module.os, "chdir", lambda path: None)
 
-    runtime = runtime_module.ZettCodeRuntime.preview(_config_with(tmp_path))
+    runtime = runtime_module.ZettCodeEngine.preview(_config_with(tmp_path))
 
     assert runtime.client is None and runtime.model is None
     # Compaction is armed from the preview: the budget belongs to the model, so
@@ -459,7 +459,7 @@ async def test_the_harness_switches_choose_the_tools_the_model_may_use(tmp_path,
     cases = ((True, False), (False, True))
     for subagent, todowrite in cases:
         config = _config_with(tmp_path, subagent_enabled=subagent, todowrite_enabled=todowrite)
-        await runtime_module.ZettCodeRuntime.preview(config).start()
+        await runtime_module.ZettCodeEngine.preview(config).start()
 
     for (subagent, todowrite), extensions in zip(cases, given, strict=True):
         kinds = [type(extension) for extension in extensions]
@@ -503,7 +503,7 @@ async def test_the_warm_up_never_blocks_the_event_loop(tmp_path, monkeypatch):
     monkeypatch.setattr(pipeline_module, "importlib", SlowImports())
     monkeypatch.setattr("zett_agent.client.create_agent", fake_create_agent)
     monkeypatch.setattr(runtime_module.os, "chdir", lambda path: None)
-    runtime = runtime_module.ZettCodeRuntime.preview(_config_with(tmp_path))
+    runtime = runtime_module.ZettCodeEngine.preview(_config_with(tmp_path))
 
     gaps: list[float] = []
     state = {"last": time.perf_counter()}
@@ -687,7 +687,7 @@ async def test_runtime_switches_models_and_closes_every_provider(tmp_path, monke
         "existing-session", "old-request", UserMessage(content="earlier")
     )
 
-    runtime = await runtime_module.ZettCodeRuntime.create(config)
+    runtime = await runtime_module.ZettCodeEngine.create(config)
     assert runtime.session_id != "existing-session"
     assert captured["config"].session_id == runtime.session_id
     assert runtime.active_model is first
@@ -752,7 +752,7 @@ async def test_the_runtime_shares_one_permission_policy_with_the_layers_that_enf
     monkeypatch.setattr(runtime_module.os, "chdir", lambda path: None)
     monkeypatch.setattr("zettcode.config.DEFAULT_MCP_CONFIG", tmp_path / "absent-mcp.json")
 
-    runtime = await runtime_module.ZettCodeRuntime.create(_config_with(tmp_path))
+    runtime = await runtime_module.ZettCodeEngine.create(_config_with(tmp_path))
     extensions = captured["extensions"]
     deny = next(item for item in extensions if isinstance(item, ShellDenyExtension))
     approval = next(item for item in extensions if isinstance(item, ShellApprovalExtension))
@@ -785,10 +785,8 @@ def test_the_configured_allow_all_mode_starts_a_run_at_full(tmp_path, monkeypatc
 
     monkeypatch.chdir(tmp_path)
 
-    default = runtime_module.ZettCodeRuntime.preview(_config_with(tmp_path))
-    allowing = runtime_module.ZettCodeRuntime.preview(
-        _config_with(tmp_path, shell_approval=ShellApprovalMode.ALLOW_ALL)
-    )
+    default = runtime_module.ZettCodeEngine.preview(_config_with(tmp_path))
+    allowing = runtime_module.ZettCodeEngine.preview(_config_with(tmp_path, shell_approval=ShellApprovalMode.ALLOW_ALL))
 
     assert default.permission is Permission.ASK
     assert allowing.permission is Permission.FULL

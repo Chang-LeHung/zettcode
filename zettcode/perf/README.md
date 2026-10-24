@@ -7,7 +7,7 @@ after every change instead of trusted.
 
 ## How it works
 
-- `harness.py` builds a real shell from `ZettCodeRuntime.preview(config)` — the
+- `harness.py` builds a real shell from `ZettCodeEngine.preview(config)` — the
   same seam the shell uses to paint before the provider exists — against a
   throwaway workspace and store under the system temp directory. Nothing is
   written into the checkout or `~/.zettcode`.
