@@ -63,14 +63,18 @@ can show the pending request again.
 ## Sessions
 
 ```ts
-const sessions = await client.listSessions(20);
-await client.openSession(sessions[0].id);
-await client.renameSession("Pagination work");
-const forked = await client.forkSession();
-const page = await client.exportSession();          // standalone HTML
-const messages = await client.history();
-const answer = await client.ask("what changed?");   // beside the conversation, not in it
+const sessions = await client.sessions.list({ limit: 20 });
+await client.sessions.open(sessions[0].id);
+await client.session.rename("Pagination work");
+const forked = await client.session.fork();
+const page = await client.session.export();         // standalone HTML
+const messages = await client.session.history();
+const answer = await client.session.ask("what changed?");   // beside the conversation, not in it
 ```
+
+The names are the Python SDK's, in camelCase, and `client.sessions` / `client.session` are grouped the way
+`zettcode.sdk` groups them. Where the two differ it is because TypeScript talks to a server: `session.info()` reads
+what Python reads as properties, and `sessions.open(id)` returns the session's data rather than a handle.
 
 ## Models and settings
 
@@ -85,16 +89,16 @@ await client.updateSettings({ model: "fast", effort: "low", permission: "safe" }
 const ledger = await client.usageLedger();          // by session, model and day
 const rows = await client.sessionStats();           // one row of the terminal's /resume
 const files = await client.mentions("cli");         // the @ completion menu
-const checks = await client.doctor();               // which configured models answer
-await client.setSelfCompaction(true);               // or false, or null for the configuration default
+const checks = await client.checkModels();          // which configured models answer
+await client.useSelfCompaction(true);               // or false, or null for the configuration default
 ```
 
 ## Continuing an interrupted request
 
 ```ts
-const state = await client.resumable();
+const state = await client.session.resumable();
 if (state.resumable) {
-  const run = client.resume({ approvals: { mode: "deny" } });
+  const run = client.session.resume({ approvals: { mode: "deny" } });
   console.log((await run.result).text);
 }
 ```

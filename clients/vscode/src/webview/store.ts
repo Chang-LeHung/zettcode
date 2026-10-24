@@ -2,7 +2,7 @@
 
 import { reactive } from "vue";
 
-import type { Mention } from "../../../typescript/src/types.js";
+import type { MentionInfo } from "../../../typescript/src/types.js";
 import type { DiffRow } from "../core/diff.js";
 import type { ChangeSummary } from "../core/ledger.js";
 import { withPaths } from "../core/paths.js";
@@ -53,7 +53,7 @@ export const state = reactive({
   toasts: [] as Toast[],
   changes: {} as Record<string, ChangeSummary[]>,
   diffs: {} as Record<string, DiffPayload>,
-  mentions: null as { query: string; items: Mention[] } | null,
+  mentions: null as { query: string; items: MentionInfo[] } | null,
   /** What each `@token` the host has listed is (`file`, `skill`, …), so a typed one is coloured for what it is. */
   mentionKinds: {} as Record<string, string>,
   collapsed: new Set<string>(),

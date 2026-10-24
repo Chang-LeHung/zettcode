@@ -72,7 +72,7 @@ await client.prompt("what is wrong here?", {
   images: [{ data: base64Png, mediaType: "image/png" }],
 });
 
-const messages = await client.history({ full: true });
+const messages = await client.session.history({ full: true });
 for (const message of messages) {
   for (const picture of message.pictures ?? []) {
     show(`data:${picture.media_type};base64,${picture.data}`);
@@ -105,18 +105,22 @@ await client.updateSettings({ compact_percent: 70 });            // 窗口用到
 
 ## 其余的 API
 
+方法名就是 Python SDK 的名字、改成 camelCase，分组也一样（`client.sessions`、`client.session`）。两者不同的地方是因为 TypeScript 是在和服务器通信：
+`session.info()` 读的是 Python 里作为属性的那些值，`sessions.open(id)` 返回会话的数据而不是句柄。
+
 | 客户端方法 | 端点 |
 | --- | --- |
 | `health()` | `GET /health` |
 | `models()`、`addModel(entry)`、`updateModel(name, changes)`、`removeModel(name)` | `/models`、`/models/{name}` |
-| `settings()`、`updateSettings(change)`、`plugins()` | `/settings`、`/plugins` |
-| `listSessions(limit)`、`createSession(title?)`、`currentSession()` | `/sessions`、`/sessions/current` |
-| `openSession(id)`、`renameSession(title)`、`nameSession()`、`forkSession()` | `/sessions/...` |
-| `compactSession()`、`context()`、`history({full})`、`exportSession()`、`ask(question)`、`askStream(question)` | `/sessions/current/...` |
+| `settings()`、`updateSettings(change)`、`useModel(name)`、`useEffort(name)`、`usePermission(name)`、`useHarness(on)`、`plugins()` | `/settings`、`/plugins` |
+| `sessions.list({limit})`、`sessions.new(title?)`、`sessions.open(id)`、`sessions.latest()`、`session.info()` | `/sessions`、`/sessions/current` |
+| `session.rename(title)`、`session.nameIt()`、`session.fork()` | `/sessions/current/...` |
+| `session.compact()`、`session.context()`、`session.history({full})`、`session.export()`、`session.ask(question)`、`session.askStream(question)` | `/sessions/current/...` |
 | `usage()`、`usageLedger()`、`sessionStats(ids?)` | `/usage`、`/usage/ledger`、`/sessions/.../stats` |
-| `selfCompaction()`、`setSelfCompaction(choice)`、`mentions(query)`、`doctor(timeout)` | `/sessions/current/self-compaction`、`/mentions`、`/doctor` |
-| `prompt(text, options)`、`resume(options)` | `POST /prompts`、`POST /runs/resume` |
-| `runState()`、`resumable()`、`approve()`、`answer()`、`steer()`、`cancelRun()` | `/runs/...` |
+| `selfCompaction()`、`useSelfCompaction(choice)`、`mentions(query, {limit})`、`checkModels({timeout})` | `/sessions/current/self-compaction`、`/mentions`、`/doctor` |
+| `prompt(text, options)` 或 `session.prompt(...)`、`session.resume(options)` | `POST /prompts`、`POST /runs/resume` |
+| `messages()`、`relay(id)`、`send(to, text)` | `/messages`、`/sessions/current/send` |
+| `runState()`、`session.resumable()`、`approve()`、`answer()`、`session.steer()`、`cancelRun()` | `/runs/...` |
 
 ## 错误
 

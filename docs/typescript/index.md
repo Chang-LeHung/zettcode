@@ -77,7 +77,7 @@ await client.prompt("what is wrong here?", {
   images: [{ data: base64Png, mediaType: "image/png" }],
 });
 
-const messages = await client.history({ full: true });
+const messages = await client.session.history({ full: true });
 for (const message of messages) {
   for (const picture of message.pictures ?? []) {
     show(`data:${picture.media_type};base64,${picture.data}`);
@@ -110,18 +110,23 @@ could not be written to the file comes back in `unsaved`, and holds for this run
 
 ## The rest of the API
 
+The names are the Python SDK's in camelCase, grouped the same way (`client.sessions`, `client.session`). Where the two
+differ it is because TypeScript talks to a server: `session.info()` reads what Python reads as properties, and
+`sessions.open(id)` returns the session's data rather than a handle.
+
 | Client | Endpoint |
 | --- | --- |
 | `health()` | `GET /health` |
 | `models()`, `addModel(entry)`, `updateModel(name, changes)`, `removeModel(name)` | `/models`, `/models/{name}` |
-| `settings()`, `updateSettings(change)`, `plugins()` | `/settings`, `/plugins` |
-| `listSessions(limit)`, `createSession(title?)`, `currentSession()` | `/sessions`, `/sessions/current` |
-| `openSession(id)`, `renameSession(title)`, `nameSession()`, `forkSession()` | `/sessions/...` |
-| `compactSession()`, `context()`, `history({full})`, `exportSession()`, `ask(question)`, `askStream(question)` | `/sessions/current/...` |
+| `settings()`, `updateSettings(change)`, `useModel(name)`, `useEffort(name)`, `usePermission(name)`, `useHarness(on)`, `plugins()` | `/settings`, `/plugins` |
+| `sessions.list({limit})`, `sessions.new(title?)`, `sessions.open(id)`, `sessions.latest()`, `session.info()` | `/sessions`, `/sessions/current` |
+| `session.rename(title)`, `session.nameIt()`, `session.fork()` | `/sessions/current/...` |
+| `session.compact()`, `session.context()`, `session.history({full})`, `session.export()`, `session.ask(question)`, `session.askStream(question)` | `/sessions/current/...` |
 | `usage()`, `usageLedger()`, `sessionStats(ids?)` | `/usage`, `/usage/ledger`, `/sessions/.../stats` |
-| `selfCompaction()`, `setSelfCompaction(choice)`, `mentions(query)`, `doctor(timeout)` | `/sessions/current/self-compaction`, `/mentions`, `/doctor` |
-| `prompt(text, options)`, `resume(options)` | `POST /prompts`, `POST /runs/resume` |
-| `runState()`, `resumable()`, `approve()`, `answer()`, `steer()`, `cancelRun()` | `/runs/...` |
+| `selfCompaction()`, `useSelfCompaction(choice)`, `mentions(query, {limit})`, `checkModels({timeout})` | `/sessions/current/self-compaction`, `/mentions`, `/doctor` |
+| `prompt(text, options)` or `session.prompt(...)`, `session.resume(options)` | `POST /prompts`, `POST /runs/resume` |
+| `messages()`, `relay(id)`, `send(to, text)` | `/messages`, `/sessions/current/send` |
+| `runState()`, `session.resumable()`, `approve()`, `answer()`, `session.steer()`, `cancelRun()` | `/runs/...` |
 
 ## Errors
 

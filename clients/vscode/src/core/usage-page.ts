@@ -1,6 +1,6 @@
 /** The HTML of the usage, model-check and plugin pages. No editor in here, so the tests can read it as a document. */
 
-import type { ModelCheck, Plugins, SessionTotals, Totals, WorkspaceUsage } from "../../../typescript/src/types.js";
+import type { ModelCheck, PluginReport, SessionTotals, Totals, WorkspaceUsage } from "../../../typescript/src/types.js";
 import { calendar, dayKey, dayTitle, rootScale, share, streaks } from "./usage.js";
 import { escapeHtml, formatTokens, sessionLabel } from "./format.js";
 
@@ -260,7 +260,7 @@ export function doctorPage(checks: ModelCheck[]): Page {
 }
 
 /** The plugins the server started, and the ones that did not. */
-export function pluginsPage(plugins: Plugins): Page {
+export function pluginsPage(plugins: PluginReport): Page {
   const list = (items: string[], failed: boolean): string =>
     items.length === 0
       ? `<div class="empty">${failed ? "No plugin failed." : "No plugin was loaded."}</div>`

@@ -1,6 +1,6 @@
 /** The TypeScript client for `zettcode-server`. */
 
-export { ZettCodeClient, Run, failure, wireOptions } from "./client.js";
+export { ZettCodeClient, Run, Session, Sessions, failure, wireOptions } from "./client.js";
 export type { ClientOptions } from "./client.js";
 export { ZettCodeError, RunCancelledError, RunFailedError } from "./errors.js";
 export { parseBlock, sseFrames } from "./sse.js";
@@ -15,7 +15,7 @@ export type {
   DayTotals,
   Health,
   ImageInput,
-  Mention,
+  MentionInfo,
   Message,
   ModelCheck,
   ModelInfo,
@@ -24,10 +24,10 @@ export type {
   ModelUpdate,
   PendingRequest,
   Permission,
-  Plugins,
+  PluginReport,
   PromptOptions,
   QuestionMode,
-  Resumable,
+  ResumeInfo,
   RunEvent,
   RunOptions,
   RunResult,
