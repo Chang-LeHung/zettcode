@@ -478,8 +478,8 @@ def _registry(*names: str) -> MentionRegistry:
 
 
 def test_a_draft_that_names_a_session_reads_with_the_name_and_not_the_at_sign():
-    from zettcode.app.agent.agent.prompt import MentionPart, mention_hint, mention_parts, plain_text
-    from zettcode.app.agent.agent.turns import TurnsMixin
+    from zettcode.engine.agent.prompt import MentionPart, mention_hint, mention_parts, plain_text
+    from zettcode.engine.agent.turns import TurnsMixin
 
     registry = _registry("web", "api")
     parts = ("tell ", MentionPart("@web"), " and ", MentionPart("@api"), " to rerun")
@@ -497,7 +497,7 @@ def test_a_draft_that_names_a_session_reads_with_the_name_and_not_the_at_sign():
 
 
 def test_only_a_session_that_is_running_is_replaced():
-    from zettcode.app.agent.agent.prompt import MentionPart, mention_parts
+    from zettcode.engine.agent.prompt import MentionPart, mention_parts
 
     registry = _registry("web")
     parts = ("see ", MentionPart("@README.md"), " and ", MentionPart("@gone"), " for ", MentionPart("@web"))
@@ -513,8 +513,8 @@ def test_only_a_session_that_is_running_is_replaced():
 
 
 def test_a_draft_with_no_session_in_it_is_sent_exactly_as_typed():
-    from zettcode.app.agent.agent.prompt import MentionPart, mention_hint, mention_parts
-    from zettcode.app.agent.agent.turns import TurnsMixin
+    from zettcode.engine.agent.prompt import MentionPart, mention_hint, mention_parts
+    from zettcode.engine.agent.turns import TurnsMixin
 
     registry = _registry("web")
     parts = ("read ", MentionPart("@notes.md"))
@@ -527,7 +527,7 @@ def test_a_draft_with_no_session_in_it_is_sent_exactly_as_typed():
 
 
 def test_a_registry_with_no_provider_leaves_the_draft_alone():
-    from zettcode.app.agent.agent.prompt import MentionPart, mention_parts
+    from zettcode.engine.agent.prompt import MentionPart, mention_parts
 
     parts = ("hi ", MentionPart("@web"))
 
@@ -535,8 +535,8 @@ def test_a_registry_with_no_provider_leaves_the_draft_alone():
 
 
 def test_a_picture_in_the_draft_does_not_stop_the_name_being_replaced():
-    from zettcode.app.agent.agent.prompt import MentionPart, mention_hint, mention_parts
-    from zettcode.app.agent.agent.turns import TurnsMixin
+    from zettcode.engine.agent.prompt import MentionPart, mention_hint, mention_parts
+    from zettcode.engine.agent.turns import TurnsMixin
 
     registry = _registry("web")
     parts = ("ask ", MentionPart("@web"), " about ", (b"png", "image/png"))
@@ -551,7 +551,7 @@ def test_a_picture_in_the_draft_does_not_stop_the_name_being_replaced():
 
 def test_the_first_provider_that_knows_a_name_decides_whether_it_is_replaced():
     from test_mentions import _TextMentions
-    from zettcode.app.agent.agent.prompt import MentionPart, mention_parts
+    from zettcode.engine.agent.prompt import MentionPart, mention_parts
 
     registry = MentionRegistry([_TextMentions("file", {"web": "a file"}), SessionMentions(lambda: [peer("web")])])
 
@@ -560,7 +560,7 @@ def test_the_first_provider_that_knows_a_name_decides_whether_it_is_replaced():
 
 def test_a_session_is_replaced_even_when_a_provider_that_does_not_know_the_name_comes_first():
     from test_mentions import _TextMentions
-    from zettcode.app.agent.agent.prompt import MentionPart, mention_parts
+    from zettcode.engine.agent.prompt import MentionPart, mention_parts
 
     registry = MentionRegistry([_TextMentions("file", {"README.md": "a file"}), SessionMentions(lambda: [peer("web")])])
 

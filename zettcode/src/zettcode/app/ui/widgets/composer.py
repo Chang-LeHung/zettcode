@@ -12,7 +12,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Sequence
 
-from zettcode.app.agent.agent.prompt import MentionPart, PromptPart, plain_text_part
+from zettcode.engine.agent.prompt import MentionPart, PromptPart, plain_text_part
 from zettcode.engine.dialogue.mentions import MENTION
 from zettcode.tui import Canvas, KeyEvent, Point, Span, Style, TextArea
 from zettcode.tui.core.events import AnyEvent

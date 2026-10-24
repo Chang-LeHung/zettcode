@@ -14,7 +14,7 @@ from zett_agent.messages import SystemMessage, UserMessage
 
 from test_zettcode_app import build_app
 from zettcode._compat import tomllib
-from zettcode.app.agent.agent import ZettCodeAgent
+from zettcode.app.agent.agent import TerminalAgent
 from zettcode.config import ModelConfig, ZettCodeConfig, load_config
 from zettcode.config_edit import ConfigEditError, set_self_compaction
 from zettcode.engine.core import ZettCodeEngine
@@ -34,9 +34,9 @@ def _config(tmp_path: Path, **changes) -> ZettCodeConfig:
     )
 
 
-def _agent(tmp_path: Path, monkeypatch, **changes) -> ZettCodeAgent:
+def _agent(tmp_path: Path, monkeypatch, **changes) -> TerminalAgent:
     monkeypatch.setattr("zettcode.engine.core.os.chdir", lambda path: None)
-    return ZettCodeAgent(ZettCodeEngine.preview(_config(tmp_path, **changes)))
+    return TerminalAgent(ZettCodeEngine.preview(_config(tmp_path, **changes)))
 
 
 @pytest.fixture
@@ -231,7 +231,7 @@ async def test_a_failed_config_write_leaves_the_running_default_alone(tmp_path: 
     agent = _agent(tmp_path, monkeypatch)
     try:
         monkeypatch.setattr(
-            "zettcode.app.agent.agent.settings.write_text_atomically",
+            "zettcode.engine.agent.settings.write_text_atomically",
             lambda path, text: (_ for _ in ()).throw(OSError("full")),
         )
 

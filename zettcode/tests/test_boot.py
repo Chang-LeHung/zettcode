@@ -44,11 +44,11 @@ def _shell(tmp_path: Path, monkeypatch) -> TuiApp:
     """Build the real shell around a throwaway workspace, without a provider."""
     path = _config(tmp_path)
     monkeypatch.setenv("ZETTCODE_CONFIG", str(path))
-    from zettcode.app.agent.agent import ZettCodeAgent
+    from zettcode.app.agent.agent import TerminalAgent
     from zettcode.app.ui import ZettCodeApp
     from zettcode.cli import resolve_config
 
-    app = ZettCodeApp(ZettCodeAgent.preview(resolve_config(["-w", str(tmp_path)])), auto_theme=False)
+    app = ZettCodeApp(TerminalAgent.preview(resolve_config(["-w", str(tmp_path)])), auto_theme=False)
     return app.app
 
 

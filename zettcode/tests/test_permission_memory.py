@@ -174,10 +174,10 @@ def test_the_command_takes_the_run_level_back_to_the_session(tmp_path: Path, mon
 
 async def test_the_permission_command_remembers_it_and_resuming_restores_it(tmp_path: Path, monkeypatch):
     """Through the agent the shell drives, the way `/permission` does."""
-    from zettcode.app.agent.agent import ZettCodeAgent
+    from zettcode.app.agent.agent import TerminalAgent
 
     runtime = _runtime(tmp_path, monkeypatch)
-    agent = ZettCodeAgent(runtime)
+    agent = TerminalAgent(runtime)
     session = runtime.session_id
     await _stored(runtime, session)
 

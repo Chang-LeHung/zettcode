@@ -51,9 +51,9 @@ from .types import (
 )
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only; the agent is imported when a client is made
-    from ..app.agent.agent import ZettCodeAgent
     from ..broker.client import Delivered, Receipt
     from ..config import ModelConfig, ZettCodeConfig
+    from ..engine.agent import ZettCodeAgent
     from ..engine.dialogue.ask import AskUserQuestion
     from ..engine.dialogue.mentions import MentionRegistry
     from ..engine.messenger import Messenger
@@ -302,7 +302,7 @@ class Client:
         resolved = build_config(workspace, config, config_path, models, settings)
         self._register(resolved.workspace)
         # Imported here, not at the top of the module: importing the SDK costs nothing until a client is made.
-        from ..app.agent.agent import ZettCodeAgent
+        from ..engine.agent import ZettCodeAgent
         from ..engine.core import ZettCodeEngine
 
         try:

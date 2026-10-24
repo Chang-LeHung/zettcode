@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 from zett_agent.model import ReasoningEffort
 
-from zettcode.app.agent.agent import ZettCodeAgent
+from zettcode.app.agent.agent import TerminalAgent
 from zettcode.config import ModelConfig, ZettCodeConfig, load_config
 from zettcode.engine.core import ZettCodeEngine
 
@@ -94,7 +94,7 @@ def test_a_bad_list_is_refused_and_names_the_entry(tmp_path: Path, value, messag
 # -- the running session -----------------------------------------------------------------------------------
 
 
-def _agent(tmp_path: Path, monkeypatch, *models: ModelConfig, effort: ReasoningEffort = MEDIUM) -> ZettCodeAgent:
+def _agent(tmp_path: Path, monkeypatch, *models: ModelConfig, effort: ReasoningEffort = MEDIUM) -> TerminalAgent:
     monkeypatch.setattr("zettcode.engine.core.os.chdir", lambda path: None)
     config = ZettCodeConfig(
         workspace=tmp_path,
@@ -103,7 +103,7 @@ def _agent(tmp_path: Path, monkeypatch, *models: ModelConfig, effort: ReasoningE
         reasoning_effort=effort,
         mcp_config=tmp_path / "absent-mcp.json",
     )
-    return ZettCodeAgent(ZettCodeEngine.preview(config))
+    return TerminalAgent(ZettCodeEngine.preview(config))
 
 
 async def test_a_session_starts_on_a_level_its_model_takes(tmp_path: Path, monkeypatch):

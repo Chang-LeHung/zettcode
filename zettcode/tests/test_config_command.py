@@ -13,7 +13,7 @@ import pytest
 
 from plugin_helpers import runtime_inputs
 from zettcode._compat import tomllib
-from zettcode.app.agent.agent import ZettCodeAgent
+from zettcode.app.agent.agent import TerminalAgent
 from zettcode.app.ui import ZettCodeApp
 from zettcode.app.ui.widgets import FormPage, InputPage, ModelSettingsPage
 from zettcode.app.ui.widgets.input_page import MASK
@@ -144,7 +144,7 @@ def shell(tmp_path, monkeypatch):
             mcp_enabled=False,
             **overrides,
         )
-        app = ZettCodeApp(ZettCodeAgent(ZettCodeEngine.preview(config)))
+        app = ZettCodeApp(TerminalAgent(ZettCodeEngine.preview(config)))
         app.app.resize(110, 30)
         app.app.mount()
         return Fixture(app, path, Harness(app=app.app))

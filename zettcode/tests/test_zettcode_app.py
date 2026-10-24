@@ -34,7 +34,7 @@ from zett_agent.model import ModelRequest, ModelUsage, ReasoningEffort, ToolDefi
 from zettcode import __version__
 from zettcode._compat import ExceptionGroup
 from zettcode.app import Transcript, TranscriptSource, TranscriptView, ZettCodeApp
-from zettcode.app.agent.agent import ZettCodeAgent
+from zettcode.app.agent.agent import TerminalAgent
 from zettcode.app.agent.conversation.effort_gauge import EFFORT_SECONDS
 from zettcode.app.agent.conversation.entries import EntryStatus
 from zettcode.app.agent.conversation.projection import TranscriptProjector
@@ -490,7 +490,7 @@ def build_app(
     plugins: Plugins | None = None,
 ) -> ZettCodeApp:
     app = ZettCodeApp(
-        ZettCodeAgent(FakeRuntime(FakeClient(events, block=block, hold=hold), plugins=plugins or rows_and_commands()))
+        TerminalAgent(FakeRuntime(FakeClient(events, block=block, hold=hold), plugins=plugins or rows_and_commands()))
     )
     app.app.resize(60, 14)
     app.app.mount()
@@ -658,7 +658,7 @@ def test_welcome_half_blocks_preserve_every_brand_pixel_and_transparent_margin()
 
 async def test_agent_stream_uses_selected_session_and_model():
     runtime = FakeRuntime(FakeClient())
-    agent = ZettCodeAgent(runtime)
+    agent = TerminalAgent(runtime)
     agent.use_session("session-0003")
     agent.use_model("GPT-4o")
 
@@ -1559,7 +1559,7 @@ async def test_a_steering_message_is_echoed_when_the_agent_adopts_it():
 
 async def test_steering_emits_the_external_event_the_agent_listens_for():
     runtime = FakeRuntime(FakeClient())
-    agent = ZettCodeAgent(runtime)
+    agent = TerminalAgent(runtime)
 
     assert agent.steer("   ") is False
     assert agent.steer("stop and explain") is True
@@ -4850,7 +4850,7 @@ async def test_the_copy_listener_survives_the_swap_into_the_boot_frame(tmp_path)
         skills_enabled=False,
         mcp_enabled=False,
     )
-    app = ZettCodeApp(ZettCodeAgent.preview(config), auto_theme=False)
+    app = ZettCodeApp(TerminalAgent.preview(config), auto_theme=False)
     boot = TuiApp(boot_tree(tmp_path.resolve()), theme=DARK, auto_theme=True, width=100, height=30)
     boot.mount()
     app.adopt(boot)
@@ -8401,7 +8401,7 @@ async def test_a_lone_slash_given_to_submit_is_a_message_not_an_unknown_command(
 
 def _app_with_tips(enabled: bool) -> tuple[ZettCodeApp, list[float]]:
     runtime = FakeRuntime(FakeClient(), plugins=rows_and_commands(), config=FakeConfig(tips=enabled))
-    app = ZettCodeApp(ZettCodeAgent(runtime))
+    app = ZettCodeApp(TerminalAgent(runtime))
     app.app.resize(80, 20)
     app.app.mount()
     now = [1000.0]

@@ -14,9 +14,9 @@ from zettcode.engine.dialogue.ask import AskUserQuestion, declined_answer, quest
 from zettcode.engine.extensions.mcp_notice import MCP_NOTICE_EVENT_NAME, notice_from
 from zettcode.engine.extensions.usage import USAGE_EVENT_NAME
 from zettcode.engine.relay import Relayed
+from zettcode.engine.server_tools import ServerToolRun, describe_output
 
 from .entries import EntryStatus
-from .server_tools import ServerToolRun, describe_output
 from .stops import stop_text
 from .transcript import Transcript
 

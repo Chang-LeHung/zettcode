@@ -398,7 +398,7 @@ def test_a_reader_with_no_config_file_is_told_once_that_the_place_was_not_saved(
 
 def test_the_place_a_drag_left_is_the_place_the_next_start_opens_in(tmp_path, monkeypatch):
     """End to end, on a real file: drag, let the file be written, load it again, build another shell."""
-    from zettcode.app.agent.agent import ZettCodeAgent
+    from zettcode.app.agent.agent import TerminalAgent
     from zettcode.app.ui import ZettCodeApp
     from zettcode.config import load_config
     from zettcode.engine.core import ZettCodeEngine
@@ -419,7 +419,7 @@ def test_the_place_a_drag_left_is_the_place_the_next_start_opens_in(tmp_path, mo
             skills_enabled=False,
             mcp_enabled=False,
         )
-        shell_app = ZettCodeApp(ZettCodeAgent(ZettCodeEngine.preview(config)))
+        shell_app = ZettCodeApp(TerminalAgent(ZettCodeEngine.preview(config)))
         shell_app.app.resize(120, 40)
         shell_app.app.mount()
         from zettcode.tui.testing import Harness

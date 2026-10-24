@@ -12,15 +12,15 @@ __version__ = "0.1.10"
 #: Where each public name lives; read by :func:`__getattr__` on first use.
 _EXPORTS = {
     "ModelConfig": ".config",
-    "ZettCodeAgent": ".app.agent.agent",
+    "ZettCodeAgent": ".engine.agent",
     "ZettCodeConfig": ".config",
     "ZettCodeEngine": ".engine.core",
 }
 
 
 if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
-    from .app.agent.agent import ZettCodeAgent
     from .config import ModelConfig, ZettCodeConfig
+    from .engine.agent import ZettCodeAgent
     from .engine.core import ZettCodeEngine
 
 

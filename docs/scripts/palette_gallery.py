@@ -35,7 +35,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from palette_data import NOTES, Palette, palettes  # noqa: E402
 
-from zettcode.app.agent.agent import ZettCodeAgent  # noqa: E402
+from zettcode.app.agent.agent import TerminalAgent  # noqa: E402
 from zettcode.app.agent.conversation.entries import EntryStatus  # noqa: E402
 from zettcode.app.ui import app as app_module  # noqa: E402
 from zettcode.app.ui.app import ZettCodeApp  # noqa: E402
@@ -109,7 +109,7 @@ class Env:
 
     def app(self, theme: Theme, width: int = WIDTH, height: int = 40) -> ZettCodeApp:
         """A fresh shell, painted in ``theme``, at a fixed size, with the clock the animations read held still."""
-        shell = ZettCodeApp(ZettCodeAgent(self.runtime), theme=theme, auto_theme=False)
+        shell = ZettCodeApp(TerminalAgent(self.runtime), theme=theme, auto_theme=False)
         shell.transcript.clock = lambda: self.now
         shell.app.resize(width, height)
         shell.app.mount()

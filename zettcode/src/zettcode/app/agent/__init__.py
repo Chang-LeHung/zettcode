@@ -10,7 +10,7 @@ _EXPORTS = {
     "Entry": ".conversation.entries",
     "Transcript": ".conversation.transcript",
     "TranscriptProjector": ".conversation.projection",
-    "ZettCodeAgent": ".agent",
+    "TerminalAgent": ".agent",
     "ZettCodeEngine": "zettcode.engine.core",
 }
 
@@ -18,7 +18,7 @@ _EXPORTS = {
 if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
     from zettcode.engine.core import ZettCodeEngine
 
-    from .agent import ZettCodeAgent
+    from .agent import TerminalAgent
     from .conversation.entries import Entry
     from .conversation.projection import TranscriptProjector
     from .conversation.transcript import Transcript
@@ -44,4 +44,4 @@ def __dir__() -> list[str]:
     return sorted(__all__)
 
 
-__all__ = ["Entry", "Transcript", "TranscriptProjector", "ZettCodeAgent", "ZettCodeEngine"]
+__all__ = ["Entry", "Transcript", "TranscriptProjector", "TerminalAgent", "ZettCodeEngine"]

@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 from zett_agent.messages import AssistantMessage, UserMessage
 
-from zettcode.app.agent.agent import ZettCodeAgent
+from zettcode.app.agent.agent import TerminalAgent
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine import core as runtime_module
 from zettcode.engine.storage import LOCK_FILE, LOCKED_MESSAGE, STORE_FILE, SessionLocked, SessionStore
@@ -153,7 +153,7 @@ async def locked_agent(pair):
     first, second = pair
     await _stored(first, first.session_id)
     second.use_session(first.session_id)
-    return ZettCodeAgent(second), ZettCodeAgent(first)
+    return TerminalAgent(second), TerminalAgent(first)
 
 
 def test_the_agent_says_whether_its_session_is_the_others(locked_agent):
@@ -282,7 +282,7 @@ async def test_a_session_open_in_a_real_other_process_is_locked_here_until_that_
     runtime = _runtime(tmp_path, monkeypatch)
     try:
         runtime.use_session(A_ID)
-        agent = ZettCodeAgent(runtime)
+        agent = TerminalAgent(runtime)
 
         assert agent.session_locked is True
         with pytest.raises(SessionLocked):

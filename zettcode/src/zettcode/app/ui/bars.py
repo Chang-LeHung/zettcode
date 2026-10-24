@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+from zettcode.engine.agent.sessions import UNTITLED_SESSION
 from zettcode.engine.permission import Permission
 from zettcode.plugins import (
     ActivityState,
@@ -23,7 +24,6 @@ from zettcode.statusline import Row
 from zettcode.tui import HEADER, SEPARATOR, Span, Style, TextLine
 from zettcode.tui.render import blend, display_width
 
-from ..agent.agent.sessions import UNTITLED_SESSION
 from ..agent.conversation.shimmer import ShimmerFrame
 from .shell import ShellState
 from .widgets.effort_page import heat_colour

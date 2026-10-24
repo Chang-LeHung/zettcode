@@ -8,12 +8,12 @@ from pathlib import Path
 import pytest
 from zett_agent.messages import UserMessage
 
-from zettcode.app.agent.agent import ZettCodeAgent
-from zettcode.app.agent.agent.prompt import MentionPart, mention_hint
+from zettcode.app.agent.agent import TerminalAgent
 from zettcode.app.agent.conversation.replay import replay
 from zettcode.app.ui.widgets import Composer
 from zettcode.app.ui.widgets.completer import CommandCompleter
 from zettcode.config import ModelConfig, ZettCodeConfig
+from zettcode.engine.agent.prompt import MentionPart, mention_hint
 from zettcode.engine.dialogue.mentions import (
     LISTING_SECONDS,
     MAX_CANDIDATES,
@@ -142,17 +142,17 @@ def test_accepting_a_completion_replaces_only_the_token_under_the_cursor():
 
 
 def test_request_appends_the_hint_and_keeps_the_typed_text():
-    resolved = ZettCodeAgent.request(("typed @skill",), hint='Use the "skill" skill.')
+    resolved = TerminalAgent.request(("typed @skill",), hint='Use the "skill" skill.')
 
     assert isinstance(resolved, UserMessage)
     assert resolved.text == 'typed @skill\n\nUse the "skill" skill.'
     assert resolved.attributes["prompt"] == "typed @skill"
     # A turn with nothing to append stays the plain text it was.
-    assert ZettCodeAgent.request(("typed",)) == "typed"
+    assert TerminalAgent.request(("typed",)) == "typed"
 
 
 def test_request_appends_the_hint_to_a_turn_that_also_carries_an_image():
-    resolved = ZettCodeAgent.request((MentionPart(token="@note"), (b"png", "image/png")), hint="Use the note.")
+    resolved = TerminalAgent.request((MentionPart(token="@note"), (b"png", "image/png")), hint="Use the note.")
 
     assert isinstance(resolved, UserMessage)
     assert [type(part).__name__ for part in resolved.parts] == ["TextContent", "ImageContent", "TextContent"]
@@ -178,7 +178,7 @@ def test_request_appends_the_hint_to_a_turn_that_also_carries_an_image():
 )
 def test_the_model_text_keeps_the_draft_and_appends_each_reference(draft: str, expected: str):
     parts = _parts(draft)
-    resolved = ZettCodeAgent.request(parts, hint=mention_hint(parts, _registry()))
+    resolved = TerminalAgent.request(parts, hint=mention_hint(parts, _registry()))
 
     assert (resolved if isinstance(resolved, str) else resolved.text) == expected
     if isinstance(resolved, UserMessage):
@@ -189,7 +189,7 @@ def test_the_model_text_keeps_the_draft_and_appends_each_reference(draft: str, e
 def test_a_draft_with_no_provider_is_sent_as_written():
     parts = _parts("@note 看看")
 
-    resolved = ZettCodeAgent.request(parts, hint=mention_hint(parts, MentionRegistry(())))
+    resolved = TerminalAgent.request(parts, hint=mention_hint(parts, MentionRegistry(())))
 
     assert resolved == "@note 看看"
 
@@ -197,7 +197,7 @@ def test_a_draft_with_no_provider_is_sent_as_written():
 def test_an_image_turn_appends_the_hint_as_one_more_text_part():
     parts = _parts("看看 @note", image=True)
 
-    resolved = ZettCodeAgent.request(parts, hint=mention_hint(parts, _registry()))
+    resolved = TerminalAgent.request(parts, hint=mention_hint(parts, _registry()))
 
     assert isinstance(resolved, UserMessage)
     assert [type(part).__name__ for part in resolved.parts] == [
@@ -214,7 +214,7 @@ def test_an_image_turn_appends_the_hint_as_one_more_text_part():
 def test_an_image_turn_without_a_reference_carries_no_hint():
     parts = _parts("看看", image=True)
 
-    resolved = ZettCodeAgent.request(parts, hint=mention_hint(parts, _registry()))
+    resolved = TerminalAgent.request(parts, hint=mention_hint(parts, _registry()))
 
     assert isinstance(resolved, UserMessage)
     assert [type(part).__name__ for part in resolved.parts] == ["TextContent", "ImageContent"]
@@ -224,7 +224,7 @@ def test_an_image_turn_without_a_reference_carries_no_hint():
 def test_an_image_turn_with_an_unknown_reference_is_sent_as_written():
     parts = _parts("@missing", image=True)
 
-    resolved = ZettCodeAgent.request(parts, hint=mention_hint(parts, _registry()))
+    resolved = TerminalAgent.request(parts, hint=mention_hint(parts, _registry()))
 
     assert isinstance(resolved, UserMessage)
     assert [type(part).__name__ for part in resolved.parts] == ["TextContent", "TextContent", "ImageContent"]

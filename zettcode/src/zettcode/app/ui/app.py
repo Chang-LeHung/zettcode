@@ -49,6 +49,7 @@ from zettcode.tui.widgets import Rule
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from collections.abc import AsyncGenerator
+from zettcode.engine.agent.prompt import PromptPart, carries_image, mention_hint, mention_parts
 from zettcode.engine.dialogue.ask import AskUserQuestion
 from zettcode.engine.dialogue.mentions import MentionRegistry, SessionMentions
 from zettcode.engine.errors import describe_error, failure_text
@@ -57,8 +58,7 @@ from zettcode.engine.messenger import Messenger
 from zettcode.engine.registry import Registry
 from zettcode.engine.relay import Relayed
 
-from ..agent.agent import ZettCodeAgent
-from ..agent.agent.prompt import PromptPart, carries_image, mention_hint, mention_parts
+from ..agent.agent import TerminalAgent
 from ..agent.conversation.effort_gauge import EFFORT_SECONDS, EffortFrame, effort_frame
 from ..agent.conversation.projection import TranscriptProjector
 from ..agent.conversation.shimmer import (
@@ -110,7 +110,7 @@ class ZettCodeApp(
 ):
     """Own the application agent, widget tree, keymap, and slash commands."""
 
-    def __init__(self, agent: ZettCodeAgent, *, theme: Theme = DARK, auto_theme: bool = True) -> None:
+    def __init__(self, agent: TerminalAgent, *, theme: Theme = DARK, auto_theme: bool = True) -> None:
         """Wire the agent into the transcript, composer, panel, and keymap.
 
         Args:

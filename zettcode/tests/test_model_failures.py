@@ -14,7 +14,7 @@ import pytest
 from zett_agent.model import RetryOptions
 from zett_agent.providers.openai import OpenAIProvider
 
-from zettcode.app.agent.agent import ZettCodeAgent
+from zettcode.app.agent.agent import TerminalAgent
 from zettcode.app.agent.conversation.text import QUIET_SECONDS
 from zettcode.app.ui.app import ZettCodeApp
 from zettcode.app.ui.shell import EMPTY_REPLY
@@ -64,7 +64,7 @@ def shell(tmp_path: Path, monkeypatch):
             sessions_enabled=False,
             statusline_hidden=("pet",),
         )
-        app = ZettCodeApp(ZettCodeAgent(runtime_module.ZettCodeEngine.preview(config)))
+        app = ZettCodeApp(TerminalAgent(runtime_module.ZettCodeEngine.preview(config)))
         app.app.resize(110, 30)
         app.app.mount()
         return app, Harness(app=app.app)

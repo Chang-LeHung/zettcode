@@ -35,7 +35,7 @@ from time import perf_counter
 from zett_agent.messages import AssistantMessage, ToolCall, ToolMessage, UserMessage
 
 from zettcode.app import TranscriptSource
-from zettcode.app.agent.agent import ZettCodeAgent
+from zettcode.app.agent.agent import TerminalAgent
 from zettcode.app.agent.conversation.replay import replay
 from zettcode.cli import session_exists
 from zettcode.config import ModelConfig, ZettCodeConfig
@@ -151,7 +151,7 @@ def stages(config: ZettCodeConfig, session_id: str, *, runs: int) -> list[tuple[
         source.count(WIDTH)
         record("first paint (measure every entry)", start)
 
-        agent = ZettCodeAgent.preview(config)
+        agent = TerminalAgent.preview(config)
         agent.runtime.persistence.read(session_id)  # parse once; what follows is the rest of restoring
         start = perf_counter()
         agent.restore_session(session_id)
@@ -171,7 +171,7 @@ async def _stall(config: ZettCodeConfig, session_id: str) -> tuple[float, float]
     # The stages before this one leave a large heap behind, and a collection of it is a
     # pause that belongs to them, not to the resume: start from a collected one.
     gc.collect()
-    app = ZettCodeApp(ZettCodeAgent.preview(config))
+    app = ZettCodeApp(TerminalAgent.preview(config))
     app.app.resize(WIDTH, 40)
     app.app.mount()
     gaps: list[float] = []

@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import cast
 
-from zettcode.app.agent.agent import ZettCodeAgent
+from zettcode.app.agent.agent import TerminalAgent
 from zettcode.config import ModelConfig
 from zettcode.tui import SEPARATOR, ListItem, ListPage
 
@@ -34,7 +34,7 @@ class ModelPage(ListPage):
     """
 
     def __init__(
-        self, agent: ZettCodeAgent, *, on_select: Callable[[ModelConfig], None], on_cancel: Callable[[], None]
+        self, agent: TerminalAgent, *, on_select: Callable[[ModelConfig], None], on_cancel: Callable[[], None]
     ) -> None:
         """List every configured model, starting on the active one.
 

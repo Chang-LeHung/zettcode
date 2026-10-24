@@ -19,7 +19,7 @@ from io import StringIO
 from pathlib import Path
 from time import perf_counter
 
-from zettcode.app.agent.agent import ZettCodeAgent
+from zettcode.app.agent.agent import TerminalAgent
 from zettcode.app.agent.conversation.transcript import Transcript
 from zettcode.app.ui import ZettCodeApp
 from zettcode.config import ModelConfig, ZettCodeConfig
@@ -246,7 +246,7 @@ def build(
         skills_enabled=False,
         mcp_enabled=False,
     )
-    app = ZettCodeApp(ZettCodeAgent(ZettCodeEngine.preview(config)))
+    app = ZettCodeApp(TerminalAgent(ZettCodeEngine.preview(config)))
     clock = Clock()
     app.app.clock = clock
     app.transcript.clock = clock
