@@ -1,6 +1,6 @@
 """The drawings behind ``/usage``: numbers, bars, and the calendar grid.
 
-Everything here turns a :class:`~zettcode.engine.storage.ledger.Ledger` into *lines of
+Everything here turns a :class:`~zettcode.sdk.types.WorkspaceUsage` into *lines of
 roles* — a line is a list of ``(text, role)`` pairs and a role is a name such as ``"input"``
 or ``"heat3"`` — and never into colours. The page that owns a terminal decides what a role
 looks like in the active theme, which keeps these functions testable as plain strings and
@@ -12,7 +12,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from datetime import date, datetime, timedelta
 
-from zettcode.engine.storage.ledger import Ledger, SessionUsage, Tally
+from zettcode.sdk.types import SessionTotals, Totals, WorkspaceUsage
 from zettcode.tui import BAR_EMPTY, ELLIPSIS
 from zettcode.tui.render.text import display_width, truncate
 
@@ -99,12 +99,12 @@ def percent(share: float | None) -> str:
     return "\u2014" if share is None else f"{share * 100:.2f}%"
 
 
-def summary(ledger: Ledger) -> Line:
+def summary(ledger: WorkspaceUsage) -> Line:
     """Return the one line that totals the workspace."""
     total = ledger.total
     return [
         ("All models", "heading"),
-        (f"   {compact(total.total)} tokens", "text"),
+        (f"   {compact(total.total_tokens)} tokens", "text"),
         (f"   in {compact(total.input_tokens)}", "input"),
         (f"   out {compact(total.output_tokens)}", "output"),
         (f"   cached {percent(total.cache_share)}", "muted"),
@@ -112,7 +112,7 @@ def summary(ledger: Ledger) -> Line:
     ]
 
 
-def models_tab(ledger: Ledger, width: int) -> tuple[list[Line], list[Line]]:
+def models_tab(ledger: WorkspaceUsage, width: int) -> tuple[list[Line], list[Line]]:
     """Return the ``Models`` tab: a heading, and a pair of bars for each model.
 
     Input bars are scaled against the model that sent the most and output bars against
@@ -123,7 +123,9 @@ def models_tab(ledger: Ledger, width: int) -> tuple[list[Line], list[Line]]:
     head: list[Line] = [summary(ledger)]
     if not ledger.models:
         return head, [[("No model replies have been recorded in this workspace yet.", "muted")]]
-    ranked = sorted(ledger.models.items(), key=lambda item: (-item[1].total, item[0]))
+    ranked = sorted(
+        ((entry.model, entry.tokens) for entry in ledger.models), key=lambda item: (-item[1].total_tokens, item[0])
+    )
     most_in = max(tally.input_tokens for _, tally in ranked)
     most_out = max(tally.output_tokens for _, tally in ranked)
     track = max(8, min(48, width - 36))
@@ -135,7 +137,7 @@ def models_tab(ledger: Ledger, width: int) -> tuple[list[Line], list[Line]]:
         body.append(
             [
                 (truncate(name, max(8, width - 32)), "heading"),
-                (f"   {compact(tally.total)} tokens \u00b7 {tally.requests:,} requests", "muted"),
+                (f"   {compact(tally.total_tokens)} tokens \u00b7 {tally.requests:,} requests", "muted"),
             ]
         )
         body.append(
@@ -155,7 +157,7 @@ def models_tab(ledger: Ledger, width: int) -> tuple[list[Line], list[Line]]:
     return head, body
 
 
-def sessions_tab(ledger: Ledger, width: int) -> tuple[list[Line], list[Line]]:
+def sessions_tab(ledger: WorkspaceUsage, width: int) -> tuple[list[Line], list[Line]]:
     """Return the ``Sessions`` tab: one row for each session, last changed first.
 
     A row says when the session began and when it last changed, what it is called, its input
@@ -166,8 +168,8 @@ def sessions_tab(ledger: Ledger, width: int) -> tuple[list[Line], list[Line]]:
     head: list[Line] = [summary(ledger)]
     if not ledger.sessions:
         return head, [[("This workspace has no sessions yet.", "muted")]]
-    most_in = max(row.tally.input_tokens for row in ledger.sessions)
-    most_out = max(row.tally.output_tokens for row in ledger.sessions)
+    most_in = max(row.tokens.input_tokens for row in ledger.sessions)
+    most_out = max(row.tokens.output_tokens for row in ledger.sessions)
     track, title_room = session_columns(width)
     stamp, count = stamp_columns(width)
     column = track + 1 + NUMBER if track else NUMBER
@@ -266,7 +268,7 @@ def _stamp(moment: datetime, width: int) -> str:
 
 
 def _session_line(
-    row: SessionUsage, title_room: int, track: int, most_in: int, most_out: int, stamp: int, count: int, share: bool
+    row: SessionTotals, title_room: int, track: int, most_in: int, most_out: int, stamp: int, count: int, share: bool
 ) -> Line:
     """Return one session's row for the ``Sessions`` tab."""
     began = row.started.astimezone()
@@ -283,15 +285,15 @@ def _session_line(
         )
     )
     for value, most, role in (
-        (row.tally.input_tokens, most_in, "input"),
-        (row.tally.output_tokens, most_out, "output"),
+        (row.tokens.input_tokens, most_in, "input"),
+        (row.tokens.output_tokens, most_out, "output"),
     ):
         if track:
             line.extend(meter(value, most, track, role, curve=0.5))
             line.append((" ", "text"))
         line.append((f"{compact(value):>{NUMBER}}", "text" if value else "muted"))
         line.append(("  ", "text"))
-    share_value = row.tally.cache_share
+    share_value = row.tokens.cache_share
     if share:
         if track:
             # A share is read against a whole, not against the busiest row: full is every input token cached.
@@ -317,32 +319,32 @@ def first_day(today: date, weeks: int) -> date:
     return week_start(today) - timedelta(weeks=weeks - 1)
 
 
-def levels(days: dict[date, Tally]) -> dict[date, int]:
+def levels(days: dict[date, Totals]) -> dict[date, int]:
     """Return a shade from 1 to 4 for each day something was spent.
 
     The cut points are the quartiles of the days that were used, as GitHub's are, so the
     palette is spread over a person's own range: someone who spends a million a day and
     someone who spends a thousand both get a graph with dark days and pale ones.
     """
-    totals = sorted(tally.total for tally in days.values() if tally.total > 0)
+    totals = sorted(tally.total_tokens for tally in days.values() if tally.total_tokens > 0)
     if not totals:
         return {}
     cuts = [totals[min(len(totals) - 1, (len(totals) * numerator) // 4)] for numerator in (1, 2, 3)]
     shades: dict[date, int] = {}
     for day, tally in days.items():
-        if tally.total <= 0:
+        if tally.total_tokens <= 0:
             continue
-        shades[day] = 1 + sum(tally.total > cut for cut in cuts)
+        shades[day] = 1 + sum(tally.total_tokens > cut for cut in cuts)
     return shades
 
 
-def streaks(days: dict[date, Tally], today: date) -> tuple[int, int]:
+def streaks(days: dict[date, Totals], today: date) -> tuple[int, int]:
     """Return the longest run of used days and the run that reaches today.
 
     A run still counts if today has not been used yet but yesterday was, so a streak is not
     reported as broken at midnight, before there has been a chance to continue it.
     """
-    used = sorted(day for day, tally in days.items() if tally.total > 0)
+    used = sorted(day for day, tally in days.items() if tally.total_tokens > 0)
     longest = run = 0
     previous: date | None = None
     for day in used:
@@ -350,8 +352,8 @@ def streaks(days: dict[date, Tally], today: date) -> tuple[int, int]:
         longest = max(longest, run)
         previous = day
     current = 0
-    cursor = today if today in days and days[today].total > 0 else today - timedelta(days=1)
-    while cursor in days and days[cursor].total > 0:
+    cursor = today if today in days and days[today].total_tokens > 0 else today - timedelta(days=1)
+    while cursor in days and days[cursor].total_tokens > 0:
         current += 1
         cursor -= timedelta(days=1)
     return longest, current
@@ -382,7 +384,9 @@ def month_labels(start: date, weeks: int) -> dict[int, str]:
     return names
 
 
-def calendar_tab(ledger: Ledger, width: int, today: date, selected: date) -> tuple[list[Line], list[Line], date, int]:
+def calendar_tab(
+    ledger: WorkspaceUsage, width: int, today: date, selected: date
+) -> tuple[list[Line], list[Line], date, int]:
     """Return the ``Calendar`` tab, the first day it draws, and how many weeks it spans.
 
     Shape::
@@ -394,7 +398,7 @@ def calendar_tab(ledger: Ledger, width: int, today: date, selected: date) -> tup
     """
     weeks = weeks_that_fit(width)
     start = first_day(today, weeks)
-    shades = levels(ledger.days)
+    shades = levels(_days(ledger))
     labels = [" "] * (weeks * len(CELL))
     for column, name in month_labels(start, weeks).items():
         labels[column * len(CELL) : column * len(CELL) + len(name)] = name
@@ -427,31 +431,37 @@ def _legend() -> Line:
     return line
 
 
-def _facts(ledger: Ledger, today: date, selected: date) -> list[Line]:
+def _days(ledger: WorkspaceUsage) -> dict[date, Totals]:
+    """Return the ledger's days keyed by date, which is how the calendar looks them up."""
+    return {entry.day: entry.tokens for entry in ledger.days}
+
+
+def _facts(ledger: WorkspaceUsage, today: date, selected: date) -> list[Line]:
     """Return the lines under the calendar: the chosen day, and the streaks."""
-    tally = ledger.days.get(selected)
+    days = _days(ledger)
+    tally = days.get(selected)
     name = f"{WEEKDAYS[(selected.weekday() + 1) % 7]} {selected.day} {MONTHS[selected.month - 1]} {selected.year}"
-    if tally is None or tally.total == 0:
+    if tally is None or tally.total_tokens == 0:
         chosen: Line = [(name, "heading"), ("   nothing spent", "muted")]
     else:
         chosen = [
             (name, "heading"),
-            (f"   {compact(tally.total)} tokens", "text"),
+            (f"   {compact(tally.total_tokens)} tokens", "text"),
             (f"   in {compact(tally.input_tokens)}", "input"),
             (f"   out {compact(tally.output_tokens)}", "output"),
             (f"   {tally.requests:,} requests", "muted"),
         ]
     lines: list[Line] = [chosen]
-    if ledger.days:
-        busiest = max(ledger.days.items(), key=lambda item: (item[1].total, item[0]))
-        longest, current = streaks(ledger.days, today)
-        active = sum(1 for tally in ledger.days.values() if tally.total > 0)
+    if days:
+        busiest = max(days.items(), key=lambda item: (item[1].total_tokens, item[0]))
+        longest, current = streaks(days, today)
+        active = sum(1 for tally in days.values() if tally.total_tokens > 0)
         lines.append(
             [
                 (
                     f"{active} active days \u00b7 longest streak {longest} \u00b7 current streak {current}"
                     f" \u00b7 busiest {busiest[0].day} {MONTHS[busiest[0].month - 1]} {busiest[0].year}"
-                    f" ({compact(busiest[1].total)})",
+                    f" ({compact(busiest[1].total_tokens)})",
                     "muted",
                 )
             ]

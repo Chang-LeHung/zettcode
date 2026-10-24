@@ -71,4 +71,18 @@ Each its own pull request, `make check` green.
    decided one by one, general (into the SDK) or the terminal's own (stays in `app/`), because whatever enters the
    SDK is a promise. `pets`, `themes`, `presenters`, `plugin_rows`, `plugin_commands` and the `Transcript` stay the
    terminal's.
-3. **Seal.** `app` reaches the engine only through the SDK; a layer rule in `test_structure` says so.
+3. **Seal.** `app` reaches the engine only through the SDK; the next section is how.
+
+## Sealing the views
+
+The shell holds an SDK client (`TerminalAgent.client`, built with the SDK's internal `Client._around`) and the views are
+moved onto it one part at a time. `app/ui` and `app/commands.py` are the views; `app/agent` and `app/plugins` are where
+the terminal is put together from the engine's parts and may import it. The rule is a ratchet in `test_structure`
+(`test_the_views_of_the_terminal_reach_the_engine_through_the_sdk_and_the_list_that_still_does_not_only_shrinks`): a
+table of the views that still import the engine and what, which fails when a view takes on an import that is not in it
+and when an entry no longer holds, so it only gets shorter. Moved so far: the usage page (it draws the SDK's
+`WorkspaceUsage`, and `/usage` reads `client.usage_ledger()`). Left, in the order they will go: the context page
+(`ContextReport`), the sessions panel (`SessionInfo`, `SessionStats`, `StoredSession`), the prompt and `@` mentions
+(`PromptPart`, `MentionRegistry`, `Messenger`, `Relayed`), the error text (`describe_error`, read from the SDK errors'
+`retryable`), and `Permission`, `Registry`, `UsageSnapshot`. When the table is empty, `zettcode.app.ui` and
+`zettcode.app.commands` go into the layer table with the engine's prefix and the ratchet is deleted.

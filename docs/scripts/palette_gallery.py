@@ -445,36 +445,39 @@ def context_scene(env: Env, theme: Theme) -> Canvas:
 def usage_scene(tab: str) -> Callable[[Env, Theme], Canvas]:
     def build(env: Env, theme: Theme) -> Canvas:
         from zettcode.app.ui.widgets import UsagePage
-        from zettcode.engine.storage.ledger import Ledger, SessionUsage, Tally
+        from zettcode.sdk.types import DayTotals, ModelTotals, SessionTotals, Totals, WorkspaceUsage
 
         today = date(2026, 10, 17)
-        days = {
-            today - timedelta(days=n): Tally(1 + n % 3, 40_000 * (1 + (n * 7) % 5), 4_000 * (1 + n % 4))
+        days = tuple(
+            DayTotals(today - timedelta(days=n), Totals(1 + n % 3, 40_000 * (1 + (n * 7) % 5), 4_000 * (1 + n % 4)))
             for n in range(0, 80, 2)
-        }
+        )
         started = datetime(2026, 10, 16, 9, tzinfo=timezone.utc)
-        ledger = Ledger(
-            sessions=[
-                SessionUsage(
+        ledger = WorkspaceUsage(
+            sessions=(
+                SessionTotals(
                     "01a145fa-873c",
                     "Fix the parser crash",
                     started,
                     started + timedelta(hours=3),
-                    Tally(12, 900_000, 60_000, 800_000),
+                    Totals(12, 900_000, 60_000, 800_000),
                     ("gpt-5-mini",),
                 ),
-                SessionUsage(
+                SessionTotals(
                     "01a1210a-0d15",
                     "Pagination for /users",
                     started - timedelta(days=2),
                     started - timedelta(days=2, hours=-1),
-                    Tally(9, 700_000, 40_000, 300_000),
+                    Totals(9, 700_000, 40_000, 300_000),
                     ("claude-sonnet-4-5",),
                 ),
-            ],
-            models={"gpt-5-mini": Tally(30, 2_000_000, 120_000), "claude-sonnet-4-5": Tally(9, 700_000, 40_000)},
+            ),
+            models=(
+                ModelTotals("gpt-5-mini", Totals(30, 2_000_000, 120_000)),
+                ModelTotals("claude-sonnet-4-5", Totals(9, 700_000, 40_000)),
+            ),
             days=days,
-            total=Tally(40, 2_700_000, 160_000, 1_100_000),
+            total=Totals(40, 2_700_000, 160_000, 1_100_000),
         )
         shell = env.app(theme, height=26)
         page(shell, UsagePage(ledger, workspace="~/projects/api", today=today, tab=tab), 20)

@@ -375,6 +375,65 @@ def test_nothing_the_sdk_returns_or_accepts_is_a_type_of_the_broker_or_the_engin
     assert leaks == []
 
 
+def test_the_views_of_the_terminal_reach_the_engine_through_the_sdk_and_the_list_that_still_does_not_only_shrinks():
+    """``app/ui`` and ``app/commands.py`` are the shell and its views; they are to see the agent only through the SDK.
+
+    They are being moved there one part at a time, so this is a ratchet and not yet a wall: it lists the modules that
+    still import the engine, and what, and fails when a module takes on an import that is not listed (the wall
+    moved back) or drops one that is (the list is stale, so it would stop meaning anything). When the table is empty
+    the engine is out of the views, and ``test_layers_only_import_downwards`` takes over with the prefix itself.
+    ``app/agent`` and ``app/plugins`` are where the terminal is put together from the engine's parts, and may import it.
+    """
+    still: dict[str, list[str]] = {
+        "zettcode.app.commands": ["zettcode.engine.registry"],
+        "zettcode.app.ui.app": [
+            "zettcode.engine.agent.prompt",
+            "zettcode.engine.dialogue.mentions",
+            "zettcode.engine.errors",
+            "zettcode.engine.extensions.usage",
+            "zettcode.engine.messenger",
+            "zettcode.engine.registry",
+            "zettcode.engine.relay",
+        ],
+        "zettcode.app.ui.bars": ["zettcode.engine.agent.sessions", "zettcode.engine.permission"],
+        "zettcode.app.ui.followups": ["zettcode.engine.agent.prompt"],
+        "zettcode.app.ui.keys": ["zettcode.engine.errors"],
+        "zettcode.app.ui.messaging": [
+            "zettcode.engine.agent.prompt",
+            "zettcode.engine.dialogue.mentions",
+            "zettcode.engine.messenger",
+            "zettcode.engine.relay",
+        ],
+        "zettcode.app.ui.notices": ["zettcode.engine.extensions.usage"],
+        "zettcode.app.ui.sessions": ["zettcode.engine.agent.sessions"],
+        "zettcode.app.ui.shell": [
+            "zettcode.engine.agent.prompt",
+            "zettcode.engine.dialogue.mentions",
+            "zettcode.engine.extensions.usage",
+            "zettcode.engine.messenger",
+            "zettcode.engine.relay",
+        ],
+        "zettcode.app.ui.widgets.completer": ["zettcode.engine.dialogue.mentions"],
+        "zettcode.app.ui.widgets.composer": ["zettcode.engine.agent.prompt", "zettcode.engine.dialogue.mentions"],
+        "zettcode.app.ui.widgets.context_charts": ["zettcode.engine.extensions.context"],
+        "zettcode.app.ui.widgets.context_page": ["zettcode.engine.extensions.context"],
+        "zettcode.app.ui.widgets.sessions_page": ["zettcode.engine.agent.sessions", "zettcode.engine.storage"],
+    }
+    found: dict[str, set[str]] = {}
+    for path, module, is_package in _sources():
+        if not (module.startswith("zettcode.app.ui") or module == "zettcode.app.commands"):
+            continue
+        for _line, target, _relative in _imports(path, module, is_package):
+            if target.startswith("zettcode.engine"):
+                found.setdefault(module, set()).add(target)
+
+    grew = {m: sorted(found[m] - set(still.get(m, ()))) for m in found if found[m] - set(still.get(m, ()))}
+    stale = {m: sorted(set(still[m]) - found.get(m, set())) for m in still if set(still[m]) - found.get(m, set())}
+
+    assert grew == {}, f"a view took on an engine import that is not listed: {grew}"
+    assert stale == {}, f"these are no longer imported; take them off the list: {stale}"
+
+
 def test_the_hub_and_the_roster_know_nothing_of_the_web():
     """What the broker decides is separate from how it is served: the hub and the roster import none of the web
     libraries (nor the web layer), so they can be driven, and read, without a socket."""

@@ -8465,6 +8465,7 @@ async def test_usage_opens_a_full_screen_page_and_escape_returns_to_the_conversa
         mcp_enabled=False,
     )
     app = build_app(plugins=rows_and_commands(config=config))
+    app.agent.runtime.config = config  # the client reads the store from the runtime's configuration
     harness = _harness(app)
 
     harness.write("/usage")

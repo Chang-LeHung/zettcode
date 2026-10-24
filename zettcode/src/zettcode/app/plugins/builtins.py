@@ -10,15 +10,12 @@ second segment beside it.
 
 from __future__ import annotations
 
-import asyncio
-
 from zettcode.app.agent.conversation.presenters import BUILTIN_PRESENTERS
 from zettcode.app.agent.conversation.pulse import activity_glyph
 from zettcode.app.commands import CommandContext, CommandResult
 from zettcode.app.pets import bundled_pets
 from zettcode.app.ui import labels
 from zettcode.app.ui.widgets import UsagePage
-from zettcode.engine.storage.ledger import LedgerReader
 from zettcode.statusline import Row, context_share, usage_parts
 from zettcode.tui import STATUS, bundled_themes
 
@@ -70,16 +67,13 @@ class UsageCommand(TerminalPlugin):
     name = "usage"
 
     def activate(self, container: TerminalContainer) -> None:
-        """Register ``/usage`` and keep one reader, so a second look re-reads only what changed."""
+        """Register ``/usage``; the client keeps one reader, so a second look re-reads only what changed."""
         config = container.config
-        readers: list[LedgerReader] = []
 
         async def show(context: CommandContext) -> CommandResult:
             """Open the usage page, or say that nothing has been spent yet."""
-            if not readers:
-                readers.append(LedgerReader(config.store, config.workspace))
-            ledger = await asyncio.to_thread(readers[0].read)
-            if ledger.empty:
+            ledger = await context.require_host().client.usage_ledger()
+            if ledger.total.requests == 0:
                 return CommandResult(message="No model replies are recorded in this workspace yet.")
             return CommandResult(widget=UsagePage(ledger, workspace=labels.compact_path(config.workspace, limit=None)))
 

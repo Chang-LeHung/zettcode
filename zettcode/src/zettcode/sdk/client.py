@@ -56,6 +56,7 @@ from .types import (
 if TYPE_CHECKING:  # pragma: no cover - annotations only; the agent is imported when a client is made
     from ..broker.models import Receipt as BrokerReceipt
     from ..config import ModelConfig, ZettCodeConfig
+    from ..engine.agent import ZettCodeAgent
     from ..engine.dialogue.mentions import MentionRegistry
     from ..engine.messenger import Messenger
 
@@ -319,6 +320,32 @@ class Client:
         self.sessions = Sessions(self)
         #: One reader for the workspace's ledger, so a second look at the usage reads only what changed.
         self._ledger_reader: Any = None
+
+    # -- process-wide bookkeeping --
+    @classmethod
+    def _around(cls, agent: ZettCodeAgent) -> Client:
+        """Return a client over an agent that a front end built itself, a subclass with parts of its own.
+
+        For the terminal, which adds slash commands and preferences to the engine's agent and then drives that agent
+        through the SDK like any other program. It is not public: a program builds a client from a configuration. The
+        front end keeps closing its agent, so the client takes no part in the process-wide bookkeeping of open
+        workspaces (the agent's engine already moved the process into its workspace).
+        """
+        from .translation import AgentBridge
+
+        client = cls.__new__(cls)
+        client._closed = False
+        client._stream = None
+        client._handles = {}
+        client._switching = asyncio.Lock()
+        client._messenger = None
+        client.workspace = agent.runtime.config.workspace
+        client._agent = agent
+        client._bridge = AgentBridge(agent)
+        client._fresh = {agent.runtime.session_id}
+        client.sessions = Sessions(client)
+        client._ledger_reader = None
+        return client
 
     # -- process-wide bookkeeping --
     def _register(self, workspace: Path) -> None:
