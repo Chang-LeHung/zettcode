@@ -14,11 +14,11 @@ from zettcode.app.agent.conversation.presenters import DEFAULT_PRESENTERS, rende
 from zettcode.app.agent.conversation.replay import replay
 from zettcode.app.agent.conversation.transcript import Transcript
 from zettcode.app.agent.dialogue.mentions import MentionRegistry, SessionMentions
-from zettcode.app.agent.dialogue.relay import RELAY, VIA_AGENT, VIA_EXTERNAL, VIA_USER, Relayed, relay_of
 from zettcode.app.agent.export import build_trace
 from zettcode.app.agent.storage import SessionStore
 from zettcode.app.ui.widgets import TranscriptSource
 from zettcode.broker.client import RosterEntry
+from zettcode.engine.relay import RELAY, VIA_AGENT, VIA_EXTERNAL, VIA_USER, Relayed, relay_of
 from zettcode.tui import DARK, LIGHT
 
 BOB = "02b20c86-bbbb-7000-8000-000000000002"

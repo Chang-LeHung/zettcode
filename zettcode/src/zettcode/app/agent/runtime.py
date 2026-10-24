@@ -28,6 +28,7 @@ from zett_agent.ids import new_uuid7
 from zett_agent.model import ReasoningEffort
 
 from zettcode.config import DEFAULT_ANTHROPIC_BASE_URL, KEYLESS_TOKEN, ModelConfig, ZettCodeConfig
+from zettcode.engine.messenger import Messenger
 from zettcode.plugins import AGENT_PLUGINS, BUILTIN_PLUGINS, AgentBuild, Plugins, load_plugins
 from zettcode.plugins.services import (
     APPROVAL,
@@ -50,7 +51,6 @@ from .dialogue.side import SideQuestions
 from .extensions.compaction import COUNTER_WAIT, CompactionCounter, OnDemandCompaction
 from .extensions.context import ContextExtension, Tokenizer
 from .extensions.harness_switch import HarnessSwitch
-from .extensions.messenger import Messenger
 from .extensions.usage import UsageExtension
 from .permission import Permission, ShellPolicy, parse_permission
 from .permission.sandbox import ShellSandbox

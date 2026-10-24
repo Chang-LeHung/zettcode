@@ -617,7 +617,7 @@ class Session:
             SessionBusyError: Another run is in progress (checked again when the run starts).
             ValueError: ``timeout`` is not a positive number.
         """
-        from ..app.agent.dialogue.relay import Relayed
+        from ..engine.relay import Relayed
 
         client = self._client
         client._check_open()

@@ -21,7 +21,7 @@ from zettcode.broker.client import BrokerClient, Delivered, Incoming, Receipt, R
 from zettcode.broker.protocol import VIA_AGENT
 from zettcode.config import ZettCodeConfig
 
-from ..dialogue.relay import Relayed
+from .relay import Relayed
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from pathlib import Path

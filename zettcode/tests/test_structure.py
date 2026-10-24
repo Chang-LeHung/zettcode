@@ -94,6 +94,7 @@ FACADES = (
     "zettcode.app.agent",
     "zettcode.app.ui",
     "zettcode.app.ui.widgets",
+    "zettcode.engine",
     "zettcode.tui",
     "zettcode.tui.widgets",
 )

@@ -21,8 +21,8 @@ from zett_agent.extensions.todo import TodoWriteExtension
 from plugin_helpers import agent_extensions, agent_plugins, runtime_inputs
 from zettcode.app.agent import runtime as runtime_module
 from zettcode.app.agent.agent import ZettCodeAgent
-from zettcode.app.agent.extensions.messenger import Messenger
 from zettcode.config import ModelConfig, ZettCodeConfig
+from zettcode.engine.messenger import Messenger
 from zettcode.plugins import (
     AGENT_PLUGINS,
     BUILTIN_PLUGINS,
