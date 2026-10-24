@@ -68,7 +68,7 @@ async def _measured(app, **counters):
     snapshot = UsageSnapshot(
         input_tokens=22_000, output_tokens=600, cache_read_tokens=17_000, seconds=6.0, requests=2, context_tokens=64_000
     )
-    await app.projector.on_custom_event(
+    await app.projector.dispatch(
         AgentEvent(
             type=AgentEventType.CUSTOM, session_id="session-0001", name=USAGE_EVENT_NAME, payload=snapshot.to_payload()
         )

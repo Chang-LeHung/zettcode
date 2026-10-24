@@ -1553,7 +1553,7 @@ async def test_a_steering_message_is_echoed_when_the_agent_adopts_it():
     await _send_during_run(harness, "second")
     assert app.steering.messages == ("second",)
 
-    await app.projector.on_steering_started_event(
+    await app.projector.dispatch(
         AgentEvent(AgentEventType.STEERING_STARTED, "session-0001", steering_message=UserMessage(content="second"))
     )
 
@@ -2014,7 +2014,7 @@ async def test_another_sessions_counters_never_paint_this_status_line():
         payload=UsageSnapshot(input_tokens=5_000_000, context_tokens=1_200_000, requests=9).to_payload(),
     )
 
-    app._usage_updated(theirs)
+    await app.projector.dispatch(theirs)
 
     assert app._usage.requests == 1 and app._usage.context_tokens == 4_000
     assert app._measure_task is None, "and nothing is re-measured for it either"
@@ -2044,7 +2044,7 @@ async def test_a_billed_size_at_or_past_the_window_is_not_this_requests_size():
     assert report.from_provider is False, "the count is refused, not reported"
     assert report.used == report.measured < window, "so both figures are the measured request"
 
-    app._usage_updated(
+    await app.projector.dispatch(
         AgentEvent(
             type=AgentEventType.CUSTOM,
             session_id=session_id,
@@ -4714,7 +4714,7 @@ async def test_the_status_line_mirrors_the_usage_extension():
         context_tokens=64_000,  # half of the 128k window the fake model declares
     ).to_payload()
 
-    await app.projector.on_custom_event(
+    await app.projector.dispatch(
         AgentEvent(
             type=AgentEventType.CUSTOM,
             session_id="session-0001",
@@ -7711,7 +7711,7 @@ def _file_events(*calls: tuple[str, str, dict], status_of=lambda name: True) -> 
         events.append(AgentEvent(AgentEventType.TOOL_STARTED, "s", tool_calls=(call,)))
         if status_of(tool):
             message = ToolMessage(tool_call_id=call_id, name=tool, content="ok")
-            events.append(AgentEvent(AgentEventType.TOOL_COMPLETED, "s", message=message))
+            events.append(AgentEvent(AgentEventType.TOOL_COMPLETED, "s", tool_calls=(call,), message=message))
         else:  # what the agent sends when a tool raises: a failure event, not a completed one
             events.append(AgentEvent(AgentEventType.TOOL_FAILED, "s", tool_calls=(call,), error=RuntimeError("no")))
     return events

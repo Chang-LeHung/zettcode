@@ -19,24 +19,21 @@ from .shell import APPROVAL_ROWS, ASK_SCREEN, PAGE_SCREEN, ShellState
 from .widgets import ApprovalChoice, ApprovalPage, AskUserPage, bottom_panel
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
-    from zett_agent.events import AgentEvent
-
-    from zettcode.engine.dialogue.ask import AskUserQuestion
+    from zettcode.sdk.events import ApprovalRequested, QuestionAsked
 
 
 class NoticesMixin(CommandUi, ShellState):
     """Show approvals, toasts, and the usage counters."""
 
-    def _usage_updated(self, event: AgentEvent) -> None:
+    def _usage_updated(self, snapshot: UsageSnapshot, session_id: str) -> None:
         """Mirror the usage extension's cumulative counters into the status line.
 
         Only this session's: a subagent works in a session of its own, and its
         totals describe a conversation this shell never sent. Painting them here
         would show another context's size as this one's.
         """
-        if event.session_id != self.agent.session_id:
+        if session_id != self.agent.session_id:
             return
-        snapshot = UsageSnapshot.from_payload(event.payload or {})
         if snapshot.context_tokens >= self.agent.active_model.context_window:
             # A request cannot carry more than the window it is measured against,
             # so a figure that does is not this request's size: it belongs to
@@ -51,41 +48,37 @@ class NoticesMixin(CommandUi, ShellState):
         self._usage = snapshot
         self.app.invalidate()
 
-    def _approval_requested(self, event: AgentEvent) -> None:
+    def _approval_requested(self, event: ApprovalRequested) -> None:
         """Show the approval panel for one pending shell command.
 
         The panel is an :class:`ApprovalPage` in a bottom strip: the question,
         the command with its shell highlighting, and the numbered choices, so
         the transcript above stays readable while the command is reviewed.
         """
-        payload = event.payload if isinstance(event.payload, dict) else {}
-        call_id = str(payload.get("tool_call_id", ""))
-        session_id = str(payload.get("session_id") or self.agent.session_id)
-        command = str(payload.get("command", ""))
         page = ApprovalPage(
-            command,
-            on_choice=lambda choice: self._respond(session_id, call_id, choice),
-            remember_supported=bool(payload.get("remember_supported")),
+            event.command,
+            on_choice=lambda choice: self._respond(event, choice),
+            remember_supported=event.remember_supported,
             permission=self.agent.permission.value,
         )
         panel = bottom_panel(page, rows=APPROVAL_ROWS)
         self.app.push_screen(Screen(panel, name=PAGE_SCREEN, modal=True))
 
-    def _respond(self, session_id: str, call_id: str, choice: ApprovalChoice) -> None:
+    def _respond(self, event: ApprovalRequested, choice: ApprovalChoice) -> None:
         """Dismiss the panel and answer the suspended agent run.
 
         Args:
-            session_id: Session the approval belongs to, echoed back to the agent.
-            call_id: Tool call the decision applies to.
+            event: The request the decision answers.
             choice: What the user picked; ``safe`` and ``auto`` also move the
                 permission level up a rung, which is the same change ``/permission``
                 makes — including that the session remembers it.
         """
-        decision = "abort" if choice is ApprovalChoice.ABORT else "execute"
-        remember = choice is ApprovalChoice.ALWAYS
         self.close_page()
         try:
-            self.agent.respond_approval(session_id, call_id, decision, remember)
+            if choice is ApprovalChoice.ABORT:
+                event.deny()
+            else:
+                event.approve(remember=choice is ApprovalChoice.ALWAYS)
         except Exception as error:
             self.transcript.error(f"approval failed: {error}")
         else:
@@ -96,7 +89,7 @@ class NoticesMixin(CommandUi, ShellState):
         self.app.invalidate()
 
     # -- questions from the model -------------------------------------------
-    def _ask_requested(self, question: AskUserQuestion) -> None:
+    def _ask_requested(self, question: QuestionAsked) -> None:
         """Show the panel for one question the model is waiting on.
 
         The run is suspended until the panel answers, so this is a modal layer
@@ -127,29 +120,29 @@ class NoticesMixin(CommandUi, ShellState):
         self.app.push_screen(Screen(panel, name=ASK_SCREEN, modal=True))
         self.app.invalidate()
 
-    def _answer_ask(self, question: AskUserQuestion, answer: str) -> None:
+    def _answer_ask(self, question: QuestionAsked, answer: str) -> None:
         """Send the reader's answer to the suspended tool call, then ask the next."""
         self._forget_ask(question)
         self.close_page()
         try:
-            self.agent.answer_ask(question, answer)
+            question.answer(answer)
         except Exception as error:
             self.transcript.error(f"answer failed: {error}")
         self._next_ask()
 
-    def _cancel_ask(self, question: AskUserQuestion) -> None:
+    def _cancel_ask(self, question: QuestionAsked) -> None:
         """Decline the question, closing the panel that asked it."""
         self._forget_ask(question)
         self.close_page()
         try:
-            self.agent.decline_ask(question)
+            question.decline()
         except Exception as error:
             self.transcript.error(f"cancel failed: {error}")
         else:
             self.transcript.notice("question declined; the model was told")
         self._next_ask()
 
-    def _forget_ask(self, question: AskUserQuestion) -> None:
+    def _forget_ask(self, question: QuestionAsked) -> None:
         """Drop one question from the pending list, if it is still in it."""
         if question in self._asks:
             self._asks.remove(question)

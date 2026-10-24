@@ -327,6 +327,14 @@ def test_importing_the_engine_loads_nothing_of_the_application():
     assert done.stdout.strip() == "[]"
 
 
+def test_the_terminal_reads_the_agents_events_through_the_sdks_translation_and_not_a_second_one():
+    """One translation of the agent's events, the SDK's, so what the terminal shows and what the SDK reports agree."""
+    source = (PROJECT / "src/zettcode/app/agent/conversation/projection.py").read_text(encoding="utf-8")
+
+    assert "from zettcode.sdk.translation import translate" in source
+    assert "AgentEventType" not in source, "a second reading of the agent's event types is a second translation"
+
+
 def test_the_hub_and_the_roster_know_nothing_of_the_web():
     """What the broker decides is separate from how it is served: the hub and the roster import none of the web
     libraries (nor the web layer), so they can be driven, and read, without a socket."""

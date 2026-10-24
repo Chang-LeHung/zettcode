@@ -1,46 +1,60 @@
-"""Project agent events into transcript entries."""
+"""Project agent events into transcript entries.
+
+The agent's events are translated once, by :func:`zettcode.sdk.translation.translate`, into the SDK's typed events,
+and this module draws those. A program that drives the agent through the SDK reads the same events, so what the
+terminal shows and what the SDK reports cannot drift apart.
+"""
 
 from __future__ import annotations
 
-import json
 from collections.abc import Callable
+from dataclasses import asdict
 
 from zett_agent.dispatcher import AgentEventDispatcher
 from zett_agent.events import AgentEvent
-from zett_agent.extensions.shell_approval import SHELL_APPROVAL_EVENT_NAME
-from zett_agent.messages import ToolMessage
 
-from zettcode.engine.dialogue.ask import AskUserQuestion, declined_answer, question_from
-from zettcode.engine.extensions.mcp_notice import MCP_NOTICE_EVENT_NAME, notice_from
-from zettcode.engine.extensions.usage import USAGE_EVENT_NAME
+from zettcode.engine.dialogue.ask import declined_answer
+from zettcode.engine.extensions.usage import UsageSnapshot
 from zettcode.engine.relay import Relayed
-from zettcode.engine.server_tools import ServerToolRun, describe_output
+from zettcode.sdk.events import (
+    AnyEvent,
+    ApprovalRequested,
+    Bridge,
+    CompactionDelta,
+    CompactionFinished,
+    CompactionStarted,
+    Finished,
+    ModelStopped,
+    Notice,
+    QuestionAsked,
+    ReasoningDelta,
+    ReasoningFinished,
+    ReasoningStarted,
+    ServerToolFinished,
+    ServerToolStarted,
+    Steered,
+    SteeringFinished,
+    SteeringInterrupted,
+    TextDelta,
+    ToolFinished,
+    ToolStarted,
+    UsageUpdated,
+)
+from zettcode.sdk.translation import translate
 
 from .entries import EntryStatus
 from .stops import stop_text
 from .transcript import Transcript
 
 
-def tool_output(message: ToolMessage) -> str:
-    """Return the printable text of a tool message, falling back for empty payloads."""
-    if isinstance(message.content, str):
-        return message.content or "Completed"
-    return message.text or "Multimodal result"
+class _NobodyAnswers:
+    """The bridge of a projector that was given nobody to answer for: an answer sent through it goes nowhere."""
 
+    def approve(self, session_id: str, call_id: str, approve: bool, remember: bool) -> None:
+        raise RuntimeError("This projector has no agent to carry an approval to")
 
-def serialize(value: object) -> str:
-    """Render a structured result as indented JSON, leaving plain text alone."""
-    if value is None:
-        return "Completed"
-    if isinstance(value, str):
-        return value
-    return json.dumps(value, ensure_ascii=False, indent=2, default=str)
-
-
-def steering_text(event: AgentEvent) -> str:
-    """Return the text of a steering event, or an empty string when it has none."""
-    message = event.steering_message
-    return message.text if message is not None else ""
+    def answer(self, question: object, text: str | None) -> None:
+        raise RuntimeError("This projector has no agent to carry an answer to")
 
 
 class TranscriptProjector(AgentEventDispatcher):
@@ -55,9 +69,10 @@ class TranscriptProjector(AgentEventDispatcher):
         self,
         transcript: Transcript,
         *,
-        on_approval: Callable[[AgentEvent], None] | None = None,
-        on_ask: Callable[[AskUserQuestion], None] | None = None,
-        on_usage: Callable[[AgentEvent], None] | None = None,
+        bridge: Bridge | None = None,
+        on_approval: Callable[[ApprovalRequested], None] | None = None,
+        on_ask: Callable[[QuestionAsked], None] | None = None,
+        on_usage: Callable[[UsageSnapshot, str], None] | None = None,
         on_steering_started: Callable[[str], None] | None = None,
         on_steering_interrupted: Callable[[str], None] | None = None,
     ) -> None:
@@ -65,12 +80,14 @@ class TranscriptProjector(AgentEventDispatcher):
 
         Args:
             transcript: Model that receives the projected entries.
+            bridge: How an answer to an approval or a question reaches the suspended agent
+                (:class:`zettcode.sdk.translation.AgentBridge` over the shell's agent).
             on_approval: Called synchronously for a shell approval request; the
                 callback must not await, because the agent is suspended until the
-                UI emits its response later.
-            on_ask: Called synchronously with a parsed ``ask_user`` question; the
+                UI answers it later.
+            on_ask: Called synchronously with each question the model asks; the
                 callback must not await, for the same reason.
-            on_usage: Called synchronously with each cumulative usage update, so
+            on_usage: Called synchronously with each cumulative usage update and the session it is for, so
                 the shell can refresh the status line without polling the store.
             on_steering_started: Called with the text of a queued steering
                 message the agent just adopted, so the shell can drop it from
@@ -79,15 +96,15 @@ class TranscriptProjector(AgentEventDispatcher):
                 a newer one superseded, so the shell can drop it too.
         """
         self.transcript = transcript
+        self.bridge: Bridge = bridge if bridge is not None else _NobodyAnswers()
         self.on_approval = on_approval
         self.on_ask = on_ask
         self.on_usage = on_usage
         self.on_steering_started = on_steering_started
         self.on_steering_interrupted = on_steering_interrupted
-        #: What a hosted tool was called with while it streams: a start may carry the whole input, or only its
-        #: opening and then fragments. Kept per request and dropped when the call reports back.
-        self._server_inputs: dict[str, dict[str, object]] = {}
-        self._server_fragments: dict[str, str] = {}
+        #: What a hosted tool's input has streamed so far, by call. The translation fills it as fragments arrive
+        #: and reads the query out of it when the call reports back.
+        self._hosted: dict[str, str] = {}
 
     def begin_turn(self, prompt: str, *, side: bool = False, relayed: Relayed | None = None) -> None:
         """Echo the prompt into the transcript before the run starts.
@@ -103,177 +120,99 @@ class TranscriptProjector(AgentEventDispatcher):
             self.transcript.begin_turn(prompt, side=side, relayed=relayed)
 
     async def dispatch(self, event: AgentEvent) -> None:
-        """Note that the agent spoke, then hand the event to the callback that draws it.
+        """Note that the agent spoke, then draw what the event stands for.
 
         Every event ends a silence, whichever it is: the waiting row counts how long it has been since the model
         last said anything, and has to be told each time it does.
         """
         self.transcript.heard()
-        await super().dispatch(event)
+        for translated in translate(event, self.bridge, self._hosted):
+            self.project(translated, event)
 
-    async def on_compaction_started_event(self, event: AgentEvent) -> None:
-        """Open the compaction row; the summary streams into it as it arrives."""
-        self.transcript.start_compaction()
+    def project(self, event: AnyEvent, source: AgentEvent | None = None) -> None:
+        """Draw one SDK event.
 
-    async def on_compaction_text_delta_event(self, event: AgentEvent) -> None:
-        """Append one summary fragment to the row the started event opened."""
-        self.transcript.append_compaction(event.delta or "")
-
-    async def on_compaction_completed_event(self, event: AgentEvent) -> None:
-        """Report whether the agent applied or skipped the compaction."""
-        self.transcript.complete_compaction()
-        state = "applied" if event.applied else "skipped"
-        self.transcript.notice(f"Context compaction {state}")
-
-    async def on_model_stopped_event(self, event: AgentEvent) -> None:
-        """Say that a model step ended without finishing: refused, cut off, interrupted or paused for good.
-
-        The event follows the step's completion and is sent only for an abnormal ending, so the reply above it is
-        whatever the model managed to write, and this line is what stands between it and being taken for an answer.
+        Args:
+            event: The event, as the SDK reports it.
+            source: The agent event it came from, for the few details the SDK's event leaves out.
         """
-        self.transcript.complete_thinking()
-        if event.stop is not None and not event.stop.ok:
-            self.transcript.error(stop_text(event.stop))
+        transcript = self.transcript
+        match event:
+            case TextDelta(text=text):
+                # Closes reasoning before the first answer token lands in the transcript.
+                transcript.complete_thinking()
+                transcript.append_answer(text)
+            case ReasoningStarted():
+                transcript.start_thinking()
+            case ReasoningDelta(text=text):
+                transcript.append_thinking(text)
+            case ReasoningFinished():
+                transcript.complete_thinking()
+            case ToolStarted(call_id=call_id, name=name, arguments=arguments):
+                transcript.start_tool(call_id, name, arguments)
+            case ToolFinished(call_id=call_id, name=name, output=output, ok=ok, skipped=skipped):
+                self._tool_finished(call_id, name, output, ok, skipped)
+            case ServerToolStarted(call_id=call_id, name=name, arguments=arguments):
+                transcript.start_tool(call_id, name, arguments)
+            case ServerToolFinished(call_id=call_id, arguments=arguments, output=output, ok=ok):
+                if arguments:
+                    # The row opened before its input had streamed in; now it knows what was searched for.
+                    transcript.restate_tool(call_id, arguments)
+                status = EntryStatus.COMPLETED if ok else EntryStatus.FAILED
+                transcript.complete_tool(call_id, output or "Completed", status=status)
+            case CompactionStarted():
+                transcript.start_compaction()
+            case CompactionDelta(text=text):
+                transcript.append_compaction(text)
+            case CompactionFinished(applied=applied):
+                transcript.complete_compaction()
+                transcript.notice(f"Context compaction {'applied' if applied else 'skipped'}")
+            case ModelStopped():
+                # The event follows the step's completion and is sent only for an abnormal ending, so the reply
+                # above it is whatever the model managed to write, and this line is what stands between it and
+                # being taken for an answer.
+                transcript.complete_thinking()
+                stop = source.stop if source is not None else None
+                if stop is not None and not stop.ok:
+                    transcript.error(stop_text(stop))
+            case Steered(text=text):
+                if self.on_steering_started is not None:
+                    self.on_steering_started(text)
+                transcript.begin_turn(text)
+            case SteeringFinished():
+                transcript.complete_thinking()
+            case SteeringInterrupted(text=text):
+                if self.on_steering_interrupted is not None:
+                    self.on_steering_interrupted(text)
+                transcript.complete_thinking()
+                transcript.notice("steering superseded by a newer message")
+            case Finished():
+                transcript.complete_thinking()
+            case ApprovalRequested() if self.on_approval is not None:
+                self.on_approval(event)
+            case QuestionAsked() if self.on_ask is not None:
+                self.on_ask(event)
+            case UsageUpdated(session_id=session_id, usage=usage) if self.on_usage is not None:
+                self.on_usage(UsageSnapshot(**asdict(usage)), session_id)
+            case Notice(text=text):
+                # News about an MCP server or its configuration. It is a remark in the conversation,
+                # not an error: the request goes on without whatever could not be reached.
+                transcript.notice(text)
+            case _:
+                pass
 
-    async def on_reasoning_started_event(self, event: AgentEvent) -> None:
-        """Open the thinking row for this reasoning span."""
-        self.transcript.start_thinking()
-
-    async def on_reasoning_delta_event(self, event: AgentEvent) -> None:
-        """Append one reasoning delta to the running row."""
-        self.transcript.append_thinking(event.delta)
-
-    async def on_reasoning_completed_event(self, event: AgentEvent) -> None:
-        """Close the thinking row and stamp its duration."""
-        self.transcript.complete_thinking()
-
-    async def on_text_delta_event(self, event: AgentEvent) -> None:
-        """Close reasoning before the first answer token lands in the transcript."""
-        self.transcript.complete_thinking()
-        self.transcript.append_answer(event.delta)
-
-    async def on_steering_started_event(self, event: AgentEvent) -> None:
-        """Echo an urgent user message the agent adopted as its new input."""
-        text = steering_text(event)
-        if self.on_steering_started is not None:
-            self.on_steering_started(text)
-        self.transcript.begin_turn(text)
-
-    async def on_steering_completed_event(self, event: AgentEvent) -> None:
-        """Close the row a steered turn left open when its answer arrived."""
-        self.transcript.complete_thinking()
-
-    async def on_steering_interrupted_event(self, event: AgentEvent) -> None:
-        """Drop a steering message a newer one superseded, and say so."""
-        text = steering_text(event)
-        if self.on_steering_interrupted is not None:
-            self.on_steering_interrupted(text)
-        self.transcript.complete_thinking()
-        self.transcript.notice("steering superseded by a newer message")
-
-    async def on_tool_started_event(self, event: AgentEvent) -> None:
-        """Open one running row per tool call in the batch."""
-        for call in event.tool_calls:
-            self.transcript.start_tool(call.id, call.name, call.arguments)
-
-    async def on_tool_completed_event(self, event: AgentEvent) -> None:
-        """Attach the returned message to the row of the call it answers.
+    def _tool_finished(self, call_id: str, name: str, output: str, ok: bool, skipped: bool) -> None:
+        """Attach a tool's ending to its row: skipped, failed, or done.
 
         A question the reader cancelled comes back as a result, not a failure: the model reads that it was declined
         and carries on. The row is marked skipped so it does not look like a question that was answered.
         """
-        if isinstance(event.message, ToolMessage):
-            output = tool_output(event.message)
-            declined = event.message.name == "ask_user" and declined_answer(output)
+        if skipped:
+            self.transcript.complete_tool(call_id, output or "Skipped", status=EntryStatus.SKIPPED)
+        elif not ok:
+            self.transcript.complete_tool(call_id, output or "Tool failed", status=EntryStatus.FAILED)
+        else:
+            declined = name == "ask_user" and declined_answer(output)
             self.transcript.complete_tool(
-                event.message.tool_call_id,
-                output,
-                status=EntryStatus.SKIPPED if declined else EntryStatus.COMPLETED,
+                call_id, output or "Completed", status=EntryStatus.SKIPPED if declined else EntryStatus.COMPLETED
             )
-
-    async def on_tool_failed_event(self, event: AgentEvent) -> None:
-        """Fail every call in the batch and record the error text."""
-        for call in event.tool_calls:
-            detail = str(event.error) if event.error is not None else "Tool failed"
-            self.transcript.complete_tool(call.id, detail, status=EntryStatus.FAILED)
-
-    async def on_tool_skipped_event(self, event: AgentEvent) -> None:
-        """Mark the batch as skipped, keeping any message the tool still produced."""
-        for call in event.tool_calls:
-            output = tool_output(event.message) if isinstance(event.message, ToolMessage) else "Skipped"
-            self.transcript.complete_tool(call.id, output, status=EntryStatus.SKIPPED)
-
-    async def on_server_tool_started_event(self, event: AgentEvent) -> None:
-        """Open a row for a tool the server runs on the agent's behalf, with what it was asked."""
-        call = event.server_tool_call
-        if call is None:
-            return
-        arguments = dict(call.input or {})
-        self._server_inputs[call.id] = arguments
-        self._server_fragments.pop(call.id, None)
-        self.transcript.start_tool(call.id, call.name, arguments)
-
-    async def on_server_tool_input_delta_event(self, event: AgentEvent) -> None:
-        """Keep the fragments of a hosted call's input; the query a search ran is in there."""
-        delta = event.server_tool_input_delta
-        if delta is not None:
-            self._server_fragments[delta.call_id] = self._server_fragments.get(delta.call_id, "") + delta.delta
-
-    def _server_arguments(self, call_id: str) -> dict[str, object]:
-        """Return what a hosted call turned out to be called with: its opening input and its fragments."""
-        arguments = dict(self._server_inputs.pop(call_id, {}))
-        fragments = self._server_fragments.pop(call_id, "")
-        if fragments:
-            try:
-                parsed = json.loads(fragments)
-            except ValueError:
-                parsed = None
-            if isinstance(parsed, dict):
-                arguments.update(parsed)
-        return arguments
-
-    async def on_server_tool_completed_event(self, event: AgentEvent) -> None:
-        """Attach a hosted tool's result to its row: the pages it found, never the provider's payload."""
-        result = event.server_tool_result
-        if result is not None:
-            arguments = self._server_arguments(result.call_id)
-            if arguments:
-                # The row opened before its input had streamed in; now it knows what was searched for.
-                self.transcript.restate_tool(result.call_id, arguments)
-            run = ServerToolRun(result.call_id, result.name, arguments, output=result.output, error=result.error_code)
-            self.transcript.complete_tool(result.call_id, describe_output(run) or serialize(result.output))
-
-    async def on_server_tool_failed_event(self, event: AgentEvent) -> None:
-        """Attach a hosted tool's failure, preferring the error code over the payload."""
-        result = event.server_tool_result
-        if result is not None:
-            arguments = self._server_arguments(result.call_id)
-            if arguments:
-                self.transcript.restate_tool(result.call_id, arguments)
-            run = ServerToolRun(result.call_id, result.name, arguments, output=result.output, error=result.error_code)
-            self.transcript.complete_tool(
-                result.call_id,
-                describe_output(run) or serialize(result.output),
-                status=EntryStatus.FAILED,
-            )
-
-    async def on_run_completed_event(self, event: AgentEvent) -> None:
-        """Close a reasoning row that the run never closed on its own."""
-        self.transcript.complete_thinking()
-
-    async def on_custom_event(self, event: AgentEvent) -> None:
-        """Route extension events: questions and approvals to the shell, usage and MCP news to the rows."""
-        if event.name == SHELL_APPROVAL_EVENT_NAME and self.on_approval is not None:
-            self.on_approval(event)
-        elif event.name == USAGE_EVENT_NAME and self.on_usage is not None:
-            self.on_usage(event)
-        elif event.name == MCP_NOTICE_EVENT_NAME:
-            # News about an MCP server or its configuration. It is a remark in the conversation,
-            # not an error: the request goes on without whatever could not be reached.
-            line = notice_from(event)
-            if line is not None:
-                self.transcript.notice(line)
-        elif self.on_ask is not None:
-            question = question_from(event)
-            if question is not None:
-                self.on_ask(question)

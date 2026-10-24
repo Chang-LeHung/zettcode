@@ -407,7 +407,7 @@ class RunStream:
     # -- the run --
     async def _drive(self) -> AsyncGenerator[AnyEvent, None]:
         """Pump the agent's events through ``translate``, answering the ones that wait on the program."""
-        from ._translate import translate
+        from .translation import translate
 
         agent = self._client._agent
         bridge = self._client._bridge
@@ -507,7 +507,7 @@ class Session:
     @property
     def usage(self) -> Usage:
         """Return what this session has spent in total, in this process and, for a resumed one, before it."""
-        from ._translate import usage_from
+        from .translation import usage_from
 
         return usage_from(self._client._agent.runtime.usage.snapshot(self.id))
 
