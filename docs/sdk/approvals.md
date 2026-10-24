@@ -73,9 +73,23 @@ async with client.prompt("deploy to staging") as run:
                 print(text, end="")
 ```
 
-On an approval: `approve()`, `approve(remember=True)`, `deny()`. On a question: `answer("text")` and `decline()`. Answer before asking the stream for its next event.
+On an approval: `approve()`, `approve(remember=True)`, `deny()`. On a question: `answer("text")` and `decline()`. Answer before asking the stream for its next event, unless the run was started with `defer_answers=True` (see below).
 
 `input()` blocks the event loop here. That is fine for a script and wrong for a server; use `await asyncio.to_thread(input, ...)` or your UI's async prompt there.
+
+### Answering later, from somewhere else
+
+A program with a panel or a chat asks its reader in a different place from the loop that reads events, and the reader
+answers when they answer. Start the run with `defer_answers=True` and the request is left open past its event: show it
+from a handler that returns `None`, and settle it when the reader has chosen, with the event's own `approve()`, `deny()`,
+`answer()` or `decline()`. The agent stays suspended in the tool call until then. Whatever is still open when the run
+ends (it finished, was stopped, or failed) is denied or declined, so nothing is left waiting on a run that is over.
+
+```python
+async with client.prompt("deploy it", on_approval=panel.show, defer_answers=True) as run:
+    async for event in run:
+        ...                      # panel.show(request) returned at once; panel calls request.approve() later
+```
 
 ### 3. Do neither
 

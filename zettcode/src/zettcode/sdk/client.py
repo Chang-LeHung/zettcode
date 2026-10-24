@@ -497,6 +497,7 @@ class Client:
         timeout: float | None = None,
         raw: bool = False,
         keep_events: bool = False,
+        defer_answers: bool = False,
     ) -> RunStream:
         """Run one turn for a message another session sent, as the terminal does when one arrives.
 
@@ -511,6 +512,7 @@ class Client:
             timeout=timeout,
             raw=raw,
             keep_events=keep_events,
+            defer_answers=defer_answers,
         )
 
     async def send(self, to: str, text: str) -> Delivered:
@@ -852,6 +854,7 @@ class Client:
         timeout: float | None = None,
         raw: bool = False,
         keep_events: bool = False,
+        defer_answers: bool = False,
     ) -> RunStream:
         """Send a prompt on the current session. Await the call for the result, or iterate it for the events.
 
@@ -874,6 +877,7 @@ class Client:
             timeout=timeout,
             raw=raw,
             keep_events=keep_events,
+            defer_answers=defer_answers,
         )
 
     #: The same method as :meth:`prompt`, for code that says "stream" when it means to iterate.

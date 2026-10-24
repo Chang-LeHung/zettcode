@@ -612,6 +612,54 @@ async def test_the_program_can_answer_an_approval_itself_while_iterating(tmp_pat
 
 
 @posix_shell
+async def test_a_deferred_run_keeps_an_approval_open_for_an_answer_that_comes_from_elsewhere(tmp_path, monkeypatch):
+    """A panel answers when the reader chooses, not before the stream's next event: the run waits for it."""
+    wire(monkeypatch, ScriptedModel(asks_for(call("bash", {"command": "echo later"}, call_id="b")), "done"))
+    shown: list[zc.ApprovalRequested] = []
+
+    async def reader_chooses(request):
+        shown.append(request)
+        asyncio.get_running_loop().call_later(0.2, request.approve)
+
+    async with make(tmp_path) as client:
+        client.use_permission("ask")
+        async with client.prompt("go", on_approval=reader_chooses, defer_answers=True) as run:
+            async for _event in run:
+                pass
+
+    assert len(shown) == 1 and shown[0].approved is True
+    assert "later" in run.result.tools[0].output, "the command ran, because the answer came after the event"
+
+
+@posix_shell
+async def test_the_same_late_answer_is_too_late_without_defer_answers(tmp_path, monkeypatch):
+    wire(monkeypatch, ScriptedModel(asks_for(call("bash", {"command": "echo later"}, call_id="b")), "done"))
+
+    async def reader_chooses(request):
+        asyncio.get_running_loop().call_later(0.2, lambda: request.approved is None and request.approve())
+
+    async with make(tmp_path) as client:
+        client.use_permission("ask")
+        result = await asyncio.wait_for(client.prompt("go", on_approval=reader_chooses), 10)
+
+    assert not result.tools[0].ok, "it was denied at the next event, before the reader could choose"
+
+
+@posix_shell
+async def test_what_a_deferred_run_left_open_is_denied_when_the_run_ends(tmp_path, monkeypatch):
+    wire(monkeypatch, ScriptedModel(asks_for(call("bash", {"command": "echo never"}, call_id="b")), "done"))
+    open_ones: list[zc.ApprovalRequested] = []
+    async with make(tmp_path) as client:
+        client.use_permission("ask")
+        async with client.prompt("go", on_approval=open_ones.append, defer_answers=True) as run:
+            async for _event in run:
+                if open_ones:
+                    break
+
+    assert open_ones[0].approved is False, "nobody answered, and the run is over: the agent is not left waiting"
+
+
+@posix_shell
 async def test_a_coroutine_handler_that_answers_for_itself_is_honoured(tmp_path, monkeypatch):
     wire(monkeypatch, ScriptedModel(asks_for(call("bash", {"command": "echo remembered"}, call_id="b")), "done"))
 

@@ -73,9 +73,19 @@ async with client.prompt("deploy to staging") as run:
                 print(text, end="")
 ```
 
-审批：`approve()`、`approve(remember=True)`、`deny()`。提问：`answer("text")` 和 `decline()`。请在向流要下一个事件之前作答。
+审批：`approve()`、`approve(remember=True)`、`deny()`。提问：`answer("text")` 和 `decline()`。请在向流要下一个事件之前作答，除非这次 run 是用 `defer_answers=True` 启动的（见下）。
 
 这里的 `input()` 会阻塞事件循环。对脚本无所谓，对服务器就不行；在那里请用 `await asyncio.to_thread(input, ...)` 或你的 UI 的异步提示。
+
+### 稍后、在别处作答
+
+带面板或聊天窗口的程序，向读者提问的地方和读事件的循环不是同一处，读者什么时候选就什么时候答。用 `defer_answers=True` 启动 run，请求就会在它的事件之后继续保持打开：从一个返回 `None` 的处理函数里把它展示出来，等读者选好了，再用事件自己的 `approve()`、`deny()`、`answer()` 或 `decline()` 处理。在那之前 agent 一直挂在工具调用里。run 结束（完成、被停止或失败）时仍然打开的请求会被拒绝或拒答，所以不会有任何东西卡在已经结束的 run 上。
+
+```python
+async with client.prompt("deploy it", on_approval=panel.show, defer_answers=True) as run:
+    async for event in run:
+        ...                      # panel.show(request) 立刻返回；面板稍后调用 request.approve()
+```
 
 ### 3. 都不做
 

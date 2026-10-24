@@ -13,7 +13,9 @@ A handler may be a plain function or a coroutine function. What it returns decid
         request.approve(remember=True)                  # answering yourself is fine; return None
 
 ``None`` leaves the request unanswered, which means the default (deny, decline) applies once the stream is asked for
-its next event.
+its next event. A run started with ``defer_answers=True`` does not apply the default then: it keeps the request open,
+so a handler that only shows the request to a person (and returns ``None``) can have it answered later, from a panel,
+by the event's own ``approve`` or ``answer``. Whatever is still open when the run ends gets the default.
 """
 
 from __future__ import annotations

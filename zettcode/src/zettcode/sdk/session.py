@@ -254,6 +254,7 @@ class RunStream:
         raw: bool = False,
         keep_events: bool = False,
         side: bool = False,
+        defer_answers: bool = False,
     ) -> None:
         _check_timeout(timeout)
         self._session = session
@@ -266,6 +267,10 @@ class RunStream:
         self._deadline = 0.0
         self._raw = raw
         self._side = side
+        self._defer = defer_answers
+        #: The approvals and questions a deferred run left open past their event; whatever is still open when the
+        #: run ends is denied or declined, so a suspended tool call never waits on a run that is over.
+        self._open: list[ApprovalRequested | QuestionAsked] = []
         self._collector = _Collector(keep_events=keep_events)
         self._baseline = Usage()
         self._started = False
@@ -425,9 +430,13 @@ class RunStream:
                             yield self._seen(RawEvent(raw.session_id or self._session.id, raw))
                         for event in translate(raw, bridge, hosted):
                             await self._answer(event)
+                            self._hold(event)
                             yield self._seen(event)
-                            self._default(event)
+                            self._settle(event)
             finally:
+                for request in self._open:
+                    self._default(request)
+                self._open.clear()
                 if self._side:
                     runtime.sides.end()
         except _HandlerFailed as failure:
@@ -452,6 +461,25 @@ class RunStream:
         except Exception as error:
             self._default(event)
             raise _HandlerFailed(error) from error
+
+    def _hold(self, event: AnyEvent) -> None:
+        """Remember a request a deferred run is about to yield unanswered, before it is yielded.
+
+        Before, and not after: a consumer that stops at this very event never resumes the generator, and the run's end
+        has to find the request to answer it.
+        """
+        if self._defer and isinstance(event, (ApprovalRequested, QuestionAsked)) and not event.answered:
+            self._open.append(event)
+
+    def _settle(self, event: AnyEvent) -> None:
+        """Decide what an event that was yielded and not answered comes to.
+
+        Normally it is denied or declined now. A deferred run keeps it open instead (see :meth:`_hold`), for the
+        program to answer from wherever it asks the reader, and answers it for the program only when the run ends.
+        """
+        if self._defer and isinstance(event, (ApprovalRequested, QuestionAsked)):
+            return
+        self._default(event)
 
     @staticmethod
     def _default(event: AnyEvent) -> None:
@@ -540,6 +568,7 @@ class Session:
         timeout: float | None = None,
         raw: bool = False,
         keep_events: bool = False,
+        defer_answers: bool = False,
     ) -> RunStream:
         """Send a prompt. Await the result of the call for the answer, or iterate it for the events.
 
@@ -556,6 +585,10 @@ class Session:
             timeout: Seconds to allow the whole run; ``None`` waits as long as it takes.
             raw: Also yield the underlying ``zett-agent`` event as a :class:`RawEvent` before its typed events.
             keep_events: Keep every event in ``result.events``.
+            defer_answers: Leave an approval or a question open past the event that asked it, so a program that asks
+                its reader somewhere else (a panel, a chat) can answer it later with the event's own ``approve``,
+                ``deny``, ``answer`` or ``decline``. Without it, one not answered by the time the stream is asked
+                for its next event is denied or declined. Either way, whatever is still open when the run ends is.
 
         Raises:
             ValueError: The prompt is empty, or ``timeout`` is not a positive number.
@@ -590,6 +623,7 @@ class Session:
             timeout=timeout,
             raw=raw,
             keep_events=keep_events,
+            defer_answers=defer_answers,
         )
 
     #: The same method as :meth:`prompt`; it returns a stream you can iterate, which is what the name says.
@@ -605,6 +639,7 @@ class Session:
         timeout: float | None = None,
         raw: bool = False,
         keep_events: bool = False,
+        defer_answers: bool = False,
     ) -> RunStream:
         """Run one turn for a message another session sent.
 
@@ -639,6 +674,7 @@ class Session:
             timeout=timeout,
             raw=raw,
             keep_events=keep_events,
+            defer_answers=defer_answers,
         )
 
     async def run(
@@ -748,6 +784,7 @@ class Session:
         timeout: float | None = None,
         raw: bool = False,
         keep_events: bool = False,
+        defer_answers: bool = False,
     ) -> RunStream:
         """Pick up an interrupted request where it stopped; await it or iterate it like :meth:`prompt`.
 
@@ -766,6 +803,7 @@ class Session:
             timeout=timeout,
             raw=raw,
             keep_events=keep_events,
+            defer_answers=defer_answers,
         )
 
     async def resume(

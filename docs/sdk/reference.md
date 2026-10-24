@@ -147,7 +147,7 @@ The agent for one workspace. An async context manager. See [Client & configurati
 
 | Method | Returns | Does |
 | --- | --- | --- |
-| `prompt(prompt, *, images, mentions, on_approval, on_question, on_event, timeout, raw, keep_events)` | `RunStream` | Sends a prompt on the current session. Await the result for a `RunResult`; iterate it for events. |
+| `prompt(prompt, *, images, mentions, on_approval, on_question, on_event, timeout, raw, keep_events, defer_answers)` | `RunStream` | Sends a prompt on the current session. Await the result for a `RunResult`; iterate it for events. |
 | `stream(...)` | `RunStream` | The same method as `prompt`. |
 | `run(prompt, *, images, mentions, on_approval, on_question, on_event, timeout, keep_events)` | `RunResult` (awaitable) | `await client.prompt(...)` as a call. Has no `raw`. |
 | `use_model(name)` | `ModelInfo` | Chooses the model; takes a name or a `ModelInfo`. |
@@ -157,7 +157,7 @@ The agent for one workspace. An async context manager. See [Client & configurati
 | `mentions(query="", *, limit=50)` | `tuple[MentionInfo, ...]` | The `@` resources matching a query, for a completion menu. With `sessions_enabled=True`, the other running sessions come first, as they do in the terminal. |
 | `await join_sessions(on_message)` | `bool` | Join the session broker, so other ZettCode sessions can find this one and send it messages. `on_message` is called with each `IncomingMessage` and returns a `Receipt`; `False` means sessions are switched off for this client. |
 | `await send(to, text)` | `Delivered` | Sends a message to another session by handle or id, as the reader's own words; needs `join_sessions`. Raises `zettcode.sdk.errors.SendError` (its `reason` says why) when nobody could be reached. |
-| `relay(message, *, on_approval, on_question, on_event, timeout, raw, keep_events)` | `RunStream` | Runs one turn for a message another session sent, framed with who it came from. |
+| `relay(message, *, on_approval, on_question, on_event, timeout, raw, keep_events, defer_answers)` | `RunStream` | Runs one turn for a message another session sent, framed with who it came from. |
 | `await usage_ledger()` | `WorkspaceUsage` | What every stored session of the workspace spent, by session, model and day. |
 | `await session_stats(ids=None)` | `tuple[SessionStatsInfo, ...]` | Stored totals of some sessions, or of the current one. |
 | `use_self_compaction(choice)` | `bool` | Let the model compact this session itself (`True`), stop it (`False`), or follow the default (`None`). |
@@ -215,14 +215,14 @@ A handle on one stored conversation. Obtain it from `client.session`, `client.se
 
 | Method | Returns |
 | --- | --- |
-| `prompt(prompt, *, images, mentions, on_approval, on_question, on_event, timeout, raw, keep_events)` | `RunStream` |
+| `prompt(prompt, *, images, mentions, on_approval, on_question, on_event, timeout, raw, keep_events, defer_answers)` | `RunStream` |
 | `stream(...)` | `RunStream` (same method) |
 | `await run(prompt, *, images, mentions, on_approval, on_question, on_event, timeout, keep_events)` | `RunResult` |
 | `await ask(question, *, on_event=None, timeout=None)` | `str` |
 | `ask_stream(question, *, on_event=None, timeout=None)` | `RunStream` |
 | `steer(message)` | `bool` |
 | `await resumable()` | `ResumeInfo \| None` |
-| `resume_stream(*, on_approval, on_question, on_event, timeout, raw, keep_events)` | `RunStream` |
+| `resume_stream(*, on_approval, on_question, on_event, timeout, raw, keep_events, defer_answers)` | `RunStream` |
 | `await resume(*, on_approval, on_question, on_event, timeout)` | `RunResult` |
 
 `prompt` raises, at the call: `ValueError` (empty prompt, bad `timeout`), `TypeError` (a piece that is not text or `Image`), `ConfigurationError` (images for a model that cannot read them), `SessionBusyError`, `ClientClosedError`. Awaiting or iterating the run raises `RunError`, `RunTimeoutError`, `SessionLockedError` and whatever a handler raises.
