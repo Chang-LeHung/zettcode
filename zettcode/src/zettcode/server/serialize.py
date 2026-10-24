@@ -152,14 +152,16 @@ def model_out(model: ModelInfo) -> ModelOut:
     )
 
 
-def session_out(info: SessionInfo, current: str | None = None) -> SessionOut:
-    """Return one stored session: when it changed, and whether it is the one a prompt would continue."""
+def session_out(info: SessionInfo, current: str | None = None, running: bool = False) -> SessionOut:
+    """Return one stored session: when it changed, whether it is the one a prompt would continue, and whether a run
+    is going in it now."""
     return SessionOut(
         id=info.id,
         title=info.title,
         created_at=info.created_at,
         updated_at=info.updated_at,
         current=info.id == current,
+        running=running,
     )
 
 

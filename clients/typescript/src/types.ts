@@ -133,6 +133,8 @@ export interface SessionInfo {
   created_at: string | null;
   updated_at: string | null;
   current: boolean;
+  /** Whether a run is going in this session now, including one the reader is not looking at. */
+  running?: boolean;
 }
 
 export interface CurrentSession {

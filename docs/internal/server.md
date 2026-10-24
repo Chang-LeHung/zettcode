@@ -52,6 +52,17 @@ is pinned by `test_server_api.py` (JSON endpoints, auth, errors), `test_server_p
 
 ## Messages from other sessions
 
+`Runner` holds one `Slot` per open conversation — its own SDK client, run lock, pending answer and inbox — and one of
+them is *current*: the one a prompt, an answer and `GET /messages` mean. Opening or starting a session while the current
+one runs does not wait for it and does not stop it: the running slot is put aside, a client made like it (the same
+model, effort, permission and harness) opens the other conversation, and `GET /sessions` marks the aside one
+`running`. Opening a running session again makes its slot current as it is. A slot that is neither current nor running
+is closed (`_tidy`, after every run), so only what is running costs a client. The SDK still allows one conversation and
+one run per client, which is why this is several clients and not one client with several runs, and why a model change
+(`reload`) is refused while a run is going in the current conversation.
+
+## Messages from other sessions
+
 The server is a session, not a reader of the broker's list: `Runner` builds its client with `sessions_enabled=True`
 and hands it :meth:`Client.join_sessions`, so a terminal (or another editor) can address this chat and a message sent
 to it arrives here. Holding a message instead of running it at once is what lets the editor draw the turn: the server

@@ -246,6 +246,7 @@ class SessionOut(BaseModel):
     created_at: datetime | None = None
     updated_at: datetime | None = None
     current: bool = False
+    running: bool = False
 
 
 class SessionsOut(BaseModel):
