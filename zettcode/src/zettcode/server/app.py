@@ -21,6 +21,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from zettcode import __version__
+from zettcode.broker.client import SendError
 from zettcode.sdk.errors import (
     ConfigurationError,
     NothingToDoError,
@@ -66,6 +67,8 @@ from .schemas import (
     RunStateOut,
     SelfCompactionOut,
     SelfCompactionUpdate,
+    SendIn,
+    SentOut,
     SessionCreate,
     SessionOut,
     SessionsOut,
@@ -105,6 +108,7 @@ FAILURES: tuple[tuple[type[BaseException], int, str], ...] = (
     (NothingToDoError, 409, "nothing_to_do"),
     (NoModelError, 409, "no_model"),
     (ConfigurationError, 400, "invalid"),
+    (SendError, 404, "unreachable"),
     (RunTimeoutError, 504, "timeout"),
     (RunError, 502, "run"),
     (ZettCodeError, 500, "internal"),
@@ -555,6 +559,12 @@ def create_app(settings: Settings, *, client_factory: ClientFactory | None = Non
             media_type="text/html; charset=utf-8",
             headers={"Content-Disposition": f'attachment; filename="zettcode-{session.id[:8]}.html"'},
         )
+
+    @protected.post("/sessions/current/send", response_model=SentOut, tags=["sessions"])
+    async def send_message(body: SendIn, runner: RunnerDep) -> SentOut:
+        """Send a message to another ZettCode session, as a draft beginning with ``@name`` does."""
+        to, disposition = await runner.send(body.to, body.text)
+        return SentOut(to=to, disposition=disposition)
 
     @protected.get("/plugins", response_model=PluginsOut, tags=["models"])
     async def plugins(runner: RunnerDep) -> PluginsOut:

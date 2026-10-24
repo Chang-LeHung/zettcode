@@ -59,6 +59,12 @@ keeps what arrives (`GET /messages` lists it, oldest first, at most 16) and the 
 `POST /messages/{id}`, which streams the turn in the same frames as `/prompts`. The model reads the message framed
 with who sent it, and the sender hears back only if the model calls `send_message`; the answer is this chat's own.
 
+Sending is the other direction: a draft that begins with `@name` is not a request to this chat's model but a message
+to that session, so the extension posts it to `POST /sessions/current/send` (`{to, text}`, answered with who took it and
+whether the turn `started` or is `queued`) and draws it as its own row, `to @name`, with what was said. Nobody to
+reach is a `404 unreachable`, not a failure of the server. A `send_message` the model makes is a tool row like any
+other, but its card opens by itself and shows the message above the delivery line.
+
 ## What is deliberately absent
 
 - **The `/usage` ledger and the `/resume` table** (`app/agent/storage/ledger.py`, session stats) are not exposed: they

@@ -133,6 +133,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
   private contextTimer: ReturnType<typeof setTimeout> | null = null;
   /** Asks the server for messages other sessions sent, which are answered as ordinary turns. */
   private messageTimer: ReturnType<typeof setInterval> | null = null;
+  /** True while one message is being taken, so two polls cannot answer the same one. */
+  private takingMessage = false;
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -356,6 +358,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     this.postState();
     this.postTurns();
     void this.refreshSessions(false).catch(() => undefined);
+    this.watchMessages();
   }
 
   /** Read the server's state again; used after a restart and by the refresh button. */
@@ -411,20 +414,25 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
   }
 
   private async takeMessage(): Promise<void> {
-    if (this.busy || !this.initialized || !this.readyForPrompt()) {
+    if (this.busy || this.takingMessage || !this.initialized || this.health?.ready !== true) {
       return;
     }
-    const client = await this.ensureClient();
-    const waiting = await client.messages();
-    const first = waiting[0];
-    if (first === undefined || this.busy) {
-      return;
+    this.takingMessage = true;
+    try {
+      const client = await this.ensureClient();
+      const waiting = await client.messages();
+      const first = waiting[0];
+      if (first === undefined || this.busy) {
+        return;
+      }
+      const turn = createTurn(first.text, [], Date.now());
+      turn.from = { id: first.sender_id, name: first.sender };
+      this.turns.push(turn);
+      this.postTurn(turn, true);
+      await this.startRun(client.answerMessage(first.id, this.runOptions([])), turn);
+    } finally {
+      this.takingMessage = false;
     }
-    const turn = createTurn(first.text, [], Date.now());
-    turn.from = { id: first.sender_id, name: first.sender };
-    this.turns.push(turn);
-    this.postTurn(turn, true);
-    await this.startRun(client.answerMessage(first.id, this.runOptions([])), turn);
   }
 
   /** Say that a load is going on while `work` runs, so the view can show it; it is said again, empty, however `work` ends. */
@@ -669,6 +677,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     if (!prompt) {
       return;
     }
+    const addressed = /^@([\w-]+)\s+([\s\S]+)$/.exec(prompt);
+    if (addressed !== null) {
+      await this.sendToSession(addressed[1] ?? "", addressed[2] ?? "", images);
+      return;
+    }
     if (this.busy) {
       await this.steer(prompt);
       return;
@@ -681,6 +694,32 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     this.turns.push(turn);
     this.postTurn(turn, true);
     await this.startRun(client.prompt(prompt, this.runOptions(images)), turn);
+  }
+
+  /**
+   * Send a draft that begins with `@name` to that session, as the terminal does, and show what was sent.
+   *
+   * A message is text only, and it is not a request to this chat's model: the row says who it went to, and the
+   * other session's answer arrives later as a turn of its own.
+   */
+  private async sendToSession(handle: string, text: string, images: ImageInput[]): Promise<void> {
+    if (images.length > 0) {
+      this.post({ type: "notice", level: "warn", text: `a message to @${handle} is text only` });
+      return;
+    }
+    const client = await this.ensureClient();
+    try {
+      const sent = await client.sendMessage(handle, text);
+      const turn = createTurn(text, [], Date.now());
+      turn.sent = { to: sent.to, note: sent.disposition === "queued" ? "queued" : "delivered" };
+      turn.status = "done";
+      turn.finishedAt = Date.now();
+      this.turns.push(turn);
+      this.postTurn(turn, true);
+      this.postState();
+    } catch (error) {
+      this.post({ type: "notice", level: "warn", text: `not sent to @${handle}: ${messageOf(error)}` });
+    }
   }
 
   private async resumeRun(): Promise<void> {

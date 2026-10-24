@@ -30,8 +30,9 @@ const display = computed(() => describeTool(props.tool.name, props.tool.argument
 const detail = computed(() => toolDetail(props.tool.name, props.tool.arguments));
 const language = computed(() => toolLanguage(props.tool.name, props.tool.arguments));
 const isBash = computed(() => /(^|__)(bash|shell)$/i.test(props.tool.name));
+const isMessage = computed(() => /(^|__)send_message$/i.test(props.tool.name));
 /** A command's card, and a failed call's, is open until you fold it; every other tool's body opens when you ask. */
-const opensByDefault = computed(() => isBash.value || props.tool.status === "failed");
+const opensByDefault = computed(() => isBash.value || isMessage.value || props.tool.status === "failed");
 const open = computed(() =>
   opensByDefault.value ? !state.closedTools.has(props.tool.callId) : state.openTools.has(props.tool.callId),
 );
@@ -146,7 +147,9 @@ const changedPath = computed(() => {
         </div>
       </template>
       <template v-else>
-        <OutputBlock v-if="!tool.output && detail" :text="detail" title="Arguments" :limit="8" />
+        <!-- A message to another session shows what was said as well as whether it was taken. -->
+        <OutputBlock v-if="isMessage && detail" :text="detail" title="Message" :limit="20" />
+        <OutputBlock v-else-if="!tool.output && detail" :text="detail" title="Arguments" :limit="8" />
         <OutputBlock v-if="tool.output || failed" :text="failed ? reason : tool.output" :failed="failed" />
       </template>
     </div>

@@ -20,3 +20,16 @@ async def test_a_client_that_did_not_switch_sessions_on_joins_nothing(tmp_path: 
         assert await client.join_sessions(lambda message: Receipt(True)) is False
     finally:
         await client.aclose()
+
+
+async def test_a_client_that_has_not_joined_cannot_send_and_is_told_how_to(tmp_path: Path):
+    import pytest
+
+    from zettcode.sdk.errors import ConfigurationError
+
+    client = build(tmp_path)
+    try:
+        with pytest.raises(ConfigurationError, match="join_sessions"):
+            await client.send("api", "hello")
+    finally:
+        await client.aclose()

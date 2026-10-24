@@ -155,6 +155,7 @@ The agent for one workspace. An async context manager. See [Client & configurati
 | `use_permission(name)` | `str` | Chooses the permission level; applies from the next shell command. |
 | `mentions(query="", *, limit=50)` | `tuple[MentionInfo, ...]` | The `@` resources matching a query, for a completion menu. With `sessions_enabled=True`, the other running sessions come first, as they do in the terminal. |
 | `await join_sessions(on_message)` | `bool` | Join the session broker, so other ZettCode sessions can find this one and send it messages. `on_message` is called with each `IncomingMessage` and returns a `Receipt`; `False` means sessions are switched off for this client. |
+| `await send(to, text)` | `Delivered` | Sends a message to another session by handle or id, as the reader's own words; needs `join_sessions`. Raises `zettcode.broker.client.SendError` (its `reason` says why) when nobody could be reached. |
 | `relay(message, *, on_approval, on_question, on_event, timeout, raw, keep_events)` | `RunStream` | Runs one turn for a message another session sent, framed with who it came from. |
 | `await usage_ledger()` | `WorkspaceUsage` | What every stored session of the workspace spent, by session, model and day. |
 | `await session_stats(ids=None)` | `tuple[SessionStatsInfo, ...]` | Stored totals of some sessions, or of the current one. |
