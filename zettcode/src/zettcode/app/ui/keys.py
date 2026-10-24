@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from zettcode.engine.errors import describe_error
+from zettcode.error_text import describe_error
 from zettcode.tui import AnyEvent, Host
 from zettcode.tui.clipboard import copy_route
 

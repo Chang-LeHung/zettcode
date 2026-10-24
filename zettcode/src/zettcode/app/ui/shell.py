@@ -58,11 +58,11 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
     from zettcode.config import ModelConfig
     from zettcode.engine.agent.prompt import PromptPart
     from zettcode.engine.dialogue.mentions import MentionRegistry
-    from zettcode.engine.extensions.usage import UsageSnapshot
     from zettcode.engine.messenger import Messenger
     from zettcode.engine.relay import Relayed
     from zettcode.sdk.client import Client
     from zettcode.sdk.events import QuestionAsked
+    from zettcode.sdk.types import Usage
     from zettcode.tui import CompletionPopup, StatusBar, Theme, TuiApp
     from zettcode.update import UpdateState
 
@@ -128,7 +128,7 @@ class ShellState:
     #: The active session's title, if the store has one.
     _session_title: str | None
     #: Cumulative token counters for the active session.
-    _usage: UsageSnapshot
+    _usage: Usage
     #: Whether a turn or a command is in flight.
     _busy: bool
     #: When the garbage collector may run: while work is in flight, and not while the reader types.

@@ -24,8 +24,8 @@ from zett_agent.extensions.skill import SkillExtension
 
 from zettcode.broker.text import folder_name
 from zettcode.config import ZettCodeConfig
-from zettcode.engine.registry import Provider, Registry
 from zettcode.engine.relay import Peer
+from zettcode.registry import Provider, Registry
 
 #: One mention token: an ``@`` at a word boundary, then a name. A name is what a
 #: skill is called (lowercase words) or where a file lives (``src/app.py``), so it

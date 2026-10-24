@@ -37,7 +37,7 @@ The engine is not part of the contract. There are no third-party plugins either,
 
 In `zettcode/engine/`: `core.py` (`ZettCodeEngine`), `agent/` (`ZettCodeAgent`, built from the mixins `base`,
 `settings`, `context`, `sessions`, `turns`, `interaction`, `exports`, plus `prompt`), `dialogue/`, `extensions/`,
-`permission/`, `storage/`, `tools/`, `export/`, `plugins/`, `errors.py`, `pipeline.py`, `registry.py`,
+`permission/`, `storage/`, `tools/`, `export/`, `plugins/`, `pipeline.py`,
 `server_tools.py`, and the messaging between sessions (`messenger.py`, `relay.py`).
 
 Reading a stored session builds no terminal rows: the engine's `load_session` returns `StoredSession`, and the

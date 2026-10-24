@@ -385,31 +385,23 @@ def test_the_views_of_the_terminal_reach_the_engine_through_the_sdk_and_the_list
     ``app/agent`` and ``app/plugins`` are where the terminal is put together from the engine's parts, and may import it.
     """
     still: dict[str, list[str]] = {
-        "zettcode.app.commands": ["zettcode.engine.registry"],
         "zettcode.app.ui.app": [
             "zettcode.engine.agent.prompt",
             "zettcode.engine.dialogue.mentions",
-            "zettcode.engine.errors",
-            "zettcode.engine.extensions.usage",
             "zettcode.engine.messenger",
-            "zettcode.engine.registry",
             "zettcode.engine.relay",
         ],
-        "zettcode.app.ui.bars": ["zettcode.engine.permission"],
         "zettcode.app.ui.followups": ["zettcode.engine.agent.prompt"],
-        "zettcode.app.ui.keys": ["zettcode.engine.errors"],
         "zettcode.app.ui.messaging": [
             "zettcode.engine.agent.prompt",
             "zettcode.engine.dialogue.mentions",
             "zettcode.engine.messenger",
             "zettcode.engine.relay",
         ],
-        "zettcode.app.ui.notices": ["zettcode.engine.extensions.usage"],
         "zettcode.app.ui.sessions": ["zettcode.engine.agent.sessions"],
         "zettcode.app.ui.shell": [
             "zettcode.engine.agent.prompt",
             "zettcode.engine.dialogue.mentions",
-            "zettcode.engine.extensions.usage",
             "zettcode.engine.messenger",
             "zettcode.engine.relay",
         ],

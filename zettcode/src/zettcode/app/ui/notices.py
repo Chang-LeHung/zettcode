@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
-from zettcode.engine.extensions.usage import UsageSnapshot
+from zettcode.sdk.types import Usage
 from zettcode.tui import Anchor, Overlay, OverlaySlot, Screen, Toast
 
 from ..commands import CommandUi
@@ -25,7 +25,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
 class NoticesMixin(CommandUi, ShellState):
     """Show approvals, toasts, and the usage counters."""
 
-    def _usage_updated(self, snapshot: UsageSnapshot, session_id: str) -> None:
+    def _usage_updated(self, snapshot: Usage, session_id: str) -> None:
         """Mirror the usage extension's cumulative counters into the status line.
 
         Only this session's: a subagent works in a session of its own, and its

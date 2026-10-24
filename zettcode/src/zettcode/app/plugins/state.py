@@ -19,7 +19,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
     from pathlib import Path
 
     from zettcode.config import ModelConfig, ZettCodeConfig
-    from zettcode.engine.extensions.usage import UsageSnapshot
+    from zettcode.sdk.types import Usage
     from zettcode.statusline import Row
     from zettcode.tui import TextLine, Theme
 
@@ -119,7 +119,7 @@ class ActivityState:
     status: Activity
     note: str | None
     auto_shell: bool
-    usage: UsageSnapshot
+    usage: Usage
     tasks: tuple[tuple[str, str], ...]
     frame: int
     permission: str = "ask"

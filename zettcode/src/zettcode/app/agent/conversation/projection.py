@@ -8,13 +8,11 @@ terminal shows and what the SDK reports cannot drift apart.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import asdict
 
 from zett_agent.dispatcher import AgentEventDispatcher
 from zett_agent.events import AgentEvent
 
 from zettcode.engine.dialogue.ask import declined_answer
-from zettcode.engine.extensions.usage import UsageSnapshot
 from zettcode.engine.relay import Relayed
 from zettcode.sdk.events import (
     AnyEvent,
@@ -40,6 +38,7 @@ from zettcode.sdk.events import (
     UsageUpdated,
 )
 from zettcode.sdk.translation import Bridge, translate
+from zettcode.sdk.types import Usage
 
 from .entries import EntryStatus
 from .stops import stop_text
@@ -71,7 +70,7 @@ class TranscriptProjector(AgentEventDispatcher):
         bridge: Bridge | None = None,
         on_approval: Callable[[ApprovalRequested], None] | None = None,
         on_ask: Callable[[QuestionAsked], None] | None = None,
-        on_usage: Callable[[UsageSnapshot, str], None] | None = None,
+        on_usage: Callable[[Usage, str], None] | None = None,
         on_steering_started: Callable[[str], None] | None = None,
         on_steering_interrupted: Callable[[str], None] | None = None,
     ) -> None:
@@ -192,7 +191,7 @@ class TranscriptProjector(AgentEventDispatcher):
             case QuestionAsked() if self.on_ask is not None:
                 self.on_ask(event)
             case UsageUpdated(session_id=session_id, usage=usage) if self.on_usage is not None:
-                self.on_usage(UsageSnapshot(**asdict(usage)), session_id)
+                self.on_usage(usage, session_id)
             case Notice(text=text):
                 # News about an MCP server or its configuration. It is a remark in the conversation,
                 # not an error: the request goes on without whatever could not be reached.

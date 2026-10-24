@@ -287,7 +287,7 @@ class SessionMixin(ShellState):
         self.view.clear_selection()
         self._session_title = loaded.stored.title
         self._sync_lock()
-        self._usage = self.agent.usage
+        self._usage = self.client.usage
         self._refresh_tasks()
         # The held follow-ups continued the conversation being left; they are handed back
         # as text, after the new transcript is up so the line that says so is in it.

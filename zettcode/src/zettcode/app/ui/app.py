@@ -51,13 +51,13 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
     from collections.abc import AsyncGenerator
 from zettcode.engine.agent.prompt import PromptPart, carries_image, mention_hint, mention_parts
 from zettcode.engine.dialogue.mentions import MentionRegistry, SessionMentions
-from zettcode.engine.errors import describe_error, failure_text
-from zettcode.engine.extensions.usage import UsageSnapshot
 from zettcode.engine.messenger import Messenger
-from zettcode.engine.registry import Registry
 from zettcode.engine.relay import Relayed
+from zettcode.error_text import describe_error, failure_text
+from zettcode.registry import Registry
 from zettcode.sdk.events import QuestionAsked
 from zettcode.sdk.translation import AgentBridge
+from zettcode.sdk.types import Usage
 
 from ..agent.agent import TerminalAgent
 from ..agent.conversation.effort_gauge import EFFORT_SECONDS, EffortFrame, effort_frame
@@ -278,7 +278,7 @@ class ZettCodeApp(
         self._activity = Activity.READY
         self._note: str | None = None
         self._session_title: str | None = None
-        self._usage = UsageSnapshot()
+        self._usage = Usage()
         self._install_keymap()
 
     @property
@@ -1090,7 +1090,7 @@ class ZettCodeApp(
                         self.view.clear_selection()
                         self._remember_session_title()
                         self._sync_lock()
-                        self._usage = self.agent.usage
+                        self._usage = self.client.usage
                         self._refresh_tasks()
                         self._return_follow_ups_to_draft()
                         self.app.request_layout()
