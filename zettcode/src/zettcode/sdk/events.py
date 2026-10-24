@@ -19,7 +19,7 @@ suspended inside the tool call until they are answered, which is why each carrie
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Protocol, TypeAlias
+from typing import TYPE_CHECKING, TypeAlias
 
 from .types import Compaction, Usage
 
@@ -27,8 +27,6 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only; nothing here imports t
     from collections.abc import Callable
 
     from zett_agent.events import AgentEvent
-
-    from ..engine.dialogue.ask import AskUserQuestion
 
 __all__ = [
     "AnyEvent",
@@ -55,16 +53,6 @@ __all__ = [
     "ToolStarted",
     "UsageUpdated",
 ]
-
-
-class Bridge(Protocol):
-    """How an answer reaches the suspended agent; the client supplies it."""
-
-    def approve(self, session_id: str, call_id: str, approve: bool, remember: bool) -> None:
-        """Send a shell approval decision."""
-
-    def answer(self, question: AskUserQuestion, text: str | None) -> None:
-        """Send the answer to a question, or decline it when ``text`` is ``None``."""
 
 
 class _Reply:

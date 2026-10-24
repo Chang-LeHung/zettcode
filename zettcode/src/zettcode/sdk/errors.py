@@ -17,6 +17,7 @@ __all__ = [
     "NothingToDoError",
     "RunError",
     "RunTimeoutError",
+    "SendError",
     "SessionBusyError",
     "SessionLockedError",
     "SessionNotFoundError",
@@ -102,3 +103,17 @@ class RunTimeoutError(RunError, TimeoutError):
     def __init__(self, seconds: float, *, partial_text: str = "") -> None:
         super().__init__(f"The run did not finish within {seconds:g}s", retryable=True, partial_text=partial_text)
         self.seconds = seconds
+
+
+class SendError(ZettCodeError):
+    """A message to another session did not arrive.
+
+    Attributes:
+        reason: ``offline`` when there is no broker, ``lost`` when the connection ended with the message in flight (it
+            may or may not have been delivered), otherwise the broker's own reason (``unknown``, ``ambiguous``,
+            ``rejected``, ``timeout``, ``loop``, ``rate``, ``empty``, ``too_long``).
+    """
+
+    def __init__(self, reason: str, message: str) -> None:
+        super().__init__(message)
+        self.reason = reason

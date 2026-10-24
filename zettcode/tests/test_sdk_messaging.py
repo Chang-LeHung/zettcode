@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from zettcode.broker.client import Receipt
 from zettcode.sdk import Client
+from zettcode.sdk.types import Receipt
 
 
 def build(workspace: Path, **settings: object) -> Client:

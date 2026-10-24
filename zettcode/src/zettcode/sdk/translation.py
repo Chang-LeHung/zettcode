@@ -11,7 +11,7 @@ there is one translation: :func:`translate` for the events, :class:`AgentBridge`
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from zett_agent.events import AgentEvent, AgentEventType
 from zett_agent.extensions.shell_approval import SHELL_APPROVAL_EVENT_NAME
@@ -25,7 +25,6 @@ from ..engine.storage.ledger import Ledger, SessionStats, SessionUsage, Tally
 from .events import (
     AnyEvent,
     ApprovalRequested,
-    Bridge,
     CompactionDelta,
     CompactionFinished,
     CompactionStarted,
@@ -59,7 +58,17 @@ from .types import (
     WorkspaceUsage,
 )
 
-__all__ = ["AgentBridge", "checks_from", "ledger_from", "stats_from", "translate", "usage_from"]
+__all__ = ["AgentBridge", "Bridge", "checks_from", "ledger_from", "stats_from", "translate", "usage_from"]
+
+
+class Bridge(Protocol):
+    """How an answer reaches the suspended agent; the client supplies it."""
+
+    def approve(self, session_id: str, call_id: str, approve: bool, remember: bool) -> None:
+        """Send a shell approval decision."""
+
+    def answer(self, question: AskUserQuestion, text: str | None) -> None:
+        """Send the answer to a question, or decline it when ``text`` is ``None``."""
 
 
 class AgentBridge:

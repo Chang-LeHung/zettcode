@@ -84,6 +84,11 @@ LAYERS = (
     ("zettcode.engine", ("zettcode.app", "zettcode.tui", "zettcode.cli", "zettcode.sdk", "zettcode.server")),
     # The SDK is the public face of the engine; it reaches the terminal's code for nothing.
     ("zettcode.sdk", ("zettcode.app", "zettcode.tui", "zettcode.cli", "zettcode.server")),
+    # The server is the SDK's HTTP face and holds no agent of its own: it reaches the agent through the SDK only.
+    (
+        "zettcode.server",
+        ("zettcode.app", "zettcode.engine", "zettcode.tui", "zettcode.cli", "zettcode.broker", "zettcode.config"),
+    ),
     # The broker is standard library only, and the shell imports it, never the other way round.
     ("zettcode.broker", ("zettcode.app", "zettcode.cli", "zettcode.config", "zettcode.tui")),
     ("zettcode.filelock", ("zettcode.app", "zettcode.cli", "zettcode.config", "zettcode.tui", "zettcode.broker")),
@@ -331,8 +336,43 @@ def test_the_terminal_reads_the_agents_events_through_the_sdks_translation_and_n
     """One translation of the agent's events, the SDK's, so what the terminal shows and what the SDK reports agree."""
     source = (PROJECT / "src/zettcode/app/agent/conversation/projection.py").read_text(encoding="utf-8")
 
-    assert "from zettcode.sdk.translation import translate" in source
+    assert "zettcode.sdk.translation import" in source and "translate(" in source
     assert "AgentEventType" not in source, "a second reading of the agent's event types is a second translation"
+
+
+def test_nothing_the_sdk_returns_or_accepts_is_a_type_of_the_broker_or_the_engine():
+    """A public method whose signature names an internal type makes that type public by accident.
+
+    Annotations are strings at run time (``from __future__ import annotations``) and the internal imports sit under
+    ``TYPE_CHECKING``, so this reads the source: it collects the names a module imports from the broker or the
+    engine, and looks for them in the annotations of every public function and method.
+    """
+    internal = ("zettcode.broker", "zettcode.engine")
+    leaks: list[str] = []
+    for module in ("client", "session", "handlers", "events", "types"):
+        path = PROJECT / "src/zettcode/sdk" / f"{module}.py"
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        names: dict[str, str] = {}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                target = (
+                    _resolved(f"zettcode.sdk.{module}", False, node.level, node.module) if node.level else node.module
+                )
+                if target and target.startswith(internal):
+                    names.update({(alias.asname or alias.name): target for alias in node.names})
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) or node.name.startswith("_"):
+                continue
+            annotations = [a.annotation for a in (*node.args.args, *node.args.kwonlyargs) if a.annotation]
+            if node.returns:
+                annotations.append(node.returns)
+            for annotation in annotations:
+                used = {n.id for n in ast.walk(annotation) if isinstance(n, ast.Name)}
+                used |= {
+                    n.value for n in ast.walk(annotation) if isinstance(n, ast.Constant) and isinstance(n.value, str)
+                }
+                leaks.extend(f"{module}.{node.name}: {name} from {names[name]}" for name in sorted(used & names.keys()))
+    assert leaks == []
 
 
 def test_the_hub_and_the_roster_know_nothing_of_the_web():

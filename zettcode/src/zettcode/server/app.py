@@ -21,12 +21,12 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from zettcode import __version__
-from zettcode.broker.client import SendError
 from zettcode.sdk.errors import (
     ConfigurationError,
     NothingToDoError,
     RunError,
     RunTimeoutError,
+    SendError,
     SessionBusyError,
     SessionLockedError,
     SessionNotFoundError,
