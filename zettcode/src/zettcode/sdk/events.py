@@ -33,6 +33,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only; nothing here imports t
 __all__ = [
     "AnyEvent",
     "ApprovalRequested",
+    "CompactionDelta",
     "CompactionFinished",
     "CompactionStarted",
     "Event",
@@ -42,9 +43,13 @@ __all__ = [
     "QuestionAsked",
     "RawEvent",
     "ReasoningDelta",
+    "ReasoningFinished",
+    "ReasoningStarted",
     "ServerToolFinished",
     "ServerToolStarted",
     "Steered",
+    "SteeringFinished",
+    "SteeringInterrupted",
     "TextDelta",
     "ToolFinished",
     "ToolStarted",
@@ -116,6 +121,16 @@ class ReasoningDelta(Event):
     """
 
     text: str
+
+
+@dataclass(frozen=True, slots=True)
+class ReasoningStarted(Event):
+    """The model began a span of reasoning; :class:`ReasoningDelta` events follow until :class:`ReasoningFinished`."""
+
+
+@dataclass(frozen=True, slots=True)
+class ReasoningFinished(Event):
+    """The span of reasoning ended, whether the model went on to answer or to call a tool."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -294,6 +309,17 @@ class CompactionStarted(Event):
 
 
 @dataclass(frozen=True, slots=True)
+class CompactionDelta(Event):
+    """A piece of the summary a compaction is writing, between :class:`CompactionStarted` and its end.
+
+    Attributes:
+        text: The new text, to be appended to what came before.
+    """
+
+    text: str
+
+
+@dataclass(frozen=True, slots=True)
 class CompactionFinished(Event):
     """A compaction ended.
 
@@ -325,6 +351,22 @@ class Steered(Event):
 
     Attributes:
         text: What was said.
+    """
+
+    text: str
+
+
+@dataclass(frozen=True, slots=True)
+class SteeringFinished(Event):
+    """The request that adopted a :class:`Steered` message has answered it."""
+
+
+@dataclass(frozen=True, slots=True)
+class SteeringInterrupted(Event):
+    """A steering message was superseded by a newer one before the request got to it.
+
+    Attributes:
+        text: What the superseded message said.
     """
 
     text: str
@@ -372,6 +414,8 @@ class RawEvent(Event):
 AnyEvent: TypeAlias = (
     TextDelta
     | ReasoningDelta
+    | ReasoningStarted
+    | ReasoningFinished
     | ToolStarted
     | ToolFinished
     | ServerToolStarted
@@ -380,9 +424,12 @@ AnyEvent: TypeAlias = (
     | QuestionAsked
     | UsageUpdated
     | CompactionStarted
+    | CompactionDelta
     | CompactionFinished
     | ModelStopped
     | Steered
+    | SteeringFinished
+    | SteeringInterrupted
     | Notice
     | Finished
     | RawEvent

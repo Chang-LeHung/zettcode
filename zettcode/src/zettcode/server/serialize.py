@@ -260,6 +260,10 @@ def event_payload(event: AnyEvent) -> dict[str, Any]:
             return {"type": "text_delta", "text": text}
         case events.ReasoningDelta(text=text):
             return {"type": "reasoning_delta", "text": text}
+        case events.ReasoningStarted():
+            return {"type": "reasoning_started"}
+        case events.ReasoningFinished():
+            return {"type": "reasoning_finished"}
         case events.ToolStarted(call_id=call_id, name=name, arguments=arguments):
             return {"type": "tool_started", "call_id": call_id, "name": name, "arguments": dict(arguments)}
         case events.ToolFinished(call_id=call_id, name=name, output=output, ok=ok, skipped=skipped):
@@ -302,6 +306,8 @@ def event_payload(event: AnyEvent) -> dict[str, Any]:
             return {"type": "usage_updated", "usage": usage_out(usage).model_dump()}
         case events.CompactionStarted():
             return {"type": "compaction_started"}
+        case events.CompactionDelta(text=text):
+            return {"type": "compaction_delta", "text": text}
         case events.CompactionFinished(applied=applied, compaction=compaction):
             return {
                 "type": "compaction_finished",
@@ -312,6 +318,10 @@ def event_payload(event: AnyEvent) -> dict[str, Any]:
             return {"type": "model_stopped", "reason": reason, "message": message}
         case events.Steered(text=text):
             return {"type": "steered", "text": text}
+        case events.SteeringFinished():
+            return {"type": "steering_finished"}
+        case events.SteeringInterrupted(text=text):
+            return {"type": "steering_interrupted", "text": text}
         case events.Notice(text=text, level=level):
             return {"type": "notice", "text": text, "level": level}
         case events.Finished(text=text):

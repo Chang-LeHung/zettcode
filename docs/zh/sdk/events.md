@@ -36,6 +36,8 @@ async with client.prompt("fix the failing test") as run:
 | --- | --- | --- |
 | `TextDelta` | `text` | 回答的一小段。拼起来就是回答。 |
 | `ReasoningDelta` | `text` | 模型推理的一小段，仅限会报告推理的供应商。 |
+| `ReasoningStarted` | — | 一段推理开始。 |
+| `ReasoningFinished` | — | 这段推理结束，无论模型接着回答还是调用工具。 |
 | `ToolStarted` | `call_id`、`name`、`arguments` | 模型调用了一个工具，它正在开始。 |
 | `ToolFinished` | `call_id`、`name`、`output`、`ok`、`skipped` | 工具结束了：成功、失败，或根本没有运行。 |
 | `ApprovalRequested` | `call_id`、`command`、`timeout_seconds`、`remember_supported` | 一条 shell 命令在等你决定。 |
@@ -43,9 +45,12 @@ async with client.prompt("fix the failing test") as run:
 | `Finished` | `text` | 最终回答完整了。 |
 | `UsageUpdated` | `usage` | 一次模型调用之后，会话的 token 累计。 |
 | `CompactionStarted` | — | 对话正在被总结。 |
+| `CompactionDelta` | `text` | 正在写的总结的一小段，追加即可。 |
 | `CompactionFinished` | `applied`、`compaction` | 一次压缩结束。 |
 | `ModelStopped` | `reason`、`message` | 某一步因为非正常结束的原因停止。 |
 | `Steered` | `text` | 用 `steer` 发出的消息到达了请求。 |
+| `SteeringFinished` | — | 接收了 steer 消息的请求已经回答了它。 |
+| `SteeringInterrupted` | `text` | 一条 steer 消息在请求处理它之前被更新的一条取代。 |
 | `Notice` | `text`, `level` | 不属于回答的消息，比如某个 MCP 服务器正在启动，或连不上。`level` 为 `"info"` 表示进度，`"warn"` 表示你可能需要处理的事。 |
 | `RawEvent` | `event` | 底层的 `zett-agent` 事件。仅在 `raw=True` 时产生。 |
 

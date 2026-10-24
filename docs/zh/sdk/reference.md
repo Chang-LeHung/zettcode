@@ -262,6 +262,8 @@ def remove_model(name, *, path=None) -> tuple[ModelInfo, ...]: ...
 | --- | --- |
 | `TextDelta` | `text` |
 | `ReasoningDelta` | `text` |
+| `ReasoningStarted` | — |
+| `ReasoningFinished` | — |
 | `ToolStarted` | `call_id`、`name`、`arguments` |
 | `ToolFinished` | `call_id`、`name`、`output`、`ok`、`skipped=False` |
 | `ServerToolStarted` | `call_id`、`name`、`arguments` —— 由端点执行的工具，例如联网搜索 |
@@ -270,9 +272,12 @@ def remove_model(name, *, path=None) -> tuple[ModelInfo, ...]: ...
 | `QuestionAsked` | `call_id`、`question`、`options=()`、`allow_multiple=False` |
 | `UsageUpdated` | `usage` |
 | `CompactionStarted` | — |
+| `CompactionDelta` | `text` |
 | `CompactionFinished` | `applied`、`compaction=None` |
 | `ModelStopped` | `reason`、`message=None` |
 | `Steered` | `text` |
+| `SteeringFinished` | — |
+| `SteeringInterrupted` | `text` |
 | `Notice` | `text`, `level` |
 | `Finished` | `text` |
 | `RawEvent` | `event` |

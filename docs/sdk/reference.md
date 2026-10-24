@@ -260,6 +260,8 @@ Every event is a frozen dataclass deriving from `Event(session_id: str)`.
 | --- | --- |
 | `TextDelta` | `text` |
 | `ReasoningDelta` | `text` |
+| `ReasoningStarted` | — |
+| `ReasoningFinished` | — |
 | `ToolStarted` | `call_id`, `name`, `arguments` |
 | `ToolFinished` | `call_id`, `name`, `output`, `ok`, `skipped=False` |
 | `ServerToolStarted` | `call_id`, `name`, `arguments` — a tool the endpoint runs, such as a web search |
@@ -268,9 +270,12 @@ Every event is a frozen dataclass deriving from `Event(session_id: str)`.
 | `QuestionAsked` | `call_id`, `question`, `options=()`, `allow_multiple=False` |
 | `UsageUpdated` | `usage` |
 | `CompactionStarted` | — |
+| `CompactionDelta` | `text` |
 | `CompactionFinished` | `applied`, `compaction=None` |
 | `ModelStopped` | `reason`, `message=None` |
 | `Steered` | `text` |
+| `SteeringFinished` | — |
+| `SteeringInterrupted` | `text` |
 | `Notice` | `text`, `level` |
 | `Finished` | `text` |
 | `RawEvent` | `event` |

@@ -320,6 +320,8 @@ export interface Resumable {
 export type RunEvent =
   | { type: "text_delta"; text: string }
   | { type: "reasoning_delta"; text: string }
+  | { type: "reasoning_started" }
+  | { type: "reasoning_finished" }
   | { type: "tool_started"; call_id: string; name: string; arguments: Record<string, unknown> }
   | { type: "tool_finished"; call_id: string; name: string; output: string; ok: boolean; skipped: boolean }
   | { type: "server_tool_started"; call_id: string; name: string; arguments: Record<string, unknown> }
@@ -342,9 +344,12 @@ export type RunEvent =
     }
   | { type: "usage_updated"; usage: Usage }
   | { type: "compaction_started" }
+  | { type: "compaction_delta"; text: string }
   | { type: "compaction_finished"; applied: boolean; summary: string }
   | { type: "model_stopped"; reason: string; message: string | null }
   | { type: "steered"; text: string }
+  | { type: "steering_finished" }
+  | { type: "steering_interrupted"; text: string }
   | { type: "notice"; text: string; level?: "info" | "warn" }
   | { type: "finished"; text: string }
   | { type: "event"; name: string };
