@@ -21,9 +21,9 @@ from zettcode.config import DEFAULT_TRANSCRIPT_MAX_ENTRIES
 from zettcode.engine.dialogue.ask import declined_answer
 from zettcode.engine.dialogue.side import is_side_line
 from zettcode.engine.extensions.usage import UsageSnapshot, session_usage
-from zettcode.engine.relay import relay_of
 from zettcode.engine.server_tools import ServerToolRun, answer_after_tools, describe_output, runs_in_blocks
 from zettcode.engine.storage import MessageLine, Session
+from zettcode.relay import relay_of
 
 from .entries import EntryStatus
 from .presenters import DEFAULT_PRESENTERS, Presenters

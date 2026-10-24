@@ -23,7 +23,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
     from zett_agent.extensions.base import AgentExtension
 
     from zettcode.config import ZettCodeConfig
-    from zettcode.engine.dialogue.mentions import MentionProvider
+    from zettcode.mentions import MentionProvider
 
 _T = TypeVar("_T")
 

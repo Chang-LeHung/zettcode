@@ -4,6 +4,10 @@ The engine's agent (:class:`zettcode.engine.agent.ZettCodeAgent`) does the work.
 asks of it that is not work: the slash commands and what plugins contributed (``commands``), and the theme, the pet
 and the status line the reader can change (``settings``). Its engine is built with the terminal's plugin loader, so
 the commands, palettes, pets, presenters and rows of the plugins are there to be read.
+
+This package is also where the terminal is put together from the engine's parts, so it is what names, for the views, the
+engine objects they hold: ``SessionLink`` (the line to the other sessions) and ``StoredSession`` (a session read from
+the store). The views import those names from here and not from the engine.
 """
 
 from __future__ import annotations
@@ -11,7 +15,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from zettcode.engine.agent import ZettCodeAgent
+from zettcode.engine.agent.sessions import StoredSession
 from zettcode.engine.core import PluginLoader, ZettCodeEngine
+from zettcode.engine.messenger import Messenger as SessionLink
 
 from .commands import CommandsMixin
 
@@ -19,7 +25,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zettcode.config import ZettCodeConfig
     from zettcode.sdk.client import Client
 
-__all__ = ["TerminalAgent"]
+__all__ = ["SessionLink", "StoredSession", "TerminalAgent"]
 
 
 def _terminal_loader() -> PluginLoader:
@@ -33,6 +39,11 @@ class TerminalAgent(CommandsMixin, ZettCodeAgent):
     """The agent the terminal application drives."""
 
     _client: Client | None = None
+
+    @property
+    def messenger(self) -> SessionLink | None:
+        """Return the line to the other sessions, or ``None`` when the configuration switches messaging off."""
+        return self.runtime.messenger
 
     @property
     def client(self) -> Client:

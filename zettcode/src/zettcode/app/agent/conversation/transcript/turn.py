@@ -12,7 +12,7 @@ from collections.abc import Callable
 from pathlib import PurePath
 from typing import TypeGuard
 
-from zettcode.engine.relay import VIA_EXTERNAL, Relayed
+from zettcode.relay import VIA_EXTERNAL, Relayed
 from zettcode.tui.render import display_width
 
 from ..changes import changed_files

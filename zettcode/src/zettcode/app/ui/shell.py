@@ -56,17 +56,16 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
 
     from zettcode.app.plugins.state import Activity, UiRow
     from zettcode.config import ModelConfig
-    from zettcode.engine.agent.prompt import PromptPart
-    from zettcode.engine.dialogue.mentions import MentionRegistry
-    from zettcode.engine.messenger import Messenger
-    from zettcode.engine.relay import Relayed
+    from zettcode.mentions import MentionRegistry
+    from zettcode.prompt import PromptPart
+    from zettcode.relay import Relayed
     from zettcode.sdk.client import Client
     from zettcode.sdk.events import QuestionAsked
     from zettcode.sdk.types import Usage
     from zettcode.tui import CompletionPopup, StatusBar, Theme, TuiApp
     from zettcode.update import UpdateState
 
-    from ..agent.agent import TerminalAgent
+    from ..agent.agent import SessionLink, TerminalAgent
     from ..agent.conversation.effort_gauge import EffortFrame
     from ..agent.conversation.projection import TranscriptProjector
     from ..agent.conversation.shimmer import ShimmerFrame
@@ -108,7 +107,7 @@ class ShellState:
     projector: TranscriptProjector
     root: ZettCodeRoot
     #: The line to the other sessions, or ``None`` when sessions are switched off.
-    messenger: Messenger | None
+    messenger: SessionLink | None
     #: The merged slash commands and the ``@`` resource registry.
     commands: tuple[Command, ...]
     mentions: MentionRegistry

@@ -27,7 +27,6 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from zettcode.config import ModelConfig
-from zettcode.engine.dialogue.mentions import FileMentions, SkillMentions
 from zettcode.engine.dialogue.side import SideQuestions
 from zettcode.engine.extensions.capabilities import ModelCapabilities
 from zettcode.engine.extensions.compaction import CompactionCounter, OnDemandCompaction
@@ -39,6 +38,7 @@ from zettcode.engine.messenger import Messenger
 from zettcode.engine.permission import ShellDenyExtension, ShellPolicy
 from zettcode.engine.permission.approval import ShellApprovalMemory
 from zettcode.engine.storage import SessionStore
+from zettcode.mentions import FileMentions, SkillMentions
 
 from .container import PluginContainer
 from .plugin import AgentPlugin

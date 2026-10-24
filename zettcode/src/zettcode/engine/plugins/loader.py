@@ -38,7 +38,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
     from importlib.metadata import EntryPoint
 
     from zettcode.config import ZettCodeConfig
-    from zettcode.engine.dialogue.mentions import MentionProvider
+    from zettcode.mentions import MentionProvider
     from zettcode.providers import Provider
 
 #: Entry-point group a distribution publishes its plugin under.

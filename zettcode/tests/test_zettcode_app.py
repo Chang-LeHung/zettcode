@@ -94,13 +94,13 @@ from zettcode.app.ui.widgets import (
 from zettcode.app.ui.widgets.follow_up import OPTION
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine.core import ZettCodeEngine
-from zettcode.engine.dialogue.mentions import Mention, MentionProvider, MentionRegistry
 from zettcode.engine.dialogue.side import SideQuestions
 from zettcode.engine.extensions.context import IMAGE_TOKENS, SOURCES, ContextExtension, Tokenizer
 from zettcode.engine.extensions.harness_switch import HarnessSwitch
 from zettcode.engine.extensions.usage import USAGE_EVENT_NAME, UsageExtension, UsageSnapshot
 from zettcode.engine.permission import Permission, parse_permission
 from zettcode.engine.storage import STORE_FILE, SessionInfo, SessionStore
+from zettcode.mentions import Mention, MentionProvider, MentionRegistry
 from zettcode.sdk.types import SessionInfo as ListedSession
 from zettcode.statusline import context_text
 from zettcode.tui import (

@@ -3,8 +3,9 @@
 Most programs want :mod:`zettcode.sdk`, which is the documented, stable surface. The engine is here for the ones that
 need the core itself, and it stays small on purpose; see ``docs/internal/engine.md`` for where it is going.
 
-Messaging between sessions is part of the core, so :mod:`zettcode.engine.messenger` and
-:mod:`zettcode.engine.relay` live here. Names load on first use, so importing one submodule does not build the rest.
+Messaging between sessions is part of the core, so :mod:`zettcode.engine.messenger` lives here; the message it carries
+(:mod:`zettcode.relay`) is shared with the views. Names load on first use, so importing one submodule does not build
+the rest.
 """
 
 from __future__ import annotations
@@ -15,7 +16,6 @@ from typing import TYPE_CHECKING
 #: Where each public name lives; read by :func:`__getattr__` on first use.
 _EXPORTS = {
     "Messenger": ".messenger",
-    "Relayed": ".relay",
     "ZettCodeEngine": ".core",
 }
 
@@ -23,7 +23,6 @@ _EXPORTS = {
 if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
     from .core import ZettCodeEngine
     from .messenger import Messenger
-    from .relay import Relayed
 
 
 def __getattr__(name: str) -> object:
@@ -40,4 +39,4 @@ def __dir__() -> list[str]:
     return sorted(__all__)
 
 
-__all__ = ["Messenger", "Relayed", "ZettCodeEngine"]
+__all__ = ["Messenger", "ZettCodeEngine"]

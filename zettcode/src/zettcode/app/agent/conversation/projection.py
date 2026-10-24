@@ -13,7 +13,7 @@ from zett_agent.dispatcher import AgentEventDispatcher
 from zett_agent.events import AgentEvent
 
 from zettcode.engine.dialogue.ask import declined_answer
-from zettcode.engine.relay import Relayed
+from zettcode.relay import Relayed
 from zettcode.sdk.events import (
     AnyEvent,
     ApprovalRequested,

@@ -24,7 +24,7 @@ from zettcode.app.ui import updating as updating_module
 from zettcode.app.ui.messaging import MAX_INBOX
 from zettcode.broker.client import BrokerClient, Receipt, SendError
 from zettcode.engine.messenger import Messenger
-from zettcode.engine.relay import RELAY, Relayed
+from zettcode.relay import RELAY, Relayed
 
 ME = "session-0001"
 BOB = "02b20c86-bbbb-7000-8000-000000000002"
