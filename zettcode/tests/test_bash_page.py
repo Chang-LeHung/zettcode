@@ -26,7 +26,7 @@ class PythonLauncher(ShellLauncher):
 @pytest.fixture(autouse=True)
 def isolated(tmp_path: Path, monkeypatch):
     """Run in a directory of the test's own, with a history file of its own and no real shell."""
-    monkeypatch.setattr("zettcode.plugins.builtin_commands.DEFAULT_COMMAND_HISTORY", tmp_path / "command_history")
+    monkeypatch.setattr("zettcode.app.plugins.builtin_commands.DEFAULT_COMMAND_HISTORY", tmp_path / "command_history")
     monkeypatch.setattr("zettcode.app.commandline.CommandRunner", lambda cwd: CommandRunner(tmp_path, PythonLauncher()))
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
 

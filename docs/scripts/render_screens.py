@@ -28,6 +28,7 @@ from pathlib import Path, PurePosixPath
 from render_terminal import preview_plugins, svg
 
 from zettcode.app.agent.agent import TerminalAgent
+from zettcode.app.plugins.loader import load_terminal_plugins, terminal_plugins
 from zettcode.app.ui.app import ZettCodeApp
 from zettcode.app.ui.shell import PAGE_SCREEN
 from zettcode.app.ui.widgets import ContextPage, UsagePage
@@ -35,7 +36,6 @@ from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine.core import ZettCodeEngine
 from zettcode.engine.extensions.context import ContextReport, ContextShare
 from zettcode.engine.storage.ledger import Ledger, SessionUsage, Tally
-from zettcode.plugins.loader import load_plugins
 from zettcode.tui import DARK, Canvas, Screen
 
 #: The page the documentation shows is the dark palette on the same background the home page's picture uses.
@@ -215,8 +215,8 @@ def shell(width: int, height: int) -> Iterator[ZettCodeApp]:
                 skills_enabled=False,
                 mcp_enabled=False,
             )
-            runtime = ZettCodeEngine.preview(config)
-            runtime.plugins = load_plugins(config, builtins=preview_plugins())
+            runtime = ZettCodeEngine.preview(config, terminal_plugins)
+            runtime.plugins = load_terminal_plugins(config, builtins=preview_plugins())
             app = ZettCodeApp(TerminalAgent(runtime), theme=THEME, auto_theme=False)
             app.app.resize(width, height)
             app.app.mount()

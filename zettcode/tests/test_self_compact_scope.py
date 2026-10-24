@@ -17,7 +17,6 @@ from zettcode._compat import tomllib
 from zettcode.app.agent.agent import TerminalAgent
 from zettcode.config import ModelConfig, ZettCodeConfig, load_config
 from zettcode.config_edit import ConfigEditError, set_self_compaction
-from zettcode.engine.core import ZettCodeEngine
 from zettcode.engine.storage import SessionLocked
 
 WHERE = Path("config.toml")
@@ -36,7 +35,7 @@ def _config(tmp_path: Path, **changes) -> ZettCodeConfig:
 
 def _agent(tmp_path: Path, monkeypatch, **changes) -> TerminalAgent:
     monkeypatch.setattr("zettcode.engine.core.os.chdir", lambda path: None)
-    return TerminalAgent(ZettCodeEngine.preview(_config(tmp_path, **changes)))
+    return TerminalAgent.preview(_config(tmp_path, **changes))
 
 
 @pytest.fixture
@@ -298,7 +297,7 @@ def test_the_status_line_says_when_it_is_on():
     from dataclasses import replace
 
     from test_zettcode_app import build_app
-    from zettcode.plugins.builtins import ShellRows
+    from zettcode.app.plugins.builtins import ShellRows
 
     context = build_app()._shell_context()
     rows = ShellRows()

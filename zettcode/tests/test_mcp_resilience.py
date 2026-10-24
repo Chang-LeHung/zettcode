@@ -472,7 +472,7 @@ def test_a_notice_event_round_trips_its_text():
 def test_the_runtime_builds_its_mcp_extension_through_the_forgiving_factory():
     import inspect
 
-    from zettcode.plugins import builtin_agent
+    from zettcode.engine.plugins import builtin_agent
 
     source = inspect.getsource(builtin_agent.McpTools)
     assert "build_scoped_mcp_extension(" in source and "ReportingMcpExtension(" not in source

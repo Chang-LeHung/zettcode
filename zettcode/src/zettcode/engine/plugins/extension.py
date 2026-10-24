@@ -10,7 +10,7 @@ forwards every lifecycle hook to each plugin in priority order.
 from __future__ import annotations
 
 from contextlib import aclosing
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from zett_agent.extensions.base import AgentExtension
 
@@ -48,7 +48,7 @@ class PluginExtension(AgentExtension):
     it, and the plugins' order among themselves stays their own.
     """
 
-    def __init__(self, plugins: Sequence[Plugin]) -> None:
+    def __init__(self, plugins: Sequence[Plugin[Any]]) -> None:
         """Keep the plugins in hook order and adopt their earliest priority."""
         self.plugins = tuple(sorted(plugins, key=lambda plugin: plugin.priority))
         self.name = HOST_NAME

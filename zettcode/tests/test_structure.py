@@ -312,6 +312,21 @@ def test_the_engine_is_published_under_one_name():
     assert not hasattr(zettcode, "ZettCodeRuntime")
 
 
+def test_importing_the_engine_loads_nothing_of_the_application():
+    """The engine is the SDK's floor, so what it imports, directly or through a plugin, must not be the terminal's.
+
+    The layer table above reads import statements; this reads what a fresh interpreter actually loads, which is how
+    a dependency that goes round through the plugins shows up.
+    """
+    code = (
+        "import sys, zettcode.engine.core, zettcode.engine.agent, zettcode.engine.plugins\n"
+        "print(sorted(m for m in sys.modules if m == 'zettcode.app' or m.startswith('zettcode.app.')))"
+    )
+    done = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True)
+
+    assert done.stdout.strip() == "[]"
+
+
 def test_the_hub_and_the_roster_know_nothing_of_the_web():
     """What the broker decides is separate from how it is served: the hub and the roster import none of the web
     libraries (nor the web layer), so they can be driven, and read, without a socket."""

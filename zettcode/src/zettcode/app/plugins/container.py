@@ -1,9 +1,7 @@
-"""What a plugin receives when it activates, and how it registers.
+"""What a terminal plugin registers beyond what the agent uses: commands, palettes, pets, presenters and rows.
 
-The container is the plugin's only channel to the application: it exposes the
-resolved configuration and collects the slash commands and row segments the
-plugin registers. They are accumulated here rather than returned, so a plugin
-can decide what to register from the configuration it is given.
+:class:`TerminalContainer` is the engine's :class:`~zettcode.engine.plugins.container.PluginContainer` with the
+registrations only a terminal has.
 
 Row segments are registered into one of the four slots — a row and a side — by
 the method that names it, so a plugin never passes a side around. A segment
@@ -14,29 +12,24 @@ reusing its segment names is what taking a slot over means.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, Any
 
-from ..app.agent.conversation.entries import EntryKind
-from ..app.agent.conversation.presenters import Presenter
-from ..app.commands import BusyPolicy, Command, CommandHandler, CommandList, CommandProvider, Subcommands
-from ..app.pets import PET_NAME, Pet, PetSource
-from ..providers import Provider
-from ..tui import RESERVED_THEMES, THEME_NAME, Theme, ThemeSource, file_theme
-from .services import lookup, require
-from .state import Contribution, ExtensionFactory, UiRow, UiSegment
+from zettcode.app.agent.conversation.entries import EntryKind
+from zettcode.app.agent.conversation.presenters import Presenter
+from zettcode.app.commands import BusyPolicy, Command, CommandHandler, CommandList, CommandProvider, Subcommands
+from zettcode.app.pets import PET_NAME, Pet, PetSource
+from zettcode.engine.plugins.container import PluginContainer
+from zettcode.tui import RESERVED_THEMES, THEME_NAME, Theme, ThemeSource, file_theme
+
+from .state import UiRow, UiSegment
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay lazy
     from collections.abc import Callable, Mapping
     from pathlib import Path
 
-    from zett_agent.extensions.base import AgentExtension
+    from zettcode.config import ZettCodeConfig
 
-    from ..config import ZettCodeConfig
-    from ..engine.dialogue.mentions import MentionProvider
     from .state import UiBuilder, UiRegion, UiSide
-
-
-_T = TypeVar("_T")
 
 #: Rows and sides in paint order; the shell's frame, fixed by the application.
 UI_REGIONS: tuple[UiRegion, ...] = ("header", "status")
@@ -127,45 +120,17 @@ class UiSlots:
         return None
 
 
-class PluginContainer:
-    """What a plugin is handed when it activates.
-
-    The container is the plugin's only channel to the application: it exposes
-    the resolved configuration, and collects the commands and row segments the
-    plugin registers. They are accumulated here rather than returned, so a
-    plugin can decide what to register from the configuration it is given.
-    """
+class TerminalContainer(PluginContainer):
+    """What a terminal plugin is handed when it activates: the engine's container, and the terminal's registrations."""
 
     def __init__(self, config: ZettCodeConfig, services: Mapping[str, object] | None = None) -> None:
-        """Keep the resolved settings and open an empty command list.
-
-        Args:
-            config: The resolved settings.
-            services: What is already findable by name: the objects the runtime hands over, and what the
-                plugins loaded before this one provided. Read with :meth:`service` and :meth:`find`.
-        """
-        self.config = config
-        self.workspace = config.workspace
-        self._available: Mapping[str, object] = services if services is not None else {}
+        """Open the engine's registries and the terminal's, all empty."""
+        super().__init__(config, services)
         self._command_providers: list[CommandProvider] = []
-        self._mentions: list[MentionProvider] = []
-        self._providers: list[Provider] = []
         self._themes: list[ThemeSource] = []
         self._pets: list[PetSource] = []
         self._presenters: list[Presenter[Any]] = []
-        self._extensions: list[Contribution] = []
-        self._services: dict[str, object] = {}
         self._slots = UiSlots()
-
-    @property
-    def extensions(self) -> tuple[Contribution, ...]:
-        """Return the agent extensions registered so far, in registration order."""
-        return tuple(self._extensions)
-
-    @property
-    def services(self) -> dict[str, object]:
-        """Return a copy of the services provided so far, by name."""
-        return dict(self._services)
 
     @property
     def commands(self) -> tuple[Command, ...]:
@@ -181,16 +146,6 @@ class PluginContainer:
     def slots(self) -> UiSlots:
         """Return the slot registry, so the loader can merge declared segments in."""
         return self._slots
-
-    @property
-    def mentions(self) -> tuple[MentionProvider, ...]:
-        """Return the ``@`` resource providers registered so far."""
-        return tuple(self._mentions)
-
-    @property
-    def providers(self) -> tuple[Provider, ...]:
-        """Return the model providers registered so far, in registration order."""
-        return tuple(self._providers)
 
     @property
     def presenters(self) -> tuple[Presenter[Any], ...]:
@@ -345,31 +300,6 @@ class PluginContainer:
         self._command_providers.append(provider)
         return provider
 
-    def register_provider(self, provider: Provider) -> Provider:
-        """Describe a host models can be reached at, so ``/config`` offers it.
-
-        A provider is an address and a protocol; the reader brings the token and the model id. It
-        appears in the ``/config`` picker beside the built-in ones and ``/config add <name>``
-        takes it. Nothing is called or connected to: this only describes a host.
-
-        Args:
-            provider: The host. Its ``name`` must be unique across the application, because it is
-                what ``/config add`` is typed with.
-
-        Returns:
-            The registered provider, in case the plugin wants to keep it.
-
-        Raises:
-            ValueError: When the name is already registered by this plugin, or is one of the
-                built-in providers'.
-        """
-        if not isinstance(provider, Provider):
-            raise ValueError("A provider must be a zettcode.providers.Provider")
-        if provider.name in {existing.name for existing in self._providers}:
-            raise ValueError(f"Provider already registered: {provider.name}")
-        self._providers.append(provider)
-        return provider
-
     def register_theme(
         self,
         name: str,
@@ -482,128 +412,3 @@ class PluginContainer:
             raise ValueError("A presenter must name the kind of entry it draws")
         self._presenters.append(presenter)
         return presenter
-
-    def register_extension(self, extension: AgentExtension) -> AgentExtension:
-        """Hand the agent one ``zett-agent`` extension of the plugin's own.
-
-        Use this when the plugin is, or wraps, a whole extension rather than a set of hooks: the
-        agent receives it as a separate extension, ordered by the priority it declares and, among
-        equals, by registration order, exactly as if the application had listed it itself. The hook
-        methods on :class:`~zettcode.plugins.Plugin` are the other route, for a plugin that only
-        needs to watch a stage; they run inside the one host extension.
-
-        Args:
-            extension: The extension to add. Its ``name`` must be unique among the agent's
-                extensions; a clash fails the plugin when it loads.
-
-        Returns:
-            The extension, in case the plugin wants to keep it.
-
-        Raises:
-            ValueError: When the name is blank or this plugin already registered it.
-        """
-        name = getattr(extension, "name", "")
-        if not isinstance(name, str) or not name.strip():
-            raise ValueError("An extension must have a non-empty name")
-        self._claim_extension(name)
-        self._extensions.append(Contribution(name, extension=extension))
-        return extension
-
-    def register_extension_factory(self, name: str, factory: ExtensionFactory) -> None:
-        """Hand the agent an extension that is built when the agent is, not when the plugin activates.
-
-        Use it for an extension that needs something only a running agent has (the provider it starts
-        on), or that is costly to import: a plugin activates while the shell is still being drawn, so
-        importing a large module there delays the first frame. The factory is called with an
-        :class:`~zettcode.plugins.AgentBuild` after the imports the runtime warms up have finished,
-        and may return ``None`` for a run that has nothing to add. Where the extension lands in the
-        order is where it was registered, as for :meth:`register_extension`.
-
-        Args:
-            name: The name of the extension the factory builds, given up front so that a clash is
-                caught when the plugin loads. A factory that builds it under another name fails the build.
-            factory: Called once per agent build.
-
-        Raises:
-            ValueError: When the name is blank or this plugin already registered it.
-        """
-        if not name.strip():
-            raise ValueError("An extension must have a non-empty name")
-        self._claim_extension(name)
-        self._extensions.append(Contribution(name, factory=factory))
-
-    def _claim_extension(self, name: str) -> None:
-        """Refuse an extension name this plugin has already registered."""
-        if any(existing.name == name for existing in self._extensions):
-            raise ValueError(f"Extension already registered: {name}")
-
-    def service(self, name: str, kind: type[_T]) -> _T:
-        """Return an object another part of the application or an earlier plugin made available.
-
-        This is how a plugin gets hold of the state it builds on: the session's permission policy, the
-        session store, or a service a plugin loaded before it provided. Order matters, because only
-        what is already there can be found.
-
-        Raises:
-            LookupError: When nothing is available under the name.
-            TypeError: When what is there is not a ``kind``.
-        """
-        return require({**self._available, **self._services}, name, kind)
-
-    def find(self, name: str, kind: type[_T]) -> _T | None:
-        """Return the object available under ``name``, or ``None`` when there is none (see :meth:`service`)."""
-        return lookup({**self._available, **self._services}, name, kind)
-
-    def provide(self, name: str, service: object) -> object:
-        """Register an object under a name, so other parts of the application can look it up.
-
-        Use it when the plugin creates something that the shell or the runtime also needs to reach,
-        for example the todo extension, whose plan the shell draws. The application looks it up with
-        ``Plugins.service(name, kind)`` or ``Plugins.find(name, kind)``, so it needs no field of its
-        own for it. This is separate from :meth:`register_extension`: that one gives the agent an
-        extension to run, this one only makes an object findable. A plugin can provide an object
-        it does not register with the agent, such as the todo extension while the tool is switched off.
-
-        Args:
-            name: Identity of the service; unique across the loaded plugins.
-            service: The object itself.
-
-        Returns:
-            The service, in case the plugin wants to keep it.
-
-        Raises:
-            ValueError: When the name is blank or this plugin already provided it.
-        """
-        name = name.strip()
-        if not name:
-            raise ValueError("Service name cannot be empty")
-        if name in self._services:
-            raise ValueError(f"Service already provided: {name}")
-        self._services[name] = service
-        return service
-
-    def register_mention(self, provider: MentionProvider) -> MentionProvider:
-        """Register one kind of ``@`` resource the composer can offer.
-
-        A provider lists candidates for the completion menu and expands a
-        token into the text the model sees; the builtin provider offers skills,
-        and a plugin adds its own kind the same way it adds a command.
-
-        Args:
-            provider: Provider that owns one resource kind. Its ``kind`` must be
-                unique across the application, because a token has no prefix to
-                say which provider should resolve it.
-
-        Returns:
-            The registered provider, in case the plugin wants to keep it.
-
-        Raises:
-            ValueError: When the kind is blank or already registered.
-        """
-        kind = getattr(provider, "kind", "").strip()
-        if not kind:
-            raise ValueError("Mention provider kind cannot be empty")
-        if kind in {existing.kind for existing in self._mentions}:
-            raise ValueError(f"Mention provider already registered: {kind}")
-        self._mentions.append(provider)
-        return provider

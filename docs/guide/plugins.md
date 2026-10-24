@@ -14,15 +14,15 @@ greeter = "my_package:Greeter"
 ```
 
 ```python
-from zettcode.app.commands import CommandContext
-from zettcode.plugins import CommandResult, Plugin, PluginContainer
+from zettcode.app.commands import CommandContext, CommandResult
+from zettcode.app.plugins import TerminalContainer, TerminalPlugin
 
 
-class Greeter(Plugin):
+class Greeter(TerminalPlugin):
     name = "greeter"
     description = "say hello"
 
-    def activate(self, container: PluginContainer) -> None:
+    def activate(self, container: TerminalContainer) -> None:
         container.register_command("greet", "say hello", self.greet)
 
     async def greet(self, context: CommandContext) -> CommandResult:
@@ -73,7 +73,8 @@ dependencies before installing them.
 ## What a plugin can take part in
 
 `Plugin` composes two groups of hooks, and a plugin overrides only the stages it
-needs:
+needs (the agent's group is in `zettcode.engine.plugins`; the screen's is added by
+`TerminalPlugin` in `zettcode.app.plugins`):
 
 - **The agent's work** — the same lifecycle `zett-agent` extensions use: setup,
   run, turn, model, tool, compaction, and external events. A plugin can register
@@ -83,10 +84,10 @@ needs:
   a right side, and every side is drawn from the segments that registered.
 
 ```python
-from zettcode.plugins import Plugin, ShellContext
+from zettcode.app.plugins import ShellContext, TerminalPlugin
 
 
-class WorkspaceLabel(Plugin):
+class WorkspaceLabel(TerminalPlugin):
     """Replace the header's right segment with a model/workspace label."""
 
     name = "workspace-label"
@@ -179,11 +180,11 @@ A plugin can add a host to the list `/config` offers, so a service ZettCode does
 set up by choosing it and giving a token:
 
 ```python
-from zettcode.plugins import Plugin, PluginContainer
+from zettcode.engine.plugins import AgentPlugin, PluginContainer
 from zettcode.providers import Provider
 
 
-class Acme(Plugin):
+class Acme(AgentPlugin):
     name = "acme"
 
     def activate(self, container: PluginContainer) -> None:
@@ -216,13 +217,13 @@ rest) are offered the same way by a built-in plugin, so this is the whole mechan
 ```text
 from pathlib import Path
 
-from zettcode.plugins import Plugin, PluginContainer
+from zettcode.app.plugins import TerminalContainer, TerminalPlugin
 
 
-class Palettes(Plugin):
+class Palettes(TerminalPlugin):
     name = "acme-palettes"
 
-    def activate(self, container: PluginContainer) -> None:
+    def activate(self, container: TerminalContainer) -> None:
         # A theme file shipped inside your package: same format as ~/.zettcode/themes/<name>.toml.
         container.register_theme("acme", Path(__file__).parent / "acme.toml")
         # Or a function that builds a zettcode.tui.Theme; it runs only when the palette is first asked for.
@@ -243,17 +244,18 @@ its moods; each character of a map names a colour, `.` is transparent, and two r
 cells, so a map has an even number of rows and every frame of a pet is the same size:
 
 ```text
-from zettcode.plugins import Pet, Plugin, PluginContainer
+from zettcode.app.pets import Pet
+from zettcode.app.plugins import TerminalContainer, TerminalPlugin
 
 PALETTE = {"G": "#84b795", "D": "#263d34", "H": "#e4b47c"}
 ASLEEP = ("..GGGG..", ".GGGGGG.", "GGGGGGGG", "GDDGGDDG", "GGGHHGGG", ".GGGGGG.")
 AWAKE = ("..GGGG..", ".GGGGGG.", "GGGGGGGG", "GGDGGDGG", "GGGHHGGG", ".GGGGGG.")
 
 
-class Blobs(Plugin):
+class Blobs(TerminalPlugin):
     name = "acme-blobs"
 
-    def activate(self, container: PluginContainer) -> None:
+    def activate(self, container: TerminalContainer) -> None:
         # The moods are "idle" (required: it is the pet asleep), "working" (while a request runs) and "glad"
         # (when it is patted); a pet that lacks the others stays as it is. A mood with several frames cycles.
         pet = Pet("blob", PALETTE, {"idle": (ASLEEP,), "working": (AWAKE, ASLEEP), "glad": (AWAKE,)})
@@ -272,7 +274,10 @@ into styled lines. The presenters ZettCode ships are registered by a built-in pl
 priority, so a plugin that registers one for the same rows wins without having to outrank anything:
 
 ```text
-from zettcode.plugins import EntryKind, Plugin, PluginContainer, Presenter, Span, Style, TextLine
+from zettcode.app.agent.conversation.entries import EntryKind
+from zettcode.app.agent.conversation.presenters import Presenter
+from zettcode.app.plugins import TerminalContainer, TerminalPlugin
+from zettcode.tui import Span, Style, TextLine
 
 
 class QuietNotice(Presenter):
@@ -282,10 +287,10 @@ class QuietNotice(Presenter):
         return [TextLine((Span(entry.text, Style(foreground=theme.muted)),))]
 
 
-class QuietNotices(Plugin):
+class QuietNotices(TerminalPlugin):
     name = "quiet-notices"
 
-    def activate(self, container: PluginContainer) -> None:
+    def activate(self, container: TerminalContainer) -> None:
         container.register_presenter(QuietNotice())
 ```
 
@@ -308,10 +313,10 @@ The hook methods above run inside one extension that ZettCode hosts for all plug
 already *is* an extension, or wraps one from `zett-agent`, can hand it over whole:
 
 ```python
-from zettcode.plugins import Plugin, PluginContainer
+from zettcode.engine.plugins import AgentPlugin, PluginContainer
 
 
-class Audit(Plugin):
+class Audit(AgentPlugin):
     name = "audit"
 
     def activate(self, container: PluginContainer) -> None:

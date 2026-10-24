@@ -1,36 +1,22 @@
 # The engine
 
-One agent core, three faces. The terminal (`app/ui`), the SDK (`zettcode.sdk`) and, through the SDK, the HTTP server
-all drive the same object, and that object is the **engine**: `ZettCodeEngine`, today `ZettCodeRuntime`.
+One agent core, several faces. `ZettCodeEngine` (`engine/core.py`) and the agent built on it
+(`zettcode.engine.agent.ZettCodeAgent`) do the work. The SDK is the one public face of it; the terminal and, through
+the SDK, the HTTP server are its users. "Harness" stays what it already meant here — the just-in-time harness mode the
+model can be put in (`HarnessSwitch`, `/harness`, `Client.use_harness`) — and is not the name of the core.
 
-"Harness" stays what it already means here — the just-in-time harness mode the model can be put in
-(`HarnessSwitch`, `/harness`, `Client.use_harness`). It is not the name of the core.
-
-## Today
-
-```
-app/ui (TUI) ──► ZettCodeAgent ──► ZettCodeRuntime ◄── sdk.Client ◄── server ◄── TS client, VS Code
-       │                                                     │
- TranscriptProjector                                   sdk/_translate.py
- (zett_agent events → Transcript)                      (zett_agent events → sdk events)
-```
-
-Two translations of the same events, and the SDK reaches into `app.agent.*` in some forty places for internal types.
-
-## Target
+## Layers
 
 ```
-sdk            public, stable: Client, Session, events, value types, errors.   imports engine only
-engine         ZettCodeEngine + the events and values it emits.                imports no ui, no sdk, no server
-app/ui         TUI; projects engine events into its Transcript.                imports engine
-server         unchanged rule: drives zettcode.sdk and nothing else
+engine   the agent core; internal, free to change; imports no app, no sdk, no server
+  ▲
+sdk      the public face: Client, Session, events, value types, errors; imports the engine only
+  ▲        ▲
+terminal   server ── TypeScript client ── VS Code
 ```
 
-- `zettcode.engine` is importable and supported for programs that want the core without the SDK's conveniences, but
-  the guide documents the SDK. The engine's own surface is small on purpose.
-- The event and value types move to the engine (`engine.events`, `engine.types`) and `zettcode.sdk.events` /
-  `zettcode.sdk.types` re-export them, so the names and fields users already have do not change.
-- `_translate.py` becomes the engine's one translation. The TUI projector consumes the same events.
+The terminal should end up a client of the SDK like the server is (step 4 below). Today it still drives
+`TerminalAgent` (the engine's agent plus the shell's own parts) directly.
 
 ## Compatibility contract
 
@@ -40,88 +26,46 @@ Frozen, because the server, the TypeScript client and the extension are built on
 2. every event and value-type field in `sdk.events` / `sdk.types` (fields are added, never renamed or retyped);
 3. the server's wire format, which follows from 1 and 2.
 
-`ZettCodeRuntime` is renamed outright, with no alias.
+The engine is not part of the contract. There are no third-party plugins either, so nothing here keeps an old name:
+`ZettCodeRuntime` and `zettcode.plugins` were renamed outright.
 
-## Where things are now
+## Where things are
 
-Moved into `zettcode/engine/` so far: `core.py` (`ZettCodeEngine`), `dialogue/`, `extensions/` (including
-`messaging.py`), `permission/`, `storage/`, `tools/`, `export/`, `errors.py`, `pipeline.py`, `registry.py`, and the
-messenger (`messenger.py`, `relay.py`). The status-line formatters that used to sit in `extensions/usage.py` moved
-to `statusline.py`, because they are about the terminal.
+In `zettcode/engine/`: `core.py` (`ZettCodeEngine`), `agent/` (`ZettCodeAgent`, built from the mixins `base`,
+`settings`, `context`, `sessions`, `turns`, `interaction`, `exports`, plus `prompt`), `dialogue/`, `extensions/`,
+`permission/`, `storage/`, `tools/`, `export/`, `plugins/`, `errors.py`, `pipeline.py`, `registry.py`,
+`server_tools.py`, and the messaging between sessions (`messenger.py`, `relay.py`).
 
-Also in the engine now: `agent/` (`zettcode.engine.agent.ZettCodeAgent`, built from the mixins `base`, `settings`,
-`context`, `sessions`, `turns`, `interaction`, `exports`, plus `prompt`) and `server_tools.py`. Reading a stored session
-no longer builds the terminal's rows: the engine returns `StoredSession`, the terminal replays it itself.
+Reading a stored session builds no terminal rows: the engine's `load_session` returns `StoredSession`, and the
+terminal replays it into its own `Transcript`.
 
 The terminal's part is `TerminalAgent` (`app/agent/agent/`): the engine's agent plus `commands.py` (slash commands,
 themes, pets, `Presenters`, what plugins contributed) and `settings.py` (`AppearanceMixin`: theme, pet, status line).
-The SDK wraps the engine's `ZettCodeAgent`, imports nothing under `app`, and `test_structure` holds that.
+The status-line formatters live in `statusline.py`, because they are about the terminal.
 
-Open: `engine/core.py` imports `zettcode.plugins`, and the built-in plugins import the terminal's views. The direct
-rule (`test_layers_only_import_downwards`) holds, the indirect one does not yet. Measured: `import zettcode.engine.core`
-loads 32 `zettcode.tui` modules and parts of `app.ui` and `app.agent.conversation`, all through `zettcode.plugins`,
-so the SDK and the server carry the terminal along. See "Plugins" below.
+**Plugins.** `zettcode.engine.plugins` is what the agent uses: `Plugin` (generic over its container), `AgentPlugin`,
+`PluginContainer` (extensions, services, `@` providers, model providers), the loader and `Plugins`, and the plugins
+the engine ships. `zettcode.app.plugins` adds what only a terminal has: `TerminalPlugin`, `TerminalContainer`
+(commands, palettes, pets, presenters, the header and status rows), `TerminalLoader`, `TerminalPlugins`, and the
+shell's own plugins. The engine is handed its loader (`ZettCodeEngine.preview(config, load)`) and `TerminalAgent`
+hands it the terminal's, so the SDK and the server load the engine's plugins and none of the terminal's.
 
-## Plugins (design, not started)
+Pinned by `test_structure.py`: the layer table (`engine` imports no `app`, `tui`, `cli`, `sdk` or `server`; `sdk`
+imports no `app`, `tui`, `cli` or `server`) and `test_importing_the_engine_loads_nothing_of_the_application`, which
+reads what a fresh interpreter loads, so a dependency that goes round through the plugins shows up.
 
-`zettcode.plugins` is the public contract of third-party authors (`Plugin`, `PluginContainer`, `register_command`,
-`register_theme`, `register_pet`, `register_presenter`, the header and status rows, `register_extension`,
-`provide`, `register_mention`, `register_provider`). Its container, loader and `Plugins` result hold the terminal's
-kinds beside the agent's, and the loader's all-or-nothing clash checks run across both.
+## What is left
 
-Proposal: author-facing names and signatures stay exactly as they are. Underneath, the engine owns the container,
-the loader and the agent-side kinds (extensions, services, mentions, model providers). The terminal's kinds
-(commands, themes, pets, presenters, rows) go behind one engine-defined abstract base, `FrontendSurface`, that the
-loader asks to accept, clash-check and merge each plugin's contribution; the engine ships a surface that accepts and
-drops them (so a plugin that registers a command still loads under the SDK and the server), and the terminal ships
-the real one. The engine is handed its surface explicitly (`ZettCodeEngine.preview(config, surface=...)`; the
-terminal's agent does it, and the tests' helpers). `zettcode.plugins` becomes a lazy facade, so importing it loads
-none of the terminal. The built-in terminal plugins (`builtins`, `builtin_commands`) move to `app/`.
+Each its own pull request, `make check` green.
 
-## Splitting `ZettCodeAgent` (done: sessions and the agent mixins; the rest below is still to do)
-
-The mixins in `app/agent/agent/` are mostly the engine already; three seams tie them to the terminal.
-
-| Part | Goes | Why |
-| --- | --- | --- |
-| `base`, `turns`, `interaction`, `context`, `settings` (models, effort, permission, harness, self-compaction), `exports`, `prompt` | `engine/agent/` | no terminal types in them |
-| `settings.remember_theme`, `remember_pet`, `remember_pet_position`, `remember_statusline`, `reduced_motion` | terminal (`app/agent`) | they persist terminal preferences |
-| `commands.py` (`/new`, `/export`, themes, pets, `Presenters`, status-line commands) | terminal | slash commands and views |
-| `sessions.load_session` / `install_session` | split | see below |
-
-**Sessions.** Today `load_session(session_id, transcript)` replays a stored session into the terminal's `Transcript`
-and `install_session` also fills it; the SDK builds an empty `Transcript` only to call them. After the split:
-
-- `engine.load_session(session_id)` reads the store and returns `StoredSession(session, title, model, usage)`; the
-  usage totals come from the stored lines, without decoding a message (what `replay` already does for old lines).
-- `engine.install_session(stored)` does the engine half: active session, usage seed, model, context report.
-- The terminal calls `replay(stored.session, …)` itself, on the same worker thread, and fills its `Transcript`.
-- The SDK no longer builds a `Transcript` at all, and `sdk` stops importing `app.agent.conversation`.
-
-**Plugins.** `engine/core.py` imports `zettcode.plugins`, and the built-in plugins import terminal views (usage page,
-sessions page, presenters). The engine cannot be free of `app` until `plugins/` is cut in two: the host, services
-and the agent-side plugins (`builtin_agent`: extensions) belong to the engine; the commands, status-line parts and
-UI rows (`builtin_commands`, `builtins`) stay with the terminal. A plugin that provides both is registered by the
-terminal on top of the engine's. This changes where third-party plugins import from, so it needs your decision
-before it starts.
-
-**Events.** `TranscriptProjector` and the SDK's `_translate` both read `zett_agent` events. After the split the
-engine emits one event vocabulary (today's `sdk.events`, moved to `engine/events.py`), `_translate` becomes the
-engine's, and the projector consumes those events.
-
-Order, each its own pull request: (a) sessions and the SDK's `Transcript`; (b) move the agent mixins and send the
-terminal's parts back; (c) events; (d) plugins; (e) the indirect-import rule in `test_structure`.
-
-## Steps (one pull request each, `make check` green)
-
-1. **Name.** `ZettCodeRuntime` → `ZettCodeEngine`; `zettcode.engine` facade; invariants for the layering below.
-2. **Types.** Move events, values, `_translate` and the messenger (session-to-session messaging belongs to the
-   core) under the engine; the SDK re-exports.
-3. **Terminal.** The TUI projector consumes engine events instead of raw `zett_agent` events.
-4. **Seal.** `sdk` imports nothing from `app.*`; `test_structure` pins it.
-
-## Layering rules to pin
-
-- `sdk` and `server` do not import `app.ui`.
-- `engine` does not import `app.ui`, `sdk` or `server`.
-- `tui` still imports neither `zett_agent` nor the application.
+1. **SDK gaps.** The terminal calls 76 distinct members of its agent; 59 have no SDK counterpart. Many are only
+   named differently (`active_model` / `Client.model`, `list_sessions` / `Client.sessions.list`). The real gaps are
+   the raw `stream`, `resume_point`, `resume_blocker`, `stream_resume` and the approval and question replies; the
+   session locks (`session_locked`, `retake_session`, `require_session`); and reading and writing the model entries
+   of the config file. Each is decided one by one — general (into the SDK) or the terminal's own (stays in `app/`) —
+   because whatever enters the SDK is a promise.
+2. **Terminal on the SDK.** The terminal drives `sdk.Client`; `TranscriptProjector` consumes SDK events, so events
+   are translated once (`sdk/_translate.py`). `pets`, `themes`, `presenters`, `plugin_rows`, `plugin_commands` and
+   the `Transcript` stay the terminal's. The two things to keep: the first frame before the provider exists
+   (`preview` / `start`), and the session load on a worker thread.
+3. **Seal.** `app` reaches the engine only through the SDK; a layer rule in `test_structure` says so.

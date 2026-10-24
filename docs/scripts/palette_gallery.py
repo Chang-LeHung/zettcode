@@ -37,6 +37,8 @@ from palette_data import NOTES, Palette, palettes  # noqa: E402
 
 from zettcode.app.agent.agent import TerminalAgent  # noqa: E402
 from zettcode.app.agent.conversation.entries import EntryStatus  # noqa: E402
+from zettcode.app.plugins.builtins import BUILTIN_PLUGINS, ShellRows  # noqa: E402
+from zettcode.app.plugins.loader import load_terminal_plugins, terminal_plugins  # noqa: E402
 from zettcode.app.ui import app as app_module  # noqa: E402
 from zettcode.app.ui.app import ZettCodeApp  # noqa: E402
 from zettcode.app.ui.labels import header_left  # noqa: E402
@@ -51,8 +53,6 @@ from zettcode.app.ui.widgets import (  # noqa: E402
 from zettcode.config import ModelConfig, ZettCodeConfig  # noqa: E402
 from zettcode.engine.core import ZettCodeEngine  # noqa: E402
 from zettcode.engine.relay import Relayed  # noqa: E402
-from zettcode.plugins.builtins import BUILTIN_PLUGINS, ShellRows  # noqa: E402
-from zettcode.plugins.loader import load_plugins  # noqa: E402
 from zettcode.tui import Canvas, Screen, Theme, TuiApp  # noqa: E402
 from zettcode.tui.gallery import GALLERY, render_entry  # noqa: E402
 from zettcode.tui.testing import Harness  # noqa: E402
@@ -98,8 +98,8 @@ class Env:
             skills_enabled=False,
             mcp_enabled=False,
         )
-        self.runtime = ZettCodeEngine.preview(config)
-        self.runtime.plugins = load_plugins(config, builtins=preview_plugins())
+        self.runtime = ZettCodeEngine.preview(config, terminal_plugins)
+        self.runtime.plugins = load_terminal_plugins(config, builtins=preview_plugins())
         self.workspace = workspace
 
     def close(self) -> None:

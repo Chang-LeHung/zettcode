@@ -13,15 +13,15 @@ greeter = "my_package:Greeter"
 ```
 
 ```python
-from zettcode.app.commands import CommandContext
-from zettcode.plugins import CommandResult, Plugin, PluginContainer
+from zettcode.app.commands import CommandContext, CommandResult
+from zettcode.app.plugins import TerminalContainer, TerminalPlugin
 
 
-class Greeter(Plugin):
+class Greeter(TerminalPlugin):
     name = "greeter"
     description = "say hello"
 
-    def activate(self, container: PluginContainer) -> None:
+    def activate(self, container: TerminalContainer) -> None:
         container.register_command("greet", "say hello", self.greet)
 
     async def greet(self, context: CommandContext) -> CommandResult:
@@ -67,7 +67,8 @@ disable = ["greeter"]
 
 ## 插件能参与什么
 
-`Plugin` 组合了两组钩子，插件只覆盖自己关心的阶段：
+`Plugin` 组合了两组钩子（代理那一组在 `zettcode.engine.plugins`，屏幕那一组由 `zettcode.app.plugins`
+里的 `TerminalPlugin` 加上），插件只覆盖自己关心的阶段：
 
 - **代理的工作** —— 和 `zett-agent` 扩展同一套生命周期：setup、run、turn、model、tool、
   compaction，以及外部事件。插件可以注册工具、改写发给模型的消息、转换工具结果，或者观察一次
@@ -75,10 +76,10 @@ disable = ["greeter"]
 - **屏幕** —— 头部和状态行各自分成左右两侧，每一侧都由注册过的片段共同画出来。
 
 ```python
-from zettcode.plugins import Plugin, ShellContext
+from zettcode.app.plugins import ShellContext, TerminalPlugin
 
 
-class WorkspaceLabel(Plugin):
+class WorkspaceLabel(TerminalPlugin):
     """用模型和工作区标签替换头部右侧片段。"""
 
     name = "workspace-label"
@@ -162,11 +163,11 @@ container.register_command("status", "show the build status", self.status, when_
 就能配好：
 
 ```python
-from zettcode.plugins import Plugin, PluginContainer
+from zettcode.engine.plugins import AgentPlugin, PluginContainer
 from zettcode.providers import Provider
 
 
-class Acme(Plugin):
+class Acme(AgentPlugin):
     name = "acme"
 
     def activate(self, container: PluginContainer) -> None:
@@ -198,13 +199,13 @@ ZettCode 自带的配色（`nord`、`dracula`、`gruvbox` 等）也是由一个�
 ```text
 from pathlib import Path
 
-from zettcode.plugins import Plugin, PluginContainer
+from zettcode.app.plugins import TerminalContainer, TerminalPlugin
 
 
-class Palettes(Plugin):
+class Palettes(TerminalPlugin):
     name = "acme-palettes"
 
-    def activate(self, container: PluginContainer) -> None:
+    def activate(self, container: TerminalContainer) -> None:
         # 包里自带的主题文件：格式与 ~/.zettcode/themes/<名字>.toml 相同。
         container.register_theme("acme", Path(__file__).parent / "acme.toml")
         # 或者一个返回 zettcode.tui.Theme 的函数；第一次被用到时才会调用。
@@ -221,17 +222,18 @@ class Palettes(Plugin):
 宠物和配色一样按名字提供，ZettCode 自带的十三只（`cat`、`dog`、`tiger`、`polarbear`、`snowbear`、`penguin`、`scarfy`、`kangaroo`、`seagull`、`whale`、`chibi`、`slime`、`sprout`）也是由一个内置插件通过同一个调用提供的。一只宠物就是一张调色板，加上它各种心情的像素图：图里的每个字符对应一种颜色，`.` 是透明，两行像素组成一行字符单元格，所以行数必须是偶数，而且同一只宠物的每一帧大小相同：
 
 ```text
-from zettcode.plugins import Pet, Plugin, PluginContainer
+from zettcode.app.pets import Pet
+from zettcode.app.plugins import TerminalContainer, TerminalPlugin
 
 PALETTE = {"G": "#84b795", "D": "#263d34", "H": "#e4b47c"}
 ASLEEP = ("..GGGG..", ".GGGGGG.", "GGGGGGGG", "GDDGGDDG", "GGGHHGGG", ".GGGGGG.")
 AWAKE = ("..GGGG..", ".GGGGGG.", "GGGGGGGG", "GGDGGDGG", "GGGHHGGG", ".GGGGGG.")
 
 
-class Blobs(Plugin):
+class Blobs(TerminalPlugin):
     name = "acme-blobs"
 
-    def activate(self, container: PluginContainer) -> None:
+    def activate(self, container: TerminalContainer) -> None:
         # 心情有 "idle"（必须有：即睡着）、"working"（请求运行时）和 "glad"（被拍时）；
         # 缺少的心情就保持原样。一种心情有多帧时会循环播放。
         pet = Pet("blob", PALETTE, {"idle": (ASLEEP,), "working": (AWAKE, ASLEEP), "glad": (AWAKE,)})
@@ -246,7 +248,10 @@ class Blobs(Plugin):
 也由一个内置插件注册，优先级最低，所以插件为同样的行注册一个就能覆盖，不需要压过任何东西：
 
 ```text
-from zettcode.plugins import EntryKind, Plugin, PluginContainer, Presenter, Span, Style, TextLine
+from zettcode.app.agent.conversation.entries import EntryKind
+from zettcode.app.agent.conversation.presenters import Presenter
+from zettcode.app.plugins import TerminalContainer, TerminalPlugin
+from zettcode.tui import Span, Style, TextLine
 
 
 class QuietNotice(Presenter):
@@ -256,10 +261,10 @@ class QuietNotice(Presenter):
         return [TextLine((Span(entry.text, Style(foreground=theme.muted)),))]
 
 
-class QuietNotices(Plugin):
+class QuietNotices(TerminalPlugin):
     name = "quiet-notices"
 
-    def activate(self, container: PluginContainer) -> None:
+    def activate(self, container: TerminalContainer) -> None:
         container.register_presenter(QuietNotice())
 ```
 
@@ -278,10 +283,10 @@ presenter 指定一个 `kind`（`EntryKind` 的一项）；如果只画某一种
 `zett-agent` 的某个扩展，可以把它整个交出去：
 
 ```python
-from zettcode.plugins import Plugin, PluginContainer
+from zettcode.engine.plugins import AgentPlugin, PluginContainer
 
 
-class Audit(Plugin):
+class Audit(AgentPlugin):
     name = "audit"
 
     def activate(self, container: PluginContainer) -> None:

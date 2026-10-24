@@ -7,7 +7,7 @@ handler is a method here, returns a
 shell applies the result (see ``ZettCodeApp._apply_result``).
 
 The commands that only need the shell's narrow public surface (``/resume``, ``/model``, ``/context`` and the rest)
-are built-in plugins instead, in :mod:`zettcode.plugins.builtin_commands`. What stays here is what cannot be written
+are built-in plugins instead, in :mod:`zettcode.app.plugins.builtin_commands`. What stays here is what cannot be written
 against that surface yet: ``/theme`` and ``/pet`` call the shell's previews as the menu is walked, and ``/config``,
 ``/statusline`` and ``/self-compact`` open panels that edit state the shell owns.
 """

@@ -24,8 +24,8 @@ from zettcode.engine.dialogue.mentions import (
     MentionRegistry,
     SkillMentions,
 )
+from zettcode.engine.plugins import PluginContainer
 from zettcode.engine.storage import SessionStore
-from zettcode.plugins import PluginContainer
 from zettcode.tui import TextArea
 
 #: What each ``@`` token expands to in the table-driven tests below.
@@ -377,7 +377,7 @@ def test_a_file_reference_reaches_the_model_as_the_sentence(workspace: Path):
 
 def test_the_workspace_offers_files_through_the_builtin_bundle(tmp_path: Path):
     """The shell merges whatever the bundle holds, so the provider has to be in it."""
-    from zettcode.plugins import load_plugins
+    from zettcode.engine.plugins import load_plugins
 
     config = ZettCodeConfig(
         workspace=tmp_path,

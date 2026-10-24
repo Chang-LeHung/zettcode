@@ -25,6 +25,7 @@ from zettcode.app.pets import (
     edited,
     mirrored,
 )
+from zettcode.app.plugins import TerminalContainer, TerminalPlugin, load_terminal_plugins
 from zettcode.app.ui.widgets.pet_page import (
     BOX_HEIGHT,
     BOX_WIDTH,
@@ -36,7 +37,6 @@ from zettcode.app.ui.widgets.pet_page import (
 )
 from zettcode.config import load_config
 from zettcode.config_edit import ConfigEditError, set_pet
-from zettcode.plugins import Plugin, PluginContainer, load_plugins
 from zettcode.tui import DARK, LIGHT
 
 CATALOG = PetCatalog(bundled_pets())
@@ -208,13 +208,13 @@ def test_listing_the_pets_builds_none_of_them():
 # -- plugins ----------------------------------------------------------------------------------------------------
 
 
-class Dragon(Plugin):
+class Dragon(TerminalPlugin):
     name = "dragon-pack"
 
     def __init__(self) -> None:
         self.built = 0
 
-    def activate(self, container: PluginContainer) -> None:
+    def activate(self, container: TerminalContainer) -> None:
         container.register_pet("dragon", CATALOG.load("tiger"), description="breathes quietly")
         container.register_pet("lazy-dragon", self.build, description=lambda: "built late")
 
@@ -224,7 +224,7 @@ class Dragon(Plugin):
 
 
 def test_the_built_in_plugin_offers_the_pets_that_ship_first_through_the_same_call_a_plugin_uses(tmp_path: Path):
-    plugins = load_plugins(make_config(tmp_path))
+    plugins = load_terminal_plugins(make_config(tmp_path))
 
     assert [source.name for source in plugins.pets] == list(BUNDLED)
     assert "pets" in [plugin.name for plugin in plugins.plugins]
@@ -232,7 +232,7 @@ def test_the_built_in_plugin_offers_the_pets_that_ship_first_through_the_same_ca
 
 def test_a_plugin_offers_pets_by_name_after_the_ones_that_ship(tmp_path: Path):
     plugin = Dragon()
-    plugins = load_plugins(make_config(tmp_path), entry_points=[FakeEntryPoint("d", lambda: plugin)])
+    plugins = load_terminal_plugins(make_config(tmp_path), entry_points=[FakeEntryPoint("d", lambda: plugin)])
 
     names = [source.name for source in plugins.pets]
     assert names == [*BUNDLED, "dragon", "lazy-dragon"]
@@ -244,13 +244,13 @@ def test_a_plugin_offers_pets_by_name_after_the_ones_that_ship(tmp_path: Path):
 
 
 def test_a_plugin_cannot_take_a_name_an_earlier_plugin_has(tmp_path: Path):
-    class Greedy(Plugin):
+    class Greedy(TerminalPlugin):
         name = "greedy"
 
-        def activate(self, container: PluginContainer) -> None:
+        def activate(self, container: TerminalContainer) -> None:
             container.register_pet("cat", CAT)
 
-    plugins = load_plugins(make_config(tmp_path), entry_points=[FakeEntryPoint("g", Greedy)])
+    plugins = load_terminal_plugins(make_config(tmp_path), entry_points=[FakeEntryPoint("g", Greedy)])
 
     assert any("g: pet cat is already registered" in failure for failure in plugins.failures)
     assert [source.name for source in plugins.pets] == list(BUNDLED)
@@ -258,13 +258,13 @@ def test_a_plugin_cannot_take_a_name_an_earlier_plugin_has(tmp_path: Path):
 
 @pytest.mark.parametrize("name", ["", "two words", "a/b", " "])
 def test_a_name_that_could_not_be_typed_after_pet_is_refused_when_registered(tmp_path: Path, name: str):
-    container = PluginContainer(make_config(tmp_path))
+    container = TerminalContainer(make_config(tmp_path))
     with pytest.raises(ValueError):
         container.register_pet(name, CAT)
 
 
 def test_a_pet_registered_twice_by_one_plugin_or_not_a_pet_at_all_is_refused(tmp_path: Path):
-    container = PluginContainer(make_config(tmp_path))
+    container = TerminalContainer(make_config(tmp_path))
     container.register_pet("once", CAT)
     with pytest.raises(ValueError, match="already registered"):
         container.register_pet("once", CAT)
@@ -368,7 +368,7 @@ async def test_an_unknown_name_is_reported_with_the_list_and_changes_nothing(con
 
 
 async def test_a_pet_a_plugin_offered_can_be_picked_by_name(config_file):  # noqa: F811
-    plugins = load_plugins(make_config(config_file.parent), entry_points=[FakeEntryPoint("d", Dragon)])
+    plugins = load_terminal_plugins(make_config(config_file.parent), entry_points=[FakeEntryPoint("d", Dragon)])
     app, harness, _ = shell(*plugins.pets[len(BUNDLED) :])
 
     await _type_command(app, harness, "/pet dragon")

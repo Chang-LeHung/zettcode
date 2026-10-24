@@ -46,7 +46,7 @@ def _no_installed_plugins(monkeypatch: pytest.MonkeyPatch) -> None:
     developer happens to have installed. The plugin tests inject their own entry
     points, so discovery is only stubbed here, never removed.
     """
-    from zettcode.plugins import loader
+    from zettcode.engine.plugins import loader
 
     monkeypatch.setattr(loader, "installed_entry_points", lambda: ())
 

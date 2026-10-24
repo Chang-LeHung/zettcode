@@ -9,9 +9,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from zettcode.engine.agent.sessions import UNTITLED_SESSION
-from zettcode.engine.permission import Permission
-from zettcode.plugins import (
+from zettcode.app.plugins.state import (
     ActivityState,
     DisplayState,
     ModelState,
@@ -20,6 +18,8 @@ from zettcode.plugins import (
     UiRegion,
     UiSide,
 )
+from zettcode.engine.agent.sessions import UNTITLED_SESSION
+from zettcode.engine.permission import Permission
 from zettcode.statusline import Row
 from zettcode.tui import HEADER, SEPARATOR, Span, Style, TextLine
 from zettcode.tui.render import blend, display_width

@@ -15,6 +15,7 @@ import asyncio
 import os
 import platform
 import sys
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from typing import TYPE_CHECKING, TypeAlias
@@ -29,8 +30,8 @@ from zett_agent.model import ReasoningEffort
 
 from zettcode.config import DEFAULT_ANTHROPIC_BASE_URL, KEYLESS_TOKEN, ModelConfig, ZettCodeConfig
 from zettcode.engine.messenger import Messenger
-from zettcode.plugins import AGENT_PLUGINS, BUILTIN_PLUGINS, AgentBuild, Plugins, load_plugins
-from zettcode.plugins.services import (
+from zettcode.engine.plugins import AgentBuild, Plugins, load_plugins
+from zettcode.engine.plugins.services import (
     APPROVAL,
     COMPACTION,
     COMPACTION_COUNTER,
@@ -64,6 +65,9 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only; the imports are the co
     #: is what also says they can be closed, which the runtime does at shutdown.
     Adapter: TypeAlias = OpenAIProvider | AnthropicProvider
 
+#: Loads the plugins for a runtime from the configuration and what the runtime hands them by name.
+PluginLoader: TypeAlias = Callable[[ZettCodeConfig, Mapping[str, object]], Plugins]
+
 
 #: Modules imported ahead of the code that needs them, in this order. The model
 #: SDKs are the cost — hundreds of milliseconds each, even with their bytecode
@@ -87,6 +91,11 @@ WARM_MODULES_WHEN = (
     ("subagent_enabled", "zett_agent.extensions.subagent"),
     ("mcp_enabled", "zett_agent.extensions.mcp"),
 )
+
+
+def _load_engine_plugins(config: ZettCodeConfig, shared: Mapping[str, object]) -> Plugins:
+    """Load the plugins the engine ships and the installed ones that need only the engine."""
+    return load_plugins(config, shared=shared)
 
 
 def build_system_prompt(config: ZettCodeConfig, *, now: datetime | None = None) -> str:
@@ -222,7 +231,7 @@ class ZettCodeEngine:
     _ready: asyncio.Event | None = field(default=None, repr=False)
 
     @classmethod
-    def preview(cls, config: ZettCodeConfig) -> ZettCodeEngine:
+    def preview(cls, config: ZettCodeConfig, load: PluginLoader | None = None) -> ZettCodeEngine:
         """Build the session side of the runtime, without a provider.
 
         Everything here is cheap: paths, a session identity, and the
@@ -231,6 +240,8 @@ class ZettCodeEngine:
 
         Args:
             config: Settings for the workspace and the session.
+            load: How the plugins are loaded, given the configuration and what the runtime hands them. A front
+                end that has plugins of its own passes its loader; the default loads the engine's.
         """
         os.chdir(config.workspace)
         selected = config.models[0]
@@ -246,7 +257,7 @@ class ZettCodeEngine:
         messenger = Messenger.create(config)
         harness = HarnessSwitch(on=config.jit_harness)
         # What the built-in agent plugins build on, handed over by name: they own the extensions, the
-        # runtime owns this state and goes on using it. See `zettcode.plugins.services`.
+        # runtime owns this state and goes on using it. See `zettcode.engine.plugins.services`.
         shared: dict[str, object] = {
             POLICY: policy,
             HARNESS: harness,
@@ -268,7 +279,7 @@ class ZettCodeEngine:
             session_id=new_uuid7(),
             active_model=selected,
             compaction_counter=counter,
-            plugins=load_plugins(config, builtins=(*BUILTIN_PLUGINS, *AGENT_PLUGINS), shared=shared),
+            plugins=(load or _load_engine_plugins)(config, shared),
             messenger=messenger,
             _models=models,
         )
@@ -378,7 +389,7 @@ class ZettCodeEngine:
         selected = self.active_model
         model = self._provider(selected)
         # Every extension the agent runs is a plugin's: the built-in ones (the coding tools, the session
-        # store, the shell approval, the compaction ... see `zettcode.plugins.builtin_agent`) in the order
+        # store, the shell approval, the compaction ... see `zettcode.engine.plugins.builtin_agent`) in the order
         # they are listed there, then any a third-party plugin brings, and last the one host that drives
         # the plugins' hooks, which places itself at the earliest priority any plugin asked for.
         extensions = [*self.plugins.agent_extensions(AgentBuild(model=model)), *self.plugins.extensions]
@@ -431,9 +442,9 @@ class ZettCodeEngine:
             self.client.event_dispatcher = dispatcher
 
     @classmethod
-    async def create(cls, config: ZettCodeConfig) -> ZettCodeEngine:
+    async def create(cls, config: ZettCodeConfig, load: PluginLoader | None = None) -> ZettCodeEngine:
         """Build and start a runtime, for callers with nothing to paint."""
-        runtime = cls.preview(config)
+        runtime = cls.preview(config, load)
         await runtime.start()
         return runtime
 

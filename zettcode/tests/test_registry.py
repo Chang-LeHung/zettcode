@@ -7,9 +7,9 @@ from pathlib import Path
 import pytest
 
 from zettcode.app.commands import Command, CommandContext, CommandList, CommandResult
+from zettcode.app.plugins import TerminalContainer
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine.registry import Registry
-from zettcode.plugins import PluginContainer
 
 
 async def _no_op(context: CommandContext) -> CommandResult:
@@ -38,7 +38,7 @@ def test_a_registry_keeps_the_first_provider_to_claim_a_name():
 
 def test_a_plugin_registers_a_provider_of_commands(tmp_path: Path):
     config = ZettCodeConfig(workspace=tmp_path, models=(ModelConfig(model="m", token="t"),))
-    container = PluginContainer(config)
+    container = TerminalContainer(config)
     provider = CommandList((_command("/alpha"), _command("/beta")))
 
     assert container.register_command_provider(provider) is provider

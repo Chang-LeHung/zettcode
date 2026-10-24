@@ -60,7 +60,9 @@ def test_making_a_client_is_what_loads_the_agent(tmp_path):
 
     names = loaded_after(code)
 
-    assert names["zett_agent"] and names["zettcode.app"] and names["zettcode.config"]
+    assert names["zett_agent"] and names["zettcode.config"]
+    # The SDK drives the engine and never the terminal: no widget, no view and no plugin of the shell is loaded.
+    assert not names["zettcode.app"]
 
 
 def test_the_listed_names_are_exactly_the_ones_that_resolve():

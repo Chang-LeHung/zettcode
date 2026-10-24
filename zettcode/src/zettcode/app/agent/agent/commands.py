@@ -9,9 +9,10 @@ from __future__ import annotations
 
 from zettcode.app.commands import Command, CommandContext, CommandHost, CommandResult
 from zettcode.app.pets import PetCatalog, bundled_pets
+from zettcode.app.plugins.host import HOST_LINK, HostLink
+from zettcode.app.plugins.plugin import TerminalPlugins
+from zettcode.app.plugins.state import UiRow
 from zettcode.engine.agent.exports import ExportsMixin
-from zettcode.plugins import UiRow
-from zettcode.plugins.services import HOST_LINK, HostLink
 from zettcode.providers import BUILTIN_PROVIDERS, Provider, merge_providers
 from zettcode.statusline import NAMES, unknown
 from zettcode.tui import ThemeCatalog
@@ -25,6 +26,14 @@ _SELF_COMPACT_WORDS = frozenset({"on", "off", "default"})
 
 class CommandsMixin(AppearanceMixin, ExportsMixin):
     """The ``/new``, ``/compact``, and ``/export`` commands, and the plugins' commands, mentions, and rows."""
+
+    @property
+    def terminal_plugins(self) -> TerminalPlugins:
+        """Return what the plugins contributed to the terminal; the engine was built with the terminal's loader."""
+        plugins = self.runtime.plugins
+        if not isinstance(plugins, TerminalPlugins):
+            raise TypeError("This agent's engine was not built with the terminal's plugin loader")
+        return plugins
 
     @property
     def commands(self) -> tuple[Command, ...]:
@@ -52,12 +61,12 @@ class CommandsMixin(AppearanceMixin, ExportsMixin):
         The shell keeps them after everything built in, so a plugin cannot take over a built-in name;
         plugin-versus-plugin duplicates are rejected when the plugins load.
         """
-        return self.runtime.plugins.installed_commands
+        return self.terminal_plugins.installed_commands
 
     @property
     def builtin_plugin_commands(self) -> tuple[Command, ...]:
         """Return the commands the program's own plugins registered: ``/resume``, ``/model``, ``/usage`` and the rest."""
-        return self.runtime.plugins.builtin_commands
+        return self.terminal_plugins.builtin_commands
 
     @property
     def providers(self) -> tuple[Provider, ...]:
@@ -71,7 +80,7 @@ class CommandsMixin(AppearanceMixin, ExportsMixin):
         Built fresh each time it is asked: it lists names and builds nothing, and the reader's directory may have
         gained a file since the last look.
         """
-        return ThemeCatalog(self.runtime.plugins.themes, self.runtime.config.themes_dir)
+        return ThemeCatalog(self.terminal_plugins.themes, self.runtime.config.themes_dir)
 
     @property
     def pets(self) -> PetCatalog:
@@ -79,13 +88,13 @@ class CommandsMixin(AppearanceMixin, ExportsMixin):
 
         A plugin bundle that offers none (one built by hand, without the built-in plugin) gets the program's own.
         """
-        sources = self.runtime.plugins.pets
+        sources = self.terminal_plugins.pets
         return PetCatalog(sources or bundled_pets())
 
     @property
     def plugin_failures(self) -> tuple[str, ...]:
         """Return one message per plugin that could not be loaded or activated."""
-        return self.runtime.plugins.failures
+        return self.terminal_plugins.failures
 
     @property
     def presenters(self) -> Presenters:
@@ -95,12 +104,12 @@ class CommandsMixin(AppearanceMixin, ExportsMixin):
         program's own rows are registered through the plugin route, so a plugin that draws a kind or a family of
         rows reaches the transcript without a second path only plugins could not take.
         """
-        return Presenters(self.runtime.plugins.presenters)
+        return Presenters(self.terminal_plugins.presenters)
 
     @property
     def plugin_rows(self) -> tuple[UiRow, ...]:
         """Return the header and status rows plugins asked the shell to draw."""
-        return self.runtime.plugins.rows
+        return self.terminal_plugins.rows
 
     async def _command_new(self, context: CommandContext) -> CommandResult:
         """Start a fresh session."""

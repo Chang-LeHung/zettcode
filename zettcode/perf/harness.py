@@ -23,7 +23,6 @@ from zettcode.app.agent.agent import TerminalAgent
 from zettcode.app.agent.conversation.transcript import Transcript
 from zettcode.app.ui import ZettCodeApp
 from zettcode.config import ModelConfig, ZettCodeConfig
-from zettcode.engine.core import ZettCodeEngine
 from zettcode.tui import DifferentialRenderer, TextEvent
 from zettcode.tui.core.app import TuiApp
 
@@ -246,7 +245,7 @@ def build(
         skills_enabled=False,
         mcp_enabled=False,
     )
-    app = ZettCodeApp(TerminalAgent(ZettCodeEngine.preview(config)))
+    app = ZettCodeApp(TerminalAgent.preview(config))
     clock = Clock()
     app.app.clock = clock
     app.transcript.clock = clock
