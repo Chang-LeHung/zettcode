@@ -11,7 +11,7 @@ import mimetypes
 from dataclasses import dataclass, field, fields
 from datetime import date, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from .events import Event
@@ -35,6 +35,7 @@ __all__ = [
     "SessionInfo",
     "SessionStatsInfo",
     "SessionTotals",
+    "StoredSession",
     "ToolCallInfo",
     "ToolRecord",
     "Totals",
@@ -192,6 +193,28 @@ class SessionInfo:
     title: str | None
     created_at: datetime
     updated_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class StoredSession:
+    """A conversation read from the store and not yet current: what :meth:`Sessions.read` returns.
+
+    Attributes:
+        id: The session's identity.
+        title: Its name, or ``None`` until one was written.
+        model: The model it last used, by the name ``models`` lists, or ``None`` when none was recorded.
+        usage: What it has spent in total, from the replies the file records.
+        records: The parsed conversation file, for a front end that draws the conversation itself. Its type belongs to
+            the engine and is not part of this API: read it with the helper of the front end that draws it, and do not
+            depend on its shape.
+    """
+
+    id: str
+    title: str | None
+    model: str | None
+    usage: Usage
+    records: object = field(repr=False, compare=False)
+    _engine: Any = field(default=None, repr=False, compare=False)
 
 
 @dataclass(frozen=True, slots=True)

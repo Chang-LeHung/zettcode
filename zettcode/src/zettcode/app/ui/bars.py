@@ -252,17 +252,17 @@ class BarsMixin(ShellState):
         return ShellContext(
             config=self.agent.runtime.config,
             session=SessionState(
-                id=self.agent.session_id,
+                id=self.client.session.id,
                 title=self._session_title,
                 name=self._session_title or UNTITLED_SESSION,
-                workspace=self.agent.workspace,
+                workspace=self.client.workspace,
                 handle=self.messenger.handle if self.messenger is not None else "",
             ),
             model=ModelState(
                 config=self.agent.active_model,
                 name=self.agent.active_model.shown_name,
-                effort=self.agent.effort,
-                efforts=self.agent.efforts,
+                effort=self.client.effort,
+                efforts=self.client.efforts,
             ),
             activity=ActivityState(
                 busy=self._busy,
@@ -270,7 +270,7 @@ class BarsMixin(ShellState):
                 note=self._note,
                 auto_shell=self.client.permission == "full",
                 permission=self.client.permission,
-                self_compact=self.agent.self_compaction,
+                self_compact=self.client.self_compaction,
                 usage=self._usage,
                 tasks=self.agent.tasks(),
                 frame=self.transcript.frame,

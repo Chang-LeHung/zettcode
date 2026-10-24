@@ -153,7 +153,7 @@ class Client:
 | `use_model(name)` | `ModelInfo` | 选择模型；接受名字或 `ModelInfo`。 |
 | `use_effort(name)` | `str` | 选择推理级别。 |
 | `use_compact_percent(percent)` | `tuple[ModelInfo, str \| None]` | 从下一次请求起改变压缩点(占窗口的比例,大于 0、至多 100),并改写配置文件。第二个值说明文件为什么没有写入,写入了就是 `None`。 |
-| `use_permission(name)` | `str` | 选择权限级别；从下一条 shell 命令起生效。 |
+| `use_permission(name, *, remember=True)` | `str` | 选择权限级别；从下一条 shell 命令起生效。`remember=False` 不改动会话记住的级别，用于只覆盖这一次运行的选择。 |
 | `mentions(query="", *, limit=50)` | `tuple[MentionInfo, ...]` | 匹配查询的 `@` 资源，用于补全菜单。开启 `sessions_enabled=True` 时，正在运行的其他会话排在最前，和终端一致。 |
 | `await join_sessions(on_message)` | `bool` | 加入会话 broker，让其他 ZettCode 会话找得到它、给它发消息。`on_message` 收到每条 `IncomingMessage` 并返回 `Receipt`；返回 `False` 表示该 client 未开启会话功能。 |
 | `await send(to, text)` | `Delivered` | 按 handle 或 id 给另一个会话发消息，内容视为读者本人所写；需要先 `join_sessions`。没有人能收到时抛出 `zettcode.sdk.errors.SendError`(`reason` 说明原因)。 |
@@ -176,6 +176,11 @@ class Client:
 | `new()` | `Session` | 开始一段空对话并设为当前。 |
 | `await open(session_id)` | `Session` | 继续一段已保存的对话并设为当前。 |
 | `await latest()` | `Session \| None` | 继续最近活跃的那段。 |
+| `await read(session_id)` | `StoredSession` | 读取一段已保存的对话但不把它设为当前：`open` 里昂贵的那一半，可以在 run 进行时调用。 |
+| `read_blocking(session_id)` | `StoredSession` | 同上，在调用线程里执行，给已经在工作线程里的代码用。 |
+| `install(stored)` | `Session` | 把 `StoredSession` 设为当前：`open` 里便宜的那一半。run 进行中抛 `SessionBusyError`。 |
+
+`StoredSession(id, title, model, usage, records)`：`records` 是解析后的文件，给自己绘制对话的前端用；它的类型属于 engine，请不要依赖它的结构。
 
 ### `PluginReport`
 
@@ -210,6 +215,7 @@ def remove_model(name, *, path=None) -> tuple[ModelInfo, ...]: ...
 | `title` | `str \| None` | 它的名字，没有时为 `None`。 |
 | `usage` | `Usage` | 这个会话累计花的用量。 |
 | `locked` | `bool` | 是否有别的进程打开着它。 |
+| `retake()` | `bool` | 再次尝试拿下别的进程曾占用的对话的锁；本 client 持有锁时返回 `True`。 |
 | `path` | `Path` | 对话保存的文件。 |
 | `current` | `bool` | 下一次 run 是否无需切换就用它。 |
 

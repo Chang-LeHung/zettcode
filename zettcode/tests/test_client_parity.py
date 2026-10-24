@@ -49,6 +49,7 @@ PYTHON_ONLY: dict[str, dict[str, str]] = {
         "title": "read with `session.info()`",
         "usage": "read with `session.info()`",
         "locked": "read with `session.info()`",
+        "retake": "the server process holds the lock; a program over HTTP never has one to take back",
         "path": "a path on the server's disk",
         "current": "the server has one current session, so it always is",
         "relay": "`client.relay(id)`, which takes the id of a message `messages()` listed",
@@ -56,7 +57,13 @@ PYTHON_ONLY: dict[str, dict[str, str]] = {
         "resume_stream": "`resume` already returns the run that streams",
         "stream": "an alias of `prompt` in Python",
     },
-    "Sessions": {},
+    "Sessions": {
+        "read": "returns the engine's parsed records for a front end that draws the conversation itself; over HTTP "
+        "that is `session.history({ full: true })`",
+        "read_blocking": "the same, for a thread of the caller's own",
+        "install": "switching a conversation in place is `open(id)` over HTTP; the two halves exist so a terminal can "
+        "prepare rows between them",
+    },
 }
 
 #: TypeScript public members with no Python twin, and why.

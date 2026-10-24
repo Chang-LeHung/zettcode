@@ -8,8 +8,13 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, Protocol, TypeAlias
 
 from zettcode.registry import Provider
+from zettcode.sdk.errors import ZettCodeError
 
 from ..tui import Widget
+
+#: What a command may fail with and have the reader told in words: a bad argument (``ValueError``), or the SDK saying
+#: the session is locked, busy or missing. Anything else is a bug and is reported as one.
+COMMAND_ERRORS = (ValueError, ZettCodeError)
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only; the agent and the config are not imported by this module
     from ..config import ModelConfig

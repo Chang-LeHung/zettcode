@@ -153,7 +153,7 @@ The agent for one workspace. An async context manager. See [Client & configurati
 | `use_model(name)` | `ModelInfo` | Chooses the model; takes a name or a `ModelInfo`. |
 | `use_effort(name)` | `str` | Chooses the reasoning level. |
 | `use_compact_percent(percent)` | `tuple[ModelInfo, str \| None]` | Moves the compaction point (a share of the window, above 0 and at most 100) from the next request on, and rewrites the configuration file. The second value says why the file was not written, or is `None`. |
-| `use_permission(name)` | `str` | Chooses the permission level; applies from the next shell command. |
+| `use_permission(name, *, remember=True)` | `str` | Chooses the permission level; applies from the next shell command. `remember=False` leaves the session's remembered level alone, for a choice that covers this run only. |
 | `mentions(query="", *, limit=50)` | `tuple[MentionInfo, ...]` | The `@` resources matching a query, for a completion menu. With `sessions_enabled=True`, the other running sessions come first, as they do in the terminal. |
 | `await join_sessions(on_message)` | `bool` | Join the session broker, so other ZettCode sessions can find this one and send it messages. `on_message` is called with each `IncomingMessage` and returns a `Receipt`; `False` means sessions are switched off for this client. |
 | `await send(to, text)` | `Delivered` | Sends a message to another session by handle or id, as the reader's own words; needs `join_sessions`. Raises `zettcode.sdk.errors.SendError` (its `reason` says why) when nobody could be reached. |
@@ -176,6 +176,11 @@ The agent for one workspace. An async context manager. See [Client & configurati
 | `new()` | `Session` | Starts an empty conversation and makes it current. |
 | `await open(session_id)` | `Session` | Continues a stored conversation and makes it current. |
 | `await latest()` | `Session \| None` | Continues the most recently active one. |
+| `await read(session_id)` | `StoredSession` | Reads a stored conversation without making it current: the expensive half of `open`. Safe beside a run. |
+| `read_blocking(session_id)` | `StoredSession` | The same on the calling thread, for code that is already on a worker. |
+| `install(stored)` | `Session` | Makes a `StoredSession` current: the cheap half of `open`. Raises `SessionBusyError` during a run. |
+
+`StoredSession(id, title, model, usage, records)`: `records` is the parsed file for a front end that draws the conversation itself; its type belongs to the engine, so do not depend on its shape.
 
 ### `PluginReport`
 
@@ -208,6 +213,7 @@ A handle on one stored conversation. Obtain it from `client.session`, `client.se
 | `title` | `str \| None` | Its name, or `None` until it has one. |
 | `usage` | `Usage` | What this session has spent in total. |
 | `locked` | `bool` | Whether another process has it open. |
+| `retake()` | `bool` | Tries again to take the lock of a conversation another process had open; `True` once this client holds it. |
 | `path` | `Path` | The file the conversation is stored in. |
 | `current` | `bool` | Whether the next run would use it without switching. |
 

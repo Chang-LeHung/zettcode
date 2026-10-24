@@ -7983,7 +7983,7 @@ async def test_title_names_the_session_while_the_request_runs():
         renamed.append(title)
         return title
 
-    app.agent.rename_session = rename  # type: ignore[method-assign]
+    app.client.session.rename = rename  # type: ignore[method-assign]
     await _typed_while_running(app, harness, "/title Fix the parser")
 
     assert renamed == ["Fix the parser"] and app._busy is True

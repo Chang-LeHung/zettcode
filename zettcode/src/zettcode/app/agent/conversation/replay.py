@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import cast
 
 from zett_agent.messages import AnyMessage, AssistantMessage, SystemMessage, ToolMessage, UserMessage
 
@@ -109,7 +110,7 @@ def window_start(lines: Sequence[MessageLine], entries: int) -> int:
 
 
 def replay(
-    session: Session,
+    session: object,
     *,
     renderers: Renderers = DEFAULT_RENDERERS,
     presenters: Presenters = DEFAULT_PRESENTERS,
@@ -119,7 +120,8 @@ def replay(
     """Rebuild a session's active branch into entries, totals, and messages.
 
     Args:
-        session: The parsed session.
+        session: The parsed session (the ``records`` of an SDK ``StoredSession``; typed ``object`` because its type is
+            the engine's, which the views do not import).
         renderers: Chain that phrases tool rows.
         presenters: How each kind of entry is drawn.
         frame: The animation step the rebuilt rows start at.
@@ -127,7 +129,7 @@ def replay(
             produce them are decoded and walked; the older ones add their usage to
             the totals and nothing else.
     """
-    lines = session.branch()
+    lines = cast("Session", session).branch()
     start = window_start(lines, max_entries)
     transcript = Transcript(renderers=renderers, presenters=presenters, max_entries=max_entries)
     transcript.frame = frame

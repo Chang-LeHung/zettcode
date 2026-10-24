@@ -49,6 +49,7 @@ from .types import (
     RunResult,
     SessionInfo,
     SessionStatsInfo,
+    StoredSession,
     Usage,
     WorkspaceUsage,
 )
@@ -689,20 +690,22 @@ class Client:
         """Return the permission levels there are."""
         return self._agent.permissions
 
-    def use_permission(self, name: str) -> str:
+    def use_permission(self, name: str, *, remember: bool = True) -> str:
         """Choose how much of the shell may run without asking, from the next command on.
 
         ``safe`` runs every command in an operating-system sandbox that writes only the workspace and ``/tmp`` (where
         the machine has one); ``full`` runs them with the user's own access. ``auto``, the old name of ``full``, is
         still taken. The level is remembered by the session, so opening it again starts there; ``permission=`` on the
-        client itself is for that client's runs and is not written down.
+        client itself is for that client's runs and is not written down. ``remember=False`` applies the level to this
+        client for now and leaves the session's remembered level alone, for a decision made for one run only (the
+        terminal's "stop asking" in an approval).
 
         Raises:
             ConfigurationError: Not one of the levels.
         """
         self._check_open()
         try:
-            return str(self._agent.use_permission(name).value)
+            return str(self._agent.use_permission(name, remember=remember).value)
         except ValueError as error:
             raise ConfigurationError(str(error)) from error
 
@@ -960,6 +963,69 @@ class Sessions:
         client._check_free()
         await client._switch_to(session_id.strip())
         return client._handle(session_id.strip())
+
+    async def read(self, session_id: str) -> StoredSession:
+        """Read a stored conversation without making it current: the expensive half of :meth:`open`.
+
+        Parsing the file is most of what opening a long conversation costs, and it touches nothing the client is
+        using, so it is safe to run while a run is going or on a worker thread of your own. The result is a value:
+        draw it, measure it, or hand it to :meth:`install` on the loop that owns the client.
+
+        Raises:
+            SessionNotFoundError: No such session, or its file cannot be read.
+            ClientClosedError: The client was closed.
+        """
+        self._client._check_open()
+        return await asyncio.to_thread(self.read_blocking, session_id)
+
+    def read_blocking(self, session_id: str) -> StoredSession:
+        """Read a stored conversation on the calling thread: :meth:`read` for code that is already on a worker.
+
+        A front end that prepares what it will draw on a thread of its own (or before it has an event loop at all)
+        reads here, so one thread does the read and the preparation. Do not call it on the loop.
+
+        Raises:
+            SessionNotFoundError: No such session, or its file cannot be read.
+            ClientClosedError: The client was closed.
+        """
+        self._client._check_open()
+        if not isinstance(session_id, str) or not session_id.strip():
+            raise SessionNotFoundError("A session id is required")
+        wanted = session_id.strip()
+        try:
+            stored = self._client._agent.load_session(wanted)
+        except (ValueError, OSError) as error:
+            raise SessionNotFoundError(f"Cannot open session {wanted!r}: {error}") from error
+        return self._stored(stored)
+
+    def install(self, stored: StoredSession) -> Session:
+        """Make a conversation that :meth:`read` returned the current one: the cheap half of :meth:`open`.
+
+        Everything it does is assignment (the session, its totals, the model it last used), so it can run where the rest
+        of a front end does, between two frames.
+
+        Raises:
+            SessionBusyError: A run is in progress.
+            ClientClosedError: The client was closed.
+        """
+        client = self._client
+        client._check_open()
+        client._check_free()
+        client._agent.install_session(stored._engine)
+        return client._handle(stored.id)
+
+    def _stored(self, stored: Any) -> StoredSession:
+        """Return the SDK's value for what the engine read."""
+        from .translation import usage_from
+
+        return StoredSession(
+            id=stored.session_id,
+            title=stored.title,
+            model=stored.model,
+            usage=usage_from(stored.usage),
+            records=stored.session,
+            _engine=stored,
+        )
 
     async def latest(self) -> Session | None:
         """Continue the most recently active session, or return ``None`` when the workspace has none."""
