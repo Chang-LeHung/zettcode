@@ -17,9 +17,6 @@ _EXPORTS = {
     "ZettCodeEngine": ".app.agent.runtime",
 }
 
-#: Names that were published and have been renamed: old name -> new name. Reading one still works and warns.
-_RENAMED = {"ZettCodeRuntime": "ZettCodeEngine"}
-
 
 if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
     from .app.agent.agent import ZettCodeAgent
@@ -35,12 +32,6 @@ def __getattr__(name: str) -> object:
     widget library, the Markdown parser, the diff viewer, and the syntax
     scanners. ``__all__`` is still the public surface.
     """
-    if name in _RENAMED:
-        import warnings
-
-        new = _RENAMED[name]
-        warnings.warn(f"zettcode.{name} is now zettcode.{new}", DeprecationWarning, stacklevel=2)
-        name = new
     try:
         module = _EXPORTS[name]
     except KeyError:

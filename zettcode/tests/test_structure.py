@@ -300,20 +300,13 @@ def test_a_facade_maps_every_name_to_the_module_it_statically_imports():
     assert drifted == []
 
 
-def test_the_old_name_of_the_engine_still_resolves_and_says_it_was_renamed():
-    """``ZettCodeRuntime`` was published, so a program that imports it keeps working for a while, and is told."""
-    import warnings
-
+def test_the_engine_is_published_under_one_name():
+    """The core is ``ZettCodeEngine`` and nothing answers to the name it had before."""
     from zettcode.engine import ZettCodeEngine
 
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        old = zettcode.ZettCodeRuntime  # type: ignore[attr-defined]
-
-    assert old is ZettCodeEngine
-    assert [w.category for w in caught] == [DeprecationWarning]
-    assert "ZettCodeEngine" in str(caught[0].message)
-    assert "ZettCodeRuntime" not in zettcode.__all__
+    assert zettcode.ZettCodeEngine is ZettCodeEngine
+    assert "ZettCodeEngine" in zettcode.__all__
+    assert not hasattr(zettcode, "ZettCodeRuntime")
 
 
 def test_the_hub_and_the_roster_know_nothing_of_the_web():

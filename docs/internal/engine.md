@@ -40,14 +40,13 @@ Frozen, because the server, the TypeScript client and the extension are built on
 2. every event and value-type field in `sdk.events` / `sdk.types` (fields are added, never renamed or retyped);
 3. the server's wire format, which follows from 1 and 2.
 
-`zettcode.ZettCodeRuntime` and `zettcode.app.ZettCodeRuntime` were published, so they stay as aliases that warn
-(`DeprecationWarning`) for at least one minor version.
+`ZettCodeRuntime` is renamed outright, with no alias.
 
 ## Steps (one pull request each, `make check` green)
 
-1. **Name.** `ZettCodeRuntime` → `ZettCodeEngine`; `zettcode.engine` facade; deprecated aliases; invariants for
-   the layering below.
-2. **Types.** Move events, values and `_translate` under the engine; the SDK re-exports.
+1. **Name.** `ZettCodeRuntime` → `ZettCodeEngine`; `zettcode.engine` facade; invariants for the layering below.
+2. **Types.** Move events, values, `_translate` and the messenger (session-to-session messaging belongs to the
+   core) under the engine; the SDK re-exports.
 3. **Terminal.** The TUI projector consumes engine events instead of raw `zett_agent` events.
 4. **Seal.** `sdk` imports nothing from `app.*`; `test_structure` pins it.
 
