@@ -16,7 +16,8 @@ from zett_agent.extensions.steering import STEERING_MESSAGE_EVENT_NAME
 from zett_agent.messages import ImageBytesSource, ImageContent, TextContent, UserMessage
 from zett_agent.resume import ResumePoint
 
-from ..dialogue.relay import Relayed
+from zettcode.engine.relay import Relayed
+
 from ..dialogue.side import SIDE, question
 from .base import AgentBase
 from .prompt import MentionPart, PromptPart, carries_image, model_text_part, plain_text

@@ -454,11 +454,11 @@ operating-system file lock the broker is made a singleton with, shared with the 
   the application uses (`SessionInfo`, `Incoming`, `Receipt`, `SendError`). `files` is where the broker's files
   are and the note a session finds it by; `text` cleans what comes from another process. The package imports
   nothing of the shell, the agent or the terminal (`tests/test_structure.py` holds it).
-- `app/agent/extensions/messenger.py` is the line the rest of the application holds: it describes
+- `engine/messenger.py` (messaging is part of the engine) is the line the rest of the application holds: it describes
   this session to the broker, lists the others from memory, sends, and remembers which received
   message the running turn answers (so an agent's answer carries the hop count on).
   `messaging.py` is the two tools over it, imported when the runtime builds its client.
-- `app/agent/dialogue/relay.py` is the one type (`Relayed`) the transcript, the agent and the shell
+- `engine/relay.py` is the one type (`Relayed`) the transcript, the agent and the shell
   share: what the model reads, and what is stored beside the message (`attributes["relay"]`).
 - `app/ui/messaging.py` is the shell's part: the `@name` send, and a received message starting a turn
   or waiting in `_inbox`. A received message runs through `_run_prompt` like any other, with a

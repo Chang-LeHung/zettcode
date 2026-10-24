@@ -10,17 +10,17 @@ from zett_agent.agent import AgentRunConfig, AgentRunContext, AgentState
 from zett_agent.messages import SystemMessage
 
 from broker_helpers import Host, Inbox, client_for, eventually, session
-from zettcode.app.agent.dialogue.relay import Relayed
 from zettcode.app.agent.dialogue.side import SideQuestions, question
 from zettcode.app.agent.extensions.messaging import (
     LIST_SESSIONS_TOOL_NAME,
     SEND_MESSAGE_TOOL_NAME,
     SessionMessagingExtension,
 )
-from zettcode.app.agent.extensions.messenger import Messenger
 from zettcode.broker.client import BrokerClient, Receipt, SendError
 from zettcode.broker.protocol import MAX_HOPS, MAX_TEXT
 from zettcode.config import ModelConfig, ZettCodeConfig, load_config
+from zettcode.engine.messenger import Messenger
+from zettcode.engine.relay import Relayed
 
 ME = "01a10b75-aaaa-7000-8000-000000000001"
 BOB = "02b20c86-bbbb-7000-8000-000000000002"

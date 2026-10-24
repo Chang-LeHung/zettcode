@@ -25,7 +25,8 @@ from string import Template
 
 from zett_agent.messages import AnyMessage, AssistantMessage, SystemMessage, ToolMessage, UserMessage
 
-from ..dialogue.relay import relay_of
+from zettcode.engine.relay import relay_of
+
 from ..dialogue.side import is_side_line
 from ..extensions.context import ContextReport
 from ..storage import MessageLine, Session

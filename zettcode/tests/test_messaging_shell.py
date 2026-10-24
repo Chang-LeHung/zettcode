@@ -20,11 +20,11 @@ from test_zettcode_app import FakeClient, FakeRuntime, _harness, _rendered, rows
 from zettcode.app import ZettCodeApp
 from zettcode.app.agent.agent import ZettCodeAgent
 from zettcode.app.agent.conversation.entries import RelayEntry, TextEntry
-from zettcode.app.agent.dialogue.relay import RELAY, Relayed
-from zettcode.app.agent.extensions.messenger import Messenger
 from zettcode.app.ui import updating as updating_module
 from zettcode.app.ui.messaging import MAX_INBOX
 from zettcode.broker.client import BrokerClient, Receipt, SendError
+from zettcode.engine.messenger import Messenger
+from zettcode.engine.relay import RELAY, Relayed
 
 ME = "session-0001"
 BOB = "02b20c86-bbbb-7000-8000-000000000002"

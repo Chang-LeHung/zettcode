@@ -31,13 +31,13 @@ from ..app.agent.extensions.capabilities import ModelCapabilities
 from ..app.agent.extensions.compaction import CompactionCounter, OnDemandCompaction
 from ..app.agent.extensions.context import ContextExtension
 from ..app.agent.extensions.harness_switch import HarnessSwitch
-from ..app.agent.extensions.messenger import Messenger
 from ..app.agent.extensions.tool_output import ToolOutputExtension
 from ..app.agent.extensions.usage import UsageExtension
 from ..app.agent.permission import ShellDenyExtension, ShellPolicy
 from ..app.agent.permission.approval import ShellApprovalMemory
 from ..app.agent.storage import SessionStore
 from ..config import ModelConfig
+from ..engine.messenger import Messenger
 from .container import PluginContainer
 from .plugin import Plugin
 from .services import (

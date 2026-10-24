@@ -19,8 +19,7 @@ from zett_agent.tools.base import AgentTool, tool
 
 from zettcode.broker.client import SendError
 from zettcode.broker.protocol import VIA_AGENT
-
-from .messenger import Messenger
+from zettcode.engine.messenger import Messenger
 
 LIST_SESSIONS_TOOL_NAME = "list_sessions"
 SEND_MESSAGE_TOOL_NAME = "send_message"

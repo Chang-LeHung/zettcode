@@ -55,6 +55,8 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
     from collections.abc import Sequence
 
     from zettcode.config import ModelConfig
+    from zettcode.engine.messenger import Messenger
+    from zettcode.engine.relay import Relayed
     from zettcode.plugins import Activity, UiRow
     from zettcode.tui import CompletionPopup, StatusBar, Theme, TuiApp
     from zettcode.update import UpdateState
@@ -67,8 +69,6 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
     from ..agent.conversation.transcript import Transcript
     from ..agent.dialogue.ask import AskUserQuestion
     from ..agent.dialogue.mentions import MentionRegistry
-    from ..agent.dialogue.relay import Relayed
-    from ..agent.extensions.messenger import Messenger
     from ..agent.extensions.usage import UsageSnapshot
     from ..commands import Command
     from ..pets import Pet

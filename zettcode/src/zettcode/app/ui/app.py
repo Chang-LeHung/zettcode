@@ -49,6 +49,9 @@ from zettcode.tui.widgets import Rule
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from collections.abc import AsyncGenerator
+from zettcode.engine.messenger import Messenger
+from zettcode.engine.relay import Relayed
+
 from ..agent.agent import ZettCodeAgent
 from ..agent.agent.prompt import PromptPart, carries_image, mention_hint, mention_parts
 from ..agent.conversation.effort_gauge import EFFORT_SECONDS, EffortFrame, effort_frame
@@ -65,9 +68,7 @@ from ..agent.conversation.tips import TipDeck
 from ..agent.conversation.transcript import Transcript
 from ..agent.dialogue.ask import AskUserQuestion
 from ..agent.dialogue.mentions import MentionRegistry, SessionMentions
-from ..agent.dialogue.relay import Relayed
 from ..agent.errors import describe_error, failure_text
-from ..agent.extensions.messenger import Messenger
 from ..agent.extensions.usage import UsageSnapshot
 from ..commands import Command, CommandContext, CommandList, CommandResult
 from ..pets import DEFAULT_PET_NAME, Pet

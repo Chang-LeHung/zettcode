@@ -55,9 +55,9 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only; the agent is imported 
     from ..app.agent.conversation.transcript import Transcript
     from ..app.agent.dialogue.ask import AskUserQuestion
     from ..app.agent.dialogue.mentions import MentionRegistry
-    from ..app.agent.extensions.messenger import Messenger
     from ..broker.client import Delivered, Receipt
     from ..config import ModelConfig, ZettCodeConfig
+    from ..engine.messenger import Messenger
 
 __all__ = ["Client", "PluginReport", "Sessions", "prompt", "prompt_sync"]
 
