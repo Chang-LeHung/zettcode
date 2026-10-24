@@ -17,6 +17,7 @@ from .commands import CommandsMixin
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zettcode.config import ZettCodeConfig
+    from zettcode.sdk.client import Client
 
 __all__ = ["TerminalAgent"]
 
@@ -30,6 +31,21 @@ def _terminal_loader() -> PluginLoader:
 
 class TerminalAgent(CommandsMixin, ZettCodeAgent):
     """The agent the terminal application drives."""
+
+    _client: Client | None = None
+
+    @property
+    def client(self) -> Client:
+        """Return the SDK client over this agent, which is how the shell reaches everything the SDK offers.
+
+        Made on first use and then kept, so the shell and the commands it runs read the same client. The agent still
+        owns closing: the client is a view of it.
+        """
+        if self._client is None:
+            from zettcode.sdk.client import Client
+
+            self._client = Client._around(self)
+        return self._client
 
     @classmethod
     async def create(cls, config: ZettCodeConfig) -> TerminalAgent:

@@ -13,6 +13,7 @@ from ..tui import Widget
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only; the agent and the config are not imported by this module
     from ..config import ModelConfig
+    from ..sdk.client import Client
     from .agent.agent import TerminalAgent
     from .agent.conversation.transcript import Transcript
 
@@ -55,11 +56,13 @@ class CommandHost(Protocol):
 
     Attributes:
         agent: The application agent: models, sessions, effort, permission, the context report.
+        client: The SDK client over that agent, which is how a command reaches what the SDK offers.
         transcript: The conversation as drawn; a command reports into it with ``notice`` and ``error``.
         commands: Every command the shell knows, in the order ``/help`` lists them.
     """
 
     agent: TerminalAgent
+    client: Client
     transcript: Transcript
     commands: tuple[Command, ...]
 

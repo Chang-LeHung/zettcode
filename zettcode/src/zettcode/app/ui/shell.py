@@ -61,6 +61,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
     from zettcode.engine.extensions.usage import UsageSnapshot
     from zettcode.engine.messenger import Messenger
     from zettcode.engine.relay import Relayed
+    from zettcode.sdk.client import Client
     from zettcode.sdk.events import QuestionAsked
     from zettcode.tui import CompletionPopup, StatusBar, Theme, TuiApp
     from zettcode.update import UpdateState
@@ -87,6 +88,8 @@ class ShellState:
 
     #: The application agent: the only channel to the conversation.
     agent: TerminalAgent
+    #: The SDK client over that agent: what the shell asks of the agent goes through it as it moves off the agent.
+    client: Client
     #: The mounted widget tree and the host services it offers.
     app: TuiApp
     #: The conversation model every view reads.

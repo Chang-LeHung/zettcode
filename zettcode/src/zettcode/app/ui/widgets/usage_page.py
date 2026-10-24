@@ -6,7 +6,7 @@ import colorsys
 from collections.abc import Callable
 from datetime import date, timedelta
 
-from zettcode.engine.storage.ledger import Ledger
+from zettcode.sdk.types import WorkspaceUsage
 from zettcode.tui import SEPARATOR, KeyEvent, MouseAction, MouseEvent, Style, Theme, Widget
 from zettcode.tui.render import blend, parse_hex
 
@@ -86,7 +86,7 @@ class UsagePage(Widget):
 
     def __init__(
         self,
-        ledger: Ledger,
+        ledger: WorkspaceUsage,
         *,
         workspace: str = "",
         on_cancel: Callable[[], None] | None = None,

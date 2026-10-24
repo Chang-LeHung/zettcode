@@ -122,6 +122,7 @@ class ZettCodeApp(
                 passes ``False``, because then the palette was a choice.
         """
         self.agent = agent
+        self.client = agent.client
         self._plugin_rows: tuple[UiRow, ...] = agent.plugin_rows
         # The program's own plugins come first, then the shell's commands, then the agent's, and the installed
         # plugins last: the first to claim a name owns it, so an installed plugin can add a command and can never

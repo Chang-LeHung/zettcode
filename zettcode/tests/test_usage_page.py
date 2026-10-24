@@ -17,7 +17,8 @@ from zettcode.app.ui.widgets import UsagePage
 from zettcode.app.ui.widgets import usage_charts as charts
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine.storage import SessionStore
-from zettcode.engine.storage.ledger import Ledger, LedgerReader, SessionUsage, Tally
+from zettcode.sdk.client import Client
+from zettcode.sdk.types import DayTotals, ModelTotals, SessionTotals, Totals, WorkspaceUsage
 from zettcode.tui import DARK, LIGHT, TuiApp
 from zettcode.tui.core.events import MouseAction, MouseEvent
 from zettcode.tui.render import blend, parse_hex
@@ -27,15 +28,27 @@ from zettcode.tui.testing.snapshot import render_block
 TODAY = date(2026, 10, 16)  # a Friday
 
 
-def tally(total_in: int, total_out: int = 0, requests: int = 1) -> Tally:
-    return Tally(requests=requests, input_tokens=total_in, output_tokens=total_out)
+def tally(total_in: int, total_out: int = 0, requests: int = 1) -> Totals:
+    return Totals(requests=requests, input_tokens=total_in, output_tokens=total_out)
 
 
-def ledger_of(days: dict[date, Tally] | None = None, models: dict[str, Tally] | None = None, sessions=()) -> Ledger:
-    ledger = Ledger(sessions=list(sessions), models=dict(models or {}), days=dict(days or {}))
-    for source in (models or days or {}).values():
-        ledger.total.add(source)
-    return ledger
+def ledger_of(
+    days: dict[date, Totals] | None = None, models: dict[str, Totals] | None = None, sessions=()
+) -> WorkspaceUsage:
+    counted = list((models or days or {}).values())
+    total = Totals(
+        requests=sum(t.requests for t in counted),
+        input_tokens=sum(t.input_tokens for t in counted),
+        output_tokens=sum(t.output_tokens for t in counted),
+        cache_read_tokens=sum(t.cache_read_tokens for t in counted),
+        reasoning_tokens=sum(t.reasoning_tokens for t in counted),
+    )
+    return WorkspaceUsage(
+        sessions=tuple(sessions),
+        models=tuple(ModelTotals(name, t) for name, t in (models or {}).items()),
+        days=tuple(DayTotals(day, t) for day, t in (days or {}).items()),
+        total=total,
+    )
 
 
 def text_of(line) -> str:
@@ -177,7 +190,7 @@ def test_an_opening_month_that_is_over_in_a_column_gives_way_to_the_next():
 
 
 def test_a_day_with_nothing_says_so_and_a_day_with_something_says_what():
-    days = {TODAY: Tally(requests=2, input_tokens=900, output_tokens=100)}
+    days = {TODAY: Totals(requests=2, input_tokens=900, output_tokens=100)}
     ledger = ledger_of(days=days)
 
     quiet = text_of(charts._facts(ledger, TODAY, TODAY - timedelta(days=3))[0])
@@ -208,7 +221,7 @@ def test_the_models_tab_ranks_by_total_and_scales_input_and_output_apart():
 
 
 def test_the_models_tab_with_no_model_says_there_is_nothing():
-    _, body = charts.models_tab(Ledger(), 80)
+    _, body = charts.models_tab(ledger_of(), 80)
 
     assert "No model replies" in text_of(body[0])
 
@@ -227,7 +240,7 @@ def test_session_bars_give_way_before_the_title_does():
 def test_a_session_row_is_the_width_of_the_page_it_was_drawn_for():
     from datetime import datetime, timezone
 
-    row = SessionUsage(
+    row = SessionTotals(
         "s",
         "A title",
         datetime(2026, 10, 9, tzinfo=timezone.utc),
@@ -242,11 +255,11 @@ def test_a_session_row_is_the_width_of_the_page_it_was_drawn_for():
 
 
 # -- the page ----------------------------------------------------------------
-def page_of(ledger: Ledger, **options) -> UsagePage:
+def page_of(ledger: WorkspaceUsage, **options) -> UsagePage:
     return UsagePage(ledger, workspace="~/projects/api", today=TODAY, **options)
 
 
-def sample() -> Ledger:
+def sample() -> WorkspaceUsage:
     days = {TODAY - timedelta(days=n): tally(1000 * (n + 1), 10 * (n + 1)) for n in range(5)}
     models = {"alpha": tally(15_000, 150, requests=5)}
     return ledger_of(days=days, models=models)
@@ -352,7 +365,7 @@ def test_the_arrow_keys_choose_a_day_and_stop_at_both_ends():
 
 
 def test_a_long_list_scrolls_by_key_page_and_wheel_and_never_past_its_ends():
-    rows = [SessionUsage(f"s{n}", f"session {n}", _t(n), _t(n), tally(n + 1, 1), ("m",)) for n in range(40)]
+    rows = [SessionTotals(f"s{n}", f"session {n}", _t(n), _t(n), tally(n + 1, 1), ("m",)) for n in range(40)]
     harness = Harness(page_of(ledger_of(models={"m": tally(100)}, sessions=rows), tab="Sessions"), width=80, height=14)
     page = harness.root
     harness.render()
@@ -414,6 +427,14 @@ class Silent:
     def notify(self, text, *, level="info"): ...
 
 
+def host_for(config: ZettCodeConfig):
+    """A stand-in for the shell that has what the command asks of it: a client over a configuration."""
+    from types import SimpleNamespace
+
+    agent = SimpleNamespace(runtime=SimpleNamespace(config=config, session_id="s"))
+    return SimpleNamespace(client=Client._around(agent))  # type: ignore[arg-type]
+
+
 def command_over(tmp_path: Path):
     (tmp_path / "work").mkdir(exist_ok=True)
     config = ZettCodeConfig(
@@ -440,9 +461,9 @@ def test_usage_is_one_of_the_builtin_plugins_and_a_command_that_may_run_beside_a
 
 
 async def test_the_command_says_so_instead_of_opening_an_empty_page(tmp_path: Path):
-    _, command = command_over(tmp_path)
+    config, command = command_over(tmp_path)
 
-    result = await command.handler(CommandContext(argument="", ui=Silent()))
+    result = await command.handler(CommandContext(argument="", ui=Silent(), host=host_for(config)))
 
     assert result.widget is None and "No model replies" in result.message
     assert not (tmp_path / "sessions").exists(), "looking must not create the store"
@@ -461,11 +482,11 @@ async def test_the_command_opens_a_page_of_what_the_workspace_spent(tmp_path: Pa
         ),
     )
 
-    result = await command.handler(CommandContext(argument="", ui=Silent()))
+    result = await command.handler(CommandContext(argument="", ui=Silent(), host=host_for(config)))
 
     assert isinstance(result.widget, UsagePage)
-    assert result.widget.ledger.total.total == 550
-    assert list(result.widget.ledger.models) == ["alpha"]
+    assert result.widget.ledger.total.total_tokens == 550
+    assert [entry.model for entry in result.widget.ledger.models] == ["alpha"]
     assert "work" in result.widget.workspace
 
 
@@ -476,16 +497,18 @@ async def test_a_second_look_sees_what_was_spent_in_between(tmp_path: Path):
         input_tokens=100, output_tokens=10, cache_read_tokens=0, cache_write_tokens=0, reasoning_tokens=0
     )
     await store.append("a", "r1", AssistantMessage(content="x", model="m"), usage=usage)
-    first = await command.handler(CommandContext(argument="", ui=Silent()))
+    host = host_for(config)
+    first = await command.handler(CommandContext(argument="", ui=Silent(), host=host))
     await store.append("a", "r2", AssistantMessage(content="y", model="m"), usage=usage)
 
-    second = await command.handler(CommandContext(argument="", ui=Silent()))
+    second = await command.handler(CommandContext(argument="", ui=Silent(), host=host))
 
-    assert (first.widget.ledger.total.total, second.widget.ledger.total.total) == (110, 220)
+    assert (first.widget.ledger.total.total_tokens, second.widget.ledger.total.total_tokens) == (110, 220)
 
 
-def test_the_page_reads_what_the_reader_produced(tmp_path: Path):
-    ledger = LedgerReader(tmp_path, tmp_path / "work").read()
+async def test_the_page_reads_what_the_reader_produced(tmp_path: Path):
+    config, _ = command_over(tmp_path)
+    ledger = await host_for(config).client.usage_ledger()
 
     assert UsagePage(ledger).ledger is ledger
 
@@ -494,9 +517,9 @@ def test_the_sessions_tab_shows_both_when_a_session_began_and_when_it_last_chang
     """The order is the last change, so the page has to say what that was, next to the start."""
     from datetime import datetime
 
-    from zettcode.engine.storage.ledger import SessionUsage
+    from zettcode.sdk.types import SessionTotals
 
-    row = SessionUsage(
+    row = SessionTotals(
         "s",
         "A title",
         datetime(2026, 10, 9, 8, 0),
@@ -515,9 +538,9 @@ def test_a_narrow_sessions_tab_keeps_the_last_change_and_drops_the_start():
     """A row is still a row at forty columns; the created time is what gives way, not the order's own time."""
     from datetime import datetime
 
-    from zettcode.engine.storage.ledger import SessionUsage
+    from zettcode.sdk.types import SessionTotals
 
-    row = SessionUsage("s", "A title", datetime(2026, 10, 9), datetime(2026, 10, 16), tally(10, 2), ("m",))
+    row = SessionTotals("s", "A title", datetime(2026, 10, 9), datetime(2026, 10, 16), tally(10, 2), ("m",))
     head, body = charts.sessions_tab(ledger_of(models={"m": tally(10, 2)}, sessions=[row]), 40)
 
     assert "Updated" in text_of(head[1]) and "Began" not in text_of(head[1])
@@ -534,11 +557,11 @@ def test_a_truncated_cjk_title_does_not_push_the_token_columns_out_by_a_column()
     """
     from datetime import datetime
 
-    from zettcode.engine.storage.ledger import SessionUsage
+    from zettcode.sdk.types import SessionTotals
     from zettcode.tui.render import display_width
 
-    def row(session_id: str, title: str) -> SessionUsage:
-        return SessionUsage(session_id, title, datetime(2026, 10, 9), datetime(2026, 10, 16), tally(10, 2), ("m",))
+    def row(session_id: str, title: str) -> SessionTotals:
+        return SessionTotals(session_id, title, datetime(2026, 10, 9), datetime(2026, 10, 16), tally(10, 2), ("m",))
 
     rows = [row("a", "A title long enough to be cut"), row("b", "档位切换滑动动画代码很长很长")]
     _, body = charts.sessions_tab(ledger_of(models={"m": tally(10, 2)}, sessions=rows), 60)
@@ -554,10 +577,10 @@ def test_the_sessions_tab_shows_each_sessions_cache_hit_rate():
     """Cached input is most of a long session's input; the row says how much, to two decimals."""
     from datetime import datetime
 
-    from zettcode.engine.storage.ledger import SessionUsage
+    from zettcode.sdk.types import SessionTotals
 
-    row = SessionUsage("s", "A title", datetime(2026, 10, 9), datetime(2026, 10, 16), Tally(1, 1000, 10, 750), ("m",))
-    head, body = charts.sessions_tab(ledger_of(models={"m": row.tally}, sessions=[row]), 100)
+    row = SessionTotals("s", "A title", datetime(2026, 10, 9), datetime(2026, 10, 16), Totals(1, 1000, 10, 750), ("m",))
+    head, body = charts.sessions_tab(ledger_of(models={"m": row.tokens}, sessions=[row]), 100)
 
     assert "Cached" in text_of(head[1])
     assert "75.00%" in text_of(body[0])
@@ -566,10 +589,10 @@ def test_the_sessions_tab_shows_each_sessions_cache_hit_rate():
 def test_a_cache_rate_is_written_to_two_decimals_everywhere_in_usage():
     from datetime import datetime
 
-    from zettcode.engine.storage.ledger import SessionUsage
+    from zettcode.sdk.types import SessionTotals
 
-    row = SessionUsage("s", "A title", datetime(2026, 10, 9), datetime(2026, 10, 16), Tally(1, 1000, 10, 0), ("m",))
-    ledger = ledger_of(models={"m": row.tally}, sessions=[row])
+    row = SessionTotals("s", "A title", datetime(2026, 10, 9), datetime(2026, 10, 16), Totals(1, 1000, 10, 0), ("m",))
+    ledger = ledger_of(models={"m": row.tokens}, sessions=[row])
     head, body = charts.sessions_tab(ledger, 100)
     models_head, models_body = charts.models_tab(ledger, 100)
 
@@ -582,10 +605,10 @@ def test_the_cache_column_gives_way_before_the_counts_on_a_narrow_page():
     """Two decimals need seven columns; the row keeps its counts and its title instead."""
     from datetime import datetime
 
-    from zettcode.engine.storage.ledger import SessionUsage
+    from zettcode.sdk.types import SessionTotals
 
-    row = SessionUsage("s", "A title", datetime(2026, 10, 9), datetime(2026, 10, 16), Tally(1, 1000, 10, 750), ("m",))
-    head, _ = charts.sessions_tab(ledger_of(models={"m": row.tally}, sessions=[row]), 40)
+    row = SessionTotals("s", "A title", datetime(2026, 10, 9), datetime(2026, 10, 16), Totals(1, 1000, 10, 750), ("m",))
+    head, _ = charts.sessions_tab(ledger_of(models={"m": row.tokens}, sessions=[row]), 40)
 
     assert "Cached" not in text_of(head[1]), "no room for it here"
     assert "Input" in text_of(head[1]) and "Output" in text_of(head[1])
@@ -595,15 +618,15 @@ def test_the_cache_column_draws_a_bar_that_can_be_compared_across_rows():
     """A share is read against a whole, so the bar is 0-100% and not scaled to the busiest row."""
     from datetime import datetime
 
-    from zettcode.engine.storage.ledger import SessionUsage
+    from zettcode.sdk.types import SessionTotals
 
-    def session(name: str, cached: int) -> SessionUsage:
-        return SessionUsage(
-            name, name, datetime(2026, 10, 9), datetime(2026, 10, 16), Tally(1, 1000, 10, cached), ("m",)
+    def session(name: str, cached: int) -> SessionTotals:
+        return SessionTotals(
+            name, name, datetime(2026, 10, 9), datetime(2026, 10, 16), Totals(1, 1000, 10, cached), ("m",)
         )
 
     rows = [session("none", 0), session("half", 500), session("most", 900), session("all", 1000)]
-    _, body = charts.sessions_tab(ledger_of(models={"m": Tally(4, 4000, 40, 2400)}, sessions=rows), 120)
+    _, body = charts.sessions_tab(ledger_of(models={"m": Totals(4, 4000, 40, 2400)}, sessions=rows), 120)
 
     def cached_bar(line) -> str:
         """The cells of the bar that is painted with the cache role, filled part only."""
@@ -621,10 +644,10 @@ def test_the_cache_column_draws_a_bar_that_can_be_compared_across_rows():
 def test_the_cache_bar_goes_with_the_other_bars_on_a_page_without_room_for_them():
     from datetime import datetime
 
-    from zettcode.engine.storage.ledger import SessionUsage
+    from zettcode.sdk.types import SessionTotals
 
-    row = SessionUsage("s", "A title", datetime(2026, 10, 9), datetime(2026, 10, 16), Tally(1, 1000, 10, 750), ("m",))
-    _, body = charts.sessions_tab(ledger_of(models={"m": row.tally}, sessions=[row]), 80)
+    row = SessionTotals("s", "A title", datetime(2026, 10, 9), datetime(2026, 10, 16), Totals(1, 1000, 10, 750), ("m",))
+    _, body = charts.sessions_tab(ledger_of(models={"m": row.tokens}, sessions=[row]), 80)
 
     assert not any(role == "cached" for _, role in body[0]), "numbers alone, as for the token bars"
     assert "75.00%" in text_of(body[0])

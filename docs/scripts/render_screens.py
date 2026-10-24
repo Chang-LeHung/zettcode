@@ -35,7 +35,7 @@ from zettcode.app.ui.widgets import ContextPage, UsagePage
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine.core import ZettCodeEngine
 from zettcode.engine.extensions.context import ContextReport, ContextShare
-from zettcode.engine.storage.ledger import Ledger, SessionUsage, Tally
+from zettcode.sdk.types import DayTotals, ModelTotals, SessionTotals, Totals, WorkspaceUsage
 from zettcode.tui import DARK, Canvas, Screen
 
 #: The page the documentation shows is the dark palette on the same background the home page's picture uses.
@@ -107,9 +107,9 @@ REPLIES = (
 )
 
 
-def tally(replies: tuple[Reply, ...] | list[Reply]) -> Tally:
+def tally(replies: tuple[Reply, ...] | list[Reply]) -> Totals:
     """Add some replies into one tally: the one place the page's arithmetic is written down."""
-    return Tally(
+    return Totals(
         requests=sum(reply.requests for reply in replies),
         input_tokens=sum(reply.input for reply in replies),
         output_tokens=sum(reply.output for reply in replies),
@@ -124,28 +124,30 @@ def moment(reply: Reply) -> datetime:
     return datetime(day.year, day.month, day.day, reply.hour, 0)
 
 
-def sample_ledger() -> Ledger:
+def sample_ledger() -> WorkspaceUsage:
     """Return the sample project's usage: every total a sum of :data:`REPLIES`."""
-    sessions: list[SessionUsage] = []
+    sessions: list[SessionTotals] = []
     for key, title in TITLES.items():
         rows = [reply for reply in REPLIES if reply.session == key]
         sessions.append(
-            SessionUsage(
-                session_id=f"{key}-session",
+            SessionTotals(
+                id=f"{key}-session",
                 title=title,
                 started=min(moment(reply) for reply in rows),
                 updated=max(moment(reply) for reply in rows),
-                tally=tally(rows),
+                tokens=tally(rows),
                 models=tuple(sorted({reply.model for reply in rows})),
             )
         )
     sessions.sort(key=lambda row: row.updated, reverse=True)
-    models = {name: tally([r for r in REPLIES if r.model == name]) for name in sorted({r.model for r in REPLIES})}
-    days = {
-        TODAY - timedelta(days=offset): tally([r for r in REPLIES if r.day == offset])
+    models = tuple(
+        ModelTotals(name, tally([r for r in REPLIES if r.model == name])) for name in sorted({r.model for r in REPLIES})
+    )
+    days = tuple(
+        DayTotals(TODAY - timedelta(days=offset), tally([r for r in REPLIES if r.day == offset]))
         for offset in sorted({r.day for r in REPLIES})
-    }
-    return Ledger(sessions=sessions, models=models, days=days, total=tally(REPLIES))
+    )
+    return WorkspaceUsage(sessions=tuple(sessions), models=models, days=days, total=tally(REPLIES))
 
 
 # -- the context report ------------------------------------------------------------------------------------------
