@@ -23,6 +23,7 @@ from .events import (
     AnyEvent,
     ApprovalRequested,
     Bridge,
+    CompactionDelta,
     CompactionFinished,
     CompactionStarted,
     Finished,
@@ -30,9 +31,13 @@ from .events import (
     Notice,
     QuestionAsked,
     ReasoningDelta,
+    ReasoningFinished,
+    ReasoningStarted,
     ServerToolFinished,
     ServerToolStarted,
     Steered,
+    SteeringFinished,
+    SteeringInterrupted,
     TextDelta,
     ToolFinished,
     ToolStarted,
@@ -183,6 +188,10 @@ def translate(event: AgentEvent, bridge: Bridge, hosted: dict[str, str] | None =
         return [TextDelta(session, event.delta)] if event.delta else []
     if kind is AgentEventType.REASONING_DELTA:
         return [ReasoningDelta(session, event.delta)] if event.delta else []
+    if kind is AgentEventType.REASONING_STARTED:
+        return [ReasoningStarted(session)]
+    if kind is AgentEventType.REASONING_COMPLETED:
+        return [ReasoningFinished(session)]
     if kind is AgentEventType.TOOL_STARTED:
         return [ToolStarted(session, call.id, call.name, _arguments(call.arguments)) for call in event.tool_calls]
     if kind in (AgentEventType.TOOL_COMPLETED, AgentEventType.TOOL_FAILED, AgentEventType.TOOL_SKIPPED):
@@ -198,6 +207,8 @@ def translate(event: AgentEvent, bridge: Bridge, hosted: dict[str, str] | None =
         return _server_tool_finished(event, session, hosted)
     if kind is AgentEventType.COMPACTION_STARTED:
         return [CompactionStarted(session)]
+    if kind is AgentEventType.COMPACTION_TEXT_DELTA:
+        return [CompactionDelta(session, event.delta)] if event.delta else []
     if kind is AgentEventType.COMPACTION_COMPLETED:
         return [_compaction_finished(event, session)]
     if kind is AgentEventType.MODEL_STOPPED:
@@ -207,6 +218,11 @@ def translate(event: AgentEvent, bridge: Bridge, hosted: dict[str, str] | None =
     if kind is AgentEventType.STEERING_STARTED:
         text = _text_of(event.steering_message.content) if event.steering_message is not None else ""
         return [Steered(session, text)]
+    if kind is AgentEventType.STEERING_COMPLETED:
+        return [SteeringFinished(session)]
+    if kind is AgentEventType.STEERING_INTERRUPTED:
+        text = _text_of(event.steering_message.content) if event.steering_message is not None else ""
+        return [SteeringInterrupted(session, text)]
     if kind is AgentEventType.RUN_COMPLETED:
         return [Finished(session, _text_of(getattr(event.message, "content", "")))]
     if kind is AgentEventType.CUSTOM:

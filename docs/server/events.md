@@ -33,15 +33,20 @@ A blank line ends a frame. The stream closes after its terminal frame. Three nam
 | --- | --- | --- |
 | `text_delta` | `text` | A piece of the answer; append. |
 | `reasoning_delta` | `text` | A piece of the model's reasoning, for the providers that report it. |
+| `reasoning_started` | — | A span of reasoning began. |
+| `reasoning_finished` | — | The span ended, whether the model went on to answer or to call a tool. |
 | `tool_started` | `call_id`, `name`, `arguments` | A tool call began. |
 | `tool_finished` | `call_id`, `name`, `output`, `ok`, `skipped` | It ended, in success or failure; `skipped` when steering took over. |
 | `approval_requested` | `call_id`, `command`, `approved` | The model wants to run a shell command. See below. |
 | `question_asked` | `call_id`, `question`, `options`, `allow_multiple`, `answered` | The model asked something. |
 | `usage_updated` | `usage` | The session's totals after a model call. |
 | `compaction_started` | — | The conversation is being summarized. |
+| `compaction_delta` | `text` | A piece of the summary being written; append. |
 | `compaction_finished` | `applied`, `summary` | It ended. |
 | `model_stopped` | `reason`, `message` | A step stopped for something other than finishing: `refusal`, `max_output`, `context_full`, `paused`, `interrupted`, `other`. |
 | `steered` | `text` | A message sent with `/runs/steer` reached the running request. |
+| `steering_finished` | — | The request that adopted a steering message has answered it. |
+| `steering_interrupted` | `text` | A steering message was superseded by a newer one before the request got to it. |
 | `notice` | `text`, `level` | News that is not part of the answer, such as an MCP server starting or down, or an answer that timed out. `level` is `"info"` for progress and `"warn"` for something you may need to act on; a frame without one is progress. |
 | `finished` | `text` | The run's last event before its result. |
 | `event` | `name` | An event this server does not know; kept rather than dropped, so a newer SDK does not look like silence. |

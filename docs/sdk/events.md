@@ -36,6 +36,8 @@ The first seven are exported from `zettcode.sdk`; the rest live in `zettcode.sdk
 | --- | --- | --- |
 | `TextDelta` | `text` | A piece of the answer. Joined, the deltas are the answer. |
 | `ReasoningDelta` | `text` | A piece of the model's reasoning, for providers that report it. |
+| `ReasoningStarted` | — | A span of reasoning began. |
+| `ReasoningFinished` | — | The span ended, whether the model went on to answer or to call a tool. |
 | `ToolStarted` | `call_id`, `name`, `arguments` | The model called a tool and it is starting. |
 | `ToolFinished` | `call_id`, `name`, `output`, `ok`, `skipped` | A tool ended, in success, failure, or because it never ran. |
 | `ApprovalRequested` | `call_id`, `command`, `timeout_seconds`, `remember_supported` | A shell command waits for your decision. |
@@ -43,9 +45,12 @@ The first seven are exported from `zettcode.sdk`; the rest live in `zettcode.sdk
 | `Finished` | `text` | The final answer is complete. |
 | `UsageUpdated` | `usage` | The session's token totals after a model call. |
 | `CompactionStarted` | — | The conversation is being summarized. |
+| `CompactionDelta` | `text` | A piece of the summary being written; append. |
 | `CompactionFinished` | `applied`, `compaction` | A compaction ended. |
 | `ModelStopped` | `reason`, `message` | A step ended for a reason other than finishing. |
 | `Steered` | `text` | A message sent with `steer` reached the request. |
+| `SteeringFinished` | — | The request that adopted a steering message has answered it. |
+| `SteeringInterrupted` | `text` | A steering message was superseded by a newer one before the request got to it. |
 | `Notice` | `text`, `level` | News that is not part of the answer, such as an MCP server starting or one that could not be reached. `level` is `"info"` for progress and `"warn"` for something you may need to act on. |
 | `RawEvent` | `event` | The underlying `zett-agent` event. Only with `raw=True`. |
 

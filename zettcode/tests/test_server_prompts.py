@@ -14,11 +14,16 @@ from server_fakes import FakeClient, FakeRun
 from zettcode.sdk.errors import RunError, SessionBusyError
 from zettcode.sdk.events import (
     ApprovalRequested,
+    CompactionDelta,
     CompactionFinished,
     Finished,
     Notice,
     ReasoningDelta,
+    ReasoningFinished,
+    ReasoningStarted,
     Steered,
+    SteeringFinished,
+    SteeringInterrupted,
     TextDelta,
     ToolFinished,
     ToolStarted,
@@ -134,6 +139,29 @@ async def test_the_rest_of_the_events_keep_their_fields():
     assert events[2] == {"type": "notice", "text": "Starting MCP server 'docs' (process)…", "level": "info"}
     assert events[3] == {"type": "steered", "text": "one more thing"}
     assert events[4] == {"type": "text_delta", "text": "done"}
+
+
+async def test_the_events_that_mark_a_span_keep_their_names_and_the_text_they_carry():
+    run = FakeRun(
+        [
+            ReasoningStarted(SESSION),
+            ReasoningFinished(SESSION),
+            CompactionDelta(SESSION, "the gist"),
+            SteeringFinished(SESSION),
+            SteeringInterrupted(SESSION, "first"),
+            TextDelta(SESSION, "done"),
+        ]
+    )
+    async with serve(FakeClient(runs=[run])) as http:
+        body = (await http.post("/prompts", json={"text": "go"})).text
+
+    assert payloads(body, "event")[:5] == [
+        {"type": "reasoning_started"},
+        {"type": "reasoning_finished"},
+        {"type": "compaction_delta", "text": "the gist"},
+        {"type": "steering_finished"},
+        {"type": "steering_interrupted", "text": "first"},
+    ]
 
 
 async def test_the_approval_rule_of_the_request_is_the_one_the_run_answers_with():

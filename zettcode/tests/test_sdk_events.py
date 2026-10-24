@@ -73,13 +73,10 @@ def test_an_empty_delta_says_nothing(kind):
         AgentEventType.MODEL_STARTED,
         AgentEventType.CONTENT_STARTED,
         AgentEventType.CONTENT_COMPLETED,
-        AgentEventType.REASONING_STARTED,
         AgentEventType.MODEL_COMPLETED,
         AgentEventType.TOOL_CALL_DELTA,
         AgentEventType.SERVER_TOOL_STARTED,
-        AgentEventType.COMPACTION_TEXT_DELTA,
         AgentEventType.INTERNAL_MESSAGE_STARTED,
-        AgentEventType.STEERING_COMPLETED,
     ],
 )
 def test_the_events_that_are_bookkeeping_are_not_surfaced(kind):
@@ -179,6 +176,26 @@ def test_steering_arriving_is_reported_with_what_was_said():
 
     assert one(event(AgentEventType.STEERING_STARTED, steering_message=message)) == sdk.Steered("s1", "actually, stop")
     assert one(event(AgentEventType.STEERING_STARTED)) == sdk.Steered("s1", "")
+
+
+def test_a_span_of_reasoning_is_opened_and_closed():
+    assert one(event(AgentEventType.REASONING_STARTED)) == sdk.ReasoningStarted("s1")
+    assert one(event(AgentEventType.REASONING_COMPLETED)) == sdk.ReasoningFinished("s1")
+
+
+def test_the_summary_a_compaction_writes_streams_and_an_empty_piece_says_nothing():
+    assert one(event(AgentEventType.COMPACTION_TEXT_DELTA, delta="the ")) == sdk.CompactionDelta("s1", "the ")
+    assert translate(event(AgentEventType.COMPACTION_TEXT_DELTA, delta=""), Bridge()) == []
+
+
+def test_a_steering_message_is_adopted_and_answered_or_superseded():
+    message = UserMessage(content="first")
+
+    assert one(event(AgentEventType.STEERING_COMPLETED)) == sdk.SteeringFinished("s1")
+    assert one(event(AgentEventType.STEERING_INTERRUPTED, steering_message=message)) == sdk.SteeringInterrupted(
+        "s1", "first"
+    )
+    assert one(event(AgentEventType.STEERING_INTERRUPTED)) == sdk.SteeringInterrupted("s1", "")
 
 
 def test_a_compaction_starting_and_ending():

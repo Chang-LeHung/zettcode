@@ -33,15 +33,20 @@ data: {"text":"已经加上分页 …","session_id":"01a15…","usage":{…},"to
 | --- | --- | --- |
 | `text_delta` | `text` | 答案的一段,追加即可。 |
 | `reasoning_delta` | `text` | 模型推理的一段,前提是 provider 提供。 |
+| `reasoning_started` | — | 一段推理开始。 |
+| `reasoning_finished` | — | 这段推理结束,无论模型接着回答还是调用工具。 |
 | `tool_started` | `call_id`, `name`, `arguments` | 工具调用开始。 |
 | `tool_finished` | `call_id`, `name`, `output`, `ok`, `skipped` | 工具结束,成功或失败;`skipped` 表示被 steer 取代。 |
 | `approval_requested` | `call_id`, `command`, `approved` | 模型想运行一条 shell 命令。见下文。 |
 | `question_asked` | `call_id`, `question`, `options`, `allow_multiple`, `answered` | 模型问了问题。 |
 | `usage_updated` | `usage` | 一次模型调用后会话的累计用量。 |
 | `compaction_started` | — | 正在总结对话。 |
+| `compaction_delta` | `text` | 正在写的总结的一段,追加即可。 |
 | `compaction_finished` | `applied`, `summary` | 总结结束。 |
 | `model_stopped` | `reason`, `message` | 某一步不是因为正常结束而停止:`refusal`、`max_output`、`context_full`、`paused`、`interrupted`、`other`。 |
 | `steered` | `text` | 通过 `/runs/steer` 发的消息到达了正在运行的请求。 |
+| `steering_finished` | — | 接收了 steer 消息的请求已经回答了它。 |
+| `steering_interrupted` | `text` | 一条 steer 消息在请求处理它之前被更新的一条取代。 |
 | `notice` | `text`, `level` | 不属于答案的消息,比如某个 MCP 服务正在启动或连不上,或者等待回答超时。`level` 为 `"info"` 表示进度,`"warn"` 表示你可能需要处理的事;没带 `level` 的帧按进度处理。 |
 | `finished` | `text` | 结果之前运行的最后一个事件。 |
 | `event` | `name` | 服务器不认识的事件;保留而不是丢弃,这样新版本 SDK 不会看起来像什么都没发生。 |
