@@ -70,7 +70,8 @@ Each its own pull request, `make check` green.
 1. **Done: one translation.** The terminal's projector draws SDK events.
 2. **Done: the views import no engine.** See the next section for what that does and does not cover.
 3. **Done: the runs.** A turn, a side question and a continue go through the SDK, with answers deferred to the panels.
-4. **The setters and the session load.** What is left of the calls, described in the next section.
+4. **Done: the session and the simple settings.** Two new SDK pieces made it possible: `sessions.read`/`install` and
+   `Session.retake`, and `use_permission(remember=)`. The rest is the list above.
 
 ## What the seal means
 
@@ -91,7 +92,15 @@ the composer completed them from (the plugins' providers, and the other sessions
 from the SDK's `RunError` (`app/ui/turns.py`). The projector no longer carries the panels' handlers: it draws the
 transcript, and the run asks.
 
-The views still call about 30 members of `TerminalAgent` that are the engine's own: loading and installing a stored
-session, steering a running turn, the line to the other sessions, and the model, permission and effort setters. The SDK
-has a counterpart for most of them under another name (`client.use_model`, `session.steer`, ...); moving them is
-mechanical now that the run is.
+The views now read the session (id, title, lock, path, workspace), name, fork, retake and load it (`sessions.read_blocking`
+then `sessions.install`), and read and set effort, permission, harness and self-compaction, all through the SDK's client.
+What they still take from `TerminalAgent` is, in the order it would go:
+
+- `active_model`, `models`, `find_model`, `use_model`: the terminal draws `ModelConfig` (its own display name and identity
+  comparisons); the SDK's `ModelInfo` is a copy of it. Moving needs a decision on which one the pickers hold.
+- `file_models`, `add_configured_model`, `remove_configured_model`, `update_configured_model`, `config_file`: editing the
+  configuration file from the model forms, which is the terminal's own business.
+- `steer`, `turn`: a steering message can be a built one (pictures, an `@` hint) and the SDK's `steer` takes text.
+- `tasks`, `self_compaction_default` and `remember_self_compaction`, `change_compact_percent`: the model's plan and the
+  two defaults written to the config have no SDK method yet.
+- `runtime`, `conversation`, `presenters`, `pets`, `themes`, `statusline_*`, `plugin_*`: the terminal's own parts.

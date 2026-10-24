@@ -32,7 +32,7 @@ class NoticesMixin(CommandUi, ShellState):
         totals describe a conversation this shell never sent. Painting them here
         would show another context's size as this one's.
         """
-        if session_id != self.agent.session_id:
+        if session_id != self.client.session.id:
             return
         if snapshot.context_tokens >= self.agent.active_model.context_window:
             # A request cannot carry more than the window it is measured against,
@@ -59,7 +59,7 @@ class NoticesMixin(CommandUi, ShellState):
             event.command,
             on_choice=lambda choice: self._respond(event, choice),
             remember_supported=event.remember_supported,
-            permission=self.agent.permission.value,
+            permission=self.client.permission,
         )
         panel = bottom_panel(page, rows=APPROVAL_ROWS)
         self.app.push_screen(Screen(panel, name=PAGE_SCREEN, modal=True))

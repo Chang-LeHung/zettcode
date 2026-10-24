@@ -545,6 +545,25 @@ class Session:
         runtime = self._client._agent.runtime
         return self.id == runtime.session_id and runtime.session_locked
 
+    def retake(self) -> bool:
+        """Try again to take the lock of a conversation another process had open, once that process has let go.
+
+        Every conversation is locked by the process that has it open. One this client resumed may be somebody else's,
+        and then it can be read and not changed (:attr:`locked`); a front end that shows it read-only can poll this and
+        become the writer the moment the other one closes.
+
+        Returns:
+            Whether this client holds the lock now (also ``True`` when it already did, or the conversation is not the
+            current one, which has no lock of its own to retake).
+
+        Raises:
+            ClientClosedError: The client was closed.
+        """
+        self._client._check_open()
+        if self.id != self._client._agent.session_id:
+            return True
+        return self._client._agent.retake_session()
+
     @property
     def path(self) -> Path:
         """Return the file the conversation is stored in."""
@@ -879,7 +898,10 @@ class Session:
         from ..engine.storage import SessionLocked
 
         self._client._check_open()
-        self._client._check_free()
+        if not self.current:
+            # Naming another conversation switches to it, which a run in progress forbids. Naming the current one
+            # only writes its title, which a run does not read, so it may be done beside one.
+            self._client._check_free()
         await self._activate()
         try:
             return await self._client._agent.rename_session(title)

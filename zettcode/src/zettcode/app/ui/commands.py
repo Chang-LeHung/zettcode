@@ -235,7 +235,7 @@ class ShellCommands(CommandProvider):
             # been used yet has anything to save.
             for change, needed in (
                 (lambda: agent.remember_self_compaction(default), default != agent.self_compaction_default),
-                (lambda: agent.use_self_compaction(choice), choice != agent.self_compaction_choice),
+                (lambda: shell.client.use_self_compaction(choice), choice != shell.client.self_compaction_choice),
             ):
                 if not needed:
                     continue
@@ -246,11 +246,11 @@ class ShellCommands(CommandProvider):
             shell.transcript.notice(shell.agent.self_compaction_summary())
 
         page = SelfCompactPage(
-            shell.agent.self_compaction_choice,
+            shell.client.self_compaction_choice,
             shell.agent.self_compaction_default,
             on_apply=apply,
             on_cancel=shell.close_page,
-            session_open=not shell.agent.session_locked,
+            session_open=not shell.client.session.locked,
         )
         return CommandResult(widget=bottom_panel(page, rows=SELF_COMPACT_ROWS))
 

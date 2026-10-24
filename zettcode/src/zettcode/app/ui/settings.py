@@ -138,8 +138,8 @@ class SettingsMixin(ShellState):
 
     def change_effort(self, name: str) -> str:
         """Switch reasoning effort, run the header's gauge, and announce the change in the transcript."""
-        previous = self.agent.effort
-        selected = self.agent.use_effort(name)
+        previous = self.client.effort
+        selected = self.client.use_effort(name)
         if selected != previous:
             self.transcript.effort_changed(previous, selected)
             self.start_effort_animation(previous, selected)
@@ -154,9 +154,9 @@ class SettingsMixin(ShellState):
         ``remember`` is off, which is for a decision the approval panel offers
         for this run alone.
         """
-        previous = self.agent.permission
-        selected = self.agent.use_permission(name, remember=remember)
+        previous = self.client.permission
+        selected = self.client.use_permission(name, remember=remember)
         if selected != previous:
-            self.transcript.permission_changed(previous.value, selected.value)
+            self.transcript.permission_changed(previous, selected)
         self.app.invalidate()
-        return selected.value
+        return selected

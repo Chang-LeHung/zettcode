@@ -67,7 +67,7 @@ from ..agent.conversation.shimmer import (
 from ..agent.conversation.text import clock_text, elapsed_text
 from ..agent.conversation.tips import TipDeck
 from ..agent.conversation.transcript import Transcript
-from ..commands import Command, CommandContext, CommandList, CommandResult
+from ..commands import COMMAND_ERRORS, Command, CommandContext, CommandList, CommandResult
 from ..pets import DEFAULT_PET_NAME, Pet
 from .bars import BarsMixin
 from .commands import ShellCommands
@@ -403,11 +403,11 @@ class ZettCodeApp(
         previous, current, started = animation
         if current in SHIMMER_LEVELS:
             lead = display_width(self.agent.active_model.shown_name) + len(f" {SEPARATOR} ")
-            reach = max(self.app.width, shimmer_width(lead, len(self.agent.efforts), current))
+            reach = max(self.app.width, shimmer_width(lead, len(self.client.efforts), current))
             progress = (monotonic() - started) / shimmer_seconds(current, reach)
-            return shimmer_frame(current, self.agent.efforts, lead=lead, reach=reach, progress=progress)
+            return shimmer_frame(current, self.client.efforts, lead=lead, reach=reach, progress=progress)
         progress = (monotonic() - started) / EFFORT_SECONDS
-        return effort_frame(previous, current, self.agent.efforts, progress=progress)
+        return effort_frame(previous, current, self.client.efforts, progress=progress)
 
     def settle_effort_animation(self) -> None:
         """Repaint while the switch animates, and release the token when it ends."""
@@ -493,7 +493,7 @@ class ZettCodeApp(
         self._warm.add_done_callback(lambda _: freeze_long_lived())
         self.start_update_check()
         self.offer_update()
-        if self.agent.session_locked:
+        if self.client.session.locked:
             self._start_lock_watch()
         self._start_messaging()
 
@@ -699,11 +699,11 @@ class ZettCodeApp(
             self._follow_ups_held = False
             if self.transcript.turn_said_nothing():
                 self.transcript.notice(EMPTY_REPLY)
-            self._title_session_later(self.agent.session_id)
+            self._title_session_later(self.client.session.id)
         finally:
             self._close_run()
             if completed:
-                self.transcript.summarize_changes(self.agent.workspace)
+                self.transcript.summarize_changes(self.client.workspace)
             self._settle_wait(f"Continued for {elapsed_text(monotonic() - started)} {SEPARATOR} {clock_text()}")
             self._drop_ask()
             self._turn_running = False
@@ -753,7 +753,7 @@ class ZettCodeApp(
         """Await one handler and show what it returned, or why it could not."""
         try:
             result = await command.handler(CommandContext(argument=argument, ui=self, host=self))
-        except ValueError as error:
+        except COMMAND_ERRORS as error:
             self.transcript.error(str(error))
         except Exception as error:  # noqa: BLE001 - a command's bug is reported, never swallowed
             self.transcript.error(f"{command.name}: {describe_error(error)}")
@@ -809,7 +809,7 @@ class ZettCodeApp(
         """
         if command is None:
             command = self._is_command(value)
-        if self.agent.session_locked and not command:
+        if self.client.session.locked and not command:
             # Only commands are taken, which is how a reader leaves: the composer does not let anything else be
             # typed, and this is for what arrives some other way (a draft that was there already, a recall).
             self.flash("this session is open in another ZettCode process; it is read-only here", level="error")
@@ -1018,7 +1018,7 @@ class ZettCodeApp(
             completed = True
             if self.transcript.turn_said_nothing():
                 self.transcript.notice(EMPTY_REPLY)
-            self._title_session_later(self.agent.session_id)
+            self._title_session_later(self.client.session.id)
         finally:
             took = elapsed_text(monotonic() - started)
             if self.messenger is not None:
@@ -1030,7 +1030,7 @@ class ZettCodeApp(
             self._close_run()
             # Which files this request changed, said once and only when there are any, above the
             # line that says how long it took.
-            self.transcript.summarize_changes(self.agent.workspace)
+            self.transcript.summarize_changes(self.client.workspace)
             self._settle_wait(f"Processed for {took} {SEPARATOR} {clock_text()}")
             self._drop_ask()
             self._turn_running = False
@@ -1084,13 +1084,13 @@ class ZettCodeApp(
         self.app.invalidate()
         completed = False
         try:
-            previous_session = self.agent.session_id
+            previous_session = self.client.session.id
             if command is None:
                 self.transcript.error(f"Unknown command: {name}. Try /help.")
             else:
                 try:
                     result = await command.handler(CommandContext(argument=argument, ui=self, host=self))
-                    if name == "/new" and self.agent.session_id != previous_session:
+                    if name == "/new" and self.client.session.id != previous_session:
                         self.transcript.clear()
                         self.transcript.welcome(WELCOME)
                         self.view.scroll_end()
@@ -1101,7 +1101,7 @@ class ZettCodeApp(
                         self._refresh_tasks()
                         self._return_follow_ups_to_draft()
                         self.app.request_layout()
-                except ValueError as error:
+                except COMMAND_ERRORS as error:
                     self.transcript.error(str(error))
                 else:
                     self._apply_result(result)

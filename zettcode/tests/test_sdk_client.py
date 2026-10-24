@@ -171,6 +171,16 @@ async def test_the_permission_levels_are_the_four_there_are_and_a_fifth_is_refus
         assert client.permission == "full", "a refused level changes nothing"
 
 
+async def test_a_level_chosen_for_one_run_is_not_remembered_by_the_session(tmp_path):
+    async with client_for(tmp_path) as client:
+        client.use_permission("safe")
+        first = client.session.id
+        assert client.use_permission("full", remember=False) == "full" and client.permission == "full"
+    async with client_for(tmp_path) as again:
+        assert again.permission != "full", "a later client does not inherit a level that was for one run"
+    assert first
+
+
 @pytest.mark.parametrize(
     "options", [{"model": "nope"}, {"effort": "nope"}, {"permission": "nope"}], ids=["model", "effort", "permission"]
 )

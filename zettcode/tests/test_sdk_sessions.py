@@ -676,3 +676,88 @@ async def test_compacting_a_session_another_client_has_open_is_refused(tmp_path,
                 await other.session.rename("mine now")
             with pytest.raises(SessionLockedError):
                 await other.prompt("write")
+
+
+# -- reading a stored conversation and making it current, in two steps -----------------------------
+
+
+async def test_reading_a_stored_conversation_changes_nothing_and_installing_it_makes_it_current(tmp_path, monkeypatch):
+    wire(monkeypatch, ScriptedModel("a1", "b1"))
+    async with make(tmp_path) as client:
+        first = client.session
+        await first.prompt("alpha question")
+        second = client.sessions.new()
+        await second.prompt("beta question")
+
+        stored = await client.sessions.read(first.id)
+
+        assert client.session.id == second.id, "reading is not opening"
+        assert stored.id == first.id and stored.records is not None
+        assert stored.usage.requests == 1 and stored.title == first.title
+
+        installed = client.sessions.install(stored)
+
+        assert installed.id == first.id and client.session.id == first.id
+        assert [m.text for m in await client.session.history() if m.role == "user"] == ["alpha question"]
+
+
+async def test_open_is_a_read_and_an_install(tmp_path, monkeypatch):
+    wire(monkeypatch, ScriptedModel("a1", "b1"))
+    async with make(tmp_path) as client:
+        first = client.session
+        await first.prompt("one")
+        client.sessions.new()
+        by_hand = client.sessions.install(await client.sessions.read(first.id))
+
+        opened = await client.sessions.open(first.id)
+
+        assert by_hand.id == opened.id == client.session.id
+
+
+async def test_reading_a_session_that_is_not_there_says_so_and_a_run_in_progress_refuses_the_install(
+    tmp_path, monkeypatch
+):
+    wire(monkeypatch, ScriptedModel("a1", "never"))
+    async with make(tmp_path) as client:
+        await client.prompt("hi")
+        other = client.sessions.new()
+        await other.prompt("hello")
+        stored = await client.sessions.read(client.session.id)
+
+        with pytest.raises(SessionNotFoundError):
+            await client.sessions.read("no-such-session")
+        with pytest.raises(SessionNotFoundError):
+            await client.sessions.read("  ")
+        async with client.prompt("again") as run:
+            await run.__anext__()  # a run holds the client from its first event
+            with pytest.raises(SessionBusyError):
+                client.sessions.install(stored)
+
+
+async def test_a_session_another_client_had_open_can_be_taken_back_once_it_lets_go(tmp_path, monkeypatch):
+    wire(monkeypatch, ScriptedModel("x"))
+    async with make(tmp_path) as owner:
+        await owner.prompt("hi")
+        owner_id = owner.session.id
+        async with zc.Client(config=config_for(tmp_path), resume=owner_id) as other:
+            assert other.session.locked and other.session.retake() is False, "still somebody else's"
+
+            await owner.aclose()
+
+            assert other.session.retake() is True and not other.session.locked
+            assert other.session.retake() is True, "and asking again changes nothing"
+
+
+async def test_the_current_session_can_be_named_beside_a_run_but_another_one_cannot(tmp_path, monkeypatch):
+    wire(monkeypatch, ScriptedModel("a", "b"))
+    async with make(tmp_path) as client:
+        current = client.session
+        await current.prompt("hi")
+        other = client.sessions.new()
+        await other.prompt("hello")
+        async with client.prompt("again") as run:
+            await run.__anext__()
+
+            assert await other.rename("named while running") == "named while running"
+            with pytest.raises(SessionBusyError):
+                await current.rename("would switch to it")

@@ -105,8 +105,8 @@ class MessagingMixin(ShellState):
         messenger = self.messenger
         if messenger is None or not self._messaging_live:
             return
-        session = self.agent.session_id
-        if self.agent.session_locked:
+        session = self.client.session.id
+        if self.client.session.locked:
             # Not this session's to answer for: a message sent to it would be a turn, which is a write.
             messenger.retire()
             self._messaging_session = session
@@ -149,7 +149,7 @@ class MessagingMixin(ShellState):
         """
         if not self._messaging_live:
             return Receipt(False, "this session is closing")
-        if self.agent.session_locked:
+        if self.client.session.locked:
             return Receipt(False, "this session is open in another ZettCode process, so it is read-only here")
         if not self._busy:
             self._start_relayed(relayed)

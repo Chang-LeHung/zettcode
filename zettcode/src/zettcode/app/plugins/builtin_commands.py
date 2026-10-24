@@ -20,7 +20,14 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from zettcode.app.commands import CommandContext, CommandHost, CommandResult, Subcommand, subcommand_words
+from zettcode.app.commands import (
+    COMMAND_ERRORS,
+    CommandContext,
+    CommandHost,
+    CommandResult,
+    Subcommand,
+    subcommand_words,
+)
 from zettcode.paths import DEFAULT_COMMAND_HISTORY
 from zettcode.tui import Widget
 
@@ -138,13 +145,13 @@ class SessionCommands(TerminalPlugin):
         """
         host = context.require_host()
         if not context.argument:
-            current = host.agent.session_title
+            current = host.client.session.title
             if current is None:
                 return CommandResult(message="This session has no title yet. Use `/title <name>`.")
             return CommandResult(message=f"Title: **{current}**")
         try:
             renamed = await host.rename_session(context.argument)
-        except ValueError as error:
+        except COMMAND_ERRORS as error:
             return CommandResult(message=str(error))
         return CommandResult(notification=f"renamed to {renamed}", relayout=True)
 
@@ -184,7 +191,7 @@ class SessionCommands(TerminalPlugin):
         return CommandResult(
             widget=ContextPage(
                 report,
-                path=host.agent.session_path(),
+                path=host.client.session.path,
                 model=model.shown_name,
                 trigger=model.compaction_max_tokens,
                 compact_percent=model.compact_percent,
@@ -225,14 +232,14 @@ def harness_words(host: CommandHost | None) -> tuple[Subcommand, ...]:
     """Offer ``on`` and ``off``, with a mark on the one in force."""
     if host is None:
         return ()
-    return subcommand_words(("on", "off"), HARNESS_NOTES, "on" if host.agent.harness else "off")
+    return subcommand_words(("on", "off"), HARNESS_NOTES, "on" if host.client.harness else "off")
 
 
 def permission_words(host: CommandHost | None) -> tuple[Subcommand, ...]:
     """Offer the four levels strictest first, each with what it does to a command and a mark on the one in force."""
     if host is None:
         return ()
-    return subcommand_words(host.agent.permissions, PERMISSION_NOTES, host.agent.permission.value)
+    return subcommand_words(host.client.permissions, PERMISSION_NOTES, host.client.permission)
 
 
 class ModelCommands(TerminalPlugin):
@@ -304,8 +311,8 @@ class ModelCommands(TerminalPlugin):
                 host.transcript.error(str(error))
 
         page = EffortPage(
-            host.agent.efforts,
-            host.agent.effort,
+            host.client.efforts,
+            host.client.effort,
             notes=EFFORT_NOTES,
             on_select=select,
             on_cancel=host.close_page,
@@ -340,8 +347,8 @@ class ModelCommands(TerminalPlugin):
         if word not in ("", "on", "off"):
             return CommandResult(message="Usage: /harness on|off")
         if word:
-            host.agent.use_harness(word == "on")
-        state = "on" if host.agent.harness else "off"
+            host.client.use_harness(word == "on")
+        state = "on" if host.client.harness else "off"
         notes = {
             "on": "The model can write Python tools and run them; they live in ~/.zettcode/harness. "
             "Starts with the next request.",

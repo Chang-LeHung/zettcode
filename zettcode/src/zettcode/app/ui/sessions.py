@@ -14,11 +14,12 @@ from typing import TYPE_CHECKING
 
 from zettcode.app.plugins.state import Activity
 from zettcode.collector import collector_paused
+from zettcode.sdk.types import StoredSession
 from zettcode.tui import ELLIPSIS, SEPARATOR, Theme
 
-from ..agent.agent import StoredSession
 from ..agent.conversation.presenters import block_for
 from ..agent.conversation.replay import Replayed, replay
+from ..commands import COMMAND_ERRORS
 from .shell import ShellState
 from .widgets import WELCOME
 
@@ -61,14 +62,14 @@ class SessionMixin(ShellState):
         turn into a write), and a task tries again every few seconds. Called wherever the active session may
         have changed: starting, resuming, forking, ``/new``.
         """
-        locked = self.agent.session_locked
+        locked = self.client.session.locked
         self.composer.locked = locked
         if not locked:
             self._lock_said = None
             self._stop_lock_watch()
         else:
-            if self._lock_said != self.agent.session_id:
-                self._lock_said = self.agent.session_id
+            if self._lock_said != self.client.session.id:
+                self._lock_said = self.client.session.id
                 self.transcript.notice(
                     "This session is open in another ZettCode process, so it is read-only here. "
                     "It unlocks by itself when that one lets go; /new starts a new session, "
@@ -95,12 +96,12 @@ class SessionMixin(ShellState):
 
     async def _watch_lock(self) -> None:
         """Try to take the lock until it is had, then load the session again: it moved while it was not ours."""
-        session_id = self.agent.session_id
-        while self.agent.session_locked and self.agent.session_id == session_id:
+        session_id = self.client.session.id
+        while self.client.session.locked and self.client.session.id == session_id:
             await asyncio.sleep(LOCK_POLL_SECONDS)
-            if self._busy or self.agent.session_id != session_id:
+            if self._busy or self.client.session.id != session_id:
                 continue
-            if self.agent.retake_session():
+            if self.client.session.retake():
                 await self._lock_taken(session_id)
                 return
 
@@ -108,8 +109,8 @@ class SessionMixin(ShellState):
         """Enter on a locked composer: try for the lock now, and say how it went."""
         if self._busy:
             return
-        session_id = self.agent.session_id
-        if self.agent.retake_session():
+        session_id = self.client.session.id
+        if self.client.session.retake():
             self._task = asyncio.create_task(self._lock_taken(session_id))
         else:
             self.flash("still open in another ZettCode process", level="error")
@@ -123,7 +124,7 @@ class SessionMixin(ShellState):
         if self._busy:
             return
         await self._switch_session(session_id)
-        if self.agent.session_id == session_id and not self.agent.session_locked:
+        if self.client.session.id == session_id and not self.client.session.locked:
             self.transcript.notice("The other process has let go of this session; it is yours now.")
             self.app.invalidate()
 
@@ -137,7 +138,7 @@ class SessionMixin(ShellState):
         Returns:
             The stored title, so the command can confirm it.
         """
-        renamed = await self.agent.rename_session(title)
+        renamed = await self.client.session.rename(title)
         self._session_title = renamed
         self._sync_messaging()
         self.app.invalidate()
@@ -166,7 +167,7 @@ class SessionMixin(ShellState):
         self.app.invalidate()
         try:
             await self.resume_session(session_id)
-        except ValueError as error:
+        except COMMAND_ERRORS as error:
             self.transcript.error(str(error))
         else:
             self.notify(f"using session {session_id[:8]}", level="success")
@@ -200,13 +201,14 @@ class SessionMixin(ShellState):
         """
         # The session being left, named before it is left: the notice says where the
         # reader came from, which is only knowable here.
-        previous_id, previous_title = self.agent.session_id, self.agent.session_title
+        previous_id, previous_title = self.client.session.id, self.client.session.title
         self._activity = Activity.RUNNING
         self._note = f"fork {ELLIPSIS}"
         self._set_busy(True)
         self.app.invalidate()
         try:
-            loaded = await asyncio.to_thread(self._fork_and_load)
+            forked = await self.client.session.fork()
+            loaded = await asyncio.to_thread(self._load_session, forked.id)
         finally:
             self._set_busy(False)
             self._activity = Activity.READY
@@ -217,14 +219,8 @@ class SessionMixin(ShellState):
         # fork's own rows, so a line written first would be wiped by the very thing it
         # is there to describe.
         stored = loaded.stored
-        self.transcript.notice(
-            fork_notice(stored.session_id, stored.title, previous_id, previous_title, self.agent.workspace)
-        )
-        return stored.session_id
-
-    def _fork_and_load(self) -> LoadedSession:
-        """Write the fork and prepare its rows, changing nothing the shell shows."""
-        return self._load_session(self.agent.fork_session())
+        self.transcript.notice(fork_notice(stored.id, stored.title, previous_id, previous_title, self.client.workspace))
+        return stored.id
 
     def restore_session(self, session_id: str, *, window: Callable[[], tuple[int, Theme]] | None = None) -> None:
         """Replace the visible history with the chosen persisted branch.
@@ -260,10 +256,10 @@ class SessionMixin(ShellState):
         the rows would go, and the first frame then measured them all again.
         """
         with collector_paused():
-            stored = self.agent.load_session(session_id)
+            stored = self.client.sessions.read_blocking(session_id)
             transcript = self.transcript
             replayed = replay(
-                stored.session,
+                stored.records,
                 renderers=transcript.renderers,
                 presenters=transcript.presenters,
                 frame=transcript.frame,
@@ -279,7 +275,7 @@ class SessionMixin(ShellState):
         """Make a loaded session the visible one. Assignment only; runs on the loop."""
         previous = self.agent.active_model
         self.transcript.replace(loaded.replayed.transcript.entries)
-        self.agent.install_session(loaded.stored)
+        self.client.sessions.install(loaded.stored)
         if not self.transcript.entries:
             self.transcript.welcome(WELCOME)
         self._announce_restored_model(previous, loaded.stored)
@@ -344,7 +340,7 @@ class SessionMixin(ShellState):
 
     def _remember_session_title(self) -> None:
         """Cache the active session's title, which the status line paints per frame."""
-        self._session_title = self.agent.session_title
+        self._session_title = self.client.session.title
         self._sync_messaging()
 
     def _title_session_later(self, session_id: str) -> None:
@@ -356,12 +352,14 @@ class SessionMixin(ShellState):
     async def _name_session(self, session_id: str) -> None:
         """Store the title the agent summarizes and show it in the status line."""
         try:
-            title = await self.agent.title_session(session_id)
+            if session_id != self.client.session.id:
+                return  # the reader moved on; naming it from here would switch back to it
+            title = await self.client.session.name_it()
         except Exception:
             return  # naming a session is a nicety; never report its failure
         if title is None:
             return
-        if session_id == self.agent.session_id:
+        if session_id == self.client.session.id:
             self._session_title = title
             self._sync_messaging()
             self.app.invalidate()
