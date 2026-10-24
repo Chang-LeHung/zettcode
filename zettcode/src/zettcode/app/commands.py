@@ -7,8 +7,9 @@ from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, Protocol, TypeAlias
 
+from zettcode.engine.registry import Provider
+
 from ..tui import Widget
-from .registry import Provider
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only; the agent and the config are not imported by this module
     from ..config import ModelConfig

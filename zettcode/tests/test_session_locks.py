@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from zettcode.app.agent.storage import (
+from zettcode.engine.storage import (
     LOCK_FILE,
     LOCKED_MESSAGE,
     STORE_FILE,
@@ -165,7 +165,7 @@ HOLDER = textwrap.dedent(
     """
     import sys, time
     from pathlib import Path
-    from zettcode.app.agent.storage import SessionLocks, SessionStore
+    from zettcode.engine.storage import SessionLocks, SessionStore
 
     store = SessionStore(Path(sys.argv[1]), Path(sys.argv[1]) / "work")
     locks = SessionLocks(store.session_dir)

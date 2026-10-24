@@ -31,8 +31,8 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
 
     from zett_agent.extensions.base import AgentExtension
 
-    from ..app.agent.dialogue.mentions import MentionProvider
     from ..config import ZettCodeConfig
+    from ..engine.dialogue.mentions import MentionProvider
     from .state import UiBuilder, UiRegion, UiSide
 
 

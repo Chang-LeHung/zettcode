@@ -15,15 +15,15 @@ from zett_agent.extensions.persistence import BaseSessionPersistenceExtension
 from zett_agent.messages import AssistantMessage, SystemMessage, ToolCall, ToolMessage, UserMessage
 from zett_agent.model import ModelUsage
 
-from zettcode.app.agent.storage import SessionPersistenceMixin, SessionStore, now, workspace_key
-from zettcode.app.agent.storage.metadata import (
+from zettcode.engine.storage import SessionPersistenceMixin, SessionStore, now, workspace_key
+from zettcode.engine.storage.metadata import (
     MAX_TITLE,
     SessionActivity,
     SessionStarted,
     SessionTitle,
     read_metadata,
 )
-from zettcode.app.agent.storage.records import CompactionLine, MessageLine, SessionLine
+from zettcode.engine.storage.records import CompactionLine, MessageLine, SessionLine
 
 
 def _lines(store: SessionStore, session_id: str) -> list[dict]:
@@ -260,7 +260,7 @@ async def test_asking_whether_a_session_exists_reads_one_line(tmp_path: Path, mo
     the parse for the store that opens the session next: the same file was parsed
     twice, and on a long one the first of them cost more than any other stage.
     """
-    from zettcode.app.agent.storage import store as store_module
+    from zettcode.engine.storage import store as store_module
 
     writer = SessionStore(tmp_path)
     for index in range(200):
@@ -966,7 +966,7 @@ async def test_a_fork_keeps_the_usage_tags_and_timing_it_was_taken_from(tmp_path
     """A forked conversation reads, and counts, the way the one it came from did."""
     from zett_agent.messages import AssistantMessage
 
-    from zettcode.app.agent.dialogue.side import SIDE
+    from zettcode.engine.dialogue.side import SIDE
 
     store = SessionStore(tmp_path)
     timing = MessageTiming(started_at=now(), completed_at=now(), duration_ns=2_500_000_000)

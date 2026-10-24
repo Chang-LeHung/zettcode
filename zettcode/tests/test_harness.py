@@ -12,9 +12,9 @@ from zett_agent.messages import AssistantMessage, SystemMessage
 from zett_agent.model import ModelEvent, ModelResponse, RetryOptions
 
 from plugin_helpers import agent_extensions
-from zettcode.app.agent.extensions.harness import SwitchedHarness
-from zettcode.app.agent.extensions.harness_switch import HarnessSwitch
 from zettcode.config import ModelConfig, ZettCodeConfig, load_config
+from zettcode.engine.extensions.harness import SwitchedHarness
+from zettcode.engine.extensions.harness_switch import HarnessSwitch
 
 #: The tools the framework's harness adds to a request.
 HARNESS_TOOLS = {"repo_create", "repo_load", "repo_unload", "profile_tools"}
@@ -79,7 +79,7 @@ def test_the_switch_costs_nothing_to_hold():
     import sys
 
     code = (
-        "import sys; import zettcode.app.agent.extensions.harness_switch as m; "
+        "import sys; import zettcode.engine.extensions.harness_switch as m; "
         "print('zett_agent.jit_harness' in sys.modules)"
     )
     done = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True)
@@ -200,7 +200,7 @@ def test_the_plugin_registers_the_harness_even_when_off_so_the_command_can_turn_
 
 
 async def test_the_runtime_turns_the_harness_on_and_off_and_starts_from_the_config(tmp_path: Path, monkeypatch):
-    from zettcode.app.agent import runtime as runtime_module
+    from zettcode.engine import core as runtime_module
 
     monkeypatch.setattr(runtime_module.os, "chdir", lambda path: None)
 

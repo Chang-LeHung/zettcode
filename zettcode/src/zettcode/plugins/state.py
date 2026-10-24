@@ -21,8 +21,8 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
     from zett_agent.extensions.base import AgentExtension
     from zett_agent.model import AgentModel
 
-    from ..app.agent.extensions.usage import UsageSnapshot
     from ..config import ModelConfig, ZettCodeConfig
+    from ..engine.extensions.usage import UsageSnapshot
     from ..statusline import Row
     from ..tui import TextLine, Theme
 

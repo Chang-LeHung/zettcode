@@ -2,7 +2,7 @@
 
 Every model reply is stored with the usage its provider reported, so the totals ``/usage``
 shows are read back from the conversation files rather than kept in a second place that could
-disagree with them. A reader never builds a :class:`~zettcode.app.agent.storage.records.Session`
+disagree with them. A reader never builds a :class:`~zettcode.engine.storage.records.Session`
 for this: it looks at one line at a time, parses only the lines that carry usage, and takes from
 them the counters and the model's name.
 

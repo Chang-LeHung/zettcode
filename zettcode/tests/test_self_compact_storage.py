@@ -15,10 +15,10 @@ from pathlib import Path
 import pytest
 from zett_agent.messages import UserMessage
 
-from zettcode.app.agent.storage import SessionStore
-from zettcode.app.agent.storage import metadata as metadata_module
-from zettcode.app.agent.storage import store as store_module
-from zettcode.app.agent.storage.metadata import SESSION_METADATA_FILE, read_session_metadata
+from zettcode.engine.storage import SessionStore
+from zettcode.engine.storage import metadata as metadata_module
+from zettcode.engine.storage import store as store_module
+from zettcode.engine.storage.metadata import SESSION_METADATA_FILE, read_session_metadata
 
 
 def _store(tmp_path: Path) -> SessionStore:

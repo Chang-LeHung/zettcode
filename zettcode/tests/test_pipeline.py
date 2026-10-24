@@ -15,7 +15,7 @@ import threading
 import time
 from pathlib import Path
 
-from zettcode.app.pipeline import DaemonCall, ImportPipeline
+from zettcode.engine.pipeline import DaemonCall, ImportPipeline
 
 #: ``time.sleep`` in the module body: an import that takes as long as we ask.
 SLOW = "import time\ntime.sleep({delay})\nVALUE = 1\n"
@@ -144,7 +144,7 @@ def test_a_process_does_not_wait_for_a_daemon_call_it_abandoned(tmp_path):
         [
             "import asyncio, sys",
             "sys.path.insert(0, sys.argv[1])",
-            "from zettcode.app.pipeline import DaemonCall",
+            "from zettcode.engine.pipeline import DaemonCall",
             "async def main():",
             "    call = DaemonCall(lambda: __import__('slow_module'))",
             "    call.start()",
@@ -177,7 +177,7 @@ def test_a_process_that_ends_mid_import_is_not_held_open(tmp_path):
         [
             "import sys",
             "sys.path.insert(0, sys.argv[1])",
-            "from zettcode.app.pipeline import DaemonCall, ImportPipeline",
+            "from zettcode.engine.pipeline import DaemonCall, ImportPipeline",
             "ImportPipeline(('zettcode_pipeline_abandoned',)).start()",
         ]
     )

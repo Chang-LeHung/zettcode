@@ -299,7 +299,7 @@ def workspace_from_args(argv: list[str] | None = None) -> Path:
 
 def session_exists(config: ZettCodeConfig, session_id: str) -> bool:
     """Return whether the store holds a session with this id in this workspace."""
-    from .app.agent.storage import SessionStore
+    from .engine.storage import SessionStore
 
     return SessionStore(config.store, config.workspace).exists(session_id)
 

@@ -16,14 +16,12 @@ from typing import TYPE_CHECKING
 _EXPORTS = {
     "Messenger": ".messenger",
     "Relayed": ".relay",
-    "ZettCodeAgent": "..app.agent.agent",
-    "ZettCodeEngine": "..app.agent.runtime",
+    "ZettCodeEngine": ".core",
 }
 
 
 if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
-    from ..app.agent.agent import ZettCodeAgent
-    from ..app.agent.runtime import ZettCodeEngine
+    from .core import ZettCodeEngine
     from .messenger import Messenger
     from .relay import Relayed
 
@@ -42,4 +40,4 @@ def __dir__() -> list[str]:
     return sorted(__all__)
 
 
-__all__ = ["Messenger", "Relayed", "ZettCodeAgent", "ZettCodeEngine"]
+__all__ = ["Messenger", "Relayed", "ZettCodeEngine"]

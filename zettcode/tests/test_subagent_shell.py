@@ -27,18 +27,18 @@ from zett_agent.extensions.tool_guidelines import ToolGuidelinesExtension
 from zett_agent.messages import AssistantMessage, ToolCall, ToolMessage
 from zett_agent.model import ModelEvent, ModelRequest, ModelResponse, RetryOptions
 
-from zettcode.app.agent.dialogue.side import SideQuestions
-from zettcode.app.agent.extensions.capabilities import ModelCapabilities
-from zettcode.app.agent.extensions.files import CodingBundle
-from zettcode.app.agent.extensions.messaging import SessionMessagingExtension
-from zettcode.app.agent.extensions.subagents import subagent_extension
-from zettcode.app.agent.extensions.usage import UsageExtension
-from zettcode.app.agent.permission import DENIED_MESSAGE, Permission, ShellDenyExtension, ShellPolicy
-from zettcode.app.agent.permission.approval import ShellApprovalMemory
-from zettcode.app.agent.permission.sandbox import ShellSandbox
-from zettcode.app.agent.storage import SessionStore
-from zettcode.app.agent.tools.boundary import Sandboxer
 from zettcode.config import ModelConfig
+from zettcode.engine.dialogue.side import SideQuestions
+from zettcode.engine.extensions.capabilities import ModelCapabilities
+from zettcode.engine.extensions.files import CodingBundle
+from zettcode.engine.extensions.messaging import SessionMessagingExtension
+from zettcode.engine.extensions.subagents import subagent_extension
+from zettcode.engine.extensions.usage import UsageExtension
+from zettcode.engine.permission import DENIED_MESSAGE, Permission, ShellDenyExtension, ShellPolicy
+from zettcode.engine.permission.approval import ShellApprovalMemory
+from zettcode.engine.permission.sandbox import ShellSandbox
+from zettcode.engine.storage import SessionStore
+from zettcode.engine.tools.boundary import Sandboxer
 from zettcode.plugins.builtin_agent import _shared_with_children
 
 

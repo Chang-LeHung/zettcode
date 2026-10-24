@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from zettcode.app.agent.dialogue.ask import AskUserQuestion
+from zettcode.engine.dialogue.ask import AskUserQuestion
 from zettcode.tui import (
     DONE,
     ELLIPSIS,

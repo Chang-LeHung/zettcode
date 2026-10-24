@@ -81,7 +81,7 @@ LAYERS = (
     ("zettcode.tui", ("zettcode.app", "zettcode.cli", "zettcode.config")),
     ("zettcode.app.agent", ("zettcode.app.ui",)),
     # The engine is what the terminal and the SDK both drive, so it knows neither of them.
-    ("zettcode.engine", ("zettcode.app.ui", "zettcode.sdk", "zettcode.server")),
+    ("zettcode.engine", ("zettcode.app", "zettcode.tui", "zettcode.cli", "zettcode.sdk", "zettcode.server")),
     # The broker is standard library only, and the shell imports it, never the other way round.
     ("zettcode.broker", ("zettcode.app", "zettcode.cli", "zettcode.config", "zettcode.tui")),
     ("zettcode.filelock", ("zettcode.app", "zettcode.cli", "zettcode.config", "zettcode.tui", "zettcode.broker")),

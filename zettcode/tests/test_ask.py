@@ -9,8 +9,8 @@ from zett_agent.events import AgentEvent, AgentEventType
 from zett_agent.extensions.ask_user import ASK_USER_EVENT_NAME
 
 from plugin_helpers import agent_extensions
-from zettcode.app.agent.dialogue.ask import AskUserQuestion, answer_payload, decline_payload, question_from
 from zettcode.config import ModelConfig, ZettCodeConfig
+from zettcode.engine.dialogue.ask import AskUserQuestion, answer_payload, decline_payload, question_from
 
 
 def _event(payload: object, *, name: str = ASK_USER_EVENT_NAME) -> AgentEvent:

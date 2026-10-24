@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from zettcode.app.agent.tools.output import (
+from zettcode.engine.tools.output import (
     MAX_OUTPUT_BYTES,
     MAX_OUTPUT_LINES,
     OMISSION,
@@ -16,7 +16,7 @@ from zettcode.app.agent.tools.output import (
     stream_preview,
     utf8_prefix,
 )
-from zettcode.app.agent.tools.shell import (
+from zettcode.engine.tools.shell import (
     DEFAULT_TIMEOUT_SECONDS,
     OUTPUT_ROOT,
     CommandFailed,
@@ -170,7 +170,7 @@ async def test_a_blank_command_is_refused(here: Path):
 
 
 def test_the_extension_that_moves_the_kept_output_names_the_folder_the_tool_makes():
-    from zettcode.app.agent.extensions import tool_output
+    from zettcode.engine.extensions import tool_output
 
     assert tool_output.OUTPUT_ROOT == OUTPUT_ROOT
 
@@ -180,8 +180,8 @@ def test_the_extension_that_moves_the_kept_output_is_loaded_without_the_schema_l
     import subprocess
 
     code = (
-        "import sys; import zettcode.app.agent.extensions.tool_output, zettcode.app.agent.permission; "
-        "print(any(name.startswith('zettcode.app.agent.tools.') and name != 'zettcode.app.agent.tools.boundary' "
+        "import sys; import zettcode.engine.extensions.tool_output, zettcode.engine.permission; "
+        "print(any(name.startswith('zettcode.engine.tools.') and name != 'zettcode.engine.tools.boundary' "
         "for name in sys.modules))"
     )
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True).stdout

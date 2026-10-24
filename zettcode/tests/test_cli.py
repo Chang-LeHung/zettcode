@@ -208,7 +208,7 @@ def test_session_exists_finds_a_stored_session(tmp_path: Path, monkeypatch):
     from zett_agent.extensions.events import MessageTiming
     from zett_agent.messages import UserMessage
 
-    from zettcode.app.agent.storage import SessionStore
+    from zettcode.engine.storage import SessionStore
 
     path = tmp_path / "config.toml"
     path.write_text('[[models]]\nmodel = "m"\ntoken = "t"\n', encoding="utf-8")
@@ -234,8 +234,8 @@ def test_resuming_builds_the_application_where_no_loop_is_running(tmp_path: Path
     """
     from zett_agent.messages import UserMessage
 
-    from zettcode.app.agent.storage import SessionStore
     from zettcode.config import ModelConfig, ZettCodeConfig
+    from zettcode.engine.storage import SessionStore
 
     root = tmp_path / "sessions"
     asyncio.run(SessionStore(root, tmp_path).append("stored", "r", UserMessage(content="hi")))
@@ -261,8 +261,8 @@ def test_resuming_a_long_session_decodes_only_the_window_the_transcript_keeps(tm
     from zett_agent.messages import AssistantMessage, UserMessage
     from zett_agent.model import ModelUsage
 
-    from zettcode.app.agent.storage import SessionStore
     from zettcode.config import ModelConfig, ZettCodeConfig
+    from zettcode.engine.storage import SessionStore
 
     root = tmp_path / "sessions"
     store = SessionStore(root, tmp_path)
@@ -320,7 +320,7 @@ def test_a_resumed_run_reports_the_command_that_reopens_it(tmp_path: Path, monke
     from zett_agent.extensions.events import MessageTiming
     from zett_agent.messages import UserMessage
 
-    from zettcode.app.agent.storage import SessionStore
+    from zettcode.engine.storage import SessionStore
 
     path = tmp_path / "config.toml"
     path.write_text('[[models]]\nmodel = "m"\ntoken = "t"\n', encoding="utf-8")
@@ -377,7 +377,7 @@ def test_a_dry_run_starts_everything_and_exits(tmp_path: Path, monkeypatch, caps
     """The flag profiling needs: the whole start, no terminal, no output of its own."""
     from dataclasses import replace
 
-    from zettcode.app.agent.storage import SessionStore
+    from zettcode.engine.storage import SessionStore
 
     path = tmp_path / "config.toml"
     path.write_text(
@@ -523,7 +523,7 @@ def _long_session(tmp_path: Path, turns: int = 40) -> tuple[Path, Path]:
     """Write a session of ``turns`` turns into a throwaway store and return (store, workspace)."""
     from zett_agent.messages import AssistantMessage, ToolCall, ToolMessage, UserMessage
 
-    from zettcode.app.agent.storage import SessionStore
+    from zettcode.engine.storage import SessionStore
 
     root = tmp_path / "sessions"
     store = SessionStore(root, tmp_path)
@@ -748,7 +748,7 @@ def test_the_full_flag_has_three_spellings_and_sets_the_starting_level(tmp_path,
     config.write_text('[[models]]\nmodel = "m"\ntoken = "t"\n', encoding="utf-8")
     monkeypatch.setenv("ZETTCODE_CONFIG", str(config))
     monkeypatch.setattr(cli, "resolve_config", lambda: resolve_config(["-w", str(tmp_path)]))
-    from zettcode.app.agent.permission import Permission
+    from zettcode.engine.permission import Permission
 
     plain = cli.build_application(Options(workspace=tmp_path))
     wild = cli.build_application(Options(workspace=tmp_path, auto=True))
@@ -762,7 +762,7 @@ def test_the_full_flag_has_three_spellings_and_sets_the_starting_level(tmp_path,
 
 async def test_the_auto_flag_reaches_the_dry_run_path_too(tmp_path, monkeypatch):
     """Both ways in build the same shell, so the flag cannot mean one thing on one path."""
-    from zettcode.app.agent.permission import Permission
+    from zettcode.engine.permission import Permission
 
     config = tmp_path / "config.toml"
     config.write_text('[[models]]\nmodel = "m"\ntoken = "t"\n', encoding="utf-8")

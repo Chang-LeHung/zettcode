@@ -19,9 +19,9 @@ from zett_agent.model import ModelEvent, ModelResponse, RetryOptions
 from zettcode._compat import ExceptionGroup
 from zettcode.app.agent.conversation.projection import TranscriptProjector
 from zettcode.app.agent.conversation.transcript import Transcript
-from zettcode.app.agent.extensions.files import CodingBundle
-from zettcode.app.agent.extensions.mcp import ReportingMcpExtension, build_mcp_extension
-from zettcode.app.agent.extensions.mcp_notice import MCP_NOTICE_EVENT_NAME, notice_from, notice_payload
+from zettcode.engine.extensions.files import CodingBundle
+from zettcode.engine.extensions.mcp import ReportingMcpExtension, build_mcp_extension
+from zettcode.engine.extensions.mcp_notice import MCP_NOTICE_EVENT_NAME, notice_from, notice_payload
 
 
 def _tool(name: str) -> Tool:
@@ -485,7 +485,7 @@ def test_the_module_that_imports_the_mcp_sdk_is_not_imported_by_the_transcript()
 
     code = (
         "import sys; import zettcode.app.agent.conversation.projection; "
-        "print('mcp' in sys.modules, 'zettcode.app.agent.extensions.mcp' in sys.modules)"
+        "print('mcp' in sys.modules, 'zettcode.engine.extensions.mcp' in sys.modules)"
     )
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True).stdout.split()
     assert out[1] == "False", "the projector must not import the extension that imports the SDK"

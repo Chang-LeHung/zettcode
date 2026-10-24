@@ -6,9 +6,9 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from zettcode.app.agent.storage import SessionInfo, SessionStats
 from zettcode.app.ui.widgets import SessionsPage
 from zettcode.app.ui.widgets.sessions_page import GAP, MARKER, MIN_TITLE, NONE
+from zettcode.engine.storage import SessionInfo, SessionStats
 from zettcode.tui import DARK, Rect
 from zettcode.tui.core.events import KeyEvent
 from zettcode.tui.render import display_width

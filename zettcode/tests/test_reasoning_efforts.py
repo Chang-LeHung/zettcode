@@ -14,8 +14,8 @@ import pytest
 from zett_agent.model import ReasoningEffort
 
 from zettcode.app.agent.agent import ZettCodeAgent
-from zettcode.app.agent.runtime import ZettCodeEngine
 from zettcode.config import ModelConfig, ZettCodeConfig, load_config
+from zettcode.engine.core import ZettCodeEngine
 
 OFF, MINIMAL, LOW, MEDIUM, HIGH, XHIGH, MAX, ULTRA = tuple(ReasoningEffort)
 
@@ -95,7 +95,7 @@ def test_a_bad_list_is_refused_and_names_the_entry(tmp_path: Path, value, messag
 
 
 def _agent(tmp_path: Path, monkeypatch, *models: ModelConfig, effort: ReasoningEffort = MEDIUM) -> ZettCodeAgent:
-    monkeypatch.setattr("zettcode.app.agent.runtime.os.chdir", lambda path: None)
+    monkeypatch.setattr("zettcode.engine.core.os.chdir", lambda path: None)
     config = ZettCodeConfig(
         workspace=tmp_path,
         store=tmp_path / "sessions",

@@ -19,9 +19,9 @@ from zett_agent.extensions.skill import SkillExtension
 from zett_agent.extensions.todo import TodoWriteExtension
 
 from plugin_helpers import agent_extensions, agent_plugins, runtime_inputs
-from zettcode.app.agent import runtime as runtime_module
 from zettcode.app.agent.agent import ZettCodeAgent
 from zettcode.config import ModelConfig, ZettCodeConfig
+from zettcode.engine import core as runtime_module
 from zettcode.engine.messenger import Messenger
 from zettcode.plugins import (
     AGENT_PLUGINS,

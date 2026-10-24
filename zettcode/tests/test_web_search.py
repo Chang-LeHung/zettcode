@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pytest
 
-from zettcode.app.agent.extensions.capabilities import ModelCapabilities, web_search_tool
 from zettcode.config import (
     DEFAULT_ANTHROPIC_WEB_SEARCH_NAME,
     DEFAULT_DEEPSEEK_ANTHROPIC_WEB_SEARCH_NAME,
@@ -15,6 +14,7 @@ from zettcode.config import (
     load_config,
 )
 from zettcode.config_edit import entry_from_model
+from zettcode.engine.extensions.capabilities import ModelCapabilities, web_search_tool
 from zettcode.sdk import add_model, update_model
 
 

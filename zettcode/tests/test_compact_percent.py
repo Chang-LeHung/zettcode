@@ -9,12 +9,12 @@ import pytest
 
 from test_context_page import report_of
 from zettcode._compat import tomllib
-from zettcode.app.agent import runtime as runtime_module
 from zettcode.app.agent.agent import ZettCodeAgent
-from zettcode.app.agent.runtime import ZettCodeEngine
 from zettcode.app.ui.widgets import ContextPage
 from zettcode.app.ui.widgets.context_page import KNOB, LIT, SLIDE_SECONDS
 from zettcode.config import load_config
+from zettcode.engine import core as runtime_module
+from zettcode.engine.core import ZettCodeEngine
 from zettcode.tui.testing import Harness
 
 BASE = """\

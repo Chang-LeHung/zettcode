@@ -23,7 +23,7 @@ from zettcode.app.agent.conversation.server_tools import (
     runs_in_blocks,
 )
 from zettcode.app.agent.conversation.transcript import Transcript
-from zettcode.app.agent.storage import SessionStore
+from zettcode.engine.storage import SessionStore
 
 #: One answer as Anthropic records it: the query, ten pages, and the encrypted payloads between them.
 BLOCKS = (

@@ -16,8 +16,8 @@ from zett_agent.messages import AssistantMessage, ToolCall
 from zett_agent.model import ModelEvent, ModelRequest, ModelResponse, ModelUsage, RetryOptions
 from zett_agent.stop import StopInfo, StopReason
 
-from zettcode.app.agent import runtime as runtime_module
 from zettcode.config import ModelConfig, ZettCodeConfig
+from zettcode.engine import core as runtime_module
 
 Step = Union[  # noqa: UP007 - an alias evaluated at import time
     str,

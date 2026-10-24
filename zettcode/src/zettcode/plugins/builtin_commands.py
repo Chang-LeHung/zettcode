@@ -371,7 +371,7 @@ class SideQuestion(Plugin):
         """Ask a side question: answered here, and kept out of the conversation.
 
         The answer is shown in the transcript like any other, but the store records the exchange as one the model
-        is never given back, and the tools are the reading ones \u2014 see :mod:`zettcode.app.agent.dialogue.side`.
+        is never given back, and the tools are the reading ones \u2014 see :mod:`zettcode.engine.dialogue.side`.
         Declaring itself queue-worthy is what lets the command be typed during a reply: the answer then waits its
         turn like any other request.
 

@@ -28,7 +28,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only; nothing here imports t
 
     from zett_agent.events import AgentEvent
 
-    from ..app.agent.dialogue.ask import AskUserQuestion
+    from ..engine.dialogue.ask import AskUserQuestion
 
 __all__ = [
     "AnyEvent",

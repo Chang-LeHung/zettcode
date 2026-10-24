@@ -24,7 +24,7 @@ from __future__ import annotations
 import textwrap
 from collections.abc import Sequence
 
-from zettcode.app.agent.extensions.context import CHARS_PER_TOKEN, SOURCES, ContextReport
+from zettcode.engine.extensions.context import CHARS_PER_TOKEN, SOURCES, ContextReport
 from zettcode.tui import BAR_FULL
 from zettcode.tui.render.text import display_width
 

@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import NamedTuple
 
 from zettcode.app.agent.agent.sessions import UNTITLED_SESSION
-from zettcode.app.agent.storage import SessionInfo, SessionStats
+from zettcode.engine.storage import SessionInfo, SessionStats
 from zettcode.tui import ELLIPSIS, SEPARATOR, ListItem, ListPage, Rect, Theme
 from zettcode.tui.render import blend, display_width
 from zettcode.tui.render.text import truncate
@@ -119,7 +119,7 @@ class SessionsPage(ListPage):
     Entries are the message records the session's file holds; input and output are the tokens its model replies
     were charged for, the input counting what came from the provider's cache, and the cached share is that part
     of the input. A fork is not charged for the replies it copied, so it shows only what it spent after the fork
-    (see :mod:`zettcode.app.agent.storage.ledger`). The heading over the figures is the page's subtitle, aligned
+    (see :mod:`zettcode.engine.storage.ledger`). The heading over the figures is the page's subtitle, aligned
     with the column the list itself lays the figures in.
 
     The rows are made for the width the page is given: when the panel is narrower than the title and every

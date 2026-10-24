@@ -17,8 +17,8 @@ from zett_agent.messages import AssistantMessage, TextContent, ToolCall, ToolMes
 from zett_agent.model import ServerToolCall, ServerToolInputDelta, ServerToolResult
 from zett_agent.stop import StopInfo, StopReason
 
-from zettcode.app.agent.extensions.mcp_notice import MCP_NOTICE_EVENT_NAME, notice_payload
-from zettcode.app.agent.extensions.usage import USAGE_EVENT_NAME
+from zettcode.engine.extensions.mcp_notice import MCP_NOTICE_EVENT_NAME, notice_payload
+from zettcode.engine.extensions.usage import USAGE_EVENT_NAME
 from zettcode.sdk import events as sdk
 from zettcode.sdk._translate import translate
 from zettcode.sdk.types import Usage

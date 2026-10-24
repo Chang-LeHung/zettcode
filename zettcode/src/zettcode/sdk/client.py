@@ -53,10 +53,10 @@ from .types import (
 if TYPE_CHECKING:  # pragma: no cover - annotations only; the agent is imported when a client is made
     from ..app.agent.agent import ZettCodeAgent
     from ..app.agent.conversation.transcript import Transcript
-    from ..app.agent.dialogue.ask import AskUserQuestion
-    from ..app.agent.dialogue.mentions import MentionRegistry
     from ..broker.client import Delivered, Receipt
     from ..config import ModelConfig, ZettCodeConfig
+    from ..engine.dialogue.ask import AskUserQuestion
+    from ..engine.dialogue.mentions import MentionRegistry
     from ..engine.messenger import Messenger
 
 __all__ = ["Client", "PluginReport", "Sessions", "prompt", "prompt_sync"]
@@ -304,7 +304,7 @@ class Client:
         self._register(resolved.workspace)
         # Imported here, not at the top of the module: importing the SDK costs nothing until a client is made.
         from ..app.agent.agent import ZettCodeAgent
-        from ..app.agent.runtime import ZettCodeEngine
+        from ..engine.core import ZettCodeEngine
 
         try:
             runtime = ZettCodeEngine.preview(resolved)
@@ -739,7 +739,7 @@ class Client:
         The order is the terminal's, and it decides more than a menu: a draft that names a session means that
         session even when a file happens to have the same name.
         """
-        from ..app.agent.dialogue.mentions import MentionRegistry, SessionMentions
+        from ..engine.dialogue.mentions import MentionRegistry, SessionMentions
 
         providers = self._agent.plugin_mentions
         messenger = self._agent.runtime.messenger
@@ -751,7 +751,7 @@ class Client:
     def _ledger(self) -> Any:
         """Return the reader of this workspace's ledger, made once."""
         if self._ledger_reader is None:
-            from ..app.agent.storage.ledger import LedgerReader
+            from ..engine.storage.ledger import LedgerReader
 
             self._ledger_reader = LedgerReader(self.config.store, self.config.workspace)
         return self._ledger_reader

@@ -7,14 +7,8 @@ from zett_agent.events import AgentEvent, AgentEventType
 from zett_agent.messages import AssistantMessage
 from zett_agent.model import ModelResponse, ModelUsage
 
-from zettcode.app.agent.extensions.usage import (
-    USAGE_EVENT_NAME,
-    UsageExtension,
-    UsageSnapshot,
-    compact_tokens,
-    context_text,
-    usage_text,
-)
+from zettcode.engine.extensions.usage import USAGE_EVENT_NAME, UsageExtension, UsageSnapshot
+from zettcode.statusline import compact_tokens, context_text, usage_text
 
 
 class _Config:

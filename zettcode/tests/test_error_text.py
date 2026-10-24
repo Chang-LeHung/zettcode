@@ -11,7 +11,7 @@ from zett_agent.providers.anthropic import AnthropicProvider
 from zett_agent.providers.openai import OpenAIProvider
 
 from zettcode._compat import BaseExceptionGroup
-from zettcode.app.agent.errors import HINTS, MAX_DETAIL, describe_error, failure_text, may_pass
+from zettcode.engine.errors import HINTS, MAX_DETAIL, describe_error, failure_text, may_pass
 
 FAST = RetryOptions(base_delay=0.0, max_delay=0.0, max_retries=1)
 

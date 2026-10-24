@@ -14,12 +14,12 @@ import pytest
 from zett_agent.model import RetryOptions
 from zett_agent.providers.openai import OpenAIProvider
 
-from zettcode.app.agent import runtime as runtime_module
 from zettcode.app.agent.agent import ZettCodeAgent
 from zettcode.app.agent.conversation.text import QUIET_SECONDS
 from zettcode.app.ui.app import ZettCodeApp
 from zettcode.app.ui.shell import EMPTY_REPLY
 from zettcode.config import ModelConfig, ZettCodeConfig
+from zettcode.engine import core as runtime_module
 from zettcode.tui.testing import Harness
 
 FAST = RetryOptions(base_delay=0.0, max_delay=0.0, max_retries=1)

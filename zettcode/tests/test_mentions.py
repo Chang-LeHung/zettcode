@@ -11,7 +11,10 @@ from zett_agent.messages import UserMessage
 from zettcode.app.agent.agent import ZettCodeAgent
 from zettcode.app.agent.agent.prompt import MentionPart, mention_hint
 from zettcode.app.agent.conversation.replay import replay
-from zettcode.app.agent.dialogue.mentions import (
+from zettcode.app.ui.widgets import Composer
+from zettcode.app.ui.widgets.completer import CommandCompleter
+from zettcode.config import ModelConfig, ZettCodeConfig
+from zettcode.engine.dialogue.mentions import (
     LISTING_SECONDS,
     MAX_CANDIDATES,
     MENTION,
@@ -21,10 +24,7 @@ from zettcode.app.agent.dialogue.mentions import (
     MentionRegistry,
     SkillMentions,
 )
-from zettcode.app.agent.storage import SessionStore
-from zettcode.app.ui.widgets import Composer
-from zettcode.app.ui.widgets.completer import CommandCompleter
-from zettcode.config import ModelConfig, ZettCodeConfig
+from zettcode.engine.storage import SessionStore
 from zettcode.plugins import PluginContainer
 from zettcode.tui import TextArea
 

@@ -37,10 +37,10 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
     from importlib.metadata import EntryPoint
 
     from ..app.agent.conversation.presenters import Presenter
-    from ..app.agent.dialogue.mentions import MentionProvider
     from ..app.commands import Command
     from ..app.pets import PetSource
     from ..config import ZettCodeConfig
+    from ..engine.dialogue.mentions import MentionProvider
     from ..providers import Provider
     from ..tui import ThemeSource
 

@@ -10,7 +10,7 @@ import pytest
 from zett_agent.extensions.shell_approval import ShellApprovalExtension, ShellApprovalMode
 from zett_agent.messages import ToolCall
 
-from zettcode.app.agent.permission import (
+from zettcode.engine.permission import (
     DENIED_MESSAGE,
     PERMISSION_LEVELS,
     Permission,
@@ -18,8 +18,8 @@ from zettcode.app.agent.permission import (
     ShellPolicy,
     parse_permission,
 )
-from zettcode.app.agent.permission.approval import ShellApprovalMemory
-from zettcode.app.agent.permission.sandbox import ShellSandbox
+from zettcode.engine.permission.approval import ShellApprovalMemory
+from zettcode.engine.permission.sandbox import ShellSandbox
 
 
 class _Sandbox(ShellSandbox):
@@ -273,9 +273,9 @@ async def test_the_level_the_command_sets_is_the_one_object_the_guard_the_runtim
     """
     from zett_agent.messages import ToolCall
 
-    from zettcode.app.agent.permission import SHELL_APPROVAL_TOOL_NAME
-    from zettcode.app.agent.runtime import ZettCodeEngine
     from zettcode.config import ModelConfig, ZettCodeConfig
+    from zettcode.engine.core import ZettCodeEngine
+    from zettcode.engine.permission import SHELL_APPROVAL_TOOL_NAME
 
     config = ZettCodeConfig(
         workspace=tmp_path, models=(ModelConfig(model="m", token="t"),), store=tmp_path / "sessions", mcp_enabled=False
@@ -304,8 +304,8 @@ async def test_the_level_the_command_sets_is_the_one_object_the_guard_the_runtim
 
 async def test_the_guard_the_runtime_really_hands_the_agent_reads_the_policy_the_command_changes(tmp_path, monkeypatch):
     """Not a copy of how the runtime builds it: the extension it actually passes to ``create_agent``."""
-    from zettcode.app.agent import runtime as runtime_module
     from zettcode.config import ModelConfig, ZettCodeConfig
+    from zettcode.engine import core as runtime_module
 
     given: list[list[object]] = []
 

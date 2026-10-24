@@ -71,7 +71,7 @@ from .types import (
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from ..app.agent.agent.prompt import PromptPart
-    from ..app.agent.dialogue.mentions import MentionRegistry
+    from ..engine.dialogue.mentions import MentionRegistry
     from .client import Client
 
 __all__ = ["Prompt", "RunStream", "Session"]
@@ -142,7 +142,7 @@ def prompt_parts(
 def _split_mentions(text: str) -> list[Any]:
     """Split one text run at its ``@`` tokens, keeping the order, as the terminal's composer does."""
     from ..app.agent.agent.prompt import MentionPart
-    from ..app.agent.dialogue.mentions import MENTION
+    from ..engine.dialogue.mentions import MENTION
 
     split: list[Any] = []
     cursor = 0
@@ -465,8 +465,8 @@ class RunStream:
         """Return the SDK error that stands for ``error``, keeping the original as its cause."""
         from zett_agent.exceptions import AgentResumeError
 
-        from ..app.agent.errors import describe_error, may_pass
-        from ..app.agent.storage import SessionLocked
+        from ..engine.errors import describe_error, may_pass
+        from ..engine.storage import SessionLocked
 
         if isinstance(error, ZettCodeError):
             return error
@@ -730,7 +730,7 @@ class Session:
 
     async def resumable(self) -> ResumeInfo | None:
         """Say where the conversation was interrupted and what :meth:`resume` would do; ``None`` if it was not."""
-        from ..app.agent.storage import SessionLocked
+        from ..engine.storage import SessionLocked
 
         await self._activate()
         try:
@@ -792,8 +792,8 @@ class Session:
             NothingToDoError: The conversation is already compacted up to its newest message.
             SessionLockedError: Another process has the session open.
         """
-        from ..app.agent.errors import describe_error, may_pass
-        from ..app.agent.storage import SessionLocked
+        from ..engine.errors import describe_error, may_pass
+        from ..engine.storage import SessionLocked
 
         client = self._client
         client._check_open()
@@ -838,7 +838,7 @@ class Session:
             ValueError: The title is blank or too long.
             SessionLockedError: Another process has the session open.
         """
-        from ..app.agent.storage import SessionLocked
+        from ..engine.storage import SessionLocked
 
         self._client._check_open()
         self._client._check_free()

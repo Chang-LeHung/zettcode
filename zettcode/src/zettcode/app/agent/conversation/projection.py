@@ -10,11 +10,11 @@ from zett_agent.events import AgentEvent
 from zett_agent.extensions.shell_approval import SHELL_APPROVAL_EVENT_NAME
 from zett_agent.messages import ToolMessage
 
+from zettcode.engine.dialogue.ask import AskUserQuestion, declined_answer, question_from
+from zettcode.engine.extensions.mcp_notice import MCP_NOTICE_EVENT_NAME, notice_from
+from zettcode.engine.extensions.usage import USAGE_EVENT_NAME
 from zettcode.engine.relay import Relayed
 
-from ..dialogue.ask import AskUserQuestion, declined_answer, question_from
-from ..extensions.mcp_notice import MCP_NOTICE_EVENT_NAME, notice_from
-from ..extensions.usage import USAGE_EVENT_NAME
 from .entries import EntryStatus
 from .server_tools import ServerToolRun, describe_output
 from .stops import stop_text

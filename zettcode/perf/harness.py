@@ -21,9 +21,9 @@ from time import perf_counter
 
 from zettcode.app.agent.agent import ZettCodeAgent
 from zettcode.app.agent.conversation.transcript import Transcript
-from zettcode.app.agent.runtime import ZettCodeEngine
 from zettcode.app.ui import ZettCodeApp
 from zettcode.config import ModelConfig, ZettCodeConfig
+from zettcode.engine.core import ZettCodeEngine
 from zettcode.tui import DifferentialRenderer, TextEvent
 from zettcode.tui.core.app import TuiApp
 

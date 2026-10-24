@@ -9,8 +9,8 @@ from zett_agent.extensions.events import MessageTiming
 from zett_agent.messages import AssistantMessage, SystemMessage, ToolCall, ToolMessage, UserMessage
 from zett_agent.model import ModelUsage
 
-from zettcode.app.agent.export import COLLAPSE_AFTER, build_trace, render_html
-from zettcode.app.agent.storage import SessionStore
+from zettcode.engine.export import COLLAPSE_AFTER, build_trace, render_html
+from zettcode.engine.storage import SessionStore
 
 #: One call's timing: two seconds, ten seconds after the session opened.
 STARTED = datetime(2026, 10, 5, 10, 0, tzinfo=timezone.utc)

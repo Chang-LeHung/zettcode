@@ -136,7 +136,7 @@ def _assets() -> tuple[Template, str, str]:
     as markup and CSS than as a Python string — and are folded back into one
     document here, so what is exported still fetches nothing.
     """
-    root = files("zettcode.app.agent.export").joinpath("trace")
+    root = files("zettcode.engine.export").joinpath("trace")
     template = Template(root.joinpath("template.html").read_text(encoding="utf-8"))
     style = root.joinpath("style.css").read_text(encoding="utf-8")
     script = root.joinpath("script.js").read_text(encoding="utf-8")

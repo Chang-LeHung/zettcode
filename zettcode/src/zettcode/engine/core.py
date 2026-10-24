@@ -46,7 +46,6 @@ from zettcode.plugins.services import (
     USAGE,
 )
 
-from ..pipeline import ImportPipeline
 from .dialogue.side import SideQuestions
 from .extensions.compaction import COUNTER_WAIT, CompactionCounter, OnDemandCompaction
 from .extensions.context import ContextExtension, Tokenizer
@@ -54,6 +53,7 @@ from .extensions.harness_switch import HarnessSwitch
 from .extensions.usage import UsageExtension
 from .permission import Permission, ShellPolicy, parse_permission
 from .permission.sandbox import ShellSandbox
+from .pipeline import ImportPipeline
 from .storage import NoLocks, SessionGuard, SessionLocks, SessionStore
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only; the imports are the cost
@@ -70,7 +70,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only; the imports are the co
 #: cached — and the zett-agent module is what :meth:`ZettCodeEngine._build`
 #: would otherwise import on the event loop. A name added here moves its import
 #: off the first turn and onto the pipeline's thread.
-WARM_MODULES = ("zett_agent.client", "zettcode.app.agent.extensions.files")
+WARM_MODULES = ("zett_agent.client", "zettcode.engine.extensions.files")
 
 #: What each model SDK needs imported before its first request, in order. ``openai`` alone is not
 #: enough: its resource tree (``openai.resources``) is imported the first time a client touches

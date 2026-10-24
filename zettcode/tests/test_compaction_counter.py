@@ -19,15 +19,15 @@ from zett_agent.messages import (
     UserMessage,
 )
 
-from zettcode.app.agent import runtime as runtime_module
-from zettcode.app.agent.extensions import context as context_module
-from zettcode.app.agent.extensions.compaction import (
+from zettcode.config import ModelConfig, ZettCodeConfig
+from zettcode.engine import core as runtime_module
+from zettcode.engine.extensions import context as context_module
+from zettcode.engine.extensions.compaction import (
     COMPACTION_ENCODING,
     COUNTER_WAIT,
     CompactionCounter,
     OnDemandCompaction,
 )
-from zettcode.config import ModelConfig, ZettCodeConfig
 
 
 def _messages(text: str = "x" * 400):
@@ -376,7 +376,7 @@ def test_after_the_warm_up_the_first_request_does_not_import_the_openai_resource
     code = textwrap.dedent(
         """
         import sys
-        from zettcode.app.agent.runtime import OPENAI_WARM_MODULES
+        from zettcode.engine.core import OPENAI_WARM_MODULES
         import importlib
         for name in OPENAI_WARM_MODULES:
             importlib.import_module(name)

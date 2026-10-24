@@ -1,6 +1,6 @@
 """The drawings behind ``/usage``: numbers, bars, and the calendar grid.
 
-Everything here turns a :class:`~zettcode.app.agent.storage.ledger.Ledger` into *lines of
+Everything here turns a :class:`~zettcode.engine.storage.ledger.Ledger` into *lines of
 roles* — a line is a list of ``(text, role)`` pairs and a role is a name such as ``"input"``
 or ``"heat3"`` — and never into colours. The page that owns a terminal decides what a role
 looks like in the active theme, which keeps these functions testable as plain strings and
@@ -12,7 +12,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from datetime import date, datetime, timedelta
 
-from zettcode.app.agent.storage.ledger import Ledger, SessionUsage, Tally
+from zettcode.engine.storage.ledger import Ledger, SessionUsage, Tally
 from zettcode.tui import BAR_EMPTY, ELLIPSIS
 from zettcode.tui.render.text import display_width, truncate
 

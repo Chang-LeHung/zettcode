@@ -15,10 +15,10 @@ from zett_agent.messages import SystemMessage, UserMessage
 from test_zettcode_app import build_app
 from zettcode._compat import tomllib
 from zettcode.app.agent.agent import ZettCodeAgent
-from zettcode.app.agent.runtime import ZettCodeEngine
-from zettcode.app.agent.storage import SessionLocked
 from zettcode.config import ModelConfig, ZettCodeConfig, load_config
 from zettcode.config_edit import ConfigEditError, set_self_compaction
+from zettcode.engine.core import ZettCodeEngine
+from zettcode.engine.storage import SessionLocked
 
 WHERE = Path("config.toml")
 MODEL = '[[models]]\nmodel = "m"\ntoken = "t"\n'
@@ -35,7 +35,7 @@ def _config(tmp_path: Path, **changes) -> ZettCodeConfig:
 
 
 def _agent(tmp_path: Path, monkeypatch, **changes) -> ZettCodeAgent:
-    monkeypatch.setattr("zettcode.app.agent.runtime.os.chdir", lambda path: None)
+    monkeypatch.setattr("zettcode.engine.core.os.chdir", lambda path: None)
     return ZettCodeAgent(ZettCodeEngine.preview(_config(tmp_path, **changes)))
 
 
@@ -282,7 +282,7 @@ async def test_the_panel_is_the_choice_so_the_command_offers_no_word_menu():
 
 
 async def test_the_tool_says_what_self_compaction_is():
-    from zettcode.app.agent.extensions.compaction import OnDemandCompaction
+    from zettcode.engine.extensions.compaction import OnDemandCompaction
 
     extension = OnDemandCompaction(None, self_compact=lambda session_id: True)
     ctx = _context("s")

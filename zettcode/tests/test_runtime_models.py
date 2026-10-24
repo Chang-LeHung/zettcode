@@ -15,13 +15,13 @@ from zett_agent.messages import UserMessage
 
 from plugin_helpers import agent_extensions
 from zettcode._compat import ExceptionGroup
-from zettcode.app import pipeline as pipeline_module
-from zettcode.app.agent import runtime as runtime_module
 from zettcode.app.agent.agent import ZettCodeAgent
-from zettcode.app.agent.errors import describe_error
-from zettcode.app.agent.extensions.compaction import OnDemandCompaction
-from zettcode.app.agent.storage import STORE_FILE, SessionStore
 from zettcode.config import ModelConfig, ZettCodeConfig
+from zettcode.engine import core as runtime_module
+from zettcode.engine import pipeline as pipeline_module
+from zettcode.engine.errors import describe_error
+from zettcode.engine.extensions.compaction import OnDemandCompaction
+from zettcode.engine.storage import STORE_FILE, SessionStore
 
 
 def test_the_system_prompt_head_changes_only_by_the_day(tmp_path):
@@ -198,7 +198,7 @@ def test_the_runtime_module_costs_nothing_until_it_starts(tmp_path):
         [
             "import sys",
             "from pathlib import Path",
-            "import zettcode.app.agent.runtime as runtime_module",
+            "import zettcode.engine.core as runtime_module",
             "from zettcode.config import ModelConfig, ZettCodeConfig",
             "config = ZettCodeConfig(",
             "    workspace=Path(sys.argv[1]),",
@@ -257,7 +257,7 @@ def test_the_warm_up_names_every_module_a_request_needs(tmp_path, monkeypatch, m
     assert names == (
         *sdks,
         "zett_agent.client",
-        "zettcode.app.agent.extensions.files",
+        "zettcode.engine.extensions.files",
         *(("zett_agent.extensions.subagent",) if subagent else ()),
         *(("zett_agent.extensions.mcp",) if mcp else ()),
     )
@@ -534,9 +534,9 @@ async def test_a_text_only_model_reads_with_the_text_reader_and_a_model_with_sea
     from zett_agent.messages import AssistantMessage
     from zett_agent.model import ModelEvent, ModelResponse, RetryOptions
 
-    from zettcode.app.agent.extensions.capabilities import ModelCapabilities
-    from zettcode.app.agent.extensions.files import CodingBundle
-    from zettcode.app.agent.tools.files import read, read_file
+    from zettcode.engine.extensions.capabilities import ModelCapabilities
+    from zettcode.engine.extensions.files import CodingBundle
+    from zettcode.engine.tools.files import read, read_file
 
     class Context:
         """The things the filter reads and changes."""
@@ -610,7 +610,7 @@ async def test_the_approval_memory_remembers_exact_commands_for_the_run():
     """The prompt promises one exact command for this run, not an allowlist."""
     from zett_agent.extensions.shell_approval import ShellApprovalMode
 
-    from zettcode.app.agent.permission.approval import ShellApprovalMemory
+    from zettcode.engine.permission.approval import ShellApprovalMemory
 
     memory = ShellApprovalMemory()
 
@@ -699,7 +699,7 @@ async def test_runtime_switches_models_and_closes_every_provider(tmp_path, monke
     assert any(isinstance(extension, SkillExtension) for extension in captured["extensions"])
     assert not any(isinstance(extension, McpExtension) for extension in captured["extensions"])
     # The tool list follows the model, so the capability filter is part of the run.
-    from zettcode.app.agent.extensions.capabilities import ModelCapabilities
+    from zettcode.engine.extensions.capabilities import ModelCapabilities
 
     assert any(isinstance(extension, ModelCapabilities) for extension in captured["extensions"])
     # The prompt can offer "always allow" only because the runtime hands the
@@ -740,7 +740,7 @@ async def test_the_runtime_shares_one_permission_policy_with_the_layers_that_enf
     """
     from zett_agent.extensions.shell_approval import ShellApprovalExtension
 
-    from zettcode.app.agent.permission import Permission, ShellDenyExtension
+    from zettcode.engine.permission import Permission, ShellDenyExtension
 
     captured: dict[str, object] = {}
 
@@ -781,7 +781,7 @@ def ordered(extensions):
 def test_the_configured_allow_all_mode_starts_a_run_at_full(tmp_path, monkeypatch):
     from zett_agent.extensions.shell_approval import ShellApprovalMode
 
-    from zettcode.app.agent.permission import Permission
+    from zettcode.engine.permission import Permission
 
     monkeypatch.chdir(tmp_path)
 
@@ -796,7 +796,7 @@ def test_the_configured_allow_all_mode_starts_a_run_at_full(tmp_path, monkeypatc
 def test_the_tool_the_prompt_names_for_editing_is_one_the_agent_really_has(tmp_path):
     """The library renamed ``replace_in_file`` to ``edit``; a prompt naming a tool that is not offered sends the
     model looking for it."""
-    from zettcode.app.agent.extensions.files import CodingBundle
+    from zettcode.engine.extensions.files import CodingBundle
 
     names = {tool.name for tool in CodingBundle().tools}
     prompt = runtime_module.build_system_prompt(

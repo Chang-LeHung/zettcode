@@ -10,7 +10,7 @@ from zett_agent.messages import AssistantMessage, ToolCall, ToolMessage, UserMes
 from zettcode.app.agent.conversation.projection import TranscriptProjector
 from zettcode.app.agent.conversation.replay import replay
 from zettcode.app.agent.conversation.transcript import Transcript
-from zettcode.app.agent.storage import SessionStore
+from zettcode.engine.storage import SessionStore
 
 
 def _rows(transcript: Transcript) -> list[tuple[str, str]]:

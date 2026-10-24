@@ -21,7 +21,7 @@ from time import perf_counter
 
 from zett_agent.messages import UserMessage
 
-from zettcode.app.agent.storage import SessionStore
+from zettcode.engine.storage import SessionStore
 
 from .harness import table
 

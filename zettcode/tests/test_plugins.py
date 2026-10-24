@@ -7,11 +7,11 @@ from pathlib import Path
 
 import pytest
 
-from zettcode.app.agent import runtime as runtime_module
 from zettcode.app.agent.conversation.entries import EditEntry, ReadEntry, TextEntry
-from zettcode.app.agent.extensions.usage import UsageSnapshot
 from zettcode.app.commands import CommandResult
 from zettcode.config import ModelConfig, ZettCodeConfig
+from zettcode.engine import core as runtime_module
+from zettcode.engine.extensions.usage import UsageSnapshot
 from zettcode.plugins import (
     AGENT_PLUGINS,
     Activity,

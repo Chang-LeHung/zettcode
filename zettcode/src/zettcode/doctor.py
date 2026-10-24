@@ -61,7 +61,7 @@ async def _ask(model: ModelConfig) -> tuple[str, tuple[int, int] | None]:
     from zett_agent.messages import UserMessage
     from zett_agent.model import ModelEventType, ModelRequest
 
-    from .app.agent.runtime import _build_provider
+    from .engine.core import _build_provider
 
     provider = _build_provider(model)
     try:

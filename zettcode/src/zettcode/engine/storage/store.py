@@ -109,7 +109,7 @@ class _Request:
 
     request_id: str
     checkpoint_version: int = 0
-    #: Whether this request is a side question (see ``app.agent.side``): its
+    #: Whether this request is a side question (see ``engine.dialogue.side``): its
     #: messages are written for the record but never replayed into a context.
     side: bool = False
     #: One stored message id for each replayable non-system context position.
@@ -150,7 +150,7 @@ class SessionPersistenceMixin:
         #: made by the first write, not here.
         self.workspace_dir = open_workspace(self.root, self.workspace)
         #: The log older versions kept for the whole workspace. Read, never written: see
-        #: :mod:`zettcode.app.agent.storage.metadata`.
+        #: :mod:`zettcode.engine.storage.metadata`.
         self.legacy_metadata_path = self.workspace_dir / METADATA_FILE
         # Parsed sessions, keyed by the file stamp that produced them. Appending
         # is the hot path — one call per message — so it must not re-parse the

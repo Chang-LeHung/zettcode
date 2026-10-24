@@ -10,7 +10,8 @@ from zett_agent.agent import AgentRunConfig
 from zett_agent.extensions.external import ExternalEvent
 from zett_agent.extensions.shell_approval import SHELL_APPROVAL_RESPONSE_EVENT_NAME
 
-from ..dialogue.ask import ASK_USER_RESPONSE_EVENT_NAME, AskUserQuestion, answer_payload, decline_payload
+from zettcode.engine.dialogue.ask import ASK_USER_RESPONSE_EVENT_NAME, AskUserQuestion, answer_payload, decline_payload
+
 from .base import AgentBase
 
 

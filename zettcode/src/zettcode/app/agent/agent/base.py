@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..runtime import ZettCodeEngine
-from ..storage import SessionLocked
+from zettcode.engine.core import ZettCodeEngine
+from zettcode.engine.storage import SessionLocked
 
 
 class AgentBase:

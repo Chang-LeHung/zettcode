@@ -17,11 +17,11 @@ from zett_agent.providers.openai import OpenAIProvider
 from zett_agent.stop import StopInfo, StopReason
 
 from test_model_failures import FAST, piece, sse
-from zettcode.app.agent import runtime as runtime_module
 from zettcode.app.agent.agent import ZettCodeAgent
 from zettcode.app.agent.conversation.stops import stop_text
 from zettcode.app.ui.app import ZettCodeApp
 from zettcode.config import ModelConfig, ZettCodeConfig
+from zettcode.engine import core as runtime_module
 from zettcode.tui.testing import Harness
 
 # -- the sentence --------------------------------------------------------------------------------------------------
@@ -308,7 +308,7 @@ def test_a_stored_reply_that_stopped_early_shows_the_same_line_when_the_session_
 
 
 async def test_a_stop_survives_the_session_store_so_a_session_opened_later_can_be_continued(tmp_path: Path):
-    from zettcode.app.agent.storage import SessionStore
+    from zettcode.engine.storage import SessionStore
 
     store = SessionStore(tmp_path, tmp_path)
     cut = AssistantMessage(content="The answer begins", stop=stop(StopReason.MAX_OUTPUT, raw="length"))

@@ -8,18 +8,18 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from zettcode.app.agent.extensions.compaction import CompactionCounter
-from zettcode.app.agent.extensions.harness_switch import HarnessSwitch
-from zettcode.app.agent.permission import ShellPolicy
-from zettcode.app.agent.storage import SessionStore
+from zettcode.engine.extensions.compaction import CompactionCounter
+from zettcode.engine.extensions.harness_switch import HarnessSwitch
+from zettcode.engine.permission import ShellPolicy
+from zettcode.engine.storage import SessionStore
 from zettcode.plugins import AGENT_PLUGINS, AgentBuild, Plugins, load_plugins
 from zettcode.plugins import services as names
 
 if TYPE_CHECKING:
     from zett_agent.extensions.base import AgentExtension
 
-    from zettcode.app.agent.runtime import ZettCodeEngine
     from zettcode.config import ZettCodeConfig
+    from zettcode.engine.core import ZettCodeEngine
 
 
 def runtime_inputs(runtime: ZettCodeEngine) -> dict[str, object]:

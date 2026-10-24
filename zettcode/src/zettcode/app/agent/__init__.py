@@ -11,16 +11,17 @@ _EXPORTS = {
     "Transcript": ".conversation.transcript",
     "TranscriptProjector": ".conversation.projection",
     "ZettCodeAgent": ".agent",
-    "ZettCodeEngine": ".runtime",
+    "ZettCodeEngine": "zettcode.engine.core",
 }
 
 
 if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
+    from zettcode.engine.core import ZettCodeEngine
+
     from .agent import ZettCodeAgent
     from .conversation.entries import Entry
     from .conversation.projection import TranscriptProjector
     from .conversation.transcript import Transcript
-    from .runtime import ZettCodeEngine
 
 
 def __getattr__(name: str) -> object:
