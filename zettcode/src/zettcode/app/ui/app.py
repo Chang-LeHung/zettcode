@@ -50,13 +50,14 @@ from zettcode.tui.widgets import Rule
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from collections.abc import AsyncGenerator
 from zettcode.engine.agent.prompt import PromptPart, carries_image, mention_hint, mention_parts
-from zettcode.engine.dialogue.ask import AskUserQuestion
 from zettcode.engine.dialogue.mentions import MentionRegistry, SessionMentions
 from zettcode.engine.errors import describe_error, failure_text
 from zettcode.engine.extensions.usage import UsageSnapshot
 from zettcode.engine.messenger import Messenger
 from zettcode.engine.registry import Registry
 from zettcode.engine.relay import Relayed
+from zettcode.sdk.events import QuestionAsked
+from zettcode.sdk.translation import AgentBridge
 
 from ..agent.agent import TerminalAgent
 from ..agent.conversation.effort_gauge import EFFORT_SECONDS, EffortFrame, effort_frame
@@ -154,6 +155,7 @@ class ZettCodeApp(
             self.transcript.error(f"plugin: {failure}")
         self.projector = TranscriptProjector(
             self.transcript,
+            bridge=AgentBridge(agent),
             on_approval=self._approval_requested,
             on_ask=self._ask_requested,
             on_usage=self._usage_updated,
@@ -264,7 +266,7 @@ class ZettCodeApp(
         self._messaging_trouble = False
         self._messaging_session: str | None = None
         self._messaging_start: asyncio.Future[None] | None = None
-        self._asks: list[AskUserQuestion] = []
+        self._asks: list[QuestionAsked] = []
         self._ask_total = 0
         #: Drafts typed while a request was in flight, in arrival order: only
         #: commands that declare ``when_busy="queue"`` land here.

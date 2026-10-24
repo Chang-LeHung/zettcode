@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from zettcode.engine.dialogue.ask import AskUserQuestion
+from zettcode.sdk.events import QuestionAsked
 from zettcode.tui import (
     DONE,
     ELLIPSIS,
@@ -83,7 +83,7 @@ class AskUserPage(VBox):
 
     def __init__(
         self,
-        question: AskUserQuestion,
+        question: QuestionAsked,
         *,
         on_answer: Callable[[str], None],
         on_cancel: Callable[[], None],

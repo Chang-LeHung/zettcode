@@ -57,11 +57,11 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
     from zettcode.app.plugins.state import Activity, UiRow
     from zettcode.config import ModelConfig
     from zettcode.engine.agent.prompt import PromptPart
-    from zettcode.engine.dialogue.ask import AskUserQuestion
     from zettcode.engine.dialogue.mentions import MentionRegistry
     from zettcode.engine.extensions.usage import UsageSnapshot
     from zettcode.engine.messenger import Messenger
     from zettcode.engine.relay import Relayed
+    from zettcode.sdk.events import QuestionAsked
     from zettcode.tui import CompletionPopup, StatusBar, Theme, TuiApp
     from zettcode.update import UpdateState
 
@@ -159,7 +159,7 @@ class ShellState:
     #: reaching, and the moment it started.
     _effort_animation: tuple[str, str, float] | None
     #: The question the model is waiting on, while its panel is up.
-    _asks: list[AskUserQuestion]
+    _asks: list[QuestionAsked]
     #: The turn or command currently in flight, if any.
     _task: asyncio.Task[None] | None
 
@@ -267,7 +267,7 @@ class ShellState:
     def _remeasure_context_later(self) -> None:
         """Measure the context again, when a figure needs replacing."""
 
-    def _cancel_ask(self, question: AskUserQuestion) -> None:
+    def _cancel_ask(self, question: QuestionAsked) -> None:
         """Decline one question the model is waiting on, and close its panel."""
 
     def start_update_check(self) -> asyncio.Task[None] | None:

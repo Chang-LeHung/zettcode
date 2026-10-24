@@ -53,8 +53,6 @@ from .types import (
 if TYPE_CHECKING:  # pragma: no cover - annotations only; the agent is imported when a client is made
     from ..broker.client import Delivered, Receipt
     from ..config import ModelConfig, ZettCodeConfig
-    from ..engine.agent import ZettCodeAgent
-    from ..engine.dialogue.ask import AskUserQuestion
     from ..engine.dialogue.mentions import MentionRegistry
     from ..engine.messenger import Messenger
 
@@ -155,22 +153,6 @@ class PluginReport:
 
     loaded: tuple[str, ...]
     failures: tuple[str, ...]
-
-
-class _AgentBridge:
-    """Carry the program's answers to the suspended agent, through the application's own agent."""
-
-    def __init__(self, agent: ZettCodeAgent) -> None:
-        self._agent = agent
-
-    def approve(self, session_id: str, call_id: str, approve: bool, remember: bool) -> None:
-        self._agent.respond_approval(session_id, call_id, "execute" if approve else "abort", remember)
-
-    def answer(self, question: AskUserQuestion, text: str | None) -> None:
-        if text is None:
-            self._agent.decline_ask(question)
-        else:
-            self._agent.answer_ask(question, text)
 
 
 def build_config(
@@ -304,6 +286,7 @@ class Client:
         # Imported here, not at the top of the module: importing the SDK costs nothing until a client is made.
         from ..engine.agent import ZettCodeAgent
         from ..engine.core import ZettCodeEngine
+        from .translation import AgentBridge
 
         try:
             runtime = ZettCodeEngine.preview(resolved)
@@ -311,7 +294,7 @@ class Client:
             self._unregister()
             raise
         self._agent = ZettCodeAgent(runtime)
-        self._bridge = _AgentBridge(self._agent)
+        self._bridge = AgentBridge(self._agent)
         self._fresh = {runtime.session_id}
         try:
             if model is not None:
@@ -690,7 +673,7 @@ class Client:
     @property
     def usage(self) -> Usage:
         """Return what the current session has spent."""
-        from ._translate import usage_from
+        from .translation import usage_from
 
         return usage_from(self._agent.usage)
 
@@ -754,7 +737,7 @@ class Client:
         this conversation, and they agree with the files rather than with what this process remembers. The read runs
         off the event loop and reads only what changed since the last call on this client.
         """
-        from ._translate import ledger_from
+        from .translation import ledger_from
 
         self._check_open()
         return ledger_from(await asyncio.to_thread(self._ledger().read))
@@ -765,7 +748,7 @@ class Client:
         This is what the ``/resume`` panel's columns are made of, and it reads a session's file only when that file
         has changed since it was summarized. The current session is read when no ids are given.
         """
-        from ._translate import stats_from
+        from .translation import stats_from
 
         self._check_open()
         wanted = list(session_ids) if session_ids is not None else [self.session.id]
@@ -806,7 +789,7 @@ class Client:
         does not answer within ``timeout`` seconds is reported as not answering rather than raised.
         """
         from ..doctor import diagnose
-        from ._translate import checks_from
+        from .translation import checks_from
 
         self._check_open()
         return checks_from(await diagnose(self.config.models, timeout=timeout))

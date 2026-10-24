@@ -63,6 +63,7 @@ async def test_replay_builds_the_rows_the_live_events_built(tmp_path: Path):
         AgentEvent(
             AgentEventType.TOOL_COMPLETED,
             "s",
+            tool_calls=(ToolCall("call-1", "read_file", {"path": "app.py"}),),
             message=ToolMessage(tool_call_id="call-1", name="read_file", content="one\ntwo"),
         )
     )

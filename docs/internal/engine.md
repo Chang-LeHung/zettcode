@@ -15,8 +15,12 @@ sdk      the public face: Client, Session, events, value types, errors; imports 
 terminal   server ── TypeScript client ── VS Code
 ```
 
-The terminal should end up a client of the SDK like the server is (step 4 below). Today it still drives
-`TerminalAgent` (the engine's agent plus the shell's own parts) directly.
+The terminal is not yet a client of the SDK the way the server is, but it reads the agent's events through the SDK's
+translation (`sdk/translation.py`): `TranscriptProjector` is the agent client's dispatcher and draws the SDK's typed
+events, so events are translated once. It stays a dispatcher, not a `RunStream` consumer, because some events happen
+outside any run (a compaction the reader asked for, an MCP server starting) and the dispatcher is what sees them.
+In exchange the five events that open and close a span (`ReasoningStarted`, `ReasoningFinished`, `CompactionDelta`,
+`SteeringFinished`, `SteeringInterrupted`) became part of the SDK.
 
 ## Compatibility contract
 
@@ -58,14 +62,13 @@ reads what a fresh interpreter loads, so a dependency that goes round through th
 
 Each its own pull request, `make check` green.
 
-1. **SDK gaps.** The terminal calls 76 distinct members of its agent; 59 have no SDK counterpart. Many are only
-   named differently (`active_model` / `Client.model`, `list_sessions` / `Client.sessions.list`). The real gaps are
-   the raw `stream`, `resume_point`, `resume_blocker`, `stream_resume` and the approval and question replies; the
-   session locks (`session_locked`, `retake_session`, `require_session`); and reading and writing the model entries
-   of the config file. Each is decided one by one — general (into the SDK) or the terminal's own (stays in `app/`) —
-   because whatever enters the SDK is a promise.
-2. **Terminal on the SDK.** The terminal drives `sdk.Client`; `TranscriptProjector` consumes SDK events, so events
-   are translated once (`sdk/_translate.py`). `pets`, `themes`, `presenters`, `plugin_rows`, `plugin_commands` and
-   the `Transcript` stay the terminal's. The two things to keep: the first frame before the provider exists
-   (`preview` / `start`), and the session load on a worker thread.
+1. **Done: one translation.** The terminal's projector draws SDK events.
+2. **The rest of the agent's surface.** The terminal still calls 78 members of its agent, and about 40 are engine
+   members. Most have an SDK counterpart under another name (`active_model` / `Client.model`, `list_sessions` /
+   `Client.sessions.list`, `Session.locked`, `fork`, `compact`, `context`, `resumable`, `steer`, `ask`, `add_model`,
+   `use_compact_percent`); the real gaps are small: starting in two stages (`preview`, then `start`), taking a
+   session lock back, the model's plan (`tasks`), and writing the self-compaction default to the config file. Each is
+   decided one by one, general (into the SDK) or the terminal's own (stays in `app/`), because whatever enters the
+   SDK is a promise. `pets`, `themes`, `presenters`, `plugin_rows`, `plugin_commands` and the `Transcript` stay the
+   terminal's.
 3. **Seal.** `app` reaches the engine only through the SDK; a layer rule in `test_structure` says so.

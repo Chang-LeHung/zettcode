@@ -3,6 +3,9 @@
 Kept apart from :mod:`zettcode.sdk.events` on purpose: the event classes are plain dataclasses a program imports to
 match on, and importing them must not load the agent. This module reads ``AgentEvent`` and the application's own
 custom events, so it imports both, and is itself imported only when a run starts.
+
+It is also what a front end that drives the agent's own event stream (the terminal does) reads them through, so that
+there is one translation: :func:`translate` for the events, :class:`AgentBridge` for the answers the events wait on.
 """
 
 from __future__ import annotations
@@ -56,7 +59,23 @@ from .types import (
     WorkspaceUsage,
 )
 
-__all__ = ["checks_from", "ledger_from", "stats_from", "translate", "usage_from"]
+__all__ = ["AgentBridge", "checks_from", "ledger_from", "stats_from", "translate", "usage_from"]
+
+
+class AgentBridge:
+    """Carry the program's answers to the suspended agent, through the application's own agent."""
+
+    def __init__(self, agent: ZettCodeAgent) -> None:
+        self._agent = agent
+
+    def approve(self, session_id: str, call_id: str, approve: bool, remember: bool) -> None:
+        self._agent.respond_approval(session_id, call_id, "execute" if approve else "abort", remember)
+
+    def answer(self, question: AskUserQuestion, text: str | None) -> None:
+        if text is None:
+            self._agent.decline_ask(question)
+        else:
+            self._agent.answer_ask(question, text)
 
 
 def usage_from(snapshot: UsageSnapshot) -> Usage:
@@ -99,6 +118,8 @@ def _optional_int(value: object) -> int | None:
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from ..doctor import Probe
+    from ..engine.agent import ZettCodeAgent
+    from ..engine.dialogue.ask import AskUserQuestion
 
 
 def totals_from(tally: Tally) -> Totals:
