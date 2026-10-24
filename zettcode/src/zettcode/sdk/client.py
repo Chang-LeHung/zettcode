@@ -52,7 +52,6 @@ from .types import (
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only; the agent is imported when a client is made
     from ..app.agent.agent import ZettCodeAgent
-    from ..app.agent.conversation.transcript import Transcript
     from ..broker.client import Delivered, Receipt
     from ..config import ModelConfig, ZettCodeConfig
     from ..engine.dialogue.ask import AskUserQuestion
@@ -537,20 +536,13 @@ class Client:
             handle = self._handles[session_id] = Session(self, session_id)
         return handle
 
-    def _transcript(self) -> Transcript:
-        """Return an empty transcript shaped like the terminal's, which reading a stored session replays into."""
-        from ..app.agent.conversation.transcript import Transcript
-
-        return Transcript(presenters=self._agent.presenters, max_entries=self.config.transcript_max_entries)
-
     def _resume_now(self, session_id: str) -> None:
         """Continue a stored session at construction, where nothing else can be running."""
-        transcript = self._transcript()
         try:
-            stored = self._agent.load_session(session_id, transcript)
+            stored = self._agent.load_session(session_id)
         except (ValueError, OSError) as error:
             raise SessionNotFoundError(f"Cannot open session {session_id!r}: {error}") from error
-        self._agent.install_session(stored, transcript)
+        self._agent.install_session(stored)
 
     async def _switch_to(self, session_id: str, by: RunStream | None = None) -> None:
         """Make ``session_id`` the conversation the agent works on, reading it from the store if it is stored.
@@ -563,15 +555,14 @@ class Client:
                 return
             if self._stream is not None and self._stream is not by:
                 self._check_free()
-            transcript = self._transcript()
             try:
-                stored = await asyncio.to_thread(self._agent.load_session, session_id, transcript)
+                stored = await asyncio.to_thread(self._agent.load_session, session_id)
             except (ValueError, OSError) as error:
                 if session_id not in self._fresh:
                     raise SessionNotFoundError(f"Cannot open session {session_id!r}: {error}") from error
                 self._agent.use_session(session_id)  # started here and never written: there is nothing to read
                 return
-            self._agent.install_session(stored, transcript)
+            self._agent.install_session(stored)
 
     # -- what to run on --
     @property

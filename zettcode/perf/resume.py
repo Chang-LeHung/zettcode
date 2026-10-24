@@ -37,7 +37,6 @@ from zett_agent.messages import AssistantMessage, ToolCall, ToolMessage, UserMes
 from zettcode.app import TranscriptSource
 from zettcode.app.agent.agent import ZettCodeAgent
 from zettcode.app.agent.conversation.replay import replay
-from zettcode.app.agent.conversation.transcript import Transcript
 from zettcode.cli import session_exists
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine.storage import SessionStore
@@ -155,7 +154,7 @@ def stages(config: ZettCodeConfig, session_id: str, *, runs: int) -> list[tuple[
         agent = ZettCodeAgent.preview(config)
         agent.runtime.persistence.read(session_id)  # parse once; what follows is the rest of restoring
         start = perf_counter()
-        agent.restore_session(session_id, Transcript())
+        agent.restore_session(session_id)
         record("restore_session minus the parse", start)
     return [(name, median_ms(values)) for name, values in samples.items()]
 

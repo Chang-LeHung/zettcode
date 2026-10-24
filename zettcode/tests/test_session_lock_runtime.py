@@ -217,13 +217,14 @@ async def test_the_background_title_is_never_asked_for_a_session_that_is_not_our
 
 @pytest.mark.asyncio
 async def test_reading_the_locked_session_is_allowed_and_it_is_the_whole_conversation(locked_agent, tmp_path):
-    from zettcode.app.agent.conversation.transcript import Transcript
+    from zettcode.app.agent.conversation.replay import replay
 
     locked, _ = locked_agent
 
-    stored = locked.load_session(locked.session_id, Transcript())
+    stored = locked.load_session(locked.session_id)
+    replayed = replay(stored.session)
 
-    assert [entry.text for entry in stored.replayed.transcript.entries if getattr(entry, "text", "")][:2] == [
+    assert [entry.text for entry in replayed.transcript.entries if getattr(entry, "text", "")][:2] == [
         "hello",
         "hi there",
     ]

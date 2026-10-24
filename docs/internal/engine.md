@@ -57,6 +57,40 @@ fill directly. The engine half goes to `engine/`; the TUI projects engine events
 Open: `engine/core.py` imports `zettcode.plugins`, and the built-in plugins import the terminal's views. The direct
 rule (`test_layers_only_import_downwards`) holds, the indirect one does not yet.
 
+## Splitting `ZettCodeAgent` (proposal, not started)
+
+The mixins in `app/agent/agent/` are mostly the engine already; three seams tie them to the terminal.
+
+| Part | Goes | Why |
+| --- | --- | --- |
+| `base`, `turns`, `interaction`, `context`, `settings` (models, effort, permission, harness, self-compaction), `exports`, `prompt` | `engine/agent/` | no terminal types in them |
+| `settings.remember_theme`, `remember_pet`, `remember_pet_position`, `remember_statusline`, `reduced_motion` | terminal (`app/agent`) | they persist terminal preferences |
+| `commands.py` (`/new`, `/export`, themes, pets, `Presenters`, status-line commands) | terminal | slash commands and views |
+| `sessions.load_session` / `install_session` | split | see below |
+
+**Sessions.** Today `load_session(session_id, transcript)` replays a stored session into the terminal's `Transcript`
+and `install_session` also fills it; the SDK builds an empty `Transcript` only to call them. After the split:
+
+- `engine.load_session(session_id)` reads the store and returns `StoredSession(session, title, model, usage)`; the
+  usage totals come from the stored lines, without decoding a message (what `replay` already does for old lines).
+- `engine.install_session(stored)` does the engine half: active session, usage seed, model, context report.
+- The terminal calls `replay(stored.session, …)` itself, on the same worker thread, and fills its `Transcript`.
+- The SDK no longer builds a `Transcript` at all, and `sdk` stops importing `app.agent.conversation`.
+
+**Plugins.** `engine/core.py` imports `zettcode.plugins`, and the built-in plugins import terminal views (usage page,
+sessions page, presenters). The engine cannot be free of `app` until `plugins/` is cut in two: the host, services
+and the agent-side plugins (`builtin_agent`: extensions) belong to the engine; the commands, status-line parts and
+UI rows (`builtin_commands`, `builtins`) stay with the terminal. A plugin that provides both is registered by the
+terminal on top of the engine's. This changes where third-party plugins import from, so it needs your decision
+before it starts.
+
+**Events.** `TranscriptProjector` and the SDK's `_translate` both read `zett_agent` events. After the split the
+engine emits one event vocabulary (today's `sdk.events`, moved to `engine/events.py`), `_translate` becomes the
+engine's, and the projector consumes those events.
+
+Order, each its own pull request: (a) sessions and the SDK's `Transcript`; (b) move the agent mixins and send the
+terminal's parts back; (c) events; (d) plugins; (e) the indirect-import rule in `test_structure`.
+
 ## Steps (one pull request each, `make check` green)
 
 1. **Name.** `ZettCodeRuntime` → `ZettCodeEngine`; `zettcode.engine` facade; invariants for the layering below.

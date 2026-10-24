@@ -12,15 +12,18 @@ cache reads and writes, and ``output_tokens`` already contains reasoning.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from time import monotonic
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from zett_agent.agent import AgentRunContext
 from zett_agent.events import AgentEvent, AgentEventType
 from zett_agent.extensions.base import AgentExtension
 from zett_agent.model import ModelRequest, ModelResponse, ModelUsage
+
+if TYPE_CHECKING:  # pragma: no cover - annotations only
+    from ..storage import MessageLine
 
 #: Custom event name for one cumulative usage update; its payload is
 #: :meth:`UsageSnapshot.to_payload`.
@@ -123,6 +126,18 @@ class UsageSnapshot:
             requests=count("requests"),
             context_tokens=count("context_tokens"),
         )
+
+
+def session_usage(lines: Sequence[MessageLine]) -> UsageSnapshot:
+    """Return the totals a stored branch adds up to: what every recorded reply used, oldest first.
+
+    Needs no message decoded, which is why reading a long session for its totals is cheap.
+    """
+    usage = UsageSnapshot()
+    for line in lines:
+        if line.usage is not None:
+            usage = usage.with_usage(line.usage, line.timing.duration_ns / 1_000_000_000)
+    return usage
 
 
 class UsageExtension(AgentExtension):

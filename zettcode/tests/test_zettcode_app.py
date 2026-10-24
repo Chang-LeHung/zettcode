@@ -4971,9 +4971,9 @@ async def test_resuming_from_the_panel_reads_the_session_off_the_event_loop(tmp_
     seen: list[int] = []
     real = app.agent.load_session
 
-    def spy(session_id, transcript):
+    def spy(session_id):
         seen.append(threading.get_ident())
-        return real(session_id, transcript)
+        return real(session_id)
 
     app.agent.load_session = spy
     harness = _harness(app)
@@ -5000,9 +5000,9 @@ async def test_the_loop_keeps_turning_while_a_session_is_being_loaded(tmp_path):
     release = threading.Event()
     real = app.agent.load_session
 
-    def slow(session_id, transcript):
+    def slow(session_id):
         release.wait(5.0)
-        return real(session_id, transcript)
+        return real(session_id)
 
     app.agent.load_session = slow
     harness = _harness(app)
@@ -5037,7 +5037,7 @@ async def test_nothing_can_be_submitted_while_a_session_is_loading(tmp_path):
     app = await _seeded_app(tmp_path)
     release = threading.Event()
     real = app.agent.load_session
-    app.agent.load_session = lambda session_id, transcript: (release.wait(5.0), real(session_id, transcript))[1]
+    app.agent.load_session = lambda session_id: (release.wait(5.0), real(session_id))[1]
     harness = _harness(app)
     harness.write("/resume")
     harness.press("enter")
@@ -5074,7 +5074,7 @@ async def test_cancelling_a_resume_installs_nothing(tmp_path):
     app = await _seeded_app(tmp_path)
     release = threading.Event()
     real = app.agent.load_session
-    app.agent.load_session = lambda session_id, transcript: (release.wait(5.0), real(session_id, transcript))[1]
+    app.agent.load_session = lambda session_id: (release.wait(5.0), real(session_id))[1]
     before = [entry.id for entry in app.transcript.entries]
     app.select_session("previous")
     await asyncio.sleep(0.01)
@@ -5125,10 +5125,10 @@ async def test_a_second_pick_while_one_is_loading_does_not_start_another(tmp_pat
     loads: list[str] = []
     real = app.agent.load_session
 
-    def slow(session_id, transcript):
+    def slow(session_id):
         loads.append(session_id)
         release.wait(5.0)
-        return real(session_id, transcript)
+        return real(session_id)
 
     app.agent.load_session = slow
     app.select_session("previous")

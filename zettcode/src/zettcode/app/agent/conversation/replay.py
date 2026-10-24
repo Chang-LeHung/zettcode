@@ -20,7 +20,7 @@ from zett_agent.messages import AnyMessage, AssistantMessage, SystemMessage, Too
 from zettcode.config import DEFAULT_TRANSCRIPT_MAX_ENTRIES
 from zettcode.engine.dialogue.ask import declined_answer
 from zettcode.engine.dialogue.side import is_side_line
-from zettcode.engine.extensions.usage import UsageSnapshot
+from zettcode.engine.extensions.usage import UsageSnapshot, session_usage
 from zettcode.engine.relay import relay_of
 from zettcode.engine.storage import MessageLine, Session
 
@@ -131,19 +131,11 @@ def replay(
     start = window_start(lines, max_entries)
     transcript = Transcript(renderers=renderers, presenters=presenters, max_entries=max_entries)
     transcript.frame = frame
-    usage = UsageSnapshot()
-    for line in lines[:start]:
-        if line.usage is not None:
-            usage = usage.with_usage(line.usage, line.timing.duration_ns / 1_000_000_000)
     for line in lines[start:]:
         # A side question is shown again — the reader saw it, so restoring the
         # session restores the transcript they were looking at — while staying
         # out of ``history``, which is what the next request would carry.
         side = is_side_line(line)
-        if line.usage is not None:
-            # Assistant lines are the ones that consumed a model response; their
-            # duration is the generation time the rate divides by.
-            usage = usage.with_usage(line.usage, line.timing.duration_ns / 1_000_000_000)
         message = line.message[0]
         match message:
             case UserMessage():
@@ -194,4 +186,4 @@ def replay(
             case _:
                 continue
     transcript.finish_restored_tools()
-    return Replayed(transcript=transcript, usage=usage, lines=lines)
+    return Replayed(transcript=transcript, usage=session_usage(lines), lines=lines)
