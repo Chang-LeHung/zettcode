@@ -14,14 +14,14 @@ import pytest
 from plugin_helpers import runtime_inputs
 from zettcode._compat import tomllib
 from zettcode.app.agent.agent import TerminalAgent
+from zettcode.app.plugins import TerminalContainer, TerminalPlugin, load_terminal_plugins
 from zettcode.app.ui import ZettCodeApp
 from zettcode.app.ui.widgets import FormPage, InputPage, ModelSettingsPage
 from zettcode.app.ui.widgets.input_page import MASK
 from zettcode.config import load_config
 from zettcode.config_edit import ConfigEditError
 from zettcode.engine import core as runtime_module
-from zettcode.engine.core import ZettCodeEngine
-from zettcode.plugins import AGENT_PLUGINS, Plugin, PluginContainer, load_plugins
+from zettcode.engine.plugins import AGENT_PLUGINS
 from zettcode.providers import BUILTIN_PROVIDERS, Api, Provider
 from zettcode.tui import ListPage, walk
 from zettcode.tui.testing import Harness
@@ -144,7 +144,7 @@ def shell(tmp_path, monkeypatch):
             mcp_enabled=False,
             **overrides,
         )
-        app = ZettCodeApp(TerminalAgent(ZettCodeEngine.preview(config)))
+        app = ZettCodeApp(TerminalAgent.preview(config))
         app.app.resize(110, 30)
         app.app.mount()
         return Fixture(app, path, Harness(app=app.app))
@@ -618,7 +618,7 @@ async def test_every_row_of_the_provider_picker_says_what_it_speaks_in_the_same_
 async def test_a_plugin_provider_with_no_note_is_shown_by_its_protocol_and_not_by_its_address(shell):
     fx = shell()
     runtime = fx.app.agent.runtime
-    runtime.plugins = load_plugins(
+    runtime.plugins = load_terminal_plugins(
         replace(runtime.config, plugins_enabled=True),
         builtins=(),
         entry_points=[FakePoint("bare", Bare)],
@@ -662,7 +662,7 @@ async def test_the_form_after_the_provider_is_worded_alike(shell):
 async def test_a_provider_with_suggested_models_gives_them_as_an_example(shell):
     fx = shell()
     runtime = fx.app.agent.runtime
-    runtime.plugins = load_plugins(
+    runtime.plugins = load_terminal_plugins(
         replace(runtime.config, plugins_enabled=True), builtins=(), entry_points=[FakePoint("bare", Suggests)]
     )
     await fx.command("/config add suggests")
@@ -1199,26 +1199,26 @@ def test_editing_a_model_that_is_not_there_is_an_error_not_a_crash(shell):
 # -- plugins can describe providers --------------------------------------------------------------------------
 
 
-class Acme(Plugin):
+class Acme(TerminalPlugin):
     name = "acme"
 
-    def activate(self, container: PluginContainer) -> None:
+    def activate(self, container: TerminalContainer) -> None:
         container.register_provider(
             Provider("acme", "Acme AI", base_url="https://api.acme.example/v1", note="from the acme plugin")
         )
 
 
-class Bare(Plugin):
+class Bare(TerminalPlugin):
     name = "bare"
 
-    def activate(self, container: PluginContainer) -> None:
+    def activate(self, container: TerminalContainer) -> None:
         container.register_provider(Provider("bare", "Bare AI", api=Api.RESPONSES, base_url="https://bare.example/v1"))
 
 
-class Suggests(Plugin):
+class Suggests(TerminalPlugin):
     name = "suggests"
 
-    def activate(self, container: PluginContainer) -> None:
+    def activate(self, container: TerminalContainer) -> None:
         container.register_provider(
             Provider("suggests", "Suggests AI", base_url="https://s.example/v1", models=("one", "two", "three", "four"))
         )
@@ -1235,7 +1235,7 @@ class FakePoint:
 def test_a_plugin_provider_is_offered_by_the_agent_after_the_builtins(shell):
     fx = shell()
     runtime = fx.app.agent.runtime
-    runtime.plugins = load_plugins(
+    runtime.plugins = load_terminal_plugins(
         replace(runtime.config, plugins_enabled=True), builtins=(), entry_points=[FakePoint("acme", Acme)]
     )
 
@@ -1247,7 +1247,7 @@ def test_a_plugin_provider_is_offered_by_the_agent_after_the_builtins(shell):
 async def test_a_plugin_provider_works_with_config_add(shell):
     fx = shell()
     runtime = fx.app.agent.runtime
-    runtime.plugins = load_plugins(
+    runtime.plugins = load_terminal_plugins(
         replace(runtime.config, plugins_enabled=True),
         builtins=AGENT_PLUGINS,
         entry_points=[FakePoint("acme", Acme)],
@@ -1266,7 +1266,7 @@ async def test_a_plugin_provider_works_with_config_add(shell):
 async def test_a_plugin_provider_is_a_row_in_the_panel(shell):
     fx = shell()
     runtime = fx.app.agent.runtime
-    runtime.plugins = load_plugins(
+    runtime.plugins = load_terminal_plugins(
         replace(runtime.config, plugins_enabled=True), builtins=(), entry_points=[FakePoint("acme", Acme)]
     )
     await fx.command("/config")

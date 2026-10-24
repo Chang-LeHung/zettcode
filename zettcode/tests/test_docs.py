@@ -17,9 +17,9 @@ from zettcode.app.agent.conversation.entries import TextEntry
 from zettcode.app.agent.conversation.presenters import WelcomePresenter
 from zettcode.app.brand import LOGO_LINES, LOGO_PALETTE, LOGO_PIXELS
 from zettcode.app.commands import CommandContext, CommandUi
+from zettcode.app.plugins import TerminalContainer
 from zettcode.app.ui.widgets.welcome import WELCOME
 from zettcode.config import ModelConfig, ZettCodeConfig, load_config
-from zettcode.plugins import PluginContainer
 from zettcode.tui import DARK, Canvas, Style
 from zettcode.tui.theme_file import theme_from_toml
 
@@ -121,7 +121,7 @@ async def test_documented_plugin_registers_and_runs_its_command(path, tmp_path):
         store=tmp_path / "sessions",
         models=(ModelConfig(model="example-model", token="example-key"),),
     )
-    container = PluginContainer(config)
+    container = TerminalContainer(config)
     plugin = namespace["Greeter"]()
     plugin.activate(container)
     assert [command.name for command in container.commands] == ["/greet"]
@@ -140,7 +140,7 @@ async def test_documented_plugin_registers_and_runs_its_command(path, tmp_path):
     assert result.message == "## Hello\n\nWelcome, Ada."
 
     # The provider example is run as written: what the page says a plugin can describe is what loads.
-    described = PluginContainer(config)
+    described = TerminalContainer(config)
     namespace["Acme"]().activate(described)
     (provider,) = described.providers
     assert (provider.name, provider.label, provider.api) == ("acme", "Acme AI", "chat")
@@ -151,7 +151,7 @@ async def test_documented_plugin_registers_and_runs_its_command(path, tmp_path):
         name = "audit"
 
     namespace["AuditExtension"] = AuditExtension
-    handed = PluginContainer(config)
+    handed = TerminalContainer(config)
     namespace["Audit"]().activate(handed)
     assert [type(contribution.extension) for contribution in handed.extensions] == [AuditExtension]
 

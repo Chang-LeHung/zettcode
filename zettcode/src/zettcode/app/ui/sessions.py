@@ -12,9 +12,9 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from zettcode.app.plugins.state import Activity
 from zettcode.collector import collector_paused
 from zettcode.engine.agent.sessions import StoredSession
-from zettcode.plugins.state import Activity
 from zettcode.tui import ELLIPSIS, SEPARATOR, Theme
 
 from ..agent.conversation.presenters import block_for

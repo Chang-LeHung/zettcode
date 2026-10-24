@@ -109,7 +109,7 @@ def shell(tmp_path: Path, monkeypatch):
             tips=False,
             statusline_hidden=("pet",),
         )
-        app = ZettCodeApp(TerminalAgent(runtime_module.ZettCodeEngine.preview(config)))
+        app = ZettCodeApp(TerminalAgent.preview(config))
         app.app.resize(110, 30)
         app.app.mount()
         return app, Harness(app=app.app)

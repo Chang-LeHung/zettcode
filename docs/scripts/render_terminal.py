@@ -16,12 +16,12 @@ from pathlib import Path
 
 from zettcode.app.agent.agent import TerminalAgent
 from zettcode.app.brand import LOGO_PALETTE, LOGO_PIXELS
+from zettcode.app.plugins.builtins import BUILTIN_PLUGINS, ShellRows
+from zettcode.app.plugins.loader import load_terminal_plugins, terminal_plugins
+from zettcode.app.plugins.state import ShellContext
 from zettcode.app.ui.app import ZettCodeApp
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine.core import ZettCodeEngine
-from zettcode.plugins.builtins import BUILTIN_PLUGINS, ShellRows
-from zettcode.plugins.loader import load_plugins
-from zettcode.plugins.state import ShellContext
 from zettcode.tui import DARK, HEADER, Canvas
 
 
@@ -61,8 +61,8 @@ def preview() -> Canvas:
                 skills_enabled=False,
                 mcp_enabled=False,
             )
-            runtime = ZettCodeEngine.preview(config)
-            runtime.plugins = load_plugins(config, builtins=preview_plugins())
+            runtime = ZettCodeEngine.preview(config, terminal_plugins)
+            runtime.plugins = load_terminal_plugins(config, builtins=preview_plugins())
             app = ZettCodeApp(TerminalAgent(runtime), theme=replace(DARK, background="#232a2e"))
             clock = [0.0]
             app.transcript.clock = lambda: clock[0]

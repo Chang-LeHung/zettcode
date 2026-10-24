@@ -6,9 +6,9 @@ import asyncio
 
 from test_zettcode_app import FakeConfig, _harness, build_app, rows_and_commands
 from zettcode.app.commands import Command, CommandContext, CommandResult, Subcommand
+from zettcode.app.plugins import TerminalContainer
 from zettcode.app.ui import ZettCodeApp
 from zettcode.app.ui.widgets.completer import CommandCompleter
-from zettcode.plugins import PluginContainer
 
 
 async def nothing(context: CommandContext) -> CommandResult:
@@ -70,7 +70,7 @@ def test_the_commands_are_still_offered_by_their_first_word():
 
 
 def test_a_plugin_registers_the_words_with_its_command():
-    container = PluginContainer(FakeConfig())
+    container = TerminalContainer(FakeConfig())
 
     command = container.register_command("deploy", "ship it", nothing, subcommands=["staging", "prod"])
 

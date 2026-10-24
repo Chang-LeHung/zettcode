@@ -54,6 +54,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
     import asyncio
     from collections.abc import Sequence
 
+    from zettcode.app.plugins.state import Activity, UiRow
     from zettcode.config import ModelConfig
     from zettcode.engine.agent.prompt import PromptPart
     from zettcode.engine.dialogue.ask import AskUserQuestion
@@ -61,7 +62,6 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
     from zettcode.engine.extensions.usage import UsageSnapshot
     from zettcode.engine.messenger import Messenger
     from zettcode.engine.relay import Relayed
-    from zettcode.plugins import Activity, UiRow
     from zettcode.tui import CompletionPopup, StatusBar, Theme, TuiApp
     from zettcode.update import UpdateState
 

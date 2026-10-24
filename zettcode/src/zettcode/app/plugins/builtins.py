@@ -12,23 +12,23 @@ from __future__ import annotations
 
 import asyncio
 
-from ..app.agent.conversation.presenters import BUILTIN_PRESENTERS
-from ..app.agent.conversation.pulse import activity_glyph
-from ..app.commands import CommandContext, CommandResult
-from ..app.pets import bundled_pets
-from ..app.ui import labels
-from ..app.ui.widgets import UsagePage
-from ..engine.dialogue.mentions import FileMentions, SkillMentions
-from ..engine.storage.ledger import LedgerReader
-from ..statusline import Row, context_share, usage_parts
-from ..tui import STATUS, bundled_themes
+from zettcode.app.agent.conversation.presenters import BUILTIN_PRESENTERS
+from zettcode.app.agent.conversation.pulse import activity_glyph
+from zettcode.app.commands import CommandContext, CommandResult
+from zettcode.app.pets import bundled_pets
+from zettcode.app.ui import labels
+from zettcode.app.ui.widgets import UsagePage
+from zettcode.engine.storage.ledger import LedgerReader
+from zettcode.statusline import Row, context_share, usage_parts
+from zettcode.tui import STATUS, bundled_themes
+
 from .builtin_commands import BashCommand, HelpCommand, ModelCommands, SessionCommands, ShellControl, SideQuestion
-from .container import PluginContainer
-from .plugin import Plugin
+from .container import TerminalContainer
+from .plugin import TerminalPlugin
 from .state import ShellContext
 
 
-class ShellRows(Plugin):
+class ShellRows(TerminalPlugin):
     """The header and status rows a reader expects out of the box."""
 
     name = "shell"
@@ -59,38 +59,7 @@ class ShellRows(Plugin):
         return labels.status_right()
 
 
-class SkillResources(Plugin):
-    """The builtin ``@`` resource provider: the skills on this machine.
-
-    Registering it here rather than inside the shell keeps the shell generic: it
-    merges whatever providers the bundle holds, and the skills are simply the
-    one the repository ships.
-    """
-
-    name = "skills"
-
-    def activate(self, container: PluginContainer) -> None:
-        """Offer the discovered skills as ``@`` resources, when skills are on."""
-        if container.config.skills_enabled:
-            container.register_mention(SkillMentions(container.config))
-
-
-class FileResources(Plugin):
-    """The ``@`` resource provider for the workspace's own files.
-
-    Registered after the skills, so a name both could offer is the skill: a
-    repository holds a file called ``test`` and a skill is the more specific
-    thing to mean. Nothing turns this off, because a workspace always has files.
-    """
-
-    name = "files"
-
-    def activate(self, container: PluginContainer) -> None:
-        """Offer the workspace's files as ``@`` resources."""
-        container.register_mention(FileMentions(container.config.workspace))
-
-
-class UsageCommand(Plugin):
+class UsageCommand(TerminalPlugin):
     """``/usage``: what this workspace's sessions have spent, by model, session and day.
 
     The numbers are read back from the stored conversations, so the page covers every
@@ -100,7 +69,7 @@ class UsageCommand(Plugin):
 
     name = "usage"
 
-    def activate(self, container: PluginContainer) -> None:
+    def activate(self, container: TerminalContainer) -> None:
         """Register ``/usage`` and keep one reader, so a second look re-reads only what changed."""
         config = container.config
         readers: list[LedgerReader] = []
@@ -117,7 +86,7 @@ class UsageCommand(Plugin):
         container.register_command("usage", "Token use by model, by session and by day", show, when_busy="now")
 
 
-class BuiltinThemes(Plugin):
+class BuiltinThemes(TerminalPlugin):
     """The palettes that ship with the program, offered the way any plugin offers one.
 
     They are TOML files beside the theme loader, so adding a built-in palette is adding a file and a name to
@@ -127,13 +96,13 @@ class BuiltinThemes(Plugin):
 
     name = "themes"
 
-    def activate(self, container: PluginContainer) -> None:
+    def activate(self, container: TerminalContainer) -> None:
         """Offer each palette file by name. Nothing is read until one is asked for."""
         for source in bundled_themes():
             container.register_theme(source.name, source.load, description=source.description)
 
 
-class BuiltinPets(Plugin):
+class BuiltinPets(TerminalPlugin):
     """The pets that ship with the program, offered the way any plugin offers one.
 
     They are registered first, so they are listed first in the ``/pet`` menu, and a plugin cannot register a name
@@ -143,13 +112,13 @@ class BuiltinPets(Plugin):
 
     name = "pets"
 
-    def activate(self, container: PluginContainer) -> None:
+    def activate(self, container: TerminalContainer) -> None:
         """Offer each pet by name. Nothing is built until one is asked for."""
         for source in bundled_pets():
             container.register_pet(source.name, source.load, description=source.description)
 
 
-class BuiltinPresenters(Plugin):
+class BuiltinPresenters(TerminalPlugin):
     """How the program draws its own rows, offered the way any plugin offers a presenter.
 
     They register first, at the class's own priority, which is the lowest there is, so a plugin that
@@ -160,18 +129,16 @@ class BuiltinPresenters(Plugin):
 
     name = "presenters"
 
-    def activate(self, container: PluginContainer) -> None:
+    def activate(self, container: TerminalContainer) -> None:
         """Register every built-in presenter at the priority its class declares."""
         for presenter in BUILTIN_PRESENTERS:
             container.register_presenter(presenter)
 
 
 #: Plugins loaded from the repository itself, never from a distribution. The agent-side ones, which build on
-#: state the runtime hands over, are :data:`~zettcode.plugins.builtin_agent.AGENT_PLUGINS`.
-BUILTIN_PLUGINS: tuple[Plugin, ...] = (
+#: state the runtime hands over, are :data:`~zettcode.engine.plugins.builtin_agent.AGENT_PLUGINS`.
+BUILTIN_PLUGINS: tuple[TerminalPlugin, ...] = (
     ShellRows(),
-    SkillResources(),
-    FileResources(),
     # The commands that act on the application, in the order ``/help`` lists them.
     HelpCommand(),
     SessionCommands(),

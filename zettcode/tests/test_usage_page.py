@@ -11,13 +11,13 @@ from zett_agent.messages import AssistantMessage, UserMessage
 from zett_agent.model import ModelUsage
 
 from zettcode.app.commands import CommandContext
+from zettcode.app.plugins import TerminalContainer
+from zettcode.app.plugins.builtins import BUILTIN_PLUGINS, UsageCommand
 from zettcode.app.ui.widgets import UsagePage
 from zettcode.app.ui.widgets import usage_charts as charts
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine.storage import SessionStore
 from zettcode.engine.storage.ledger import Ledger, LedgerReader, SessionUsage, Tally
-from zettcode.plugins import PluginContainer
-from zettcode.plugins.builtins import BUILTIN_PLUGINS, UsageCommand
 from zettcode.tui import DARK, LIGHT, TuiApp
 from zettcode.tui.core.events import MouseAction, MouseEvent
 from zettcode.tui.render import blend, parse_hex
@@ -424,14 +424,14 @@ def command_over(tmp_path: Path):
         skills_enabled=False,
         mcp_enabled=False,
     )
-    container = PluginContainer(config)
+    container = TerminalContainer(config)
     UsageCommand().activate(container)
     return config, container.commands[0]
 
 
 def test_usage_is_one_of_the_builtin_plugins_and_a_command_that_may_run_beside_a_request(tmp_path: Path):
     assert any(isinstance(plugin, UsageCommand) for plugin in BUILTIN_PLUGINS)
-    container = PluginContainer(ZettCodeConfig(workspace=tmp_path, models=(ModelConfig(model="m", token="t"),)))
+    container = TerminalContainer(ZettCodeConfig(workspace=tmp_path, models=(ModelConfig(model="m", token="t"),)))
     UsageCommand().activate(container)
 
     (command,) = container.commands

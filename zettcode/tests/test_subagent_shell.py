@@ -37,9 +37,9 @@ from zettcode.engine.extensions.usage import UsageExtension
 from zettcode.engine.permission import DENIED_MESSAGE, Permission, ShellDenyExtension, ShellPolicy
 from zettcode.engine.permission.approval import ShellApprovalMemory
 from zettcode.engine.permission.sandbox import ShellSandbox
+from zettcode.engine.plugins.builtin_agent import _shared_with_children
 from zettcode.engine.storage import SessionStore
 from zettcode.engine.tools.boundary import Sandboxer
-from zettcode.plugins.builtin_agent import _shared_with_children
 
 
 class _Scripted:

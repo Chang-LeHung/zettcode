@@ -1,46 +1,48 @@
 """The plugin base class and the bundle of what the loaded plugins produced.
 
 :class:`Plugin` is what an author subclasses: identity, one activation hook, and
-the composed hook groups from :mod:`zettcode.plugins.mixins`.
-:class:`Plugins` is the other direction — the host extension, commands, and
-segments the loader hands the application, plus whatever failed to load.
+the composed hook groups from :mod:`zettcode.engine.plugins.mixins`.
+:class:`Plugins` is the other direction — the host extension, services, and
+providers the loader hands the application, plus whatever failed to load.
+
+A plugin is generic over the container it is activated with: the engine's own plugins take a
+:class:`~zettcode.engine.plugins.container.PluginContainer`, and the terminal's take its subclass, which also
+registers commands, palettes, pets, presenters and rows.
 """
 
 from __future__ import annotations
 
 from abc import ABC
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, ClassVar, TypeVar
+from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar
 
-from .mixins import PluginAgentMixin, PluginUiMixin
+from .container import PluginContainer
+from .mixins import PluginAgentMixin
 from .services import lookup, require
-from .state import AgentBuild, Contribution, UiRow
+from .state import AgentBuild, Contribution
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay lazy
     from collections.abc import Mapping
 
     from zett_agent.extensions.base import AgentExtension
 
-    from ..app.agent.conversation.presenters import Presenter
-    from ..app.commands import Command
-    from ..app.pets import PetSource
-    from ..engine.dialogue.mentions import MentionProvider
-    from ..providers import Provider
-    from ..tui import ThemeSource
-    from .container import PluginContainer
+    from zettcode.engine.dialogue.mentions import MentionProvider
+    from zettcode.providers import Provider
+
     from .extension import PluginExtension
 
+_C = TypeVar("_C", bound=PluginContainer)
+_T = TypeVar("_T")
 
-class Plugin(PluginAgentMixin, PluginUiMixin, ABC):
+
+class Plugin(PluginAgentMixin, Generic[_C], ABC):
     """Base class for one ZettCode plugin.
 
-    The hooks are grouped into mixins, and :class:`Plugin` composes the two
-    top-level groups: :class:`PluginAgentMixin` for the agent flow and
-    :class:`PluginUiMixin` for the shell's header and status rows. A subclass
-    overrides only the stages it takes part in, and each default does nothing;
-    the finer agent groups (setup, run, turn, model, tool, maintenance, events,
-    middleware) mirror ``zett-agent``'s extension mixins one for one, so an
-    author who knows the extension docs already knows where a hook belongs.
+    The hooks are grouped into mixins, and :class:`Plugin` composes the agent flow group
+    (:class:`PluginAgentMixin`). A subclass overrides only the stages it takes part in, and each default does
+    nothing; the finer agent groups (setup, run, turn, model, tool, maintenance, events, middleware) mirror
+    ``zett-agent``'s extension mixins one for one, so an author who knows the extension docs already knows where a
+    hook belongs.
 
     Attributes:
         name: Unique registration identity. Defaults to the class name; set it
@@ -58,10 +60,10 @@ class Plugin(PluginAgentMixin, PluginUiMixin, ABC):
     description: ClassVar[str] = ""
     priority: ClassVar[int] = 100
 
-    def activate(self, container: PluginContainer) -> None:
+    def activate(self, container: _C) -> None:
         """Run once at startup, before any agent client is built.
 
-        This is the place to register commands and segments, and to read the
+        This is the place to register what the plugin contributes, and to read the
         configuration. It is synchronous on purpose: the shell must know the
         full command list before it paints, and a plugin that needs asynchronous
         setup can do it in the lifecycle hooks, which all run on the agent loop.
@@ -71,62 +73,38 @@ class Plugin(PluginAgentMixin, PluginUiMixin, ABC):
         """
 
 
-_T = TypeVar("_T")
+class AgentPlugin(Plugin[PluginContainer]):
+    """A plugin that contributes only to the agent, which is every plugin the engine ships."""
 
 
 @dataclass(frozen=True, slots=True)
 class Plugins:
-    """Everything the installed plugins contributed, and what failed to load.
+    """Everything the installed plugins contributed to the agent, and what failed to load.
 
     Attributes:
         host: The single extension that drives every loaded plugin; ``None``
             when none loaded. The agent is handed one extension, not one per
             plugin, so plugin-wide behaviour has one place to live.
-        commands: Commands the plugins registered, in load and registration
-            order, each typed ``"plugin"``.
-        builtin_commands: The first of ``commands`` that came from the plugins compiled into the program, in the same
-            order. The shell lists them ahead of its own and puts the rest after everything built in, so an installed
-            plugin can add a command but never shadow one of the program's.
         mentions: ``@`` resource providers the plugins registered, in load and
             registration order; the shell merges them with the builtin skills.
         providers: Model providers the plugins described, in load and registration order; the
             shell offers them in ``/config`` after the built-in ones.
-        themes: Palettes the plugins offered by name, in load and registration order; the built-in plugin's come
-            first. ``/theme`` lists, previews and switches to them, after ``dark`` and ``light``.
-        presenters: How plugins asked for entries to be drawn, in load and registration order; the built-in
-            presenters come first, at the lowest priority, so a plugin's claim on the same rows wins.
         contributed: The ``zett-agent`` extensions the plugins registered through ``register_extension`` and
             ``register_extension_factory``, in load and registration order. :meth:`agent_extensions` turns them
             into the extensions the agent is given, beside the host, so each keeps the priority it declares.
         services: Objects the runtime handed over and the plugins provided, by name; read them with
             :meth:`service` and :meth:`find`.
-        pets: Pets the plugins offered by name, in load and registration order; the built-in plugin's come first.
-            ``/pet`` lists, previews and switches to them.
-        rows: The header and status rows the plugins fill, each with its left
-            and right segments in paint order. The builtin rows are merged in
-            first, so an overridden segment keeps its place.
         failures: One message per plugin that could not be loaded or activated.
             A broken plugin is skipped rather than taking the whole application
             with it; the shell reports these where the user can see them.
     """
 
     host: PluginExtension | None = None
-    commands: tuple[Command, ...] = ()
-    builtin_commands: tuple[Command, ...] = ()
     mentions: tuple[MentionProvider, ...] = ()
     providers: tuple[Provider, ...] = ()
-    themes: tuple[ThemeSource, ...] = ()
-    pets: tuple[PetSource, ...] = ()
-    presenters: tuple[Presenter, ...] = ()
     contributed: tuple[Contribution, ...] = ()
     services: Mapping[str, object] = field(default_factory=dict)
-    rows: tuple[UiRow, ...] = ()
     failures: tuple[str, ...] = ()
-
-    @property
-    def installed_commands(self) -> tuple[Command, ...]:
-        """Return the commands of the installed plugins: ``commands`` without the built-in ones."""
-        return self.commands[len(self.builtin_commands) :]
 
     def find(self, name: str, kind: type[_T]) -> _T | None:
         """Return the service under ``name``, or ``None`` when no loaded plugin provides it.
@@ -158,7 +136,7 @@ class Plugins:
         return tuple(extension for extension in built if extension is not None)
 
     @property
-    def plugins(self) -> tuple[Plugin, ...]:
+    def plugins(self) -> tuple[Plugin[Any], ...]:
         """Return the loaded plugins, in the order the host will call them."""
         return self.host.plugins if self.host is not None else ()
 

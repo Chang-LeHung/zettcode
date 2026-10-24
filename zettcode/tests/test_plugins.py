@@ -7,36 +7,39 @@ from pathlib import Path
 
 import pytest
 
-from zettcode.app.agent.conversation.entries import EditEntry, ReadEntry, TextEntry
+from zettcode.app.agent.conversation.entries import EditEntry, EntryKind, ReadEntry, TextEntry
+from zettcode.app.agent.conversation.presenters import Presenter
 from zettcode.app.commands import CommandResult
+from zettcode.app.plugins import (
+    BUILTIN_PLUGINS,
+    HOST_LINK,
+    Activity,
+    ActivityState,
+    PluginUiMixin,
+    ShellContext,
+    TerminalContainer,
+    TerminalPlugin,
+    TerminalPlugins,
+    load_terminal_plugins,
+)
+from zettcode.app.plugins.loader import terminal_plugins
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine import core as runtime_module
 from zettcode.engine.extensions.usage import UsageSnapshot
-from zettcode.plugins import (
+from zettcode.engine.plugins import (
     AGENT_PLUGINS,
-    Activity,
-    ActivityState,
-    EntryKind,
-    Plugin,
     PluginAgentMixin,
-    PluginContainer,
     PluginEventMixin,
     PluginExtension,
     PluginMaintenanceMixin,
     PluginMiddlewareMixin,
     PluginModelMixin,
     PluginRunMixin,
-    Plugins,
     PluginSetupMixin,
     PluginToolMixin,
     PluginTurnMixin,
-    PluginUiMixin,
-    Presenter,
-    ShellContext,
-    load_plugins,
 )
-from zettcode.plugins import loader as loader_module
-from zettcode.plugins.services import HOST_LINK
+from zettcode.engine.plugins import loader as loader_module
 from zettcode.providers import Provider
 from zettcode.tui import DARK, Span, Style, TextLine
 
@@ -69,7 +72,7 @@ class FakeEntryPoint:
         return self._target
 
 
-class Greeter(Plugin):
+class Greeter(TerminalPlugin):
     """A plugin with one command and one hook, used across these tests."""
 
     name = "greeter"
@@ -78,7 +81,7 @@ class Greeter(Plugin):
     def __init__(self) -> None:
         self.seen: list[object] = []
 
-    def activate(self, context: PluginContainer) -> None:
+    def activate(self, context: TerminalContainer) -> None:
         context.register_command("greet", "say hello", self.greet)
 
     async def greet(self, argument: str) -> CommandResult:
@@ -98,13 +101,15 @@ def make_config(tmp_path: Path, **overrides: object) -> ZettCodeConfig:
     return replace(config, **overrides) if overrides else config
 
 
-def loaded_names(plugins: Plugins) -> list[str]:
+def loaded_names(plugins: TerminalPlugins) -> list[str]:
     """Return the plugin identities in the order the host will call them."""
     return [plugin.name for plugin in plugins.plugins]
 
 
 async def test_a_class_entry_point_lands_in_the_host_with_its_commands(tmp_path: Path):
-    plugins = load_plugins(make_config(tmp_path), builtins=(), entry_points=[FakeEntryPoint("greeter", Greeter)])
+    plugins = load_terminal_plugins(
+        make_config(tmp_path), builtins=(), entry_points=[FakeEntryPoint("greeter", Greeter)]
+    )
 
     # One host carries every plugin, so the agent sees one extension.
     (host,) = plugins.extensions
@@ -119,13 +124,13 @@ async def test_a_class_entry_point_lands_in_the_host_with_its_commands(tmp_path:
 
 
 async def test_a_factory_or_an_instance_is_accepted(tmp_path: Path):
-    class Factory(Plugin):
+    class Factory(TerminalPlugin):
         name = "factory"
 
-    class Instance(Plugin):
+    class Instance(TerminalPlugin):
         name = "instance"
 
-    plugins = load_plugins(
+    plugins = load_terminal_plugins(
         make_config(tmp_path),
         builtins=(),
         entry_points=[
@@ -138,14 +143,16 @@ async def test_a_factory_or_an_instance_is_accepted(tmp_path: Path):
 
 
 async def test_a_name_falls_back_to_the_entry_point_and_the_slash_is_optional(tmp_path: Path):
-    class Anonymous(Plugin):
-        def activate(self, context: PluginContainer) -> None:
+    class Anonymous(TerminalPlugin):
+        def activate(self, context: TerminalContainer) -> None:
             context.register_command("/alias", "no slash needed", self.noop)
 
         async def noop(self, argument: str) -> CommandResult:
             return CommandResult()
 
-    plugins = load_plugins(make_config(tmp_path), builtins=(), entry_points=[FakeEntryPoint("anon", Anonymous)])
+    plugins = load_terminal_plugins(
+        make_config(tmp_path), builtins=(), entry_points=[FakeEntryPoint("anon", Anonymous)]
+    )
 
     # The entry-point name is unique within the group, so it is the safer default
     # identity when the author did not name the plugin.
@@ -154,21 +161,21 @@ async def test_a_name_falls_back_to_the_entry_point_and_the_slash_is_optional(tm
 
 
 async def test_many_plugins_share_one_host(tmp_path: Path):
-    class Alpha(Plugin):
-        def activate(self, context: PluginContainer) -> None:
+    class Alpha(TerminalPlugin):
+        def activate(self, context: TerminalContainer) -> None:
             context.register_command("alpha", "first", self.noop)
 
         async def noop(self, argument: str) -> CommandResult:
             return CommandResult()
 
-    class Beta(Plugin):
-        def activate(self, context: PluginContainer) -> None:
+    class Beta(TerminalPlugin):
+        def activate(self, context: TerminalContainer) -> None:
             context.register_command("beta", "second", self.noop)
 
         async def noop(self, argument: str) -> CommandResult:
             return CommandResult()
 
-    plugins = load_plugins(
+    plugins = load_terminal_plugins(
         make_config(tmp_path),
         builtins=(),
         entry_points=[FakeEntryPoint("alpha", Alpha), FakeEntryPoint("beta", Beta)],
@@ -184,17 +191,17 @@ async def test_many_plugins_share_one_host(tmp_path: Path):
 async def test_two_plugins_with_the_same_class_name_stay_distinct(tmp_path: Path):
     """Same class shipped by two distributions: the entry-point name tells them apart."""
 
-    class Tool(Plugin):
+    class Tool(TerminalPlugin):
         def __init__(self, command: str) -> None:
             self.command = command
 
-        def activate(self, context: PluginContainer) -> None:
+        def activate(self, context: TerminalContainer) -> None:
             context.register_command(self.command, "do the thing", self.noop)
 
         async def noop(self, argument: str) -> CommandResult:
             return CommandResult()
 
-    plugins = load_plugins(
+    plugins = load_terminal_plugins(
         make_config(tmp_path),
         builtins=(),
         entry_points=[
@@ -211,25 +218,25 @@ async def test_two_plugins_with_the_same_class_name_stay_distinct(tmp_path: Path
 async def test_two_plugins_cannot_claim_the_same_command(tmp_path: Path):
     """Command lookup takes the first match, so the second claim is rejected."""
 
-    class First(Plugin):
+    class First(TerminalPlugin):
         name = "first"
 
-        def activate(self, context: PluginContainer) -> None:
+        def activate(self, context: TerminalContainer) -> None:
             context.register_command("run", "first", self.noop)
 
         async def noop(self, argument: str) -> CommandResult:
             return CommandResult()
 
-    class Second(Plugin):
+    class Second(TerminalPlugin):
         name = "second"
 
-        def activate(self, context: PluginContainer) -> None:
+        def activate(self, context: TerminalContainer) -> None:
             context.register_command("run", "second", self.noop)
 
         async def noop(self, argument: str) -> CommandResult:
             return CommandResult()
 
-    plugins = load_plugins(
+    plugins = load_terminal_plugins(
         make_config(tmp_path),
         builtins=(),
         entry_points=[FakeEntryPoint("first", First), FakeEntryPoint("second", Second)],
@@ -241,26 +248,26 @@ async def test_two_plugins_cannot_claim_the_same_command(tmp_path: Path):
 
 
 async def test_a_plugin_cannot_register_a_blank_or_duplicate_command(tmp_path: Path):
-    class Blank(Plugin):
+    class Blank(TerminalPlugin):
         name = "blank"
 
-        def activate(self, context: PluginContainer) -> None:
+        def activate(self, context: TerminalContainer) -> None:
             context.register_command("", "nothing", self.noop)
 
         async def noop(self, argument: str) -> CommandResult:
             return CommandResult()
 
-    class Twice(Plugin):
+    class Twice(TerminalPlugin):
         name = "twice"
 
-        def activate(self, context: PluginContainer) -> None:
+        def activate(self, context: TerminalContainer) -> None:
             context.register_command("twice", "first", self.noop)
             context.register_command("twice", "second", self.noop)
 
         async def noop(self, argument: str) -> CommandResult:
             return CommandResult()
 
-    plugins = load_plugins(
+    plugins = load_terminal_plugins(
         make_config(tmp_path),
         builtins=(),
         entry_points=[FakeEntryPoint("blank", Blank), FakeEntryPoint("twice", Twice)],
@@ -275,17 +282,17 @@ async def test_a_plugin_cannot_register_a_blank_or_duplicate_command(tmp_path: P
 
 
 async def test_a_plugin_registers_into_the_four_row_slots(tmp_path: Path):
-    class Badge(Plugin):
+    class Badge(TerminalPlugin):
         name = "badge"
 
-        def activate(self, container: PluginContainer) -> None:
+        def activate(self, container: TerminalContainer) -> None:
             container.register_header_left(lambda context: f"h:{context.model.name}", name="app")
             container.register_status_right(self.status, name="tokens")
 
         def status(self, context: ShellContext) -> TextLine:
             return TextLine((Span("s"),))
 
-    plugins = load_plugins(make_config(tmp_path), builtins=(), entry_points=[FakeEntryPoint("badge", Badge)])
+    plugins = load_terminal_plugins(make_config(tmp_path), builtins=(), entry_points=[FakeEntryPoint("badge", Badge)])
 
     rows = {row.region: row for row in plugins.rows}
     assert [segment.name for segment in rows["header"].left] == ["app"]
@@ -296,7 +303,7 @@ async def test_a_plugin_registers_into_the_four_row_slots(tmp_path: Path):
 
 def test_the_plugin_base_composes_the_hook_groups():
     """Plugin is the two top-level groups; each agent group sits under the umbrella."""
-    assert issubclass(Plugin, PluginAgentMixin) and issubclass(Plugin, PluginUiMixin)
+    assert issubclass(TerminalPlugin, PluginAgentMixin) and issubclass(TerminalPlugin, PluginUiMixin)
     for group in (
         PluginSetupMixin,
         PluginRunMixin,
@@ -313,7 +320,7 @@ def test_the_plugin_base_composes_the_hook_groups():
 async def test_overriding_a_builder_fills_that_named_slot(tmp_path: Path):
     """The method name is the slot name, so an override lands where the builtin was."""
 
-    class Declared(Plugin):
+    class Declared(TerminalPlugin):
         name = "declared"
 
         def render_header_left(self, context: ShellContext) -> str:
@@ -322,7 +329,9 @@ async def test_overriding_a_builder_fills_that_named_slot(tmp_path: Path):
         def render_status_right(self, context: ShellContext) -> TextLine:
             return TextLine((Span("s"),))
 
-    plugins = load_plugins(make_config(tmp_path), builtins=(), entry_points=[FakeEntryPoint("declared", Declared)])
+    plugins = load_terminal_plugins(
+        make_config(tmp_path), builtins=(), entry_points=[FakeEntryPoint("declared", Declared)]
+    )
 
     rows = {row.region: row for row in plugins.rows}
     assert [segment.name for segment in rows["header"].left] == ["header_left"]
@@ -333,13 +342,13 @@ async def test_overriding_a_builder_fills_that_named_slot(tmp_path: Path):
 async def test_a_plugin_with_a_plain_status_helper_is_not_captured(tmp_path: Path):
     """Only the documented builder names contribute a segment."""
 
-    class Quiet(Plugin):
+    class Quiet(TerminalPlugin):
         name = "quiet"
 
         def status(self, context: ShellContext) -> str:  # a private helper, not a segment
             return "not a segment"
 
-    plugins = load_plugins(make_config(tmp_path), builtins=(), entry_points=[FakeEntryPoint("quiet", Quiet)])
+    plugins = load_terminal_plugins(make_config(tmp_path), builtins=(), entry_points=[FakeEntryPoint("quiet", Quiet)])
 
     assert all(row.left == () and row.right == () for row in plugins.rows)
 
@@ -348,13 +357,13 @@ async def test_a_plugin_overrides_a_builtin_segment_by_name(tmp_path: Path):
     """Bare ``load_plugins`` merges the builtin rows in first, so a same-named
     registration replaces that segment instead of adding a second one."""
 
-    class Mine(Plugin):
+    class Mine(TerminalPlugin):
         name = "mine"
 
         def render_header_right(self, context: ShellContext) -> str:
             return "mine"
 
-    plugins = load_plugins(make_config(tmp_path), entry_points=[FakeEntryPoint("mine", Mine)])
+    plugins = load_terminal_plugins(make_config(tmp_path), entry_points=[FakeEntryPoint("mine", Mine)])
 
     rows = {row.region: row for row in plugins.rows}
     assert [segment.name for segment in rows["header"].right] == ["header_right"]
@@ -362,16 +371,16 @@ async def test_a_plugin_overrides_a_builtin_segment_by_name(tmp_path: Path):
 
 
 async def test_a_new_segment_appends_after_the_builtin_one(tmp_path: Path):
-    class Branch(Plugin):
+    class Branch(TerminalPlugin):
         name = "branch"
 
-        def activate(self, container: PluginContainer) -> None:
+        def activate(self, container: TerminalContainer) -> None:
             container.register_header_right(self.draw, name="branch")
 
         def draw(self, context: ShellContext) -> str:
             return "main"
 
-    plugins = load_plugins(make_config(tmp_path), entry_points=[FakeEntryPoint("branch", Branch)])
+    plugins = load_terminal_plugins(make_config(tmp_path), entry_points=[FakeEntryPoint("branch", Branch)])
 
     rows = {row.region: row for row in plugins.rows}
     assert [segment.name for segment in rows["header"].right] == ["header_right", "branch"]
@@ -380,10 +389,10 @@ async def test_a_new_segment_appends_after_the_builtin_one(tmp_path: Path):
 async def test_override_clears_the_side_it_names(tmp_path: Path):
     """``override=True`` leaves only the registering plugin's segments there."""
 
-    class Banner(Plugin):
+    class Banner(TerminalPlugin):
         name = "banner"
 
-        def activate(self, container: PluginContainer) -> None:
+        def activate(self, container: TerminalContainer) -> None:
             segment, displaced = container.register_status_left(self.draw, override=True)
             assert displaced is True  # the builtin's status_left was already there
             assert segment.name.startswith("segment-")
@@ -391,7 +400,7 @@ async def test_override_clears_the_side_it_names(tmp_path: Path):
         def draw(self, context: ShellContext) -> str:
             return "banner"
 
-    plugins = load_plugins(make_config(tmp_path), entry_points=[FakeEntryPoint("banner", Banner)])
+    plugins = load_terminal_plugins(make_config(tmp_path), entry_points=[FakeEntryPoint("banner", Banner)])
 
     rows = {row.region: row for row in plugins.rows}
     assert [segment.builder(None) for segment in rows["status"].left] == ["banner"]
@@ -404,7 +413,7 @@ async def test_registering_reports_whether_it_displaced_a_segment(tmp_path: Path
     def draw(context: ShellContext) -> str:
         return "x"
 
-    container = PluginContainer(make_config(tmp_path))
+    container = TerminalContainer(make_config(tmp_path))
     assert container.register_status_left(draw, override=True)[1] is False  # nothing to clear yet
     assert container.register_status_left(draw, name="mine")[1] is False  # a new name appends
     assert container.register_status_left(draw, name="mine")[1] is True  # the same name replaces
@@ -414,26 +423,28 @@ async def test_registering_reports_whether_it_displaced_a_segment(tmp_path: Path
 async def test_disabled_and_switched_off_plugins_are_not_loaded(tmp_path: Path):
     one = FakeEntryPoint("greeter", Greeter)
 
-    def nothing(plugins: Plugins) -> Plugins:
+    def nothing(plugins: TerminalPlugins) -> TerminalPlugins:
         """Return the bundle without the link to the shell, which every load provides and which holds no plugin."""
         assert set(plugins.services) == {HOST_LINK}
         return replace(plugins, services={})
 
     assert (
-        nothing(load_plugins(make_config(tmp_path, plugins_enabled=False), entry_points=[one], builtins=()))
-        == Plugins()
+        nothing(load_terminal_plugins(make_config(tmp_path, plugins_enabled=False), entry_points=[one], builtins=()))
+        == TerminalPlugins()
     )
     assert (
-        nothing(load_plugins(make_config(tmp_path, disabled_plugins=("greeter",)), entry_points=[one], builtins=()))
-        == Plugins()
+        nothing(
+            load_terminal_plugins(make_config(tmp_path, disabled_plugins=("greeter",)), entry_points=[one], builtins=())
+        )
+        == TerminalPlugins()
     )
 
     # The switch only governs distributions: the builtin rows still load.
-    loaded = load_plugins(make_config(tmp_path, plugins_enabled=False), entry_points=[one])
+    loaded = load_terminal_plugins(
+        make_config(tmp_path, plugins_enabled=False), entry_points=[one], builtins=BUILTIN_PLUGINS
+    )
     assert loaded_names(loaded) == [
         "shell",
-        "skills",
-        "files",
         "help-command",
         "session-commands",
         "model-commands",
@@ -450,19 +461,19 @@ async def test_disabled_and_switched_off_plugins_are_not_loaded(tmp_path: Path):
 
 
 async def test_a_broken_plugin_is_reported_and_never_stops_the_others(tmp_path: Path):
-    class Exploding(Plugin):
+    class Exploding(TerminalPlugin):
         name = "exploding"
 
-        def activate(self, context: PluginContainer) -> None:
+        def activate(self, context: TerminalContainer) -> None:
             raise RuntimeError("bad config")
 
     class NotAPlugin:
         pass
 
-    class Working(Plugin):
+    class Working(TerminalPlugin):
         name = "working"
 
-    plugins = load_plugins(
+    plugins = load_terminal_plugins(
         make_config(tmp_path),
         builtins=(),
         entry_points=[
@@ -482,10 +493,10 @@ async def test_a_broken_plugin_is_reported_and_never_stops_the_others(tmp_path: 
 
 
 async def test_a_duplicate_plugin_name_is_rejected(tmp_path: Path):
-    class Copy(Plugin):
+    class Copy(TerminalPlugin):
         name = "greeter"
 
-    plugins = load_plugins(
+    plugins = load_terminal_plugins(
         make_config(tmp_path),
         builtins=(),
         entry_points=[FakeEntryPoint("greeter", Greeter), FakeEntryPoint("copy", Copy)],
@@ -518,7 +529,7 @@ async def test_the_host_forwards_every_hook_to_each_plugin():
 async def test_hooks_fan_out_in_priority_order_and_the_host_rises_with_them():
     calls: list[str] = []
 
-    class Recorder(Plugin):
+    class Recorder(TerminalPlugin):
         def __init__(self, tag: str, priority: int) -> None:
             self.tag = tag
             self.priority = priority
@@ -537,7 +548,7 @@ async def test_every_plugin_sees_an_external_event_even_after_one_accepts():
     """The agent broadcasts to all extensions; one accept must not mute the rest."""
     seen: list[str] = []
 
-    class Listener(Plugin):
+    class Listener(TerminalPlugin):
         def __init__(self, tag: str, answer: bool) -> None:
             self.tag = tag
             self.answer = answer
@@ -555,7 +566,7 @@ async def test_every_plugin_sees_an_external_event_even_after_one_accepts():
 async def test_the_host_nests_the_model_and_tool_middleware():
     order: list[str] = []
 
-    class Wrapper(Plugin):
+    class Wrapper(TerminalPlugin):
         def __init__(self, tag: str, priority: int) -> None:
             self.tag = tag
             self.priority = priority
@@ -595,14 +606,12 @@ async def test_the_runtime_preview_installs_plugin_extensions_and_commands(tmp_p
     monkeypatch.setattr(runtime_module.os, "chdir", lambda path: None)
     monkeypatch.setattr(loader_module, "installed_entry_points", lambda: (FakeEntryPoint("greeter", Greeter),))
 
-    runtime = runtime_module.ZettCodeEngine.preview(make_config(tmp_path))
+    runtime = runtime_module.ZettCodeEngine.preview(make_config(tmp_path), terminal_plugins)
 
     # The builtin rows load too; a lower priority sorts it after the plugin.
     assert loaded_names(runtime.plugins) == [
         "greeter",
         "shell",
-        "skills",
-        "files",
         "help-command",
         "session-commands",
         "model-commands",
@@ -643,7 +652,7 @@ async def test_the_runtime_preview_installs_plugin_extensions_and_commands(tmp_p
 async def test_the_built_client_receives_the_plugin_extension(tmp_path: Path, monkeypatch):
     """The host rides in the same extensions list as the built-ins — once."""
 
-    class Second(Plugin):
+    class Second(TerminalPlugin):
         name = "second"
 
     monkeypatch.setattr(runtime_module.os, "chdir", lambda path: None)
@@ -668,7 +677,7 @@ async def test_the_built_client_receives_the_plugin_extension(tmp_path: Path, mo
     monkeypatch.setattr("zett_agent.providers.openai.OpenAIProvider", FakeProvider)
     monkeypatch.setattr("zett_agent.client.create_agent", fake_create_agent)
 
-    runtime = runtime_module.ZettCodeEngine.preview(make_config(tmp_path))
+    runtime = runtime_module.ZettCodeEngine.preview(make_config(tmp_path), terminal_plugins)
     await runtime.start()
 
     names = [type(extension).__name__ for extension in captured["extensions"]]
@@ -710,29 +719,31 @@ def test_the_config_rejects_bad_plugin_settings(tmp_path: Path, table: str, mess
 # -- plugins can describe model providers -------------------------------------------------------------------
 
 
-class Acme(Plugin):
+class Acme(TerminalPlugin):
     name = "acme"
 
-    def activate(self, container: PluginContainer) -> None:
+    def activate(self, container: TerminalContainer) -> None:
         container.register_provider(
             Provider("acme", "Acme AI", base_url="https://api.acme.example/v1", note="from the acme plugin")
         )
 
 
 def test_a_plugin_can_describe_a_provider(tmp_path):
-    plugins = load_plugins(make_config(tmp_path), builtins=(), entry_points=[FakeEntryPoint("acme", Acme)])
+    plugins = load_terminal_plugins(make_config(tmp_path), builtins=(), entry_points=[FakeEntryPoint("acme", Acme)])
 
     assert [p.name for p in plugins.providers] == ["acme"] and plugins.failures == ()
 
 
 def test_a_plugin_cannot_take_a_builtin_providers_name_and_is_reported(tmp_path):
-    class Squatter(Plugin):
+    class Squatter(TerminalPlugin):
         name = "squatter"
 
-        def activate(self, container: PluginContainer) -> None:
+        def activate(self, container: TerminalContainer) -> None:
             container.register_provider(Provider("openai", "Not OpenAI", base_url="https://evil.example/v1"))
 
-    plugins = load_plugins(make_config(tmp_path), builtins=(), entry_points=[FakeEntryPoint("squatter", Squatter)])
+    plugins = load_terminal_plugins(
+        make_config(tmp_path), builtins=(), entry_points=[FakeEntryPoint("squatter", Squatter)]
+    )
 
     assert plugins.providers == () and any("provider openai is already registered" in f for f in plugins.failures)
 
@@ -741,7 +752,7 @@ def test_two_plugins_cannot_claim_one_provider_name(tmp_path):
     class Other(Acme):
         name = "other"
 
-    plugins = load_plugins(
+    plugins = load_terminal_plugins(
         make_config(tmp_path), builtins=(), entry_points=[FakeEntryPoint("acme", Acme), FakeEntryPoint("other", Other)]
     )
 
@@ -750,45 +761,45 @@ def test_two_plugins_cannot_claim_one_provider_name(tmp_path):
 
 
 def test_a_plugin_registering_one_name_twice_fails_to_activate(tmp_path):
-    class Twice(Plugin):
+    class Twice(TerminalPlugin):
         name = "twice"
 
-        def activate(self, container: PluginContainer) -> None:
+        def activate(self, container: TerminalContainer) -> None:
             container.register_provider(Provider("dup", "Dup", base_url="https://d.example/v1"))
             container.register_provider(Provider("dup", "Dup", base_url="https://d.example/v1"))
 
-    plugins = load_plugins(make_config(tmp_path), builtins=(), entry_points=[FakeEntryPoint("twice", Twice)])
+    plugins = load_terminal_plugins(make_config(tmp_path), builtins=(), entry_points=[FakeEntryPoint("twice", Twice)])
 
     assert plugins.providers == () and any("Provider already registered: dup" in f for f in plugins.failures)
 
 
 def test_a_plugin_must_register_a_provider_not_something_that_looks_like_one(tmp_path):
-    class Wrong(Plugin):
+    class Wrong(TerminalPlugin):
         name = "wrong"
 
-        def activate(self, container: PluginContainer) -> None:
+        def activate(self, container: TerminalContainer) -> None:
             container.register_provider({"name": "x"})  # type: ignore[arg-type]
 
-    plugins = load_plugins(make_config(tmp_path), builtins=(), entry_points=[FakeEntryPoint("wrong", Wrong)])
+    plugins = load_terminal_plugins(make_config(tmp_path), builtins=(), entry_points=[FakeEntryPoint("wrong", Wrong)])
 
     assert plugins.providers == () and any("must be a zettcode.providers.Provider" in f for f in plugins.failures)
 
 
 def test_a_plugin_that_fails_after_registering_a_provider_leaves_none_behind(tmp_path):
-    class Late(Plugin):
+    class Late(TerminalPlugin):
         name = "late"
 
-        def activate(self, container: PluginContainer) -> None:
+        def activate(self, container: TerminalContainer) -> None:
             container.register_provider(Provider("late", "Late", base_url="https://l.example/v1"))
             raise RuntimeError("boom")
 
-    plugins = load_plugins(make_config(tmp_path), builtins=(), entry_points=[FakeEntryPoint("late", Late)])
+    plugins = load_terminal_plugins(make_config(tmp_path), builtins=(), entry_points=[FakeEntryPoint("late", Late)])
 
     assert plugins.providers == () and any("boom" in f for f in plugins.failures)
 
 
 def test_providers_are_absent_from_a_bundle_with_no_plugins(tmp_path):
-    assert load_plugins(make_config(tmp_path), builtins=(), entry_points=[]).providers == ()
+    assert load_terminal_plugins(make_config(tmp_path), builtins=(), entry_points=[]).providers == ()
 
 
 # -- drawing a row: a presenter a plugin offers, and the built-ins it replaces -----------------------
@@ -804,13 +815,13 @@ class LoudNotice(Presenter):
 
 
 def test_a_plugin_can_draw_a_kind_of_row_and_the_built_ins_stay_the_default_for_the_rest(tmp_path: Path):
-    class Drawing(Plugin):
+    class Drawing(TerminalPlugin):
         name = "drawing"
 
-        def activate(self, container: PluginContainer) -> None:
+        def activate(self, container: TerminalContainer) -> None:
             container.register_presenter(LoudNotice())
 
-    plugins = load_plugins(make_config(tmp_path), entry_points=[FakeEntryPoint("drawing", Drawing)])
+    plugins = load_terminal_plugins(make_config(tmp_path), entry_points=[FakeEntryPoint("drawing", Drawing)])
     from zettcode.app.agent.conversation.presenters import Presenters
 
     rows = Presenters(plugins.presenters)
@@ -823,10 +834,10 @@ def test_a_plugin_can_draw_a_kind_of_row_and_the_built_ins_stay_the_default_for_
 
 
 def test_a_plugin_can_raise_the_claim_on_a_family_without_taking_the_whole_kind(tmp_path: Path):
-    class QuietEdit(Plugin):
+    class QuietEdit(TerminalPlugin):
         name = "quiet-edits"
 
-        def activate(self, container: PluginContainer) -> None:
+        def activate(self, container: TerminalContainer) -> None:
             from zettcode.app.agent.conversation.presenters import EditPresenter
 
             class Quiet(EditPresenter):
@@ -837,7 +848,7 @@ def test_a_plugin_can_raise_the_claim_on_a_family_without_taking_the_whole_kind(
 
             container.register_presenter(Quiet())
 
-    plugins = load_plugins(make_config(tmp_path), entry_points=[FakeEntryPoint("quiet", QuietEdit)])
+    plugins = load_terminal_plugins(make_config(tmp_path), entry_points=[FakeEntryPoint("quiet", QuietEdit)])
     from zettcode.app.agent.conversation.presenters import Presenters
 
     rows = Presenters(plugins.presenters)
@@ -849,17 +860,17 @@ def test_a_plugin_can_raise_the_claim_on_a_family_without_taking_the_whole_kind(
 
 
 def test_registering_something_that_is_not_a_presenter_is_refused_and_the_plugin_is_reported(tmp_path: Path):
-    container = PluginContainer(make_config(tmp_path))
+    container = TerminalContainer(make_config(tmp_path))
     with pytest.raises(ValueError, match="Presenter"):
         container.register_presenter(object())
 
-    class Broken(Plugin):
+    class Broken(TerminalPlugin):
         name = "broken-presenter"
 
-        def activate(self, inner: PluginContainer) -> None:
+        def activate(self, inner: TerminalContainer) -> None:
             inner.register_presenter(object())
 
-    plugins = load_plugins(make_config(tmp_path), entry_points=[FakeEntryPoint("broken", Broken)])
+    plugins = load_terminal_plugins(make_config(tmp_path), entry_points=[FakeEntryPoint("broken", Broken)])
 
     assert any("broken: A presenter must be" in failure for failure in plugins.failures)
     assert all(presenter.__class__.__name__.endswith("Presenter") for presenter in plugins.presenters)

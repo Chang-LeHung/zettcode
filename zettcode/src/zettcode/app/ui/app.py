@@ -15,12 +15,12 @@ from typing import TYPE_CHECKING, cast
 
 from zett_agent.events import AgentEvent
 
-from zettcode.config_edit import ConfigEditError
-from zettcode.paths import DEFAULT_LOG
-from zettcode.plugins import (
+from zettcode.app.plugins.state import (
     Activity,
     UiRow,
 )
+from zettcode.config_edit import ConfigEditError
+from zettcode.paths import DEFAULT_LOG
 from zettcode.tui import (
     DARK,
     DONE,

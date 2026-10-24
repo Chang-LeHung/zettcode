@@ -219,7 +219,7 @@ class Command:
             its sessions, or the model, and is handled by
             :class:`~zettcode.app.agent.TerminalAgent`; ``"plugin"`` comes from
             an installed plugin, registered through
-            :class:`~zettcode.plugins.PluginContainer`.
+            :class:`~zettcode.app.plugins.TerminalContainer`.
         handler: Runs the command with a :class:`CommandContext` — the trimmed
             argument and the UI surfaces it may write to while it works — and
             returns a :class:`CommandResult` describing anything left to show.

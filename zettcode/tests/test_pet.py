@@ -401,7 +401,6 @@ def test_the_place_a_drag_left_is_the_place_the_next_start_opens_in(tmp_path, mo
     from zettcode.app.agent.agent import TerminalAgent
     from zettcode.app.ui import ZettCodeApp
     from zettcode.config import load_config
-    from zettcode.engine.core import ZettCodeEngine
 
     path = tmp_path / "config.toml"
     path.write_text(
@@ -419,7 +418,7 @@ def test_the_place_a_drag_left_is_the_place_the_next_start_opens_in(tmp_path, mo
             skills_enabled=False,
             mcp_enabled=False,
         )
-        shell_app = ZettCodeApp(TerminalAgent(ZettCodeEngine.preview(config)))
+        shell_app = ZettCodeApp(TerminalAgent.preview(config))
         shell_app.app.resize(120, 40)
         shell_app.app.mount()
         from zettcode.tui.testing import Harness

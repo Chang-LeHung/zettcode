@@ -57,6 +57,15 @@ from zettcode.app.agent.conversation.text import (
 )
 from zettcode.app.brand import LOGO_LINES, LOGO_PALETTE, LOGO_PIXELS
 from zettcode.app.commands import Command, CommandContext, CommandResult
+from zettcode.app.plugins import (
+    BUILTIN_PLUGINS,
+    HOST_LINK,
+    HostLink,
+    ShellContext,
+    TerminalContainer,
+    TerminalPlugins,
+    UiBuilder,
+)
 from zettcode.app.ui import app as app_module
 from zettcode.app.ui import demo
 from zettcode.app.ui import keys as keys_module
@@ -92,8 +101,6 @@ from zettcode.engine.extensions.harness_switch import HarnessSwitch
 from zettcode.engine.extensions.usage import USAGE_EVENT_NAME, UsageExtension, UsageSnapshot
 from zettcode.engine.permission import Permission, parse_permission
 from zettcode.engine.storage import STORE_FILE, SessionInfo, SessionStore
-from zettcode.plugins import BUILTIN_PLUGINS, PluginContainer, Plugins, ShellContext, UiBuilder
-from zettcode.plugins.services import HOST_LINK, HostLink
 from zettcode.statusline import context_text
 from zettcode.tui import (
     DARK,
@@ -324,7 +331,7 @@ class FakeRuntime:
     # adopted and a zero deadline would race with it.
     tokenizer: Tokenizer = field(default_factory=lambda: Tokenizer(deadline=0.0, loader=_no_encoder))
     config: FakeConfig = field(default_factory=FakeConfig)
-    plugins: Plugins = field(default_factory=Plugins)
+    plugins: TerminalPlugins = field(default_factory=TerminalPlugins)
     messenger: object | None = None
     #: The sessions another process has open: the fake's lock. A session in here is shown and not written to.
     held_elsewhere: set[str] = field(default_factory=set)
@@ -451,7 +458,7 @@ def rows_and_commands(
     failures: tuple[str, ...] = (),
     presenters: tuple[object, ...] = (),
     config: object | None = None,
-) -> Plugins:
+) -> TerminalPlugins:
     """The shell's builtin rows plus the segments and commands one test adds.
 
     ``extra`` appends a segment to a side; ``override`` registers under a name
@@ -459,7 +466,7 @@ def rows_and_commands(
     loader performs when a plugin loads after the builtins.
     """
     link = HostLink()
-    container = PluginContainer(config or FakeConfig(), {HOST_LINK: link})  # type: ignore[arg-type]
+    container = TerminalContainer(config or FakeConfig(), {HOST_LINK: link})  # type: ignore[arg-type]
     for plugin in BUILTIN_PLUGINS:
         plugin.activate(container)
         for region, side, name, builder in plugin.ui_slots():
@@ -470,7 +477,7 @@ def rows_and_commands(
         container.slots.add(region, side, name, builder)
     for presenter in presenters:
         container.register_presenter(presenter)  # type: ignore[arg-type]
-    return Plugins(
+    return TerminalPlugins(
         commands=(*container.commands, *commands),
         builtin_commands=tuple(container.commands),
         rows=container.rows,
@@ -487,7 +494,7 @@ def build_app(
     *,
     block: bool = False,
     hold: bool = False,
-    plugins: Plugins | None = None,
+    plugins: TerminalPlugins | None = None,
 ) -> ZettCodeApp:
     app = ZettCodeApp(
         TerminalAgent(FakeRuntime(FakeClient(events, block=block, hold=hold), plugins=plugins or rows_and_commands()))
@@ -7812,7 +7819,7 @@ async def test_a_side_question_never_reports_changes():
 
 def _with_plugin_command(name: str, handler, *, when_busy="refuse"):
     """A shell whose plugin registered one command, as an installed plugin would."""
-    container = PluginContainer(FakeConfig())
+    container = TerminalContainer(FakeConfig())
     container.register_command(name, f"{name} for the test", handler, when_busy=when_busy)
     return build_app(block=True, plugins=rows_and_commands(commands=container.commands))
 
@@ -8128,12 +8135,10 @@ async def test_a_plugin_command_can_ask_to_wait_for_the_request_to_end():
 
 
 def test_the_default_for_a_plugin_command_is_to_refuse():
-    from zettcode.plugins import PluginContainer
-
     async def noop(context):
         return CommandResult()
 
-    container = PluginContainer(FakeConfig())
+    container = TerminalContainer(FakeConfig())
 
     assert container.register_command("/plain", "plain", noop).when_busy == "refuse"
     assert container.register_command("/now", "now", noop, when_busy="now").when_busy == "now"

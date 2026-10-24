@@ -9,40 +9,37 @@ factory returning one) under the ``zettcode.plugins`` group::
 Nothing else registers a plugin: installing the distribution is the opt-in, and
 ``[plugins] disable`` in the config is the way back out. A plugin that cannot be
 imported, instantiated, or activated is skipped and reported in
-:attr:`~zettcode.plugins.plugin.Plugins.failures`; one broken plugin must not take
+:attr:`~zettcode.engine.plugins.plugin.Plugins.failures`; one broken plugin must not take
 the whole application with it.
 
 The accepted plugins are bundled into one host extension (see
-:mod:`zettcode.plugins.extension`) plus their commands. Identities must be
-unique — a plugin's declared ``name``, else its entry-point name — and so must
-command names, because the shell runs the first match: a later plugin that
-collides is skipped and reported rather than silently shadowed.
+:mod:`zettcode.engine.plugins.extension`). Identities must be unique — a plugin's declared ``name``, else its
+entry-point name — and so must the names of what they register, because a later plugin that collides is skipped
+and reported rather than silently shadowed.
+
+:class:`Loader` is the engine's: it merges what the agent uses. The terminal's loader subclasses it to merge what
+only a terminal has (see :class:`zettcode.app.plugins.loader.TerminalLoader`).
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from ..providers import BUILTIN_PROVIDERS
-from ..tui import RESERVED_THEMES
-from .builtins import BUILTIN_PLUGINS
-from .container import PluginContainer, UiSlots
+from zettcode.providers import BUILTIN_PROVIDERS
+
+from .builtin_agent import AGENT_PLUGINS
+from .container import PluginContainer
 from .extension import HOST_NAME, PluginExtension
 from .plugin import Plugin, Plugins
-from .services import HOST_LINK, HostLink
 from .state import Contribution
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from collections.abc import Iterable, Mapping, Sequence
     from importlib.metadata import EntryPoint
 
-    from ..app.agent.conversation.presenters import Presenter
-    from ..app.commands import Command
-    from ..app.pets import PetSource
-    from ..config import ZettCodeConfig
-    from ..engine.dialogue.mentions import MentionProvider
-    from ..providers import Provider
-    from ..tui import ThemeSource
+    from zettcode.config import ZettCodeConfig
+    from zettcode.engine.dialogue.mentions import MentionProvider
+    from zettcode.providers import Provider
 
 #: Entry-point group a distribution publishes its plugin under.
 PLUGIN_ENTRY_POINT_GROUP = "zettcode.plugins"
@@ -52,8 +49,7 @@ def installed_entry_points() -> tuple[EntryPoint, ...]:
     """Return every plugin entry point installed in this environment.
 
     The import is deferred to the call so the plugin package itself stays cheap
-    to import, and results are sorted by entry-point name so the load order —
-    and therefore the command order — is the same on every run.
+    to import, and results are sorted by entry-point name so the load order is the same on every run.
     """
     from importlib.metadata import entry_points
 
@@ -64,16 +60,10 @@ def load_plugins(
     config: ZettCodeConfig,
     *,
     entry_points: Iterable[EntryPoint] | None = None,
-    builtins: Sequence[Plugin] = BUILTIN_PLUGINS,
+    builtins: Sequence[Plugin[Any]] = AGENT_PLUGINS,
     shared: Mapping[str, object] | None = None,
 ) -> Plugins:
     """Load the builtin plugins and every enabled distribution into one bundle.
-
-    The builtins go first, so a plugin that registers a segment under one of
-    their names replaces it in place; anything it registers under a new name
-    appends after the builtin segment for that side. Builtins always load —
-    they are the shell's rows — while ``[plugins] enabled`` only gates the
-    distributions.
 
     Args:
         config: Settings the plugins are activated with, and the source of the
@@ -82,19 +72,32 @@ def load_plugins(
             Tests pass their own, so discovery can be exercised without
             installing a distribution.
         builtins: Plugins compiled into the repository; tests pass ``()`` to
-            exercise a load without the shell's own rows.
+            exercise a load without them.
         shared: Objects the runtime hands over by name before any plugin activates (see
-            :mod:`zettcode.plugins.services`); a plugin reads them with ``container.service``, and they
+            :mod:`zettcode.engine.plugins.services`); a plugin reads them with ``container.service``, and they
             stay findable on the returned bundle. A plugin cannot provide a name that is taken here.
 
     Returns:
-        The host extension, commands, rows, and load failures the plugins
-        produced.
+        The host extension, services, and load failures the plugins produced.
     """
-    loader = _Loader(config, shared)
+    return run(Loader(config, shared), config, builtins=builtins, entry_points=entry_points)
+
+
+def run(
+    loader: Loader,
+    config: ZettCodeConfig,
+    *,
+    builtins: Sequence[Plugin[Any]],
+    entry_points: Iterable[EntryPoint] | None,
+) -> Plugins:
+    """Feed the builtins and then the enabled distributions to ``loader``, and return what it bundled.
+
+    The builtins go first, so a plugin that registers under one of their names replaces it in place.
+    Builtins always load, while ``[plugins] enabled`` only gates the distributions.
+    """
     for plugin in builtins:
         loader.accept(plugin, origin=plugin.name or type(plugin).__name__)
-    loader.builtin_commands = len(loader.commands)
+    loader.builtins_loaded()
     if config.plugins_enabled:
         points = tuple(entry_points) if entry_points is not None else installed_entry_points()
         disabled = set(config.disabled_plugins)
@@ -110,63 +113,33 @@ def load_plugins(
     return loader.bundle()
 
 
-class _Loader:
+class Loader:
     """Accumulate accepted plugins into the one bundle the application gets."""
 
     def __init__(self, config: ZettCodeConfig, shared: Mapping[str, object] | None = None) -> None:
         self.config = config
-        self.slots = UiSlots()
-        self.plugins: list[Plugin] = []
-        self.commands: list[Command] = []
-        #: How many of ``commands`` the built-in plugins registered; they are loaded first.
-        self.builtin_commands = 0
+        self.plugins: list[Plugin[Any]] = []
         self.mentions: list[MentionProvider] = []
         self.providers: list[Provider] = []
-        self.themes: list[ThemeSource] = []
-        self.pets: list[PetSource] = []
-        self.presenters: list[Presenter[Any]] = []
         self.contributed: list[Contribution] = []
         self.services: dict[str, object] = dict(shared or {})
-        self.services.setdefault(HOST_LINK, HostLink())
         self.failures: list[str] = []
         self._identities: set[str] = set()
         self._extension_names: set[str] = {HOST_NAME}
-        self._claimed: set[str] = set()
         self._mention_kinds: set[str] = set()
         self._provider_names: set[str] = {provider.name for provider in BUILTIN_PROVIDERS}
-        self._theme_names: set[str] = set(RESERVED_THEMES)
-        self._pet_names: set[str] = set()
 
-    def fail(self, origin: str, error: BaseException) -> None:
-        """Record one plugin that could not be prepared."""
-        self.failures.append(f"{origin}: {_reason(error)}")
+    # -- what a subclass changes --
 
-    def accept(self, plugin: Plugin, *, origin: str) -> None:
-        """Activate one plugin and merge what it registered, or report why not."""
-        name = plugin.name or origin or type(plugin).__name__
-        if name in self._identities:
-            self.failures.append(f"{origin}: duplicate plugin name {name!r}")
-            return
-        if not plugin.name:
-            plugin.name = name
-        container = PluginContainer(self.config, self.services)
-        # Seed the registry with what is already loaded, so a segment that
-        # reuses a name — or asks to override a side — acts on the real rows
-        # instead of on an empty copy. A failure below leaves it untouched.
-        container.slots.take_from(self.slots)
-        try:
-            plugin.activate(container)
-            for region, side, slot_name, builder in plugin.ui_slots():
-                container.slots.add(region, side, slot_name, builder)
-        except Exception as error:
-            self.fail(origin, error)
-            return
-        # Command lookup takes the first match, so a second plugin claiming the
-        # same name would be silently unreachable. Reject the plugin instead.
-        clash = next((command.name for command in container.commands if command.name in self._claimed), None)
-        if clash is not None:
-            self.failures.append(f"{origin}: command {clash} is already registered by another plugin")
-            return
+    def new_container(self) -> PluginContainer:
+        """Return the container one plugin is activated with."""
+        return PluginContainer(self.config, self.services)
+
+    def activated(self, plugin: Plugin[Any], container: PluginContainer) -> None:
+        """Run after a plugin's ``activate`` succeeded and before its contribution is checked; may raise."""
+
+    def clash(self, container: PluginContainer) -> str | None:
+        """Return why this plugin's contribution cannot be merged, or ``None`` when it can."""
         # A mention token has no prefix naming its provider, so two providers
         # with the same kind would make resolution ambiguous. Reject the plugin.
         mention_clash = next(
@@ -174,8 +147,7 @@ class _Loader:
             None,
         )
         if mention_clash is not None:
-            self.failures.append(f"{origin}: mention kind {mention_clash} is already registered")
-            return
+            return f"mention kind {mention_clash} is already registered"
         # A name is what `/config add` is typed with, so two hosts sharing one cannot both be
         # reached; the one that was there first, a built-in or an earlier plugin, keeps it.
         provider_clash = next(
@@ -183,20 +155,7 @@ class _Loader:
             None,
         )
         if provider_clash is not None:
-            self.failures.append(f"{origin}: provider {provider_clash} is already registered")
-            return
-        # `/theme <name>` has to mean one palette, so a name an earlier plugin (the built-in one first) or the
-        # program itself already has is not shared out a second time.
-        theme_clash = next((source.name for source in container.themes if source.name in self._theme_names), None)
-        if theme_clash is not None:
-            self.failures.append(f"{origin}: theme {theme_clash} is already registered")
-            return
-        # `/pet <name>` has to mean one pet, so a name an earlier plugin (the built-in one first) already has is not
-        # shared out a second time.
-        pet_clash = next((source.name for source in container.pets if source.name in self._pet_names), None)
-        if pet_clash is not None:
-            self.failures.append(f"{origin}: pet {pet_clash} is already registered")
-            return
+            return f"provider {provider_clash} is already registered"
         # The agent refuses two extensions with one name, and that would fail the first turn rather than
         # the load, so the clash is caught here; the name of the host itself counts.
         extension_clash = next(
@@ -204,51 +163,69 @@ class _Loader:
             None,
         )
         if extension_clash is not None:
-            self.failures.append(f"{origin}: extension {extension_clash} is already registered")
-            return
+            return f"extension {extension_clash} is already registered"
         # A service is looked up by its name, so a second provider would be unreachable behind the first.
         service_clash = next((name for name in container.services if name in self.services), None)
         if service_clash is not None:
-            self.failures.append(f"{origin}: service {service_clash} is already provided")
-            return
-        self._identities.add(name)
+            return f"service {service_clash} is already provided"
+        return None
+
+    def merge(self, container: PluginContainer) -> None:
+        """Take what an accepted plugin registered."""
         self._extension_names.update(extension.name for extension in container.extensions)
         self.contributed.extend(container.extensions)
         self.services.update(container.services)
-        self._theme_names.update(source.name for source in container.themes)
-        self.themes.extend(container.themes)
-        self._pet_names.update(source.name for source in container.pets)
-        self.pets.extend(container.pets)
-        self.presenters.extend(container.presenters)
         self._provider_names.update(provider.name for provider in container.providers)
         self.providers.extend(container.providers)
-        self._claimed.update(command.name for command in container.commands)
         self._mention_kinds.update(provider.kind for provider in container.mentions)
-        self.commands.extend(container.commands)
         self.mentions.extend(container.mentions)
-        self.slots = container.slots
-        self.plugins.append(plugin)
+
+    def builtins_loaded(self) -> None:
+        """Called once the builtin plugins have all been offered, before any distribution."""
 
     def bundle(self) -> Plugins:
         """Return everything the accepted plugins contributed."""
         host = PluginExtension(self.plugins) if self.plugins else None
         return Plugins(
             host=host,
-            commands=tuple(self.commands),
-            builtin_commands=tuple(self.commands[: self.builtin_commands]),
             mentions=tuple(self.mentions),
             providers=tuple(self.providers),
-            themes=tuple(self.themes),
-            pets=tuple(self.pets),
-            presenters=tuple(self.presenters),
             contributed=tuple(self.contributed),
             services=dict(self.services),
-            rows=self.slots.rows(),
             failures=tuple(self.failures),
         )
 
+    # -- the same for every front end --
 
-def _instantiate(point: EntryPoint) -> Plugin:
+    def fail(self, origin: str, error: BaseException) -> None:
+        """Record one plugin that could not be prepared."""
+        self.failures.append(f"{origin}: {_reason(error)}")
+
+    def accept(self, plugin: Plugin[Any], *, origin: str) -> None:
+        """Activate one plugin and merge what it registered, or report why not."""
+        name = plugin.name or origin or type(plugin).__name__
+        if name in self._identities:
+            self.failures.append(f"{origin}: duplicate plugin name {name!r}")
+            return
+        if not plugin.name:
+            plugin.name = name
+        container = self.new_container()
+        try:
+            plugin.activate(container)
+            self.activated(plugin, container)
+        except Exception as error:
+            self.fail(origin, error)
+            return
+        clash = self.clash(container)
+        if clash is not None:
+            self.failures.append(f"{origin}: {clash}")
+            return
+        self._identities.add(name)
+        self.merge(container)
+        self.plugins.append(plugin)
+
+
+def _instantiate(point: EntryPoint) -> Plugin[Any]:
     """Resolve one entry point to a plugin: a class, a factory, or an instance."""
     target = point.load()
     if isinstance(target, Plugin):

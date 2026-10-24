@@ -2,8 +2,8 @@
 
 Each class here owns one ``zett-agent`` extension and the switch in the configuration that turns it on, so
 the runtime lists none of them by hand: it asks the loaded plugins for what they contributed. They register
-through :meth:`~zettcode.plugins.PluginContainer.register_extension` and
-:meth:`~zettcode.plugins.PluginContainer.register_extension_factory`, which are also what a third-party
+through :meth:`~zettcode.engine.plugins.PluginContainer.register_extension` and
+:meth:`~zettcode.engine.plugins.PluginContainer.register_extension_factory`, which are also what a third-party
 plugin uses, so a plugin that wraps a whole extension is not a second-class citizen.
 
 Two rules decide how one registers:
@@ -18,7 +18,7 @@ Two rules decide how one registers:
 The order of :data:`AGENT_PLUGINS` is the order the agent receives the extensions in; extensions that share a
 priority keep it, so it is the order they were listed in when the runtime did the listing. What a plugin
 builds on (the session store, the permission policy) is handed over by the runtime by name, see
-:mod:`zettcode.plugins.services`.
+:mod:`zettcode.engine.plugins.services`.
 """
 
 from __future__ import annotations
@@ -26,20 +26,22 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from ..config import ModelConfig
-from ..engine.dialogue.side import SideQuestions
-from ..engine.extensions.capabilities import ModelCapabilities
-from ..engine.extensions.compaction import CompactionCounter, OnDemandCompaction
-from ..engine.extensions.context import ContextExtension
-from ..engine.extensions.harness_switch import HarnessSwitch
-from ..engine.extensions.tool_output import ToolOutputExtension
-from ..engine.extensions.usage import UsageExtension
-from ..engine.messenger import Messenger
-from ..engine.permission import ShellDenyExtension, ShellPolicy
-from ..engine.permission.approval import ShellApprovalMemory
-from ..engine.storage import SessionStore
+from zettcode.config import ModelConfig
+from zettcode.engine.dialogue.mentions import FileMentions, SkillMentions
+from zettcode.engine.dialogue.side import SideQuestions
+from zettcode.engine.extensions.capabilities import ModelCapabilities
+from zettcode.engine.extensions.compaction import CompactionCounter, OnDemandCompaction
+from zettcode.engine.extensions.context import ContextExtension
+from zettcode.engine.extensions.harness_switch import HarnessSwitch
+from zettcode.engine.extensions.tool_output import ToolOutputExtension
+from zettcode.engine.extensions.usage import UsageExtension
+from zettcode.engine.messenger import Messenger
+from zettcode.engine.permission import ShellDenyExtension, ShellPolicy
+from zettcode.engine.permission.approval import ShellApprovalMemory
+from zettcode.engine.storage import SessionStore
+
 from .container import PluginContainer
-from .plugin import Plugin
+from .plugin import AgentPlugin
 from .services import (
     APPROVAL,
     CAPABILITIES,
@@ -63,7 +65,38 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
     from .state import AgentBuild
 
 
-class CodingTools(Plugin):
+class SkillResources(AgentPlugin):
+    """The builtin ``@`` resource provider: the skills on this machine.
+
+    Registering it here rather than inside the shell keeps the shell generic: it
+    merges whatever providers the bundle holds, and the skills are simply the
+    one the repository ships.
+    """
+
+    name = "skills"
+
+    def activate(self, container: PluginContainer) -> None:
+        """Offer the discovered skills as ``@`` resources, when skills are on."""
+        if container.config.skills_enabled:
+            container.register_mention(SkillMentions(container.config))
+
+
+class FileResources(AgentPlugin):
+    """The ``@`` resource provider for the workspace's own files.
+
+    Registered after the skills, so a name both could offer is the skill: a
+    repository holds a file called ``test`` and a skill is the more specific
+    thing to mean. Nothing turns this off, because a workspace always has files.
+    """
+
+    name = "files"
+
+    def activate(self, container: PluginContainer) -> None:
+        """Offer the workspace's files as ``@`` resources."""
+        container.register_mention(FileMentions(container.config.workspace))
+
+
+class CodingTools(AgentPlugin):
     """The coding bundle: the file tools, search and the shell tool."""
 
     name = "coding"
@@ -75,14 +108,14 @@ class CodingTools(Plugin):
         policy = container.service(POLICY, ShellPolicy)
 
         def build(_: AgentBuild) -> AgentExtension:
-            from ..engine.extensions.files import CodingBundle
+            from zettcode.engine.extensions.files import CodingBundle
 
             return CodingBundle(policy)
 
         container.register_extension_factory("CodingBundle", build)
 
 
-class ToolOutput(Plugin):
+class ToolOutput(AgentPlugin):
     """Moves a long tool result into the session's folder before it is stored or sent anywhere."""
 
     name = "tool-output"
@@ -93,7 +126,7 @@ class ToolOutput(Plugin):
         container.register_extension(ToolOutputExtension(container.service(PERSISTENCE, SessionStore)))
 
 
-class Capabilities(Plugin):
+class Capabilities(AgentPlugin):
     """What the configured models can do, so a tool is not offered to one that cannot use it."""
 
     name = "capabilities"
@@ -106,7 +139,7 @@ class Capabilities(Plugin):
         container.register_extension(capabilities)
 
 
-class Subagents(Plugin):
+class Subagents(AgentPlugin):
     """The ``task`` tool: children that work on a delegated piece of the job in their own sessions."""
 
     name = "subagents"
@@ -124,7 +157,7 @@ class Subagents(Plugin):
         def build(agent: AgentBuild) -> AgentExtension:
             # Imported here: the module pulls in the SQLite store and SQLAlchemy, which a launch that
             # never runs a child should not pay for on the way to the first frame.
-            from ..engine.extensions.subagents import subagent_extension
+            from zettcode.engine.extensions.subagents import subagent_extension
 
             return subagent_extension(
                 model=agent.model,
@@ -171,8 +204,9 @@ def _shared_with_children(*, messaging: bool) -> Callable[[AgentExtension], bool
     from zett_agent.extensions.todo import TodoWriteExtension
     from zett_agent.extensions.tool_guidelines import ToolGuidelinesExtension
 
-    from ..engine.extensions.harness import SwitchedHarness
-    from ..engine.extensions.messaging import SessionMessagingExtension
+    from zettcode.engine.extensions.harness import SwitchedHarness
+    from zettcode.engine.extensions.messaging import SessionMessagingExtension
+
     from .extension import PluginExtension
 
     private: tuple[type, ...] = (
@@ -196,7 +230,7 @@ def _shared_with_children(*, messaging: bool) -> Callable[[AgentExtension], bool
     return lambda extension: not isinstance(extension, private)
 
 
-class Messaging(Plugin):
+class Messaging(AgentPlugin):
     """The tools that talk to the other sessions open on this machine."""
 
     name = "messaging"
@@ -209,14 +243,14 @@ class Messaging(Plugin):
             return
 
         def build(_: AgentBuild) -> AgentExtension:
-            from ..engine.extensions.messaging import SessionMessagingExtension
+            from zettcode.engine.extensions.messaging import SessionMessagingExtension
 
             return SessionMessagingExtension(messenger)
 
         container.register_extension_factory("SessionMessagingExtension", build)
 
 
-class ShellPermission(Plugin):
+class ShellPermission(AgentPlugin):
     """Decides which shell commands run: ``deny`` refuses them, anything else is asked about or let through.
 
     The deny extension runs before the approval one (its priority is lower), because the approval can ask
@@ -238,7 +272,7 @@ class ShellPermission(Plugin):
         container.register_extension(approval)
 
 
-class Harness(Plugin):
+class Harness(AgentPlugin):
     """The just-in-time harness: the model keeps small Python tools of its own, when the reader has it on.
 
     The extension is always registered and inert until the switch is on, so ``/harness on`` reaches the next
@@ -255,14 +289,14 @@ class Harness(Plugin):
         root = container.config.harness_dir
 
         def build(_: AgentBuild) -> AgentExtension:
-            from ..engine.extensions.harness import SwitchedHarness
+            from zettcode.engine.extensions.harness import SwitchedHarness
 
             return SwitchedHarness(root, switch)
 
         container.register_extension_factory("SwitchedHarness", build)
 
 
-class SessionLog(Plugin):
+class SessionLog(AgentPlugin):
     """Writes the conversation to the session's log as it happens, and restores it on resume."""
 
     name = "session-log"
@@ -273,7 +307,7 @@ class SessionLog(Plugin):
         container.register_extension(container.service(PERSISTENCE, SessionStore))
 
 
-class UsageTracking(Plugin):
+class UsageTracking(AgentPlugin):
     """Counts the tokens each session has spent, for the status line and ``/usage``."""
 
     name = "usage-tracking"
@@ -286,7 +320,7 @@ class UsageTracking(Plugin):
         container.register_extension(usage)
 
 
-class ContextTracking(Plugin):
+class ContextTracking(AgentPlugin):
     """Remembers the last assembled request of each session, for ``/context``."""
 
     name = "context-tracking"
@@ -299,7 +333,7 @@ class ContextTracking(Plugin):
         container.register_extension(context)
 
 
-class SideQuestionBoundary(Plugin):
+class SideQuestionBoundary(AgentPlugin):
     """``/btw``: questions answered on a read-only run beside the conversation."""
 
     name = "side-questions"
@@ -312,7 +346,7 @@ class SideQuestionBoundary(Plugin):
         container.register_extension(sides)
 
 
-class ToolGuidance(Plugin):
+class ToolGuidance(AgentPlugin):
     """The guidance each tool carries into the system prompt."""
 
     name = "tool-guidelines"
@@ -329,7 +363,7 @@ class ToolGuidance(Plugin):
         container.register_extension_factory("ToolGuidelinesExtension", build)
 
 
-class AskUser(Plugin):
+class AskUser(AgentPlugin):
     """The ``ask_user`` tool: how the model puts a question to the reader instead of guessing."""
 
     name = "ask-user"
@@ -348,7 +382,7 @@ class AskUser(Plugin):
         container.register_extension_factory("AskUserExtension", build)
 
 
-class ProjectInstructions(Plugin):
+class ProjectInstructions(AgentPlugin):
     """The workspace's ``AGENTS.md`` files, read again for every request so an edit applies at once."""
 
     name = "project-instructions"
@@ -368,7 +402,7 @@ class ProjectInstructions(Plugin):
         container.register_extension_factory("AgentsMdExtension", build)
 
 
-class SkillTool(Plugin):
+class SkillTool(AgentPlugin):
     """The skills the model can load: their list in the prompt and the tool that reads one."""
 
     name = "skill-tool"
@@ -388,7 +422,7 @@ class SkillTool(Plugin):
         container.register_extension_factory("SkillExtension", build)
 
 
-class McpTools(Plugin):
+class McpTools(AgentPlugin):
     """The tools MCP servers offer. A server that is down is skipped, never fatal."""
 
     name = "mcp"
@@ -401,14 +435,14 @@ class McpTools(Plugin):
             return
 
         def build(_: AgentBuild) -> AgentExtension | None:
-            from ..engine.extensions.mcp import build_scoped_mcp_extension
+            from zettcode.engine.extensions.mcp import build_scoped_mcp_extension
 
             return build_scoped_mcp_extension(config.mcp_files())
 
         container.register_extension_factory("ReportingMcpExtension", build)
 
 
-class TodoPlan(Plugin):
+class TodoPlan(AgentPlugin):
     """The ``todo_write`` tool, and the plan it keeps, shown in the shell's panel.
 
     The extension is provided as a service whether or not the tool is on, because the shell asks it for the
@@ -429,7 +463,7 @@ class TodoPlan(Plugin):
             container.register_extension(extension)
 
 
-class Compaction(Plugin):
+class Compaction(AgentPlugin):
     """Shortens the conversation when it nears the model's window, or when the reader asks."""
 
     name = "compaction"
@@ -450,7 +484,9 @@ class Compaction(Plugin):
 
 
 #: The agent-side plugins in the order the agent receives their extensions.
-AGENT_PLUGINS: tuple[Plugin, ...] = (
+AGENT_PLUGINS: tuple[AgentPlugin, ...] = (
+    SkillResources(),
+    FileResources(),
     CodingTools(),
     ToolOutput(),
     Capabilities(),

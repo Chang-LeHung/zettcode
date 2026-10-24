@@ -8,7 +8,7 @@ A command that acts on the application is handed the shell through the context i
 (:meth:`~zettcode.app.commands.CommandContext.require_host`), typed as the narrow
 :class:`~zettcode.app.commands.CommandHost` and not as the shell itself, so a plugin of anybody's can do what these
 do without importing it. The words a command's completion menu offers are asked for before any command runs, so they
-read the shell through :class:`~zettcode.plugins.services.HostLink` instead, which the shell attaches itself to.
+read the shell through :class:`~zettcode.app.plugins.host.HostLink` instead, which the shell attaches itself to.
 
 What stays in the shell is what cannot be written against that interface yet: the commands that preview as they are
 walked (``/theme``, ``/pet``) and the panels that edit a form of their own (``/config``, ``/statusline``,
@@ -20,12 +20,13 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from ..app.commands import CommandContext, CommandHost, CommandResult, Subcommand, subcommand_words
-from ..paths import DEFAULT_COMMAND_HISTORY
-from ..tui import Widget
-from .container import PluginContainer
-from .plugin import Plugin
-from .services import HOST_LINK, HostLink
+from zettcode.app.commands import CommandContext, CommandHost, CommandResult, Subcommand, subcommand_words
+from zettcode.paths import DEFAULT_COMMAND_HISTORY
+from zettcode.tui import Widget
+
+from .container import TerminalContainer
+from .host import HOST_LINK, HostLink
+from .plugin import TerminalPlugin
 
 #: Rows the picker panels take from the bottom of the screen: the title, the list, and the footer hint. The
 #: handler owns the number; nothing in the framework reads it.
@@ -59,7 +60,7 @@ EFFORT_NOTES = {
 
 def _panel(page: Widget) -> Widget:
     """Wrap one picker in the bottom panel these commands share."""
-    from ..app.ui.widgets import bottom_panel
+    from zettcode.app.ui.widgets import bottom_panel
 
     return bottom_panel(page, rows=PICKER_ROWS)
 
@@ -67,13 +68,13 @@ def _panel(page: Widget) -> Widget:
 # -- the session ----------------------------------------------------------------------------------
 
 
-class SessionCommands(Plugin):
+class SessionCommands(TerminalPlugin):
     """``/resume``, ``/continue``, ``/fork``, ``/title`` and ``/context``: the session you are in and the ones before it."""
 
     name = "session-commands"
     description = "resume, continue, fork, title and context"
 
-    def activate(self, container: PluginContainer) -> None:
+    def activate(self, container: TerminalContainer) -> None:
         """Register the five commands."""
         container.register_command("resume", "resume a session: /resume [id]", self.resume)
         container.register_command("continue", "carry on a request that was cut short", self.continue_)
@@ -92,7 +93,7 @@ class SessionCommands(Plugin):
         if context.argument:
             await host.resume_session(context.argument)
             return CommandResult(notification=f"resumed session {context.argument[:8]}", relayout=True)
-        from ..app.ui.widgets import SessionsPage
+        from zettcode.app.ui.widgets import SessionsPage
 
         sessions = await host.agent.list_sessions(limit=RESUME_LIMIT)
         if not sessions:
@@ -160,8 +161,8 @@ class SessionCommands(Plugin):
             )
 
         # Imported here and not at the top: the panels import the agent, and the agent imports the plugins.
-        from ..app.ui.config_form import whole_if_whole
-        from ..app.ui.widgets import ContextPage
+        from zettcode.app.ui.config_form import whole_if_whole
+        from zettcode.app.ui.widgets import ContextPage
 
         def apply(percent: float) -> None:
             host.close_page()
@@ -233,13 +234,13 @@ def permission_words(host: CommandHost | None) -> tuple[Subcommand, ...]:
     return subcommand_words(host.agent.permissions, PERMISSION_NOTES, host.agent.permission.value)
 
 
-class ModelCommands(Plugin):
+class ModelCommands(TerminalPlugin):
     """``/model``, ``/effort``, ``/permission`` and ``/harness``: what the next request runs on and how far it may go."""
 
     name = "model-commands"
     description = "model, effort, permission and harness"
 
-    def activate(self, container: PluginContainer) -> None:
+    def activate(self, container: TerminalContainer) -> None:
         """Register the commands; the ones that are a choice among words read the shell for those words."""
         # A container built by hand has no link to follow; the menus then offer no words, and the commands still run.
         link = container.find(HOST_LINK, HostLink) or HostLink()
@@ -270,7 +271,7 @@ class ModelCommands(Plugin):
         if context.argument:
             host.change_model(context.argument)
             return CommandResult(relayout=True)
-        from ..app.ui.widgets import ModelPage
+        from zettcode.app.ui.widgets import ModelPage
 
         page = ModelPage(host.agent, on_select=host.select_model, on_cancel=host.close_page)
         return CommandResult(widget=_panel(page))
@@ -290,7 +291,7 @@ class ModelCommands(Plugin):
                 return CommandResult(message=str(error))
             return CommandResult(relayout=True)
 
-        from ..app.ui.widgets import EFFORT_ROWS, EffortPage, bottom_panel
+        from zettcode.app.ui.widgets import EFFORT_ROWS, EffortPage, bottom_panel
 
         def select(level: str) -> None:
             # The page goes first: the header's gauge is for a reader looking at the header, and it is skipped
@@ -351,13 +352,13 @@ class ModelCommands(Plugin):
 # -- asking, and leaving ----------------------------------------------------------------------------
 
 
-class SideQuestion(Plugin):
+class SideQuestion(TerminalPlugin):
     """``/btw``: a question that does not join the conversation."""
 
     name = "side-question-command"
     description = "btw"
 
-    def activate(self, container: PluginContainer) -> None:
+    def activate(self, container: TerminalContainer) -> None:
         """Register ``/btw``; it is the one command worth taking mid-reply, so it queues."""
         container.register_command(
             "btw",
@@ -384,24 +385,24 @@ class SideQuestion(Plugin):
         return CommandResult()
 
 
-class HelpCommand(Plugin):
+class HelpCommand(TerminalPlugin):
     """``/help``: the commands and the keys, whoever provides them."""
 
     name = "help-command"
     description = "help"
 
-    def activate(self, container: PluginContainer) -> None:
+    def activate(self, container: TerminalContainer) -> None:
         """Register ``/help``; it only shows something, so it is safe beside a running request."""
         container.register_command("help", "show the commands and the keys", self.help, when_busy="now")
 
     async def help(self, context: CommandContext) -> CommandResult:
         """Describe every command the shell knows, whoever provides it."""
-        from ..app.ui.widgets import help_text
+        from zettcode.app.ui.widgets import help_text
 
         return CommandResult(message=help_text(context.require_host().commands))
 
 
-class BashCommand(Plugin):
+class BashCommand(TerminalPlugin):
     """``/bash``: a full-screen command line over the workspace.
 
     ``/bash`` opens it empty and ``/bash <command>`` opens it already running that command. It is the reader's
@@ -418,7 +419,7 @@ class BashCommand(Plugin):
     def __init__(self, history_file: Path | None = None) -> None:
         self.history_file = history_file
 
-    def activate(self, container: PluginContainer) -> None:
+    def activate(self, container: TerminalContainer) -> None:
         """Register ``/bash``; it neither reads nor writes the session, so it may open beside a request."""
         container.register_command(
             "bash", "run commands in a full-screen shell: /bash [command]", self.bash, when_busy="now"
@@ -426,8 +427,8 @@ class BashCommand(Plugin):
 
     async def bash(self, context: CommandContext) -> CommandResult:
         """Open the panel in the workspace, with the history of the reader's shells for Up and Tab."""
-        from ..app.commandline import CommandHistory, CommandRunner
-        from ..app.ui.widgets import BashPage
+        from zettcode.app.commandline import CommandHistory, CommandRunner
+        from zettcode.app.ui.widgets import BashPage
 
         host = context.require_host()
         history = CommandHistory(self.history_file or DEFAULT_COMMAND_HISTORY)
@@ -438,13 +439,13 @@ class BashCommand(Plugin):
         return CommandResult(widget=page)
 
 
-class ShellControl(Plugin):
+class ShellControl(TerminalPlugin):
     """``/clear``, ``/quit`` and ``/exit``."""
 
     name = "shell-control"
     description = "clear and quit"
 
-    def activate(self, container: PluginContainer) -> None:
+    def activate(self, container: TerminalContainer) -> None:
         """Register the three commands; leaving does not wait for the answer."""
         container.register_command("clear", "clear the transcript", self.clear)
         container.register_command("quit", "exit", self.quit, when_busy="now")
