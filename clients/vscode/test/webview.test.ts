@@ -1152,3 +1152,80 @@ test("the interrupted bar steps aside after a couple of seconds", async () => {
 
   assert.equal(ui.one("#resume-bar"), null, "the announcement goes; /continue still works");
 });
+
+function sentTurn(): Turn {
+  const turn = createTurn("你在干什么", [], 3000, "turn-sent");
+  turn.sent = { to: "zettdemos", note: "delivered" };
+  turn.status = "done";
+  turn.finishedAt = 3000;
+  return turn;
+}
+
+function receivedTurn(): Turn {
+  const turn = createTurn("run the tests", [], 4000, "turn-received");
+  turn.from = { id: "session-api", name: "api" };
+  applyEvent(turn, { type: "text_delta", session_id: "s", text: "On it." } as never, 4100);
+  turn.status = "done";
+  turn.finishedAt = 4200;
+  return turn;
+}
+
+test("a message sent to another session shows who it went to and what it said, and nothing is answered under it", async () => {
+  const ui = await harness([sentTurn()]);
+
+  assert.ok(ui.text(".user-from").includes("@zettdemos"), "who it went to");
+  assert.ok(ui.text(".user-from").includes("delivered"));
+  assert.equal(ui.text(".user-text"), "你在干什么", "what was sent");
+  assert.equal(ui.all(".assistant").length, 0, "it is not a request to this chat's model: no answer area, no receipt");
+  assert.equal(ui.all(".receipt").length, 0);
+});
+
+test("a message another session sent is shown with its sender, above the answer it started", async () => {
+  const ui = await harness([receivedTurn()]);
+
+  assert.ok(ui.text(".user-from").includes("@api"), "who sent it");
+  assert.equal(ui.text(".user-text"), "run the tests", "what it said");
+  assert.ok(ui.text(".assistant").includes("On it."), "the reply this chat gave");
+});
+
+test("the chat looks for messages from other sessions from the first load, not only after a refresh", async () => {
+  const chat = await readFile("src/chat.ts", "utf8");
+  const load = /private async load\(\): Promise<void> \{[\s\S]*?\n  \}\n/.exec(chat)?.[0] ?? "";
+  const refresh = /async refreshAll\(\): Promise<void> \{[\s\S]*?\n  \}\n/.exec(chat)?.[0] ?? "";
+
+  assert.ok(load.includes("this.watchMessages()"), "the first load starts the watch: a window never refreshed would hear nothing");
+  assert.ok(refresh.includes("this.watchMessages()"), "a refresh keeps it going");
+  assert.ok(!/takeMessage[\s\S]{0,200}readyForPrompt/.test(chat), "polling must not pop the add-model form every few seconds");
+});
+
+test("a message the agent sends to another session is shown with what it said, open without a click", async () => {
+  const turn = createTurn("tell the api session to run the tests", [], 5000, "turn-send");
+  applyEvent(
+    turn,
+    {
+      type: "tool_started",
+      call_id: "m1",
+      name: "send_message",
+      arguments: { to: "01a15029-7de1-7790-aebe-334c8ce2aa8e", message: "Please run the pagination tests and report back." },
+    },
+    5100,
+  );
+  applyEvent(
+    turn,
+    {
+      type: "tool_finished",
+      call_id: "m1",
+      name: "send_message",
+      output: "Delivered to api (id 01a15029); it started on it now.",
+      ok: true,
+      skipped: false,
+    },
+    5200,
+  );
+  const ui = await harness([turn]);
+
+  const body = ui.text(".tool-body");
+  assert.ok(body.includes("Please run the pagination tests and report back."), "what was sent");
+  assert.ok(body.includes("Delivered to api"), "and whether it was taken");
+  assert.ok(ui.text(".tool-verb").includes("Message"));
+});

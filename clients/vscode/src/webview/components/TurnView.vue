@@ -45,7 +45,7 @@ function copyPrompt(): void {
 
 /** Put the message back in the box to change it and send it again. */
 function editPrompt(): void {
-  state.draft = props.turn.prompt;
+  state.draft = props.turn.sent ? `@${props.turn.sent.to} ${props.turn.prompt}` : props.turn.prompt;
   state.focus += 1;
 }
 
@@ -114,6 +114,7 @@ const summary = computed(() => {
   <section v-else class="turn" :class="{ aside: turn.aside, command: isCommand, folded }" :data-id="turn.id">
     <div v-if="hasUser && !isCommand" class="user">
       <div class="user-bubble" :class="{ flash: state.flashed === turn.id }">
+        <div v-if="turn.sent" class="user-from">to <span class="at">@{{ turn.sent.to }}</span> · {{ turn.sent.note }}</div>
         <div v-if="turn.from" class="user-from">from <span class="at">@{{ turn.from.name }}</span></div>
         <div v-if="turn.prompt" class="user-text">{{ turn.prompt }}</div>
         <div v-if="turn.images.length" class="thumbs">
@@ -153,7 +154,7 @@ const summary = computed(() => {
           <Icon name="pencil" :size="13" />
         </button>
         <button
-          v-if="!turn.aside"
+          v-if="!turn.aside && !turn.sent"
           class="icon-btn meta-btn fold"
           type="button"
           :title="folded ? 'Expand this request' : 'Collapse this request'"
@@ -167,7 +168,7 @@ const summary = computed(() => {
 
     <div v-if="folded" class="folded-line">{{ summary || "Collapsed" }}</div>
 
-    <div v-else class="assistant" :class="{ bare: isCommand }">
+    <div v-else-if="!turn.sent" class="assistant" :class="{ bare: isCommand }">
       <div v-if="turn.aside && !isCommand" class="label">Aside · not added to the conversation</div>
       <div v-if="turn.resumed" class="label">Resumed the interrupted request</div>
 

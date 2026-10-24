@@ -225,6 +225,7 @@ class FakeClient:
         self.runs = list(runs)
         self.asked: list[str] = []
         self.relayed: list[Any] = []
+        self.sent: list[tuple[str, str]] = []
         self.approvals: list[Any] = []
         self.prompt_options: list[dict[str, object]] = []
         self.self_choice: bool | None = None
@@ -291,6 +292,18 @@ class FakeClient:
         run = self.runs.pop(0) if self.runs else FakeRun([TextDelta("session-1", "hi")])
         run.on_approval = options.get("on_approval")
         return run
+
+    async def send(self, to: str, text: str) -> Any:
+        from zettcode.broker.client import Delivered
+        from zettcode.broker.protocol import PeerInfo
+
+        self.sent.append((to, text))
+        if to == "nobody":
+            from zettcode.broker.client import SendError
+
+            raise SendError("not_found", "no session is called @nobody")
+        peer = PeerInfo("session-api", to, "API work", "/work/api", "idle")
+        return Delivered(peer, "started")
 
     def relay(self, message: object, **options: object) -> FakeRun:
         self.relayed.append(message)

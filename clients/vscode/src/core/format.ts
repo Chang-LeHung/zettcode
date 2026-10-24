@@ -55,6 +55,8 @@ export function describeTool(name: string, args: Record<string, unknown>): ToolD
       return pathRow("Edit", path);
     case "glob":
       return { verb: "Glob", target: pattern || path || "files" };
+    case "send_message":
+      return { verb: "Message", target: `@${stringArg(args, "to") || "?"}` };
     case "grep":
       return {
         verb: "Grep",
@@ -91,6 +93,9 @@ export function describeTool(name: string, args: Record<string, unknown>): ToolD
 export function toolDetail(name: string, args: Record<string, unknown>): string {
   const bare = name.replace(/^.*__/, "").toLowerCase();
   const command = stringArg(args, "command", "cmd");
+  if (bare === "send_message") {
+    return stringArg(args, "message", "text") || JSON.stringify(args);
+  }
   if ((bare === "bash" || bare === "shell") && command) {
     return command;
   }

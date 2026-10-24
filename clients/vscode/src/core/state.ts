@@ -111,6 +111,8 @@ export interface Turn {
   resumed?: boolean;
   /** Set when another session sent the message this turn answers. */
   from?: { id: string; name: string };
+  /** Set when this turn is a message another session was sent, rather than a prompt. */
+  sent?: { to: string; note: string };
 }
 
 /** How much of one tool's output a transcript keeps; a runaway build log must not become the webview. */

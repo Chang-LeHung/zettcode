@@ -316,6 +316,14 @@ export class ZettCodeClient {
     return new Run(this, `/messages/${encodeURIComponent(id)}`, wireOptions(options), options);
   }
 
+  /** Send a message to another session, as a draft beginning with `@name` does; returns who took it. */
+  sendMessage(to: string, text: string): Promise<{ to: string; disposition: string }> {
+    return this.request<{ to: string; disposition: string }>(
+      "/sessions/current/send",
+      this.json("POST", { to, text }),
+    );
+  }
+
   /** Whether a run is going, and what it waits on. */
   runState(): Promise<RunState> {
     return this.request<RunState>("/runs/current");

@@ -153,7 +153,10 @@ class Client:
 | `use_effort(name)` | `str` | 选择推理级别。 |
 | `use_compact_percent(percent)` | `tuple[ModelInfo, str \| None]` | 从下一次请求起改变压缩点(占窗口的比例,大于 0、至多 100),并改写配置文件。第二个值说明文件为什么没有写入,写入了就是 `None`。 |
 | `use_permission(name)` | `str` | 选择权限级别；从下一条 shell 命令起生效。 |
-| `mentions(query="", *, limit=50)` | `tuple[MentionInfo, ...]` | 匹配查询的 `@` 资源，用于补全菜单。 |
+| `mentions(query="", *, limit=50)` | `tuple[MentionInfo, ...]` | 匹配查询的 `@` 资源，用于补全菜单。开启 `sessions_enabled=True` 时，正在运行的其他会话排在最前，和终端一致。 |
+| `await join_sessions(on_message)` | `bool` | 加入会话 broker，让其他 ZettCode 会话找得到它、给它发消息。`on_message` 收到每条 `IncomingMessage` 并返回 `Receipt`；返回 `False` 表示该 client 未开启会话功能。 |
+| `await send(to, text)` | `Delivered` | 按 handle 或 id 给另一个会话发消息，内容视为读者本人所写；需要先 `join_sessions`。没有人能收到时抛出 `zettcode.broker.client.SendError`(`reason` 说明原因)。 |
+| `relay(message, *, on_approval, on_question, on_event, timeout, raw, keep_events)` | `RunStream` | 为另一个会话发来的消息跑一轮，模型读到的内容带有发送者信息。 |
 | `await usage_ledger()` | `WorkspaceUsage` | 工作区每个已存会话花的用量，按会话、模型和天。 |
 | `await session_stats(ids=None)` | `tuple[SessionStatsInfo, ...]` | 若干会话在存储里的统计；不传 id 就是当前会话。 |
 | `use_self_compaction(choice)` | `bool` | 允许模型自己压缩这个会话（`True`）、停掉（`False`），或跟随默认值（`None`）。 |
