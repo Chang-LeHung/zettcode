@@ -15,14 +15,14 @@ from zett_agent.model import ServerToolCall, ServerToolInputDelta, ServerToolRes
 
 from zettcode.app.agent.conversation.projection import TranscriptProjector
 from zettcode.app.agent.conversation.replay import replay
-from zettcode.app.agent.conversation.server_tools import (
+from zettcode.app.agent.conversation.transcript import Transcript
+from zettcode.engine.server_tools import (
     MAX_RESULTS,
     ServerToolRun,
     describe_output,
     describe_search,
     runs_in_blocks,
 )
-from zettcode.app.agent.conversation.transcript import Transcript
 from zettcode.engine.storage import SessionStore
 
 #: One answer as Anthropic records it: the query, ten pages, and the encrypted payloads between them.

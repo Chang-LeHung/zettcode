@@ -8,7 +8,7 @@ from pathlib import Path
 from zett_agent.messages import AssistantMessage, UserMessage
 
 from test_zettcode_app import FakeClient, FakeRuntime, _harness, build_app, rows_and_commands
-from zettcode.app.agent.agent import ZettCodeAgent
+from zettcode.app.agent.agent import TerminalAgent
 from zettcode.app.agent.conversation.entries import TextEntry
 from zettcode.app.ui import sessions as sessions_module
 from zettcode.app.ui.app import ZettCodeApp
@@ -52,7 +52,7 @@ async def _app_in_a_locked_session(tmp_path: Path) -> tuple[ZettCodeApp, FakeRun
     runtime.persistence.store = store
     runtime.persistence.sessions = await store.list_sessions()
     runtime.held_elsewhere.add(OTHERS)
-    app = ZettCodeApp(ZettCodeAgent(runtime))
+    app = ZettCodeApp(TerminalAgent(runtime))
     app.app.resize(80, 24)
     app.app.mount()
     app.restore_session(OTHERS)

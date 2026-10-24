@@ -19,7 +19,7 @@ from zett_agent.extensions.skill import SkillExtension
 from zett_agent.extensions.todo import TodoWriteExtension
 
 from plugin_helpers import agent_extensions, agent_plugins, runtime_inputs
-from zettcode.app.agent.agent import ZettCodeAgent
+from zettcode.app.agent.agent import TerminalAgent
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine import core as runtime_module
 from zettcode.engine.messenger import Messenger
@@ -459,7 +459,7 @@ def test_a_bundle_without_the_todo_plugin_shows_no_plan_instead_of_failing(tmp_p
     runtime.plugins = Plugins()
 
     assert runtime.todos is None
-    assert ZettCodeAgent(runtime).tasks() == ()
+    assert TerminalAgent(runtime).tasks() == ()
 
 
 async def test_the_runtime_gives_the_agent_the_plugins_extensions_then_the_host(tmp_path, monkeypatch):

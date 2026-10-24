@@ -10,6 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from zettcode.engine.core import ZettCodeEngine
+from zettcode.engine.dialogue.mentions import MentionProvider
 from zettcode.engine.storage import SessionLocked
 
 
@@ -28,6 +29,11 @@ class AgentBase:
     def session_id(self) -> str:
         """Return the session used for the next turn."""
         return self.runtime.session_id
+
+    @property
+    def plugin_mentions(self) -> tuple[MentionProvider, ...]:
+        """Return the ``@`` resource providers the installed plugins registered."""
+        return self.runtime.plugins.mentions
 
     @property
     def session_locked(self) -> bool:

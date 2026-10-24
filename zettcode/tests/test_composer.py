@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import base64
 
-from zettcode.app.agent.agent.prompt import MentionPart
 from zettcode.app.ui.widgets import Composer
+from zettcode.engine.agent.prompt import MentionPart
 from zettcode.tui import DARK, Style
 from zettcode.tui.testing import Harness
 
@@ -405,7 +405,7 @@ def test_two_messages_that_were_both_written_with_image_one_do_not_collide_when_
 
 
 def test_a_mention_in_the_parts_is_restored_as_the_text_it_was():
-    from zettcode.app.agent.agent.prompt import MentionPart
+    from zettcode.engine.agent.prompt import MentionPart
 
     composer = Composer()
     Harness(composer, width=60, height=4)

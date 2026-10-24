@@ -49,15 +49,18 @@ Moved into `zettcode/engine/` so far: `core.py` (`ZettCodeEngine`), `dialogue/`,
 messenger (`messenger.py`, `relay.py`). The status-line formatters that used to sit in `extensions/usage.py` moved
 to `statusline.py`, because they are about the terminal.
 
-Still to move: the `ZettCodeAgent` mixins in `app/agent/agent/`. They mix three things that must be pulled apart:
-the engine's own work (`turns`, `sessions`, `settings`, `context`, `exports`, `interaction`), the terminal's slash
-commands (`commands.py`: themes, pets, `Presenters`), and the terminal's `Transcript` view model, which the mixins
-fill directly. The engine half goes to `engine/`; the TUI projects engine events into its own `Transcript`.
+Also in the engine now: `agent/` (`zettcode.engine.agent.ZettCodeAgent`, built from the mixins `base`, `settings`,
+`context`, `sessions`, `turns`, `interaction`, `exports`, plus `prompt`) and `server_tools.py`. Reading a stored session
+no longer builds the terminal's rows: the engine returns `StoredSession`, the terminal replays it itself.
+
+The terminal's part is `TerminalAgent` (`app/agent/agent/`): the engine's agent plus `commands.py` (slash commands,
+themes, pets, `Presenters`, what plugins contributed) and `settings.py` (`AppearanceMixin`: theme, pet, status line).
+The SDK wraps the engine's `ZettCodeAgent`, imports nothing under `app`, and `test_structure` holds that.
 
 Open: `engine/core.py` imports `zettcode.plugins`, and the built-in plugins import the terminal's views. The direct
 rule (`test_layers_only_import_downwards`) holds, the indirect one does not yet.
 
-## Splitting `ZettCodeAgent` (proposal, not started)
+## Splitting `ZettCodeAgent` (done: sessions and the agent mixins; the rest below is still to do)
 
 The mixins in `app/agent/agent/` are mostly the engine already; three seams tie them to the terminal.
 

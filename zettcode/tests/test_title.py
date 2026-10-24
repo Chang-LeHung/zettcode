@@ -8,7 +8,7 @@ import pytest
 from zett_agent.messages import AssistantMessage, UserMessage
 from zett_agent.model import ModelEvent, ModelRequest, ModelResponse, RetryOptions
 
-from zettcode.app.agent.agent import ZettCodeAgent
+from zettcode.app.agent.agent import TerminalAgent
 from zettcode.config import ModelConfig
 from zettcode.engine.dialogue.title import MAX_TITLE_CHARS, clean_title, excerpt, summarize_title
 from zettcode.engine.storage import MAX_TITLE, SessionStore
@@ -105,7 +105,7 @@ async def test_the_title_is_asked_for_at_a_level_the_model_takes(tmp_path):
         model="m", token="t", reasoning_efforts=(ReasoningEffort.MEDIUM, ReasoningEffort.HIGH)
     )
 
-    await ZettCodeAgent(runtime).title_session("alpha-1")
+    await TerminalAgent(runtime).title_session("alpha-1")
 
     assert model.requests[0].reasoning_effort == ReasoningEffort.MEDIUM
 
@@ -115,7 +115,7 @@ async def test_title_session_names_the_first_exchange_once(tmp_path):
     await store.append("alpha-1", "req", UserMessage(content="the parser crashes"))
     await store.append("alpha-1", "req", AssistantMessage(content="I fixed the escaping"))
     model = FakeModel("Fix the parser crash")
-    agent = ZettCodeAgent(FakeRuntime(store, model))
+    agent = TerminalAgent(FakeRuntime(store, model))
 
     assert await agent.title_session("alpha-1") == "Fix the parser crash"
     assert store.session_title("alpha-1") == "Fix the parser crash"
@@ -130,7 +130,7 @@ async def test_title_session_waits_for_a_reply(tmp_path):
     store = SessionStore(tmp_path)
     await store.append("alpha-2", "req", UserMessage(content="the parser crashes"))
     model = FakeModel()
-    agent = ZettCodeAgent(FakeRuntime(store, model))
+    agent = TerminalAgent(FakeRuntime(store, model))
 
     assert await agent.title_session("alpha-2") is None
     assert model.requests == []

@@ -27,7 +27,7 @@ from pathlib import Path, PurePosixPath
 
 from render_terminal import preview_plugins, svg
 
-from zettcode.app.agent.agent import ZettCodeAgent
+from zettcode.app.agent.agent import TerminalAgent
 from zettcode.app.ui.app import ZettCodeApp
 from zettcode.app.ui.shell import PAGE_SCREEN
 from zettcode.app.ui.widgets import ContextPage, UsagePage
@@ -217,7 +217,7 @@ def shell(width: int, height: int) -> Iterator[ZettCodeApp]:
             )
             runtime = ZettCodeEngine.preview(config)
             runtime.plugins = load_plugins(config, builtins=preview_plugins())
-            app = ZettCodeApp(ZettCodeAgent(runtime), theme=THEME, auto_theme=False)
+            app = ZettCodeApp(TerminalAgent(runtime), theme=THEME, auto_theme=False)
             app.app.resize(width, height)
             app.app.mount()
             yield app

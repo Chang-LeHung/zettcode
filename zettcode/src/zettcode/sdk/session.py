@@ -70,7 +70,7 @@ from .types import (
 )
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
-    from ..app.agent.agent.prompt import PromptPart
+    from ..engine.agent.prompt import PromptPart
     from ..engine.dialogue.mentions import MentionRegistry
     from .client import Client
 
@@ -133,7 +133,7 @@ def prompt_parts(
         )
     if mentions is None:
         return tuple(parts), None
-    from ..app.agent.agent.prompt import mention_hint, mention_parts
+    from ..engine.agent.prompt import mention_hint, mention_parts
 
     resolved = mention_parts(parts, mentions)
     return resolved, mention_hint(resolved, mentions)
@@ -141,7 +141,7 @@ def prompt_parts(
 
 def _split_mentions(text: str) -> list[Any]:
     """Split one text run at its ``@`` tokens, keeping the order, as the terminal's composer does."""
-    from ..app.agent.agent.prompt import MentionPart
+    from ..engine.agent.prompt import MentionPart
     from ..engine.dialogue.mentions import MENTION
 
     split: list[Any] = []

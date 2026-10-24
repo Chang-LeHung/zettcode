@@ -13,10 +13,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from zettcode.collector import collector_paused
+from zettcode.engine.agent.sessions import StoredSession
 from zettcode.plugins.state import Activity
 from zettcode.tui import ELLIPSIS, SEPARATOR, Theme
 
-from ..agent.agent.sessions import StoredSession
 from ..agent.conversation.presenters import block_for
 from ..agent.conversation.replay import Replayed, replay
 from .shell import ShellState

@@ -68,9 +68,9 @@ _PHASES = textwrap.dedent(
     t = mark("resolve_config (file + terminal)", t)
     from zettcode.app import ZettCodeApp
     t = mark("import the shell + agent glue", t)
-    from zettcode.app.agent.agent import ZettCodeAgent
-    agent = ZettCodeAgent.preview(config)
-    t = mark("ZettCodeAgent.preview", t)
+    from zettcode.app.agent.agent import TerminalAgent
+    agent = TerminalAgent.preview(config)
+    t = mark("TerminalAgent.preview", t)
     app = ZettCodeApp(agent, auto_theme=False)
     t = mark("build the widget tree", t)
 

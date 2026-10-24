@@ -18,7 +18,7 @@ from zett_agent.messages import AssistantMessage, UserMessage
 from broker_helpers import Host, Inbox, client_for, eventually, session
 from test_zettcode_app import FakeClient, FakeRuntime, _harness, _rendered, rows_and_commands
 from zettcode.app import ZettCodeApp
-from zettcode.app.agent.agent import ZettCodeAgent
+from zettcode.app.agent.agent import TerminalAgent
 from zettcode.app.agent.conversation.entries import RelayEntry, TextEntry
 from zettcode.app.ui import updating as updating_module
 from zettcode.app.ui.messaging import MAX_INBOX
@@ -98,7 +98,7 @@ async def make(host: Host):
         runtime = FakeRuntime(client, plugins=rows_and_commands())
         messenger = Messenger(client_for(host.directory), workspace="/work")
         runtime.messenger = messenger
-        app = ZettCodeApp(ZettCodeAgent(runtime))
+        app = ZettCodeApp(TerminalAgent(runtime))
         app.app.resize(80, 24)
         app.app.mount()
         opened.append(Shell(app, _harness(app), client, messenger))
@@ -732,7 +732,7 @@ async def test_a_shell_with_no_broker_behaves_as_it_always_did(make, host):
 async def test_a_shell_without_a_messenger_has_no_session_names_and_no_sending(tmp_path):
     client = FakeClient(DONE)
     runtime = FakeRuntime(client, plugins=rows_and_commands())
-    app = ZettCodeApp(ZettCodeAgent(runtime))
+    app = ZettCodeApp(TerminalAgent(runtime))
     app.app.resize(80, 24)
     app.app.mount()
     harness = _harness(app)
@@ -772,7 +772,7 @@ async def test_the_header_says_what_this_session_is_called_so_the_reader_can_tel
 
 async def test_a_shell_with_messaging_off_shows_no_name(tmp_path):
     runtime = FakeRuntime(FakeClient(DONE), plugins=rows_and_commands())
-    app = ZettCodeApp(ZettCodeAgent(runtime))
+    app = ZettCodeApp(TerminalAgent(runtime))
     app.app.resize(80, 24)
     app.app.mount()
 

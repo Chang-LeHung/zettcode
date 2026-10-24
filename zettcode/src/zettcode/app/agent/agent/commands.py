@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from zettcode.app.commands import Command, CommandContext, CommandHost, CommandResult
 from zettcode.app.pets import PetCatalog, bundled_pets
-from zettcode.engine.dialogue.mentions import MentionProvider
+from zettcode.engine.agent.exports import ExportsMixin
 from zettcode.plugins import UiRow
 from zettcode.plugins.services import HOST_LINK, HostLink
 from zettcode.providers import BUILTIN_PROVIDERS, Provider, merge_providers
@@ -17,13 +17,13 @@ from zettcode.statusline import NAMES, unknown
 from zettcode.tui import ThemeCatalog
 
 from ..conversation.presenters import Presenters
-from .exports import ExportsMixin
+from .settings import AppearanceMixin
 
 #: The words ``/self-compact`` takes after it, or after ``global``.
 _SELF_COMPACT_WORDS = frozenset({"on", "off", "default"})
 
 
-class CommandsMixin(ExportsMixin):
+class CommandsMixin(AppearanceMixin, ExportsMixin):
     """The ``/new``, ``/compact``, and ``/export`` commands, and the plugins' commands, mentions, and rows."""
 
     @property
@@ -58,11 +58,6 @@ class CommandsMixin(ExportsMixin):
     def builtin_plugin_commands(self) -> tuple[Command, ...]:
         """Return the commands the program's own plugins registered: ``/resume``, ``/model``, ``/usage`` and the rest."""
         return self.runtime.plugins.builtin_commands
-
-    @property
-    def plugin_mentions(self) -> tuple[MentionProvider, ...]:
-        """Return the ``@`` resource providers the installed plugins registered."""
-        return self.runtime.plugins.mentions
 
     @property
     def providers(self) -> tuple[Provider, ...]:

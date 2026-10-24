@@ -55,6 +55,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
     from collections.abc import Sequence
 
     from zettcode.config import ModelConfig
+    from zettcode.engine.agent.prompt import PromptPart
     from zettcode.engine.dialogue.ask import AskUserQuestion
     from zettcode.engine.dialogue.mentions import MentionRegistry
     from zettcode.engine.extensions.usage import UsageSnapshot
@@ -64,8 +65,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
     from zettcode.tui import CompletionPopup, StatusBar, Theme, TuiApp
     from zettcode.update import UpdateState
 
-    from ..agent.agent import ZettCodeAgent
-    from ..agent.agent.prompt import PromptPart
+    from ..agent.agent import TerminalAgent
     from ..agent.conversation.effort_gauge import EffortFrame
     from ..agent.conversation.projection import TranscriptProjector
     from ..agent.conversation.shimmer import ShimmerFrame
@@ -86,7 +86,7 @@ class ShellState:
     """
 
     #: The application agent: the only channel to the conversation.
-    agent: ZettCodeAgent
+    agent: TerminalAgent
     #: The mounted widget tree and the host services it offers.
     app: TuiApp
     #: The conversation model every view reads.

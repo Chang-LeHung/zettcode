@@ -331,11 +331,11 @@ def test_every_cell_the_boot_frame_draws_survives_the_swap_with_parts_hidden(tmp
 
 def _shell_with(tmp_path, monkeypatch, path):
     monkeypatch.setenv("ZETTCODE_CONFIG", str(path))
-    from zettcode.app.agent.agent import ZettCodeAgent
+    from zettcode.app.agent.agent import TerminalAgent
     from zettcode.app.ui import ZettCodeApp
     from zettcode.cli import resolve_config
 
-    app = ZettCodeApp(ZettCodeAgent.preview(resolve_config(["-w", str(tmp_path)])), auto_theme=False)
+    app = ZettCodeApp(TerminalAgent.preview(resolve_config(["-w", str(tmp_path)])), auto_theme=False)
     return app.app
 
 

@@ -13,7 +13,7 @@ from ..tui import Widget
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only; the agent and the config are not imported by this module
     from ..config import ModelConfig
-    from .agent.agent import ZettCodeAgent
+    from .agent.agent import TerminalAgent
     from .agent.conversation.transcript import Transcript
 
 
@@ -59,7 +59,7 @@ class CommandHost(Protocol):
         commands: Every command the shell knows, in the order ``/help`` lists them.
     """
 
-    agent: ZettCodeAgent
+    agent: TerminalAgent
     transcript: Transcript
     commands: tuple[Command, ...]
 
@@ -217,7 +217,7 @@ class Command:
         type: Which layer owns the command. ``"app"`` is a local UI action such
             as ``/theme`` or ``/quit``; ``"agent"`` acts on the conversation,
             its sessions, or the model, and is handled by
-            :class:`~zettcode.app.agent.ZettCodeAgent`; ``"plugin"`` comes from
+            :class:`~zettcode.app.agent.TerminalAgent`; ``"plugin"`` comes from
             an installed plugin, registered through
             :class:`~zettcode.plugins.PluginContainer`.
         handler: Runs the command with a :class:`CommandContext` — the trimmed

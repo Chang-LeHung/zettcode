@@ -32,7 +32,7 @@ if TYPE_CHECKING:
     #: What ``add_subparsers`` returns, which the standard library gives no public name to.
     Subcommands = argparse._SubParsersAction[argparse.ArgumentParser]
 
-    from .app.agent.agent import ZettCodeAgent
+    from .app.agent.agent import TerminalAgent
     from .app.ui.app import ZettCodeApp
     from .config import ZettCodeConfig
     from .tui import Theme, TuiApp
@@ -304,7 +304,7 @@ def session_exists(config: ZettCodeConfig, session_id: str) -> bool:
     return SessionStore(config.store, config.workspace).exists(session_id)
 
 
-def resume_hint(agent: ZettCodeAgent) -> str | None:
+def resume_hint(agent: TerminalAgent) -> str | None:
     """Return the command that reopens this session, or None if there is nothing to reopen.
 
     A session the reader never sent anything to was never stored, so naming its
@@ -316,7 +316,7 @@ def resume_hint(agent: ZettCodeAgent) -> str | None:
     return resume_command(agent.session_id, agent.workspace)
 
 
-def report_resume(agent: ZettCodeAgent) -> None:
+def report_resume(agent: TerminalAgent) -> None:
     """Print one line naming the way back into the session that just ended."""
     hint = resume_hint(agent)
     if hint is not None:
@@ -340,7 +340,7 @@ def resolve_config(argv: list[str] | None = None) -> ZettCodeConfig:
         raise SystemExit(f"zettcode: {error}") from error
 
 
-def chosen_theme(agent: ZettCodeAgent) -> Theme | None:
+def chosen_theme(agent: TerminalAgent) -> Theme | None:
     """Return the palette the reader chose, or ``None`` when the terminal's own light or dark should pick.
 
     A palette is a choice when ``[ui] theme`` names one, or ``~/.zettcode/theme.toml`` exists; the file is laid
@@ -413,12 +413,12 @@ async def async_main(
             without printing anything, so a profiler's output stands alone.
     """
     from .app import ZettCodeApp
-    from .app.agent.agent import ZettCodeAgent
+    from .app.agent.agent import TerminalAgent
     from .tui import DARK
 
     if resume is not None and not session_exists(config, resume):
         raise SystemExit(f"zettcode: no session {resume} in {config.store}")
-    agent = ZettCodeAgent.preview(config)
+    agent = TerminalAgent.preview(config)
     chosen = chosen_theme(agent)
     theme = chosen if chosen is not None else DARK
     if auto:
@@ -476,13 +476,13 @@ def build_application(options: Options, *, terminal: TuiApp | None = None) -> Ze
             not yet.
     """
     from .app import ZettCodeApp
-    from .app.agent.agent import ZettCodeAgent
+    from .app.agent.agent import TerminalAgent
     from .tui import DARK
 
     config = resolve_config()
     if options.resume is not None and not session_exists(config, options.resume):
         raise SystemExit(f"zettcode: no session {options.resume} in {config.store}")
-    agent = ZettCodeAgent.preview(config)
+    agent = TerminalAgent.preview(config)
     chosen = chosen_theme(agent)
     theme = chosen if chosen is not None else DARK
     if options.auto:
@@ -533,7 +533,7 @@ async def launch(options: Options) -> None:
           start the reader
                                            resolve_config()
                                            import ZettCodeApp
-                                           ZettCodeAgent.preview()
+                                           TerminalAgent.preview()
                                            ZettCodeApp(agent, ...)
                                            restore_session()   (--resume only)
         app.adopt(tui)         <---------  the build returns

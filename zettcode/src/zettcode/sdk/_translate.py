@@ -14,10 +14,10 @@ from zett_agent.events import AgentEvent, AgentEventType
 from zett_agent.extensions.shell_approval import SHELL_APPROVAL_EVENT_NAME
 from zett_agent.messages import TextContent
 
-from ..app.agent.conversation.server_tools import ServerToolRun, describe_output
 from ..engine.dialogue.ask import question_from
 from ..engine.extensions.mcp_notice import notice_from, notice_level_from
 from ..engine.extensions.usage import USAGE_EVENT_NAME, UsageSnapshot
+from ..engine.server_tools import ServerToolRun, describe_output
 from ..engine.storage.ledger import Ledger, SessionStats, SessionUsage, Tally
 from .events import (
     AnyEvent,

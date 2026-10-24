@@ -6,7 +6,7 @@ from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timezone
 from typing import NamedTuple
 
-from zettcode.app.agent.agent.sessions import UNTITLED_SESSION
+from zettcode.engine.agent.sessions import UNTITLED_SESSION
 from zettcode.engine.storage import SessionInfo, SessionStats
 from zettcode.tui import ELLIPSIS, SEPARATOR, ListItem, ListPage, Rect, Theme
 from zettcode.tui.render import blend, display_width

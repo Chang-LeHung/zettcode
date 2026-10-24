@@ -18,7 +18,7 @@ _EXPORTS = {
     "TranscriptProjector": ".agent",
     "TranscriptSource": ".ui",
     "TranscriptView": ".ui",
-    "ZettCodeAgent": ".agent",
+    "TerminalAgent": ".agent",
     "ZettCodeApp": ".ui",
     "ZettCodeRoot": ".ui",
     "ZettCodeEngine": ".agent",
@@ -26,7 +26,7 @@ _EXPORTS = {
 
 
 if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
-    from .agent import Entry, Transcript, TranscriptProjector, ZettCodeAgent, ZettCodeEngine
+    from .agent import Entry, TerminalAgent, Transcript, TranscriptProjector, ZettCodeEngine
     from .ui import TranscriptSource, TranscriptView, ZettCodeApp, ZettCodeRoot
 
 
@@ -57,7 +57,7 @@ __all__ = [
     "TranscriptSource",
     "TranscriptView",
     "ZettCodeApp",
-    "ZettCodeAgent",
+    "TerminalAgent",
     "ZettCodeRoot",
     "ZettCodeEngine",
 ]

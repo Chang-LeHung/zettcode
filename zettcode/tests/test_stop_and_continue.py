@@ -17,7 +17,7 @@ from zett_agent.providers.openai import OpenAIProvider
 from zett_agent.stop import StopInfo, StopReason
 
 from test_model_failures import FAST, piece, sse
-from zettcode.app.agent.agent import ZettCodeAgent
+from zettcode.app.agent.agent import TerminalAgent
 from zettcode.app.agent.conversation.stops import stop_text
 from zettcode.app.ui.app import ZettCodeApp
 from zettcode.config import ModelConfig, ZettCodeConfig
@@ -109,7 +109,7 @@ def shell(tmp_path: Path, monkeypatch):
             tips=False,
             statusline_hidden=("pet",),
         )
-        app = ZettCodeApp(ZettCodeAgent(runtime_module.ZettCodeEngine.preview(config)))
+        app = ZettCodeApp(TerminalAgent(runtime_module.ZettCodeEngine.preview(config)))
         app.app.resize(110, 30)
         app.app.mount()
         return app, Harness(app=app.app)

@@ -15,7 +15,7 @@ from zett_agent.messages import UserMessage
 
 from plugin_helpers import agent_extensions
 from zettcode._compat import ExceptionGroup
-from zettcode.app.agent.agent import ZettCodeAgent
+from zettcode.app.agent.agent import TerminalAgent
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine import core as runtime_module
 from zettcode.engine import pipeline as pipeline_module
@@ -385,7 +385,7 @@ def test_the_agent_names_the_file_its_session_is_stored_in(tmp_path):
         models=(ModelConfig(model="m", token="t"),),
         store=tmp_path / "sessions",
     )
-    agent = ZettCodeAgent.preview(config)
+    agent = TerminalAgent.preview(config)
 
     path = agent.session_path()
 
