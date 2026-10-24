@@ -58,7 +58,25 @@ themes, pets, `Presenters`, what plugins contributed) and `settings.py` (`Appear
 The SDK wraps the engine's `ZettCodeAgent`, imports nothing under `app`, and `test_structure` holds that.
 
 Open: `engine/core.py` imports `zettcode.plugins`, and the built-in plugins import the terminal's views. The direct
-rule (`test_layers_only_import_downwards`) holds, the indirect one does not yet.
+rule (`test_layers_only_import_downwards`) holds, the indirect one does not yet. Measured: `import zettcode.engine.core`
+loads 32 `zettcode.tui` modules and parts of `app.ui` and `app.agent.conversation`, all through `zettcode.plugins`,
+so the SDK and the server carry the terminal along. See "Plugins" below.
+
+## Plugins (design, not started)
+
+`zettcode.plugins` is the public contract of third-party authors (`Plugin`, `PluginContainer`, `register_command`,
+`register_theme`, `register_pet`, `register_presenter`, the header and status rows, `register_extension`,
+`provide`, `register_mention`, `register_provider`). Its container, loader and `Plugins` result hold the terminal's
+kinds beside the agent's, and the loader's all-or-nothing clash checks run across both.
+
+Proposal: author-facing names and signatures stay exactly as they are. Underneath, the engine owns the container,
+the loader and the agent-side kinds (extensions, services, mentions, model providers). The terminal's kinds
+(commands, themes, pets, presenters, rows) go behind one engine-defined abstract base, `FrontendSurface`, that the
+loader asks to accept, clash-check and merge each plugin's contribution; the engine ships a surface that accepts and
+drops them (so a plugin that registers a command still loads under the SDK and the server), and the terminal ships
+the real one. The engine is handed its surface explicitly (`ZettCodeEngine.preview(config, surface=...)`; the
+terminal's agent does it, and the tests' helpers). `zettcode.plugins` becomes a lazy facade, so importing it loads
+none of the terminal. The built-in terminal plugins (`builtins`, `builtin_commands`) move to `app/`.
 
 ## Splitting `ZettCodeAgent` (done: sessions and the agent mixins; the rest below is still to do)
 
