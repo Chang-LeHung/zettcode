@@ -114,6 +114,7 @@ const summary = computed(() => {
   <section v-else class="turn" :class="{ aside: turn.aside, command: isCommand, folded }" :data-id="turn.id">
     <div v-if="hasUser && !isCommand" class="user">
       <div class="user-bubble" :class="{ flash: state.flashed === turn.id }">
+        <div v-if="turn.from" class="user-from">from <span class="at">@{{ turn.from.name }}</span></div>
         <div v-if="turn.prompt" class="user-text">{{ turn.prompt }}</div>
         <div v-if="turn.images.length" class="thumbs">
           <img
@@ -272,6 +273,16 @@ const summary = computed(() => {
   overflow-y: auto;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.user-from {
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.9em;
+  margin-bottom: 4px;
+}
+
+.user-from .at {
+  color: var(--vscode-textLink-foreground);
 }
 
 .thumbs {

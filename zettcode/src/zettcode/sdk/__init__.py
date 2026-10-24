@@ -64,6 +64,7 @@ if TYPE_CHECKING:  # pragma: no cover - for type checkers and editors; at runtim
     from .types import (
         DayTotals,
         Image,
+        IncomingMessage,
         MentionInfo,
         ModelCheck,
         ModelTotals,
@@ -85,6 +86,7 @@ _EXPORTS: dict[str, str] = {
     "RunResult": ".types",
     "Usage": ".types",
     "Image": ".types",
+    "IncomingMessage": ".types",
     "MentionInfo": ".types",
     "DayTotals": ".types",
     "ModelCheck": ".types",
@@ -122,6 +124,7 @@ __all__ = [
     "DayTotals",
     "Finished",
     "Image",
+    "IncomingMessage",
     "MentionInfo",
     "ModelCheck",
     "ModelTotals",

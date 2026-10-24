@@ -224,6 +224,7 @@ class FakeClient:
         self.sessions = FakeSessions(self)
         self.runs = list(runs)
         self.asked: list[str] = []
+        self.relayed: list[Any] = []
         self.approvals: list[Any] = []
         self.prompt_options: list[dict[str, object]] = []
         self.self_choice: bool | None = None
@@ -287,6 +288,12 @@ class FakeClient:
         self.asked.append(text)
         self.approvals.append(options.get("on_approval"))
         self.prompt_options.append(dict(options))
+        run = self.runs.pop(0) if self.runs else FakeRun([TextDelta("session-1", "hi")])
+        run.on_approval = options.get("on_approval")
+        return run
+
+    def relay(self, message: object, **options: object) -> FakeRun:
+        self.relayed.append(message)
         run = self.runs.pop(0) if self.runs else FakeRun([TextDelta("session-1", "hi")])
         run.on_approval = options.get("on_approval")
         return run

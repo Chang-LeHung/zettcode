@@ -30,6 +30,7 @@ import type {
   SettingsUpdate,
   StreamFrame,
   Usage,
+  WaitingMessage,
   WorkspaceUsage,
 } from "./types.js";
 
@@ -277,6 +278,12 @@ export class ZettCodeClient {
     return body.mentions;
   }
 
+  /** The messages other sessions sent that this chat has not answered yet, oldest first. */
+  async messages(): Promise<WaitingMessage[]> {
+    const body = await this.request<{ messages: WaitingMessage[] }>("/messages");
+    return body.messages;
+  }
+
   /** Ask every configured model one short question and report which of them answer, as `zettcode doctor`. */
   async doctor(timeout = 30): Promise<ModelCheck[]> {
     const body = await this.request<{ checks: ModelCheck[] }>("/doctor", this.json("POST", { timeout }));
@@ -302,6 +309,11 @@ export class ZettCodeClient {
   /** Continue the interrupted request where it stopped, streaming it like `prompt`. */
   resume(options: RunOptions = {}): Run {
     return new Run(this, "/runs/resume", wireOptions(options), options);
+  }
+
+  /** Answer one message another session sent, streaming the turn exactly as `prompt` does. */
+  answerMessage(id: string, options: RunOptions = {}): Run {
+    return new Run(this, `/messages/${encodeURIComponent(id)}`, wireOptions(options), options);
   }
 
   /** Whether a run is going, and what it waits on. */

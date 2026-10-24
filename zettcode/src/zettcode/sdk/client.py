@@ -36,9 +36,10 @@ from .errors import (
 )
 from .events import AnyEvent
 from .handlers import ApprovalHandler, QuestionHandler
-from .session import Prompt, RunStream, Session
+from .session import EventCallback, Prompt, RunStream, Session
 from .types import (
     Image,
+    IncomingMessage,
     MentionInfo,
     ModelCheck,
     ModelInfo,
@@ -53,6 +54,9 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only; the agent is imported 
     from ..app.agent.agent import ZettCodeAgent
     from ..app.agent.conversation.transcript import Transcript
     from ..app.agent.dialogue.ask import AskUserQuestion
+    from ..app.agent.dialogue.mentions import MentionRegistry
+    from ..app.agent.extensions.messenger import Messenger
+    from ..broker.client import Receipt
     from ..config import ModelConfig, ZettCodeConfig
 
 __all__ = ["Client", "PluginReport", "Sessions", "prompt", "prompt_sync"]
@@ -262,7 +266,8 @@ class Client:
             reported with a suggestion.
 
     The client defaults to ``sessions_enabled=False`` and ``update_enabled=False``: a program embedding the agent
-    neither joins the broker that lets terminal sessions message one another nor checks PyPI.
+    neither joins the broker that lets terminal sessions message one another nor checks PyPI. Turning sessions on and
+    calling :meth:`join_sessions` makes this client one of the sessions the others can address.
 
     Use it as ``async with Client(...) as client`` (or call :meth:`aclose`) so the provider connection and the session
     lock are released. The coding tools work relative to the process's working directory, so creating a client
@@ -294,6 +299,7 @@ class Client:
         self._stream: RunStream | None = None
         self._handles: dict[str, Session] = {}
         self._switching = asyncio.Lock()
+        self._messenger: Messenger | None = None
         resolved = build_config(workspace, config, config_path, models, settings)
         self._register(resolved.workspace)
         # Imported here, not at the top of the module: importing the SDK costs nothing until a client is made.
@@ -382,8 +388,11 @@ class Client:
         if self._closed:
             return
         self._closed = True
+        messenger, self._messenger = self._messenger, None
         stream = self._stream
         try:
+            if messenger is not None:
+                await messenger.close()
             if stream is not None:
                 await stream.aclose()
         finally:
@@ -410,10 +419,12 @@ class Client:
         if self._stream is not None and self._stream is not stream:
             self._check_free()
         self._stream = stream
+        self._describe(busy=True)
 
     def _release(self, stream: RunStream) -> None:
         if self._stream is stream:
             self._stream = None
+            self._describe(busy=False)
 
     # -- sessions --
     @property
@@ -425,6 +436,76 @@ class Client:
     def session(self) -> Session:
         """Return the current conversation, which a new client starts empty."""
         return self._handle(self._agent.session_id)
+
+    # -- the other sessions --
+    async def join_sessions(self, on_message: Callable[[IncomingMessage], Receipt]) -> bool:
+        """Join the session broker, so other ZettCode sessions can find this one and send it messages.
+
+        The terminal joins it too; a program embedding the agent does not unless it is built with
+        ``sessions_enabled=True``, which is what this call needs to have anything to join.
+
+        Args:
+            on_message: Called on the event loop with every message another session sends. It must not block; what
+                it returns is the answer the sender's agent is given — whether the message was taken, and whether
+                the turn it starts has begun or is waiting.
+
+        Returns:
+            Whether this client is reachable now; ``False`` when sessions are switched off for it.
+
+        Raises:
+            ClientClosedError: The client was closed.
+        """
+        self._check_open()
+        messenger = self._agent.runtime.messenger
+        if messenger is None:
+            return False
+        self._messenger = messenger
+        messenger.receiver = lambda relayed: on_message(
+            IncomingMessage(
+                sender_id=relayed.sender_id,
+                sender=relayed.sender,
+                text=relayed.text,
+                via=relayed.via,
+                hops=relayed.hops,
+            )
+        )
+        self._describe(busy=self._stream is not None)
+        await messenger.start()
+        return True
+
+    def relay(
+        self,
+        message: IncomingMessage,
+        *,
+        on_approval: ApprovalHandler | None = None,
+        on_question: QuestionHandler | None = None,
+        on_event: EventCallback | None = None,
+        timeout: float | None = None,
+        raw: bool = False,
+        keep_events: bool = False,
+    ) -> RunStream:
+        """Run one turn for a message another session sent, as the terminal does when one arrives.
+
+        The message is what the model reads, framed with where it came from; the answer belongs to this session's
+        own reader, and the sender sees nothing of it unless the model replies with ``send_message``.
+        """
+        return self.session.relay(
+            message,
+            on_approval=on_approval,
+            on_question=on_question,
+            on_event=on_event,
+            timeout=timeout,
+            raw=raw,
+            keep_events=keep_events,
+        )
+
+    def _describe(self, *, busy: bool) -> None:
+        """Tell the broker what this session is, when there is a connection to tell it."""
+        messenger = self._messenger
+        if messenger is None:
+            return
+        session = self.session
+        messenger.describe(session.id, session.title, busy=busy)
 
     def _handle(self, session_id: str) -> Session:
         handle = self._handles.get(session_id)
@@ -619,16 +700,28 @@ class Client:
         Raises:
             ValueError: ``limit`` is not positive.
         """
-        from ..app.agent.dialogue.mentions import MentionRegistry
-
         self._check_open()
         if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
             raise ValueError("limit must be a positive integer")
-        registry = MentionRegistry(self._agent.plugin_mentions)
+        registry = self._mention_registry()
         return tuple(
             MentionInfo(mention.token, mention.kind, mention.name, mention.description)
             for mention in registry.candidates(query)[:limit]
         )
+
+    def _mention_registry(self) -> MentionRegistry:
+        """Return the ``@`` providers: the other sessions first, then what the plugins offer.
+
+        The order is the terminal's, and it decides more than a menu: a draft that names a session means that
+        session even when a file happens to have the same name.
+        """
+        from ..app.agent.dialogue.mentions import MentionRegistry, SessionMentions
+
+        providers = self._agent.plugin_mentions
+        messenger = self._agent.runtime.messenger
+        if messenger is not None:
+            providers = (SessionMentions(messenger.peers), *providers)
+        return MentionRegistry(providers)
 
     # -- what the workspace spent, and what a session holds --
     def _ledger(self) -> Any:

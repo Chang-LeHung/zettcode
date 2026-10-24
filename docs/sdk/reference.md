@@ -153,12 +153,14 @@ The agent for one workspace. An async context manager. See [Client & configurati
 | `use_effort(name)` | `str` | Chooses the reasoning level. |
 | `use_compact_percent(percent)` | `tuple[ModelInfo, str \| None]` | Moves the compaction point (a share of the window, above 0 and at most 100) from the next request on, and rewrites the configuration file. The second value says why the file was not written, or is `None`. |
 | `use_permission(name)` | `str` | Chooses the permission level; applies from the next shell command. |
-| `mentions(query="", *, limit=50)` | `tuple[MentionInfo, ...]` | The `@` resources matching a query, for a completion menu. |
+| `mentions(query="", *, limit=50)` | `tuple[MentionInfo, ...]` | The `@` resources matching a query, for a completion menu. With `sessions_enabled=True`, the other running sessions come first, as they do in the terminal. |
+| `await join_sessions(on_message)` | `bool` | Join the session broker, so other ZettCode sessions can find this one and send it messages. `on_message` is called with each `IncomingMessage` and returns a `Receipt`; `False` means sessions are switched off for this client. |
+| `relay(message, *, on_approval, on_question, on_event, timeout, raw, keep_events)` | `RunStream` | Runs one turn for a message another session sent, framed with who it came from. |
 | `await usage_ledger()` | `WorkspaceUsage` | What every stored session of the workspace spent, by session, model and day. |
 | `await session_stats(ids=None)` | `tuple[SessionStatsInfo, ...]` | Stored totals of some sessions, or of the current one. |
 | `use_self_compaction(choice)` | `bool` | Let the model compact this session itself (`True`), stop it (`False`), or follow the default (`None`). |
 | `await check_models(*, timeout=30)` | `tuple[ModelCheck, ...]` | Ask every configured model one short question, as `zettcode doctor`. |
-| `aclose()` | — | Stops a run in progress and releases everything. Safe to call twice. |
+| `aclose()` | — | Stops a run in progress, leaves the broker and releases everything. Safe to call twice. |
 
 `use_model`, `use_effort` and `use_permission` raise `ConfigurationError` for a choice that does not exist, with the valid ones in the message.
 
@@ -347,6 +349,10 @@ Properties: `ok` (`stop is None`) and `failed_tools`.
 ### `MentionInfo`
 
 `token`, `kind`, `name`, `description`.
+
+### `IncomingMessage`
+
+`sender_id`, `sender`, `text`, `via`, `hops`. A message another ZettCode session sent: what `join_sessions` hands its callback, and what `relay` answers. `via` is `"user"` when the sender's reader typed it, `"agent"` when its agent did, `"external"` for a program that is not a ZettCode session.
 
 ### `Totals`
 
