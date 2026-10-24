@@ -26,14 +26,14 @@ import type {
   CurrentSession,
   Health,
   ImageInput,
-  Mention,
+  MentionInfo,
   Message,
   ModelInfo,
   ModelInput,
   ModelUpdate,
   Permission,
   PendingRequest,
-  Resumable,
+  ResumeInfo,
   Run,
   RunEvent,
   RunResult,
@@ -106,7 +106,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
   private sessions: SessionRow[] = [];
   private selfCompaction: SelfCompaction | null = null;
   private contextReport: ContextReport | null = null;
-  private resumable: Resumable | null = null;
+  private resumable: ResumeInfo | null = null;
 
   /**
    * What belongs to one conversation and not to the window: its transcript, and the run going in it. The conversation on
@@ -426,7 +426,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     await this.readSettings();
     const previousId = this.session?.id;
     await this.restoreSession(client);
-    const nextSession = await client.currentSession();
+    const nextSession = await client.session.info();
     const changed = previousId !== nextSession.id;
     this.session = nextSession;
     if (changed) {
@@ -474,7 +474,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       turn.from = { id: first.sender_id, name: first.sender };
       this.turns.push(turn);
       this.postTurn(turn, true);
-      await this.startRun(client.answerMessage(first.id, this.runOptions([])), turn);
+      await this.startRun(client.relay(first.id, this.runOptions([])), turn);
     } finally {
       this.takingMessage = false;
     }
@@ -521,12 +521,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
   private async restoreSession(client: ZettCodeClient): Promise<void> {
     const enabled = vscode.workspace.getConfiguration("zettcode").get<boolean>("restoreSession", true);
     const wanted = this.context.workspaceState.get<string>(SESSION_KEY);
-    this.session = await client.currentSession();
+    this.session = await client.session.info();
     if (!enabled || !wanted || this.session.id === wanted) {
       return;
     }
     try {
-      this.session = await client.openSession(wanted);
+      this.session = await client.sessions.open(wanted);
       this.output.appendLine(`[session] reopened ${wanted}`);
     } catch (error) {
       this.output.appendLine(`[session] could not reopen ${wanted}: ${messageOf(error)}`);
@@ -543,7 +543,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     try {
       // The whole conversation, not only what the model still works from: what a compaction folded away is shown too,
       // a page at a time (see `hidden`), with each summary where it was made.
-      const messages: Message[] = await this.client.history({ full: true });
+      const messages: Message[] = await this.client.session.history({ full: true });
       this.turns = restoreTurns(messages);
       this.hidden = pageStart(this.turns);
     } catch (error) {
@@ -570,8 +570,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     await this.applyRememberedPermission();
     const [selfCompaction, contextReport, resumable, runState] = await Promise.all([
       client.selfCompaction().catch(() => null),
-      client.context().catch(() => null),
-      client.resumable().catch(() => null),
+      client.session.context().catch(() => null),
+      client.session.resumable().catch(() => null),
       client.runState().catch(() => null),
     ]);
     this.selfCompaction = selfCompaction;
@@ -754,7 +754,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     }
     const client = await this.ensureClient();
     try {
-      const sent = await client.sendMessage(handle, text);
+      const sent = await client.send(handle, text);
       const turn = createTurn(text, [], Date.now());
       turn.sent = { to: sent.to, note: sent.disposition === "queued" ? "queued" : "delivered" };
       turn.status = "done";
@@ -781,7 +781,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     turn.resumed = true;
     this.turns.push(turn);
     this.postTurn(turn, true);
-    const run = client.resume(this.runOptions([]));
+    const run = client.session.resume(this.runOptions([]));
     await this.startRun(run, turn);
   }
 
@@ -923,7 +923,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     }
     const client = this.client;
     const [session, health] = await Promise.all([
-      client.currentSession().catch(() => null),
+      client.session.info().catch(() => null),
       client.health().catch(() => null),
     ]);
     if (session !== null) {
@@ -933,9 +933,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     if (health !== null) {
       this.health = health;
     }
-    this.contextReport = await client.context().catch(() => null);
+    this.contextReport = await client.session.context().catch(() => null);
     this.selfCompaction = await client.selfCompaction().catch(() => null);
-    this.resumable = await client.resumable().catch(() => null);
+    this.resumable = await client.session.resumable().catch(() => null);
     this.postState();
     void this.refreshSessions(false).catch(() => undefined);
     if (turn.status === "done" && !turn.aside) {
@@ -959,8 +959,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     ) {
       return;
     }
-    this.titleTask = client
-      .nameSession()
+    this.titleTask = client.session
+      .nameIt()
       .then(async (named) => {
         if (!named.title || this.session?.id !== session.id) {
           return;
@@ -1032,7 +1032,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     }
     let steered = false;
     try {
-      steered = await this.client.steer(prompt);
+      steered = await this.client.session.steer(prompt);
     } catch (error) {
       this.post({ type: "notice", level: "warn", text: `Could not steer: ${messageOf(error)}` });
     }
@@ -1129,15 +1129,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     this.turns.push(turn);
     this.postTurn(turn, true);
     // Streamed like a prompt, so the answer is written as it arrives and Esc stops it; it still joins nothing.
-    await this.startRun(client.askStream(text, 180), turn);
+    await this.startRun(client.session.askStream(text, { timeout: 180 }), turn);
   }
 
   // -- sessions ----------------------------------------------------------
 
   async newSession(): Promise<void> {
     const client = await this.ensureClient();
-    await client.createSession();
-    this.session = await client.currentSession();
+    await client.sessions.new();
+    this.session = await client.session.info();
     this.context.workspaceState.update(SESSION_KEY, this.session.id);
     // A run in the conversation being left goes on there; this one starts empty and idle.
     this.showConversation(this.session.id, newConversation());
@@ -1167,7 +1167,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       this.post({ type: "history", open: false });
     }
     await this.whileLoading("Opening the conversation", async () => {
-      this.session = await client.openSession(id);
+      this.session = await client.sessions.open(id);
       this.context.workspaceState.update(SESSION_KEY, id);
       const running = this.convs.find(id);
       if (running !== undefined && running.busy) {
@@ -1195,7 +1195,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     const limit = vscode.workspace.getConfiguration("zettcode").get<number>("historyLimit", 50);
     let list: SessionInfo[] = [];
     try {
-      list = await this.client.listSessions(limit);
+      list = await this.client.sessions.list({ limit });
     } catch (error) {
       this.output.appendLine(`[sessions] ${messageOf(error)}`);
       list = [];
@@ -1236,7 +1236,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     if (name === undefined || !name.trim()) {
       return;
     }
-    this.session = { ...(this.session ?? (await client.currentSession())), title: (await client.renameSession(name.trim())).title };
+    this.session = { ...(this.session ?? (await client.session.info())), title: (await client.session.rename(name.trim())).title };
     this.context.workspaceState.update(SESSION_KEY, this.session.id);
     this.postState();
     await this.refreshSessions(true);
@@ -1246,7 +1246,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     const client = await this.ensureClient();
     const name = await vscode.window.withProgress(
       { location: vscode.ProgressLocation.Notification, title: "Naming the session…" },
-      async () => client.nameSession(),
+      async () => client.session.nameIt(),
     );
     if (this.session) {
       this.session = { ...this.session, title: name.title };
@@ -1262,7 +1262,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     }
     const client = await this.ensureClient();
     await this.whileLoading("Forking the conversation", async () => {
-      this.session = await client.forkSession();
+      this.session = await client.session.fork();
       this.context.workspaceState.update(SESSION_KEY, this.session.id);
       await this.loadHistory();
       await this.readExtras();
@@ -1280,7 +1280,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     // The webview draws a running row for this and ends it with the next notice, so every way out sends exactly one.
     try {
       const client = await this.ensureClient();
-      const result = await client.compactSession();
+      const result = await client.session.compact();
       if (result.applied) {
         this.post({
           type: "notice",
@@ -1304,7 +1304,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
 
   async exportSession(): Promise<void> {
     const client = await this.ensureClient();
-    const html = await client.exportSession();
+    const html = await client.session.export();
     const folder = vscode.workspace.workspaceFolders?.[0]?.uri;
     const target = await vscode.window.showSaveDialog({
       filters: { HTML: ["html"] },
@@ -1320,7 +1320,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
 
   private async setSelfCompaction(choice: boolean | null): Promise<void> {
     const client = await this.ensureClient();
-    this.selfCompaction = await client.setSelfCompaction(choice);
+    this.selfCompaction = await client.useSelfCompaction(choice);
     this.postState();
     const label = choice === null ? "the configuration" : choice ? "on" : "off";
     this.post({ type: "notice", level: "info", text: `Self-compaction follows ${label}.` });
@@ -1330,7 +1330,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     if (this.client === null) {
       return;
     }
-    this.contextReport = await this.client.context().catch(() => null);
+    this.contextReport = await this.client.session.context().catch(() => null);
     this.postState();
   }
 
@@ -1348,7 +1348,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       if (client === null || this.disposed) {
         return;
       }
-      void Promise.all([client.context().catch(() => null), client.currentSession().catch(() => null)]).then(
+      void Promise.all([client.session.context().catch(() => null), client.session.info().catch(() => null)]).then(
         ([report, session]) => {
           if (this.disposed) {
             return;
@@ -1523,7 +1523,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     this.models = models.models;
     this.health = await client.health();
     if (this.health.ready) {
-      this.session = await client.currentSession();
+      this.session = await client.session.info();
       if (this.session !== null) {
         this.context.workspaceState.update(SESSION_KEY, this.session.id);
       }
@@ -1871,7 +1871,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       return;
     }
     try {
-      const items: Mention[] = await this.client.mentions(query, 30);
+      const items: MentionInfo[] = await this.client.mentions(query, { limit: 30 });
       this.post({ type: "mentions", query, items });
     } catch {
       this.post({ type: "mentions", query, items: [] });
@@ -2116,7 +2116,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     }
     const checks = await vscode.window.withProgress(
       { location: vscode.ProgressLocation.Notification, title: "Checking every configured model…" },
-      async () => client.doctor(30),
+      async () => client.checkModels({ timeout: 30 }),
     );
     await showDoctorPanel(client, checks, this.extensionUri, this.workspaceName());
   }

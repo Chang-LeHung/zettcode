@@ -5,13 +5,13 @@ import type {
   CurrentSession,
   Health,
   ImageInput,
-  Mention,
+  MentionInfo,
   ModelInfo,
   ModelInput,
   ModelUpdate,
   PendingRequest,
   Permission,
-  Resumable,
+  ResumeInfo,
   SelfCompaction,
   Settings,
 } from "../../../typescript/src/types.js";
@@ -56,7 +56,7 @@ export interface WebviewState {
   sessions: SessionRow[];
   busy: boolean;
   pending: PendingRequest | null;
-  resumable: Resumable | null;
+  resumable: ResumeInfo | null;
   selfCompaction: SelfCompaction | null;
   context: ContextReport | null;
   /** The application's version from `/health`, for the footer. */
@@ -84,7 +84,7 @@ export type HostMessage =
   | { type: "turns"; turns: Turn[]; earlier?: number }
   | { type: "earlier"; turns: Turn[]; earlier: number }
   | { type: "sessions"; sessions: SessionRow[] }
-  | { type: "mentions"; query: string; items: Mention[] }
+  | { type: "mentions"; query: string; items: MentionInfo[] }
   | { type: "images"; images: AttachedImage[] }
   | { type: "files"; paths: string[] }
   | { type: "notice"; level: "info" | "warn" | "error"; text: string; summary?: string }

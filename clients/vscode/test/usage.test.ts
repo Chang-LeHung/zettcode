@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { JSDOM } from "jsdom";
 
-import type { ModelCheck, Plugins, Totals, WorkspaceUsage } from "../../typescript/src/types.js";
+import type { ModelCheck, PluginReport, Totals, WorkspaceUsage } from "../../typescript/src/types.js";
 import { usagePage } from "../src/core/usage-page.js";
 import { showDoctorPanel, showPluginsPanel, showUsagePanel } from "../src/usage.js";
 import { lastPanel } from "./vscode-stub.js";
@@ -71,7 +71,7 @@ const checks: ModelCheck[] = [
   },
 ];
 
-const plugins: Plugins = { loaded: ["lint"], failures: ["search: missing binary"] };
+const plugins: PluginReport = { loaded: ["lint"], failures: ["search: missing binary"] };
 
 const client = {
   usageLedger: async () => usage,

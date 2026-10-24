@@ -9,20 +9,20 @@ import type {
   CurrentSession,
   Health,
   ImageInput,
-  Mention,
+  MentionInfo,
   Message,
   ModelCheck,
   ModelInfo,
   ModelInput,
   ModelUpdate,
   Permission,
-  Plugins,
+  PluginReport,
   PromptOptions,
   RunEvent,
   RunOptions,
   RunResult,
   RunState,
-  Resumable,
+  ResumeInfo,
   SelfCompaction,
   SessionInfo,
   SessionStatsInfo,
@@ -55,6 +55,15 @@ interface ErrorBody {
 
 const DEFAULT_BASE = "http://127.0.0.1:3290";
 
+/** The request init for a JSON body. */
+function jsonInit(method: string, body: unknown): RequestInit {
+  return {
+    method,
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  };
+}
+
 /** The client: one server, one workspace, every endpoint. */
 export class ZettCodeClient {
   /** The server's address without a trailing slash. */
@@ -62,6 +71,10 @@ export class ZettCodeClient {
   private readonly token: string | undefined;
   private readonly extraHeaders: Record<string, string>;
   private readonly fetchImpl: typeof globalThis.fetch;
+  /** The stored conversations: `list`, `new`, `open`, `latest`. */
+  readonly sessions: Sessions;
+  /** The current conversation: `rename`, `fork`, `compact`, `history`, `ask`, `prompt` and the rest. */
+  readonly session: Session;
 
   constructor(options: ClientOptions = {}) {
     this.baseUrl = (options.baseUrl ?? DEFAULT_BASE).replace(/\/+$/, "");
@@ -71,6 +84,8 @@ export class ZettCodeClient {
     if (typeof this.fetchImpl !== "function") {
       throw new ZettCodeError("This runtime has no fetch; pass one in ClientOptions");
     }
+    this.sessions = new Sessions(this);
+    this.session = new Session(this);
   }
 
   // -- transport ---------------------------------------------------------
@@ -102,11 +117,7 @@ export class ZettCodeClient {
   }
 
   private json(method: string, body: unknown): RequestInit {
-    return {
-      method,
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    };
+    return jsonInit(method, body);
   }
 
   // -- health, models, settings -----------------------------------------
@@ -149,93 +160,32 @@ export class ZettCodeClient {
     return this.request<Settings>("/settings", this.json("PATCH", update));
   }
 
+  /** Choose the model the next prompt uses, by the name `models()` lists. */
+  useModel(name: string): Promise<Settings> {
+    return this.updateSettings({ model: name });
+  }
+
+  /** Choose the reasoning level. */
+  useEffort(name: string): Promise<Settings> {
+    return this.updateSettings({ effort: name });
+  }
+
+  /** Choose the shell permission level; it applies from the next shell command. */
+  usePermission(name: Permission | "auto"): Promise<Settings> {
+    return this.updateSettings({ permission: name });
+  }
+
+  /** Turn the just-in-time harness on or off for the prompts that follow. */
+  useHarness(on: boolean): Promise<Settings> {
+    return this.updateSettings({ harness: on });
+  }
+
   /** The plugins the server loaded, and the ones that failed. */
-  plugins(): Promise<Plugins> {
-    return this.request<Plugins>("/plugins");
+  plugins(): Promise<PluginReport> {
+    return this.request<PluginReport>("/plugins");
   }
 
-  // -- sessions ----------------------------------------------------------
-  /** The stored sessions of the workspace, most recently active first. */
-  async listSessions(limit = 20): Promise<SessionInfo[]> {
-    const body = await this.request<{ sessions: SessionInfo[] }>(`/sessions?limit=${encodeURIComponent(String(limit))}`);
-    return body.sessions;
-  }
-
-  /** Start an empty conversation and make it current. */
-  createSession(title?: string): Promise<SessionInfo> {
-    return this.request<SessionInfo>("/sessions", this.json("POST", title === undefined ? {} : { title }));
-  }
-
-  /** The conversation the next prompt continues. */
-  currentSession(): Promise<CurrentSession> {
-    return this.request<CurrentSession>("/sessions/current");
-  }
-
-  /** Continue a stored conversation; the next prompt goes to it. */
-  openSession(sessionId: string): Promise<CurrentSession> {
-    return this.request<CurrentSession>(`/sessions/${encodeURIComponent(sessionId)}/open`, { method: "POST" });
-  }
-
-  /** Name the current conversation. */
-  renameSession(title: string): Promise<SessionInfo> {
-    return this.request<SessionInfo>("/sessions/current/rename", this.json("POST", { title }));
-  }
-
-  /** Ask the model for a name, and give the conversation one. */
-  nameSession(): Promise<SessionInfo> {
-    return this.request<SessionInfo>("/sessions/current/name", { method: "POST" });
-  }
-
-  /** Carry this conversation's context into a new session and continue there. */
-  forkSession(): Promise<CurrentSession> {
-    return this.request<CurrentSession>("/sessions/current/fork", { method: "POST" });
-  }
-
-  /** Summarize the conversation now; `applied` is false when there was nothing to fold. */
-  compactSession(): Promise<Compaction> {
-    return this.request<Compaction>("/sessions/current/compact", { method: "POST" });
-  }
-
-  /** How full the context window is, or `null` before a request has been measured. */
-  context(): Promise<ContextReport | null> {
-    return this.request<ContextReport | null>("/sessions/current/context");
-  }
-
-  /**
-   * The messages the model is working with, oldest first. With `full`, the whole conversation as it was written: what a
-   * compaction folded away is there, and each summary (role `summary`) stands where it was made.
-   */
-  async history(options: { full?: boolean } = {}): Promise<Message[]> {
-    const query = options.full === true ? "?full=true" : "";
-    const body = await this.request<{ messages: Message[] }>(`/sessions/current/history${query}`);
-    return body.messages;
-  }
-
-  /** The conversation as a standalone HTML page. */
-  async exportSession(): Promise<string> {
-    const response = await this.raw("/sessions/current/export");
-    return response.text();
-  }
-
-  /** Ask something answered from the conversation but kept out of it, as `/btw` does. */
-  async ask(question: string, timeout?: number): Promise<string> {
-    const body = await this.request<{ answer: string }>(
-      "/sessions/current/ask",
-      this.json("POST", timeout === undefined ? { question } : { question, timeout }),
-    );
-    return body.answer;
-  }
-
-  /** `ask`, with the answer streamed: iterate the run for `text_delta` events, or await `run.result`. */
-  askStream(question: string, timeout?: number, options: RunOptions = {}): Run {
-    return new Run(
-      this,
-      "/sessions/current/ask/stream",
-      timeout === undefined ? { question } : { question, timeout },
-      options,
-    );
-  }
-
+  // -- usage -------------------------------------------------------------
   /** What this session has spent. */
   usage(): Promise<Usage> {
     return this.request<Usage>("/usage");
@@ -266,13 +216,14 @@ export class ZettCodeClient {
   }
 
   /** Let the model compact this session itself, stop it, or follow the configuration with `null`. */
-  setSelfCompaction(choice: boolean | null): Promise<SelfCompaction> {
+  useSelfCompaction(choice: boolean | null): Promise<SelfCompaction> {
     return this.request<SelfCompaction>("/sessions/current/self-compaction", this.json("PUT", { choice }));
   }
 
   /** The files, skills and plugin resources an `@` in a prompt can reference. */
-  async mentions(query = "", limit = 50): Promise<Mention[]> {
-    const body = await this.request<{ mentions: Mention[] }>(
+  async mentions(query = "", options: { limit?: number } = {}): Promise<MentionInfo[]> {
+    const limit = options.limit ?? 50;
+    const body = await this.request<{ mentions: MentionInfo[] }>(
       `/mentions?query=${encodeURIComponent(query)}&limit=${encodeURIComponent(String(limit))}`,
     );
     return body.mentions;
@@ -285,39 +236,27 @@ export class ZettCodeClient {
   }
 
   /** Ask every configured model one short question and report which of them answer, as `zettcode doctor`. */
-  async doctor(timeout = 30): Promise<ModelCheck[]> {
-    const body = await this.request<{ checks: ModelCheck[] }>("/doctor", this.json("POST", { timeout }));
+  async checkModels(options: { timeout?: number } = {}): Promise<ModelCheck[]> {
+    const body = await this.request<{ checks: ModelCheck[] }>(
+      "/doctor",
+      this.json("POST", { timeout: options.timeout ?? 30 }),
+    );
     return body.checks;
   }
 
   // -- running -----------------------------------------------------------
   /** Run one prompt and stream it. Iterate `run.events`, await `run.result`, or both. */
   prompt(text: string, options: PromptOptions = {}): Run {
-    const body: Record<string, unknown> = {
-      text,
-      ...wireOptions(options),
-    };
-    if (options.images) {
-      body.images = options.images.map((image) => ({ data: image.data, media_type: image.mediaType }));
-    }
-    if (options.mentions !== undefined) {
-      body.mentions = options.mentions;
-    }
-    return new Run(this, "/prompts", body, options);
-  }
-
-  /** Continue the interrupted request where it stopped, streaming it like `prompt`. */
-  resume(options: RunOptions = {}): Run {
-    return new Run(this, "/runs/resume", wireOptions(options), options);
+    return this.session.prompt(text, options);
   }
 
   /** Answer one message another session sent, streaming the turn exactly as `prompt` does. */
-  answerMessage(id: string, options: RunOptions = {}): Run {
+  relay(id: string, options: RunOptions = {}): Run {
     return new Run(this, `/messages/${encodeURIComponent(id)}`, wireOptions(options), options);
   }
 
   /** Send a message to another session, as a draft beginning with `@name` does; returns who took it. */
-  sendMessage(to: string, text: string): Promise<{ to: string; disposition: string }> {
+  send(to: string, text: string): Promise<{ to: string; disposition: string }> {
     return this.request<{ to: string; disposition: string }>(
       "/sessions/current/send",
       this.json("POST", { to, text }),
@@ -327,11 +266,6 @@ export class ZettCodeClient {
   /** Whether a run is going, and what it waits on. */
   runState(): Promise<RunState> {
     return this.request<RunState>("/runs/current");
-  }
-
-  /** Where the conversation was interrupted, or that it was not. */
-  resumable(): Promise<Resumable> {
-    return this.request<Resumable>("/runs/resumable");
   }
 
   /** Approve or deny a shell command a run is suspended on. */
@@ -349,16 +283,144 @@ export class ZettCodeClient {
     return body.resolved;
   }
 
-  /** Send a message into the run in progress; false when nothing was running to take it. */
-  async steer(text: string): Promise<boolean> {
-    const body = await this.request<{ steered: boolean }>("/runs/steer", this.json("POST", { text }));
-    return body.steered;
-  }
-
   /** Stop the run in progress; its stream then ends with `cancelled`. */
   async cancelRun(): Promise<boolean> {
     const body = await this.request<{ cancelled: boolean }>("/runs/cancel", { method: "POST" });
     return body.cancelled;
+  }
+}
+
+/** The stored conversations of the workspace; reach it as `client.sessions`. */
+export class Sessions {
+  constructor(private readonly client: ZettCodeClient) {}
+
+  /** The stored sessions of the workspace, most recently active first. */
+  async list(options: { limit?: number } = {}): Promise<SessionInfo[]> {
+    const limit = options.limit ?? 20;
+    const body = await this.client.request<{ sessions: SessionInfo[] }>(
+      `/sessions?limit=${encodeURIComponent(String(limit))}`,
+    );
+    return body.sessions;
+  }
+
+  /** Start an empty conversation and make it current. */
+  new(title?: string): Promise<SessionInfo> {
+    return this.client.request<SessionInfo>(
+      "/sessions",
+      jsonInit("POST", title === undefined ? {} : { title }),
+    );
+  }
+
+  /** Continue a stored conversation; the next prompt goes to it. Unlike Python, this returns its data and not a handle. */
+  open(sessionId: string): Promise<CurrentSession> {
+    return this.client.request<CurrentSession>(`/sessions/${encodeURIComponent(sessionId)}/open`, { method: "POST" });
+  }
+
+  /** Continue the conversation that was active most recently, or `null` when the workspace has none. */
+  async latest(): Promise<CurrentSession | null> {
+    const [newest] = await this.list({ limit: 1 });
+    return newest === undefined ? null : this.open(newest.id);
+  }
+}
+
+/** The current conversation: what the next prompt continues; reach it as `client.session`. */
+export class Session {
+  constructor(private readonly client: ZettCodeClient) {}
+
+  /** Its data as of now: `id`, `title`, `locked` and `usage`, which Python reads as properties. */
+  info(): Promise<CurrentSession> {
+    return this.client.request<CurrentSession>("/sessions/current");
+  }
+
+  /** Run one prompt and stream it. Iterate `run.events`, await `run.result`, or both. */
+  prompt(text: string, options: PromptOptions = {}): Run {
+    const body: Record<string, unknown> = {
+      text,
+      ...wireOptions(options),
+    };
+    if (options.images) {
+      body.images = options.images.map((image) => ({ data: image.data, media_type: image.mediaType }));
+    }
+    if (options.mentions !== undefined) {
+      body.mentions = options.mentions;
+    }
+    return new Run(this.client, "/prompts", body, options);
+  }
+
+  /** Name the current conversation. */
+  rename(title: string): Promise<SessionInfo> {
+    return this.client.request<SessionInfo>("/sessions/current/rename", jsonInit("POST", { title }));
+  }
+
+  /** Ask the model for a name, and give the conversation one. */
+  nameIt(): Promise<SessionInfo> {
+    return this.client.request<SessionInfo>("/sessions/current/name", { method: "POST" });
+  }
+
+  /** Carry this conversation's context into a new session and continue there. */
+  fork(): Promise<CurrentSession> {
+    return this.client.request<CurrentSession>("/sessions/current/fork", { method: "POST" });
+  }
+
+  /** Summarize the conversation now; `applied` is false when there was nothing to fold. */
+  compact(): Promise<Compaction> {
+    return this.client.request<Compaction>("/sessions/current/compact", { method: "POST" });
+  }
+
+  /** How full the context window is, or `null` before a request has been measured. */
+  context(): Promise<ContextReport | null> {
+    return this.client.request<ContextReport | null>("/sessions/current/context");
+  }
+
+  /**
+   * The messages the model is working with, oldest first. With `full`, the whole conversation as it was written: what a
+   * compaction folded away is there, and each summary (role `summary`) stands where it was made.
+   */
+  async history(options: { full?: boolean } = {}): Promise<Message[]> {
+    const query = options.full === true ? "?full=true" : "";
+    const body = await this.client.request<{ messages: Message[] }>(`/sessions/current/history${query}`);
+    return body.messages;
+  }
+
+  /** The conversation as a standalone HTML page. */
+  async export(): Promise<string> {
+    const response = await this.client.raw("/sessions/current/export");
+    return response.text();
+  }
+
+  /** Ask something answered from the conversation but kept out of it, as `/btw` does. */
+  async ask(question: string, options: { timeout?: number } = {}): Promise<string> {
+    const body = await this.client.request<{ answer: string }>(
+      "/sessions/current/ask",
+      jsonInit("POST", options.timeout === undefined ? { question } : { question, timeout: options.timeout }),
+    );
+    return body.answer;
+  }
+
+  /** `ask`, with the answer streamed: iterate the run for `text_delta` events, or await `run.result`. */
+  askStream(question: string, options: RunOptions = {}): Run {
+    return new Run(
+      this.client,
+      "/sessions/current/ask/stream",
+      options.timeout === undefined ? { question } : { question, timeout: options.timeout },
+      options,
+    );
+  }
+
+  /** Where the conversation was interrupted, or that it was not. */
+  resumable(): Promise<ResumeInfo> {
+    return this.client.request<ResumeInfo>("/runs/resumable");
+  }
+
+  /** Continue the interrupted request where it stopped, streaming it like `prompt`. */
+  resume(options: RunOptions = {}): Run {
+    return new Run(this.client, "/runs/resume", wireOptions(options), options);
+  }
+
+  /** Send a message into the run in progress; false when nothing was running to take it. */
+  async steer(text: string): Promise<boolean> {
+    const body = await this.client.request<{ steered: boolean }>("/runs/steer", jsonInit("POST", { text }));
+    return body.steered;
   }
 }
 
@@ -520,7 +582,7 @@ export class Run implements AsyncIterable<StreamFrame> {
 
   /** Send a message into this run while it is going. */
   steer(text: string): Promise<boolean> {
-    return this.client.steer(text);
+    return this.client.session.steer(text);
   }
 
   /** Stop this run; its stream ends with `cancelled`. */

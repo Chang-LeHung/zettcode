@@ -172,6 +172,31 @@ describe("the JSON API", () => {
     assert.deepEqual((await client.plugins()).loaded, ["shell"]);
   });
 
+  test("the use methods each change one setting, as Python's use_* do, and latest opens the newest session", async () => {
+    const seen: unknown[] = [];
+    const settings = { effort: "low", permission: "ask", harness: false };
+    const session = { id: "new", title: null, created_at: null, updated_at: null, current: false };
+    const server = await start((request, response) => {
+      if (request.url === "/settings") {
+        seen.push(JSON.parse(request.body));
+        return json(response, settings);
+      }
+      if (request.url === "/sessions?limit=1") return json(response, { sessions: [session] });
+      if (request.url === "/sessions/new/open") return json(response, { id: "new", title: null, locked: false, usage });
+      if (request.url === "/sessions?limit=20") return json(response, { sessions: [] });
+      json(response, { error: "not_found", message: request.url }, 404);
+    });
+    const client = new ZettCodeClient({ baseUrl: server.url });
+
+    await client.useModel("fast");
+    await client.useEffort("high");
+    await client.usePermission("safe");
+    await client.useHarness(true);
+
+    assert.deepEqual(seen, [{ model: "fast" }, { effort: "high" }, { permission: "safe" }, { harness: true }]);
+    assert.equal((await client.sessions.latest())?.id, "new");
+  });
+
   test("sessions are listed, opened and renamed, with the id escaped in the path", async () => {
     const session = { id: "a/b", title: "T", created_at: null, updated_at: null, current: true };
     const server = await start((request, response) => {
@@ -187,9 +212,9 @@ describe("the JSON API", () => {
     });
     const client = new ZettCodeClient({ baseUrl: server.url });
 
-    assert.deepEqual(await client.listSessions(5), [session]);
-    assert.equal((await client.openSession("a/b")).id, "a/b");
-    assert.equal((await client.renameSession("New")).title, "New");
+    assert.deepEqual(await client.sessions.list({ limit: 5 }), [session]);
+    assert.equal((await client.sessions.open("a/b")).id, "a/b");
+    assert.equal((await client.session.rename("New")).title, "New");
   });
 
   test("the rest of the conversation endpoints answer what the server says", async () => {
@@ -214,15 +239,15 @@ describe("the JSON API", () => {
     });
     const client = new ZettCodeClient({ baseUrl: server.url });
 
-    assert.equal((await client.nameSession()).title, "Named");
-    assert.equal((await client.forkSession()).id, "f");
-    assert.equal((await client.compactSession()).compressed, 10);
-    assert.equal(await client.context(), null);
-    assert.deepEqual(await client.history(), []);
-    assert.equal((await client.history({ full: true }))[0]?.role, "summary");
-    assert.equal(await client.ask("why?", 5), "because");
+    assert.equal((await client.session.nameIt()).title, "Named");
+    assert.equal((await client.session.fork()).id, "f");
+    assert.equal((await client.session.compact()).compressed, 10);
+    assert.equal(await client.session.context(), null);
+    assert.deepEqual(await client.session.history(), []);
+    assert.equal((await client.session.history({ full: true }))[0]?.role, "summary");
+    assert.equal(await client.session.ask("why?", { timeout: 5 }), "because");
     assert.equal((await client.usage()).input_tokens, 10);
-    assert.deepEqual(await client.resumable(), { resumable: false, kind: null, description: null });
+    assert.deepEqual(await client.session.resumable(), { resumable: false, kind: null, description: null });
   });
 
   test("an error body becomes a ZettCodeError with its code and status", async () => {
@@ -231,7 +256,7 @@ describe("the JSON API", () => {
     );
     const client = new ZettCodeClient({ baseUrl: server.url });
 
-    await assert.rejects(client.createSession(), (error: unknown) => {
+    await assert.rejects(client.sessions.new(), (error: unknown) => {
       assert.ok(error instanceof ZettCodeError);
       assert.equal(error.code, "busy");
       assert.equal(error.status, 409);
@@ -332,14 +357,14 @@ describe("the JSON API", () => {
     });
     const client = new ZettCodeClient({ baseUrl: server.url });
 
-    assert.equal((await client.mentions("cli", 5))[0]?.name, "src/cli.py");
+    assert.equal((await client.mentions("cli", { limit: 5 }))[0]?.name, "src/cli.py");
     assert.equal((await client.usageLedger()).total.total_tokens, 12);
     assert.deepEqual((await client.sessionStats(["a", "b"])).map((item) => item.id), ["a"]);
     assert.equal((await client.sessionStats())[0]?.id, "a");
     assert.deepEqual(await client.sessionStats([]), []);
     assert.deepEqual(await client.selfCompaction(), { choice: null, effective: false });
-    assert.deepEqual(await client.setSelfCompaction(true), { choice: true, effective: true });
-    assert.equal((await client.doctor(7))[0]?.ok, true);
+    assert.deepEqual(await client.useSelfCompaction(true), { choice: true, effective: true });
+    assert.equal((await client.checkModels({ timeout: 7 }))[0]?.ok, true);
   });
 
   test("an HTML answer is returned as text, not parsed as JSON", async () => {
@@ -348,7 +373,7 @@ describe("the JSON API", () => {
       response.end("<html>the conversation</html>");
     });
 
-    assert.match(await new ZettCodeClient({ baseUrl: server.url }).exportSession(), /the conversation/);
+    assert.match(await new ZettCodeClient({ baseUrl: server.url }).session.export(), /the conversation/);
   });
 });
 
@@ -484,7 +509,7 @@ describe("a prompt", () => {
         response.end(frame("result", { ...result, text: "about pagers" }));
       }, 5);
     });
-    const run = new ZettCodeClient({ baseUrl: server.url }).askStream("pagers", 60);
+    const run = new ZettCodeClient({ baseUrl: server.url }).session.askStream("pagers", { timeout: 60 });
     const pieces: string[] = [];
     for await (const item of run) {
       const event = eventOf(item);
@@ -621,11 +646,11 @@ describe("a prompt", () => {
     });
     const client = new ZettCodeClient({ baseUrl: server.url });
 
-    assert.equal(await client.steer("also the docs"), true);
+    assert.equal(await client.session.steer("also the docs"), true);
     assert.equal(await client.approve("c", false, true), false);
     assert.equal(await client.answer("q", null), true);
     assert.deepEqual(await client.runState(), { running: false, pending: null });
-    assert.equal((await client.resume().result).text, "done");
+    assert.equal((await client.session.resume().result).text, "done");
   });
 });
 

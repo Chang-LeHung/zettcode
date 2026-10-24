@@ -202,13 +202,13 @@ export interface RunResult {
   questions: string[];
 }
 
-export interface Plugins {
+export interface PluginReport {
   loaded: string[];
   failures: string[];
 }
 
 /** One `@` resource a prompt can carry. */
-export interface Mention {
+export interface MentionInfo {
   token: string;
   kind: string;
   name: string;
@@ -283,7 +283,7 @@ export interface SelfCompaction {
   effective: boolean;
 }
 
-/** One model asked one short question by `client.doctor()`. */
+/** One model asked one short question by `client.checkModels()`. */
 export interface ModelCheck {
   model: string;
   model_id: string;
@@ -310,7 +310,7 @@ export interface PendingRequest {
   allow_multiple?: boolean;
 }
 
-export interface Resumable {
+export interface ResumeInfo {
   resumable: boolean;
   kind: string | null;
   description: string | null;
