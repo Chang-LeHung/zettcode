@@ -101,6 +101,7 @@ from zettcode.engine.extensions.harness_switch import HarnessSwitch
 from zettcode.engine.extensions.usage import USAGE_EVENT_NAME, UsageExtension, UsageSnapshot
 from zettcode.engine.permission import Permission, parse_permission
 from zettcode.engine.storage import STORE_FILE, SessionInfo, SessionStore
+from zettcode.sdk.types import SessionInfo as ListedSession
 from zettcode.statusline import context_text
 from zettcode.tui import (
     DARK,
@@ -4418,11 +4419,11 @@ def test_the_header_trims_a_wide_path_by_display_width():
 def test_the_sessions_panel_lines_wide_titles_up_in_one_column():
     now = datetime(2026, 10, 3, 12, 0, tzinfo=timezone.utc)
     sessions = [
-        SessionInfo("01a1010f", "Flask 实现 Python 服务器", now - timedelta(minutes=17), now - timedelta(minutes=17)),
-        SessionInfo(
+        ListedSession("01a1010f", "Flask 实现 Python 服务器", now - timedelta(minutes=17), now - timedelta(minutes=17)),
+        ListedSession(
             "01a10119", "Python 实现 HTTP 服务器框架", now - timedelta(minutes=19), now - timedelta(minutes=19)
         ),
-        SessionInfo("01a10116", None, now - timedelta(hours=3), now - timedelta(hours=3)),
+        ListedSession("01a10116", None, now - timedelta(hours=3), now - timedelta(hours=3)),
     ]
     page = SessionsPage(sessions, on_select=lambda _: None, on_cancel=lambda: None, now=now)
     rows = [row for row in render_block(page, width=64, height=10, theme=DARK).splitlines() if "01a10" in row]
@@ -4569,6 +4570,12 @@ async def test_sessions_argument_restores_the_selected_history(tmp_path):
     assert any(entry.kind == "user" and entry.text == "direct selection" for entry in app.transcript.entries)
 
 
+def _read_totals_from(app, store) -> None:
+    """Point the shell's client at the store a test wrote, which is where the panel reads each session's totals."""
+    app.agent.runtime.config.store = store.root
+    app.agent.runtime.config.workspace = store.workspace
+
+
 async def test_sessions_command_opens_a_panel_with_titles_and_ages(tmp_path):
     store = SessionStore(tmp_path)
     await store.append("alpha-1", "req", UserMessage(content="hi"))
@@ -4577,6 +4584,7 @@ async def test_sessions_command_opens_a_panel_with_titles_and_ages(tmp_path):
     app = build_app()
     app.agent.runtime.persistence.sessions = await store.list_sessions()
     app.agent.runtime.persistence.store = store
+    _read_totals_from(app, store)
     app.app.resize(110, 14)  # wide enough for every column: the default 60 gives up the right-hand ones
     harness = _harness(app)
 
@@ -4612,6 +4620,7 @@ async def test_sessions_panel_in_a_narrow_terminal_gives_up_right_hand_columns_t
     app = build_app()  # 60 columns
     app.agent.runtime.persistence.sessions = await store.list_sessions()
     app.agent.runtime.persistence.store = store
+    _read_totals_from(app, store)
     harness = _harness(app)
 
     harness.write("/resume")
@@ -4678,7 +4687,7 @@ async def test_an_unnamed_session_reads_as_a_new_session(tmp_path):
 
 def test_the_sessions_panel_names_an_untitled_session():
     now = datetime(2026, 10, 3, 12, 0, tzinfo=timezone.utc)
-    sessions = [SessionInfo("01a1010f", None, now - timedelta(minutes=17), now - timedelta(minutes=17))]
+    sessions = [ListedSession("01a1010f", None, now - timedelta(minutes=17), now - timedelta(minutes=17))]
 
     page = SessionsPage(sessions, on_select=lambda _: None, on_cancel=lambda: None, now=now)
 
@@ -4687,7 +4696,7 @@ def test_the_sessions_panel_names_an_untitled_session():
 
 def test_the_sessions_panel_numbers_its_rows_and_fills_the_panel():
     now = datetime(2026, 10, 3, 12, 0, tzinfo=timezone.utc)
-    sessions = [SessionInfo(f"01a1010{index}", f"session {index}", now, now) for index in range(12)]
+    sessions = [ListedSession(f"01a1010{index}", f"session {index}", now, now) for index in range(12)]
     page = SessionsPage(sessions, on_select=lambda _: None, on_cancel=lambda: None, now=now)
 
     # Numbers are right-aligned in the width of the widest one, so the titles

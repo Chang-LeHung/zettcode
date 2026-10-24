@@ -6,12 +6,12 @@ from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timezone
 from typing import NamedTuple
 
-from zettcode.engine.agent.sessions import UNTITLED_SESSION
-from zettcode.engine.storage import SessionInfo, SessionStats
+from zettcode.sdk.types import SessionInfo, SessionStatsInfo
 from zettcode.tui import ELLIPSIS, SEPARATOR, ListItem, ListPage, Rect, Theme
 from zettcode.tui.render import blend, display_width
 from zettcode.tui.render.text import truncate
 from zettcode.tui.widgets.list import Part
+from zettcode.wording import UNTITLED_SESSION
 
 from .usage_charts import compact
 
@@ -99,7 +99,7 @@ class _Column(NamedTuple):
         return pad + self.heading if self.right else self.heading + pad
 
 
-def _share(stats: SessionStats) -> str:
+def _share(stats: SessionStatsInfo) -> str:
     """Return the cached share of a session's input as a percent to two places, or a dash before any input."""
     share = stats.cache_share
     return NONE if share is None else f"{share * 100:.2f}%"
@@ -143,7 +143,7 @@ class SessionsPage(ListPage):
         self,
         sessions: Sequence[SessionInfo],
         *,
-        stats: Mapping[str, SessionStats] | None = None,
+        stats: Mapping[str, SessionStatsInfo] | None = None,
         on_select: Callable[[str], None],
         on_cancel: Callable[[], None],
         now: datetime | None = None,
@@ -169,15 +169,15 @@ class SessionsPage(ListPage):
         """Return the columns of figures, most wanted first."""
         sessions = self._sessions
         ages = tuple(format_ago(session.updated_at, now=self._now) for session in sessions)
-        ids = tuple(session.session_id[:8] for session in sessions)
+        ids = tuple(session.id[:8] for session in sessions)
         age = _Column("Updated", ages, True)
         short = _Column("ID", ids, False, lambda theme: theme.muted)
         stats = self._stats
         if stats is None:
             return [age, short]
-        rows = [stats.get(session.session_id) for session in sessions]
+        rows = [stats.get(session.id) for session in sessions]
 
-        def cells(pick: Callable[[SessionStats], str]) -> tuple[str, ...]:
+        def cells(pick: Callable[[SessionStatsInfo], str]) -> tuple[str, ...]:
             return tuple(NONE if row is None else pick(row) for row in rows)
 
         shares = tuple(0.0 if row is None else row.cache_share or 0.0 for row in rows)
@@ -214,7 +214,7 @@ class SessionsPage(ListPage):
         column = max((display_width(title) for title in titles), default=0)
         items = [
             ListItem(
-                session.session_id,
+                session.id,
                 title,
                 (" " * GAP).join(figures.cell(index) for figures in shown),
                 parts=self._figures(shown, index),

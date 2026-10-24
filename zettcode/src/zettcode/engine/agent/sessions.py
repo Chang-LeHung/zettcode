@@ -18,11 +18,9 @@ from zett_agent.model import ReasoningEffort
 from zettcode.engine.dialogue.title import summarize_title
 from zettcode.engine.extensions.usage import UsageSnapshot, session_usage
 from zettcode.engine.storage import Session, SessionInfo, SessionStats
+from zettcode.wording import UNTITLED_SESSION
 
 from .context import ContextMixin
-
-#: The name a session shows before the agent has given it a title.
-UNTITLED_SESSION = "New session"
 
 
 @dataclass(frozen=True, slots=True)

@@ -18,11 +18,11 @@ from zettcode.app.plugins.state import (
     UiRegion,
     UiSide,
 )
-from zettcode.engine.agent.sessions import UNTITLED_SESSION
 from zettcode.engine.permission import Permission
 from zettcode.statusline import Row
 from zettcode.tui import HEADER, SEPARATOR, Span, Style, TextLine
 from zettcode.tui.render import blend, display_width
+from zettcode.wording import UNTITLED_SESSION
 
 from ..agent.conversation.shimmer import ShimmerFrame
 from .shell import ShellState

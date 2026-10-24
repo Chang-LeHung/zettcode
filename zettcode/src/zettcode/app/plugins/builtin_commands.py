@@ -95,11 +95,12 @@ class SessionCommands(TerminalPlugin):
             return CommandResult(notification=f"resumed session {context.argument[:8]}", relayout=True)
         from zettcode.app.ui.widgets import SessionsPage
 
-        sessions = await host.agent.list_sessions(limit=RESUME_LIMIT)
+        sessions = await host.client.sessions.list(limit=RESUME_LIMIT)
         if not sessions:
             return CommandResult(message="No persisted sessions.")
         try:
-            stats = await host.agent.session_stats(sessions)
+            found = await host.client.session_stats([session.id for session in sessions])
+            stats = {item.id: item for item in found}
         except Exception as error:  # noqa: BLE001 - the figures are a courtesy; a list without them is still a list
             context.ui.notice(f"Session totals unavailable: {error}")
             stats = None
