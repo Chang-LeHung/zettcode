@@ -81,8 +81,11 @@ the terminal is put together from the engine's parts and may import it. The rule
 (`test_the_views_of_the_terminal_reach_the_engine_through_the_sdk_and_the_list_that_still_does_not_only_shrinks`): a
 table of the views that still import the engine and what, which fails when a view takes on an import that is not in it
 and when an entry no longer holds, so it only gets shorter. Moved so far: the usage page (it draws the SDK's
-`WorkspaceUsage`, and `/usage` reads `client.usage_ledger()`). Left, in the order they will go: the context page
-(`ContextReport`), the sessions panel (`SessionInfo`, `SessionStats`, `StoredSession`), the prompt and `@` mentions
+`WorkspaceUsage`, and `/usage` reads `client.usage_ledger()`) and the context page (it draws the SDK's
+`ContextReport`, which gained `measured`, `estimated`, `percent` and `share` for it, and `/context` reads
+`client.session.context()`; the names of the sources and the estimate's characters per token moved to the leaf
+`zettcode/budget.py`, which the engine and the page both import). Left, in the order they will go: the sessions
+panel (`SessionInfo`, `SessionStats`, `StoredSession`), the prompt and `@` mentions
 (`PromptPart`, `MentionRegistry`, `Messenger`, `Relayed`), the error text (`describe_error`, read from the SDK errors'
 `retryable`), and `Permission`, `Registry`, `UsageSnapshot`. When the table is empty, `zettcode.app.ui` and
 `zettcode.app.commands` go into the layer table with the engine's prefix and the ratchet is deleted.

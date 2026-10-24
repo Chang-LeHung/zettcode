@@ -33,6 +33,7 @@ from zett_agent.messages import (
 )
 from zett_agent.model import ModelRequest, ToolDefinition
 
+from zettcode.budget import CHARS_PER_TOKEN, SOURCES
 from zettcode.engine.pipeline import DaemonCall
 from zettcode.paths import DEFAULT_TOKENIZER_CACHE
 
@@ -47,11 +48,6 @@ IMAGE_TOKENS = 1_100
 
 #: What an image part contributes to the text, since it has no text of its own.
 IMAGE_MARKER = "[image]"
-
-#: Tokens per character when no tokenizer is available. The rule of thumb is
-#: close for English prose and low for CJK, which is why the report names the
-#: estimate it used instead of presenting it as exact.
-CHARS_PER_TOKEN = 4
 
 #: Seconds to wait for tiktoken's vocabulary before falling back.
 ENCODING_DEADLINE = 2.0
@@ -88,18 +84,6 @@ class SessionCounts:
 
     measured_by: str
     counts: Counts = field(default_factory=dict)
-
-
-#: One row per source, in the order the request is assembled.
-SOURCES = (
-    "System prompt",
-    "Environment notes",
-    "Tool schemas",
-    "User messages",
-    "Assistant messages",
-    "Tool output",
-    "Compaction summary",
-)
 
 
 @dataclass(frozen=True, slots=True)

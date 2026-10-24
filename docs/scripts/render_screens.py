@@ -34,8 +34,15 @@ from zettcode.app.ui.shell import PAGE_SCREEN
 from zettcode.app.ui.widgets import ContextPage, UsagePage
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine.core import ZettCodeEngine
-from zettcode.engine.extensions.context import ContextReport, ContextShare
-from zettcode.sdk.types import DayTotals, ModelTotals, SessionTotals, Totals, WorkspaceUsage
+from zettcode.sdk.types import (
+    ContextReport,
+    ContextShare,
+    DayTotals,
+    ModelTotals,
+    SessionTotals,
+    Totals,
+    WorkspaceUsage,
+)
 from zettcode.tui import DARK, Canvas, Screen
 
 #: The page the documentation shows is the dark palette on the same background the home page's picture uses.
@@ -172,12 +179,24 @@ COUNTER = "tiktoken cl100k_base"
 SESSION_FILE = PurePosixPath("~/.zettcode/sessions/-Users-me-projects-api/01a145fa/data.jsonl")
 
 
+def report(window: int, counter: str, rows: tuple[ContextShare, ...], *, reported: int | None = None, partial=False):
+    """Return a report the way the engine builds one: the provider's count when it gave one, else the tokenizer's."""
+    return ContextReport(
+        window,
+        reported if reported is not None else sum(row.tokens for row in rows),
+        counter,
+        rows,
+        partial=partial,
+        from_provider=reported is not None,
+    )
+
+
 def context_report(kind: str) -> tuple[ContextReport, int]:
     """Return a sample report and the window's compaction point, for one of the situations the guide describes."""
     window, trigger = 200_000, 160_000
     if kind == "live":
         # Mid-session: the provider reported the request, so the rows divide its total.
-        return ContextReport(window, COUNTER, shares(*SOURCES), reported=103_241), trigger
+        return report(window, COUNTER, shares(*SOURCES), reported=103_241), trigger
     if kind == "near":
         # Close to the point where a request is summarized, after an earlier compaction left a summary behind.
         near = (
@@ -189,12 +208,12 @@ def context_report(kind: str) -> tuple[ContextReport, int]:
             ("Tool output", 90_000, 31),
             ("Compaction summary", 3_600, 1),
         )
-        return ContextReport(window, COUNTER, shares(*near), reported=158_900), trigger
+        return report(window, COUNTER, shares(*near), reported=158_900), trigger
     if kind == "resumed":
         # A session just reopened: nothing has been sent yet, so the environment notes and tool schemas are not
         # known and the provider has reported nothing for this request.
         seen = tuple(row for row in SOURCES if row[0] not in ("Environment notes", "Tool schemas"))
-        return ContextReport(window, COUNTER, shares(*seen), partial=True), trigger
+        return report(window, COUNTER, shares(*seen), partial=True), trigger
     raise ValueError(kind)
 
 

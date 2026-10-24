@@ -415,8 +415,6 @@ def test_the_views_of_the_terminal_reach_the_engine_through_the_sdk_and_the_list
         ],
         "zettcode.app.ui.widgets.completer": ["zettcode.engine.dialogue.mentions"],
         "zettcode.app.ui.widgets.composer": ["zettcode.engine.agent.prompt", "zettcode.engine.dialogue.mentions"],
-        "zettcode.app.ui.widgets.context_charts": ["zettcode.engine.extensions.context"],
-        "zettcode.app.ui.widgets.context_page": ["zettcode.engine.extensions.context"],
         "zettcode.app.ui.widgets.sessions_page": ["zettcode.engine.agent.sessions", "zettcode.engine.storage"],
     }
     found: dict[str, set[str]] = {}

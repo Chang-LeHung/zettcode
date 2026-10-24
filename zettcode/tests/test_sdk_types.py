@@ -171,6 +171,45 @@ def test_the_context_report_never_reports_a_negative_free_space_or_divides_by_ze
     assert ContextReport(window=0, used=10, measured_by="t").fraction == 0.0
 
 
+def test_the_context_report_divides_the_window_by_the_provider_and_the_rows_by_the_tokenizer():
+    shares = (ContextShare("System prompt", 300), ContextShare("Tool output", 700))
+    report = ContextReport(window=2000, used=2500, measured_by="tiktoken", shares=shares, from_provider=True)
+
+    assert report.measured == 1000, "what the tokenizer counted, while used is the provider's"
+    assert report.percent(500) == 25.0, "of the window"
+    assert report.share(700) == 70.0, "of what was measured, so the rows add to a hundred"
+    assert sum(report.share(s.tokens) for s in shares) == 100.0
+    empty = ContextReport(window=0, used=0, measured_by="t")
+    assert (empty.measured, empty.percent(5), empty.share(5)) == (0, 0.0, 0.0)
+
+
+def test_a_report_is_an_estimate_when_it_says_it_counted_characters():
+    assert ContextReport(window=1, used=0, measured_by="~4 chars/token").estimated
+    assert not ContextReport(window=1, used=0, measured_by="tiktoken cl100k_base").estimated
+
+
+def test_the_sdks_report_agrees_with_the_engines_on_every_figure_a_page_reads():
+    """The terminal draws the SDK's report; the engine's is what it used to draw. They must not drift."""
+    from zettcode.engine.extensions import context as engine
+
+    rows = (engine.ContextShare("Tool schemas", 1520, 9), engine.ContextShare("Tool output", 20216, 17))
+    for label in ("tiktoken cl100k_base", "~4 chars/token"):
+        for reported in (None, 30_000):
+            theirs = engine.ContextReport(
+                window=200_000, measured_by=label, shares=rows, partial=True, reported=reported
+            )
+            ours = ContextReport(
+                window=200_000,
+                used=theirs.used,
+                measured_by=label,
+                shares=tuple(ContextShare(s.name, s.tokens, s.items) for s in rows),
+                partial=True,
+                from_provider=theirs.from_provider,
+            )
+            assert (ours.measured, ours.estimated, ours.free) == (theirs.measured, theirs.estimated, theirs.free)
+            assert ours.percent(1234) == theirs.percent(1234) and ours.share(1234) == theirs.share(1234)
+
+
 def test_the_values_compare_by_content_and_can_be_built_by_hand():
     now = datetime(2026, 1, 1)
 

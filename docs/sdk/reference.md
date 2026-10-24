@@ -383,7 +383,7 @@ What a tally in the usage ledger holds: `requests`, `input_tokens`, `output_toke
 
 ### `ContextReport` and `ContextShare`
 
-`ContextReport(window, used, measured_by, shares=(), partial=False, from_provider=False)` with properties `free` and `fraction`. `ContextShare(name, tokens, items=0)`.
+`ContextReport(window, used, measured_by, shares=(), partial=False, from_provider=False)` with properties `free` and `fraction`, and `measured` (what the tokenizer counted, which `shares` add up to; `used` may be the provider's own count), `estimated` (the shares are a characters-per-token guess) and the methods `percent(tokens)` (a share of the window) and `share(tokens)` (a share of `measured`, which is where the context goes). `ContextShare(name, tokens, items=0)`.
 
 ### `Compaction` and `ResumeInfo`
 

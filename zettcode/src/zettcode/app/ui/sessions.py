@@ -336,7 +336,7 @@ class SessionMixin(ShellState):
 
     async def _remeasure_context(self) -> None:
         """Seed the status line's context figure with the measured request."""
-        report = await self.agent.context_report()
+        report = await self.client.session.context()
         if report is None:
             return
         self._usage = replace(self._usage, context_tokens=report.used)

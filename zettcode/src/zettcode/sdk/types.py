@@ -375,6 +375,28 @@ class ContextReport:
         """Return how full the context is, from 0 up to 1 (more only if the count exceeds the window)."""
         return self.used / self.window if self.window > 0 else 0.0
 
+    @property
+    def measured(self) -> int:
+        """Return the tokens the tokenizer counted, which ``shares`` add up to (``used`` may be the provider's own)."""
+        return sum(share.tokens for share in self.shares)
+
+    @property
+    def estimated(self) -> bool:
+        """Return whether ``shares`` are a characters-per-token estimate and not a tokenizer's count."""
+        return "chars/token" in self.measured_by
+
+    def percent(self, tokens: int) -> float:
+        """Return ``tokens`` as a share of the window, in percent: how full the model's window is."""
+        return tokens / self.window * 100 if self.window else 0.0
+
+    def share(self, tokens: int) -> float:
+        """Return ``tokens`` as a share of what the tokenizer counted, in percent: where the context goes.
+
+        It divides by :attr:`measured` and never by a provider's total for the same request, which would leave the
+        rows short of a hundred.
+        """
+        return tokens / self.measured * 100 if self.measured else 0.0
+
 
 @dataclass(frozen=True, slots=True)
 class Compaction:

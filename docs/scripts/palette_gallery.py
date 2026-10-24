@@ -416,7 +416,7 @@ def send_kind_scene(env: Env, theme: Theme) -> Canvas:
 
 def context_scene(env: Env, theme: Theme) -> Canvas:
     from zettcode.app.ui.widgets import ContextPage
-    from zettcode.engine.extensions.context import ContextReport, ContextShare
+    from zettcode.sdk.types import ContextReport, ContextShare
 
     shares = tuple(
         ContextShare(name, tokens, items)
@@ -430,7 +430,9 @@ def context_scene(env: Env, theme: Theme) -> Canvas:
         )
     )
     shell = env.app(theme, height=34)
-    report = ContextReport(window=200000, measured_by="tiktoken cl100k_base", shares=shares, reported=28400)
+    report = ContextReport(
+        window=200000, used=28400, measured_by="tiktoken cl100k_base", shares=shares, from_provider=True
+    )
     widget = ContextPage(
         report,
         path=Path("~/.zettcode/sessions/-Users-me-api/01a1/data.jsonl"),
