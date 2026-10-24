@@ -395,7 +395,7 @@ def test_the_views_of_the_terminal_reach_the_engine_through_the_sdk_and_the_list
             "zettcode.engine.registry",
             "zettcode.engine.relay",
         ],
-        "zettcode.app.ui.bars": ["zettcode.engine.agent.sessions", "zettcode.engine.permission"],
+        "zettcode.app.ui.bars": ["zettcode.engine.permission"],
         "zettcode.app.ui.followups": ["zettcode.engine.agent.prompt"],
         "zettcode.app.ui.keys": ["zettcode.engine.errors"],
         "zettcode.app.ui.messaging": [
@@ -415,7 +415,6 @@ def test_the_views_of_the_terminal_reach_the_engine_through_the_sdk_and_the_list
         ],
         "zettcode.app.ui.widgets.completer": ["zettcode.engine.dialogue.mentions"],
         "zettcode.app.ui.widgets.composer": ["zettcode.engine.agent.prompt", "zettcode.engine.dialogue.mentions"],
-        "zettcode.app.ui.widgets.sessions_page": ["zettcode.engine.agent.sessions", "zettcode.engine.storage"],
     }
     found: dict[str, set[str]] = {}
     for path, module, is_package in _sources():
