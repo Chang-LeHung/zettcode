@@ -90,3 +90,30 @@ async def test_answering_a_message_that_never_arrived_is_a_404(unknown: str):
         response = await http.post(f"/messages/{unknown}")
 
     assert response.status_code == 404
+
+
+async def test_a_message_to_another_session_is_sent_and_says_who_took_it():
+    client = FakeClient()
+    async with serve(client) as (http, _):
+        response = await http.post("/sessions/current/send", json={"to": "api", "text": "run the tests"})
+
+    assert response.status_code == 200
+    assert response.json() == {"to": "api", "disposition": "started"}
+    assert client.sent == [("api", "run the tests")]
+
+
+async def test_a_message_nobody_can_take_is_a_404_with_the_reason_a_client_can_show():
+    async with serve(FakeClient()) as (http, _):
+        response = await http.post("/sessions/current/send", json={"to": "nobody", "text": "hello"})
+
+    assert response.status_code == 404
+    assert response.json()["error"] == "unreachable"
+    assert "nobody" in response.json()["message"]
+
+
+@pytest.mark.parametrize("body", [{"to": "", "text": "x"}, {"to": "api", "text": ""}, {"to": "api"}])
+async def test_a_message_needs_somebody_and_something_to_say(body: dict[str, str]):
+    async with serve(FakeClient()) as (http, _):
+        response = await http.post("/sessions/current/send", json=body)
+
+    assert response.status_code == 422

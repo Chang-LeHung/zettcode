@@ -586,6 +586,20 @@ class DoctorRequest(BaseModel):
     timeout: float = Field(default=30.0, gt=0, le=300)
 
 
+class SendIn(BaseModel):
+    """A message to another ZettCode session."""
+
+    to: str = Field(min_length=1, description="The session's handle, or its id")
+    text: str = Field(min_length=1, description="What to say")
+
+
+class SentOut(BaseModel):
+    """Who took the message, and what will become of it."""
+
+    to: str
+    disposition: str
+
+
 class ErrorOut(BaseModel):
     """A failure, in a shape a client can branch on.
 

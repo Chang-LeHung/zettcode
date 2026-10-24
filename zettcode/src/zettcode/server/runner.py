@@ -556,6 +556,11 @@ class Runner:
         """Ask every configured model one short question."""
         return await self.client.check_models(timeout=timeout)
 
+    async def send(self, to: str, text: str) -> tuple[str, str]:
+        """Send a message to another session; return the handle that took it and what it will do with it."""
+        delivered = await self.client.send(to, text)
+        return delivered.to.handle, delivered.disposition
+
 
 def result_payload(result: RunResult) -> dict[str, object]:
     """Return a finished run as JSON: its answer, its usage and its tool calls."""

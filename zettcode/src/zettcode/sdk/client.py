@@ -56,7 +56,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only; the agent is imported 
     from ..app.agent.dialogue.ask import AskUserQuestion
     from ..app.agent.dialogue.mentions import MentionRegistry
     from ..app.agent.extensions.messenger import Messenger
-    from ..broker.client import Receipt
+    from ..broker.client import Delivered, Receipt
     from ..config import ModelConfig, ZettCodeConfig
 
 __all__ = ["Client", "PluginReport", "Sessions", "prompt", "prompt_sync"]
@@ -498,6 +498,30 @@ class Client:
             raw=raw,
             keep_events=keep_events,
         )
+
+    async def send(self, to: str, text: str) -> Delivered:
+        """Send a message to another ZettCode session, as the terminal's ``@name`` draft does.
+
+        Args:
+            to: The session's handle, or its id.
+            text: What to say; the sender's own words, so the receiving agent is told its reader typed it.
+
+        Returns:
+            What the receiving session answered: who took it, and whether the turn started or is queued.
+
+        Raises:
+            ConfigurationError: This client did not join the sessions, so it has no line to send on.
+            SendError: Nobody was reached, and why.
+        """
+        from ..broker.protocol import VIA_USER
+
+        self._check_open()
+        messenger = self._messenger
+        if messenger is None:
+            raise ConfigurationError(
+                "This client has not joined the sessions; build it with sessions_enabled=True and call join_sessions"
+            )
+        return await messenger.send(to, text, via=VIA_USER)
 
     def _describe(self, *, busy: bool) -> None:
         """Tell the broker what this session is, when there is a connection to tell it."""
