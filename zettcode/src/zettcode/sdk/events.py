@@ -198,7 +198,9 @@ class ApprovalRequested(Event):
 
     The agent waits until this is answered. Call :meth:`approve` or :meth:`deny` before asking the stream for its
     next event; a request still unanswered by then is denied, so an unattended run never hangs. A handler passed to
-    the run answers before the event is yielded, and then :attr:`answered` is already true.
+    the run answers before the event is yielded, and then :attr:`answered` is already true. A run started with
+    ``defer_answers=True`` keeps the request open instead, for a program that asks its reader somewhere else; it is
+    denied only if the run ends first.
 
     Attributes:
         call_id: The tool call the answer belongs to.
