@@ -18,6 +18,7 @@ Exception
     ├── SessionNotFoundError      （同时是 LookupError）
     ├── NothingToDoError
     ├── WorkspaceConflictError
+    ├── SendError
     └── RunError
         └── RunTimeoutError       （同时是 TimeoutError）
 ```
@@ -43,6 +44,7 @@ from zettcode.sdk.errors import SessionBusyError, SessionNotFoundError
 | `SessionNotFoundError` | 会话 id 不存在或读不出来；对还没有消息的会话调用 `history()` 或 `fork()`。 | 用 `sessions.list()` 核对 id。 |
 | `NothingToDoError` | 对没有被中断的对话调用 `resume()`，或对已压缩的对话调用 `compact()`。消息会说明原因。 | 不是失败；跳过即可。 |
 | `WorkspaceConflictError` | 本进程里已打开了另一个目录的 client。 | 关掉第一个，或使用单独的进程。 |
+| `SendError` | `send()` 没能找到任何人。`reason` 说明原因：`offline`（没有 broker）、`lost`（消息在途中连接断了），或 broker 自己的原因（`unknown`、`ambiguous`、`rejected`、`timeout`、`loop`、`rate`、`empty`、`too_long`）。 | 看 `reason`；`ambiguous` 要改用会话 id 代替 handle。 |
 | `RunError` | run 期间模型、供应商或网络出了问题。 | 看 `retryable`。 |
 | `RunTimeoutError` | run 超过了它的 `timeout`。 | `resume()`，或重试。 |
 

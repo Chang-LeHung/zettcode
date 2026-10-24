@@ -94,7 +94,7 @@ def _check_timeout(timeout: float | None) -> None:
 # -- the prompt -----------------------------------------------------------------------------------
 
 
-def prompt_parts(
+def _prompt_parts(
     prompt: Prompt,
     images: Sequence[Image] = (),
     *,
@@ -574,7 +574,7 @@ class Session:
         _check_timeout(timeout)
         registry = client._mention_registry() if mentions else None
         model = client._agent.active_model
-        parts, hint = prompt_parts(
+        parts, hint = _prompt_parts(
             prompt,
             images,
             mentions=registry,

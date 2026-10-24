@@ -24,10 +24,10 @@ from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal, cast
 
-from zettcode.broker.client import Receipt
 from zettcode.sdk.errors import SessionBusyError
 from zettcode.sdk.events import ApprovalRequested, QuestionAsked
 from zettcode.sdk.handlers import ApprovalHandler, approve_all, approve_commands, deny_all
+from zettcode.sdk.types import Receipt
 
 from .schemas import ApprovalPolicy, PendingOut, PromptRequest, ResumeRequest
 from .serialize import event_payload, result_out
@@ -705,7 +705,7 @@ class Runner:
     async def send(self, to: str, text: str) -> tuple[str, str]:
         """Send a message to another session; return the handle that took it and what it will do with it."""
         delivered = await self.client.send(to, text)
-        return delivered.to.handle, delivered.disposition
+        return delivered.to, delivered.disposition
 
 
 def result_payload(result: RunResult) -> dict[str, object]:

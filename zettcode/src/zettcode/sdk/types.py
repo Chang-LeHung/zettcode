@@ -21,12 +21,15 @@ __all__ = [
     "ContextReport",
     "ContextShare",
     "DayTotals",
+    "Delivered",
     "Image",
+    "IncomingMessage",
     "MentionInfo",
     "Message",
     "ModelCheck",
     "ModelInfo",
     "ModelTotals",
+    "Receipt",
     "ResumeInfo",
     "RunResult",
     "SessionInfo",
@@ -296,6 +299,35 @@ class IncomingMessage:
     text: str
     via: str = "agent"
     hops: int = 1
+
+
+@dataclass(frozen=True, slots=True)
+class Receipt:
+    """What a program says about a message another session sent it: the answer to the sender.
+
+    Attributes:
+        accepted: Whether it took the message. A refusal carries its reason to the sender.
+        reason: Why not, in words the sender's model can act on.
+        disposition: What will happen to it: ``"started"`` (a turn began), or ``"queued"`` (it waits for the current
+            request to end).
+    """
+
+    accepted: bool
+    reason: str = ""
+    disposition: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class Delivered:
+    """The answer to a send: who took the message, and what they will do with it.
+
+    Attributes:
+        to: The handle of the session that took it.
+        disposition: ``"started"`` (a turn began there) or ``"queued"`` (it waits for the request running there).
+    """
+
+    to: str
+    disposition: str
 
 
 @dataclass(frozen=True, slots=True)

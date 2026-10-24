@@ -119,6 +119,7 @@ class Client:
 | --- | --- |
 | `ConfigurationError` | 配置，或从中选出的模型、推理强度、权限不可用。 |
 | `WorkspaceConflictError` | 另一个已打开的 client 在不同的目录里工作。 |
+| `SendError` | `send` 没能找到任何人;`reason` 说明原因。 |
 | `SessionNotFoundError` | `resume` 指向的会话读不出来。 |
 
 #### 属性
@@ -155,7 +156,7 @@ class Client:
 | `use_permission(name)` | `str` | 选择权限级别；从下一条 shell 命令起生效。 |
 | `mentions(query="", *, limit=50)` | `tuple[MentionInfo, ...]` | 匹配查询的 `@` 资源，用于补全菜单。开启 `sessions_enabled=True` 时，正在运行的其他会话排在最前，和终端一致。 |
 | `await join_sessions(on_message)` | `bool` | 加入会话 broker，让其他 ZettCode 会话找得到它、给它发消息。`on_message` 收到每条 `IncomingMessage` 并返回 `Receipt`；返回 `False` 表示该 client 未开启会话功能。 |
-| `await send(to, text)` | `Delivered` | 按 handle 或 id 给另一个会话发消息，内容视为读者本人所写；需要先 `join_sessions`。没有人能收到时抛出 `zettcode.broker.client.SendError`(`reason` 说明原因)。 |
+| `await send(to, text)` | `Delivered` | 按 handle 或 id 给另一个会话发消息，内容视为读者本人所写；需要先 `join_sessions`。没有人能收到时抛出 `zettcode.sdk.errors.SendError`(`reason` 说明原因)。 |
 | `relay(message, *, on_approval, on_question, on_event, timeout, raw, keep_events)` | `RunStream` | 为另一个会话发来的消息跑一轮，模型读到的内容带有发送者信息。 |
 | `await usage_ledger()` | `WorkspaceUsage` | 工作区每个已存会话花的用量，按会话、模型和天。 |
 | `await session_stats(ids=None)` | `tuple[SessionStatsInfo, ...]` | 若干会话在存储里的统计；不传 id 就是当前会话。 |
@@ -362,6 +363,10 @@ def remove_model(name, *, path=None) -> tuple[ModelInfo, ...]: ...
 
 `sender_id`、`sender`、`text`、`via`、`hops`。另一个 ZettCode 会话发来的消息:`join_sessions` 交给回调的就是它,`relay` 回答的也是它。`via` 为 `"user"` 表示对方读者亲手所写,`"agent"` 表示对方 agent 所写,`"external"` 表示发消息的不是 ZettCode 会话。
 
+### `Receipt`、`Delivered`
+
+`Receipt(accepted, reason="", disposition="")` 是 `join_sessions` 的回调返回给发送方的:消息是否被收下、不收的原因、以及它的回合是 `"started"`(已开始)还是 `"queued"`(排队中)。`Delivered(to, disposition)` 是 `send` 的返回值:收下消息的会话的 handle,以及同样的 disposition。
+
 ### `Totals`
 
 用量账本里一份计数:`requests`、`input_tokens`、`output_tokens`、`cache_read_tokens`、`reasoning_tokens`（都是 `int`），并提供算好的 `total_tokens` 与 `cache_share`（没有输入时为 `None`）。
@@ -411,6 +416,7 @@ def remove_model(name, *, path=None) -> tuple[ModelInfo, ...]: ...
 | `SessionNotFoundError` | `ZettCodeError`、`LookupError` | — |
 | `NothingToDoError` | `ZettCodeError` | — |
 | `WorkspaceConflictError` | `ZettCodeError` | — |
+| `SendError` | `ZettCodeError` | `reason` |
 | `RunError` | `ZettCodeError` | `retryable`、`partial_text` |
 | `RunTimeoutError` | `RunError`、`TimeoutError` | `seconds` |
 

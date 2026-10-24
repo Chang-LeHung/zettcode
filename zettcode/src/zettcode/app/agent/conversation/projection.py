@@ -19,7 +19,6 @@ from zettcode.engine.relay import Relayed
 from zettcode.sdk.events import (
     AnyEvent,
     ApprovalRequested,
-    Bridge,
     CompactionDelta,
     CompactionFinished,
     CompactionStarted,
@@ -40,7 +39,7 @@ from zettcode.sdk.events import (
     ToolStarted,
     UsageUpdated,
 )
-from zettcode.sdk.translation import translate
+from zettcode.sdk.translation import Bridge, translate
 
 from .entries import EntryStatus
 from .stops import stop_text

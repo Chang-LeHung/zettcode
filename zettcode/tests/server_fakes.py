@@ -294,16 +294,13 @@ class FakeClient:
         return run
 
     async def send(self, to: str, text: str) -> Any:
-        from zettcode.broker.client import Delivered
-        from zettcode.broker.protocol import PeerInfo
+        from zettcode.sdk.errors import SendError
+        from zettcode.sdk.types import Delivered
 
         self.sent.append((to, text))
         if to == "nobody":
-            from zettcode.broker.client import SendError
-
             raise SendError("not_found", "no session is called @nobody")
-        peer = PeerInfo("session-api", to, "API work", "/work/api", "idle")
-        return Delivered(peer, "started")
+        return Delivered(to, "started")
 
     def relay(self, message: object, **options: object) -> FakeRun:
         self.relayed.append(message)

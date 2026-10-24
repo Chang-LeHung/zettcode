@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING, Any, cast
 from .errors import (
     ClientClosedError,
     ConfigurationError,
+    SendError,
     SessionBusyError,
     SessionNotFoundError,
     WorkspaceConflictError,
@@ -38,11 +39,13 @@ from .events import AnyEvent
 from .handlers import ApprovalHandler, QuestionHandler
 from .session import EventCallback, Prompt, RunStream, Session
 from .types import (
+    Delivered,
     Image,
     IncomingMessage,
     MentionInfo,
     ModelCheck,
     ModelInfo,
+    Receipt,
     RunResult,
     SessionInfo,
     SessionStatsInfo,
@@ -51,7 +54,7 @@ from .types import (
 )
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only; the agent is imported when a client is made
-    from ..broker.client import Delivered, Receipt
+    from ..broker.models import Receipt as BrokerReceipt
     from ..config import ModelConfig, ZettCodeConfig
     from ..engine.dialogue.mentions import MentionRegistry
     from ..engine.messenger import Messenger
@@ -442,13 +445,15 @@ class Client:
         if messenger is None:
             return False
         self._messenger = messenger
-        messenger.receiver = lambda relayed: on_message(
-            IncomingMessage(
-                sender_id=relayed.sender_id,
-                sender=relayed.sender,
-                text=relayed.text,
-                via=relayed.via,
-                hops=relayed.hops,
+        messenger.receiver = lambda relayed: self._receipt(
+            on_message(
+                IncomingMessage(
+                    sender_id=relayed.sender_id,
+                    sender=relayed.sender,
+                    text=relayed.text,
+                    via=relayed.via,
+                    hops=relayed.hops,
+                )
             )
         )
         self._describe(busy=self._stream is not None)
@@ -493,7 +498,7 @@ class Client:
 
         Raises:
             ConfigurationError: This client did not join the sessions, so it has no line to send on.
-            SendError: Nobody was reached, and why.
+            SendError: Nobody was reached, and why (``reason``).
         """
         from ..broker.protocol import VIA_USER
 
@@ -503,7 +508,20 @@ class Client:
             raise ConfigurationError(
                 "This client has not joined the sessions; build it with sessions_enabled=True and call join_sessions"
             )
-        return await messenger.send(to, text, via=VIA_USER)
+        from ..broker.models import SendError as BrokerSendError
+
+        try:
+            delivered = await messenger.send(to, text, via=VIA_USER)
+        except BrokerSendError as error:
+            raise SendError(error.reason, str(error)) from error
+        return Delivered(delivered.to.handle, delivered.disposition)
+
+    @staticmethod
+    def _receipt(receipt: Receipt) -> BrokerReceipt:
+        """Return the broker's copy of what the program answered a message with."""
+        from ..broker.models import Receipt as BrokerReceipt
+
+        return BrokerReceipt(receipt.accepted, receipt.reason, receipt.disposition)
 
     def _describe(self, *, busy: bool) -> None:
         """Tell the broker what this session is, when there is a connection to tell it."""
