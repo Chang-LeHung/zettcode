@@ -14,7 +14,7 @@ import pytest
 from zett_agent.model import ReasoningEffort
 
 from zettcode.app.agent.agent import ZettCodeAgent
-from zettcode.app.agent.runtime import ZettCodeRuntime
+from zettcode.app.agent.runtime import ZettCodeEngine
 from zettcode.config import ModelConfig, ZettCodeConfig, load_config
 
 OFF, MINIMAL, LOW, MEDIUM, HIGH, XHIGH, MAX, ULTRA = tuple(ReasoningEffort)
@@ -103,7 +103,7 @@ def _agent(tmp_path: Path, monkeypatch, *models: ModelConfig, effort: ReasoningE
         reasoning_effort=effort,
         mcp_config=tmp_path / "absent-mcp.json",
     )
-    return ZettCodeAgent(ZettCodeRuntime.preview(config))
+    return ZettCodeAgent(ZettCodeEngine.preview(config))
 
 
 async def test_a_session_starts_on_a_level_its_model_takes(tmp_path: Path, monkeypatch):

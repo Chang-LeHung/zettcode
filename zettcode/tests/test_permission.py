@@ -274,13 +274,13 @@ async def test_the_level_the_command_sets_is_the_one_object_the_guard_the_runtim
     from zett_agent.messages import ToolCall
 
     from zettcode.app.agent.permission import SHELL_APPROVAL_TOOL_NAME
-    from zettcode.app.agent.runtime import ZettCodeRuntime
+    from zettcode.app.agent.runtime import ZettCodeEngine
     from zettcode.config import ModelConfig, ZettCodeConfig
 
     config = ZettCodeConfig(
         workspace=tmp_path, models=(ModelConfig(model="m", token="t"),), store=tmp_path / "sessions", mcp_enabled=False
     )
-    runtime = ZettCodeRuntime.preview(config)
+    runtime = ZettCodeEngine.preview(config)
     guard = ShellDenyExtension(runtime.policy)  # exactly how the runtime builds it
 
     async def shell_call() -> str:
@@ -326,7 +326,7 @@ async def test_the_guard_the_runtime_really_hands_the_agent_reads_the_policy_the
     config = ZettCodeConfig(
         workspace=tmp_path, models=(ModelConfig(model="m", token="t"),), store=tmp_path / "sessions", mcp_enabled=False
     )
-    runtime = runtime_module.ZettCodeRuntime.preview(config)
+    runtime = runtime_module.ZettCodeEngine.preview(config)
     await runtime.start()
 
     (guard,) = [e for e in given[0] if isinstance(e, ShellDenyExtension)]

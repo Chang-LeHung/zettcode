@@ -1,9 +1,9 @@
 """Application runtime that composes AgentClient with coding extensions.
 
-The runtime is built in two steps. :meth:`ZettCodeRuntime.preview` assembles
+The runtime is built in two steps. :meth:`ZettCodeEngine.preview` assembles
 everything that needs no provider — settings, the session store, this
 application's own extensions — so the shell can paint its first frame;
-:meth:`ZettCodeRuntime.start` imports the provider SDK, builds the client, and
+:meth:`ZettCodeEngine.start` imports the provider SDK, builds the client, and
 is what a turn or a command awaits before it reaches the model. That split is
 worth a few hundred milliseconds of startup, and the modules that cost them
 stay out of the import graph until they are needed.
@@ -67,7 +67,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only; the imports are the co
 
 #: Modules imported ahead of the code that needs them, in this order. The model
 #: SDKs are the cost — hundreds of milliseconds each, even with their bytecode
-#: cached — and the zett-agent module is what :meth:`ZettCodeRuntime._build`
+#: cached — and the zett-agent module is what :meth:`ZettCodeEngine._build`
 #: would otherwise import on the event loop. A name added here moves its import
 #: off the first turn and onto the pipeline's thread.
 WARM_MODULES = ("zett_agent.client", "zettcode.app.agent.extensions.files")
@@ -82,7 +82,7 @@ ANTHROPIC_WARM_MODULES = ("anthropic",)
 
 #: Modules a request needs only under the configuration that asks for them: each
 #: of these pulls its own machinery, and a run that has no use for one should not
-#: pay for it. The names are the ones :meth:`ZettCodeRuntime._build` imports.
+#: pay for it. The names are the ones :meth:`ZettCodeEngine._build` imports.
 WARM_MODULES_WHEN = (
     ("subagent_enabled", "zett_agent.extensions.subagent"),
     ("mcp_enabled", "zett_agent.extensions.mcp"),
@@ -172,7 +172,7 @@ def _build_provider(selected: ModelConfig) -> Adapter:
 
 
 @dataclass(slots=True)
-class ZettCodeRuntime:
+class ZettCodeEngine:
     """Own the model, the persistence and approval extensions, the client, and the active session.
 
     Before :meth:`start` runs, ``client`` and ``model`` are ``None``: everything
@@ -204,7 +204,7 @@ class ZettCodeRuntime:
     event_dispatcher: AgentEventDispatcher | None = None
     client: AgentClient | None = None
     model: Adapter | None = None
-    _starting: asyncio.Task[ZettCodeRuntime] | None = field(default=None, repr=False)
+    _starting: asyncio.Task[ZettCodeEngine] | None = field(default=None, repr=False)
     _counter: asyncio.Task[None] | None = field(default=None, repr=False)
     #: The sweep for empty session folders a killed process left behind, run once at the start on a thread.
     _tidying: asyncio.Task[int] | None = field(default=None, repr=False)
@@ -222,7 +222,7 @@ class ZettCodeRuntime:
     _ready: asyncio.Event | None = field(default=None, repr=False)
 
     @classmethod
-    def preview(cls, config: ZettCodeConfig) -> ZettCodeRuntime:
+    def preview(cls, config: ZettCodeConfig) -> ZettCodeEngine:
         """Build the session side of the runtime, without a provider.
 
         Everything here is cheap: paths, a session identity, and the
@@ -279,7 +279,7 @@ class ZettCodeRuntime:
         runtime.compaction.self_compact = runtime.self_compacting
         return runtime
 
-    def start(self) -> asyncio.Task[ZettCodeRuntime]:
+    def start(self) -> asyncio.Task[ZettCodeEngine]:
         """Build the provider and the client once, whoever asks first.
 
         The task is kept, so a background warm-up and the first turn cannot
@@ -355,7 +355,7 @@ class ZettCodeRuntime:
         """Return whether a build is still parked on the import pipeline."""
         return self._ready is not None and not self._ready.is_set()
 
-    async def _build(self) -> ZettCodeRuntime:
+    async def _build(self) -> ZettCodeEngine:
         """Wait for the imports, then hand the client its extensions.
 
         The imports block for a few hundred milliseconds — a model SDK alone is
@@ -431,7 +431,7 @@ class ZettCodeRuntime:
             self.client.event_dispatcher = dispatcher
 
     @classmethod
-    async def create(cls, config: ZettCodeConfig) -> ZettCodeRuntime:
+    async def create(cls, config: ZettCodeConfig) -> ZettCodeEngine:
         """Build and start a runtime, for callers with nothing to paint."""
         runtime = cls.preview(config)
         await runtime.start()

@@ -398,7 +398,7 @@ async def _started_extensions(tmp_path, monkeypatch, **settings):
         mcp_enabled=False,
         **settings,
     )
-    await runtime_module.ZettCodeRuntime.preview(config).start()
+    await runtime_module.ZettCodeEngine.preview(config).start()
     return given[0]
 
 

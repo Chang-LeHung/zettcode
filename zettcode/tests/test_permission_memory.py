@@ -32,7 +32,7 @@ def _runtime(tmp_path: Path, monkeypatch, *, level: Permission = Permission.ASK)
         sessions_enabled=False,
         shell_approval=ShellApprovalMode.ALLOW_ALL if level is Permission.FULL else ShellApprovalMode.REVIEW,
     )
-    return runtime_module.ZettCodeRuntime.preview(config)
+    return runtime_module.ZettCodeEngine.preview(config)
 
 
 async def _stored(runtime, session_id: str, *, permission: str | None = None) -> None:

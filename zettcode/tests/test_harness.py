@@ -212,7 +212,7 @@ async def test_the_runtime_turns_the_harness_on_and_off_and_starts_from_the_conf
             mcp_enabled=False,
             **changes,
         )
-        return runtime_module.ZettCodeRuntime.preview(config)
+        return runtime_module.ZettCodeEngine.preview(config)
 
     off, on = runtime(), runtime(jit_harness=True)
     assert off.harness.on is False and on.harness.on is True

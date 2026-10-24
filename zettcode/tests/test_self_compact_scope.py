@@ -15,7 +15,7 @@ from zett_agent.messages import SystemMessage, UserMessage
 from test_zettcode_app import build_app
 from zettcode._compat import tomllib
 from zettcode.app.agent.agent import ZettCodeAgent
-from zettcode.app.agent.runtime import ZettCodeRuntime
+from zettcode.app.agent.runtime import ZettCodeEngine
 from zettcode.app.agent.storage import SessionLocked
 from zettcode.config import ModelConfig, ZettCodeConfig, load_config
 from zettcode.config_edit import ConfigEditError, set_self_compaction
@@ -36,7 +36,7 @@ def _config(tmp_path: Path, **changes) -> ZettCodeConfig:
 
 def _agent(tmp_path: Path, monkeypatch, **changes) -> ZettCodeAgent:
     monkeypatch.setattr("zettcode.app.agent.runtime.os.chdir", lambda path: None)
-    return ZettCodeAgent(ZettCodeRuntime.preview(_config(tmp_path, **changes)))
+    return ZettCodeAgent(ZettCodeEngine.preview(_config(tmp_path, **changes)))
 
 
 @pytest.fixture

@@ -29,7 +29,7 @@ from render_terminal import preview_plugins, svg
 
 from zettcode.app.agent.agent import ZettCodeAgent
 from zettcode.app.agent.extensions.context import ContextReport, ContextShare
-from zettcode.app.agent.runtime import ZettCodeRuntime
+from zettcode.app.agent.runtime import ZettCodeEngine
 from zettcode.app.agent.storage.ledger import Ledger, SessionUsage, Tally
 from zettcode.app.ui.app import ZettCodeApp
 from zettcode.app.ui.shell import PAGE_SCREEN
@@ -203,7 +203,7 @@ def context_report(kind: str) -> tuple[ContextReport, int]:
 def shell(width: int, height: int) -> Iterator[ZettCodeApp]:
     """Yield an offline shell of a fixed size, with its files in a directory that is removed afterwards."""
     previous = Path.cwd()
-    runtime: ZettCodeRuntime | None = None
+    runtime: ZettCodeEngine | None = None
     with tempfile.TemporaryDirectory(prefix="zettcode-screens-") as directory:
         try:
             workspace = Path(directory)
@@ -215,7 +215,7 @@ def shell(width: int, height: int) -> Iterator[ZettCodeApp]:
                 skills_enabled=False,
                 mcp_enabled=False,
             )
-            runtime = ZettCodeRuntime.preview(config)
+            runtime = ZettCodeEngine.preview(config)
             runtime.plugins = load_plugins(config, builtins=preview_plugins())
             app = ZettCodeApp(ZettCodeAgent(runtime), theme=THEME, auto_theme=False)
             app.app.resize(width, height)

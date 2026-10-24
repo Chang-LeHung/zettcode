@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from zettcode.config import ZettCodeConfig
 
-from ..runtime import ZettCodeRuntime
+from ..runtime import ZettCodeEngine
 from .commands import CommandsMixin
 from .context import ContextMixin
 from .exports import ExportsMixin
@@ -50,13 +50,13 @@ class ZettCodeAgent(
     and responses to approval requests.
     """
 
-    def __init__(self, runtime: ZettCodeRuntime) -> None:
+    def __init__(self, runtime: ZettCodeEngine) -> None:
         self.runtime = runtime
 
     @classmethod
     async def create(cls, config: ZettCodeConfig) -> ZettCodeAgent:
         """Build the runtime and wrap it in the application agent."""
-        return cls(await ZettCodeRuntime.create(config))
+        return cls(await ZettCodeEngine.create(config))
 
     @classmethod
     def preview(cls, config: ZettCodeConfig) -> ZettCodeAgent:
@@ -68,7 +68,7 @@ class ZettCodeAgent(
         shell reads per frame — the model, the effort, the session, the usage —
         is answered from that preview.
         """
-        return cls(ZettCodeRuntime.preview(config))
+        return cls(ZettCodeEngine.preview(config))
 
     async def aclose(self) -> None:
         """Release the underlying runtime resources."""

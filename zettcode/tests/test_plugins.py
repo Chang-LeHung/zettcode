@@ -595,7 +595,7 @@ async def test_the_runtime_preview_installs_plugin_extensions_and_commands(tmp_p
     monkeypatch.setattr(runtime_module.os, "chdir", lambda path: None)
     monkeypatch.setattr(loader_module, "installed_entry_points", lambda: (FakeEntryPoint("greeter", Greeter),))
 
-    runtime = runtime_module.ZettCodeRuntime.preview(make_config(tmp_path))
+    runtime = runtime_module.ZettCodeEngine.preview(make_config(tmp_path))
 
     # The builtin rows load too; a lower priority sorts it after the plugin.
     assert loaded_names(runtime.plugins) == [
@@ -668,7 +668,7 @@ async def test_the_built_client_receives_the_plugin_extension(tmp_path: Path, mo
     monkeypatch.setattr("zett_agent.providers.openai.OpenAIProvider", FakeProvider)
     monkeypatch.setattr("zett_agent.client.create_agent", fake_create_agent)
 
-    runtime = runtime_module.ZettCodeRuntime.preview(make_config(tmp_path))
+    runtime = runtime_module.ZettCodeEngine.preview(make_config(tmp_path))
     await runtime.start()
 
     names = [type(extension).__name__ for extension in captured["extensions"]]

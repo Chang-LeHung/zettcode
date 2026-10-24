@@ -15,7 +15,7 @@ from html import escape
 from pathlib import Path
 
 from zettcode.app.agent.agent import ZettCodeAgent
-from zettcode.app.agent.runtime import ZettCodeRuntime
+from zettcode.app.agent.runtime import ZettCodeEngine
 from zettcode.app.brand import LOGO_PALETTE, LOGO_PIXELS
 from zettcode.app.ui.app import ZettCodeApp
 from zettcode.config import ModelConfig, ZettCodeConfig
@@ -46,7 +46,7 @@ def preview_plugins() -> tuple[object, ...]:
 def preview() -> Canvas:
     """Paint one sample conversation without a terminal, network, or user store."""
     previous = Path.cwd()
-    runtime: ZettCodeRuntime | None = None
+    runtime: ZettCodeEngine | None = None
     with tempfile.TemporaryDirectory(prefix="zettcode-docs-") as directory:
         try:
             workspace = Path(directory)
@@ -61,7 +61,7 @@ def preview() -> Canvas:
                 skills_enabled=False,
                 mcp_enabled=False,
             )
-            runtime = ZettCodeRuntime.preview(config)
+            runtime = ZettCodeEngine.preview(config)
             runtime.plugins = load_plugins(config, builtins=preview_plugins())
             app = ZettCodeApp(ZettCodeAgent(runtime), theme=replace(DARK, background="#232a2e"))
             clock = [0.0]

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..runtime import ZettCodeRuntime
+from ..runtime import ZettCodeEngine
 from ..storage import SessionLocked
 
 
@@ -17,7 +17,7 @@ class AgentBase:
     """The runtime, the workspace it works in, and the session the next turn belongs to."""
 
     #: The runtime this agent speaks to; the one thing the application agent holds.
-    runtime: ZettCodeRuntime
+    runtime: ZettCodeEngine
 
     @property
     def workspace(self) -> Path:

@@ -27,7 +27,7 @@ def _runtime(tmp_path: Path, monkeypatch):
         mcp_config=tmp_path / "absent-mcp.json",
         sessions_enabled=False,
     )
-    return runtime_module.ZettCodeRuntime.preview(config)
+    return runtime_module.ZettCodeEngine.preview(config)
 
 
 async def _stored(runtime, session_id: str) -> None:
