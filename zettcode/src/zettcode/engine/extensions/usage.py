@@ -22,8 +22,6 @@ from zett_agent.events import AgentEvent, AgentEventType
 from zett_agent.extensions.base import AgentExtension
 from zett_agent.model import ModelRequest, ModelResponse, ModelUsage
 
-from zettcode.tui import ARROW_DOWN, ARROW_UP, SEPARATOR
-
 #: Custom event name for one cumulative usage update; its payload is
 #: :meth:`UsageSnapshot.to_payload`.
 USAGE_EVENT_NAME = "session_usage"
@@ -125,65 +123,6 @@ class UsageSnapshot:
             requests=count("requests"),
             context_tokens=count("context_tokens"),
         )
-
-
-def compact_tokens(count: int) -> str:
-    """Shorten a token count for the status line: ``912``, ``12.3k``, ``1.2M``."""
-    if count < 1_000:
-        return str(count)
-    if count < 999_950:
-        return f"{count / 1_000:.1f}k"
-    return f"{count / 1_000_000:.1f}M"
-
-
-def usage_parts(snapshot: UsageSnapshot) -> dict[str, str]:
-    """Return the status line's token figures by the name of the part that shows each; empty before a reply."""
-    if not snapshot.requests:
-        return {}
-    parts = {
-        "tokens": f"{ARROW_UP}{compact_tokens(snapshot.input_tokens)} {ARROW_DOWN}{compact_tokens(snapshot.output_tokens)}"
-    }
-    rate = snapshot.cache_hit_rate
-    if rate is not None:
-        parts["cache"] = f"{rate * 100:.1f}% cached"
-    speed = snapshot.output_rate
-    if speed is not None:
-        parts["speed"] = f"{speed:.0f} tok/s" if speed >= 10 else f"{speed:.1f} tok/s"
-    return parts
-
-
-def usage_text(snapshot: UsageSnapshot) -> str:
-    """Render the status-line summary, or an empty string before the first call."""
-    parts = usage_parts(snapshot)
-    return "  " + f" {SEPARATOR} ".join(parts.values()) if parts else ""
-
-
-def context_share(snapshot: UsageSnapshot, window: int) -> str:
-    """Render how much of the model's window the newest request filled, as ``ctx 34.0%``.
-
-    Empty before any request has been measured or when the model does not declare a window.
-    """
-    if not snapshot.requests or window < 1 or snapshot.context_tokens < 1:
-        return ""
-    share = min(100.0, snapshot.context_tokens * 100 / window)
-    return f"ctx {share:.1f}%"
-
-
-def context_text(snapshot: UsageSnapshot, window: int) -> str:
-    """Render how much of the model's window the newest request filled.
-
-    Args:
-        snapshot: Session counters; only the newest call's input matters here.
-        window: Tokens the model can carry, from its configuration.
-
-    Returns:
-        A short ``"· ctx 34.0%"`` fragment, or ``""`` before any request has been
-        measured or when the model does not declare a window. The leading
-        separator is part of the fragment, so it joins the usage counters the
-        same way they join each other.
-    """
-    share = context_share(snapshot, window)
-    return f" {SEPARATOR} {share}" if share else ""
 
 
 class UsageExtension(AgentExtension):

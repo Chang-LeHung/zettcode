@@ -15,10 +15,10 @@ from zett_agent.extensions.shell_approval import SHELL_APPROVAL_EVENT_NAME
 from zett_agent.messages import TextContent
 
 from ..app.agent.conversation.server_tools import ServerToolRun, describe_output
-from ..app.agent.dialogue.ask import question_from
-from ..app.agent.extensions.mcp_notice import notice_from, notice_level_from
-from ..app.agent.extensions.usage import USAGE_EVENT_NAME, UsageSnapshot
-from ..app.agent.storage.ledger import Ledger, SessionStats, SessionUsage, Tally
+from ..engine.dialogue.ask import question_from
+from ..engine.extensions.mcp_notice import notice_from, notice_level_from
+from ..engine.extensions.usage import USAGE_EVENT_NAME, UsageSnapshot
+from ..engine.storage.ledger import Ledger, SessionStats, SessionUsage, Tally
 from .events import (
     AnyEvent,
     ApprovalRequested,

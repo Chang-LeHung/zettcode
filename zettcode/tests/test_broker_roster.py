@@ -219,7 +219,7 @@ def test_a_handle_that_equals_another_sessions_full_id_is_made_different():
 def test_a_handle_is_something_the_composer_can_type_after_an_at_sign():
     import re
 
-    from zettcode.app.agent.dialogue.mentions import MENTION
+    from zettcode.engine.dialogue.mentions import MENTION
 
     roster = _roster((1, A, "Fix the Parser!"), (2, B, "修复"), (3, C, "a" * 80))
 

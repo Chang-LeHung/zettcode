@@ -11,8 +11,8 @@ import pytest
 from zett_agent.messages import AssistantMessage, UserMessage
 from zett_agent.model import ModelUsage
 
-from zettcode.app.agent.storage import SessionStore
-from zettcode.app.agent.storage.ledger import UNKNOWN_MODEL, LedgerReader, Tally, parse_time
+from zettcode.engine.storage import SessionStore
+from zettcode.engine.storage.ledger import UNKNOWN_MODEL, LedgerReader, Tally, parse_time
 
 WORK = "work"
 
@@ -180,7 +180,7 @@ def index_of(tmp_path: Path) -> Path:
 
 def counting_scans(monkeypatch) -> list[int]:
     """Record how many lines each parse of a conversation looked at."""
-    from zettcode.app.agent.storage import ledger as module
+    from zettcode.engine.storage import ledger as module
 
     looked: list[int] = []
     real = module._row_of

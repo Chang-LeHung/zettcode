@@ -34,9 +34,9 @@ from .startup import slowest_imports
 #: Modules worth asking about: each is imported before the first frame and
 #: plausibly only needed by one command or a later step.
 DEFAULT_CANDIDATES: tuple[str, ...] = (
-    "zettcode.app.agent.export",
+    "zettcode.engine.export",
     "zettcode.app.agent.conversation.replay",
-    "zettcode.app.agent.dialogue.title",
+    "zettcode.engine.dialogue.title",
     "zettcode.app.ui.updating",
     "zettcode.app.commands",
     "zettcode.plugins",

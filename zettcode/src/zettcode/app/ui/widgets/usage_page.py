@@ -6,7 +6,7 @@ import colorsys
 from collections.abc import Callable
 from datetime import date, timedelta
 
-from zettcode.app.agent.storage.ledger import Ledger
+from zettcode.engine.storage.ledger import Ledger
 from zettcode.tui import SEPARATOR, KeyEvent, MouseAction, MouseEvent, Style, Theme, Widget
 from zettcode.tui.render import blend, parse_hex
 

@@ -42,6 +42,21 @@ Frozen, because the server, the TypeScript client and the extension are built on
 
 `ZettCodeRuntime` is renamed outright, with no alias.
 
+## Where things are now
+
+Moved into `zettcode/engine/` so far: `core.py` (`ZettCodeEngine`), `dialogue/`, `extensions/` (including
+`messaging.py`), `permission/`, `storage/`, `tools/`, `export/`, `errors.py`, `pipeline.py`, `registry.py`, and the
+messenger (`messenger.py`, `relay.py`). The status-line formatters that used to sit in `extensions/usage.py` moved
+to `statusline.py`, because they are about the terminal.
+
+Still to move: the `ZettCodeAgent` mixins in `app/agent/agent/`. They mix three things that must be pulled apart:
+the engine's own work (`turns`, `sessions`, `settings`, `context`, `exports`, `interaction`), the terminal's slash
+commands (`commands.py`: themes, pets, `Presenters`), and the terminal's `Transcript` view model, which the mixins
+fill directly. The engine half goes to `engine/`; the TUI projects engine events into its own `Transcript`.
+
+Open: `engine/core.py` imports `zettcode.plugins`, and the built-in plugins import the terminal's views. The direct
+rule (`test_layers_only_import_downwards`) holds, the indirect one does not yet.
+
 ## Steps (one pull request each, `make check` green)
 
 1. **Name.** `ZettCodeRuntime` → `ZettCodeEngine`; `zettcode.engine` facade; invariants for the layering below.

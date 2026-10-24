@@ -10,12 +10,12 @@ import pytest
 from zett_agent.messages import AssistantMessage, UserMessage
 from zett_agent.model import ModelUsage
 
-from zettcode.app.agent.storage import SessionStore
-from zettcode.app.agent.storage.ledger import Ledger, LedgerReader, SessionUsage, Tally
 from zettcode.app.commands import CommandContext
 from zettcode.app.ui.widgets import UsagePage
 from zettcode.app.ui.widgets import usage_charts as charts
 from zettcode.config import ModelConfig, ZettCodeConfig
+from zettcode.engine.storage import SessionStore
+from zettcode.engine.storage.ledger import Ledger, LedgerReader, SessionUsage, Tally
 from zettcode.plugins import PluginContainer
 from zettcode.plugins.builtins import BUILTIN_PLUGINS, UsageCommand
 from zettcode.tui import DARK, LIGHT, TuiApp
@@ -494,7 +494,7 @@ def test_the_sessions_tab_shows_both_when_a_session_began_and_when_it_last_chang
     """The order is the last change, so the page has to say what that was, next to the start."""
     from datetime import datetime
 
-    from zettcode.app.agent.storage.ledger import SessionUsage
+    from zettcode.engine.storage.ledger import SessionUsage
 
     row = SessionUsage(
         "s",
@@ -515,7 +515,7 @@ def test_a_narrow_sessions_tab_keeps_the_last_change_and_drops_the_start():
     """A row is still a row at forty columns; the created time is what gives way, not the order's own time."""
     from datetime import datetime
 
-    from zettcode.app.agent.storage.ledger import SessionUsage
+    from zettcode.engine.storage.ledger import SessionUsage
 
     row = SessionUsage("s", "A title", datetime(2026, 10, 9), datetime(2026, 10, 16), tally(10, 2), ("m",))
     head, body = charts.sessions_tab(ledger_of(models={"m": tally(10, 2)}, sessions=[row]), 40)
@@ -534,7 +534,7 @@ def test_a_truncated_cjk_title_does_not_push_the_token_columns_out_by_a_column()
     """
     from datetime import datetime
 
-    from zettcode.app.agent.storage.ledger import SessionUsage
+    from zettcode.engine.storage.ledger import SessionUsage
     from zettcode.tui.render import display_width
 
     def row(session_id: str, title: str) -> SessionUsage:
@@ -554,7 +554,7 @@ def test_the_sessions_tab_shows_each_sessions_cache_hit_rate():
     """Cached input is most of a long session's input; the row says how much, to two decimals."""
     from datetime import datetime
 
-    from zettcode.app.agent.storage.ledger import SessionUsage
+    from zettcode.engine.storage.ledger import SessionUsage
 
     row = SessionUsage("s", "A title", datetime(2026, 10, 9), datetime(2026, 10, 16), Tally(1, 1000, 10, 750), ("m",))
     head, body = charts.sessions_tab(ledger_of(models={"m": row.tally}, sessions=[row]), 100)
@@ -566,7 +566,7 @@ def test_the_sessions_tab_shows_each_sessions_cache_hit_rate():
 def test_a_cache_rate_is_written_to_two_decimals_everywhere_in_usage():
     from datetime import datetime
 
-    from zettcode.app.agent.storage.ledger import SessionUsage
+    from zettcode.engine.storage.ledger import SessionUsage
 
     row = SessionUsage("s", "A title", datetime(2026, 10, 9), datetime(2026, 10, 16), Tally(1, 1000, 10, 0), ("m",))
     ledger = ledger_of(models={"m": row.tally}, sessions=[row])
@@ -582,7 +582,7 @@ def test_the_cache_column_gives_way_before_the_counts_on_a_narrow_page():
     """Two decimals need seven columns; the row keeps its counts and its title instead."""
     from datetime import datetime
 
-    from zettcode.app.agent.storage.ledger import SessionUsage
+    from zettcode.engine.storage.ledger import SessionUsage
 
     row = SessionUsage("s", "A title", datetime(2026, 10, 9), datetime(2026, 10, 16), Tally(1, 1000, 10, 750), ("m",))
     head, _ = charts.sessions_tab(ledger_of(models={"m": row.tally}, sessions=[row]), 40)
@@ -595,7 +595,7 @@ def test_the_cache_column_draws_a_bar_that_can_be_compared_across_rows():
     """A share is read against a whole, so the bar is 0-100% and not scaled to the busiest row."""
     from datetime import datetime
 
-    from zettcode.app.agent.storage.ledger import SessionUsage
+    from zettcode.engine.storage.ledger import SessionUsage
 
     def session(name: str, cached: int) -> SessionUsage:
         return SessionUsage(
@@ -621,7 +621,7 @@ def test_the_cache_column_draws_a_bar_that_can_be_compared_across_rows():
 def test_the_cache_bar_goes_with_the_other_bars_on_a_page_without_room_for_them():
     from datetime import datetime
 
-    from zettcode.app.agent.storage.ledger import SessionUsage
+    from zettcode.engine.storage.ledger import SessionUsage
 
     row = SessionUsage("s", "A title", datetime(2026, 10, 9), datetime(2026, 10, 16), Tally(1, 1000, 10, 750), ("m",))
     _, body = charts.sessions_tab(ledger_of(models={"m": row.tally}, sessions=[row]), 80)

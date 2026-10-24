@@ -99,7 +99,7 @@ def _offline_tokenizers(monkeypatch: pytest.MonkeyPatch) -> None:
     were offline, which both counters take as "estimate", exactly as a first run with no network
     would.
     """
-    from zettcode.app.agent.extensions import context
+    from zettcode.engine.extensions import context
 
     def offline(encoding: str):
         raise OSError(f"the {encoding} vocabulary is not fetched in tests")

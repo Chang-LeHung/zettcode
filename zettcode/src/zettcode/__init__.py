@@ -14,14 +14,14 @@ _EXPORTS = {
     "ModelConfig": ".config",
     "ZettCodeAgent": ".app.agent.agent",
     "ZettCodeConfig": ".config",
-    "ZettCodeEngine": ".app.agent.runtime",
+    "ZettCodeEngine": ".engine.core",
 }
 
 
 if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
     from .app.agent.agent import ZettCodeAgent
-    from .app.agent.runtime import ZettCodeEngine
     from .config import ModelConfig, ZettCodeConfig
+    from .engine.core import ZettCodeEngine
 
 
 def __getattr__(name: str) -> object:

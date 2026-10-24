@@ -7,10 +7,10 @@ from zett_agent.messages import SystemMessage
 
 from test_compaction import FakeContext, FakeModel, _dialogue
 from test_zettcode_app import build_app
-from zettcode.app.agent.dialogue.side import question
-from zettcode.app.agent.extensions.compaction import OnDemandCompaction
-from zettcode.app.agent.storage import SessionStore
 from zettcode.app.commands import CommandContext
+from zettcode.engine.dialogue.side import question
+from zettcode.engine.extensions.compaction import OnDemandCompaction
+from zettcode.engine.storage import SessionStore
 
 
 def context():
@@ -89,10 +89,10 @@ async def test_command_reads_and_sets_the_current_sessions_choice():
 
 
 async def test_a_fresh_runtime_reads_the_saved_choice_and_new_sessions_stay_disabled(tmp_path, monkeypatch):
-    from zettcode.app.agent.runtime import ZettCodeEngine
     from zettcode.config import ModelConfig, ZettCodeConfig
+    from zettcode.engine.core import ZettCodeEngine
 
-    monkeypatch.setattr("zettcode.app.agent.runtime.os.chdir", lambda path: None)
+    monkeypatch.setattr("zettcode.engine.core.os.chdir", lambda path: None)
     config = ZettCodeConfig(
         workspace=tmp_path, store=tmp_path / "sessions", models=(ModelConfig(model="test", token="test"),)
     )

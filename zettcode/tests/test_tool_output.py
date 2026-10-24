@@ -13,11 +13,11 @@ from zett_agent.client import create_agent
 from zett_agent.messages import AssistantMessage, ToolCall, ToolMessage
 from zett_agent.model import ModelEvent, ModelResponse, RetryOptions
 
-from zettcode.app.agent.extensions import tool_output as tool_output_module
-from zettcode.app.agent.extensions.files import CodingBundle
-from zettcode.app.agent.extensions.tool_output import OUTPUT_ROOT, ToolOutputExtension
-from zettcode.app.agent.storage import SessionStore
-from zettcode.app.agent.tools.shell import shell_tool
+from zettcode.engine.extensions import tool_output as tool_output_module
+from zettcode.engine.extensions.files import CodingBundle
+from zettcode.engine.extensions.tool_output import OUTPUT_ROOT, ToolOutputExtension
+from zettcode.engine.storage import SessionStore
+from zettcode.engine.tools.shell import shell_tool
 
 bash = shell_tool()
 

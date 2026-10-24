@@ -7,7 +7,7 @@ the work is done here, in this repository, and by nothing else.
 
 There are two readers and no more. ``read`` returns UTF-8 text as a line range and a PNG, JPEG, GIF or WebP file as an
 image, so one tool covers both. ``read_file`` is the same reader without the pictures, for a model that cannot take
-an image (see :class:`~zettcode.app.agent.extensions.capabilities.ModelCapabilities`, which swaps one for the other).
+an image (see :class:`~zettcode.engine.extensions.capabilities.ModelCapabilities`, which swaps one for the other).
 There is no ``view_image``, because ``read`` already shows a picture, and no ``delete_file``: removing a file is a
 shell command and goes through the shell's permission like any other, with no second path around it.
 """

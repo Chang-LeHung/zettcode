@@ -15,7 +15,6 @@ from test_zettcode_app import (
     walk,
 )
 from zettcode._compat import tomllib
-from zettcode.app.agent.extensions.usage import USAGE_EVENT_NAME, UsageSnapshot
 from zettcode.app.ui import labels
 from zettcode.app.ui.boot import boot_tree
 from zettcode.app.ui.widgets.statusline_page import (
@@ -28,6 +27,7 @@ from zettcode.app.ui.widgets.statusline_page import (
 )
 from zettcode.config import ZettCodeConfig, load_config
 from zettcode.config_edit import ConfigEditError, set_statusline
+from zettcode.engine.extensions.usage import USAGE_EVENT_NAME, UsageSnapshot
 from zettcode.statusline import NAMES, Row, unknown
 from zettcode.tui import TuiApp
 

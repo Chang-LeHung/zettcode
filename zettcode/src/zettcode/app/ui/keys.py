@@ -9,10 +9,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from zettcode.engine.errors import describe_error
 from zettcode.tui import AnyEvent, Host
 from zettcode.tui.clipboard import copy_route
 
-from ..agent.errors import describe_error
 from .clipboard import read_image
 from .shell import ASK_SCREEN, PAGE_SCREEN, ShellState
 from .widgets.completer import COMMAND_PREFIX

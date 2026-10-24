@@ -7,8 +7,8 @@ import tempfile
 from pathlib import Path
 
 from zettcode import paths
-from zettcode.app.agent.storage import SessionStore
 from zettcode.config import ModelConfig, ZettCodeConfig
+from zettcode.engine.storage import SessionStore
 
 
 def _inside_the_temp_home(path: Path) -> bool:

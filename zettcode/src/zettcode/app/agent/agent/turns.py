@@ -16,9 +16,9 @@ from zett_agent.extensions.steering import STEERING_MESSAGE_EVENT_NAME
 from zett_agent.messages import ImageBytesSource, ImageContent, TextContent, UserMessage
 from zett_agent.resume import ResumePoint
 
+from zettcode.engine.dialogue.side import SIDE, question
 from zettcode.engine.relay import Relayed
 
-from ..dialogue.side import SIDE, question
 from .base import AgentBase
 from .prompt import MentionPart, PromptPart, carries_image, model_text_part, plain_text
 
@@ -49,7 +49,7 @@ class TurnsMixin(AgentBase):
                 as the message's ``prompt`` attribute, so the stored message is
                 what was typed and a restored session shows it.
             side: Ask without letting the exchange join the conversation; see
-                :mod:`zettcode.app.agent.side`.
+                :mod:`zettcode.engine.dialogue.side`.
             relayed: The turn is a message another session sent. It is what the model reads
                 (with where it came from), and ``parts`` and ``hint`` are not used.
 

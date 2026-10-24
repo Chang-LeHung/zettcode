@@ -55,14 +55,6 @@ from zettcode.app.agent.conversation.text import (
     elapsed_text,
     terminal_safe,
 )
-from zettcode.app.agent.dialogue.mentions import Mention, MentionProvider, MentionRegistry
-from zettcode.app.agent.dialogue.side import SideQuestions
-from zettcode.app.agent.extensions.context import IMAGE_TOKENS, SOURCES, ContextExtension, Tokenizer
-from zettcode.app.agent.extensions.harness_switch import HarnessSwitch
-from zettcode.app.agent.extensions.usage import USAGE_EVENT_NAME, UsageExtension, UsageSnapshot, context_text
-from zettcode.app.agent.permission import Permission, parse_permission
-from zettcode.app.agent.runtime import ZettCodeEngine
-from zettcode.app.agent.storage import STORE_FILE, SessionInfo, SessionStore
 from zettcode.app.brand import LOGO_LINES, LOGO_PALETTE, LOGO_PIXELS
 from zettcode.app.commands import Command, CommandContext, CommandResult
 from zettcode.app.ui import app as app_module
@@ -92,8 +84,17 @@ from zettcode.app.ui.widgets import (
 )
 from zettcode.app.ui.widgets.follow_up import OPTION
 from zettcode.config import ModelConfig, ZettCodeConfig
+from zettcode.engine.core import ZettCodeEngine
+from zettcode.engine.dialogue.mentions import Mention, MentionProvider, MentionRegistry
+from zettcode.engine.dialogue.side import SideQuestions
+from zettcode.engine.extensions.context import IMAGE_TOKENS, SOURCES, ContextExtension, Tokenizer
+from zettcode.engine.extensions.harness_switch import HarnessSwitch
+from zettcode.engine.extensions.usage import USAGE_EVENT_NAME, UsageExtension, UsageSnapshot
+from zettcode.engine.permission import Permission, parse_permission
+from zettcode.engine.storage import STORE_FILE, SessionInfo, SessionStore
 from zettcode.plugins import BUILTIN_PLUGINS, PluginContainer, Plugins, ShellContext, UiBuilder
 from zettcode.plugins.services import HOST_LINK, HostLink
+from zettcode.statusline import context_text
 from zettcode.tui import (
     DARK,
     LIGHT,
@@ -7031,7 +7032,7 @@ async def test_a_session_recorded_under_the_raw_model_name_still_finds_its_model
 
 def test_the_name_the_picker_showed_wins_over_a_model_that_happens_to_be_called_the_same():
     """A is shown as "b"; B's raw name is "b". Looking only by raw or display name would find both."""
-    from zettcode.app.agent.runtime import ZettCodeEngine
+    from zettcode.engine.core import ZettCodeEngine
 
     a = ModelConfig(model="a", display_model="b", token="t")
     b = ModelConfig(model="b", display_model="c", token="t")
@@ -7043,7 +7044,7 @@ def test_the_name_the_picker_showed_wins_over_a_model_that_happens_to_be_called_
 
 
 def test_a_name_two_entries_answer_to_in_the_second_step_is_not_guessed():
-    from zettcode.app.agent.runtime import ZettCodeEngine
+    from zettcode.engine.core import ZettCodeEngine
 
     a = ModelConfig(model="x", display_model="one", token="t")
     b = ModelConfig(model="x", display_model="two", token="t")
@@ -8440,8 +8441,8 @@ async def test_usage_opens_a_full_screen_page_and_escape_returns_to_the_conversa
     from zett_agent.messages import AssistantMessage
     from zett_agent.model import ModelUsage
 
-    from zettcode.app.agent.storage import SessionStore
     from zettcode.app.ui.widgets import UsagePage
+    from zettcode.engine.storage import SessionStore
 
     work = tmp_path / "work"
     work.mkdir()

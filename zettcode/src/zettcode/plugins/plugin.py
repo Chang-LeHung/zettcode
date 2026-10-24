@@ -22,9 +22,9 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
     from zett_agent.extensions.base import AgentExtension
 
     from ..app.agent.conversation.presenters import Presenter
-    from ..app.agent.dialogue.mentions import MentionProvider
     from ..app.commands import Command
     from ..app.pets import PetSource
+    from ..engine.dialogue.mentions import MentionProvider
     from ..providers import Provider
     from ..tui import ThemeSource
     from .container import PluginContainer

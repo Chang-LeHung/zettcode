@@ -11,10 +11,10 @@ from pathlib import Path
 import pytest
 from zett_agent.messages import AssistantMessage, UserMessage
 
-from zettcode.app.agent import runtime as runtime_module
 from zettcode.app.agent.agent import ZettCodeAgent
-from zettcode.app.agent.storage import LOCK_FILE, LOCKED_MESSAGE, STORE_FILE, SessionLocked, SessionStore
 from zettcode.config import ModelConfig, ZettCodeConfig
+from zettcode.engine import core as runtime_module
+from zettcode.engine.storage import LOCK_FILE, LOCKED_MESSAGE, STORE_FILE, SessionLocked, SessionStore
 
 
 def _runtime(tmp_path: Path, monkeypatch):
@@ -256,7 +256,7 @@ import sys, time
 from pathlib import Path
 from zett_agent.messages import AssistantMessage, UserMessage
 import asyncio
-from zettcode.app.agent.storage import SessionLocks, SessionStore
+from zettcode.engine.storage import SessionLocks, SessionStore
 
 store = SessionStore(Path(sys.argv[1]) / "sessions", Path(sys.argv[1]) / "work")
 async def main():

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from zettcode.app.agent.runtime import _build_provider
 from zettcode.config import KEYLESS_TOKEN, ModelConfig
+from zettcode.engine.core import _build_provider
 
 
 class Recorder:

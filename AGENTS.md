@@ -6,13 +6,14 @@ The repository is a uv workspace of one package, and the root `pyproject.toml` i
 tool configuration (Ruff, mypy, the dev dependency group) and the member list. Nothing is published from the root.
 
 - `zettcode/` is the terminal coding agent. `src/zettcode` holds `cli.py` and
-  `config.py` at the top, the application in `app/` (`agent/` for the
-  conversation model, the event projection, session persistence, and the
-  runtime composition, grouped into `agent/` itself — the one class, built
-  from mixins — and `conversation/`, `dialogue/`, `extensions/`,
-  `permission/`, `storage/`, `export/` and `runtime.py`; `docs/internal/tui.md`
-  has the map and `tests/test_structure.py` the import order; `ui/` for the
-  shell and the views), and the reusable framework in `tui/`; `tests` drives
+  `config.py` at the top, the agent core in `engine/` (`ZettCodeEngine` in
+  `core.py`, and the `dialogue/`, `extensions/`, `permission/`, `storage/`,
+  `tools/`, `export/` it is built from, plus the messenger between sessions;
+  it imports nothing of the terminal, the SDK or the server — `docs/internal/engine.md`
+  has the design), the terminal application in `app/` (`agent/` for the
+  conversation model and the event projection, `ui/` for the shell and the
+  views; `docs/internal/tui.md` has the map and `tests/test_structure.py` the
+  import order), and the reusable framework in `tui/`; `tests` drives
   all of it without a real terminal. The session broker is `broker/`: one small
   package, a Starlette application served by uvicorn on loopback (sessions are
   WebSockets, sending is `POST /messages`, any process with the token may use it)
@@ -21,11 +22,11 @@ tool configuration (Ruff, mypy, the dev dependency group) and the member list. N
 - The agent runtime is an external dependency: depend on released `zett-agent`
   versions and never vendor or re-implement the model loop, compaction, or
   message types. Two things are the deliberate exceptions. Session persistence —
-  `app/agent/` owns the storage format *and* the lifecycle adapter that drives
+  `engine/storage` owns the storage format *and* the lifecycle adapter that drives
   it, built only on the released hook contract and context/event types, so
   storage policy moves with this repository. And the coding tools (`read`,
   `read_file`, `glob`, `grep`, `write_file`, `edit`, `bash`), which are
-  `app/agent/tools`: ours, fully type-hinted, registered through the framework's
+  `engine/tools`: ours, fully type-hinted, registered through the framework's
   `@tool` and `AgentTool` contract but run by nothing from the framework. Do not
   import a tool from `zett_agent.tools.coding` or a file-system extension.
 - A new interface between our own parts is an abstract base class, not a

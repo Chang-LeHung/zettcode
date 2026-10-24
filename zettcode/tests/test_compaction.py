@@ -10,8 +10,8 @@ from zett_agent.model import ModelEvent, ModelResponse, RetryOptions
 from zettcode.app.agent.conversation.entries import EntryStatus, ThinkingEntry
 from zettcode.app.agent.conversation.text import COMPACTING_LABEL
 from zettcode.app.agent.conversation.transcript import Transcript
-from zettcode.app.agent.dialogue.side import question
-from zettcode.app.agent.extensions.compaction import OnDemandCompaction
+from zettcode.engine.dialogue.side import question
+from zettcode.engine.extensions.compaction import OnDemandCompaction
 
 
 class FakeModel:

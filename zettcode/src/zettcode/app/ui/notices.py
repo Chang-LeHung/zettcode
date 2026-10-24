@@ -11,9 +11,9 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
+from zettcode.engine.extensions.usage import UsageSnapshot
 from zettcode.tui import Anchor, Overlay, OverlaySlot, Screen, Toast
 
-from ..agent.extensions.usage import UsageSnapshot
 from ..commands import CommandUi
 from .shell import APPROVAL_ROWS, ASK_SCREEN, PAGE_SCREEN, ShellState
 from .widgets import ApprovalChoice, ApprovalPage, AskUserPage, bottom_panel
@@ -21,7 +21,7 @@ from .widgets import ApprovalChoice, ApprovalPage, AskUserPage, bottom_panel
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zett_agent.events import AgentEvent
 
-    from ..agent.dialogue.ask import AskUserQuestion
+    from zettcode.engine.dialogue.ask import AskUserQuestion
 
 
 class NoticesMixin(CommandUi, ShellState):

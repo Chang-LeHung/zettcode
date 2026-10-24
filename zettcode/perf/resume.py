@@ -38,9 +38,9 @@ from zettcode.app import TranscriptSource
 from zettcode.app.agent.agent import ZettCodeAgent
 from zettcode.app.agent.conversation.replay import replay
 from zettcode.app.agent.conversation.transcript import Transcript
-from zettcode.app.agent.storage import SessionStore
 from zettcode.cli import session_exists
 from zettcode.config import ModelConfig, ZettCodeConfig
+from zettcode.engine.storage import SessionStore
 from zettcode.tui import DARK
 
 from .harness import table

@@ -7,7 +7,7 @@ finished with it. What it does about the message is its own agent's business, an
 arrives here as a message of its own.
 
 Both are request-scoped like every tool: they are registered for each request, and a request that is
-a side question keeps only ``list_sessions`` (see :mod:`zettcode.app.agent.dialogue.side`), because
+a side question keeps only ``list_sessions`` (see :mod:`zettcode.engine.dialogue.side`), because
 sending a message is not reading.
 """
 

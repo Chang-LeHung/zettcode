@@ -15,11 +15,11 @@ import pytest
 from zett_agent.messages import ImageContent, TextContent
 from zett_agent.tools.base import AgentTool
 
-from zettcode.app.agent.dialogue.side import READ_ONLY_TOOLS
-from zettcode.app.agent.extensions.files import CodingBundle, FileTools, file_tools
-from zettcode.app.agent.tools.files import edit, glob, grep, read, read_file, write_file
-from zettcode.app.agent.tools.output import MAX_OUTPUT_BYTES
-from zettcode.app.agent.tools.workspace import MAX_FILE_BYTES
+from zettcode.engine.dialogue.side import READ_ONLY_TOOLS
+from zettcode.engine.extensions.files import CodingBundle, FileTools, file_tools
+from zettcode.engine.tools.files import edit, glob, grep, read, read_file, write_file
+from zettcode.engine.tools.output import MAX_OUTPUT_BYTES
+from zettcode.engine.tools.workspace import MAX_FILE_BYTES
 
 
 def _png(path: Path) -> Path:
@@ -69,8 +69,8 @@ def test_every_tool_is_one_of_ours_and_is_typed_as_one():
     tools = (read, read_file, glob, grep, write_file, edit, *CodingBundle().tools)
 
     assert all(isinstance(tool, AgentTool) for tool in tools)
-    assert {tool.handler.__module__ for tool in tools[:6]} == {"zettcode.app.agent.tools.files"}, "defined here"
-    assert CodingBundle().tools[-1].handler.__module__ == "zettcode.app.agent.tools.shell"
+    assert {tool.handler.__module__ for tool in tools[:6]} == {"zettcode.engine.tools.files"}, "defined here"
+    assert CodingBundle().tools[-1].handler.__module__ == "zettcode.engine.tools.shell"
 
 
 def test_reading_is_one_tool_and_it_does_not_send_the_model_to_one_that_is_gone():
@@ -116,8 +116,8 @@ def test_the_limits_in_a_schema_are_the_ones_the_tools_enforce():
 
 
 async def test_a_file_is_removed_by_the_shell_like_any_command_and_the_prompt_says_so(tmp_path: Path):
-    from zettcode.app.agent import runtime as runtime_module
     from zettcode.config import ModelConfig, ZettCodeConfig
+    from zettcode.engine import core as runtime_module
 
     prompt = runtime_module.build_system_prompt(
         ZettCodeConfig(workspace=tmp_path, models=(ModelConfig(model="m", token="t"),), store=tmp_path / "s")

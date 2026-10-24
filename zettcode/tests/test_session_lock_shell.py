@@ -10,10 +10,10 @@ from zett_agent.messages import AssistantMessage, UserMessage
 from test_zettcode_app import FakeClient, FakeRuntime, _harness, build_app, rows_and_commands
 from zettcode.app.agent.agent import ZettCodeAgent
 from zettcode.app.agent.conversation.entries import TextEntry
-from zettcode.app.agent.storage import SessionStore
 from zettcode.app.ui import sessions as sessions_module
 from zettcode.app.ui.app import ZettCodeApp
 from zettcode.app.ui.widgets.composer import LOCK_ART
+from zettcode.engine.storage import SessionStore
 
 #: The padlock's body, which is on screen only while the composer is locked.
 LOCK = LOCK_ART[1]

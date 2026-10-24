@@ -11,11 +11,11 @@ from zett_agent.extensions.tool_guidelines import ToolGuidelinesExtension
 from zett_agent.messages import AssistantMessage, ToolCall, ToolMessage
 from zett_agent.model import ModelEvent, ModelRequest, ModelResponse, ReasoningEffort, RetryOptions
 
-from zettcode.app.agent.extensions.capabilities import ModelCapabilities
-from zettcode.app.agent.extensions.files import FileTools
-from zettcode.app.agent.extensions.subagents import build_subagents, subagent_extension
-from zettcode.app.agent.storage import SessionStore
 from zettcode.config import ModelConfig
+from zettcode.engine.extensions.capabilities import ModelCapabilities
+from zettcode.engine.extensions.files import FileTools
+from zettcode.engine.extensions.subagents import build_subagents, subagent_extension
+from zettcode.engine.storage import SessionStore
 
 
 class _StubModel:
@@ -217,7 +217,7 @@ async def test_two_tasks_asking_for_different_levels_do_not_share_one(tmp_path):
     """The requested level rides a context variable, so parallel calls each keep their own."""
     import asyncio
 
-    from zettcode.app.agent.extensions import subagents as module
+    from zettcode.engine.extensions import subagents as module
 
     async def ask(level):
         token = module._REQUESTED_EFFORT.set(level)
@@ -360,7 +360,7 @@ def test_a_coding_child_with_a_shell_gets_its_file_tools_from_the_parent_and_not
 
 
 def test_only_the_coding_profile_takes_what_the_parent_has():
-    from zettcode.app.agent.extensions.subagents import INHERITING
+    from zettcode.engine.extensions.subagents import INHERITING
 
     assert INHERITING == {"coding"}
 
@@ -379,8 +379,8 @@ class _FakeProvider:
 
 async def _started_extensions(tmp_path, monkeypatch, **settings):
     """Start a real runtime with the client stubbed, and return the extensions it handed the agent."""
-    from zettcode.app.agent import runtime as runtime_module
     from zettcode.config import ZettCodeConfig
+    from zettcode.engine import core as runtime_module
 
     given: list[list[object]] = []
 

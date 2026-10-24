@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from zettcode.app.agent.extensions.context import SOURCES, ContextReport, ContextShare
 from zettcode.app.ui.widgets import ContextPage
 from zettcode.app.ui.widgets import context_charts as charts
+from zettcode.engine.extensions.context import SOURCES, ContextReport, ContextShare
 from zettcode.tui import DARK, LIGHT, TuiApp
 from zettcode.tui.render.text import display_width
 from zettcode.tui.testing import Harness

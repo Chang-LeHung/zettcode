@@ -28,13 +28,13 @@ from pathlib import Path, PurePosixPath
 from render_terminal import preview_plugins, svg
 
 from zettcode.app.agent.agent import ZettCodeAgent
-from zettcode.app.agent.extensions.context import ContextReport, ContextShare
-from zettcode.app.agent.runtime import ZettCodeEngine
-from zettcode.app.agent.storage.ledger import Ledger, SessionUsage, Tally
 from zettcode.app.ui.app import ZettCodeApp
 from zettcode.app.ui.shell import PAGE_SCREEN
 from zettcode.app.ui.widgets import ContextPage, UsagePage
 from zettcode.config import ModelConfig, ZettCodeConfig
+from zettcode.engine.core import ZettCodeEngine
+from zettcode.engine.extensions.context import ContextReport, ContextShare
+from zettcode.engine.storage.ledger import Ledger, SessionUsage, Tally
 from zettcode.plugins.loader import load_plugins
 from zettcode.tui import DARK, Canvas, Screen
 

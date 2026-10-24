@@ -7,7 +7,7 @@ from collections.abc import Callable
 from pathlib import Path
 from time import monotonic
 
-from zettcode.app.agent.extensions.context import ContextReport
+from zettcode.engine.extensions.context import ContextReport
 from zettcode.tui import SEPARATOR, KeyEvent, MouseAction, MouseEvent, Style, Widget
 from zettcode.tui.render import blend, display_width
 

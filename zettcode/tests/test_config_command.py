@@ -13,14 +13,14 @@ import pytest
 
 from plugin_helpers import runtime_inputs
 from zettcode._compat import tomllib
-from zettcode.app.agent import runtime as runtime_module
 from zettcode.app.agent.agent import ZettCodeAgent
-from zettcode.app.agent.runtime import ZettCodeEngine
 from zettcode.app.ui import ZettCodeApp
 from zettcode.app.ui.widgets import FormPage, InputPage, ModelSettingsPage
 from zettcode.app.ui.widgets.input_page import MASK
 from zettcode.config import load_config
 from zettcode.config_edit import ConfigEditError
+from zettcode.engine import core as runtime_module
+from zettcode.engine.core import ZettCodeEngine
 from zettcode.plugins import AGENT_PLUGINS, Plugin, PluginContainer, load_plugins
 from zettcode.providers import BUILTIN_PROVIDERS, Api, Provider
 from zettcode.tui import ListPage, walk

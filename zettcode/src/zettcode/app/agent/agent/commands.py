@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from zettcode.app.commands import Command, CommandContext, CommandHost, CommandResult
 from zettcode.app.pets import PetCatalog, bundled_pets
+from zettcode.engine.dialogue.mentions import MentionProvider
 from zettcode.plugins import UiRow
 from zettcode.plugins.services import HOST_LINK, HostLink
 from zettcode.providers import BUILTIN_PROVIDERS, Provider, merge_providers
@@ -16,7 +17,6 @@ from zettcode.statusline import NAMES, unknown
 from zettcode.tui import ThemeCatalog
 
 from ..conversation.presenters import Presenters
-from ..dialogue.mentions import MentionProvider
 from .exports import ExportsMixin
 
 #: The words ``/self-compact`` takes after it, or after ``global``.

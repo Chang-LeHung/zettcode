@@ -20,10 +20,10 @@ from zettcode.config_edit import (
     set_theme,
     write_text_atomically,
 )
+from zettcode.engine.permission import PERMISSION_LEVELS, Permission
 from zettcode.paths import config_path
 from zettcode.statusline import NAMES
 
-from ..permission import PERMISSION_LEVELS, Permission
 from .base import AgentBase
 
 

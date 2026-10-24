@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from zett_agent.messages import UserMessage
 
-from zettcode.app.agent.storage import (
+from zettcode.engine.storage import (
     LOCK_FILE,
     STORE_FILE,
     SessionStore,
@@ -17,9 +17,9 @@ from zettcode.app.agent.storage import (
     open_workspace,
     workspace_key,
 )
-from zettcode.app.agent.storage import layout as layout_module
-from zettcode.app.agent.storage.layout import OWNER_FILE
-from zettcode.app.agent.storage.ledger import LedgerReader
+from zettcode.engine.storage import layout as layout_module
+from zettcode.engine.storage.layout import OWNER_FILE
+from zettcode.engine.storage.ledger import LedgerReader
 from zettcode.filelock import SingletonLock
 
 SESSION = "01a10b75-aaaa-7000-8000-000000000001"

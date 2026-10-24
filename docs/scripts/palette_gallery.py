@@ -37,7 +37,6 @@ from palette_data import NOTES, Palette, palettes  # noqa: E402
 
 from zettcode.app.agent.agent import ZettCodeAgent  # noqa: E402
 from zettcode.app.agent.conversation.entries import EntryStatus  # noqa: E402
-from zettcode.app.agent.runtime import ZettCodeEngine  # noqa: E402
 from zettcode.app.ui import app as app_module  # noqa: E402
 from zettcode.app.ui.app import ZettCodeApp  # noqa: E402
 from zettcode.app.ui.labels import header_left  # noqa: E402
@@ -50,6 +49,7 @@ from zettcode.app.ui.widgets import (  # noqa: E402
     bottom_panel,
 )
 from zettcode.config import ModelConfig, ZettCodeConfig  # noqa: E402
+from zettcode.engine.core import ZettCodeEngine  # noqa: E402
 from zettcode.engine.relay import Relayed  # noqa: E402
 from zettcode.plugins.builtins import BUILTIN_PLUGINS, ShellRows  # noqa: E402
 from zettcode.plugins.loader import load_plugins  # noqa: E402
@@ -339,8 +339,8 @@ def header_scene(level: str, frames: tuple[float | None, ...]) -> Callable[[Env,
 
 
 def sessions_scene(env: Env, theme: Theme) -> Canvas:
-    from zettcode.app.agent.storage import SessionInfo
     from zettcode.app.ui.widgets import SessionsPage
+    from zettcode.engine.storage import SessionInfo
 
     shell = env.app(theme, height=16)
     now = datetime(2026, 10, 17, 12, 0, tzinfo=timezone.utc)
@@ -370,8 +370,8 @@ def approval_scene(env: Env, theme: Theme) -> Canvas:
 
 
 def ask_scene(env: Env, theme: Theme) -> Canvas:
-    from zettcode.app.agent.dialogue.ask import AskUserQuestion
     from zettcode.app.ui.widgets import AskUserPage
+    from zettcode.engine.dialogue.ask import AskUserQuestion
 
     shell = env.app(theme, height=14)
     question = AskUserQuestion(
@@ -415,8 +415,8 @@ def send_kind_scene(env: Env, theme: Theme) -> Canvas:
 
 
 def context_scene(env: Env, theme: Theme) -> Canvas:
-    from zettcode.app.agent.extensions.context import ContextReport, ContextShare
     from zettcode.app.ui.widgets import ContextPage
+    from zettcode.engine.extensions.context import ContextReport, ContextShare
 
     shares = tuple(
         ContextShare(name, tokens, items)
@@ -444,8 +444,8 @@ def context_scene(env: Env, theme: Theme) -> Canvas:
 
 def usage_scene(tab: str) -> Callable[[Env, Theme], Canvas]:
     def build(env: Env, theme: Theme) -> Canvas:
-        from zettcode.app.agent.storage.ledger import Ledger, SessionUsage, Tally
         from zettcode.app.ui.widgets import UsagePage
+        from zettcode.engine.storage.ledger import Ledger, SessionUsage, Tally
 
         today = date(2026, 10, 17)
         days = {

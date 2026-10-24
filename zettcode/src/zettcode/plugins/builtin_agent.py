@@ -26,18 +26,18 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from ..app.agent.dialogue.side import SideQuestions
-from ..app.agent.extensions.capabilities import ModelCapabilities
-from ..app.agent.extensions.compaction import CompactionCounter, OnDemandCompaction
-from ..app.agent.extensions.context import ContextExtension
-from ..app.agent.extensions.harness_switch import HarnessSwitch
-from ..app.agent.extensions.tool_output import ToolOutputExtension
-from ..app.agent.extensions.usage import UsageExtension
-from ..app.agent.permission import ShellDenyExtension, ShellPolicy
-from ..app.agent.permission.approval import ShellApprovalMemory
-from ..app.agent.storage import SessionStore
 from ..config import ModelConfig
+from ..engine.dialogue.side import SideQuestions
+from ..engine.extensions.capabilities import ModelCapabilities
+from ..engine.extensions.compaction import CompactionCounter, OnDemandCompaction
+from ..engine.extensions.context import ContextExtension
+from ..engine.extensions.harness_switch import HarnessSwitch
+from ..engine.extensions.tool_output import ToolOutputExtension
+from ..engine.extensions.usage import UsageExtension
 from ..engine.messenger import Messenger
+from ..engine.permission import ShellDenyExtension, ShellPolicy
+from ..engine.permission.approval import ShellApprovalMemory
+from ..engine.storage import SessionStore
 from .container import PluginContainer
 from .plugin import Plugin
 from .services import (
@@ -75,7 +75,7 @@ class CodingTools(Plugin):
         policy = container.service(POLICY, ShellPolicy)
 
         def build(_: AgentBuild) -> AgentExtension:
-            from ..app.agent.extensions.files import CodingBundle
+            from ..engine.extensions.files import CodingBundle
 
             return CodingBundle(policy)
 
@@ -124,7 +124,7 @@ class Subagents(Plugin):
         def build(agent: AgentBuild) -> AgentExtension:
             # Imported here: the module pulls in the SQLite store and SQLAlchemy, which a launch that
             # never runs a child should not pay for on the way to the first frame.
-            from ..app.agent.extensions.subagents import subagent_extension
+            from ..engine.extensions.subagents import subagent_extension
 
             return subagent_extension(
                 model=agent.model,
@@ -171,8 +171,8 @@ def _shared_with_children(*, messaging: bool) -> Callable[[AgentExtension], bool
     from zett_agent.extensions.todo import TodoWriteExtension
     from zett_agent.extensions.tool_guidelines import ToolGuidelinesExtension
 
-    from ..app.agent.extensions.harness import SwitchedHarness
-    from ..app.agent.extensions.messaging import SessionMessagingExtension
+    from ..engine.extensions.harness import SwitchedHarness
+    from ..engine.extensions.messaging import SessionMessagingExtension
     from .extension import PluginExtension
 
     private: tuple[type, ...] = (
@@ -209,7 +209,7 @@ class Messaging(Plugin):
             return
 
         def build(_: AgentBuild) -> AgentExtension:
-            from ..app.agent.extensions.messaging import SessionMessagingExtension
+            from ..engine.extensions.messaging import SessionMessagingExtension
 
             return SessionMessagingExtension(messenger)
 
@@ -255,7 +255,7 @@ class Harness(Plugin):
         root = container.config.harness_dir
 
         def build(_: AgentBuild) -> AgentExtension:
-            from ..app.agent.extensions.harness import SwitchedHarness
+            from ..engine.extensions.harness import SwitchedHarness
 
             return SwitchedHarness(root, switch)
 
@@ -401,7 +401,7 @@ class McpTools(Plugin):
             return
 
         def build(_: AgentBuild) -> AgentExtension | None:
-            from ..app.agent.extensions.mcp import build_scoped_mcp_extension
+            from ..engine.extensions.mcp import build_scoped_mcp_extension
 
             return build_scoped_mcp_extension(config.mcp_files())
 

@@ -1,6 +1,6 @@
 """The extensions that give an agent its file tools and its shell.
 
-The tools themselves are in :mod:`zettcode.app.agent.tools`; these register them for each request and tell the model
+The tools themselves are in :mod:`zettcode.engine.tools`; these register them for each request and tell the model
 where it is working:
 
 * :class:`FileTools` registers ``read``, ``glob`` and ``grep``, and with ``read_only`` off ``write_file`` and
@@ -11,7 +11,7 @@ where it is working:
   permission level as any other command.
 
 Neither offers ``read_file``: that is the text-only reader
-:class:`~zettcode.app.agent.extensions.capabilities.ModelCapabilities` puts in the place of ``read`` for a model that
+:class:`~zettcode.engine.extensions.capabilities.ModelCapabilities` puts in the place of ``read`` for a model that
 does not take images.
 """
 

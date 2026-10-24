@@ -27,7 +27,7 @@ from zett_agent.messages import ImageContent
 from zett_agent.model import ModelRequest
 from zett_agent.tools.base import tool
 
-from zettcode.app.pipeline import DaemonCall
+from zettcode.engine.pipeline import DaemonCall
 
 from ..dialogue.side import is_side_run
 from . import context as context_module

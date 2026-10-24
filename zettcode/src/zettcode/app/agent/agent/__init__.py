@@ -23,8 +23,8 @@ is the composition and the lifecycle — building the runtime, and closing it.
 from __future__ import annotations
 
 from zettcode.config import ZettCodeConfig
+from zettcode.engine.core import ZettCodeEngine
 
-from ..runtime import ZettCodeEngine
 from .commands import CommandsMixin
 from .context import ContextMixin
 from .exports import ExportsMixin

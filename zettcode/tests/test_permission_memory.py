@@ -14,11 +14,11 @@ import pytest
 from zett_agent.extensions.shell_approval import ShellApprovalMode
 from zett_agent.messages import AssistantMessage, UserMessage
 
-from zettcode.app.agent import runtime as runtime_module
-from zettcode.app.agent.permission import Permission
-from zettcode.app.agent.storage import SessionStore
-from zettcode.app.agent.storage.metadata import SESSION_METADATA_FILE
 from zettcode.config import ModelConfig, ZettCodeConfig
+from zettcode.engine import core as runtime_module
+from zettcode.engine.permission import Permission
+from zettcode.engine.storage import SessionStore
+from zettcode.engine.storage.metadata import SESSION_METADATA_FILE
 
 
 def _runtime(tmp_path: Path, monkeypatch, *, level: Permission = Permission.ASK):

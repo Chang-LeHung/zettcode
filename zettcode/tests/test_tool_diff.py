@@ -320,7 +320,7 @@ async def test_an_edit_replayed_from_a_stored_session_shows_its_diff_too(tmp_pat
     from zett_agent.messages import AssistantMessage, ToolCall, ToolMessage, UserMessage
 
     from zettcode.app.agent.conversation.replay import replay
-    from zettcode.app.agent.storage import SessionStore
+    from zettcode.engine.storage import SessionStore
 
     store = SessionStore(tmp_path)
     await store.append("s", "r", UserMessage(content="fix it"))
@@ -501,7 +501,7 @@ def test_a_write_replayed_from_a_stored_session_shows_its_content_too(tmp_path):
     from zett_agent.messages import AssistantMessage, ToolCall, ToolMessage, UserMessage
 
     from zettcode.app.agent.conversation.replay import replay
-    from zettcode.app.agent.storage import SessionStore
+    from zettcode.engine.storage import SessionStore
 
     async def store_it():
         store = SessionStore(tmp_path)

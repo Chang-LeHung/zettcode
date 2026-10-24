@@ -78,7 +78,7 @@ other, but its card opens by itself and shows the message above the delivery lin
 
 ## What is deliberately absent
 
-- **The `/usage` ledger and the `/resume` table** (`app/agent/storage/ledger.py`, session stats) are not exposed: they
+- **The `/usage` ledger and the `/resume` table** (`engine/storage/ledger.py`, session stats) are not exposed: they
   are not in the SDK yet, and the server must not reach past it. Add a method to the SDK first.
 - **Editing `config.toml`** (`/config`) is a terminal form, and the server reads its configuration at startup; write
   the file, restart, or pass `--model`/`--effort`.

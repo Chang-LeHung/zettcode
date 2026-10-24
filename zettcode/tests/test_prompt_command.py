@@ -175,7 +175,7 @@ def test_a_tool_the_model_used_is_reported_on_stderr_and_never_in_the_answer(tmp
 
 def chosen(monkeypatch, *steps):
     """Wire a scripted model that also records which configured model each request was built for."""
-    from zettcode.app.agent import runtime as runtime_module
+    from zettcode.engine import core as runtime_module
 
     scripted = ScriptedModel(*steps)
     used: list[str] = []

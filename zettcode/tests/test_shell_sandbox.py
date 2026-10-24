@@ -8,12 +8,12 @@ from pathlib import Path
 
 import pytest
 
-from zettcode.app.agent.extensions.files import CodingBundle
-from zettcode.app.agent.permission import Permission, ShellPolicy
-from zettcode.app.agent.permission.sandbox import ShellSandbox, temporary_roots
-from zettcode.app.agent.tools.boundary import Boundary, Sandboxer
-from zettcode.app.agent.tools.shell import shell_tool
 from zettcode.config import load_config
+from zettcode.engine.extensions.files import CodingBundle
+from zettcode.engine.permission import Permission, ShellPolicy
+from zettcode.engine.permission.sandbox import ShellSandbox, temporary_roots
+from zettcode.engine.tools.boundary import Boundary, Sandboxer
+from zettcode.engine.tools.shell import shell_tool
 
 #: Real probes need the platform's sandbox. They are skipped, not faked, where there is none (Windows, or a Linux
 #: machine without bubblewrap): what the fallback does there is tested separately, with a stand-in.
@@ -281,7 +281,7 @@ def test_the_temporary_directories_are_the_ones_that_exist():
 
 def test_the_sandbox_is_probed_only_when_asked_and_once(monkeypatch, tmp_path: Path):
     calls: list[object] = []
-    from zettcode.app.agent.permission import sandbox as module
+    from zettcode.engine.permission import sandbox as module
 
     monkeypatch.setattr(module, "create_sandbox", lambda *a, **k: calls.append(k) or object())
     sandbox = ShellSandbox(tmp_path)
@@ -293,7 +293,7 @@ def test_the_sandbox_is_probed_only_when_asked_and_once(monkeypatch, tmp_path: P
 
 
 def test_a_platform_with_no_sandbox_says_why(monkeypatch, tmp_path: Path):
-    from zettcode.app.agent.permission import sandbox as module
+    from zettcode.engine.permission import sandbox as module
 
     monkeypatch.setattr(module.sys, "platform", "win32")
     sandbox = ShellSandbox(tmp_path)
@@ -307,7 +307,7 @@ def test_a_platform_with_no_sandbox_says_why(monkeypatch, tmp_path: Path):
 def test_a_linux_machine_that_cannot_sandbox_falls_back_instead_of_failing(monkeypatch, tmp_path: Path):
     from zett_agent.sandbox import SandboxUnavailableError
 
-    from zettcode.app.agent.permission import sandbox as module
+    from zettcode.engine.permission import sandbox as module
 
     def refuse(*args, **kwargs):
         raise SandboxUnavailableError("bubblewrap (bwrap) was not found")
@@ -337,8 +337,8 @@ def test_the_config_can_open_the_network_for_the_sandbox_and_it_starts_closed(tm
 
 
 def test_a_runtime_hands_its_sandbox_the_workspace_and_the_configured_network(tmp_path: Path, monkeypatch):
-    from zettcode.app.agent import runtime as runtime_module
     from zettcode.config import ModelConfig, ZettCodeConfig
+    from zettcode.engine import core as runtime_module
 
     monkeypatch.setattr(runtime_module.os, "chdir", lambda path: None)
     config = ZettCodeConfig(

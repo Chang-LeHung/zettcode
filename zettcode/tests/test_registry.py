@@ -7,8 +7,8 @@ from pathlib import Path
 import pytest
 
 from zettcode.app.commands import Command, CommandContext, CommandList, CommandResult
-from zettcode.app.registry import Registry
 from zettcode.config import ModelConfig, ZettCodeConfig
+from zettcode.engine.registry import Registry
 from zettcode.plugins import PluginContainer
 
 

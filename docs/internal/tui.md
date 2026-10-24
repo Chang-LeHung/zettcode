@@ -71,7 +71,7 @@ zettcode/src/zettcode/
   app/               the ZettCode application, built on the framework
     agent/           transcript.py (the conversation model and its render
                      cache), projection.py (agent events into that model),
-                     runtime.py (AgentClient and composition), title.py (the
+                     core.py (AgentClient and composition, now in engine/), title.py (the
                      one-shot session naming call), storage/ (the workspace
                      layout, the JSONL conversation tree, each session's metadata.json (and
                      the old workspace metadata.jsonl it is carried over from), and
@@ -375,7 +375,10 @@ cached prefix plus the open tail, and only the visible rows are ever built.
 `zettcode/src/zettcode/app/` is the only consumer of the framework, and the only place
 that knows about agents, sessions, and tools.
 
-### How `app/agent/` is laid out
+### How `app/agent/` and `engine/` are laid out
+
+Everything below except `agent/` and `conversation/` now lives in `engine/` (`runtime.py` became `engine/core.py`; the rest of
+the names are the same); `agent/` and `conversation/` stay in `app/agent/`.
 
 Twenty-three flat modules used to sit side by side, which made the one that mattered
 indistinguishable from the ones that did not. They are grouped by what they are *for*;
@@ -384,7 +387,7 @@ the two files at the top are the composition and the thing it composes.
 | Where | What is in it |
 | --- | --- |
 | `agent/` | `ZettCodeAgent`, the application's one entry point, assembled from mixins: `base` (runtime, workspace, session id), `settings` (model, effort, shell permission), `context` (the next request, compaction), `sessions` (switch, resume, fork, title), `turns` (build, stream, steer), `interaction` (answer an approval or a question), `exports`, `commands`; and `prompt`, the parts of a user turn |
-| `runtime.py` | `ZettCodeEngine`: owns the session state (policy, store, model table, counter, messenger) and the provider, and builds the client from the extensions the plugins hand it |
+| `core.py` | `ZettCodeEngine`: owns the session state (policy, store, model table, counter, messenger) and the provider, and builds the client from the extensions the plugins hand it |
 | `extensions/` | What the plugins plug into zett-agent that is ours: `capabilities`, `compaction`, `context`, `files` (`FileTools` and `CodingBundle`, which register the tools),  `mcp` (and `mcp_notice`, the event it reports through), `messenger` (the line to the other sessions) and `messaging` (the two tools), `subagents`, `tool_output`, `usage`; `plugins/builtin_agent.py` registers them |
 | `tools/` | The coding tools, written here and typed: `files` (`read`, `read_file`, `glob`, `grep`, `write_file`, `edit`; the main agent is given `read`, `write_file` and `edit` and searches with its shell, a subagent and a side question keep `glob` and `grep`), `shell` (`bash` and the command runner), `workspace` (paths, ranged reads, atomic writes, edits), `output` (bounded previews), `images` (what an image file starts with), `boundary` (the abstract classes the shell tool asks the permission level and a sandbox through) |
 | `permission/` | How much of the shell may run unasked: the levels and what enforces them (`__init__`), the fail-closed read-only classifier (`readonly`), what an approval may remember (`approval`) |
@@ -507,7 +510,7 @@ definitions and small width/layout entry points together in `render/style.py`,
 while the reusable width-aware algorithms stay in `render/text.py` and
 `render/rich_text.py`.
 
-`app/agent/extensions/context.py` measures one assembled request: an extension remembers the
+`engine/extensions/context.py` measures one assembled request: an extension remembers the
 messages and tool schemas `before_model` saw, and `/context` tokenizes them by
 source (instructions, tool schemas, user turns, model turns, tool output,
 compaction summaries) against the compaction budget. Counting prefers `tiktoken`
@@ -594,7 +597,7 @@ memory (whose ``is_allowed`` is what lets ``safe`` and ``auto`` skip the prompt)
 and ``ShellDenyExtension`` (which runs before the approval extension and refuses
 for ``deny``, since the approval extension can ask but cannot refuse on the
 reader's behalf). It is deliberately not persisted, so the next launch asks
-again. What ``safe`` may skip is decided by ``app/agent/permission/readonly.py``, which is
+again. What ``safe`` may skip is decided by ``engine/permission/readonly.py``, which is
 fail-closed: a command is read-only only when every part of it is recognised.
 
 `rendering.py` shapes every kind of agent output, as a chain of handlers: each
@@ -608,7 +611,7 @@ the language it is. The text links work on streamed fragments, which is why they
 are told whether a fragment opens its message — the only place a chat preamble
 can appear.
 
-`app/agent/dialogue/title.py` names a session after its first exchange: one provider
+`engine/dialogue/title.py` names a session after its first exchange: one provider
 request with no tools, whose reply is reduced to a single line and written into
 the session's own `metadata.json`, so renaming rewrites that one small file and
 never enters the conversation log. The shell schedules that call in the
@@ -651,7 +654,7 @@ badge over the transcript's last row; clicking it, or pressing `Esc`, follows
 the tail again, and the binding is captured precisely because the composer
 would otherwise swallow `Esc`. The status line's left segment ends with the
 active session's title, cached when a turn names it or a session is resumed so
-the metadata file is not read on every frame, followed by `app/agent/extensions/usage.py`'s
+the metadata file is not read on every frame, followed by `engine/extensions/usage.py`'s
 cumulative token counters: tokens in and out, the cache share of the input, and
 generated tokens per second. That module is an `AgentExtension` observing
 `before_model`/`after_model`; it emits one `session_usage` custom event per

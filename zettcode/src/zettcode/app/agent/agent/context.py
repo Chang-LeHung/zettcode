@@ -12,10 +12,11 @@ from zett_agent.extensions.events import CompactionEvent
 from zett_agent.messages import AnyMessage, SystemMessage
 from zett_agent.model import ToolDefinition
 
-from ..extensions.context import ContextReport
-from ..extensions.usage import UsageSnapshot
-from ..runtime import build_system_prompt
-from ..storage import Session
+from zettcode.engine.core import build_system_prompt
+from zettcode.engine.extensions.context import ContextReport
+from zettcode.engine.extensions.usage import UsageSnapshot
+from zettcode.engine.storage import Session
+
 from .base import AgentBase
 
 

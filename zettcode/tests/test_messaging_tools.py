@@ -10,15 +10,15 @@ from zett_agent.agent import AgentRunConfig, AgentRunContext, AgentState
 from zett_agent.messages import SystemMessage
 
 from broker_helpers import Host, Inbox, client_for, eventually, session
-from zettcode.app.agent.dialogue.side import SideQuestions, question
-from zettcode.app.agent.extensions.messaging import (
+from zettcode.broker.client import BrokerClient, Receipt, SendError
+from zettcode.broker.protocol import MAX_HOPS, MAX_TEXT
+from zettcode.config import ModelConfig, ZettCodeConfig, load_config
+from zettcode.engine.dialogue.side import SideQuestions, question
+from zettcode.engine.extensions.messaging import (
     LIST_SESSIONS_TOOL_NAME,
     SEND_MESSAGE_TOOL_NAME,
     SessionMessagingExtension,
 )
-from zettcode.broker.client import BrokerClient, Receipt, SendError
-from zettcode.broker.protocol import MAX_HOPS, MAX_TEXT
-from zettcode.config import ModelConfig, ZettCodeConfig, load_config
 from zettcode.engine.messenger import Messenger
 from zettcode.engine.relay import Relayed
 
@@ -387,7 +387,7 @@ async def test_the_runtime_gives_the_agent_the_tools_only_when_the_configuration
     tmp_path, monkeypatch, enabled
 ):
     from test_runtime_models import _config_with
-    from zettcode.app.agent import runtime as runtime_module
+    from zettcode.engine import core as runtime_module
 
     given: list[object] = []
 

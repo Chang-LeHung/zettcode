@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 
-from zettcode.app.agent.extensions.files import CodingBundle
+from zettcode.engine.extensions.files import CodingBundle
 
 
 def test_every_tool_schema_stands_on_its_own():

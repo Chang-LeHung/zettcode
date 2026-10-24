@@ -8,8 +8,8 @@ import pytest
 from zett_agent.messages import AssistantMessage, UserMessage
 from zett_agent.model import ModelUsage
 
-from zettcode.app.agent.storage import SessionStore
 from zettcode.doctor import Probe
+from zettcode.engine.storage import SessionStore
 from zettcode.sdk import Client, ModelCheck, SessionStatsInfo, Totals
 
 MODEL = {"model": "example", "token": "t"}

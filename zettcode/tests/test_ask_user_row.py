@@ -19,8 +19,8 @@ from zettcode.app.agent.conversation.projection import TranscriptProjector
 from zettcode.app.agent.conversation.replay import replay
 from zettcode.app.agent.conversation.text import DECLINED_NOTE
 from zettcode.app.agent.conversation.transcript import Transcript
-from zettcode.app.agent.dialogue.ask import declined_answer
-from zettcode.app.agent.storage import SessionStore
+from zettcode.engine.dialogue.ask import declined_answer
+from zettcode.engine.storage import SessionStore
 from zettcode.tui import DARK
 
 #: What the tool returns when the reader cancels: the payload the shell sent, serialized.

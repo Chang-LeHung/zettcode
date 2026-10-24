@@ -11,9 +11,9 @@ from pathlib import Path
 import pytest
 from zett_agent.messages import UserMessage
 
-from zettcode.app.agent import runtime as runtime_module
-from zettcode.app.agent.storage import LOCK_FILE, STORE_FILE, SessionLocks, SessionStore, prune_empty
 from zettcode.config import ModelConfig, ZettCodeConfig
+from zettcode.engine import core as runtime_module
+from zettcode.engine.storage import LOCK_FILE, STORE_FILE, SessionLocks, SessionStore, prune_empty
 from zettcode.filelock import SingletonLock
 
 A = "01a10b75-aaaa-7000-8000-000000000001"

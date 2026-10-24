@@ -16,9 +16,9 @@ from zett_agent.extensions.events import MessageAppendedEvent, MessageTiming
 from zett_agent.messages import AssistantMessage, SystemMessage, UserMessage
 
 from zettcode.app.agent.conversation.replay import replay
-from zettcode.app.agent.dialogue.side import READ_ONLY_TOOLS, SideQuestions, is_side, question
-from zettcode.app.agent.export import build_trace
-from zettcode.app.agent.storage import SessionStore
+from zettcode.engine.dialogue.side import READ_ONLY_TOOLS, SideQuestions, is_side, question
+from zettcode.engine.export import build_trace
+from zettcode.engine.storage import SessionStore
 
 
 def _context(*, session_id: str = "s1") -> AgentRunContext:

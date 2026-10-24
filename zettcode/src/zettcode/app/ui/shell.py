@@ -55,6 +55,9 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
     from collections.abc import Sequence
 
     from zettcode.config import ModelConfig
+    from zettcode.engine.dialogue.ask import AskUserQuestion
+    from zettcode.engine.dialogue.mentions import MentionRegistry
+    from zettcode.engine.extensions.usage import UsageSnapshot
     from zettcode.engine.messenger import Messenger
     from zettcode.engine.relay import Relayed
     from zettcode.plugins import Activity, UiRow
@@ -67,9 +70,6 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
     from ..agent.conversation.projection import TranscriptProjector
     from ..agent.conversation.shimmer import ShimmerFrame
     from ..agent.conversation.transcript import Transcript
-    from ..agent.dialogue.ask import AskUserQuestion
-    from ..agent.dialogue.mentions import MentionRegistry
-    from ..agent.extensions.usage import UsageSnapshot
     from ..commands import Command
     from ..pets import Pet
     from .followups import FollowUp
