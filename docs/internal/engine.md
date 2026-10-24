@@ -38,7 +38,12 @@ The engine is not part of the contract. There are no third-party plugins either,
 In `zettcode/engine/`: `core.py` (`ZettCodeEngine`), `agent/` (`ZettCodeAgent`, built from the mixins `base`,
 `settings`, `context`, `sessions`, `turns`, `interaction`, `exports`, plus `prompt`), `dialogue/`, `extensions/`,
 `permission/`, `storage/`, `tools/`, `export/`, `plugins/`, `pipeline.py`,
-`server_tools.py`, and the messaging between sessions (`messenger.py`, `relay.py`).
+`server_tools.py`, and the messaging between sessions (`messenger.py`).
+
+Shared by the engine, the SDK and the views, and so at the top and not under the engine: `budget.py` (the names of the
+context's sources), `wording.py` (the word for an unnamed session), `error_text.py` (`describe_error`), `registry.py`
+(the ordered registry the commands and the `@` resources are both built on), `mentions.py` (the `@` resources),
+`prompt.py` (the parts of a user turn) and `relay.py` (a message from another session, and how it is stored).
 
 Reading a stored session builds no terminal rows: the engine's `load_session` returns `StoredSession`, and the
 terminal replays it into its own `Transcript`.
@@ -63,31 +68,24 @@ reads what a fresh interpreter loads, so a dependency that goes round through th
 Each its own pull request, `make check` green.
 
 1. **Done: one translation.** The terminal's projector draws SDK events.
-2. **The rest of the agent's surface.** The terminal still calls 78 members of its agent, and about 40 are engine
-   members. Most have an SDK counterpart under another name (`active_model` / `Client.model`, `list_sessions` /
-   `Client.sessions.list`, `Session.locked`, `fork`, `compact`, `context`, `resumable`, `steer`, `ask`, `add_model`,
-   `use_compact_percent`); the real gaps are small: starting in two stages (`preview`, then `start`), taking a
-   session lock back, the model's plan (`tasks`), and writing the self-compaction default to the config file. Each is
-   decided one by one, general (into the SDK) or the terminal's own (stays in `app/`), because whatever enters the
-   SDK is a promise. `pets`, `themes`, `presenters`, `plugin_rows`, `plugin_commands` and the `Transcript` stay the
-   terminal's.
-3. **Seal.** `app` reaches the engine only through the SDK; the next section is how.
+2. **Done: the views import no engine.** See the next section for what that does and does not cover.
+3. **The calls.** Moving the views' calls onto the SDK, which needs the SDK to let a front end hold an answer open
+   past the event that asked for it (an approval or a question answered later from a panel).
 
-## Sealing the views
+## What the seal means
 
-The shell holds an SDK client (`TerminalAgent.client`, built with the SDK's internal `Client._around`) and the views are
-moved onto it one part at a time. `app/ui` and `app/commands.py` are the views; `app/agent` and `app/plugins` are where
-the terminal is put together from the engine's parts and may import it. The rule is a ratchet in `test_structure`
-(`test_the_views_of_the_terminal_reach_the_engine_through_the_sdk_and_the_list_that_still_does_not_only_shrinks`): a
-table of the views that still import the engine and what, which fails when a view takes on an import that is not in it
-and when an entry no longer holds, so it only gets shorter. Moved so far: the usage page (it draws the SDK's
-`WorkspaceUsage`, and `/usage` reads `client.usage_ledger()`) and the context page (it draws the SDK's
-`ContextReport`, which gained `measured`, `estimated`, `percent` and `share` for it, and `/context` reads
-`client.session.context()`; the names of the sources and the estimate's characters per token moved to the leaf
-`zettcode/budget.py`, which the engine and the page both import) and the sessions panel (it draws the SDK's
-`SessionInfo` and `SessionStatsInfo`, `/resume` reads `client.sessions.list()` and `client.session_stats()`, and the
-word for an unnamed session is the leaf `zettcode/wording.py`). Left, in the order they will go: loading a stored
-session into the transcript (`StoredSession`), the prompt and `@` mentions
-(`PromptPart`, `MentionRegistry`, `Messenger`, `Relayed`), the error text (`describe_error`, read from the SDK errors'
-`retryable`), and `Permission`, `Registry`, `UsageSnapshot`. When the table is empty, `zettcode.app.ui` and
-`zettcode.app.commands` go into the layer table with the engine's prefix and the ratchet is deleted.
+The terminal's views (`app/ui`, `app/commands.py`) import nothing from `zettcode.engine`, and `test_structure.py` says so
+twice: in the layer table, and in `test_the_views_of_the_terminal_import_nothing_of_the_engine`, which also catches an
+import made inside a function. What they hold instead is an SDK client (`TerminalAgent.client`, built with the SDK's
+private `Client._around`) and the terminal's agent. Data the views draw comes from the SDK (`WorkspaceUsage`,
+`ContextReport`, `SessionInfo`, `SessionStatsInfo`, `Usage`) or from the shared leaves above, and the engine objects they
+hold (`SessionLink`, `StoredSession`) are named by `app/agent`, which is where the terminal is put together from the
+engine's parts and so may import it (as may `app/plugins`).
+
+It is a wall around imports, and not yet around calls. The views still call about 40 members of `TerminalAgent` that are
+the engine's own: running a turn (`stream`, `stream_resume`), loading and installing a stored session, the line to the
+other sessions, and the model, permission and effort setters. The SDK has a counterpart for most of them under another
+name (`client.session.prompt`, `session.resume`, `client.use_model`, ...), but the terminal cannot take them as they
+are: a run through `RunStream` answers an approval itself when the reader has not by the next event, and the shell
+answers later, from a panel, so it needs the SDK to hold a pending answer open before the call can move. That is the
+next piece, and it is a change to the SDK's contract, so it is decided on its own.

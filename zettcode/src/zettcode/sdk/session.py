@@ -70,8 +70,8 @@ from .types import (
 )
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
-    from ..engine.agent.prompt import PromptPart
-    from ..engine.dialogue.mentions import MentionRegistry
+    from ..mentions import MentionRegistry
+    from ..prompt import PromptPart
     from .client import Client
 
 __all__ = ["Prompt", "RunStream", "Session"]
@@ -133,7 +133,7 @@ def _prompt_parts(
         )
     if mentions is None:
         return tuple(parts), None
-    from ..engine.agent.prompt import mention_hint, mention_parts
+    from ..prompt import mention_hint, mention_parts
 
     resolved = mention_parts(parts, mentions)
     return resolved, mention_hint(resolved, mentions)
@@ -141,8 +141,8 @@ def _prompt_parts(
 
 def _split_mentions(text: str) -> list[Any]:
     """Split one text run at its ``@`` tokens, keeping the order, as the terminal's composer does."""
-    from ..engine.agent.prompt import MentionPart
-    from ..engine.dialogue.mentions import MENTION
+    from ..mentions import MENTION
+    from ..prompt import MentionPart
 
     split: list[Any] = []
     cursor = 0
@@ -617,7 +617,7 @@ class Session:
             SessionBusyError: Another run is in progress (checked again when the run starts).
             ValueError: ``timeout`` is not a positive number.
         """
-        from ..engine.relay import Relayed
+        from ..relay import Relayed
 
         client = self._client
         client._check_open()

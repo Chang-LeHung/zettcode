@@ -17,10 +17,10 @@ from zett_agent.messages import ImageBytesSource, ImageContent, TextContent, Use
 from zett_agent.resume import ResumePoint
 
 from zettcode.engine.dialogue.side import SIDE, question
-from zettcode.engine.relay import Relayed
+from zettcode.prompt import MentionPart, PromptPart, carries_image, model_text_part, plain_text
+from zettcode.relay import Relayed
 
 from .base import AgentBase
-from .prompt import MentionPart, PromptPart, carries_image, model_text_part, plain_text
 
 
 class TurnsMixin(AgentBase):

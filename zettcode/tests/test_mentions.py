@@ -13,8 +13,9 @@ from zettcode.app.agent.conversation.replay import replay
 from zettcode.app.ui.widgets import Composer
 from zettcode.app.ui.widgets.completer import CommandCompleter
 from zettcode.config import ModelConfig, ZettCodeConfig
-from zettcode.engine.agent.prompt import MentionPart, mention_hint
-from zettcode.engine.dialogue.mentions import (
+from zettcode.engine.plugins import PluginContainer
+from zettcode.engine.storage import SessionStore
+from zettcode.mentions import (
     LISTING_SECONDS,
     MAX_CANDIDATES,
     MENTION,
@@ -24,8 +25,7 @@ from zettcode.engine.dialogue.mentions import (
     MentionRegistry,
     SkillMentions,
 )
-from zettcode.engine.plugins import PluginContainer
-from zettcode.engine.storage import SessionStore
+from zettcode.prompt import MentionPart, mention_hint
 from zettcode.tui import TextArea
 
 #: What each ``@`` token expands to in the table-driven tests below.

@@ -18,7 +18,7 @@ import asyncio
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from zettcode.engine.agent.prompt import PromptPart, carries_image, mention_hint, mention_parts
+from zettcode.prompt import PromptPart, carries_image, mention_hint, mention_parts
 from zettcode.tui import Screen
 from zettcode.tui.render import truncate
 

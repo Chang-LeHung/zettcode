@@ -20,7 +20,7 @@ from zettcode.engine.extensions.messaging import (
     SessionMessagingExtension,
 )
 from zettcode.engine.messenger import Messenger
-from zettcode.engine.relay import Relayed
+from zettcode.relay import Relayed
 
 ME = "01a10b75-aaaa-7000-8000-000000000001"
 BOB = "02b20c86-bbbb-7000-8000-000000000002"

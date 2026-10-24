@@ -14,9 +14,9 @@ from typing import TYPE_CHECKING
 
 from zettcode.app.plugins.state import Activity
 from zettcode.collector import collector_paused
-from zettcode.engine.agent.sessions import StoredSession
 from zettcode.tui import ELLIPSIS, SEPARATOR, Theme
 
+from ..agent.agent import StoredSession
 from ..agent.conversation.presenters import block_for
 from ..agent.conversation.replay import Replayed, replay
 from .shell import ShellState

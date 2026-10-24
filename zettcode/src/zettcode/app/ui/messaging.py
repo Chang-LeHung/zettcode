@@ -27,15 +27,16 @@ from typing import TYPE_CHECKING
 
 from zettcode.broker.client import Receipt, SendError
 from zettcode.broker.protocol import MAX_TEXT, VIA_USER
-from zettcode.engine.agent.prompt import PromptPart, carries_image, plain_text
-from zettcode.engine.dialogue.mentions import MENTION
-from zettcode.engine.relay import Relayed
+from zettcode.mentions import MENTION
+from zettcode.prompt import PromptPart, carries_image, plain_text
+from zettcode.relay import Relayed
 
 from .shell import ShellState
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zettcode.broker.client import RosterEntry
-    from zettcode.engine.messenger import Messenger
+
+    from ..agent.agent import SessionLink
 
 #: Messages from other sessions that may wait for a request to end. A session that is flooded refuses
 #: the rest, and the sender is told why, instead of this shell holding an unbounded list.
@@ -52,7 +53,7 @@ class MessagingMixin(ShellState):
     """Hold the line to the other sessions and turn what arrives into turns."""
 
     #: The line to the broker, or ``None`` when sessions are switched off.
-    messenger: Messenger | None
+    messenger: SessionLink | None
     #: Messages from other sessions waiting for the request in flight to end, oldest first.
     _inbox: list[Relayed]
     #: Sends in flight, held so they are not collected and can be cancelled on exit.

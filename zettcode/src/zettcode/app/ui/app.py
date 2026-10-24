@@ -49,17 +49,16 @@ from zettcode.tui.widgets import Rule
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from collections.abc import AsyncGenerator
-from zettcode.engine.agent.prompt import PromptPart, carries_image, mention_hint, mention_parts
-from zettcode.engine.dialogue.mentions import MentionRegistry, SessionMentions
-from zettcode.engine.messenger import Messenger
-from zettcode.engine.relay import Relayed
 from zettcode.error_text import describe_error, failure_text
+from zettcode.mentions import MentionRegistry, SessionMentions
+from zettcode.prompt import PromptPart, carries_image, mention_hint, mention_parts
 from zettcode.registry import Registry
+from zettcode.relay import Relayed
 from zettcode.sdk.events import QuestionAsked
 from zettcode.sdk.translation import AgentBridge
 from zettcode.sdk.types import Usage
 
-from ..agent.agent import TerminalAgent
+from ..agent.agent import SessionLink, TerminalAgent
 from ..agent.conversation.effort_gauge import EFFORT_SECONDS, EffortFrame, effort_frame
 from ..agent.conversation.projection import TranscriptProjector
 from ..agent.conversation.shimmer import (
@@ -140,7 +139,7 @@ class ZettCodeApp(
         agent.attach_host(self)
         #: The line to the other sessions, when the configuration has one; the session names it offers
         #: for ``@`` come first, because a draft that begins with one is a message to that session.
-        self.messenger: Messenger | None = agent.runtime.messenger
+        self.messenger: SessionLink | None = agent.messenger
         self.mentions = MentionRegistry(
             agent.plugin_mentions
             if self.messenger is None

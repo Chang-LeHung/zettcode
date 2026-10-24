@@ -57,8 +57,8 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only; the agent is imported 
     from ..broker.models import Receipt as BrokerReceipt
     from ..config import ModelConfig, ZettCodeConfig
     from ..engine.agent import ZettCodeAgent
-    from ..engine.dialogue.mentions import MentionRegistry
     from ..engine.messenger import Messenger
+    from ..mentions import MentionRegistry
 
 __all__ = ["Client", "PluginReport", "Sessions", "prompt", "prompt_sync"]
 
@@ -758,7 +758,7 @@ class Client:
         The order is the terminal's, and it decides more than a menu: a draft that names a session means that
         session even when a file happens to have the same name.
         """
-        from ..engine.dialogue.mentions import MentionRegistry, SessionMentions
+        from ..mentions import MentionRegistry, SessionMentions
 
         providers = self._agent.plugin_mentions
         messenger = self._agent.runtime.messenger

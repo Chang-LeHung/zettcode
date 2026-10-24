@@ -52,7 +52,7 @@ from zettcode.app.ui.widgets import (  # noqa: E402
 )
 from zettcode.config import ModelConfig, ZettCodeConfig  # noqa: E402
 from zettcode.engine.core import ZettCodeEngine  # noqa: E402
-from zettcode.engine.relay import Relayed  # noqa: E402
+from zettcode.relay import Relayed  # noqa: E402
 from zettcode.tui import Canvas, Screen, Theme, TuiApp  # noqa: E402
 from zettcode.tui.gallery import GALLERY, render_entry  # noqa: E402
 from zettcode.tui.testing import Harness  # noqa: E402

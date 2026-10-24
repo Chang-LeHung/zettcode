@@ -20,8 +20,7 @@ from typing import TYPE_CHECKING
 from zettcode.broker.client import BrokerClient, Delivered, Incoming, Receipt, RosterEntry, SessionInfo
 from zettcode.broker.protocol import VIA_AGENT
 from zettcode.config import ZettCodeConfig
-
-from .relay import Relayed
+from zettcode.relay import Relayed
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from pathlib import Path

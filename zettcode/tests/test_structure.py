@@ -80,6 +80,9 @@ def test_every_invariant_cites_a_test_that_exists():
 LAYERS = (
     ("zettcode.tui", ("zettcode.app", "zettcode.cli", "zettcode.config")),
     ("zettcode.app.agent", ("zettcode.app.ui",)),
+    # The shell and its views hold an SDK client and the terminal's agent; the engine is not theirs to import.
+    ("zettcode.app.ui", ("zettcode.engine",)),
+    ("zettcode.app.commands", ("zettcode.engine",)),
     # The engine is what the terminal and the SDK both drive, so it knows neither of them.
     ("zettcode.engine", ("zettcode.app", "zettcode.tui", "zettcode.cli", "zettcode.sdk", "zettcode.server")),
     # The SDK is the public face of the engine; it reaches the terminal's code for nothing.
@@ -375,52 +378,23 @@ def test_nothing_the_sdk_returns_or_accepts_is_a_type_of_the_broker_or_the_engin
     assert leaks == []
 
 
-def test_the_views_of_the_terminal_reach_the_engine_through_the_sdk_and_the_list_that_still_does_not_only_shrinks():
-    """``app/ui`` and ``app/commands.py`` are the shell and its views; they are to see the agent only through the SDK.
+def test_the_views_of_the_terminal_import_nothing_of_the_engine():
+    """``app/ui`` and ``app/commands.py`` are the shell and its views: they hold an SDK client and the terminal's agent.
 
-    They are being moved there one part at a time, so this is a ratchet and not yet a wall: it lists the modules that
-    still import the engine, and what, and fails when a module takes on an import that is not listed (the wall
-    moved back) or drops one that is (the list is stale, so it would stop meaning anything). When the table is empty
-    the engine is out of the views, and ``test_layers_only_import_downwards`` takes over with the prefix itself.
-    ``app/agent`` and ``app/plugins`` are where the terminal is put together from the engine's parts, and may import it.
+    The layer table says it with the engine's prefix; this is the same rule read the other way, so that a view cannot
+    get round it by importing the engine from inside a function, which is how most of them used to.
+    ``app/agent`` and ``app/plugins`` are where the terminal is put together from the engine's parts, and may import it,
+    and it is there that the views are given the names of the engine objects they hold.
     """
-    still: dict[str, list[str]] = {
-        "zettcode.app.ui.app": [
-            "zettcode.engine.agent.prompt",
-            "zettcode.engine.dialogue.mentions",
-            "zettcode.engine.messenger",
-            "zettcode.engine.relay",
-        ],
-        "zettcode.app.ui.followups": ["zettcode.engine.agent.prompt"],
-        "zettcode.app.ui.messaging": [
-            "zettcode.engine.agent.prompt",
-            "zettcode.engine.dialogue.mentions",
-            "zettcode.engine.messenger",
-            "zettcode.engine.relay",
-        ],
-        "zettcode.app.ui.sessions": ["zettcode.engine.agent.sessions"],
-        "zettcode.app.ui.shell": [
-            "zettcode.engine.agent.prompt",
-            "zettcode.engine.dialogue.mentions",
-            "zettcode.engine.messenger",
-            "zettcode.engine.relay",
-        ],
-        "zettcode.app.ui.widgets.completer": ["zettcode.engine.dialogue.mentions"],
-        "zettcode.app.ui.widgets.composer": ["zettcode.engine.agent.prompt", "zettcode.engine.dialogue.mentions"],
-    }
-    found: dict[str, set[str]] = {}
-    for path, module, is_package in _sources():
-        if not (module.startswith("zettcode.app.ui") or module == "zettcode.app.commands"):
-            continue
-        for _line, target, _relative in _imports(path, module, is_package):
-            if target.startswith("zettcode.engine"):
-                found.setdefault(module, set()).add(target)
+    found = sorted(
+        f"{module}:{line} imports {target}"
+        for path, module, is_package in _sources()
+        if module.startswith("zettcode.app.ui") or module == "zettcode.app.commands"
+        for line, target, _relative in _imports(path, module, is_package)
+        if target.startswith("zettcode.engine")
+    )
 
-    grew = {m: sorted(found[m] - set(still.get(m, ()))) for m in found if found[m] - set(still.get(m, ()))}
-    stale = {m: sorted(set(still[m]) - found.get(m, set())) for m in still if set(still[m]) - found.get(m, set())}
-
-    assert grew == {}, f"a view took on an engine import that is not listed: {grew}"
-    assert stale == {}, f"these are no longer imported; take them off the list: {stale}"
+    assert found == []
 
 
 def test_the_hub_and_the_roster_know_nothing_of_the_web():

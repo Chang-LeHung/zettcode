@@ -10,8 +10,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from zettcode.engine.core import ZettCodeEngine
-from zettcode.engine.dialogue.mentions import MentionProvider
 from zettcode.engine.storage import SessionLocked
+from zettcode.mentions import MentionProvider
 
 
 class AgentBase:

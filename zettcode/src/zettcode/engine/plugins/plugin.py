@@ -26,7 +26,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
 
     from zett_agent.extensions.base import AgentExtension
 
-    from zettcode.engine.dialogue.mentions import MentionProvider
+    from zettcode.mentions import MentionProvider
     from zettcode.providers import Provider
 
     from .extension import PluginExtension
