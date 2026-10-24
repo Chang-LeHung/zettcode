@@ -9,11 +9,8 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Sequence
-from contextlib import aclosing
 from time import monotonic
-from typing import TYPE_CHECKING, cast
-
-from zett_agent.events import AgentEvent
+from typing import TYPE_CHECKING, Any
 
 from zettcode.app.plugins.state import (
     Activity,
@@ -48,15 +45,14 @@ from zettcode.tui.render import display_width
 from zettcode.tui.widgets import Rule
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
-    from collections.abc import AsyncGenerator
-from zettcode.error_text import describe_error, failure_text
+    pass
+from zettcode.error_text import describe_error
 from zettcode.mentions import MentionRegistry, SessionMentions
 from zettcode.prompt import PromptPart, carries_image, mention_hint, mention_parts
 from zettcode.registry import Registry
 from zettcode.relay import Relayed
 from zettcode.sdk.events import QuestionAsked
-from zettcode.sdk.translation import AgentBridge
-from zettcode.sdk.types import Usage
+from zettcode.sdk.types import IncomingMessage, Usage
 
 from ..agent.agent import SessionLink, TerminalAgent
 from ..agent.conversation.effort_gauge import EFFORT_SECONDS, EffortFrame, effort_frame
@@ -84,6 +80,7 @@ from .providers import ConfigMixin
 from .sessions import SessionMixin
 from .settings import SettingsMixin
 from .shell import EFFORT_TOKEN, EMPTY_REPLY, FLASH_SECONDS, PAGE_SCREEN
+from .turns import failure_line, prompt_pieces
 from .updating import UpdateMixin
 from .widgets import (
     WELCOME,
@@ -155,9 +152,6 @@ class ZettCodeApp(
             self.transcript.error(f"plugin: {failure}")
         self.projector = TranscriptProjector(
             self.transcript,
-            bridge=AgentBridge(agent),
-            on_approval=self._approval_requested,
-            on_ask=self._ask_requested,
             on_usage=self._usage_updated,
             on_steering_started=self._steering_started,
             on_steering_interrupted=self._steering_interrupted,
@@ -639,13 +633,10 @@ class ZettCodeApp(
         self.projector.begin_turn(question, side=True)
         started = monotonic()
         self.app.invalidate()
-        self.agent.runtime.sides.begin()
         outcome = ""
         try:
-            async with aclosing(
-                cast("AsyncGenerator[AgentEvent]", self.agent.stream((question,), side=True))
-            ) as events:
-                async for _event in events:
+            async with self.client.session.ask_stream(question) as run:
+                async for _event in run:
                     self.app.invalidate()
         except asyncio.CancelledError:
             self.transcript.complete_thinking()
@@ -667,7 +658,6 @@ class ZettCodeApp(
             self._close_run()
             if outcome:
                 self._settle_wait(outcome)
-            self.agent.runtime.sides.end()
 
     async def run_continue(self) -> None:
         """Pick up the request that was interrupted, where it stopped, as a turn of the conversation.
@@ -681,11 +671,11 @@ class ZettCodeApp(
         path's. Unlike ``/btw`` it is part of the conversation, so it may be steered and what it ends on is a reply:
         the follow-ups a stop held go out behind it.
         """
-        point = await self.agent.resume_point()
-        if point is None:
+        info = await self.client.session.resumable()
+        if info is None:
             self.transcript.notice(await self.agent.resume_blocker() or "There is nothing to continue.")
             return
-        self.transcript.notice(point.description)
+        self.transcript.notice(info.description)
         self.transcript.wait_for_model()
         started = monotonic()
         completed = False
@@ -693,8 +683,8 @@ class ZettCodeApp(
         self.app.invalidate()
         try:
             self._refresh_tasks()
-            async with aclosing(cast("AsyncGenerator[AgentEvent]", self.agent.stream_resume())) as events:
-                async for _event in events:
+            async with self.client.session.resume_stream(**self._answers()) as run:
+                async for _event in run:
                     self._refresh_tasks()
                     self.app.invalidate()
         except asyncio.CancelledError:
@@ -703,7 +693,7 @@ class ZettCodeApp(
             raise
         except Exception as error:
             self.transcript.complete_thinking()
-            self.transcript.error(failure_text(error))
+            self.transcript.error(failure_line(error))
         else:
             completed = True
             self._follow_ups_held = False
@@ -950,6 +940,19 @@ class ZettCodeApp(
         """Drop a queued message a newer steering message superseded."""
         self._drop_steering(text)
 
+    def _answers(self) -> dict[str, Any]:
+        """Return what a run is started with so that the shell's panels answer for it.
+
+        The panels open from the handlers and the reader chooses later, from the panel, so the requests are left open
+        past their event (``defer_answers``) and answered with the event's own ``approve``, ``deny``, ``answer`` and
+        ``decline``. The projector draws the transcript; it does not ask.
+        """
+        return {
+            "on_approval": self._approval_requested,
+            "on_question": self._ask_requested,
+            "defer_answers": True,
+        }
+
     async def _run_prompt(
         self,
         prompt: str,
@@ -986,18 +989,23 @@ class ZettCodeApp(
         self.app.invalidate()
         try:
             self._refresh_tasks()
-            # A turn without ``@`` references is sent exactly as it was written,
-            # without the keyword argument a reference-carrying turn adds; the
-            # cast lets aclosing close the stream when the turn is cancelled.
-            turn = parts or (prompt,)
+            # A turn is a message the reader wrote (text, pictures, and ``@`` references the SDK resolves with the same
+            # registry the composer completes from), or one another session sent.
             if relayed is not None:
-                stream = self.agent.stream(turn, relayed=relayed)
-            elif hint is None:
-                stream = self.agent.stream(turn)
+                run = self.client.session.relay(
+                    IncomingMessage(
+                        sender_id=relayed.sender_id,
+                        sender=relayed.sender,
+                        text=relayed.text,
+                        via=relayed.via,
+                        hops=relayed.hops,
+                    ),
+                    **self._answers(),
+                )
             else:
-                stream = self.agent.stream(turn, hint=hint)
-            async with aclosing(cast("AsyncGenerator[AgentEvent]", stream)) as events:
-                async for _event in events:
+                run = self.client.session.prompt(prompt_pieces(parts or (prompt,)), mentions=True, **self._answers())
+            async with run:
+                async for _event in run:
                     self._refresh_tasks()
                     self.app.invalidate()
         except asyncio.CancelledError:
@@ -1005,7 +1013,7 @@ class ZettCodeApp(
             self.transcript.notice("stopped")
         except Exception as error:
             self.transcript.complete_thinking()
-            self.transcript.error(failure_text(error))
+            self.transcript.error(failure_line(error))
         else:
             completed = True
             if self.transcript.turn_said_nothing():

@@ -1367,7 +1367,7 @@ async def test_a_failed_request_shows_the_reason_not_the_task_group():
     app = build_app()
     harness = _harness(app)
 
-    async def failing(parts):
+    async def failing(parts, **options):
         raise ExceptionGroup(
             "unhandled errors in a TaskGroup",
             [ExceptionGroup("unhandled errors in a TaskGroup", [ConnectionError("All connection attempts failed")])],
@@ -1580,7 +1580,9 @@ async def test_steering_emits_the_external_event_the_agent_listens_for():
 async def test_a_mention_expands_for_the_model_but_the_transcript_keeps_the_typed_text():
     app = build_app()
     harness = _harness(app)
-    app.mentions = MentionRegistry([MapMentions({"note": "The injected note."})])
+    note = MapMentions({"note": "The injected note."})
+    app.mentions = MentionRegistry([note])
+    app.agent.runtime.plugins = replace(app.agent.runtime.plugins, mentions=(note,))
     harness.write("@note fix the parser")
     harness.press("enter")
     await asyncio.wait_for(app.task, 2.0)
@@ -1594,7 +1596,9 @@ async def test_a_mention_expands_for_the_model_but_the_transcript_keeps_the_type
 
 def test_accepting_a_mention_keeps_the_rest_of_the_draft():
     app = build_app()
-    app.mentions = MentionRegistry([MapMentions({"note": "The injected note."})])
+    note = MapMentions({"note": "The injected note."})
+    app.mentions = MentionRegistry([note])
+    app.agent.runtime.plugins = replace(app.agent.runtime.plugins, mentions=(note,))
     app.composer.completer = CommandCompleter(app.commands, app.mentions)
     harness = _harness(app)
     harness.write("你好 @no")
@@ -1610,7 +1614,9 @@ async def test_a_mention_also_applies_to_a_turn_that_carries_an_image():
     app = build_app()
     app.agent.runtime.use_model("GPT-4o")
     harness = _harness(app)
-    app.mentions = MentionRegistry([MapMentions({"note": "The injected note."})])
+    note = MapMentions({"note": "The injected note."})
+    app.mentions = MentionRegistry([note])
+    app.agent.runtime.plugins = replace(app.agent.runtime.plugins, mentions=(note,))
     app.composer.attach_image(b"png-bytes", "image/png")
     harness.write("@note look at this")
     harness.press("enter")
@@ -2573,7 +2579,7 @@ async def test_the_prompt_says_which_level_it_is_asking_at():
     harness = _harness(app)
     app.agent.use_permission("safe")
 
-    await app.projector.dispatch(_approval_event())
+    await _show_request(app, _approval_event())
 
     assert "Permission: safe" in harness.render().text
 
@@ -2583,7 +2589,7 @@ async def test_the_prompts_s_row_moves_the_level_up_to_safe():
     app = build_app()
     harness = _harness(app)
 
-    await app.projector.dispatch(_approval_event())
+    await _show_request(app, _approval_event())
     harness.press("s")
 
     event, _ = app.agent.runtime.client.agent.emitted[0]
@@ -2599,7 +2605,7 @@ async def test_the_prompt_leaves_out_the_rung_it_is_already_standing_on():
     harness = _harness(app)
     app.agent.use_permission("safe")
 
-    await app.projector.dispatch(_approval_event())
+    await _show_request(app, _approval_event())
 
     page = _approval_page(app)
     assert [option.key for option in page.options] == ["y", "p", "a", "escape"]
@@ -2620,7 +2626,7 @@ async def test_a_prompt_choice_lands_where_the_command_of_that_name_does(key: st
     status line — is exactly what typing the command would have left.
     """
     prompted = build_app()
-    await prompted.projector.dispatch(_approval_event())
+    await _show_request(prompted, _approval_event())
     _harness(prompted).press(key)
 
     typed = build_app()
@@ -3002,6 +3008,22 @@ async def test_unknown_model_keeps_the_current_model():
     assert any("Unknown model" in entry.text for entry in app.transcript.entries)
 
 
+async def _show_request(app, raw) -> None:
+    """Do what a run does when the agent asks: translate the event, and hand the request to the shell's handler.
+
+    The shell's panels open from the handlers a run is given, and the reader answers later with the event's own
+    ``approve``, ``deny``, ``answer`` or ``decline``; this is that first step, without a model behind it.
+    """
+    from zettcode.sdk.events import ApprovalRequested
+    from zettcode.sdk.translation import AgentBridge, translate
+
+    (event,) = translate(raw, AgentBridge(app.agent))
+    if isinstance(event, ApprovalRequested):
+        app._approval_requested(event)
+    else:
+        app._ask_requested(event)
+
+
 def _approval_event(
     command: str = "rm -rf build", *, call_id: str = "call-1", remember_supported: bool = True
 ) -> AgentEvent:
@@ -3023,7 +3045,7 @@ async def test_app_asks_for_approval_in_a_bottom_panel():
     app = build_app()
     harness = _harness(app)
 
-    await app.projector.dispatch(_approval_event())
+    await _show_request(app, _approval_event())
 
     page = _approval_page(app)
     assert app.app.screens.top.name == "page"
@@ -3052,7 +3074,7 @@ async def test_always_allow_remembers_only_the_exact_command():
     app = build_app()
     harness = _harness(app)
 
-    await app.projector.dispatch(_approval_event())
+    await _show_request(app, _approval_event())
     harness.press("p")
 
     event, _ = app.agent.runtime.client.agent.emitted[0]
@@ -3064,7 +3086,7 @@ async def test_the_approval_panel_answers_to_arrows_numbers_and_letter_keys():
     app = build_app()
     harness = _harness(app)
 
-    await app.projector.dispatch(_approval_event())
+    await _show_request(app, _approval_event())
 
     page = _approval_page(app)
     harness.press("down")
@@ -3079,7 +3101,7 @@ async def test_clicking_an_approval_option_answers_the_prompt():
     app = build_app()
     harness = _harness(app)
 
-    await app.projector.dispatch(_approval_event())
+    await _show_request(app, _approval_event())
     page = _approval_page(app)
     rows = harness.render().text.splitlines()
     target = next(index for index, line in enumerate(rows) if "2. Yes, and don't ask again" in line)
@@ -3095,7 +3117,7 @@ async def test_auto_mode_approves_every_later_command():
     app = build_app()
     harness = _harness(app)
 
-    await app.projector.dispatch(_approval_event())
+    await _show_request(app, _approval_event())
     harness.press("a")
 
     event, _ = app.agent.runtime.client.agent.emitted[0]
@@ -3110,7 +3132,7 @@ async def test_the_approval_panel_hides_always_when_the_runtime_cannot_remember(
     app = build_app()
     harness = _harness(app)
 
-    await app.projector.dispatch(_approval_event(remember_supported=False))
+    await _show_request(app, _approval_event(remember_supported=False))
 
     text = harness.render().text
     assert "don't ask again for this command" not in text
@@ -3122,7 +3144,7 @@ async def test_escape_aborts_the_pending_command():
     app = build_app()
     harness = _harness(app)
 
-    await app.projector.dispatch(_approval_event())
+    await _show_request(app, _approval_event())
     harness.press("escape")
 
     event, _ = app.agent.runtime.client.agent.emitted[0]
@@ -3162,7 +3184,7 @@ async def test_a_question_from_the_model_opens_a_panel():
     app = build_app()
     harness = _harness(app)
 
-    await app.projector.dispatch(_ask_event())
+    await _show_request(app, _ask_event())
 
     page = _ask_page(app)
     text = harness.render().text
@@ -3181,7 +3203,7 @@ async def test_a_question_from_the_model_opens_a_panel():
 async def test_typing_an_answer_sends_it_to_the_suspended_call():
     app = build_app()
     harness = _harness(app)
-    await app.projector.dispatch(_ask_event())
+    await _show_request(app, _ask_event())
 
     harness.write("Markdown, but keep the tables")
     harness.press("enter")
@@ -3197,7 +3219,7 @@ async def test_enter_on_a_row_sends_that_choice():
     """A single-choice question works like every other picker in the shell."""
     app = build_app()
     harness = _harness(app)
-    await app.projector.dispatch(_ask_event())
+    await _show_request(app, _ask_event())
 
     harness.press("down")
     harness.press("enter")
@@ -3211,7 +3233,7 @@ async def test_replacing_a_written_answer_asks_first():
     """One answer only: say so before throwing away what the reader typed."""
     app = build_app()
     harness = _harness(app)
-    await app.projector.dispatch(_ask_event())
+    await _show_request(app, _ask_event())
 
     harness.write("something of my own")
     harness.press("down")  # moving back to the choices leaves the text in place
@@ -3230,7 +3252,7 @@ async def test_several_choices_are_ticked_and_unticked():
     app = build_app()
     harness = _harness(app)
     app.app.resize(80, 22)
-    await app.projector.dispatch(_ask_event(options=("Markdown", "Plain text"), allow_multiple=True))
+    await _show_request(app, _ask_event(options=("Markdown", "Plain text"), allow_multiple=True))
     page = _ask_page(app)
 
     harness.press("enter")
@@ -3258,7 +3280,7 @@ async def test_typing_folds_the_choices_away_and_marks_the_line():
         app = build_app()
         harness = _harness(app)
         app.app.resize(80, 22)
-        await app.projector.dispatch(_ask_event(options=("Markdown", "Plain text"), allow_multiple=allow_multiple))
+        await _show_request(app, _ask_event(options=("Markdown", "Plain text"), allow_multiple=allow_multiple))
 
         harness.write("my own words")
         text = harness.render().text
@@ -3280,7 +3302,7 @@ async def test_a_multiple_choice_answer_is_its_ticks_and_the_typed_text():
     app = build_app()
     harness = _harness(app)
     app.app.resize(80, 22)
-    await app.projector.dispatch(_ask_event(options=("Markdown", "Plain text"), allow_multiple=True))
+    await _show_request(app, _ask_event(options=("Markdown", "Plain text"), allow_multiple=True))
 
     harness.press("enter")
     harness.write("and a note")
@@ -3299,7 +3321,7 @@ async def test_ticks_written_first_or_afterwards_make_the_same_answer():
         app = build_app()
         harness = _harness(app)
         app.app.resize(80, 22)
-        await app.projector.dispatch(_ask_event(options=("Markdown", "Plain text"), allow_multiple=True))
+        await _show_request(app, _ask_event(options=("Markdown", "Plain text"), allow_multiple=True))
         for action, value in actions:
             harness.press(value) if action == "press" else harness.write(value)
 
@@ -3315,7 +3337,7 @@ async def test_a_word_typed_that_is_already_ticked_is_not_repeated():
     app = build_app()
     harness = _harness(app)
     app.app.resize(80, 22)
-    await app.projector.dispatch(_ask_event(options=("Markdown", "Plain text"), allow_multiple=True))
+    await _show_request(app, _ask_event(options=("Markdown", "Plain text"), allow_multiple=True))
 
     harness.press("enter")
     harness.write("Markdown")
@@ -3330,7 +3352,7 @@ async def test_a_written_answer_leaves_no_row_marked():
     app = build_app()
     harness = _harness(app)
     app.app.resize(80, 22)
-    await app.projector.dispatch(_ask_event(options=("Markdown", "Plain text")))
+    await _show_request(app, _ask_event(options=("Markdown", "Plain text")))
 
     harness.write("something of my own")
     text = harness.render().text
@@ -3343,7 +3365,7 @@ async def test_a_multiple_choice_question_finishes_on_its_send_row():
     app = build_app()
     harness = _harness(app)
     app.app.resize(80, 22)
-    await app.projector.dispatch(_ask_event(options=("Markdown", "Plain text"), allow_multiple=True))
+    await _show_request(app, _ask_event(options=("Markdown", "Plain text"), allow_multiple=True))
 
     harness.press("enter")
     harness.press("down")
@@ -3363,7 +3385,7 @@ async def test_a_long_option_list_windows_around_the_highlight():
     app = build_app()
     harness = _harness(app)
     app.app.resize(80, 20)
-    await app.projector.dispatch(_ask_event("Pick:", options=tuple(f"choice {n}" for n in range(1, 10))))
+    await _show_request(app, _ask_event("Pick:", options=tuple(f"choice {n}" for n in range(1, 10))))
 
     for _ in range(7):
         harness.press("down")
@@ -3380,7 +3402,7 @@ async def test_an_empty_answer_is_refused():
     harness = _harness(app)
     # A question with no options has only the answer line, so Enter tries to
     # send it and has nothing to send.
-    await app.projector.dispatch(_ask_event(options=()))
+    await _show_request(app, _ask_event(options=()))
 
     harness.press("enter")
 
@@ -3391,7 +3413,7 @@ async def test_an_empty_answer_is_refused():
 async def test_escape_declines_the_question_so_the_model_can_carry_on():
     app = build_app()
     harness = _harness(app)
-    await app.projector.dispatch(_ask_event())
+    await _show_request(app, _ask_event())
 
     harness.press("escape")
 
@@ -3406,7 +3428,7 @@ async def test_escape_declines_the_question_so_the_model_can_carry_on():
 async def test_ctrl_c_declines_instead_of_leaving_the_call_suspended():
     app = build_app()
     harness = _harness(app)
-    await app.projector.dispatch(_ask_event())
+    await _show_request(app, _ask_event())
 
     harness.press("ctrl_c")
 
@@ -3418,7 +3440,7 @@ async def test_ctrl_c_declines_instead_of_leaving_the_call_suspended():
 async def test_a_finished_run_closes_a_question_that_was_left_open():
     app = build_app()
     _harness(app)
-    await app.projector.dispatch(_ask_event())
+    await _show_request(app, _ask_event())
 
     app._drop_ask()
 
@@ -3430,8 +3452,8 @@ async def test_questions_from_one_response_are_asked_one_after_another():
     """The model may ask several in a turn; each suspends the same run."""
     app = build_app()
     harness = _harness(app)
-    await app.projector.dispatch(_ask_event("First?", call_id="call-1"))
-    await app.projector.dispatch(_ask_event("Second?", call_id="call-2"))
+    await _show_request(app, _ask_event("First?", call_id="call-1"))
+    await _show_request(app, _ask_event("Second?", call_id="call-2"))
 
     first = harness.render().text
     assert "1 of 2" in first
@@ -5387,7 +5409,7 @@ async def test_the_approval_prompts_shortcuts_work_when_they_arrive_as_typed_cha
     """
     app = build_app()
     harness = _harness(app)
-    await app.projector.dispatch(_approval_event())
+    await _show_request(app, _approval_event())
 
     harness.write("y")
 
@@ -5399,7 +5421,7 @@ async def test_the_approval_prompts_shortcuts_work_when_they_arrive_as_typed_cha
 async def test_the_approval_prompts_row_numbers_work_as_typed_characters_too():
     app = build_app()
     harness = _harness(app)
-    await app.projector.dispatch(_approval_event())
+    await _show_request(app, _approval_event())
     page = _approval_page(app)
 
     harness.write(str(len(page.options)))
@@ -5412,7 +5434,7 @@ async def test_a_character_that_is_not_an_ascii_digit_is_not_a_row_number():
     """``"²".isdigit()`` is true and ``int("²")`` raises: a stray keystroke must not crash the page."""
     app = build_app()
     harness = _harness(app)
-    await app.projector.dispatch(_approval_event())
+    await _show_request(app, _approval_event())
 
     for character in ("\u00b2", "\u0663", "x"):
         harness.write(character)
@@ -6292,8 +6314,16 @@ async def test_stopping_a_follow_ups_own_turn_leaves_the_rest_held():
     client = app.agent.runtime.client
     original = app.task
 
-    app._start_follow_up()  # what the end of a reply does: "one" goes out as a turn of its own
-    await asyncio.sleep(0)
+    # The end of a reply: "first" finishes and "one" goes out as a turn of its own, which then does not end.
+    client.hold = False
+    client.block = True
+    client.released.set()
+    await asyncio.wait_for(original, 2.0)
+    for _ in range(50):
+        if client.messages[-1:] == ["one"]:
+            break
+        await asyncio.sleep(0)
+    assert client.messages == ["first", "one"]
     assert app.follow_ups.messages == ("two", "three") and app._turn_running
 
     await _stop(app)  # the reader stops that turn
@@ -6301,8 +6331,6 @@ async def test_stopping_a_follow_ups_own_turn_leaves_the_rest_held():
     assert client.messages == ["first", "one"], "two and three never went out"
     assert app.follow_ups.messages == ("two", "three"), "and are not given up"
     assert app._follow_ups_held
-    client.released.set()
-    await asyncio.gather(original, return_exceptions=True)
 
 
 async def test_a_message_edited_while_the_list_is_held_is_sent_now_and_the_rest_follow_it():
@@ -7414,7 +7442,9 @@ def test_the_composer_asks_the_current_registry_which_references_exist():
     app = build_app()
     assert app.composer.is_mention("@note") is False
 
-    app.mentions = MentionRegistry([MapMentions({"note": "The injected note."})])
+    note = MapMentions({"note": "The injected note."})
+    app.mentions = MentionRegistry([note])
+    app.agent.runtime.plugins = replace(app.agent.runtime.plugins, mentions=(note,))
 
     assert app.composer.is_mention("@note") is True
     assert app.composer.is_mention("@missing") is False

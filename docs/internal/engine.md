@@ -69,8 +69,8 @@ Each its own pull request, `make check` green.
 
 1. **Done: one translation.** The terminal's projector draws SDK events.
 2. **Done: the views import no engine.** See the next section for what that does and does not cover.
-3. **The calls.** Moving the views' calls onto the SDK, which needs the SDK to let a front end hold an answer open
-   past the event that asked for it (an approval or a question answered later from a panel).
+3. **Done: the runs.** A turn, a side question and a continue go through the SDK, with answers deferred to the panels.
+4. **The setters and the session load.** What is left of the calls, described in the next section.
 
 ## What the seal means
 
@@ -82,10 +82,16 @@ private `Client._around`) and the terminal's agent. Data the views draw comes fr
 hold (`SessionLink`, `StoredSession`) are named by `app/agent`, which is where the terminal is put together from the
 engine's parts and so may import it (as may `app/plugins`).
 
-It is a wall around imports, and not yet around calls. The views still call about 40 members of `TerminalAgent` that are
-the engine's own: running a turn (`stream`, `stream_resume`), loading and installing a stored session, the line to the
-other sessions, and the model, permission and effort setters. The SDK has a counterpart for most of them under another
-name (`client.session.prompt`, `session.resume`, `client.use_model`, ...), but the terminal cannot take them as they
-are: a run through `RunStream` answers an approval itself when the reader has not by the next event, and the shell
-answers later, from a panel, so it needs the SDK to hold a pending answer open before the call can move. That is the
-next piece, and it is a change to the SDK's contract, so it is decided on its own.
+It is a wall around imports, and only partly around calls. The three ways the shell starts a run now go through the SDK:
+a turn (`client.session.prompt`, or `relay` for a message another session sent), a `/btw` question
+(`session.ask_stream`) and `/continue` (`session.resume_stream`). They are started with `defer_answers=True`, so an
+approval or a question opens its panel from the handler and the reader answers from the panel with the event's own
+`approve`, `deny`, `answer` or `decline` (invariant H22); the SDK resolves a draft's `@` references with the registry
+the composer completed them from (the plugins' providers, and the other sessions first), and the shell words a failure
+from the SDK's `RunError` (`app/ui/turns.py`). The projector no longer carries the panels' handlers: it draws the
+transcript, and the run asks.
+
+The views still call about 30 members of `TerminalAgent` that are the engine's own: loading and installing a stored
+session, steering a running turn, the line to the other sessions, and the model, permission and effort setters. The SDK
+has a counterpart for most of them under another name (`client.use_model`, `session.steer`, ...); moving them is
+mechanical now that the run is.

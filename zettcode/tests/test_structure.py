@@ -397,6 +397,23 @@ def test_the_views_of_the_terminal_import_nothing_of_the_engine():
     assert found == []
 
 
+def test_the_shell_starts_a_run_through_the_sdk_and_never_streams_from_its_own_agent():
+    """A turn, a side question and a continue are runs of the SDK: the agent's own ``stream`` is the SDK's to call.
+
+    The shell answers an approval from a panel, later, which the SDK allows with ``defer_answers``; a shell that went
+    round it would be running a turn that nothing denies when it ends, and one the SDK does not know is busy.
+    """
+    ui = PROJECT / "src/zettcode/app/ui"
+    offenders = [
+        f"{path.name}:{number}"
+        for path in sorted(ui.rglob("*.py"))
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
+        if re.search(r"\bagent\.(stream|stream_resume)\(", line)
+    ]
+
+    assert offenders == []
+
+
 def test_the_hub_and_the_roster_know_nothing_of_the_web():
     """What the broker decides is separate from how it is served: the hub and the roster import none of the web
     libraries (nor the web layer), so they can be driven, and read, without a socket."""
