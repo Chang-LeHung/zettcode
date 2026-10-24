@@ -4,6 +4,8 @@ The shell keeps two catalogs a plugin may extend: the composer's slash commands
 and its ``@`` resources. Both merge the same way — providers in order, and the
 first provider to claim a name owns it — so both are one :class:`Registry` over
 one :class:`Provider` shape, and the builtins are providers like any other.
+
+A leaf with no imports of the project: the engine's ``@`` resources and the shell's commands both build on it.
 """
 
 from __future__ import annotations

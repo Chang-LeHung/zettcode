@@ -7,7 +7,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, Protocol, TypeAlias
 
-from zettcode.engine.registry import Provider
+from zettcode.registry import Provider
 
 from ..tui import Widget
 

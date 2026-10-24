@@ -9,7 +9,7 @@ import pytest
 from zettcode.app.commands import Command, CommandContext, CommandList, CommandResult
 from zettcode.app.plugins import TerminalContainer
 from zettcode.config import ModelConfig, ZettCodeConfig
-from zettcode.engine.registry import Registry
+from zettcode.registry import Registry
 
 
 async def _no_op(context: CommandContext) -> CommandResult:

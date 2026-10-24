@@ -1,8 +1,8 @@
 """Say why a request failed, in words a row can show.
 
-Kept out of the runtime and out of the extensions on purpose: the runtime composes the
-extensions, an extension reports its failures with this, and a function both of them need
-cannot live in either without the one importing the other.
+A leaf the engine, the SDK and the views all use, so none of them has to import another to say it: the runtime composes
+the extensions, an extension reports its failures with this, and a function both of them need cannot live in either
+without the one importing the other.
 """
 
 from __future__ import annotations

@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, NamedTuple
 from zettcode.tui.glyphs import ARROW_DOWN, ARROW_UP, SEPARATOR
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only; the engine stays out of the command line's frame
-    from zettcode.engine.extensions.usage import UsageSnapshot
+    from zettcode.sdk.types import Usage
 
 #: What stands between two parts of one run, and between two runs of one side.
 JOIN = f" {SEPARATOR} "
@@ -153,7 +153,7 @@ def compact_tokens(count: int) -> str:
     return f"{count / 1_000_000:.1f}M"
 
 
-def usage_parts(snapshot: UsageSnapshot) -> dict[str, str]:
+def usage_parts(snapshot: Usage) -> dict[str, str]:
     """Return the status line's token figures by the name of the part that shows each; empty before a reply."""
     if not snapshot.requests:
         return {}
@@ -169,13 +169,13 @@ def usage_parts(snapshot: UsageSnapshot) -> dict[str, str]:
     return parts
 
 
-def usage_text(snapshot: UsageSnapshot) -> str:
+def usage_text(snapshot: Usage) -> str:
     """Render the status-line summary, or an empty string before the first call."""
     parts = usage_parts(snapshot)
     return "  " + f" {SEPARATOR} ".join(parts.values()) if parts else ""
 
 
-def context_share(snapshot: UsageSnapshot, window: int) -> str:
+def context_share(snapshot: Usage, window: int) -> str:
     """Render how much of the model's window the newest request filled, as ``ctx 34.0%``.
 
     Empty before any request has been measured or when the model does not declare a window.
@@ -186,7 +186,7 @@ def context_share(snapshot: UsageSnapshot, window: int) -> str:
     return f"ctx {share:.1f}%"
 
 
-def context_text(snapshot: UsageSnapshot, window: int) -> str:
+def context_text(snapshot: Usage, window: int) -> str:
     """Render how much of the model's window the newest request filled, as a fragment that follows the counters.
 
     Returns:

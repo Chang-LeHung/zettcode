@@ -18,7 +18,6 @@ from zettcode.app.plugins.state import (
     UiRegion,
     UiSide,
 )
-from zettcode.engine.permission import Permission
 from zettcode.statusline import Row
 from zettcode.tui import HEADER, SEPARATOR, Span, Style, TextLine
 from zettcode.tui.render import blend, display_width
@@ -269,8 +268,8 @@ class BarsMixin(ShellState):
                 busy=self._busy,
                 status=self._activity,
                 note=self._note,
-                auto_shell=self.agent.permission is Permission.FULL,
-                permission=self.agent.permission.value,
+                auto_shell=self.client.permission == "full",
+                permission=self.client.permission,
                 self_compact=self.agent.self_compaction,
                 usage=self._usage,
                 tasks=self.agent.tasks(),

@@ -19,9 +19,9 @@ from zettcode.app.agent.agent import TerminalAgent
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine import core as runtime_module
 from zettcode.engine import pipeline as pipeline_module
-from zettcode.engine.errors import describe_error
 from zettcode.engine.extensions.compaction import OnDemandCompaction
 from zettcode.engine.storage import STORE_FILE, SessionStore
+from zettcode.error_text import describe_error
 
 
 def test_the_system_prompt_head_changes_only_by_the_day(tmp_path):

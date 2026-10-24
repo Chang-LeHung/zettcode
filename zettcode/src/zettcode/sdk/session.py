@@ -465,8 +465,8 @@ class RunStream:
         """Return the SDK error that stands for ``error``, keeping the original as its cause."""
         from zett_agent.exceptions import AgentResumeError
 
-        from ..engine.errors import describe_error, may_pass
         from ..engine.storage import SessionLocked
+        from ..error_text import describe_error, may_pass
 
         if isinstance(error, ZettCodeError):
             return error
@@ -792,8 +792,8 @@ class Session:
             NothingToDoError: The conversation is already compacted up to its newest message.
             SessionLockedError: Another process has the session open.
         """
-        from ..engine.errors import describe_error, may_pass
         from ..engine.storage import SessionLocked
+        from ..error_text import describe_error, may_pass
 
         client = self._client
         client._check_open()
