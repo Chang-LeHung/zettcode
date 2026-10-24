@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -18,6 +18,7 @@ from zettcode.tui import ELLIPSIS, SEPARATOR, Theme
 
 from ..agent.agent.sessions import StoredSession
 from ..agent.conversation.presenters import block_for
+from ..agent.conversation.replay import Replayed, replay
 from .shell import ShellState
 from .widgets import WELCOME
 
@@ -28,6 +29,19 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
 #: Seconds between the tries to take the lock of a session another process has open: long enough to cost
 #: nothing, short enough that the session is the reader's within a moment of the other process letting go.
 LOCK_POLL_SECONDS = 2.0
+
+
+@dataclass(frozen=True, slots=True)
+class LoadedSession:
+    """A stored session and the rows the terminal built from it, ready to install.
+
+    Attributes:
+        stored: What the engine read: the parsed file, its totals, title and model.
+        replayed: The rows the terminal replayed it into, already measured.
+    """
+
+    stored: StoredSession
+    replayed: Replayed
 
 
 class SessionMixin(ShellState):
@@ -192,22 +206,23 @@ class SessionMixin(ShellState):
         self._set_busy(True)
         self.app.invalidate()
         try:
-            stored = await asyncio.to_thread(self._fork_and_load)
+            loaded = await asyncio.to_thread(self._fork_and_load)
         finally:
             self._set_busy(False)
             self._activity = Activity.READY
             self._note = None
             self.app.invalidate()
-        self._install_session(stored)
+        self._install_session(loaded)
         # After the install, never before: installing replaces every entry with the
         # fork's own rows, so a line written first would be wiped by the very thing it
         # is there to describe.
+        stored = loaded.stored
         self.transcript.notice(
             fork_notice(stored.session_id, stored.title, previous_id, previous_title, self.agent.workspace)
         )
         return stored.session_id
 
-    def _fork_and_load(self) -> StoredSession:
+    def _fork_and_load(self) -> LoadedSession:
         """Write the fork and prepare its rows, changing nothing the shell shows."""
         return self._load_session(self.agent.fork_session())
 
@@ -230,7 +245,7 @@ class SessionMixin(ShellState):
         """
         self._install_session(self._load_session(session_id, window=window))
 
-    def _load_session(self, session_id: str, *, window: Callable[[], tuple[int, Theme]] | None = None) -> StoredSession:
+    def _load_session(self, session_id: str, *, window: Callable[[], tuple[int, Theme]] | None = None) -> LoadedSession:
         """Read a session and prepare its rows, changing nothing the shell shows.
 
         Safe to run on a worker thread: the rows live in a transcript of their own
@@ -245,23 +260,32 @@ class SessionMixin(ShellState):
         the rows would go, and the first frame then measured them all again.
         """
         with collector_paused():
-            stored = self.agent.load_session(session_id, self.transcript)
-            transcript = stored.replayed.transcript
+            stored = self.agent.load_session(session_id)
+            transcript = self.transcript
+            replayed = replay(
+                stored.session,
+                renderers=transcript.renderers,
+                presenters=transcript.presenters,
+                frame=transcript.frame,
+                max_entries=transcript.max_entries,
+            )
+            rows = replayed.transcript
             width, theme = window() if window is not None else (self.view.line_width, self.view.theme)
-            for entry in transcript.entries:
-                block_for(entry, width, theme, transcript.frame, presenters=transcript.presenters).count(width)
-        return stored
+            for entry in rows.entries:
+                block_for(entry, width, theme, rows.frame, presenters=rows.presenters).count(width)
+        return LoadedSession(stored, replayed)
 
-    def _install_session(self, stored: StoredSession) -> None:
+    def _install_session(self, loaded: LoadedSession) -> None:
         """Make a loaded session the visible one. Assignment only; runs on the loop."""
         previous = self.agent.active_model
-        self.agent.install_session(stored, self.transcript)
+        self.transcript.replace(loaded.replayed.transcript.entries)
+        self.agent.install_session(loaded.stored)
         if not self.transcript.entries:
             self.transcript.welcome(WELCOME)
-        self._announce_restored_model(previous, stored)
+        self._announce_restored_model(previous, loaded.stored)
         self.view.follow_tail = True
         self.view.clear_selection()
-        self._session_title = stored.title
+        self._session_title = loaded.stored.title
         self._sync_lock()
         self._usage = self.agent.usage
         self._refresh_tasks()

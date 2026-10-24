@@ -16,10 +16,9 @@ from zett_agent.messages import AssistantMessage, UserMessage
 from zett_agent.model import ReasoningEffort
 
 from zettcode.engine.dialogue.title import summarize_title
+from zettcode.engine.extensions.usage import UsageSnapshot, session_usage
 from zettcode.engine.storage import Session, SessionInfo, SessionStats
 
-from ..conversation.replay import Replayed, replay
-from ..conversation.transcript import Transcript
 from .context import ContextMixin
 
 #: The name a session shows before the agent has given it a title.
@@ -28,12 +27,12 @@ UNTITLED_SESSION = "New session"
 
 @dataclass(frozen=True, slots=True)
 class StoredSession:
-    """A session read from the store and rebuilt into rows, not yet made active.
+    """A session read from the store, not yet made active.
 
     Attributes:
         session_id: The session that was read.
         session: Its parsed file.
-        replayed: The rows, totals, and branch it replays into.
+        usage: Totals accumulated from the usage every stored reply recorded.
         title: Its stored display title, if it has one: read here because folding
             the metadata log is the other thing resuming used to do on the loop.
         model: The model the session last used, by the name the model picker shows, if one
@@ -42,7 +41,7 @@ class StoredSession:
 
     session_id: str
     session: Session
-    replayed: Replayed
+    usage: UsageSnapshot
     title: str | None
     model: str | None = None
 
@@ -99,20 +98,13 @@ class SessionsMixin(ContextMixin):
         """
         return self.runtime.persistence.fork(self.session_id)
 
-    def load_session(self, session_id: str, transcript: Transcript) -> StoredSession:
-        """Read a stored session and rebuild what it will show, changing nothing.
+    def load_session(self, session_id: str) -> StoredSession:
+        """Read a stored session, changing nothing.
 
-        This is the expensive half of resuming — parsing the file and replaying the
-        newest part of it into rows — and it touches no state the shell is reading:
-        the rows are built into a transcript of their own, and the result is a value.
-        That is what lets the shell run it on a worker thread while the interface
-        keeps answering keys, and hand the result to :meth:`install_session` on the
-        loop. The ``transcript`` is only read, for the renderers, presenters, and cap
-        the rebuilt one has to match.
-
-        Args:
-            session_id: The session to read.
-            transcript: The transcript the result will be installed into.
+        This is the expensive half of resuming — parsing the file and adding up its usage — and it touches no
+        state anyone is reading, so a caller may run it on a worker thread and hand the result to
+        :meth:`install_session` on the loop. What a front end shows of the session it builds from
+        ``stored.session`` itself.
 
         Raises:
             ValueError: The store holds no such session, or its file is corrupt.
@@ -121,30 +113,21 @@ class SessionsMixin(ContextMixin):
         session = persistence.read(session_id)
         if session.header is None:
             raise ValueError(f"Unknown session: {session_id}")
-        replayed = replay(
-            session,
-            renderers=transcript.renderers,
-            presenters=transcript.presenters,
-            frame=transcript.frame,
-            max_entries=transcript.max_entries,
-        )
         return StoredSession(
             session_id=session_id,
             session=session,
-            replayed=replayed,
+            usage=session_usage(session.branch()),
             title=persistence.session_title(session_id),
             model=persistence.session_model(session_id),
         )
 
-    def install_session(self, stored: StoredSession, transcript: Transcript) -> None:
-        """Make a loaded session the active one: its rows, its totals, its id.
+    def install_session(self, stored: StoredSession) -> None:
+        """Make a loaded session the active one: its totals, its id, its model.
 
-        The cheap half, and the one that changes state, so it runs where the rest of
-        the shell does. Everything it does is assignment.
+        The cheap half, and the one that changes state; everything it does is assignment.
         """
-        session_id, session, replayed = stored.session_id, stored.session, stored.replayed
-        transcript.replace(replayed.transcript.entries)
-        self.runtime.usage.seed(session_id, replayed.usage)
+        session_id, session = stored.session_id, stored.session
+        self.runtime.usage.seed(session_id, stored.usage)
         self.use_session(session_id)
         # Pick up where the session left off: the model it last used, when this configuration
         # still has it. A session that never recorded one, or whose model is gone, keeps whatever
@@ -165,9 +148,9 @@ class SessionsMixin(ContextMixin):
         # resume would cost, and nothing reads the list until `/context` does.
         self.runtime.context.remember(session_id, lambda: self._stored_request(session))
 
-    def restore_session(self, session_id: str, transcript: Transcript) -> None:
-        """Load the active stored branch into the UI before switching sessions."""
-        self.install_session(self.load_session(session_id, transcript), transcript)
+    def restore_session(self, session_id: str) -> None:
+        """Load the stored branch and make it the active one."""
+        self.install_session(self.load_session(session_id))
 
     async def list_sessions(self, *, limit: int = 20) -> list[SessionInfo]:
         """List persisted session metadata by recent activity."""
