@@ -29,6 +29,8 @@ export interface SessionRow {
   entries: number;
   tokens: number;
   current: boolean;
+  /** A run is going in it now, whether or not it is the one on show. */
+  running: boolean;
 }
 
 /** Everything about the server and the conversation that is not the transcript itself. */

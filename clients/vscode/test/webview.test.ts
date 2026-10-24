@@ -65,6 +65,7 @@ const state: WebviewState = {
       entries: 12,
       tokens: 1540,
       current: true,
+      running: false,
     },
   ],
   busy: false,
@@ -1228,4 +1229,23 @@ test("a message the agent sends to another session is shown with what it said, o
   assert.ok(body.includes("Please run the pagination tests and report back."), "what was sent");
   assert.ok(body.includes("Delivered to api"), "and whether it was taken");
   assert.ok(ui.text(".tool-verb").includes("Message"));
+});
+
+test("the session list shows a spinner on a session that is still running, wherever the reader is", async () => {
+  const ui = await harness([], {
+    ...state,
+    sessions: [
+      { id: "session-1", title: "Pagination work", updatedAt: "2026-10-18T11:59:30Z", entries: 12, tokens: 1540, current: true, running: false },
+      { id: "session-2", title: "Long refactor", updatedAt: "2026-10-18T11:58:00Z", entries: 40, tokens: 9000, current: false, running: true },
+      { id: "session-3", title: "Old idea", updatedAt: "2026-10-17T09:00:00Z", entries: 4, tokens: 300, current: false, running: false },
+    ],
+  });
+  await ui.send({ type: "history", open: true });
+
+  const row = (id: string) => ui.one(`[data-session-id="${id}"]`);
+  assert.ok(row("session-2")?.querySelector(".session-running"), "the running one turns");
+  assert.ok(row("session-2")?.textContent?.includes("running"), "and says so in words, for those who cannot see it turn");
+  assert.equal(row("session-1")?.querySelector(".session-running"), null);
+  assert.equal(row("session-3")?.querySelector(".session-running"), null);
+  assert.equal(ui.all(".session-running").length, 1);
 });

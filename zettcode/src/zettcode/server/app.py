@@ -351,16 +351,19 @@ def create_app(settings: Settings, *, client_factory: ClientFactory | None = Non
 
     @protected.get("/sessions", response_model=SessionsOut, tags=["sessions"])
     async def list_sessions(runner: RunnerDep, limit: Annotated[int, Query(ge=1, le=200)] = 20) -> SessionsOut:
-        """List the stored sessions of this workspace, most recently active first."""
+        """List the stored sessions of this workspace, most recently active first, and which of them are running."""
         client = runner.client
         stored = await client.sessions.list(limit=limit)
-        return SessionsOut(sessions=[session_out(item, client.session.id) for item in stored])
+        running = runner.running_sessions()
+        return SessionsOut(sessions=[session_out(item, client.session.id, item.id in running) for item in stored])
 
     @protected.post("/sessions", response_model=SessionOut, status_code=201, tags=["sessions"])
     async def new_session(runner: RunnerDep, body: SessionCreate | None = None) -> SessionOut:
-        """Start an empty conversation and make it the one the next prompt continues."""
-        client = runner.client
-        session = client.sessions.new()
+        """Start an empty conversation and make it the one the next prompt continues.
+
+        A run in the conversation being left goes on there, and shows as running in the list.
+        """
+        session = await runner.new_session()
         if body is not None and body.title:
             await session.rename(body.title)
         return SessionOut(id=session.id, title=session.title, current=True)
@@ -372,8 +375,12 @@ def create_app(settings: Settings, *, client_factory: ClientFactory | None = Non
 
     @protected.post("/sessions/{session_id}/open", response_model=CurrentSessionOut, tags=["sessions"])
     async def open_session(session_id: str, runner: RunnerDep) -> CurrentSessionOut:
-        """Continue a stored conversation: the next prompt goes to it."""
-        session = await runner.client.sessions.open(session_id)
+        """Continue a stored conversation: the next prompt goes to it.
+
+        A run in the conversation being left goes on there. Opening a conversation that is running brings it back as
+        it is, run and all.
+        """
+        session = await runner.open_session(session_id)
         return current_session_out(session)
 
     @protected.post("/sessions/current/rename", response_model=SessionOut, tags=["sessions"])

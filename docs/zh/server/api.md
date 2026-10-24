@@ -60,7 +60,7 @@ curl -X PATCH http://127.0.0.1:3290/settings \
 
 | 方法 | 路径 | 请求体 | 返回 |
 | --- | --- | --- | --- |
-| `GET` | `/sessions?limit=20` | — | `{"sessions": [{"id","title","created_at","updated_at","current"}]}`,最近活动的在前。 |
+| `GET` | `/sessions?limit=20` | — | `{"sessions": [{"id","title","created_at","updated_at","current","running"}]}`,最近活动的在前。`running` 为 true 表示该会话里正有运行在跑(当前会话,或被放到一边的会话)。 |
 | `POST` | `/sessions` | `{"title"?}` | 201,新会话,并成为当前会话。 |
 | `GET` | `/sessions/current` | — | `{"id","title","locked","usage"}` |
 | `POST` | `/sessions/{id}/open` | — | 打开的会话,成为当前会话;不存在时 404。 |
@@ -93,7 +93,10 @@ curl -X PATCH http://127.0.0.1:3290/settings \
 | --- | --- | --- | --- |
 | `POST` | `/prompts` | `PromptRequest` | `text/event-stream`:运行的事件,最后是 `result`、`error` 或 `cancelled`。 |
 | `POST` | `/runs/resume` | `RunOptions` | 同样的流,继续被中断的请求。 |
-| `GET` | `/runs/current` | — | `{"running", "pending"}`:是否有运行在跑、它在等什么。 |
+| `GET` | `/runs/current` | — | `{"running", "pending"}`:当前会话里是否有运行在跑、它在等什么。 |
+| `GET` | `/messages` | — | `{"messages": [{"id","sender_id","sender","text","via","hops"}]}`:其他会话发给当前会话、还没回答的消息,最早的在前。 |
+| `POST` | `/messages/{id}` | — | `text/event-stream`,帧与 `/prompts` 相同:把这条消息当一轮来回答。它不在等待时返回 404。 |
+| `POST` | `/sessions/current/send` | `{"to","text"}` | `{"to","disposition"}`:给另一个 ZettCode 会话(handle 或 id)发消息,内容视为读者本人所写;`disposition` 为 `started` 或 `queued`。没有人能收到时返回 404 `unreachable`。 |
 | `GET` | `/runs/resumable` | — | `{"resumable","kind","description"}` |
 | `POST` | `/runs/approvals` | `{"call_id","approve","remember"?}` | `{"resolved"}`,运行是否正在等这个调用。 |
 | `POST` | `/runs/questions` | `{"call_id","answer"}` | `{"resolved"}`;`"answer": null` 表示拒绝回答。 |

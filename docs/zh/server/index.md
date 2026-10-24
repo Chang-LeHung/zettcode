@@ -123,4 +123,5 @@ const reader = response.body!.getReader();
 - **shell 命令默认 `deny`**:prompt 不说明怎么回答命令之前,什么都跑不了。
 - **token 只有一行**:`--token` 或 `$ZETTCODE_SERVER_TOKEN`,常量时间比较,除 `/health` 外都要它。它是明文 HTTP 上的
   Bearer token,客户端不在同一台机器时请走隧道或终止 TLS 的反向代理。
-- **同时只有一个客户端**:一轮运行进行中再发 prompt 会得到 `409 busy`,而不是把两条请求交错进同一个会话。
+- **一个会话里同时只有一轮运行**:同一个会话里运行进行中再发 prompt 会得到 `409 busy`,而不是把两条请求交错进同一个会话。
+  另一个会话就是另一轮运行:运行中新建或打开别的会话不会中断它,`GET /sessions` 会告诉你哪些会话在跑。

@@ -77,6 +77,21 @@ session shows them again instead of only counting them.
 - **Show earlier requests** loads older messages a page at a time, keeping your place.
 - **Compaction** appears as a row where it happened; press it to read the summary it left.
 
+### Several sessions at once
+
+A request keeps running when you look at another session. Open the session list and start a new session, or open an
+older one, while the agent works: the work goes on where it is, and a small spinner (with the word *running*) marks that
+session in the list. Open it again and its conversation is there as it got to, still streaming if it is not done. Each
+session has its own approvals, questions and steering, so a command waiting for you in one session does not appear in
+another; the extension says when a session in the background is waiting for an answer or has finished.
+
+### Messages between sessions
+
+Write `@name` at the start of a message to send it to another ZettCode session (a terminal, or another editor window)
+instead of asking this chat's model: the message shows as *to @name* with what you said. What another session sends
+to this one arrives as its own request, marked *from @name*, and the agent answers it here; if it should answer the
+sender too, it sends a message back. A message the agent sends shows its text above the delivery line.
+
 ### Approvals, questions, steering
 
 The shell permission decides what the agent may run on its own:

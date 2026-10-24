@@ -42,8 +42,16 @@ function open(id: string): void {
   closeOverlay();
 }
 
-function meta(session: { updatedAt: string | null; title: string | null; id: string; entries: number; tokens: number }): string {
+function meta(session: {
+  updatedAt: string | null;
+  title: string | null;
+  id: string;
+  entries: number;
+  tokens: number;
+  running: boolean;
+}): string {
   return [
+    session.running ? "running" : null,
     relativeTime(session.updatedAt),
     session.title ? null : `#${session.id.slice(-6)}`,
     `${session.entries} entries`,
@@ -88,6 +96,7 @@ function meta(session: { updatedAt: string | null; title: string | null; id: str
       >
         <span class="session-title">
           <span class="session-name">{{ sessionLabel(session.title) }}</span>
+          <span v-if="session.running" class="spinner session-running" role="status" title="Running" aria-label="Running" />
           <span v-if="session.current" class="dot current-dot" title="Current" />
         </span>
         <span class="session-meta">{{ meta(session) }}</span>

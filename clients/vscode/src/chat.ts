@@ -6,6 +6,7 @@ import * as vscode from "vscode";
 
 import { ChangeLedger, changesFile, MAX_TRACKED_BYTES, type EditPair } from "./core/ledger.js";
 import { diffText } from "./core/diff.js";
+import { type Conversation, Conversations, newConversation } from "./core/conversations.js";
 import {
   type Api,
   APIS,
@@ -106,15 +107,57 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
   private selfCompaction: SelfCompaction | null = null;
   private contextReport: ContextReport | null = null;
   private resumable: Resumable | null = null;
-  private pending: PendingRequest | null = null;
 
-  private turns: Turn[] = [];
+  /**
+   * What belongs to one conversation and not to the window: its transcript, and the run going in it. The conversation on
+   * show is `conv`; one that is running when the reader looks elsewhere stays in `convs` and keeps writing to its own
+   * turns, so coming back to it finds the run where it got to (see core/conversations.ts).
+   */
+  private readonly convs = new Conversations();
+  private get conv(): Conversation {
+    return this.convs.current;
+  }
+
+  private get pending(): PendingRequest | null {
+    return this.conv.pending;
+  }
+  private set pending(value: PendingRequest | null) {
+    this.conv.pending = value;
+  }
+  private get turns(): Turn[] {
+    return this.conv.turns;
+  }
+  private set turns(value: Turn[]) {
+    this.conv.turns = value;
+  }
   /** How many turns at the front of `turns` the view has not been sent: a reloaded conversation shows its latest page. */
-  private hidden = 0;
+  private get hidden(): number {
+    return this.conv.hidden;
+  }
+  private set hidden(value: number) {
+    this.conv.hidden = value;
+  }
   /** The turn the run in progress is writing to, so a steer can be drawn in it at once. */
-  private running: Turn | null = null;
-  private run: Run | null = null;
-  private busy = false;
+  private get running(): Turn | null {
+    return this.conv.running;
+  }
+  private set running(value: Turn | null) {
+    this.conv.running = value;
+  }
+  private get run(): Run | null {
+    // Only `startRun` stores one, and what it stores is the client's own `Run`; the module that holds it asks no more
+    // of it than that it can be stopped.
+    return this.conv.run as Run | null;
+  }
+  private set run(value: Run | null) {
+    this.conv.run = value;
+  }
+  private get busy(): boolean {
+    return this.conv.busy;
+  }
+  private set busy(value: boolean) {
+    this.conv.busy = value;
+  }
   private initialized = false;
   private initializing: Promise<void> | null = null;
   private disposed = false;
@@ -145,6 +188,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     this.serverListener = server.onDidChange((state) => {
       if (state.status === "ready" && this.initialized && !this.disposed) {
         this.client = null;
+        // A restarted server has none of the runs the old one had, so nothing here is still running.
+        this.convs.reset();
         void this.refreshAll().catch((error: unknown) => this.report(error));
       }
       this.postState();
@@ -741,16 +786,24 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
   }
 
   private async startRun(run: Run, turn: Turn): Promise<void> {
+    // The run belongs to the conversation on show now and stays with it: looking at another one later changes `conv`,
+    // not this, so the frames below go on being written to their own turns.
+    const conv = this.conv;
+    if (this.session !== null) {
+      // Registered by its session, so that opening the session again while this runs finds the live transcript.
+      this.convs.register(this.session.id, conv);
+    }
     this.clearDeltas();
-    this.run = run;
-    this.running = turn;
-    this.busy = true;
-    this.pending = null;
+    conv.run = run;
+    conv.running = turn;
+    conv.busy = true;
+    conv.pending = null;
     this.resumable = null;
     this.postState();
+    void this.refreshSessions(false).catch(() => undefined);
     try {
       for await (const frame of run) {
-        this.handleFrame(turn, frame);
+        this.handleFrame(conv, turn, frame);
       }
     } catch (error) {
       if (error instanceof RunCancelledError) {
@@ -760,38 +813,53 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         this.output.appendLine(`[run] ${messageOf(error)}`);
       }
     } finally {
-      this.run = null;
-      this.running = null;
-      this.busy = false;
-      this.pending = null;
-      this.postTurn(turn, true);
-      await this.settleChanges(turn);
-      await this.afterRun(turn);
+      conv.run = null;
+      conv.running = null;
+      conv.busy = false;
+      conv.pending = null;
+        if (this.convs.isShown(conv)) {
+        this.postTurn(turn, true);
+        await this.settleChanges(turn);
+        await this.afterRun(turn);
+      } else {
+        await this.settleChanges(turn);
+        await this.afterBackgroundRun(conv, turn);
+      }
     }
   }
 
-  private handleFrame(turn: Turn, frame: StreamFrame): void {
+  /** Whether `conv` is the conversation on show, which is the only one the view is told about. */
+  private isShown(conv: Conversation): boolean {
+    return this.convs.isShown(conv);
+  }
+
+  private handleFrame(conv: Conversation, turn: Turn, frame: StreamFrame): void {
+    const shown = this.isShown(conv);
     if (frame.event === "event") {
       const event = frame.data as RunEvent;
       this.trackFrame(turn, event);
       applyEvent(turn, event);
-      if (event.type === "usage_updated" || event.type === "compaction_finished") {
+      if (shown && (event.type === "usage_updated" || event.type === "compaction_finished")) {
         this.scheduleContext();
       }
       if (event.type === "text_delta" || event.type === "reasoning_delta") {
-        this.queueDelta(turn, event.type === "text_delta" ? "text" : "reasoning", event.text);
+        if (shown) {
+          this.queueDelta(turn, event.type === "text_delta" ? "text" : "reasoning", event.text);
+        }
         return;
       }
-      this.flushDeltas();
+      if (shown) {
+        this.flushDeltas();
+      }
       if (event.type === "approval_requested" && event.approved === null) {
-        this.pending = {
+        conv.pending = {
           kind: "approval",
           call_id: event.call_id,
           command: event.command,
           remember_supported: true,
         };
       } else if (event.type === "question_asked" && !event.answered) {
-        this.pending = {
+        conv.pending = {
           kind: "question",
           call_id: event.call_id,
           question: event.question,
@@ -804,9 +872,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         event.type === "server_tool_started" ||
         event.type === "server_tool_finished"
       ) {
-        if (this.pending !== null && this.pending.call_id !== event.call_id) {
-          this.pending = null;
+        if (conv.pending !== null && conv.pending.call_id !== event.call_id) {
+          conv.pending = null;
         }
+      }
+      if (!shown) {
+        if (event.type === "approval_requested" || event.type === "question_asked") {
+          this.post({ type: "notice", level: "info", text: "A session that is running in the background is waiting for an answer." });
+        }
+        return;
       }
       this.postTurn(turn, IMMEDIATE_EVENTS.has(event.type));
       if (event.type === "approval_requested" || event.type === "question_asked") {
@@ -814,19 +888,32 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       }
       return;
     }
-    this.flushDeltas();
+    if (shown) {
+      this.flushDeltas();
+    }
     if (frame.event === "result") {
       finishTurn(turn, frame.data as RunResult);
-      this.pending = null;
     } else if (frame.event === "error") {
       const payload = frame.data as { message?: string };
       failTurn(turn, payload.message ?? "The run failed.");
-      this.pending = null;
     } else {
       cancelTurn(turn);
-      this.pending = null;
     }
-    this.postTurn(turn, true);
+    conv.pending = null;
+    if (shown) {
+      this.postTurn(turn, true);
+    }
+  }
+
+  /**
+   * A run that ended while another conversation was on show. Nothing of the one on show changes: its turns are in the
+   * store already, so the conversation is forgotten here and read again if it is opened, and the list stops spinning.
+   */
+  private async afterBackgroundRun(conv: Conversation, turn: Turn): Promise<void> {
+    this.convs.forget(conv);
+    await this.refreshSessions(false).catch(() => undefined);
+    const verb = turn.status === "done" ? "finished" : turn.status === "failed" ? "failed" : "was stopped";
+    this.post({ type: "notice", level: turn.status === "failed" ? "warn" : "info", text: `A session in the background ${verb}.` });
   }
 
   private async afterRun(turn: Turn): Promise<void> {
@@ -1048,17 +1135,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
   // -- sessions ----------------------------------------------------------
 
   async newSession(): Promise<void> {
-    if (this.busy) {
-      this.post({ type: "notice", level: "warn", text: "Stop the run before starting another session." });
-      return;
-    }
     const client = await this.ensureClient();
     await client.createSession();
     this.session = await client.currentSession();
     this.context.workspaceState.update(SESSION_KEY, this.session.id);
-    this.turns = [];
-    this.hidden = 0;
-    this.pending = null;
+    // A run in the conversation being left goes on there; this one starts empty and idle.
+    this.showConversation(this.session.id, newConversation());
     this.resumable = null;
     this.contextReport = null;
     await this.readExtras();
@@ -1068,11 +1150,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     this.post({ type: "notice", level: "info", text: "Started a new session." });
   }
 
+  /**
+   * Put a conversation on show; see `Conversations.show` for which one is kept. The pending text deltas belong to the
+   * conversation being left, so they are dropped with it.
+   */
+  private showConversation(id: string, conv: Conversation): void {
+    this.clearDeltas();
+    this.convs.show(id, conv);
+  }
+
   async openSession(id: string, closeDrawer = true): Promise<void> {
-    if (this.busy) {
-      this.post({ type: "notice", level: "warn", text: "Stop the run before switching sessions." });
-      return;
-    }
     const client = await this.ensureClient();
     if (closeDrawer) {
       // The list goes away at once, so what the reader sees next is the conversation being opened and not a list that
@@ -1082,9 +1169,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     await this.whileLoading("Opening the conversation", async () => {
       this.session = await client.openSession(id);
       this.context.workspaceState.update(SESSION_KEY, id);
-      this.pending = null;
+      const running = this.convs.find(id);
+      if (running !== undefined && running.busy) {
+        // Still running: its transcript is the live one, with the run's frames in it, and is not read again.
+        this.showConversation(id, running);
+      } else {
+        this.showConversation(id, newConversation());
+        await this.loadHistory();
+      }
       this.resumable = null;
-      await this.loadHistory();
       await this.readExtras();
       this.postTurns();
     });
@@ -1123,6 +1216,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         entries: found?.entries ?? 0,
         tokens: found?.total_tokens ?? 0,
         current: session.id === this.session?.id || session.current,
+        running: session.running === true,
       };
     });
     if (postToView || this.view !== null) {

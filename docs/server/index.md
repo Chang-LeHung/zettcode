@@ -129,5 +129,6 @@ const reader = response.body!.getReader();
 - **A token is one line**: `--token` or `$ZETTCODE_SERVER_TOKEN`, compared in constant time, required by every endpoint
   but `/health`. It is a bearer token over plain HTTP, so use a tunnel or a reverse proxy that terminates TLS when the
   client is not on the same machine.
-- **One client at a time**: a second prompt while a run is going is refused with `409 busy` rather than interleaved
-  into the same conversation.
+- **One run at a time in a conversation**: a second prompt while a run is going in the same conversation is refused
+  with `409 busy` rather than interleaved. Another conversation is another run: starting or opening a session while one
+  runs leaves the run going where it is, and `GET /sessions` says which sessions are running.
