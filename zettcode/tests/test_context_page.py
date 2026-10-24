@@ -6,7 +6,8 @@ import pytest
 
 from zettcode.app.ui.widgets import ContextPage
 from zettcode.app.ui.widgets import context_charts as charts
-from zettcode.engine.extensions.context import SOURCES, ContextReport, ContextShare
+from zettcode.budget import SOURCES
+from zettcode.sdk.types import ContextReport, ContextShare
 from zettcode.tui import DARK, LIGHT, TuiApp
 from zettcode.tui.render.text import display_width
 from zettcode.tui.testing import Harness
@@ -23,7 +24,12 @@ SHARES = (
 
 def report_of(shares=SHARES, *, window: int = 200_000, reported: int | None = None, partial: bool = False):
     return ContextReport(
-        window=window, measured_by="tiktoken", shares=tuple(shares), partial=partial, reported=reported
+        window=window,
+        used=reported if reported is not None else sum(share.tokens for share in shares),
+        measured_by="tiktoken",
+        shares=tuple(shares),
+        partial=partial,
+        from_provider=reported is not None,
     )
 
 
@@ -217,7 +223,9 @@ def test_a_total_the_provider_has_not_reported_is_counted_here_and_says_so():
 
 def test_the_counters_name_is_never_on_the_page_but_an_estimate_is_admitted():
     exact = report_of(reported=30_000)
-    guess = ContextReport(window=200_000, measured_by="~4 chars/token", shares=SHARES)
+    guess = ContextReport(
+        window=200_000, used=sum(s.tokens for s in SHARES), measured_by="~4 chars/token", shares=SHARES
+    )
 
     for report in (exact, guess):
         page = "\n".join(texts(charts.context_lines(report, 160_000, 100)))

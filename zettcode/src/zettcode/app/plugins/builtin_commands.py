@@ -154,7 +154,7 @@ class SessionCommands(TerminalPlugin):
         before it exists: before that there is nothing measured to show, and the panel would be a page of zeroes.
         """
         host = context.require_host()
-        report = await host.agent.context_report()
+        report = await host.client.session.context()
         if report is None:
             return CommandResult(
                 message="No request yet \u2014 send one (or resume a session), then `/context` shows the breakdown."

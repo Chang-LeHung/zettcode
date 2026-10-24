@@ -385,7 +385,7 @@ def remove_model(name, *, path=None) -> tuple[ModelInfo, ...]: ...
 
 ### `ContextReport` 和 `ContextShare`
 
-`ContextReport(window, used, measured_by, shares=(), partial=False, from_provider=False)`，带属性 `free` 和 `fraction`。`ContextShare(name, tokens, items=0)`。
+`ContextReport(window, used, measured_by, shares=(), partial=False, from_provider=False)`，带属性 `free` 和 `fraction`，以及 `measured`（分词器数出的 token 数，`shares` 加起来就是它；`used` 可能是供应商自己的计数）、`estimated`（`shares` 是按每 token 几个字符估的）和方法 `percent(tokens)`（占窗口的百分比）、`share(tokens)`（占 `measured` 的百分比，也就是上下文花在了哪里）。`ContextShare(name, tokens, items=0)`。
 
 ### `Compaction` 和 `ResumeInfo`
 
