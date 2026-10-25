@@ -36,7 +36,7 @@ title: HTTP API 参考
 
 | 方法 | 路径 | 请求体 | 返回 |
 | --- | --- | --- | --- |
-| `GET` | `/models` | — | `{"models": [{"name","model","context_window","multimodal","efforts","active","compact_percent","web_search","web_search_name"}], "current"}`;配置模型之前也能用,此时 `current` 为 null。 |
+| `GET` | `/models` | — | `{"models": [{"name","model","context_window","multimodal","efforts","active","compact_percent","web_search","web_search_name","display_model","base_url","api","temperature","can_search","search_name"}], "current"}`;配置模型之前也能用,此时 `current` 为 null。 |
 | `POST` | `/models` | `{"model", "token"?, "display_model"?, "base_url"?, "anthropic"?, "responses_api"?, "chat"?, "multimodal"?, "temperature"?, "web_search"?, "web_search_name"?, "context_window"?, "compact_percent"?, "reasoning_efforts"?}` | 201,返回新的列表。第一个模型会让服务器变得可用;后续模型供 `PATCH /settings` 选择。写入配置文件,键名与终端 `/config add` 一致。`web_search` 让供应商替模型联网搜索;DeepSeek 模型没有 `anthropic` 时会被拒绝,拼错的键返回 `422`。 |
 | `PATCH` | `/models/{name}` | `POST /models` 接受的任意字段 | 新的列表。未给出的键保持不变;没给新 token 就保留旧的。值为 `null` 的键会从条目里删掉(`model` 和 `token` 除外):`"temperature": null` 回到提供商自己的默认值,`"anthropic": null` 把这个标记从文件里删掉,而不是留下 `anthropic = false`。 |
 | `DELETE` | `/models/{name}` | — | 剩下的模型。最后一个不能删(`400 invalid`):client 至少需要一个。 |
@@ -100,7 +100,7 @@ curl -X PATCH http://127.0.0.1:3290/settings \
 | `GET` | `/runs/resumable` | — | `{"resumable","kind","description"}` |
 | `POST` | `/runs/approvals` | `{"call_id","approve","remember"?}` | `{"resolved"}`,运行是否正在等这个调用。 |
 | `POST` | `/runs/questions` | `{"call_id","answer"}` | `{"resolved"}`;`"answer": null` 表示拒绝回答。 |
-| `POST` | `/runs/steer` | `{"text"}` | `{"steered"}`,没有运行接收时为 false。 |
+| `POST` | `/runs/steer` | `{"text", "images"?, "mentions"?}` | `{"steered", "text"}`：没有运行接收时 `steered` 为 false；`text` 是随后 `steered` 事件带的文字（带图片或 `@` 引用的消息，按构造后的文字报告），没有收下时为 null。 |
 | `POST` | `/runs/cancel` | — | `{"cancelled"}`,是否有运行被停止。 |
 
 `RunOptions`:

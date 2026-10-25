@@ -89,7 +89,7 @@ curl -X POST http://127.0.0.1:3290/runs/approvals \
 
 | 调用 | 作用 |
 | --- | --- |
-| `POST /runs/steer` `{"text": "顺便把文档也更新了"}` | 运行放下手头的事,把这条消息考虑进去。没有运行在跑时返回 `{"steered": false}`。 |
+| `POST /runs/steer` `{"text": "顺便把文档也更新了"}` | 运行放下手头的事，把这条消息考虑进去。没有运行在跑时返回 `{"steered": false}`；否则 `text` 是 `steered` 事件将携带的文字。`images` 和 `mentions` 的用法和提示词一样。 |
 | `POST /runs/cancel` | 停止运行;它的流以 `cancelled` 结束。断开连接效果相同。 |
 | `GET /runs/resumable` | 请求被中断时返回 `{"resumable": true, "kind": "error", "description": "The provider dropped the connection"}`。 |
 | `POST /runs/resume` | 继续它,流的形式和 `/prompts` 完全一样。没有可继续的内容时返回 `409 nothing_to_do`。 |

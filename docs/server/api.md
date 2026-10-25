@@ -36,7 +36,7 @@ Except on `/health`, every endpoint requires `Authorization: Bearer <token>` whe
 
 | Method | Path | Body | Answers |
 | --- | --- | --- | --- |
-| `GET` | `/models` | — | `{"models": [{"name","model","context_window","multimodal","efforts","active","compact_percent","web_search","web_search_name"}], "current"}`; works before a model is configured, where `current` is null. |
+| `GET` | `/models` | — | `{"models": [{"name","model","context_window","multimodal","efforts","active","compact_percent","web_search","web_search_name","display_model","base_url","api","temperature","can_search","search_name"}], "current"}`; works before a model is configured, where `current` is null. |
 | `POST` | `/models` | `{"model", "token"?, "display_model"?, "base_url"?, "anthropic"?, "responses_api"?, "chat"?, "multimodal"?, "temperature"?, "web_search"?, "web_search_name"?, "context_window"?, "compact_percent"?, "reasoning_efforts"?}` | 201 with the new list. The first model makes the server ready; later ones are available for `PATCH /settings`. Written to the configuration file, with the keys the terminal's `/config add` uses. `web_search` lets the provider search the web for the model; for a DeepSeek model it is refused unless `anthropic` is set, and a misspelt key is a `422`. |
 | `PATCH` | `/models/{name}` | Any of the fields `POST /models` takes | The new list. A key left out stays as it is; the token is kept unless a new one is given. A key sent as `null` is removed from the entry (all but `model` and `token`): `"temperature": null` goes back to the provider's own, and `"anthropic": null` takes the flag out of the file instead of leaving `anthropic = false`. |
 | `DELETE` | `/models/{name}` | — | The remaining models. The last one cannot be removed (`400 invalid`): a client needs one. |
@@ -100,7 +100,7 @@ The *current* session is the conversation the next prompt continues. A server st
 | `GET` | `/runs/resumable` | — | `{"resumable","kind","description"}` |
 | `POST` | `/runs/approvals` | `{"call_id","approve","remember"?}` | `{"resolved"}`, whether the run was waiting on that call. |
 | `POST` | `/runs/questions` | `{"call_id","answer"}` | `{"resolved"}`; `"answer": null` declines the question. |
-| `POST` | `/runs/steer` | `{"text"}` | `{"steered"}`, false when nothing is running to take it. |
+| `POST` | `/runs/steer` | `{"text", "images"?, "mentions"?}` | `{"steered", "text"}`: `steered` is false when nothing is running to take it; `text` is what the `steered` event that follows carries (a message with a picture or a mention is reported by the text it was built into), null when not taken. |
 | `POST` | `/runs/cancel` | — | `{"cancelled"}`, whether there was a run to stop. |
 
 `RunOptions`:
