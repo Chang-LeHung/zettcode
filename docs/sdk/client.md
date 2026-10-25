@@ -68,7 +68,7 @@ An entry is a `ModelConfig` or a dict of the same fields:
 | --- | --- | --- |
 | `model` | required | The model id sent to the endpoint. |
 | `token` | `""` | The credential. May be left out for a local server that wants none, or taken from `OPENAI_API_KEY` (`ANTHROPIC_API_KEY` for an Anthropic model). Read it from the environment rather than writing it into code. |
-| `display_model` | `None` | The name to show and to pass to `use_model`. Give one when two entries share a model id. |
+| `display_model` | `None` | The name to show and to pass to `use_model`. Give one when two entries share a model id. No two entries may be shown by the same name, and a file that has two is refused when it is read. |
 | `base_url` | `None` | The API root. A trailing `/chat/completions`, `/v1/messages` or `/responses` is dropped. |
 | `anthropic` | `False` | Speak Anthropic's Messages API. |
 | `responses_api` | `False` | Use the Responses API on an OpenAI-compatible endpoint. Not combinable with `anthropic`. |
@@ -151,7 +151,7 @@ async with zc.Client(".") as client:
 | --- | --- |
 | `client.models` | A tuple of `ModelInfo(name, model, context_window, multimodal, efforts, active, compact_percent, web_search, web_search_name)`. |
 | `client.model` | The `ModelInfo` of the active model. |
-| `client.use_model(name)` | Makes a model active and returns its `ModelInfo`. Takes the name or a `ModelInfo`. |
+| `client.use_model(name)` | Makes a model active and returns its `ModelInfo`. Takes the name or a `ModelInfo`; a name is a display name first, a model id only when nothing is shown by it. |
 | `client.effort`, `client.efforts` | The current level, and the levels the active model accepts. |
 | `client.use_effort(name)` | Sets the level and returns it. |
 | `client.use_compact_percent(percent)` | Moves the point, as a share of the window (above 0, at most 100), at which the conversation is summarized, from the next request on. Returns the active `ModelInfo` and why the configuration file was not rewritten (`None` when it was): the change then holds for this run only. |

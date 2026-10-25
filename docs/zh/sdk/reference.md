@@ -150,7 +150,7 @@ class Client:
 | `prompt(prompt, *, images, mentions, on_approval, on_question, on_event, timeout, raw, keep_events, defer_answers)` | `RunStream` | 在当前会话上发送 prompt。await 它得到 `RunResult`；迭代它得到事件。 |
 | `stream(...)` | `RunStream` | 与 `prompt` 是同一个方法。 |
 | `run(prompt, *, images, mentions, on_approval, on_question, on_event, timeout, keep_events)` | `RunResult`（可 await） | 把 `await client.prompt(...)` 写成调用。没有 `raw`。 |
-| `use_model(name)` | `ModelInfo` | 选择模型；接受名字或 `ModelInfo`。 |
+| `use_model(name)` | `ModelInfo` | 选择模型；接受名字或 `ModelInfo`。名字先当显示名找，找不到再当模型 id 找；两者都必须只指向一个模型（否则抛 `ConfigurationError`）。 |
 | `config_file` | `Path` | 模型从哪个配置文件读、写到哪个文件。 |
 | `model_entries()` | `tuple[tuple[ModelInfo, Mapping], ...]` | 文件里列出的每个模型及文件为它写的键（按文件顺序）。 |
 | `add_model(entry)` | `ModelInfo` | 把模型加到文件和本 client；正在用的模型不变。 |

@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from zettcode.config import ModelConfig, ZettCodeConfig, load_config
+from zettcode.config import ModelConfig, ZettCodeConfig, load_config, model_index, read_models
 from zettcode.paths import DEFAULT_MCP_CONFIG
 
 
@@ -201,6 +201,68 @@ def test_the_compaction_trigger_is_a_share_of_the_model_window():
     # The share kept is a quarter of the trigger, never of a different window.
     small = ModelConfig(model="m", token="t", context_window=1_000, compact_percent=50)
     assert (small.compaction_max_tokens, small.compaction_keep_tokens) == (500, 125)
+
+
+def test_a_name_is_a_display_name_first_and_a_model_id_only_when_no_display_name_answers(tmp_path: Path):
+    """A model id sent to a provider does not compete with another entry's name for the reader."""
+    models = (
+        _model(model="a", display_model="b"),
+        _model(model="b", display_model="c"),
+    )
+
+    assert model_index(models, "b") == 0, "the display name wins over the other entry's id"
+    assert model_index(models, "c") == 1
+    assert model_index(models, "a") == 0, "an id nothing is shown by still finds its model"
+    assert model_index(models, "nope") is None
+
+
+def test_an_id_two_entries_share_is_ambiguous_and_says_what_to_do():
+    models = (_model(model="same", display_model="one"), _model(model="same", display_model="two"))
+
+    with pytest.raises(ValueError, match="Ambiguous model: same; use a unique display_model"):
+        model_index(models, "same")
+    assert (model_index(models, "one"), model_index(models, "two")) == (0, 1)
+
+
+def test_two_models_shown_by_one_name_are_refused_when_the_file_is_read(tmp_path: Path):
+    """A model is chosen by the name it is shown by, so two of them under one name make /model a guess."""
+    path = tmp_path / "config.toml"
+    path.write_text(
+        '[[models]]\nmodel = "a"\ndisplay_model = "twin"\ntoken = "t"\n\n'
+        '[[models]]\nmodel = "b"\ndisplay_model = "twin"\ntoken = "t"\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="Two models share one name.*'twin'.*display_model"):
+        load_config(tmp_path, path=path)
+    with pytest.raises(ValueError, match="share one name"):
+        read_models(path)
+
+
+def test_the_model_id_standing_in_as_a_name_counts_as_the_name_it_is(tmp_path: Path):
+    """An entry with no display name is shown by its id, so a second entry cannot be shown by that id either."""
+    path = tmp_path / "config.toml"
+    path.write_text(
+        '[[models]]\nmodel = "gpt-4o"\ntoken = "t"\n\n[[models]]\nmodel = "other"\ndisplay_model = "gpt-4o"\ntoken = "t"\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="share one name"):
+        load_config(tmp_path, path=path)
+
+
+def test_two_entries_with_one_id_but_their_own_names_are_fine(tmp_path: Path):
+    """The same model id against two endpoints is a real setup: the display name is what tells them apart."""
+    path = tmp_path / "config.toml"
+    path.write_text(
+        '[[models]]\nmodel = "same"\ndisplay_model = "Local"\ntoken = "a"\nbase_url = "https://a.example/v1"\n'
+        '\n[[models]]\nmodel = "same"\ndisplay_model = "Work"\ntoken = "b"\nbase_url = "https://b.example/v1"\n',
+        encoding="utf-8",
+    )
+
+    config = load_config(tmp_path, path=path)
+
+    assert [model.shown_name for model in config.models] == ["Local", "Work"]
 
 
 def test_load_config_reads_models_and_storage(tmp_path: Path):

@@ -150,7 +150,7 @@ The agent for one workspace. An async context manager. See [Client & configurati
 | `prompt(prompt, *, images, mentions, on_approval, on_question, on_event, timeout, raw, keep_events, defer_answers)` | `RunStream` | Sends a prompt on the current session. Await the result for a `RunResult`; iterate it for events. |
 | `stream(...)` | `RunStream` | The same method as `prompt`. |
 | `run(prompt, *, images, mentions, on_approval, on_question, on_event, timeout, keep_events)` | `RunResult` (awaitable) | `await client.prompt(...)` as a call. Has no `raw`. |
-| `use_model(name)` | `ModelInfo` | Chooses the model; takes a name or a `ModelInfo`. |
+| `use_model(name)` | `ModelInfo` | Chooses the model; takes a name or a `ModelInfo`. A name is looked for as a display name first, then as a model id; each must name one model (`ConfigurationError` otherwise). |
 | `config_file` | `Path` | The configuration file the models are read from and written to. |
 | `model_entries()` | `tuple[tuple[ModelInfo, Mapping], ...]` | Each model the file lists with the keys the file writes for it, in file order (a token left to an environment variable is absent). |
 | `add_model(entry)` | `ModelInfo` | Adds a model to the file and to this client; the model in use does not change. |

@@ -725,15 +725,19 @@ class Client:
 
     def _file_index(self, which: str | int) -> int:
         """Return the place in the file of a model named by its display name, its id, or its place."""
+        from ..config import model_index
+
         models = [model for model, _entry in self._agent.file_models()]
         if isinstance(which, int) and not isinstance(which, bool):
             if 0 <= which < len(models):
                 return which
             raise ValueError(f"There is no model number {which}; the file lists {len(models)}")
-        for index, model in enumerate(models):
-            if which in (model.shown_name, model.model):
-                return index
-        raise ValueError(f"No model called {which!r}; configured: {', '.join(m.shown_name for m in models)}")
+        if not isinstance(which, str):
+            raise ValueError(f"{which!r} is not a model name or a model number")
+        index = model_index(models, which)
+        if index is None:
+            raise ValueError(f"No model called {which!r}; configured: {', '.join(m.shown_name for m in models)}")
+        return index
 
     def use_compact_percent(self, percent: float) -> tuple[ModelInfo, str | None]:
         """Summarize the conversation at ``percent`` of the active model's window, from the next request on.

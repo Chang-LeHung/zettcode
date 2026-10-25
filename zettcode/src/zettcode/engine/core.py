@@ -28,7 +28,7 @@ from zett_agent.extensions.todo import TodoWriteExtension
 from zett_agent.ids import new_uuid7
 from zett_agent.model import ReasoningEffort
 
-from zettcode.config import DEFAULT_ANTHROPIC_BASE_URL, KEYLESS_TOKEN, ModelConfig, ZettCodeConfig
+from zettcode.config import DEFAULT_ANTHROPIC_BASE_URL, KEYLESS_TOKEN, ModelConfig, ZettCodeConfig, model_index
 from zettcode.engine.messenger import Messenger
 from zettcode.engine.plugins import AgentBuild, Plugins, load_plugins
 from zettcode.engine.plugins.services import (
@@ -617,18 +617,17 @@ class ZettCodeEngine:
     def find_model(self, name: str) -> ModelConfig | None:
         """Return the configured model a recorded name stands for, if exactly one does.
 
-        The name a session records is the one the picker showed. It is looked for as that
-        first. When nothing shows it, it is looked for as a model or display name, which is
-        how ``/model`` takes one: the configuration may have been edited since — a
-        ``display_model`` added to an entry that had none — and the session should still find
-        its model. Each step must find *one*: a name that two entries answer to is not a
-        choice this can make for the reader, and is reported as not found.
+        The name a session records is the one the picker showed. It is looked for first as that, and only when no
+        display name answers, as a model id — ``/model`` takes a name the same way, so a session and a reader
+        always mean the same model by one word. A name that two entries answer to is not a choice this can make
+        for the reader, and is reported as not found: the configuration is no longer the one the session was saved
+        with, and guessing would move the model under the reader without saying so.
         """
-        shown = [entry for entry in self.config.models if entry.shown_name == name]
-        if shown:
-            return shown[0] if len(shown) == 1 else None
-        either = [entry for entry in self.config.models if name in (entry.model, entry.display_model)]
-        return either[0] if len(either) == 1 else None
+        try:
+            index = model_index(self.config.models, name)
+        except ValueError:
+            return None
+        return None if index is None else self.config.models[index]
 
     def use_model(self, name: str | ModelConfig) -> ModelConfig:
         """Select a configured model for subsequent requests without changing sessions."""
@@ -642,12 +641,10 @@ class ZettCodeEngine:
             if chosen is None:
                 raise ValueError("Unknown model selection")
         else:
-            matches = [entry for entry in self.config.models if name in (entry.model, entry.display_model)]
-            if not matches:
+            index = model_index(self.config.models, name)
+            if index is None:
                 raise ValueError(f"Unknown model: {name}")
-            if len(matches) > 1:
-                raise ValueError(f"Ambiguous model: {name}; use a unique display_model")
-            chosen = matches[0]
+            chosen = self.config.models[index]
         self.active_model = chosen
         # A preview runtime has no provider yet; the model it names is what
         # :meth:`_build` starts from.
