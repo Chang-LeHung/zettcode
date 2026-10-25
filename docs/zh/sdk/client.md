@@ -68,7 +68,7 @@ async with zc.Client(
 | --- | --- | --- |
 | `model` | 必填 | 发给端点的模型 id。 |
 | `token` | `""` | 凭证。本地服务器不需要时可以留空，也可以取自 `OPENAI_API_KEY`（Anthropic 模型取自 `ANTHROPIC_API_KEY`）。请从环境变量读取，不要写进代码。 |
-| `display_model` | `None` | 展示用的名字，也是传给 `use_model` 的名字。两个条目模型 id 相同时给其中一个起别名。 |
+| `display_model` | `None` | 展示用的名字，也是传给 `use_model` 的名字。两个条目模型 id 相同时给其中一个起别名。不能有两个条目用同一个名字显示，读配置时发现就会报错。 |
 | `base_url` | `None` | API 根地址。末尾的 `/chat/completions`、`/v1/messages` 或 `/responses` 会被去掉。 |
 | `anthropic` | `False` | 使用 Anthropic 的 Messages API。 |
 | `responses_api` | `False` | 在 OpenAI 兼容端点上使用 Responses API。不能与 `anthropic` 同时使用。 |
@@ -151,7 +151,7 @@ async with zc.Client(".") as client:
 | --- | --- |
 | `client.models` | 一组 `ModelInfo(name, model, context_window, multimodal, efforts, active, compact_percent)`。 |
 | `client.model` | 当前模型的 `ModelInfo`。 |
-| `client.use_model(name)` | 让某个模型成为当前模型并返回它的 `ModelInfo`。接受名字或 `ModelInfo`。 |
+| `client.use_model(name)` | 让某个模型成为当前模型并返回它的 `ModelInfo`。接受名字或 `ModelInfo`；名字先当显示名找，没人用它显示时才当模型 id。 |
 | `client.effort`、`client.efforts` | 当前级别，以及当前模型接受的级别。 |
 | `client.use_effort(name)` | 设置级别并返回。 |
 | `client.use_compact_percent(percent)` | 从下一次请求起,改变对话在窗口的多大比例(大于 0、至多 100)时被总结。返回当前的 `ModelInfo`,以及配置文件没有被改写的原因(改写了就是 `None`):那样这次改动只在本次运行有效。 |

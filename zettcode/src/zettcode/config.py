@@ -13,6 +13,7 @@ runtime settings keep code defaults.
 from __future__ import annotations
 
 import os
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TypeVar, overload
@@ -693,6 +694,46 @@ def _entry_model(entry: dict[str, object], index: int) -> ModelConfig:
         raise ValueError(f"{label}: {error}") from error
 
 
+def _reject_shared_display_names(models: tuple[ModelConfig, ...], source: Path) -> None:
+    """Refuse a configuration in which two models are shown by one name.
+
+    The name a model is chosen by is the one the picker shows — ``display_model``, or the model's own id when it has
+    none — and a session records it. Two entries under one name would make ``/model`` a guess, and the picker, the
+    status line and the session's memory all name it, so it is refused while the file is read rather than when a
+    reader first tries to use it.
+    """
+    seen: dict[str, int] = {}
+    shared: list[str] = []
+    for index, model in enumerate(models, start=1):
+        name = model.shown_name
+        if name in seen and name not in shared:
+            shared.append(name)
+        seen.setdefault(name, index)
+    if shared:
+        names = ", ".join(repr(name) for name in shared)
+        raise ValueError(
+            f"Two models share one name in {source}: {names}. A model is chosen by the name it is shown by, so give "
+            "each entry its own display_model"
+        )
+
+
+def model_index(models: Sequence[ModelConfig], name: str) -> int | None:
+    """Return the place of the configured model a name means, or ``None`` when no model has it.
+
+    The name a reader sees — ``display_model``, or the model's own id — is looked for first, and the model's id only
+    when no display name answers. Each step must find one entry: a display name two entries share is refused when the
+    configuration is read, and an id two entries share is ambiguity this cannot resolve.
+
+    Raises:
+        ValueError: More than one model answers to the name.
+    """
+    shown = [index for index, model in enumerate(models) if model.shown_name == name]
+    matches = shown or [index for index, model in enumerate(models) if model.model == name]
+    if len(matches) > 1:
+        raise ValueError(f"Ambiguous model: {name}; use a unique display_model")
+    return matches[0] if matches else None
+
+
 def _read_models(raw: object, source: Path) -> tuple[ModelConfig, ...]:
     """Build every configured model, requiring at least one."""
     if raw is None:
@@ -704,6 +745,7 @@ def _read_models(raw: object, source: Path) -> tuple[ModelConfig, ...]:
     if any(not isinstance(entry, dict) for entry in raw):
         raise ValueError("Config key 'models' must be an array of tables ([[models]])")
     models = [_entry_model(entry, index) for index, entry in enumerate(raw, start=1)]
+    _reject_shared_display_names(tuple(models), source)
     return tuple(models)
 
 
@@ -731,7 +773,9 @@ def read_models(path: str | Path | None = None) -> tuple[ModelConfig, ...]:
         raise ValueError("Config key 'models' must be an array of tables ([[models]])")
     if any(not isinstance(entry, dict) for entry in raw):
         raise ValueError("Config key 'models' must be an array of tables ([[models]])")
-    return tuple(_entry_model(entry, index) for index, entry in enumerate(raw, start=1))
+    models = tuple(_entry_model(entry, index) for index, entry in enumerate(raw, start=1))
+    _reject_shared_display_names(models, source)
+    return models
 
 
 def _read_table(raw: object, key: str, source: Path, allowed: frozenset[str]) -> dict[str, object]:

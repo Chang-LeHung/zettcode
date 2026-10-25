@@ -217,7 +217,7 @@ compact_percent = 80                  # 达到窗口的 80% 时压缩
 | 参数 | 类型 | 默认值 | 应该怎么填写 |
 | --- | --- | --- | --- |
 | `model` | 字符串 | 必填 | API 支持的精确模型 id，例如 `deepseek-v4-pro`，不能为空；这是模型唯一必须有的键。 |
-| `display_model` | 字符串 | 模型 id | 自己起的易读名称，例如 `DeepSeek Pro`。不会作为模型 id 发给 API。 |
+| `display_model` | 字符串 | 模型 id | 自己起的易读名称，例如 `DeepSeek Pro`。不会作为模型 id 发给 API。它就是 `/model` 接受、会话记录的名字，所以**不能有两个条目用同一个名字显示** —— 也包括某个条目的 id 正好是另一个条目的名字。读取配置时发现重名会直接报错，并说出是哪个名字。 |
 | `token` | 字符串 | `OPENAI_API_KEY`，否则没有 | 这个接入点的 API key。文件中的非空值优先于环境变量；`anthropic` 项读的是 `ANTHROPIC_API_KEY`。可以不写：本地服务器（Ollama、LM Studio、vLLM）不需要 key，这时不带 key 调用模型；需要 key 的服务器会回 `401`。 |
 | `base_url` | 字符串 | 供应商给出的地址 | 客户端在这个地址后拼接口路径。使用 DeepSeek 或其他非 OpenAI 接口时应显式填写。默认是 `https://api.openai.com/v1`，`anthropic` 项则是 `https://api.anthropic.com`。 |
 | `anthropic` | 布尔值 | `false` | `true` 表示调用 Anthropic 的 Messages API，而不是 OpenAI 兼容接口。不能与 `responses_api` 或 `chat` 同时开启。 |

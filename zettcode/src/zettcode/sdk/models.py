@@ -109,11 +109,11 @@ def add_model(entry: Mapping[str, object], *, path: str | Path | None = None) ->
 
 
 def _find(models: tuple[_config.ModelConfig, ...], name: str) -> int:
-    """Return the place of the model called ``name`` (its display name, or its id)."""
-    for index, model in enumerate(models):
-        if name in (model.shown_name, model.model):
-            return index
-    raise ValueError(f"No model called {name!r}; configured: {', '.join(model.shown_name for model in models)}")
+    """Return the place of the model called ``name`` (its display name, or its id), as the runtime resolves it."""
+    index = _config.model_index(models, name)
+    if index is None:
+        raise ValueError(f"No model called {name!r}; configured: {', '.join(model.shown_name for model in models)}")
+    return index
 
 
 def update_model(name: str, changes: Mapping[str, object], *, path: str | Path | None = None) -> tuple[ModelInfo, ...]:

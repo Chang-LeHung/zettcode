@@ -163,6 +163,32 @@ def test_a_file_that_does_not_parse_is_reported_and_untouched(tmp_path: Path):
     assert path.read_text(encoding="utf-8") == "[[models]\nmodel = "
 
 
+def test_a_second_model_shown_by_a_name_already_taken_is_refused_and_nothing_is_written(tmp_path: Path):
+    path = config_file(tmp_path)
+    add({"model": "a", "token": "t"}, path=path)
+    add({"model": "b", "token": "t"}, path=path)
+    before = path.read_text(encoding="utf-8")
+
+    with pytest.raises(ValueError, match="share one name"):
+        add({"model": "c", "token": "t", "display_model": "a"}, path=path)
+    assert path.read_text(encoding="utf-8") == before, "the file was put back"
+
+    # The same through an edit: a display name already another entry's is a name two models answer to.
+    with pytest.raises(ValueError, match="share one name"):
+        update_model("a", {"display_model": "b"}, path=path)
+    assert path.read_text(encoding="utf-8") == before
+
+
+def test_a_name_is_found_by_its_display_name_before_an_entries_id(tmp_path: Path):
+    path = config_file(tmp_path)
+    add({"model": "a", "token": "t", "display_model": "b"}, path=path)
+    add({"model": "b", "token": "t", "display_model": "c"}, path=path)
+
+    models = update_model("b", {"temperature": 0.2}, path=path)
+
+    assert models[0].temperature == 0.2 and models[1].temperature is None, "the display name won over the id"
+
+
 def test_a_missing_token_falls_back_to_the_environment_like_the_configuration_does(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "sk-env")
     path = config_file(tmp_path)

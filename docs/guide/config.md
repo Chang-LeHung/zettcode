@@ -235,7 +235,7 @@ is not an API key. On macOS/Linux you can restrict file access with
 | Key | Type | Default | What to put here |
 | --- | --- | --- | --- |
 | `model` | string | Required | Exact model id accepted by the API, such as `deepseek-v4-pro`. Non-empty; the only key a model has to have. |
-| `display_model` | string | Model id | Your readable label, such as `DeepSeek Pro`. It is not sent as the model id. |
+| `display_model` | string | Model id | Your readable label, such as `DeepSeek Pro`. It is not sent as the model id. This is the name `/model` takes and a session records, so **no two entries may be shown by one name** — including an id that stands in as another entry's name. A file with a shared name is refused when it is read, saying which name it is. |
 | `token` | string | `OPENAI_API_KEY`, else none | API key for this endpoint. A non-empty file value takes precedence over the environment. An `anthropic` entry reads `ANTHROPIC_API_KEY` instead. May be left out: a local server (Ollama, LM Studio, vLLM) wants no key, and the model is called without one. A server that does want one answers `401`. |
 | `base_url` | string | The vendor's address | Where the client appends its route. Set it explicitly for DeepSeek or another non-OpenAI endpoint. Defaults to `https://api.openai.com/v1`, or to `https://api.anthropic.com` for an `anthropic` entry. |
 | `anthropic` | boolean | `false` | `true` calls Anthropic's Messages API instead of an OpenAI-compatible one. Cannot be combined with `responses_api` or `chat`. |
