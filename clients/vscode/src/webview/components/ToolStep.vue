@@ -1,7 +1,15 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 
-import { describeTool, formatDuration, lineStats, summariseOutput, toolDetail, toolLanguage } from "../../core/format.js";
+import {
+  describeTool,
+  formatClock,
+  formatDuration,
+  lineStats,
+  summariseOutput,
+  toolDetail,
+  toolLanguage,
+} from "../../core/format.js";
 import type { ToolNode } from "../../core/state.js";
 import { post, state, toggleIn } from "../store.js";
 import Icon from "./Icon.vue";
@@ -31,8 +39,12 @@ const detail = computed(() => toolDetail(props.tool.name, props.tool.arguments))
 const language = computed(() => toolLanguage(props.tool.name, props.tool.arguments));
 const isBash = computed(() => /(^|__)(bash|shell)$/i.test(props.tool.name));
 const isMessage = computed(() => /(^|__)send_message$/i.test(props.tool.name));
-/** A command's card, and a failed call's, is open until you fold it; every other tool's body opens when you ask. */
-const opensByDefault = computed(() => isBash.value || isMessage.value || props.tool.status === "failed");
+/**
+ * A failed call's card is open until you fold it, and a message to another session's shows what it said at once.
+ * Every other tool's body — a command's included — opens when you ask: a command shows on its row, cut short if it
+ * is long, so the step reads without unfolding it.
+ */
+const opensByDefault = computed(() => isMessage.value || props.tool.status === "failed");
 const open = computed(() =>
   opensByDefault.value ? !state.closedTools.has(props.tool.callId) : state.openTools.has(props.tool.callId),
 );
@@ -45,10 +57,34 @@ function toggle(): void {
 }
 const tone = computed(() => (props.tool.status === "failed" ? "red" : toneOf(props.tool.name)));
 const target = computed(() => display.value.target || summariseOutput(props.tool.output, 90));
+
+/**
+ * A running row counts up instead of saying "running": the command's own time, in the words the receipt uses, so the
+ * reader can tell a slow step from a hung one without opening it. The clock ticks only while this row runs.
+ */
+const now = ref(Date.now());
+let ticker: number | undefined;
+const running = computed(() => props.tool.status === "running");
+watch(
+  running,
+  (on) => {
+    window.clearInterval(ticker);
+    ticker = undefined;
+    if (on) {
+      now.value = Date.now();
+      ticker = window.setInterval(() => {
+        now.value = Date.now();
+      }, 500);
+    }
+  },
+  { immediate: true },
+);
+onBeforeUnmount(() => window.clearInterval(ticker));
+
 const status = computed(() => {
   const tool = props.tool;
-  if (tool.status === "running") {
-    return "running";
+  if (running.value) {
+    return formatClock(Math.max(0, now.value - tool.startedAt));
   }
   if (tool.status === "failed" || tool.status === "skipped") {
     return tool.status;
@@ -93,7 +129,7 @@ const changedPath = computed(() => {
 
 <template>
   <div class="tool step" :class="[tool.status, { open }]">
-    <span class="step-dot" :class="[tone, { pulse: tool.status === 'running' }]" />
+    <span class="step-dot" :class="tone" />
     <button class="tool-head" type="button" :disabled="!hasBody" @click="toggle">
       <span class="tool-verb">{{ display.verb }}</span>
       <span

@@ -266,6 +266,43 @@ test("a tool row opens and closes its body", async () => {
   assert.equal(ui.one(".tool-body"), null);
 });
 
+test("a command shows on its row without unfolding, and opens to its output", async () => {
+  const ui = await harness();
+  const turn = createTurn("Run the tests", [], 9000, "turn-command");
+  const command = "pytest -q tests/test_server_api.py tests/test_client_parity.py --maxfail=1 -p no:cacheprovider";
+  applyEvent(turn, { type: "tool_started", call_id: "b1", name: "bash", arguments: { command } }, 9100);
+  applyEvent(turn, { type: "tool_finished", call_id: "b1", name: "bash", output: "3 passed", ok: true, skipped: false }, 9600);
+  await ui.send({ type: "turn", turn });
+
+  const row = ui.one('[data-id="turn-command"] .tool');
+  assert.ok(row);
+  assert.equal(row.querySelector(".tool-body"), null, "a command's card stays folded until asked for");
+  assert.equal(row.querySelector(".tool-verb")?.textContent, "Bash");
+  const target = row.querySelector(".tool-target");
+  assert.equal(target?.textContent, command, "the command is on the row, whole, so the row can cut it to fit");
+  assert.equal(target?.getAttribute("title"), command, "hovering shows it all");
+
+  await ui.click('[data-id="turn-command"] .tool-head');
+  assert.ok(ui.text('[data-id="turn-command"] .tool-body').includes("3 passed"), "opening shows the output");
+});
+
+test("a running command counts its own time instead of saying running", async () => {
+  const ui = await harness();
+  const startedAt = Date.now() - 3_000;
+  const turn = createTurn("Run it", [], startedAt - 100, "turn-clock");
+  applyEvent(turn, { type: "tool_started", call_id: "b1", name: "bash", arguments: { command: "sleep 30" } }, startedAt);
+  await ui.send({ type: "turn", turn });
+
+  const row = ui.one('[data-id="turn-clock"] .tool');
+  assert.ok(row);
+  assert.match(row.querySelector(".tool-status")?.textContent ?? "", /^[34]s$/, "the time it has taken so far");
+  assert.equal(row.querySelector(".step-dot")?.classList.contains("pulse"), false, "a dot that holds still");
+
+  applyEvent(turn, { type: "tool_finished", call_id: "b1", name: "bash", output: "ok", ok: true, skipped: false }, startedAt + 1_500);
+  await ui.send({ type: "turn", turn });
+  assert.equal(ui.one('[data-id="turn-clock"] .tool-status')?.textContent, "1.5s", "and the whole time once it ends");
+});
+
 test("a shell step is named for the tool, and the approval card says Bash", async () => {
   const ui = await harness();
   const card = ui.one(".approval.pending");
@@ -753,7 +790,8 @@ test("only the thought step says Thinking; the status at the end says Processing
     })(),
   });
   assert.ok(ui.text("#live-status").includes("Processing"));
-  assert.ok(ui.text("#live-status .live-detail").includes("Bash"));
+  assert.equal(ui.one("#live-status .live-detail"), null, "a step's name belongs on its own row, not here");
+  assert.ok(ui.text("#live-status .live-time").match(/\d/), "the time it has been going is here");
 });
 
 test("a message sent during a run waits as a follow-up, and can be steered in", async () => {
