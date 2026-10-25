@@ -112,7 +112,9 @@ class ExampleCommandUi(CommandUi):
 @pytest.mark.parametrize("path", ["docs/guide/plugins.md", "docs/zh/guide/plugins.md"])
 async def test_documented_plugin_registers_and_runs_its_command(path, tmp_path):
     examples = code_blocks(path, "python")
-    assert len(examples) == 5
+    # Five blocks build the plugin; the sixth is the command that asks the model for something (see
+    # "Asking the model" / "让模型干活"), which is a handler like any other and compiles just the same.
+    assert len(examples) == 6
     namespace = {}
     for example in examples:
         exec(compile(example, path, "exec"), namespace)

@@ -101,6 +101,26 @@ class CommandHost(Protocol):
     async def run_side_question(self, question: str) -> None:
         """Answer a question that is kept out of the conversation."""
 
+    async def prompt(self, text: str) -> bool:
+        """Run ``text`` as one turn of this conversation, exactly as if the reader had typed it.
+
+        The text reaches the model the way a draft does: echoed in the transcript as the reader's own message,
+        stored in the session, streamed as it is answered, and settled by the same row. ``@`` references are
+        resolved; pictures the text cannot carry are not part of it.
+
+        The turn is awaited, so the command that asked for it holds the request slot until it has been answered,
+        and the row the shell shows is the command's own.
+
+        Args:
+            text: What to ask. Its own text is what the reader sees, so a command that builds the text should
+                write it as a reader would have.
+
+        Returns:
+            Whether a turn was started and has ended. A request already running, a blank text and a session held
+            by another process answer ``False``, and nothing is started. A command that means to be usable
+            mid-request says ``when_busy="queue"``, and this then runs when the request in flight has ended.
+        """
+
     def change_model(self, name: ModelInfo | str) -> ModelInfo:
         """Switch models and announce the change in the transcript."""
 

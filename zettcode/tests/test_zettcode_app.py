@@ -1163,6 +1163,72 @@ async def test_plugin_commands_join_the_shell_and_run():
     assert "hello world" in harness.render().text
 
 
+async def test_a_command_can_run_its_argument_as_a_turn_of_the_conversation():
+    """A command that asks the model something produces the turn a reader would have produced."""
+    events = [AgentEvent(AgentEventType.TEXT_DELTA, "s", delta="looks fine to me")]
+
+    async def review(context: CommandContext) -> CommandResult:
+        assert await context.require_host().prompt(f"Review the change: {context.argument}")
+        return CommandResult()
+
+    plugins = rows_and_commands(commands=(Command("/review", "review something", "plugin", review),))
+    app = build_app(events, plugins=plugins)
+    harness = _harness(app)
+
+    await _type_command(app, harness, "/review the parser")
+
+    said = "Review the change: the parser"
+    assert any(entry.kind == "user" and entry.text == said for entry in app.transcript.entries)
+    assert app.agent.runtime.client.messages[-1] == said, "the model is asked exactly what the reader sees"
+    assert "/review" not in "\n".join(entry.text for entry in app.transcript.entries if entry.kind == "user")
+    assert not any("Review the change" in entry.text for entry in app.transcript.entries if entry.kind == "notice")
+    assert "looks fine to me" in harness.render().text
+
+
+async def test_a_command_running_a_prompt_while_busy_is_refused_not_queued_hidden():
+    """Without ``when_busy``, a request in flight refuses the command, so no prompt is started behind its back."""
+
+    async def review(context: CommandContext) -> CommandResult:
+        await context.require_host().prompt("never mind")
+        return CommandResult()
+
+    plugins = rows_and_commands(commands=(Command("/review", "review something", "plugin", review),))
+    app = build_app(block=True, plugins=plugins)
+    harness = _harness(app)
+
+    harness.write("first")
+    harness.press("enter")
+    await asyncio.sleep(0.05)
+    harness.write("/review now")
+    harness.press("enter")
+    await asyncio.sleep(0.05)
+
+    assert not any(entry.text == "never mind" for entry in app.transcript.entries)
+    assert any("busy" in entry.text for entry in app.transcript.entries if entry.kind == "notice")
+
+    harness.press("ctrl_c")
+    await asyncio.wait_for(app.task, 2.0)
+
+
+async def test_a_plugin_command_asking_for_nothing_starts_no_turn():
+    """A blank text — or a command whose argument was left out — is not a turn."""
+    ran: list[str] = []
+
+    async def review(context: CommandContext) -> CommandResult:
+        ran.append(context.argument)
+        assert await context.require_host().prompt(context.argument) is False
+        return CommandResult()
+
+    plugins = rows_and_commands(commands=(Command("/review", "review something", "plugin", review),))
+    app = build_app([], plugins=plugins)
+    harness = _harness(app)
+
+    await _type_command(app, harness, "/review")
+
+    assert ran == [""]
+    assert app.agent.runtime.client.messages == []
+
+
 async def test_plugin_load_failures_are_shown_at_startup():
     """A plugin that cannot load is reported instead of disappearing silently."""
     app = build_app(plugins=rows_and_commands(failures=("greeter: bad config",)))
