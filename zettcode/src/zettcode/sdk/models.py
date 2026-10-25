@@ -22,25 +22,30 @@ from .types import ModelInfo
 __all__ = ["add_model", "list_models", "remove_model", "update_model"]
 
 
+def model_info(model: _config.ModelConfig, *, active: bool = False) -> ModelInfo:
+    """Return one configured model as an SDK value; ``active`` is for a client to say, a file cannot."""
+    return ModelInfo(
+        name=model.shown_name,
+        model=model.model,
+        context_window=model.context_window,
+        multimodal=model.multimodal,
+        efforts=tuple(level.value for level in model.efforts),
+        active=active,
+        compact_percent=model.compact_percent,
+        web_search=model.web_search,
+        web_search_name=model.web_search_name,
+        display_model=model.display_model,
+        base_url=model.base_url,
+        api=model.api.value,
+        temperature=model.temperature,
+        can_search=model.can_search,
+        search_name=model.search_name,
+    )
+
+
 def _infos(models: tuple[_config.ModelConfig, ...]) -> tuple[ModelInfo, ...]:
     """Return the configured models as SDK values; none is marked active, which only a client knows."""
-    return tuple(
-        ModelInfo(
-            name=model.shown_name,
-            model=model.model,
-            context_window=model.context_window,
-            multimodal=model.multimodal,
-            efforts=tuple(level.value for level in model.efforts),
-            compact_percent=model.compact_percent,
-            web_search=model.web_search,
-            web_search_name=model.web_search_name,
-            display_model=model.display_model,
-            base_url=model.base_url,
-            api=model.api.value,
-            temperature=model.temperature,
-        )
-        for model in models
-    )
+    return tuple(model_info(model) for model in models)
 
 
 def _path(path: str | Path | None) -> Path:

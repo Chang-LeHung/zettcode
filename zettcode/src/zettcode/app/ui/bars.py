@@ -88,7 +88,7 @@ class BarsMixin(ShellState):
         # unreached cell reads as a groove rather than as a dim line of text.
         groove = blend(theme.muted, theme.surface, 0.55)
         spans: list[Span] = [
-            Span(self.agent.active_model.shown_name, muted),
+            Span(self.client.model.name, muted),
             Span(f" {SEPARATOR} ", muted),
         ]
         away = 1.0 - gauge.presence
@@ -142,7 +142,7 @@ class BarsMixin(ShellState):
 
         spans: list[Span] = []
         column = 0
-        for character in f"{self.agent.active_model.shown_name} {SEPARATOR} ":
+        for character in f"{self.client.model.name} {SEPARATOR} ":
             if column >= frame.lead:
                 break
             steady = blend(muted, gold, 0.3)
@@ -260,8 +260,8 @@ class BarsMixin(ShellState):
                 handle=self.messenger.handle if self.messenger is not None else "",
             ),
             model=ModelState(
-                config=self.agent.active_model,
-                name=self.agent.active_model.shown_name,
+                config=self.client.model,
+                name=self.client.model.name,
                 effort=self.client.effort,
                 efforts=self.client.efforts,
             ),

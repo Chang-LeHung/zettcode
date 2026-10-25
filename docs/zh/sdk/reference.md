@@ -151,6 +151,11 @@ class Client:
 | `stream(...)` | `RunStream` | 与 `prompt` 是同一个方法。 |
 | `run(prompt, *, images, mentions, on_approval, on_question, on_event, timeout, keep_events)` | `RunResult`（可 await） | 把 `await client.prompt(...)` 写成调用。没有 `raw`。 |
 | `use_model(name)` | `ModelInfo` | 选择模型；接受名字或 `ModelInfo`。 |
+| `config_file` | `Path` | 模型从哪个配置文件读、写到哪个文件。 |
+| `model_entries()` | `tuple[tuple[ModelInfo, Mapping], ...]` | 文件里列出的每个模型及文件为它写的键（按文件顺序）。 |
+| `add_model(entry)` | `ModelInfo` | 把模型加到文件和本 client；正在用的模型不变。 |
+| `update_model(which, changes)` | `ModelInfo` | 按名字或在 `model_entries()` 里的位置修改模型；值为 `None` 表示删除这个键。 |
+| `remove_model(which)` | `ModelInfo` | 删除模型，返回之后正在用的模型。最后一个模型不能删。 |
 | `use_effort(name)` | `str` | 选择推理级别。 |
 | `use_compact_percent(percent)` | `tuple[ModelInfo, str \| None]` | 从下一次请求起改变压缩点(占窗口的比例,大于 0、至多 100),并改写配置文件。第二个值说明文件为什么没有写入,写入了就是 `None`。 |
 | `use_permission(name, *, remember=True)` | `str` | 选择权限级别；从下一条 shell 命令起生效。`remember=False` 不改动会话记住的级别，用于只覆盖这一次运行的选择。 |
@@ -231,7 +236,7 @@ def remove_model(name, *, path=None) -> tuple[ModelInfo, ...]: ...
 | `await run(prompt, *, images, mentions, on_approval, on_question, on_event, timeout, keep_events)` | `RunResult` |
 | `await ask(question, *, on_event=None, timeout=None)` | `str` |
 | `ask_stream(question, *, on_event=None, timeout=None)` | `RunStream` |
-| `steer(message)` | `bool` |
+| `steer(prompt, *, images=(), mentions=False)` | `str \| None` |
 | `await resumable()` | `ResumeInfo \| None` |
 | `resume_stream(*, on_approval, on_question, on_event, timeout, raw, keep_events, defer_answers)` | `RunStream` |
 | `await resume(*, on_approval, on_question, on_event, timeout)` | `RunResult` |

@@ -17,8 +17,8 @@ from ..tui import Widget
 COMMAND_ERRORS = (ValueError, ZettCodeError)
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only; the agent and the config are not imported by this module
-    from ..config import ModelConfig
     from ..sdk.client import Client
+    from ..sdk.types import ModelInfo
     from .agent.agent import TerminalAgent
     from .agent.conversation.transcript import Transcript
 
@@ -101,10 +101,10 @@ class CommandHost(Protocol):
     async def run_side_question(self, question: str) -> None:
         """Answer a question that is kept out of the conversation."""
 
-    def change_model(self, name: ModelConfig | str) -> ModelConfig:
+    def change_model(self, name: ModelInfo | str) -> ModelInfo:
         """Switch models and announce the change in the transcript."""
 
-    def select_model(self, name: ModelConfig) -> None:
+    def select_model(self, name: ModelInfo) -> None:
         """Apply a model picked in a panel and close the panel."""
 
     def change_effort(self, name: str) -> str:

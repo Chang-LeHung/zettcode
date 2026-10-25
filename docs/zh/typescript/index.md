@@ -57,7 +57,8 @@ client.prompt("make the tests pass", {
 ```ts
 await run.approve("call-1", true);       // 或 run.approve(callId, false)
 await run.answer("q-1", "sqlite");
-await run.steer("also update the docs");
+await run.steer("also update the docs");   // 返回运行用来报告它的文字，没人收下则为 null
+await run.steer("look at this", { images: [{ data: base64, mediaType: "image/png" }], mentions: true });
 await run.cancel();
 ```
 

@@ -402,7 +402,7 @@ class ZettCodeApp(
             return None
         previous, current, started = animation
         if current in SHIMMER_LEVELS:
-            lead = display_width(self.agent.active_model.shown_name) + len(f" {SEPARATOR} ")
+            lead = display_width(self.client.model.name) + len(f" {SEPARATOR} ")
             reach = max(self.app.width, shimmer_width(lead, len(self.client.efforts), current))
             progress = (monotonic() - started) / shimmer_seconds(current, reach)
             return shimmer_frame(current, self.client.efforts, lead=lead, reach=reach, progress=progress)
@@ -846,11 +846,11 @@ class ZettCodeApp(
             # The parts are taken before the composer is cleared, and keep the
             # order the chips sit in, so text and pictures stay interleaved.
             parts = mention_parts(self.composer.parts(), self.mentions)
-            if carries_image(parts) and not self.agent.active_model.multimodal:
+            if carries_image(parts) and not self.client.model.multimodal:
                 # A pasted base64 image reaches the composer without the shell
                 # having seen the clipboard, so the model's own limits are
                 # checked again here rather than only when Ctrl-V runs.
-                self.transcript.error(f"{self.agent.active_model.shown_name} does not take images")
+                self.transcript.error(f"{self.client.model.name} does not take images")
                 self.app.invalidate()
                 return False
             self._task = asyncio.create_task(self._run_prompt(value, parts, mention_hint(parts, self.mentions)))

@@ -29,7 +29,7 @@ from zettcode.sdk.events import ApprovalRequested, QuestionAsked
 from zettcode.sdk.handlers import ApprovalHandler, approve_all, approve_commands, deny_all
 from zettcode.sdk.types import Receipt
 
-from .schemas import ApprovalPolicy, PendingOut, PromptRequest, ResumeRequest
+from .schemas import ApprovalPolicy, PendingOut, PromptRequest, ResumeRequest, SteerIn
 from .serialize import event_payload, result_out
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
@@ -115,7 +115,7 @@ def approval_handler(policy: ApprovalPolicy) -> ApprovalHandler | None:
     return deny_all
 
 
-def images_of(request: Request) -> tuple[Image, ...]:
+def images_of(request: Request | SteerIn) -> tuple[Image, ...]:
     """Return the pictures a prompt carries, decoded.
 
     Raises:
@@ -555,9 +555,14 @@ class Runner:
         return slot
 
     # -- the conversation, without running it --------------------------------
-    def steer(self, message: str) -> bool:
-        """Send a message into the run in progress; ``False`` when nothing is running to take it."""
-        return self.client.session.steer(message)
+    def steer(self, message: str, request: SteerIn | None = None) -> str | None:
+        """Send a message into the run in progress; the text the run reports it by, or ``None`` when nothing took it.
+
+        ``request`` carries the pictures and the ``mentions`` switch, as a prompt's does.
+        """
+        images = images_of(request) if request is not None else ()
+        mentions = bool(getattr(request, "mentions", False))
+        return self.client.session.steer(message, images=images, mentions=mentions)
 
     async def resumable(self) -> ResumeInfo | None:
         """Return where the conversation was interrupted, or ``None`` when it was not."""

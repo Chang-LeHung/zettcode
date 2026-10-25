@@ -287,8 +287,8 @@ class KeysMixin(ShellState):
             return True
         if image is None:
             self.transcript.notice("no image on the clipboard")
-        elif not self.agent.active_model.multimodal:
-            self.transcript.error(f"{self.agent.active_model.shown_name} does not take images")
+        elif not self.client.model.multimodal:
+            self.transcript.error(f"{self.client.model.name} does not take images")
         else:
             label = self.composer.attach_image(*image)
             self._note = f"attached {label}"

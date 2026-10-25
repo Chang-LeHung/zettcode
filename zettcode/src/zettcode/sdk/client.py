@@ -600,26 +600,17 @@ class Client:
     @property
     def models(self) -> tuple[ModelInfo, ...]:
         """Return the configured models; the one the next run uses is marked ``active``."""
+        from .models import model_info
+
         active = self._agent.active_model
-        return tuple(
-            ModelInfo(
-                name=entry.shown_name,
-                model=entry.model,
-                context_window=entry.context_window,
-                multimodal=entry.multimodal,
-                efforts=tuple(level.value for level in entry.efforts),
-                active=entry is active,
-                compact_percent=entry.compact_percent,
-                web_search=entry.web_search,
-                web_search_name=entry.web_search_name,
-            )
-            for entry in self._agent.models
-        )
+        return tuple(model_info(entry, active=entry is active or entry == active) for entry in self._agent.models)
 
     @property
     def model(self) -> ModelInfo:
         """Return the model the next run uses."""
-        return next(info for info in self.models if info.active)
+        from .models import model_info
+
+        return model_info(self._agent.active_model, active=True)
 
     def use_model(self, name: str | ModelInfo) -> ModelInfo:
         """Choose the model for later runs, by the name :attr:`models` lists.
@@ -634,6 +625,115 @@ class Client:
         except ValueError as error:
             raise ConfigurationError(f"{error}. Configured: {', '.join(info.name for info in self.models)}") from error
         return self.model
+
+    # -- the models the configuration file lists, edited while the client runs --
+    @property
+    def config_file(self) -> Path:
+        """Return the configuration file the models are read from and written to."""
+        return self._agent.config_file
+
+    def model_entries(self) -> tuple[tuple[ModelInfo, Mapping[str, object]], ...]:
+        """Return each model the file lists with the keys the file writes for it, in the file's order.
+
+        The file is the source of truth for editing, not the models the client started with: a person may have changed
+        it by hand since. The keys are what is *written*: a token left to an environment variable is absent, and the
+        token a model has is never in them.
+
+        Raises:
+            ConfigurationError: The file cannot be read, is not valid, or lays its models out in a way that cannot be
+                changed safely.
+        """
+        from .models import model_info
+
+        self._check_open()
+        active = self._agent.active_model
+        try:
+            found = self._agent.file_models()
+        except ValueError as error:
+            raise ConfigurationError(str(error)) from error
+
+        def is_active(model: Any) -> bool:
+            # The file's model and the one in use are read separately, so they are the same entry by what names it
+            # (the token may differ, e.g. when it comes from the environment), not by being the same object.
+            return (model.shown_name, model.model, model.base_url) == (active.shown_name, active.model, active.base_url)
+
+        return tuple((model_info(model, active=is_active(model)), entry) for model, entry in found)
+
+    def add_model(self, entry: Mapping[str, object]) -> ModelInfo:
+        """Add one model to the file and to this client, and return it. The model in use does not change.
+
+        The entry uses the file's own keys (see :func:`zettcode.sdk.add_model`). The file is written first, so a write
+        that fails leaves the client as it was.
+
+        Raises:
+            ConfigurationError: The entry is not a model that can be called, or the file cannot be edited.
+        """
+        from .models import model_info
+
+        self._check_open()
+        try:
+            return model_info(self._agent.add_configured_model(entry))
+        except ValueError as error:
+            raise ConfigurationError(str(error)) from error
+
+    def update_model(self, which: str | int, changes: Mapping[str, object]) -> ModelInfo:
+        """Change one model in the file and in this client; keys not named stay as they are.
+
+        As :func:`zettcode.sdk.update_model` does for the file alone: the token is kept unless a new one is given,
+        and a key whose value is ``None`` is removed from the entry.
+
+        Args:
+            which: The model's name (its display name, or its id), or its place in :meth:`model_entries` counted from
+                zero, which tells apart two entries that share a name.
+            changes: The file's keys to set, or to remove with ``None``.
+
+        Raises:
+            ConfigurationError: No such model, or the result is not usable.
+        """
+        from .models import model_info
+
+        self._check_open()
+        try:
+            index = self._file_index(which)
+            entry = dict(self._agent.file_models()[index][1])
+            for key, value in changes.items():
+                if value is None:
+                    entry.pop(key, None)
+                else:
+                    entry[key] = value
+            return model_info(self._agent.update_configured_model(index, entry))
+        except ValueError as error:
+            raise ConfigurationError(str(error)) from error
+
+    def remove_model(self, which: str | int) -> ModelInfo:
+        """Remove one model from the file and this client; return the model in use afterwards.
+
+        Args:
+            which: The model's name, or its place in :meth:`model_entries` counted from zero.
+
+        Raises:
+            ConfigurationError: No such model, or it is the only one.
+        """
+        from .models import model_info
+
+        self._check_open()
+        try:
+            now = self._agent.remove_configured_model(self._file_index(which))
+        except ValueError as error:
+            raise ConfigurationError(str(error)) from error
+        return model_info(now, active=True)
+
+    def _file_index(self, which: str | int) -> int:
+        """Return the place in the file of a model named by its display name, its id, or its place."""
+        models = [model for model, _entry in self._agent.file_models()]
+        if isinstance(which, int) and not isinstance(which, bool):
+            if 0 <= which < len(models):
+                return which
+            raise ValueError(f"There is no model number {which}; the file lists {len(models)}")
+        for index, model in enumerate(models):
+            if which in (model.shown_name, model.model):
+                return index
+        raise ValueError(f"No model called {which!r}; configured: {', '.join(m.shown_name for m in models)}")
 
     def use_compact_percent(self, percent: float) -> tuple[ModelInfo, str | None]:
         """Summarize the conversation at ``percent`` of the active model's window, from the next request on.

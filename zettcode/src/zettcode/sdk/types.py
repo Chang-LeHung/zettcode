@@ -162,6 +162,8 @@ class ModelInfo:
         base_url: The address requests go to, or ``None`` for the API's own.
         api: The protocol the entry speaks: ``chat``, ``responses`` or ``anthropic``.
         temperature: The sampling temperature the entry sends, or ``None`` for the provider's own.
+        can_search: Whether the endpoint serves hosted web search at all (DeepSeek's chat endpoint does not).
+        search_name: The tool type search is sent as: the entry's own, or the default for the API it speaks.
     """
 
     name: str
@@ -177,6 +179,13 @@ class ModelInfo:
     base_url: str | None = None
     api: str = "chat"
     temperature: float | None = None
+    can_search: bool = True
+    search_name: str = ""
+
+    @property
+    def compaction_max_tokens(self) -> int:
+        """Return the context size, in tokens, at which a request is summarized first."""
+        return max(1, round(self.context_window * self.compact_percent / 100))
 
 
 @dataclass(frozen=True, slots=True)

@@ -149,6 +149,8 @@ def model_out(model: ModelInfo) -> ModelOut:
         base_url=model.base_url,
         api=model.api,
         temperature=model.temperature,
+        can_search=model.can_search,
+        search_name=model.search_name,
     )
 
 

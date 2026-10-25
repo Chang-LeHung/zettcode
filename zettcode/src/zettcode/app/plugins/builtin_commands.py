@@ -179,7 +179,7 @@ class SessionCommands(TerminalPlugin):
             except COMMAND_ERRORS as error:
                 host.transcript.error(str(error))
                 return
-            said = f"{model.display_model or model.model}: compacts at {whole_if_whole(model.compact_percent)}% of the window"
+            said = f"{model.name}: compacts at {whole_if_whole(model.compact_percent)}% of the window"
             said += f" ({round(model.context_window * model.compact_percent / 100):,} tokens)"
             if unwritten is None:
                 host.transcript.notice(said)
@@ -187,12 +187,12 @@ class SessionCommands(TerminalPlugin):
                 host.transcript.notice(f"{said} for this run; not remembered: {unwritten}")
             host.request_layout()
 
-        model = host.agent.active_model
+        model = host.client.model
         return CommandResult(
             widget=ContextPage(
                 report,
                 path=host.client.session.path,
-                model=model.shown_name,
+                model=model.name,
                 trigger=model.compaction_max_tokens,
                 compact_percent=model.compact_percent,
                 on_apply=apply,
@@ -212,7 +212,7 @@ def model_words(host: CommandHost | None) -> tuple[Subcommand, ...]:
     """
     if host is None:
         return ()
-    models = host.agent.models
+    models = host.client.models
     shown = [model.display_model or model.model for model in models]
     return tuple(
         Subcommand(name, model.model)
@@ -281,7 +281,7 @@ class ModelCommands(TerminalPlugin):
             return CommandResult(relayout=True)
         from zettcode.app.ui.widgets import ModelPage
 
-        page = ModelPage(host.agent, on_select=host.select_model, on_cancel=host.close_page)
+        page = ModelPage(host.client, on_select=host.select_model, on_cancel=host.close_page)
         return CommandResult(widget=_panel(page))
 
     async def effort(self, context: CommandContext) -> CommandResult:

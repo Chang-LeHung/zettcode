@@ -60,7 +60,8 @@ or by hand, by `call_id`:
 ```ts
 await run.approve("call-1", true);       // or run.approve(callId, false)
 await run.answer("q-1", "sqlite");
-await run.steer("also update the docs");
+await run.steer("also update the docs");   // resolves to the text the run reports it by, or null
+await run.steer("look at this", { images: [{ data: base64, mediaType: "image/png" }], mentions: true });
 await run.cancel();
 ```
 

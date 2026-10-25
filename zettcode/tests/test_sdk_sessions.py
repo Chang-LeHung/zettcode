@@ -458,13 +458,13 @@ async def test_a_side_question_is_not_a_conversation_and_does_not_leave_the_side
 async def test_steering_with_nothing_running_is_false_and_queues_nothing(tmp_path, monkeypatch):
     wire(monkeypatch, ScriptedModel("x"))
     async with make(tmp_path) as client:
-        assert client.session.steer("hurry") is False
+        assert client.session.steer("hurry") is None
         await client.prompt("go")
-        assert client.session.steer("too late") is False
+        assert client.session.steer("too late") is None
 
 
-@pytest.mark.parametrize("bad", ["", "   ", None, 5, b"x"])
-async def test_steering_with_a_blank_or_non_text_message_is_false(tmp_path, monkeypatch, bad):
+@pytest.mark.parametrize("blank", ["", "   "])
+async def test_steering_with_a_blank_message_is_refused(tmp_path, monkeypatch, blank):
     gate = asyncio.Event()
 
     async def hold(request):
@@ -476,7 +476,26 @@ async def test_steering_with_a_blank_or_non_text_message_is_false(tmp_path, monk
         task = asyncio.create_task(client.run("slow"))
         await asyncio.sleep(0.05)
 
-        assert client.session.steer(bad) is False
+        assert client.session.steer(blank) is None
+        gate.set()
+        await task
+
+
+@pytest.mark.parametrize("bad", [None, 5, b"x"])
+async def test_steering_with_a_non_text_message_is_a_type_error(tmp_path, monkeypatch, bad):
+    gate = asyncio.Event()
+
+    async def hold(request):
+        await gate.wait()
+        return "done"
+
+    wire(monkeypatch, ScriptedModel(hold))
+    async with make(tmp_path) as client:
+        task = asyncio.create_task(client.run("slow"))
+        await asyncio.sleep(0.05)
+
+        with pytest.raises(TypeError):
+            client.session.steer(bad)
         gate.set()
         await task
 
@@ -497,8 +516,33 @@ async def test_steering_a_running_request_is_accepted_and_reaches_the_model(tmp_
         gate.set()
         result = await task
 
-    assert accepted is True and result.text == "adjusted"
+    assert accepted == "actually do it differently" and result.text == "adjusted"
     assert "actually do it differently" in str(model.requests[1].messages)
+
+
+async def test_a_steering_message_can_carry_a_picture_and_is_reported_by_the_text_it_was_built_with(
+    tmp_path, monkeypatch
+):
+    from zett_agent.messages import ImageContent
+
+    gate = asyncio.Event()
+
+    async def first(request):
+        await gate.wait()
+        return asks_for(call("read_file", {"path": "x"}, call_id="r"))
+
+    model = wire(monkeypatch, ScriptedModel(first, "adjusted"))
+    async with make(tmp_path, models=models("eyes", multimodal=True)) as client:
+        task = asyncio.create_task(client.run("start"))
+        await asyncio.sleep(0.05)
+
+        taken = client.session.steer("look at this", images=[zc.Image(b"\x89PNG", "image/png")])
+        gate.set()
+        await task
+
+    assert taken == "look at this"
+    steered = model.requests[1].messages[-1]
+    assert any(isinstance(part, ImageContent) for part in steered.parts)
 
 
 async def test_steering_another_session_than_the_running_one_is_false(tmp_path, monkeypatch):
@@ -515,7 +559,7 @@ async def test_steering_another_session_than_the_running_one_is_false(tmp_path, 
         await asyncio.sleep(0.05)
         stranger = type(other)(client, "some-other-session")
 
-        assert stranger.steer("hey") is False
+        assert stranger.steer("hey") is None
         gate.set()
         await task
 

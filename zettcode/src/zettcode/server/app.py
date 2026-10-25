@@ -501,7 +501,8 @@ def create_app(settings: Settings, *, client_factory: ClientFactory | None = Non
     @protected.post("/runs/steer", response_model=SteeredOut, tags=["prompts"])
     async def steer(body: SteerIn, runner: RunnerDep) -> SteeredOut:
         """Send a message into the run in progress; it drops what it was doing to take it into account."""
-        return SteeredOut(steered=runner.steer(body.text))
+        taken = runner.steer(body.text, body)
+        return SteeredOut(steered=taken is not None, text=taken)
 
     @protected.post("/runs/cancel", response_model=CancelledOut, tags=["prompts"])
     async def cancel_run(runner: RunnerDep) -> CancelledOut:

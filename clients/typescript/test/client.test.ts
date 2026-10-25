@@ -622,11 +622,35 @@ describe("a prompt", () => {
     await assert.rejects(run.result);
   });
 
+  test("a steer carries pictures and mentions, and resolves to the text the run reports it by, or null", async () => {
+    const seen: unknown[] = [];
+    const server = await start((request, response) => {
+      seen.push(JSON.parse(request.body));
+      if (seen.length === 1) return json(response, { steered: true, text: "look\n\nhint" });
+      json(response, { steered: false, text: null });
+    });
+    const client = new ZettCodeClient({ baseUrl: server.url });
+
+    const taken = await client.session.steer("look", {
+      images: [{ data: "AAAA", mediaType: "image/png" }],
+      mentions: true,
+    });
+    const refused = await client.session.steer("again");
+
+    assert.equal(taken, "look\n\nhint");
+    assert.equal(refused, null);
+    assert.deepEqual(seen[0], {
+      text: "look",
+      images: [{ data: "AAAA", media_type: "image/png" }],
+      mentions: true,
+    });
+  });
+
   test("steering and answering go to the run endpoints", async () => {
     const server = await start((request, response) => {
       if (request.url === "/runs/steer") {
         assert.deepEqual(JSON.parse(request.body), { text: "also the docs" });
-        return json(response, { steered: true });
+        return json(response, { steered: true, text: "also the docs" });
       }
       if (request.url === "/runs/approvals") {
         assert.deepEqual(JSON.parse(request.body), { call_id: "c", approve: false, remember: true });
@@ -646,7 +670,7 @@ describe("a prompt", () => {
     });
     const client = new ZettCodeClient({ baseUrl: server.url });
 
-    assert.equal(await client.session.steer("also the docs"), true);
+    assert.equal(await client.session.steer("also the docs"), "also the docs");
     assert.equal(await client.approve("c", false, true), false);
     assert.equal(await client.answer("q", null), true);
     assert.deepEqual(await client.runState(), { running: false, pending: null });
