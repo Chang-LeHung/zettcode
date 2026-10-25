@@ -126,6 +126,21 @@ async def greet(self, context: CommandContext) -> CommandResult:
 用这个方法替换前面 `Greeter.greet` 即可。错误、提示和 Markdown 结果只展示在 transcript，
 不是发送给模型的用户消息。用 command UI 方法输出，不要用会绕过终端界面的 `print()`。
 
+### 让模型干活
+
+命令可以用 `await context.require_host().run_prompt(text)` 跑一轮对话，效果等同于读者亲手输入了这句话：文本作为读者的消息写进 transcript、存进会话、边答边显示，最后落在那行结束语上；`@` 引用会被解析，而且命令会一直占着这次请求，直到答案回来。它返回 `False` 时什么都不会启动：文本为空、会话被另一个进程打开，或者已经有请求在跑 —— 后者的情况下，想让命令在忙时可用，就声明 `when_busy="queue"`（见[请求运行期间](#请求运行期间)）。
+
+这就是“命令是给模型的预设，而不是对模型的汇报”的写法：
+
+```python
+async def review(self, context: CommandContext) -> CommandResult:
+    if not context.argument:
+        context.ui.error("Usage: /review <看什么>")
+        return CommandResult()
+    await context.require_host().run_prompt(f"评审这次改动，然后列出你会改的地方。{context.argument}")
+    return CommandResult()
+```
+
 ### 提示第一个词
 
 如果命令的第一个词是固定的（`/deploy staging`），可以把它列出来，补全菜单在输入命令和空格之后就会给出这些词：
