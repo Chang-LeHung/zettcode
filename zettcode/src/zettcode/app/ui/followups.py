@@ -22,7 +22,9 @@ from zettcode.prompt import PromptPart, carries_image, mention_hint, mention_par
 from zettcode.tui import Screen
 from zettcode.tui.render import truncate
 
+from ..commands import COMMAND_ERRORS
 from .shell import MAX_FOLLOW_UPS, MAX_STEERING, PAGE_SCREEN, ShellState
+from .turns import prompt_pieces
 from .widgets import SEND_KIND_ROWS, SendKind, SendKindPage, bottom_panel
 from .widgets.follow_up import one_line
 
@@ -119,8 +121,9 @@ class FollowUpsMixin(ShellState):
     def _steer_now(self, value: str, parts: Sequence[PromptPart]) -> bool:
         """Hand one message to the running request as steering, and show it waiting to be adopted.
 
-        Text goes as it was typed. A message with pictures is built the way a turn is, and the agent
-        reports it by the text *that* has, which is what the queue must match.
+        Text goes as it was typed. A message with pictures, or an ``@`` reference that needs explaining, is built the
+        way a turn is, and the run reports it by the text *that* has, which is what the queue must match; the SDK
+        returns that text.
 
         Returns:
             Whether the agent took it; ``False`` leaves everything as it was.
@@ -128,13 +131,16 @@ class FollowUpsMixin(ShellState):
         # A reference that needs explaining (a session) makes the message a built one, as a picture does:
         # the model is told what the @ means whether the turn started with it or it arrived mid-request.
         parts = mention_parts(parts, self.mentions)
-        hint = mention_hint(parts, self.mentions)
-        message = self.agent.turn(parts, hint=hint) if carries_image(parts) or hint is not None else value
-        key = message if isinstance(message, str) else message.text
-        if self._steer_blocked() is None and self.agent.steer(message):
-            self._queue_steering(value, key, parts)
-            return True
-        return False
+        if self._steer_blocked() is not None:
+            return False
+        try:
+            key = self.client.session.steer(prompt_pieces(parts or (value,)), mentions=True)
+        except COMMAND_ERRORS:
+            return False  # e.g. a picture for a model that takes none
+        if key is None:
+            return False
+        self._queue_steering(value, key, parts)
+        return True
 
     def _steer_follow_up(self) -> bool:
         """Turn the highlighted follow-up into a steering message, without taking it out of the reader's hands first.

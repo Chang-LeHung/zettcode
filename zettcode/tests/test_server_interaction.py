@@ -148,14 +148,14 @@ async def test_a_message_can_be_steered_into_the_run_in_progress_and_not_into_an
     async with serve(client) as (http, app):
         task = asyncio.ensure_future(http.post("/prompts", json={"text": "long"}))
         await until(lambda: client.asked)
-        steered = await http.post("/runs/steer", json={"text": "also update the docs"})
+        steered = await http.post("/runs/steer", json={"text": "also update the docs", "mentions": True})
         await http.post("/runs/cancel")
         await task
         idle = await http.post("/runs/steer", json={"text": "anyone there?"})
 
-    assert steered.json() == {"steered": True}
+    assert steered.json() == {"steered": True, "text": "also update the docs"}
     assert client.session.steered == ["also update the docs", "anyone there?"]
-    assert idle.json() == {"steered": True}, "the fake says yes; the SDK says no when nothing runs"
+    assert idle.json()["steered"] is True, "the fake says yes; the SDK says no when nothing runs"
 
 
 async def test_an_interrupted_request_is_described_and_can_be_continued_as_a_stream():

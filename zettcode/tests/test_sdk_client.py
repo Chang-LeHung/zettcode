@@ -180,6 +180,57 @@ async def test_a_level_chosen_for_one_run_is_not_remembered_by_the_session(tmp_p
         assert again.permission == "safe", "reopening the session restores what it remembered, not the one-run level"
 
 
+def _file_with_models(tmp_path: Path, monkeypatch) -> Path:
+    """Write a configuration file with two models and point the process at it; never the user's own."""
+    path = tmp_path / "config.toml"
+    path.write_text(
+        '[[models]]\nmodel = "alpha"\ntoken = "t1"\n\n[[models]]\nmodel = "beta"\ntoken = "t2"\ncontext_window = 1000\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ZETTCODE_CONFIG", str(path))
+    return path
+
+
+async def test_the_models_can_be_listed_added_changed_and_removed_while_the_client_runs(tmp_path, monkeypatch):
+    path = _file_with_models(tmp_path, monkeypatch)
+    async with zc.Client(config=config_for(tmp_path, models=models("alpha", "beta"))) as client:
+        assert client.config_file == path
+        listed = client.model_entries()
+        assert [info.name for info, _ in listed] == ["alpha", "beta"]
+        assert [info.active for info, _ in listed] == [True, False], "the one in use is marked"
+        assert "token" in listed[1][1] and listed[1][1]["context_window"] == 1000
+
+        added = client.add_model({"model": "gamma", "token": "t3", "display_model": "Gamma"})
+        assert added.name == "Gamma" and client.model.name == "alpha", "adding is not choosing"
+        assert [m.name for m in client.models] == ["alpha", "beta", "Gamma"]
+
+        changed = client.update_model("beta", {"context_window": 5000, "token": None})
+        assert changed.context_window == 5000
+        assert "token" not in dict(client.model_entries()[1][1]), "None removes a key"
+
+        client.use_model("Gamma")
+        now = client.remove_model("Gamma")
+        assert now.name in ("alpha", "beta") and client.model.name == now.name, "it moves to one that is left"
+        assert [m.name for m in client.models] == ["alpha", "beta"]
+    assert "gamma" not in path.read_text(encoding="utf-8"), "the file was edited, not only the client"
+
+
+async def test_a_model_that_is_not_there_or_a_file_that_is_missing_is_a_configuration_error(tmp_path, monkeypatch):
+    _file_with_models(tmp_path, monkeypatch)
+    async with zc.Client(config=config_for(tmp_path, models=models("alpha", "beta"))) as client:
+        with pytest.raises(ConfigurationError, match="No model called"):
+            client.update_model("nope", {"context_window": 1})
+        with pytest.raises(ConfigurationError):
+            client.add_model({"token": "no model key"})
+        client.remove_model("beta")
+        with pytest.raises(ConfigurationError):
+            client.remove_model("alpha")  # the only one
+    monkeypatch.setenv("ZETTCODE_CONFIG", str(tmp_path / "missing.toml"))
+    async with client_for(tmp_path) as client:
+        with pytest.raises(ConfigurationError):
+            client.model_entries()
+
+
 async def test_the_plan_is_empty_until_the_model_makes_one_and_the_default_without_a_file_is_a_configuration_error(
     tmp_path,
 ):

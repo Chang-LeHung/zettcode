@@ -58,6 +58,10 @@ export interface ModelInfo {
   api?: "chat" | "responses" | "anthropic";
   /** The sampling temperature the entry sends; `null` for the provider's own. */
   temperature?: number | null;
+  /** Whether the endpoint serves hosted web search at all. */
+  can_search?: boolean;
+  /** The tool type search is sent as: the entry's own, or the default for the API it speaks. */
+  search_name?: string;
 }
 
 /** One model to add to the configuration file; the keys are the file's own. */

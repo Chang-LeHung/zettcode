@@ -141,6 +141,8 @@ class ModelOut(BaseModel):
     base_url: str | None = None
     api: str = "chat"
     temperature: float | None = None
+    can_search: bool = True
+    search_name: str = ""
 
 
 class ModelsOut(BaseModel):
@@ -381,15 +383,28 @@ class QuestionAnswer(BaseModel):
 
 
 class SteerIn(BaseModel):
-    """A message for the run in progress."""
+    """A message for the run in progress.
+
+    Attributes:
+        text: What to tell it; ``@path`` references are resolved when ``mentions`` is on.
+        images: Pictures for a model that takes them.
+        mentions: Resolve ``@`` references in the text, as a prompt does.
+    """
 
     text: str = Field(min_length=1)
+    images: list[ImageIn] = Field(default_factory=list)
+    mentions: bool = False
 
 
 class SteeredOut(BaseModel):
-    """Whether a running request took the message; ``false`` when nothing was running."""
+    """Whether a running request took the message, and the text the run reports it by.
+
+    ``text`` is what the ``steered`` event that follows carries, so a client that shows the message as waiting can
+    match it; it is null when nothing took the message.
+    """
 
     steered: bool
+    text: str | None = None
 
 
 class PendingOut(BaseModel):

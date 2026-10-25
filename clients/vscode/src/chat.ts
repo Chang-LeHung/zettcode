@@ -1032,7 +1032,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     }
     let steered = false;
     try {
-      steered = await this.client.session.steer(prompt);
+      steered = (await this.client.session.steer(prompt)) !== null;
     } catch (error) {
       this.post({ type: "notice", level: "warn", text: `Could not steer: ${messageOf(error)}` });
     }

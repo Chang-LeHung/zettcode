@@ -93,15 +93,15 @@ from the SDK's `RunError` (`app/ui/turns.py`). The projector no longer carries t
 transcript, and the run asks.
 
 The views now read the session (id, title, lock, path, workspace), name, fork, retake and load it (`sessions.read_blocking`
-then `sessions.install`), and read and set effort, permission, harness and self-compaction, all through the SDK's client.
-What they still take from `TerminalAgent` is, in the order it would go:
+then `sessions.install`), read and set effort, permission, harness and self-compaction, list, pick and edit the models
+(`client.models`, `use_model`, `model_entries`, `add_model`, `update_model`, `remove_model`; the pickers and forms hold
+the SDK's `ModelInfo`), read the plan, and steer with pictures and `@` references (`Session.steer` returns the text the
+run reports the message by), all through the SDK's client. `test_the_shell_does_not_reach_round_the_sdk_for_what_the_sdk_offers`
+keeps each of those names off the terminal's agent.
 
-- `active_model`, `models`, `find_model`, `use_model`: the terminal draws `ModelConfig` (its own display name and identity
-  comparisons); the SDK's `ModelInfo` is a copy of it. Moving needs a decision on which one the pickers hold.
-- `file_models`, `add_configured_model`, `remove_configured_model`, `update_configured_model`, `config_file`: editing the
-  configuration file from the model forms, which is the terminal's own business.
-- `steer`, `turn`: a steering message can be a built one (pictures, an `@` hint) and the SDK's `steer` takes text. The
-  shell also needs the text the agent will report for it, to match its queue; the SDK would have to return it.
-- Moved in the last step: `tasks` (`Session.tasks`), the self-compaction default (`Client.self_compaction_default`,
-  `use_self_compaction_default`) and the compaction percent (`use_compact_percent`).
-- `runtime`, `conversation`, `presenters`, `pets`, `themes`, `statusline_*`, `plugin_*`: the terminal's own parts.
+What the views still take from `TerminalAgent`:
+
+- `pets`, `themes`, `statusline_*`, `presenters`, `plugin_*`, `commands`, `conversation`: the terminal's own parts.
+- `runtime`: the configuration values the terminal reads directly (`runtime.config.*`), and the two-stage start
+  (`runtime.start()`, so the first frame paints before the engine is ready), which the SDK has no public form of.
+- `require_session`, `resume_blocker`: the reason a session cannot be written or continued, worded for the reader.

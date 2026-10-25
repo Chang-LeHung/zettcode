@@ -414,6 +414,32 @@ def test_the_shell_starts_a_run_through_the_sdk_and_never_streams_from_its_own_a
     assert offenders == []
 
 
+def test_the_shell_does_not_reach_round_the_sdk_for_what_the_sdk_offers():
+    """The models, the session, the settings, the plan and a steering message are the SDK client's to give and take.
+
+    Each name here was once called on the terminal's agent and has an SDK counterpart now; this keeps it that way.
+    What is left on the agent is the terminal's own (pets, themes, the status line, plugins) and the start of the
+    engine, listed in ``docs/internal/engine.md``.
+    """
+    moved = (
+        "active_model|models|find_model|use_model|file_models|config_file|add_configured_model|"
+        "update_configured_model|remove_configured_model|change_compact_percent|tasks|steer|turn|"
+        "session_id|session_locked|session_title|retake_session|rename_session|fork_session|title_session|"
+        "load_session|install_session|use_effort|use_permission|use_harness|use_self_compaction|"
+        "self_compaction_default|remember_self_compaction|effort|efforts|permission|permissions|harness"
+    )
+    pattern = re.compile(rf"\bagent\.({moved})\b")
+    paths = [*(PROJECT / "src/zettcode/app/ui").rglob("*.py"), PROJECT / "src/zettcode/app/plugins/builtin_commands.py"]
+    offenders = [
+        f"{path.name}:{number}: {line.strip()}"
+        for path in sorted(paths)
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
+        if pattern.search(line)
+    ]
+
+    assert offenders == []
+
+
 def test_the_hub_and_the_roster_know_nothing_of_the_web():
     """What the broker decides is separate from how it is served: the hub and the roster import none of the web
     libraries (nor the web layer), so they can be driven, and read, without a socket."""

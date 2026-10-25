@@ -11,8 +11,8 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING, cast
 
-from zettcode.config_edit import ConfigEditError
 from zettcode.providers import API_FLAG_KEYS, CUSTOM, Api, check_url
+from zettcode.sdk.errors import ConfigurationError
 from zettcode.tui import SEPARATOR, ListItem, ListPage, Screen, Widget
 
 from ..agent.conversation.text import compact_path
@@ -32,8 +32,8 @@ from .widgets import Field, FormPage, ModelSettingsPage, bottom_panel, form_rows
 from .widgets.model_settings_page import Action, Answer, Setting
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
-    from zettcode.config import ModelConfig
     from zettcode.providers import Provider
+    from zettcode.sdk.types import ModelInfo
 
 #: Rows the list pages take: the title, a blank, up to eight rows, the keys.
 LIST_ROWS = 13
@@ -81,13 +81,12 @@ class ConfigMixin(ShellState):
         The list is read from the file rather than from the session: it is what an edit will act
         on, and a reader who changed the file by hand since the start sees that here.
         """
-        entries = self.agent.file_models()
-        current = self.agent.active_model
+        entries = self.client.model_entries()
         digits = len(str(len(entries)))
         rows = [
             ListItem(
                 index,
-                f"{index + 1:>{digits}}. {model.shown_name}{' (current)' if model == current else ''}",
+                f"{index + 1:>{digits}}. {model.name}{' (current)' if model.active else ''}",
                 f"{model.model} {SEPARATOR} {model.api} {SEPARATOR} {model.base_url or 'default address'}",
             )
             for index, (model, _) in enumerate(entries)
@@ -96,7 +95,7 @@ class ConfigMixin(ShellState):
         page = ListPage(
             rows,
             title="Models",
-            subtitle=compact_path(self.agent.config_file, limit=SUBTITLE_COLUMNS),
+            subtitle=compact_path(self.client.config_file, limit=SUBTITLE_COLUMNS),
             on_select=self._config_chosen,
             on_cancel=self.close_page,
         )
@@ -129,7 +128,7 @@ class ConfigMixin(ShellState):
         """Go back to the model list."""
         try:
             page = self.config_page()
-        except ConfigEditError as error:
+        except ConfigurationError as error:
             self._config_failed(error)
             return
         self.app.pop_screen()
@@ -201,7 +200,7 @@ class ConfigMixin(ShellState):
                 "Token",
                 initial=draft.token,
                 placeholder="optional",
-                hint=f"{token_note} It is written to {self.agent.config_file}.",
+                hint=f"{token_note} It is written to {self.client.config_file}.",
                 secret=True,
             ),
         ]
@@ -294,13 +293,13 @@ class ConfigMixin(ShellState):
         """Write the finished draft to the file, and announce it."""
         try:
             entry = entry_for(draft)
-            model = self.agent.add_configured_model(entry)
-        except ValueError as error:  # ConfigEditError is one
+            model = self.client.add_model(entry)
+        except ValueError as error:  # ConfigurationError is one
             self._config_failed(error)
             return
         self._config_end(
             f"added {describe(entry)} \u2014 /model switches to it"
-            if model is not self.agent.active_model
+            if model.name != self.client.model.name
             else f"added {describe(entry)}"
         )
 
@@ -313,8 +312,8 @@ class ConfigMixin(ShellState):
         them at once; the two actions at the bottom are switching to the model and removing it.
         """
         try:
-            model, entry = self.agent.file_models()[index]
-        except (ConfigEditError, IndexError) as error:
+            model, entry = self.client.model_entries()[index]
+        except (ConfigurationError, IndexError) as error:
             self._config_failed(error)
             return
         settings = [
@@ -330,7 +329,7 @@ class ConfigMixin(ShellState):
                 "API",
                 "choice",
                 words=tuple(api.value for api in Api),
-                value=list(Api).index(model.api),
+                value=list(Api).index(Api.parse(model.api)),
                 hint="The protocol the endpoint speaks. The address stays as it is; change it too if this host uses another.",
             ),
             Setting(
@@ -383,7 +382,7 @@ class ConfigMixin(ShellState):
                 "Temperature",
                 initial=str(entry.get("temperature", "")),
                 placeholder="the provider's default",
-                hint=f"From 0 (the most deterministic) to {1 if model.anthropic else 2}. Leave it empty to send none.",
+                hint=f"From 0 (the most deterministic) to {1 if model.api == 'anthropic' else 2}. Leave it empty to send none.",
             ),
             Setting(
                 "context_window",
@@ -405,7 +404,7 @@ class ConfigMixin(ShellState):
             Action("remove", "Remove", "delete it from the file"),
         ]
         page = ModelSettingsPage(
-            f"{model.shown_name}{' (current)' if model == self.agent.active_model else ''}",
+            f"{model.name}{' (current)' if model.active else ''}",
             settings,
             actions,
             on_save=lambda values: self._config_saved(index, values),
@@ -420,11 +419,11 @@ class ConfigMixin(ShellState):
             model, entry, before = self._config_update(index, values)
         except _Refused as refused:
             return (refused.key, refused.reason)
-        except (ConfigEditError, IndexError) as error:
+        except (ConfigurationError, IndexError) as error:
             self._config_failed(error)
             return None
         if entry == before:
-            self._config_end(f"{model.shown_name}: nothing changed")
+            self._config_end(f"{model.name}: nothing changed")
         else:
             limits = any(entry.get(key) != before.get(key) for key in ("context_window", "compact_percent"))
             self._config_end(f"updated {describe(entry)}" + (f" {SEPARATOR} {limits_text(model)}" if limits else ""))
@@ -435,13 +434,13 @@ class ConfigMixin(ShellState):
         """Do what one of the page's actions says: switch to the model, after saving it, or ask about removing it."""
         try:
             if action.key == "remove":
-                model, _ = self.agent.file_models()[index]
+                model, _ = self.client.model_entries()[index]
                 self._config_confirm_remove(index, model)
                 return None
             model, _, _ = self._config_update(index, values)
         except _Refused as refused:
             return (refused.key, refused.reason)
-        except (ConfigEditError, IndexError) as error:
+        except (ConfigurationError, IndexError) as error:
             self._config_failed(error)
             return None
         self._config_end()
@@ -450,7 +449,7 @@ class ConfigMixin(ShellState):
 
     def _config_update(
         self, index: int, values: dict[str, Answer]
-    ) -> tuple[ModelConfig, dict[str, object], Mapping[str, object]]:
+    ) -> tuple[ModelInfo, dict[str, object], Mapping[str, object]]:
         """Rewrite the entry the page was opened on with every answer it holds, in the file and in this session.
 
         Only what differs from the entry is touched: a key the reader never changed is not written, and an empty row
@@ -463,10 +462,10 @@ class ConfigMixin(ShellState):
         Raises:
             _Refused: With the row to correct, when an answer is not one the model can take.
         """
-        model, current = self.agent.file_models()[index]
+        model, current = self.client.model_entries()[index]
         entry = dict(current)
         api = Api.parse(str(values["api"]))
-        if api != model.api:
+        if api != Api.parse(model.api):
             for key in API_FLAG_KEYS:
                 entry.pop(key, None)
             entry.update(api.keys)
@@ -501,7 +500,10 @@ class ConfigMixin(ShellState):
         if entry == current:
             return model, entry, current
         try:
-            return self.agent.update_configured_model(index, entry), entry, current
+            # The page holds the whole entry it wants; the SDK takes what to change, and a key the entry no longer
+            # has is one to remove.
+            changes = {**entry, **{key: None for key in current if key not in entry}}
+            return self.client.update_model(index, changes), entry, current
         except ValueError as error:
             sentence = str(error).lower()
             raise _Refused(
@@ -516,11 +518,11 @@ class ConfigMixin(ShellState):
         else:
             entry[key] = value
 
-    def _config_confirm_remove(self, index: int, model: ModelConfig) -> None:
+    def _config_confirm_remove(self, index: int, model: ModelInfo) -> None:
         """Ask once before deleting, with the safe answer first."""
         rows = [
             ListItem(False, "Keep it", ""),
-            ListItem(True, f"Remove {model.shown_name}", "this edits the config file"),
+            ListItem(True, f"Remove {model.name}", "this edits the config file"),
         ]
         page = ListPage(
             rows,
@@ -532,17 +534,17 @@ class ConfigMixin(ShellState):
         )
         self._config_show(page, rows=LIST_ROWS, replace=True)
 
-    def _config_remove(self, index: int, model: ModelConfig) -> None:
+    def _config_remove(self, index: int, model: ModelInfo) -> None:
         """Remove the entry and tell the reader what is in use afterwards."""
-        previous = self.agent.active_model
+        previous = self.client.model
         try:
-            now = self.agent.remove_configured_model(index)
+            now = self.client.remove_model(index)
         except ValueError as error:
             self._config_failed(error)
             return
-        if previous == model and now != model:
-            self.transcript.model_changed(previous.shown_name, now.shown_name)
-        self._config_end(f"removed {model.shown_name}")
+        if previous.name == model.name and now.name != model.name:
+            self.transcript.model_changed(previous.name, now.name)
+        self._config_end(f"removed {model.name}")
         self.app.request_layout()
 
     # -- the command line form -----------------------------------------------------------
@@ -560,12 +562,12 @@ class ConfigMixin(ShellState):
             self._config_ask(draft, replace=False)  # nothing of the flow is on screen yet
             return None
         entry = entry_for(draft)
-        self.agent.add_configured_model(entry)
+        self.client.add_model(entry)
         return f"added {describe(entry)} \u2014 /model switches to it"
 
     def config_remove_from_line(self, argument: str) -> str:
         """Remove the model a number or a name picks out, for ``/config remove``."""
-        entries = self.agent.file_models()
+        entries = self.client.model_entries()
         wanted = argument.strip()
         if not wanted:
             raise ValueError("Usage: /config remove <number|name>")
@@ -574,19 +576,19 @@ class ConfigMixin(ShellState):
             if not 0 <= index < len(entries):
                 raise ValueError(f"There is no model number {wanted}; /config list shows them")
         else:
-            matches = [i for i, (model, _) in enumerate(entries) if wanted in (model.shown_name, model.model)]
+            matches = [i for i, (model, _) in enumerate(entries) if wanted in (model.name, model.model)]
             if not matches:
                 raise ValueError(f"No model called {wanted!r}; /config list shows them")
             if len(matches) > 1:
                 raise ValueError(f"{wanted!r} names more than one model; use its number from /config list")
             index = matches[0]
         model = entries[index][0]
-        previous = self.agent.active_model
-        now = self.agent.remove_configured_model(index)
-        if previous == model and now != model:
-            self.transcript.model_changed(previous.shown_name, now.shown_name)
+        previous = self.client.model
+        now = self.client.remove_model(index)
+        if previous.name == model.name and now.name != model.name:
+            self.transcript.model_changed(previous.name, now.name)
         self.app.request_layout()
-        return f"removed {model.shown_name}"
+        return f"removed {model.name}"
 
     def config_listing(self) -> str:
         """Return the models in the file as Markdown, with no token in it."""
@@ -594,11 +596,10 @@ class ConfigMixin(ShellState):
             "| # | name | model | api | address | images | context window | compress at |",
             "| --- | --- | --- | --- | --- | --- | --- | --- |",
         ]
-        current = self.agent.active_model
-        for index, (model, _) in enumerate(self.agent.file_models(), start=1):
-            mark = " (current)" if model == current else ""
+        for index, (model, _) in enumerate(self.client.model_entries(), start=1):
+            mark = " (current)" if model.active else ""
             lines.append(
-                f"| {index} | {model.shown_name}{mark} | `{model.model}` | {model.api} | {model.base_url or 'default'} "
+                f"| {index} | {model.name}{mark} | `{model.model}` | {model.api} | {model.base_url or 'default'} "
                 f"| {'yes' if model.multimodal else 'no'} | {model.context_window:,} "
                 f"| {whole_if_whole(model.compact_percent)}% |"
             )

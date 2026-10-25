@@ -5,8 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import cast
 
-from zettcode.app.agent.agent import TerminalAgent
-from zettcode.config import ModelConfig
+from zettcode.sdk.client import Client
+from zettcode.sdk.types import ModelInfo
 from zettcode.tui import SEPARATOR, ListItem, ListPage
 
 
@@ -25,7 +25,7 @@ class ModelPage(ListPage):
     and Escape handling come from the base class. Row numbers are right-aligned to
     the widest of them, as the session picker's are, so a name starts in the same
     column on the tenth row as on the first. Each row carries the
-    :class:`ModelConfig` itself, because the same model id can be configured
+    :class:`ModelInfo` itself, because the same model id can be configured
     twice against different endpoints and the chosen entry, not its name, is
     what the shell applies. A row names the API its entry speaks as well,
     which is the one thing about a model a reader cannot infer from its name.
@@ -34,30 +34,30 @@ class ModelPage(ListPage):
     """
 
     def __init__(
-        self, agent: TerminalAgent, *, on_select: Callable[[ModelConfig], None], on_cancel: Callable[[], None]
+        self, client: Client, *, on_select: Callable[[ModelInfo], None], on_cancel: Callable[[], None]
     ) -> None:
         """List every configured model, starting on the active one.
 
         Args:
-            agent: Supplies the models and marks which one is active.
+            client: Supplies the models and marks which one is active.
             on_select: Receives the chosen entry; the same model id can appear
                 twice with different endpoints, so the whole entry is passed.
             on_cancel: Called when the user presses Escape.
         """
-        models = agent.models
+        models = client.models
         # As many columns as the largest number needs, so the names line up.
         digits = len(str(len(models))) if models else 1
         super().__init__(
             [
                 ListItem(
                     entry,
-                    f"{index:>{digits}}. {entry.shown_name}{' (current)' if entry is agent.active_model else ''}",
+                    f"{index:>{digits}}. {entry.name}{' (current)' if entry.active else ''}",
                     f"{entry.model} {SEPARATOR} {entry.api} {SEPARATOR} {'multimodal' if entry.multimodal else 'text'}",
                 )
                 for index, entry in enumerate(models, start=1)
             ],
             title="Select Model",
-            on_select=lambda item: on_select(cast(ModelConfig, item.value)),
+            on_select=lambda item: on_select(cast(ModelInfo, item.value)),
             on_cancel=on_cancel,
-            selected=models.index(agent.active_model),
+            selected=next((i for i, entry in enumerate(models) if entry.active), 0),
         )

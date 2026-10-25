@@ -18,8 +18,8 @@ from zettcode._compat import StrEnum
 if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay lazy
     from pathlib import Path
 
-    from zettcode.config import ModelConfig, ZettCodeConfig
-    from zettcode.sdk.types import Usage
+    from zettcode.config import ZettCodeConfig
+    from zettcode.sdk.types import ModelInfo, Usage
     from zettcode.statusline import Row
     from zettcode.tui import TextLine, Theme
 
@@ -74,12 +74,12 @@ class ModelState:
     Attributes:
         config: The active model, with its id, display name, context window, and
             multimodal flag.
-        name: Display name, the short form of ``config.shown_name``.
+        name: Display name, the short form of ``config.name``.
         effort: Reasoning effort as its string value.
         efforts: Every reasoning level the runtime accepts, cheapest first.
     """
 
-    config: ModelConfig
+    config: ModelInfo
     name: str
     effort: str
     efforts: tuple[str, ...]

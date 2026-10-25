@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, TypeVar
 from zettcode.providers import CUSTOM, Api, Provider, check_url, find_provider
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
-    from zettcode.config import ModelConfig
+    from zettcode.sdk.types import ModelInfo
 
 T = TypeVar("T")
 
@@ -307,7 +307,7 @@ def tokens_text(tokens: int) -> str:
     return f"{tokens:,} tokens"
 
 
-def limits_text(model: ModelConfig) -> str:
+def limits_text(model: ModelInfo) -> str:
     """Return what a model's window and compaction setting come to, in one line."""
     percent = whole_if_whole(model.compact_percent)
     return (

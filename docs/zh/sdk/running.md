@@ -188,7 +188,9 @@ async with client.prompt("investigate the failing test") as run:
             steered = client.session.steer("don't run commands; read the code instead")
 ```
 
-`steer` 在有运行中的请求接受了消息时返回 `True`；没有任何东西在运行、client 已关闭或消息为空白时返回 `False`。不会为以后排队。流里的 `Steered` 事件确认请求收下了它。
+`steer` 返回运行会用来报告这条消息的文字（随后 `Steered` 事件的 `text`；纯文本就是文本本身），没有人收下时返回 `None`：没有任何东西在运行、client 已关闭，或消息为空白。不会为以后排队。流里的 `Steered` 事件确认请求收下了它。
+
+引导消息和提示词一样构造：`steer(prompt, *, images=(), mentions=False)` 按顺序接收文本和 `Image`，`mentions` 打开时解析 `@` 引用。返回的文字是把消息显示为“等待中”的前端用来匹配它的依据：带图片或引用的消息，是按构造后的文字报告的，不是打字时的那一份。
 
 `steer` 是普通方法，不是协程，所以可以在上面的事件循环里、回调里，或者持有 client 的另一个任务里调用。
 

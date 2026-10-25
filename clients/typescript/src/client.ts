@@ -417,10 +417,23 @@ export class Session {
     return new Run(this.client, "/runs/resume", wireOptions(options), options);
   }
 
-  /** Send a message into the run in progress; false when nothing was running to take it. */
-  async steer(text: string): Promise<boolean> {
-    const body = await this.client.request<{ steered: boolean }>("/runs/steer", jsonInit("POST", { text }));
-    return body.steered;
+  /**
+   * Send a message into the run in progress, built as a prompt is (pictures, and `@` mentions when asked for).
+   * Resolves to the text the run will report it by (the `steered` event's `text`), or `null` when nothing took it.
+   */
+  async steer(text: string, options: { images?: ImageInput[]; mentions?: boolean } = {}): Promise<string | null> {
+    const body: Record<string, unknown> = { text };
+    if (options.images) {
+      body.images = options.images.map((image) => ({ data: image.data, media_type: image.mediaType }));
+    }
+    if (options.mentions !== undefined) {
+      body.mentions = options.mentions;
+    }
+    const reply = await this.client.request<{ steered: boolean; text?: string | null }>(
+      "/runs/steer",
+      jsonInit("POST", body),
+    );
+    return reply.steered ? (reply.text ?? text) : null;
   }
 }
 
@@ -581,8 +594,8 @@ export class Run implements AsyncIterable<StreamFrame> {
   }
 
   /** Send a message into this run while it is going. */
-  steer(text: string): Promise<boolean> {
-    return this.client.session.steer(text);
+  steer(text: string, options: { images?: ImageInput[]; mentions?: boolean } = {}): Promise<string | null> {
+    return this.client.session.steer(text, options);
   }
 
   /** Stop this run; its stream ends with `cancelled`. */

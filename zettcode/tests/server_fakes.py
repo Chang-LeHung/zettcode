@@ -153,9 +153,10 @@ class FakeSession:
             hold=self.side_hold,
         )
 
-    def steer(self, message: str) -> bool:
+    def steer(self, message: str, *, images: object = (), mentions: bool = False) -> str | None:
         self.steered.append(message)
-        return self.steering
+        self.steer_options = {"images": tuple(images), "mentions": mentions}  # type: ignore[call-overload]
+        return message if self.steering else None
 
     async def resumable(self) -> object | None:
         return self.resume_info

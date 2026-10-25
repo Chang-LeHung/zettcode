@@ -188,7 +188,9 @@ async with client.prompt("investigate the failing test") as run:
             steered = client.session.steer("don't run commands; read the code instead")
 ```
 
-`steer` returns `True` when a running request accepted the message and `False` when nothing was running, the client was closed, or the message was blank. Nothing is queued for later. The `Steered` event in the stream confirms the request took it.
+`steer` returns the text the run reports the message by (the `text` of the `Steered` event that follows; for plain text, the text itself), or `None` when nothing took it: nothing was running, the client was closed, or the message was blank. Nothing is queued for later. The `Steered` event in the stream confirms the request took it.
+
+A steering message is built as a prompt is: `steer(prompt, *, images=(), mentions=False)` takes text and `Image`s in order and resolves `@` references when `mentions` is on. The returned text is what a front end that shows the message as waiting matches it by, because a message with a picture or a reference is reported by the text it was built into, not the text typed.
 
 `steer` is an ordinary method, not a coroutine, so it can be called from inside the event loop above, from a callback, or from another task that holds the client.
 

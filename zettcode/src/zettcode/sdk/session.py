@@ -778,18 +778,37 @@ class Session:
         """
         return (await self.ask_stream(question, on_event=on_event, timeout=timeout)).text
 
-    def steer(self, message: str) -> bool:
+    def steer(self, prompt: Prompt, *, images: Sequence[Image] = (), mentions: bool = False) -> str | None:
         """Send a message to the run in progress, which drops what it was doing to take it into account.
 
+        The message is built as a prompt is: text and pictures in order, and ``@`` references resolved when
+        ``mentions`` is on.
+
         Returns:
-            Whether a running request took it. ``False`` when nothing is running in this session, and for a blank
-            message; nothing is queued for later.
+            The text the run will report the message by (the ``text`` of the :class:`~zettcode.sdk.events.Steered`
+            event that follows), which a front end that shows the message as waiting matches it by; for plain text it
+            is the text itself. ``None`` when no request took it: nothing is running in this session, or the message
+            is blank. Nothing is queued for later.
+
+        Raises:
+            TypeError: A piece of the message is not text or an :class:`Image`.
+            ConfigurationError: The message carries images and the model does not accept them.
         """
         client = self._client
         running = client._stream
-        if client._closed or running is None or running._session.id != self.id or not isinstance(message, str):
-            return False
-        return client._agent.steer(message)
+        if client._closed or running is None or running._session.id != self.id:
+            return None
+        registry = client._mention_registry() if mentions else None
+        model = client._agent.active_model
+        try:
+            parts, hint = _prompt_parts(
+                prompt, images, mentions=registry, multimodal=model.multimodal, model_name=model.shown_name
+            )
+        except ValueError:
+            return None  # blank: there is nothing to steer with
+        message = client._agent.turn(parts, hint=hint)
+        text = message if isinstance(message, str) else message.text
+        return text if client._agent.steer(message) else None
 
     async def resumable(self) -> ResumeInfo | None:
         """Say where the conversation was interrupted and what :meth:`resume` would do; ``None`` if it was not."""

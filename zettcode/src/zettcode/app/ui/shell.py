@@ -55,13 +55,12 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
     from collections.abc import Sequence
 
     from zettcode.app.plugins.state import Activity, UiRow
-    from zettcode.config import ModelConfig
     from zettcode.mentions import MentionRegistry
     from zettcode.prompt import PromptPart
     from zettcode.relay import Relayed
     from zettcode.sdk.client import Client
     from zettcode.sdk.events import QuestionAsked
-    from zettcode.sdk.types import Usage
+    from zettcode.sdk.types import ModelInfo, Usage
     from zettcode.tui import CompletionPopup, StatusBar, Theme, TuiApp
     from zettcode.update import UpdateState
 
@@ -168,7 +167,7 @@ class ShellState:
     def close_page(self) -> None:
         """Close the page a command presented."""
 
-    def change_model(self, name: ModelConfig | str) -> ModelConfig:
+    def change_model(self, name: ModelInfo | str) -> ModelInfo:
         """Switch models and announce the change in the transcript."""
         raise NotImplementedError
 

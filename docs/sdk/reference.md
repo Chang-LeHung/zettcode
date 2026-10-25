@@ -151,6 +151,11 @@ The agent for one workspace. An async context manager. See [Client & configurati
 | `stream(...)` | `RunStream` | The same method as `prompt`. |
 | `run(prompt, *, images, mentions, on_approval, on_question, on_event, timeout, keep_events)` | `RunResult` (awaitable) | `await client.prompt(...)` as a call. Has no `raw`. |
 | `use_model(name)` | `ModelInfo` | Chooses the model; takes a name or a `ModelInfo`. |
+| `config_file` | `Path` | The configuration file the models are read from and written to. |
+| `model_entries()` | `tuple[tuple[ModelInfo, Mapping], ...]` | Each model the file lists with the keys the file writes for it, in file order (a token left to an environment variable is absent). |
+| `add_model(entry)` | `ModelInfo` | Adds a model to the file and to this client; the model in use does not change. |
+| `update_model(which, changes)` | `ModelInfo` | Changes a model by name or by its place in `model_entries()`; a `None` value removes the key. |
+| `remove_model(which)` | `ModelInfo` | Removes a model; returns the one in use afterwards. The only model cannot go. |
 | `use_effort(name)` | `str` | Chooses the reasoning level. |
 | `use_compact_percent(percent)` | `tuple[ModelInfo, str \| None]` | Moves the compaction point (a share of the window, above 0 and at most 100) from the next request on, and rewrites the configuration file. The second value says why the file was not written, or is `None`. |
 | `use_permission(name, *, remember=True)` | `str` | Chooses the permission level; applies from the next shell command. `remember=False` leaves the session's remembered level alone, for a choice that covers this run only. |
@@ -229,7 +234,7 @@ A handle on one stored conversation. Obtain it from `client.session`, `client.se
 | `await run(prompt, *, images, mentions, on_approval, on_question, on_event, timeout, keep_events)` | `RunResult` |
 | `await ask(question, *, on_event=None, timeout=None)` | `str` |
 | `ask_stream(question, *, on_event=None, timeout=None)` | `RunStream` |
-| `steer(message)` | `bool` |
+| `steer(prompt, *, images=(), mentions=False)` | `str \| None` |
 | `await resumable()` | `ResumeInfo \| None` |
 | `resume_stream(*, on_approval, on_question, on_event, timeout, raw, keep_events, defer_answers)` | `RunStream` |
 | `await resume(*, on_approval, on_question, on_event, timeout)` | `RunResult` |

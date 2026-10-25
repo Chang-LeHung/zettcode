@@ -14,7 +14,7 @@ from zettcode.tui import Theme
 from .shell import ShellState
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
-    from zettcode.config import ModelConfig
+    from zettcode.sdk.types import ModelInfo
 
     from ..pets import Pet
 
@@ -39,16 +39,16 @@ class SettingsMixin(ShellState):
         """Leave the application."""
         self.app.exit()
 
-    def change_model(self, name: ModelConfig | str) -> ModelConfig:
+    def change_model(self, name: ModelInfo | str) -> ModelInfo:
         """Switch models and announce the change in the transcript."""
-        previous = self.agent.active_model
-        selected = self.agent.use_model(name)
-        if selected is not previous:
-            self.transcript.model_changed(previous.shown_name, selected.shown_name)
+        previous = self.client.model
+        selected = self.client.use_model(name)
+        if selected.name != previous.name or selected.model != previous.model:
+            self.transcript.model_changed(previous.name, selected.name)
         self.app.request_layout()
         return selected
 
-    def select_model(self, name: ModelConfig) -> None:
+    def select_model(self, name: ModelInfo) -> None:
         """Apply the highlighted model and return to the composer."""
         try:
             self.change_model(name)
