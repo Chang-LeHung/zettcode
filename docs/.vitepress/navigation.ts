@@ -11,6 +11,7 @@ const translations = {
       commands: "Commands",
       sessions: "Sessions",
       messaging: "Talking between sessions",
+      daemons: "Background agents",
       context: "The context window",
       usage: "Token usage",
       config: "Configuration",
@@ -67,6 +68,7 @@ const translations = {
       commands: "命令参考",
       sessions: "会话管理",
       messaging: "会话之间互发消息",
+      daemons: "后台 agent",
       context: "上下文窗口",
       usage: "Token 用量",
       config: "配置参考",
@@ -120,7 +122,7 @@ const translations = {
 // nested under it rather than as three siblings that a reader has to guess belong together.
 const layout = [
   { group: 0, pages: ["overview", "getting-started"] },
-  { group: 1, pages: ["interface", "keys", "commands", "sessions", "messaging"] },
+  { group: 1, pages: ["interface", "keys", "commands", "sessions", "messaging", "daemons"] },
   {
     group: 2,
     pages: [

@@ -20,6 +20,7 @@ import argparse
 import asyncio
 import gc
 import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -120,6 +121,7 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_doctor(commands)
     _add_resume(commands)
     _add_prompt(commands)
+    _add_daemon(commands)
     return parser
 
 
@@ -199,6 +201,20 @@ def _add_resume(commands: Subcommands) -> None:
         type=Path,
         default=argparse.SUPPRESS,
         help="directory the session belongs to (default: the current directory)",
+    )
+
+
+def _add_daemon(commands: Subcommands) -> None:
+    """Add ``daemon``: background agents another session can message.
+
+    Only the name is declared here, so that ``zettcode --help`` lists it. Its subcommands, and the work they do, are
+    parsed and run by :mod:`zettcode.daemon.cli`, which the entry point reaches without importing the rest of this
+    module's command line: a terminal start pays nothing for a command it is not running.
+    """
+    commands.add_parser(
+        "daemon",
+        help="run and manage background agents: daemon list | spawn | kill",
+        description="Start a background agent another session reaches with send_message, and manage the ones running.",
     )
 
 
@@ -672,6 +688,13 @@ def tune_collector() -> None:
 
 def main() -> None:
     """Installed console-script entry point."""
+    argv = sys.argv[1:]
+    if argv[:1] == ["daemon"]:
+        # Parsed by its own command: `daemon` takes subcommands of its own, which this parser would flatten into the
+        # options a terminal start takes.
+        from .daemon.cli import daemon_program
+
+        raise SystemExit(daemon_program(argv[1:]))
     options = parse_args()
     if options.command == "update":
         from .update import update_program
