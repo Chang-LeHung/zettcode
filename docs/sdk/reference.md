@@ -113,7 +113,7 @@ class Client:
     ) -> None: ...
 ```
 
-The agent for one workspace. An async context manager. See [Client & configuration](./client).
+The agent for one workspace. An async context manager. Every configuration field is a keyword argument of its own, named and typed (`store=`, `max_iterations=`, `sessions_enabled=`, … — see [Settings](./client#settings)); a name that is not one is a `TypeError`.
 
 | Raises | When |
 | --- | --- |

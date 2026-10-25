@@ -8,7 +8,7 @@ import pytest
 
 import zettcode.sdk as zc
 from sdk_helpers import ScriptedModel, config_for, models, wire
-from zettcode.sdk.errors import ConfigurationError, RunError, RunTimeoutError
+from zettcode.sdk.errors import RunError, RunTimeoutError
 
 
 async def test_one_prompt_makes_a_client_runs_and_closes_everything_again(tmp_path, monkeypatch):
@@ -69,7 +69,9 @@ async def test_one_prompt_closes_the_client_when_it_times_out(tmp_path, monkeypa
 
 
 async def test_one_prompt_reports_a_bad_configuration_before_doing_anything(tmp_path):
-    with pytest.raises(ConfigurationError, match="Unknown setting"):
+    # `prompt` passes its settings straight to `Client`, whose signature is where they are named: a name that is
+    # not one of them is refused by Python at the call, before a client (or a session, or a provider) is made.
+    with pytest.raises(TypeError, match="unexpected keyword argument 'bogus'"):
         await zc.prompt("q", workspace=tmp_path, models=[{"model": "m", "token": "t"}], bogus=1)
 
 

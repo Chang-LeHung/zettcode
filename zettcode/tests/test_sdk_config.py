@@ -13,6 +13,30 @@ from zettcode.sdk.errors import ConfigurationError, ZettCodeError
 MODEL = {"model": "gpt-x", "token": "sk-test"}
 
 
+def test_every_configuration_field_is_a_named_argument_of_the_client():
+    """The settings are named and typed in the signature, so a field the client cannot be given fails here."""
+    import dataclasses
+    import inspect
+
+    from zettcode.sdk.client import SETTINGS, Client
+
+    parameters = inspect.signature(Client.__init__).parameters
+    assert set(SETTINGS) <= set(parameters), "a setting named in SETTINGS but not in the signature"
+    assert all(parameters[name].default is not inspect.Parameter.empty for name in SETTINGS)
+    fields = {field.name for field in dataclasses.fields(ZettCodeConfig)}
+    # `workspace` and `models` are arguments of their own: the workspace a client works in, and the models it runs
+    # without a config file. Every other field is reachable by name.
+    assert fields - {"workspace", "models"} == set(SETTINGS), "a configuration field no client argument reaches"
+
+
+def test_a_misspelt_setting_is_refused_by_python_before_anything_is_read(workspace):
+    """A name that is not a setting is not quietly accepted as a keyword: the signature refuses it."""
+    from zettcode.sdk.client import Client
+
+    with pytest.raises(TypeError, match="unexpected keyword argument 'stroe'"):
+        Client(workspace, models=[MODEL], stroe=workspace / "store")
+
+
 def build(workspace, *, config=None, path=None, models=None, **settings) -> ZettCodeConfig:
     return build_config(workspace, config, path, models, settings)
 

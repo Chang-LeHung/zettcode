@@ -25,7 +25,7 @@ async with zc.Client("~/project", model="gpt-5", effort="high", permission="safe
 | `effort` | The reasoning level to start on. |
 | `permission` | The shell permission level: `deny`, `ask`, `safe` or `full` (`auto`, the old name of `full`, is still taken). |
 | `resume` | A session id to continue instead of starting a new conversation. |
-| `**settings` | Any other configuration field by name: `store=`, `mcp_enabled=`, `max_iterations=`, and so on. |
+| every other setting | A configuration field by name: `store=`, `mcp_enabled=`, `max_iterations=`, and the rest. They are named and typed in the signature — see [Settings](#settings). |
 
 The constructor is synchronous and does its work at once: a bad value raises here, not on the first prompt.
 
@@ -35,6 +35,57 @@ try:
 except zc.ConfigurationError as error:
     print(error)  # Unknown permission: sometimes. Try one of: deny, ask, safe, full
 ```
+
+## Settings
+
+Every field of the configuration is a keyword argument of the constructor, named and typed: no name is taken and
+hoped for. They are laid over whichever configuration the client read (see [below](#where-the-configuration-comes-from)),
+and one that is left out keeps what it read. A name that is not one of these is a `TypeError` from Python at the
+call; a value of the wrong type is a `ConfigurationError` when the client is built.
+
+| Setting | Type | What it is |
+| --- | --- | --- |
+| `store` | `str`, `Path` | Where sessions are stored. |
+| `theme_file` | `str`, `Path`, `None` | A palette file laid over the theme. |
+| `theme` | `str`, `None` | The palette in force: `dark`, `light`, or a file's name. |
+| `themes_dir` | `str`, `Path` | Where the reader's own palettes live. |
+| `pet` | `str`, `None` | The companion over the conversation, or `None` for none. |
+| `pet_position` | `tuple[float, float]`, `None` | Where it stands. |
+| `reasoning_effort` | `ReasoningEffort`, `str` | The level a new session starts at. |
+| `shell_approval` | `ShellApprovalMode`, `str` | `deny`, `ask`, `safe` or `full`. |
+| `reduced_motion` | `bool` | No animation, for a reader who asked for none. |
+| `parallel_tool_call` | `bool` | Let the model call several tools in one round. |
+| `max_iterations` | `int` | How many rounds one request may take. |
+| `transcript_max_entries` | `int` | How many rows the terminal keeps. |
+| `mouse_scroll_speed` | `float` | Rows per wheel notch. |
+| `tips` | `bool` | Tips in the waiting row. |
+| `agents_md_enabled` | `bool` | Read `AGENTS.md` into the conversation. |
+| `ask_user_enabled` | `bool` | Give the model the `ask_user` tool. |
+| `skills_enabled` | `bool` | Offer skills. |
+| `skill_roots` | `Sequence[str \| Path]` | Where skills are looked for. |
+| `skills_scope` | `str` | `global`, `workspace` or `both`. |
+| `mcp_enabled` | `bool` | Start the configured MCP servers. |
+| `mcp_config` | `str`, `Path`, `None` | The servers' file. |
+| `mcp_scope` | `str` | `global`, `workspace` or `both`. |
+| `self_compaction` | `bool` | Let the model compact its own context. |
+| `statusline_hidden` | `Sequence[str]` | The parts of the status line that are switched off. |
+| `plugins_enabled` | `bool` | Load plugins. |
+| `disabled_plugins` | `Sequence[str]` | Plugins to leave out by name. |
+| `subagent_enabled` | `bool` | Give the model the subtask tool. |
+| `subagent_max_iterations` | `int` | Rounds a subtask may take. |
+| `subagent_messaging` | `bool` | Let a subtask message other sessions. |
+| `todowrite_enabled` | `bool` | Give the model the to-do list tool. |
+| `jit_harness` | `bool` | Let the model write and run its own tools. |
+| `shell_network` | `bool` | Let a sandboxed command reach the network. |
+| `sessions_enabled` | `bool` | Join the broker other sessions reach this one through. Off unless asked, and the terminal turns it on. |
+| `update_enabled` | `bool` | Check PyPI for a newer release in the background. Off unless asked. |
+| `update_file` | `str`, `Path` | What that check leaves behind. |
+| `harness_dir` | `str`, `Path` | Where the tools a model wrote are kept. |
+
+The meanings are the ones [the configuration reference](/guide/config) gives each key, with the same names; a value
+here says exactly what the same key in the file would say.
+
+
 
 ## Where the configuration comes from
 
@@ -85,9 +136,11 @@ A token written into source ends up in version control. Read it from the environ
 
 A malformed entry raises `ConfigurationError` that names the entry and the problem.
 
-## Settings
+## The settings a program usually wants
 
-Any other keyword is a field of `ZettCodeConfig`, so everything the config file can say, a client can say in code. The ones a program usually wants:
+The complete list, with each one's type, is [above](#settings). This is the short version: the ones a program is most likely to change, and the default each has in the configuration file.
+
+Any other keyword is a field of `ZettCodeConfig`, so everything the config file can say, a client can say in code.
 
 | Setting | Default | Effect |
 | --- | --- | --- |
@@ -104,11 +157,11 @@ Any other keyword is a field of `ZettCodeConfig`, so everything the config file 
 | `sessions_enabled` | `False` here | Join the broker so terminal sessions can message this one. |
 | `update_enabled` | `False` here | Check PyPI for a new release. |
 
-Strings are accepted where a path is expected (`store="~/runs"`), and choices are accepted in any case (`reasoning_effort="HIGH"`). A mistyped name is reported with a suggestion:
+Strings are accepted where a path is expected (`store="~/runs"`), and choices are accepted in any case (`reasoning_effort="HIGH"`). A mistyped name is a `TypeError` from Python at the call, before anything is read:
 
 ```python
 zc.Client(".", max_iteration=50)
-# ConfigurationError: Unknown setting: 'max_iteration' (did you mean 'max_iterations'?)
+# TypeError: Client.__init__() got an unexpected keyword argument 'max_iteration'
 ```
 
 A value the configuration refuses is reported as `ConfigurationError("Invalid configuration: ...")`, with the original error as `__cause__`.

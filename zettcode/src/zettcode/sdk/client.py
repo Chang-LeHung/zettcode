@@ -56,13 +56,72 @@ from .types import (
 )
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only; the agent is imported when a client is made
+    from zett_agent.extensions.shell_approval import ShellApprovalMode
+    from zett_agent.model import ReasoningEffort
+
     from ..broker.models import Receipt as BrokerReceipt
     from ..config import ModelConfig, ZettCodeConfig
     from ..engine.agent import ZettCodeAgent
     from ..engine.messenger import Messenger
     from ..mentions import MentionRegistry
 
-__all__ = ["Client", "PluginReport", "Sessions", "prompt", "prompt_sync"]
+__all__ = ["Client", "PluginReport", "SETTINGS", "Sessions", "prompt", "prompt_sync"]
+
+
+class _Missing:
+    """The default of a setting that was not given.
+
+    ``None`` cannot be it: several settings take ``None`` as a value (``theme = "none"`` is the file's way of
+    saying it, and ``mcp_config = None`` means there is no file), so a setting that was left out has to be told
+    apart from one that was set to nothing.
+    """
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging only
+        return "UNSET"
+
+
+_UNSET: Any = _Missing()
+
+#: The configuration fields :class:`Client` takes by name, laid over whatever it read. `tests/test_sdk_config.py`
+#: holds the signature to this list, so a field added to the configuration is either taken here or fails a test.
+SETTINGS: tuple[str, ...] = (
+    "store",
+    "theme_file",
+    "theme",
+    "themes_dir",
+    "pet",
+    "pet_position",
+    "reasoning_effort",
+    "shell_approval",
+    "reduced_motion",
+    "parallel_tool_call",
+    "max_iterations",
+    "transcript_max_entries",
+    "mouse_scroll_speed",
+    "tips",
+    "agents_md_enabled",
+    "ask_user_enabled",
+    "skills_enabled",
+    "skill_roots",
+    "skills_scope",
+    "mcp_enabled",
+    "mcp_config",
+    "mcp_scope",
+    "self_compaction",
+    "statusline_hidden",
+    "plugins_enabled",
+    "disabled_plugins",
+    "subagent_enabled",
+    "subagent_max_iterations",
+    "subagent_messaging",
+    "todowrite_enabled",
+    "jit_harness",
+    "shell_network",
+    "sessions_enabled",
+    "update_enabled",
+    "update_file",
+    "harness_dir",
+)
 
 #: What a client switches off unless it is told otherwise. The terminal application joins the broker that lets
 #: sessions message each other and checks for a release in the background; a program embedding the agent should
@@ -248,9 +307,16 @@ class Client:
         effort: The reasoning level to start on.
         permission: The shell permission level: ``deny``, ``ask``, ``safe`` (every command in a sandbox) or ``full``.
         resume: A session id to continue instead of starting a new conversation.
-        **settings: Any other :class:`~zettcode.config.ZettCodeConfig` field, such as ``store=``, ``skills_enabled=``,
-            ``mcp_enabled=``, ``subagent_enabled=``, ``todowrite_enabled=``, ``max_iterations=``. A misspelt name is
-            reported with a suggestion.
+        store, theme_file, theme, themes_dir, pet, pet_position, reasoning_effort, shell_approval, reduced_motion,
+        parallel_tool_call, max_iterations, transcript_max_entries, mouse_scroll_speed, tips, agents_md_enabled,
+        ask_user_enabled, skills_enabled, skill_roots, skills_scope, mcp_enabled, mcp_config, mcp_scope,
+        self_compaction, statusline_hidden, plugins_enabled, disabled_plugins, subagent_enabled,
+        subagent_max_iterations, subagent_messaging, todowrite_enabled, jit_harness, shell_network,
+        sessions_enabled, update_enabled, update_file, harness_dir: One
+            :class:`~zettcode.config.ZettCodeConfig` field each, laid over the configuration this client read. Every
+            one is named and typed here, so a misspelt setting is a ``TypeError`` from Python rather than a
+            configuration error; a value of the wrong type is still a ``ConfigurationError``. ``None`` is a value
+            for the fields that take one, and leaving a field out is the only way to keep the configured value.
 
     The client defaults to ``sessions_enabled=False`` and ``update_enabled=False``: a program embedding the agent
     neither joins the broker that lets terminal sessions message one another nor checks PyPI. Turning sessions on and
@@ -280,14 +346,58 @@ class Client:
         effort: str | None = None,
         permission: str | None = None,
         resume: str | None = None,
-        **settings: object,
+        # The configuration fields, named and typed rather than taken as any keyword: a misspelt one is then a
+        # TypeError from Python at the call, not a configuration error raised once the client is being built.
+        store: str | Path = _UNSET,
+        theme_file: str | Path | None = _UNSET,
+        theme: str | None = _UNSET,
+        themes_dir: str | Path = _UNSET,
+        pet: str | None = _UNSET,
+        pet_position: tuple[float, float] | None = _UNSET,
+        reasoning_effort: ReasoningEffort | str = _UNSET,
+        shell_approval: ShellApprovalMode | str = _UNSET,
+        reduced_motion: bool = _UNSET,
+        parallel_tool_call: bool = _UNSET,
+        max_iterations: int = _UNSET,
+        transcript_max_entries: int = _UNSET,
+        mouse_scroll_speed: float = _UNSET,
+        tips: bool = _UNSET,
+        agents_md_enabled: bool = _UNSET,
+        ask_user_enabled: bool = _UNSET,
+        skills_enabled: bool = _UNSET,
+        skill_roots: Sequence[str | Path] = _UNSET,
+        skills_scope: str = _UNSET,
+        mcp_enabled: bool = _UNSET,
+        mcp_config: str | Path | None = _UNSET,
+        mcp_scope: str = _UNSET,
+        self_compaction: bool = _UNSET,
+        statusline_hidden: Sequence[str] = _UNSET,
+        plugins_enabled: bool = _UNSET,
+        disabled_plugins: Sequence[str] = _UNSET,
+        subagent_enabled: bool = _UNSET,
+        subagent_max_iterations: int = _UNSET,
+        subagent_messaging: bool = _UNSET,
+        todowrite_enabled: bool = _UNSET,
+        jit_harness: bool = _UNSET,
+        shell_network: bool = _UNSET,
+        sessions_enabled: bool = _UNSET,
+        update_enabled: bool = _UNSET,
+        update_file: str | Path = _UNSET,
+        harness_dir: str | Path = _UNSET,
     ) -> None:
         self._closed = False
         self._stream: RunStream | None = None
         self._handles: dict[str, Session] = {}
         self._switching = asyncio.Lock()
         self._messenger: Messenger | None = None
-        resolved = build_config(workspace, config, config_path, models, settings)
+        given: dict[str, object] = {}
+        # A plain loop, not a comprehension: a comprehension has a scope of its own before Python 3.12 inlines it,
+        # and `locals()` inside one is then the comprehension's, not this constructor's.
+        for name in SETTINGS:
+            value = locals()[name]
+            if value is not _UNSET:
+                given[name] = value
+        resolved = build_config(workspace, config, config_path, models, given)
         self._register(resolved.workspace)
         # Imported here, not at the top of the module: importing the SDK costs nothing until a client is made.
         from ..engine.agent import ZettCodeAgent
@@ -1182,12 +1292,15 @@ async def prompt(
     on_question: QuestionHandler | None = None,
     on_event: Callable[[AnyEvent], object] | None = None,
     timeout: float | None = None,
-    **settings: object,
+    **settings: Any,
 ) -> RunResult:
     """Send one prompt and close everything again: a client, a run, the result.
 
     Takes the arguments of :class:`Client` and of :meth:`Session.run`. For more than one prompt, keep a
     :class:`Client` open instead, so the conversation carries on.
+
+    The configuration settings are the ones :class:`Client` names, passed straight through; they are typed there,
+    not here, because this form takes a prompt and a run's options beside them and one more list would bury it.
     """
     async with Client(
         workspace,
