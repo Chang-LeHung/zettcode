@@ -246,6 +246,10 @@ class ShellState:
     def submit(self, value: str, *, command: bool | None = None) -> bool | None:
         """Start a turn, steer the running one, or run a slash command (``command``: whether the draft is one)."""
 
+    async def prompt(self, text: str) -> bool:
+        """Run ``text`` as one turn, as if the reader had typed it; whether one was started and has ended."""
+        return False
+
     def flash(self, message: str, *, seconds: float = FLASH_SECONDS, level: str = "info") -> None:
         """Say something in the row above the composer, for a few seconds."""
 

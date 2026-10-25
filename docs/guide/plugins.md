@@ -140,6 +140,26 @@ are displayed in the transcript; they are not a user message submitted to the
 model. Prefer the command UI methods to `print()`, which writes outside the
 terminal interface.
 
+### Asking the model
+
+A command can run a turn of the conversation — as if the reader had typed it — with
+`await context.require_host().prompt(text)`. The text is echoed as the reader's own message, stored in the
+session, streamed as it is answered, and settled by the same row; `@` references are resolved, and the command holds
+the request slot until the answer is in. It returns `False`, starting nothing, when the text is blank, when the
+session is open in another process, or when a request is already running — a command that means to be usable then
+declares `when_busy="queue"` (see [While a request is running](#while-a-request-is-running)).
+
+This is how a command can be a preset for the model instead of a report about it:
+
+```python
+async def review(self, context: CommandContext) -> CommandResult:
+    if not context.argument:
+        context.ui.error("Usage: /review <what to look at>")
+        return CommandResult()
+    await context.require_host().prompt(f"Review this change, then list what you would alter. {context.argument}")
+    return CommandResult()
+```
+
 ### Suggesting a first word
 
 A command that takes a fixed first word (`/deploy staging`) can list it, and the completion menu then

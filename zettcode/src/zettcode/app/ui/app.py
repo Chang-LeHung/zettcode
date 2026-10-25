@@ -660,6 +660,26 @@ class ZettCodeApp(
             if outcome:
                 self._settle_wait(outcome)
 
+    async def prompt(self, text: str) -> bool:
+        """Run ``text`` as one turn of this conversation, as if the reader had typed it.
+
+        The draft path is taken whole — the echo, ``@`` references, the transcript, the session, the row the
+        request ends on — rather than a run of its own, so a command that asks the model something produces a turn
+        a reader could have produced. What the command decides is the text; everything after that is the ordinary
+        one.
+
+        The turn is awaited, so the request slot stays the command's until the answer is in: a second draft cannot
+        start behind it, and the command reports what it did once it is done.
+        """
+        if not text.strip():
+            return False
+        if self.client.session.locked:
+            self.flash("this session is open in another ZettCode process; it is read-only here", level="error")
+            return False
+        parts = mention_parts((text,), self.mentions)
+        await self._run_prompt(text, parts, mention_hint(parts, self.mentions), advance=False)
+        return True
+
     async def run_continue(self) -> None:
         """Pick up the request that was interrupted, where it stopped, as a turn of the conversation.
 
@@ -971,6 +991,7 @@ class ZettCodeApp(
         hint: str | None = None,
         *,
         relayed: Relayed | None = None,
+        advance: bool = True,
     ) -> None:
         """Stream one agent turn, keeping the task panel and transcript current.
 
@@ -1056,7 +1077,10 @@ class ZettCodeApp(
             self._note = None
             self._refresh_tasks()
             self.app.invalidate()
-            self._start_next_command()
+            if advance:
+                # A turn a command asked for leaves this to the command: it is still running, and what was queued
+                # waits for it to end, not for the turn inside it.
+                self._start_next_command()
 
     def _set_busy(self, busy: bool) -> None:
         """Track in-flight work and keep the frame loop alive while it runs.
