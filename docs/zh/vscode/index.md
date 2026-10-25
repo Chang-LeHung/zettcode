@@ -22,7 +22,7 @@ shell 命令都在你的控制之下。它通过 HTTP 和本机的 `zettcode-ser
 1. 打开扩展视图（`Ctrl/Cmd+Shift+X`），搜 **ZettCode**，安装。或者装 `.vsix`：
 
    ```bash
-   code --install-extension zettcode-0.1.6.vsix
+   code --install-extension zettcode-0.1.7.vsix
    ```
 
    [市场页面](https://marketplace.visualstudio.com/items?itemName=zettcode.zettcode)上写着最新版本；
