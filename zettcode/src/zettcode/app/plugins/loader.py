@@ -17,6 +17,7 @@ from .builtins import BUILTIN_PLUGINS
 from .container import TerminalContainer, UiSlots
 from .host import HOST_LINK, HostLink
 from .plugin import TerminalPlugin, TerminalPlugins
+from .state import TurnSegment
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from collections.abc import Iterable, Mapping, Sequence
@@ -67,6 +68,7 @@ class TerminalLoader(Loader):
         super().__init__(config, shared)
         self.services.setdefault(HOST_LINK, HostLink())
         self.slots = UiSlots()
+        self.turn_segments: dict[str, TurnSegment] = {}
         self.commands: list[Command] = []
         #: How many of ``commands`` the built-in plugins registered; they are loaded first.
         self.builtin_command_count = 0
@@ -83,6 +85,8 @@ class TerminalLoader(Loader):
         # instead of on an empty copy. A failure leaves it untouched.
         container = TerminalContainer(self.config, self.services)
         container.slots.take_from(self.slots)
+        for segment in self.turn_segments.values():
+            container.register_turn_segment(segment.name, segment.summary, segment.builder)
         return container
 
     def activated(self, plugin: Plugin[Any], container: PluginContainer) -> None:
@@ -124,6 +128,7 @@ class TerminalLoader(Loader):
         self._claimed.update(command.name for command in terminal.commands)
         self.commands.extend(terminal.commands)
         self.slots = terminal.slots
+        self.turn_segments = {segment.name: segment for segment in terminal.turn_segments}
 
     def builtins_loaded(self) -> None:
         self.builtin_command_count = len(self.commands)
@@ -143,4 +148,5 @@ class TerminalLoader(Loader):
             pets=tuple(self.pets),
             presenters=tuple(self.presenters),
             rows=self.slots.rows(),
+            turn_segments=tuple(self.turn_segments.values()),
         )

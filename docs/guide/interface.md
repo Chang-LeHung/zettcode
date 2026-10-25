@@ -110,7 +110,11 @@ Every kind of output has its own row, in the order it happened:
 - **The running request** is one row pinned to the bottom of the transcript:
   `✦ Processing (8s · ^C/Esc to interrupt)`. Reasoning, tool calls, and the answer all appear
   above it, and when the request ends — answered, failed, or stopped — that same
-  row becomes `Processed for 12s · 22:53`. It is the only row that moves: its
+  row becomes `Processed for 12s · 22:53`, followed by what the request spent, the same facts the VS Code
+  extension shows: `↑12.3k ↓1.2k · 87.0% cached · 3 model calls · 62 tok/s · 5 tool calls, 1 failed` (tokens sent and
+  received; the share of the input served from the cache; model calls, when there was more than one; output speed;
+  tool calls and how many failed). Each appears only when it has something to say, and a narrow terminal breaks the
+  line between two of them, never inside one. It is the only row that moves: its
   marker and the highlight crossing the word pulse together — a second of
   movement, then a second at rest — while the clock and the stop key stand
   beside it in parentheses, in the quiet ink a notice uses, counting whole
@@ -571,6 +575,13 @@ switch it off. `/statusline` opens a panel listing them:
 | | `speed` | How fast the model generates, in tokens per second |
 | | `ctx` | How much of the model's context window the last request filled |
 | | `keys` | The keys worth remembering: stop and exit |
+| Request line | `turn-time` | How long the request took: `Processed for 12s` |
+| | `turn-clock` | The time of day it ended |
+| | `turn-tokens` | Tokens sent and received by the request |
+| | `turn-cache` | The share of the request's input served from the cache |
+| | `turn-calls` | How many times the model was asked; shown when more than once. Off by default |
+| | `turn-speed` | The model's output speed during the request |
+| | `turn-tools` | Tool calls the model made, and how many failed. Off by default |
 | Companion | `pet` | The small pet over the conversation; see [The pet](#the-pet) |
 
 In the panel ↑ ↓ move between the parts — past the last goes round to the first, and past the first to the last — and ← → hide or show the one marked (Space flips it). The two rows above the
@@ -585,6 +596,8 @@ The choice is kept in `config.toml`, one line per part you switched off:
 ctx = false
 speed = false
 ```
+
+The request line is the one a request ends on, in place of its waiting row: `Processed for 12s · 22:53 · ↑12.3k ↓1.2k · 87.0% cached · 3 model calls · 62 tok/s · 5 tool calls, 1 failed`. Each of its items is a part of its own, joined by `·`, so `turn-tools = false` removes just the tool count. A narrow terminal breaks the line between two items, never inside one. A plugin can add items of its own (named `turn-<something>`); they appear in the panel under the same heading and are switched the same way. A change applies to the requests that end after it; lines already in the conversation stay as they were.
 
 From the keyboard, `/statusline hide ctx speed` and `/statusline show cache` do the same, and `/statusline show all`
 brings every part back. A part with nothing to say right now (`handle` with messaging off, `mode` at `ask`) takes no room

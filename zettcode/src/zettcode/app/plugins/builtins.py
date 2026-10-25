@@ -12,17 +12,25 @@ from __future__ import annotations
 
 from zettcode.app.agent.conversation.presenters import BUILTIN_PRESENTERS
 from zettcode.app.agent.conversation.pulse import activity_glyph
+from zettcode.app.agent.conversation.text import (
+    cache_text,
+    calls_text,
+    elapsed_text,
+    speed_text,
+    tokens_text,
+    tools_text,
+)
 from zettcode.app.commands import CommandContext, CommandResult
 from zettcode.app.pets import bundled_pets
 from zettcode.app.ui import labels
 from zettcode.app.ui.widgets import UsagePage
-from zettcode.statusline import Row, context_share, usage_parts
+from zettcode.statusline import TURN_PARTS, Row, context_share, usage_parts
 from zettcode.tui import STATUS, bundled_themes
 
 from .builtin_commands import BashCommand, HelpCommand, ModelCommands, SessionCommands, ShellControl, SideQuestion
 from .container import TerminalContainer
 from .plugin import TerminalPlugin
-from .state import ShellContext
+from .state import ShellContext, TurnBuilder
 
 
 class ShellRows(TerminalPlugin):
@@ -54,6 +62,31 @@ class ShellRows(TerminalPlugin):
     def render_status_right(self, context: ShellContext) -> Row:
         """List the keys worth remembering."""
         return labels.status_right()
+
+
+class TurnLine(TerminalPlugin):
+    """The items of the line a request ends on: how long it took, when, and what it spent.
+
+    Each is a segment of its own, so a plugin can add one beside them or replace one by name, and each is a switch
+    in ``/statusline``. Written as an ordinary plugin, like the header and status rows above.
+    """
+
+    name = "turn-line"
+
+    def activate(self, container: TerminalContainer) -> None:
+        """Register the items in the order they stand."""
+        sentences = dict(TURN_PARTS)
+        builders: dict[str, TurnBuilder] = {
+            "turn-time": lambda turn: f"{turn.label} for {elapsed_text(turn.seconds)}",
+            "turn-clock": lambda turn: turn.clock,
+            "turn-tokens": lambda turn: tokens_text(turn.usage),
+            "turn-cache": lambda turn: cache_text(turn.usage),
+            "turn-calls": lambda turn: calls_text(turn.usage),
+            "turn-speed": lambda turn: speed_text(turn.usage),
+            "turn-tools": lambda turn: tools_text(turn.tools, turn.failed_tools),
+        }
+        for name, builder in builders.items():
+            container.register_turn_segment(name, sentences[name], builder)
 
 
 class UsageCommand(TerminalPlugin):
@@ -140,6 +173,7 @@ BUILTIN_PLUGINS: tuple[TerminalPlugin, ...] = (
     SideQuestion(),
     BashCommand(),
     ShellControl(),
+    TurnLine(),
     UsageCommand(),
     BuiltinThemes(),
     BuiltinPets(),

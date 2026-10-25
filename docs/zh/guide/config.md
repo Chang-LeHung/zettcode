@@ -510,7 +510,7 @@ jit = false                    # 模型可以写并运行小的 Python 工具；
 | `mcp.config` | `~/.zettcode/mcp.json` | 用户自己的 JSON 服务器配置路径。建议用绝对路径或 `~`，避免位置不明确。 |
 | `mcp.scope` | `"both"` | 读哪些服务器文件：`"both"`（默认）合并用户的文件和 `<工作区>/.zettcode/mcp.json`，同名服务器以项目的为准；`"workspace"` 或 `"global"` 只读其中一个。工作区文件相当于仓库要求你去运行的命令，不想启动某个仓库的服务器时请设为 `"global"`。 |
 | `compaction.self` | `false` | 没有自己选择过的会话是否允许模型压缩自己的上下文。`/self-compact` 会打开面板，可以只改一个会话或改全部；见[自我压缩](/zh/guide/commands#self-compaction)。 |
-| `statusline.<部分>` | `true` | 把头部或状态行的某一部分设为 `false` 即隐藏；没写的部分都显示，只有 `pet` 例外，它默认隐藏，设为 `true` 才出现。部分有 `app`、`session`、`handle`、`workspace`、`model`、`effort`、`state`、`mode`、`self-compact`、`tokens`、`cache`、`speed`、`ctx`、`keys`、`pet`（对话上方的宠物，见[宠物](/zh/guide/interface#the-pet)）；不认识的名字会报错。`/statusline` 会替你改这张表。见[选择显示哪些部分](/zh/guide/interface#choosing-what-is-shown)。 |
+| `statusline.<部分>` | `true` | 把头部或状态行的某一部分设为 `false` 即隐藏；没写的部分都显示，只有 `pet`、`turn-calls` 和 `turn-tools` 例外，它们默认隐藏，设为 `true` 才出现。部分有 `app`、`session`、`handle`、`workspace`、`model`、`effort`、`state`、`mode`、`self-compact`、`tokens`、`cache`、`speed`、`ctx`、`keys`、请求结束行的各项（`turn-time`、`turn-clock`、`turn-tokens`、`turn-cache`、`turn-calls`、`turn-speed`、`turn-tools`；插件可以加名为 `turn-<something>` 的其他项）、`pet`（对话上方的宠物，见[宠物](/zh/guide/interface#the-pet)）；不认识的名字会报错。`/statusline` 会替你改这张表。见[选择显示哪些部分](/zh/guide/interface#choosing-what-is-shown)。 |
 | `plugins.enabled` | `true` | 加载已安装的第三方插件；关闭后内置 UI 功能仍可使用。 |
 | `plugins.disable` | `[]` | 要跳过的插件 **entry-point 名称**数组，不一定等于 pip 包名。 |
 | `update.enabled` | `true` | 后台检查 PyPI，并在之后启动时提示新版本，不会自动安装。 |

@@ -146,7 +146,7 @@ class TurnMixin(EntryLog):
         self._add(ChangesEntry(id=self._next_id, files=files))
         return True
 
-    def settle_wait(self, text: str) -> bool:
+    def settle_wait(self, text: str, parts: tuple[str, ...] = ()) -> bool:
         """Close the pinned wait row with the line its request ended on.
 
         The row is what the reader watched for the whole request, so it is where
@@ -158,11 +158,14 @@ class TurnMixin(EntryLog):
         Args:
             text: The line to leave in its place, such as
                 ``Processed for 12s · 22:53``.
+            parts: The items of the line, each a segment of its own; the row's presenter joins them. When given,
+                they are the line and ``text`` is only what a reader of the row's data sees.
         """
         row = self._open_wait()
         if row is None:
             return False
         row.text = text
+        row.parts = parts
         row.finish(EntryStatus.COMPLETED, self.clock())
         self._changed(row)
         return True

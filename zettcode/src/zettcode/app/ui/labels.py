@@ -13,8 +13,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from zettcode.statusline import Row
-from zettcode.tui import ELLIPSIS, HEADER, STATUS
+from zettcode.statusline import TURN_PARTS, Row
+from zettcode.tui import ARROW_DOWN, ARROW_UP, ELLIPSIS, HEADER, STATUS
 from zettcode.tui.render import display_width
 
 from ..agent.conversation.text import STOP_HINT
@@ -200,6 +200,23 @@ def status_left(
     row.add("cache", "The share of input the provider served from its cache", cache)
     row.add("speed", "How fast the model generates, in tokens per second", speed)
     row.add("ctx", "How much of the model's context window the last request filled", ctx)
+    return row
+
+
+def turn_line() -> Row:
+    """Show the line a request ends on as the panel previews it: the program's own items on a plausible request."""
+    samples = {
+        "turn-time": "Processed for 12s",
+        "turn-clock": "22:53",
+        "turn-tokens": f"{ARROW_UP}12.3k {ARROW_DOWN}1.2k",
+        "turn-cache": "87.0% cached",
+        "turn-calls": "3 model calls",
+        "turn-speed": "62 tok/s",
+        "turn-tools": "5 tool calls, 1 failed",
+    }
+    row = Row(lead="  ")
+    for name, summary in TURN_PARTS:
+        row.add(name, summary, samples[name])
     return row
 
 

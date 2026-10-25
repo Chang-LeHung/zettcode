@@ -80,6 +80,7 @@ from .text import (
     bounded_rows,
     duration_text,
     elapsed_text,
+    pack_segments,
     quiet_text,
     terminal_safe,
     tip_text,
@@ -489,13 +490,15 @@ class WaitPresenter(Presenter[WaitEntry]):
         """
         if not entry.running:
             settled = entry.text or f"Processed for {elapsed_text(entry.duration or 0.0)}"
+            ink = Style(foreground=theme.muted)
+            room = max(1, width - CONTENT_INDENT)
+            packed = pack_segments(list(entry.parts) or settled.split(f" {SEPARATOR} "), room)
             return [
                 TextLine(),
-                layout_rich_lines(
-                    (TextLine((Span(" " * CONTENT_INDENT + settled, Style(foreground=theme.muted)),)),),
-                    width,
-                    wrap=False,
-                )[0],
+                *(
+                    layout_rich_lines((TextLine((Span(" " * CONTENT_INDENT + row, ink),)),), width, wrap=False)[0]
+                    for row in packed
+                ),
             ]
         spans = list(_running_label(entry.title, theme, frame))
         if entry.duration is not None:

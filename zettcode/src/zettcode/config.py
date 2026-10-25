@@ -32,6 +32,7 @@ from .paths import (
 )
 from .providers import Api
 from .statusline import NAMES as STATUSLINE_NAMES
+from .statusline import TURN_PREFIX
 
 #: The concrete type :func:`_typed` verifies a raw config value against.
 T = TypeVar("T")
@@ -119,7 +120,7 @@ SESSIONS_KEYS = frozenset({"enabled"})
 UI_KEYS = frozenset({"theme", "pet", "pet_position"})
 
 #: The statusline parts that are hidden by default and made visible by choice.
-OFF_BY_DEFAULT: frozenset[str] = frozenset({"pet"})
+OFF_BY_DEFAULT: frozenset[str] = frozenset({"pet", "turn-calls", "turn-tools"})
 
 #: Keys the ``[statusline]`` table may set: the name of each part of the header and the status line.
 STATUSLINE_KEYS = frozenset(STATUSLINE_NAMES)
@@ -527,7 +528,9 @@ class ZettCodeConfig:
             raise ValueError(f"skills_scope must be one of {', '.join(sorted(SCOPES))}")
         if self.mcp_scope not in SCOPES:
             raise ValueError(f"mcp_scope must be one of {', '.join(sorted(SCOPES))}")
-        if stray := [name for name in self.statusline_hidden if name not in STATUSLINE_KEYS]:
+        if stray := [
+            name for name in self.statusline_hidden if name not in STATUSLINE_KEYS and not name.startswith(TURN_PREFIX)
+        ]:
             raise ValueError(f"statusline_hidden names no part: {', '.join(stray)}")
         object.__setattr__(self, "workspace", workspace)
         object.__setattr__(self, "store", store)
@@ -866,7 +869,15 @@ def load_config(
     compaction = _read_table(data.get("compaction"), "compaction", source, COMPACTION_KEYS)
     sessions = _read_table(data.get("sessions"), "sessions", source, SESSIONS_KEYS)
     ui = _read_table(data.get("ui"), "ui", source, UI_KEYS)
-    statusline = _read_table(data.get("statusline"), "statusline", source, STATUSLINE_KEYS)
+    raw_statusline = data.get("statusline")
+    # An item of the request line may be added by a plugin, which the config cannot know yet; its key is a switch
+    # all the same, so any key with the prefix is taken, and one no plugin has is harmless.
+    extra_parts = (
+        frozenset(key for key in raw_statusline if isinstance(key, str) and key.startswith(TURN_PREFIX))
+        if isinstance(raw_statusline, dict)
+        else frozenset()
+    )
+    statusline = _read_table(raw_statusline, "statusline", source, STATUSLINE_KEYS | extra_parts)
 
     return ZettCodeConfig(
         workspace=Path(workspace),
@@ -897,7 +908,7 @@ def load_config(
         self_compaction=bool(_setting(compaction, "self", bool, False)),
         statusline_hidden=tuple(
             name
-            for name in STATUSLINE_NAMES
+            for name in (*STATUSLINE_NAMES, *sorted(extra_parts - STATUSLINE_KEYS))
             if not _typed(
                 statusline.get(name, name not in OFF_BY_DEFAULT), f"Config key 'statusline.{name}' in {source}", bool
             )

@@ -28,7 +28,7 @@ from zettcode.app.ui.widgets.statusline_page import (
 from zettcode.config import ZettCodeConfig, load_config
 from zettcode.config_edit import ConfigEditError, set_statusline
 from zettcode.engine.extensions.usage import USAGE_EVENT_NAME, UsageSnapshot
-from zettcode.statusline import NAMES, Row, unknown
+from zettcode.statusline import NAMES, Part, Row, unknown
 from zettcode.tui import TuiApp
 
 MODEL = '[[models]]\nmodel = "m"\ntoken = "t"\n'
@@ -157,18 +157,24 @@ def test_a_shown_part_carries_the_glue_in_front_of_it():
 # -- the config -----------------------------------------------------------------------------------------------
 
 
-def test_every_part_but_the_pet_is_shown_until_the_config_says_otherwise(tmp_path):
+def test_every_part_but_the_pet_and_two_counts_is_shown_until_the_config_says_otherwise(tmp_path):
     path = tmp_path / "config.toml"
     path.write_text(MODEL, encoding="utf-8")
-    assert load_config(tmp_path, path=path).statusline_hidden == ("pet",), "the pet is out only when asked for"
-    path.write_text(MODEL + "\n[statusline]\npet = true\n", encoding="utf-8")
+    off = ("turn-calls", "turn-tools", "pet")
+    assert load_config(tmp_path, path=path).statusline_hidden == off, "out until asked for"
+    path.write_text(MODEL + "\n[statusline]\npet = true\nturn-calls = true\nturn-tools = true\n", encoding="utf-8")
     assert load_config(tmp_path, path=path).statusline_hidden == ()
 
 
 def test_the_statusline_table_hides_the_parts_it_sets_to_false(tmp_path):
     path = tmp_path / "config.toml"
     path.write_text(MODEL + "\n[statusline]\nspeed = false\nctx = false\ncache = true\npet = true\n", encoding="utf-8")
-    assert load_config(tmp_path, path=path).statusline_hidden == ("speed", "ctx"), "in the order the rows show them"
+    assert load_config(tmp_path, path=path).statusline_hidden == (
+        "speed",
+        "ctx",
+        "turn-calls",
+        "turn-tools",
+    ), "in the order the rows show them"
 
 
 def test_a_part_that_does_not_exist_is_a_typo_not_something_to_ignore(tmp_path):
@@ -343,7 +349,7 @@ def _shell_with(tmp_path, monkeypatch, path):
 
 
 async def test_the_panel_lists_every_part_with_its_description_and_a_switch_each(config_file):
-    app, harness = await open_panel(size=(120, 40))
+    app, harness = await open_panel(size=(120, 50))
     text = harness.render().text
 
     assert app.app.screens.top.name == "page"
@@ -574,7 +580,7 @@ async def test_the_list_scrolls_to_keep_the_marked_part_and_its_heading_in_view(
     for _ in range(len(PARTS) - 1):
         harness.press("down")
     text = harness.render().text
-    assert "keys" in text and "\u25b2" in text and "\u25bc" not in text
+    assert "turn-tools" in text and "\u25b2" in text and "\u25bc" not in text
     for _ in range(len(PARTS) - 1):
         harness.press("up")
     assert "app" in harness.render().text.split("Header")[1].split("\n")[1]
@@ -627,6 +633,45 @@ async def test_typed_hide_and_show_write_the_same_table_the_panel_does(config_fi
     await _type_command(app, harness, "/statusline show all")
     assert app.agent.statusline_hidden == frozenset()
     assert set(hidden_in(config_file).values()) == {True}
+
+
+async def test_the_items_of_the_request_line_are_parts_the_panel_the_command_and_the_file_all_switch(config_file):
+    from zettcode.statusline import TURN_PARTS
+
+    assert [name for name, _ in TURN_PARTS] == [name for name in NAMES if name.startswith("turn-")]
+    assert next(part for part in PARTS if part.name == "turn-tools").text, "the panel previews the line"
+    app = build_app()
+    harness = _harness(app)
+    harness.render()
+
+    await _type_command(app, harness, "/statusline hide turn-tools turn-clock")
+
+    assert hidden_in(config_file) == {"turn-tools": False, "turn-clock": False}
+    assert app.agent.statusline_hidden == {"turn-tools", "turn-clock"}
+    assert load_config(config_file.parent, path=config_file).statusline_hidden == (
+        "turn-clock",
+        "turn-calls",
+        "turn-tools",
+        "pet",
+    )
+
+
+async def test_a_plugins_item_is_a_part_too_the_file_accepts_its_key_and_the_panel_lists_it(tmp_path, config_file):
+    config_file.write_text(MODEL + "\n[statusline]\nturn-branch = false\n", encoding="utf-8")
+    assert load_config(tmp_path, path=config_file).statusline_hidden == (
+        "turn-calls",
+        "turn-tools",
+        "pet",
+        "turn-branch",
+    )
+
+    page = StatuslinePage(
+        (), (Part("turn-branch", "The branch the request ended on"),), on_apply=lambda _: None, on_cancel=lambda: None
+    )
+
+    assert [part.name for part in page.parts][-2:] == ["turn-branch", "pet"]
+    assert page.row_of["turn-branch"] == "Request line"
+    assert page.shown["turn-branch"] is True
 
 
 async def test_typed_words_that_are_not_parts_change_nothing_and_say_what_is_accepted(config_file):

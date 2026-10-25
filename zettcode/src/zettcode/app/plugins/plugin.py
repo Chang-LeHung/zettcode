@@ -14,7 +14,7 @@ from zettcode.engine.plugins.plugin import Plugin, Plugins
 
 from .container import TerminalContainer
 from .mixins import PluginUiMixin
-from .state import UiRow
+from .state import TurnSegment, UiRow
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay lazy
     from zettcode.app.agent.conversation.presenters import Presenter
@@ -46,6 +46,8 @@ class TerminalPlugins(Plugins):
         rows: The header and status rows the plugins fill, each with its left
             and right segments in paint order. The builtin rows are merged in
             first, so an overridden segment keeps its place.
+        turn_segments: The items of the line a request ends on, in the order they stand; the built-in plugin's come
+            first, so a name a plugin reuses replaces that item in place.
     """
 
     commands: tuple[Command, ...] = ()
@@ -54,6 +56,7 @@ class TerminalPlugins(Plugins):
     pets: tuple[PetSource, ...] = ()
     presenters: tuple[Presenter, ...] = ()
     rows: tuple[UiRow, ...] = ()
+    turn_segments: tuple[TurnSegment, ...] = ()
 
     @property
     def installed_commands(self) -> tuple[Command, ...]:

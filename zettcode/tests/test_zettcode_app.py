@@ -66,6 +66,7 @@ from zettcode.app.plugins import (
     TerminalPlugins,
     UiBuilder,
 )
+from zettcode.app.plugins.state import TurnSegment
 from zettcode.app.ui import app as app_module
 from zettcode.app.ui import demo
 from zettcode.app.ui import keys as keys_module
@@ -486,6 +487,7 @@ def rows_and_commands(
         themes=container.themes,
         pets=container.pets,
         presenters=container.presenters,
+        turn_segments=container.turn_segments,
         services={HOST_LINK: link},
     )
 
@@ -7774,6 +7776,49 @@ async def test_a_turn_that_changed_a_file_ends_with_the_file_and_then_the_time()
     rows = [row.strip() for row in _rendered(app.transcript, 70)]
     assert rows.index("Changed new.py +2") < next(i for i, r in enumerate(rows) if r.startswith("Processed for"))
     assert rows[-1].startswith("Processed for"), "the time is still the last line"
+
+
+async def test_the_line_a_turn_ends_on_carries_what_it_spent_after_the_time():
+    """The shell hands the wait row the figures; the row draws them after `Processed for ...`."""
+    events = _file_events(
+        ("c1", "read_file", {"path": "a.py"}),
+        ("c2", "read_file", {"path": "b.py"}),
+        status_of=lambda name: False,
+    )[:3]
+    app = build_app(events)
+    harness = _harness(app)
+
+    await _run_turn(app, harness)
+
+    wait = next(entry for entry in app.transcript.entries if entry.kind == "wait")
+    assert wait.parts[0].startswith("Processed for ") and wait.parts[-1] == "2 tool calls, 1 failed"
+    rows = [row.strip() for row in _rendered(app.transcript, 120)]
+    assert rows[-1].startswith("Processed for") and rows[-1].endswith("2 tool calls, 1 failed"), rows[-1]
+
+
+async def test_an_item_switched_off_is_left_out_of_the_line_a_turn_ends_on():
+    app = build_app(_file_events(("c1", "read_file", {"path": "a.py"})))
+    harness = _harness(app)
+    app.agent.runtime.config = replace(app.agent.runtime.config, statusline_hidden=("turn-tools", "turn-clock"))
+
+    await _run_turn(app, harness)
+
+    wait = next(entry for entry in app.transcript.entries if entry.kind == "wait")
+    assert wait.parts[0].startswith("Processed for ") and not any("tool call" in part for part in wait.parts)
+    assert len(wait.parts) < 3
+
+
+async def test_a_plugins_item_ends_the_line_a_turn_ends_on():
+    base = rows_and_commands()
+    mine = TurnSegment("turn-mine", "Mine", lambda turn: f"{turn.tools} mine")
+    plugins = replace(base, turn_segments=(*base.turn_segments, mine))
+    app = build_app(_file_events(("c1", "read_file", {"path": "a.py"})), plugins=plugins)
+    harness = _harness(app)
+
+    await _run_turn(app, harness)
+
+    wait = next(entry for entry in app.transcript.entries if entry.kind == "wait")
+    assert wait.parts[-1] == "1 mine"
 
 
 async def test_a_turn_that_changed_nothing_says_nothing_about_files():

@@ -26,7 +26,10 @@ LIST_TOP = 6
 MIN_LIST = 4
 LEFT_FOR_CONVERSATION = 8
 
-#: The two rows of the screen as the panel shows them, each as its left and right side. They are built by the
+#: The heading of the line a request ends on, and of the plugins' items beside the program's own.
+TURN_TITLE = "Request line"
+
+#: The rows of the screen as the panel shows them, each as its left and right side. They are built by the
 #: functions that build the real rows, on a plausible session rather than the reader's own, so the names and
 #: descriptions listed here are the ones the rows declare and cannot drift from them.
 SAMPLE: dict[str, tuple[Row, Row]] = {
@@ -46,6 +49,7 @@ SAMPLE: dict[str, tuple[Row, Row]] = {
         ),
         labels.status_right(),
     ),
+    TURN_TITLE: (labels.turn_line(), Row()),
 }
 
 #: Every part, in the order the rows show them, and the title of the row each is on. The pet is on no row of
@@ -99,6 +103,7 @@ class StatuslinePage(Widget):
 
     Args:
         hidden: The names of the parts that are hidden now; every other part is shown.
+        extra: Items of the line a request ends on that plugins added; they are listed with the program's own.
         on_apply: Receives every part's name and whether it is shown when Enter is pressed.
         on_cancel: Called when the reader backs out.
     """
@@ -108,13 +113,16 @@ class StatuslinePage(Widget):
     def __init__(
         self,
         hidden: Collection[str],
+        extra: Collection[Part] = (),
         *,
         on_apply: Callable[[dict[str, bool]], None],
         on_cancel: Callable[[], None],
     ) -> None:
         """Start with every switch where the settings are now, and the marker on the first part."""
         super().__init__()
-        self.start = {part.name: part.name not in hidden for part in PARTS}
+        self.parts: tuple[Part, ...] = (*PARTS[:-1], *extra, PET)
+        self.row_of = {**ROW_OF, **{part.name: TURN_TITLE for part in extra}}
+        self.start = {part.name: part.name not in hidden for part in self.parts}
         self.switches = {name: _Rail(("hidden", "shown"), int(shown)) for name, shown in self.start.items()}
         self.on_apply = on_apply
         self.on_cancel = on_cancel
@@ -125,10 +133,10 @@ class StatuslinePage(Widget):
         self._token = f"statusline-panel:{id(self)}"
         self._lines: list[tuple[str, int]] = []
         previous = None
-        for index, part in enumerate(PARTS):
-            if ROW_OF[part.name] != previous:
+        for index, part in enumerate(self.parts):
+            if self.row_of[part.name] != previous:
                 self._lines.append(("heading", index))
-                previous = ROW_OF[part.name]
+                previous = self.row_of[part.name]
             self._lines.append(("part", index))
 
     @property
@@ -156,7 +164,7 @@ class StatuslinePage(Widget):
 
     def set(self, name: str, shown: bool) -> None:
         """Send one part's switch to shown or hidden, and set the marker on it."""
-        self.mark = next(index for index, part in enumerate(PARTS) if part.name == name)
+        self.mark = next(index for index, part in enumerate(self.parts) if part.name == name)
         reduced = self.app is not None and self.app.reduced_motion
         if self.switches[name].choose(int(shown), self._now(), instant=reduced) and self.app is not None:
             self.app.scheduler.animate(self._token)
@@ -189,20 +197,20 @@ class StatuslinePage(Widget):
         """Move the marker with Up and Down, hide and show with Left and Right, and apply with Enter."""
         if isinstance(event, MouseEvent):
             return self._handle_mouse(event)
-        name = PARTS[self.mark].name
+        name = self.parts[self.mark].name
         match pressed(event):
             case "up" | "backtab":
-                self.mark = (self.mark - 1) % len(PARTS)
+                self.mark = (self.mark - 1) % len(self.parts)
             case "down" | "tab":
-                self.mark = (self.mark + 1) % len(PARTS)
+                self.mark = (self.mark + 1) % len(self.parts)
             case "pageup":
                 self.mark = max(0, self.mark - max(1, self._view() - 1))
             case "pagedown":
-                self.mark = min(len(PARTS) - 1, self.mark + max(1, self._view() - 1))
+                self.mark = min(len(self.parts) - 1, self.mark + max(1, self._view() - 1))
             case "home":
                 self.mark = 0
             case "end":
-                self.mark = len(PARTS) - 1
+                self.mark = len(self.parts) - 1
             case "left":
                 self.set(name, False)
             case "right":
@@ -221,7 +229,7 @@ class StatuslinePage(Widget):
             self.mark = max(0, self.mark - 1)
             return True
         if event.action is MouseAction.SCROLL_DOWN:
-            self.mark = min(len(PARTS) - 1, self.mark + 1)
+            self.mark = min(len(self.parts) - 1, self.mark + 1)
             return True
         if event.action is not MouseAction.DOWN:
             return False
@@ -232,7 +240,7 @@ class StatuslinePage(Widget):
         kind, part = self._lines[index]
         if kind != "part":
             return False
-        name = PARTS[part].name
+        name = self.parts[part].name
         start = self._switch_column()
         if start <= event.x < start + SWITCH_WIDTH + 1 + WORD_WIDTH:
             self.set(name, not self.switches[name].selected)
@@ -278,9 +286,9 @@ class StatuslinePage(Widget):
             (
                 text
                 for text in (
-                    f"{count} of {len(PARTS)} shown{suffix}",
-                    f"{count} of {len(PARTS)} shown",
-                    f"{count}/{len(PARTS)}",
+                    f"{count} of {len(self.parts)} shown{suffix}",
+                    f"{count} of {len(self.parts)} shown",
+                    f"{count}/{len(self.parts)}",
                 )
                 if display_width(text) <= gap
             ),
@@ -297,7 +305,7 @@ class StatuslinePage(Widget):
             self._draw_preview(canvas, SAMPLE[title], self.rect.y + 3 + offset)
         self._reveal()
         self._draw_list(canvas)
-        part = PARTS[self.mark]
+        part = self.parts[self.mark]
         description = (
             f"{part.name}: {part.summary}" if self.shown[part.name] else f"{part.name} is hidden: {part.summary}"
         )
@@ -340,7 +348,7 @@ class StatuslinePage(Widget):
     ) -> None:
         """Draw a side's runs one after the other, the marked part picked out, and stop when the room is used."""
         theme = self.theme
-        marked = PARTS[self.mark].name
+        marked = self.parts[self.mark].name
         column = x
         for piece, name in runs:
             left = room - (column - x)
@@ -371,13 +379,13 @@ class StatuslinePage(Widget):
             y = self.rect.y + LIST_TOP + offset
             kind, at = self._lines[index]
             if kind == "heading":
-                title = ROW_OF[PARTS[at].name]
+                title = self.row_of[self.parts[at].name]
                 canvas.draw_text(x, y, title, Style(foreground=theme.muted, background=surface, bold=True))
                 start = x + display_width(title) + 1
                 if start < right:
                     canvas.draw_text(start, y, "\u2500" * (right - start), Style(foreground=groove, background=surface))
                 continue
-            part = PARTS[at]
+            part = self.parts[at]
             rail = self.switches[part.name]
             on = rail.position(now)
             marked = at == self.mark

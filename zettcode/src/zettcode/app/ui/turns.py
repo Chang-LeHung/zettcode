@@ -8,14 +8,63 @@ help.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 
 from zettcode.error_text import CONTINUE_HINT, failure_text
 from zettcode.prompt import MentionPart, PromptPart
 from zettcode.sdk.errors import RunError
-from zettcode.sdk.types import Image, TaskInfo
+from zettcode.sdk.events import AnyEvent, ToolFinished, ToolStarted
+from zettcode.sdk.types import Image, TaskInfo, Usage
 
-__all__ = ["failure_line", "plan_rows", "prompt_pieces"]
+from ..plugins.state import TurnContext, TurnSegment
+
+__all__ = ["TurnTally", "failure_line", "plan_rows", "prompt_pieces", "turn_parts"]
+
+
+class TurnTally:
+    """What one request spent, kept while it runs so the line it ends on can say.
+
+    The tokens and model calls are the session's usage after the request less its usage before, so they are right
+    for a request that failed or was stopped as well (the calls that finished are counted). The tool calls are counted
+    from the events, because the session keeps no per-request tally of them. It holds numbers; the items of the
+    line (``turn_parts``) say how they read.
+    """
+
+    def __init__(self, before: Usage) -> None:
+        """Start counting from the session's usage as it is now."""
+        self._before = before
+        self.tools = 0
+        self.failed = 0
+
+    def see(self, event: AnyEvent) -> None:
+        """Count a tool the model started, and one that failed (a question the reader cancelled is skipped, not failed)."""
+        if isinstance(event, ToolStarted):
+            self.tools += 1
+        elif isinstance(event, ToolFinished) and not event.ok and not event.skipped:
+            self.failed += 1
+
+    def context(self, now: Usage, *, label: str, seconds: float, clock: str) -> TurnContext:
+        """Return what the request came to, given the session's usage now, how it ended, how long it took and when."""
+        return TurnContext(label, seconds, clock, now.since(self._before), self.tools, self.failed)
+
+
+def turn_parts(segments: Sequence[TurnSegment], context: TurnContext, hidden: Collection[str]) -> tuple[str, ...]:
+    """Return the items of the line a request ends on: each shown segment's text, in order.
+
+    A segment the reader switched off is not asked. One that has nothing to say, or that raises, is left out: a
+    plugin's mistake costs its own item and never the line.
+    """
+    parts: list[str] = []
+    for segment in segments:
+        if segment.name in hidden:
+            continue
+        try:
+            text = segment.builder(context)
+        except Exception:  # noqa: BLE001 - a plugin's item must not take the line down with it
+            continue
+        if text:
+            parts.append(str(text))
+    return tuple(parts)
 
 
 def prompt_pieces(parts: Sequence[PromptPart]) -> list[str | Image]:

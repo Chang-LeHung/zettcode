@@ -194,6 +194,47 @@ class UiSegment:
 
 
 @dataclass(frozen=True, slots=True)
+class TurnContext:
+    """What a request came to, for the items of the line it ends on.
+
+    Attributes:
+        label: How the request ended, as the line's first word: ``Processed``, or ``Continued`` for a ``/continue``.
+        seconds: Wall time of the request.
+        clock: The time of day it ended, as ``HH:MM``.
+        usage: What the request spent: the session's usage after it, less before it.
+        tools: Tool calls the request made.
+        failed_tools: How many of them failed.
+    """
+
+    label: str
+    seconds: float
+    clock: str
+    usage: Usage
+    tools: int = 0
+    failed_tools: int = 0
+
+
+#: Called once when a request ends with its :class:`TurnContext`; returns the item's text, or nothing to leave it out.
+TurnBuilder: TypeAlias = Callable[[TurnContext], "str | None"]
+
+
+@dataclass(frozen=True, slots=True)
+class TurnSegment:
+    """One named item of the line a request ends on.
+
+    Attributes:
+        name: Identity, and the switch it has in ``[statusline]`` and ``/statusline``; it starts with ``turn-``.
+            Registering a segment under a name that exists replaces that one in place.
+        summary: One line saying what it shows, for the ``/statusline`` panel.
+        builder: Called once per request with a :class:`TurnContext`.
+    """
+
+    name: str
+    summary: str
+    builder: TurnBuilder
+
+
+@dataclass(frozen=True, slots=True)
 class UiRow:
     """One shell row: its two sides, each painted left to right.
 

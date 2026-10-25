@@ -195,6 +195,9 @@ class WaitEntry(TimedEntry):
     tips: tuple[str, ...] = ()
     #: The line the request ended on, written when the row is settled.
     text: str = ""
+    #: The items of the line, one string each, written with the line; the presenter joins them with the separator
+    #: and breaks the row between two, never inside one. Empty means the line is ``text`` alone.
+    parts: tuple[str, ...] = ()
 
 
 @dataclass(slots=True, kw_only=True)

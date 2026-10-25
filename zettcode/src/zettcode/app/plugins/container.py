@@ -19,9 +19,10 @@ from zettcode.app.agent.conversation.presenters import Presenter
 from zettcode.app.commands import BusyPolicy, Command, CommandHandler, CommandList, CommandProvider, Subcommands
 from zettcode.app.pets import PET_NAME, Pet, PetSource
 from zettcode.engine.plugins.container import PluginContainer
+from zettcode.statusline import TURN_PREFIX
 from zettcode.tui import RESERVED_THEMES, THEME_NAME, Theme, ThemeSource, file_theme
 
-from .state import UiRow, UiSegment
+from .state import TurnBuilder, TurnSegment, UiRow, UiSegment
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay lazy
     from collections.abc import Callable, Mapping
@@ -131,6 +132,34 @@ class TerminalContainer(PluginContainer):
         self._pets: list[PetSource] = []
         self._presenters: list[Presenter[Any]] = []
         self._slots = UiSlots()
+        self._turn_segments: dict[str, TurnSegment] = {}
+
+    @property
+    def turn_segments(self) -> tuple[TurnSegment, ...]:
+        """Return the items of the line a request ends on registered so far, in the order they stand."""
+        return tuple(self._turn_segments.values())
+
+    def register_turn_segment(self, name: str, summary: str, builder: TurnBuilder) -> TurnSegment:
+        """Add one item to the line a request ends on (``Processed for 12s \u00b7 22:53 \u00b7 ...``), after those already there.
+
+        Each item is a segment of its own, joined to the others by the line's separator, and a switch of its own:
+        ``[statusline] <name> = false`` and ``/statusline hide <name>`` leave it out. A name that exists replaces
+        that item where it stands, which is how a plugin changes one of the program's.
+
+        Args:
+            name: Starts with ``turn-``; the switch's name.
+            summary: What it shows, in one line, for the ``/statusline`` panel.
+            builder: Called when a request ends with a :class:`~zettcode.app.plugins.state.TurnContext`; returns the
+                text, or nothing to leave the item out this time. One that raises is left out.
+
+        Raises:
+            ValueError: The name does not start with ``turn-``.
+        """
+        if not name.startswith(TURN_PREFIX) or name == TURN_PREFIX:
+            raise ValueError(f"A turn segment is named {TURN_PREFIX}<something>, not {name!r}")
+        segment = TurnSegment(name, summary, builder)
+        self._turn_segments[name] = segment
+        return segment
 
     @property
     def commands(self) -> tuple[Command, ...]:
