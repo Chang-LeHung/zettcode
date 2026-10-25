@@ -40,6 +40,19 @@ requests `id-token: write`.
 A manual `workflow_dispatch` run only builds and uploads the artifacts;
 publishing and the GitHub release both require a tag push.
 
+## The monitor plugin
+
+`plugins/zettcode-monitor` is a separate PyPI project, `zettcode-monitor`, with its own version and its own tag.
+It is not a member of the uv workspace, so `make check` does not cover it; its tests run in the release workflow.
+
+1. Set `__version__` in `plugins/zettcode-monitor/src/zettcode_monitor/__init__.py` and commit it.
+2. Tag and push `monitor-v<version>` (for example `monitor-v0.1.0`). `.github/workflows/release-monitor.yml` checks the
+   tag against the version, runs the tests on Python 3.10 to 3.15, builds, and publishes with the same
+   `PYPI_API_TOKEN` secret.
+
+The plugin depends on `zettcode>=0.1.11,<0.2`, the first release with `zettcode.app.plugins`; publish that release
+first, because until it exists `pip install zettcode-monitor` has nothing to resolve against.
+
 ## CI
 
 `.github/workflows/ci.yml` runs on every push to `main` and on every pull
