@@ -36,6 +36,7 @@ __all__ = [
     "SessionStatsInfo",
     "SessionTotals",
     "StoredSession",
+    "TaskInfo",
     "ToolCallInfo",
     "ToolRecord",
     "Totals",
@@ -215,6 +216,19 @@ class StoredSession:
     usage: Usage
     records: object = field(repr=False, compare=False)
     _engine: Any = field(default=None, repr=False, compare=False)
+
+
+@dataclass(frozen=True, slots=True)
+class TaskInfo:
+    """One step of the plan the model keeps for a session.
+
+    Attributes:
+        status: ``pending``, ``in_progress`` or ``completed``.
+        content: What the step says.
+    """
+
+    status: str
+    content: str
 
 
 @dataclass(frozen=True, slots=True)

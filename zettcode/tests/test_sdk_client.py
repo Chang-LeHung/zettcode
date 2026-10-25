@@ -176,9 +176,19 @@ async def test_a_level_chosen_for_one_run_is_not_remembered_by_the_session(tmp_p
         client.use_permission("safe")
         first = client.session.id
         assert client.use_permission("full", remember=False) == "full" and client.permission == "full"
-    async with client_for(tmp_path) as again:
-        assert again.permission != "full", "a later client does not inherit a level that was for one run"
-    assert first
+    async with zc.Client(config=config_for(tmp_path), resume=first) as again:
+        assert again.permission == "safe", "reopening the session restores what it remembered, not the one-run level"
+
+
+async def test_the_plan_is_empty_until_the_model_makes_one_and_the_default_without_a_file_is_a_configuration_error(
+    tmp_path,
+):
+    async with client_for(tmp_path) as client:
+        assert client.session.tasks() == ()
+        assert client.self_compaction_default is False
+        with pytest.raises(ConfigurationError):
+            client.use_self_compaction_default(True)
+        assert client.self_compaction_default is False, "a failed write changes nothing"
 
 
 @pytest.mark.parametrize(

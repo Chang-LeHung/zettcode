@@ -100,7 +100,8 @@ What they still take from `TerminalAgent` is, in the order it would go:
   comparisons); the SDK's `ModelInfo` is a copy of it. Moving needs a decision on which one the pickers hold.
 - `file_models`, `add_configured_model`, `remove_configured_model`, `update_configured_model`, `config_file`: editing the
   configuration file from the model forms, which is the terminal's own business.
-- `steer`, `turn`: a steering message can be a built one (pictures, an `@` hint) and the SDK's `steer` takes text.
-- `tasks`, `self_compaction_default` and `remember_self_compaction`, `change_compact_percent`: the model's plan and the
-  two defaults written to the config have no SDK method yet.
+- `steer`, `turn`: a steering message can be a built one (pictures, an `@` hint) and the SDK's `steer` takes text. The
+  shell also needs the text the agent will report for it, to match its queue; the SDK would have to return it.
+- Moved in the last step: `tasks` (`Session.tasks`), the self-compaction default (`Client.self_compaction_default`,
+  `use_self_compaction_default`) and the compaction percent (`use_compact_percent`).
 - `runtime`, `conversation`, `presenters`, `pets`, `themes`, `statusline_*`, `plugin_*`: the terminal's own parts.

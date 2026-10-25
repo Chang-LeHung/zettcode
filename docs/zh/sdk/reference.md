@@ -160,6 +160,8 @@ class Client:
 | `relay(message, *, on_approval, on_question, on_event, timeout, raw, keep_events, defer_answers)` | `RunStream` | 为另一个会话发来的消息跑一轮，模型读到的内容带有发送者信息。 |
 | `await usage_ledger()` | `WorkspaceUsage` | 工作区每个已存会话花的用量，按会话、模型和天。 |
 | `await session_stats(ids=None)` | `tuple[SessionStatsInfo, ...]` | 若干会话在存储里的统计；不传 id 就是当前会话。 |
+| `self_compaction_default` | `bool` | 没做过选择的会话会怎样（`[compaction] self`）。 |
+| `use_self_compaction_default(enabled)` | `Path` | 把这个默认值写进配置文件并立即生效；文件不存在或无法编辑时抛 `ConfigurationError`。 |
 | `use_self_compaction(choice)` | `bool` | 允许模型自己压缩这个会话（`True`）、停掉（`False`），或跟随默认值（`None`）。 |
 | `await check_models(*, timeout=30)` | `tuple[ModelCheck, ...]` | 对每个配置的模型各问一个短问题，和 `zettcode doctor` 一致。 |
 | `aclose()` | — | 停止进行中的 run 并释放一切。重复调用是安全的。 |
@@ -216,6 +218,7 @@ def remove_model(name, *, path=None) -> tuple[ModelInfo, ...]: ...
 | `usage` | `Usage` | 这个会话累计花的用量。 |
 | `locked` | `bool` | 是否有别的进程打开着它。 |
 | `retake()` | `bool` | 再次尝试拿下别的进程曾占用的对话的锁；本 client 持有锁时返回 `True`。 |
+| `tasks()` | `tuple[TaskInfo, ...]` | 模型为这段会话维护的计划；`TaskInfo(status, content)`，`status` 为 `pending`、`in_progress` 或 `completed`。 |
 | `path` | `Path` | 对话保存的文件。 |
 | `current` | `bool` | 下一次 run 是否无需切换就用它。 |
 

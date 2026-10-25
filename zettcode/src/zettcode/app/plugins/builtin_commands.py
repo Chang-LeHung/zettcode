@@ -175,12 +175,12 @@ class SessionCommands(TerminalPlugin):
         def apply(percent: float) -> None:
             host.close_page()
             try:
-                model, unwritten = host.agent.change_compact_percent(percent)
-            except ValueError as error:
+                model, unwritten = host.client.use_compact_percent(percent)
+            except COMMAND_ERRORS as error:
                 host.transcript.error(str(error))
                 return
-            said = f"{model.shown_name}: compacts at {whole_if_whole(model.compact_percent)}% of the window"
-            said += f" ({model.compaction_max_tokens:,} tokens)"
+            said = f"{model.display_model or model.model}: compacts at {whole_if_whole(model.compact_percent)}% of the window"
+            said += f" ({round(model.context_window * model.compact_percent / 100):,} tokens)"
             if unwritten is None:
                 host.transcript.notice(said)
             else:

@@ -160,6 +160,8 @@ The agent for one workspace. An async context manager. See [Client & configurati
 | `relay(message, *, on_approval, on_question, on_event, timeout, raw, keep_events, defer_answers)` | `RunStream` | Runs one turn for a message another session sent, framed with who it came from. |
 | `await usage_ledger()` | `WorkspaceUsage` | What every stored session of the workspace spent, by session, model and day. |
 | `await session_stats(ids=None)` | `tuple[SessionStatsInfo, ...]` | Stored totals of some sessions, or of the current one. |
+| `self_compaction_default` | `bool` | What a session that has made no choice does (`[compaction] self`). |
+| `use_self_compaction_default(enabled)` | `Path` | Writes that default into the configuration file and applies it now; raises `ConfigurationError` when the file is missing or cannot be edited. |
 | `use_self_compaction(choice)` | `bool` | Let the model compact this session itself (`True`), stop it (`False`), or follow the default (`None`). |
 | `await check_models(*, timeout=30)` | `tuple[ModelCheck, ...]` | Ask every configured model one short question, as `zettcode doctor`. |
 | `aclose()` | — | Stops a run in progress, leaves the broker and releases everything. Safe to call twice. |
@@ -214,6 +216,7 @@ A handle on one stored conversation. Obtain it from `client.session`, `client.se
 | `usage` | `Usage` | What this session has spent in total. |
 | `locked` | `bool` | Whether another process has it open. |
 | `retake()` | `bool` | Tries again to take the lock of a conversation another process had open; `True` once this client holds it. |
+| `tasks()` | `tuple[TaskInfo, ...]` | The plan the model keeps for this session; `TaskInfo(status, content)`, `status` being `pending`, `in_progress` or `completed`. |
 | `path` | `Path` | The file the conversation is stored in. |
 | `current` | `bool` | Whether the next run would use it without switching. |
 

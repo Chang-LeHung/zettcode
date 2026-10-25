@@ -32,6 +32,7 @@ from .errors import (
     ConfigurationError,
     SendError,
     SessionBusyError,
+    SessionLockedError,
     SessionNotFoundError,
     WorkspaceConflictError,
 )
@@ -825,11 +826,37 @@ class Client:
         request (the tool is offered when one starts).
 
         Raises:
+            SessionLockedError: Another process has the session open; the choice is part of the session.
             OSError: The choice could not be written; the one in force is unchanged.
         """
         self._check_open()
+        if self.session.locked:
+            raise SessionLockedError("This session is open in another ZettCode process, so it is read-only here.")
         self._agent.runtime.choose_self_compaction(self.session.id, choice)
         return self.self_compaction
+
+    @property
+    def self_compaction_default(self) -> bool:
+        """Return what a session that has made no choice does: ``[compaction] self`` in the configuration."""
+        return self._agent.self_compaction_default
+
+    def use_self_compaction_default(self, enabled: bool) -> Path:
+        """Write the default every session without a choice follows into the configuration file, and apply it now.
+
+        The file is written first and the running configuration changed second, so a failed write leaves both as
+        they were. A file that does not exist is not created.
+
+        Returns:
+            The file written.
+
+        Raises:
+            ConfigurationError: There is no configuration file, or it cannot be read, edited safely or written.
+        """
+        self._check_open()
+        try:
+            return self._agent.remember_self_compaction(enabled)
+        except ValueError as error:
+            raise ConfigurationError(str(error)) from error
 
     async def check_models(self, *, timeout: float = 30.0) -> tuple[ModelCheck, ...]:
         """Ask every configured model one short question, as ``zettcode doctor`` does, and report which answer.
