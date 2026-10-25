@@ -1,8 +1,8 @@
 # Talking between sessions
 
 Several ZettCode sessions can run on one machine at once — one fixing a parser, one writing its
-docs, one reviewing a branch. They can see each other and pass messages: you can write to another
-session yourself with `@`, and the model can do the same with a tool when you ask it to.
+docs, one reviewing a branch. They can see each other and pass messages: a session you name with `@` is a
+reference your model can pass a message to with a tool.
 
 ## How it works
 
@@ -29,7 +29,7 @@ so you can tell somebody what to type to reach you.
 
 ## Writing to another session
 
-Start a message with `@` and the name of a session that is running. The menu lists the sessions as you type, each with
+Type `@` and the name of a session that is running. The menu lists the sessions as you type, each with
 what it is about, whether it is working, and the folder it works in. What you type is matched against the name, the
 title, the folder and the start of the id, names first, so `@parser` finds the session titled "Fix the parser".
 
@@ -37,29 +37,17 @@ title, the folder and the start of the id, names first, so `@parser` finds the s
 ❯ @fix-the-parser can you check that the tokenizer still handles tabs?
 ```
 
-The message goes to that session instead of to the model here, whatever this session is doing — you do not
-have to wait for a request to end, and you are not asked whether it is a follow-up. It appears in your
-conversation as a sent message:
+A name after `@` is a reference like a file or a skill, so the draft still goes to this session's model. The model
+reads `session "fix-the-parser"` in place of the `@`, is told which session that is and how to reach it, and calls
+`send_message` itself. When your message begins with the name, as above, what follows it is what the model passes on;
+when the name appears in a sentence, it decides whether your request is for that session. Either way the shell sends
+nothing itself: your message shows as you typed it, and the send is the model's tool row, with who it went to and
+how it ended (`Delivered to …`, `queued`, or why it was not sent). `queued` means that session was busy and will
+start on it when its current request ends. The other session sees the message as coming from this session's agent,
+because that is what sent it.
 
-```text
-→ to session fix-the-parser · delivered
-› can you check that the tokenizer still handles tabs?
-```
-
-`queued` instead of `delivered` means that session was busy and will start on it when its current request
-ends. If it could not be delivered — the session closed, it is full, the name matches nothing — the
-conversation says why and nothing is drawn as sent.
-
-Only a message that *begins* with the name is sent. A name later in a sentence is a reference for the model:
-it reads your sentence with the name in place of the `@` (`ask session "fix-the-parser" whether…`), is told that
-an `@` before a name means another running session rather than a file, and that `send_message` reaches it. It
-then decides for itself whether your request calls for a message. Your own message still shows as you typed it.
-
-```text
-❯ ask @fix-the-parser whether the build is green, then summarise the answer for me
-```
-
-A message to a session is text only (no pictures), and at most 32,000 characters.
+The tool sends text only, and refuses a message over 32,000 characters. A name nobody has, or a session that has
+left, is ordinary text: nothing explains it to the model.
 
 ## Receiving a message
 
@@ -105,8 +93,8 @@ of a message another session's agent sent to you. It shows who the message was f
 said, then how it ended (`Delivered to …`, or why it was not). Click the row to see the whole message and the whole outcome.
 
 Two agents that keep answering each other would run for ever, so a message carries a count of how many
-sessions it has passed through, and the broker stops one that would be the seventh. A message you typed
-starts the count over.
+sessions it has passed through, and the broker stops one that would be the seventh. A new message starts the count
+over.
 
 ## From outside ZettCode
 

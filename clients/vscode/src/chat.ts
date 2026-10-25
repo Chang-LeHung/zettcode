@@ -722,11 +722,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     if (!prompt) {
       return;
     }
-    const addressed = /^@([\w-]+)\s+([\s\S]+)$/.exec(prompt);
-    if (addressed !== null) {
-      await this.sendToSession(addressed[1] ?? "", addressed[2] ?? "", images);
-      return;
-    }
     if (this.busy) {
       await this.steer(prompt);
       return;
@@ -739,32 +734,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     this.turns.push(turn);
     this.postTurn(turn, true);
     await this.startRun(client.prompt(prompt, this.runOptions(images)), turn);
-  }
-
-  /**
-   * Send a draft that begins with `@name` to that session, as the terminal does, and show what was sent.
-   *
-   * A message is text only, and it is not a request to this chat's model: the row says who it went to, and the
-   * other session's answer arrives later as a turn of its own.
-   */
-  private async sendToSession(handle: string, text: string, images: ImageInput[]): Promise<void> {
-    if (images.length > 0) {
-      this.post({ type: "notice", level: "warn", text: `a message to @${handle} is text only` });
-      return;
-    }
-    const client = await this.ensureClient();
-    try {
-      const sent = await client.send(handle, text);
-      const turn = createTurn(text, [], Date.now());
-      turn.sent = { to: sent.to, note: sent.disposition === "queued" ? "queued" : "delivered" };
-      turn.status = "done";
-      turn.finishedAt = Date.now();
-      this.turns.push(turn);
-      this.postTurn(turn, true);
-      this.postState();
-    } catch (error) {
-      this.post({ type: "notice", level: "warn", text: `not sent to @${handle}: ${messageOf(error)}` });
-    }
   }
 
   private async resumeRun(): Promise<void> {
@@ -1032,7 +1001,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     }
     let steered = false;
     try {
-      steered = (await this.client.session.steer(prompt)) !== null;
+      steered = (await this.client.session.steer(prompt, { mentions: true })) !== null;
     } catch (error) {
       this.post({ type: "notice", level: "warn", text: `Could not steer: ${messageOf(error)}` });
     }

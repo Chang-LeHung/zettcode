@@ -135,8 +135,8 @@ class ZettCodeApp(
         # The plugins' commands reach the shell through the context they are run with, and the words their menus
         # offer through this link; the shell is built enough by now that either may follow it.
         agent.attach_host(self)
-        #: The line to the other sessions, when the configuration has one; the session names it offers
-        #: for ``@`` come first, because a draft that begins with one is a message to that session.
+        #: The line to the other sessions, when the configuration has one; a session name it offers for ``@``
+        #: comes first, so it wins over a file or plugin resource of the same name.
         self.messenger: SessionLink | None = agent.messenger
         self.mentions = MentionRegistry(
             agent.plugin_mentions
@@ -254,7 +254,6 @@ class ZettCodeApp(
         self._follow_ups_held = False
         self._turn_running = False
         self._inbox: list[Relayed] = []
-        self._sends: set[asyncio.Task[None]] = set()
         self._lock_watch: asyncio.Task[None] | None = None
         self._lock_said: str | None = None
         self._messaging_live = False
@@ -841,12 +840,6 @@ class ZettCodeApp(
             # typed, and this is for what arrives some other way (a draft that was there already, a recall).
             self.flash("this session is open in another ZettCode process; it is read-only here", level="error")
             return False
-        if not command:
-            # A draft that begins with the name of an active session is a message to it: sent whatever this
-            # session is doing, because it is not a request to this session's model.
-            sent = self._send_session_message(self.composer.parts())
-            if sent is not None:
-                return sent
         if self._busy:
             if command:
                 # Which commands are taken mid-request is the command's own

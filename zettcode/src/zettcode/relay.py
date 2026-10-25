@@ -1,8 +1,8 @@
 """A message from another session: who sent it, what the model reads, and how it is stored.
 
-Another ZettCode session on the same machine can send this one a message, either because its reader
-typed ``@name …`` there or because its agent used the ``send_message`` tool. In *this* session the
-message is handled like one the reader typed — it is a turn, it is stored, it is restored with the
+Another ZettCode session on the same machine can send this one a message because its agent used the
+``send_message`` tool. In *this* session the message is handled like one the reader typed — it is a
+turn, it is stored, it is restored with the
 session — with three differences, all of them here:
 
 * the model is told where it came from, so it does not mistake a colleague's request for its own

@@ -1,4 +1,4 @@
-"""The shell and the other sessions: a message received becomes a turn, a draft addressed with ``@`` is sent.
+"""The shell and the other sessions: a message received becomes a turn, and ``@name`` is the model's to act on.
 
 Every test here runs a real shell against a real broker (run inside the test, as the broker tests do)
 with a second client standing in for the other session, so what is checked is what crosses the wire and
@@ -22,7 +22,7 @@ from zettcode.app.agent.agent import TerminalAgent
 from zettcode.app.agent.conversation.entries import RelayEntry, TextEntry
 from zettcode.app.ui import updating as updating_module
 from zettcode.app.ui.messaging import MAX_INBOX
-from zettcode.broker.client import BrokerClient, Receipt, SendError
+from zettcode.broker.client import BrokerClient, SendError
 from zettcode.engine.messenger import Messenger
 from zettcode.relay import RELAY, Relayed
 
@@ -361,52 +361,29 @@ async def test_a_message_after_the_shell_has_left_is_refused(make, host):
     await eventually(lambda: not any(e.session_id == ME for e in host.broker.roster.entries()), 3)
 
 
-# -- sending ------------------------------------------------------------------------------------------
+# -- a session named in a draft -----------------------------------------------------------------------
 
 
-async def test_a_draft_that_begins_with_the_name_of_a_session_is_sent_there_and_not_to_the_model(make):
+async def test_a_draft_that_begins_with_the_name_of_a_session_goes_to_the_model_not_the_session(make):
     shell = await make()
     bob, inbox = await make.other()
     await see_each_other(shell, bob)
 
     shell.type("@bob can you review the parser change?")
-    await eventually(lambda: shell.relays(), 3)
     await shell.settle()
 
-    (message,) = inbox.messages
-    assert message.text == "can you review the parser change?"
-    assert (message.via, message.hops, message.sender.session_id) == ("user", 1, ME)
-    (relay,) = shell.relays()
-    assert (relay.peer, relay.outgoing, relay.note) == ("bob", True, "delivered")
-    assert shell.model.messages == [], "the model was not asked anything"
+    assert inbox.messages == [], "the shell sends nothing itself"
+    (message,) = shell.sent_to_model()
+    said, _, explained = message.text.partition("\n\n")
+    assert said == 'session "bob" can you review the parser change?'
+    assert f'send_message(to="{BOB}", message=...)' in explained
+    assert shell.users() == ["@bob can you review the parser change?"], "the reader sees what was typed"
+    assert shell.relays() == []
     assert shell.app.composer.text == ""
     assert shell.app.busy is False
 
 
-@pytest.mark.parametrize(
-    ("draft", "sent"),
-    [
-        ("@bob: hello", "hello"),
-        ("@bob, hello", "hello"),
-        ("@bob;  hello  ", "hello"),
-        ("   @bob hello", "hello"),
-        ("@Bob hello", "hello"),
-        ("@bob\nhello\nthere", "hello\nthere"),
-    ],
-)
-async def test_how_the_name_is_separated_from_the_message_does_not_matter(make, draft, sent):
-    shell = await make()
-    bob, inbox = await make.other()
-    await see_each_other(shell, bob)
-
-    shell.harness.write(draft)
-    shell.harness.press("enter")
-    await eventually(lambda: inbox.messages, 3)
-
-    assert inbox.messages[0].text == sent
-
-
-async def test_a_message_to_a_session_is_sent_while_this_one_is_busy_without_asking_what_it_is(make):
+async def test_a_draft_that_begins_with_a_session_name_while_busy_is_asked_about_like_any_other(make):
     shell = await make(hold=True)
     bob, inbox = await make.other()
     await see_each_other(shell, bob)
@@ -415,85 +392,27 @@ async def test_a_message_to_a_session_is_sent_while_this_one_is_busy_without_ask
     assert shell.app.busy
 
     shell.type("@bob I am in the middle of something")
-    await eventually(lambda: inbox.messages, 3)
+    await asyncio.sleep(0.02)
 
-    assert inbox.messages[0].text == "I am in the middle of something"
-    assert shell.app._steering == [] and shell.app._follow_ups == []
-    assert not any(page for page in shell.app.app.screens if getattr(page, "name", "") == "page")
+    assert inbox.messages == [], "nothing is sent beside the request in flight"
+    assert any(getattr(page, "name", "") == "page" for page in shell.app.app.screens), "it is asked about"
     assert shell.app.busy, "the request in flight is untouched"
     shell.model.released.set()
     await shell.settle()
 
 
-async def test_the_note_on_a_sent_message_says_when_the_other_session_queued_it(make):
-    shell = await make()
-    bob, inbox = await make.other(inbox=Inbox(Receipt(True, "", "queued")))
-    await see_each_other(shell, bob)
-
-    shell.type("@bob later is fine")
-    await eventually(lambda: shell.relays(), 3)
-
-    assert shell.relays()[0].note == "queued"
-
-
-async def test_a_message_the_other_session_refuses_is_reported_with_its_reason_and_is_not_drawn_as_sent(make):
-    shell = await make()
-    bob, inbox = await make.other(inbox=Inbox(Receipt(False, "bob is shutting down")))
-    await see_each_other(shell, bob)
-
-    shell.type("@bob hello")
-    await eventually(lambda: any("not sent to @bob" in row for row in shell.rows()), 3)
-
-    assert any("bob is shutting down" in row for row in shell.rows())
-    assert shell.relays() == []
-    assert shell.app.busy is False
-
-
-async def test_a_session_that_left_between_the_menu_and_enter_is_reported_not_silently_dropped(make, host):
-    shell = await make()
-    bob, inbox = await make.other()
-    await see_each_other(shell, bob)
-    await bob.close()
-    # The shell's list still holds bob for a moment: it has not heard yet.
-    shell.messenger.client._roster = (*shell.messenger.client.roster, *[e for e in [_ghost()]])
-
-    shell.type("@ghost are you there?")
-    await eventually(lambda: any("not sent to @ghost" in row for row in shell.rows()), 3)
-
-    assert shell.relays() == []
-
-
-def _ghost():
-    from zettcode.broker.client import RosterEntry
-
-    return RosterEntry(session_id="ghost-id", handle="ghost", title="ghost", workspace="/work", status="idle")
-
-
-async def test_a_draft_with_nothing_after_the_name_stays_in_the_composer(make):
+async def test_a_draft_that_is_only_a_session_name_is_an_ordinary_prompt(make):
     shell = await make()
     bob, inbox = await make.other()
     await see_each_other(shell, bob)
 
     shell.type("@bob")
-    await asyncio.sleep(0.05)
-
-    assert shell.app.composer.text == "@bob"
-    assert inbox.messages == [] and shell.model.messages == []
-    assert "write the message after @bob" in shell.app._flash_text()
-
-
-async def test_a_message_over_the_limit_stays_in_the_composer_and_says_so(make):
-    shell = await make()
-    bob, inbox = await make.other()
-    await see_each_other(shell, bob)
-
-    shell.harness.write("@bob ")
-    shell.harness.paste("x" * 32_001)
-    shell.harness.press("enter")
-    await asyncio.sleep(0.05)
+    await shell.settle()
 
     assert inbox.messages == []
-    assert "limited to" in shell.app._flash_text()
+    (message,) = shell.sent_to_model()
+    assert message.text.startswith('session "bob"\n\n') and "send_message" in message.text
+    assert shell.app.composer.text == ""
 
 
 async def test_a_name_nobody_has_is_an_ordinary_draft_for_the_model(make):
@@ -505,7 +424,7 @@ async def test_a_name_nobody_has_is_an_ordinary_draft_for_the_model(make):
     await shell.settle()
 
     assert inbox.messages == []
-    assert len(shell.model.messages) == 1
+    assert shell.model.messages == ["@nobody what does this do"], "nothing to explain, so it goes as typed"
 
 
 async def test_a_session_named_later_in_the_draft_is_a_reference_the_model_is_told_about(make):
@@ -611,30 +530,6 @@ async def test_an_escape_sequence_in_a_message_never_reaches_the_other_session(m
     await shell.messenger.send(BOB, "plain \x1b[31mred\x1b[0m text\x07", via="user")
 
     assert inbox.messages[0].text == "plain red text"
-
-
-async def test_an_image_in_the_draft_is_refused_for_a_message_to_a_session(make):
-    shell = await make()
-    bob, inbox = await make.other()
-    await see_each_other(shell, bob)
-    shell.harness.write("@bob look at ")
-    shell.app.composer.attach_image(b"\x89PNG", "image/png")
-    shell.harness.press("enter")
-    await asyncio.sleep(0.05)
-
-    assert inbox.messages == []
-    assert "text only" in shell.app._flash_text()
-
-
-async def test_slash_commands_are_not_mistaken_for_a_message_to_a_session(make):
-    shell = await make()
-    bob, inbox = await make.other()
-    await see_each_other(shell, bob)
-
-    shell.type("/help")
-    await shell.settle()
-
-    assert inbox.messages == []
 
 
 # -- what the others see ------------------------------------------------------------------------------

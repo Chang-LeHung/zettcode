@@ -570,7 +570,7 @@ def create_app(settings: Settings, *, client_factory: ClientFactory | None = Non
 
     @protected.post("/sessions/current/send", response_model=SentOut, tags=["sessions"])
     async def send_message(body: SendIn, runner: RunnerDep) -> SentOut:
-        """Send a message to another ZettCode session, as a draft beginning with ``@name`` does."""
+        """Send a message to another ZettCode session explicitly, without a model turn."""
         to, disposition = await runner.send(body.to, body.text)
         return SentOut(to=to, disposition=disposition)
 

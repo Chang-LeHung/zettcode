@@ -461,8 +461,8 @@ class ZettCodeConfig:
         shell_network: Let a command that runs in the ``safe`` sandbox use the network. Off by default; ``[shell]
             network = true`` turns it on. ``full`` always has the network, and so does a machine with no sandbox.
         sessions_enabled: Register with the background session broker, so this session can be
-            messaged by the others and message them: ``@name`` in the composer and the
-            ``send_message`` and ``list_sessions`` tools.
+            messaged by the others and message them: ``@name`` in the composer names a
+            session for the model, and the ``send_message`` and ``list_sessions`` tools reach it.
         update_enabled: Ask PyPI, in the background, whether a newer release
             exists, and offer it on a later start.
         update_file: Where that check leaves what it found; one small JSON file.
