@@ -55,13 +55,16 @@ def test_naming_the_public_classes_loads_them_and_still_not_the_agent():
 def test_making_a_client_is_what_loads_the_agent(tmp_path):
     code = (
         "import tempfile, zettcode.sdk as zc\n"
-        f"zc.Client({str(tmp_path)!r}, models=[{{'model': 'm', 'token': 't'}}], store={str(tmp_path / 's')!r})"
+        f"zc.Client({str(tmp_path)!r}, models=[{{'model': 'm', 'token': 't'}}], "
+        f"store={str(tmp_path / 's')!r}, plugins_enabled=False)"
     )
 
     names = loaded_after(code)
 
     assert names["zett_agent"] and names["zettcode.config"]
     # The SDK drives the engine and never the terminal: no widget, no view and no plugin of the shell is loaded.
+    # Plugins are switched off here because a plugin is somebody else's code: an installed one that draws rows
+    # imports `zettcode.app` from its own entry point, and that says nothing about what this package loads.
     assert not names["zettcode.app"]
 
 

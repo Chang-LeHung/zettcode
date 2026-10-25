@@ -113,7 +113,7 @@ class Client:
     ) -> None: ...
 ```
 
-某个工作区的 agent。是一个异步上下文管理器。见 [Client 与配置](./client)。
+某个工作区的 agent。是一个异步上下文管理器。配置的每个字段都是它自己的具名参数并带类型（`store=`、`max_iterations=`、`sessions_enabled=` …… 见[设置](./client#设置)）；不是设置的名字会直接报 `TypeError`。
 
 | 抛出 | 何时 |
 | --- | --- |

@@ -25,7 +25,7 @@ async with zc.Client("~/project", model="gpt-5", effort="high", permission="safe
 | `effort` | 起始的推理级别。 |
 | `permission` | shell 权限级别：`deny`、`ask`、`safe` 或 `full`（`full` 的旧名 `auto` 仍然可用）。 |
 | `resume` | 要继续的会话 id，而不是新开一段对话。 |
-| `**settings` | 其他任意配置字段，按字段名传入：`store=`、`mcp_enabled=`、`max_iterations=` 等。 |
+| 其余每一项设置 | 按配置字段名传入：`store=`、`mcp_enabled=`、`max_iterations=` 等等。它们在函数签名里逐个具名并标明类型 —— 见[设置](#设置)。 |
 
 构造函数是同步的，立即完成工作：错误的值在这里就会抛出，而不是等到第一个 prompt。
 
@@ -35,6 +35,51 @@ try:
 except zc.ConfigurationError as error:
     print(error)  # Unknown permission: sometimes. Try one of: deny, ask, safe, full
 ```
+
+## 设置
+
+配置的每一个字段都是构造函数的具名参数，并且带类型：不接受“随便什么名字，用的时候再说”。它们会覆盖 client 读到的配置（见[下文](#配置从哪里来)），没传的字段保持读到的值。名字不在这份名单里，Python 在**调用处**就报 `TypeError`；值类型不对，则建 client 时报 `ConfigurationError`。
+
+| 设置 | 类型 | 是什么 |
+| --- | --- | --- |
+| `store` | `str`、`Path` | 会话保存在哪。 |
+| `theme_file` | `str`、`Path`、`None` | 叠在当前主题上的调色板文件。 |
+| `theme` | `str`、`None` | 当前主题：`dark`、`light`，或某个文件的名字。 |
+| `themes_dir` | `str`、`Path` | 读者自己的调色板放在哪。 |
+| `pet` | `str`、`None` | 对话上方的小宠物，`None` 表示不要。 |
+| `pet_position` | `tuple[float, float]`、`None` | 它站的位置。 |
+| `reasoning_effort` | `ReasoningEffort`、`str` | 新会话起始的推理级别。 |
+| `shell_approval` | `ShellApprovalMode`、`str` | `deny`、`ask`、`safe` 或 `full`。 |
+| `reduced_motion` | `bool` | 不要动画（读者要求减少动态时）。 |
+| `parallel_tool_call` | `bool` | 允许模型在一轮里并行调用多个工具。 |
+| `max_iterations` | `int` | 一次请求最多几轮。 |
+| `transcript_max_entries` | `int` | 终端保留多少行。 |
+| `mouse_scroll_speed` | `float` | 滚轮一格几行。 |
+| `tips` | `bool` | 等待行里显示小提示。 |
+| `agents_md_enabled` | `bool` | 把 `AGENTS.md` 读进对话。 |
+| `ask_user_enabled` | `bool` | 给模型 `ask_user` 工具。 |
+| `skills_enabled` | `bool` | 是否提供 skills。 |
+| `skill_roots` | `Sequence[str \| Path]` | 去哪里找 skills。 |
+| `skills_scope` | `str` | `global`、`workspace` 或 `both`。 |
+| `mcp_enabled` | `bool` | 启动配置里的 MCP 服务器。 |
+| `mcp_config` | `str`、`Path`、`None` | 服务器清单文件。 |
+| `mcp_scope` | `str` | `global`、`workspace` 或 `both`。 |
+| `self_compaction` | `bool` | 允许模型自己压缩上下文。 |
+| `statusline_hidden` | `Sequence[str]` | 状态行里被关掉的部分。 |
+| `plugins_enabled` | `bool` | 加载插件。 |
+| `disabled_plugins` | `Sequence[str]` | 按名字排除的插件。 |
+| `subagent_enabled` | `bool` | 给模型跑子任务的工具。 |
+| `subagent_max_iterations` | `int` | 子任务最多几轮。 |
+| `subagent_messaging` | `bool` | 允许子任务给其他会话发消息。 |
+| `todowrite_enabled` | `bool` | 给模型待办清单工具。 |
+| `jit_harness` | `bool` | 允许模型写并运行自己的工具。 |
+| `shell_network` | `bool` | 沙箱里的命令能不能联网。 |
+| `sessions_enabled` | `bool` | 加入 broker，让别的会话能找到它。默认关，终端会打开。 |
+| `update_enabled` | `bool` | 后台检查 PyPI 新版本。默认关。 |
+| `update_file` | `str`、`Path` | 那次检查留下什么。 |
+| `harness_dir` | `str`、`Path` | 模型写的工具存放在哪。 |
+
+每一项的含义就是[配置参考](/zh/guide/config)里同名键的含义；在这里传一个值，与在文件里写那一行等价。
 
 ## 配置从哪里来
 
@@ -85,7 +130,9 @@ async with zc.Client(
 
 格式错误的条目会抛出 `ConfigurationError`，指明是哪个条目、什么问题。
 
-## 设置
+## 程序常用的设置
+
+完整的列表（带类型）在[上面](#设置)。这里是常用的几项，以及它们在配置文件里的默认值。
 
 其余任何关键字都是 `ZettCodeConfig` 的字段，所以配置文件能表达的，client 在代码里也能表达。程序常用的几项：
 
@@ -104,11 +151,11 @@ async with zc.Client(
 | `sessions_enabled` | 此处为 `False` | 连接 broker，让终端会话可以给它发消息。 |
 | `update_enabled` | 此处为 `False` | 向 PyPI 检查新版本。 |
 
-需要路径的地方可以传字符串（`store="~/runs"`），选项不区分大小写（`reasoning_effort="HIGH"`）。拼错的名字会附带建议：
+需要路径的地方可以传字符串（`store="~/runs"`），选项不区分大小写（`reasoning_effort="HIGH"`）。拼错的名字在**调用处**就是 Python 的 `TypeError`，什么都不会读：
 
 ```python
 zc.Client(".", max_iteration=50)
-# ConfigurationError: Unknown setting: 'max_iteration' (did you mean 'max_iterations'?)
+# TypeError: Client.__init__() got an unexpected keyword argument 'max_iteration'
 ```
 
 配置拒绝的值会报成 `ConfigurationError("Invalid configuration: ...")`，原始错误保存在 `__cause__`。
