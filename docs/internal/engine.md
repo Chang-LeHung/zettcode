@@ -65,7 +65,7 @@ reads what a fresh interpreter loads, so a dependency that goes round through th
 
 ## What is left
 
-Each its own pull request, `make check` green.
+Each its own pull request, `make check-all` green.
 
 1. **Done: one translation.** The terminal's projector draws SDK events.
 2. **Done: the views import no engine.** See the next section for what that does and does not cover.

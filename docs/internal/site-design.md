@@ -77,4 +77,4 @@ generated output, so a terminal change cannot silently leave stale docs art.
 - Local search, menu labels, copy feedback, and image alt text are translated.
 - Navigation and copy button work by keyboard; focus remains visible.
 - Long tables and the terminal preview scroll inside their own containers.
-- `npm run docs:build --prefix docs` and `make check` pass.
+- `npm run docs:build --prefix docs` and `make check-all` pass.
