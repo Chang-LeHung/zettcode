@@ -80,7 +80,7 @@ from .providers import ConfigMixin
 from .sessions import SessionMixin
 from .settings import SettingsMixin
 from .shell import EFFORT_TOKEN, EMPTY_REPLY, FLASH_SECONDS, PAGE_SCREEN
-from .turns import failure_line, prompt_pieces
+from .turns import failure_line, plan_rows, prompt_pieces
 from .updating import UpdateMixin
 from .widgets import (
     WELCOME,
@@ -1066,7 +1066,7 @@ class ZettCodeApp(
 
     def _refresh_tasks(self) -> None:
         """Mirror the agent's current plan into the panel above the composer."""
-        if self.panel.set_tasks(self.agent.tasks()):
+        if self.panel.set_tasks(plan_rows(self.client.session.tasks())):
             self.app.request_layout()
 
     async def _run_command(self, value: str) -> None:

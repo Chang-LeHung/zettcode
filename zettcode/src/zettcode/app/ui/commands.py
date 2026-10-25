@@ -19,7 +19,15 @@ from typing import TYPE_CHECKING
 
 from zettcode.config_edit import ConfigEditError
 
-from ..commands import Command, CommandContext, CommandProvider, CommandResult, Subcommand, subcommand_words
+from ..commands import (
+    COMMAND_ERRORS,
+    Command,
+    CommandContext,
+    CommandProvider,
+    CommandResult,
+    Subcommand,
+    subcommand_words,
+)
 from .widgets import (
     SELF_COMPACT_ROWS,
     PetPage,
@@ -230,24 +238,26 @@ class ShellCommands(CommandProvider):
 
         def apply(choice: bool | None, default: bool) -> None:
             shell.close_page()
-            agent = shell.agent
             # The default first: whether a choice differs from it is what decides if a session that has not
             # been used yet has anything to save.
             for change, needed in (
-                (lambda: agent.remember_self_compaction(default), default != agent.self_compaction_default),
+                (
+                    lambda: shell.client.use_self_compaction_default(default),
+                    default != shell.client.self_compaction_default,
+                ),
                 (lambda: shell.client.use_self_compaction(choice), choice != shell.client.self_compaction_choice),
             ):
                 if not needed:
                     continue
                 try:
                     change()
-                except ValueError as error:
+                except (*COMMAND_ERRORS, OSError) as error:
                     shell.transcript.error(str(error))
             shell.transcript.notice(shell.agent.self_compaction_summary())
 
         page = SelfCompactPage(
             shell.client.self_compaction_choice,
-            shell.agent.self_compaction_default,
+            shell.client.self_compaction_default,
             on_apply=apply,
             on_cancel=shell.close_page,
             session_open=not shell.client.session.locked,

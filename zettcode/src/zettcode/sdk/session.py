@@ -64,6 +64,7 @@ from .types import (
     Message,
     ResumeInfo,
     RunResult,
+    TaskInfo,
     ToolCallInfo,
     ToolRecord,
     Usage,
@@ -544,6 +545,13 @@ class Session:
         """Return whether another process has this session open, so it can be read and not changed."""
         runtime = self._client._agent.runtime
         return self.id == runtime.session_id and runtime.session_locked
+
+    def tasks(self) -> tuple[TaskInfo, ...]:
+        """Return the plan the model keeps for this session, in order; empty until it makes one."""
+        self._client._check_open()
+        if not self.current:
+            return ()
+        return tuple(TaskInfo(status, content) for status, content in self._client._agent.tasks())
 
     def retake(self) -> bool:
         """Try again to take the lock of a conversation another process had open, once that process has let go.

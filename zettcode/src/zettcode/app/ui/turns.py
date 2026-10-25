@@ -13,9 +13,9 @@ from collections.abc import Sequence
 from zettcode.error_text import CONTINUE_HINT, failure_text
 from zettcode.prompt import MentionPart, PromptPart
 from zettcode.sdk.errors import RunError
-from zettcode.sdk.types import Image
+from zettcode.sdk.types import Image, TaskInfo
 
-__all__ = ["failure_line", "prompt_pieces"]
+__all__ = ["failure_line", "plan_rows", "prompt_pieces"]
 
 
 def prompt_pieces(parts: Sequence[PromptPart]) -> list[str | Image]:
@@ -45,3 +45,8 @@ def failure_line(error: BaseException) -> str:
         text = f"error: {error}"
         return f"{text.rstrip('.')}. {CONTINUE_HINT}" if error.retryable else text
     return failure_text(error)
+
+
+def plan_rows(tasks: Sequence[TaskInfo]) -> tuple[tuple[str, str], ...]:
+    """Return the model's plan as the (status, content) rows the task panel and the status line draw."""
+    return tuple((task.status, task.content) for task in tasks)

@@ -25,6 +25,7 @@ from zettcode.wording import UNTITLED_SESSION
 
 from ..agent.conversation.shimmer import ShimmerFrame
 from .shell import ShellState
+from .turns import plan_rows
 from .widgets.effort_page import heat_colour
 
 #: The columns the status line keeps empty between its two sides, and the parts it gives up first, in order, when
@@ -272,7 +273,7 @@ class BarsMixin(ShellState):
                 permission=self.client.permission,
                 self_compact=self.client.self_compaction,
                 usage=self._usage,
-                tasks=self.agent.tasks(),
+                tasks=plan_rows(self.client.session.tasks()),
                 frame=self.transcript.frame,
             ),
             display=DisplayState(
