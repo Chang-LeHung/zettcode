@@ -62,13 +62,17 @@ tool configuration (Ruff, mypy, the dev dependency group) and the member list. N
   `zettcode/src` and `zettcode/perf`. Both tools target 3.10 and CI runs 3.10 through 3.15, so
   keep the source free of newer syntax and standard-library APIs; the version shims live in
   `zettcode/src/zettcode/_compat.py`.
-- Run `make check` (Ruff, mypy, the test suite, and the VS Code extension) before handing work over, and
-  `make smoke` when packaging changes so both console scripts are exercised from the built wheel. `make vscode`
+- Run `make check` while working: it compares the tree with where the branch left `main` (`BASE=…` picks another
+  ref) and runs only what the change touches — Ruff, mypy and the Python suite for `zettcode/`, the TypeScript
+  client for `clients/typescript/`, the extension for either JavaScript client, and nothing for a guide-only edit.
+  Run `make check-all` before handing work over; CI runs that whole gate on every pull request, so a full run does
+  not have to happen on every edit. Run `make smoke` when packaging changes so both console scripts are exercised
+  from the built wheel. `make vscode`
   runs the extension's type-check, jsdom tests and build on its own, and `make vscode-package` writes a `.vsix`.
 - Node 20+ builds both JavaScript clients. `clients/typescript` is dependency-free at runtime; `clients/vscode`
   has dev dependencies only (esbuild, TypeScript, jsdom) and bundles everything it runs into `dist/`.
 - Run `make hooks` once per checkout: the installed pre-commit hook runs mypy
-  and refuses a commit that does not type-check. Keep `make check` green rather
+  and refuses a commit that does not type-check. Keep `make check-all` green rather
   than bypassing the hook.
 - Tests must never write into the checkout or into `~/.zettcode`. Use temporary
   directories and pass them explicitly.

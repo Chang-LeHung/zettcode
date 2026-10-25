@@ -792,7 +792,7 @@ The framework is only maintainable if it is verifiable without a real terminal.
 ## Roadmap
 
 Each milestone leaves the framework compiling, tested, and green under
-`make check`. The existing application keeps working throughout via thin
+`make check-all`. The existing application keeps working throughout via thin
 compatibility shims at the old import paths.
 
 **M0 - Contracts and skeleton.** Public API, `Widget` protocol, event model,

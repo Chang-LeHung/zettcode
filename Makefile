@@ -12,7 +12,22 @@ SMOKE_DIR := .smoke
 
 LINT_PATHS := zettcode/src zettcode/tests zettcode/perf docs/scripts
 
-.PHONY: help install lint typecheck test client vscode vscode-package install-vscode build smoke check hooks docs docs-build docs-preview demo demo-all demos demo-thinking palettes themes perf perf-scaling perf-store perf-profile perf-startup perf-imports FORCE
+# `make check` runs only what the tree has changed, so a change to the VS Code webview does not spend three minutes
+# on the Python suite: CI runs every suite on every pull request, and that is where the whole gate lives. The files
+# are read against BASE, where this branch left the main line.
+BASE ?= $(shell git merge-base HEAD origin/main 2>/dev/null || git rev-parse --verify HEAD)
+CHANGED := $(shell { git diff --name-only $(BASE); git ls-files --others --exclude-standard; } 2>/dev/null | sort -u)
+# A changed Makefile can change any of these rules, so it counts as every file.
+EVERYTHING := $(filter Makefile,$(CHANGED))
+# Files that need Ruff, mypy and the Python suite.
+PYTHON := $(if $(EVERYTHING),1,$(filter zettcode/% pyproject.toml uv.lock,$(CHANGED)))
+# Files Ruff alone covers (`make lint` reads docs/scripts too).
+RUFFED := $(if $(PYTHON),1,$(filter docs/scripts/%,$(CHANGED)))
+# The TypeScript client, and the extension, which bundles that client's source.
+CLIENT := $(if $(EVERYTHING),1,$(filter clients/typescript/%,$(CHANGED)))
+EXTENSION := $(if $(EVERYTHING),1,$(filter clients/vscode/% clients/typescript/%,$(CHANGED)))
+
+.PHONY: help install lint typecheck test python client vscode vscode-package install-vscode build smoke check check-all hooks docs docs-build docs-preview demo demo-all demos demo-thinking palettes themes perf perf-scaling perf-store perf-profile perf-startup perf-imports FORCE
 
 DEMOS := text status_bar spinner progress_bar list table diff markdown textarea completion dialog collapsible toast tasks scroll layout
 
@@ -22,13 +37,15 @@ help:
 	@echo "  make lint     Check formatting and linting with Ruff"
 	@echo "  make typecheck Check the shipped code with mypy"
 	@echo "  make test     Run the test suite"
+	@echo "  make python   Lint, type-check and test the Python side"
 	@echo "  make client   Build and test the TypeScript client"
 	@echo "  make vscode   Type-check, test and build the VS Code extension"
 	@echo "  make vscode-package   Also package the extension as a .vsix"
 	@echo "  make install-vscode  Package it and install it into the editor $(CODE); reinstall is forced"
 	@echo "  make build    Build the sdist and wheel into dist/"
 	@echo "  make smoke    Build the wheel into $(SMOKE_DIR)/ and run both programs' --help from it"
-	@echo "  make check    Run lint, typecheck, and tests"
+	@echo "  make check    Run what the change needs (BASE=main to compare with another ref)"
+	@echo "  make check-all   Run every suite, as CI does"
 	@echo "  make hooks    Install the git hooks (blocks a commit that fails mypy)"
 	@echo "  make docs     Serve the user guide at http://localhost:5173"
 	@echo "  make docs-build   Build the guide into docs/.vitepress/dist"
@@ -59,6 +76,8 @@ typecheck:
 
 test:
 	cd zettcode && $(UV) run --no-sync pytest
+
+python: lint typecheck test
 
 # The TypeScript client has its own toolchain: Node 20+, no runtime dependencies.
 client:
@@ -97,7 +116,16 @@ smoke:
 	@# template, its stylesheet, or its script has to fail here, not at export time.
 	$(UV) run --no-project --python 3.14 --with ./$(SMOKE_DIR)/zettcode-*.whl python -c "from importlib.resources import files; names = sorted(p.name for p in files('zettcode.engine.export').joinpath('trace').iterdir()); assert names == ['script.js', 'style.css', 'template.html'], names; print('trace assets:', names)"
 
-check: lint typecheck test vscode
+check:
+	@echo "--- changed since $(BASE) ---"
+	@printf '%s\n' $(CHANGED) | head -20 | sed 's/^/  /'
+	@test -n "$(CHANGED)" || echo "  (nothing yet; make check-all runs every suite)"
+	@$(if $(PYTHON),$(MAKE) --no-print-directory python,$(if $(RUFFED),$(MAKE) --no-print-directory lint,echo "  python: untouched, skipped"))
+	@$(if $(CLIENT),$(MAKE) --no-print-directory client,echo "  typescript client: untouched, skipped")
+	@$(if $(EXTENSION),$(MAKE) --no-print-directory vscode,echo "  vscode extension: untouched, skipped")
+
+# The whole gate, which is what CI runs on every pull request: before handing work over, and always in CI.
+check-all: python client vscode
 
 # The guide is a VitePress site in docs/; its own package.json pins it.
 docs:

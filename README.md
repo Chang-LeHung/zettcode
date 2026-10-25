@@ -109,7 +109,8 @@ model/effort/permission switching and recent-session history. Its sources are in
 
 ```bash
 uv sync                          # install the package
-make check                      # Ruff, mypy, the test suite, and the VS Code extension
+make check                      # what this change needs: Ruff, mypy, tests, the JS clients — only what it touched
+make check-all                  # every suite, as CI runs them
 make client                     # build and test the TypeScript client
 make vscode                     # type-check, test and build the VS Code extension
 make hooks                      # enforce mypy before commits
