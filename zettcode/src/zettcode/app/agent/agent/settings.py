@@ -126,6 +126,7 @@ class AppearanceMixin(SettingsMixin):
         except OSError as error:
             raise ConfigEditError(f"{self.config_file} could not be written: {error}") from error
         hidden = {name for name in hidden if name not in changes} | {name for name, v in changes.items() if not v}
-        ordered = tuple(name for name in NAMES if name in hidden)
+        # The program's parts in their order, then the ones a plugin added (their names are not in NAMES).
+        ordered = (*(name for name in NAMES if name in hidden), *sorted(hidden - set(NAMES)))
         self.runtime.config = replace(self.runtime.config, statusline_hidden=ordered)
         return self.config_file

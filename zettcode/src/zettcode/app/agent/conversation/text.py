@@ -13,8 +13,11 @@ import re
 from datetime import datetime
 from pathlib import Path
 
+from zettcode.sdk.types import Usage
+from zettcode.statusline import compact_tokens
 from zettcode.tui import ELLIPSIS
-from zettcode.tui.render import count_wrapped_rows, display_width, wrap_columns
+from zettcode.tui.glyphs import ARROW_DOWN, ARROW_UP, SEPARATOR
+from zettcode.tui.render import count_wrapped_rows, display_width, truncate, wrap_columns
 
 #: Left margin of every transcript row: the width of the composer's ``\u203a ``
 #: prompt, so text lines up under what the user types and never starts left of
@@ -200,6 +203,62 @@ def clock_text(moment: datetime | None = None) -> str:
             so a rendered footer stays deterministic.
     """
     return (moment or datetime.now()).strftime("%H:%M")
+
+
+def pack_segments(segments: list[str], room: int) -> list[str]:
+    """Join segments with `` · `` into rows no wider than ``room``, breaking between segments and never inside one.
+
+    A single segment wider than the room gets a row of its own and is cut to fit, so no row is ever too wide.
+    """
+    joint = f" {SEPARATOR} "
+    rows: list[str] = []
+    current = ""
+    for segment in segments:
+        if current and display_width(current) + display_width(joint) + display_width(segment) <= room:
+            current += joint + segment
+            continue
+        if current:
+            rows.append(current)
+        current = segment
+    if current:
+        rows.append(current)
+    return [row if display_width(row) <= room else truncate(row, room, ellipsis=ELLIPSIS) for row in rows]
+
+
+def tokens_text(usage: Usage) -> str | None:
+    """Say the tokens a request sent and received, or nothing before the model has answered."""
+    if not usage.requests:
+        return None
+    return f"{ARROW_UP}{compact_tokens(usage.input_tokens)} {ARROW_DOWN}{compact_tokens(usage.output_tokens)}"
+
+
+def cache_text(usage: Usage) -> str | None:
+    """Say the share of the input the provider served from its cache, or nothing when it served none."""
+    if usage.requests and usage.cache_read_tokens > 0 and usage.input_tokens > 0:
+        return f"{usage.cache_read_tokens / usage.input_tokens * 100:.1f}% cached"
+    return None
+
+
+def calls_text(usage: Usage) -> str | None:
+    """Say how many times the model was asked, when it was asked more than once."""
+    return f"{usage.requests} model calls" if usage.requests > 1 else None
+
+
+def speed_text(usage: Usage) -> str | None:
+    """Say how fast the model generated, when it can be told and is at least one token a second."""
+    if usage.requests and usage.seconds > 0 and usage.output_tokens > 0:
+        rate = usage.output_tokens / usage.seconds
+        if rate >= 1:
+            return f"{rate:.1f} tok/s" if rate < 10 else f"{rate:.0f} tok/s"
+    return None
+
+
+def tools_text(tools: int, failed_tools: int = 0) -> str | None:
+    """Say how many tool calls a request made and how many failed; the failures stay in the same segment."""
+    if not tools:
+        return None
+    said = f"{tools} tool call{'' if tools == 1 else 's'}"
+    return f"{said}, {failed_tools} failed" if failed_tools else said
 
 
 def compact_path(path: Path, *, limit: int | None = 38) -> str:

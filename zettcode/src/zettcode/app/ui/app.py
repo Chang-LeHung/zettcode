@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 
 from zettcode.app.plugins.state import (
     Activity,
+    TurnContext,
     UiRow,
 )
 from zettcode.config_edit import ConfigEditError
@@ -80,7 +81,7 @@ from .providers import ConfigMixin
 from .sessions import SessionMixin
 from .settings import SettingsMixin
 from .shell import EFFORT_TOKEN, EMPTY_REPLY, FLASH_SECONDS, PAGE_SCREEN
-from .turns import failure_line, plan_rows, prompt_pieces
+from .turns import TurnTally, failure_line, plan_rows, prompt_pieces, turn_parts
 from .updating import UpdateMixin
 from .widgets import (
     WELCOME,
@@ -679,12 +680,14 @@ class ZettCodeApp(
         self.transcript.wait_for_model()
         started = monotonic()
         completed = False
+        tally = TurnTally(self.client.usage)
         self._turn_running = True
         self.app.invalidate()
         try:
             self._refresh_tasks()
             async with self.client.session.resume_stream(**self._answers()) as run:
-                async for _event in run:
+                async for event in run:
+                    tally.see(event)
                     self._refresh_tasks()
                     self.app.invalidate()
         except asyncio.CancelledError:
@@ -704,7 +707,11 @@ class ZettCodeApp(
             self._close_run()
             if completed:
                 self.transcript.summarize_changes(self.client.workspace)
-            self._settle_wait(f"Continued for {elapsed_text(monotonic() - started)} {SEPARATOR} {clock_text()}")
+            seconds = monotonic() - started
+            self._settle_wait(
+                f"Continued for {elapsed_text(seconds)} {SEPARATOR} {clock_text()}",
+                tally.context(self.client.usage, label="Continued", seconds=seconds, clock=clock_text()),
+            )
             self._drop_ask()
             self._turn_running = False
             self._refresh_tasks()
@@ -889,7 +896,7 @@ class ZettCodeApp(
         """
         self.transcript.finish_running_rows("Result unavailable (request ended)")
 
-    def _settle_wait(self, text: str) -> None:
+    def _settle_wait(self, text: str, turn: TurnContext | None = None) -> None:
         """Leave the line a request ended on in the pinned row, or as a notice.
 
         The wait row is the last line of the transcript while the request runs,
@@ -899,9 +906,13 @@ class ZettCodeApp(
 
         Args:
             text: The line to leave behind, such as ``Processed for 12s · 22:53``.
+            turn: What the request came to. The line is then made of the items the plugins registered for it
+                (the program's own, and any a plugin added), less the ones switched off in ``/statusline``;
+                ``text`` stands when no item is left to say anything.
         """
-        if not self.transcript.settle_wait(text):
-            self.transcript.notice(text)
+        parts = turn_parts(self.agent.turn_segments, turn, self.agent.statusline_hidden) if turn else ()
+        if not self.transcript.settle_wait(text, parts):
+            self.transcript.notice(f" {SEPARATOR} ".join(parts) or text)
 
     def _clear_steering(self) -> None:
         """Drop the queue, for instance when the turn it belonged to ended."""
@@ -982,6 +993,7 @@ class ZettCodeApp(
             self.messenger.answering = relayed
         started = monotonic()
         completed = False
+        tally = TurnTally(self.client.usage)
         self._turn_running = True
         self._set_busy(True)
         self._activity = Activity.RUNNING
@@ -1005,7 +1017,8 @@ class ZettCodeApp(
             else:
                 run = self.client.session.prompt(prompt_pieces(parts or (prompt,)), mentions=True, **self._answers())
             async with run:
-                async for _event in run:
+                async for event in run:
+                    tally.see(event)
                     self._refresh_tasks()
                     self.app.invalidate()
         except asyncio.CancelledError:
@@ -1020,7 +1033,8 @@ class ZettCodeApp(
                 self.transcript.notice(EMPTY_REPLY)
             self._title_session_later(self.client.session.id)
         finally:
-            took = elapsed_text(monotonic() - started)
+            seconds = monotonic() - started
+            took = elapsed_text(seconds)
             if self.messenger is not None:
                 self.messenger.answering = None
             # Before the pinned row is settled, not after: what happened to the waiting
@@ -1031,7 +1045,10 @@ class ZettCodeApp(
             # Which files this request changed, said once and only when there are any, above the
             # line that says how long it took.
             self.transcript.summarize_changes(self.client.workspace)
-            self._settle_wait(f"Processed for {took} {SEPARATOR} {clock_text()}")
+            self._settle_wait(
+                f"Processed for {took} {SEPARATOR} {clock_text()}",
+                tally.context(self.client.usage, label="Processed", seconds=seconds, clock=clock_text()),
+            )
             self._drop_ask()
             self._turn_running = False
             self._set_busy(False)

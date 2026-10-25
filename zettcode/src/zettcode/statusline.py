@@ -42,7 +42,30 @@ NAMES: tuple[str, ...] = (
     "speed",
     "ctx",
     "keys",
+    "turn-time",
+    "turn-clock",
+    "turn-tokens",
+    "turn-cache",
+    "turn-calls",
+    "turn-speed",
+    "turn-tools",
     "pet",
+)
+
+#: What a name must start with to be an item of the line a request ends on (``Processed for 12s \u00b7 22:53 \u00b7 ...``).
+#: The program's own items are in :data:`NAMES`; an item a plugin adds is named the same way, so that it can be
+#: switched in ``[statusline]`` like any other part, and the config accepts any key that starts with this.
+TURN_PREFIX = "turn-"
+
+#: The program's own items of that line, in the order they stand, each with the sentence the panel describes it by.
+TURN_PARTS: tuple[tuple[str, str], ...] = (
+    ("turn-time", 'How long the request took, as "Processed for 12s"'),
+    ("turn-clock", "The time of day the request ended"),
+    ("turn-tokens", "Tokens sent and received by the request"),
+    ("turn-cache", "The share of the request's input the provider served from its cache"),
+    ("turn-calls", "How many times the model was asked; shown when more than once"),
+    ("turn-speed", "How fast the model generated during the request, in tokens per second"),
+    ("turn-tools", "How many tools the model used, and how many of them failed"),
 )
 
 
@@ -139,9 +162,14 @@ class Row:
         return "".join(piece.glue + piece.part.text for piece in pieces) + self.trail
 
 
+def is_part(name: str) -> bool:
+    """Return whether ``name`` is a part: one the program has, or an item of the request line (which a plugin may add)."""
+    return name in NAMES or name.startswith(TURN_PREFIX)
+
+
 def unknown(names: Collection[str]) -> list[str]:
     """Return the names that are not parts, in the order given; empty when every one is."""
-    return [name for name in names if name not in NAMES]
+    return [name for name in names if not is_part(name)]
 
 
 def compact_tokens(count: int) -> str:

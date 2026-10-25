@@ -11,7 +11,7 @@ from zettcode.app.commands import Command, CommandContext, CommandHost, CommandR
 from zettcode.app.pets import PetCatalog, bundled_pets
 from zettcode.app.plugins.host import HOST_LINK, HostLink
 from zettcode.app.plugins.plugin import TerminalPlugins
-from zettcode.app.plugins.state import UiRow
+from zettcode.app.plugins.state import TurnSegment, UiRow
 from zettcode.engine.agent.exports import ExportsMixin
 from zettcode.providers import BUILTIN_PROVIDERS, Provider, merge_providers
 from zettcode.statusline import NAMES, unknown
@@ -90,6 +90,11 @@ class CommandsMixin(AppearanceMixin, ExportsMixin):
         """
         sources = self.terminal_plugins.pets
         return PetCatalog(sources or bundled_pets())
+
+    @property
+    def turn_segments(self) -> tuple[TurnSegment, ...]:
+        """Return the items of the line a request ends on, the program's own first, then the plugins'."""
+        return self.terminal_plugins.turn_segments
 
     @property
     def plugin_failures(self) -> tuple[str, ...]:
@@ -178,10 +183,14 @@ class CommandsMixin(AppearanceMixin, ExportsMixin):
 
     def statusline_summary(self) -> str:
         """Say in one line which parts of the header and the status line are hidden."""
-        hidden = [name for name in NAMES if name in self.statusline_hidden]
+        hidden = [
+            *(name for name in NAMES if name in self.statusline_hidden),
+            *sorted(self.statusline_hidden - set(NAMES)),
+        ]
         if not hidden:
             return "Status line: every part is shown"
-        return f"Status line: {len(hidden)} of {len(NAMES)} parts hidden ({', '.join(hidden)})"
+        total = len(NAMES) + len({item.name for item in self.turn_segments} - set(NAMES))
+        return f"Status line: {len(hidden)} of {total} parts hidden ({', '.join(hidden)})"
 
     def change_statusline(self, argument: str) -> str:
         """Hide or show parts of the header and status line from the words ``/statusline`` takes.

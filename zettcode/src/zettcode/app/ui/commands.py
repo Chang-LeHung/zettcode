@@ -18,6 +18,7 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from zettcode.config_edit import ConfigEditError
+from zettcode.statusline import NAMES, Part
 
 from ..commands import (
     COMMAND_ERRORS,
@@ -288,5 +289,7 @@ class ShellCommands(CommandProvider):
                 return
             shell.transcript.notice(shell.agent.statusline_summary())
 
-        page = StatuslinePage(shell.agent.statusline_hidden, on_apply=apply, on_cancel=shell.close_page)
+        # The program's own items are in the panel already; a plugin's are added beside them.
+        extra = tuple(Part(item.name, item.summary) for item in shell.agent.turn_segments if item.name not in NAMES)
+        page = StatuslinePage(shell.agent.statusline_hidden, extra, on_apply=apply, on_cancel=shell.close_page)
         return CommandResult(widget=bottom_panel(page, rows=statusline_rows(shell.app.height)))
