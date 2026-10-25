@@ -89,7 +89,7 @@ The `approved` field of the frame is `null` because the frame asks the question;
 
 | Call | Effect |
 | --- | --- |
-| `POST /runs/steer` `{"text": "also update the docs"}` | The run drops what it is doing and takes the message into account. `{"steered": false}` when nothing is running. |
+| `POST /runs/steer` `{"text": "also update the docs"}` | The run drops what it is doing and takes the message into account. `{"steered": false}` when nothing is running; otherwise `text` is what the `steered` event will carry. `images` and `mentions` work as on a prompt. |
 | `POST /runs/cancel` | Stops the run; its stream ends with `cancelled`. Closing the connection does the same. |
 | `GET /runs/resumable` | `{"resumable": true, "kind": "error", "description": "The provider dropped the connection"}` when a request was interrupted. |
 | `POST /runs/resume` | Continues it, streaming exactly like `/prompts`. `409 nothing_to_do` when there is nothing to pick up. |
