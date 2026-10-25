@@ -25,7 +25,7 @@ under the publisher **zettcode**.
 1. Open the extensions view (`Ctrl/Cmd+Shift+X`), search for **ZettCode**, and install it. Or install the `.vsix`:
 
    ```bash
-   code --install-extension zettcode-0.1.6.vsix
+   code --install-extension zettcode-0.1.7.vsix
    ```
 
    The [marketplace page](https://marketplace.visualstudio.com/items?itemName=zettcode.zettcode) says which version is
