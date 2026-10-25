@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 
-import { describeTool, formatClock, noticePlain, withoutEllipsis } from "../../core/format.js";
+import { formatClock, noticePlain, withoutEllipsis } from "../../core/format.js";
 import { state } from "../store.js";
 import Shimmer from "./Shimmer.vue";
 
@@ -14,19 +14,6 @@ const running = computed(() => {
     const turn = state.turns[index];
     if (turn !== undefined && turn.finishedAt === undefined) {
       return turn;
-    }
-  }
-  return null;
-});
-const active = computed(() => {
-  const turn = running.value;
-  if (turn === null) {
-    return null;
-  }
-  for (let index = turn.blocks.length - 1; index >= 0; index -= 1) {
-    const block = turn.blocks[index];
-    if (block?.kind === "tool" && block.tool.status === "running") {
-      return block.tool;
     }
   }
   return null;
@@ -44,15 +31,13 @@ const label = computed(() => {
   }
   return "Processing";
 });
-/** The step it is on, when it is on one the reader can name; before the first step, the latest word on a start. */
+/** The step it is on, when it is on one the reader cannot otherwise see; a tool's row already names it. */
 const detail = computed(() => {
   if (waiting.value !== null) {
     return "";
   }
-  const tool = active.value;
-  if (tool) {
-    return describeTool(tool.name, tool.arguments).verb;
-  }
+  // A tool's own row is the place its name belongs, and its time is on that row too: the live line says the one
+  // thing that is true of the whole request — that it is still going — and how long it has been going.
   // An MCP server starting can take long enough to need explaining: its progress line is what is happening now.
   const last = running.value?.blocks[running.value.blocks.length - 1];
   return last?.kind === "notice" && last.level !== "warn" ? withoutEllipsis(noticePlain(last.text)) : "";

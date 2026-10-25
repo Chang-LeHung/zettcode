@@ -13,7 +13,8 @@ side bar, so you can ask for a change and watch it happen without leaving the ed
 ## What you can do
 
 - **Ask, and watch it work.** Answers appear as they are written, with highlighted code, tables and formulas. Every
-  file it reads, every edit and every command is a row you can open to see exactly what happened.
+  file it reads, every edit and every command is a row; a command is written on its row (cut short when it is long),
+  counts its own time while it runs, and opens to its output.
 - **Jump to the code.** A file name in an answer is a link: it opens in the editor at the right line.
 - **Review what changed.** After each request a card lists the files it changed with the lines added and removed.
   Open any of them as a normal VS Code diff.
