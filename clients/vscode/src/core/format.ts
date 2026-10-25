@@ -34,8 +34,42 @@ export function summariseOutput(output: string, limit = 120): string {
   return flat.length > limit ? `${flat.slice(0, limit - 1)}…` : flat;
 }
 
+/** The one-line description a SKILL.md declares, or "" when the text is not a skill. */
+export function skillDescription(output: string): string {
+  const lines = output.replace(/\r\n?/g, "\n").split("\n");
+  if ((lines[0] ?? "").trim() !== "---") {
+    return "";
+  }
+  const closing = lines.findIndex((line, index) => index > 0 && line.trim() === "---");
+  if (closing < 0) {
+    return "";
+  }
+  for (let index = 1; index < closing; index += 1) {
+    const line = lines[index] ?? "";
+    if (!line.startsWith("description:")) {
+      continue;
+    }
+    let value = line.slice("description:".length).trim();
+    if (value === "|" || value === ">") {
+      const continuation: string[] = [];
+      for (let following = index + 1; following < closing; following += 1) {
+        const row = lines[following] ?? "";
+        if (row && !/^\s/.test(row)) {
+          break;
+        }
+        if (row.trim()) {
+          continuation.push(row.trim());
+        }
+      }
+      value = continuation.join(value === "|" ? "\n" : " ");
+    }
+    return value.replace(/^["']+|["']+$/g, "").replace(/\s+/g, " ").trim();
+  }
+  return "";
+}
+
 /** Describe one tool call as a verb and a target, the way the transcript row reads. */
-export function describeTool(name: string, args: Record<string, unknown>): ToolDisplay {
+export function describeTool(name: string, args: Record<string, unknown>, output = ""): ToolDisplay {
   const path = stringArg(args, "path", "file_path", "file", "target");
   const command = stringArg(args, "command", "cmd");
   const pattern = stringArg(args, "pattern", "query", "glob");
@@ -78,6 +112,11 @@ export function describeTool(name: string, args: Record<string, unknown>): ToolD
     case "todo_write":
     case "todowrite":
       return { verb: "Updated the plan", target: "" };
+    case "read_skill": {
+      const skill = stringArg(args, "name");
+      const description = skillDescription(output);
+      return { verb: "Read skill", target: skill && description ? `${skill} · ${description}` : skill || description };
+    }
     case "mentions":
       return { verb: "Looked up", target: pattern || "mentions" };
     default:

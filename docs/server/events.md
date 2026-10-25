@@ -73,9 +73,10 @@ curl -X POST http://127.0.0.1:3290/runs/approvals \
 ```
 
 - `answer` a question with `POST /runs/questions` `{"call_id": "...", "answer": "sqlite"}`; `null` declines it.
-- `resolved` is `false` when the run is not waiting on that call — because it was already answered, or it timed out.
-- Each waits at most `answer_timeout` seconds (300 by default) and then takes the safe default: the command is denied,
-  the question is declined, and a `notice` frame says so. A client that crashes cannot hang a run.
+- `resolved` is `false` when the run is not waiting on that call — because it was already answered, or the run ended.
+- An approval waits at most `answer_timeout` seconds (300 by default) and then takes the safe default: the command is
+  denied and a `notice` frame says so. A question has no deadline: it waits until it is answered, or until the run is
+  cancelled or stopped.
 - `GET /runs/current` says what is waiting, so a reconnecting client can show the request again:
 
 ```json

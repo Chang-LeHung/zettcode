@@ -267,7 +267,7 @@
           "type": "number",
           "default": 90,
           "minimum": 5,
-          "description": "Seconds an approval or question waits before the safe answer is applied."
+          "description": "Seconds an approval waits before the safe answer is applied. A question waits until you answer it."
         },
         "zettcode.autoTitle": {
           "type": "boolean",

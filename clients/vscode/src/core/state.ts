@@ -72,7 +72,7 @@ export interface QuestionBlock {
   options: string[];
   allowMultiple: boolean;
   answered: boolean;
-  /** The answer given, or `null` when the question was declined or timed out. */
+  /** The answer given, or `null` when the question was declined. */
   answer?: string | null;
 }
 
@@ -627,9 +627,10 @@ function settleCall(turn: Turn, callId: string): void {
 }
 
 /**
- * A run that ends cannot still be waiting or working: the server took the safe answer before the stream closed, and a
- * tool the run left behind (stopped, replaced by a new message, or lost with the connection) will never report back. It
- * ends as skipped, so no spinner turns for ever on a turn that is over.
+ * A run that ends cannot still be waiting or working: an approval was denied before the stream closed, a question the
+ * stop left unanswered is no longer waiting for anyone, and a tool the run left behind (stopped, replaced by a new
+ * message, or lost with the connection) will never report back. It ends as skipped, so no spinner turns for ever on a
+ * turn that is over.
  */
 function settlePending(turn: Turn, now = Date.now()): void {
   for (const block of turn.blocks) {

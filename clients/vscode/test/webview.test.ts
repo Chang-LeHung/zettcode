@@ -286,6 +286,32 @@ test("a command shows on its row without unfolding, and opens to its output", as
   assert.ok(ui.text('[data-id="turn-command"] .tool-body').includes("3 passed"), "opening shows the output");
 });
 
+test("a skill row shows the name and the description the loaded skill declares", async () => {
+  const ui = await harness();
+  const turn = createTurn("Read the skill", [], 9000, "turn-skill");
+  const skill = "---\nname: code-review\ndescription: Review code with evidence from the tree.\n---\n\n# Code review\n";
+  applyEvent(
+    turn,
+    { type: "tool_started", call_id: "s1", name: "read_skill", arguments: { name: "code-review" } },
+    9100,
+  );
+  await ui.send({ type: "turn", turn });
+
+  assert.equal(ui.one('[data-id="turn-skill"] .tool-target')?.textContent, "code-review");
+
+  applyEvent(
+    turn,
+    { type: "tool_finished", call_id: "s1", name: "read_skill", output: skill, ok: true, skipped: false },
+    9200,
+  );
+  await ui.send({ type: "turn", turn });
+
+  assert.equal(
+    ui.one('[data-id="turn-skill"] .tool-target')?.textContent,
+    "code-review · Review code with evidence from the tree.",
+  );
+});
+
 test("a running command counts its own time instead of saying running", async () => {
   const ui = await harness();
   const startedAt = Date.now() - 3_000;

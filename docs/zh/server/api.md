@@ -119,9 +119,9 @@ curl -X PATCH http://127.0.0.1:3290/settings \
 | --- | --- |
 | `approvals.mode` | `deny`(默认)拒绝所有 shell 命令,`auto` 全部批准,`commands` 只批准 `commands` 里的,`ask` 把每条命令交给客户端。 |
 | `approvals.commands` | 例如 `"git status"`、`"pytest"`。命令等于其一或者在其后接参数才算匹配;含有 `;`、`|`、`&`、`$`、换行等 shell 字符的一律不匹配,所以 `git status; rm -rf ~` 不等于 `git status`。 |
-| `questions` | `decline`(默认)告诉模型没人在;`ask` 把问题发到流里并等待回答。 |
+| `questions` | `decline`(默认)告诉模型没人在;`ask` 把问题发到流里并一直等待回答。 |
 | `timeout` | 整轮运行最多多少秒,或 `null`。 |
-| `answer_timeout` | `ask` 的审批或问题等待客户端多少秒,超时后取安全默认值(拒绝、拒答)。 |
+| `answer_timeout` | `ask` 的审批等待客户端多少秒,超时后取安全默认值(拒绝)。问题没有超时,会一直等回答。 |
 | `keep_events` | 最终 `result` 里也保留所有事件。 |
 
 `PromptRequest` 额外有:

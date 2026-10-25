@@ -12,6 +12,7 @@ import {
   permissionLabel,
   relativeTime,
   sessionLabel,
+  skillDescription,
   summariseOutput,
   toolDetail,
   toolLanguage,
@@ -83,6 +84,22 @@ test("a tool row says what happened and where", () => {
   assert.equal(describeTool("edit", { path: "src/a.py" }).verb, "Edit");
   assert.equal(describeTool("glob", { pattern: "**/*.ts" }).target, "**/*.ts");
   assert.equal(describeTool("mcp__github__create_issue", { title: "A bug" }).verb, "Create issue");
+});
+
+test("a skill row names the skill and the description its file declares", () => {
+  const skill = "---\nname: code-review\ndescription: Review code with evidence from the tree.\n---\n\n# Code review\n";
+
+  assert.deepEqual(describeTool("read_skill", { name: "code-review" }), {
+    verb: "Read skill",
+    target: "code-review",
+  });
+  assert.deepEqual(describeTool("read_skill", { name: "code-review" }, skill), {
+    verb: "Read skill",
+    target: "code-review · Review code with evidence from the tree.",
+  });
+  assert.equal(skillDescription(skill), "Review code with evidence from the tree.");
+  assert.equal(skillDescription("---\nname: x\ndescription: >\n  one long\n  line\n---\nbody"), "one long line");
+  assert.equal(skillDescription("Unknown skill 'missing'"), "");
 });
 
 test("a tool body is the command or the edit", () => {

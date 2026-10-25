@@ -1075,7 +1075,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       this.postTurn(turn, true);
     }
     if (!resolved) {
-      this.post({ type: "notice", level: "warn", text: "That question was already answered or timed out." });
+      this.post({ type: "notice", level: "warn", text: "That question was already answered, or the run ended." });
     }
     if (this.pending?.call_id === callId) {
       this.pending = null;

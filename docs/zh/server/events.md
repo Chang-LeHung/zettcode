@@ -73,9 +73,9 @@ curl -X POST http://127.0.0.1:3290/runs/approvals \
 ```
 
 - 用 `POST /runs/questions` `{"call_id": "...", "answer": "sqlite"}` 回答问题;`null` 表示拒绝回答。
-- 运行没有在等这个调用时(已经回答过,或者超时了),`resolved` 为 `false`。
-- 每个等待最多 `answer_timeout` 秒(默认 300),之后取安全默认值:拒绝命令、拒答问题,并用一个 `notice` 帧说明。
-  客户端崩溃不会把运行永久挂住。
+- 运行没有在等这个调用时(已经回答过,或者运行已经结束),`resolved` 为 `false`。
+- 审批最多等 `answer_timeout` 秒(默认 300),之后取安全默认值:拒绝命令,并用一个 `notice` 帧说明。
+  问题没有超时:它一直等你回答,直到运行被取消或停止。
 - `GET /runs/current` 说明在等什么,重连的客户端可以据此重新展示:
 
 ```json
