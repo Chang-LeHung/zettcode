@@ -12,8 +12,9 @@ current one and has nothing running is closed, because everything it held is sto
 A run started over HTTP has no terminal to answer it, so the answers travel with the request or over the endpoints
 that post back into the run: :class:`~zettcode.server.schemas.ApprovalPolicy` decides shell commands up front
 (``deny``, ``auto``, ``commands``) or defers each one to the client (``ask``); questions are declined unless the
-request says ``questions: ask``. A deferred request waits for ``POST /runs/approvals`` or ``POST /runs/questions``
-for ``answer_timeout`` seconds and then takes the safe default, so no client can leave a run suspended forever.
+request says ``questions: ask``. A deferred approval waits for ``POST /runs/approvals`` for ``answer_timeout``
+seconds and then takes the safe default, so a client that went away cannot leave a command suspended. A question has
+no deadline: it waits for ``POST /runs/questions`` as long as the reader takes, and the run can still be cancelled.
 """
 
 from __future__ import annotations
@@ -433,22 +434,27 @@ class Runner:
                 event.deny()
             return note
         if isinstance(event, QuestionAsked) and request.questions == "ask":
-            note = await self._hold(slot, Pending("question", event.call_id, event), request.answer_timeout)
-            if note and not event.answered:
-                event.decline()
-            return note
+            # A question waits for the reader, not for a clock: a decline guessed on their behalf would end the
+            # one thing the model asked them. Closing the stream still cancels the run.
+            return await self._hold(slot, Pending("question", event.call_id, event), None)
         return None
 
-    async def _hold(self, slot: Slot, pending: Pending, seconds: float) -> str | None:
-        """Publish a pending request and wait for its answer; return why it was given up on, or ``None``."""
+    async def _hold(self, slot: Slot, pending: Pending, seconds: float | None) -> str | None:
+        """Publish a pending request and wait for its answer; return why it gave up, or ``None``.
+
+        An approval passes a deadline so a client that vanished cannot leave a command suspended forever. A
+        question passes ``None`` and waits until it is answered or the run is cancelled.
+        """
         slot.pending = pending
         try:
-            await asyncio.wait_for(pending.answered.wait(), seconds)
-            return None
-        except asyncio.TimeoutError:
-            if pending.kind == "approval":
+            if seconds is None:
+                await pending.answered.wait()
+                return None
+            try:
+                await asyncio.wait_for(pending.answered.wait(), seconds)
+                return None
+            except asyncio.TimeoutError:
                 return f"No answer within {seconds:g}s; the command was denied."
-            return f"No answer within {seconds:g}s; the question was declined."
         finally:
             slot.pending = None
 

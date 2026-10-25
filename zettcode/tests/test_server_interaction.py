@@ -115,6 +115,28 @@ async def test_an_unanswered_approval_is_denied_after_the_answer_timeout_and_the
     assert of(response.text, "result"), "the run was not left hanging"
 
 
+async def test_an_unanswered_question_keeps_waiting_past_the_answer_timeout():
+    """An approval gives up on a clock; a question waits for the reader who was asked."""
+    run = FakeRun([QuestionAsked(SESSION, "call-1", "Which database?")])
+    async with serve(FakeClient(runs=[run])) as (http, app):
+        task = asyncio.ensure_future(
+            http.post("/prompts", json={"text": "build it", "questions": "ask", "answer_timeout": 0.01})
+        )
+        await until(lambda: app.state.runner.pending is not None)
+        await asyncio.sleep(0.1)
+
+        still = (await http.get("/runs/current")).json()
+        assert still["pending"]["kind"] == "question"
+        assert run.events[0].answered is False
+
+        answered = await http.post("/runs/questions", json={"call_id": "call-1", "answer": "sqlite"})
+        response = await task
+
+    assert answered.json() == {"resolved": True}
+    assert run.events[0].answered is True
+    assert of(response.text, "result"), "the run carried on from the answer"
+
+
 async def test_a_question_the_model_asks_is_sent_down_the_stream_and_answered():
     run = FakeRun([QuestionAsked(SESSION, "call-1", "Which database?", ("sqlite", "postgres"), allow_multiple=False)])
     async with serve(FakeClient(runs=[run])) as (http, app):

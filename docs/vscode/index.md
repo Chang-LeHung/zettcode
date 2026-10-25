@@ -103,8 +103,8 @@ The shell permission decides what the agent may run on its own:
 | `safe` | Every command runs in a sandbox that writes only the workspace and `/tmp`, with no network. |
 | `full` | Every command runs with your own access, without asking. (`auto` is the old name.) |
 
-The level chosen in the chat is remembered for the next new session in the workspace. An approval or a question waits
-`zettcode.answerTimeout` seconds, then the safe answer is used.
+The level chosen in the chat is remembered for the next new session in the workspace. An approval waits
+`zettcode.answerTimeout` seconds, then the safe answer is used. A question waits until you answer it; it has no timeout.
 
 ## Pictures, diagrams and code
 
@@ -156,7 +156,7 @@ Search for *ZettCode* in Settings:
 | `zettcode.harness` | `false` | Start with the tool harness on: the model may write small Python tools of its own and run them, outside the shell permission. `/harness on` or `/harness off` switches it for a session |
 | `zettcode.restoreSession` | `true` | Reopen the conversation this folder had last |
 | `zettcode.autoTitle` | `true` | Let the model name an untitled conversation after its first answer |
-| `zettcode.answerTimeout` | `90` | Seconds an approval or a question waits |
+| `zettcode.answerTimeout` | `90` | Seconds an approval waits |
 | `zettcode.historyLimit` | `50` | How many stored conversations **Recent Sessions** lists |
 | `zettcode.server.command` | `zettcode-server` | Where the server is, if not on your `PATH` or in the folder's `.venv` |
 | `zettcode.server.args` | `[]` | Extra arguments for it |

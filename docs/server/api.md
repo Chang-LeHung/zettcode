@@ -119,9 +119,9 @@ The *current* session is the conversation the next prompt continues. A server st
 | --- | --- |
 | `approvals.mode` | `deny` (default) refuses every shell command, `auto` approves every one, `commands` approves the ones in `commands` and denies the rest, `ask` sends each one to the client. |
 | `approvals.commands` | Commands such as `"git status"` or `"pytest"`. A command matches when it is one or continues one with arguments; one holding `;`, `|`, `&`, `$`, a newline and the like never matches, so `git status; rm -rf ~` is not `git status`. |
-| `questions` | `decline` (default) tells the model the reader is not there; `ask` sends the question down the stream and waits for the answer. |
+| `questions` | `decline` (default) tells the model the reader is not there; `ask` sends the question down the stream and waits for the answer, however long it takes. |
 | `timeout` | Seconds the whole run may take, or `null`. |
-| `answer_timeout` | Seconds an `ask` approval or question waits for the client before the safe default (deny, decline) is applied. |
+| `answer_timeout` | Seconds an `ask` approval waits for the client before the safe default (deny) is applied. A question waits for its answer instead. |
 | `keep_events` | Include every event in the final `result` too. |
 
 `PromptRequest` adds:

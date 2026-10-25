@@ -370,7 +370,7 @@ export interface RunOptions {
   questions?: QuestionMode;
   /** Seconds the whole run may take. */
   timeout?: number;
-  /** Seconds an `ask` approval or question waits for you before the safe default. */
+  /** Seconds an `ask` approval waits for you before the safe default. A question waits until you answer it. */
   answerTimeout?: number;
   keepEvents?: boolean;
   /** Called with every frame before it is queued, for logging. */

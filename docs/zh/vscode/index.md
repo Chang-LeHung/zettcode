@@ -93,7 +93,7 @@ shell 权限决定 agent 能自己跑什么：
 | `safe` | 每条命令在只能写工作区和 `/tmp`、没有网络的沙箱里跑。 |
 | `full` | 所有命令都用你自己的权限跑，不问。（`auto` 是旧名。） |
 
-在聊天里选的级别会在工作区里下一次新会话时沿用。审批和提问会等 `zettcode.answerTimeout` 秒，然后采用安全的答案。
+在聊天里选的级别会在工作区里下一次新会话时沿用。审批会等 `zettcode.answerTimeout` 秒，然后采用安全的答案；提问没有超时，会一直等你回答。
 
 ## 图片、图表与代码
 
@@ -138,7 +138,7 @@ Reasoning Effort** 和 **Select Shell Permission**。**Add Model** 会往终端�
 | `zettcode.harness` | `false` | 启动时就打开工具 harness：模型可以自己写小的 Python 工具并运行，不受 shell 权限管辖。`/harness on` 或 `/harness off` 在一个会话里切换 |
 | `zettcode.restoreSession` | `true` | 重新打开这个文件夹上次的会话 |
 | `zettcode.autoTitle` | `true` | 让模型在第一次回答后给没有标题的会话起名 |
-| `zettcode.answerTimeout` | `90` | 审批或提问等待的秒数 |
+| `zettcode.answerTimeout` | `90` | 审批等待的秒数 |
 | `zettcode.historyLimit` | `50` | **Recent Sessions** 列出的历史会话条数 |
 | `zettcode.server.command` | `zettcode-server` | 服务器在哪，如果不在 `PATH` 或文件夹 `.venv` 里 |
 | `zettcode.server.args` | `[]` | 给它的额外参数 |

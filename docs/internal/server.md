@@ -26,8 +26,9 @@ POST /prompts  ──── event: approval_requested ────▶  client
 
 The suspension point matters. The SDK yields the `ApprovalRequested` event and applies its default (deny) only when
 the next event is asked for. `Runner.stream` therefore yields the frame, then awaits the answer *before* iterating the
-SDK run again — the run is genuinely suspended, not raced. `answer_timeout` bounds the wait, and a timeout applies the
-default itself, so a client that vanishes cannot leave a tool call hanging.
+SDK run again — the run is genuinely suspended, not raced. `answer_timeout` bounds an approval's wait, and a timeout
+denies it itself, so a client that vanishes cannot leave a command hanging. A question has no deadline: it waits for
+`POST /runs/questions` as long as the reader takes, and cancelling the stream is how a run stops waiting.
 
 A policy can also decide without the client: `deny`, `auto`, and `commands` answer inside the SDK's handler before the
 frame is emitted, which is what makes an unattended run possible.

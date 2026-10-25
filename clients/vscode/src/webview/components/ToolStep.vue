@@ -34,7 +34,7 @@ function toneOf(name: string): string {
   return "muted";
 }
 
-const display = computed(() => describeTool(props.tool.name, props.tool.arguments));
+const display = computed(() => describeTool(props.tool.name, props.tool.arguments, props.tool.output));
 const detail = computed(() => toolDetail(props.tool.name, props.tool.arguments));
 const language = computed(() => toolLanguage(props.tool.name, props.tool.arguments));
 const isBash = computed(() => /(^|__)(bash|shell)$/i.test(props.tool.name));

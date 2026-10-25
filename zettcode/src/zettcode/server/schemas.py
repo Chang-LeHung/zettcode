@@ -50,10 +50,10 @@ class RunOptions(BaseModel):
     Attributes:
         approvals: How shell commands the model asks to run are answered.
         questions: ``ask`` sends a question the model asks down the stream and waits for
-            ``POST /runs/questions``; ``decline`` tells the model the reader is not there.
+            ``POST /runs/questions`` with no deadline; ``decline`` tells the model the reader is not there.
         timeout: Seconds the whole run may take before it is stopped, or ``None`` for no deadline.
-        answer_timeout: Seconds an ``ask`` approval or question waits for the client before the safe default is
-            applied (deny, decline), so a client that went away cannot hang the run.
+        answer_timeout: Seconds an ``ask`` approval waits for the client before the safe default is applied
+            (deny), so a client that went away cannot hang a command. A question waits for its answer instead.
         keep_events: Include every event in the final result as well, as the SDK's ``keep_events`` does.
     """
 
