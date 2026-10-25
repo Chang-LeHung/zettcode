@@ -255,7 +255,7 @@ export class ZettCodeClient {
     return new Run(this, `/messages/${encodeURIComponent(id)}`, wireOptions(options), options);
   }
 
-  /** Send a message to another session, as a draft beginning with `@name` does; returns who took it. */
+  /** Send a message to another session explicitly, without a model turn; returns who took it. */
   send(to: string, text: string): Promise<{ to: string; disposition: string }> {
     return this.request<{ to: string; disposition: string }>(
       "/sessions/current/send",

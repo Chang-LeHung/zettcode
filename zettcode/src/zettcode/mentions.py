@@ -173,9 +173,9 @@ class SkillMentions(MentionProvider):
 class SessionMentions(MentionProvider):
     """The other ZettCode sessions that are running, addressed by the name they are listed under.
 
-    A draft that *begins* with one of these is a message to that session and is sent there instead of
-    to the model (see :mod:`zettcode.app.ui.messaging`). A session named further along is only a
-    reference, which tells the model what the name means and that it can send a message to it.
+    A session named anywhere in a draft is a reference like any other: the model reads ``session "name"``
+    and is told how to reach that session, and decides for itself whether the request calls for a message.
+    The shell sends nothing itself (see :mod:`zettcode.app.ui.messaging`).
 
     Candidates are read from what the connection last reported — a list in memory — and never from
     the broker: completion runs on every keystroke after an ``@``.
@@ -240,11 +240,11 @@ class SessionMentions(MentionProvider):
         return next((peer for peer in self._peers() if peer.handle == name), None)
 
     def expand(self, name: str) -> str | None:
-        """Tell the model what the reader's ``@`` meant, for a draft that names a session inside a sentence.
+        """Tell the model what the reader's ``@`` meant and how to reach that session.
 
         Nothing is sent from here: the model is told which session the words mean and how to reach it, and
-        decides for itself whether the request calls for a message. A draft that *begins* with the name
-        never gets this far, because the shell sends it to that session itself.
+        decides for itself whether the request calls for a message. A draft that begins with the name is no
+        different from one that names the session inside a sentence.
         """
         peer = self._find(name)
         if peer is None:
@@ -254,10 +254,11 @@ class SessionMentions(MentionProvider):
         return (
             f'In the message above, `session "{name}"` is what the user wrote as @{name}. In ZettCode an @ before a '
             f"name means another ZettCode session that is running right now, not a file or a skill. This one works{where}.{about}\n"
-            f"If the user's request is for that session to do or know something, send it a message with the "
-            f'send_message tool: send_message(to="{peer.session_id}", message=...). Write the message so the '
-            f"other session can act on it without having seen this conversation. If the request is only about the "
-            f"session (what it is doing, where it is), list_sessions answers that. Do not send anything the "
+            f"When the user's message is addressed to that session — the @ begins the message — what follows the name "
+            f"is the message to pass on. When the session is only mentioned, decide whether the request is for it. "
+            f'To send, call the send_message tool: send_message(to="{peer.session_id}", message=...). Write the '
+            f"message so the other session can act on it without having seen this conversation. If the request is only "
+            f"about the session (what it is doing, where it is), list_sessions answers that. Do not send anything the "
             f"user did not ask you to pass on."
         )
 

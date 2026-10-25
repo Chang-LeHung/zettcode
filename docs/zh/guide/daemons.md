@@ -64,7 +64,7 @@ SESSION                               NAME      WORKSPACE        MODEL  EFFORT  
 
 ## 和它说话
 
-daemon 不接受输入，它的输入就是 `send_message` —— 来自另一个会话的 agent，或者来自终端里读者打的 `@`：
+daemon 不接受输入，它的输入就是 `send_message` —— 来自另一个会话的 agent，包括你在终端里用 `@` 点名 daemon 时由你的模型发出的那条：
 
 ```
 send_message(to="01a1726a-3109-75a7-9285-390d9e381111", message="看一下 src/api.py 的 diff，说你打算改什么。")

@@ -463,8 +463,9 @@ operating-system file lock the broker is made a singleton with, shared with the 
   `messaging.py` is the two tools over it, imported when the runtime builds its client.
 - `relay.py` (at the top, shared by the engine and the views) is the one type (`Relayed`) the transcript, the agent and the shell
   share: what the model reads, and what is stored beside the message (`attributes["relay"]`).
-- `app/ui/messaging.py` is the shell's part: the `@name` send, and a received message starting a turn
-  or waiting in `_inbox`. A received message runs through `_run_prompt` like any other, with a
+- `app/ui/messaging.py` is the shell's part: a received message starting a turn or waiting in `_inbox`.
+  A message the reader names with `@` is resolved by `mentions` like any other reference and sent by the
+  model's tool, never by the shell. A received message runs through `_run_prompt` like any other, with a
   `relayed` argument; nothing after that point knows it came from elsewhere.
 - Rows are `RelayEntry` / `RelayPresenter`, a kind of their own, because the reader's message and a
   message from somebody else must never look alike.

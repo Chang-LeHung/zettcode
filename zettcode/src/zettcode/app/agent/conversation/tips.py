@@ -22,7 +22,7 @@ TIPS: tuple[str, ...] = (
     "Type while it works: your message can steer this request, or wait and follow it.",
     "Press Shift-Enter (or Alt-Enter) to add a line to your message instead of sending it.",
     "Type @ to mention a file or a skill. A file is read when the message is sent.",
-    "Start a message with @name to send it to another running ZettCode session.",
+    "Type @ to mention another running ZettCode session; the model can pass your message to it.",
     "/btw <question> is answered on the side and never joins the conversation.",
     "/bash opens a full-screen command line: your shell's history, Tab completion, and coloured output.",
     "In /bash, Tab completes git subcommands and branches, and Ctrl-C stops a running command.",

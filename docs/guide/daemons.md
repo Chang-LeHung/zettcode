@@ -84,8 +84,8 @@ did, so you can open it in the terminal afterwards.
 
 ## Talking to one
 
-Nothing is typed into a daemon. Its input is `send_message`, from another session's agent or from the reader of a
-terminal with `@`:
+Nothing is typed into a daemon. Its input is `send_message`, from another session's agent — including the one your
+terminal's model uses when you name the daemon with `@`:
 
 ```
 send_message(to="01a1726a-3109-75a7-9285-390d9e381111", message="Review the diff of src/api.py, then say what you would change.")

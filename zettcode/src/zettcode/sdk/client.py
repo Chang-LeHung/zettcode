@@ -628,7 +628,7 @@ class Client:
         )
 
     async def send(self, to: str, text: str) -> Delivered:
-        """Send a message to another ZettCode session, as the terminal's ``@name`` draft does.
+        """Send a message to another ZettCode session without going through this session's model.
 
         Args:
             to: The session's handle, or its id.

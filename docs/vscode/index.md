@@ -87,10 +87,11 @@ another; the extension says when a session in the background is waiting for an a
 
 ### Messages between sessions
 
-Write `@name` at the start of a message to send it to another ZettCode session (a terminal, or another editor window)
-instead of asking this chat's model: the message shows as *to @name* with what you said. What another session sends
+Write `@name` in a message to point the model at another ZettCode session (a terminal, or another editor window).
+The model reads which session that is and can send it a message with its tool: the send shows as a `send_message`
+row, with the text and the delivery line, and your own message shows as you typed it. What another session sends
 to this one arrives as its own request, marked *from @name*, and the agent answers it here; if it should answer the
-sender too, it sends a message back. A message the agent sends shows its text above the delivery line.
+sender too, it sends a message back.
 
 ### Approvals, questions, steering
 
