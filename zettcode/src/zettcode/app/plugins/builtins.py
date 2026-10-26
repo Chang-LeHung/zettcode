@@ -27,7 +27,15 @@ from zettcode.app.ui.widgets import UsagePage
 from zettcode.statusline import TURN_PARTS, Row, context_share, usage_parts
 from zettcode.tui import STATUS, bundled_themes
 
-from .builtin_commands import BashCommand, HelpCommand, ModelCommands, SessionCommands, ShellControl, SideQuestion
+from .builtin_commands import (
+    BashCommand,
+    CodeReview,
+    HelpCommand,
+    ModelCommands,
+    SessionCommands,
+    ShellControl,
+    SideQuestion,
+)
 from .container import TerminalContainer
 from .plugin import TerminalPlugin
 from .state import ShellContext, TurnBuilder
@@ -171,6 +179,7 @@ BUILTIN_PLUGINS: tuple[TerminalPlugin, ...] = (
     SessionCommands(),
     ModelCommands(),
     SideQuestion(),
+    CodeReview(),
     BashCommand(),
     ShellControl(),
     TurnLine(),

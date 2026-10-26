@@ -101,19 +101,24 @@ class CommandHost(Protocol):
     async def run_side_question(self, question: str) -> None:
         """Answer a question that is kept out of the conversation."""
 
-    async def prompt(self, text: str) -> bool:
+    async def prompt(self, text: str, *, shown: str | None = None) -> bool:
         """Run ``text`` as one turn of this conversation, exactly as if the reader had typed it.
 
-        The text reaches the model the way a draft does: echoed in the transcript as the reader's own message,
-        stored in the session, streamed as it is answered, and settled by the same row. ``@`` references are
-        resolved; pictures the text cannot carry are not part of it.
+        The text reaches the model the way a draft does: stored in the session, streamed as it is answered, and
+        settled by the same row. ``@`` references are resolved.
+
+        A command whose instructions are longer than what it wants to show passes the two apart: ``text`` is what
+        the model reads, ``shown`` is what the transcript draws in its place. A reader who typed ``/code-review``
+        sees that, not the brief it stands for — while the model reads the brief with that turn, then and in every
+        later turn, because the brief is part of the message the session keeps. Only its display is short.
 
         The turn is awaited, so the command that asked for it holds the request slot until it has been answered,
         and the row the shell shows is the command's own.
 
         Args:
-            text: What to ask. Its own text is what the reader sees, so a command that builds the text should
-                write it as a reader would have.
+            text: What to ask. With no ``shown``, this is also what the reader sees.
+            shown: What the transcript shows, when it differs from ``text``. The message the session keeps is
+                the same either way: ``text`` is in it, and ``shown`` is what a reader is shown of it.
 
         Returns:
             Whether a turn was started and has ended. A request already running, a blank text and a session held

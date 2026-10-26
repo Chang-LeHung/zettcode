@@ -140,6 +140,19 @@ def _prompt_parts(
     return resolved, mention_hint(resolved, mentions)
 
 
+def _with_instructions(hint: str | None, instructions: str | None) -> str | None:
+    """Return the instructions a turn carries: what ``@`` references added, then what the caller did.
+
+    They are one piece of text because the model reads them as one: both are things the reader's line did not say,
+    and both are kept out of what a restored session *shows* (the stored message carries the typed text as its
+    display, while the model keeps reading the instructions with that turn).
+    """
+    if instructions is None or not instructions.strip():
+        return hint
+    said = instructions.strip()
+    return said if hint is None else f"{hint}\n\n{said}"
+
+
 def _split_mentions(text: str) -> list[Any]:
     """Split one text run at its ``@`` tokens, keeping the order, as the terminal's composer does."""
     from ..mentions import MENTION
@@ -589,6 +602,7 @@ class Session:
         *,
         images: Sequence[Image] = (),
         mentions: bool = False,
+        instructions: str | None = None,
         on_approval: ApprovalHandler | None = None,
         on_question: QuestionHandler | None = None,
         on_event: EventCallback | None = None,
@@ -604,6 +618,9 @@ class Session:
             images: Images to put after the prompt.
             mentions: Resolve ``@skill`` and ``@path`` references the way the terminal does. Off by default, since
                 ``@`` is also in email addresses and decorators.
+            instructions: Instructions the model reads after the prompt, which the reader does not type and a
+                restored session does not show: a program that turns a line into a longer request says it here, so
+                the conversation keeps the line. Blank is the same as none.
             on_approval: Decides each shell command the permission level asks about; see
                 :mod:`zettcode.sdk.handlers`. Without one, answer the :class:`ApprovalRequested` events yourself or
                 they are denied.
@@ -643,7 +660,7 @@ class Session:
         )
         return RunStream(
             self,
-            lambda: client._agent.stream(parts, hint=hint, side=False),
+            lambda: client._agent.stream(parts, hint=_with_instructions(hint, instructions), side=False),
             on_approval=on_approval,
             on_question=on_question,
             on_event=on_event,
@@ -710,6 +727,7 @@ class Session:
         *,
         images: Sequence[Image] = (),
         mentions: bool = False,
+        instructions: str | None = None,
         on_approval: ApprovalHandler | None = None,
         on_question: QuestionHandler | None = None,
         on_event: EventCallback | None = None,
@@ -724,6 +742,7 @@ class Session:
             prompt,
             images=images,
             mentions=mentions,
+            instructions=instructions,
             on_approval=on_approval,
             on_question=on_question,
             on_event=on_event,

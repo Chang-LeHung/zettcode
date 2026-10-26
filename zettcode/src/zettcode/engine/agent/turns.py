@@ -44,10 +44,11 @@ class TurnsMixin(AgentBase):
             parts: The user turn in the order it was written: text runs and the
                 images the composer interleaved with them. A turn without
                 images is simply one text part.
-            hint: Text appended after the turn, for the instructions a ``@``
-                reference contributes. The text the user typed then rides along
-                as the message's ``prompt`` attribute, so the stored message is
-                what was typed and a restored session shows it.
+            hint: Text appended after the turn: the instructions a ``@``
+                reference contributes, then anything the caller added (the SDK
+                merges them). The text the user typed then rides along as the
+                message's ``prompt`` attribute, so the stored message is what
+                was typed and a restored session shows it.
             side: Ask without letting the exchange join the conversation; see
                 :mod:`zettcode.engine.dialogue.side`.
             relayed: The turn is a message another session sent. It is what the model reads
@@ -175,7 +176,8 @@ class TurnsMixin(AgentBase):
 
         Args:
             parts: The turn in the order it was written.
-            hint: Instructions a ``@`` reference contributes.
+            hint: Instructions the model reads after the turn: what a ``@``
+                reference contributed, then what the caller added.
             side: Mark the turn as a side question, which the store records but
                 never replays.
         """

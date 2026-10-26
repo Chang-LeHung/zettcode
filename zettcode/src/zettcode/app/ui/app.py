@@ -49,7 +49,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
     pass
 from zettcode.error_text import describe_error
 from zettcode.mentions import MentionRegistry, SessionMentions
-from zettcode.prompt import PromptPart, carries_image, mention_hint, mention_parts
+from zettcode.prompt import PromptPart, carries_image, mention_parts
 from zettcode.registry import Registry
 from zettcode.relay import Relayed
 from zettcode.sdk.events import QuestionAsked
@@ -659,13 +659,18 @@ class ZettCodeApp(
             if outcome:
                 self._settle_wait(outcome)
 
-    async def prompt(self, text: str) -> bool:
+    async def prompt(self, text: str, *, shown: str | None = None) -> bool:
         """Run ``text`` as one turn of this conversation, as if the reader had typed it.
 
         The draft path is taken whole — the echo, ``@`` references, the transcript, the session, the row the
         request ends on — rather than a run of its own, so a command that asks the model something produces a turn
         a reader could have produced. What the command decides is the text; everything after that is the ordinary
         one.
+
+        With ``shown``, the reader sees one thing and the model reads another: the shown text is what the turn
+        draws in the transcript, and the text is the instructions the model reads after it. Both are in the message
+        the session keeps — the instructions are not dropped, they are only kept out of what is displayed — so a
+        later turn, and a restored session, still have them in front of the model.
 
         The turn is awaited, so the request slot stays the command's until the answer is in: a second draft cannot
         start behind it, and the command reports what it did once it is done.
@@ -675,8 +680,15 @@ class ZettCodeApp(
         if self.client.session.locked:
             self.flash("this session is open in another ZettCode process; it is read-only here", level="error")
             return False
-        parts = mention_parts((text,), self.mentions)
-        await self._run_prompt(text, parts, mention_hint(parts, self.mentions), advance=False)
+        display = (shown if shown is not None else text).strip() or text.strip()
+        if display == text.strip():
+            # No `@` pass here: the SDK resolves the references itself (it is asked for them below), and doing
+            # both is how the same instructions once reached the model twice.
+            await self._run_prompt(text, (), advance=False)
+        else:
+            # The brief is not the reader's message: it rides after the shown text, which is what the transcript
+            # draws. The SDK keeps both in the message and shows the reader the first.
+            await self._run_prompt(display, (), instructions=text, advance=False)
         return True
 
     async def run_continue(self) -> None:
@@ -873,7 +885,7 @@ class ZettCodeApp(
                 self.transcript.error(f"{self.client.model.name} does not take images")
                 self.app.invalidate()
                 return False
-            self._task = asyncio.create_task(self._run_prompt(value, parts, mention_hint(parts, self.mentions)))
+            self._task = asyncio.create_task(self._run_prompt(value, parts, instructions=None))
         return True
 
     def _queue_steering(self, value: str, key: str | None = None, parts: Sequence[PromptPart] = ()) -> None:
@@ -981,8 +993,8 @@ class ZettCodeApp(
         self,
         prompt: str,
         parts: Sequence[PromptPart] = (),
-        hint: str | None = None,
         *,
+        instructions: str | None = None,
         relayed: Relayed | None = None,
         advance: bool = True,
     ) -> None:
@@ -993,8 +1005,9 @@ class ZettCodeApp(
                 into the transcript.
             parts: The same turn as ordered text and image parts; an empty
                 sequence falls back to the prompt alone.
-            hint: Instructions the draft's ``@`` references contribute; the
-                stored message keeps ``prompt``.
+            instructions: What the model reads after the prompt but the reader does not: the SDK resolves the
+                draft's ``@`` references itself, so this carries only what a command adds (see
+                :meth:`CommandHost.prompt`). The stored message keeps ``prompt``.
             relayed: The turn answers a message another session sent, which the transcript draws as
                 that, the model is told where it came from, and the session stores as that.
         """
@@ -1029,7 +1042,12 @@ class ZettCodeApp(
                     **self._answers(),
                 )
             else:
-                run = self.client.session.prompt(prompt_pieces(parts or (prompt,)), mentions=True, **self._answers())
+                run = self.client.session.prompt(
+                    prompt_pieces(parts or (prompt,)),
+                    mentions=True,
+                    instructions=instructions,
+                    **self._answers(),
+                )
             async with run:
                 async for event in run:
                     tally.see(event)

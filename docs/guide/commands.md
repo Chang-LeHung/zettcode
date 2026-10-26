@@ -28,6 +28,7 @@ A command is drawn in a different colour as soon as it is one, so you can see wh
 | `/permission` | Choose how much of the shell may run without asking: `/permission` lists the levels in the menu; `/permission safe` sets one. `safe` runs every command in a sandbox that writes only the workspace and `/tmp`; `full` runs them with your own access. The level belongs to the session: opening it again starts there, and a new session starts at the one a run begins with. |
 | `/harness` | Let the model write small Python tools of its own and run them: `/harness on` or `/harness off`; `/harness` alone says which. Off unless you turn it on, and not taken while a request runs. See [Optional settings](/guide/config#optional-settings-reference). |
 | `/btw` | Ask something that is answered here but never joins the conversation: `/btw <question>`. |
+| `/code-review` | Ask for a review of the uncommitted changes: `/code-review` reviews what is there, `/code-review <text>` says what to look for. It writes a brief — what changed, how to collect it, what a review should name — and hands it to the model as a turn of this conversation, exactly as if you had typed it; a reviewer of its own is suggested, and the model does the review itself when one cannot be started. See [A review to start with](/guide/daemons#a-review-to-start-with). |
 | `/bash` | Open a full-screen command line over the workspace: `/bash` opens it empty, `/bash git status` opens it already running that command. It has history, Tab completion and coloured output, and it asks no permission because you are the one typing. See [The shell panel](#bash). |
 | `/theme` | Choose a palette by name: `/theme` opens the menu, which previews each palette as you move through it; `/theme nord` switches in one step. Your own palettes (`~/.zettcode/themes/<name>.toml`) are in the menu too. |
 | `/pet` | Choose the pet over the conversation: `/pet` opens a panel (↑ ↓ put each pet over the conversation as you go, `Enter` keeps it, `Esc` puts the old one back); `/pet whale` switches in one step. Saved to `[ui] pet`. See [The pet](/guide/interface#the-pet). |
@@ -122,6 +123,7 @@ at once, beside the request.
 | `/self-compact` | The tool is offered when a request starts, so a change applies from the next request; one the model has already asked for is dropped if you switch it off. |
 | `/quit`, `/exit` | Leaving does not wait for the answer. |
 | `/btw` | Waits its turn and then answers, as before. |
+| `/code-review` | Waits its turn too: a review is a request of its own, so it starts when the one in flight has ended. |
 
 `/model`, `/config`, `/clear`, `/new`, `/resume`, `/fork`, `/compact` and `/export` still say "busy":
 they change the model a request started with, the transcript it is writing into, or the session it is

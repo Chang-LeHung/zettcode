@@ -42,6 +42,57 @@ async def hold_until(gate: asyncio.Event, then: str = "released"):
 # -- the result -----------------------------------------------------------------------------------
 
 
+async def test_instructions_reach_the_model_and_stay_in_its_context_while_the_display_stays_short(
+    tmp_path, monkeypatch
+):
+    """The brief is in the stored turn — only the *display* is the short line, now and after a reopen."""
+    model = wire(monkeypatch, ScriptedModel("done", "again"))
+    brief = "Review it, then name the problems with file:line."
+    async with make(tmp_path) as client:
+        result = await client.session.run("look at this", instructions=brief)
+
+        read = str(model.requests[0].messages[-1])
+        assert "look at this" in read and "name the problems with file:line" in read
+        shown = [message.text for message in await client.session.history() if message.role == "user"]
+        assert shown == ["look at this"], "the reader is shown the line, not the brief"
+
+    async with zc.Client(config=config_for(tmp_path), resume=result.session_id) as reopened:
+        await reopened.session.run("and now?")
+
+        context = str(model.requests[1].messages)
+        assert brief in context, "the brief is part of the stored turn, so a later request still reads it"
+        assert [message.text for message in await reopened.session.history() if message.role == "user"] == [
+            "look at this",
+            "and now?",
+        ]
+
+
+async def test_instructions_come_after_the_references_in_one_hint(tmp_path, monkeypatch):
+    """One message, both texts, in the order they are read: references first, then the caller's."""
+    from test_mentions import _TextMentions
+    from zettcode.mentions import MentionRegistry
+
+    model = wire(monkeypatch, ScriptedModel("ok"))
+    async with make(tmp_path) as client:
+        client._mention_registry = lambda: MentionRegistry([_TextMentions("note", {"note": "Write it down."})])
+        await client.session.run("@note look", mentions=True, instructions="Then say goodbye.")
+
+        read = str(model.requests[0].messages[-1])
+        assert read.index("Write it down.") < read.index("Then say goodbye."), read
+        shown = [message.text for message in await client.session.history() if message.role == "user"]
+        assert shown == ["@note look"], "the reader is shown what they typed, both additions aside"
+
+
+def test_instructions_join_the_references_instructions_in_the_order_they_were_added():
+    """One text for the model: what ``@`` references contributed first, then what the caller added."""
+    from zettcode.sdk.session import _with_instructions
+
+    assert _with_instructions("from @note", "then say goodbye") == "from @note\n\nthen say goodbye"
+    assert _with_instructions(None, "then say goodbye") == "then say goodbye"
+    assert _with_instructions("from @note", None) == "from @note"
+    assert _with_instructions("from @note", "   ") == "from @note", "a blank instruction adds nothing"
+
+
 async def test_the_result_carries_text_session_usage_and_no_stop(tmp_path, monkeypatch):
     wire(monkeypatch, ScriptedModel("The answer."))
     async with make(tmp_path) as client:
