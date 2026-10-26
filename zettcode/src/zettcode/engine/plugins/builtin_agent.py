@@ -35,7 +35,7 @@ from zettcode.engine.extensions.harness_switch import HarnessSwitch
 from zettcode.engine.extensions.tool_output import ToolOutputExtension
 from zettcode.engine.extensions.usage import UsageExtension
 from zettcode.engine.messenger import Messenger
-from zettcode.engine.permission import ShellDenyExtension, ShellPolicy
+from zettcode.engine.permission import Permission, ShellDenyExtension, ShellPolicy
 from zettcode.engine.permission.approval import ShellApprovalMemory
 from zettcode.engine.storage import SessionStore
 from zettcode.mentions import FileMentions, SkillMentions
@@ -61,6 +61,7 @@ from .services import (
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zett_agent.extensions.base import AgentExtension
+    from zett_agent.jit_harness import JITToolHost
 
     from .state import AgentBuild
 
@@ -287,11 +288,27 @@ class Harness(AgentPlugin):
         """Register the switchable extension; the framework's harness is imported when the agent is built."""
         switch = container.service(HARNESS, HarnessSwitch)
         root = container.config.harness_dir
+        policy = container.service(POLICY, ShellPolicy)
+
+        def host() -> JITToolHost:
+            """Where one session's repository code runs.
+
+            A child process either way, so a crash, a hang or a runaway allocation in code the model wrote stays
+            out of this window. Below `full` the child also runs inside the sandbox the shell uses, which bounds what
+            it may read, write and reach; at `full` the reader has given the model their own access, so there is
+            nothing left for a boundary to hold back.
+            """
+            from zett_agent.jit_harness import SubprocessToolHost
+
+            if policy.level is Permission.FULL:
+                return SubprocessToolHost()
+            boundary = policy.sandbox.boundary if policy.sandbox is not None else None
+            return SubprocessToolHost(sandbox=boundary)
 
         def build(_: AgentBuild) -> AgentExtension:
             from zettcode.engine.extensions.harness import SwitchedHarness
 
-            return SwitchedHarness(root, switch)
+            return SwitchedHarness(root, switch, host_factory=host)
 
         container.register_extension_factory("SwitchedHarness", build)
 

@@ -1646,7 +1646,7 @@
 <rect x="0" y="260" width="10" height="20" fill="#343f44"/>
 <rect x="10" y="260" width="10" height="20" fill="#343f44"/>
 <rect x="20" y="260" width="10" height="20" fill="#343f44"/>
-<rect x="20" y="260" width="10" height="20" fill="#b4befe"/>
+<rect x="20" y="260" width="10" height="20" fill="#f9e2af"/>
 <rect x="30" y="260" width="10" height="20" fill="#343f44"/>
 <rect x="30" y="260" width="10" height="20" fill="#94e2d5"/>
 <rect x="40" y="260" width="10" height="20" fill="#343f44"/>
@@ -2040,7 +2040,7 @@
 <rect x="0" y="320" width="10" height="20" fill="#343f44"/>
 <rect x="10" y="320" width="10" height="20" fill="#343f44"/>
 <rect x="20" y="320" width="10" height="20" fill="#343f44"/>
-<text x="20" y="336" fill="#b4befe">■</text>
+<text x="20" y="336" fill="#f9e2af">■</text>
 <rect x="30" y="320" width="10" height="20" fill="#343f44"/>
 <rect x="40" y="320" width="10" height="20" fill="#343f44"/>
 <text x="40" y="336" fill="#f2f5f3">S</text>
@@ -2075,7 +2075,7 @@
 <rect x="220" y="320" width="10" height="20" fill="#343f44"/>
 <rect x="230" y="320" width="10" height="20" fill="#343f44"/>
 <rect x="240" y="320" width="10" height="20" fill="#343f44"/>
-<rect x="240" y="320" width="6.25" height="20" fill="#b4befe"/>
+<rect x="240" y="320" width="6.25" height="20" fill="#f9e2af"/>
 <rect x="250" y="320" width="10" height="20" fill="#343f44"/>
 <rect x="250" y="320" width="10" height="20" fill="#566064" fill-opacity="0.25"/>
 <rect x="260" y="320" width="10" height="20" fill="#343f44"/>

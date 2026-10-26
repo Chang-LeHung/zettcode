@@ -32,6 +32,22 @@ def opened(name: str, **arguments: object):
     return DEFAULT_RENDERERS.open_tool(name, arguments, id=1, call_id="call-1", started_at=0.0)
 
 
+def test_a_read_row_says_how_many_lines_came_back():
+    """`Read app.py` and not how much of it: the count is of what the row shows, not of what was asked for."""
+    entry = opened("read", path="app.py")
+
+    DEFAULT_RENDERERS.finished(entry, "line one\nline two\nline three")
+    assert entry.title == "Read app.py \u00b7 3 lines"
+
+    one = opened("read_file", path="notes.md")
+    DEFAULT_RENDERERS.finished(one, "only line")
+    assert one.title == "Read notes.md \u00b7 1 line", 'one line is not "1 lines"'
+
+    picture = opened("read", path="dot.png")
+    DEFAULT_RENDERERS.finished(picture, "Image dot.png: image/png, 71 bytes")
+    assert picture.title == "Read dot.png", "a picture is not a file of lines"
+
+
 def test_the_chain_phrases_the_coding_tools():
     assert describe("read_file", path="src/app.py") == "Read src/app.py"
     assert describe("write_file", path="notes/plan.md") == "Write notes/plan.md"
@@ -128,8 +144,9 @@ def test_an_edit_that_replaces_every_occurrence_counts_once():
     assert (once.title, once.added, once.removed) == ("Edited app.py (1 edit)", 1, 1)
 
 
-def test_a_namespaced_mcp_tool_keeps_its_server_after_the_tool_name():
-    assert describe("docs__search", query="fix parser") == "search (via docs) query=fix parser"
+def test_a_namespaced_mcp_tool_names_its_server_before_the_tool():
+    assert describe("docs__search", query="fix parser") == "MCP docs/search query=fix parser"
+    assert describe("mcp__github__create_issue", title="A bug") == "MCP github/create_issue title=A bug"
     assert describe("search", query="fix parser") == "search query=fix parser"
 
 

@@ -83,7 +83,11 @@ test("a tool row says what happened and where", () => {
   assert.equal(describeTool("write_file", { path: "docs/a.md" }).verb, "Write");
   assert.equal(describeTool("edit", { path: "src/a.py" }).verb, "Edit");
   assert.equal(describeTool("glob", { pattern: "**/*.ts" }).target, "**/*.ts");
-  assert.equal(describeTool("mcp__github__create_issue", { title: "A bug" }).verb, "Create issue");
+  assert.deepEqual(describeTool("mcp__github__create_issue", { title: "A bug" }), {
+    verb: "MCP",
+    target: "github/create_issue",
+  });
+  assert.deepEqual(describeTool("docs__search", { query: "fix" }), { verb: "MCP", target: "docs/search" });
 });
 
 test("a skill row names the skill and the description its file declares", () => {

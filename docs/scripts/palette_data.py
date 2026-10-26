@@ -111,7 +111,12 @@ def build(
     warning = fit("warning", yellow, ACCENT_MIN)
     error = fit("error", red, ACCENT_MIN)
     green = fit("diff_added", green, ACCENT_MIN)
-    cool = fit("tools.read", cool or blue, ACCENT_MIN)
+    # Reading is the one lookup that is not a search or a command: it takes the palette's yellow, the hue furthest
+    # from the cool accent a glob, a grep, an image, a shell and the plan share — and the only one left that no other
+    # tool row claims (a green would sit beside the teal of a delegated task, and an added line). Those rows are the
+    # most common in a transcript, so they carry a colour of their own that reads as its own job at a glance.
+    reads = fit("tools.read", yellow, ACCENT_MIN)
+    cool = fit("tools.search", cool or blue, ACCENT_MIN)
     # Writing is the orange, not the yellow: the heading of an edit sits right above a diff whose additions are green,
     # and a yellow heading is close to that green in hue and weight.
     writes = fit("tools.write", write or orange, ACCENT_MIN)
@@ -151,7 +156,7 @@ def build(
         focus=bright,
         selection=selection,
         tools=ToolTheme(
-            read=cool,
+            read=reads,
             search=cool,
             image=cool,
             write=writes,

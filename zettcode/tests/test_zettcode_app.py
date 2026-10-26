@@ -1079,6 +1079,36 @@ async def test_app_streams_a_prompt_into_the_transcript():
     assert app.busy is False
 
 
+async def test_a_turn_that_thinks_again_after_answering_shows_both_segments(tmp_path):
+    """A service may answer, run a hosted tool and think again: 0.2.1 reports that as a second segment.
+
+    The reader watches two thinking rows in the order they happened, and the answer between them stays where it
+    was written — the transcript does not merge the second thought into the first.
+    """
+    events = [
+        AgentEvent(AgentEventType.REASONING_STARTED, "s"),
+        AgentEvent(AgentEventType.REASONING_DELTA, "s", delta="first thought"),
+        AgentEvent(AgentEventType.REASONING_COMPLETED, "s"),
+        AgentEvent(AgentEventType.TEXT_DELTA, "s", delta="an answer, then a search"),
+        AgentEvent(AgentEventType.REASONING_STARTED, "s"),
+        AgentEvent(AgentEventType.REASONING_DELTA, "s", delta="second thought"),
+        AgentEvent(AgentEventType.REASONING_COMPLETED, "s"),
+        AgentEvent(AgentEventType.TEXT_DELTA, "s", delta="the real answer"),
+        AgentEvent(AgentEventType.RUN_COMPLETED, "s", message=AssistantMessage(content="the real answer")),
+    ]
+    app = build_app(events)
+    harness = _harness(app)
+
+    harness.write("find the bug")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    thinking = [entry.text for entry in app.transcript.entries if entry.kind == "thinking"]
+    assert thinking == ["first thought", "second thought"], thinking
+    assert [entry.kind for entry in app.transcript.entries].count("answer") >= 1
+    assert app.busy is False
+
+
 async def test_leaving_before_the_warm_up_ends_does_not_wait_for_it(monkeypatch):
     """A shell closed while the runtime is still warming must not sit through it.
 

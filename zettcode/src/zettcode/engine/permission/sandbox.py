@@ -98,6 +98,16 @@ class ShellSandbox(Sandboxer):
         return self._sandbox is not None
 
     @property
+    def boundary(self) -> Sandbox | None:
+        """Return the sandbox itself, or ``None`` when this machine has none.
+
+        For a caller that runs code *inside* one rather than rewriting a command into it: the harness starts a
+        child process for the model's own tools, and at `safe` that child runs in this boundary.
+        """
+        self._probe()
+        return self._sandbox
+
+    @property
     def unavailable_reason(self) -> str | None:
         """Return why there is no sandbox, or ``None`` when there is one."""
         self._probe()
