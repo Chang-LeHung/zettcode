@@ -5,10 +5,13 @@ daemon 是一个没人守在键盘前的会话。它在自己的工作目录里�
 它适合那种应该在你旁边发生、而不是挡在你前面的工作。比如你刚写完代码，让一个评审 agent 去读 diff；或者你继续改代码，让另一个 agent 去跑一遍失败的测试。每个 daemon 都是一个可以起、可以列、可以停的会话：
 
 ```bash
+zettcode daemon model                    # 能跑在哪些模型上
 zettcode daemon spawn --model gpt-5 --effort high
 zettcode daemon list
 zettcode daemon kill 01a1726a-3109-75a7-9285-390d9e381111
 ```
+
+`daemon model` 列出配置里的每个模型，名字就是 `spawn --model` 接受的那个，同时列出 id、API、是否收图片、窗口大小和推理级别；第一个标 `(default)`，也就是不起 daemon 时默认用的那个。`--json` 打同样的字段，给脚本读。
 
 ## 起一个
 
@@ -25,7 +28,7 @@ send_message(to="01a1726a-3109-75a7-9285-390d9e381111", message="...")
 | 选项 | 作用 |
 | --- | --- |
 | `-w DIR` | 在哪个目录工作（默认当前目录） |
-| `--model NAME` | 用哪个模型（默认配置里的第一个） |
+| `--model NAME` | 用哪个模型，名字由 `daemon model` 列出（默认配置里的第一个） |
 | `--effort LEVEL` | 推理级别（默认模型自己的） |
 | `-n LABEL`、`--name LABEL` | 给这个 daemon 一个身份，记在会话旁边，由 `daemon list` 显示（默认没有） |
 | `--permission LEVEL` | 它的 shell 级别：`safe`（每条命令都在沙箱里）、`deny`（完全不给 shell）、`full`（默认）。没有 `ask`：没人能答 |
@@ -95,7 +98,9 @@ daemon 不会自己退出，闲置几个小时也不会：不用了就用 `daemo
 /code-review src/api.py 里的错误处理
 ```
 
-接下来是模型的事：它收集改动，用 `<daemon> spawn --name code-review` 起一个 reviewer，用 `send_message` 告诉那个会话读什么，等回答作为一条消息回来再汇报。评审结束用 `<daemon> kill <session id>` 停掉它 —— 如果一直没有回答，也要停，不要让它一直跑着；`<daemon> list` 能看到还在跑什么。
+接下来是模型的事：它先看 `<daemon> list`，这个工作区里已经有这个命令起过的 reviewer（名字是 `code-review`）就直接用那一个，没有才 `<daemon> spawn --name code-review` 起新的；然后用 `send_message` 告诉那个会话读什么，等回答作为一条消息回来再汇报。用过几轮的 reviewer 已经熟悉这批改动，所以比新建一个更合适；`list` 上能看到的是名字和工作区，所以同一个工作区里另一个终端起的 reviewer 也会被复用。
+
+修的时候 reviewer 一直留着：主 agent 把它指出的地方改掉，再把改动的新状态发给它看，这样一轮一轮走到它没什么可说的为止。发给它的每条消息都要说明它**必须回答** —— 有问题就报，没问题也要说一句 —— 因为一个不出声的 reviewer，和一次什么都没看出来的评审没办法区分。某一轮没有回答就再发一次；还是没有回音，就去读它自己的会话 —— `~/.zettcode/sessions/*/<session id>/data.jsonl`，里面最后一条 assistant 消息就是它的评审 —— 把它贴回来，然后停掉（`<daemon> kill <session id>`），不要让它一直跑着；`<daemon> list` 能看到还在跑什么。
 
 `<daemon>` 是终端自己运行所在的那套安装的命令 —— 同一个解释器下的 `python -m zettcode.daemon` —— 而不是去 PATH 上找一个 `zettcode`，所以为一份代码检出、或一个外人看不到的虚拟环境起的终端，也能起 daemon。
 

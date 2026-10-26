@@ -1169,8 +1169,15 @@ async def test_code_review_runs_a_turn_that_asks_for_a_review_of_the_change():
     assert CodeReview.command() in read, "the daemon is named by this interpreter, not by a `zettcode` on the path"
     assert sys.executable in read and "-m zettcode.daemon" in read
     assert "reads and does not change" in read, "the reviewer is told the edits are the main agent's"
-    assert "you keep working until nothing it found is left" in read
-    assert "if no answer comes" in read, "a reviewer that never answers is still stopped"
+    assert "reuse it rather than starting another" in read, "an earlier reviewer of this workspace is preferred"
+    assert f"{CodeReview.command()} list" in read, "the model is told how to find one"
+    assert "round after round, until nothing it found is left" in read
+    assert "go round again until it has nothing left to say" in read, "the reviewer outlives the first round"
+    assert "it must answer" in read, "the reviewer is told that a round without a word is not an answer"
+    assert "if it has nothing to change, say that in a word" in read
+    assert "send the request once more" in read, "a quiet reviewer is asked again before it is given up on"
+    assert "data.jsonl" in read, "what it said is read from its own conversation when it stops answering"
+    assert "a round brings no answer at all" in read, "a reviewer that never answers is still stopped"
     assert read.rstrip().endswith("the error handling"), "what the reader typed is the focus"
 
 
