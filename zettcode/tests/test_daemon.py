@@ -237,6 +237,31 @@ def test_a_label_given_at_the_start_is_recorded_and_listed(home, capsys):
         assert process.Daemons().stop(found) == "stopped"
 
 
+def test_model_lists_what_a_spawn_can_be_given(home, capsys):
+    """`daemon model` shows the names `spawn --model` takes, and which one a daemon would use by itself."""
+    assert daemon_program(["model", "-w", str(home)]) == 0
+
+    shown = capsys.readouterr().out
+    assert "fake (default)" in shown and "128,000" in shown
+    assert "spawn --model" in shown, "the reader is told what to do with the names"
+
+
+def test_model_json_is_what_a_program_reads(home, capsys):
+    assert daemon_program(["model", "-w", str(home), "--json"]) == 0
+
+    listed = json.loads(capsys.readouterr().out)
+    assert listed[0]["name"] == "fake" and listed[0]["default"] is True
+    assert listed[0]["efforts"][0] == "off"
+
+
+def test_model_without_a_configuration_says_why(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("ZETTCODE_CONFIG", str(tmp_path / "absent.toml"))
+
+    assert daemon_program(["model", "-w", str(tmp_path)]) == 1
+
+    assert "zettcode daemon:" in capsys.readouterr().err
+
+
 def test_a_record_points_at_its_own_log(home):
     record: Record = Registry().record(home, "01a1", create=True)
 

@@ -9,10 +9,15 @@ wrote it, an explorer that goes through a failing test suite while you keep edit
 started, listed and stopped:
 
 ```bash
+zettcode daemon model                    # what it can run on
 zettcode daemon spawn --model gpt-5 --effort high
 zettcode daemon list
 zettcode daemon kill 01a1726a-3109-75a7-9285-390d9e381111
 ```
+
+`daemon model` lists every model the configuration has, by the name `spawn --model` takes, with its id, API, whether
+it takes images, its window and its reasoning levels; the first is marked `(default)` and is what a daemon runs on
+when no model is given. `--json` prints the same fields for a script.
 
 ## Starting one
 
@@ -30,7 +35,7 @@ send_message(to="01a1726a-3109-75a7-9285-390d9e381111", message="...")
 | Option | What it does |
 | --- | --- |
 | `-w DIR` | The directory it works in (default: the current one) |
-| `--model NAME` | The model to run on (default: the first configured) |
+| `--model NAME` | The model to run on, by the name `daemon model` lists (default: the first configured) |
 | `--effort LEVEL` | The reasoning level (default: the model's own) |
 | `-n LABEL`, `--name LABEL` | What this daemon is for, recorded beside the session and shown by `daemon list` (default: none) |
 | `--permission LEVEL` | Its shell level: `safe` (every command in a sandbox), `deny` (no shell at all) or `full` (default). There is no `ask`: nobody is there to answer |
@@ -122,10 +127,20 @@ the conversation, as if you had typed it.
 /code-review the error handling in src/api.py
 ```
 
-What happens next is the model's: it gathers the change and starts a reviewer with `<daemon> spawn --name
-code-review`, sends that session what to read with `send_message`, and reports the answer when it arrives as a
-message. The daemon is stopped with `<daemon> kill <session id>` once the review is in — and if no answer ever comes,
-so that it is not left running; `<daemon> list` shows what is.
+What happens next is the model's: it looks at `<daemon> list` for a reviewer of this workspace — the one this
+command names `code-review` — reuses it if there is one, and only otherwise starts a new one with `<daemon> spawn
+--name code-review`. It sends that session what to read with `send_message`, and reports the answer when it arrives
+as a message. A reviewer that has already read the earlier rounds knows the change, which is why it is preferred to
+a fresh one; the name and the workspace are what `list` says, so a reviewer from another terminal on the same
+workspace is the one reused.
+
+The reviewer stays up while the fixes are made: the main agent changes what it found, sends it the new state of the
+change, and goes round again until the reviewer has nothing left to say. Every message to it says that it must
+answer — findings, or a word that there is nothing to change — because a reviewer that goes quiet cannot be told
+apart from one whose review found nothing. A round that brings no answer is sent once more; if that is unanswered
+too, the reviewer's own conversation is read instead — `~/.zettcode/sessions/*/<session id>/data.jsonl`, whose last
+assistant message is its review — that is reported, and the reviewer is stopped with `<daemon> kill <session id>` so
+that it is not left running; `<daemon> list` shows what is.
 
 `<daemon>` is the command of the installation the terminal itself runs on — `python -m zettcode.daemon` under the
 same interpreter — not a `zettcode` looked up on the `PATH`, so a checkout or a virtualenv that nothing else can see

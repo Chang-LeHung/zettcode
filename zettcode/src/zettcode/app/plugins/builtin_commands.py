@@ -468,23 +468,36 @@ class CodeReview(TerminalPlugin):
     #: nobody here approved anything. `{spawn}` is the whole line to run, so the model copies it rather than
     #: reassembling an alias.
     DAEMON = (
-        "Have it read by a reviewer of its own, so this conversation keeps its context: run\n"
+        "Have it read by a reviewer of its own, so this conversation keeps its context. `{command} list` shows the "
+        "daemons running on this machine. If one is already there for this workspace — `code-review` is the name "
+        "this command gives one — reuse it rather than starting another: it has read the earlier rounds and "
+        "already knows this change, which makes it the better reviewer. Send it what you need with "
+        '`send_message(to="<session id>", message=...)` — the request as you would put it, and that the change '
+        "is the uncommitted diff this workspace holds, which it can collect itself. Only when there is none, run\n"
         "\n"
         "    {spawn}\n"
         "\n"
-        "take the session id it prints, and send that session what you need with "
-        '`send_message(to="<session id>", message=...)` — the request as you would put it, and that the change is '
-        "the uncommitted diff this workspace holds, which it can collect itself. Its answer arrives later as a "
-        "message from it: report that answer here, and stop it with `{command} kill <session id>` once the review "
-        "is in — and if no answer comes, so that it is not left running. `{command} list` shows what is running "
-        "if you lose the id. If a daemon cannot be started here, say why and do the review yourself."
+        "and take the session id it prints; it is recorded under the name `code-review`, so the next review in "
+        "this workspace finds it.\n"
+        "\n"
+        "Say in that message, every round, that it must answer: send its findings back to you with `send_message`, "
+        "and if it has nothing to change, say that in a word. A reviewer that goes quiet leaves the change "
+        "waiting, and a review that found nothing cannot be told apart from one that never happened.\n"
+        "\n"
+        "Keep the reviewer running while you work on what it found: make the changes here, then send it the new "
+        "state of the change for another look, and go round again until it has nothing left to say. A reviewer "
+        "stopped after the first round cannot tell you whether the fix worked. If a round brings no answer at all, "
+        "send the request once more; if that also goes unanswered, read what it did say: its conversation is "
+        "`~/.zettcode/sessions/*/<session id>/data.jsonl`, and the last assistant message in it is its review — "
+        "report that here, then stop it with `{command} kill <session id>` so that it is not left running. If a "
+        "daemon cannot be started here, say why and do the review yourself."
     )
     #: A reviewer is told plainly what it is: the instruction is the safeguard, and the reader is told the same in
     #: the guide, since a session at `full` could change things if it chose to.
     NOT_YOURS = (
         "Tell the reviewer plainly that it reads and does not change: no edits, no writes, no commits, no command "
-        "that modifies the workspace. The changes are yours to make, after its findings are in, and you keep "
-        "working until nothing it found is left."
+        "that modifies the workspace. The changes are yours to make, and you keep making them, round after round, "
+        "until nothing it found is left."
     )
     #: Under `deny` there is no shell for a daemon to collect a diff with, and the session that asked has none
     #: either: the review is a reading one.

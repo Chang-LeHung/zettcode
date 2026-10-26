@@ -49,6 +49,24 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     listing.add_argument("--json", action="store_true", help="print the daemons as JSON, for a program to read")
 
+    models = commands.add_parser(
+        "model",
+        help="show the models a daemon can run on, and which one it would pick",
+        description=(
+            "Show every model the configuration lists, as `spawn --model` takes them: the first is what a daemon "
+            "runs on when no model is given."
+        ),
+    )
+    models.add_argument(
+        "-w",
+        "--workspace",
+        metavar="DIR",
+        type=Path,
+        default=Path.cwd(),
+        help="directory whose configuration is read (default: the current directory)",
+    )
+    models.add_argument("--json", action="store_true", help="print the models as JSON, for a program to read")
+
     spawn = commands.add_parser(
         "spawn",
         help="start a daemon and print its session id",
@@ -127,6 +145,8 @@ def daemon_program(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(list(argv) if argv is not None else None)
     if args.command == "list":
         return _list(args.json)
+    if args.command == "model":
+        return _models(args.workspace, args.json)
     if args.command == "spawn":
         return _spawn(args)
     if args.command == "kill":
@@ -237,6 +257,62 @@ def _spawn(args: argparse.Namespace) -> int:
         print(f"shell    {state.permission or '?'}")
     print()
     print(f'send_message(to="{record.session_id}", message="...")')
+    return EXIT_OK
+
+
+def _models(workspace: Path, as_json: bool) -> int:
+    """Print the models `spawn --model` can name, marking the one a daemon would run on by default.
+
+    Read with the SDK's file reader, so no client is built and no session is touched: the names are the ones
+    `spawn --model` matches, which is what the reader needs to choose.
+    """
+    from ..sdk.models import list_models
+
+    try:
+        found = list_models()
+    except ValueError as error:
+        sys.stderr.write(f"zettcode daemon: {error}\n")
+        return EXIT_FAILED
+    if not found:
+        sys.stderr.write(
+            f"zettcode daemon: no models configured for {workspace}; add one with /config, or in the file\n"
+        )
+        return EXIT_FAILED
+    if as_json:
+        print(
+            json.dumps(
+                [
+                    {
+                        "name": model.name,
+                        "model": model.model,
+                        "default": index == 0,
+                        "context_window": model.context_window,
+                        "multimodal": model.multimodal,
+                        "api": model.api,
+                        "efforts": list(model.efforts),
+                    }
+                    for index, model in enumerate(found)
+                ],
+                indent=2,
+            )
+        )
+        return EXIT_OK
+    rows: list[tuple[str, ...]] = [("NAME", "MODEL", "API", "IMAGES", "CONTEXT", "EFFORTS")]
+    for index, model in enumerate(found):
+        rows.append(
+            (
+                model.name + (" (default)" if index == 0 else ""),
+                model.model,
+                model.api,
+                "yes" if model.multimodal else "no",
+                f"{model.context_window:,}",
+                ", ".join(model.efforts),
+            )
+        )
+    widths = [max(len(row[index]) for row in rows) for index in range(len(rows[0]))]
+    for row in rows:
+        print("  ".join(cell.ljust(widths[index]) for index, cell in enumerate(row)).rstrip())
+    print("\nPick one with: zettcode daemon spawn --model <name>")
     return EXIT_OK
 
 
