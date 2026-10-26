@@ -375,11 +375,12 @@ def _tool_entry(tool: str, *, status: EntryStatus = EntryStatus.COMPLETED) -> To
 
 
 def test_tool_rows_are_painted_by_what_the_tool_did():
-    """Five hues, not seven: what is looked at or run is lavender, what is written green, what is deleted
-    red, a delegated agent teal, and another session mauve.
+    """Six hues, not eight: a read is green, what the agent looks around with is lavender, what is written
+    orange, what is deleted red, a delegated agent teal, and another session mauve.
 
     A transcript is mostly tool rows, and a rainbow of them reads as noise. Tools that do the same thing
-    share a hue, and the roles stay separate so a palette can override one of them on its own.
+    share a hue, and the roles stay separate so a palette can override one of them on its own. Reading is the
+    one split, because those rows are the most of any and a second blue beside the first reads as one family.
     """
     read = render_entry(_tool_entry("read_file"), 40, DARK, 0)
     shell = render_entry(_tool_entry("bash"), 40, DARK, 0)
@@ -389,13 +390,17 @@ def test_tool_rows_are_painted_by_what_the_tool_did():
 
     assert DARK.tools.read in hue(read)
     assert DARK.tools.shell in hue(shell)
-    assert DARK.tools.read == DARK.tools.search
+    assert DARK.tools.read != DARK.tools.search, "reading has a hue of its own"
     for theme in (DARK, LIGHT):
-        looking = {theme.tools.read, theme.tools.search, theme.tools.image, theme.tools.shell, theme.tools.plan}
-        assert len(looking) == 1, "everything the agent looks at or runs is one hue"
-        assert len({*looking, theme.tools.write, theme.tools.delete, theme.tools.subagent, theme.tools.message}) == 5
+        looking = {theme.tools.search, theme.tools.image, theme.tools.shell, theme.tools.plan}
+        assert len(looking) == 1, "what the agent looks around with or runs is one hue"
+        assert theme.tools.read not in looking
+        families = {theme.tools.read, *looking, theme.tools.write, theme.tools.delete, theme.tools.subagent}
+        assert len(families) == 5, families
+        assert theme.tools.message not in families
     assert DARK.tools.delete == DARK.error, "a deletion is the colour of a failure, on purpose"
-    assert tool_color("grep", DARK) == tool_color("read_file", DARK)
+    assert tool_color("read_file", DARK) == DARK.tools.read != tool_color("grep", DARK)
+    assert tool_color("grep", DARK) == DARK.tools.search
     assert tool_color("bash", DARK) == DARK.tools.shell != tool_color("write_file", DARK)
     # Roles stay separate so one of them can be overridden on its own.
     assert tool_color("write_file", DARK) == tool_color("replace_in_file", DARK) == DARK.tools.write

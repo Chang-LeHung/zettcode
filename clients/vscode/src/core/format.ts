@@ -77,6 +77,15 @@ export function describeTool(name: string, args: Record<string, unknown>, output
   const description = stringArg(args, "description", "prompt", "task");
   const bare = name.replace(/^.*__/, "").toLowerCase();
 
+  // A tool a remote MCP server offers is namespaced `<server>__<tool>`, sometimes with the family in front
+  // (`mcp__github__create_issue`): the server is part of what the call was, and dropping it made the same `search`
+  // in two servers look like one tool.
+  const remote = name.startsWith("mcp__") ? name.slice(5) : name.includes("__") ? name : "";
+  if (remote) {
+    const [server, ...rest] = remote.split("__");
+    return { verb: "MCP", target: `${server}/${rest.join("__")}` };
+  }
+
   switch (bare) {
     case "read_file":
     case "read":

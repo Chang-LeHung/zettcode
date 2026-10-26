@@ -1,19 +1,20 @@
 """The just-in-time harness, kept behind a switch the reader can flip between two requests.
 
 The framework's :class:`~zett_agent.jit_harness.JITHarnessExtension` lets the model write small Python tools of its
-own and run them. That is opt-in by nature: what the model writes runs in this process, with this user's access, and
-is not behind the shell's permission level. So it is registered always and does nothing until switched on, which is
-what lets ``/harness on`` take effect on the next request without rebuilding the client.
+own and run them. That is opt-in by nature, and it is not behind the shell's permission level by itself: the plugin
+puts a child process (and, below `full`, a sandbox) between that code and this window. So it is registered always and
+does nothing until switched on, which is what lets ``/harness on`` take effect on the next request without rebuilding
+the client.
 """
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 
 from zett_agent.agent import AgentRunContext
 from zett_agent.extensions.base import ModelRequestNext, ToolCallNext
-from zett_agent.jit_harness import JITHarnessExtension
+from zett_agent.jit_harness import JITHarnessExtension, JITToolHost
 from zett_agent.messages import ToolCall, ToolMessage
 from zett_agent.model import ModelEvent, ModelRequest
 from zett_agent.tools.base import ToolResult
@@ -31,9 +32,19 @@ class SwitchedHarness(JITHarnessExtension):
     request, in ``on_tool``, because ``/harness`` waits for an idle shell: no request sees it change halfway.
     """
 
-    def __init__(self, root: str | Path, switch: HarnessSwitch) -> None:
-        """Keep each session's repository under ``root``, and follow ``switch``."""
-        super().__init__(root)
+    def __init__(
+        self, root: str | Path, switch: HarnessSwitch, *, host_factory: Callable[[], JITToolHost] | None = None
+    ) -> None:
+        """Keep each session's repository under ``root``, and follow ``switch``.
+
+        Args:
+            root: Directory that holds one subdirectory per session.
+            switch: Whether the harness is on for a request.
+            host_factory: Where a session's repository code runs, called once per session; ``None`` keeps the
+                framework's default, which imports it here. The plugin passes one that puts a child process between
+                the model's code and this window, inside a sandbox unless the reader gave the model everything.
+        """
+        super().__init__(root, host_factory=host_factory)
         self._switch = switch
         #: Sessions whose current request has the harness, set by ``on_tool`` and cleared when it is released.
         self._engaged: set[str] = set()

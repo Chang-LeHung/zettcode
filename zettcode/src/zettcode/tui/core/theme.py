@@ -16,11 +16,13 @@ class ToolTheme:
     """The colour a tool row is painted with, by what the tool did.
 
     The built-in palettes keep to a few hues, the way editors keep their tool and
-    status colours to a few: a soft lavender for everything the agent looks at or
-    runs (reading, searching, pictures, commands, the plan), orange for what it
-    writes, red for what it deletes, teal for a delegated child agent, and mauve
-    for talking to another session. More hues than that read as noise in a
-    transcript that is mostly tool rows. Writing is orange and not green because green is the
+    status colours to a few: a soft lavender for what the agent goes looking with
+    (a glob, a grep, a picture, a command, the plan), a yellow for reading one
+    file, orange for what it writes, red for what it deletes, teal for a delegated
+    child agent, and mauve for talking to another session. More hues than that read as noise in a
+    transcript that is mostly tool rows, so reading is the one addition: those rows are the most
+    of any, and a yellow no other role claims says "this is a file I read" where the lavender says
+    "this is the agent doing something". Writing is orange and not green because green is the
     colour of an added line: the heading of an edit sits on the line above its diff, and the same
     green on both made the heading read as one more added line (and a yellow one, close to the
     green in hue and weight, still read as its neighbour). The roles are separate so a theme
@@ -48,7 +50,7 @@ class ToolTheme:
             Spelled ``ask-user`` in a theme file's ``[tools]`` table.
     """
 
-    read: str = "#b4befe"
+    read: str = "#f9e2af"
     search: str = "#b4befe"
     image: str = "#b4befe"
     write: str = "#ef9a62"
@@ -183,7 +185,7 @@ LIGHT = Theme(
     focus="#237a5c",
     selection="#cfe4d6",
     tools=ToolTheme(
-        read="#5b3fa8",
+        read="#7a5c00",
         search="#5b3fa8",
         image="#5b3fa8",
         write="#b85a14",

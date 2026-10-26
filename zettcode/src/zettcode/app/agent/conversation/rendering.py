@@ -128,6 +128,15 @@ class RenderHandler(ABC):
         """Return the text under a tool row; only a tool link changes this."""
         return output
 
+    def finished(self, entry: ToolEntry, text: str) -> None:
+        """Adjust a row now that its result is in — a count, a size — and change nothing by default.
+
+        Args:
+            entry: The row, already carrying its bounded body in ``text``.
+            text: The same body, after :meth:`body` shaped it.
+        """
+        return None
+
     def text(self, text: str, *, opening: bool) -> str:
         """Return one streamed fragment, unchanged unless a link shapes it.
 
@@ -182,6 +191,12 @@ class Renderers:
         """Return the body for one call's result, through the claiming link."""
         handler = self._claim(TOOL, name)
         return output if handler is None else handler.body(name, output)
+
+    def finished(self, entry: ToolEntry, text: str) -> None:
+        """Let the claiming link adjust a row once its result is in."""
+        handler = self._claim(TOOL, entry.tool)
+        if handler is not None:
+            handler.finished(entry, text)
 
     def text(self, kind: str, text: str, *, opening: bool = False) -> str:
         """Return one streamed fragment of ``kind``, shaped by the claiming link."""
@@ -378,6 +393,17 @@ class ReadTool(ToolHandler):
     def body(self, name: str, output: str) -> str:
         """Drop the continuation hint; the row bounds the text it applies to."""
         return CONTINUATION.sub("", output).rstrip()
+
+    def finished(self, entry: ToolEntry, text: str) -> None:
+        """Say how many lines the read returned: the row said "Read app.py" and not how much of it.
+
+        A picture is one line of description, not a file of lines, so it is left alone. The count is of
+        what came back, which is what the reader is looking at — a range asked for is not the same number.
+        """
+        if text.startswith("Image "):
+            return
+        lines = len(text.splitlines())
+        entry.title = f"{entry.title} \u00b7 {lines} line" + ("" if lines == 1 else "s")
 
 
 class WriteTool(ToolHandler):
@@ -631,6 +657,28 @@ class MessageTool(ToolHandler):
         )
 
 
+class McpTool(ToolHandler):
+    """A tool an MCP server offers, named ``<server>__<tool>`` by the runtime.
+
+    The server is part of what the call was: the same ``search`` in two servers is two different tools, with
+    different reach and different answers, and a row that drops the server makes them look like one.
+    """
+
+    def handles(self, kind: str, name: str = "") -> bool:
+        """Claim a namespaced name that no earlier link claimed."""
+        return kind == TOOL and "__" in name and not name.startswith("__")
+
+    def describe(self, name: str, arguments: Mapping[str, object]) -> ToolRow:
+        """Show ``MCP server/tool``, so the row names where the capability came from.
+
+        The runtime names a remote tool ``<server>__<tool>``; a front end that prefixes the family with ``mcp`` —
+        ``mcp__github__create_issue`` — is read the same way, so the server and the tool are what the row says.
+        """
+        remote = name[5:] if name.startswith("mcp__") else name
+        server, _, tool = remote.partition("__")
+        return ToolRow(f"MCP {server}/{tool} {summarise(arguments)}".rstrip())
+
+
 class FallbackTool(ToolHandler):
     """Anything no other link claims: its name and flat arguments, never JSON."""
 
@@ -639,15 +687,8 @@ class FallbackTool(ToolHandler):
         return kind == TOOL
 
     def describe(self, name: str, arguments: Mapping[str, object]) -> ToolRow:
-        """Show ``name key=value`` so an unknown tool still reads as a sentence.
-
-        An MCP tool is namespaced ``<server>__<tool>``; the server is worth
-        keeping because it says where the capability comes from, but it reads
-        better after the tool than in front of it.
-        """
-        server, _, tool = name.partition("__")
-        label = f"{tool} (via {server})" if tool else name
-        return ToolRow(f"{label} {summarise(arguments)}".rstrip())
+        """Show ``name key=value`` so an unknown tool still reads as a sentence."""
+        return ToolRow(f"{name} {summarise(arguments)}".rstrip())
 
 
 class ReasoningHandler(RenderHandler):
@@ -705,6 +746,7 @@ DEFAULT_RENDERERS = Renderers(
         SkillTool(),
         TaskTool(),
         MessageTool(),
+        McpTool(),
         FallbackTool(),
         ReasoningHandler(),
         AnswerHandler(),

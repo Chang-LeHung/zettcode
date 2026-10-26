@@ -21,7 +21,7 @@ diff_added = "#50fa7b"
 diff_removed = "#ff5555"
 
 [tools]
-read = "#8be9fd"
+read = "#f1fa8c"
 search = "#8be9fd"
 image = "#8be9fd"
 write = "#ffb86c"

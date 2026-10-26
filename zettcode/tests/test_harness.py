@@ -179,6 +179,35 @@ def test_each_session_keeps_its_tools_in_its_own_folder_beside_the_sessions_not_
     assert not harness.session_directory("abc").is_relative_to(tmp_path / "sessions")
 
 
+def test_the_harness_runs_model_code_in_a_child_and_only_sandboxes_it_below_full(tmp_path):
+    """A crash in code the model wrote stays out of the window; the sandbox is for a level that still bounds things."""
+    from zett_agent.jit_harness import SubprocessToolHost
+
+    from zettcode.engine.permission import Permission, ShellPolicy
+
+    config = ZettCodeConfig(
+        workspace=tmp_path,
+        models=(ModelConfig(model="m", token="t"),),
+        store=tmp_path / "sessions",
+        harness_dir=tmp_path / "harness",
+        mcp_enabled=False,
+    )
+    policy = ShellPolicy(Permission.SAFE, workspace=tmp_path)
+    (harness,) = [
+        extension for extension in agent_extensions(config, policy=policy) if isinstance(extension, SwitchedHarness)
+    ]
+
+    host = harness._host_factory()  # type: ignore[misc]
+    assert isinstance(host, SubprocessToolHost), "a crash or a hang must not take this process with it"
+    assert host.sandbox is not None or not policy.sandbox.available
+
+    policy.level = Permission.FULL
+    unrestricted = harness._host_factory()  # type: ignore[misc]
+    assert isinstance(unrestricted, SubprocessToolHost) and unrestricted.sandbox is None, (
+        "at full the reader has given the model their own access, so there is nothing to bound"
+    )
+
+
 def test_the_default_harness_folder_is_not_inside_the_default_session_store():
     from zettcode.config import ZettCodeConfig as Config
     from zettcode.paths import DEFAULT_HARNESS_DIR, DEFAULT_STORE
