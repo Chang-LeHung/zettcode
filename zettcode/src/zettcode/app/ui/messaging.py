@@ -134,6 +134,8 @@ class MessagingMixin(ShellState):
         """
         if not self._messaging_live:
             return Receipt(False, "this session is closing")
+        if self._updating:
+            return Receipt(False, "this window is installing an update; try again when it is done")
         if self.client.session.locked:
             return Receipt(False, "this session is open in another ZettCode process, so it is read-only here")
         if not self._busy:
@@ -160,7 +162,7 @@ class MessagingMixin(ShellState):
 
     def _start_next_relayed(self) -> bool:
         """Start the oldest waiting message, if there is one and nothing is running."""
-        if self._busy or not self._inbox:
+        if self._busy or self._updating or not self._inbox:
             return False
         self._start_relayed(self._inbox.pop(0))
         return True

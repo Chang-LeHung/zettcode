@@ -127,8 +127,15 @@ whether a newer release exists. No start waits for that request, and
 `[update] enabled = false` turns it off entirely. When the answer names a newer
 version, the next start shows a panel over the conversation:
 
-- **Upgrade now** runs the upgrade for the install it came from — `uv tool
-  upgrade zettcode`, or `pip install --upgrade zettcode` — in the background.
+- **Upgrade now** runs the upgrade for the install it came from — `uv tool upgrade zettcode`, or
+  `pip install --upgrade zettcode` — in the background, **from PyPI's own index**
+  (`https://pypi.org/simple`), because that is where the newest version was read from: a mirror
+  configured on the machine can lag behind it, and the package manager would then answer "already
+  satisfied" for a release that exists. The version is read from PyPI again at this moment, so what
+  the install is measured against is what the index says now, not what the last check wrote down;
+  the stored version is the fallback for a machine that cannot reach it.
+  **The window takes no input while the upgrade runs** — the composer locks, the way it does for a
+  session another process has open — since the code that would answer is being replaced under it.
   The window keeps the code it started with, so restart to use the new version.
   A package manager that exits cleanly has not necessarily installed anything (`uv tool
   upgrade` says "Nothing to upgrade" and succeeds; so does pip when its index has not listed
@@ -149,8 +156,11 @@ says so if you already have the newest release, and otherwise runs the same upgr
 **Upgrade now** with the package manager's output on your terminal. It then reads the installed
 version back from a fresh process and reports `updated 0.1.0 → 0.2.0` only when that is what
 it found (otherwise it says the version is unchanged or could not be read back, and exits
-with status 1 for a failure). If PyPI cannot be reached it still runs the upgrade and lets the
-package manager decide. Restart any open ZettCode to use the new version.
+with status 1 for a failure). The upgrade installs **from PyPI's own index** rather than a mirror the
+machine is configured for, so a mirror that has not caught up cannot turn a newer release into
+"already satisfied"; on a network where only a mirror is reachable, that run fails and the mirror's
+copy is the thing to install by hand (`pip install --upgrade zettcode`, or `uv tool upgrade
+zettcode`, without the index flag). Restart any open ZettCode to use the new version.
 
 **I upgraded and it still says the old version.** Check which copy you are starting:
 `zettcode --version` prints the version, and `which zettcode` the command. If ZettCode

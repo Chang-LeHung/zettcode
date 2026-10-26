@@ -157,14 +157,32 @@ def test_the_index_is_verified_against_the_system_trust_store():
 
 
 def test_the_upgrade_command_follows_the_installer(monkeypatch):
+    """The newest version is read from PyPI, so the download names PyPI too: a mirror can lag behind it."""
     monkeypatch.setattr(update, "installed_by_uv_tool", lambda: True)
     monkeypatch.setattr(update, "which", lambda name: "/usr/local/bin/uv")
 
-    assert upgrade_command() == ("uv", "tool", "upgrade", "zettcode")
+    assert update.SIMPLE_INDEX == "https://pypi.org/simple"
+    assert upgrade_command() == (
+        "uv",
+        "tool",
+        "upgrade",
+        "zettcode",
+        "--index-url",
+        update.SIMPLE_INDEX,
+    )
 
     # pip installed it, or uv is not on this machine: upgrade where we run.
     monkeypatch.setattr(update, "installed_by_uv_tool", lambda: False)
-    assert upgrade_command() == (sys.executable, "-m", "pip", "install", "--upgrade", "zettcode")
+    assert upgrade_command() == (
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "--upgrade",
+        "--index-url",
+        update.SIMPLE_INDEX,
+        "zettcode",
+    )
 
     monkeypatch.setattr(update, "installed_by_uv_tool", lambda: True)
     monkeypatch.setattr(update, "which", lambda name: None)
@@ -176,6 +194,9 @@ def test_the_shown_command_is_the_one_a_reader_would_type():
     assert display_command(("/usr/bin/python3", "-m", "pip", "install", "--upgrade", "zettcode")) == (
         "pip install --upgrade zettcode"
     )
+    # The index is part of what runs, and the panel promises the command can be read before it does: it stays.
+    with_index = ("/usr/bin/python3", "-m", "pip", "install", "--upgrade", "--index-url", update.SIMPLE_INDEX)
+    assert display_command(with_index) == f"pip install --upgrade --index-url {update.SIMPLE_INDEX}"
     # Anything else is shown as it will run, interpreter path and all.
     assert display_command(("/opt/venv/bin/zettcode-tool", "--upgrade")) == "/opt/venv/bin/zettcode-tool --upgrade"
 
@@ -346,7 +367,14 @@ def test_a_uv_tool_environment_is_upgraded_with_uv_and_never_with_a_pip_it_does_
     _fake_environment(tmp_path, monkeypatch, receipt=True, named_like_a_tool=True)
     monkeypatch.setattr(update, "which", lambda name: "/usr/local/bin/uv")
 
-    assert upgrade_command() == ("uv", "tool", "upgrade", "zettcode")
+    assert upgrade_command() == (
+        "uv",
+        "tool",
+        "upgrade",
+        "zettcode",
+        "--index-url",
+        "https://pypi.org/simple",
+    )
 
 
 # -- what an upgrade installed, read back and written down -------------------------------------------------------

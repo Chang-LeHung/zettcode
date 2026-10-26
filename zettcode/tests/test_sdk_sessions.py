@@ -502,15 +502,17 @@ async def test_steering_with_a_non_text_message_is_a_type_error(tmp_path, monkey
 
 async def test_steering_a_running_request_is_accepted_and_reaches_the_model(tmp_path, monkeypatch):
     gate = asyncio.Event()
+    started = asyncio.Event()
 
     async def first(request):
+        started.set()
         await gate.wait()
         return asks_for(call("read_file", {"path": "x"}, call_id="r"))
 
     model = wire(monkeypatch, ScriptedModel(first, "adjusted"))
     async with make(tmp_path) as client:
         task = asyncio.create_task(client.run("start"))
-        await asyncio.sleep(0.05)
+        await asyncio.wait_for(started.wait(), 2.0)
 
         accepted = client.session.steer("actually do it differently")
         gate.set()
@@ -526,15 +528,17 @@ async def test_a_steering_message_can_carry_a_picture_and_is_reported_by_the_tex
     from zett_agent.messages import ImageContent
 
     gate = asyncio.Event()
+    started = asyncio.Event()
 
     async def first(request):
+        started.set()
         await gate.wait()
         return asks_for(call("read_file", {"path": "x"}, call_id="r"))
 
     model = wire(monkeypatch, ScriptedModel(first, "adjusted"))
     async with make(tmp_path, models=models("eyes", multimodal=True)) as client:
         task = asyncio.create_task(client.run("start"))
-        await asyncio.sleep(0.05)
+        await asyncio.wait_for(started.wait(), 2.0)
 
         taken = client.session.steer("look at this", images=[zc.Image(b"\x89PNG", "image/png")])
         gate.set()

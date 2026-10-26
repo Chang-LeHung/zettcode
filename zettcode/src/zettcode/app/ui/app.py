@@ -238,6 +238,7 @@ class ZettCodeApp(
         #: that never started one — because the update check is off, or because it
         #: is leaving before the background work began — has nothing else to drop.
         self._update_task: asyncio.Task[None] | None = None
+        self._updating = False
         self._theme_before = None
         self._previewing = None
         #: The runtime warm-up this shell started, released on the way out.
@@ -677,6 +678,9 @@ class ZettCodeApp(
         """
         if not text.strip():
             return False
+        if self._updating:
+            self.flash("updating ZettCode \u2014 this window takes no input until it is done", level="info")
+            return False
         if self.client.session.locked:
             self.flash("this session is open in another ZettCode process; it is read-only here", level="error")
             return False
@@ -847,6 +851,11 @@ class ZettCodeApp(
         """
         if command is None:
             command = self._is_command(value)
+        if self._updating:
+            # The installation is being replaced under this process: nothing typed now can be run against it, and a
+            # half-installed package is not a thing to hand a prompt to.
+            self.flash("updating ZettCode \u2014 this window takes no input until it is done", level="info")
+            return False
         if self.client.session.locked and not command:
             # Only commands are taken, which is how a reader leaves: the composer does not let anything else be
             # typed, and this is for what arrives some other way (a draft that was there already, a recall).

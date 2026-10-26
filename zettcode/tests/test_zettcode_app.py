@@ -103,6 +103,7 @@ from zettcode.engine.extensions.usage import USAGE_EVENT_NAME, UsageExtension, U
 from zettcode.engine.permission import Permission, parse_permission
 from zettcode.engine.storage import STORE_FILE, SessionInfo, SessionStore
 from zettcode.mentions import Mention, MentionProvider, MentionRegistry
+from zettcode.relay import Relayed
 from zettcode.sdk.types import SessionInfo as ListedSession
 from zettcode.statusline import context_text
 from zettcode.tui import (
@@ -3831,8 +3832,11 @@ async def test_a_stored_newer_release_is_offered_in_a_bottom_panel(tmp_path):
     assert "Skip this version" in text
     assert "Not now" in text
     assert "esc not now" in text
-    # The command is shown before it can run, in the form a reader would type.
-    assert display_command(updating_module.upgrade_command()) in text
+    # The command is shown before it can run, in the form a reader would type; the row is too narrow for the URL,
+    # so the index it installs from has a line of its own under the title.
+    command = display_command(updating_module.upgrade_command())
+    assert command.split(" --index")[0] in text, command
+    assert "installs from PyPI" in text and "https://pypi.org/simple" in text
 
 
 async def test_skipping_a_release_is_remembered_until_the_next_one(tmp_path):
@@ -3874,13 +3878,19 @@ async def test_the_offer_disappears_once_the_running_version_is_the_newest(tmp_p
     assert app.app.screens.top.name == "main"
 
 
-def _upgrade_that_exits_zero(monkeypatch, installed: str | None):
-    """An upgrade command that succeeds, and what a fresh interpreter then reports as installed."""
+def _upgrade_that_exits_zero(monkeypatch, installed: str | None, *, index: str | None = "99.0.0"):
+    """An upgrade command that succeeds, what the index says now, and what a fresh interpreter reports."""
     monkeypatch.setattr(updating_module, "upgrade_command", lambda: (sys.executable, "-c", "print('did something')"))
 
     async def read_back(*args, **kwargs):
         return installed
 
+    def latest() -> str:
+        if index is None:
+            raise OSError("offline")
+        return index
+
+    monkeypatch.setattr(updating_module, "fetch_latest", latest)
     monkeypatch.setattr(updating_module, "installed_version", read_back)
 
 
@@ -3891,6 +3901,93 @@ async def _choose_upgrade(app, harness):
 
 def _said(app) -> list[str]:
     return [entry.text for entry in app.transcript.entries if entry.kind == "notice"]
+
+
+async def test_the_window_takes_no_input_while_the_upgrade_runs(tmp_path, monkeypatch):
+    """The code this window would run is being replaced, so the composer is locked until the install is over."""
+    app = build_app()
+    harness = _harness(app)
+    _offer_update(app, tmp_path)
+    gate = asyncio.Event()
+    installed = asyncio.Event()
+    monkeypatch.setattr(updating_module, "upgrade_command", lambda: (sys.executable, "-c", "print('did something')"))
+
+    async def slow_upgrade(*args, **kwargs):
+        installed.set()
+        await gate.wait()
+        return True, ""
+
+    async def read_back(*args, **kwargs):
+        return "99.0.0"
+
+    monkeypatch.setattr(updating_module, "run_upgrade", slow_upgrade)
+    monkeypatch.setattr(updating_module, "installed_version", read_back)
+    monkeypatch.setattr(updating_module, "fetch_latest", lambda: "99.0.0")
+
+    harness.press("enter")  # Upgrade now
+    await asyncio.wait_for(installed.wait(), 2.0)
+
+    assert app.composer.locked, "the composer says why it takes nothing"
+    assert "updating ZettCode" in app.composer.lock_captions[0], app.composer.lock_captions
+    assert app.submit("anything at all") is False
+    assert not any(entry.kind == "user" for entry in app.transcript.entries)
+    assert any("takes no input until it is done" in text for text in _said(app))
+    assert not any("another ZettCode process" in text for text in _said(app)), "the lock is not another process's"
+
+    # Nothing else starts a turn either: a message from another session, or ^D.
+    app._messaging_live = True
+    refused = app._relay_received(Relayed(sender_id="peer", sender="peer", text="hello"))
+    assert refused.accepted is False and "installing an update" in refused.reason
+    assert not any(entry.kind == "user" for entry in app.transcript.entries)
+    harness.press("ctrl_d")
+    assert app.app.running is True, "a quit waits for the install"
+
+    gate.set()
+    await app._update_task
+
+    assert not app.composer.locked, "and it is back when the install is over"
+    assert any("ZettCode 99.0.0 installed" in text for text in _said(app))
+
+
+async def test_the_version_the_panel_offered_is_checked_against_the_index_before_installing(tmp_path, monkeypatch):
+    """The file is a note from an older check: what an install is measured against is what PyPI says now."""
+    app = build_app()
+    harness = _harness(app)
+    _offer_update(app, tmp_path, latest="99.0.0")
+    _upgrade_that_exits_zero(monkeypatch, "0.1.13", index="0.1.13")
+
+    await _choose_upgrade(app, harness)
+
+    errors = [e.text for e in app.transcript.entries if getattr(e, "level", None) == "error"]
+    assert not errors, errors
+    assert any("PyPI now names 0.1.13" in text for text in _said(app)), "the jump from the panel is said once"
+    assert any("ZettCode 0.1.13 installed" in text for text in _said(app))
+
+
+async def test_an_index_that_names_nothing_newer_installs_nothing(tmp_path, monkeypatch):
+    """The file may be a week old, or the release yanked: the running version is never replaced by an older one."""
+    app = build_app()
+    harness = _harness(app)
+    path = _offer_update(app, tmp_path, latest="99.0.0")
+    before = read_state(path)
+    _upgrade_that_exits_zero(monkeypatch, "0.1.12", index=__version__)
+
+    await _choose_upgrade(app, harness)
+
+    assert any("nothing installed" in text for text in _said(app))
+    assert not any("installed — restart" in text for text in _said(app))
+    assert read_state(path) == before
+
+
+async def test_an_index_that_cannot_be_asked_falls_back_to_what_the_panel_offered(tmp_path, monkeypatch):
+    app = build_app()
+    harness = _harness(app)
+    _offer_update(app, tmp_path, latest="99.0.0")
+    _upgrade_that_exits_zero(monkeypatch, "99.0.0", index=None)
+
+    await _choose_upgrade(app, harness)
+
+    assert any("ZettCode 99.0.0 installed" in text for text in _said(app))
 
 
 async def test_an_upgrade_that_installed_the_release_says_so_and_writes_it_down(tmp_path, monkeypatch):
@@ -3923,7 +4020,7 @@ async def test_an_upgrade_that_exits_zero_but_left_the_old_version_is_not_report
     errors = [e.text for e in app.transcript.entries if getattr(e, "level", None) == "error"]
     assert any("still 0.1.5, not 99.0.0" in text for text in errors)
     assert not any("installed — restart" in text for text in _said(app))
-    assert any("try again in a few minutes" in text for text in _said(app))
+    assert any("may be yanked" in text for text in _said(app))
     assert read_state(path) == before, "nothing is written, so the next start offers it again"
     assert not any(isinstance(widget, Toast) for screen in app.app.screens for widget in walk(screen.widget))
 
@@ -4052,6 +4149,7 @@ async def test_a_failed_upgrade_is_reported_with_the_command_to_run(tmp_path, mo
         "upgrade_command",
         lambda: (sys.executable, "-c", "import sys; sys.stderr.write('no space left'); sys.exit(1)"),
     )
+    monkeypatch.setattr(updating_module, "fetch_latest", lambda: "99.0.0")
 
     harness.press("enter")
     await app._update_task

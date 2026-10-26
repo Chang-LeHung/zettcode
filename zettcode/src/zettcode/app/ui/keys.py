@@ -59,7 +59,12 @@ class KeysMixin(ShellState):
             "ctrl_d",
             "quit",
             priority="capture",
-            when=lambda: self.app.screens.top.name != PAGE_SCREEN and not self._busy and not self.composer.text,
+            when=lambda: (
+                self.app.screens.top.name != PAGE_SCREEN
+                and not self._busy
+                and not self.composer.text
+                and not self._updating
+            ),
         )
         # The follow-up list. The modifier key (Option on a Mac) is the list's own: with
         # nothing highlighted it walks into the list from the composer's side, and with a

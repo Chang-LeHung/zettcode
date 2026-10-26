@@ -19,6 +19,8 @@ _EXPORTS = {
     "BashPage": ".bash_page",
     "CommandCompleter": ".completer",
     "Composer": ".composer",
+    "LOCK_CAPTIONS": ".composer",
+    "UPDATING_CAPTIONS": ".composer",
     "ContextPage": ".context_page",
     "EFFORT_ROWS": ".effort_page",
     "EffortPage": ".effort_page",
@@ -64,7 +66,7 @@ if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
     from .ask_page import AskUserPage
     from .bash_page import BashPage
     from .completer import CommandCompleter, help_text
-    from .composer import Composer
+    from .composer import LOCK_CAPTIONS, UPDATING_CAPTIONS, Composer
     from .context_page import ContextPage
     from .effort_page import EFFORT_ROWS, EffortPage
     from .follow_up import FollowUpQueue
@@ -125,6 +127,7 @@ __all__ = [
     "INPUT_ROWS",
     "InputPage",
     "LATER",
+    "LOCK_CAPTIONS",
     "ModelPage",
     "ModelSettingsPage",
     "PetView",
@@ -141,6 +144,7 @@ __all__ = [
     "TranscriptSource",
     "TranscriptView",
     "UPGRADE",
+    "UPDATING_CAPTIONS",
     "UpdatePage",
     "UsagePage",
     "WELCOME",

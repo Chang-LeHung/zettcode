@@ -31,6 +31,24 @@ PREFIXED = re.compile(r"(test_[a-z_]+)\.py::([A-Za-z_][A-Za-z0-9_]*)")
 BARE = re.compile(r"test_[a-z_]+")
 
 
+def test_every_invariant_has_one_id_of_its_own():
+    """Two rows numbered alike inside one section make a citation ambiguous, and nothing else would notice.
+
+    Numbering starts again in each section (`L1` is a layout rule in one and an import rule in another), so what
+    has to be unique is the pair of the section and the id.
+    """
+    import collections
+
+    text = (ROOT / "docs" / "internal" / "invariants.md").read_text(encoding="utf-8")
+    repeated: list[str] = []
+    for section in re.split(r"^## ", text, flags=re.MULTILINE)[1:]:
+        title, _, body = section.partition("\n")
+        ids = re.findall(r"^\| ([A-Z]+\d+) \|", body, re.MULTILINE)
+        repeated += [f"{title.strip()}: {name}" for name, count in collections.Counter(ids).items() if count > 1]
+
+    assert repeated == []
+
+
 def test_every_invariant_cites_a_test_that_exists():
     """A row's evidence has to be findable, or the mark cannot be trusted.
 
