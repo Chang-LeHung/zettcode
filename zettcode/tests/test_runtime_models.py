@@ -58,6 +58,22 @@ def test_the_system_prompt_tells_the_model_to_change_files_with_the_file_tools_a
     assert "retry it with corrected old_text; do not fall back to a shell command" in flat
 
 
+def test_the_system_prompt_tells_the_model_to_read_with_the_file_tool_and_in_line_ranges(tmp_path):
+    """The model reached for cat and sed to look at files, and for a whole long file when a range was enough."""
+    config = ZettCodeConfig(workspace=tmp_path, models=(ModelConfig(model="m", token="t"),), store=tmp_path / "s")
+
+    prompt = runtime_module.build_system_prompt(config)
+    flat = " ".join(prompt.split())
+
+    assert "Reading files: call read" in flat
+    for refused in ("cat", "sed", "head", "tail", "nl", "awk"):
+        assert refused in flat.split("Reading files:")[1], refused
+    assert "start_line and line_count" in flat
+    assert "a long file is read in the parts you need rather than whole" in flat
+    assert "grep and glob are for finding what to read" in flat
+    assert prompt.index("Reading files:") < prompt.index("Runtime environment:")
+
+
 def test_the_file_editing_rule_comes_before_the_environment_snapshot_so_the_head_stays_cacheable(tmp_path):
     config = ZettCodeConfig(workspace=tmp_path, models=(ModelConfig(model="m", token="t"),), store=tmp_path / "s")
 
