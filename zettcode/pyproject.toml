@@ -58,7 +58,7 @@ dependencies = [
   # than it did. An exact pin would make zettcode fight every other tool that
   # shares the dependency — including an upgrade of zett-agent itself, which pip
   # would downgrade to satisfy it.
-  "zett-agent>=0.2.0,<0.3",
+  "zett-agent>=0.2.1,<0.3",
 ]
 
 [project.scripts]
