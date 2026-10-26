@@ -21,7 +21,7 @@ from ..agent.conversation.presenters import block_for
 from ..agent.conversation.replay import Replayed, replay
 from ..commands import COMMAND_ERRORS
 from .shell import ShellState
-from .widgets import WELCOME
+from .widgets import LOCK_CAPTIONS, UPDATING_CAPTIONS, WELCOME
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zettcode.sdk.types import ModelInfo
@@ -61,10 +61,18 @@ class SessionMixin(ShellState):
         only commands, the session does not register with the broker (so nobody sends it a message it would
         turn into a write), and a task tries again every few seconds. Called wherever the active session may
         have changed: starting, resuming, forking, ``/new``.
+
+        An upgrade in progress locks it too, and for a reason of its own: the code that would answer is being
+        replaced. This is the one place that decides, so the watcher below and the upgrade's own end cannot
+        disagree about it.
         """
-        locked = self.client.session.locked
-        self.composer.locked = locked
-        if not locked:
+        updating = self._updating
+        held = self.client.session.locked
+        self.composer.lock_captions = UPDATING_CAPTIONS if updating else LOCK_CAPTIONS
+        self.composer.locked = held or updating
+        # The notice and the watcher are about a session another process holds: an upgrade locks the window for a
+        # different reason, and saying "open in another process" then would be false.
+        if not held:
             self._lock_said = None
             self._stop_lock_watch()
         else:
@@ -99,7 +107,10 @@ class SessionMixin(ShellState):
         session_id = self.client.session.id
         while self.client.session.locked and self.client.session.id == session_id:
             await asyncio.sleep(LOCK_POLL_SECONDS)
-            if self._busy or self.client.session.id != session_id:
+            if self._busy or self._updating or self.client.session.id != session_id:
+                # Nothing is claimed while the window is taken: `_lock_taken` would refuse to reload it, and the
+                # conversation read before the other process wrote to it would be the one left on screen. The next
+                # poll claims it once there is nothing running.
                 continue
             if self.client.session.retake():
                 await self._lock_taken(session_id)
@@ -107,7 +118,7 @@ class SessionMixin(ShellState):
 
     def _retry_lock(self) -> None:
         """Enter on a locked composer: try for the lock now, and say how it went."""
-        if self._busy:
+        if self._busy or self._updating:
             return
         session_id = self.client.session.id
         if self.client.session.retake():
@@ -121,7 +132,7 @@ class SessionMixin(ShellState):
         The conversation shown was read when the lock was not ours, and the process that had it has been
         writing to it since; typing into that would continue a conversation that is no longer there.
         """
-        if self._busy:
+        if self._busy or self._updating:
             return
         await self._switch_session(session_id)
         if self.client.session.id == session_id and not self.client.session.locked:

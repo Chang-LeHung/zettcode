@@ -47,6 +47,14 @@ LOCK_CAPTIONS = (
     "read-only",
 )
 
+#: The same, for a window that is installing a new version: the reason the reader is looking at a padlock is not
+#: another process, and saying so would be false.
+UPDATING_CAPTIONS = (
+    "updating ZettCode \u00b7 no input until it is done",
+    "updating ZettCode",
+    "updating",
+)
+
 #: Cells between the padlock and its caption, and kept clear on either side of the pair.
 LOCK_GAP = 2
 LOCK_MARGIN = 2
@@ -102,6 +110,7 @@ class Composer(TextArea):
     def __init__(self, **kwargs: object) -> None:
         """Build the editor and start with no pasted text standing in."""
         self._locked = False
+        self._lock_captions: tuple[str, ...] = LOCK_CAPTIONS
         self._free_prompt = ""
         self._free_placeholder = ""
         #: Called when Enter is pressed on a locked composer with nothing typed: the reader asking to try again.
@@ -127,6 +136,16 @@ class Composer(TextArea):
     @locked.setter
     def locked(self, value: bool) -> None:
         self._locked = value
+
+    @property
+    def lock_captions(self) -> tuple[str, ...]:
+        """Return what a locked row says beside the padlock, longest first."""
+        return self._lock_captions
+
+    @lock_captions.setter
+    def lock_captions(self, value: tuple[str, ...]) -> None:
+        """Say why the row is locked: the shell sets this when the reason is not another process."""
+        self._lock_captions = tuple(value)
 
     @property
     def prompt(self) -> str:
@@ -164,7 +183,7 @@ class Composer(TextArea):
         if rect.height >= len(LOCK_ART) and rect.width >= art_width:
             top = rect.y + (rect.height - len(LOCK_ART)) // 2
             room = rect.width - art_width - LOCK_GAP - 2 * LOCK_MARGIN
-            caption = next((words for words in LOCK_CAPTIONS if display_width(words) <= room), "")
+            caption = next((words for words in self._lock_captions if display_width(words) <= room), "")
             block = art_width + (LOCK_GAP + display_width(caption) if caption else 0)
             column = rect.x + (rect.width - block) // 2
             for offset, art in enumerate(LOCK_ART):

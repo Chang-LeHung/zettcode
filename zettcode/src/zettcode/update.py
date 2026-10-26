@@ -1,9 +1,10 @@
-"""Notice a newer ZettCode on PyPI, without ever slowing a start down.
+"""Notice a newer ZettCode on PyPI, and install it when the reader asks.
 
-Nothing here is on the startup path: a background task asks PyPI once a day and
-leaves what it found in ``~/.zettcode/update.json``. The next start reads that
-file — no network, nothing to wait for — and offers the version it names, unless
-the reader has already skipped that one.
+The check itself is never on the startup path: a background task asks PyPI once a day and leaves what it found in
+``~/.zettcode/update.json``. The next start reads that file — no network, nothing to wait for — and offers the version
+it names, unless the reader has already skipped that one. The upgrade that follows a "yes" does block, on purpose:
+the reader asked for it, so it asks PyPI what is newest at that moment, installs from PyPI's own index, and the window
+takes no input until it is done.
 
 An upgrade is only believed once it has been checked. A package manager that exits 0 has
 not necessarily installed anything (``uv tool upgrade`` answers "Nothing to upgrade" with 0, and so
@@ -43,8 +44,15 @@ from .paths import DEFAULT_UPDATE_FILE
 
 Result = TypeVar("Result")
 
-#: PyPI's JSON API for this project; ``info.version`` is the newest release.
-INDEX_URL = "https://pypi.org/pypi/zettcode/json"
+#: PyPI's JSON API for this project; ``info.version`` is the newest release. Named for the API it is, beside the
+#: simple index below, so the two cannot be mistaken for one another.
+JSON_API_URL = "https://pypi.org/pypi/zettcode/json"
+
+#: PyPI's package index, which the upgrade is pointed at explicitly. The metadata above comes from PyPI, so the
+#: download has to as well: a mirror configured on this machine can lag behind it by hours, and the package manager
+#: then reports "already satisfied" for a release that has existed for a while. A reader who wants the mirror can
+#: still install by hand.
+SIMPLE_INDEX = "https://pypi.org/simple"
 
 #: Seconds the request may take before it is abandoned. Generous on purpose: a
 #: corporate proxy is routine here, and the check runs in the background, so a
@@ -236,7 +244,7 @@ def write_state(state: UpdateState, path: Path) -> None:
     os.replace(temporary, path)
 
 
-def fetch_latest(url: str = INDEX_URL, *, timeout: float = TIMEOUT) -> str:
+def fetch_latest(url: str = JSON_API_URL, *, timeout: float = TIMEOUT) -> str:
     """Return the newest release the index reports, raising when it cannot."""
     request = urllib.request.Request(url, headers={"User-Agent": f"zettcode/{__version__}"})
     try:
@@ -321,12 +329,16 @@ def upgrade_command() -> tuple[str, ...]:
     """Return the command that replaces this installation with the newest release.
 
     ``uv tool upgrade`` when uv installed ZettCode that way, ``pip`` for the
-    interpreter running this process otherwise. The panel shows the command
-    before it runs, so a wrong guess is visible rather than surprising.
+    interpreter running this process otherwise. Both are pointed at PyPI's own index: the newest version was read
+    from PyPI, and installing through whatever mirror the machine has configured would ask for a release that index
+    may not list yet. The panel shows the command before it runs, so a wrong guess is visible rather than
+    surprising.
     """
     if installed_by_uv_tool() and which("uv") is not None:
-        return ("uv", "tool", "upgrade", "zettcode")
-    return (sys.executable, "-m", "pip", "install", "--upgrade", "zettcode")
+        # `--index-url` rather than the newer `--default-index`: current uv still takes the old spelling, and an
+        # older one only has that, so an upgrade that worked before this flag keeps working.
+        return ("uv", "tool", "upgrade", "zettcode", "--index-url", SIMPLE_INDEX)
+    return (sys.executable, "-m", "pip", "install", "--upgrade", "--index-url", SIMPLE_INDEX, "zettcode")
 
 
 async def run_upgrade(command: Sequence[str] | None = None, *, timeout: float = 600.0) -> tuple[bool, str]:
@@ -418,7 +430,8 @@ def display_command(command: Sequence[str]) -> str:
     The pip fallback has to name an interpreter to be unambiguous
     (``/path/to/python -m pip ...``), and that path is both long enough to be
     clipped in a panel row and noise beside the ``pip install`` it stands for.
-    Everything else is shown as it runs.
+    Everything else is shown as it runs, including the index: the panel promises the command can be read before it
+    runs, and which index it installs from is exactly what a reader deciding to accept it would want to see.
     """
     argv = list(command)
     if len(argv) > 2 and argv[1] == "-m" and Path(argv[0]).name.lower().startswith(("python", "pypy")):
@@ -483,7 +496,7 @@ def update_program(
     say(f"updating{f' to {latest}' if latest else ''}: {display_command(command)}")
     status = run(command)
     if status != 0:
-        say(f"the update failed (exit status {status}); run it yourself: {' '.join(command)}")
+        say(f"the update failed (exit status {status}); run it yourself: {display_command(command)}")
         return 1
     installed = read_installed()
     if installed is None:
@@ -491,7 +504,10 @@ def update_program(
         return 0
     if not is_newer(installed, current):
         if latest is not None:
-            say(f"ZettCode is still {installed}, not {latest}: the package index may not list it yet; try again soon")
+            say(
+                f"ZettCode is still {installed}, not {latest}: the release may be yanked, or the installer may have "
+                f"been pinned to {installed}; try `uv tool install zettcode@latest`, or {display_command(command)}"
+            )
         else:
             say(f"ZettCode is {installed}: there was nothing newer to install")
         return 1 if latest is not None else 0

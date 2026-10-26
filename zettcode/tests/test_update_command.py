@@ -88,6 +88,8 @@ def test_an_exit_status_of_zero_is_not_believed_when_the_version_did_not_change(
 
     assert session.code == 1
     assert "still 0.1.0, not 0.2.0" in session.text
+    assert "may be yanked" in session.text, "the likeliest cause, now that metadata and download share an index"
+    assert "uv tool install zettcode@latest" in session.text
     assert not session.path.exists()
 
 

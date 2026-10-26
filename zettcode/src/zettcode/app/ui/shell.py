@@ -38,9 +38,9 @@ ASK_SCREEN = "ask"
 #: up to three lines of command, and the numbered choices.
 APPROVAL_ROWS = 16
 
-#: Rows the "a newer release is out" panel takes: the title, its two rows, and
-#: the hint under them.
-UPDATE_ROWS = 8
+#: Rows the "a newer release is out" panel takes: the title, the line saying which index it installs from, the
+#: three rows, and the hint under them.
+UPDATE_ROWS = 9
 
 #: Steering messages one run accepts; the shell caps what a reader can queue
 #: for a single request, and the count resets when a new run starts.
@@ -153,6 +153,9 @@ class ShellState:
     _measure_task: asyncio.Task[None] | None
     #: The in-flight release check or upgrade, if any.
     _update_task: asyncio.Task[None] | None
+    #: Whether an upgrade is installing now: the composer takes nothing until it is done, since the code it would
+    #: run is being replaced under it.
+    _updating: bool
     #: A short-lived message for the row above the composer: its text and the
     #: moment it stops being true.
     _flash: tuple[str, float, str] | None

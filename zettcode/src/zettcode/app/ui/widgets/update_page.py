@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 
 from zettcode.tui import SEPARATOR, ListItem, ListPage
-from zettcode.update import display_command
+from zettcode.update import SIMPLE_INDEX, display_command
 
 #: Row values the page hands back through :meth:`UpdatePage.chosen`.
 UPGRADE = "upgrade"
@@ -56,6 +56,9 @@ class UpdatePage(ListPage):
                 ListItem(LATER, "Not now", "asked again next time"),
             ],
             title=f"ZettCode {latest} is available, you have {current}",
+            # The row is too narrow for the URL the upgrade installs from, and that URL is the point of the change
+            # this panel announces: it goes where the width is, under the title, and the row keeps the command.
+            subtitle=f"installs from PyPI ({SIMPLE_INDEX})",
             footer=f"enter select {SEPARATOR} esc not now",
             on_select=lambda item: on_choice(str(item.value)),
             on_cancel=lambda: on_choice(LATER),

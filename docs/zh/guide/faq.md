@@ -88,7 +88,12 @@ macOS/Linux 可以用 `time zettcode --dry-run`，PowerShell 可以用
 `[update] enabled = false` 可以完全关掉。查到更新的版本后，下一次启动会在对话之上弹出面板：
 
 - **Upgrade now**：按当前安装方式执行升级 —— `uv tool upgrade zettcode`，或
-  `pip install --upgrade zettcode` —— 在后台跑。当前窗口用的还是启动时的代码，升级后需要重启。
+  `pip install --upgrade zettcode` —— 在后台跑，而且**直接从 PyPI 的索引下载**
+  （`https://pypi.org/simple`），因为最新版本就是从 PyPI 读到的：机器上配置的镜像可能落后，
+  包管理器于是对早已发布的版本回答“already satisfied”。点下升级的那一刻会**再从 PyPI 读一次版本**，
+  所以用来判定的不是上次检查写进文件的值；读不到时才回退到文件里的那个。
+  **升级期间窗口不接受输入** —— composer 锁住，和“会话被另一个进程打开”时一样 ——
+  因为要应答的代码正在被替换。当前窗口用的还是启动时的代码，升级后需要重启。
   包管理器正常退出不等于装上了新版本（`uv tool upgrade` 会提示 “Nothing to upgrade” 并返回成功；
   pip 在索引还没列出这个版本时也一样），所以之后 ZettCode 会用一个全新的进程把已安装的版本读回来，
   并如实告诉你：**装好了**、**仍是旧版本**（几分钟后再试）、或**读不回来**。只有确认装上的版本才会写进
@@ -102,7 +107,9 @@ macOS/Linux 可以用 `time zettcode --dry-run`，PowerShell 可以用
 **我不想等它提示。** 在 shell 里运行 `zettcode update`：它会先问 PyPI，已经是最新版就直接说明，否则用和
 **Upgrade now** 相同的方式执行升级，包管理器的输出直接显示在你的终端上。然后它从一个全新的进程里读回已安装的版本，
 只有确实读到新版本时才报告 `updated 0.1.0 → 0.2.0`（否则说明版本没变或者无法读回；升级失败时退出码为 1）。
-如果连不上 PyPI，它仍会执行升级，交给包管理器判断。已经打开的 ZettCode 需要重启才能用上新版本。
+升级是**从 PyPI 自己的索引**下载的，而不是机器上配置的镜像：镜像可能还没同步，会把一个更新的版本答成 “already satisfied”；
+反过来，如果这台机器只能访问内网镜像，这次升级会失败，那就手动装镜像里的那份（`pip install --upgrade zettcode`
+或 `uv tool upgrade zettcode`，不带索引参数）。已经打开的 ZettCode 需要重启才能用上新版本。
 
 **我升级了，可它还是显示旧版本。** 先看你启动的是哪一份：`zettcode --version` 会打印版本，
 `which zettcode` 会告诉你启动的是哪个命令。如果 ZettCode 已经确认装上了新版本、而你启动的程序仍是旧的，
