@@ -70,6 +70,8 @@ def test_the_system_prompt_tells_the_model_to_read_with_the_file_tool_and_in_lin
         assert refused in flat.split("Reading files:")[1], refused
     assert "start_line and line_count" in flat
     assert "a long file is read in the parts you need rather than whole" in flat
+    assert "Those shell tools are for what read cannot do" in flat, "an exception, not a licence to use them"
+    assert "and only then" in flat and "say what read could not do" in flat
     assert "grep and glob are for finding what to read" in flat
     assert prompt.index("Reading files:") < prompt.index("Runtime environment:")
 
