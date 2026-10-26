@@ -18,6 +18,10 @@ walked (``/theme``, ``/pet``) and the panels that edit a form of their own (``/c
 from __future__ import annotations
 
 import asyncio
+import os
+import shlex
+import subprocess
+import sys
 from pathlib import Path
 
 from zettcode.app.commands import (
@@ -445,6 +449,113 @@ class BashCommand(TerminalPlugin):
         runner = CommandRunner(host.agent.runtime.config.workspace)
         page = BashPage(runner, history, entries, on_close=host.close_page, initial=context.argument)
         return CommandResult(widget=page)
+
+
+class CodeReview(TerminalPlugin):
+    """``/code-review``: ask for a review of the uncommitted changes, in this conversation."""
+
+    name = "code-review-command"
+    description = "code review"
+
+    #: What the model is asked, in pieces: a preset for the turn, not a report about it. The reader gets the review
+    #: as an answer they could have asked for by typing all of this themselves.
+    INTRO = "Review the uncommitted changes in this workspace."
+    COLLECT = (
+        "Collect them first: `git status --short` for what changed, `git diff HEAD` for the patch, and the contents "
+        "of any untracked file that belongs to the change."
+    )
+    #: The reviewer is a session of its own, at the shell level of the reader who asked — never above it, since
+    #: nobody here approved anything. `{spawn}` is the whole line to run, so the model copies it rather than
+    #: reassembling an alias.
+    DAEMON = (
+        "Have it read by a reviewer of its own, so this conversation keeps its context: run\n"
+        "\n"
+        "    {spawn}\n"
+        "\n"
+        "take the session id it prints, and send that session what you need with "
+        '`send_message(to="<session id>", message=...)` — the request as you would put it, and that the change is '
+        "the uncommitted diff this workspace holds, which it can collect itself. Its answer arrives later as a "
+        "message from it: report that answer here, and stop it with `{command} kill <session id>` once the review "
+        "is in — and if no answer comes, so that it is not left running. `{command} list` shows what is running "
+        "if you lose the id. If a daemon cannot be started here, say why and do the review yourself."
+    )
+    #: A reviewer is told plainly what it is: the instruction is the safeguard, and the reader is told the same in
+    #: the guide, since a session at `full` could change things if it chose to.
+    NOT_YOURS = (
+        "Tell the reviewer plainly that it reads and does not change: no edits, no writes, no commits, no command "
+        "that modifies the workspace. The changes are yours to make, after its findings are in, and you keep "
+        "working until nothing it found is left."
+    )
+    #: Under `deny` there is no shell for a daemon to collect a diff with, and the session that asked has none
+    #: either: the review is a reading one.
+    ALONE = (
+        "This session runs no shell commands, so neither the diff nor a daemon to read it can be gathered: review "
+        "the files themselves with the reading tools, and say which ones you read."
+    )
+    SHAPE = (
+        "In the review, name concrete problems with `file:line` — correctness, error handling, tests, naming — say "
+        "what you would change and why, and do not restate the diff.\n"
+        "\n"
+        "What to pay attention to: {focus}"
+    )
+
+    #: The shell levels a reviewer may be started at. `ask` has no meaning in a process nobody sits at, so it is
+    #: started `safe`: sandboxed, which is still more than a reader at `ask` has granted.
+    LEVELS = {"full": "full", "safe": "safe", "ask": "safe"}
+
+    def activate(self, container: TerminalContainer) -> None:
+        """Register the command; it queues, since a review is a request like any other."""
+        container.register_command(
+            "code-review",
+            "review the uncommitted changes: /code-review [what to look for]",
+            self.review,
+            when_busy="queue",
+        )
+
+    async def review(self, context: CommandContext) -> CommandResult:
+        """Run the review as one turn, with what the reader typed as its focus.
+
+        The command adds no work of its own: it writes the brief, hands it to `host.prompt`, and the ordinary turn
+        does the rest — the echo in the transcript, the session, the streaming, the line it ends on. Nothing is
+        gathered here, so the model decides what the review needs and how to get it.
+
+        The transcript shows the command the reader typed, not the brief it stands for: the brief is what the model
+        reads, and `shown` is what the conversation keeps.
+        """
+        host = context.require_host()
+        argument = context.argument.strip()
+        focus = argument or "anything that would make this change wrong or hard to keep"
+        shown = f"/code-review {argument}" if argument else "/code-review"
+        await host.prompt(self.brief(level=host.client.permission, focus=focus), shown=shown)
+        return CommandResult()
+
+    def brief(self, *, level: str, focus: str) -> str:
+        """Return what the model reads, for a reader whose shell level is ``level``.
+
+        The reviewer is started at the reader's own level (`ask` becoming `safe`, which is what a level that asks
+        means in a process nobody can answer in), and not at all under `deny`.
+        """
+        command = self.command()
+        parts = [self.INTRO, self.COLLECT]
+        if level in self.LEVELS:
+            spawn = f"{command} spawn --name code-review --permission {self.LEVELS[level]}"
+            parts.append(self.DAEMON.format(command=command, spawn=spawn))
+            parts.append(self.NOT_YOURS)
+        else:
+            parts.append(self.ALONE)
+        parts.append(self.SHAPE.format(focus=focus))
+        return "\n\n".join(parts)
+
+    @staticmethod
+    def command() -> str:
+        """Return the command that runs this installation's daemon, quoted for the shell that will run it.
+
+        `python -m zettcode.daemon` and the interpreter that is running this terminal: a checkout whose console
+        script is not on the PATH, or a virtualenv nothing else can see, still works. The quoting follows the
+        platform's shell, because a Windows path with a space cannot be passed the way POSIX quotes it.
+        """
+        argv = [sys.executable, "-m", "zettcode.daemon"]
+        return subprocess.list2cmdline(argv) if os.name == "nt" else shlex.join(argv)
 
 
 class ShellControl(TerminalPlugin):

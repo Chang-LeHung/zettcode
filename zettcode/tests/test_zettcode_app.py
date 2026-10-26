@@ -66,6 +66,7 @@ from zettcode.app.plugins import (
     TerminalPlugins,
     UiBuilder,
 )
+from zettcode.app.plugins.builtin_commands import CodeReview
 from zettcode.app.plugins.state import TurnSegment
 from zettcode.app.ui import app as app_module
 from zettcode.app.ui import demo
@@ -1143,6 +1144,83 @@ async def test_the_runtime_starts_with_the_first_turn_not_before():
     assert runtime.start_calls == 1
 
 
+def _text_of(message: object) -> str:
+    """Return what the model reads of a message the fake was handed: a string, or a message's content."""
+    if isinstance(message, str):
+        return message
+    content = getattr(message, "content", "")
+    if isinstance(content, str):
+        return content
+    return "".join(str(getattr(part, "text", "")) for part in content)
+
+
+async def test_code_review_runs_a_turn_that_asks_for_a_review_of_the_change():
+    """`/code-review` is a preset: the conversation shows the command, the model reads the brief behind it."""
+    app = build_app([])
+    harness = _harness(app)
+    typed = "/code-review the error handling"
+
+    await _type_command(app, harness, typed)
+
+    assert any(entry.kind == "user" and entry.text == typed for entry in app.transcript.entries)
+    read = _text_of(app.agent.runtime.client.messages[-1])
+    assert read.startswith(f"{typed}\n\nReview the uncommitted changes")
+    assert "git diff HEAD" in read
+    assert CodeReview.command() in read, "the daemon is named by this interpreter, not by a `zettcode` on the path"
+    assert sys.executable in read and "-m zettcode.daemon" in read
+    assert "reads and does not change" in read, "the reviewer is told the edits are the main agent's"
+    assert "you keep working until nothing it found is left" in read
+    assert "if no answer comes" in read, "a reviewer that never answers is still stopped"
+    assert read.rstrip().endswith("the error handling"), "what the reader typed is the focus"
+
+
+async def test_code_review_starts_the_reviewer_at_the_readers_own_shell_level():
+    """A reviewer never runs above the reader: `ask` becomes `safe`, `full` stays `full`."""
+    app = build_app([])
+    review = next(command for command in app.commands if command.name == "/code-review")
+    host = app
+
+    for level, expected in (("full", "full"), ("safe", "safe"), ("ask", "safe")):
+        host.client.use_permission(level)
+        harness = _harness(app)
+        await _type_command(app, harness, "/code-review")
+        read = _text_of(app.agent.runtime.client.messages[-1])
+        assert f"--permission {expected}" in read, level
+        assert "reads and does not change" in read
+        assert review is not None
+
+
+async def test_code_review_without_a_shell_asks_for_a_reading_review_instead():
+    """Under `deny` neither the diff nor a reviewer can be gathered, so the brief does not pretend otherwise."""
+    app = build_app([])
+    app.client.use_permission("deny")
+    harness = _harness(app)
+
+    await _type_command(app, harness, "/code-review")
+
+    read = _text_of(app.agent.runtime.client.messages[-1])
+    assert "spawn --name" not in read, "no reviewer is suggested where it could not collect anything"
+    assert "reading tools" in read
+
+
+async def test_code_review_without_a_focus_still_asks_for_one():
+    """Bare `/code-review` reviews the change rather than refusing: the focus is a default sentence."""
+    app = build_app([])
+    harness = _harness(app)
+
+    await _type_command(app, harness, "/code-review")
+
+    assert any(entry.kind == "user" and entry.text == "/code-review" for entry in app.transcript.entries)
+    assert "anything that would make this change wrong" in _text_of(app.agent.runtime.client.messages[-1])
+
+
+async def test_code_review_is_offered_by_help():
+    app = build_app([])
+
+    assert any(command.name == "/code-review" for command in app.commands)
+    assert "`/code-review`" in help_text(app.commands)
+
+
 async def test_plugin_commands_join_the_shell_and_run():
     """A command a plugin registered is offered last and handled like any other."""
 
@@ -1208,6 +1286,24 @@ async def test_a_command_running_a_prompt_while_busy_is_refused_not_queued_hidde
 
     harness.press("ctrl_c")
     await asyncio.wait_for(app.task, 2.0)
+
+
+async def test_prompt_treats_a_blank_shown_as_no_shown_and_a_shown_equal_to_the_text_as_plain():
+    """`shown` never changes what a turn is: blank falls back to the text, equal text starts one turn."""
+
+    async def review(context: CommandContext) -> CommandResult:
+        host = context.require_host()
+        assert await host.prompt("the text", shown="   ") is True
+        return CommandResult()
+
+    plugins = rows_and_commands(commands=(Command("/review", "review something", "plugin", review),))
+    app = build_app([], plugins=plugins)
+    harness = _harness(app)
+
+    await _type_command(app, harness, "/review")
+
+    assert app.agent.runtime.client.messages[-1] == "the text"
+    assert any(entry.kind == "user" and entry.text == "the text" for entry in app.transcript.entries)
 
 
 async def test_a_plugin_command_asking_for_nothing_starts_no_turn():
@@ -1657,7 +1753,7 @@ async def test_a_mention_expands_for_the_model_but_the_transcript_keeps_the_type
 
     sent = app.agent.runtime.client.messages[-1]
     assert isinstance(sent, UserMessage)
-    assert "The injected note." in sent.text
+    assert sent.text.count("The injected note.") == 1, "the reference is explained once, not by both layers"
     assert sent.attributes["prompt"] == "@note fix the parser"
     assert any(entry.kind == "user" and entry.text == "@note fix the parser" for entry in app.transcript.entries)
 
@@ -8053,7 +8149,7 @@ async def test_every_command_the_shell_runs_beside_a_request_is_one_that_cannot_
         "/title",
         "/usage",
     ]
-    assert queued == ["/btw"]
+    assert queued == ["/btw", "/code-review"]
     # What a running request is built on stays out: the transcript it writes into, the session, and
     # the model it started with together with the window its compaction is sized to.
     assert {

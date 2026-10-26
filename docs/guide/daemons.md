@@ -110,3 +110,29 @@ done, or it stays there, listed, answering whenever someone writes.
 
 `~/.zettcode/daemon/<workspace>/workspace.txt` names the directory the folder belongs to, exactly as the session
 store does. Removing a session's folder under `daemon/` is all `kill` does, besides stopping the process.
+
+## A review to start with
+
+The first thing most people want from a daemon is a second pair of eyes, and `/code-review` does the setup: it writes
+a brief — collect the diff, have it read by a reviewer of its own, name concrete problems — and runs it as a turn of
+the conversation, as if you had typed it.
+
+```
+/code-review
+/code-review the error handling in src/api.py
+```
+
+What happens next is the model's: it gathers the change and starts a reviewer with `<daemon> spawn --name
+code-review`, sends that session what to read with `send_message`, and reports the answer when it arrives as a
+message. The daemon is stopped with `<daemon> kill <session id>` once the review is in — and if no answer ever comes,
+so that it is not left running; `<daemon> list` shows what is.
+
+`<daemon>` is the command of the installation the terminal itself runs on — `python -m zettcode.daemon` under the
+same interpreter — not a `zettcode` looked up on the `PATH`, so a checkout or a virtualenv that nothing else can see
+still starts one.
+
+The reviewer runs at **your own shell level**, never above it: `full` gives it `full`, `safe` gives it `safe`, and a
+session at `ask` — a level that means "ask the reader", which a background process cannot do — gives it `safe`. Under
+`deny` there is no shell to gather a diff with, so no reviewer is started and the model reviews by reading. The
+reviewer is told that it reads and does not change — the edits are the main agent's, made after the findings are in —
+but that is an instruction, not a sandbox: a reviewer at `full` could change things if it chose to.

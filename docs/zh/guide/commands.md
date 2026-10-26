@@ -25,6 +25,7 @@
 | `/permission` | 选择 shell 命令在多大范围内不用问：`/permission` 在菜单里列出各档，`/permission safe` 直接设置。`safe` 把每条命令放进只能写工作区和 `/tmp` 的沙箱里跑，`full` 用你自己的权限跑。档位属于这个会话：下次打开它就从这一档开始，新会话则从本次运行开始时的档位开始。 |
 | `/harness` | 让模型自己写小的 Python 工具并运行：`/harness on` 或 `/harness off`，单独输入 `/harness` 会告诉你当前状态。默认关闭，请求进行中不接受。见[可选参数参考](/zh/guide/config#可选参数参考)。 |
 | `/btw` | 问一件只在当场回答、不进入对话的事：`/btw <问题>`。 |
+| `/code-review` | 请人评审尚未提交的改动：`/code-review` 评审现有的改动，`/code-review <文本>` 说明重点看什么。它写一段提示 —— 改了什么、怎么收集、评审要说出什么 —— 当成一轮对话交给模型，等同于你亲手打了一遍；会建议另一个 reviewer，起不来时模型自己评审。见[从一次评审开始](/zh/guide/daemons#从一次评审开始)。 |
 | `/bash` | 在工作区里打开一个全屏命令行：`/bash` 打开空面板，`/bash git status` 打开后立即运行这条命令。有历史、Tab 补全和彩色输出；因为是你自己在敲，所以不需要任何权限确认。见[Shell 面板](#bash)。 |
 | `/theme` | 按名字选配色：`/theme` 打开菜单，在菜单里移动时会预览每一套；`/theme nord` 一步切换。你自己的主题（`~/.zettcode/themes/<name>.toml`）也在菜单里。 |
 | `/pet` | 选择对话上方的宠物：`/pet` 打开面板（↑ ↓ 移动时把每只宠物立即放到对话区里，`Enter` 选定，`Esc` 把原来的放回去）；`/pet whale` 一步切换。保存到 `[ui] pet`。见[宠物](/zh/guide/interface#the-pet)。 |
@@ -112,6 +113,7 @@ Self-compaction                                     in effect here: on (not appl
 | `/self-compact` | 工具在请求开始时提供，所以修改从下一个请求开始生效；模型已经提出的申请，如果你随后关掉它就会被放弃。 |
 | `/quit`、`/exit` | 离开不用等回答。 |
 | `/btw` | 排队等轮到它再回答，和以前一样。 |
+| `/code-review` | 同样排队：评审本身就是一次请求，等手上这次结束再开始。 |
 
 `/model`、`/config`、`/clear`、`/new`、`/resume`、`/fork`、`/compact`、`/export` 仍然提示 “busy”：它们
 会改变请求启动时用的模型、它正在写入的 transcript、或它所属的会话。[插件](/zh/guide/plugins#请求运行期间)

@@ -18,7 +18,7 @@ import asyncio
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from zettcode.prompt import PromptPart, carries_image, mention_hint, mention_parts
+from zettcode.prompt import PromptPart, carries_image, mention_parts
 from zettcode.tui import Screen
 from zettcode.tui.render import truncate
 
@@ -423,4 +423,4 @@ class FollowUpsMixin(ShellState):
         # be able to start a second turn beside it.
         self._set_busy(True)
         parts = mention_parts(item.parts, self.mentions)
-        self._task = asyncio.create_task(self._run_prompt(item.text, parts, mention_hint(parts, self.mentions)))
+        self._task = asyncio.create_task(self._run_prompt(item.text, parts))

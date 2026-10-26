@@ -85,3 +85,18 @@ daemon 不会自己退出，闲置几个小时也不会：不用了就用 `daemo
 ```
 
 `~/.zettcode/daemon/<workspace>/workspace.txt` 记录这个目录对应哪个路径，和会话存储的做法一样。`kill` 除了停进程，只做一件事：删掉 `daemon/` 里这个会话的目录。
+
+## 从一次评审开始
+
+大多数人用 daemon 的第一件事是找个“第二双眼睛”，`/code-review` 做的就是这件事：它写一段提示 —— 收集 diff、让另一个 reviewer 读、点名具体问题 —— 然后当成一轮对话跑起来，等同于你亲手打的。
+
+```
+/code-review
+/code-review src/api.py 里的错误处理
+```
+
+接下来是模型的事：它收集改动，用 `<daemon> spawn --name code-review` 起一个 reviewer，用 `send_message` 告诉那个会话读什么，等回答作为一条消息回来再汇报。评审结束用 `<daemon> kill <session id>` 停掉它 —— 如果一直没有回答，也要停，不要让它一直跑着；`<daemon> list` 能看到还在跑什么。
+
+`<daemon>` 是终端自己运行所在的那套安装的命令 —— 同一个解释器下的 `python -m zettcode.daemon` —— 而不是去 PATH 上找一个 `zettcode`，所以为一份代码检出、或一个外人看不到的虚拟环境起的终端，也能起 daemon。
+
+reviewer 跑在**你自己那个 shell 级别**上，不会更高：`full` 给它 `full`，`safe` 给它 `safe`，而 `ask`（意思是“问读者”）在后台进程里没法问，所以给它 `safe`。`deny` 下既没有 shell 收集 diff，也就不会起 reviewer，模型改为读文件评审。提示里会告诉 reviewer 它只读不改 —— 改动由主 agent 拿到意见后自己做 —— 但那只是一句指令，不是沙箱：`full` 下的 reviewer 如果真去改，是有权限的。

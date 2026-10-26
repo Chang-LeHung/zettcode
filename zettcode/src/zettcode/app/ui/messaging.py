@@ -156,7 +156,7 @@ class MessagingMixin(ShellState):
         # Busy before the task has run, exactly as for a follow-up: between here and its first step a
         # second message, or a keystroke, must not be able to start a turn beside this one.
         self._set_busy(True)
-        self._task = asyncio.create_task(self._run_prompt(relayed.text, (relayed.text,), None, relayed=relayed))
+        self._task = asyncio.create_task(self._run_prompt(relayed.text, (relayed.text,), relayed=relayed))
 
     def _start_next_relayed(self) -> bool:
         """Start the oldest waiting message, if there is one and nothing is running."""

@@ -147,9 +147,9 @@ class Client:
 
 | 方法 | 返回 | 作用 |
 | --- | --- | --- |
-| `prompt(prompt, *, images, mentions, on_approval, on_question, on_event, timeout, raw, keep_events, defer_answers)` | `RunStream` | 在当前会话上发送 prompt。await 它得到 `RunResult`；迭代它得到事件。 |
+| `prompt(prompt, *, images, mentions, instructions, on_approval, on_question, on_event, timeout, raw, keep_events, defer_answers)` | `RunStream` | 在当前会话上发送 prompt。await 它得到 `RunResult`；迭代它得到事件。 |
 | `stream(...)` | `RunStream` | 与 `prompt` 是同一个方法。 |
-| `run(prompt, *, images, mentions, on_approval, on_question, on_event, timeout, keep_events)` | `RunResult`（可 await） | 把 `await client.prompt(...)` 写成调用。没有 `raw`。 |
+| `run(prompt, *, images, mentions, instructions, on_approval, on_question, on_event, timeout, keep_events)` | `RunResult`（可 await） | 把 `await client.prompt(...)` 写成调用。没有 `raw`。 |
 | `use_model(name)` | `ModelInfo` | 选择模型；接受名字或 `ModelInfo`。名字先当显示名找，找不到再当模型 id 找；两者都必须只指向一个模型（否则抛 `ConfigurationError`）。 |
 | `config_file` | `Path` | 模型从哪个配置文件读、写到哪个文件。 |
 | `model_entries()` | `tuple[tuple[ModelInfo, Mapping], ...]` | 文件里列出的每个模型及文件为它写的键（按文件顺序）。 |
@@ -231,9 +231,9 @@ def remove_model(name, *, path=None) -> tuple[ModelInfo, ...]: ...
 
 | 方法 | 返回 |
 | --- | --- |
-| `prompt(prompt, *, images, mentions, on_approval, on_question, on_event, timeout, raw, keep_events, defer_answers)` | `RunStream` |
+| `prompt(prompt, *, images, mentions, instructions, on_approval, on_question, on_event, timeout, raw, keep_events, defer_answers)` | `RunStream` |
 | `stream(...)` | `RunStream`（同一个方法） |
-| `await run(prompt, *, images, mentions, on_approval, on_question, on_event, timeout, keep_events)` | `RunResult` |
+| `await run(prompt, *, images, mentions, instructions, on_approval, on_question, on_event, timeout, keep_events)` | `RunResult` |
 | `await ask(question, *, on_event=None, timeout=None)` | `str` |
 | `ask_stream(question, *, on_event=None, timeout=None)` | `RunStream` |
 | `steer(prompt, *, images=(), mentions=False)` | `str \| None` |

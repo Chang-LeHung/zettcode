@@ -224,9 +224,10 @@ class ShellState:
         self,
         prompt: str,
         parts: Sequence[PromptPart] = (),
-        hint: str | None = None,
         *,
+        instructions: str | None = None,
         relayed: Relayed | None = None,
+        advance: bool = True,
     ) -> None:
         """Stream one agent turn."""
 
@@ -246,7 +247,7 @@ class ShellState:
     def submit(self, value: str, *, command: bool | None = None) -> bool | None:
         """Start a turn, steer the running one, or run a slash command (``command``: whether the draft is one)."""
 
-    async def prompt(self, text: str) -> bool:
+    async def prompt(self, text: str, *, shown: str | None = None) -> bool:
         """Run ``text`` as one turn, as if the reader had typed it; whether one was started and has ended."""
         return False
 

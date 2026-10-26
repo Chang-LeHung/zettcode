@@ -147,9 +147,9 @@ The agent for one workspace. An async context manager. Every configuration field
 
 | Method | Returns | Does |
 | --- | --- | --- |
-| `prompt(prompt, *, images, mentions, on_approval, on_question, on_event, timeout, raw, keep_events, defer_answers)` | `RunStream` | Sends a prompt on the current session. Await the result for a `RunResult`; iterate it for events. |
+| `prompt(prompt, *, images, mentions, instructions, on_approval, on_question, on_event, timeout, raw, keep_events, defer_answers)` | `RunStream` | Sends a prompt on the current session. Await the result for a `RunResult`; iterate it for events. |
 | `stream(...)` | `RunStream` | The same method as `prompt`. |
-| `run(prompt, *, images, mentions, on_approval, on_question, on_event, timeout, keep_events)` | `RunResult` (awaitable) | `await client.prompt(...)` as a call. Has no `raw`. |
+| `run(prompt, *, images, mentions, instructions, on_approval, on_question, on_event, timeout, keep_events)` | `RunResult` (awaitable) | `await client.prompt(...)` as a call. Has no `raw`. |
 | `use_model(name)` | `ModelInfo` | Chooses the model; takes a name or a `ModelInfo`. A name is looked for as a display name first, then as a model id; each must name one model (`ConfigurationError` otherwise). |
 | `config_file` | `Path` | The configuration file the models are read from and written to. |
 | `model_entries()` | `tuple[tuple[ModelInfo, Mapping], ...]` | Each model the file lists with the keys the file writes for it, in file order (a token left to an environment variable is absent). |
@@ -229,9 +229,9 @@ A handle on one stored conversation. Obtain it from `client.session`, `client.se
 
 | Method | Returns |
 | --- | --- |
-| `prompt(prompt, *, images, mentions, on_approval, on_question, on_event, timeout, raw, keep_events, defer_answers)` | `RunStream` |
+| `prompt(prompt, *, images, mentions, instructions, on_approval, on_question, on_event, timeout, raw, keep_events, defer_answers)` | `RunStream` |
 | `stream(...)` | `RunStream` (same method) |
-| `await run(prompt, *, images, mentions, on_approval, on_question, on_event, timeout, keep_events)` | `RunResult` |
+| `await run(prompt, *, images, mentions, instructions, on_approval, on_question, on_event, timeout, keep_events)` | `RunResult` |
 | `await ask(question, *, on_event=None, timeout=None)` | `str` |
 | `ask_stream(question, *, on_event=None, timeout=None)` | `RunStream` |
 | `steer(prompt, *, images=(), mentions=False)` | `str \| None` |

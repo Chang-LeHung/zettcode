@@ -130,6 +130,8 @@ async def greet(self, context: CommandContext) -> CommandResult:
 
 命令可以用 `await context.require_host().prompt(text)` 跑一轮对话，效果等同于读者亲手输入了这句话：文本作为读者的消息写进 transcript、存进会话、边答边显示，最后落在那行结束语上；`@` 引用会被解析，而且命令会一直占着这次请求，直到答案回来。它返回 `False` 时什么都不会启动：文本为空、会话被另一个进程打开，或者已经有请求在跑 —— 后者的情况下，想让命令在忙时可用，就声明 `when_busy="queue"`（见[请求运行期间](#请求运行期间)）。
 
+命令想展示的东西比它要告诉模型的短时，把两者分开传：`prompt(brief, shown="/review")` 让对话里显示 `/review` —— 现在看到的、以及会话恢复后看到的都是它 —— 而 brief 照样给模型看。brief 属于那一轮消息，所以之后每一轮模型都还能读到，短的只是展示。`/code-review` 就是这么写的。
+
 这就是“命令是给模型的预设，而不是对模型的汇报”的写法：
 
 ```python

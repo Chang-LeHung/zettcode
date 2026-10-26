@@ -42,6 +42,7 @@ async with zc.Client(".", permission="safe") as client:
 | `prompt` | 必填 | 文本，或按阅读顺序排列的文本与 `Image` 的列表。 |
 | `images` | `()` | 放在 prompt 之后的图片。 |
 | `mentions` | `False` | 像终端一样解析 `@skill` 和 `@path` 引用。 |
+| `instructions` | `None` | 模型在 prompt 之后读到的、读者并没有打的内容：把一行展开成更长请求的程序写在这里。它是会话保存的那一轮的一部分，所以之后的每一轮、以及重新打开会话后，模型都还会读到；而读者看到的那一轮只有 prompt 本身。`session.history()` 返回的是展示用的那段，不是 instructions。 |
 | `on_approval` | `None` | 决定每条需要审批的 shell 命令。见[审批与提问](./approvals)。 |
 | `on_question` | `None` | 回答模型提出的每个问题。 |
 | `on_event` | `None` | 每个事件发生时被调用。可以是函数或协程函数。 |

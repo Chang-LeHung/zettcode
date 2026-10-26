@@ -42,6 +42,7 @@ The same three exist on a `Session` (`session.prompt`, `session.stream`, `sessio
 | `prompt` | required | Text, or a list of text and `Image` pieces in reading order. |
 | `images` | `()` | Images to put after the prompt. |
 | `mentions` | `False` | Resolve `@skill` and `@path` references as the terminal does. |
+| `instructions` | `None` | What the model reads after the prompt, which the reader did not type: a program that turns one line into a longer request says it here. It is part of the turn the session keeps, so the model still reads it on later turns and after a reopen; what a reader is *shown* of that turn is the prompt alone. `session.history()` reports that shown text, not the instructions. |
 | `on_approval` | `None` | Decides each shell command that needs approval. See [Approvals & questions](./approvals). |
 | `on_question` | `None` | Answers each question the model asks. |
 | `on_event` | `None` | Called with every event, as it happens. A function or a coroutine function. |

@@ -149,6 +149,11 @@ the request slot until the answer is in. It returns `False`, starting nothing, w
 session is open in another process, or when a request is already running — a command that means to be usable then
 declares `when_busy="queue"` (see [While a request is running](#while-a-request-is-running)).
 
+A command whose instructions are longer than what it wants to show passes them apart:
+`prompt(brief, shown="/review")` shows `/review` in the conversation — now, and when the session is restored — and
+puts the brief in front of the model. The brief stays part of that turn, so the model reads it again on later turns;
+only the display is short. `/code-review` is built this way.
+
 This is how a command can be a preset for the model instead of a report about it:
 
 ```python
