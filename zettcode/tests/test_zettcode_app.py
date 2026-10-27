@@ -4008,14 +4008,14 @@ async def test_the_version_the_panel_offered_is_checked_against_the_index_before
     app = build_app()
     harness = _harness(app)
     _offer_update(app, tmp_path, latest="99.0.0")
-    _upgrade_that_exits_zero(monkeypatch, "0.1.13", index="0.1.13")
+    _upgrade_that_exits_zero(monkeypatch, "99.0.1", index="99.0.1")
 
     await _choose_upgrade(app, harness)
 
     errors = [e.text for e in app.transcript.entries if getattr(e, "level", None) == "error"]
     assert not errors, errors
-    assert any("PyPI now names 0.1.13" in text for text in _said(app)), "the jump from the panel is said once"
-    assert any("ZettCode 0.1.13 installed" in text for text in _said(app))
+    assert any("PyPI now names 99.0.1" in text for text in _said(app)), "the jump from the panel is said once"
+    assert any("ZettCode 99.0.1 installed" in text for text in _said(app))
 
 
 async def test_an_index_that_names_nothing_newer_installs_nothing(tmp_path, monkeypatch):
@@ -4024,7 +4024,7 @@ async def test_an_index_that_names_nothing_newer_installs_nothing(tmp_path, monk
     harness = _harness(app)
     path = _offer_update(app, tmp_path, latest="99.0.0")
     before = read_state(path)
-    _upgrade_that_exits_zero(monkeypatch, "0.1.12", index=__version__)
+    _upgrade_that_exits_zero(monkeypatch, "0.1.11", index=__version__)
 
     await _choose_upgrade(app, harness)
 
