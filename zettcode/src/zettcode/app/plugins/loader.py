@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 from zettcode.engine.plugins.builtin_agent import AGENT_PLUGINS
 from zettcode.engine.plugins.loader import Loader, run
+from zettcode.engine.plugins.surfaces import TERMINAL_SURFACES
 from zettcode.tui import RESERVED_THEMES
 
 from .builtins import BUILTIN_PLUGINS
@@ -44,7 +45,13 @@ def load_terminal_plugins(
     The arguments are those of :func:`zettcode.engine.plugins.loader.load_plugins`; the builtins default to the
     terminal's own followed by the agent's.
     """
-    bundle = run(TerminalLoader(config, shared), config, builtins=builtins, entry_points=entry_points)
+    bundle = run(
+        TerminalLoader(config, shared),
+        config,
+        builtins=builtins,
+        entry_points=entry_points,
+        surfaces=TERMINAL_SURFACES,
+    )
     assert isinstance(bundle, TerminalPlugins)
     return bundle
 
@@ -65,7 +72,7 @@ class TerminalLoader(Loader):
     """The engine's loader with the terminal's registries."""
 
     def __init__(self, config: ZettCodeConfig, shared: Mapping[str, object] | None = None) -> None:
-        super().__init__(config, shared)
+        super().__init__(config, shared, surfaces=TERMINAL_SURFACES)
         self.services.setdefault(HOST_LINK, HostLink())
         self.slots = UiSlots()
         self.turn_segments: dict[str, TurnSegment] = {}
@@ -142,6 +149,7 @@ class TerminalLoader(Loader):
             contributed=plain.contributed,
             services=plain.services,
             failures=plain.failures,
+            skipped=plain.skipped,
             commands=tuple(self.commands),
             builtin_commands=tuple(self.commands[: self.builtin_command_count]),
             themes=tuple(self.themes),

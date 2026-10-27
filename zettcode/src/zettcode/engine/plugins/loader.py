@@ -32,6 +32,7 @@ from .container import PluginContainer
 from .extension import HOST_NAME, PluginExtension
 from .plugin import Plugin, Plugins
 from .state import Contribution
+from .surfaces import DEFAULT_SURFACES, SERVER_SURFACES, Surface
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from collections.abc import Iterable, Mapping, Sequence
@@ -62,6 +63,7 @@ def load_plugins(
     entry_points: Iterable[EntryPoint] | None = None,
     builtins: Sequence[Plugin[Any]] = AGENT_PLUGINS,
     shared: Mapping[str, object] | None = None,
+    surfaces: frozenset[Surface] = SERVER_SURFACES,
 ) -> Plugins:
     """Load the builtin plugins and every enabled distribution into one bundle.
 
@@ -76,11 +78,20 @@ def load_plugins(
         shared: Objects the runtime hands over by name before any plugin activates (see
             :mod:`zettcode.engine.plugins.services`); a plugin reads them with ``container.service``, and they
             stay findable on the returned bundle. A plugin cannot provide a name that is taken here.
+        surfaces: What the loading front end is; defaults to the server's set, which is what a client built through
+            the SDK is. A plugin whose :attr:`~zettcode.engine.plugins.plugin.Plugin.surfaces` do not meet these is
+            skipped rather than activated (:data:`~zettcode.engine.plugins.surfaces.Surface`).
 
     Returns:
         The host extension, services, and load failures the plugins produced.
     """
-    return run(Loader(config, shared), config, builtins=builtins, entry_points=entry_points)
+    return run(
+        Loader(config, shared, surfaces=surfaces),
+        config,
+        builtins=builtins,
+        entry_points=entry_points,
+        surfaces=surfaces,
+    )
 
 
 def run(
@@ -89,12 +100,14 @@ def run(
     *,
     builtins: Sequence[Plugin[Any]],
     entry_points: Iterable[EntryPoint] | None,
+    surfaces: frozenset[Surface] = SERVER_SURFACES,
 ) -> Plugins:
     """Feed the builtins and then the enabled distributions to ``loader``, and return what it bundled.
 
     The builtins go first, so a plugin that registers under one of their names replaces it in place.
     Builtins always load, while ``[plugins] enabled`` only gates the distributions.
     """
+    loader.surfaces = surfaces
     for plugin in builtins:
         loader.accept(plugin, origin=plugin.name or type(plugin).__name__)
     loader.builtins_loaded()
@@ -116,8 +129,17 @@ def run(
 class Loader:
     """Accumulate accepted plugins into the one bundle the application gets."""
 
-    def __init__(self, config: ZettCodeConfig, shared: Mapping[str, object] | None = None) -> None:
+    def __init__(
+        self,
+        config: ZettCodeConfig,
+        shared: Mapping[str, object] | None = None,
+        *,
+        surfaces: frozenset[Surface] = DEFAULT_SURFACES,
+    ) -> None:
         self.config = config
+        #: What the loading front end is; a plugin is skipped when it targets none of these.
+        self.surfaces = surfaces
+        self.skipped: list[str] = []
         self.plugins: list[Plugin[Any]] = []
         self.mentions: list[MentionProvider] = []
         self.providers: list[Provider] = []
@@ -193,6 +215,7 @@ class Loader:
             contributed=tuple(self.contributed),
             services=dict(self.services),
             failures=tuple(self.failures),
+            skipped=tuple(self.skipped),
         )
 
     # -- the same for every front end --
@@ -204,6 +227,11 @@ class Loader:
     def accept(self, plugin: Plugin[Any], *, origin: str) -> None:
         """Activate one plugin and merge what it registered, or report why not."""
         name = plugin.name or origin or type(plugin).__name__
+        if not plugin.handles(self.surfaces):
+            # Not a failure: this plugin is for another front end, and activating it here would register a
+            # contribution this one cannot hold.
+            self.skipped.append(name)
+            return
         if name in self._identities:
             self.failures.append(f"{origin}: duplicate plugin name {name!r}")
             return

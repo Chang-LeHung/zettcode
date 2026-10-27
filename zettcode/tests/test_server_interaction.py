@@ -244,7 +244,11 @@ async def test_the_plugins_and_the_ones_that_failed_are_listed():
     async with serve(FakeClient()) as (http, _app):
         body = (await http.get("/plugins")).json()
 
-    assert body == {"loaded": ["shell", "usage"], "failures": ["broken: no such module"]}
+    assert body == {
+        "loaded": ["shell", "usage"],
+        "failures": ["broken: no such module"],
+        "skipped": ["terminal-only"],
+    }
 
 
 async def test_images_are_decoded_and_mentions_are_on_by_default():

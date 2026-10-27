@@ -214,10 +214,13 @@ class PluginReport:
     Attributes:
         loaded: Their names, in the order they take part (built-in ones first).
         failures: One message per plugin that could not be loaded; those are skipped, never fatal.
+        skipped: Plugins that were not for this front end — a terminal command in a server, say — and so were not
+            activated. Not a failure: they said what they were for.
     """
 
     loaded: tuple[str, ...]
     failures: tuple[str, ...]
+    skipped: tuple[str, ...] = ()
 
 
 def build_config(
@@ -946,7 +949,11 @@ class Client:
     def plugins(self) -> PluginReport:
         """Return the plugins that loaded and the ones that did not."""
         bundle = self._agent.runtime.plugins
-        return PluginReport(tuple(plugin.name for plugin in bundle.plugins), tuple(bundle.failures))
+        return PluginReport(
+            tuple(plugin.name for plugin in bundle.plugins),
+            tuple(bundle.failures),
+            tuple(bundle.skipped),
+        )
 
     def mentions(self, query: str = "", *, limit: int = 50) -> tuple[MentionInfo, ...]:
         """Return the ``@`` resources whose name matches ``query``, for a completion menu.

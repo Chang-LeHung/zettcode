@@ -20,6 +20,7 @@ from .container import PluginContainer
 from .mixins import PluginAgentMixin
 from .services import lookup, require
 from .state import AgentBuild, Contribution
+from .surfaces import DEFAULT_SURFACES, Surface
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay lazy
     from collections.abc import Mapping
@@ -52,6 +53,11 @@ class Plugin(PluginAgentMixin, Generic[_C], ABC):
         description: One-line summary of what the plugin adds, for diagnostics.
         priority: Hook order against every other extension: lower runs first,
             and equal priorities keep registration order.
+        surfaces: The front ends this plugin is for; see :class:`~zettcode.engine.plugins.surfaces.Surface`.
+            The default, ``{AGENT}``, means every front end — an extension, a provider or an ``@`` resource works
+            wherever the agent runs. A plugin that registers a command, a palette, a pet, a presenter or a row must
+            say ``{TUI}``, and one that is only about the editor or the browser says ``{VSCODE}`` or ``{WEB}``; the
+            other front ends then skip it instead of activating a contribution they cannot hold.
     """
 
     #: Identity the loader may resolve and record; a plain attribute, so a
@@ -59,6 +65,18 @@ class Plugin(PluginAgentMixin, Generic[_C], ABC):
     name: str = ""
     description: ClassVar[str] = ""
     priority: ClassVar[int] = 100
+
+    #: The front ends this plugin is for. ``{AGENT}`` — the default — means every one of them.
+    surfaces: ClassVar[frozenset[Surface]] = DEFAULT_SURFACES
+
+    def handles(self, surfaces: frozenset[Surface]) -> bool:
+        """Return whether a host running ``surfaces`` should load this plugin.
+
+        Args:
+            surfaces: What the loading front end is, one of :data:`TERMINAL_SURFACES` or
+                :data:`SERVER_SURFACES` (or a test's own set).
+        """
+        return not self.surfaces.isdisjoint(surfaces)
 
     def activate(self, container: _C) -> None:
         """Run once at startup, before any agent client is built.
@@ -97,6 +115,9 @@ class Plugins:
         failures: One message per plugin that could not be loaded or activated.
             A broken plugin is skipped rather than taking the whole application
             with it; the shell reports these where the user can see them.
+        skipped: Names of the plugins that were not for this front end, and so were never activated.
+            Not a failure: a terminal command in a server, or an editor's contribution in the terminal, is a
+            plugin doing what it declared.
     """
 
     host: PluginExtension | None = None
@@ -105,6 +126,7 @@ class Plugins:
     contributed: tuple[Contribution, ...] = ()
     services: Mapping[str, object] = field(default_factory=dict)
     failures: tuple[str, ...] = ()
+    skipped: tuple[str, ...] = ()
 
     def find(self, name: str, kind: type[_T]) -> _T | None:
         """Return the service under ``name``, or ``None`` when no loaded plugin provides it.

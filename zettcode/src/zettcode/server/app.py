@@ -578,7 +578,7 @@ def create_app(settings: Settings, *, client_factory: ClientFactory | None = Non
     async def plugins(runner: RunnerDep) -> PluginsOut:
         """List the plugins this server loaded, and the ones that could not load."""
         report = runner.client.plugins
-        return PluginsOut(loaded=list(report.loaded), failures=list(report.failures))
+        return PluginsOut(loaded=list(report.loaded), failures=list(report.failures), skipped=list(report.skipped))
 
     @protected.get("/mentions", response_model=MentionsOut, tags=["models"])
     async def mentions(

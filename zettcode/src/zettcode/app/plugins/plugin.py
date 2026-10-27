@@ -8,9 +8,10 @@ engine's bundle plus what only a terminal reads: commands, palettes, pets, prese
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from zettcode.engine.plugins.plugin import Plugin, Plugins
+from zettcode.engine.plugins.surfaces import Surface
 
 from .container import TerminalContainer
 from .mixins import PluginUiMixin
@@ -24,7 +25,15 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
 
 
 class TerminalPlugin(Plugin[TerminalContainer], PluginUiMixin):
-    """Base class for a plugin that contributes to the terminal as well as, or instead of, the agent."""
+    """Base class for a plugin that contributes to the terminal as well as, or instead of, the agent.
+
+    Its :attr:`~zettcode.engine.plugins.plugin.Plugin.surfaces` default to ``{TUI}``: what a terminal plugin registers
+    — a command, a palette, a pet, a presenter, a row — is the shell's, and a server running the same distribution
+    skips it instead of activating a contribution it cannot hold. A plugin that also contributes an agent extension,
+    a provider or an ``@`` resource says ``{AGENT, TUI}`` and is loaded by both.
+    """
+
+    surfaces: ClassVar[frozenset[Surface]] = frozenset({Surface.TUI})
 
 
 @dataclass(frozen=True, slots=True)

@@ -3,6 +3,35 @@
 插件是一个 Python 包，用来给 ZettCode 加东西：一个命令、一个工具、屏幕上的一行，或者对模型
 收到内容的调整。装上这个发行包就是“启用”，不需要改什么注册表。
 
+## 插件面向哪个前端
+
+ZettCode 现在不止一个前端：终端、VS Code 扩展、以及浏览器客户端（后两者都通过 `zettcode-server` 访问 agent）。
+插件用 `surfaces` 说明自己面向哪些前端：
+
+| Surface | 含义 | 适合放什么 |
+| --- | --- | --- |
+| `AGENT` | 所有前端 | agent 扩展、模型 provider、`@` 资源 —— 凡是「agent 跑在哪里都通用」的东西 |
+| `TUI` | 终端 | 命令、配色、宠物、presenter、页眉/状态行、请求结束那一行的条目 |
+| `VSCODE` | 编辑器客户端 | 只有扩展走服务器路径才需要的行为 |
+| `WEB` | 浏览器客户端 | 同上，只是面向浏览器 |
+
+`AGENT` 是默认值，所以只加扩展或 provider 的插件什么都不用写。`TerminalPlugin` 默认 `{TUI}` —— 它注册的命令、行、
+配色本来就属于终端；如果同时还要贡献 agent 侧的东西，就把两者都写上去：
+
+```python
+from zettcode.app.plugins import TerminalPlugin
+from zettcode.engine.plugins.surfaces import Surface
+
+
+class Greeter(TerminalPlugin):  # 下面那个插件，同时贡献 agent 侧的东西
+    name = "greeter"
+    surfaces = frozenset({Surface.AGENT, Surface.TUI})
+```
+
+每个前端的 loader 只加载与之相交的插件：终端加载 `AGENT` 与 `TUI`，`zettcode-server` 加载 `AGENT`、`VSCODE` 与
+`WEB`。面向别的前端的插件是**跳过，不是失败**：名字出现在 `skipped` 里（终端的插件面板、`GET /plugins`），它要注册
+的东西一个都不会生效。真正坏掉的插件（导入失败、名字冲突）仍然记为 failure。
+
 ## 安装一个插件
 
 插件在 `zettcode.plugins` 这个 entry point 组下发布一个类：

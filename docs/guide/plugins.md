@@ -4,6 +4,37 @@ A plugin is a Python package that adds something to ZettCode: a command, a tool,
 a row on the screen, or a change to what the model is asked. Installing the
 distribution is the opt-in — there is no registry to edit.
 
+## Which front end a plugin is for
+
+ZettCode has more than one front end: the terminal, the VS Code extension and the browser client, both of which reach
+the agent through `zettcode-server`. A plugin says which ones it is for with `surfaces`:
+
+| Surface | What it means | What belongs there |
+| --- | --- | --- |
+| `AGENT` | every front end | an agent extension, a model provider, an `@` resource — anything that works wherever the agent runs |
+| `TUI` | the terminal | a command, a palette, a pet, a presenter, a header or status row, the line a request ends on |
+| `VSCODE` | the editor client | behaviour only the extension's server path needs |
+| `WEB` | the browser client | the same, for the browser |
+
+`AGENT` is the default, so a plugin that only adds an extension or a provider does not have to say anything. A
+`TerminalPlugin` defaults to `{TUI}`, because what it registers — a command, a row, a palette — is the shell's; one
+that also contributes agent-side parts declares both:
+
+```python
+from zettcode.app.plugins import TerminalPlugin
+from zettcode.engine.plugins.surfaces import Surface
+
+
+class Greeter(TerminalPlugin):  # the plugin built below, contributing agent parts too
+    name = "greeter"
+    surfaces = frozenset({Surface.AGENT, Surface.TUI})
+```
+
+The loader for each front end loads the plugins whose surfaces meet its own: the terminal runs `AGENT` and `TUI`,
+`zettcode-server` runs `AGENT`, `VSCODE` and `WEB`. A plugin for another front end is **skipped, not failed**: its name
+is listed under `skipped` (the terminal's plugins panel and `GET /plugins`), and nothing it would have registered is
+activated. A plugin that is broken — cannot be imported, clashes on a name — is still reported as a failure.
+
 ## Installing one
 
 A plugin publishes a class under the `zettcode.plugins` entry-point group:

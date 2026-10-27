@@ -243,7 +243,7 @@ class FakeClient:
     def plugins(self) -> object:
         from zettcode.sdk.client import PluginReport
 
-        return PluginReport(("shell", "usage"), ("broken: no such module",))
+        return PluginReport(("shell", "usage"), ("broken: no such module",), ("terminal-only",))
 
     def use_model(self, name: str) -> ModelInfo:
         for model in self.models:

@@ -28,6 +28,7 @@ from zettcode.engine import core as runtime_module
 from zettcode.engine.extensions.usage import UsageSnapshot
 from zettcode.engine.plugins import (
     AGENT_PLUGINS,
+    AgentPlugin,
     PluginAgentMixin,
     PluginEventMixin,
     PluginExtension,
@@ -40,6 +41,7 @@ from zettcode.engine.plugins import (
     PluginTurnMixin,
 )
 from zettcode.engine.plugins import loader as loader_module
+from zettcode.engine.plugins.surfaces import SERVER_SURFACES, TERMINAL_SURFACES, Surface
 from zettcode.providers import Provider
 from zettcode.tui import DARK, Span, Style, TextLine
 
@@ -93,6 +95,74 @@ class Greeter(TerminalPlugin):
     def accept(self, config, event) -> bool:
         self.seen.append(("accept", event))
         return True
+
+
+class _TerminalOnly(TerminalPlugin):
+    """A plugin that registers a command: the shell's, and nobody else's."""
+
+    name = "only-in-the-terminal"
+    description = "a command the server has no use for"
+
+    def activate(self, container: TerminalContainer) -> None:
+        container.register_command("hello", "say hello", lambda context: _noop())
+
+
+class _EditorOnly(AgentPlugin):
+    """A plugin written for the editor: it says so, and the terminal leaves it alone."""
+
+    name = "only-in-the-editor"
+    description = "editor-only behaviour"
+    surfaces = frozenset({Surface.VSCODE})
+
+
+async def _noop():
+    return CommandResult()
+
+
+def test_a_plugin_says_which_front_ends_it_is_for():
+    """The default is every front end; a terminal or an editor plugin says so, and the others skip it."""
+    assert AgentPlugin.handles(AgentPlugin(), TERMINAL_SURFACES) and AgentPlugin().handles(SERVER_SURFACES)
+    assert _TerminalOnly().handles(TERMINAL_SURFACES)
+    assert not _TerminalOnly().handles(SERVER_SURFACES), "a command is not something a server loads"
+    assert _EditorOnly().handles(SERVER_SURFACES) and not _EditorOnly().handles(TERMINAL_SURFACES)
+
+
+def test_the_server_skips_a_terminal_plugin_instead_of_failing_it(tmp_path: Path):
+    """Not for me is not broken: the name is reported as skipped, and nothing is activated."""
+    config = make_config(tmp_path)
+    bundle = loader_module.load_plugins(config, entry_points=(), builtins=(_TerminalOnly(),), surfaces=SERVER_SURFACES)
+
+    assert bundle.skipped == (_TerminalOnly.name,)
+    assert bundle.failures == ()
+    assert [plugin.name for plugin in bundle.plugins] == []
+
+
+def test_the_terminal_skips_an_editor_plugin_and_loads_its_own(tmp_path: Path):
+    config = make_config(tmp_path)
+    bundle = load_terminal_plugins(config, entry_points=(), builtins=(_TerminalOnly(), _EditorOnly()))
+
+    assert bundle.skipped == (_EditorOnly.name,)
+    assert [plugin.name for plugin in bundle.plugins] == [_TerminalOnly.name]
+    assert any(command.name == "/hello" for command in bundle.commands)
+
+
+def test_a_distribution_for_another_front_end_is_skipped_not_reported_broken(tmp_path: Path):
+    """The entry-point path goes through the same check, which is the case an installed plugin hits."""
+    config = make_config(tmp_path)
+    point = _entry_point("editor-plugin", _EditorOnly)
+
+    engine = loader_module.load_plugins(config, entry_points=(point,), builtins=(), surfaces=TERMINAL_SURFACES)
+    server = loader_module.load_plugins(config, entry_points=(point,), builtins=(), surfaces=SERVER_SURFACES)
+
+    assert engine.skipped == (_EditorOnly.name,) and engine.failures == (), "not for the terminal, and not broken"
+    assert [plugin.name for plugin in server.plugins] == [_EditorOnly.name]
+
+
+def _entry_point(name: str, plugin: type) -> object:
+    """Return an entry point that resolves to ``plugin``, the way an installed distribution's would."""
+    from importlib.metadata import EntryPoint
+
+    return EntryPoint(name=name, value=f"{__name__}:{plugin.__name__}", group="zettcode.plugins")
 
 
 def make_config(tmp_path: Path, **overrides: object) -> ZettCodeConfig:

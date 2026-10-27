@@ -460,10 +460,11 @@ class AnswerOut(BaseModel):
 
 
 class PluginsOut(BaseModel):
-    """The plugins this server loaded, and the ones that refused to load."""
+    """The plugins this server loaded, the ones that refused to load, and the ones that were not for it."""
 
     loaded: list[str]
     failures: list[str]
+    skipped: list[str] = []
 
 
 class MentionOut(BaseModel):
