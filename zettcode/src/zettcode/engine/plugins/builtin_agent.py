@@ -35,7 +35,7 @@ from zettcode.engine.extensions.harness_switch import HarnessSwitch
 from zettcode.engine.extensions.tool_output import ToolOutputExtension
 from zettcode.engine.extensions.usage import UsageExtension
 from zettcode.engine.messenger import Messenger
-from zettcode.engine.permission import Permission, ShellDenyExtension, ShellPolicy
+from zettcode.engine.permission import ShellDenyExtension, ShellPolicy
 from zettcode.engine.permission.approval import ShellApprovalMemory
 from zettcode.engine.storage import SessionStore
 from zettcode.mentions import FileMentions, SkillMentions
@@ -294,21 +294,33 @@ class Harness(AgentPlugin):
             """Where one session's repository code runs.
 
             A child process either way, so a crash, a hang or a runaway allocation in code the model wrote stays
-            out of this window. Below `full` the child also runs inside the sandbox the shell uses, which bounds what
-            it may read, write and reach; at `full` the reader has given the model their own access, so there is
-            nothing left for a boundary to hold back.
+            out of this window. The boundary comes from the policy — none at `full`, the boundary `safe` uses below it — and `None` on a machine
+            that has no sandbox.
             """
             from zett_agent.jit_harness import SubprocessToolHost
 
-            if policy.level is Permission.FULL:
-                return SubprocessToolHost()
-            boundary = policy.sandbox.boundary if policy.sandbox is not None else None
-            return SubprocessToolHost(sandbox=boundary)
+            return SubprocessToolHost(sandbox=policy.jit_sandbox())
+
+        def boundary() -> str:
+            """What a session's child was built around: the sandbox itself, or none.
+
+            The *level* is not the key. `ask` and `safe` hand the harness the same sandbox, and restarting a child for
+            nothing costs the model its loaded repository — the next tool call fails until it is loaded again — so this
+            changes only when the boundary does.
+            """
+            sandbox = policy.jit_sandbox()
+            return "none" if sandbox is None else type(sandbox).__name__ + str(id(sandbox))
 
         def build(_: AgentBuild) -> AgentExtension:
             from zettcode.engine.extensions.harness import SwitchedHarness
 
-            return SwitchedHarness(root, switch, host_factory=host)
+            return SwitchedHarness(
+                root,
+                switch,
+                host_factory=host,
+                boundary=boundary,
+                unbounded=policy.sandbox_missing,
+            )
 
         container.register_extension_factory("SwitchedHarness", build)
 

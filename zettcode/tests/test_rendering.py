@@ -33,19 +33,44 @@ def opened(name: str, **arguments: object):
 
 
 def test_a_read_row_says_how_many_lines_came_back():
-    """`Read app.py` and not how much of it: the count is of what the row shows, not of what was asked for."""
+    """`Read app.py` and not how much of it: the count is of what came back, not of the range asked for."""
+    from zettcode.app.agent.conversation.entries import EntryStatus
+
     entry = opened("read", path="app.py")
 
-    DEFAULT_RENDERERS.finished(entry, "line one\nline two\nline three")
-    assert entry.title == "Read app.py \u00b7 3 lines"
+    DEFAULT_RENDERERS.finished(entry, "line one\nline two\nline three", EntryStatus.COMPLETED)
+    assert (entry.title, entry.lines) == ("Read app.py", 3), "the row keeps the title it was opened with"
 
     one = opened("read_file", path="notes.md")
-    DEFAULT_RENDERERS.finished(one, "only line")
-    assert one.title == "Read notes.md \u00b7 1 line", 'one line is not "1 lines"'
+    DEFAULT_RENDERERS.finished(one, "only line", EntryStatus.COMPLETED)
+    assert one.lines == 1, 'one line is not "1 lines" once the presenter writes it'
+
+    failed = opened("read", path="missing.py")
+    DEFAULT_RENDERERS.finished(failed, "File does not exist: missing.py", EntryStatus.FAILED)
+    assert failed.lines is None, "an error message is not a file that was read"
 
     picture = opened("read", path="dot.png")
-    DEFAULT_RENDERERS.finished(picture, "Image dot.png: image/png, 71 bytes")
-    assert picture.title == "Read dot.png", "a picture is not a file of lines"
+    DEFAULT_RENDERERS.finished(picture, "Image dot.png: image/png, 71 bytes", EntryStatus.COMPLETED)
+    assert picture.lines is None, "a picture is not a file of lines"
+
+    prose = opened("read", path="notes.txt")
+    DEFAULT_RENDERERS.finished(prose, "Image file formats, and how to pick one\nsecond line", EntryStatus.COMPLETED)
+    assert prose.lines == 2, 'a text file whose first line begins with "Image " is still text'
+
+
+def test_a_read_row_does_not_lose_its_count_when_the_title_is_restated_or_cut():
+    """The count is a field of the row, the way an edit's ``+N`` is, so neither can take it away."""
+    from zettcode.app import Transcript, TranscriptView
+    from zettcode.tui import DARK
+    from zettcode.tui.testing import render_block
+
+    transcript = Transcript(clock=lambda: 0.0)
+    transcript.start_tool("1", "read", {"path": "a/very/long/path/that/would/push/the/count/off.py"})
+    transcript.complete_tool("1", "line one\nline two")
+    transcript.restate_tool("1", {"path": "a/long/path/would/push/the/count/off.py"})
+
+    rendered = render_block(TranscriptView(transcript, theme=DARK), width=60, height=8, theme=DARK)
+    assert "\u00b7 2 lines" in rendered, rendered
 
 
 def test_the_chain_phrases_the_coding_tools():
@@ -144,9 +169,12 @@ def test_an_edit_that_replaces_every_occurrence_counts_once():
     assert (once.title, once.added, once.removed) == ("Edited app.py (1 edit)", 1, 1)
 
 
-def test_a_namespaced_mcp_tool_names_its_server_before_the_tool():
-    assert describe("docs__search", query="fix parser") == "MCP docs/search query=fix parser"
-    assert describe("mcp__github__create_issue", title="A bug") == "MCP github/create_issue title=A bug"
+def test_a_namespaced_tool_names_its_server_without_claiming_a_protocol():
+    """The row says what the name says: a plugin's ``a__b`` is namespaced too, so the word cannot be ``MCP``."""
+    assert describe("docs__search", query="fix parser") == "docs/search query=fix parser"
+    assert describe("my_plugin__helper", x=1) == "my_plugin/helper x=1"
+    assert describe("mcp__github__create_issue", title="A bug") == "github/create_issue title=A bug"
+    assert describe("mcp__github") == "mcp__github", "a name without a tool part keeps its own name"
     assert describe("search", query="fix parser") == "search query=fix parser"
 
 

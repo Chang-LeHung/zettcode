@@ -374,13 +374,29 @@ def _tool_entry(tool: str, *, status: EntryStatus = EntryStatus.COMPLETED) -> To
     return ToolEntry(id=1, call_id="call-1", tool=tool, title=f"Ran {tool}", text="output", status=status)
 
 
+def _shipped_themes():
+    """Return every palette the program can run on, by name: the two built-in ones and the 16 files."""
+    from pathlib import Path
+
+    from zettcode.tui.theme_file import theme_from_toml
+
+    yield "dark", DARK
+    yield "light", LIGHT
+    for path in sorted((Path(__file__).resolve().parents[1] / "src/zettcode/tui/themes").glob("*.toml")):
+        yield path.stem, theme_from_toml(path.read_text(encoding="utf-8"))
+
+
 def test_tool_rows_are_painted_by_what_the_tool_did():
-    """Six hues, not eight: a read is green, what the agent looks around with is lavender, what is written
-    orange, what is deleted red, a delegated agent teal, and another session mauve.
+    """Six hues, not eight: a read is the palette's warm yellow, what the agent looks around with is lavender,
+    what is written orange, what is deleted red, a delegated agent teal, and another session mauve.
 
     A transcript is mostly tool rows, and a rainbow of them reads as noise. Tools that do the same thing
     share a hue, and the roles stay separate so a palette can override one of them on its own. Reading is the
-    one split, because those rows are the most of any and a second blue beside the first reads as one family.
+    one split, because those rows are the most of any. Its yellow is the palette's own, so in every named palette but one it is
+    also the warning colour (and not in the two built-ins) — accepted, since a skipped row carries a glyph of its own, and the alternative
+    (a step toward the write orange) was measured and rejected: it put reads within ΔE 3 of writes in five
+    palettes. What the palettes do guarantee is that a read never *is* a write; the distance behind that is
+    asserted in ``test_docs.py``.
     """
     read = render_entry(_tool_entry("read_file"), 40, DARK, 0)
     shell = render_entry(_tool_entry("bash"), 40, DARK, 0)
@@ -399,6 +415,18 @@ def test_tool_rows_are_painted_by_what_the_tool_did():
         assert len(families) == 5, families
         assert theme.tools.message not in families
     assert DARK.tools.delete == DARK.error, "a deletion is the colour of a failure, on purpose"
+    # Reading sits in the warm-yellow family, which is the warning's colour in the bundled themes: accepted and
+    # documented in ToolTheme rather than papered over, because the alternatives are worse — a step toward the
+    # write orange put reads within a few ΔE of writes. What must hold is that reading is not one of the other
+    # tool families, and that a skipped row still says so with its glyph.
+    for name, theme in _shipped_themes():
+        assert theme.tools.read != theme.tools.search, name
+        assert theme.tools.read not in {
+            theme.tools.write,
+            theme.tools.delete,
+            theme.tools.subagent,
+            theme.tools.message,
+        }
     assert tool_color("read_file", DARK) == DARK.tools.read != tool_color("grep", DARK)
     assert tool_color("grep", DARK) == DARK.tools.search
     assert tool_color("bash", DARK) == DARK.tools.shell != tool_color("write_file", DARK)

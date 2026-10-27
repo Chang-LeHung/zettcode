@@ -164,8 +164,11 @@ class StreamMixin(TurnMixin):
             return
         # An unknown status is refused before the row is touched at all.
         outcome = EntryStatus(status)
-        entry.text = limit_output(self.renderers.body(entry.tool, output))
-        self.renderers.finished(entry, entry.text)
+        body = self.renderers.body(entry.tool, output)
+        entry.text = limit_output(body)
+        # The result, unbounded: a count is of what came back, not of the preview the row keeps, and what it says about
+        # the body depends on whether the call worked.
+        self.renderers.finished(entry, body, outcome)
         entry.finish(outcome, self.clock())
         self._changed(entry)
         # The loop calls the model again once the batch has produced its

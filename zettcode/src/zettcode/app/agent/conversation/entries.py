@@ -243,10 +243,16 @@ class ToolEntry(TimedEntry):
 class ReadEntry(ToolEntry):
     """A file that was read: its body is source code, drawn as the language it is.
 
-    ``language`` names the scanner for the output, or is ``None`` for a file that is not code.
+    ``language`` names the scanner for the output, or is ``None`` for a file that is not code. ``lines`` is how many
+    lines came back, once a completed read has one; it is a field of the row rather than part of its title, so the
+    title being restated or cut at the width cannot lose it. ``picture`` marks a path that looks like a picture — the suffix the read tool
+    sends as an image — since a row is opened from the arguments, before the result exists; a file whose content is an
+    image under another name is counted as text until the result itself says otherwise.
     """
 
     language: str | None = None
+    lines: int | None = None
+    picture: bool = False
 
 
 @dataclass(slots=True, kw_only=True)

@@ -680,9 +680,20 @@ class SessionMessagePresenter(ToolPresenter[MessageEntry]):
 
 
 class ReadPresenter(ToolPresenter[ReadEntry]):
-    """A file that was read: the body is highlighted as the language the file is in."""
+    """A file that was read: the body is highlighted as the language the file is in, and the row says how much."""
 
     entry_type = ReadEntry
+
+    def after_title(self, entry: ReadEntry, theme: Theme) -> list[Span]:
+        """Say how many lines came back, beside the title rather than inside it.
+
+        A field of the row survives what a title does not: `restate_tool` rewrites the title from the arguments, and
+        the count is drawn from the entry, the way an edit's ``+N -N`` is. A row too narrow for the title and the
+        count together cuts the count, as it cuts any tail — an edit's counts go the same way.
+        """
+        if entry.lines is None:
+            return []
+        return [Span(f" \u00b7 {entry.lines} line" + ("" if entry.lines == 1 else "s"), Style(foreground=theme.subtle))]
 
     def body_lines(self, entry: ReadEntry, width: int, theme: Theme, muted: Style) -> list[TextLine]:
         """Show the output as source code when the file is."""

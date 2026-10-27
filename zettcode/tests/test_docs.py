@@ -26,6 +26,9 @@ from zettcode.tui.theme_file import theme_from_toml
 #: The repository root: the workspace around this package (``zettcode/``), which holds ``docs/``.
 ROOT = Path(__file__).resolve().parents[2]
 
+#: Where the generated palettes live, next to the code that reads them.
+THEMES = Path(__file__).resolve().parents[1] / "src/zettcode/tui/themes"
+
 
 def code_blocks(path: str, language: str) -> list[str]:
     text = (ROOT / path).read_text(encoding="utf-8")
@@ -450,6 +453,57 @@ def test_the_screens_agree_with_what_the_guide_says_about_them():
     for name, figures in quoted.items():
         for figure in figures:
             assert figure in pictures[name], f"{name} does not show {figure!r}"
+
+
+def test_every_shipped_theme_is_the_one_the_generator_writes():
+    """The 16 files are generated, and nothing else notices when one is edited by hand.
+
+    ``palette_data.py`` writes the same text ``--export-themes`` writes; a theme that drifted from it — a hand edit,
+    or a generator change that was never exported — is a palette no test would otherwise see.
+    """
+    sys.path.insert(0, str(ROOT / "docs/scripts"))
+    try:
+        import palette_data
+        import palette_gallery
+    finally:
+        sys.path.remove(str(ROOT / "docs/scripts"))
+
+    written = {palette.key: palette_gallery.toml_of(palette) for palette in palette_data.palettes()}
+    shipped = {path.stem: path.read_text(encoding="utf-8") for path in THEMES.glob("*.toml")}
+    # The two built-in palettes are the code's own defaults, not files: they are what a first start runs on.
+    written = {name: text for name, text in written.items() if name in shipped or name not in {"dark", "light"}}
+
+    assert set(shipped) <= set(written), "a theme file names a palette the generator does not write"
+    drifted = sorted(name for name, text in written.items() if name in shipped and shipped[name] != text)
+    assert drifted == [], drifted
+
+
+def test_a_read_row_is_measurably_not_a_write_row_in_every_palette():
+    """The generator's separation is the promise, so it is asserted in colour space, not as two different strings.
+
+    A read row and a write row sit next to each other often enough that "a different hex" is not enough — rose-pine-dawn
+    landed on `#9e6b29` beside `#9e6a23`, ΔE 2.4, which is the just-noticeable difference. The built-in palettes are
+    in the check too, since the program starts on one of them.
+    """
+    sys.path.insert(0, str(ROOT / "docs/scripts"))
+    try:
+        import palette_data
+    finally:
+        sys.path.remove(str(ROOT / "docs/scripts"))
+
+    from zettcode.tui import DARK, LIGHT
+
+    pairs = [(palette.key, palette.theme.tools.read, palette.theme.tools.write) for palette in palette_data.palettes()]
+    pairs += [("dark", DARK.tools.read, DARK.tools.write), ("light", LIGHT.tools.read, LIGHT.tools.write)]
+    # The number, not the constant: a generator that lowered it would keep this test green while the guide keeps
+    # promising ten.
+    close = [
+        (name, round(palette_data.distance(read, write), 1))
+        for name, read, write in pairs
+        if palette_data.distance(read, write) < 10
+    ]
+
+    assert close == [], close
 
 
 def _render_screens():

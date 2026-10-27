@@ -33,13 +33,29 @@ from pathlib import Path
 from zettcode.tui import ELLIPSIS, SEPARATOR
 from zettcode.tui.render import GENERIC, language_for
 
-from .entries import DeleteEntry, EditEntry, MessageEntry, ReadEntry, ToolEntry, WriteEntry
+from .entries import DeleteEntry, EditEntry, EntryStatus, MessageEntry, ReadEntry, ToolEntry, WriteEntry
 from .text import DECLINED_NOTE, limit_output
 
 #: Output kinds the chain shapes; a link claims one or more of them.
 TOOL = "tool"
 THINKING = "thinking"
 ANSWER = "answer"
+
+#: Suffixes that look like a picture, copied from the read tool's accepted set: a row is opened from the arguments,
+#: before the result exists, so the suffix is all it has. The durable answer is a boolean on the finished event, taken
+#: from the result's own content — see :func:`is_picture_path`.
+PICTURE_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".gif", ".webp"})
+
+
+def is_picture_path(path: str) -> bool:
+    """Return whether ``path`` looks like a picture by its suffix.
+
+    A guess, and named like one: the read tool decides by the file's signature, so a PNG copied to ``.bin`` is counted
+    as text and a text file named ``notes.png`` is not counted. Both are a line about a row nobody is reading closely;
+    the exact answer needs the boolean the result will carry (see :data:`PICTURE_SUFFIXES`).
+    """
+    return Path(path).suffix.lower() in PICTURE_SUFFIXES
+
 
 #: The hint a bounded read leaves behind; it is advice for the model, not the
 #: reader, and the row already shows the text it applies to.
@@ -128,12 +144,13 @@ class RenderHandler(ABC):
         """Return the text under a tool row; only a tool link changes this."""
         return output
 
-    def finished(self, entry: ToolEntry, text: str) -> None:
+    def finished(self, entry: ToolEntry, text: str, status: EntryStatus) -> None:
         """Adjust a row now that its result is in — a count, a size — and change nothing by default.
 
         Args:
-            entry: The row, already carrying its bounded body in ``text``.
-            text: The same body, after :meth:`body` shaped it.
+            entry: The row, whose body is already set and bounded.
+            text: The body as it came back, after :meth:`body` shaped it and before it was bounded.
+            status: Whether the call completed, failed or was skipped: a row may only count what worked.
         """
         return None
 
@@ -192,11 +209,11 @@ class Renderers:
         handler = self._claim(TOOL, name)
         return output if handler is None else handler.body(name, output)
 
-    def finished(self, entry: ToolEntry, text: str) -> None:
+    def finished(self, entry: ToolEntry, text: str, status: EntryStatus) -> None:
         """Let the claiming link adjust a row once its result is in."""
         handler = self._claim(TOOL, entry.tool)
         if handler is not None:
-            handler.finished(entry, text)
+            handler.finished(entry, text, status)
 
     def text(self, kind: str, text: str, *, opening: bool = False) -> str:
         """Return one streamed fragment of ``kind``, shaped by the claiming link."""
@@ -384,26 +401,33 @@ class ReadTool(ToolHandler):
     def open_tool(
         self, name: str, arguments: Mapping[str, object], *, id: int, call_id: str, started_at: float
     ) -> ToolEntry:
-        """A read row, which knows the language its body is in."""
+        """A read row, which knows the language its body is in, and whether the file is a picture."""
         row = self.describe(name, arguments)
+        path = argument(arguments, "path")
         return ReadEntry(
-            id=id, call_id=call_id, tool=name, title=row.title, language=row.language, started_at=started_at
+            id=id,
+            call_id=call_id,
+            tool=name,
+            title=row.title,
+            language=row.language,
+            picture=is_picture_path(path),
+            started_at=started_at,
         )
 
     def body(self, name: str, output: str) -> str:
         """Drop the continuation hint; the row bounds the text it applies to."""
         return CONTINUATION.sub("", output).rstrip()
 
-    def finished(self, entry: ToolEntry, text: str) -> None:
-        """Say how many lines the read returned: the row said "Read app.py" and not how much of it.
+    def finished(self, entry: ToolEntry, text: str, status: EntryStatus) -> None:
+        """Count what the read returned, on the row, if it returned text and the call worked.
 
-        A picture is one line of description, not a file of lines, so it is left alone. The count is of
-        what came back, which is what the reader is looking at — a range asked for is not the same number.
+        The count is of what came back — a range asked for is not the same number — and of the whole of it, not of
+        the preview the row keeps, so a read past the output limit is counted in full. A picture carries no lines,
+        and a failed call's body is the error message rather than the file, so neither is counted.
         """
-        if text.startswith("Image "):
+        if status is not EntryStatus.COMPLETED or not isinstance(entry, ReadEntry) or entry.picture:
             return
-        lines = len(text.splitlines())
-        entry.title = f"{entry.title} \u00b7 {lines} line" + ("" if lines == 1 else "s")
+        entry.lines = len(text.splitlines())
 
 
 class WriteTool(ToolHandler):
@@ -657,26 +681,31 @@ class MessageTool(ToolHandler):
         )
 
 
-class McpTool(ToolHandler):
-    """A tool an MCP server offers, named ``<server>__<tool>`` by the runtime.
+class NamespacedTool(ToolHandler):
+    """A tool whose name carries where it came from: ``server__tool``, so the row names the server.
 
     The server is part of what the call was: the same ``search`` in two servers is two different tools, with
     different reach and different answers, and a row that drops the server makes them look like one.
+
+    The name is all a renderer knows, so the row says what the name says — ``github/create_issue`` — and not that
+    the tool speaks MCP: a plugin registers a namespaced name of its own with the same shape, and the runtime does
+    not mark its remote tools here. A name without both parts is shown as it arrived.
     """
 
     def handles(self, kind: str, name: str = "") -> bool:
         """Claim a namespaced name that no earlier link claimed."""
-        return kind == TOOL and "__" in name and not name.startswith("__")
+        return kind == TOOL and "__" in name.strip("_") and not name.startswith("__")
 
     def describe(self, name: str, arguments: Mapping[str, object]) -> ToolRow:
-        """Show ``MCP server/tool``, so the row names where the capability came from.
+        """Show ``server/tool``, so the row names where the capability came from.
 
-        The runtime names a remote tool ``<server>__<tool>``; a front end that prefixes the family with ``mcp`` —
-        ``mcp__github__create_issue`` — is read the same way, so the server and the tool are what the row says.
+        The runtime names a remote tool ``<server>__<tool>``; a name that prefixed the family with ``mcp`` —
+        ``mcp__github__create_issue`` — is read the same way, and one without both parts keeps its own name.
         """
         remote = name[5:] if name.startswith("mcp__") else name
         server, _, tool = remote.partition("__")
-        return ToolRow(f"MCP {server}/{tool} {summarise(arguments)}".rstrip())
+        label = f"{server}/{tool}" if server and tool else name
+        return ToolRow(f"{label} {summarise(arguments)}".rstrip())
 
 
 class FallbackTool(ToolHandler):
@@ -746,7 +775,7 @@ DEFAULT_RENDERERS = Renderers(
         SkillTool(),
         TaskTool(),
         MessageTool(),
-        McpTool(),
+        NamespacedTool(),
         FallbackTool(),
         ReasoningHandler(),
         AnswerHandler(),

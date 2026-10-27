@@ -519,7 +519,7 @@ jit = false                    # 模型可以写并运行小的 Python 工具；
 | `harness.subagent_max_iterations` | `512` | 一个子 agent 完成一个任务最多可以调用模型的次数。子 agent 在真实代码库里探索或修改要调用几十次（库自带的默认值 18 会让这类任务做到一半就结束）；这个值是防止它停不下来的上限，不是目标。子 agent 也会拿到你项目的 `AGENTS.md`。 |
 | `harness.subagent_messaging` | `false` | 让 `coding` 子 agent 也拥有 `list_sessions` 和 `send_message`。默认关闭：子 agent 只为一个会话做一件事，和其他会话对话是那个会话自己的事。见[子 agent 能做什么](#what-a-child-agent-can-do)。 |
 | `harness.todowrite` | `false` | 提供 `todo_write`，清单由界面画在计划面板里。维护计划要花轮次，所以默认关闭。 |
-| `harness.jit` | `false` | 启动时就打开 just-in-time harness：模型可以自己写小的 Python 工具，存在 `~/.zettcode/harness`（每个会话一个文件夹）里并运行它们。它写的代码用你的权限在这台机器上运行，不受 shell 权限档管辖，所以默认关闭。`/harness on` 和 `/harness off` 在本轮切换，从下一次请求起生效。 |
+| `harness.jit` | `false` | 启动时就打开 just-in-time harness：模型可以自己写小的 Python 工具，存在 `~/.zettcode/harness`（每个会话一个文件夹）里并运行它们。它写的代码跑在自己的子进程里 —— 崩溃或卡死不会带走窗口 —— 并且在 `full` 以下的每一档都跑在 `safe` 用的那个边界里，所以仍然默认关闭。`full` 下它拿到的是你自己的权限；没有沙箱的机器上，harness 会每个会话说一次，模型写的代码不会在你不知情的情况下失去边界。`/harness on` 和 `/harness off` 在本轮切换。只有**改了边界**（进或出 `full`）才会关掉那个子进程：下一次请求重新起一个，模型自己写的工具要再跑一次 `repo_load` 才回来；`ask` 和 `safe` 用的是同一个边界，在两者之间切换不花任何代价。 |
 | `shell.network` | `false` | 让在 `safe` 沙箱里跑的命令可以访问网络。默认关闭；`full` 永远有网络，没有沙箱的机器也一样。见[审批](/zh/guide/interface#审批)。 |
 
 例如，减少回看内容、添加项目内 skills，再关闭远程工具服务器：

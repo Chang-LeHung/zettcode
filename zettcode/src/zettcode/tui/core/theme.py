@@ -17,12 +17,18 @@ class ToolTheme:
 
     The built-in palettes keep to a few hues, the way editors keep their tool and
     status colours to a few: a soft lavender for what the agent goes looking with
-    (a glob, a grep, a picture, a command, the plan), a yellow for reading one
-    file, orange for what it writes, red for what it deletes, teal for a delegated
-    child agent, and mauve for talking to another session. More hues than that read as noise in a
-    transcript that is mostly tool rows, so reading is the one addition: those rows are the most
-    of any, and a yellow no other role claims says "this is a file I read" where the lavender says
-    "this is the agent doing something". Writing is orange and not green because green is the
+    (a glob, a grep, a picture, a command, the plan), a warm yellow for reading one
+    file (and for ``read_skill``, which reads a file too), orange for what it writes, red for what
+    it deletes, teal for a delegated child agent, and mauve for talking to another session. More
+    hues than that read as noise in a transcript that is mostly tool rows, so reading is the one
+    addition: those rows are the most of any, and the warm yellow says "this is a file I read" where
+    the lavender says "this is the agent doing something". That yellow is also the warning colour in the bundled palettes whose yellow and orange differ (every one but
+    rose-pine-dawn, which the anti-collision step moved), and the overlap is accepted rather than hidden: it is the one warm hue no tool
+    row claims, a skipped row carries a glyph of its own, and the alternative — a step toward the write
+    orange — put reads within a few ΔE of writes, which are on screen just as often. The two built-in
+    palettes take their tool hues from the Catppuccin family rather than from their page (``dark``'s read
+    is mocha's yellow, ``light``'s a shade of its own beside its warning), which is how their other tool
+    colours work too. Writing is orange and not green because green is the
     colour of an added line: the heading of an edit sits on the line above its diff, and the same
     green on both made the heading read as one more added line (and a yellow one, close to the
     green in hue and weight, still read as its neighbour). The roles are separate so a theme
@@ -185,7 +191,7 @@ LIGHT = Theme(
     focus="#237a5c",
     selection="#cfe4d6",
     tools=ToolTheme(
-        read="#7a5c00",
+        read="#7d5f10",
         search="#5b3fa8",
         image="#5b3fa8",
         write="#b85a14",
