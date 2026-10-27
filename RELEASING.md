@@ -50,8 +50,10 @@ It is not a member of the uv workspace, so `make check` does not cover it; its t
    tag against the version, runs the tests on Python 3.10 to 3.15, builds, and publishes with the same
    `PYPI_API_TOKEN` secret.
 
-The plugin depends on `zettcode>=0.1.11,<0.2`, the first release with `zettcode.app.plugins`; publish that release
-first, because until it exists `pip install zettcode-monitor` has nothing to resolve against.
+The plugin depends on `zettcode>=0.1.11,<0.3`; 0.1.11 is the first release with `zettcode.app.plugins`, and the 0.2
+line keeps that plugin API, so a 0.2.x install resolves the plugin as it is rather than being downgraded to satisfy a
+`<0.2` cap. Publish that floor first, because until it exists `pip install zettcode-monitor` has nothing to resolve
+against.
 
 ## CI
 
