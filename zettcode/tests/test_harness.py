@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 import pytest
@@ -180,11 +181,128 @@ def test_each_session_keeps_its_tools_in_its_own_folder_beside_the_sessions_not_
 
 
 def test_the_harness_runs_model_code_in_a_child_and_only_sandboxes_it_below_full(tmp_path):
-    """A crash in code the model wrote stays out of the window; the sandbox is for a level that still bounds things."""
+    """A crash in code the model wrote stays out of the window; the sandbox is for the levels that still bound things."""
     from zett_agent.jit_harness import SubprocessToolHost
 
     from zettcode.engine.permission import Permission, ShellPolicy
 
+    policy = ShellPolicy(Permission.SAFE, workspace=tmp_path)
+
+    policy.level = Permission.ASK
+    assert policy.jit_sandbox() is policy.sandbox.boundary, "every level below full hands over the same boundary"
+    policy.level = Permission.FULL
+    assert policy.jit_sandbox() is None, "at full the reader has given the model their own access"
+    assert not policy.sandbox_missing(), "full promises no boundary, so a missing one says nothing"
+
+    # The host itself, through the factory the plugin builds: a child either way, and the boundary the policy names.
+    policy.level = Permission.SAFE
+    host = _harness_host(tmp_path, policy)
+    assert isinstance(host, SubprocessToolHost), "a crash or a hang must not take this process with it"
+    if policy.sandbox.available:
+        assert host.sandbox is policy.sandbox.boundary, "the child runs in the boundary the shell's safe level uses"
+    else:
+        assert host.sandbox is None
+
+
+def test_a_session_whose_boundary_changed_is_really_forgotten(tmp_path):
+    """The SDK is the thing that has to let go of the old child, and a request in flight holds it.
+
+    Driving the real ``forget_session`` is the point: a stand-in that cannot raise is what hid the two bugs this
+    test was written for — a key the framework had already dropped, and a forget attempted before the release
+    (which the framework refuses, leaving the old child running for the rest of the session).
+    """
+    from zettcode.engine.extensions.harness_switch import HarnessSwitch
+
+    boundaries = ["sandboxed"]
+    harness = SwitchedHarness(tmp_path / "harness", HarnessSwitch(on=True), boundary=lambda: boundaries[0])
+
+    harness._follow_boundary("s1")
+    assert harness._built["s1"] == "sandboxed"
+
+    boundaries[0] = "none"
+    harness._follow_boundary("s1")
+    assert harness._built["s1"] == "none", "the record follows the boundary once the old child is gone"
+    with pytest.raises(KeyError):
+        harness.forget_session("s1")  # it was never loaded, and the framework no longer holds it
+
+
+def test_a_boundary_change_waiting_for_the_release_is_retried(tmp_path, monkeypatch):
+    """A child cannot be forgotten while the request holds it: the boundary stays unrecorded, so it is tried again."""
+    from zettcode.engine.extensions.harness_switch import HarnessSwitch
+
+    boundaries = ["sandboxed"]
+    harness = SwitchedHarness(tmp_path / "harness", HarnessSwitch(on=True), boundary=lambda: boundaries[0])
+    harness._follow_boundary("s1")
+
+    attempts: list[str] = []
+
+    def busy(session_id: str) -> None:
+        attempts.append(session_id)
+        raise RuntimeError("Cannot forget a harness with an active request")
+
+    monkeypatch.setattr(harness, "forget_session", busy)
+    boundaries[0] = "none"
+    harness._follow_boundary("s1")
+
+    assert harness._built["s1"] == "sandboxed", "not recorded, so the next request tries again"
+    assert "s1" in harness._pending
+
+
+def test_the_release_detaches_before_it_forgets(tmp_path, monkeypatch):
+    """The framework detaches in the release: a forget before it always fails, and the fail-open child survives."""
+    from zett_agent.jit_harness import JITHarnessExtension
+
+    from zettcode.engine.extensions.harness_switch import HarnessSwitch
+
+    harness = SwitchedHarness(tmp_path / "harness", HarnessSwitch(on=True), boundary=lambda: "none")
+    order: list[str] = []
+
+    def release(self, context) -> None:
+        order.append("detach")
+
+    monkeypatch.setattr(JITHarnessExtension, "_release", release)
+    monkeypatch.setattr(harness, "forget_session", lambda session_id: order.append("forget"))
+
+    class _Context:
+        session_id = "s1"
+
+    harness._pending.add("s1")
+    harness._release(_Context())
+
+    assert order == ["detach", "forget"], order
+
+
+def test_a_machine_without_a_sandbox_says_so_once_per_session(tmp_path, monkeypatch):
+    """The model's own tools are not a shell command, so the shell's fallbacks do not bound them: say it, once."""
+    from zett_agent.events import AgentEventType
+
+    from zettcode.engine.extensions.harness_switch import HarnessSwitch
+    from zettcode.engine.extensions.mcp_notice import HARNESS_NOTICE_EVENT_NAME, notice_from, notice_level_from
+
+    emitted: list[object] = []
+
+    class _Context:
+        session_id = "s1"
+
+        async def emit(self, event):
+            emitted.append(event)
+
+    harness = SwitchedHarness(
+        tmp_path / "harness", HarnessSwitch(on=True), boundary=lambda: "none", unbounded=lambda: True
+    )
+
+    asyncio.run(harness._say_unbounded(_Context()))
+    asyncio.run(harness._say_unbounded(_Context()))
+
+    assert len(emitted) == 1, "once per session, not once per request"
+    event = emitted[0]
+    assert event.type is AgentEventType.CUSTOM and event.name == HARNESS_NOTICE_EVENT_NAME
+    assert notice_level_from(event) == "warn"
+    assert "/harness off" in notice_from(event)
+
+
+def _harness_host(tmp_path, policy):
+    """Return the host the plugin's factory builds for one session."""
     config = ZettCodeConfig(
         workspace=tmp_path,
         models=(ModelConfig(model="m", token="t"),),
@@ -192,20 +310,10 @@ def test_the_harness_runs_model_code_in_a_child_and_only_sandboxes_it_below_full
         harness_dir=tmp_path / "harness",
         mcp_enabled=False,
     )
-    policy = ShellPolicy(Permission.SAFE, workspace=tmp_path)
     (harness,) = [
         extension for extension in agent_extensions(config, policy=policy) if isinstance(extension, SwitchedHarness)
     ]
-
-    host = harness._host_factory()  # type: ignore[misc]
-    assert isinstance(host, SubprocessToolHost), "a crash or a hang must not take this process with it"
-    assert host.sandbox is not None or not policy.sandbox.available
-
-    policy.level = Permission.FULL
-    unrestricted = harness._host_factory()  # type: ignore[misc]
-    assert isinstance(unrestricted, SubprocessToolHost) and unrestricted.sandbox is None, (
-        "at full the reader has given the model their own access, so there is nothing to bound"
-    )
+    return harness._host_factory()  # type: ignore[misc]
 
 
 def test_the_default_harness_folder_is_not_inside_the_default_session_store():

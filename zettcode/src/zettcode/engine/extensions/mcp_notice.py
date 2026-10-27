@@ -1,4 +1,4 @@
-"""What the MCP extension tells the reader, as a custom event the transcript can show.
+"""What an extension tells the reader as a custom event the transcript can show: MCP news, and the harness's.
 
 This is a module of its own, apart from :mod:`.mcp`, because the transcript has to recognise the
 event and :mod:`.mcp` imports the MCP SDK, which costs more than the first frame. The name and the
@@ -11,6 +11,12 @@ from zett_agent.events import AgentEvent
 
 #: Name of the custom event that carries one line of MCP news for the reader.
 MCP_NOTICE_EVENT_NAME = "mcp_notice"
+
+#: The same, for a line about the just-in-time harness: one channel, so a reader sees both in one place.
+HARNESS_NOTICE_EVENT_NAME = "harness_notice"
+
+#: Every event that carries a line for the reader.
+NOTICE_EVENT_NAMES = frozenset({MCP_NOTICE_EVENT_NAME, HARNESS_NOTICE_EVENT_NAME})
 
 
 #: How serious a line of news is: ``info`` is progress (a server is starting, or ready), ``warn`` is something the
@@ -37,7 +43,7 @@ def notice_from(event: AgentEvent) -> str | None:
     must not be able to fail the request that produced it.
     """
     payload = event.payload
-    if event.name != MCP_NOTICE_EVENT_NAME or not isinstance(payload, dict):
+    if event.name not in NOTICE_EVENT_NAMES or not isinstance(payload, dict):
         return None
     text = payload.get("text")
     return text.strip() if isinstance(text, str) and text.strip() else None

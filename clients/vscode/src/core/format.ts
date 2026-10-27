@@ -77,13 +77,20 @@ export function describeTool(name: string, args: Record<string, unknown>, output
   const description = stringArg(args, "description", "prompt", "task");
   const bare = name.replace(/^.*__/, "").toLowerCase();
 
-  // A tool a remote MCP server offers is namespaced `<server>__<tool>`, sometimes with the family in front
-  // (`mcp__github__create_issue`): the server is part of what the call was, and dropping it made the same `search`
-  // in two servers look like one tool.
+  // A namespaced name is `<server>__<tool>` (and a name with the family in front, `mcp__github__create_issue`,
+  // reads the same way): the server is part of what the call was, and dropping it made the same `search` in two
+  // servers look like one tool. The row says only what the name says — a plugin registers namespaced names of its
+  // own with the same shape — and a name without a tool part is left whole.
   const remote = name.startsWith("mcp__") ? name.slice(5) : name.includes("__") ? name : "";
+  const [server, ...rest] = remote.split("__");
+  const tool = rest.join("__");
+  if (remote && server && tool) {
+    // A verb, like every other row, with the server in the target: the bold leading word is a verb column, and a
+    // server name in it read as one word run into the next (`github create_issue`).
+    return { verb: "Called", target: `${server}/${tool}` };
+  }
   if (remote) {
-    const [server, ...rest] = remote.split("__");
-    return { verb: "MCP", target: `${server}/${rest.join("__")}` };
+    return { verb: name, target: "" };
   }
 
   switch (bare) {

@@ -1105,8 +1105,32 @@ async def test_a_turn_that_thinks_again_after_answering_shows_both_segments(tmp_
 
     thinking = [entry.text for entry in app.transcript.entries if entry.kind == "thinking"]
     assert thinking == ["first thought", "second thought"], thinking
-    assert [entry.kind for entry in app.transcript.entries].count("answer") >= 1
+    kinds = [entry.kind for entry in app.transcript.entries if entry.kind in ("thinking", "answer")]
+    assert kinds == ["thinking", "answer", "thinking", "answer"], "each thought sits where it happened"
     assert app.busy is False
+
+
+async def test_a_resumed_session_shows_one_thinking_row_before_the_answer(tmp_path):
+    """The alternation is live-only: the stored turn keeps one reasoning text, so a reopen shows one block.
+
+    zett-agent's ``AssistantMessage.reasoning`` is a single string. Recording where each segment began would be a
+    storage format of our own; until then a reopened session shows the thoughts as one block above the answer, and
+    this pins that rather than letting it drift silently into two invented ones.
+    """
+    from zett_agent.messages import AssistantMessage as Message
+    from zett_agent.messages import UserMessage
+
+    from zettcode.app.agent.conversation.replay import replay
+    from zettcode.engine.storage import SessionStore
+
+    store = SessionStore(tmp_path)
+    await store.append("s", "req", UserMessage(content="find the bug"))
+    await store.append("s", "req", Message(content="the real answer", reasoning="first thought\n\nsecond thought"))
+
+    replayed = replay(store.read("s"))
+    kinds = [entry.kind for entry in replayed.transcript.entries if entry.kind in ("thinking", "answer")]
+
+    assert kinds == ["thinking", "answer"], "one stored reasoning text, one row"
 
 
 async def test_leaving_before_the_warm_up_ends_does_not_wait_for_it(monkeypatch):

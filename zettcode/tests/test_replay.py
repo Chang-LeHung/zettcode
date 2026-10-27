@@ -47,6 +47,27 @@ async def test_a_replayed_edit_row_keeps_the_counts_it_was_phrased_with(tmp_path
     assert [(entry.title, entry.added, entry.removed) for entry in tool_rows] == [("Edited app.py (1 edit)", 1, 3)]
 
 
+async def test_a_replayed_read_row_keeps_the_count_it_was_given(tmp_path: Path):
+    """The count comes from the stored result, through the same hook the live path runs."""
+    store = SessionStore(tmp_path)
+    await store.append("s", "req", UserMessage(content="read the parser"))
+    await store.append(
+        "s",
+        "req",
+        AssistantMessage(tool_calls=(ToolCall("call-1", "read", {"path": "app.py"}),)),
+    )
+    await store.append(
+        "s",
+        "req",
+        ToolMessage(tool_call_id="call-1", name="read", content="one\ntwo\nthree"),
+    )
+
+    replayed = replay(store.read("s"))
+
+    rows = [entry for entry in replayed.transcript.entries if getattr(entry, "kind", None) == "tool"]
+    assert [(entry.title, entry.lines) for entry in rows] == [("Read app.py", 3)]
+
+
 async def test_replay_builds_the_rows_the_live_events_built(tmp_path: Path):
     """The two paths must agree, or a resumed session looks different from the run."""
     live = Transcript()

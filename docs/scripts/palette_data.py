@@ -17,6 +17,10 @@ from zettcode.tui.render import blend
 from zettcode.tui.render.code import CodeTheme
 from zettcode.tui.render.color import parse_hex
 
+#: Least CIE76 ΔE a read row keeps from a write row: below ~10 the two read as the same colour, and a read row and
+#: a write row sit next to each other often enough that it would matter.
+READ_WRITE_SEPARATION = 10.0
+
 #: Least contrast a coloured word may have on the page. Below the 4.5 of body text on purpose: a pastel palette
 #: is pastel because its accents are soft, and the lines they colour are short; the greys that carry sentences
 #: are held higher.
@@ -36,6 +40,28 @@ def contrast(first: str, second: str) -> float:
     a, b = luminance(first), luminance(second)
     high, low = max(a, b), min(a, b)
     return (high + 0.05) / (low + 0.05)
+
+
+def _lab(colour: str) -> tuple[float, float, float]:
+    """Return a ``#rrggbb`` colour in CIE L*a*b*, to compare hues the way an eye does."""
+    channels = parse_hex(colour)
+    assert channels is not None, colour
+    linear = [((c / 255) / 12.92) if c / 255 <= 0.03928 else (((c / 255) + 0.055) / 1.055) ** 2.4 for c in channels]
+    x = (0.4124 * linear[0] + 0.3576 * linear[1] + 0.1805 * linear[2]) / 0.95047
+    y = 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+    z = (0.0193 * linear[0] + 0.1192 * linear[1] + 0.9505 * linear[2]) / 1.08883
+
+    def f(value: float) -> float:
+        return value ** (1 / 3) if value > 0.008856 else 7.787 * value + 16 / 116
+
+    fx, fy, fz = f(x), f(y), f(z)
+    return (116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz))
+
+
+def distance(first: str, second: str) -> float:
+    """Return CIE76 ΔE between two colours: below ~10 two colours read as one at a glance."""
+    a, b = _lab(first), _lab(second)
+    return sum((one - other) ** 2 for one, other in zip(a, b, strict=True)) ** 0.5
 
 
 @dataclass(frozen=True)
@@ -111,15 +137,33 @@ def build(
     warning = fit("warning", yellow, ACCENT_MIN)
     error = fit("error", red, ACCENT_MIN)
     green = fit("diff_added", green, ACCENT_MIN)
-    # Reading is the one lookup that is not a search or a command: it takes the palette's yellow, the hue furthest
-    # from the cool accent a glob, a grep, an image, a shell and the plan share — and the only one left that no other
-    # tool row claims (a green would sit beside the teal of a delegated task, and an added line). Those rows are the
-    # most common in a transcript, so they carry a colour of their own that reads as its own job at a glance.
+    # Reading is the one lookup that is not a search or a command: it takes the palette's own yellow. That is also the
+    # warning colour, and the distance is deliberately not hidden — the plain yellow is the only warm hue no tool row
+    # claims, a read row is the most common row in a transcript, and a skipped row carries a glyph of its own. The two
+    # neighbours that would be worse are the write orange (a write row is next to a read row as often) and the teal of a
+    # delegated task; both stay clear. Said in ToolTheme's docstring, and the guide says it too.
     reads = fit("tools.read", yellow, ACCENT_MIN)
+    # One palette's yellow and orange land on the same colour once both are moved for contrast (rose-pine-dawn), so the
+    # step is measured rather than tested by string: a read row must not be a write row, and "a different hex" is not
+    # that. It walks toward the page's own text until the distance holds.
+    writes = fit("tools.write", write or orange, ACCENT_MIN)
+    for step in range(1, 10):
+        if distance(reads, writes) >= READ_WRITE_SEPARATION:
+            break
+        reads = fit("tools.read", blend(yellow, text, step / 12), ACCENT_MIN)
+    # Checked after the last step, not inside the loop: a `for`/`else` tests the colour *before* each update, so the
+    # ninth update would go unmeasured and a separated palette would still raise, quoting a distance it had already
+    # reached. A palette that cannot be separated fails where it is built rather than shipping a read row a write row
+    # can be mistaken for.
+    if distance(reads, writes) < READ_WRITE_SEPARATION:
+        raise RuntimeError(
+            f"{key}: read {reads} is only ΔE {distance(reads, writes):.1f} from write {writes}, "
+            f"under the {READ_WRITE_SEPARATION} the palettes promise"
+        )
     cool = fit("tools.search", cool or blue, ACCENT_MIN)
     # Writing is the orange, not the yellow: the heading of an edit sits right above a diff whose additions are green,
-    # and a yellow heading is close to that green in hue and weight.
-    writes = fit("tools.write", write or orange, ACCENT_MIN)
+    # and a yellow heading is close to that green in hue and weight. (Its colour was fitted above, where the read yellow
+    # is measured against it.)
     delete = fit("tools.delete", red, ACCENT_MIN)
     teal = fit("tools.subagent", teal, ACCENT_MIN)
     message = fit("tools.message", pink if pink != accent else purple, ACCENT_MIN)

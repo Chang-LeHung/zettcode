@@ -7,7 +7,7 @@ panels temporarily cover the lower part of it.
 ```
   ▐ zettcode  New session · @api · ~/projects/api   DeepSeek Pro · high  ← header
  ─────────────────────────────────────────────────────────
- ● Read src/api/users.py                                ← transcript
+ ● Read src/api/users.py · 199 lines                       ← transcript
  ● Edited src/api/users.py (2 edits) +24 -6             (scrolls)
  ● Ran pytest tests/test_users.py
  ─────────────────────────────────────────────────────────
@@ -61,8 +61,8 @@ Every kind of output has its own row, in the order it happened:
 - **Your message** is marked with `›` and a band of colour.
 - **Thinking** is collapsed to one row. `Ctrl-T` or a click opens the newest one;
   each block can be opened on its own.
-- **Tool calls** read like a log — `Read src/app.py`, `Ran pwd`, `Edited
-  app.py (2 edits) +24 -6`, `Write src/new.py +40`, `Searched TODO in src`. An edit's added lines
+- **Tool calls** read like a log — `Read src/app.py · 199 lines`, `Ran pwd`, `Edited
+  app.py (2 edits) +24 -6`, `Write src/new.py +40`, `Searched TODO in src`. A read says how many lines came back. An edit's added lines
   are painted green and its removed ones red, whether the call is still running or done, and a
   write says how many lines the file now holds. Once an edit or a write has succeeded the row shows
   **the change itself** under the title, instead of the tool's one-line answer:
@@ -81,9 +81,13 @@ Every kind of output has its own row, in the order it happened:
   can be shown as removed. A failed edit or write shows its error instead, because nothing changed. The first five rows stay visible and the rest is behind a click
   (up to forty when open); a long line is cut at the width, never wrapped. Other output works the
   same way; nothing is ever dumped as JSON.
-- **Tool rows use a few colours**, so a long transcript stays calm: lavender for everything the agent looks at or runs
-  (reading, searching, pictures, commands, the plan), orange for writing and editing (not green, which is an added line in its diff), red for deleting (and for any
-  call that failed), teal for a delegated subagent, and mauve for talking to another session. A theme file can change
+- **Tool rows use a few colours**, so a long transcript stays calm: a warm yellow for reading a file (and a skill,
+  which reads one), lavender for what the agent looks around with or runs (searching, a picture, a command, the
+  plan), orange for writing and editing (not green, which is an added line in its diff), red for deleting (and for any
+  call that failed), teal for a delegated subagent, and mauve for talking to another session. The read yellow is the
+  palette's own — which is also its warning colour in every named palette but one, and not in the two built-ins —
+  a skipped row is told apart by its glyph, and the file rows are the most common in a transcript, which is why
+  they carry a colour at all. A theme file can change
   each one under `[tools]`. A web search the endpoint ran and a question put to you have roles of their own there,
   `web-search` and `ask-user`.
 - **The files a request changed** are listed once when it ends, above the `Processed for …` line, and only
@@ -300,7 +304,7 @@ levels, which `/permission` changes at any time between requests:
 
 | Level | What happens to a shell command |
 | --- | --- |
-| `deny` | None runs. The model is told the commands are off, and carries on with the file tools. |
+| `deny` | None runs. The model is told the commands are off, and carries on with the file tools. `/harness on` still runs the Python the model writes there — in the sandbox, since it is not a shell command. |
 | `ask` | Each one waits for your answer. This is where every run starts. |
 | `safe` | Every command runs without asking, inside an operating-system sandbox: it can write the workspace and `/tmp` and nothing else, and it has no network. |
 | `full` | Every command runs with your own access, without asking and without a sandbox. (Called `auto` before; `auto` still works.) |

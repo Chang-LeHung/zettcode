@@ -43,6 +43,18 @@ def preview_plugins() -> tuple[object, ...]:
     return (PreviewRows(), *(plugin for plugin in BUILTIN_PLUGINS if plugin.name != "shell"))
 
 
+def api_users_body() -> str:
+    """The file the sample conversation reads: short enough to show, real enough to count lines for."""
+    return "\n".join(
+        [
+            "from fastapi import APIRouter, HTTPException",
+            "",
+            "router = APIRouter()",
+            '@router.get("/users")',
+        ]
+    )
+
+
 def preview() -> Canvas:
     """Paint one sample conversation without a terminal, network, or user store."""
     previous = Path.cwd()
@@ -73,7 +85,7 @@ def preview() -> Canvas:
             clock[0] = 1.2
             transcript.complete_thinking()
             for call_id, tool, arguments, output in (
-                ("read", "read_file", {"path": "src/api/users.py"}, ""),
+                ("read", "read_file", {"path": "src/api/users.py"}, api_users_body()),
                 ("edit", "replace_in_file", {"path": "src/api/users.py"}, ""),
                 ("test", "bash", {"command": "pytest tests/test_users.py -q"}, "6 passed in 0.24s"),
             ):

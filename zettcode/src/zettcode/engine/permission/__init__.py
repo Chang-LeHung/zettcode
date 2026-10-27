@@ -33,6 +33,7 @@ from zett_agent.agent import AgentRunContext
 from zett_agent.extensions.base import AgentExtension, ToolCallNext
 from zett_agent.extensions.shell_approval import SHELL_APPROVAL_TOOL_NAME, ShellApprovalMode
 from zett_agent.messages import ToolCall
+from zett_agent.sandbox.base import Sandbox
 from zett_agent.tools.base import ToolResult
 
 from zettcode._compat import StrEnum
@@ -130,6 +131,23 @@ class ShellPolicy(Boundary):
         if self.level is Permission.SAFE and self.sandbox is not None and self.sandbox.available:
             return self.sandbox
         return None
+
+    def jit_sandbox(self) -> Sandbox | None:
+        """Return the boundary code the model writes runs in, or ``None`` when it gets the user's own access.
+
+        One answer for one decision: the just-in-time harness asks this instead of reading the level itself, so
+        the shell and the code the model wrote cannot disagree about what a level means. `full` is the level that
+        grants the model the reader's access, so nothing is left for a boundary to hold back; every other level
+        bounds it with the boundary `safe` uses, and a machine with no sandbox has nothing to pass on — the
+        reader is told, at the level that claimed a boundary (see :meth:`sandbox_missing`).
+        """
+        if self.level is Permission.FULL:
+            return None
+        return self.sandbox.boundary if self.sandbox is not None else None
+
+    def sandbox_missing(self) -> bool:
+        """Return whether the level in force promises a boundary this machine does not have."""
+        return self.level is not Permission.FULL and not (self.sandbox is not None and self.sandbox.available)
 
     @classmethod
     def from_mode(
