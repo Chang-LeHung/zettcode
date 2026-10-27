@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import re
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -136,6 +138,31 @@ def test_the_command_takes_no_subcommands(tmp_path):
     MonitorPlugin(tmp_path / "mon").activate(container)
     (command,) = container.commands
     assert command.name == "/monitor" and not command.subcommands
+
+
+def test_the_dependency_ranges_take_the_running_zettcode_and_zett_agent():
+    """The plugin installs beside zettcode, so its ranges have to admit the release it runs on here.
+
+    The cap was ``<0.2`` once, and a 0.2.x worktree could not install the plugin: pip either refused the local
+    checkout or quietly downgraded zettcode to 0.1.x with it. A range that stops short now fails in this test instead.
+    """
+    from importlib.metadata import version as installed
+
+    from packaging.requirements import Requirement
+
+    project = Path(__file__).resolve().parent.parent / "pyproject.toml"
+    declared = (
+        line
+        for line in re.findall(r'^\s{2}"([^"]+)"', project.read_text(encoding="utf-8"), re.MULTILINE)
+        if ">=" in line
+    )
+    ranges = {requirement.name: requirement for requirement in map(Requirement, declared)}
+    assert set(ranges) == {"zettcode", "zett-agent"}, "the runtime dependencies declared in pyproject.toml"
+    for name, requirement in ranges.items():
+        current = installed(name)
+        assert requirement.specifier.contains(current, prereleases=True), (
+            f"{requirement} excludes {name} {current}, the release this test runs on"
+        )
 
 
 def test_images_are_a_marker_unless_the_reader_keeps_them(tmp_path):

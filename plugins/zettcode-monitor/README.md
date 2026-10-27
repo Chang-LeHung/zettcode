@@ -21,7 +21,9 @@ the calls. The switches are read back when a session is resumed. `ZETTCODE_MONIT
 
     pip install zettcode-monitor
 
-Install it into the same environment as ZettCode, then restart. With a `uv tool` install:
+It runs on ZettCode 0.1.11 and later, across the 0.1 and the 0.2 line (`zettcode>=0.1.11,<0.3`): the plugin API it is
+built on is the same in both. Install it into the same environment as ZettCode, then restart. With a `uv tool`
+install:
 
     uv tool install --force --with zettcode-monitor zettcode
 
