@@ -19,6 +19,7 @@ class SessionInfo:
     workspace: str = ""
     status: str = "idle"
     kind: str = KIND_ZETTCODE
+    direct: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,12 +32,15 @@ class Incoming:
         hops: How many sessions it has passed through, this one included.
         via: ``"user"`` when a reader typed it into the other session, ``"agent"`` when its tool did, ``"external"``
             when the sender is not a ZettCode session.
+        direct: Set when the sender is a reader's one-to-one chat window: run the text as that reader's own prompt,
+            not as a message from another session, and send the final answer back to the sender.
     """
 
     sender: PeerInfo
     text: str
     hops: int
     via: str
+    direct: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,6 +65,7 @@ class Delivered:
 
     to: PeerInfo
     disposition: str
+    direct: bool = False
 
 
 class SendError(Exception):

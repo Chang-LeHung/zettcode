@@ -5,6 +5,11 @@
 the terminal agent and its HTTP server are `zettcode/`, and one `v*` tag publishes
 both console scripts. There is no second project and no second tag.
 
+The gateway's web page is built from `clients/gateway` into `zettcode/src/zettcode/gateway/static`. That output is not
+in git: the release workflow (and `make build` / `make smoke`) builds it with Node 20+ before the wheel is made, and
+`artifacts` in `zettcode/pyproject.toml` puts it in the wheel. Build a release by hand with `make build`, not with a bare
+`uv build`, or the wheel will have no page.
+
 ## One-time setup
 
 1. Create the repository secret `PYPI_API_TOKEN` under **Settings → Secrets and

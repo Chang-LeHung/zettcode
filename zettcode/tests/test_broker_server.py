@@ -222,6 +222,7 @@ async def test_registering_gives_a_handle_and_tells_everyone(running):
     for peer in (first, second):
         await eventually(lambda p=peer: [e["handle"] for e in p.listed()] == ["fix-the-parser"])
     assert second.listed()[0] == {
+        "direct": False,
         "kind": "zettcode",
         "session_id": A,
         "handle": "fix-the-parser",

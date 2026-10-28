@@ -45,6 +45,16 @@ jobs:
           print(f"tag {tag} matches project version {version}")
           PY
 
+      # The gateway's page is built from clients/gateway into the package; it is not in git, so a wheel made without this
+      # step would serve an API and no page.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - name: Build the gateway page
+        working-directory: clients/gateway
+        run: npm ci --no-audit --no-fund && npm run build
+
       - name: Build
         # A v* tag publishes the package: the terminal agent and the HTTP server ship together, with one version.
         run: uv build --package zettcode

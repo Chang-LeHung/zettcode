@@ -10,7 +10,7 @@ import { transform } from "esbuild";
  * Compile `.vue` files. Templates become render functions at build time, so the bundle carries Vue's runtime only:
  * nothing is compiled in the webview and its content security policy needs no `unsafe-eval`.
  *
- * @param {{ cssFile?: string }} options Where the components' styles are written, in source order; omit to drop them.
+ * @param {{ cssFile?: string }} options Where the components' styles are written, ordered by file path (so the cascade between components follows their names); omit to drop them.
  */
 export function vuePlugin(options = {}) {
   /** @type {Map<string, string>} */

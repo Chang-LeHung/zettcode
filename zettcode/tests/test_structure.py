@@ -102,9 +102,12 @@ LAYERS = (
     ("zettcode.app.ui", ("zettcode.engine",)),
     ("zettcode.app.commands", ("zettcode.engine",)),
     # The engine is what the terminal and the SDK both drive, so it knows neither of them.
-    ("zettcode.engine", ("zettcode.app", "zettcode.tui", "zettcode.cli", "zettcode.sdk", "zettcode.server")),
+    (
+        "zettcode.engine",
+        ("zettcode.app", "zettcode.tui", "zettcode.cli", "zettcode.sdk", "zettcode.server", "zettcode.gateway"),
+    ),
     # The SDK is the public face of the engine; it reaches the terminal's code for nothing.
-    ("zettcode.sdk", ("zettcode.app", "zettcode.tui", "zettcode.cli", "zettcode.server")),
+    ("zettcode.sdk", ("zettcode.app", "zettcode.tui", "zettcode.cli", "zettcode.server", "zettcode.gateway")),
     # The server is the SDK's HTTP face and holds no agent of its own: it reaches the agent through the SDK only.
     (
         "zettcode.server",
@@ -118,6 +121,22 @@ LAYERS = (
     (
         "zettcode.daemon",
         ("zettcode.app", "zettcode.server", "zettcode.tui", "zettcode.cli", "zettcode.config"),
+    ),
+    # The gateway is the SDK's other front end besides the server: a web page over the agent and the daemons. It owns no
+    # agent, reads nothing of the terminal, and reaches the broker, the engine and the daemons' records through the
+    # SDK only.
+    (
+        "zettcode.gateway",
+        (
+            "zettcode.app",
+            "zettcode.cli",
+            "zettcode.config",
+            "zettcode.tui",
+            "zettcode.engine",
+            "zettcode.broker",
+            "zettcode.daemon",
+            "zettcode.server",
+        ),
     ),
     ("zettcode.filelock", ("zettcode.app", "zettcode.cli", "zettcode.config", "zettcode.tui", "zettcode.broker")),
 )

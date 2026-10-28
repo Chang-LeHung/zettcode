@@ -68,6 +68,8 @@ class Relayed:
             is a program that is not a ZettCode session (who it says it is, nobody has checked).
         hops: How many sessions the message has passed through; an agent's answer carries it on, which
             is what ends two agents that keep answering each other.
+        direct: The sender's reader asked for this to be run as this session's own prompt, and for the final answer to
+            go back to the sender (see :class:`~zettcode.broker.models.Incoming`).
     """
 
     sender_id: str
@@ -75,6 +77,7 @@ class Relayed:
     text: str
     via: str = VIA_AGENT
     hops: int = 1
+    direct: bool = False
 
     def mark(self) -> dict[str, object]:
         """Return what is stored beside the message, as plain data."""

@@ -438,3 +438,25 @@ async def test_changing_the_model_or_permission_while_a_run_is_in_progress_is_al
 
 async def _drain(run):
     return await run
+
+
+async def test_a_real_run_says_begin_its_text_and_end_to_whoever_watches_it(tmp_path, monkeypatch):
+    said: list[tuple[str, dict]] = []
+
+    class Messenger:
+        client = type("Wire", (), {"watched": True})()
+
+        def stream(self, kind, **fields):
+            said.append((kind, fields))
+
+    wire(monkeypatch, ScriptedModel("hello there", chunk=4))
+    client = client_for(tmp_path)
+    client._agent.runtime.messenger = Messenger()  # type: ignore[assignment]
+
+    result = await client.prompt("hi")
+
+    kinds = [kind for kind, _ in said]
+    assert result.text == "hello there"
+    assert kinds[0] == "begin" and kinds[-1] == "end" and "text" in kinds
+    assert "".join(fields["text"] for kind, fields in said if kind == "text") == "hello there"
+    await client.aclose()

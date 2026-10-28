@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from ..sdk.types import IncomingMessage, Receipt
+from ..sdk.types import DIRECT_EMPTY, DIRECT_FAILED, IncomingMessage, Receipt
 from .state import Record, Registry, State
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
@@ -136,7 +136,7 @@ class Daemon:
         # Written before the connection is attempted: a start that fails after this point leaves a record the start
         # that made it can recognise as its own and remove, rather than a folder nobody can account for.
         await self.mark("starting")
-        if not await self.client.join_sessions(self.inbox.offer):
+        if not await self.client.join_sessions(self.inbox.offer, direct=True):
             self.record.log("the session broker is switched off, so no session can reach this daemon")
             self.record.remove()
             return EXIT_UNUSABLE
@@ -180,13 +180,35 @@ class Daemon:
         # that stays inside it runs and one that does not is put to a reader — and there is none here, so it is
         # refused. Approving on the daemon's behalf would turn a sandboxed run into a full one with nobody deciding.
         try:
-            async with self.client.session.relay(message) as run:
-                async for event in run:
-                    self._see(event)
+            if message.direct:
+                await self._direct(message)
+            else:
+                async with self.client.session.relay(message) as run:
+                    async for event in run:
+                        self._see(event)
         except RunError as error:
             self.record.log(f"the turn failed: {error}")
+            await self._failed(message, str(error))
         except Exception as error:  # noqa: BLE001 - a broken turn must not take the daemon down
             self.record.log(f"the turn failed: {type(error).__name__}: {error}")
+            await self._failed(message, f"{type(error).__name__}: {error}")
+
+    async def _direct(self, message: IncomingMessage) -> None:
+        """Run a chat window's text as this session's own prompt: nothing frames it, and the answer goes back to it.
+
+        Nobody at a daemon reads its conversation as it runs, so the window is told how the turn ended: its answer, or
+        that it ended without one.
+        """
+        async with self.client.session.prompt(message.text) as run:
+            async for event in run:
+                self._see(event)
+        answer = run.result.text if run.result is not None else ""
+        await self.client.send_back(message, answer if answer.strip() else DIRECT_EMPTY)
+
+    async def _failed(self, message: IncomingMessage, why: str) -> None:
+        """Tell a chat window that its turn failed, so it is not left waiting for an answer that will not come."""
+        if message.direct:
+            await self.client.send_back(message, f"{DIRECT_FAILED}{why}"[:500])
 
     # -- what it says about itself -----------------------------------------------------------------
     async def mark(self, status: str) -> None:

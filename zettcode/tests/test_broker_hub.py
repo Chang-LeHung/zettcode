@@ -204,3 +204,155 @@ def test_a_session_is_a_plain_object_with_a_key_of_its_own():
     one, two = Session(1, lambda code: None), Session(2, lambda code: None)
 
     assert one.key != two.key and len(one.key) >= 16
+
+
+async def _delivered(hub, body, *, direct_peer):
+    sender, other = Line(hub), Line(hub)
+    sender.register(A, "alpha")
+    other.register(B, "beta", direct=direct_peer)
+    pending = asyncio.ensure_future(hub.send(sender.session.key, {"to": "beta", **body}))
+    await asyncio.sleep(0)
+    delivery = other.pushed("deliver")[-1]
+    other.ack()
+    await pending
+    return delivery
+
+
+async def test_a_direct_message_reaches_only_a_session_that_said_it_can_take_one_and_only_from_a_reader(hub):
+    capable = await _delivered(hub, {"text": "hi", "via": "user", "direct": True}, direct_peer=True)
+
+    assert capable["direct"] is True and capable["via"] == "user"
+
+
+async def test_the_direct_flag_is_dropped_for_a_session_that_cannot_run_it(hub):
+    incapable = await _delivered(hub, {"text": "hi", "via": "user", "direct": True}, direct_peer=False)
+
+    assert "direct" not in incapable
+
+
+async def test_an_agent_cannot_make_its_message_direct(hub):
+    sneaky = await _delivered(hub, {"text": "hi", "via": "agent", "direct": True}, direct_peer=True)
+
+    assert "direct" not in sneaky
+
+
+def test_a_session_announces_whether_it_takes_direct_messages_in_the_roster(hub):
+    line, watcher = Line(hub), Line(hub)
+    line.register(A, "alpha", direct=True)
+
+    assert watcher.pushed("roster")[-1]["sessions"][0]["direct"] is True
+
+
+# -- watching a turn ---------------------------------------------------------------------------------------
+def test_a_session_is_told_how_many_watch_it_and_a_watcher_is_passed_what_its_turn_says(hub):
+    worker, watcher = Line(hub), Line(hub)
+    worker.register(A, "alpha")
+    worker.pushed()
+
+    watcher.say(op="watch", n=1, session_id=A)
+    worker.say(op="stream", event={"t": "text", "text": "hi"})
+
+    assert worker.pushed("watched")[-1]["count"] == 1
+    assert watcher.pushed("stream") == [{"op": "stream", "session_id": A, "event": {"t": "text", "text": "hi"}}]
+
+
+def test_nothing_is_passed_on_when_nobody_watches_and_the_session_is_told_so(hub):
+    worker, watcher = Line(hub), Line(hub)
+    worker.register(A, "alpha")
+    watcher.say(op="watch", n=1, session_id=A)
+    watcher.say(op="unwatch", n=2, session_id=A)
+
+    worker.say(op="stream", event={"t": "begin"})
+
+    assert worker.pushed("watched")[-1]["count"] == 0 and not watcher.pushed("stream")
+
+
+def test_a_session_that_registers_after_being_watched_is_told_it_is(hub):
+    watcher, worker = Line(hub), Line(hub)
+    watcher.say(op="watch", n=1, session_id=A)
+
+    worker.register(A, "alpha")
+
+    assert worker.pushed("watched")[-1]["count"] == 1
+
+
+def test_a_watcher_that_leaves_is_forgotten_and_the_session_told(hub):
+    worker, watcher = Line(hub), Line(hub)
+    worker.register(A, "alpha")
+    watcher.say(op="watch", n=1, session_id=A)
+
+    hub.release(watcher.session)
+
+    assert worker.pushed("watched")[-1]["count"] == 0
+
+
+def test_a_stream_line_that_is_malformed_oversized_or_from_an_unregistered_connection_is_ignored(hub):
+    worker, watcher, stranger = Line(hub), Line(hub), Line(hub)
+    worker.register(A, "alpha")
+    watcher.say(op="watch", n=1, session_id=A)
+
+    worker.say(op="stream", event="text")
+    worker.say(op="stream", event={"t": "nonsense"})
+    worker.say(op="stream", event={"t": "text", "text": "x" * 20_000})
+    stranger.say(op="stream", event={"t": "text", "text": "hi"})
+
+    assert not watcher.pushed("stream") and not worker.closed and not stranger.closed
+
+
+def test_watching_a_session_id_that_is_not_one_is_refused(hub):
+    watcher = Line(hub)
+
+    watcher.say(op="watch", n=3, session_id="not valid!")
+
+    assert watcher.pushed("refused")[0]["error"]["reason"] == "invalid"
+
+
+def test_a_watcher_that_is_far_behind_misses_stream_lines_and_is_not_dropped_for_it(hub):
+    worker, watcher = Line(hub), Line(hub)
+    worker.register(A, "alpha")
+    watcher.say(op="watch", n=1, session_id=A)
+
+    for _ in range(1000):
+        worker.say(op="stream", event={"t": "text", "text": "."})
+
+    assert not watcher.closed and watcher.session.outbox.qsize() <= 128 + 4
+
+
+def test_watching_the_same_session_again_changes_nothing_and_says_nothing(hub):
+    worker, watcher = Line(hub), Line(hub)
+    worker.register(A, "alpha")
+    watcher.say(op="watch", session_id=A)
+    worker.pushed()
+
+    for _ in range(300):
+        watcher.say(op="watch", session_id=A)
+
+    assert not worker.closed and not watcher.closed
+    assert [line["count"] for line in worker.pushed("watched")] == [0, 1], "told on registering and once on watching"
+
+
+def test_a_session_may_watch_only_so_many_others(hub):
+    from zettcode.broker.hub import MAX_WATCHING
+
+    watcher = Line(hub)
+    for number in range(MAX_WATCHING):
+        watcher.say(op="watch", session_id=f"s{number}")
+
+    watcher.say(op="watch", n=9, session_id="one-too-many")
+
+    assert watcher.pushed("refused")[-1]["error"]["reason"] == "busy"
+
+
+async def test_the_sender_is_told_whether_the_message_went_as_a_direct_prompt(hub):
+    sender, other = Line(hub), Line(hub)
+    sender.register(A, "alpha")
+    other.register(B, "beta", direct=True)
+
+    pending = asyncio.ensure_future(
+        hub.send(sender.session.key, {"to": "beta", "text": "hi", "via": "user", "direct": True})
+    )
+    await asyncio.sleep(0)
+    other.ack()
+    sent = await pending
+
+    assert sent["direct"] is True

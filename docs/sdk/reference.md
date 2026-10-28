@@ -119,6 +119,7 @@ The agent for one workspace. An async context manager. Every configuration field
 | --- | --- |
 | `ConfigurationError` | The configuration, or a model, effort or permission chosen from it, is not usable. |
 | `WorkspaceConflictError` | Another open client works in a different directory. |
+| `DaemonStartError` | A background agent was started and never became reachable. |
 | `SendError` | `send` could not reach anyone; `reason` says why. |
 | `SessionNotFoundError` | `resume` names a session that cannot be read. |
 
@@ -160,8 +161,16 @@ The agent for one workspace. An async context manager. Every configuration field
 | `use_compact_percent(percent)` | `tuple[ModelInfo, str \| None]` | Moves the compaction point (a share of the window, above 0 and at most 100) from the next request on, and rewrites the configuration file. The second value says why the file was not written, or is `None`. |
 | `use_permission(name, *, remember=True)` | `str` | Chooses the permission level; applies from the next shell command. `remember=False` leaves the session's remembered level alone, for a choice that covers this run only. |
 | `mentions(query="", *, limit=50)` | `tuple[MentionInfo, ...]` | The `@` resources matching a query, for a completion menu. With `sessions_enabled=True`, the other running sessions come first, as they do in the terminal. |
-| `await join_sessions(on_message)` | `bool` | Join the session broker, so other ZettCode sessions can find this one and send it messages. `on_message` is called with each `IncomingMessage` and returns a `Receipt`; `False` means sessions are switched off for this client. |
-| `await send(to, text)` | `Delivered` | Sends a message to another session by handle or id, as the reader's own words; needs `join_sessions`. Raises `zettcode.sdk.errors.SendError` (its `reason` says why) when nobody could be reached. |
+| `await join_sessions(on_message, *, direct=False)` | `bool` | Join the session broker, so other ZettCode sessions can find this one and send it messages. `on_message` is called with each `IncomingMessage` and returns a `Receipt`; `False` means sessions are switched off for this client. `direct=True` says this client runs a message with `IncomingMessage.direct` set as its reader's own prompt (see `send_back`). |
+| `await send(to, text, *, direct=False)` | `Delivered` | Sends a message to another session by handle or id, as the reader's own words; needs `join_sessions`. With `direct=True`, a session that can (`Peer.direct`) runs the text as its own prompt and sends its final answer back; for any other the flag is ignored (`Delivered.direct` says what happened). Raises `zettcode.sdk.errors.SendError` (its `reason` says why) when nobody could be reached. |
+| `await send_back(message, text)` | `Delivered \| None` | Sends the final answer of a turn that ran a `direct` message back to its sender, as this session's agent. A sender that has gone is not an error: `None` says it was not sent. |
+| `reachable` | `bool` | Whether the session broker is connected right now. |
+| `handle` | `str` | The name the other sessions call this one by, or `""` before it is registered. |
+| `peers()` | `tuple[Peer, ...]` | The other sessions registered with the broker, from memory (nothing is asked). |
+| `watch_peers(callback)` | — | Calls `callback()` (no arguments) whenever the peers change or the broker is lost or found; `None` stops the calls. Read `peers()` and `reachable` for the state. |
+| `send_limits` | `SendLimits` | What the broker accepts from a sender, so a front end can refuse before it sends. |
+| `watch(session_id)`, `unwatch(session_id)` | — | Ask to be told, as it happens, what another session's turns say; kept across a lost connection. A session streams only while someone watches it. |
+| `watch_streams(callback)` | — | Calls `callback(StreamEvent)` on the event loop for every event of a watched session's turn; `None` stops the calls. What is streamed is a view, not a record: pieces can be missed, and the stored conversation is what is true once the turn ends. |
 | `relay(message, *, on_approval, on_question, on_event, timeout, raw, keep_events, defer_answers)` | `RunStream` | Runs one turn for a message another session sent, framed with who it came from. |
 | `await usage_ledger()` | `WorkspaceUsage` | What every stored session of the workspace spent, by session, model and day. |
 | `await session_stats(ids=None)` | `tuple[SessionStatsInfo, ...]` | Stored totals of some sessions, or of the current one. |
@@ -373,11 +382,19 @@ Properties: `ok` (`stop is None`) and `failed_tools`.
 
 ### `IncomingMessage`
 
-`sender_id`, `sender`, `text`, `via`, `hops`. A message another ZettCode session sent: what `join_sessions` hands its callback, and what `relay` answers. `via` is `"user"` when the sender's reader typed it, `"agent"` when its agent did, `"external"` for a program that is not a ZettCode session.
+`sender_id`, `sender`, `text`, `via`, `hops`, `direct`. A message another ZettCode session sent: what `join_sessions` hands its callback, and what `relay` answers. `via` is `"user"` when the sender's reader typed it, `"agent"` when its agent did, `"external"` for a program that is not a ZettCode session.
 
 ### `Receipt`, `Delivered`
 
-`Receipt(accepted, reason="", disposition="")` is what the `join_sessions` callback returns to the sender: whether the message was taken, why not, and whether its turn `"started"` or is `"queued"`. `Delivered(to, disposition)` is what `send` returns: the handle of the session that took the message and the same disposition.
+`Receipt(accepted, reason="", disposition="")` is what the `join_sessions` callback returns to the sender: whether the message was taken, why not, and whether its turn `"started"` or is `"queued"`. `Delivered(to, disposition, direct)` is what `send` returns: the handle of the session that took the message, the same disposition, and whether the broker handed it over as the session's own prompt. `IncomingMessage.direct` is set when the sender is a person's one-to-one chat: run `text` with `session.prompt()` and give the final answer back with `send_back`; the `DIRECT_FAILED`, `DIRECT_UNFINISHED` and `DIRECT_EMPTY` lines in `zettcode.sdk.types` are what to send back when a turn failed, did not finish, or wrote nothing, and `is_direct_notice(text)` tells them from an answer.
+
+### `Peer`, `SendLimits`, `StreamEvent`, `Relay`
+
+`Peer(session_id, handle, title, workspace, status, kind, direct)` is another registered session (`status` is `"idle"` or `"working"`; `kind` is `"zettcode"` or `"external"`; `direct` says it runs a direct message as its own prompt). `SendLimits(max_text, rate_limit, rate_window, max_hops)` is what the broker accepts. `StreamEvent(session_id, kind, text, call_id, name, brief, ok)` is one thing a watched turn said: `kind` is `"begin"`, `"text"` (more of the answer), `"thinking"`, `"tool"` (started; `name` and a one-line `brief`), `"tool_end"` (`ok`), or `"end"` (what the turn produced is in the stored conversation). `Relay(sender_id, sender, via, hops)` is `Message.relay`: who sent a stored user message that came from another session, `None` for what the reader typed.
+
+### `DaemonInfo` and `zettcode.sdk.daemons`
+
+Background agents are run and listed from `zettcode.sdk.daemons`: `list_daemons()` returns `DaemonInfo(session_id, workspace, status, name, title, model, effort, permission, pid, started_at)` for each one on this machine; `await spawn_daemon(...)` starts one and returns its `DaemonInfo` (`DaemonStartError` when it never became reachable); `await stop_daemon(session_id)` stops one; `daemon_log(session_id, *, lines=200)` reads the end of its log.
 
 ### `Totals`
 
@@ -428,6 +445,7 @@ See [Errors & timeouts](./errors) for the hierarchy and when each is raised.
 | `SessionNotFoundError` | `ZettCodeError`, `LookupError` | — |
 | `NothingToDoError` | `ZettCodeError` | — |
 | `WorkspaceConflictError` | `ZettCodeError` | — |
+| `DaemonStartError` | `ZettCodeError` | `log` |
 | `SendError` | `ZettCodeError` | `reason` |
 | `RunError` | `ZettCodeError` | `retryable`, `partial_text` |
 | `RunTimeoutError` | `RunError`, `TimeoutError` | `seconds` |

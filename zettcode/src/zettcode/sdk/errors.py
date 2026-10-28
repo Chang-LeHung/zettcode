@@ -14,6 +14,7 @@ from __future__ import annotations
 __all__ = [
     "ClientClosedError",
     "ConfigurationError",
+    "DaemonStartError",
     "NothingToDoError",
     "RunError",
     "RunTimeoutError",
@@ -117,3 +118,15 @@ class SendError(ZettCodeError):
     def __init__(self, reason: str, message: str) -> None:
         super().__init__(message)
         self.reason = reason
+
+
+class DaemonStartError(ZettCodeError):
+    """A background agent was started and never became reachable.
+
+    Attributes:
+        log: The file the child process wrote its first words to, when there is one: the reason it gave is in it.
+    """
+
+    def __init__(self, message: str, log: str | None = None) -> None:
+        super().__init__(message)
+        self.log = log

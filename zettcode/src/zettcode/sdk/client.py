@@ -36,23 +36,28 @@ from .errors import (
     SessionNotFoundError,
     WorkspaceConflictError,
 )
-from .events import AnyEvent
+from .events import AnyEvent, ReasoningDelta, TextDelta, ToolFinished, ToolStarted
 from .handlers import ApprovalHandler, QuestionHandler
-from .session import EventCallback, Prompt, RunStream, Session
+from .session import EventCallback, Prompt, RunStream, Session, messages_of
 from .types import (
     Delivered,
     Image,
     IncomingMessage,
     MentionInfo,
+    Message,
     ModelCheck,
     ModelInfo,
+    Peer,
     Receipt,
     RunResult,
+    SendLimits,
     SessionInfo,
     SessionStatsInfo,
     StoredSession,
+    StreamEvent,
     Usage,
     WorkspaceUsage,
+    brief_of,
 )
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only; the agent is imported when a client is made
@@ -544,11 +549,13 @@ class Client:
             self._check_free()
         self._stream = stream
         self._describe(busy=True)
+        self._stream_mark("begin")
 
     def _release(self, stream: RunStream) -> None:
         if self._stream is stream:
             self._stream = None
             self._describe(busy=False)
+            self._stream_mark("end")
 
     # -- sessions --
     @property
@@ -562,7 +569,7 @@ class Client:
         return self._handle(self._agent.session_id)
 
     # -- the other sessions --
-    async def join_sessions(self, on_message: Callable[[IncomingMessage], Receipt]) -> bool:
+    async def join_sessions(self, on_message: Callable[[IncomingMessage], Receipt], *, direct: bool = False) -> bool:
         """Join the session broker, so other ZettCode sessions can find this one and send it messages.
 
         The terminal joins it too; a program embedding the agent does not unless it is built with
@@ -572,6 +579,8 @@ class Client:
             on_message: Called on the event loop with every message another session sends. It must not block; what
                 it returns is the answer the sender's agent is given — whether the message was taken, and whether
                 the turn it starts has begun or is waiting.
+            direct: Say that this client runs a message with ``IncomingMessage.direct`` set as its reader's own
+                prompt, and answers it with :meth:`send_back`; a chat window then talks to it as a reader would.
 
         Returns:
             Whether this client is reachable now; ``False`` when sessions are switched off for it.
@@ -584,6 +593,7 @@ class Client:
         if messenger is None:
             return False
         self._messenger = messenger
+        messenger.direct = direct
         messenger.receiver = lambda relayed: self._receipt(
             on_message(
                 IncomingMessage(
@@ -592,6 +602,7 @@ class Client:
                     text=relayed.text,
                     via=relayed.via,
                     hops=relayed.hops,
+                    direct=relayed.direct,
                 )
             )
         )
@@ -627,12 +638,129 @@ class Client:
             defer_answers=defer_answers,
         )
 
-    async def send(self, to: str, text: str) -> Delivered:
+    @property
+    def reachable(self) -> bool:
+        """Return whether the session broker is connected right now: the line every send and every peer rides on."""
+        messenger = self._agent.runtime.messenger
+        return messenger is not None and messenger.connected
+
+    @property
+    def handle(self) -> str:
+        """Return the name the other sessions call this one by, or an empty string before it is registered."""
+        messenger = self._agent.runtime.messenger
+        return messenger.handle if messenger is not None else ""
+
+    def peers(self) -> tuple[Peer, ...]:
+        """Return the other sessions that are registered with the broker now, from memory (nothing is asked).
+
+        A front end that lists who can be written to repaints from :meth:`watch_peers` and reads this. It is empty
+        without a broker, and a client that never joined the sessions sees nobody.
+        """
+        messenger = self._agent.runtime.messenger
+        if messenger is None:
+            return ()
+        return tuple(
+            Peer(entry.session_id, entry.handle, entry.title, entry.workspace, entry.status, entry.kind, entry.direct)
+            for entry in messenger.peers()
+        )
+
+    def watch_peers(self, callback: Callable[[], None] | None) -> None:
+        """Call ``callback`` on the event loop whenever the peers change or the broker is lost or found again.
+
+        It takes no arguments: read :meth:`peers` and :attr:`reachable` for the state. ``None`` stops the calls.
+        There is one listener; a second call replaces the first.
+        """
+        messenger = self._agent.runtime.messenger
+        if messenger is None:
+            return
+        messenger.on_change = callback
+        messenger.on_problem = None if callback is None else (lambda _said: callback())
+
+    def watch(self, session_id: str) -> None:
+        """Ask to be told, as it happens, what the turns of another session say (see :meth:`watch_streams`).
+
+        Kept while the client lives, and asked again when the broker connection is lost and found. Watching costs the
+        watched session nothing while it is idle, and a few lines a second while it works.
+        """
+        messenger = self._agent.runtime.messenger
+        if messenger is not None:
+            messenger.watch(session_id)
+
+    def unwatch(self, session_id: str) -> None:
+        """Stop being told what a session's turns say."""
+        messenger = self._agent.runtime.messenger
+        if messenger is not None:
+            messenger.unwatch(session_id)
+
+    def watch_streams(self, callback: Callable[[StreamEvent], None] | None) -> None:
+        """Call ``callback`` on the event loop with every :class:`~zettcode.sdk.types.StreamEvent` of a watched session.
+
+        What is streamed is a view of the turn, not a record: pieces can be missed by a reader that falls behind, and
+        the stored conversation (:meth:`Sessions.history_of`) is what is true once the turn has ended. ``None`` stops the
+        calls; there is one listener.
+        """
+        messenger = self._agent.runtime.messenger
+        if messenger is None:
+            return
+        if callback is None:
+            messenger.on_stream = None
+            return
+
+        def relay(session_id: str, wire: dict[str, Any]) -> None:
+            kind = wire.get("t")
+            if not isinstance(kind, str):
+                return
+            text, call_id, name, brief, ok = (wire.get(key) for key in ("text", "id", "name", "brief", "ok"))
+            callback(
+                StreamEvent(
+                    session_id,
+                    kind,
+                    text if isinstance(text, str) else "",
+                    call_id if isinstance(call_id, str) else "",
+                    name if isinstance(name, str) else "",
+                    brief if isinstance(brief, str) else "",
+                    ok if isinstance(ok, bool) else None,
+                )
+            )
+
+        messenger.on_stream = relay
+
+    def _stream_event(self, event: Any) -> None:
+        """Say what a running turn just did to whoever watches it; nothing happens when nobody does."""
+        messenger = self._agent.runtime.messenger
+        if messenger is None or not messenger.client.watched:
+            return
+        if isinstance(event, TextDelta):
+            messenger.stream("text", text=event.text)
+        elif isinstance(event, ReasoningDelta):
+            messenger.stream("thinking")
+        elif isinstance(event, ToolStarted):
+            messenger.stream("tool", id=event.call_id, name=event.name, brief=brief_of(event.arguments))
+        elif isinstance(event, ToolFinished):
+            messenger.stream("tool_end", id=event.call_id, ok=event.ok)
+
+    def _stream_mark(self, kind: str) -> None:
+        messenger = self._agent.runtime.messenger
+        if messenger is not None:
+            messenger.stream(kind)
+
+    @property
+    def send_limits(self) -> SendLimits:
+        """Return what the broker accepts from a sender, as it announced it (the defaults before it has)."""
+        messenger = self._agent.runtime.messenger
+        if messenger is None:
+            return SendLimits()
+        limits = messenger.client.limits
+        return SendLimits(limits.max_text, limits.rate_limit, limits.rate_window, limits.max_hops)
+
+    async def send(self, to: str, text: str, *, direct: bool = False) -> Delivered:
         """Send a message to another ZettCode session without going through this session's model.
 
         Args:
             to: The session's handle, or its id.
             text: What to say; the sender's own words, so the receiving agent is told its reader typed it.
+            direct: Ask a session that can (``Peer.direct``) to run the text as its own reader's prompt, and to send
+                its final answer back with :meth:`send_back`. For any other session the flag is ignored.
 
         Returns:
             What the receiving session answered: who took it, and whether the turn started or is queued.
@@ -652,9 +780,29 @@ class Client:
         from ..broker.models import SendError as BrokerSendError
 
         try:
-            delivered = await messenger.send(to, text, via=VIA_USER)
+            delivered = await messenger.send(to, text, via=VIA_USER, direct=direct)
         except BrokerSendError as error:
             raise SendError(error.reason, str(error)) from error
+        return Delivered(delivered.to.handle, delivered.disposition, delivered.direct)
+
+    async def send_back(self, message: IncomingMessage, text: str) -> Delivered | None:
+        """Send the final answer of a turn that ran a ``direct`` message back to its sender.
+
+        It goes as this session's agent speaking (not the reader), carrying the message's hop count on, so two sessions
+        cannot keep answering each other. A sender that has gone, a refusal or a lost connection is not an error: the
+        answer is in this session's own conversation whatever happens to this copy, so ``None`` says it was not sent.
+        """
+        from ..broker.models import SendError as BrokerSendError
+        from ..broker.protocol import VIA_AGENT
+
+        messenger = self._messenger
+        if messenger is None or not text.strip():
+            return None
+        try:
+            limit = messenger.client.limits.max_text
+            delivered = await messenger.client.send(message.sender_id, text[:limit], hops=message.hops, via=VIA_AGENT)
+        except BrokerSendError:
+            return None
         return Delivered(delivered.to.handle, delivered.disposition)
 
     @staticmethod
@@ -1165,6 +1313,74 @@ class Sessions:
 
     def __init__(self, client: Client) -> None:
         self._client = client
+        #: A store per other workspace, kept so a conversation read again is parsed only when its file changed.
+        self._stores: dict[Path, Any] = {}
+
+    def _store(self, workspace: str | Path | None) -> Any:
+        """Return the store of a workspace: this client's own, or one opened to read another project's sessions."""
+        own = self._client._agent.runtime.persistence
+        if workspace is None or not str(workspace).strip():
+            return own
+        target = Path(workspace).expanduser().resolve()
+        if target == own.workspace:
+            return own
+        store = self._stores.get(target)
+        if store is None:
+            from ..engine.storage.store import SessionStore
+
+            store = self._stores[target] = SessionStore(own.root, target)
+        return store
+
+    async def history_of(
+        self, session_id: str, *, workspace: str | Path | None = None, full: bool = True
+    ) -> list[Message]:
+        """Return the messages of any stored session by its id, without making it current or taking its lock.
+
+        Args:
+            session_id: The session to read.
+            workspace: The project the session belongs to; ``None`` is this client's own. Sessions are stored per
+                project, so a session of another directory is found only when its directory is named.
+            full: The whole conversation, compacted messages included, rather than what the model is working with.
+
+        Raises:
+            SessionNotFoundError: No such session, or it has no messages yet, or its file cannot be read.
+            ClientClosedError: The client was closed.
+        """
+        self._client._check_open()
+        store = self._store(workspace)
+        try:
+            stored = await asyncio.to_thread(store.read, session_id)
+        except (ValueError, OSError) as error:
+            raise SessionNotFoundError(f"Cannot read session {session_id}: {error}") from error
+        if stored.header is None:
+            raise SessionNotFoundError(f"Session {session_id} has no messages yet")
+        return messages_of(stored, full=full)
+
+    def stamp(self, session_id: str, *, workspace: str | Path | None = None) -> tuple[int, int] | None:
+        """Return a value that changes whenever a stored session's file does, or ``None`` when it has none.
+
+        It costs one ``stat``, so a front end can ask for it often and read the conversation only when it moved.
+        """
+        try:
+            seen = self._store(workspace).session_path(session_id).stat()
+        except (OSError, ValueError):
+            return None
+        return (seen.st_mtime_ns, seen.st_size)
+
+    def open_elsewhere(self, session_id: str, *, workspace: str | Path | None = None) -> bool:
+        """Return whether some process has a stored session open, which is what holds its lock.
+
+        A snapshot: the lock is taken for an instant to find out, and a process that opens the session in that instant
+        may be told to try again (a terminal keeps trying). ``False`` for a session that has no folder yet.
+        """
+        from ..engine.storage.locks import LOCK_FILE
+        from ..filelock import is_held
+
+        try:
+            path = self._store(workspace).session_dir(session_id) / LOCK_FILE
+        except ValueError:
+            return False
+        return path.exists() and is_held(path)
 
     async def list(self, *, limit: int = 20) -> list[SessionInfo]:
         """Return the stored sessions, most recently active first.

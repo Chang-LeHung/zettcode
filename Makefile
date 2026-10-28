@@ -25,9 +25,10 @@ PYTHON := $(if $(EVERYTHING),1,$(filter zettcode/% pyproject.toml uv.lock,$(CHAN
 RUFFED := $(if $(PYTHON),1,$(filter docs/scripts/%,$(CHANGED)))
 # The TypeScript client, and the extension, which bundles that client's source.
 CLIENT := $(if $(EVERYTHING),1,$(filter clients/typescript/%,$(CHANGED)))
+GATEWAY := $(if $(EVERYTHING),1,$(filter clients/gateway/%,$(CHANGED)))
 EXTENSION := $(if $(EVERYTHING),1,$(filter clients/vscode/% clients/typescript/%,$(CHANGED)))
 
-.PHONY: help install lint typecheck test python client vscode vscode-package install-vscode build smoke check check-all hooks docs docs-build docs-preview demo demo-all demos demo-thinking palettes themes perf perf-scaling perf-store perf-profile perf-startup perf-imports FORCE
+.PHONY: help install lint typecheck test python client gateway-page gateway-ui vscode vscode-package install-vscode build smoke check check-all hooks docs docs-build docs-preview demo demo-all demos demo-thinking palettes themes perf perf-scaling perf-store perf-profile perf-startup perf-imports FORCE
 
 DEMOS := text status_bar spinner progress_bar list table diff markdown textarea completion dialog collapsible toast tasks scroll layout
 
@@ -83,6 +84,16 @@ python: lint typecheck test
 client:
 	cd clients/typescript && npm install --no-audit --no-fund && npm test
 
+# The gateway's page is a Vue and TypeScript app that is built into the Python package (zettcode/src/zettcode/gateway/static).
+# The build output is not in git: it is made here, and in CI and the release workflow before a wheel is built, and
+# pyproject's `artifacts` puts it in the wheel. Rebuild it after any change under clients/gateway.
+gateway-page:
+	cd clients/gateway && npm install --no-audit --no-fund
+	cd clients/gateway && npm run build
+
+gateway-ui: gateway-page
+	cd clients/gateway && npm run check && npm test
+
 # The VS Code extension is a webview client for the server. Its test runner bundles the
 # webview into a temporary directory and drives it in jsdom, so no editor is needed to run the suite.
 vscode:
@@ -101,17 +112,20 @@ install-vscode: vscode-package
 		exit 1; }
 	cd clients/vscode && $(CODE) --install-extension "zettcode-$$(node -p 'require("./package.json").version').vsix" --force
 
-build:
+build: gateway-page
 	$(UV) build --package zettcode
 
 # The wheel is built, not found: a glob over dist/ would happily install an older
 # version that happens to be lying there, and a wheel that is not the one just
 # built proves nothing about the build. One wheel, two programs.
-smoke:
+smoke: gateway-page
 	rm -rf $(SMOKE_DIR)
 	$(UV) build --package zettcode --out-dir $(SMOKE_DIR)
 	$(UV) run --no-project --python 3.14 --with ./$(SMOKE_DIR)/zettcode-*.whl zettcode --help
 	$(UV) run --no-project --python 3.14 --with ./$(SMOKE_DIR)/zettcode-*.whl zettcode-server --help
+	$(UV) run --no-project --python 3.14 --with ./$(SMOKE_DIR)/zettcode-*.whl zettcode-gateway --help
+	@# The gateway's page is built, not committed: a wheel made without it would serve an API and no page.
+	$(UV) run --no-project --python 3.14 --with ./$(SMOKE_DIR)/zettcode-*.whl python -c "from importlib.resources import files; names = {p.name for p in files('zettcode.gateway').joinpath('static').iterdir()}; assert {'index.html', 'app.js', 'app.css'} <= names, names; print('gateway page:', sorted(names))"
 	@# The HTML trace ships as package data: a packaging change that drops the
 	@# template, its stylesheet, or its script has to fail here, not at export time.
 	$(UV) run --no-project --python 3.14 --with ./$(SMOKE_DIR)/zettcode-*.whl python -c "from importlib.resources import files; names = sorted(p.name for p in files('zettcode.engine.export').joinpath('trace').iterdir()); assert names == ['script.js', 'style.css', 'template.html'], names; print('trace assets:', names)"
@@ -123,9 +137,10 @@ check:
 	@$(if $(PYTHON),$(MAKE) --no-print-directory python,$(if $(RUFFED),$(MAKE) --no-print-directory lint,echo "  python: untouched, skipped"))
 	@$(if $(CLIENT),$(MAKE) --no-print-directory client,echo "  typescript client: untouched, skipped")
 	@$(if $(EXTENSION),$(MAKE) --no-print-directory vscode,echo "  vscode extension: untouched, skipped")
+	@$(if $(GATEWAY),$(MAKE) --no-print-directory gateway-ui,echo "  gateway page: untouched, skipped")
 
 # The whole gate, which is what CI runs on every pull request: before handing work over, and always in CI.
-check-all: python client vscode
+check-all: python client vscode gateway-ui
 
 # The guide is a VitePress site in docs/; its own package.json pins it.
 docs:

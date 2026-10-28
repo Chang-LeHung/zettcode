@@ -45,10 +45,11 @@ class Entry:
     handle: str
     order: int
     kind: str = KIND_ZETTCODE
+    direct: bool = False
 
     def public(self) -> PeerInfo:
         """Return the entry as the others see it."""
-        return PeerInfo(self.session_id, self.handle, self.title, self.workspace, self.status, self.kind)
+        return PeerInfo(self.session_id, self.handle, self.title, self.workspace, self.status, self.kind, self.direct)
 
 
 class Roster:
@@ -69,6 +70,10 @@ class Roster:
     def snapshot(self) -> tuple[PeerInfo, ...]:
         """Return the roster as the broker pushes it to every connection."""
         return tuple(entry.public() for entry in self.entries())
+
+    def owner_of(self, session_id: str) -> int | None:
+        """Return the connection that holds a session, or ``None`` when nobody does."""
+        return self._by_session.get(session_id)
 
     def of(self, owner: int) -> Entry | None:
         """Return the entry a connection holds, if any."""
@@ -96,6 +101,7 @@ class Roster:
             status=update.status,
             handle="",
             kind=update.kind,
+            direct=update.direct,
             order=previous.order
             if previous is not None and previous.session_id == update.session_id
             else next(self._sequence),

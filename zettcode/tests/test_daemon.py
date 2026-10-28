@@ -268,3 +268,84 @@ def test_a_record_points_at_its_own_log(home):
     record.log("something happened")
 
     assert "something happened" in record.log_path.read_text(encoding="utf-8")
+
+
+# -- a reader's chat window ------------------------------------------------------------------------------------
+class _Stream:
+    """What ``session.prompt`` and ``session.relay`` return: iterable, an async context, and a result at the end."""
+
+    def __init__(self, text: str) -> None:
+        self.result = type("Result", (), {"text": text})()
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_):
+        return False
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        raise StopAsyncIteration
+
+
+class _Session:
+    id = "01a1"
+    title = None
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str]] = []
+
+    def prompt(self, text):
+        self.calls.append(("prompt", text))
+        return _Stream("final answer")
+
+    def relay(self, incoming):
+        self.calls.append(("relay", incoming.text))
+        return _Stream("ignored")
+
+
+class _Client:
+    def __init__(self) -> None:
+        self.session = _Session()
+        self.model = type("Model", (), {"name": "fake"})()
+        self.effort = None
+        self.returned: list[tuple[str, str]] = []
+
+    async def send_back(self, incoming, text):
+        self.returned.append((incoming.sender_id, text))
+
+
+async def test_a_direct_message_is_run_as_the_readers_own_prompt_and_its_final_answer_goes_back(home):
+    from zettcode.daemon.run import Daemon
+
+    client = _Client()
+    daemon = Daemon(client, Options(workspace=home, token="t"))
+
+    await daemon._turn(IncomingMessage("web", "web-gateway", "run it", via="user", direct=True))
+    await daemon._turn(IncomingMessage("peer", "peer", "from a colleague"))
+
+    assert client.session.calls == [("prompt", "run it"), ("relay", "from a colleague")]
+    assert client.returned == [("web", "final answer")], "only a direct turn is answered by the daemon itself"
+
+
+async def test_a_direct_turn_that_fails_or_writes_nothing_is_still_answered_so_the_window_is_not_left_waiting(home):
+    from zettcode.daemon.run import Daemon
+    from zettcode.sdk.errors import RunError
+
+    client = _Client()
+    daemon = Daemon(client, Options(workspace=home, token="t"))
+
+    def failing(text):
+        raise RunError("the model stopped")
+
+    client.session.prompt = failing  # type: ignore[method-assign]
+    await daemon._turn(IncomingMessage("web", "web-gateway", "run it", via="user", direct=True))
+    client.session.prompt = lambda text: _Stream("   ")  # type: ignore[method-assign]
+    await daemon._turn(IncomingMessage("web", "web-gateway", "again", via="user", direct=True))
+    await daemon._turn(IncomingMessage("peer", "peer", "not direct"))
+
+    sent = [text for _, text in client.returned]
+    assert sent[0].startswith("The turn failed: the model stopped")
+    assert "without a written answer" in sent[1] and len(sent) == 2, "a message that is not direct is not answered here"

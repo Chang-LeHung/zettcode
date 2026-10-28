@@ -39,6 +39,9 @@ async with zc.Client(".") as client:
 | `client.sessions.new()` | Starts an empty conversation and makes it current. |
 | `await client.sessions.open(id)` | Continues a stored conversation and makes it current. |
 | `await client.sessions.latest()` | Continues the most recently active one, or returns `None`. |
+| `await client.sessions.history_of(id, *, workspace=None, full=True)` | The messages of any stored session by its id, without making it current or taking its lock. |
+| `client.sessions.stamp(id, *, workspace=None)` | A value that changes whenever a stored session's file does (one `stat`), or `None`; poll it and read the conversation only when it moved. |
+| `client.sessions.open_elsewhere(id, *, workspace=None)` | Whether some process has the stored session open, which is what holds its lock; a snapshot. |
 | `Client(resume=id)` | Starts the client on a stored conversation. |
 
 `open()` raises `SessionNotFoundError` for an id that does not exist, cannot be read, or would leave the store. It continues on the model the session last used, when the configuration still has it.

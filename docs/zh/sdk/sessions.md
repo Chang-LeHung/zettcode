@@ -39,6 +39,9 @@ async with zc.Client(".") as client:
 | `client.sessions.new()` | 开始一段空对话并设为当前。 |
 | `await client.sessions.open(id)` | 继续一段已保存的对话并设为当前。 |
 | `await client.sessions.latest()` | 继续最近活跃的那段，没有则返回 `None`。 |
+| `await client.sessions.history_of(id, *, workspace=None, full=True)` | 按 id 读取任意已存储会话的消息，不会把它设为当前会话，也不会取它的锁。 |
+| `client.sessions.stamp(id, *, workspace=None)` | 一个值，已存储会话的文件一变它就变(只需一次 `stat`)，没有文件时为 `None`；轮询它，只在它变了之后才读对话。 |
+| `client.sessions.open_elsewhere(id, *, workspace=None)` | 是否有某个进程正打开着这个已存储会话(也就是持有它的锁)；只是一个快照。 |
 | `Client(resume=id)` | 让 client 从一段已保存的对话开始。 |
 
 id 不存在、读不出来或会指向存储之外时，`open()` 会抛出 `SessionNotFoundError`。如果配置里仍有该会话上次用的模型，它就在那个模型上继续。

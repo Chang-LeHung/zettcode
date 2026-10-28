@@ -64,6 +64,7 @@ dependencies = [
 [project.scripts]
 zettcode = "zettcode.cli:main"
 zettcode-server = "zettcode.server.cli:main"
+zettcode-gateway = "zettcode.gateway.cli:main"
 
 [project.urls]
 Repository = "https://github.com/Chang-LeHung/zettcode"
@@ -76,6 +77,11 @@ build-backend = "hatchling.build"
 [tool.hatch.version]
 # Single source of truth: the version is written once, in the package.
 path = "src/zettcode/__init__.py"
+
+# The gateway's page is built (make gateway-ui) into the package and is not in git; hatchling skips what git ignores
+# unless it is named here.
+[tool.hatch.build]
+artifacts = ["src/zettcode/gateway/static/**"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/zettcode"]

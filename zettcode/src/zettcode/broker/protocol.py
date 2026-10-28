@@ -95,6 +95,13 @@ VIA_AGENT = "agent"
 VIA_EXTERNAL = "external"
 VIAS = (VIA_USER, VIA_AGENT, VIA_EXTERNAL)
 
+#: What a session can say about a turn that is running, for the sessions that watch it: it began, a piece of the answer,
+#: that the model is reasoning, a tool started and ended, it ended. A line is at most :data:`MAX_STREAM` characters.
+STREAM_TYPES = ("begin", "text", "thinking", "tool", "tool_end", "end")
+
+#: The most a stream line may weigh as JSON, in characters: pieces are small, and a longer one is dropped, not cut.
+MAX_STREAM = 16_000
+
 #: What a registered session is: ZettCode itself, or a program standing in for one.
 KIND_ZETTCODE = "zettcode"
 KIND_EXTERNAL = "external"
@@ -148,8 +155,10 @@ class PeerInfo:
     workspace: str
     status: str
     kind: str = KIND_ZETTCODE
+    #: Whether this session runs a message sent with ``direct`` as its reader's own prompt (see :func:`parse_send`).
+    direct: bool = False
 
-    def to_wire(self) -> dict[str, str]:
+    def to_wire(self) -> dict[str, str | bool]:
         """Return the entry as it goes over the wire."""
         return {
             "session_id": self.session_id,
@@ -158,6 +167,7 @@ class PeerInfo:
             "workspace": self.workspace,
             "status": self.status,
             "kind": self.kind,
+            "direct": self.direct,
         }
 
     @classmethod
@@ -172,7 +182,7 @@ class PeerInfo:
         session_id, handle = raw.get("session_id"), raw.get("handle")
         if not isinstance(session_id, str) or not isinstance(handle, str) or not session_id or not handle:
             return None
-        return cls(session_id, handle, *_description(raw), _kind(raw))
+        return cls(session_id, handle, *_description(raw), _kind(raw), raw.get("direct") is True)
 
 
 def _description(raw: Mapping[str, Any]) -> tuple[str, str, str]:
@@ -244,6 +254,7 @@ class SessionUpdate:
     workspace: str = ""
     status: str = "idle"
     kind: str = KIND_ZETTCODE
+    direct: bool = False
 
     @classmethod
     def parse(cls, raw: Mapping[str, Any]) -> SessionUpdate:
@@ -251,7 +262,7 @@ class SessionUpdate:
         session_id = field(raw, "session_id", str)
         if not SESSION_ID.match(session_id):
             raise Refused("invalid", "a session id is 1-64 letters, digits, '.', '_' or '-'")
-        return cls(session_id, *_description(raw), _kind(raw))
+        return cls(session_id, *_description(raw), _kind(raw), raw.get("direct") is True)
 
 
 def parse_send(raw: Mapping[str, Any], limits: Limits) -> tuple[str, str, str, int]:

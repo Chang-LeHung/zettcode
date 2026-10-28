@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from collections.abc import AsyncGenerator, Callable, Generator, Sequence
+from collections.abc import AsyncGenerator, Callable, Generator, Mapping, Sequence
 from contextlib import aclosing
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -62,6 +62,7 @@ from .types import (
     Image,
     IncomingMessage,
     Message,
+    Relay,
     ResumeInfo,
     RunResult,
     TaskInfo,
@@ -311,6 +312,7 @@ class RunStream:
         except BaseException:
             self._release()
             raise
+        self._client._stream_event(event)
         if self._on_event is not None:
             try:
                 outcome = self._on_event(event)
@@ -708,6 +710,7 @@ class Session:
             text=message.text,
             via=message.via,
             hops=message.hops,
+            direct=message.direct,
         )
         return RunStream(
             self,
@@ -1011,33 +1014,57 @@ class Session:
             raise SessionNotFoundError(f"Cannot read session {self.id}: {error}") from error
         if stored.header is None:
             raise SessionNotFoundError(f"Session {self.id} has no messages yet")
-        entries: list[tuple[Any, Any, float]] = []
-        if full:
-            branch = stored.branch()
-            on_branch = {line.id for line in branch}
-            summaries: dict[str, list[Any]] = {}
-            for compaction in sorted(stored.compactions, key=lambda line: line.version):
-                if compaction.parent in on_branch:
-                    summaries.setdefault(compaction.parent, []).append(compaction)
-            for line in branch:
-                if line.message[0].include_in_messages:
-                    entries.append((line.message[0], line.usage, line.timing.duration_ns / 1e9))
-                entries.extend((compaction.message[0], None, 0.0) for compaction in summaries.get(line.id, []))
-        else:
-            checkpoint, tail = stored.active()
-            if checkpoint is not None:
-                entries.append((checkpoint.message[0], None, 0.0))
-            for line in tail:
-                if line.message[0].include_in_messages:
-                    entries.append((line.message[0], line.usage, line.timing.duration_ns / 1e9))
-        return [
-            message for item, usage, seconds in entries if (message := _message_of(item, usage, seconds)) is not None
-        ]
+        return messages_of(stored, full=full)
 
     # -- becoming the current conversation --
     async def _activate(self, by: RunStream | None = None) -> None:
         """Make this the client's current conversation, unless it is already."""
         await self._client._switch_to(self.id, by)
+
+
+def messages_of(stored: Any, *, full: bool = False) -> list[Message]:
+    """Return the SDK's messages for a conversation the store parsed.
+
+    The same walk serves :meth:`Session.history` and :meth:`~zettcode.sdk.client.Sessions.history_of`, so a conversation
+    read in place and one read by id come out the same.
+    """
+    entries: list[tuple[Any, Any, float]] = []
+    if full:
+        branch = stored.branch()
+        on_branch = {line.id for line in branch}
+        summaries: dict[str, list[Any]] = {}
+        for compaction in sorted(stored.compactions, key=lambda line: line.version):
+            if compaction.parent in on_branch:
+                summaries.setdefault(compaction.parent, []).append(compaction)
+        for line in branch:
+            if line.message[0].include_in_messages:
+                entries.append((line.message[0], line.usage, line.timing.duration_ns / 1e9))
+            entries.extend((compaction.message[0], None, 0.0) for compaction in summaries.get(line.id, []))
+    else:
+        checkpoint, tail = stored.active()
+        if checkpoint is not None:
+            entries.append((checkpoint.message[0], None, 0.0))
+        for line in tail:
+            if line.message[0].include_in_messages:
+                entries.append((line.message[0], line.usage, line.timing.duration_ns / 1e9))
+    return [message for item, usage, seconds in entries if (message := _message_of(item, usage, seconds)) is not None]
+
+
+def _relay_of(attributes: object) -> Relay | None:
+    """Return who sent a stored message that another session relayed, or ``None`` for anything else."""
+    mark = attributes.get("relay") if isinstance(attributes, Mapping) else None
+    if not isinstance(mark, Mapping):
+        return None
+    sender_id, name = mark.get("id"), mark.get("name")
+    if not isinstance(sender_id, str) or not isinstance(name, str):
+        return None
+    via, hops = mark.get("via"), mark.get("hops")
+    return Relay(
+        sender_id=sender_id,
+        sender=name,
+        via=via if via in ("user", "agent", "external") else "agent",
+        hops=hops if isinstance(hops, int) and not isinstance(hops, bool) and hops >= 0 else 1,
+    )
 
 
 def _message_of(item: object, usage: Any = None, seconds: float = 0.0) -> Message | None:
@@ -1060,7 +1087,7 @@ def _message_of(item: object, usage: Any = None, seconds: float = 0.0) -> Messag
             if isinstance(part, ImageContent) and isinstance(part.source, ImageBytesSource) and part.source.data
         )
         images = sum(1 for part in item.parts if isinstance(part, ImageContent))
-        return Message("user", text, images=images, pictures=pictures)
+        return Message("user", text, images=images, pictures=pictures, relay=_relay_of(item.attributes))
     if isinstance(item, AssistantMessage):
         calls = tuple(ToolCallInfo(call.id, call.name, dict(call.arguments)) for call in item.tool_calls)
         spent = (

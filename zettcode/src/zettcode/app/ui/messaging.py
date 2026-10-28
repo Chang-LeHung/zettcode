@@ -48,6 +48,8 @@ class MessagingMixin(ShellState):
     messenger: SessionLink | None
     #: Messages from other sessions waiting for the request in flight to end, oldest first.
     _inbox: list[Relayed]
+    #: What the last turn that ran to its end answered, or ``None`` when it did not end that way.
+    _turn_answer: str | None
     #: Whether the connection has been started; before that there is no loop to tell it anything on.
     _messaging_live: bool
     #: The session id the broker was last told about, to notice a switch.
@@ -64,6 +66,8 @@ class MessagingMixin(ShellState):
         if messenger is None:
             return
         messenger.receiver = self._relay_received
+        # A reader's chat window (the web gateway) may send text to run as this window's own prompt.
+        messenger.direct = True
         messenger.on_change = self._peers_changed
         messenger.on_conflict = self._messaging_conflict
         messenger.on_problem = self._messaging_problem
@@ -158,7 +162,27 @@ class MessagingMixin(ShellState):
         # Busy before the task has run, exactly as for a follow-up: between here and its first step a
         # second message, or a keystroke, must not be able to start a turn beside this one.
         self._set_busy(True)
-        self._task = asyncio.create_task(self._run_prompt(relayed.text, (relayed.text,), relayed=relayed))
+        if relayed.direct:
+            self._task = asyncio.create_task(self._run_direct(relayed))
+        else:
+            self._task = asyncio.create_task(self._run_prompt(relayed.text, (relayed.text,), relayed=relayed))
+
+    async def _run_direct(self, relayed: Relayed) -> None:
+        """Run a chat window's text as this session's own prompt, then send the final answer back to the window."""
+        from zettcode.sdk.types import DIRECT_EMPTY, DIRECT_UNFINISHED, IncomingMessage
+
+        self._turn_answer = None
+        await self._run_prompt(relayed.text, (relayed.text,))
+        # This turn's own answer, not the last one in the conversation: a turn that failed or was stopped has none, and
+        # the window is told so rather than handed the previous turn's words as this one's.
+        answer = self._turn_answer
+        message = IncomingMessage(
+            sender_id=relayed.sender_id, sender=relayed.sender, text=relayed.text, via=relayed.via, hops=relayed.hops
+        )
+        if answer is None:
+            await self.client.send_back(message, DIRECT_UNFINISHED)
+        else:
+            await self.client.send_back(message, answer if answer.strip() else DIRECT_EMPTY)
 
     def _start_next_relayed(self) -> bool:
         """Start the oldest waiting message, if there is one and nothing is running."""

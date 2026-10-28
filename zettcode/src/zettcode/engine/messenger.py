@@ -14,8 +14,9 @@ else were running, and a send says so.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from zettcode.broker.client import BrokerClient, Delivered, Incoming, Receipt, RosterEntry, SessionInfo
 from zettcode.broker.protocol import VIA_AGENT
@@ -24,6 +25,13 @@ from zettcode.relay import Relayed
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from pathlib import Path
+
+
+#: How long pieces of text are gathered before they are sent as one, so a stream is a few lines a second and not one per token.
+STREAM_BATCH = 0.06
+
+#: The most characters of text sent in one stream line, well inside what the broker passes (see ``MAX_STREAM``).
+STREAM_CHUNK = 4000
 
 
 class Messenger:
@@ -54,7 +62,11 @@ class Messenger:
         self.on_problem: Callable[[str | None], None] | None = None
         #: The message the running turn answers, if it answers one.
         self.answering: Relayed | None = None
+        #: Whether a message the sender marked ``direct`` is run as this session's own prompt; said in the roster.
+        self.direct = False
         self._started = False
+        self._piece: tuple[str, list[str]] | None = None
+        self._flush: asyncio.TimerHandle | None = None
 
     @classmethod
     def create(cls, config: ZettCodeConfig) -> Messenger | None:
@@ -94,12 +106,14 @@ class Messenger:
             title=title or "",
             workspace=self.workspace,
             status="working" if busy else "idle",
+            direct=self.direct,
         )
         current = self.client.session
-        if current is not None and (current.session_id, current.title, current.status) == (
+        if current is not None and (current.session_id, current.title, current.status, current.direct) == (
             info.session_id,
             info.title,
             info.status,
+            info.direct,
         ):
             return
         self.client.set_session(info)
@@ -140,8 +154,67 @@ class Messenger:
                 return entry
         return None
 
+    # -- watching a turn --------------------------------------------------------------------------
+    @property
+    def on_stream(self) -> Callable[[str, dict[str, Any]], None] | None:
+        """Called with a watched session's id and one thing its turn said."""
+        return self.client.on_stream
+
+    @on_stream.setter
+    def on_stream(self, callback: Callable[[str, dict[str, Any]], None] | None) -> None:
+        self.client.on_stream = callback
+
+    def watch(self, session_id: str) -> None:
+        """Ask to be told what a session's turns say as they happen."""
+        self.client.watch(session_id)
+
+    def unwatch(self, session_id: str) -> None:
+        """Stop being told."""
+        self.client.unwatch(session_id)
+
+    def stream(self, kind: str, **fields: Any) -> None:
+        """Say one thing about the running turn to whoever watches it; a no-op when nobody does.
+
+        Pieces of text are gathered for :data:`STREAM_BATCH` seconds and go as one; anything else sends what was
+        gathered first, so the order is the order they happened in.
+        """
+        if not self.client.watched:
+            self._piece = None
+            if self._flush is not None:
+                self._flush.cancel()
+                self._flush = None
+            return
+        if kind in ("text", "thinking"):
+            text = fields.get("text", "")
+            if self._piece is not None and self._piece[0] != kind:
+                self._send_piece()
+            if self._piece is None:
+                self._piece = (kind, [])
+            self._piece[1].append(text)
+            if self._flush is None:
+                self._flush = asyncio.get_running_loop().call_later(STREAM_BATCH, self._send_piece)
+            return
+        self._send_piece()
+        self.client.publish({"t": kind, **fields})
+
+    def _send_piece(self) -> None:
+        if self._flush is not None:
+            self._flush.cancel()
+            self._flush = None
+        piece, self._piece = self._piece, None
+        if piece is None:
+            return
+        kind, parts = piece
+        if kind != "text":
+            self.client.publish({"t": kind})
+            return
+        # A burst of text is cut into lines the broker will pass: one longer than it allows is dropped there, whole.
+        text = "".join(parts)
+        for start in range(0, len(text), STREAM_CHUNK):
+            self.client.publish({"t": "text", "text": text[start : start + STREAM_CHUNK]})
+
     # -- sending ----------------------------------------------------------------------------------
-    async def send(self, to: str, text: str, *, via: str = VIA_AGENT) -> Delivered:
+    async def send(self, to: str, text: str, *, via: str = VIA_AGENT, direct: bool = False) -> Delivered:
         """Send a message and return once the other session has taken it.
 
         A message sent by this session's agent while it is answering another one carries that message's
@@ -151,7 +224,7 @@ class Messenger:
             SendError: Nobody was reached, and why.
         """
         hops = self.answering.hops if self.answering is not None and via == VIA_AGENT else 0
-        return await self.client.send(to, text, hops=hops, via=via)
+        return await self.client.send(to, text, hops=hops, via=via, direct=direct)
 
     # -- what the client reports ------------------------------------------------------------------
     def _received(self, incoming: Incoming) -> Receipt:
@@ -167,6 +240,7 @@ class Messenger:
                 text=incoming.text,
                 via=incoming.via,
                 hops=incoming.hops,
+                direct=incoming.direct,
             )
         )
 

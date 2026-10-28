@@ -48,6 +48,15 @@ PYTHON_ONLY: dict[str, dict[str, str]] = {
         "join_sessions": "a callback cannot cross HTTP: `messages()` lists what waits and `relay(id)` answers one",
         "run": "`prompt(...).result` is the same thing, a promise",
         "stream": "an alias of `prompt` in Python",
+        "reachable": "the broker is the gateway's concern (`zettcode.gateway`), not the server's: it is a Python process's own line to other sessions",
+        "handle": "the same: the name a Python process is registered under",
+        "peers": "the same: who else is registered with the broker",
+        "watch_peers": "a callback cannot cross HTTP",
+        "send_limits": "what the broker accepts; the server exposes `send` and its errors",
+        "watch": "another session's turns come over the broker, which only a Python process joins",
+        "unwatch": "the same: see `watch`",
+        "watch_streams": "the same: see `watch`",
+        "send_back": "the answer of a direct turn goes back over the broker, which only a Python process joins",
     },
     "Session": {
         "id": "read with `session.info()`, a property cannot be asynchronous",
@@ -64,6 +73,9 @@ PYTHON_ONLY: dict[str, dict[str, str]] = {
         "stream": "an alias of `prompt` in Python",
     },
     "Sessions": {
+        "history_of": "the web gateway reads sessions of other workspaces in process; the server has one workspace",
+        "stamp": "the same: a stat of a stored session's file, for a front end that polls",
+        "open_elsewhere": "the same: a probe of a stored session's lock file, which only a process on this machine can take",
         "read": "returns the engine's parsed records for a front end that draws the conversation itself; over HTTP "
         "that is `session.history({ full: true })`",
         "read_blocking": "the same, for a thread of the caller's own",
@@ -115,7 +127,7 @@ SHARED_TYPES = (
 )
 
 #: Errors about a Python process; they have no HTTP form.
-NOT_OVER_HTTP = {"ClientClosedError", "WorkspaceConflictError", "ZettCodeError"}
+NOT_OVER_HTTP = {"ClientClosedError", "DaemonStartError", "WorkspaceConflictError", "ZettCodeError"}
 
 
 def camel(name: str) -> str:

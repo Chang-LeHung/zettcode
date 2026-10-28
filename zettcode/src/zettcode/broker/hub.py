@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import itertools
+import json
 import secrets
 import time
 from collections import deque
@@ -26,8 +27,12 @@ from .protocol import (
     ACK_TIMEOUT,
     KIND_EXTERNAL,
     MAX_NAME,
+    MAX_STREAM,
     PROTOCOL_VERSION,
+    SESSION_ID,
+    STREAM_TYPES,
     VIA_EXTERNAL,
+    VIA_USER,
     Limits,
     PeerInfo,
     Refused,
@@ -42,6 +47,9 @@ MAX_WAITING = 32
 
 #: Lines queued for one session to read. A session that is this far behind has stopped reading and is dropped.
 MAX_QUEUED = 256
+
+#: How many sessions one connection may watch: there are rarely more than a few dozen sessions on a machine.
+MAX_WATCHING = 256
 
 #: What a connection is closed with when it has stopped reading (WebSocket's "policy violation").
 STOPPED_READING = 1008
@@ -77,6 +85,8 @@ class Session:
         #: Closes the connection with a code.
         self.close = close
         self._dropped = False
+        #: The sessions whose turns this connection asked to see.
+        self.watching: set[str] = set()
         self._waiting: dict[int, asyncio.Future[dict[str, Any]]] = {}
         self._deliveries = itertools.count(1)
 
@@ -88,6 +98,15 @@ class Session:
             if not self._dropped:
                 self._dropped = True
                 self.close(STOPPED_READING)
+
+    def push_lossy(self, line: dict[str, Any]) -> None:
+        """Queue a line that may be lost: when this session is half a queue behind it is skipped, not dropped for it.
+
+        What a turn streams is only ever a view of what is stored, so a reader that cannot keep up misses some of it
+        and sees the rest when the turn is written down, rather than being disconnected for it.
+        """
+        if self.outbox.qsize() < MAX_QUEUED // 2:
+            self.push(line)
 
     @property
     def waiting(self) -> int:
@@ -163,6 +182,9 @@ class Hub:
         self.sessions.pop(session.number, None)
         self.by_key.pop(session.key, None)
         session.gone()
+        if not self.closing:
+            for watched in session.watching:
+                self._tell_watched(watched)
         if self.roster.drop(session.number) is not None and not self.closing:
             self._announce()
 
@@ -181,6 +203,10 @@ class Hub:
                     self._on_session(session, n, line)
                 case "leave":
                     self._on_leave(session, n)
+                case "watch" | "unwatch":
+                    self._on_watch(session, n, line)
+                case "stream":
+                    self._on_stream(session, line)
                 case "ack":
                     session.acked(line)
         except Refused as refused:
@@ -192,8 +218,47 @@ class Hub:
         shown = before.public() if before is not None else None
         entry = self.roster.set(session.number, update)
         session.push({"op": "done", "n": n, "handle": entry.handle})
+        self._tell_watched(update.session_id)
         if entry.public() != shown:
             self._announce()
+
+    def _on_watch(self, session: Session, n: int | None, line: dict[str, Any]) -> None:
+        session_id = line.get("session_id")
+        if not isinstance(session_id, str) or not SESSION_ID.match(session_id):
+            raise Refused("invalid", "a session id is 1-64 letters, digits, '.', '_' or '-'")
+        watching = line.get("op") == "watch"
+        if watching and session_id not in session.watching and len(session.watching) >= MAX_WATCHING:
+            raise Refused("busy", f"a session may watch at most {MAX_WATCHING} others")
+        changed = (session_id in session.watching) != watching
+        session.watching.add(session_id) if watching else session.watching.discard(session_id)
+        # Said again, it changes nothing and costs nobody a line; a client sends these without a number and wants no
+        # answer, and one that asks for it is told.
+        if n is not None:
+            session.push({"op": "done", "n": n})
+        if changed:
+            self._tell_watched(session_id)
+
+    def _watchers(self, session_id: str) -> list[Session]:
+        return [other for other in self.sessions.values() if session_id in other.watching]
+
+    def _tell_watched(self, session_id: str) -> None:
+        """Tell the session that holds ``session_id`` how many are watching it, so it streams only while any are."""
+        owner = self.roster.owner_of(session_id)
+        holder = self.sessions.get(owner) if owner is not None else None
+        if holder is not None:
+            holder.push({"op": "watched", "count": len(self._watchers(session_id))})
+
+    def _on_stream(self, session: Session, line: dict[str, Any]) -> None:
+        """Pass what a turn says to the sessions watching it. Nothing is kept, and nobody is told when it is not wanted."""
+        entry = self.roster.of(session.number)
+        event = line.get("event")
+        if entry is None or not isinstance(event, dict) or event.get("t") not in STREAM_TYPES:
+            return
+        watchers = self._watchers(entry.session_id)
+        if not watchers or len(json.dumps(event)) > MAX_STREAM:
+            return
+        for watcher in watchers:
+            watcher.push_lossy({"op": "stream", "session_id": entry.session_id, "event": event})
 
     def _on_leave(self, session: Session, n: int | None) -> None:
         dropped = self.roster.drop(session.number) is not None
@@ -220,6 +285,10 @@ class Hub:
         if recipient is None:
             raise Refused("gone", f"@{target.handle} is no longer connected")
         message = {"from": sender.info.to_wire(), "text": text, "hops": hops + 1, "via": via}
+        # A reader's chat window may ask for its text to be run as the recipient's own prompt, but only of a session
+        # that said it can; for any other the flag is dropped and the message is delivered the ordinary way.
+        if body.get("direct") is True and via == VIA_USER and not sender.external and target.direct:
+            message["direct"] = True
         ack = await self._hand_over(recipient, message, target.handle)
         return {"to": target.public().to_wire(), **ack}
 
@@ -248,7 +317,7 @@ class Hub:
             raise Refused("rate", f"at most {self.limits.rate_limit} messages a minute; try again later")
         sends.append(now)
 
-    async def _hand_over(self, recipient: Session, message: dict[str, Any], handle: str) -> dict[str, str]:
+    async def _hand_over(self, recipient: Session, message: dict[str, Any], handle: str) -> dict[str, Any]:
         """Give the recipient the message and turn its ack into what the sender is told."""
         try:
             ack = await recipient.deliver(message, self.ack_timeout)
@@ -263,7 +332,12 @@ class Hub:
                 said = "the session's answer was not understood"
             raise Refused("rejected", said or "not accepted")
         disposition = ack.get("disposition")
-        return {"disposition": disposition if isinstance(disposition, str) else ""}
+        # Whether it went as the recipient's own prompt is what the broker decided, which the sender cannot know: the
+        # roster it read may be a moment older.
+        return {
+            "disposition": disposition if isinstance(disposition, str) else "",
+            "direct": message.get("direct") is True,
+        }
 
     # -- telling the sessions ---------------------------------------------------------------------
     def _announce(self) -> None:

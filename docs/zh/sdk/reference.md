@@ -119,6 +119,7 @@ class Client:
 | --- | --- |
 | `ConfigurationError` | 配置，或从中选出的模型、推理强度、权限不可用。 |
 | `WorkspaceConflictError` | 另一个已打开的 client 在不同的目录里工作。 |
+| `DaemonStartError` | 启动的后台 agent 一直没能联系上。 |
 | `SendError` | `send` 没能找到任何人;`reason` 说明原因。 |
 | `SessionNotFoundError` | `resume` 指向的会话读不出来。 |
 
@@ -160,8 +161,16 @@ class Client:
 | `use_compact_percent(percent)` | `tuple[ModelInfo, str \| None]` | 从下一次请求起改变压缩点(占窗口的比例,大于 0、至多 100),并改写配置文件。第二个值说明文件为什么没有写入,写入了就是 `None`。 |
 | `use_permission(name, *, remember=True)` | `str` | 选择权限级别；从下一条 shell 命令起生效。`remember=False` 不改动会话记住的级别，用于只覆盖这一次运行的选择。 |
 | `mentions(query="", *, limit=50)` | `tuple[MentionInfo, ...]` | 匹配查询的 `@` 资源，用于补全菜单。开启 `sessions_enabled=True` 时，正在运行的其他会话排在最前，和终端一致。 |
-| `await join_sessions(on_message)` | `bool` | 加入会话 broker，让其他 ZettCode 会话找得到它、给它发消息。`on_message` 收到每条 `IncomingMessage` 并返回 `Receipt`；返回 `False` 表示该 client 未开启会话功能。 |
-| `await send(to, text)` | `Delivered` | 按 handle 或 id 给另一个会话发消息，内容视为读者本人所写；需要先 `join_sessions`。没有人能收到时抛出 `zettcode.sdk.errors.SendError`(`reason` 说明原因)。 |
+| `await join_sessions(on_message, *, direct=False)` | `bool` | 加入会话 broker，让其他 ZettCode 会话找得到它、给它发消息。`on_message` 收到每条 `IncomingMessage` 并返回 `Receipt`；返回 `False` 表示该 client 未开启会话功能。`direct=True` 表示这个 client 会把带 `IncomingMessage.direct` 的消息当作读者本人的 prompt 来运行(见 `send_back`)。 |
+| `await send(to, text, *, direct=False)` | `Delivered` | 按 handle 或 id 给另一个会话发消息，内容视为读者本人所写；需要先 `join_sessions`。`direct=True` 时，支持的会话(`Peer.direct`)把这段文字当作自己的 prompt 运行，并把最终回答发回来；对其他会话该标记被忽略(`Delivered.direct` 说明实际发生了什么)。没有人能收到时抛出 `zettcode.sdk.errors.SendError`(`reason` 说明原因)。 |
+| `await send_back(message, text)` | `Delivered \| None` | 把运行了 `direct` 消息的那一轮的最终回答，以本会话 agent 的身份发回给发送方。发送方已经离开不算错误：返回 `None` 表示没有发出。 |
+| `reachable` | `bool` | 会话 broker 此刻是否连着。 |
+| `handle` | `str` | 其他会话称呼本会话的名字，注册之前为 `""`。 |
+| `peers()` | `tuple[Peer, ...]` | 已在 broker 注册的其他会话，取自内存(不会向 broker 查询)。 |
+| `watch_peers(callback)` | — | 当对等会话变化、或 broker 断开/恢复时调用 `callback()`(无参数)；传 `None` 停止。状态请读 `peers()` 和 `reachable`。 |
+| `send_limits` | `SendLimits` | broker 接受发送方的什么，前端可据此在发送前拒绝。 |
+| `watch(session_id)`、`unwatch(session_id)` | — | 请求实时得知另一个会话的回合在说什么；连接断开后仍然有效。只有被人观看时，会话才发布流。 |
+| `watch_streams(callback)` | — | 对被观看会话的回合的每个事件，在事件循环上调用 `callback(StreamEvent)`；传 `None` 停止。流出来的只是一种视图而不是记录：可能漏掉片段，回合结束后以存储的对话为准。 |
 | `relay(message, *, on_approval, on_question, on_event, timeout, raw, keep_events, defer_answers)` | `RunStream` | 为另一个会话发来的消息跑一轮，模型读到的内容带有发送者信息。 |
 | `await usage_ledger()` | `WorkspaceUsage` | 工作区每个已存会话花的用量，按会话、模型和天。 |
 | `await session_stats(ids=None)` | `tuple[SessionStatsInfo, ...]` | 若干会话在存储里的统计；不传 id 就是当前会话。 |
@@ -375,11 +384,19 @@ def remove_model(name, *, path=None) -> tuple[ModelInfo, ...]: ...
 
 ### `IncomingMessage`
 
-`sender_id`、`sender`、`text`、`via`、`hops`。另一个 ZettCode 会话发来的消息:`join_sessions` 交给回调的就是它,`relay` 回答的也是它。`via` 为 `"user"` 表示对方读者亲手所写,`"agent"` 表示对方 agent 所写,`"external"` 表示发消息的不是 ZettCode 会话。
+`sender_id`、`sender`、`text`、`via`、`hops`、`direct`。另一个 ZettCode 会话发来的消息:`join_sessions` 交给回调的就是它,`relay` 回答的也是它。`via` 为 `"user"` 表示对方读者亲手所写,`"agent"` 表示对方 agent 所写,`"external"` 表示发消息的不是 ZettCode 会话。
 
 ### `Receipt`、`Delivered`
 
-`Receipt(accepted, reason="", disposition="")` 是 `join_sessions` 的回调返回给发送方的:消息是否被收下、不收的原因、以及它的回合是 `"started"`(已开始)还是 `"queued"`(排队中)。`Delivered(to, disposition)` 是 `send` 的返回值:收下消息的会话的 handle,以及同样的 disposition。
+`Receipt(accepted, reason="", disposition="")` 是 `join_sessions` 的回调返回给发送方的:消息是否被收下、不收的原因、以及它的回合是 `"started"`(已开始)还是 `"queued"`(排队中)。`Delivered(to, disposition, direct)` 是 `send` 的返回值:收下消息的会话的 handle、同样的 disposition，以及 broker 是否把它当作该会话自己的 prompt 交付。`IncomingMessage.direct` 为真表示发送方是某个人的一对一聊天窗口：用 `session.prompt()` 运行 `text`，再用 `send_back` 把最终回答送回；回合失败、没有结束或什么也没写时，应送回 `zettcode.sdk.types` 里的 `DIRECT_FAILED`、`DIRECT_UNFINISHED`、`DIRECT_EMPTY` 这几行，`is_direct_notice(text)` 用来把它们和正常回答区分开。
+
+### `Peer`、`SendLimits`、`StreamEvent`、`Relay`
+
+`Peer(session_id, handle, title, workspace, status, kind, direct)` 是另一个已注册的会话(`status` 为 `"idle"` 或 `"working"`；`kind` 为 `"zettcode"` 或 `"external"`；`direct` 表示它会把直接消息当作自己的 prompt 运行)。`SendLimits(max_text, rate_limit, rate_window, max_hops)` 是 broker 接受的上限。`StreamEvent(session_id, kind, text, call_id, name, brief, ok)` 是被观看的回合说的一件事:`kind` 为 `"begin"`、`"text"`(回答的更多内容)、`"thinking"`、`"tool"`(开始；带 `name` 和一行 `brief`)、`"tool_end"`(`ok`)或 `"end"`(回合的产物在存储的对话里)。`Relay(sender_id, sender, via, hops)` 是 `Message.relay`:一条存下来的、来自其他会话的用户消息是谁发的；读者自己输入的为 `None`。
+
+### `DaemonInfo` 与 `zettcode.sdk.daemons`
+
+后台 agent 通过 `zettcode.sdk.daemons` 运行和列出:`list_daemons()` 为本机上的每一个返回 `DaemonInfo(session_id, workspace, status, name, title, model, effort, permission, pid, started_at)`;`await spawn_daemon(...)` 启动一个并返回它的 `DaemonInfo`(一直没能连上时抛出 `DaemonStartError`);`await stop_daemon(session_id)` 停止一个;`daemon_log(session_id, *, lines=200)` 读取它日志的末尾。
 
 ### `Totals`
 
@@ -430,6 +447,7 @@ def remove_model(name, *, path=None) -> tuple[ModelInfo, ...]: ...
 | `SessionNotFoundError` | `ZettCodeError`、`LookupError` | — |
 | `NothingToDoError` | `ZettCodeError` | — |
 | `WorkspaceConflictError` | `ZettCodeError` | — |
+| `DaemonStartError` | `ZettCodeError` | `log` |
 | `SendError` | `ZettCodeError` | `reason` |
 | `RunError` | `ZettCodeError` | `retryable`、`partial_text` |
 | `RunTimeoutError` | `RunError`、`TimeoutError` | `seconds` |

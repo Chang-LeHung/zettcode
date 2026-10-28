@@ -1,0 +1,123 @@
+/* Colours and sizes. The light palette is a plain messenger's; the dark one is its night blue. `data-theme` overrides
+   the system's choice, and `data-size` the text size. */
+
+:root {
+  color-scheme: light dark;
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", "PingFang SC",
+    "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+
+  --rail: 72px;
+  --pane: 360px;
+  --radius: 14px;
+  --bubble-radius: 18px;
+  --row: 72px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #f4f4f5;
+  --chat-bg-a: #ffffff;
+  --chat-bg-b: #ffffff;
+  --text: #0f1419;
+  --muted: #707579;
+  --divider: #e3e5e8;
+  --accent: #3390ec;
+  --accent-text: #ffffff;
+  --accent-soft: rgba(51, 144, 236, 0.12);
+  --in-bubble: #f1f3f5;
+  --in-text: #0f1419;
+  --out-bubble: #3390ec;
+  --out-text: #ffffff;
+  --out-meta: rgba(255, 255, 255, 0.78);
+  --ok: #4fae4e;
+  --warn: #e8960c;
+  --bad: #e53935;
+  --bad-soft: rgba(229, 57, 53, 0.13);
+  --rail-bg: #f4f4f5;
+  --hover: rgba(0, 0, 0, 0.05);
+  --shadow: none;
+  --sheet-shadow: 0 -8px 30px rgba(0, 0, 0, 0.18);
+  --code-bg: rgba(0, 0, 0, 0.06);
+  --scrim: rgba(0, 0, 0, 0.45);
+  --chip-bg: rgba(0, 0, 0, 0.42);
+  --code-block: #f6f8fa;
+  --code-head: #eceff3;
+  --hl-fg: #24292f; --hl-comment: #6a737d; --hl-keyword: #cf222e; --hl-string: #0a3069; --hl-number: #0550ae;
+  --hl-title: #8250df; --hl-type: #953800; --hl-attr: #0550ae; --hl-tag: #116329; --hl-meta: #6639ba;
+  font-size: 15px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #17212b;
+    --surface: #17212b;
+    --surface-2: #0e1621;
+    --chat-bg-a: #0e1621;
+    --chat-bg-b: #0e1621;
+    --text: #f5f5f5;
+    --muted: #7f91a4;
+    --divider: #0e1621;
+    --accent: #5eb5f7;
+    --accent-text: #0b1620;
+    --accent-soft: rgba(94, 181, 247, 0.16);
+    --in-bubble: #182533;
+    --in-text: #f5f5f5;
+    --out-bubble: #2b5278;
+    --out-text: #ffffff;
+    --out-meta: #7fc3f5;
+    --rail-bg: #0e1621;
+    --hover: rgba(255, 255, 255, 0.06);
+    --shadow: none;
+    --sheet-shadow: 0 -8px 30px rgba(0, 0, 0, 0.5);
+    --code-bg: rgba(255, 255, 255, 0.08);
+    --scrim: rgba(0, 0, 0, 0.6);
+    --code-block: #0d1117;
+    --code-head: #151b23;
+    --hl-fg: #e6edf3; --hl-comment: #8b949e; --hl-keyword: #ff7b72; --hl-string: #a5d6ff; --hl-number: #79c0ff;
+    --hl-title: #d2a8ff; --hl-type: #ffa657; --hl-attr: #79c0ff; --hl-tag: #7ee787; --hl-meta: #d2a8ff;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #17212b;
+  --surface: #17212b;
+  --surface-2: #0e1621;
+  --chat-bg-a: #0e1621;
+  --chat-bg-b: #0e1621;
+  --text: #f5f5f5;
+  --muted: #7f91a4;
+  --divider: #0e1621;
+  --accent: #5eb5f7;
+  --accent-text: #0b1620;
+  --accent-soft: rgba(94, 181, 247, 0.16);
+  --in-bubble: #182533;
+  --in-text: #f5f5f5;
+  --out-bubble: #2b5278;
+  --out-text: #ffffff;
+  --out-meta: #7fc3f5;
+  --rail-bg: #0e1621;
+  --hover: rgba(255, 255, 255, 0.06);
+  --shadow: none;
+  --sheet-shadow: 0 -8px 30px rgba(0, 0, 0, 0.5);
+  --code-bg: rgba(255, 255, 255, 0.08);
+  --scrim: rgba(0, 0, 0, 0.6);
+  --code-block: #0d1117;
+  --code-head: #151b23;
+  --hl-fg: #e6edf3; --hl-comment: #8b949e; --hl-keyword: #ff7b72; --hl-string: #a5d6ff; --hl-number: #79c0ff;
+  --hl-title: #d2a8ff; --hl-type: #ffa657; --hl-attr: #79c0ff; --hl-tag: #7ee787; --hl-meta: #d2a8ff;
+}
+
+:root[data-size="s"] { font-size: 14px; }
+:root[data-size="l"] { font-size: 17px; }
+
+@media (max-width: 960px) {
+  :root { --pane: 310px; }
+}
+
+@media (max-width: 719px) {
+  :root { --row: 74px; }
+}

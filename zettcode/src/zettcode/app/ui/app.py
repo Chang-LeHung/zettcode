@@ -255,6 +255,7 @@ class ZettCodeApp(
         self._follow_ups_held = False
         self._turn_running = False
         self._inbox: list[Relayed] = []
+        self._turn_answer: str | None = None
         self._lock_watch: asyncio.Task[None] | None = None
         self._lock_said: str | None = None
         self._messaging_live = False
@@ -1057,11 +1058,13 @@ class ZettCodeApp(
                     instructions=instructions,
                     **self._answers(),
                 )
+            self._turn_answer = None
             async with run:
                 async for event in run:
                     tally.see(event)
                     self._refresh_tasks()
                     self.app.invalidate()
+            self._turn_answer = run.result.text if run.result is not None else None
         except asyncio.CancelledError:
             self.transcript.complete_thinking()
             self.transcript.notice("stopped")

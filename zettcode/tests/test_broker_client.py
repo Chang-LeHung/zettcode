@@ -927,3 +927,74 @@ async def test_a_session_that_is_closed_leaves_the_roster_at_once_not_after_a_ti
     await client.close()
 
     await eventually(lambda: [e.session_id for e in watcher.roster] == [B], 1)
+
+
+# -- watching a turn ---------------------------------------------------------------------------------------
+
+
+async def test_a_watched_sessions_turn_reaches_its_watcher_and_only_while_it_is_watched(host):
+    worker = await connected(host, session(A, "worker"))
+    watcher = await connected(host, session(B, "watcher"))
+    heard: list[tuple[str, dict[str, Any]]] = []
+    watcher.on_stream = lambda session_id, event: heard.append((session_id, event))
+
+    worker.publish({"t": "text", "text": "dropped: nobody watches yet"})
+    watcher.watch(A)
+    await eventually(lambda: worker.watched)
+    worker.publish({"t": "begin"})
+    worker.publish({"t": "text", "text": "hello"})
+    await eventually(lambda: len(heard) == 2)
+    watcher.unwatch(A)
+    await eventually(lambda: not worker.watched)
+    worker.publish({"t": "end"})
+    await asyncio.sleep(0.05)
+
+    assert heard == [(A, {"t": "begin"}), (A, {"t": "text", "text": "hello"})]
+
+
+async def test_a_watch_is_asked_for_again_when_the_connection_is_lost_and_found(host):
+    worker = await connected(host, session(A, "worker"))
+    watcher = await connected(host, session(B, "watcher"))
+    watcher.watch(A)
+    await eventually(lambda: worker.watched)
+
+    await host.stop()
+    await host.start()
+    await eventually(lambda: worker.connected and watcher.connected)
+    await eventually(lambda: worker.watched)
+
+
+async def test_a_watch_the_broker_refuses_is_not_kept(host):
+    from zettcode.broker.hub import MAX_WATCHING
+
+    watcher = await connected(host, session(B, "watcher"))
+    for number in range(MAX_WATCHING):
+        watcher.watch(f"s{number}")
+    owner = host.broker.hub.roster.owner_of(B)
+    held = host.broker.hub.sessions[owner]
+    await eventually(lambda: len(held.watching) == MAX_WATCHING)
+
+    watcher.watch("one-too-many")
+    await eventually(lambda: "one-too-many" not in watcher._watching)
+
+    assert len(watcher._watching) == MAX_WATCHING == len(held.watching)
+
+
+async def test_a_watch_and_an_unwatch_made_one_after_the_other_reach_the_broker_in_that_order(host):
+    await connected(host, session(A, "worker"))
+    watcher = await connected(host, session(B, "watcher"))
+    asked: list[tuple[str, str]] = []
+    real = watcher._tell
+
+    async def recording(line):
+        if line["op"] in ("watch", "unwatch"):  # a ``leave`` or a ``session`` line has no session to name here
+            asked.append((line["op"], line["session_id"]))
+        return await real(line)
+
+    watcher._tell = recording  # type: ignore[method-assign]
+
+    watcher.watch(A)
+    watcher.unwatch(A)
+    await eventually(lambda: len(asked) == 2)
+
+    assert asked == [("watch", A), ("unwatch", A)] and A not in watcher._watching

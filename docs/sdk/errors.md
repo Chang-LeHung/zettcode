@@ -18,6 +18,7 @@ Exception
     ├── SessionNotFoundError      (also LookupError)
     ├── NothingToDoError
     ├── WorkspaceConflictError
+    ├── DaemonStartError
     ├── SendError
     └── RunError
         └── RunTimeoutError       (also TimeoutError)
@@ -44,6 +45,7 @@ Where there was an underlying error, it is kept as `__cause__`.
 | `SessionNotFoundError` | A session id that does not exist or cannot be read; `history()` or `fork()` on a session with no messages yet. | Check the id with `sessions.list()`. |
 | `NothingToDoError` | `resume()` on a conversation that was not interrupted, or `compact()` on one already compacted. The message says why. | Not a failure; skip. |
 | `WorkspaceConflictError` | A client on a different directory is open in this process. | Close the first, or use a separate process. |
+| `DaemonStartError` | `daemons.spawn_daemon()` started a process that never became reachable. `log` names the file with its first words. | Read the log; usually no model is configured. |
 | `SendError` | `send()` could not reach anyone. `reason` says why: `offline` (no broker), `lost` (the connection ended with the message in flight), or the broker's own (`unknown`, `ambiguous`, `rejected`, `timeout`, `loop`, `rate`, `empty`, `too_long`). | Look at `reason`; `ambiguous` wants the session id instead of the handle. |
 | `RunError` | The model, the provider or the network failed during a run. | Look at `retryable`. |
 | `RunTimeoutError` | A run outlasted its `timeout`. | `resume()`, or retry. |

@@ -1,0 +1,11 @@
+{
+  "name": "ZettCode Gateway",
+  "short_name": "ZettCode",
+  "description": "Talk to the background agents on your machine.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#17212b",
+  "theme_color": "#3390ec",
+  "icons": [{ "src": "/static/icon.png", "sizes": "256x256", "type": "image/png", "purpose": "any" }]
+}

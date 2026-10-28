@@ -24,6 +24,7 @@ import contextlib
 import itertools
 import json
 import time
+from collections import deque
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -34,6 +35,7 @@ from .protocol import (
     ACK_TIMEOUT,
     PROTOCOL_VERSION,
     VIA_AGENT,
+    VIA_USER,
     VIAS,
     Limits,
     PeerInfo,
@@ -136,6 +138,8 @@ class BrokerClient:
     ) -> None:
         self.on_message = on_message
         self.on_roster = on_roster
+        #: Called, on the loop, with the id of a watched session and one thing its turn said (see ``STREAM_TYPES``).
+        self.on_stream: Callable[[str, dict[str, Any]], None] | None = None
         self.on_conflict = on_conflict
         self.reply_timeout = reply_timeout
         self.request_timeout = request_timeout
@@ -154,6 +158,13 @@ class BrokerClient:
         self._ws: Any = None
         self._http: Any = None
         self._connected = False
+        #: Whether anybody watches this session's turns: the broker says so, and until it does nothing is streamed.
+        self._watched = False
+        self._watching: set[str] = set()
+        self._outbox: deque[str] = deque(maxlen=512)
+        self._asks: deque[tuple[str, str]] = deque()
+        self._asker: asyncio.Task[None] | None = None
+        self._streamer: asyncio.Task[None] | None = None
         self._goodbye = False
         self._came_up = asyncio.Event()
         # Asking the broker something over the WebSocket and waiting for its answer.
@@ -205,6 +216,71 @@ class BrokerClient:
         mine = self._session.session_id if self._session is not None else None
         return tuple(entry for entry in self._roster if entry.session_id != mine)
 
+    # -- watching a turn --------------------------------------------------------------------------
+    @property
+    def watched(self) -> bool:
+        """Return whether anybody is watching this session's turns right now."""
+        return self._watched and self._connected
+
+    def watch(self, session_id: str) -> None:
+        """Ask to be told what a session's turns say, as they happen. Kept across a lost connection."""
+        if session_id in self._watching:
+            return
+        self._watching.add(session_id)
+        self._ask("watch", session_id)
+
+    def unwatch(self, session_id: str) -> None:
+        """Stop watching a session."""
+        if session_id in self._watching:
+            self._watching.discard(session_id)
+            self._ask("unwatch", session_id)
+
+    def _ask(self, op: str, session_id: str) -> None:
+        """Ask the broker to ``watch`` or ``unwatch`` a session, one request after another in the order they were made.
+
+        A ``watch`` the broker refuses (it caps what a connection watches) is forgotten rather than kept, so what this
+        client believes it watches is what the broker does. Nothing is sent while disconnected: the connection that
+        follows asks for every session still wanted.
+        """
+        if not self._connected:
+            return
+        self._asks.append((op, session_id))
+        if self._asker is None or self._asker.done():
+            self._asker = asyncio.ensure_future(self._ask_all())
+
+    async def _ask_all(self) -> None:
+        while self._asks:
+            op, session_id = self._asks.popleft()
+            try:
+                await self._tell({"op": op, "session_id": session_id})
+            except Refused:
+                if op == "watch":
+                    self._watching.discard(session_id)
+            except Exception:  # noqa: BLE001 - a lost connection: what is still wanted is asked for on the next one
+                self._asks.clear()
+                return
+
+    def publish(self, event: dict[str, Any]) -> None:
+        """Say one thing about this session's turn to whoever watches it; nothing is sent when nobody does."""
+        if self.watched:
+            self._say({"op": "stream", "event": event})
+
+    def _say(self, line: dict[str, Any]) -> None:
+        """Send a line that expects no answer, in the order given. A connection that is down loses it."""
+        if not self._connected:
+            return
+        self._outbox.append(json.dumps(line))
+        if self._streamer is None or self._streamer.done():
+            self._streamer = asyncio.ensure_future(self._pump())
+
+    async def _pump(self) -> None:
+        """Send what is queued, one line after another, until there is nothing."""
+        while self._outbox and (ws := self._ws) is not None:
+            try:
+                await ws.send(self._outbox.popleft())
+            except Exception:  # noqa: BLE001 - a lost connection: what was watched is asked for again on the next
+                return
+
     def set_session(self, info: SessionInfo | None) -> None:
         """Say what this session is now: a new id, a new title, a new status.
 
@@ -229,11 +305,11 @@ class BrokerClient:
     async def close(self) -> None:
         """Disconnect and stop trying. Quick, idempotent, and never raises."""
         self._closing = True
-        for task in (self._pusher, self._supervisor):
+        for task in (self._pusher, self._supervisor, self._asker):
             if task is not None:
                 task.cancel()
                 await asyncio.gather(task, return_exceptions=True)
-        self._pusher = self._supervisor = None
+        self._pusher = self._supervisor = self._asker = None
         ws, http = self._ws, self._http
         self._drop()
         if http is not None:
@@ -246,7 +322,7 @@ class BrokerClient:
                 await asyncio.wait_for(ws.close(), 0.5)
 
     # -- sending ----------------------------------------------------------------------------------
-    async def send(self, to: str, text: str, *, hops: int = 0, via: str = VIA_AGENT) -> Delivered:
+    async def send(self, to: str, text: str, *, hops: int = 0, via: str = VIA_AGENT, direct: bool = False) -> Delivered:
         """Send a message to another session and return once it has taken it.
 
         Raises:
@@ -266,7 +342,9 @@ class BrokerClient:
         await self._registered()
         try:
             response = await http.post(
-                "/messages", json={"to": to, "text": cleaned, "via": via, "hops": hops}, timeout=self.reply_timeout
+                "/messages",
+                json={"to": to, "text": cleaned, "via": via, "hops": hops, **({"direct": True} if direct else {})},
+                timeout=self.reply_timeout,
             )
         except httpx.TimeoutException:
             raise SendError(
@@ -292,7 +370,7 @@ class BrokerClient:
         if recipient is None:
             raise SendError("internal", "the broker's answer did not say who took the message")
         disposition = body.get("disposition")
-        return Delivered(recipient, disposition if isinstance(disposition, str) else "")
+        return Delivered(recipient, disposition if isinstance(disposition, str) else "", body.get("direct") is True)
 
     async def _registered(self) -> None:
         """Wait, for a moment, until the broker has been told about this session.
@@ -342,6 +420,9 @@ class BrokerClient:
     def _drop(self) -> None:
         """Forget the connection: nothing can be sent now, and whatever was waiting on it has failed."""
         was, self._connected = self._connected, False
+        self._watched = False
+        self._outbox.clear()
+        self._asks.clear()
         self._came_up.clear()
         self._ws = self._http = None
         for reply in self._replies.values():
@@ -369,6 +450,8 @@ class BrokerClient:
             self._outage.recovered()
             self._came_up.set()
             self._schedule_push()
+            for watching in list(self._watching):
+                self._ask("watch", watching)
             try:
                 async for raw in ws:
                     await self._heard(ws, raw)
@@ -421,6 +504,14 @@ class BrokerClient:
             case "roster":
                 self._roster = roster_from_wire(line.get("sessions"))
                 self._notify_roster()
+            case "watched":
+                count = line.get("count")
+                self._watched = isinstance(count, int) and not isinstance(count, bool) and count > 0
+            case "stream":
+                session_id, event = line.get("session_id"), line.get("event")
+                if self.on_stream is not None and isinstance(session_id, str) and isinstance(event, dict):
+                    with contextlib.suppress(Exception):  # a listener's bug must not end the connection
+                        self.on_stream(session_id, event)
             case "deliver":
                 await ws.send(json.dumps({"op": "ack", "id": line.get("id"), **self._deliver(line)}))
             case "done" | "refused":
@@ -440,7 +531,13 @@ class BrokerClient:
             return _ack(Receipt(False, "the message was malformed"))
         if self.on_message is None:
             return _ack(Receipt(False, "this session is not taking messages"))
-        incoming = Incoming(sender, clean_text(text), hops, via if via in VIAS else VIA_AGENT)
+        incoming = Incoming(
+            sender,
+            clean_text(text),
+            hops,
+            via if via in VIAS else VIA_AGENT,
+            line.get("direct") is True and via == VIA_USER,
+        )
         try:
             return _ack(self.on_message(incoming))
         except Exception as error:  # noqa: BLE001 - the sender is told, the session carries on
@@ -510,6 +607,7 @@ def _describe(info: SessionInfo) -> dict[str, Any]:
         "workspace": info.workspace,
         "status": info.status,
         "kind": info.kind,
+        "direct": info.direct,
     }
 
 

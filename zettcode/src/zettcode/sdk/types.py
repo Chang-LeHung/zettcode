@@ -8,6 +8,7 @@ beyond arithmetic on their own fields.
 from __future__ import annotations
 
 import mimetypes
+from collections.abc import Mapping
 from dataclasses import dataclass, field, fields
 from datetime import date, datetime
 from pathlib import Path
@@ -17,9 +18,13 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
     from .events import Event
 
 __all__ = [
+    "DIRECT_EMPTY",
+    "DIRECT_FAILED",
+    "DIRECT_UNFINISHED",
     "Compaction",
     "ContextReport",
     "ContextShare",
+    "DaemonInfo",
     "DayTotals",
     "Delivered",
     "Image",
@@ -29,19 +34,25 @@ __all__ = [
     "ModelCheck",
     "ModelInfo",
     "ModelTotals",
+    "Peer",
     "Receipt",
+    "Relay",
     "ResumeInfo",
     "RunResult",
+    "SendLimits",
     "SessionInfo",
     "SessionStatsInfo",
     "SessionTotals",
     "StoredSession",
+    "StreamEvent",
     "TaskInfo",
     "ToolCallInfo",
     "ToolRecord",
     "Totals",
     "Usage",
     "WorkspaceUsage",
+    "brief_of",
+    "is_direct_notice",
 ]
 
 #: Media types a model accepts as an image; anything else is rejected before it reaches the provider.
@@ -295,6 +306,7 @@ class Message:
         usage: For an assistant message, what its model call spent, when the store recorded it.
         seconds: How long the message took to produce: the model call for an assistant message, the run for a tool
             message, and nothing for a user message.
+        relay: For a user message that another session sent, who sent it; ``None`` for what the reader typed.
     """
 
     role: str
@@ -307,6 +319,145 @@ class Message:
     usage: Usage | None = None
     seconds: float = 0.0
     pictures: tuple[Image, ...] = ()
+    relay: Relay | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Relay:
+    """Who sent a message that came from another session, as the conversation stored it.
+
+    Attributes:
+        sender_id: The sending session's id; the stable way to tell senders apart, because a handle can change.
+        sender: The sender's handle when it sent the message.
+        via: ``"user"`` when its reader typed it, ``"agent"`` when its agent sent it, ``"external"`` when the sender
+            was a program that is not a ZettCode session.
+        hops: How many sessions the message had passed through.
+    """
+
+    sender_id: str
+    sender: str
+    via: str = "agent"
+    hops: int = 1
+
+
+@dataclass(frozen=True, slots=True)
+class Peer:
+    """Another session that is registered with the broker right now.
+
+    Attributes:
+        session_id: The session's id; what a message is addressed to.
+        handle: The word that follows an ``@`` to address it.
+        title: What the session is about, or an empty string before it has a name.
+        workspace: The directory it works in.
+        status: ``"idle"`` or ``"working"``.
+        kind: ``"zettcode"`` for a session, ``"external"`` for a program that stands in for one.
+        direct: Whether it runs a message sent with ``direct=True`` as its reader's own prompt.
+    """
+
+    session_id: str
+    handle: str
+    title: str = ""
+    workspace: str = ""
+    status: str = "idle"
+    kind: str = "zettcode"
+    direct: bool = False
+
+
+#: What a session sends back for a direct turn that did not end in an answer, so the window that asked is not left waiting.
+#: They are shared by the sessions that send them and the gateway that shows them as notes rather than as replies.
+DIRECT_FAILED = "The turn failed: "
+DIRECT_UNFINISHED = "(the turn did not finish)"
+DIRECT_EMPTY = "(the turn ended without a written answer)"
+
+
+def is_direct_notice(text: str) -> bool:
+    """Return whether a message is one of the lines a session sends when a direct turn ended without an answer."""
+    return text.startswith(DIRECT_FAILED) or text in (DIRECT_UNFINISHED, DIRECT_EMPTY)
+
+
+#: The arguments that say what a tool call is about, in the order they are looked for.
+BRIEF_KEYS = ("command", "path", "file_path", "pattern", "query", "url", "to", "name", "description")
+
+
+def brief_of(arguments: Mapping[str, object]) -> str:
+    """Return one line saying what a tool call was about: its command, path, pattern or the like."""
+    for key in BRIEF_KEYS:
+        value = arguments.get(key)
+        if isinstance(value, str) and value.strip():
+            line = " ".join(value.split())
+            return line if len(line) <= 120 else line[:117] + "..."
+    return ""
+
+
+@dataclass(frozen=True, slots=True)
+class StreamEvent:
+    """One thing a watched session's running turn said, as it happened.
+
+    Attributes:
+        session_id: The session whose turn it is.
+        kind: ``"begin"`` (a turn started), ``"text"`` (more of the answer), ``"thinking"`` (the model is reasoning),
+            ``"tool"`` (a tool started), ``"tool_end"`` (it ended), ``"end"`` (the turn ended; what it produced is in
+            the stored conversation).
+        text: For ``"text"``, the new piece of the answer.
+        call_id: For ``"tool"`` and ``"tool_end"``, which call.
+        name: For ``"tool"``, the tool.
+        brief: For ``"tool"``, one line saying what it was called on.
+        ok: For ``"tool_end"``, whether it succeeded.
+    """
+
+    session_id: str
+    kind: str
+    text: str = ""
+    call_id: str = ""
+    name: str = ""
+    brief: str = ""
+    ok: bool | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class SendLimits:
+    """What the broker accepts from a sender, so a front end can refuse before it sends.
+
+    Attributes:
+        max_text: The longest message, in characters.
+        rate_limit: Messages one sender may send in ``rate_window`` seconds.
+        rate_window: The length of that window, in seconds.
+        max_hops: How many sessions a chain of agent messages may pass through.
+    """
+
+    max_text: int = 32_000
+    rate_limit: int = 20
+    rate_window: float = 60.0
+    max_hops: int = 6
+
+
+@dataclass(frozen=True, slots=True)
+class DaemonInfo:
+    """One background agent, as ``daemon list`` shows it.
+
+    Attributes:
+        session_id: The session it runs, which is also the id other sessions message it by.
+        workspace: The directory it works in, or an empty string when it never recorded one.
+        status: ``starting``, ``idle``, ``working``, ``stopping``, ``dead`` (its process is gone) or ``unknown``.
+        name: The label its starter gave it, saying what it is for.
+        title: The session's own name, once the model has written one.
+        model: The model it runs on.
+        effort: The reasoning level it runs at, or ``None`` for the model's own.
+        permission: The shell level: ``deny``, ``safe`` or ``full``.
+        pid: Its process id, or ``0`` when it never recorded one.
+        started_at: Seconds since the epoch when it started, or ``0.0``.
+    """
+
+    session_id: str
+    workspace: str = ""
+    status: str = "unknown"
+    name: str | None = None
+    title: str | None = None
+    model: str | None = None
+    effort: str | None = None
+    permission: str | None = None
+    pid: int = 0
+    started_at: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -338,6 +489,8 @@ class IncomingMessage:
             sender is a program that is not a ZettCode session.
         hops: How many sessions the message has passed through; an agent's answer carries it on, which ends two
             agents that keep answering each other.
+        direct: ``True`` when the sender is a person's one-to-one chat: run ``text`` with :meth:`Session.prompt`, as
+            the session's own reader's words, and give the final answer back with :meth:`Client.send_back`.
     """
 
     sender_id: str
@@ -345,6 +498,7 @@ class IncomingMessage:
     text: str
     via: str = "agent"
     hops: int = 1
+    direct: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -370,10 +524,12 @@ class Delivered:
     Attributes:
         to: The handle of the session that took it.
         disposition: ``"started"`` (a turn began there) or ``"queued"`` (it waits for the request running there).
+        direct: Whether the broker handed it over as the session's own prompt (see ``Client.send``'s ``direct``).
     """
 
     to: str
     disposition: str
+    direct: bool = False
 
 
 @dataclass(frozen=True, slots=True)
