@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path
 
 import pytest
@@ -534,6 +535,7 @@ async def test_the_folder_picker_lists_the_roots_then_their_folders_and_never_le
     assert refused.value.status == 403
 
 
+@pytest.mark.skipif(os.name == "nt", reason="one filesystem root is a POSIX idea: a Windows machine has one per drive")
 async def test_with_the_whole_filesystem_allowed_the_picker_starts_at_home_and_can_go_up_to_the_top(tmp_path):
     gateway, _ = await make(tmp_path, roots=(Path("/"),))
 
