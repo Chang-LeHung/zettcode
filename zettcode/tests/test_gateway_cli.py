@@ -26,7 +26,8 @@ def test_with_no_root_given_any_directory_may_be_chosen_and_no_full_turns_the_fu
     everywhere = settings_from([])
     limited = settings_from(["-r", str(tmp_path), "--no-full"])
 
-    assert everywhere.roots == (Path("/"),) and everywhere.allow_full is True
+    # The top of the drive the home directory is on: "/" on a POSIX machine, "C:\\" on a Windows one.
+    assert everywhere.roots == (Path(Path.home().anchor or "/").resolve(),) and everywhere.allow_full is True
     assert limited.allow_full is False
 
 
