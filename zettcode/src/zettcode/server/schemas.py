@@ -511,11 +511,41 @@ class AnswerOut(BaseModel):
     answer: str
 
 
+class PluginOut(BaseModel):
+    """One plugin as a list of them shows it.
+
+    Attributes:
+        name: What the plugin calls itself.
+        origin: The distribution that carries it, and the name a switch is written with; the same as ``name`` for a
+            plugin compiled into the program.
+        builtin: Compiled into the program, so it loads whatever the switches say.
+        enabled: Whether the next start loads it. A switch is a promise about that start, not this process.
+        failure: Why it could not load in this process, or empty when it did.
+    """
+
+    name: str
+    origin: str
+    builtin: bool = False
+    enabled: bool = True
+    failure: str = ""
+
+
 class PluginsOut(BaseModel):
-    """The plugins this server loaded, and the ones that refused to load."""
+    """The plugins this server loaded, the ones that refused to load, and every one a switch can reach."""
 
     loaded: list[str]
     failures: list[str]
+    entries: list[PluginOut] = Field(default_factory=list)
+
+
+class PluginSwitchIn(BaseModel):
+    """Turn one plugin on or off for the next start.
+
+    Attributes:
+        enabled: True to load it next time, False to leave it out.
+    """
+
+    enabled: bool
 
 
 class MentionOut(BaseModel):

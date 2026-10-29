@@ -144,7 +144,7 @@ class Client:
 | `permissions` | `tuple[str, ...]` | `("deny", "ask", "safe", "full")`。 |
 | `harness` | `bool` | just-in-time harness 是否开启。 |
 | `usage` | `Usage` | 当前会话已花的用量。 |
-| `plugins` | `PluginReport` | 已加载的插件，以及失败的。 |
+| `plugins` | `PluginReport` | 已加载的插件、开关能碰到的每一个（`entries`），以及失败的。 |
 | `self_compaction` | `bool` | 模型是否可以自己压缩这个会话。 |
 | `self_compaction_choice` | `bool \| None` | 这个会话自己的选择，`None` 表示跟随配置。 |
 
@@ -385,6 +385,11 @@ def remove_model(name, *, path=None) -> tuple[ModelInfo, ...]: ...
 ### `MentionInfo`
 
 `token`、`kind`、`name`、`description`。
+
+### `PluginEntry`
+
+`name`、`origin`、`builtin`、`enabled`、`failure`。`plugins()` 列出的一个插件：它自称的名字、承载它的发行包（开关就用这个名字写；编译进程序的插件两者相同）、
+是否编译进程序（编译进程序的关不掉）、**下次启动**是否加载，以及在这里加载失败的原因。
 
 ### `IncomingMessage`
 

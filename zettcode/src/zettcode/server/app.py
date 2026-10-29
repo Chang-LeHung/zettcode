@@ -60,7 +60,9 @@ from .schemas import (
     ModelCreate,
     ModelsOut,
     ModelUpdate,
+    PluginOut,
     PluginsOut,
+    PluginSwitchIn,
     PromptRequest,
     QuestionAnswer,
     RenameRequest,
@@ -603,9 +605,38 @@ def create_app(settings: Settings, *, client_factory: ClientFactory | None = Non
 
     @protected.get("/plugins", response_model=PluginsOut, tags=["models"])
     async def plugins(runner: RunnerDep) -> PluginsOut:
-        """List the plugins this server loaded, and the ones that could not load."""
+        """List the plugins this server loaded, the ones that failed, and every one a switch can reach."""
         report = runner.client.plugins
-        return PluginsOut(loaded=list(report.loaded), failures=list(report.failures))
+        return PluginsOut(
+            loaded=list(report.loaded),
+            failures=list(report.failures),
+            entries=[
+                PluginOut(
+                    name=entry.name,
+                    origin=entry.origin,
+                    builtin=entry.builtin,
+                    enabled=entry.enabled,
+                    failure=entry.failure,
+                )
+                for entry in report.entries
+            ],
+        )
+
+    @protected.put("/plugins/{name}", response_model=PluginOut, tags=["models"])
+    async def switch_plugin(name: str, body: PluginSwitchIn, runner: RunnerDep) -> PluginOut:
+        """Turn one plugin on or off for the next start, and return it as the list now shows it.
+
+        Nothing is loaded or unloaded here: the switch file is read once, when a process starts. A client that wants the
+        change now restarts the server, which is what the extension does.
+        """
+        entry = runner.client.set_plugin_enabled(name, body.enabled)
+        return PluginOut(
+            name=entry.name,
+            origin=entry.origin,
+            builtin=entry.builtin,
+            enabled=entry.enabled,
+            failure=entry.failure,
+        )
 
     @protected.get("/mentions", response_model=MentionsOut, tags=["models"])
     async def mentions(

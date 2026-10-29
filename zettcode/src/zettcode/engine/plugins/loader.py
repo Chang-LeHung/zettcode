@@ -97,7 +97,7 @@ def run(
     Builtins always load, while ``[plugins] enabled`` only gates the distributions.
     """
     for plugin in builtins:
-        loader.accept(plugin, origin=plugin.name or type(plugin).__name__)
+        loader.accept(plugin, origin=plugin.name or type(plugin).__name__, builtin=True)
     loader.builtins_loaded()
     if config.plugins_enabled:
         points = tuple(entry_points) if entry_points is not None else installed_entry_points()
@@ -125,7 +125,11 @@ class Loader:
         self.contributed: list[Contribution] = []
         self.services: dict[str, object] = dict(shared or {})
         self.plain_commands: list[object] = []
-        self.failures: list[str] = []
+        #: One ``(origin, why)`` per plugin that could not be loaded; the messages a front end shows are built from
+        #: these, so a list can put a header on its own row.
+        self.failed: list[tuple[str, str]] = []
+        #: The origins of the compiled-in plugins, in load order, so a bundle can say which rows are the program's.
+        self.builtins: list[str] = []
         self._identities: set[str] = set()
         self._extension_names: set[str] = {HOST_NAME}
         self._mention_kinds: set[str] = set()
@@ -196,20 +200,32 @@ class Loader:
             contributed=tuple(self.contributed),
             services=dict(self.services),
             plain_commands=tuple(self.plain_commands),
-            failures=tuple(self.failures),
+            failures=tuple(f"{origin}: {why}" for origin, why in self.failed),
+            failed=tuple(self.failed),
+            builtins=tuple(self.builtins),
         )
 
     # -- the same for every front end --
 
     def fail(self, origin: str, error: BaseException) -> None:
         """Record one plugin that could not be prepared."""
-        self.failures.append(f"{origin}: {_reason(error)}")
+        self.failed.append((origin, _reason(error)))
 
-    def accept(self, plugin: Plugin[Any], *, origin: str) -> None:
-        """Activate one plugin and merge what it registered, or report why not."""
+    def accept(self, plugin: Plugin[Any], *, origin: str, builtin: bool = False) -> None:
+        """Activate one plugin and merge what it registered, or report why not.
+
+        Args:
+            plugin: The plugin to activate.
+            origin: The name of the distribution (or of the compiled-in plugin) it came from.
+            builtin: Whether it is compiled into the program, which is what makes it impossible to switch off.
+        """
         name = plugin.name or origin or type(plugin).__name__
+        if builtin and origin not in self.builtins:
+            # Recorded before it is activated: a compiled-in plugin is the program's own whether or not it loaded,
+            # and the list of them is what a switch is refused against.
+            self.builtins.append(origin)
         if name in self._identities:
-            self.failures.append(f"{origin}: duplicate plugin name {name!r}")
+            self.failed.append((origin, f"duplicate plugin name {name!r}"))
             return
         if not plugin.name:
             plugin.name = name
@@ -224,7 +240,7 @@ class Loader:
             return
         clash = self.clash(container)
         if clash is not None:
-            self.failures.append(f"{origin}: {clash}")
+            self.failed.append((origin, clash))
             return
         self._identities.add(name)
         self.merge(container)

@@ -147,6 +147,18 @@ removes the key.
 workspace only**: each folder keeps its own ledger, so another project's spending is not in it. The page says which
 folder it is for, under its title.
 
+## Plugins
+
+A plugin installed beside the server adds commands here too: they appear in the `/` menu with the rest, and as
+**ZettCode: Run a Plugin Command** in the Command Palette. A command that answers with words gets a line in the
+conversation; one that is a preset for a request starts that request, with the command as its line and the preset as
+what the model reads.
+
+**ZettCode: Show Plugins** lists them: the ones compiled into the program first (they always load), then the ones
+installed beside it, each with a switch, and the reason on any that failed. A switch is written down now and honoured
+the **next** time the server starts — this one keeps the plugins it loaded, so **ZettCode: Restart Server** applies it.
+The switches are the same file the terminal's `/plugins disable` writes, so the two agree.
+
 ## Settings
 
 Search for *ZettCode* in Settings:

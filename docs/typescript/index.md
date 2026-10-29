@@ -119,7 +119,7 @@ differ it is because TypeScript talks to a server: `session.info()` reads what P
 | --- | --- |
 | `health()` | `GET /health` |
 | `models()`, `addModel(entry)`, `updateModel(name, changes)`, `removeModel(name)` | `/models`, `/models/{name}` |
-| `settings()`, `updateSettings(change)`, `useModel(name)`, `useEffort(name)`, `usePermission(name)`, `useHarness(on)`, `plugins()` | `/settings`, `/plugins` |
+| `settings()`, `updateSettings(change)`, `useModel(name)`, `useEffort(name)`, `usePermission(name)`, `useHarness(on)`, `plugins()`, `setPluginEnabled(name, enabled)`, `commands()`, `runCommand(name, argument?)` | `/settings`, `/plugins`, `/plugins/{name}`, `/commands`, `/commands/{name}` |
 | `sessions.list({limit})`, `sessions.new(title?)`, `sessions.open(id)`, `sessions.latest()`, `session.info()` | `/sessions`, `/sessions/current` |
 | `session.rename(title)`, `session.nameIt()`, `session.fork()` | `/sessions/current/...` |
 | `session.compact()`, `session.context()`, `session.history({full})`, `session.export()`, `session.ask(question)`, `session.askStream(question)` | `/sessions/current/...` |

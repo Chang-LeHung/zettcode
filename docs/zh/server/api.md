@@ -42,7 +42,8 @@ title: HTTP API 参考
 | `DELETE` | `/models/{name}` | — | 剩下的模型。最后一个不能删(`400 invalid`):client 至少需要一个。 |
 | `GET` | `/settings` | — | `{"model","effort","efforts","permission","permissions","harness"}`;改动过压缩点的 `PATCH` 之后还会带 `"unsaved"`(见下)。 |
 | `PATCH` | `/settings` | `{"model"?, "effort"?, "permission"?, "harness"?, "compact_percent"?}` | 更改后与 `GET /settings` 相同;至少给一个字段。`permission` 是 `deny`、`ask`、`safe` 或 `full`(`auto` 是 `full` 的旧名,会按 `full` 返回);`harness` 从下一次 prompt 起开启或关闭 just-in-time 工具 harness。`compact_percent` 大于 0、至多 100,从下一次请求起生效并写入配置文件;文件写不进去时,返回里带 `"unsaved": "<原因>"`,改动只在本次运行有效。有 run 在进行时,移动 `compact_percent` 会返回 `409`,其他字段不会。 |
-| `GET` | `/plugins` | — | `{"loaded": [...], "failures": [...]}` |
+| `GET` | `/plugins` | — | `{"loaded": [...], "failures": [...], "entries": [{"name","origin","builtin","enabled","failure"}]}`：名字、失败原因，以及列表里每一条的完整样子。`origin` 是发行包的名字，开关就用它写；`enabled` 说的是**下次启动**是否加载。 |
+| `PUT` | `/plugins/{name}` | `{"enabled": true\|false}` | 这个插件，按列表现在显示的样子。运行中的服务器不会加载或卸载任何东西：开关在进程启动时读一次，想立刻生效就重启服务器。内置插件关不掉（`400 invalid`），本机没有的名字同样会被拒绝。 |
 | `GET` | `/commands` | — | `{"commands": [{"name", "summary", "when_busy", "subcommands"}]}` |
 | `POST` | `/commands/{name}` | `{"argument"}` | `{"message", "notification", "prompt", "shown"}` —— 如果有 `prompt`，客户端用它发下一个 `POST /prompts`，`shown` 作为对话里显示的那一行 |
 | `GET` | `/mentions?query=&limit=50` | — | `{"mentions": [{"token","kind","name","description"}]}`:`@` 能指向的文件、skills 和插件资源。 |

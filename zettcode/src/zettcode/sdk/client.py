@@ -48,6 +48,7 @@ from .types import (
     ModelCheck,
     ModelInfo,
     Peer,
+    PluginEntry,
     Receipt,
     RunResult,
     SendLimits,
@@ -223,11 +224,26 @@ class PluginReport:
         failures: One message per plugin that could not be loaded; what fails is reported, never fatal.
         plain_commands: The commands the plugins registered for every front end — text, or a preset for a turn — in
             registration order, so a client with no terminal can offer them.
+        entries: The same plugins as a list shows them: what loaded, what the next start will leave out, and what could
+            not load, each with the origin a switch is written with. A front end with a panel reads this; `loaded`
+            and `failures` stay for the callers that only want the names.
     """
 
     loaded: tuple[str, ...]
     failures: tuple[str, ...]
     plain_commands: tuple[PlainCommand, ...] = ()
+    entries: tuple[PluginEntry, ...] = ()
+
+
+def _plugin_entry(entry: Any) -> PluginEntry:
+    """Return an engine-side plugin entry as the plain value the SDK hands out."""
+    return PluginEntry(
+        name=entry.name,
+        origin=entry.origin,
+        builtin=entry.builtin,
+        enabled=entry.enabled,
+        failure=entry.failure,
+    )
 
 
 def build_config(
@@ -1098,12 +1114,47 @@ class Client:
 
     @property
     def plugins(self) -> PluginReport:
-        """Return the plugins that loaded and the ones that did not."""
+        """Return the plugins that loaded, the ones the next start leaves out, and the ones that did not load."""
         bundle = self._agent.runtime.plugins
         return PluginReport(
             tuple(plugin.name for plugin in bundle.plugins),
             tuple(bundle.failures),
+            entries=tuple(_plugin_entry(entry) for entry in self._plugin_catalog()),
         )
+
+    def set_plugin_enabled(self, name: str, enabled: bool) -> PluginEntry:
+        """Record whether the next start loads one plugin, and return it as the list now shows it.
+
+        Nothing loads or unloads in this process: the switch is read once, when a program starts, which is why the
+        entry says what the *next* start does. A client that wants the change now makes a new one.
+
+        Args:
+            name: The plugin's origin — the distribution's entry-point name, which is what the bundle reports.
+            enabled: True to load it next time, False to leave it out.
+
+        Returns:
+            The plugin's entry, with the switch applied.
+
+        Raises:
+            ValueError: When the name is not one this installation has, is compiled into the program, is switched off
+                in the configuration file, or another session holds the switch file.
+        """
+        from ..engine.plugins.switches import set_enabled
+
+        bundle = self._agent.runtime.plugins
+        entries = self._plugin_catalog()
+        known = {entry.origin for entry in entries} | {entry.name for entry in entries}
+        set_enabled(self.config, name, enabled=enabled, builtins=bundle.builtins, known=known)
+        found = next((entry for entry in self._plugin_catalog() if name in (entry.origin, entry.name)), None)
+        if found is None:  # pragma: no cover - set_enabled refuses a name it cannot find
+            raise ValueError(f"No plugin is called {name!r}")
+        return _plugin_entry(found)
+
+    def _plugin_catalog(self) -> tuple[Any, ...]:
+        """Return every plugin this client knows, as the engine works it out."""
+        from ..engine.plugins.switches import catalog
+
+        return catalog(self.config, self._agent.runtime.plugins)
 
     def mentions(self, query: str = "", *, limit: int = 50) -> tuple[MentionInfo, ...]:
         """Return the ``@`` resources whose name matches ``query``, for a completion menu.

@@ -211,6 +211,8 @@ class TerminalLoader(Loader):
             services=plain.services,
             plain_commands=plain.plain_commands,
             failures=plain.failures,
+            failed=plain.failed,
+            builtins=plain.builtins,
             commands=tuple(self.commands),
             builtin_commands=tuple(self.commands[: self.builtin_command_count]),
             themes=tuple(self.themes),

@@ -38,6 +38,7 @@ from .mixins import (
 )
 from .plugin import Plugin, Plugins
 from .state import AgentBuild, Contribution, ExtensionFactory
+from .switches import PluginEntry, catalog, off_names, set_enabled
 
 __all__ = [
     "AGENT_PLUGINS",
@@ -59,6 +60,10 @@ __all__ = [
     "PluginToolMixin",
     "PluginTurnMixin",
     "Plugins",
+    "PluginEntry",
+    "catalog",
     "installed_entry_points",
     "load_plugins",
+    "off_names",
+    "set_enabled",
 ]

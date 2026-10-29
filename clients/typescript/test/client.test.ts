@@ -156,7 +156,23 @@ describe("the JSON API", () => {
         return json(response, { ...settings, permission: "safe" });
       }
       if (request.url === "/settings") return json(response, settings);
-      if (request.url === "/plugins") return json(response, { loaded: ["shell"], failures: [] });
+      if (request.url === "/plugins") {
+        return json(response, {
+          loaded: ["shell"],
+          failures: [],
+          entries: [{ name: "shell", origin: "shell", builtin: true, enabled: true, failure: "" }],
+        });
+      }
+      if (request.url === "/plugins/zettcode-acme" && request.method === "PUT") {
+        assert.deepEqual(JSON.parse(request.body), { enabled: false });
+        return json(response, {
+          name: "acme",
+          origin: "zettcode-acme",
+          builtin: false,
+          enabled: false,
+          failure: "",
+        });
+      }
       if (request.url === "/commands") {
         return json(response, { commands: [{ name: "/greet", summary: "say hello", when_busy: "refuse", subcommands: [] }] });
       }
@@ -177,6 +193,18 @@ describe("the JSON API", () => {
     assert.equal((await client.models()).models[0]?.web_search, false);
     assert.equal((await client.updateSettings({ compact_percent: 55 })).model.compact_percent, 55);
     assert.deepEqual((await client.plugins()).loaded, ["shell"]);
+    assert.deepEqual(
+      (await client.plugins()).entries.map((entry) => [entry.origin, entry.builtin]),
+      [["shell", true]],
+    );
+    // A switch is a PUT of one field, and the answer is the plugin as the list now shows it.
+    assert.deepEqual(await client.setPluginEnabled("zettcode-acme", false), {
+      name: "acme",
+      origin: "zettcode-acme",
+      builtin: false,
+      enabled: false,
+      failure: "",
+    });
     assert.deepEqual((await client.commands()).map((command) => command.name), ["/greet"]);
     assert.deepEqual(await client.runCommand("/greet", "Ada"), {
       message: "",

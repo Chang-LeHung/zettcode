@@ -99,6 +99,10 @@ class Plugins:
         failures: One message per plugin that could not be loaded or activated.
             A plugin that cannot be loaded is reported rather than taking the whole application
             with it; the shell reports these where the user can see them.
+        failed: The same failures as ``failures``, one ``(origin, why)`` pair each, for a list that groups them by
+            the plugin they belong to.
+        builtins: The origins of the plugins compiled into the program, in load order. They always load, so a switch
+            cannot leave one out, and a list can say which rows are the program's own.
     """
 
     host: PluginExtension | None = None
@@ -108,6 +112,8 @@ class Plugins:
     services: Mapping[str, object] = field(default_factory=dict)
     plain_commands: tuple[object, ...] = ()
     failures: tuple[str, ...] = ()
+    failed: tuple[tuple[str, str], ...] = ()
+    builtins: tuple[str, ...] = ()
 
     def find(self, name: str, kind: type[_T]) -> _T | None:
         """Return the service under ``name``, or ``None`` when no loaded plugin provides it.

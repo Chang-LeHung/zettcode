@@ -1,6 +1,13 @@
 /** The HTML of the usage, model-check and plugin pages. No editor in here, so the tests can read it as a document. */
 
-import type { ModelCheck, PluginReport, SessionTotals, Totals, WorkspaceUsage } from "../../../typescript/src/types.js";
+import type {
+  ModelCheck,
+  PluginEntry,
+  PluginReport,
+  SessionTotals,
+  Totals,
+  WorkspaceUsage,
+} from "../../../typescript/src/types.js";
 import { calendar, dayKey, dayTitle, rootScale, share, streaks } from "./usage.js";
 import { escapeHtml, formatTokens, sessionLabel } from "./format.js";
 
@@ -20,6 +27,8 @@ export interface Page {
   summary: string;
   /** Whether the numbers are those of one workspace, which the page then says before anything else. */
   scoped?: boolean;
+  /** The page's own script, for a page with a control on it; the panel runs it under a nonce. */
+  script?: string;
 }
 
 /**
@@ -259,25 +268,69 @@ export function doctorPage(checks: ModelCheck[]): Page {
   };
 }
 
-/** The plugins the server started, and the ones that did not. */
+/**
+ * The plugins: the ones compiled into the program, the ones installed beside it, and the ones that did not load.
+ *
+ * Every row says what it is called, where it came from, and — for an installed one — whether the next start loads it,
+ * as a switch. A builtin has no switch because it cannot be left out: it is the program itself. The page is why a
+ * plugin's switch is a promise about the next start and not about this one, so it says so under the list.
+ */
 export function pluginsPage(plugins: PluginReport): Page {
-  const list = (items: string[], failed: boolean): string =>
-    items.length === 0
-      ? `<div class="empty">${failed ? "No plugin failed." : "No plugin was loaded."}</div>`
-      : `<ul class="plugin-list">${items
-          .map(
-            (item) =>
-              `<li class="${failed ? "failed" : ""}"><i class="dot"></i><span>${escapeHtml(item)}</span></li>`,
-          )
-          .join("")}</ul>`;
+  const entries = plugins.entries.length > 0 ? plugins.entries : legacyEntries(plugins);
+  const builtin = entries.filter((entry) => entry.builtin);
+  const installed = entries.filter((entry) => !entry.builtin);
+  const off = installed.filter((entry) => !entry.enabled).length;
+  const failed = entries.filter((entry) => entry.failure !== "").length;
   return {
     title: "Plugins",
-    summary: `<b>${plugins.loaded.length}</b> loaded <span class="muted">· ${plugins.failures.length} failed</span>`,
+    summary: `<b>${plugins.loaded.length}</b> loaded <span class="muted">· ${off} off at the next start · ${failed} failed</span>`,
     body: `<section class="columns">
-      <div class="panel"><div class="panel-head"><h2>Loaded</h2><span class="muted">${plugins.loaded.length}</span></div>${list(plugins.loaded, false)}</div>
-      <div class="panel"><div class="panel-head"><h2>Failures</h2><span class="muted">${plugins.failures.length}</span></div>${list(plugins.failures, true)}</div>
-    </section>`,
+      ${group("Built in", builtin, "No plugin is compiled into the program.")}
+      ${group("Installed", installed, "No plugin is installed beside the program.")}
+    </section>
+    <p class="scope">A switch is written down now and honoured by the next start: this one keeps the plugins it
+    loaded. <strong>ZettCode: Restart Server</strong> starts one that reads it.</p>`,
   };
+}
+
+/** One group of rows, under a heading with how many it has. */
+function group(title: string, entries: PluginEntry[], empty: string): string {
+  const rows =
+    entries.length === 0
+      ? `<div class="empty">${empty}</div>`
+      : `<ul class="plugin-list">${entries.map((entry) => row(entry)).join("")}</ul>`;
+  return `<div class="panel"><div class="panel-head"><h2>${title}</h2><span class="muted">${entries.length}</span></div>${rows}</div>`;
+}
+
+/** One plugin: its dot, its name, where it came from, why it failed, and the switch an installed one has. */
+function row(entry: PluginEntry): string {
+  const failed = entry.failure !== "";
+  const dot = failed ? "failed" : entry.enabled ? "on" : "off";
+  const origin = entry.origin === entry.name ? "" : `<span class="plugin-origin">${escapeHtml(entry.origin)}</span>`;
+  const failure = failed ? `<span class="plugin-failure">${escapeHtml(entry.failure)}</span>` : "";
+  const control = entry.builtin
+    ? `<span class="chip">built in</span>`
+    : `<button class="switch" role="switch" data-name="${escapeHtml(entry.origin)}" data-enabled="${entry.enabled}"
+         aria-pressed="${entry.enabled}" aria-checked="${entry.enabled}" title="${
+           entry.enabled ? "On from the next start" : "Off from the next start"
+         }"><span class="knob"></span><span class="switch-word">${entry.enabled ? "on" : "off"}</span></button>`;
+  return `<li class="plugin ${dot}" data-name="${escapeHtml(entry.origin)}"><i class="dot"></i><span class="plugin-name">${escapeHtml(
+    entry.name,
+  )}</span>${origin}${failure}${control}</li>`;
+}
+
+/** A report from a server too old to send entries: the names alone, which is all there was to show. */
+function legacyEntries(plugins: PluginReport): PluginEntry[] {
+  return [
+    ...plugins.loaded.map((name) => ({ name, origin: name, builtin: false, enabled: true, failure: "" })),
+    ...plugins.failures.map((failure) => ({
+      name: failure.split(":")[0] ?? failure,
+      origin: failure.split(":")[0] ?? failure,
+      builtin: false,
+      enabled: true,
+      failure,
+    })),
+  ];
 }
 
 /** The page's styles, using the editor's colours so it follows the theme. */
@@ -393,11 +446,26 @@ h1 { margin: 0 0 6px; font-size: 22px; font-weight: 650; letter-spacing: -.02em;
 .panel-head h2 { margin: 0; font-size: 13px; }
 .columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
 .plugin-list { list-style: none; margin: 0; padding: 0; }
-.plugin-list li { display: flex; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.plugin-list li { display: flex; gap: 8px; align-items: baseline; padding: 7px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
 .plugin-list li:last-child { border-bottom: 0; }
 .dot { width: 8px; height: 8px; margin-top: 6px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
-.plugin-list .failed { color: var(--red); }
-.plugin-list .failed .dot { background: var(--red); }
+.plugin .dot { align-self: flex-start; }
+.plugin.off .dot { background: var(--muted); }
+.plugin.failed { color: var(--red); }
+.plugin.failed .dot { background: var(--red); }
+.plugin-name { font-weight: 600; }
+.plugin-origin { color: var(--muted); font-family: var(--mono); font-size: 11px; }
+.plugin-failure { color: var(--red); font-size: 11px; flex: 1 1 auto; }
+.plugin .chip, .plugin .switch { margin-left: auto; flex-shrink: 0; }
+.chip { border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
+.switch { display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: 11px; color: var(--muted);
+  background: transparent; border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px 2px 3px; cursor: pointer; }
+.switch .knob { width: 12px; height: 12px; border-radius: 50%; background: var(--muted); transition: transform .12s ease; }
+.switch[data-enabled="true"] { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.switch[data-enabled="true"] .knob { background: var(--accent); }
+.switch:disabled { opacity: .55; cursor: progress; }
+.switch:hover:not(:disabled) { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.switch:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
 .check-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px; }
 .check-card { border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; background: var(--card); }
 .check-head { display: flex; align-items: center; gap: 8px; }

@@ -403,6 +403,12 @@ session you are in keeps the plugins it loaded. The file is ZettCode's own, besi
 work in `[plugins] disable` in the config file — the two lists are merged. That file is never rewritten by `/plugins`:
 your configuration stays yours.
 
+The question has one answer wherever it is asked: the terminal's `/plugins`, the editor's **ZettCode: Show Plugins**
+panel (which groups the plugins compiled into the program apart from the installed ones and puts a switch on each of
+those) and `PUT /plugins/{name}` on the server all go through the same rules and write the same file. A plugin
+compiled into the program cannot be switched off — it is the program — and a name the configuration file has already
+turned off cannot be turned back on from either front end; that line is yours to edit.
+
 ## When something goes wrong
 
 A plugin that cannot be imported or activated is reported, not fatal: the shell

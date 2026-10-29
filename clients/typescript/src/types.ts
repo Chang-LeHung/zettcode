@@ -206,9 +206,24 @@ export interface RunResult {
   questions: string[];
 }
 
+/** One plugin as a list of them shows it. */
+export interface PluginEntry {
+  name: string;
+  /** The distribution that carries it, and the name a switch is written with; equal to `name` for a builtin. */
+  origin: string;
+  /** Compiled into the program, so it loads whatever the switches say. */
+  builtin: boolean;
+  /** Whether the next start loads it: a switch is a promise about that start, not this process. */
+  enabled: boolean;
+  /** Why it could not load in this process, or empty when it did. */
+  failure: string;
+}
+
 export interface PluginReport {
   loaded: string[];
   failures: string[];
+  /** Every plugin a switch can reach, in the order a panel shows them. */
+  entries: PluginEntry[];
 }
 
 /** One command every front end may run: a name, a summary, and how the run is framed. */

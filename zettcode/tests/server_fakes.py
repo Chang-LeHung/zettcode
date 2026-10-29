@@ -238,12 +238,34 @@ class FakeClient:
         self.doctor_timeout: float | None = None
         self.unwritten: str | None = None
         self.closed = False
+        self.switched: list[tuple[str, bool]] = []
 
     @property
     def plugins(self) -> object:
         from zettcode.sdk.client import PluginReport
+        from zettcode.sdk.types import PluginEntry
 
-        return PluginReport(("shell", "usage"), ("broken: no such module",))
+        return PluginReport(
+            ("shell", "usage"),
+            ("broken: no such module",),
+            entries=(
+                PluginEntry("shell", "shell", builtin=True),
+                PluginEntry("usage", "usage", builtin=True),
+                PluginEntry("acme", "zettcode-acme"),
+                PluginEntry("quiet", "zettcode-quiet", enabled=False),
+                PluginEntry("broken", "broken", failure="no such module"),
+            ),
+        )
+
+    def set_plugin_enabled(self, name: str, enabled: bool) -> object:
+        from zettcode.sdk.types import PluginEntry
+
+        if name in ("shell", "usage"):
+            raise ValueError(f"{name} is compiled into the program, so it cannot be switched off")
+        if name not in ("zettcode-acme", "zettcode-quiet"):
+            raise ValueError(f"No plugin is called {name!r}")
+        self.switched.append((name, enabled))
+        return PluginEntry(name, name, enabled=enabled)
 
     def use_model(self, name: str) -> ModelInfo:
         for model in self.models:

@@ -3,10 +3,10 @@ import test from "node:test";
 
 import { JSDOM } from "jsdom";
 
-import type { ModelCheck, PluginReport, Totals, WorkspaceUsage } from "../../typescript/src/types.js";
+import type { ModelCheck, PluginEntry, PluginReport, Totals, WorkspaceUsage } from "../../typescript/src/types.js";
 import { usagePage } from "../src/core/usage-page.js";
 import { showDoctorPanel, showPluginsPanel, showUsagePanel } from "../src/usage.js";
-import { lastPanel } from "./vscode-stub.js";
+import { lastPanel, posted, receive } from "./vscode-stub.js";
 
 const totals = (tokens: number, requests: number): Totals => ({
   requests,
@@ -71,12 +71,31 @@ const checks: ModelCheck[] = [
   },
 ];
 
-const plugins: PluginReport = { loaded: ["lint"], failures: ["search: missing binary"] };
+const entries: PluginEntry[] = [
+  { name: "shell", origin: "shell", builtin: true, enabled: true, failure: "" },
+  { name: "usage", origin: "usage", builtin: true, enabled: true, failure: "" },
+  { name: "lint", origin: "zettcode-lint", builtin: false, enabled: true, failure: "" },
+  { name: "search", origin: "zettcode-search", builtin: false, enabled: true, failure: "missing binary" },
+  { name: "acme", origin: "zettcode-acme", builtin: false, enabled: false, failure: "" },
+];
+
+const plugins: PluginReport = {
+  loaded: ["shell", "usage", "lint"],
+  failures: ["zettcode-search: missing binary"],
+  entries,
+};
 
 const client = {
   usageLedger: async () => usage,
   doctor: async () => checks,
   plugins: async () => plugins,
+  setPluginEnabled: async (name: string, enabled: boolean): Promise<PluginEntry> => {
+    const from = entries.find((entry) => entry.origin === name);
+    if (from === undefined) {
+      throw new Error(`No plugin is called ${name}`);
+    }
+    return { ...from, enabled };
+  },
 };
 
 test("the usage page has the terminal's three tabs under one line that totals the workspace", async () => {
@@ -166,11 +185,90 @@ test("the model check page has pass and fail cards", async () => {
   assert.ok(document.querySelector(".check-detail")?.textContent?.includes("answered"));
 });
 
-test("the plugins page separates loaded plugins from failures", async () => {
+test("the plugins page separates the program's own from the installed ones, and says what is off", async () => {
   await showPluginsPanel(client as never, { toString: () => "file:///extension" } as never, "zettcode");
   assert.ok(lastPanel !== null);
   assert.equal(lastPanel.title, "ZettCode: Plugins");
   const document = new JSDOM(lastPanel.webview.html).window.document;
-  assert.equal(document.querySelectorAll(".columns .panel").length, 2);
-  assert.ok(document.querySelector(".plugin-list .failed")?.textContent?.includes("missing binary"));
+
+  assert.deepEqual(
+    Array.from(document.querySelectorAll(".columns .panel h2")).map((node) => node.textContent),
+    ["Built in", "Installed"],
+  );
+  const panelOf = (title: string): Element | undefined =>
+    Array.from(document.querySelectorAll(".columns .panel")).find(
+      (node) => node.querySelector("h2")?.textContent === title,
+    );
+  const names = (title: string): (string | null)[] =>
+    Array.from(panelOf(title)?.querySelectorAll(".plugin-name") ?? []).map((node) => node.textContent);
+  assert.deepEqual(names("Built in"), ["shell", "usage"]);
+  assert.deepEqual(names("Installed"), ["lint", "search", "acme"]);
+
+  const summary = document.querySelector(".summary")?.textContent?.replace(/\s+/g, " ") ?? "";
+  assert.ok(summary.includes("3") && summary.includes("off at the next start") && summary.includes("1 failed"), summary);
+  assert.ok(document.querySelector(".scope")?.textContent?.includes("next start"), "a switch is a promise about the next start");
+});
+
+test("a builtin has no switch, and an installed plugin has one that says which way it is set", async () => {
+  await showPluginsPanel(client as never, { toString: () => "file:///extension" } as never, "zettcode");
+  const document = new JSDOM(lastPanel!.webview.html).window.document;
+
+  const shell = document.querySelector('.plugin[data-name="shell"]');
+  assert.equal(shell?.querySelector(".switch"), null, "a plugin compiled into the program cannot be left out");
+  assert.equal(shell?.querySelector(".chip")?.textContent, "built in");
+
+  const lint = document.querySelector('.plugin[data-name="zettcode-lint"]');
+  const button = lint?.querySelector(".switch");
+  assert.equal(button?.getAttribute("aria-pressed"), "true");
+  assert.equal(button?.querySelector(".switch-word")?.textContent, "on");
+  assert.ok(lint?.textContent?.includes("zettcode-lint"), "the name a switch is written with is on the row");
+
+  assert.equal(document.querySelector('.plugin[data-name="zettcode-acme"] .switch')?.getAttribute("aria-pressed"), "false");
+  assert.ok(document.querySelector('.plugin[data-name="zettcode-search"]')?.textContent?.includes("missing binary"));
+});
+
+test("pressing a switch writes through the host and moves the row on the answer", async () => {
+  await showPluginsPanel(client as never, { toString: () => "file:///extension" } as never, "zettcode");
+  posted.length = 0;
+
+  await receive({ type: "switch", name: "zettcode-acme", enabled: true });
+
+  assert.deepEqual(posted.at(-1), { type: "switched", name: "zettcode-acme", enabled: true, error: "" });
+});
+
+test("a switch the server refuses comes back as why, on the row it was pressed on", async () => {
+  const refused = {
+    ...client,
+    setPluginEnabled: async (): Promise<PluginEntry> => {
+      throw new Error("shell is compiled into the program, so it cannot be switched off");
+    },
+  };
+  await showPluginsPanel(refused as never, { toString: () => "file:///extension" } as never, "zettcode");
+  posted.length = 0;
+
+  await receive({ type: "switch", name: "shell", enabled: false });
+
+  assert.deepEqual(posted.at(-1), {
+    type: "switched",
+    name: "shell",
+    enabled: false,
+    error: "shell is compiled into the program, so it cannot be switched off",
+  });
+});
+
+test("the plugins page's script is one its own policy allows, and it speaks the message the host answers", async () => {
+  await showPluginsPanel(client as never, { toString: () => "file:///extension" } as never, "zettcode");
+  const html = lastPanel!.webview.html;
+  const document = new JSDOM(html).window.document;
+
+  const script = document.querySelector("script");
+  const nonce = script?.getAttribute("nonce") ?? "";
+  assert.ok(nonce.length >= 16, "a nonce long enough not to be guessed");
+  const policy = document.querySelector('meta[http-equiv="Content-Security-Policy"]')?.getAttribute("content") ?? "";
+  assert.ok(policy.includes(`script-src 'nonce-${nonce}'`), policy);
+  assert.equal(document.querySelectorAll("script").length, 1, "the page's one script, and no second");
+
+  // The halves of the protocol are in two languages: a press posts `switch`, and the host answers `switched`.
+  assert.ok(script?.textContent?.includes('type: "switch"'), "the script posts the message the host listens for");
+  assert.ok(script?.textContent?.includes('message.type !== "switched"'), "and waits for the one it sends back");
 });

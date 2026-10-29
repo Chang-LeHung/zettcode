@@ -245,7 +245,49 @@ async def test_the_plugins_and_the_ones_that_failed_are_listed():
     async with serve(FakeClient()) as (http, _app):
         body = (await http.get("/plugins")).json()
 
-    assert body == {"loaded": ["shell", "usage"], "failures": ["broken: no such module"]}
+    assert body["loaded"] == ["shell", "usage"]
+    assert body["failures"] == ["broken: no such module"]
+    # Every row a panel shows: what is compiled in, what is installed, what is off, and what failed.
+    assert [(entry["origin"], entry["builtin"], entry["enabled"]) for entry in body["entries"]] == [
+        ("shell", True, True),
+        ("usage", True, True),
+        ("zettcode-acme", False, True),
+        ("zettcode-quiet", False, False),
+        ("broken", False, True),
+    ]
+    assert body["entries"][-1]["failure"] == "no such module"
+
+
+async def test_a_plugin_can_be_switched_off_for_the_next_start():
+    client = FakeClient()
+    async with serve(client) as (http, _app):
+        response = await http.put("/plugins/zettcode-acme", json={"enabled": False})
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "name": "zettcode-acme",
+        "origin": "zettcode-acme",
+        "builtin": False,
+        "enabled": False,
+        "failure": "",
+    }
+    assert client.switched == [("zettcode-acme", False)]
+
+
+async def test_a_builtin_cannot_be_switched_off_over_http():
+    async with serve(FakeClient()) as (http, _app):
+        response = await http.put("/plugins/shell", json={"enabled": False})
+
+    assert response.status_code == 400
+    assert "compiled into the program" in response.json()["message"]
+
+
+async def test_a_switch_needs_the_enabled_field():
+    async with serve(FakeClient()) as (http, _app):
+        response = await http.put("/plugins/zettcode-acme", json={})
+
+    assert response.status_code == 422
+    assert response.json()["error"] == "invalid"
 
 
 async def test_images_are_decoded_and_mentions_are_on_by_default():

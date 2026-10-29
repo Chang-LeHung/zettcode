@@ -144,7 +144,7 @@ The agent for one workspace. An async context manager. Every configuration field
 | `permissions` | `tuple[str, ...]` | `("deny", "ask", "safe", "full")`. |
 | `harness` | `bool` | Whether the just-in-time harness is on. |
 | `usage` | `Usage` | What the current session has spent. |
-| `plugins` | `PluginReport` | The plugins that loaded, and the failures. |
+| `plugins` | `PluginReport` | The plugins that loaded, every one a switch can reach (`entries`), and the failures. |
 | `self_compaction` | `bool` | Whether the model may compact this session itself. |
 | `self_compaction_choice` | `bool \| None` | This session's own choice, or `None` when it follows the configuration. |
 
@@ -383,6 +383,10 @@ Properties: `ok` (`stop is None`) and `failed_tools`.
 ### `MentionInfo`
 
 `token`, `kind`, `name`, `description`.
+
+### `PluginEntry`
+
+`name`, `origin`, `builtin`, `enabled`, `failure`. One plugin as `plugins()` lists it: what it calls itself, the distribution that carries it (the name a switch is written with, the same as `name` for a plugin compiled into the program), whether it is compiled in and so can never be left out, whether the **next start** loads it, and why it could not load here when it could not.
 
 ### `IncomingMessage`
 

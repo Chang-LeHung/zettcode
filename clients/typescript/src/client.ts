@@ -18,6 +18,7 @@ import type {
   ModelInput,
   ModelUpdate,
   Permission,
+  PluginEntry,
   PluginReport,
   PromptOptions,
   RunEvent,
@@ -182,9 +183,22 @@ export class ZettCodeClient {
     return this.updateSettings({ harness: on });
   }
 
-  /** The plugins the server loaded, and the ones that failed. */
+  /** The plugins the server loaded, the ones that failed, and every one a switch can reach. */
   plugins(): Promise<PluginReport> {
     return this.request<PluginReport>("/plugins");
+  }
+
+  /**
+   * Turn one plugin on or off for the next start, and read it as the list now shows it.
+   *
+   * Nothing loads or unloads in the running server: the switch file is read once, when a process starts. Call
+   * `plugins()` again for the whole list, and restart the server for the change to take effect.
+   */
+  setPluginEnabled(name: string, enabled: boolean): Promise<PluginEntry> {
+    return this.request<PluginEntry>(`/plugins/${encodeURIComponent(name)}`, {
+      method: "PUT",
+      body: JSON.stringify({ enabled }),
+    });
   }
 
   /** The commands every front end may run — the ones a plugin registered on `ctx.commands`. */

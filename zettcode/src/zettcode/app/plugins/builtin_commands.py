@@ -22,8 +22,6 @@ import os
 import shlex
 import subprocess
 import sys
-from collections.abc import Iterable, Iterator
-from contextlib import AbstractContextManager, contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -39,6 +37,7 @@ from zettcode.config import read_disabled_plugins
 from zettcode.engine.plugins.commands import PlainCommandContext, TurnCommandResult
 from zettcode.engine.plugins.context import PluginContext
 from zettcode.engine.plugins.loader import installed_entry_points
+from zettcode.engine.plugins.switches import set_enabled as switch_plugin
 from zettcode.paths import DEFAULT_COMMAND_HISTORY
 from zettcode.tui import Widget
 
@@ -47,7 +46,10 @@ from .host import HOST_LINK, HostLink
 from .plugin import TuiPlugin
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
+    from typing import Any
+
     from zettcode.config import ZettCodeConfig
+    from zettcode.engine.plugins.plugin import Plugin
 
 #: Rows the picker panels take from the bottom of the screen: the title, the list, and the footer hint. The
 #: handler owns the number; nothing in the framework reads it.
@@ -606,7 +608,6 @@ class PluginCommand(TuiPlugin):
 
     async def plugins(self, context: CommandContext, config: ZettCodeConfig) -> CommandResult:
         """List what loaded and failed, or record a switch the next start will honour."""
-        path = config.plugins_file
         argument = context.argument.strip()
         if not argument:
             return CommandResult(message=self._listing(context, config))
@@ -622,32 +623,26 @@ class PluginCommand(TuiPlugin):
             if context.host is not None
             else set()
         )
-        if name not in known and name not in read_disabled_plugins(path):
-            raise ValueError(f"No plugin is called {name!r}; /plugins lists the ones this process loaded")
-        if _is_builtin(name):
-            raise ValueError(
-                f"{name} is compiled into the program, so it cannot be switched off; "
-                "a plugin installed as a distribution can"
-            )
-
-        if verb == "enable" and name in set(config.disabled_plugins):
-            raise ValueError(
-                f"{name} is switched off in the configuration file; remove it from [plugins] disable there, "
-                "which this command does not edit"
-            )
-
-        with _switch_lock(path):
-            names = set(read_disabled_plugins(path))
-            if verb == "disable":
-                names.add(name)
-            else:
-                names.discard(name)
-            _write_disabled(path, names)
+        switch_plugin(
+            config,
+            name,
+            enabled=verb == "enable",
+            builtins=(plugin.origin or plugin.name for plugin in self._builtins()),
+            known=known,
+        )
         state = "off" if verb == "disable" else "on"
         return CommandResult(
             notification=f"{name} will be {state} from the next start",
             message=f"`{name}` is {state} for the next start; this session keeps the plugins it loaded.",
         )
+
+    @staticmethod
+    def _builtins() -> tuple[Plugin[Any], ...]:
+        """Return the plugins compiled into the program, which no switch can leave out."""
+        from zettcode.app.plugins.builtins import BUILTIN_PLUGINS
+        from zettcode.engine.plugins.builtin_agent import AGENT_PLUGINS
+
+        return (*BUILTIN_PLUGINS, *AGENT_PLUGINS)
 
     def _listing(self, context: CommandContext, config: ZettCodeConfig) -> str:
         """Return the loaded, failed and switched-off plugins as a short list."""
@@ -669,52 +664,6 @@ class PluginCommand(TuiPlugin):
             lines.append("")
             lines.append(f"Off from the next start: {', '.join(off)}")
         return "\n".join(lines)
-
-
-def _is_builtin(name: str) -> bool:
-    """Return whether ``name`` is one of the plugins compiled into the program."""
-    from zettcode.app.plugins.builtins import BUILTIN_PLUGINS
-    from zettcode.engine.plugins.builtin_agent import AGENT_PLUGINS
-
-    return any(name in (plugin.name, plugin.origin) for plugin in (*BUILTIN_PLUGINS, *AGENT_PLUGINS))
-
-
-def _switch_lock(path: Path) -> AbstractContextManager[object]:
-    """Serialise a read-modify-write of the switch file between two sessions running at once."""
-    from zettcode.filelock import SingletonLock
-
-    @contextmanager
-    def held() -> Iterator[None]:
-        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        lock = SingletonLock(path.with_suffix(".lock"))
-        if not lock.acquire(wait=2.0):
-            raise ValueError("another session is changing the plugin switches; try again in a moment")
-        try:
-            yield None
-        finally:
-            lock.release()
-
-    return held()
-
-
-def _write_disabled(path: Path, names: Iterable[str]) -> None:
-    """Write the switch file in one replace, owner-only, so a crash cannot leave half a list."""
-    import json
-    import tempfile
-
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    handle, temporary = tempfile.mkstemp(dir=path.parent, prefix=".plugins-", suffix=".json")
-    try:
-        with os.fdopen(handle, "w", encoding="utf-8") as stream:
-            json.dump({"disabled": sorted(names)}, stream, indent=2)
-            stream.write("\n")
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.chmod(temporary, 0o600)
-        os.replace(temporary, path)
-    except BaseException:
-        Path(temporary).unlink(missing_ok=True)
-        raise
 
 
 class ShellControl(TuiPlugin):
