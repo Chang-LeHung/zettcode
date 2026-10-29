@@ -42,6 +42,7 @@ import type {
   Settings,
   StreamFrame,
 } from "../../typescript/src/index.js";
+import type { CommandInfo } from "../../typescript/src/types.js";
 import type {
   AttachedImage,
   HostMessage,
@@ -82,6 +83,17 @@ const MAX_IMAGES = 4;
 const IMAGE_EXTENSION = /\.(?:png|jpe?g|gif|webp)$/i;
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
+/** One prompt to run, as the composer and a command's preset both give it. */
+interface PromptRequest {
+  /** What the model reads. */
+  text: string;
+  /** The line the conversation shows, when it is not `text` (a command's preset behind the command as typed). */
+  shown?: string;
+  images?: ImageInput[];
+  /** Refuse instead of steering when a run is in flight: a command's preset is a turn of its own. */
+  refuseWhenBusy?: boolean;
+}
+
 const IMMEDIATE_EVENTS = new Set([
   "tool_started",
   "tool_finished",
@@ -107,6 +119,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
   private selfCompaction: SelfCompaction | null = null;
   private contextReport: ContextReport | null = null;
   private resumable: ResumeInfo | null = null;
+  /** What the plugins registered on `ctx.commands`, as the composer's `/` menu offers them. */
+  private pluginCommands: CommandInfo[] = [];
 
   /**
    * What belongs to one conversation and not to the window: its transcript, and the run going in it. The conversation on
@@ -190,7 +204,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         this.client = null;
         // A restarted server has none of the runs the old one had, so nothing here is still running.
         this.convs.reset();
-        void this.refreshAll().catch((error: unknown) => this.report(error));
+        void this.refreshAll().catch((error: unknown) => this.say("error", messageOf(error)));
       }
       this.postState();
     });
@@ -323,7 +337,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     };
     view.webview.html = this.html(view.webview);
     view.webview.onDidReceiveMessage((message: WebviewMessage) => {
-      void this.dispatch(message).catch((error: unknown) => this.report(error));
+      void this.dispatch(message).catch((error: unknown) => this.say("error", messageOf(error)));
     });
     view.onDidDispose(() => {
       this.setFocused(false);
@@ -332,7 +346,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       }
     });
     void this.initialize().catch((error: unknown) => {
-      this.report(error);
+      this.say("error", messageOf(error));
     });
   }
 
@@ -568,16 +582,18 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     // list that marks it, only now, or the chip and the menu would show the model from before the switch.
     await this.readModels(client);
     await this.applyRememberedPermission();
-    const [selfCompaction, contextReport, resumable, runState] = await Promise.all([
+    const [selfCompaction, contextReport, resumable, runState, commands] = await Promise.all([
       client.selfCompaction().catch(() => null),
       client.session.context().catch(() => null),
       client.session.resumable().catch(() => null),
       client.runState().catch(() => null),
+      client.commands().catch(() => this.pluginCommands),
     ]);
     this.selfCompaction = selfCompaction;
     this.contextReport = contextReport;
     this.resumable = resumable;
     this.pending = runState?.pending ?? null;
+    this.pluginCommands = commands;
   }
 
   // -- messages from the webview ----------------------------------------
@@ -592,7 +608,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         this.setFocused(message.focused);
         return;
       case "prompt":
-        await this.sendPrompt(message.text, message.images);
+        await this.sendPrompt({ text: message.text, images: message.images });
+        return;
+      case "run-command":
+        await this.runCommand(message.name, message.argument);
         return;
       case "steer":
         await this.steer(message.text);
@@ -717,23 +736,35 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
 
   // -- prompting ---------------------------------------------------------
 
-  private async sendPrompt(text: string, images: ImageInput[]): Promise<void> {
-    const prompt = text.trim();
-    if (!prompt) {
+  /**
+   * Run one prompt: the line the conversation shows, and — behind it — what the model reads, when a command's preset
+   * is the thing to run. A request in flight takes an ordinary prompt as a steer and refuses a command's preset
+   * (`refuseWhenBusy`): a preset is a turn of its own, not a word added to the one running.
+   */
+  private async sendPrompt(request: PromptRequest): Promise<void> {
+    const text = request.text.trim();
+    const shown = (request.shown ?? request.text).trim();
+    if (!shown) {
       return;
     }
     if (this.busy) {
-      await this.steer(prompt);
+      if (request.refuseWhenBusy === true) {
+        this.say("warn", "A run is already going; try the command again when it ends.");
+        return;
+      }
+      await this.steer(shown);
       return;
     }
     if (!this.readyForPrompt()) {
       return;
     }
+    const images = request.images ?? [];
     const client = await this.ensureClient();
-    const turn = createTurn(prompt, images);
+    const turn = createTurn(shown, images);
     this.turns.push(turn);
     this.postTurn(turn, true);
-    await this.startRun(client.prompt(prompt, this.runOptions(images)), turn);
+    const options = text === shown ? this.runOptions(images) : { ...this.runOptions(images), instructions: text };
+    await this.startRun(client.prompt(shown, options), turn);
   }
 
   private async resumeRun(): Promise<void> {
@@ -990,7 +1021,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       return;
     }
     if (!this.busy || this.client === null) {
-      await this.sendPrompt(prompt, []);
+      await this.sendPrompt({ text: prompt });
       return;
     }
     const turn = this.running;
@@ -1830,7 +1861,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       await this.refreshAll();
       this.post({ type: "notice", level: "info", text: `Removed ${name}.` });
     } catch (error) {
-      this.report(error);
+      this.say("error", messageOf(error));
     }
   }
 
@@ -2071,7 +2102,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       this.readyForPrompt();
       return;
     }
-    await showUsagePanel(client, this.extensionUri, this.workspaceName(), this.workspacePath()).catch((error: unknown) => this.report(error));
+    await showUsagePanel(client, this.extensionUri, this.workspaceName(), this.workspacePath()).catch((error: unknown) =>
+      this.say("error", messageOf(error)),
+    );
   }
 
   async showDoctor(): Promise<void> {
@@ -2103,9 +2136,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
   }
 
   /**
-   * Offer the commands a plugin registered on `ctx.commands`, run the one the reader picks, and follow what it
-   * answered with: words go to the conversation, and a preset starts a turn with the command as its line and the
-   * brief as the instructions the model reads.
+   * Offer the commands a plugin registered on `ctx.commands` and run the one the reader picks.
+   *
+   * The argument comes next, prefilled with the word the command takes first when it declares them (a command like
+   * `/plugins disable <name>` still takes more after it, so the word is offered rather than run).
    */
   async runCommandInteractive(): Promise<void> {
     const client = await this.ensureClient();
@@ -2122,23 +2156,65 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       return;
     }
     if (this.busy && picked.command.when_busy === "refuse") {
-      this.sayBehind(`${picked.command.name} cannot run while a request is in flight; try it again when that ends.`);
+      this.say("warn", `${picked.command.name} cannot run while a request is in flight; try it again when that ends.`);
+      return;
+    }
+    const word = await this.pickWord(picked.command);
+    if (word === null) {
       return;
     }
     const argument = await vscode.window.showInputBox({
       title: picked.command.name,
       prompt: picked.command.summary,
       placeHolder: "Argument (optional)",
+      value: word === "" ? "" : `${word} `,
     });
     if (argument === undefined) {
       return;
     }
-    const answer = await client.runCommand(picked.command.name, argument.trim());
+    await this.runCommand(picked.command.name, argument.trim());
+  }
+
+  /**
+   * Ask which word a command starts with, when it declares any; `""` means it takes none and `null` that the reader
+   * closed the list. The choice is only a head start for the argument: it is filled into the box, not run.
+   */
+  private async pickWord(command: CommandInfo): Promise<string | null> {
+    if (command.subcommands.length === 0) {
+      return "";
+    }
+    const picked = await vscode.window.showQuickPick(
+      command.subcommands.map((word) => ({ label: word })),
+      { title: command.name, placeHolder: "The first word it takes" },
+    );
+    return picked === undefined ? null : picked.label;
+  }
+
+  /**
+   * Run one command by name and follow what it answered with: words go to the conversation, and a preset starts a
+   * turn with the command as its line and the brief as the instructions the model reads.
+   *
+   * The palette and the composer's `/` menu both come through here, so a command behaves the same whichever door the
+   * reader used.
+   */
+  private async runCommand(name: string, argument: string): Promise<void> {
+    const client = await this.ensureClient();
+    const known = this.pluginCommands.length > 0 ? this.pluginCommands : await client.commands();
+    const command = known.find((entry) => entry.name === name || entry.name === `/${name}`);
+    if (command === undefined) {
+      this.say("warn", `No plugin offers a command called ${name}.`);
+      return;
+    }
+    if (this.busy && command.when_busy === "refuse") {
+      this.say("warn", `${command.name} cannot run while a request is in flight; try it again when that ends.`);
+      return;
+    }
+    const answer = await client.runCommand(command.name, argument);
     if (answer.notification !== "") {
       void vscode.window.showInformationMessage(`ZettCode: ${answer.notification}`);
     }
     if (answer.prompt !== "") {
-      await this.sendCommandTurn(answer.prompt, answer.shown || `${picked.command.name} ${argument}`.trim());
+      await this.startCommandTurn(answer.prompt, answer.shown || `${command.name} ${argument}`.trim());
       return;
     }
     if (answer.message !== "") {
@@ -2148,11 +2224,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
 
   /**
    * Start a command's preset as a turn: the command is what the conversation shows, the preset is what the model
-   * reads. Guarded and ordered like `sendPrompt`, because it is one.
+   * reads. The chat is opened first, because a preset is worth a window of its own whereas words are not.
    */
-  private async sendCommandTurn(instructions: string, shown: string): Promise<void> {
+  private async startCommandTurn(instructions: string, shown: string): Promise<void> {
     if (this.busy) {
-      this.sayBehind("A run is already going; try the command again when it ends.");
+      this.say("warn", "A run is already going; try the command again when it ends.");
       return;
     }
     // The view first: `readyForPrompt()` reads the health a `load()` writes, and a window that never resolved the
@@ -2161,14 +2237,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       await vscode.commands.executeCommand("zettcode.openChat");
     }
     await this.initialize();
-    if (!this.readyForPrompt()) {
-      return;
-    }
-    const client = await this.ensureClient();
-    const turn = createTurn(shown, []);
-    this.turns.push(turn);
-    this.postTurn(turn, true);
-    await this.startRun(client.prompt(shown, { ...this.runOptions([]), instructions }), turn);
+    await this.sendPrompt({ text: instructions, shown, refuseWhenBusy: true });
   }
 
   /** Put a command's words where a reader will still find them: a line in the conversation, or a message. */
@@ -2180,15 +2249,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     const turn = announcement(text, Date.now(), newTurnId("turn-command"));
     this.turns.push(turn);
     this.postTurn(turn, true);
-  }
-
-  /** Say something that has nowhere to go when the chat is closed. */
-  private sayBehind(text: string): void {
-    if (this.view === null) {
-      void vscode.window.showWarningMessage(`ZettCode: ${text}`);
-      return;
-    }
-    this.post({ type: "notice", level: "warn", text });
   }
 
   /** Open the recent-sessions drawer from a command. */
@@ -2236,6 +2296,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       resumable: this.resumable,
       selfCompaction: this.selfCompaction,
       context: this.contextReport,
+      commands: this.pluginCommands,
       version: this.health?.version ?? null,
     };
   }
@@ -2354,14 +2415,26 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     }
   }
 
-  private report(error: unknown): void {
-    const message = messageOf(error);
-    this.output.appendLine(`[error] ${message}`);
+  /**
+   * Say something where the reader will see it: in the conversation when the chat is open, and as an editor message
+   * when it is not. An error also goes to the output channel, which is where the one worth keeping is.
+   */
+  private say(level: "info" | "warn" | "error", text: string): void {
+    if (level === "error") {
+      this.output.appendLine(`[error] ${text}`);
+    }
     if (this.view === null) {
-      void vscode.window.showErrorMessage(`ZettCode: ${message}`);
+      const message = `ZettCode: ${text}`;
+      const shown =
+        level === "error"
+          ? vscode.window.showErrorMessage(message)
+          : level === "warn"
+            ? vscode.window.showWarningMessage(message)
+            : vscode.window.showInformationMessage(message);
+      void shown;
       return;
     }
-    this.post({ type: "notice", level: "error", text: message });
+    this.post({ type: "notice", level, text });
   }
 
   // -- html --------------------------------------------------------------

@@ -64,6 +64,7 @@ export const baseState: WebviewState = {
   resumable: null,
   selfCompaction: { choice: null, effort: undefined, effective: true } as unknown as WebviewState["selfCompaction"],
   context: null,
+  commands: [],
   version: "0.1.8",
 };
 

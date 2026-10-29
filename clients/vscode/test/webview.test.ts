@@ -84,6 +84,7 @@ const state: WebviewState = {
     partial: false,
     from_provider: false,
   },
+  commands: [],
   version: "0.1.8",
 };
 

@@ -4,7 +4,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { formatTokens, permissionDescription, permissionLabel } from "../../core/format.js";
 import { effortMeta, permissionMeta } from "../../core/levels.js";
 import { contextPercent, contextRows, formatPercent } from "../context.js";
-import { commandOf, argumentsOf, parseSlash, runSlash, SLASH_COMMANDS } from "../commands.js";
+import { allCommands, commandOf, argumentsOf, parseSlash, runSlash } from "../commands.js";
 import { closeOverlay, enqueue, openOverlay, post, state, toast } from "../store.js";
 import AttachmentStrip from "./AttachmentStrip.vue";
 import ChoiceMenu from "./ChoiceMenu.vue";
@@ -60,12 +60,14 @@ const items = computed<MenuItem[]>(() => {
   }
   if (slash.value !== null) {
     const query = slash.value[1] ?? "";
-    return SLASH_COMMANDS.filter((command) => command.name.startsWith(query)).map((command) => ({
-      id: command.name,
-      label: `/${command.name}`,
-      description: command.description,
-      badge: "",
-    }));
+    return allCommands()
+      .filter((command) => command.name.startsWith(query))
+      .map((command) => ({
+        id: command.name,
+        label: `/${command.name}`,
+        description: command.description,
+        badge: "",
+      }));
   }
   if (argument.value !== null) {
     const name = argument.value[1] ?? "";
