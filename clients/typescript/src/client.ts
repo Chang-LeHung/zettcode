@@ -361,6 +361,9 @@ export class Session {
     if (options.mentions !== undefined) {
       body.mentions = options.mentions;
     }
+    if (options.instructions !== undefined) {
+      body.instructions = options.instructions;
+    }
     return new Run(this.client, "/prompts", body, options);
   }
 

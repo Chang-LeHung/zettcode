@@ -2102,6 +2102,57 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     await showPluginsPanel(client, this.extensionUri, this.workspaceName());
   }
 
+  /**
+   * Offer the commands the plugins registered on `ctx.commands`, run the one the reader picks, and follow what it
+   * answered with: a prompt is sent as the next turn, with the command as its line and the brief as instructions.
+   */
+  async runCommandInteractive(): Promise<void> {
+    const client = await this.ensureClient();
+    const commands = await client.commands();
+    if (commands.length === 0) {
+      void vscode.window.showInformationMessage("ZettCode: no plugin registered a command every front end can run.");
+      return;
+    }
+    const picked = await vscode.window.showQuickPick(
+      commands.map((command) => ({ label: command.name, description: command.summary, command })),
+      { title: "ZettCode: run a command", placeHolder: "A command a plugin registered" },
+    );
+    if (picked === undefined) {
+      return;
+    }
+    const argument = await vscode.window.showInputBox({
+      title: picked.command.name,
+      prompt: picked.command.summary,
+      placeHolder: "Argument (optional)",
+    });
+    if (argument === undefined) {
+      return;
+    }
+    const answer = await client.runCommand(picked.command.name, argument.trim());
+    if (answer.prompt !== "") {
+      await this.sendCommandPrompt(answer.prompt, answer.shown || `${picked.command.name} ${argument}`.trim());
+      return;
+    }
+    if (answer.notification !== "") {
+      void vscode.window.showInformationMessage(`ZettCode: ${answer.notification}`);
+    }
+    if (answer.message !== "") {
+      this.post({ type: "notice", level: "info", text: answer.message });
+    }
+  }
+
+  /** Run a command's preset as a turn, showing the command instead of the brief it stands for. */
+  private async sendCommandPrompt(prompt: string, shown: string): Promise<void> {
+    const client = await this.ensureClient();
+    if (this.view === null) {
+      await vscode.commands.executeCommand("zettcode.openChat");
+    }
+    const turn = createTurn(shown, []);
+    this.turns.push(turn);
+    this.postTurn(turn, true);
+    await this.startRun(client.prompt(shown, { ...this.runOptions([]), instructions: prompt }), turn);
+  }
+
   /** Open the recent-sessions drawer from a command. */
   async showSessions(): Promise<void> {
     if (this.view === null) {

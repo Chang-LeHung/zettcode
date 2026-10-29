@@ -413,6 +413,8 @@ export interface PromptOptions extends RunOptions {
   images?: ImageInput[];
   /** Resolve `@path` mentions, as the terminal does. Defaults to true on the server. */
   mentions?: boolean;
+  /** Text the model reads after the prompt and the conversation does not show — a command's preset. */
+  instructions?: string;
 }
 
 /** The token counts of a session or a run. */

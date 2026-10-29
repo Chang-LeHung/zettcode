@@ -42,7 +42,8 @@
     "onCommand:zettcode.newSession",
     "onCommand:zettcode.usage",
     "onCommand:zettcode.doctor",
-    "onCommand:zettcode.plugins"
+    "onCommand:zettcode.plugins",
+    "onCommand:zettcode.commands"
   ],
   "contributes": {
     "viewsContainers": {
@@ -139,6 +140,11 @@
       {
         "command": "zettcode.doctor",
         "title": "ZettCode: Check Models"
+      },
+      {
+        "command": "zettcode.commands",
+        "title": "ZettCode: Run a Command",
+        "icon": "$(terminal)"
       },
       {
         "command": "zettcode.plugins",
