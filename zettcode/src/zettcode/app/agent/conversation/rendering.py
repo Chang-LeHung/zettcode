@@ -532,13 +532,15 @@ class DeleteTool(ToolHandler):
 
 
 class ShellTool(ToolHandler):
-    """``bash``: the command itself, which is the whole story."""
+    """``bash``: the command itself, and the directory it runs in when the call names one."""
 
     names = frozenset({"bash"})
 
     def describe(self, name: str, arguments: Mapping[str, object]) -> ToolRow:
-        """Show the command, not a JSON copy of it."""
-        return ToolRow(f"Bash {argument(arguments, 'command', '(unknown command)')}")
+        """Show the command, not a JSON copy of it, and where it runs when that is not the workspace."""
+        command = argument(arguments, "command", "(unknown command)")
+        where = argument(arguments, "work_dir")
+        return ToolRow(f"Bash {command}" + (f" {SEPARATOR} {where}" if where else ""))
 
 
 class SearchTool(ToolHandler):

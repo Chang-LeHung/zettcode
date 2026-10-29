@@ -103,6 +103,40 @@ async def test_a_command_starts_in_the_working_directory(here: Path):
 
 
 @posix
+async def test_a_command_can_be_run_in_another_directory(here: Path):
+    elsewhere = here / "sub" / "deeper"
+    elsewhere.mkdir(parents=True)
+
+    assert (await run_command("pwd", 10, elsewhere)).strip() == str(elsewhere.resolve())
+
+
+@posix
+async def test_the_tool_runs_a_command_in_the_directory_it_is_given(here: Path):
+    (here / "sub").mkdir()
+    (here / "sub" / "marker.txt").write_text("here\n")
+
+    tool = shell_tool()
+
+    assert (await tool.handler(command="pwd", work_dir="sub")).strip() == str((here / "sub").resolve())
+    assert (await tool.handler(command="cat marker.txt", work_dir=str(here / "sub"))).strip() == "here"
+    assert (await tool.handler(command="pwd", work_dir=".")).strip() == str(here.resolve()), (
+        "the default is the workspace"
+    )
+
+
+@posix
+async def test_a_work_dir_that_is_not_a_directory_is_refused_before_the_command_runs(here: Path):
+    (here / "a.txt").write_text("one\n")
+    tool = shell_tool()
+
+    with pytest.raises(ValueError, match="Not a directory: a.txt"):
+        await tool.handler(command="touch ran", work_dir="a.txt")
+    with pytest.raises(ValueError, match="Not a directory: nope"):
+        await tool.handler(command="touch ran", work_dir="nope")
+    assert not (here / "ran").exists()
+
+
+@posix
 async def test_stderr_is_labelled_and_comes_after_stdout(here: Path):
     result = await run_command("echo out; echo err >&2", 10)
 
@@ -196,6 +230,7 @@ def test_the_tool_is_typed_the_way_the_model_is_told():
     assert tool.parameters["required"] == ["command"]
     assert tool.parameters["properties"]["timeout_seconds"]["default"] == DEFAULT_TIMEOUT_SECONDS
     assert tool.parameters["properties"]["command"]["minLength"] == 1
+    assert tool.parameters["properties"]["work_dir"]["default"] is None, "a call without one runs in the workspace"
 
 
 @posix

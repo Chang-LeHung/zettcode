@@ -153,6 +153,7 @@ A handler sees an `ApprovalRequested` with:
 | Field | Meaning |
 | --- | --- |
 | `command` | The command the model wants to run. |
+| `work_dir` | The directory it runs in when the call names one, and `None` for the workspace. Remembering still keys on `command` alone. |
 | `timeout_seconds` | The limit it would run under, when the tool states one. |
 | `remember_supported` | Whether approving can be remembered for the rest of the run. |
 | `call_id`, `session_id` | The tool call and the session. |

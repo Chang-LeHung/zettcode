@@ -166,6 +166,7 @@ class Pending:
                 kind="approval",
                 call_id=self.call_id,
                 command=self.event.command,
+                work_dir=self.event.work_dir,
                 timeout_seconds=self.event.timeout_seconds,
                 remember_supported=self.event.remember_supported,
             )

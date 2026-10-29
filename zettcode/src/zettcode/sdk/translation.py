@@ -125,6 +125,25 @@ def _optional_int(value: object) -> int | None:
     return int(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
 
 
+def _work_dir_of(event: AgentEvent, call_id: str) -> str | None:
+    """Return the directory the approved call runs in, read from the call the event carries.
+
+    The approval event's payload names the command only, because that is what the approval is keyed by; the call
+    beside it still has the tool's arguments, and ``work_dir`` is the one the panel needs to say where it runs. The
+    call is matched by id rather than taken in order: the event carries one today, and a reader that says which
+    call it looked at stays right if that ever changes.
+    """
+    for call in getattr(event, "tool_calls", ()) or ():
+        if getattr(call, "id", None) != call_id:
+            continue
+        arguments = getattr(call, "arguments", None)
+        if isinstance(arguments, Mapping):
+            work_dir = arguments.get("work_dir")
+            if isinstance(work_dir, str) and work_dir:
+                return work_dir
+    return None
+
+
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from ..doctor import Probe
     from ..engine.agent import ZettCodeAgent
@@ -326,6 +345,7 @@ def _custom(event: AgentEvent, session: str, bridge: Bridge) -> list[AnyEvent]:
             return []
         owner = str(payload.get("session_id") or session)
         command = payload.get("command")
+        work_dir = _work_dir_of(event, call_id)
         reply = _Reply(lambda outcome: bridge.approve(owner, call_id, outcome[0] == "execute", outcome[1]))  # type: ignore[index]
         return [
             ApprovalRequested(
@@ -335,6 +355,7 @@ def _custom(event: AgentEvent, session: str, bridge: Bridge) -> list[AnyEvent]:
                 _optional_int(payload.get("timeout_seconds")),
                 payload.get("remember_supported") is True,
                 reply,
+                work_dir=work_dir,
             )
         ]
     if name == USAGE_EVENT_NAME:

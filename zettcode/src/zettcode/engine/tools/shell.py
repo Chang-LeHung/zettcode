@@ -1,4 +1,4 @@
-"""The shell tool: run one command in the working directory, bounded in time and in what comes back.
+"""The shell tool: run one command in a directory it names, bounded in time and in what comes back.
 
 The command's two streams go to files and not into memory, so the volume of output costs nothing, and what is
 returned is a preview of each (see :func:`~zettcode.engine.tools.output.stream_preview`). When a preview had to cut
@@ -34,6 +34,7 @@ DEFAULT_TIMEOUT_SECONDS = 60
 MAX_TIMEOUT_SECONDS = 300
 
 Command = Annotated[str, Field(min_length=1)]
+WorkDir = Annotated[str, Field(min_length=1)]
 TimeoutSeconds = Annotated[int, Field(ge=1, le=MAX_TIMEOUT_SECONDS)]
 
 
@@ -67,8 +68,8 @@ async def _stop(process: asyncio.subprocess.Process) -> None:
     await process.wait()
 
 
-async def run_command(command: str, timeout_seconds: int) -> str:
-    """Run ``command`` in the working directory and return what it printed.
+async def run_command(command: str, timeout_seconds: int, directory: Path | None = None) -> str:
+    """Run ``command`` in ``directory``, or in the working directory, and return what it printed.
 
     Raises:
         ValueError: The command is blank.
@@ -89,7 +90,7 @@ async def run_command(command: str, timeout_seconds: int) -> str:
     with stdout_file.open("wb") as stdout_target, stderr_file.open("wb") as stderr_target:
         process = await asyncio.create_subprocess_shell(
             command,
-            cwd=root.directory,
+            cwd=directory if directory is not None else root.directory,
             stdin=asyncio.subprocess.DEVNULL,
             stdout=stdout_target,
             stderr=stderr_target,
@@ -130,31 +131,40 @@ def shell_tool(boundary: Boundary | None = None) -> AgentTool:
     """
 
     @tool
-    async def bash(command: Command, timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS) -> str:
-        """Run a shell command with captured output from the current working directory.
+    async def bash(
+        command: Command, work_dir: WorkDir | None = None, timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS
+    ) -> str:
+        """Run a shell command with captured output, in the workspace or in ``work_dir``.
 
         Args:
             command: Shell command to execute.
+            work_dir: Directory to run in: absolute, a `~` path, or relative to the workspace. Omit it to run in the workspace.
             timeout_seconds: Maximum command runtime in seconds; the default is 60.
 
         Snippet:
             bash(command="git status --short", timeout_seconds=60)
+            bash(command="npm test", work_dir="clients/vscode")
 
         Guidelines:
             - Use for builds, tests, git, and searching the code: rg or grep for text, find or ls for paths. Prefer the read, write_file and edit tools for reading and changing a file.
+            - Set work_dir instead of cd: every call starts a new shell, so a cd lasts only that one command.
             - Search with a narrow pattern and a path, and pipe through head when the result may be long.
             - Use only for bounded commands in a trusted working directory.
             - A non-zero exit code or a timeout is reported as an error carrying the output.
             - Output previews keep startup and final results within byte and line limits.
             - When output is truncated, read the retained files named in the hint.
         """
-        sandbox = boundary.sandbox_now() if boundary is not None else None
-        if sandbox is None:
-            return await run_command(command, timeout_seconds)
         if not command.strip():
             raise ValueError("Shell command cannot be blank")
+        located = None if work_dir is None else Located.of(work_dir)
+        if located is not None and not located.path.is_dir():
+            raise ValueError(f"Not a directory: {work_dir}")
+        directory = located.path if located is not None else None
+        sandbox = boundary.sandbox_now() if boundary is not None else None
+        if sandbox is None:
+            return await run_command(command, timeout_seconds, directory)
         try:
-            return await run_command(sandbox.wrap(command), timeout_seconds)
+            return await run_command(sandbox.wrap(command, directory), timeout_seconds, directory)
         except CommandFailed as error:
             raise CommandFailed(f"{error}\n{sandbox.hint()}") from error
 

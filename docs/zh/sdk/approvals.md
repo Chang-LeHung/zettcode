@@ -149,6 +149,7 @@ zc.approve_commands("   ")  # ValueError: A command to allow cannot be blank
 | 字段 | 含义 |
 | --- | --- |
 | `command` | 模型想运行的命令。 |
+| `work_dir` | 调用指定了目录时，命令实际运行的目录；留在工作区时为 `None`。「记住」仍然只看 `command`。 |
 | `timeout_seconds` | 命令会在多少秒的限制下运行（工具给出时）。 |
 | `remember_supported` | 批准后是否能在本次 run 的其余部分记住。 |
 | `call_id`、`session_id` | 工具调用与会话。 |

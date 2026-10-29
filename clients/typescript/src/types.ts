@@ -327,6 +327,7 @@ export interface PendingRequest {
   kind: "approval" | "question";
   call_id: string;
   command?: string | null;
+  work_dir?: string | null;
   timeout_seconds?: number | null;
   remember_supported?: boolean;
   question?: string | null;
@@ -357,7 +358,7 @@ export type RunEvent =
       output: string;
       ok: boolean;
     }
-  | { type: "approval_requested"; call_id: string; command: string; approved: boolean | null }
+  | { type: "approval_requested"; call_id: string; command: string; work_dir?: string | null; approved: boolean | null }
   | {
       type: "question_asked";
       call_id: string;

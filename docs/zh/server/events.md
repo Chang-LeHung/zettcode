@@ -37,7 +37,7 @@ data: {"text":"已经加上分页 …","session_id":"01a15…","usage":{…},"to
 | `reasoning_finished` | — | 这段推理结束,无论模型接着回答还是调用工具。 |
 | `tool_started` | `call_id`, `name`, `arguments` | 工具调用开始。 |
 | `tool_finished` | `call_id`, `name`, `output`, `ok`, `skipped` | 工具结束,成功或失败;`skipped` 表示被 steer 取代。 |
-| `approval_requested` | `call_id`, `command`, `approved` | 模型想运行一条 shell 命令。见下文。 |
+| `approval_requested` | `call_id`, `command`, `work_dir`, `approved` | 模型想运行一条 shell 命令。见下文。 |
 | `question_asked` | `call_id`, `question`, `options`, `allow_multiple`, `answered` | 模型问了问题。 |
 | `usage_updated` | `usage` | 一次模型调用后会话的累计用量。 |
 | `compaction_started` | — | 正在总结对话。 |
@@ -60,7 +60,7 @@ data: {"text":"已经加上分页 …","session_id":"01a15…","usage":{…},"to
 ```bash
 # 终端 A:流停在这一帧之后
 event: event
-data: {"type":"approval_requested","call_id":"call-1","command":"pytest -q","approved":null}
+data: {"type":"approval_requested","call_id":"call-1","command":"pytest -q","work_dir":"clients/web","approved":null}
 
 # 终端 B:回答
 curl -X POST http://127.0.0.1:3290/runs/approvals \
@@ -72,6 +72,8 @@ curl -X POST http://127.0.0.1:3290/runs/approvals \
 {"resolved": true}
 ```
 
+- `work_dir` 是命令实际运行的目录(调用没有指定时是 `null`),要告诉用户「在哪运行」的客户端读这个字段。
+  「总是允许」记住的仍然只是命令文本本身,所以记住过的命令在别的目录里再出现时依然免问。
 - 用 `POST /runs/questions` `{"call_id": "...", "answer": "sqlite"}` 回答问题;`null` 表示拒绝回答。
 - 运行没有在等这个调用时(已经回答过,或者运行已经结束),`resolved` 为 `false`。
 - 审批最多等 `answer_timeout` 秒(默认 300),之后取安全默认值:拒绝命令,并用一个 `notice` 帧说明。
@@ -79,7 +81,7 @@ curl -X POST http://127.0.0.1:3290/runs/approvals \
 - `GET /runs/current` 说明在等什么,重连的客户端可以据此重新展示:
 
 ```json
-{"running": true, "pending": {"kind": "approval", "call_id": "call-1", "command": "pytest -q", "remember_supported": true}}
+{"running": true, "pending": {"kind": "approval", "call_id": "call-1", "command": "pytest -q", "work_dir": "clients/web", "remember_supported": true}}
 ```
 
 帧里的 `approved` 是 `null`,因为帧本身是在提问,答案在 POST 里。用 `deny`、`auto` 或 `commands` 时,规则在帧发出前

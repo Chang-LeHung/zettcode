@@ -3252,13 +3252,19 @@ async def _show_request(app, raw) -> None:
 
 
 def _approval_event(
-    command: str = "rm -rf build", *, call_id: str = "call-1", remember_supported: bool = True
+    command: str = "rm -rf build",
+    *,
+    call_id: str = "call-1",
+    remember_supported: bool = True,
+    work_dir: str | None = None,
 ) -> AgentEvent:
     """Build the CUSTOM event the shell approval extension emits for one command."""
     return AgentEvent(
         AgentEventType.CUSTOM,
         "session-0001",
         name=SHELL_APPROVAL_EVENT_NAME,
+        # The call beside the payload is where the directory a command runs in comes from.
+        tool_calls=[] if work_dir is None else [ToolCall(call_id, "bash", {"command": command, "work_dir": work_dir})],
         payload={
             "tool_call_id": call_id,
             "session_id": "session-0001",
@@ -3297,6 +3303,27 @@ async def test_app_asks_for_approval_in_a_bottom_panel():
     assert app.app.screens.top.name == "main"
 
 
+async def test_the_approval_panel_says_which_directory_the_command_runs_in():
+    """A command is not the same thing to approve from one directory as from another."""
+    app = build_app()
+    harness = _harness(app)
+
+    await _show_request(app, _approval_event("npm test -- --run", work_dir="clients/web"))
+
+    text = harness.render().text
+    assert "$ npm test -- --run" in text and "in clients/web" in text
+
+
+async def test_the_approval_panel_says_nothing_about_a_directory_when_the_call_names_none():
+    app = build_app()
+    harness = _harness(app)
+
+    await _show_request(app, _approval_event("npm test"))
+
+    text = harness.render().text
+    assert "$ npm test" in text and "\n  in " not in text
+
+
 async def test_always_allow_remembers_only_the_exact_command():
     app = build_app()
     harness = _harness(app)
@@ -3324,11 +3351,13 @@ async def test_the_approval_panel_answers_to_arrows_numbers_and_letter_keys():
     assert page.choice is ApprovalChoice.RUN_SAFE
 
 
-async def test_clicking_an_approval_option_answers_the_prompt():
+@pytest.mark.parametrize("work_dir", [None, "clients/web"], ids=["no-directory", "with-directory"])
+async def test_clicking_an_approval_option_answers_the_prompt(work_dir: str | None):
+    """The directory line moves every option down one row, so the click has to land on the row it names."""
     app = build_app()
     harness = _harness(app)
 
-    await _show_request(app, _approval_event())
+    await _show_request(app, _approval_event(work_dir=work_dir))
     page = _approval_page(app)
     rows = harness.render().text.splitlines()
     target = next(index for index, line in enumerate(rows) if "2. Yes, and don't ask again" in line)

@@ -17,7 +17,7 @@ from zettcode.sdk.handlers import (
 
 def new_request(command: str = "git status") -> tuple[ApprovalRequested, list[object]]:
     sent: list[object] = []
-    return ApprovalRequested("s", "c", command, None, True, _Reply(sent.append)), sent
+    return ApprovalRequested("s", "c", command, None, True, _reply=_Reply(sent.append)), sent
 
 
 def new_question(text: str = "Which?") -> tuple[QuestionAsked, list[object]]:

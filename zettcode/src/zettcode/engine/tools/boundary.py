@@ -9,6 +9,7 @@ package can import it at start-up for free.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from pathlib import Path
 
 
 class Sandboxer(ABC):
@@ -20,8 +21,12 @@ class Sandboxer(ABC):
         """Return whether this machine can sandbox a command at all."""
 
     @abstractmethod
-    def wrap(self, command: str) -> str:
-        """Return ``command`` as a shell line that runs sandboxed.
+    def wrap(self, command: str, cwd: Path | None = None) -> str:
+        """Return ``command`` as a shell line that runs sandboxed, in ``cwd`` or in the working directory.
+
+        The directory is not a detail: the policy a sandbox writes allows one directory, and a Linux sandbox
+        moves the process there itself, so a wrapper that is given the working directory runs the command where
+        it is not meant to run.
 
         Raises:
             RuntimeError: The machine has no sandbox; check :attr:`available` first.

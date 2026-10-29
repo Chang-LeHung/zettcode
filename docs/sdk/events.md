@@ -40,7 +40,7 @@ The first seven are exported from `zettcode.sdk`; the rest live in `zettcode.sdk
 | `ReasoningFinished` | — | The span ended, whether the model went on to answer or to call a tool. |
 | `ToolStarted` | `call_id`, `name`, `arguments` | The model called a tool and it is starting. |
 | `ToolFinished` | `call_id`, `name`, `output`, `ok`, `skipped` | A tool ended, in success, failure, or because it never ran. |
-| `ApprovalRequested` | `call_id`, `command`, `timeout_seconds`, `remember_supported` | A shell command waits for your decision. |
+| `ApprovalRequested` | `call_id`, `command`, `timeout_seconds`, `remember_supported`, `work_dir` | A shell command waits for your decision. |
 | `QuestionAsked` | `call_id`, `question`, `options`, `allow_multiple` | The model asked you something. |
 | `Finished` | `text` | The final answer is complete. |
 | `UsageUpdated` | `usage` | The session's token totals after a model call. |

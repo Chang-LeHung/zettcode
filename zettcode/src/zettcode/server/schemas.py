@@ -448,6 +448,7 @@ class PendingOut(BaseModel):
     kind: Literal["approval", "question"]
     call_id: str
     command: str | None = None
+    work_dir: str | None = None
     timeout_seconds: int | None = None
     remember_supported: bool = False
     question: str | None = None

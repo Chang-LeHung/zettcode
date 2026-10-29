@@ -74,6 +74,7 @@ def test_the_system_prompt_tells_the_model_to_read_with_the_file_tool_and_in_lin
     assert "Those shell tools are for what read cannot do" in flat, "an exception, not a licence to use them"
     assert "and only then" in flat and "say what read could not do" in flat
     assert "grep and glob are for finding what to read" in flat
+    assert "give it work_dir instead of cd'ing" in flat
     assert prompt.index("Reading files:") < prompt.index("Runtime environment:")
 
 

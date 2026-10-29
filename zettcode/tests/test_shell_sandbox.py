@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -171,14 +172,16 @@ class _Spy(Sandboxer):
     def __init__(self, available: bool = True) -> None:
         self._available = available
         self.wrapped: list[str] = []
+        self.directories: list[Path | None] = []
         self.unavailable_reason = None if available else "no bwrap"
 
     @property
     def available(self) -> bool:
         return self._available
 
-    def wrap(self, command: str) -> str:
+    def wrap(self, command: str, cwd: Path | None = None) -> str:
         self.wrapped.append(command)
+        self.directories.append(cwd)
         return f"echo SANDBOXED && {command}"
 
     def hint(self) -> str:
@@ -269,6 +272,19 @@ async def test_a_blank_command_is_refused_before_it_is_wrapped(workspace: Path):
     assert spy.wrapped == []
 
 
+async def test_a_sandboxed_command_carries_the_directory_it_runs_in(workspace: Path):
+    """A Linux sandbox puts ``--chdir`` in the argv, so the directory has to reach the wrapper or it wins."""
+    spy = _Spy()
+    policy = _policy(Permission.SAFE, spy, workspace)
+    (workspace / "sub").mkdir()
+    tool = shell_tool(policy)
+
+    await tool.handler(command="echo hi", work_dir="sub")
+
+    assert spy.directories == [(workspace / "sub").resolve()]
+    assert spy.wrapped == ["echo hi"]
+
+
 # -- the boundary's description ----------------------------------------------------------------------------
 
 
@@ -290,6 +306,27 @@ def test_the_sandbox_is_probed_only_when_asked_and_once(monkeypatch, tmp_path: P
     assert sandbox.available is (_POSIX)
     assert sandbox.available is (_POSIX)
     assert len(calls) == (1 if _POSIX else 0)
+
+
+def test_the_wrapper_hands_the_library_the_directory_the_command_runs_in(monkeypatch, tmp_path: Path):
+    """The line that dropped it: the library puts ``--chdir`` in its argv, so it must be the tool's directory."""
+    seen: list[Path] = []
+
+    class _Library:
+        def wrap(self, command: str, *, cwd: Path):
+            seen.append(cwd)
+            return SimpleNamespace(argv=["true"], env={})
+
+    sandbox = ShellSandbox(tmp_path)
+    sandbox._sandbox = _Library()  # type: ignore[assignment]
+    sandbox._probed = True
+    elsewhere = tmp_path / "sub"
+    elsewhere.mkdir()
+
+    sandbox.wrap("echo x", cwd=elsewhere)
+    sandbox.wrap("echo y")
+
+    assert seen == [elsewhere, Path.cwd().resolve()]
 
 
 def test_a_platform_with_no_sandbox_says_why(monkeypatch, tmp_path: Path):

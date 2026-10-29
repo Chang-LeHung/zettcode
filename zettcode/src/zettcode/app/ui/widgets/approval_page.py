@@ -65,6 +65,7 @@ class ApprovalPage(Widget):
         Environment: local
 
         $ rm -rf build && make dist   <- the command, shell-highlighted
+          in clients/web               <- only when the call names a directory
 
         \u25b8 1. Yes, proceed (y)          <- selected row is banded
           2. Yes, and don't ask again for this command (p)
@@ -99,6 +100,9 @@ class ApprovalPage(Widget):
         permission: The shell permission level in force, shown beside the
             environment so the prompt says which rung it is on, and used to leave
             out the rung it is already standing on.
+        work_dir: The directory the command runs in, when the call names one
+            instead of the workspace. It is drawn under the command, because a
+            command that runs somewhere else is a different thing to approve.
     """
 
     QUESTION = "Would you like to run the following command?"
@@ -115,6 +119,7 @@ class ApprovalPage(Widget):
         environment: str = "local",
         remember_supported: bool = True,
         permission: str = "ask",
+        work_dir: str | None = None,
     ) -> None:
         """Build the numbered options and start the highlight on the first."""
         super().__init__()
@@ -122,6 +127,7 @@ class ApprovalPage(Widget):
         self.on_choice = on_choice
         self.environment = environment
         self.permission = permission
+        self.work_dir = work_dir
         self.options = self._options(remember_supported, permission)
         self.selected = 0
 
@@ -198,7 +204,7 @@ class ApprovalPage(Widget):
         """Commit a clicked option row, the way Enter commits the highlighted one."""
         if event.action is not MouseAction.DOWN or not self.rect.contains(event.x, event.y):
             return False
-        top = self.rect.y + 6 + len(self._command_rows(max(0, self.rect.width - 4)))
+        top = self.rect.y + 6 + len(self._command_rows(max(0, self.rect.width - 4))) + (1 if self.work_dir else 0)
         index = event.y - top
         if not 0 <= index < len(self.options):
             return False
@@ -237,6 +243,9 @@ class ApprovalPage(Widget):
         for offset, spans in enumerate(rows):
             canvas.draw_spans(x, self.rect.y + 5 + offset, spans, max_width=room)
         top = self.rect.y + 6 + len(rows)
+        if self.work_dir:
+            canvas.draw_text(x, top, f"in {self.work_dir}", hint, max_width=room)
+            top += 1
         for index, option in enumerate(self.options):
             self._render_option(canvas, top + index, index, option)
 
@@ -254,7 +263,7 @@ class ApprovalPage(Widget):
         for line in self.command.splitlines() or [""]:
             for chunk in wrap_spans(highlight(line, SHELL, code), max(1, width - 2)):
                 rows.append((prompt if not rows else indent, *chunk))
-        budget = max(0, self.rect.height - len(self.options) - self.FIXED_ROWS)
+        budget = max(0, self.rect.height - len(self.options) - self.FIXED_ROWS - (1 if self.work_dir else 0))
         if len(rows) <= budget:
             return rows
         return [*rows[: max(0, budget - 1)], (indent, Span(ELLIPSIS, Style(foreground=self.theme.muted)))]

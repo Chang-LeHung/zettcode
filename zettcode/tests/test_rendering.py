@@ -82,6 +82,7 @@ def test_the_chain_phrases_the_coding_tools():
     assert describe("replace_in_file", path="app.py") == "Edit app.py", "a stored session keeps its own argument name"
     assert describe("delete_file", path="99\u4e58\u6cd5\u8868.txt") == "Deleted 99\u4e58\u6cd5\u8868.txt"
     assert describe("bash", command="pwd && ls -la") == "Bash pwd && ls -la"
+    assert describe("bash", command="npm test", work_dir="clients/web") == "Bash npm test \u00b7 clients/web"
     assert describe("glob", pattern="**/*.py") == "Listed **/*.py"
     assert describe("grep", pattern="TODO", file_pattern="src") == "Searched TODO in src"
     assert describe("grep", pattern="TODO", path="src") == "Searched TODO in src", "a stored session's argument"
