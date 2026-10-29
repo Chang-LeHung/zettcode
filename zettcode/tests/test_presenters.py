@@ -327,7 +327,7 @@ def test_an_edit_row_paints_its_additions_and_deletions_in_their_own_colours():
         id=1,
         call_id="call-1",
         tool="replace_in_file",
-        title="Edited app.py (2 edits)",
+        title="Edit app.py",
         added=12,
         removed=3,
         status=EntryStatus.COMPLETED,
@@ -452,16 +452,14 @@ def test_tool_rows_are_painted_by_what_the_tool_did():
 def test_the_heading_of_an_edit_is_not_the_colour_of_the_added_lines_under_it(theme):
     """The heading sits on the line above its diff; in the same green it read as one more added line."""
     transcript = Transcript()
-    transcript.start_tool(
-        "e", "replace_in_file", {"path": "a.py", "edits": [{"old_text": "x = 1", "new_text": "x = 2\ny = 3"}]}
-    )
+    transcript.start_tool("e", "edit", {"file_path": "a.py", "old_string": "x = 1", "new_string": "x = 2\ny = 3"})
     transcript.complete_tool("e", "ok", wait=False)
     (entry,) = transcript.entries
 
     lines = render_entry(entry, 60, theme, 0)
-    heading = next(line for line in lines if "Edited" in line.text)
+    heading = next(line for line in lines if "Edit" in line.text)
     added = next(line for line in lines if line.text.strip().startswith("+ x = 2"))
-    heading_colour = next(span.style.foreground for span in heading.spans if "Edited" in span.text)
+    heading_colour = next(span.style.foreground for span in heading.spans if "Edit" in span.text)
     added_colour = next(span.style.foreground for span in added.spans if span.text.strip())
 
     assert added_colour == theme.addition
@@ -869,7 +867,7 @@ def test_a_presenter_for_the_whole_kind_outranks_the_families_it_was_registered_
     class StillMine(EditPresenter):
         priority = 6
 
-    edit = EditEntry(id=1, call_id="c", tool="edit", title="Edited a.py", path="a.py")
+    edit = EditEntry(id=1, call_id="c", tool="edit", title="Edit a.py", path="a.py")
     rows = Presenters((EditPresenter(), Everything(), StillMine()))
 
     assert rows.for_entry(ToolEntry(id=2, call_id="d", tool="read_file", title="Read a.py")).__class__ is Everything

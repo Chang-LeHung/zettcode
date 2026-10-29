@@ -247,14 +247,14 @@ async def test_a_session_continues_on_the_model_it_last_used(tmp_path, monkeypat
 async def test_history_is_what_was_said_in_order_with_tool_calls_and_results(tmp_path, monkeypatch):
     (tmp_path / "project").mkdir(exist_ok=True)
     (tmp_path / "project" / "n.txt").write_text("contents")
-    wire(monkeypatch, ScriptedModel(asks_for(call("read_file", {"path": "n.txt"}, call_id="r1")), "done reading"))
+    wire(monkeypatch, ScriptedModel(asks_for(call("read_file", {"file_path": "n.txt"}, call_id="r1")), "done reading"))
     async with make(tmp_path) as client:
         await client.prompt("read n.txt")
         history = await client.session.history()
 
     assert [m.role for m in history] == ["user", "assistant", "tool", "assistant"]
     assert history[0].text == "read n.txt" and all(isinstance(m, Message) for m in history)
-    assert history[1].tool_calls[0].name == "read_file" and history[1].tool_calls[0].arguments == {"path": "n.txt"}
+    assert history[1].tool_calls[0].name == "read_file" and history[1].tool_calls[0].arguments == {"file_path": "n.txt"}
     assert history[2].tool_call_id == "r1" and history[2].tool_name == "read_file" and history[2].ok
     assert "contents" in history[2].text and history[3].text == "done reading"
 
@@ -507,7 +507,7 @@ async def test_steering_a_running_request_is_accepted_and_reaches_the_model(tmp_
     async def first(request):
         started.set()
         await gate.wait()
-        return asks_for(call("read_file", {"path": "x"}, call_id="r"))
+        return asks_for(call("read_file", {"file_path": "x"}, call_id="r"))
 
     model = wire(monkeypatch, ScriptedModel(first, "adjusted"))
     async with make(tmp_path) as client:
@@ -533,7 +533,7 @@ async def test_a_steering_message_can_carry_a_picture_and_is_reported_by_the_tex
     async def first(request):
         started.set()
         await gate.wait()
-        return asks_for(call("read_file", {"path": "x"}, call_id="r"))
+        return asks_for(call("read_file", {"file_path": "x"}, call_id="r"))
 
     model = wire(monkeypatch, ScriptedModel(first, "adjusted"))
     async with make(tmp_path, models=models("eyes", multimodal=True)) as client:

@@ -158,12 +158,10 @@ class Scene:
     build: Callable[[Env, Theme], Canvas]
 
 
-EDITS = [
-    {
-        "old_text": "def list_users(db):\n    return db.query(User).all()",
-        "new_text": "def list_users(db, limit: int = 20, offset: int = 0):\n    limit = min(limit, MAX_LIMIT)\n    return db.query(User).offset(offset).limit(limit).all()",
-    }
-]
+EDITS = {
+    "old_string": "def list_users(db):\n    return db.query(User).all()",
+    "new_string": "def list_users(db, limit: int = 20, offset: int = 0):\n    limit = min(limit, MAX_LIMIT)\n    return db.query(User).offset(offset).limit(limit).all()",
+}
 NEW_TEST = (
     "def test_pagination_caps_the_limit(client):\n"
     "    response = client.get('/users?limit=500')\n"
@@ -198,12 +196,17 @@ def conversation(env: Env, theme: Theme, *, finished: bool = True) -> ZettCodeAp
     env.now += 1.4
     transcript.complete_thinking()
     calls = (
-        ("c1", "read_file", {"path": "src/api/users.py"}, "def list_users(db): ..."),
-        ("c2", "grep", {"pattern": "list_users", "path": "src"}, "src/api/users.py:12\nsrc/api/routes.py:40"),
+        ("c1", "read_file", {"file_path": "src/api/users.py"}, "def list_users(db): ..."),
+        (
+            "c2",
+            "grep",
+            {"pattern": "list_users", "file_pattern": "src/**"},
+            "src/api/users.py:12\nsrc/api/routes.py:40",
+        ),
         ("c3", "glob", {"pattern": "tests/**/test_users*.py"}, "tests/test_users.py"),
         ("c4", "view_image", {"path": "docs/schema.png"}, "image 1280x720"),
-        ("c5", "edit", {"path": "src/api/users.py", "edits": EDITS}, "Edited src/api/users.py"),
-        ("c6", "write_file", {"path": "tests/test_pagination.py", "content": NEW_TEST}, "wrote 4 lines"),
+        ("c5", "edit", {"file_path": "src/api/users.py", **EDITS}, "Replaced 1 occurrence in src/api/users.py"),
+        ("c6", "write_file", {"file_path": "tests/test_pagination.py", "content": NEW_TEST}, "wrote 4 lines"),
         ("c7", "delete_file", {"path": "tests/old_fixture.py"}, "deleted"),
         (
             "c8",

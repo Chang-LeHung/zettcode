@@ -22,8 +22,8 @@ async def test_a_replayed_edit_row_keeps_the_counts_it_was_phrased_with(tmp_path
     """The row is phrased from the call's arguments in both paths.
 
     A live call and a stored one carry the same arguments, so a resumed session
-    must show the same `(1 edit, +1 -3)`. A row that counted the lines only while
-    the call was live would be exactly the difference the parity rule exists to
+    must show the same `(+1 -3)`. A row that counted the lines only while the
+    call was live would be exactly the difference the parity rule exists to
     prevent.
     """
     edits = [{"old_text": "a\nb\nc", "new_text": "one"}]
@@ -44,7 +44,7 @@ async def test_a_replayed_edit_row_keeps_the_counts_it_was_phrased_with(tmp_path
 
     tool_rows = [entry for entry in replayed.transcript.entries if getattr(entry, "kind", None) == "tool"]
 
-    assert [(entry.title, entry.added, entry.removed) for entry in tool_rows] == [("Edited app.py (1 edit)", 1, 3)]
+    assert [(entry.title, entry.added, entry.removed) for entry in tool_rows] == [("Edit app.py", 1, 3)]
 
 
 async def test_a_replayed_read_row_keeps_the_count_it_was_given(tmp_path: Path):

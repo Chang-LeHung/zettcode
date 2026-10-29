@@ -159,8 +159,8 @@ export function toolDetail(name: string, args: Record<string, unknown>): string 
     const rows: string[] = [];
     pairs.forEach((pair, index) => {
       const record = (pair ?? {}) as Record<string, unknown>;
-      const oldText = rawArg(record, "old_text", "oldText", "old");
-      const newText = rawArg(record, "new_text", "newText", "new");
+      const oldText = rawArg(record, "old_string", "old_text", "oldString", "oldText", "old");
+      const newText = rawArg(record, "new_string", "new_text", "newString", "newText", "new");
       if (!oldText && !newText) {
         return;
       }
@@ -197,8 +197,8 @@ export function lineStats(name: string, args: Record<string, unknown>): { added:
     let removed = 0;
     for (const pair of pairs) {
       const record = (pair ?? {}) as Record<string, unknown>;
-      removed += countLines(rawArg(record, "old_text", "oldText", "old"));
-      added += countLines(rawArg(record, "new_text", "newText", "new"));
+      removed += countLines(rawArg(record, "old_string", "old_text", "oldString", "oldText", "old"));
+      added += countLines(rawArg(record, "new_string", "new_text", "newString", "newText", "new"));
     }
     return added || removed ? { added, removed } : null;
   }

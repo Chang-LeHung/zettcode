@@ -159,7 +159,7 @@ async def test_tools_are_recorded_in_order_with_arguments_and_output(tmp_path, m
     wire(
         monkeypatch,
         ScriptedModel(
-            asks_for(call("read_file", {"path": "note.txt"}, call_id="r1")),
+            asks_for(call("read_file", {"file_path": "note.txt"}, call_id="r1")),
             "I read it.",
         ),
     )
@@ -170,7 +170,7 @@ async def test_tools_are_recorded_in_order_with_arguments_and_output(tmp_path, m
     assert (tool.id, tool.name, tool.arguments, tool.ok, tool.skipped) == (
         "r1",
         "read_file",
-        {"path": "note.txt"},
+        {"file_path": "note.txt"},
         True,
         False,
     )
@@ -179,7 +179,7 @@ async def test_tools_are_recorded_in_order_with_arguments_and_output(tmp_path, m
 
 
 async def test_a_tool_that_fails_is_recorded_as_failed_and_the_run_still_finishes(tmp_path, monkeypatch):
-    wire(monkeypatch, ScriptedModel(asks_for(call("read_file", {"path": "missing.txt"}, call_id="r1")), "gave up"))
+    wire(monkeypatch, ScriptedModel(asks_for(call("read_file", {"file_path": "missing.txt"}, call_id="r1")), "gave up"))
     async with make(tmp_path) as client:
         result = await client.prompt("read it")
 
@@ -201,7 +201,7 @@ async def test_several_tool_calls_in_one_step_are_each_recorded(tmp_path, monkey
     (tmp_path / "project" / "a.txt").write_text("A")
     (tmp_path / "project" / "b.txt").write_text("B")
     step = asks_for(
-        call("read_file", {"path": "a.txt"}, call_id="a"), call("read_file", {"path": "b.txt"}, call_id="b")
+        call("read_file", {"file_path": "a.txt"}, call_id="a"), call("read_file", {"file_path": "b.txt"}, call_id="b")
     )
     wire(monkeypatch, ScriptedModel(step, "both"))
     async with make(tmp_path) as client:
@@ -214,7 +214,7 @@ async def test_several_tool_calls_in_one_step_are_each_recorded(tmp_path, monkey
 
 
 async def test_the_events_of_a_run_come_in_a_sensible_order(tmp_path, monkeypatch):
-    wire(monkeypatch, ScriptedModel(asks_for(call("read_file", {"path": "nope"}, call_id="t")), "end", chunk=1))
+    wire(monkeypatch, ScriptedModel(asks_for(call("read_file", {"file_path": "nope"}, call_id="t")), "end", chunk=1))
     async with make(tmp_path) as client:
         async with client.prompt("go") as run:
             names = [type(e).__name__ async for e in run]
@@ -433,7 +433,10 @@ async def test_the_text_a_failed_run_had_already_produced_is_on_the_error(tmp_pa
     async def stops_midway(request):
         return ConnectionError("dropped")
 
-    wire(monkeypatch, ScriptedModel(asks_for(call("read_file", {"path": "x"}), text="thinking aloud "), stops_midway))
+    wire(
+        monkeypatch,
+        ScriptedModel(asks_for(call("read_file", {"file_path": "x"}), text="thinking aloud "), stops_midway),
+    )
     async with make(tmp_path) as client:
         with pytest.raises(RunError) as caught:
             await client.prompt("go")
@@ -485,7 +488,7 @@ async def test_a_timeout_that_is_not_a_positive_number_is_refused_before_anythin
 async def test_the_deadline_covers_the_whole_run_and_not_each_event(tmp_path, monkeypatch):
     async def slow(request):
         await asyncio.sleep(0.15)
-        return asks_for(call("read_file", {"path": "x"}))
+        return asks_for(call("read_file", {"file_path": "x"}))
 
     wire(monkeypatch, ScriptedModel(slow, slow, slow, "end"))
     async with make(tmp_path) as client:

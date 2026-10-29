@@ -4,12 +4,9 @@ from __future__ import annotations
 
 import os
 import tempfile
-from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated
-
-from pydantic import BaseModel, ConfigDict, Field
+from typing import TextIO
 
 from .output import MAX_OUTPUT_BYTES, utf8_prefix
 
@@ -140,113 +137,120 @@ def write_text(path: Path, content: str) -> None:
             temporary.unlink(missing_ok=True)
 
 
-def read_lines(located: Located, start_line: int, line_count: int, start_column: int) -> str:
-    """Return ``line_count`` lines of a UTF-8 file from ``start_line``, with a note on how to continue when more remains.
+def read_lines(located: Located, offset: int, limit: int) -> str:
+    """Return ``limit`` lines of a UTF-8 file from line ``offset``, with a note on how to continue when more remains.
 
-    The result is held to :data:`MAX_OUTPUT_BYTES`. A line that does not fit is cut, and the note then gives the
-    column to resume from (``start_column``), so a single huge line can still be read in pieces. The file is read
-    a fragment at a time and never whole.
+    The result is held to :data:`MAX_OUTPUT_BYTES`. A line longer than that is cut, and the note says so: the
+    reader has no column to resume from, because one 2 MB line is not what the tool is for — the shell reads it.
+    A cut inside an ordinary line is not that: the budget was used up before it, and the note then names the line
+    to start again from. The file is read a fragment at a time and never whole.
 
     Args:
         located: The file; it has to exist.
-        start_line: One-based first line.
-        line_count: Most lines to return.
-        start_column: One-based character column on ``start_line``, to continue a cut line.
+        offset: One-based first line.
+        limit: Most lines to return.
 
     Raises:
         ValueError: When the file is not UTF-8 text.
     """
     selected: list[str] = []
-    line_number, column = 1, 1
-    used = 0
-    next_line: int | None = None
-    next_column: int | None = None
-    truncated = False
+    number, used, line_start = 1, 0, 0
+    next_offset: int | None = None
+    cut_at: int | None = None
+    oversized = False
     try:
         with located.path.open(encoding="utf-8") as source:
             while fragment := source.readline(FRAGMENT_CHARACTERS):
-                if line_number >= start_line and next_line is None:
-                    offset = max(0, start_column - column) if line_number == start_line else 0
-                    available = fragment[offset:]
-                    if line_number >= start_line + line_count:
-                        next_line = line_number
-                    elif available:
-                        part = utf8_prefix(available, MAX_OUTPUT_BYTES - used)
-                        selected.append(part)
-                        used += len(part.encode("utf-8"))
-                        if len(part) < len(available):
-                            next_line, next_column = line_number, column + offset + len(part)
-                            truncated = True
+                if number >= offset + limit:
+                    next_offset = number
+                    break
+                if number >= offset:
+                    part = utf8_prefix(fragment, MAX_OUTPUT_BYTES - used)
+                    selected.append(part)
+                    used += len(part.encode("utf-8"))
+                    if len(part) < len(fragment):
+                        # Whether this line could fill a call of its own decides what the note says, and only
+                        # what is left of the line knows that. Reading on is bounded by one budget.
+                        cut_at = number
+                        oversized = _line_longer_than_budget(
+                            source, used - line_start, fragment[len(part) :], MAX_OUTPUT_BYTES
+                        )
+                        break
                 if fragment.endswith("\n"):
-                    line_number, column = line_number + 1, 1
-                else:
-                    column += len(fragment)
+                    number, line_start = number + 1, used
     except UnicodeDecodeError as error:
         raise ValueError(f"File is not UTF-8 text: {located.given}") from error
     content = "".join(selected)
-    if truncated:
-        content += f"\n... [line truncated; continue with start_line={next_line}, start_column={next_column}]"
-    elif next_line is not None:
-        content += f"\n... [more lines; continue with start_line={next_line}]"
+    if cut_at is not None and oversized:
+        content += (
+            f"\n... [line truncated; line {cut_at} is longer than the {MAX_OUTPUT_BYTES // 1024} KB output limit "
+            "and was cut here; read it with the shell]"
+        )
+    elif cut_at is not None:
+        content += f"\n... [output truncated; continue with offset={cut_at}]"
+    elif next_offset is not None:
+        content += f"\n... [more lines; continue with offset={next_offset}]"
     return content
+
+
+def _line_longer_than_budget(source: TextIO, seen: int, tail: str, budget: int) -> bool:
+    """Return whether the line continues for more than ``budget`` bytes in all.
+
+    Args:
+        source: The file, positioned just after the fragment the cut happened in.
+        seen: How many bytes of this line are already in the result.
+        tail: The rest of the fragment the cut happened in, which is not in the result yet.
+        budget: What one result may carry.
+
+    The line is read on to its end, but never past ``budget`` bytes: past that point the answer is known, and
+    the rest of a runaway line is what the shell is for.
+    """
+    fragment = tail
+    while True:
+        seen += len(fragment.encode("utf-8"))
+        if seen > budget:
+            return True
+        if not fragment or fragment.endswith("\n"):
+            return False
+        fragment = source.readline(FRAGMENT_CHARACTERS)
 
 
 # -- editing ------------------------------------------------------------------------------------------------------
 
 
-class FileEdit(BaseModel):
-    """One exact-text edit applied to a file.
+def apply_edit(content: str, old_string: str, new_string: str, replace_all: bool = False) -> tuple[str, int]:
+    """Replace ``old_string`` in ``content`` once, or everywhere when ``replace_all`` says so.
 
-    By default ``old_text`` must appear exactly once in the current text, so include the surrounding characters
-    that make it unique. Set ``replace_all`` when every occurrence should change. ``new_text`` may be empty to
-    delete the matched text.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    old_text: Annotated[str, Field(min_length=1, description="Exact text to find")]
-    new_text: str = Field(default="", description="Replacement text; an empty value deletes the match")
-    replace_all: bool = Field(default=False, description="Whether every exact match should be replaced")
-
-
-def apply_edits(content: str, edits: Sequence[FileEdit]) -> tuple[str, int]:
-    """Apply exact-text edits in order, each checked against the text the edits before it left.
+    By default ``old_string`` must appear exactly once in the text, so include the surrounding characters that
+    make it unique; ``new_string`` may be empty, which deletes the match.
 
     Returns:
         The new text and how many occurrences were replaced.
 
     Raises:
-        ValueError: Saying what to do, when an edit's text is not found or is not unique. Nothing has been
-            written by then, since the caller writes once, after every edit has passed.
+        ValueError: Saying what to do, when the old text is not found or is not unique. Nothing has been written
+            by then, since the caller writes once, after the replacement has passed.
     """
-    replacements = 0
-    for number, change in enumerate(edits, start=1):
-        label = f"Edit {number} of {len(edits)}: " if len(edits) > 1 else ""
-        matches = content.count(change.old_text)
-        if matches == 0:
-            raise ValueError(
-                f"{label}Text to replace was not found: {_excerpt(change.old_text)}. "
-                f"{_miss_hint(content, change.old_text)}"
-            )
-        if matches > 1 and not change.replace_all:
-            raise ValueError(
-                f"{label}Text to replace is not unique; found {matches} matches "
-                f"(include more surrounding lines, or set replace_all to change every one): "
-                f"{_excerpt(change.old_text)}"
-            )
-        content = content.replace(change.old_text, change.new_text, -1 if change.replace_all else 1)
-        replacements += matches if change.replace_all else 1
-    return content, replacements
+    matches = content.count(old_string)
+    if matches == 0:
+        raise ValueError(f"Text to replace was not found: {_excerpt(old_string)}. {_miss_hint(content, old_string)}")
+    if matches > 1 and not replace_all:
+        raise ValueError(
+            f"Text to replace is not unique; found {matches} matches "
+            f"(include more surrounding lines, or set replace_all to change every one): {_excerpt(old_string)}"
+        )
+    updated = content.replace(old_string, new_string, -1 if replace_all else 1)
+    return updated, matches if replace_all else 1
 
 
-def _miss_hint(content: str, old_text: str) -> str:
-    """Say why an exact match failed, so the model fixes ``old_text`` instead of leaving the tool."""
-    if " ".join(content.split()).count(" ".join(old_text.split())) > 0:
+def _miss_hint(content: str, old_string: str) -> str:
+    """Say why an exact match failed, so the model fixes ``old_string`` instead of leaving the tool."""
+    if " ".join(content.split()).count(" ".join(old_string.split())) > 0:
         return (
             "A match exists that differs only in whitespace or indentation; "
             "read the file again and copy the lines exactly. Nothing was written."
         )
-    return "Read the file again and copy old_text from its current content. Nothing was written."
+    return "Read the file again and copy old_string from its current content. Nothing was written."
 
 
 def _excerpt(value: str, *, limit: int = 60) -> str:
@@ -258,10 +262,9 @@ def _excerpt(value: str, *, limit: int = 60) -> str:
 __all__ = [
     "FRAGMENT_CHARACTERS",
     "MAX_FILE_BYTES",
-    "FileEdit",
     "Located",
     "Pattern",
-    "apply_edits",
+    "apply_edit",
     "read_lines",
     "read_text",
     "write_text",

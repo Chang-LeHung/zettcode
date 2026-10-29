@@ -59,7 +59,7 @@ def is_picture_path(path: str) -> bool:
 
 #: The hint a bounded read leaves behind; it is advice for the model, not the
 #: reader, and the row already shows the text it applies to.
-CONTINUATION = re.compile(r"\n?\.\.\. \[(?:line truncated|more lines)[^\]]*\]\s*\Z")
+CONTINUATION = re.compile(r"\n?\.\.\. \[(?:line truncated|output truncated|more lines)[^\]]*\]\s*\Z")
 
 #: Wrapper tags a model may leave around its reasoning channel.
 REASONING_TAGS = re.compile(r"</?(?:think(?:ing)?|reasoning)>|<\|(?:thinking|reasoning)\|>", re.IGNORECASE)
@@ -229,38 +229,48 @@ def argument(arguments: Mapping[str, object], key: str, default: str = "") -> st
     return default
 
 
-def edited_lines(edits: object) -> tuple[int, int]:
+def edit_changes(arguments: Mapping[str, object]) -> tuple[tuple[str, str], ...]:
+    """Return the text pairs an ``edit`` call replaces: one pair now, a list of them from an older transcript.
+
+    A call carries ``old_string`` and ``new_string``. A session stored before that shape gave the arguments an
+    ``edits`` list, and it is read the same way so the row of an old transcript still shows its diff. Anything
+    that is not two strings is dropped rather than guessed at.
+    """
+    legacy = arguments.get("edits")
+    if isinstance(legacy, Sequence) and not isinstance(legacy, str):
+        return tuple(
+            (edit["old_text"], edit["new_text"])
+            for edit in legacy
+            if isinstance(edit, Mapping)
+            and isinstance(edit.get("old_text"), str)
+            and isinstance(edit.get("new_text"), str)
+        )
+    old_string, new_string = arguments.get("old_string"), arguments.get("new_string")
+    if isinstance(old_string, str) and isinstance(new_string, str):
+        return ((old_string, new_string),)
+    return ()
+
+
+def edited_lines(changes: Sequence[tuple[str, str]]) -> tuple[int, int]:
     """Return the lines an ``edit`` call adds and removes.
 
-    The tool answers ``Replaced 2 occurrences in app.py``, which says how many
-    edits landed but not how large they were: a two-line fix and a two-hundred-line
-    rewrite read the same. The edits carry both texts, so the difference is counted
-    here — with :class:`difflib.SequenceMatcher` rather than by subtracting lengths,
-    because a replacement that keeps the lines around it should not read as a
-    rewrite, and that is what a reader comparing two rows is looking at.
+    The tool answers ``Replaced 1 occurrence in app.py``, which says that a change landed but not how large it was:
+    a two-line fix and a two-hundred-line rewrite read the same. The call carries both texts, so the difference is
+    counted here — with :class:`difflib.SequenceMatcher` rather than by subtracting lengths, because a replacement
+    that keeps the lines around it should not read as a rewrite, and that is what a reader comparing two rows is
+    looking at.
 
     Args:
-        edits: The call's ``edits`` argument, as the model sent it: a sequence of
-            mappings with ``old_text`` and ``new_text``. Anything else is ignored
-            rather than guessed at.
+        changes: The old and new text of each change, as :func:`edit_changes` reads them.
 
     Returns:
-        ``(added, removed)`` across every edit; ``(0, 0)`` when there is nothing
-        countable, which is also what a call with no edits at all answers.
+        ``(added, removed)`` across every change; ``(0, 0)`` when the call carried nothing countable.
 
-    An edit that replaces every occurrence counts once, not once per occurrence:
-    how many the file holds is something only the file knows, and the tool's own
-    answer is where that number appears.
+    A change that replaces every occurrence counts once, not once per occurrence: how many the file holds is
+    something only the file knows, and the tool's own answer is where that number appears.
     """
-    if not isinstance(edits, Sequence) or isinstance(edits, str):
-        return (0, 0)
     added = removed = 0
-    for edit in edits:
-        if not isinstance(edit, Mapping):
-            continue
-        old_text, new_text = edit.get("old_text"), edit.get("new_text")
-        if not isinstance(old_text, str) or not isinstance(new_text, str):
-            continue
+    for old_text, new_text in changes:
         matcher = difflib.SequenceMatcher(None, old_text.splitlines(), new_text.splitlines())
         for tag, old_start, old_end, new_start, new_end in matcher.get_opcodes():
             if tag in ("replace", "delete"):
@@ -270,31 +280,24 @@ def edited_lines(edits: object) -> tuple[int, int]:
     return (added, removed)
 
 
-def edit_diff(edits: object, *, limit: int = MAX_DIFF_ROWS) -> tuple[DiffRow, ...]:
+def edit_diff(changes: Sequence[tuple[str, str]], *, limit: int = MAX_DIFF_ROWS) -> tuple[DiffRow, ...]:
     """Return the rows of the change an ``edit`` call makes.
 
-    Each edit carries the text it replaces and the text it puts there, so the change can be shown
+    Each change carries the text it replaces and the text it puts there, so the change can be shown
     without reading the file: the lines that differ, and one unchanged line around each so it reads in
-    place. Edits are told apart by a labelled break when there is more than one, and what is kept is
-    cut at ``limit`` rows with a last row saying so, because the arguments can be a whole file.
+    place. Changes are told apart by a labelled break when there is more than one — which only an older
+    transcript has — and what is kept is cut at ``limit`` rows with a last row saying so, because the
+    arguments can be a whole file.
 
     Args:
-        edits: The call's ``edits`` argument as the model sent it; anything that is not a mapping with
-            two texts is skipped rather than guessed at, exactly as :func:`edited_lines` does.
+        changes: The old and new text of each change, as :func:`edit_changes` reads them.
         limit: Most rows to keep.
     """
-    if not isinstance(edits, Sequence) or isinstance(edits, str):
-        return ()
-    usable = [
-        edit
-        for edit in edits
-        if isinstance(edit, Mapping) and isinstance(edit.get("old_text"), str) and isinstance(edit.get("new_text"), str)
-    ]
     rows: list[DiffRow] = []
-    for number, edit in enumerate(usable, start=1):
-        if len(usable) > 1:
-            rows.append(("@", f"edit {number} of {len(usable)}"))
-        old_lines, new_lines = edit["old_text"].splitlines(), edit["new_text"].splitlines()
+    for number, (old_text, new_text) in enumerate(changes, start=1):
+        if len(changes) > 1:
+            rows.append(("@", f"edit {number} of {len(changes)}"))
+        old_lines, new_lines = old_text.splitlines(), new_text.splitlines()
         opcodes = difflib.SequenceMatcher(None, old_lines, new_lines).get_opcodes()
         for index, (tag, old_start, old_end, new_start, new_end) in enumerate(opcodes):
             if tag == "equal":
@@ -382,6 +385,15 @@ def _value_text(value: object) -> str:
     return str(value)
 
 
+def file_path(arguments: Mapping[str, object], default: str = "") -> str:
+    """Return the path a file tool was called for.
+
+    ``file_path`` is the argument now; a session stored before the rename carries ``path``, and is still shown the
+    file it changed rather than as an unknown one.
+    """
+    return argument(arguments, "file_path") or argument(arguments, "path") or default
+
+
 def language_for_path(path: str) -> str | None:
     """Return the scanner for a file's contents, or ``None`` when it is not code."""
     language = language_for(Path(path).suffix.lstrip("."))
@@ -395,7 +407,7 @@ class ReadTool(ToolHandler):
 
     def describe(self, name: str, arguments: Mapping[str, object]) -> ToolRow:
         """Show the file, and highlight the body as the language it is."""
-        path = argument(arguments, "path", "(unknown file)")
+        path = file_path(arguments, "(unknown file)")
         return ToolRow(f"Read {path}", language_for_path(path))
 
     def open_tool(
@@ -403,7 +415,7 @@ class ReadTool(ToolHandler):
     ) -> ToolEntry:
         """A read row, which knows the language its body is in, and whether the file is a picture."""
         row = self.describe(name, arguments)
-        path = argument(arguments, "path")
+        path = file_path(arguments)
         return ReadEntry(
             id=id,
             call_id=call_id,
@@ -437,7 +449,7 @@ class WriteTool(ToolHandler):
 
     def describe(self, name: str, arguments: Mapping[str, object]) -> ToolRow:
         """Show the file being written: the row is the call, so it says what the call does, not what it did."""
-        return ToolRow(f"Write {argument(arguments, 'path', '(unknown file)')}")
+        return ToolRow(f"Write {file_path(arguments, '(unknown file)')}")
 
     def open_tool(
         self, name: str, arguments: Mapping[str, object], *, id: int, call_id: str, started_at: float
@@ -449,7 +461,7 @@ class WriteTool(ToolHandler):
             call_id=call_id,
             tool=name,
             title=self.describe(name, arguments).title,
-            path=argument(arguments, "path"),
+            path=file_path(arguments),
             added=written_lines(content),
             diff=write_diff(content),
             started_at=started_at,
@@ -457,25 +469,21 @@ class WriteTool(ToolHandler):
 
 
 class EditTool(ToolHandler):
-    """``edit``: the file and how many edits the call carries.
+    """``edit``: the file, and the size of the one change the call makes.
 
-    A session stored before the tool was renamed calls it ``replace_in_file``, and is still shown the same way.
+    A session stored before the tool was renamed calls it ``replace_in_file``, and is still shown the same way; one
+    stored before a call carried a single change gave it a list under ``edits``, and that list is read too.
     """
 
     names = frozenset({"edit", "replace_in_file"})
 
     def describe(self, name: str, arguments: Mapping[str, object]) -> ToolRow:
-        """Count the edits, and the lines they add and remove, before they land.
+        """Show the file; the size of the change is drawn beside the title, before it lands.
 
-        A multi-edit call and a one-line call are both worth seeing in advance, and
-        so is the size of the change: `+12 -3` beside the file says whether this is
-        a tweak or a rewrite, which is the question a reader asks the row.
+        `+12 -3` beside the file says whether this is a tweak or a rewrite, which is the question a reader asks
+        the row. One change a call is why the title counts nothing: a count of one is noise on every row.
         """
-        path = argument(arguments, "path", "(unknown file)")
-        edits = arguments.get("edits")
-        count = len(edits) if isinstance(edits, Sequence) and not isinstance(edits, str) else 0
-        suffix = f" ({count} edit{'' if count == 1 else 's'})" if count else ""
-        return ToolRow(f"Edited {path}{suffix}")
+        return ToolRow(f"Edit {file_path(arguments, '(unknown file)')}")
 
     def open_tool(
         self, name: str, arguments: Mapping[str, object], *, id: int, call_id: str, started_at: float
@@ -485,17 +493,17 @@ class EditTool(ToolHandler):
         The counts ride outside the title: they are drawn in the colours an addition and a
         deletion get, which a title made of one string cannot be.
         """
-        edits = arguments.get("edits")
-        added, removed = edited_lines(edits)
+        changes = edit_changes(arguments)
+        added, removed = edited_lines(changes)
         return EditEntry(
             id=id,
             call_id=call_id,
             tool=name,
             title=self.describe(name, arguments).title,
-            path=argument(arguments, "path"),
+            path=file_path(arguments),
             added=added,
             removed=removed,
-            diff=edit_diff(edits),
+            diff=edit_diff(changes),
             started_at=started_at,
         )
 
@@ -507,7 +515,7 @@ class DeleteTool(ToolHandler):
 
     def describe(self, name: str, arguments: Mapping[str, object]) -> ToolRow:
         """Show the file being removed."""
-        return ToolRow(f"Deleted {argument(arguments, 'path', '(unknown file)')}")
+        return ToolRow(f"Deleted {file_path(arguments, '(unknown file)')}")
 
     def open_tool(
         self, name: str, arguments: Mapping[str, object], *, id: int, call_id: str, started_at: float
@@ -518,7 +526,7 @@ class DeleteTool(ToolHandler):
             call_id=call_id,
             tool=name,
             title=self.describe(name, arguments).title,
-            path=argument(arguments, "path"),
+            path=file_path(arguments),
             started_at=started_at,
         )
 
@@ -530,7 +538,7 @@ class ShellTool(ToolHandler):
 
     def describe(self, name: str, arguments: Mapping[str, object]) -> ToolRow:
         """Show the command, not a JSON copy of it."""
-        return ToolRow(f"Ran {argument(arguments, 'command', '(unknown command)')}")
+        return ToolRow(f"Bash {argument(arguments, 'command', '(unknown command)')}")
 
 
 class SearchTool(ToolHandler):
@@ -543,7 +551,7 @@ class SearchTool(ToolHandler):
         pattern = argument(arguments, "pattern")
         if name == "glob":
             return ToolRow(f"Listed {pattern}" if pattern else "Listed files")
-        where = argument(arguments, "path")
+        where = argument(arguments, "file_pattern") or argument(arguments, "path")
         return ToolRow(f"Searched {pattern or 'the workspace'}" + (f" in {where}" if where else ""))
 
 

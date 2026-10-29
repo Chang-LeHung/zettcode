@@ -12,6 +12,7 @@ from zettcode.app.agent.conversation.rendering import (
     MAX_DIFF_ROWS,
     EditTool,
     WriteTool,
+    edit_changes,
     edit_diff,
     write_diff,
     written_lines,
@@ -22,8 +23,8 @@ from zettcode.app.ui.widgets import TranscriptSource
 from zettcode.tui import DARK, LIGHT
 
 
-def _edit(old: str, new: str) -> dict[str, str]:
-    return {"old_text": old, "new_text": new}
+def _edit(old: str, new: str) -> tuple[str, str]:
+    return (old, new)
 
 
 # -- the rows of an edit's diff ---------------------------------------------------------------------------
@@ -69,6 +70,7 @@ def test_an_edit_that_changes_nothing_has_no_rows_at_all():
 
 
 def test_several_edits_are_told_apart_by_a_labelled_break():
+    """Only a session stored before one change a call carries more than one; it is still drawn apart."""
     rows = edit_diff([_edit("a", "b"), _edit("c", "d")])
 
     assert rows == (("@", "edit 1 of 2"), ("-", "a"), ("+", "b"), ("@", "edit 2 of 2"), ("-", "c"), ("+", "d"))
@@ -78,18 +80,43 @@ def test_a_single_edit_has_no_label():
     assert all(kind != "@" for kind, _ in edit_diff([_edit("a", "b")]))
 
 
+def test_the_pairs_come_from_the_two_arguments_a_call_carries():
+    assert edit_changes({"file_path": "a.py", "old_string": "a", "new_string": "b"}) == (("a", "b"),)
+    assert edit_changes({"file_path": "a.py"}) == (), "a call with no texts counts nothing"
+
+
 @pytest.mark.parametrize(
-    "edits",
-    [None, "not edits", 7, [], [None], [{"old_text": "a"}], [{"old_text": 1, "new_text": "b"}], [["a", "b"]]],
+    "arguments",
+    [
+        {},
+        {"edits": "not edits"},
+        {"edits": 7},
+        {"edits": []},
+        {"edits": [None]},
+        {"edits": [{"old_text": "a"}]},
+        {"edits": [{"old_text": 1, "new_text": "b"}]},
+        {"edits": [["a", "b"]]},
+        {"old_string": "a"},
+        {"old_string": 1, "new_string": "b"},
+    ],
 )
-def test_what_is_not_an_edit_is_skipped_not_guessed_at(edits):
-    assert edit_diff(edits) == ()
+def test_what_is_not_an_edit_is_skipped_not_guessed_at(arguments):
+    assert edit_changes(arguments) == ()
 
 
 def test_a_bad_edit_among_good_ones_does_not_cost_the_good_ones_their_place():
-    rows = edit_diff([_edit("a", "b"), {"old_text": None}, _edit("c", "d")])
+    changes = edit_changes(
+        {"edits": [{"old_text": "a", "new_text": "b"}, {"old_text": None}, {"old_text": "c", "new_text": "d"}]}
+    )
 
-    assert rows == (("@", "edit 1 of 2"), ("-", "a"), ("+", "b"), ("@", "edit 2 of 2"), ("-", "c"), ("+", "d"))
+    assert edit_diff(changes) == (
+        ("@", "edit 1 of 2"),
+        ("-", "a"),
+        ("+", "b"),
+        ("@", "edit 2 of 2"),
+        ("-", "c"),
+        ("+", "d"),
+    )
 
 
 def test_a_whole_file_in_the_arguments_is_cut_at_the_limit_and_says_so():
@@ -147,10 +174,11 @@ def test_a_write_with_no_content_argument_adds_nothing_to_the_row():
 
 
 def test_an_edit_entry_carries_its_counts_and_its_diff():
-    entry = _open(EditTool(), "replace_in_file", path="a.py", edits=[_edit("x = 1", "x = 2\ny = 3")])
+    entry = _open(EditTool(), "edit", file_path="a.py", old_string="x = 1", new_string="x = 2\ny = 3")
 
     assert isinstance(entry, EditEntry) and (entry.added, entry.removed) == (2, 1)
     assert entry.diff == (("-", "x = 1"), ("+", "x = 2"), ("+", "y = 3"))
+    assert entry.title == "Edit a.py"
 
 
 # -- on the screen -------------------------------------------------------------------------------------------
@@ -167,9 +195,15 @@ def _styled(transcript: Transcript, width: int = 70):
 
 
 def _edit_transcript(edits, *, status=EntryStatus.COMPLETED, output="Replaced 1 occurrence in a.py"):
+    """A transcript with one edit row: the call carries a single change unless the test gives it a stored list."""
+    if len(edits) == 1:
+        old, new = edits[0]
+        arguments = {"file_path": "a.py", "old_string": old, "new_string": new}
+    else:
+        arguments = {"path": "a.py", "edits": [{"old_text": old, "new_text": new} for old, new in edits]}
     transcript = Transcript(clock=lambda: 0.0)
     transcript.begin_turn("fix it")
-    transcript.start_tool("c1", "replace_in_file", {"path": "a.py", "edits": edits})
+    transcript.start_tool("c1", "edit", arguments)
     transcript.complete_tool("c1", output, status=status)
     return transcript
 
@@ -177,7 +211,7 @@ def _edit_transcript(edits, *, status=EntryStatus.COMPLETED, output="Replaced 1 
 def test_a_finished_edit_shows_its_diff_under_the_title():
     screen = _screen(_edit_transcript([_edit("x = 1", "x = 2")]))
 
-    assert any("Edited a.py (1 edit) +1 -1" in row for row in screen)
+    assert any("Edit a.py +1 -1" in row for row in screen)
     assert any("- x = 1" in row for row in screen) and any("+ x = 2" in row for row in screen)
 
 
@@ -228,18 +262,18 @@ def test_a_failed_edit_shows_its_error_and_not_a_diff_of_what_did_not_happen():
     screen = "\n".join(
         _screen(
             _edit_transcript(
-                [_edit("x = 1", "x = 2")], status=EntryStatus.FAILED, output="old_text was not found in a.py"
+                [_edit("x = 1", "x = 2")], status=EntryStatus.FAILED, output="old_string was not found in a.py"
             )
         )
     )
 
-    assert "old_text was not found" in screen and "- x = 1" not in screen and "+ x = 2" not in screen
+    assert "old_string was not found" in screen and "- x = 1" not in screen and "+ x = 2" not in screen
 
 
 def test_while_the_call_runs_there_is_no_diff_yet_only_that_it_is_running():
     transcript = Transcript(clock=lambda: 0.0)
     transcript.begin_turn("fix it")
-    transcript.start_tool("c1", "replace_in_file", {"path": "a.py", "edits": [_edit("x", "y")]})
+    transcript.start_tool("c1", "edit", {"file_path": "a.py", "old_string": "x", "new_string": "y"})
 
     screen = "\n".join(_screen(transcript))
 
@@ -276,9 +310,7 @@ def test_a_row_with_a_diff_is_foldable_even_when_the_tool_said_nothing_and_shows
     tool = next(entry for entry in transcript.entries if isinstance(entry, ToolEntry))
 
     assert tool.text == "" and tool.foldable
-    heading = next(
-        row for row in _screen(transcript) if row.lstrip().startswith(("\u2713", "\u2714")) or "Edited" in row
-    )
+    heading = next(row for row in _screen(transcript) if row.lstrip().startswith(("\u2713", "\u2714")) or "Edit" in row)
     assert heading.rstrip().endswith("\u25b8")
 
 
@@ -305,7 +337,7 @@ def test_control_characters_in_an_edit_cannot_reach_the_canvas():
 def test_a_write_row_shows_the_count_in_the_addition_colour_and_no_body():
     transcript = Transcript(clock=lambda: 0.0)
     transcript.begin_turn("make it")
-    transcript.start_tool("c1", "write_file", {"path": "new.py", "content": "a\nb\n"})
+    transcript.start_tool("c1", "write_file", {"file_path": "new.py", "content": "a\nb\n"})
     transcript.complete_tool("c1", "Wrote 4 bytes to new.py")
 
     lines = _styled(transcript)
@@ -328,7 +360,11 @@ async def test_an_edit_replayed_from_a_stored_session_shows_its_diff_too(tmp_pat
         "s",
         "r",
         AssistantMessage(
-            tool_calls=(ToolCall("c1", "replace_in_file", {"path": "a.py", "edits": [_edit("x = 1", "x = 2")]}),)
+            tool_calls=(
+                ToolCall(
+                    "c1", "replace_in_file", {"path": "a.py", "edits": [{"old_text": "x = 1", "new_text": "x = 2"}]}
+                ),
+            )
         ),
     )
     await store.append("s", "r", ToolMessage(tool_call_id="c1", name="replace_in_file", content="Replaced 1"))
@@ -396,7 +432,7 @@ def test_a_theme_file_can_change_the_diff_colours():
 def _write_transcript(content, *, status=EntryStatus.COMPLETED, output="Wrote 12 bytes to new.py"):
     transcript = Transcript(clock=lambda: 0.0)
     transcript.begin_turn("make it")
-    transcript.start_tool("c1", "write_file", {"path": "new.py", "content": content})
+    transcript.start_tool("c1", "write_file", {"file_path": "new.py", "content": content})
     transcript.complete_tool("c1", output, status=status)
     return transcript
 

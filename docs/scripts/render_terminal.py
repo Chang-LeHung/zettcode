@@ -85,8 +85,20 @@ def preview() -> Canvas:
             clock[0] = 1.2
             transcript.complete_thinking()
             for call_id, tool, arguments, output in (
-                ("read", "read_file", {"path": "src/api/users.py"}, api_users_body()),
-                ("edit", "replace_in_file", {"path": "src/api/users.py"}, ""),
+                ("read", "read_file", {"file_path": "src/api/users.py"}, api_users_body()),
+                (
+                    "edit",
+                    "edit",
+                    {
+                        "file_path": "src/api/users.py",
+                        "old_string": '@router.get("/users")',
+                        "new_string": (
+                            '@router.get("/users")\n'
+                            "async def list_users(limit: int = Query(20, le=100), offset: int = 0):"
+                        ),
+                    },
+                    "",
+                ),
                 ("test", "bash", {"command": "pytest tests/test_users.py -q"}, "6 passed in 0.24s"),
             ):
                 transcript.start_tool(call_id, tool, arguments)
@@ -94,9 +106,7 @@ def preview() -> Canvas:
                 transcript.complete_tool(call_id, output, wait=False)
             transcript.append_answer(
                 "Added pagination to **GET /users**.\n\n"
-                "- `limit` defaults to 20 and is capped at 100.\n"
-                "- `offset` starts at 0; both parameters are validated.\n"
-                "- The response includes the total, so clients can page without counting.\n\n"
+                "- `limit` defaults to 20, capped at 100; `offset` starts at 0 and both are validated.\n\n"
                 "All six tests pass, including the new pagination checks."
             )
             transcript.settle_wait("Processed for 12s · 09:41")
