@@ -105,7 +105,7 @@ Self-compaction                                     in effect here: on (not appl
 
 | 立刻运行 | 为什么安全 |
 | --- | --- |
-| `/help`、`/context`、`/usage`、`/theme` | 只是展示。`/context` 报告的是最近一次测量的请求；`/usage` 读的是已保存会话里记下的用量。 |
+| `/help`、`/plugins`、`/context`、`/usage`、`/theme` | 只是展示。`/context` 报告的是最近一次测量的请求；`/usage` 读的是已保存会话里记下的用量。 |
 | `/bash` | 不读也不写会话；里面的命令是你自己的，所以后台运行的请求不受影响。 |
 | `/title` | 给会话命名，运行中的请求不读它。 |
 | `/permission` | 下一条 shell 命令会重新读取这个级别，所以修改会落在正在运行的请求里 —— 长任务进行到一半时 `/permission full` 正是为此。 |

@@ -12,7 +12,8 @@ import pytest
 from test_plugins import FakeEntryPoint, make_config
 from test_zettcode_app import _harness, _type_command, build_app, rows_and_commands
 from zettcode import cli
-from zettcode.app.plugins import TerminalContainer, TerminalPlugin, load_terminal_plugins
+from zettcode.app.plugins import PluginContext, TuiPlugin, load_terminal_plugins
+from zettcode.app.plugins.loader import terminal_context
 from zettcode.config import ZettCodeConfig, load_config
 from zettcode.tui import DARK, LIGHT, Theme, ThemeCatalog, ThemeFileError, bundled_themes
 from zettcode.tui.render.color import parse_hex
@@ -150,15 +151,15 @@ def test_a_broken_file_is_listed_and_its_error_is_the_error_of_whoever_picks_it(
 # -- plugins ----------------------------------------------------------------------------------------------------
 
 
-class Sunset(TerminalPlugin):
+class Sunset(TuiPlugin):
     name = "sunset-pack"
 
     def __init__(self) -> None:
         self.built = 0
 
-    def activate(self, container: TerminalContainer) -> None:
-        container.register_theme("sunset", dataclasses.replace(DARK, accent="#ff8800"), description="warm")
-        container.register_theme("lazy-sunset", self.build, description=lambda: "built late")
+    def activate(self, ctx: PluginContext) -> None:
+        ctx.tui.register_theme("sunset", dataclasses.replace(DARK, accent="#ff8800"), description="warm")
+        ctx.tui.register_theme("lazy-sunset", self.build, description=lambda: "built late")
 
     def build(self) -> Theme:
         self.built += 1
@@ -182,11 +183,11 @@ def test_a_plugin_offers_palettes_by_name_after_the_ones_that_ship(tmp_path: Pat
 def test_a_plugin_can_offer_a_theme_file(tmp_path: Path):
     path = write_theme(tmp_path, "packaged", accent="#00ff88", note="from a file in the package")
 
-    class FromFile(TerminalPlugin):
+    class FromFile(TuiPlugin):
         name = "from-file"
 
-        def activate(self, container: TerminalContainer) -> None:
-            container.register_theme("packaged", path)
+        def activate(self, ctx: PluginContext) -> None:
+            ctx.tui.register_theme("packaged", path)
 
     plugins = load_terminal_plugins(make_config(tmp_path), builtins=(), entry_points=[FakeEntryPoint("f", FromFile)])
     found = ThemeCatalog(plugins.themes)
@@ -196,17 +197,17 @@ def test_a_plugin_can_offer_a_theme_file(tmp_path: Path):
 
 
 def test_a_plugin_cannot_take_a_name_the_program_or_an_earlier_plugin_has(tmp_path: Path):
-    class Greedy(TerminalPlugin):
+    class Greedy(TuiPlugin):
         name = "greedy"
 
-        def activate(self, container: TerminalContainer) -> None:
-            container.register_theme("nord", DARK)
+        def activate(self, ctx: PluginContext) -> None:
+            ctx.tui.register_theme("nord", DARK)
 
-    class Second(TerminalPlugin):
+    class Second(TuiPlugin):
         name = "second"
 
-        def activate(self, container: TerminalContainer) -> None:
-            container.register_theme("sunset", DARK)
+        def activate(self, ctx: PluginContext) -> None:
+            ctx.tui.register_theme("sunset", DARK)
 
     plugins = load_terminal_plugins(
         make_config(tmp_path),
@@ -220,18 +221,18 @@ def test_a_plugin_cannot_take_a_name_the_program_or_an_earlier_plugin_has(tmp_pa
 
 @pytest.mark.parametrize("name", ["dark", "light", "two words", "", "a/b"])
 def test_a_name_that_could_not_be_typed_after_theme_is_refused_when_registered(tmp_path: Path, name: str):
-    container = TerminalContainer(make_config(tmp_path))
+    ctx = terminal_context(make_config(tmp_path))
 
     with pytest.raises(ValueError):
-        container.register_theme(name, DARK)
+        ctx.tui.register_theme(name, DARK)
 
 
 def test_a_palette_registered_twice_by_one_plugin_is_refused(tmp_path: Path):
-    container = TerminalContainer(make_config(tmp_path))
-    container.register_theme("once", DARK)
+    ctx = terminal_context(make_config(tmp_path))
+    ctx.tui.register_theme("once", DARK)
 
     with pytest.raises(ValueError, match="already registered"):
-        container.register_theme("once", LIGHT)
+        ctx.tui.register_theme("once", LIGHT)
 
 
 def test_a_plugin_whose_palette_cannot_be_built_is_reported_by_name_when_picked(tmp_path: Path):

@@ -1,22 +1,20 @@
-"""The terminal's plugin support: what a plugin adds beyond the agent.
+"""The terminal's plugins: the row hooks, the groups a shell plugin registers into, and the bundle it produces.
 
-A plugin that adds a command, a palette, a pet, a presenter or a header or status segment::
+A plugin subclasses :class:`~zettcode.engine.plugins.Plugin` (or :class:`TuiPlugin` to override a row hook) and
+registers through ``ctx``::
 
-    from zettcode.app.plugins import CommandResult, TerminalContainer, TerminalPlugin
+    from zettcode.app.plugins import TuiPlugin
+    from zettcode.engine.plugins import PluginContext
 
-    class Greeter(TerminalPlugin):
+    class Greeter(TuiPlugin):
         name = "greeter"
 
-        def activate(self, container: TerminalContainer) -> None:
-            container.register_command("greet", "say hello", self.greet)
+        def activate(self, ctx: PluginContext) -> None:
+            ctx.tui.register_command("greet", "say hello", self.greet)
 
-        async def greet(self, context) -> CommandResult:
-            return CommandResult(notification=f"hello {context.argument}".strip())
-
-It is built on :mod:`zettcode.engine.plugins`, which has what the agent uses. The pieces live in
-:mod:`~zettcode.app.plugins.state` (the snapshot and segment types), :mod:`~zettcode.app.plugins.mixins` (the row
-hooks), :mod:`~zettcode.app.plugins.container`, :mod:`~zettcode.app.plugins.plugin`, and
-:mod:`~zettcode.app.plugins.loader`. Names load on first use, so importing one does not build the rest.
+:class:`TuiPlugin` is the engine's base class with :class:`PluginUiMixin`; the shell's commands, palettes, pets,
+presenters and rows live in :class:`~zettcode.app.plugins.groups.TuiGroups`, which is ``ctx.tui`` — ``None`` in a
+process without a terminal, which is why a shell-only plugin starts ``activate`` with ``if ctx.tui is None: return``.
 """
 
 from __future__ import annotations
@@ -39,10 +37,11 @@ _EXPORTS = {
     "UiSegment": ".state",
     "UiSide": ".state",
     "PluginUiMixin": ".mixins",
-    "TerminalContainer": ".container",
-    "UiSlots": ".container",
-    "TerminalPlugin": ".plugin",
-    "TerminalPlugins": ".plugin",
+    "PluginContext": "zettcode.engine.plugins.context",
+    "UiSlots": ".groups",
+    "TuiGroups": ".groups",
+    "TuiPlugin": ".plugin",
+    "TuiPlugins": ".plugin",
     "TerminalLoader": ".loader",
     "load_terminal_plugins": ".loader",
     "HOST_LINK": ".host",
@@ -51,12 +50,14 @@ _EXPORTS = {
 
 
 if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
+    from zettcode.engine.plugins.context import PluginContext
+
     from .builtins import BUILTIN_PLUGINS
-    from .container import TerminalContainer, UiSlots
+    from .groups import UiSlots
     from .host import HOST_LINK, HostLink
     from .loader import TerminalLoader, load_terminal_plugins
     from .mixins import PluginUiMixin
-    from .plugin import TerminalPlugin, TerminalPlugins
+    from .plugin import TuiPlugin, TuiPlugins
     from .state import (
         Activity,
         ActivityState,
@@ -95,12 +96,13 @@ __all__ = [
     "HostLink",
     "ModelState",
     "PluginUiMixin",
+    "TuiGroups",
     "SessionState",
     "ShellContext",
-    "TerminalContainer",
+    "PluginContext",
     "TerminalLoader",
-    "TerminalPlugin",
-    "TerminalPlugins",
+    "TuiPlugin",
+    "TuiPlugins",
     "UiBuilder",
     "UiRegion",
     "UiRow",

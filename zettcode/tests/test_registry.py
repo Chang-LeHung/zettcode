@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from zettcode.app.commands import Command, CommandContext, CommandList, CommandResult
-from zettcode.app.plugins import TerminalContainer
+from zettcode.app.plugins.loader import terminal_context
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.registry import Registry
 
@@ -38,13 +38,13 @@ def test_a_registry_keeps_the_first_provider_to_claim_a_name():
 
 def test_a_plugin_registers_a_provider_of_commands(tmp_path: Path):
     config = ZettCodeConfig(workspace=tmp_path, models=(ModelConfig(model="m", token="t"),))
-    container = TerminalContainer(config)
+    ctx = terminal_context(config)
     provider = CommandList((_command("/alpha"), _command("/beta")))
 
-    assert container.register_command_provider(provider) is provider
-    assert [command.name for command in container.commands] == ["/alpha", "/beta"]
+    assert ctx.tui.register_command_provider(provider) is provider
+    assert [command.name for command in ctx.tui.registered_commands] == ["/alpha", "/beta"]
 
     with pytest.raises(ValueError, match="already registered"):
-        container.register_command_provider(CommandList((_command("/beta"),)))
+        ctx.tui.register_command_provider(CommandList((_command("/beta"),)))
     with pytest.raises(ValueError, match="cannot be empty"):
-        container.register_command_provider(CommandList((_command("  "),)))
+        ctx.tui.register_command_provider(CommandList((_command("  "),)))

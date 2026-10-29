@@ -8,7 +8,7 @@ factory returning one) under the ``zettcode.plugins`` group::
 
 Nothing else registers a plugin: installing the distribution is the opt-in, and
 ``[plugins] disable`` in the config is the way back out. A plugin that cannot be
-imported, instantiated, or activated is skipped and reported in
+imported, instantiated, or activated is reported in
 :attr:`~zettcode.engine.plugins.plugin.Plugins.failures`; one broken plugin must not take
 the whole application with it.
 
@@ -25,10 +25,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from zettcode.config import read_disabled_plugins
 from zettcode.providers import BUILTIN_PROVIDERS
 
 from .builtin_agent import AGENT_PLUGINS
-from .container import PluginContainer
+from .context import PluginContext
 from .extension import HOST_NAME, PluginExtension
 from .plugin import Plugin, Plugins
 from .state import Contribution
@@ -100,7 +101,7 @@ def run(
     loader.builtins_loaded()
     if config.plugins_enabled:
         points = tuple(entry_points) if entry_points is not None else installed_entry_points()
-        disabled = set(config.disabled_plugins)
+        disabled = set(config.disabled_plugins) | set(read_disabled_plugins(config.plugins_file))
         for point in points:
             if point.name in disabled:
                 continue
@@ -123,6 +124,7 @@ class Loader:
         self.providers: list[Provider] = []
         self.contributed: list[Contribution] = []
         self.services: dict[str, object] = dict(shared or {})
+        self.plain_commands: list[object] = []
         self.failures: list[str] = []
         self._identities: set[str] = set()
         self._extension_names: set[str] = {HOST_NAME}
@@ -131,19 +133,19 @@ class Loader:
 
     # -- what a subclass changes --
 
-    def new_container(self) -> PluginContainer:
-        """Return the container one plugin is activated with."""
-        return PluginContainer(self.config, self.services)
+    def new_context(self) -> PluginContext:
+        """Return the context one plugin is activated with."""
+        return PluginContext(self.config, self.services)
 
-    def activated(self, plugin: Plugin[Any], container: PluginContainer) -> None:
+    def activated(self, plugin: Plugin[Any], context: PluginContext) -> None:
         """Run after a plugin's ``activate`` succeeded and before its contribution is checked; may raise."""
 
-    def clash(self, container: PluginContainer) -> str | None:
+    def clash(self, context: PluginContext) -> str | None:
         """Return why this plugin's contribution cannot be merged, or ``None`` when it can."""
         # A mention token has no prefix naming its provider, so two providers
         # with the same kind would make resolution ambiguous. Reject the plugin.
         mention_clash = next(
-            (provider.kind for provider in container.mentions if provider.kind in self._mention_kinds),
+            (provider.kind for provider in context.mentions if provider.kind in self._mention_kinds),
             None,
         )
         if mention_clash is not None:
@@ -151,7 +153,7 @@ class Loader:
         # A name is what `/config add` is typed with, so two hosts sharing one cannot both be
         # reached; the one that was there first, a built-in or an earlier plugin, keeps it.
         provider_clash = next(
-            (provider.name for provider in container.providers if provider.name in self._provider_names),
+            (provider.name for provider in context.providers if provider.name in self._provider_names),
             None,
         )
         if provider_clash is not None:
@@ -159,26 +161,27 @@ class Loader:
         # The agent refuses two extensions with one name, and that would fail the first turn rather than
         # the load, so the clash is caught here; the name of the host itself counts.
         extension_clash = next(
-            (extension.name for extension in container.extensions if extension.name in self._extension_names),
+            (extension.name for extension in context.extensions if extension.name in self._extension_names),
             None,
         )
         if extension_clash is not None:
             return f"extension {extension_clash} is already registered"
         # A service is looked up by its name, so a second provider would be unreachable behind the first.
-        service_clash = next((name for name in container.services if name in self.services), None)
+        service_clash = next((name for name in context.services if name in self.services), None)
         if service_clash is not None:
             return f"service {service_clash} is already provided"
         return None
 
-    def merge(self, container: PluginContainer) -> None:
+    def merge(self, context: PluginContext) -> None:
         """Take what an accepted plugin registered."""
-        self._extension_names.update(extension.name for extension in container.extensions)
-        self.contributed.extend(container.extensions)
-        self.services.update(container.services)
-        self._provider_names.update(provider.name for provider in container.providers)
-        self.providers.extend(container.providers)
-        self._mention_kinds.update(provider.kind for provider in container.mentions)
-        self.mentions.extend(container.mentions)
+        self._extension_names.update(extension.name for extension in context.extensions)
+        self.contributed.extend(context.extensions)
+        self.services.update(context.services)
+        self._provider_names.update(provider.name for provider in context.providers)
+        self.providers.extend(context.providers)
+        self._mention_kinds.update(provider.kind for provider in context.mentions)
+        self.mentions.extend(context.mentions)
+        self.plain_commands.extend(context.commands.commands)
 
     def builtins_loaded(self) -> None:
         """Called once the builtin plugins have all been offered, before any distribution."""
@@ -192,6 +195,7 @@ class Loader:
             providers=tuple(self.providers),
             contributed=tuple(self.contributed),
             services=dict(self.services),
+            plain_commands=tuple(self.plain_commands),
             failures=tuple(self.failures),
         )
 
@@ -209,7 +213,9 @@ class Loader:
             return
         if not plugin.name:
             plugin.name = name
-        container = self.new_container()
+        if not plugin.origin:
+            plugin.origin = origin or name
+        container = self.new_context()
         try:
             plugin.activate(container)
             self.activated(plugin, container)

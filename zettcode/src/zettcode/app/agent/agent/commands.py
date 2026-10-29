@@ -10,7 +10,7 @@ from __future__ import annotations
 from zettcode.app.commands import Command, CommandContext, CommandHost, CommandResult
 from zettcode.app.pets import PetCatalog, bundled_pets
 from zettcode.app.plugins.host import HOST_LINK, HostLink
-from zettcode.app.plugins.plugin import TerminalPlugins
+from zettcode.app.plugins.plugin import TuiPlugins
 from zettcode.app.plugins.state import TurnSegment, UiRow
 from zettcode.engine.agent.exports import ExportsMixin
 from zettcode.providers import BUILTIN_PROVIDERS, Provider, merge_providers
@@ -28,10 +28,10 @@ class CommandsMixin(AppearanceMixin, ExportsMixin):
     """The ``/new``, ``/compact``, and ``/export`` commands, and the plugins' commands, mentions, and rows."""
 
     @property
-    def terminal_plugins(self) -> TerminalPlugins:
+    def terminal_plugins(self) -> TuiPlugins:
         """Return what the plugins contributed to the terminal; the engine was built with the terminal's loader."""
         plugins = self.runtime.plugins
-        if not isinstance(plugins, TerminalPlugins):
+        if not isinstance(plugins, TuiPlugins):
             raise TypeError("This agent's engine was not built with the terminal's plugin loader")
         return plugins
 

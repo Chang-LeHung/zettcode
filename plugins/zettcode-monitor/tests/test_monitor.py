@@ -131,12 +131,12 @@ def test_report_is_self_contained_and_escapes(tmp_path):
 
 
 def test_the_command_takes_no_subcommands(tmp_path):
-    from zettcode.app.plugins import TerminalContainer
+    from zettcode.app.plugins.loader import terminal_context
     from zettcode.config import ModelConfig, ZettCodeConfig
 
-    container = TerminalContainer(ZettCodeConfig(workspace=tmp_path, models=(ModelConfig(model="m", token="t"),)))
-    MonitorPlugin(tmp_path / "mon").activate(container)
-    (command,) = container.commands
+    ctx = terminal_context(ZettCodeConfig(workspace=tmp_path, models=(ModelConfig(model="m", token="t"),)))
+    MonitorPlugin(tmp_path / "mon").activate(ctx)
+    (command,) = ctx.tui.registered_commands
     assert command.name == "/monitor" and not command.subcommands
 
 

@@ -24,6 +24,7 @@ from zettcode.app.commands import CommandContext, CommandResult
 from zettcode.app.pets import bundled_pets
 from zettcode.app.ui import labels
 from zettcode.app.ui.widgets import UsagePage
+from zettcode.engine.plugins.context import PluginContext
 from zettcode.statusline import TURN_PARTS, Row, context_share, usage_parts
 from zettcode.tui import STATUS, bundled_themes
 
@@ -32,16 +33,17 @@ from .builtin_commands import (
     CodeReview,
     HelpCommand,
     ModelCommands,
+    PluginCommand,
     SessionCommands,
     ShellControl,
     SideQuestion,
 )
-from .container import TerminalContainer
-from .plugin import TerminalPlugin
+from .groups import require_tui
+from .plugin import TuiPlugin
 from .state import ShellContext, TurnBuilder
 
 
-class ShellRows(TerminalPlugin):
+class ShellRows(TuiPlugin):
     """The header and status rows a reader expects out of the box."""
 
     name = "shell"
@@ -72,7 +74,7 @@ class ShellRows(TerminalPlugin):
         return labels.status_right()
 
 
-class TurnLine(TerminalPlugin):
+class TurnLine(TuiPlugin):
     """The items of the line a request ends on: how long it took, when, and what it spent.
 
     Each is a segment of its own, so a plugin can add one beside them or replace one by name, and each is a switch
@@ -81,8 +83,9 @@ class TurnLine(TerminalPlugin):
 
     name = "turn-line"
 
-    def activate(self, container: TerminalContainer) -> None:
+    def activate(self, ctx: PluginContext) -> None:
         """Register the items in the order they stand."""
+        tui = require_tui(ctx)
         sentences = dict(TURN_PARTS)
         builders: dict[str, TurnBuilder] = {
             "turn-time": lambda turn: f"{turn.label} for {elapsed_text(turn.seconds)}",
@@ -94,10 +97,10 @@ class TurnLine(TerminalPlugin):
             "turn-tools": lambda turn: tools_text(turn.tools, turn.failed_tools),
         }
         for name, builder in builders.items():
-            container.register_turn_segment(name, sentences[name], builder)
+            tui.register_turn_segment(name, sentences[name], builder)
 
 
-class UsageCommand(TerminalPlugin):
+class UsageCommand(TuiPlugin):
     """``/usage``: what this workspace's sessions have spent, by model, session and day.
 
     The numbers are read back from the stored conversations, so the page covers every
@@ -107,9 +110,10 @@ class UsageCommand(TerminalPlugin):
 
     name = "usage"
 
-    def activate(self, container: TerminalContainer) -> None:
+    def activate(self, ctx: PluginContext) -> None:
         """Register ``/usage``; the client keeps one reader, so a second look re-reads only what changed."""
-        config = container.config
+        config = ctx.config
+        tui = require_tui(ctx)
 
         async def show(context: CommandContext) -> CommandResult:
             """Open the usage page, or say that nothing has been spent yet."""
@@ -118,10 +122,10 @@ class UsageCommand(TerminalPlugin):
                 return CommandResult(message="No model replies are recorded in this workspace yet.")
             return CommandResult(widget=UsagePage(ledger, workspace=labels.compact_path(config.workspace, limit=None)))
 
-        container.register_command("usage", "Token use by model, by session and by day", show, when_busy="now")
+        tui.register_command("usage", "Token use by model, by session and by day", show, when_busy="now")
 
 
-class BuiltinThemes(TerminalPlugin):
+class BuiltinThemes(TuiPlugin):
     """The palettes that ship with the program, offered the way any plugin offers one.
 
     They are TOML files beside the theme loader, so adding a built-in palette is adding a file and a name to
@@ -131,13 +135,14 @@ class BuiltinThemes(TerminalPlugin):
 
     name = "themes"
 
-    def activate(self, container: TerminalContainer) -> None:
+    def activate(self, ctx: PluginContext) -> None:
         """Offer each palette file by name. Nothing is read until one is asked for."""
+        tui = require_tui(ctx)
         for source in bundled_themes():
-            container.register_theme(source.name, source.load, description=source.description)
+            tui.register_theme(source.name, source.load, description=source.description)
 
 
-class BuiltinPets(TerminalPlugin):
+class BuiltinPets(TuiPlugin):
     """The pets that ship with the program, offered the way any plugin offers one.
 
     They are registered first, so they are listed first in the ``/pet`` menu, and a plugin cannot register a name
@@ -147,13 +152,14 @@ class BuiltinPets(TerminalPlugin):
 
     name = "pets"
 
-    def activate(self, container: TerminalContainer) -> None:
+    def activate(self, ctx: PluginContext) -> None:
         """Offer each pet by name. Nothing is built until one is asked for."""
+        tui = require_tui(ctx)
         for source in bundled_pets():
-            container.register_pet(source.name, source.load, description=source.description)
+            tui.register_pet(source.name, source.load, description=source.description)
 
 
-class BuiltinPresenters(TerminalPlugin):
+class BuiltinPresenters(TuiPlugin):
     """How the program draws its own rows, offered the way any plugin offers a presenter.
 
     They register first, at the class's own priority, which is the lowest there is, so a plugin that
@@ -164,18 +170,20 @@ class BuiltinPresenters(TerminalPlugin):
 
     name = "presenters"
 
-    def activate(self, container: TerminalContainer) -> None:
+    def activate(self, ctx: PluginContext) -> None:
         """Register every built-in presenter at the priority its class declares."""
+        tui = require_tui(ctx)
         for presenter in BUILTIN_PRESENTERS:
-            container.register_presenter(presenter)
+            tui.register_presenter(presenter)
 
 
 #: Plugins loaded from the repository itself, never from a distribution. The agent-side ones, which build on
 #: state the runtime hands over, are :data:`~zettcode.engine.plugins.builtin_agent.AGENT_PLUGINS`.
-BUILTIN_PLUGINS: tuple[TerminalPlugin, ...] = (
+BUILTIN_PLUGINS: tuple[TuiPlugin, ...] = (
     ShellRows(),
     # The commands that act on the application, in the order ``/help`` lists them.
     HelpCommand(),
+    PluginCommand(),
     SessionCommands(),
     ModelCommands(),
     SideQuestion(),

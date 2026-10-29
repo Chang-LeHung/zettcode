@@ -8,7 +8,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from zettcode.app.commands import CommandContext, CommandResult
-from zettcode.app.plugins import TerminalContainer, TerminalPlugin
+from zettcode.app.plugins import TuiPlugin
+from zettcode.engine.plugins.context import PluginContext
 
 from .recorder import MonitorExtension, default_root
 from .report import render_report, write_report
@@ -23,7 +24,7 @@ def _calls(count: int) -> str:
     return f"{count} call{'' if count == 1 else 's'}"
 
 
-class MonitorPlugin(TerminalPlugin):
+class MonitorPlugin(TuiPlugin):
     """Registers the recorder as an agent extension and the ``/monitor`` command."""
 
     name = "monitor"
@@ -32,9 +33,11 @@ class MonitorPlugin(TerminalPlugin):
     def __init__(self, root: Path | None = None) -> None:
         self.extension = MonitorExtension(root if root is not None else default_root())
 
-    def activate(self, container: TerminalContainer) -> None:
-        container.register_extension(self.extension)
-        container.register_command(
+    def activate(self, ctx: PluginContext) -> None:
+        ctx.agent.register_extension(self.extension)
+        if ctx.tui is None:
+            return
+        ctx.tui.register_command(
             "monitor",
             "record every model call: opens a panel with recording, images and export",
             self.monitor,

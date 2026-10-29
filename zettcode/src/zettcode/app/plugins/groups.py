@@ -1,40 +1,40 @@
-"""What a terminal plugin registers beyond what the agent uses: commands, palettes, pets, presenters and rows.
+"""The group a plugin registers what only the terminal can hold into: ``ctx.tui``.
 
-:class:`TerminalContainer` is the engine's :class:`~zettcode.engine.plugins.container.PluginContainer` with the
-registrations only a terminal has.
+The terminal is the one front end with a screen, so its contributions live apart from what every process shares: the
+commands that open a page or need the shell, the palettes, the pets, the presenters, the header and status rows, the
+line a request ends on, and the command providers that add commands dynamically. A process without a terminal has
+``ctx.tui is None``, and a plugin that only adds these should start its ``activate`` with ``if ctx.tui is None:
+return``.
 
-Row segments are registered into one of the four slots — a row and a side — by
-the method that names it, so a plugin never passes a side around. A segment
-whose name already exists in the row replaces it in place; a new name appends
-after the segments already in the slot. The builtin rows register first, so
-reusing its segment names is what taking a slot over means.
+The terminal's loader attaches one of these to the context it builds, so the context type itself says nothing about a
+screen: :class:`~zettcode.engine.plugins.context.PluginContext` is the same object everywhere, and this is the group
+only a terminal fills.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from zettcode.app.agent.conversation.entries import EntryKind
 from zettcode.app.agent.conversation.presenters import Presenter
-from zettcode.app.commands import BusyPolicy, Command, CommandHandler, CommandList, CommandProvider, Subcommands
+from zettcode.app.commands import Command, CommandList, CommandProvider
 from zettcode.app.pets import PET_NAME, Pet, PetSource
-from zettcode.engine.plugins.container import PluginContainer
+from zettcode.engine.plugins.context import PluginContext
+from zettcode.plugin_tui import TuiGroup
 from zettcode.statusline import TURN_PREFIX
 from zettcode.tui import RESERVED_THEMES, THEME_NAME, Theme, ThemeSource, file_theme
 
-from .state import TurnBuilder, TurnSegment, UiRow, UiSegment
-
-if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay lazy
-    from collections.abc import Callable, Mapping
-    from pathlib import Path
-
-    from zettcode.config import ZettCodeConfig
-
-    from .state import UiBuilder, UiRegion, UiSide
+from .state import TurnBuilder, TurnSegment, UiBuilder, UiRegion, UiRow, UiSegment, UiSide
 
 #: Rows and sides in paint order; the shell's frame, fixed by the application.
 UI_REGIONS: tuple[UiRegion, ...] = ("header", "status")
 UI_SIDES: tuple[UiSide, ...] = ("left", "right")
+
+if TYPE_CHECKING:  # pragma: no cover - annotations only
+    from pathlib import Path
+
+    from .state import UiBuilder, UiRegion
 
 
 class UiSlots:
@@ -121,12 +121,29 @@ class UiSlots:
         return None
 
 
-class TerminalContainer(PluginContainer):
-    """What a terminal plugin is handed when it activates: the engine's container, and the terminal's registrations."""
+def require_tui(ctx: PluginContext) -> TuiGroup:
+    """Return the terminal's group, or raise when this process has no screen.
 
-    def __init__(self, config: ZettCodeConfig, services: Mapping[str, object] | None = None) -> None:
-        """Open the engine's registries and the terminal's, all empty."""
-        super().__init__(config, services)
+    For a plugin whose whole purpose is the terminal — every builtin here — registering nothing silently would leave a
+    session with no commands and no explanation. A third-party plugin that is useful in more than one process reads
+    ``ctx.tui`` and returns early instead; this one is the loud version.
+    """
+    if ctx.tui is None:
+        raise RuntimeError("this plugin needs the terminal, and this process has no screen")
+    return ctx.tui
+
+
+class TuiGroups(TuiGroup):
+    """What only the terminal can hold: the registries behind ``ctx.tui``.
+
+    Args:
+        context: The context this plugin is activating with; the config and services are read through it, and the
+            registries below belong to this activation.
+    """
+
+    def __init__(self, context: PluginContext) -> None:
+        """Open the terminal's registries, all empty, for one plugin's activation."""
+        self._context = context
         self._command_providers: list[CommandProvider] = []
         self._themes: list[ThemeSource] = []
         self._pets: list[PetSource] = []
@@ -162,7 +179,7 @@ class TerminalContainer(PluginContainer):
         return segment
 
     @property
-    def commands(self) -> tuple[Command, ...]:
+    def registered_commands(self) -> tuple[Command, ...]:
         """Return the commands registered so far, in registration order."""
         return tuple(command for provider in self._command_providers for command in provider.items)
 
@@ -240,11 +257,11 @@ class TerminalContainer(PluginContainer):
         self,
         name: str,
         description: str,
-        handler: CommandHandler,
+        handler: Any,
         *,
-        when_busy: BusyPolicy = "refuse",
-        subcommands: Subcommands = (),
-    ) -> Command:
+        when_busy: Any = "refuse",
+        subcommands: Any = (),
+    ) -> Any:
         """Register one slash command the shell will offer and run.
 
         The leading slash is optional, so ``"deploy"`` and ``"/deploy"`` are the
@@ -287,7 +304,7 @@ class TerminalContainer(PluginContainer):
         if not name or name == "/":
             raise ValueError("Command name cannot be empty")
         name = name if name.startswith("/") else f"/{name}"
-        if any(command.name == name for command in self.commands):
+        if any(command.name == name for command in self.registered_commands):
             raise ValueError(f"Command already registered: {name}")
         return self.register_command_provider(
             CommandList(
@@ -320,7 +337,7 @@ class TerminalContainer(PluginContainer):
             ValueError: When a command name is blank, or already registered by
                 this plugin.
         """
-        registered = {command.name for command in self.commands}
+        registered = {command.name for command in self.registered_commands}
         for command in provider.items:
             if not command.name.strip() or command.name == "/":
                 raise ValueError("Command name cannot be empty")

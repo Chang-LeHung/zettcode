@@ -4,6 +4,41 @@ A plugin is a Python package that adds something to ZettCode: a command, a tool,
 a row on the screen, or a change to what the model is asked. Installing the
 distribution is the opt-in — there is no registry to edit.
 
+## What a plugin is handed: `ctx`, and three groups
+
+A plugin's `activate(ctx)` gets one context, the same type in every process. What it can register into depends on the
+groups that context has:
+
+| Group | Where it exists | What goes in it |
+| --- | --- | --- |
+| `ctx.agent` | every process | an agent extension, a model provider, an `@` resource, a service others look up |
+| `ctx.commands` | every process | a plain command: a name, a summary, a handler whose result is text, a toast or an error — never a page, so any front end can run it |
+| `ctx.tui` | only where there is a terminal; `None` otherwise | the commands that open a page or need the shell, palettes, pets, presenters, header and status rows, the line a request ends on |
+
+So a plugin never declares which front end it is for. It registers into a group, and the group is what exists where it
+was loaded. One that only adds screen things starts its `activate` with the guard:
+
+```python
+from zettcode.app.plugins import PluginContext, TuiPlugin
+
+
+class Greeter(TuiPlugin):  # the mixin is for the row hooks; the base class is the same Plugin
+    name = "greeter"
+
+    def activate(self, ctx: PluginContext) -> None:
+        ctx.agent.register_extension(GreeterExtension())
+        if ctx.tui is None:
+            return
+        ctx.tui.register_theme("acme", ACME_THEME)
+```
+
+`ctx.commands` is the one to reach for when the answer is words: it is registered for every process, and the terminal
+adds it to the command table beside the ones `ctx.tui` holds. A command that opens a page, asks the shell to act, or
+waits for a request to end belongs on `ctx.tui` instead.
+
+Nothing is rejected for being for the wrong front end: a plugin always activates, and a broken one — a module that cannot be imported, a name two plugins
+claim — is reported as a failure where the reader can see it.
+
 ## Installing one
 
 A plugin publishes a class under the `zettcode.plugins` entry-point group:
@@ -15,15 +50,17 @@ greeter = "my_package:Greeter"
 
 ```python
 from zettcode.app.commands import CommandContext, CommandResult
-from zettcode.app.plugins import TerminalContainer, TerminalPlugin
+from zettcode.app.plugins import PluginContext, TuiPlugin
 
 
-class Greeter(TerminalPlugin):
+class Greeter(TuiPlugin):
     name = "greeter"
     description = "say hello"
 
-    def activate(self, container: TerminalContainer) -> None:
-        container.register_command("greet", "say hello", self.greet)
+    def activate(self, ctx: PluginContext) -> None:
+        if ctx.tui is None:
+            return
+        ctx.tui.register_command("greet", "say hello", self.greet)
 
     async def greet(self, context: CommandContext) -> CommandResult:
         return CommandResult(notification=f"hello {context.argument}".strip())
@@ -74,7 +111,7 @@ dependencies before installing them.
 
 `Plugin` composes two groups of hooks, and a plugin overrides only the stages it
 needs (the agent's group is in `zettcode.engine.plugins`; the screen's is added by
-`TerminalPlugin` in `zettcode.app.plugins`):
+`TuiPlugin` in `zettcode.app.plugins`):
 
 - **The agent's work** — the same lifecycle `zett-agent` extensions use: setup,
   run, turn, model, tool, compaction, and external events. A plugin can register
@@ -84,10 +121,10 @@ needs (the agent's group is in `zettcode.engine.plugins`; the screen's is added 
   a right side, and every side is drawn from the segments that registered.
 
 ```python
-from zettcode.app.plugins import ShellContext, TerminalPlugin
+from zettcode.app.plugins import ShellContext, TuiPlugin
 
 
-class WorkspaceLabel(TerminalPlugin):
+class WorkspaceLabel(TuiPlugin):
     """Replace the header's right segment with a model/workspace label."""
 
     name = "workspace-label"
@@ -171,7 +208,7 @@ A command that takes a fixed first word (`/deploy staging`) can list it, and the
 offers the words as soon as the command and a space are typed:
 
 ```text
-container.register_command("deploy", "ship a build", self.deploy, subcommands=["staging", "prod"])
+ctx.tui.register_command("deploy", "ship a build", self.deploy, subcommands=["staging", "prod"])
 ```
 
 A name with a description is a `zettcode.app.commands.Subcommand("prod", "the live site")`, and a
@@ -185,7 +222,7 @@ A command typed while a request is running is turned away by default, because mo
 what that request is standing on. Say otherwise with `when_busy` when you register it:
 
 ```text
-container.register_command("status", "show the build status", self.status, when_busy="now")
+ctx.tui.register_command("status", "show the build status", self.status, when_busy="now")
 ```
 
 | `when_busy` | What happens when it is typed during a request |
@@ -205,15 +242,15 @@ A plugin can add a host to the list `/config` offers, so a service ZettCode does
 set up by choosing it and giving a token:
 
 ```python
-from zettcode.engine.plugins import AgentPlugin, PluginContainer
+from zettcode.engine.plugins import Plugin, PluginContext
 from zettcode.providers import Provider
 
 
-class Acme(AgentPlugin):
+class Acme(Plugin):
     name = "acme"
 
-    def activate(self, container: PluginContainer) -> None:
-        container.register_provider(
+    def activate(self, ctx: PluginContext) -> None:
+        ctx.agent.register_provider(
             Provider(
                 "acme",  # what `/config add acme` is typed with
                 "Acme AI",  # what the picker shows
@@ -231,7 +268,7 @@ ids to show in the question.
 
 Names are unique across the application. A plugin that registers a name a built-in provider already
 has (`openai`, `anthropic`, `deepseek`, `openrouter`, `groq`, `ollama`, `custom`), or one another plugin
-registered first, is skipped and reported like any other plugin that cannot load.
+registered first, is reported like any other plugin that cannot load.
 
 ## Offering a palette {#themes}
 
@@ -242,21 +279,21 @@ rest) are offered the same way by a built-in plugin, so this is the whole mechan
 ```text
 from pathlib import Path
 
-from zettcode.app.plugins import TerminalContainer, TerminalPlugin
+from zettcode.app.plugins import PluginContext, TuiPlugin
 
 
-class Palettes(TerminalPlugin):
+class Palettes(TuiPlugin):
     name = "acme-palettes"
 
-    def activate(self, container: TerminalContainer) -> None:
+    def activate(self, ctx: PluginContext) -> None:
         # A theme file shipped inside your package: same format as ~/.zettcode/themes/<name>.toml.
-        container.register_theme("acme", Path(__file__).parent / "acme.toml")
+        ctx.tui.register_theme("acme", Path(__file__).parent / "acme.toml")
         # Or a function that builds a zettcode.tui.Theme; it runs only when the palette is first asked for.
-        container.register_theme("acme-night", build_night, description="deep blue, low glare")
+        ctx.tui.register_theme("acme-night", build_night, description="deep blue, low glare")
 ```
 
 A name is one word (letters, digits, `.`, `_`, `-`). `dark` and `light` belong to ZettCode. A name a
-built-in palette or an earlier plugin already has is skipped and reported, like any plugin that cannot
+built-in palette or an earlier plugin already has is reported, like any plugin that cannot
 load. A file of the reader's in `~/.zettcode/themes/` with the same name wins over the plugin's, so a
 reader can always adjust a palette they were given. A plugin can also be the palette the reader starts
 in: `[ui] theme = "acme"` finds it.
@@ -270,25 +307,25 @@ cells, so a map has an even number of rows and every frame of a pet is the same 
 
 ```text
 from zettcode.app.pets import Pet
-from zettcode.app.plugins import TerminalContainer, TerminalPlugin
+from zettcode.app.plugins import PluginContext, TuiPlugin
 
 PALETTE = {"G": "#84b795", "D": "#263d34", "H": "#e4b47c"}
 ASLEEP = ("..GGGG..", ".GGGGGG.", "GGGGGGGG", "GDDGGDDG", "GGGHHGGG", ".GGGGGG.")
 AWAKE = ("..GGGG..", ".GGGGGG.", "GGGGGGGG", "GGDGGDGG", "GGGHHGGG", ".GGGGGG.")
 
 
-class Blobs(TerminalPlugin):
+class Blobs(TuiPlugin):
     name = "acme-blobs"
 
-    def activate(self, container: TerminalContainer) -> None:
+    def activate(self, ctx: PluginContext) -> None:
         # The moods are "idle" (required: it is the pet asleep), "working" (while a request runs) and "glad"
         # (when it is patted); a pet that lacks the others stays as it is. A mood with several frames cycles.
         pet = Pet("blob", PALETTE, {"idle": (ASLEEP,), "working": (AWAKE, ASLEEP), "glad": (AWAKE,)})
-        container.register_pet("blob", pet, description="a quiet green blob")
+        ctx.tui.register_pet("blob", pet, description="a quiet green blob")
 ```
 
 The pet can also be a function that builds one, called the first time it is asked for. A name is one word
-(letters, digits, `.`, `_`, `-`); a name a built-in pet or an earlier plugin already has is skipped and reported, like
+(letters, digits, `.`, `_`, `-`); a name a built-in pet or an earlier plugin already has is reported, like
 any plugin that cannot load. The pet appears in the `/pet` panel and can be the one the reader starts with:
 `[ui] pet = "blob"`.
 
@@ -301,7 +338,7 @@ priority, so a plugin that registers one for the same rows wins without having t
 ```text
 from zettcode.app.agent.conversation.entries import EntryKind
 from zettcode.app.agent.conversation.presenters import Presenter
-from zettcode.app.plugins import TerminalContainer, TerminalPlugin
+from zettcode.app.plugins import PluginContext, TuiPlugin
 from zettcode.tui import Span, Style, TextLine
 
 
@@ -312,11 +349,11 @@ class QuietNotice(Presenter):
         return [TextLine((Span(entry.text, Style(foreground=theme.muted)),))]
 
 
-class QuietNotices(TerminalPlugin):
+class QuietNotices(TuiPlugin):
     name = "quiet-notices"
 
-    def activate(self, container: TerminalContainer) -> None:
-        container.register_presenter(QuietNotice())
+    def activate(self, ctx: PluginContext) -> None:
+        ctx.tui.register_presenter(QuietNotice())
 ```
 
 A presenter names a `kind` (one member of `EntryKind`), or an `entry_type` when it draws one family
@@ -338,29 +375,37 @@ The hook methods above run inside one extension that ZettCode hosts for all plug
 already *is* an extension, or wraps one from `zett-agent`, can hand it over whole:
 
 ```python
-from zettcode.engine.plugins import AgentPlugin, PluginContainer
+from zettcode.engine.plugins import Plugin, PluginContext
 
 
-class Audit(AgentPlugin):
+class Audit(Plugin):
     name = "audit"
 
-    def activate(self, container: PluginContainer) -> None:
-        if container.config.workspace.name != "scratch":
-            container.register_extension(AuditExtension())  # a zett_agent AgentExtension
+    def activate(self, ctx: PluginContext) -> None:
+        if ctx.config.workspace.name != "scratch":
+            ctx.agent.register_extension(AuditExtension())  # a zett_agent AgentExtension
 ```
 
 The agent receives it beside the others, ordered by the `priority` the extension declares and, among
 equals, by the order plugins were loaded. Its `name` must be unique: a plugin that repeats one already
-registered, or `plugins`, is skipped and reported. An extension that is slow to import, or that needs
-the model the agent starts on, is better registered with `container.register_extension_factory(name, build)`:
+registered, or `plugins`, is reported. An extension that is slow to import, or that needs
+the model the agent starts on, is better registered with `ctx.agent.register_extension_factory(name, build)`:
 `build` is called when the agent is built, not while the screen is still being drawn, and may return `None`
 to add nothing. Everything the agent runs is registered this way: ZettCode's own coding tools, session log,
 shell approval, compaction, `ask_user` tool, project instructions, skills, MCP and todo tool are built-in
 plugins, so the switches under `[harness]` and the others simply decide whether their plugin registers.
 
+## Turning one off
+
+`/plugins` lists what loaded and what failed. `/plugins disable <name>` records an entry-point name in
+`~/.zettcode/plugins.json` and `/plugins enable <name>` removes it; the switch takes effect at the **next start**, so the
+session you are in keeps the plugins it loaded. The file is ZettCode's own, beside the session store, and the same names
+work in `[plugins] disable` in the config file — the two lists are merged. That file is never rewritten by `/plugins`:
+your configuration stays yours.
+
 ## When something goes wrong
 
-A plugin that cannot be imported or activated is skipped, not fatal: the shell
+A plugin that cannot be imported or activated is reported, not fatal: the shell
 shows `plugin: …` in the transcript and keeps working. Two plugins may not share
-an identity, and the second one to claim a command name is skipped rather than
+an identity, and the second one to claim a command name is reported rather than
 silently replacing the first.

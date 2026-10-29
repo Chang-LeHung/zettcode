@@ -3,6 +3,38 @@
 插件是一个 Python 包，用来给 ZettCode 加东西：一个命令、一个工具、屏幕上的一行，或者对模型
 收到内容的调整。装上这个发行包就是“启用”，不需要改什么注册表。
 
+## 插件拿到的东西：`ctx` 与三个组
+
+插件的 `activate(ctx)` 只有一个上下文，任何进程里都是同一个类型。它能往哪里注册，取决于这个上下文有哪些组：
+
+| 组 | 存在于 | 放什么 |
+| --- | --- | --- |
+| `ctx.agent` | 每个进程 | agent 扩展、模型 provider、`@` 资源、供别人查找的 service |
+| `ctx.commands` | 每个进程 | 普通命令：名字、摘要、返回文本／提示／错误（绝不是一个页面）的处理器，于是哪个前端都能跑 |
+| `ctx.tui` | 只有终端；其余进程为 `None` | 会开页面或需要 shell 的命令、配色、宠物、presenter、页眉/状态行、请求结束那一行的条目 |
+
+所以插件**不需要**声明自己面向哪个前端：它往组里注册，而组是否存在，取决于它被加载到哪个进程。只加屏幕相关东西
+的插件，在 `activate` 开头加一句判断即可：
+
+```python
+from zettcode.app.plugins import PluginContext, TuiPlugin
+
+
+class Greeter(TuiPlugin):  # 这个 mixin 提供行相关的钩子；基类仍是同一个 Plugin
+    name = "greeter"
+
+    def activate(self, ctx: PluginContext) -> None:
+        ctx.agent.register_extension(GreeterExtension())
+        if ctx.tui is None:
+            return
+        ctx.tui.register_theme("acme", ACME_THEME)
+```
+
+答案是文字的时候用 `ctx.commands`：它在每个进程里都存在，终端会把它和 `ctx.tui` 里的命令放在同一张表里。会开页面、
+要 shell 动手、需要等请求结束的命令，放在 `ctx.tui`。
+
+**不会因为"不是给这个前端的"而被拒绝**：插件总会被激活；真正坏掉的（导入失败、两个插件抢同一个名字）会作为失败报告出来，读者看得到。
+
 ## 安装一个插件
 
 插件在 `zettcode.plugins` 这个 entry point 组下发布一个类：
@@ -14,15 +46,17 @@ greeter = "my_package:Greeter"
 
 ```python
 from zettcode.app.commands import CommandContext, CommandResult
-from zettcode.app.plugins import TerminalContainer, TerminalPlugin
+from zettcode.app.plugins import PluginContext, TuiPlugin
 
 
-class Greeter(TerminalPlugin):
+class Greeter(TuiPlugin):
     name = "greeter"
     description = "say hello"
 
-    def activate(self, container: TerminalContainer) -> None:
-        container.register_command("greet", "say hello", self.greet)
+    def activate(self, ctx: PluginContext) -> None:
+        if ctx.tui is None:
+            return
+        ctx.tui.register_command("greet", "say hello", self.greet)
 
     async def greet(self, context: CommandContext) -> CommandResult:
         return CommandResult(notification=f"hello {context.argument}".strip())
@@ -68,7 +102,7 @@ disable = ["greeter"]
 ## 插件能参与什么
 
 `Plugin` 组合了两组钩子（代理那一组在 `zettcode.engine.plugins`，屏幕那一组由 `zettcode.app.plugins`
-里的 `TerminalPlugin` 加上），插件只覆盖自己关心的阶段：
+里的 `TuiPlugin` 加上），插件只覆盖自己关心的阶段：
 
 - **代理的工作** —— 和 `zett-agent` 扩展同一套生命周期：setup、run、turn、model、tool、
   compaction，以及外部事件。插件可以注册工具、改写发给模型的消息、转换工具结果，或者观察一次
@@ -76,10 +110,10 @@ disable = ["greeter"]
 - **屏幕** —— 头部和状态行各自分成左右两侧，每一侧都由注册过的片段共同画出来。
 
 ```python
-from zettcode.app.plugins import ShellContext, TerminalPlugin
+from zettcode.app.plugins import ShellContext, TuiPlugin
 
 
-class WorkspaceLabel(TerminalPlugin):
+class WorkspaceLabel(TuiPlugin):
     """用模型和工作区标签替换头部右侧片段。"""
 
     name = "workspace-label"
@@ -148,7 +182,7 @@ async def review(self, context: CommandContext) -> CommandResult:
 如果命令的第一个词是固定的（`/deploy staging`），可以把它列出来，补全菜单在输入命令和空格之后就会给出这些词：
 
 ```text
-container.register_command("deploy", "ship a build", self.deploy, subcommands=["staging", "prod"])
+ctx.tui.register_command("deploy", "ship a build", self.deploy, subcommands=["staging", "prod"])
 ```
 
 带说明的词用 `zettcode.app.commands.Subcommand("prod", "the live site")`；传一个返回列表的函数则每次打开菜单时都会被调用，
@@ -161,7 +195,7 @@ container.register_command("deploy", "ship a build", self.deploy, subcommands=["
 `when_busy` 另行声明：
 
 ```text
-container.register_command("status", "show the build status", self.status, when_busy="now")
+ctx.tui.register_command("status", "show the build status", self.status, when_busy="now")
 ```
 
 | `when_busy` | 请求运行期间输入它会怎样 |
@@ -180,15 +214,15 @@ container.register_command("status", "show the build status", self.status, when_
 就能配好：
 
 ```python
-from zettcode.engine.plugins import AgentPlugin, PluginContainer
+from zettcode.engine.plugins import Plugin, PluginContext
 from zettcode.providers import Provider
 
 
-class Acme(AgentPlugin):
+class Acme(Plugin):
     name = "acme"
 
-    def activate(self, container: PluginContainer) -> None:
-        container.register_provider(
+    def activate(self, ctx: PluginContext) -> None:
+        ctx.agent.register_provider(
             Provider(
                 "acme",  # `/config add acme` 里输入的名字
                 "Acme AI",  # 选择器里显示的名字
@@ -216,17 +250,17 @@ ZettCode 自带的配色（`nord`、`dracula`、`gruvbox` 等）也是由一个�
 ```text
 from pathlib import Path
 
-from zettcode.app.plugins import TerminalContainer, TerminalPlugin
+from zettcode.app.plugins import PluginContext, TuiPlugin
 
 
-class Palettes(TerminalPlugin):
+class Palettes(TuiPlugin):
     name = "acme-palettes"
 
-    def activate(self, container: TerminalContainer) -> None:
+    def activate(self, ctx: PluginContext) -> None:
         # 包里自带的主题文件：格式与 ~/.zettcode/themes/<名字>.toml 相同。
-        container.register_theme("acme", Path(__file__).parent / "acme.toml")
+        ctx.tui.register_theme("acme", Path(__file__).parent / "acme.toml")
         # 或者一个返回 zettcode.tui.Theme 的函数；第一次被用到时才会调用。
-        container.register_theme("acme-night", build_night, description="深蓝，低眩光")
+        ctx.tui.register_theme("acme-night", build_night, description="深蓝，低眩光")
 ```
 
 名字是一个词（字母、数字、`.`、`_`、`-`）。`dark` 和 `light` 属于 ZettCode。名字如果已被内置配色或更早
@@ -240,21 +274,21 @@ class Palettes(TerminalPlugin):
 
 ```text
 from zettcode.app.pets import Pet
-from zettcode.app.plugins import TerminalContainer, TerminalPlugin
+from zettcode.app.plugins import PluginContext, TuiPlugin
 
 PALETTE = {"G": "#84b795", "D": "#263d34", "H": "#e4b47c"}
 ASLEEP = ("..GGGG..", ".GGGGGG.", "GGGGGGGG", "GDDGGDDG", "GGGHHGGG", ".GGGGGG.")
 AWAKE = ("..GGGG..", ".GGGGGG.", "GGGGGGGG", "GGDGGDGG", "GGGHHGGG", ".GGGGGG.")
 
 
-class Blobs(TerminalPlugin):
+class Blobs(TuiPlugin):
     name = "acme-blobs"
 
-    def activate(self, container: TerminalContainer) -> None:
+    def activate(self, ctx: PluginContext) -> None:
         # 心情有 "idle"（必须有：即睡着）、"working"（请求运行时）和 "glad"（被拍时）；
         # 缺少的心情就保持原样。一种心情有多帧时会循环播放。
         pet = Pet("blob", PALETTE, {"idle": (ASLEEP,), "working": (AWAKE, ASLEEP), "glad": (AWAKE,)})
-        container.register_pet("blob", pet, description="一只安静的绿色团子")
+        ctx.tui.register_pet("blob", pet, description="一只安静的绿色团子")
 ```
 
 也可以传一个构造宠物的函数，第一次用到时才会调用。名字是一个词（字母、数字、`.`、`_`、`-`）；名字如果已被内置宠物或更早加载的插件占用，就会被跳过并像其他加载失败的插件一样报告。宠物会出现在 `/pet` 面板里，也可以作为启动时的宠物：`[ui] pet = "blob"`。
@@ -267,7 +301,7 @@ class Blobs(TerminalPlugin):
 ```text
 from zettcode.app.agent.conversation.entries import EntryKind
 from zettcode.app.agent.conversation.presenters import Presenter
-from zettcode.app.plugins import TerminalContainer, TerminalPlugin
+from zettcode.app.plugins import PluginContext, TuiPlugin
 from zettcode.tui import Span, Style, TextLine
 
 
@@ -278,11 +312,11 @@ class QuietNotice(Presenter):
         return [TextLine((Span(entry.text, Style(foreground=theme.muted)),))]
 
 
-class QuietNotices(TerminalPlugin):
+class QuietNotices(TuiPlugin):
     name = "quiet-notices"
 
-    def activate(self, container: TerminalContainer) -> None:
-        container.register_presenter(QuietNotice())
+    def activate(self, ctx: PluginContext) -> None:
+        ctx.tui.register_presenter(QuietNotice())
 ```
 
 presenter 指定一个 `kind`（`EntryKind` 的一项）；如果只画某一种子行——比如工具行里的编辑行——则指定
@@ -300,22 +334,28 @@ presenter 指定一个 `kind`（`EntryKind` 的一项）；如果只画某一种
 `zett-agent` 的某个扩展，可以把它整个交出去：
 
 ```python
-from zettcode.engine.plugins import AgentPlugin, PluginContainer
+from zettcode.engine.plugins import Plugin, PluginContext
 
 
-class Audit(AgentPlugin):
+class Audit(Plugin):
     name = "audit"
 
-    def activate(self, container: PluginContainer) -> None:
-        if container.config.workspace.name != "scratch":
-            container.register_extension(AuditExtension())  # zett_agent 的 AgentExtension
+    def activate(self, ctx: PluginContext) -> None:
+        if ctx.config.workspace.name != "scratch":
+            ctx.agent.register_extension(AuditExtension())  # zett_agent 的 AgentExtension
 ```
 
 代理会把它和其他扩展并列收下，按扩展自己声明的 `priority` 排序，同级则按插件加载的先后。它的 `name`
-必须唯一：重复了已注册的名字，或者叫 `plugins`，该插件会被跳过并报告。如果扩展导入很慢，或者需要代理起始的那个模型，
-更适合用 `container.register_extension_factory(name, build)` 注册：`build` 会在构建代理时才调用，而不是在界面还在
+必须唯一：重复了已注册的名字，或者叫 `plugins`，该插件会会被报告。如果扩展导入很慢，或者需要代理起始的那个模型，
+更适合用 `ctx.agent.register_extension_factory(name, build)` 注册：`build` 会在构建代理时才调用，而不是在界面还在
 绘制的时候，返回 `None` 表示什么都不加。代理运行的每一个扩展都是这样注册的：ZettCode 自带的代码工具、会话日志、
 shell 审批、压缩、`ask_user` 工具、项目指令、skills、MCP 和待办工具都是内置插件，所以 `[harness]` 等处的开关只是决定它们的插件注册与否。
+
+## 关掉一个插件
+
+`/plugins` 列出加载了什么、谁失败了。`/plugins disable <名字>` 把 entry-point 名字记进 `~/.zettcode/plugins.json`，
+`/plugins enable <名字>` 再删掉；**下次启动**生效，当前会话仍用已加载的插件。这个文件是 ZettCode 自己的，放在会话存储
+旁边；配置文件的 `[plugins] disable` 写同样的名字，两份列表会合并。`/plugins` 不会改写你的配置文件。
 
 ## 出问题的时候
 

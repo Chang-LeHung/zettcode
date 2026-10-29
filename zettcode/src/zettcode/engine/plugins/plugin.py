@@ -5,8 +5,8 @@ the composed hook groups from :mod:`zettcode.engine.plugins.mixins`.
 :class:`Plugins` is the other direction — the host extension, services, and
 providers the loader hands the application, plus whatever failed to load.
 
-A plugin is generic over the container it is activated with: the engine's own plugins take a
-:class:`~zettcode.engine.plugins.container.PluginContainer`, and the terminal's take its subclass, which also
+A plugin is activated with one :class:`PluginContext`: the engine's own plugins take a
+:class:`~zettcode.engine.plugins.container.PluginContext`, and the terminal's take its subclass, which also
 registers commands, palettes, pets, presenters and rows.
 """
 
@@ -16,7 +16,7 @@ from abc import ABC
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar
 
-from .container import PluginContainer
+from .context import PluginContext
 from .mixins import PluginAgentMixin
 from .services import lookup, require
 from .state import AgentBuild, Contribution
@@ -31,7 +31,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
 
     from .extension import PluginExtension
 
-_C = TypeVar("_C", bound=PluginContainer)
+_C = TypeVar("_C", bound=PluginContext)
 _T = TypeVar("_T")
 
 
@@ -57,6 +57,10 @@ class Plugin(PluginAgentMixin, Generic[_C], ABC):
     #: Identity the loader may resolve and record; a plain attribute, so a
     #: nameless class can be given its entry-point name at load time.
     name: str = ""
+    #: How the distribution that carries it is called — the entry-point name for an installed plugin, its own
+    #: name for a builtin. `/plugins` shows it when it differs from :attr:`name`, because `[plugins] disable` and the
+    #: switch file are matched against it.
+    origin: str = ""
     description: ClassVar[str] = ""
     priority: ClassVar[int] = 100
 
@@ -71,10 +75,6 @@ class Plugin(PluginAgentMixin, Generic[_C], ABC):
         Args:
             container: The resolved settings and the registration surface.
         """
-
-
-class AgentPlugin(Plugin[PluginContainer]):
-    """A plugin that contributes only to the agent, which is every plugin the engine ships."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,8 +94,10 @@ class Plugins:
             into the extensions the agent is given, beside the host, so each keeps the priority it declares.
         services: Objects the runtime handed over and the plugins provided, by name; read them with
             :meth:`service` and :meth:`find`.
+        plain_commands: Commands a plugin registered on ``ctx.commands``, in load and registration order, each
+            typed ``"plugin"``. The terminal turns them into shell commands; another front end reads them here.
         failures: One message per plugin that could not be loaded or activated.
-            A broken plugin is skipped rather than taking the whole application
+            A plugin that cannot be loaded is reported rather than taking the whole application
             with it; the shell reports these where the user can see them.
     """
 
@@ -104,6 +106,7 @@ class Plugins:
     providers: tuple[Provider, ...] = ()
     contributed: tuple[Contribution, ...] = ()
     services: Mapping[str, object] = field(default_factory=dict)
+    plain_commands: tuple[object, ...] = ()
     failures: tuple[str, ...] = ()
 
     def find(self, name: str, kind: type[_T]) -> _T | None:

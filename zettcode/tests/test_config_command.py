@@ -14,7 +14,7 @@ import pytest
 from plugin_helpers import runtime_inputs
 from zettcode._compat import tomllib
 from zettcode.app.agent.agent import TerminalAgent
-from zettcode.app.plugins import TerminalContainer, TerminalPlugin, load_terminal_plugins
+from zettcode.app.plugins import PluginContext, TuiPlugin, load_terminal_plugins
 from zettcode.app.ui import ZettCodeApp
 from zettcode.app.ui.widgets import FormPage, InputPage, ModelSettingsPage
 from zettcode.app.ui.widgets.input_page import MASK
@@ -1199,27 +1199,27 @@ def test_editing_a_model_that_is_not_there_is_an_error_not_a_crash(shell):
 # -- plugins can describe providers --------------------------------------------------------------------------
 
 
-class Acme(TerminalPlugin):
+class Acme(TuiPlugin):
     name = "acme"
 
-    def activate(self, container: TerminalContainer) -> None:
-        container.register_provider(
+    def activate(self, ctx: PluginContext) -> None:
+        ctx.agent.register_provider(
             Provider("acme", "Acme AI", base_url="https://api.acme.example/v1", note="from the acme plugin")
         )
 
 
-class Bare(TerminalPlugin):
+class Bare(TuiPlugin):
     name = "bare"
 
-    def activate(self, container: TerminalContainer) -> None:
-        container.register_provider(Provider("bare", "Bare AI", api=Api.RESPONSES, base_url="https://bare.example/v1"))
+    def activate(self, ctx: PluginContext) -> None:
+        ctx.agent.register_provider(Provider("bare", "Bare AI", api=Api.RESPONSES, base_url="https://bare.example/v1"))
 
 
-class Suggests(TerminalPlugin):
+class Suggests(TuiPlugin):
     name = "suggests"
 
-    def activate(self, container: TerminalContainer) -> None:
-        container.register_provider(
+    def activate(self, ctx: PluginContext) -> None:
+        ctx.agent.register_provider(
             Provider("suggests", "Suggests AI", base_url="https://s.example/v1", models=("one", "two", "three", "four"))
         )
 

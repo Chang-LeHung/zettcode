@@ -62,11 +62,11 @@ from zettcode.app.plugins import (
     HOST_LINK,
     HostLink,
     ShellContext,
-    TerminalContainer,
-    TerminalPlugins,
+    TuiPlugins,
     UiBuilder,
 )
 from zettcode.app.plugins.builtin_commands import CodeReview
+from zettcode.app.plugins.loader import terminal_context
 from zettcode.app.plugins.state import TurnSegment
 from zettcode.app.ui import app as app_module
 from zettcode.app.ui import demo
@@ -335,7 +335,7 @@ class FakeRuntime:
     # adopted and a zero deadline would race with it.
     tokenizer: Tokenizer = field(default_factory=lambda: Tokenizer(deadline=0.0, loader=_no_encoder))
     config: FakeConfig = field(default_factory=FakeConfig)
-    plugins: TerminalPlugins = field(default_factory=TerminalPlugins)
+    plugins: TuiPlugins = field(default_factory=TuiPlugins)
     messenger: object | None = None
     #: The sessions another process has open: the fake's lock. A session in here is shown and not written to.
     held_elsewhere: set[str] = field(default_factory=set)
@@ -462,7 +462,7 @@ def rows_and_commands(
     failures: tuple[str, ...] = (),
     presenters: tuple[object, ...] = (),
     config: object | None = None,
-) -> TerminalPlugins:
+) -> TuiPlugins:
     """The shell's builtin rows plus the segments and commands one test adds.
 
     ``extra`` appends a segment to a side; ``override`` registers under a name
@@ -470,26 +470,26 @@ def rows_and_commands(
     loader performs when a plugin loads after the builtins.
     """
     link = HostLink()
-    container = TerminalContainer(config or FakeConfig(), {HOST_LINK: link})  # type: ignore[arg-type]
+    ctx = terminal_context(config or FakeConfig(), {HOST_LINK: link})  # type: ignore[arg-type]
     for plugin in BUILTIN_PLUGINS:
-        plugin.activate(container)
+        plugin.activate(ctx)
         for region, side, name, builder in plugin.ui_slots():
-            container.slots.add(region, side, name, builder)
+            ctx.tui.slots.add(region, side, name, builder)
     for region, side, builder in extra:
-        getattr(container, f"register_{region}_{side}")(builder)
+        getattr(ctx.tui, f"register_{region}_{side}")(builder)
     for region, side, name, builder in override:
-        container.slots.add(region, side, name, builder)
+        ctx.tui.slots.add(region, side, name, builder)
     for presenter in presenters:
-        container.register_presenter(presenter)  # type: ignore[arg-type]
-    return TerminalPlugins(
-        commands=(*container.commands, *commands),
-        builtin_commands=tuple(container.commands),
-        rows=container.rows,
+        ctx.tui.register_presenter(presenter)  # type: ignore[arg-type]
+    return TuiPlugins(
+        commands=(*ctx.tui.registered_commands, *commands),
+        builtin_commands=tuple(ctx.tui.registered_commands),
+        rows=ctx.tui.rows,
         failures=failures,
-        themes=container.themes,
-        pets=container.pets,
-        presenters=container.presenters,
-        turn_segments=container.turn_segments,
+        themes=ctx.tui.themes,
+        pets=ctx.tui.pets,
+        presenters=ctx.tui.presenters,
+        turn_segments=ctx.tui.turn_segments,
         services={HOST_LINK: link},
     )
 
@@ -499,7 +499,7 @@ def build_app(
     *,
     block: bool = False,
     hold: bool = False,
-    plugins: TerminalPlugins | None = None,
+    plugins: TuiPlugins | None = None,
 ) -> ZettCodeApp:
     app = ZettCodeApp(
         TerminalAgent(FakeRuntime(FakeClient(events, block=block, hold=hold), plugins=plugins or rows_and_commands()))
@@ -4534,7 +4534,13 @@ async def test_the_slash_menu_lists_and_filters_commands():
 
     harness.write("/")
 
-    assert [item.value for item in app.completions.items][:4] == ["/help", "/resume", "/continue", "/fork"]
+    assert [item.value for item in app.completions.items][:5] == [
+        "/help",
+        "/plugins",
+        "/resume",
+        "/continue",
+        "/fork",
+    ]
     assert "show the commands and the keys" in harness.text()
     assert "[plugin]" in harness.text()
     assert app.completions.items[0].type == "plugin"
@@ -4664,7 +4670,7 @@ async def test_the_slash_menu_answers_to_arrows_and_escape():
 
     harness.write("/")
     harness.press("down")
-    assert app.completions.current.value == "/resume"
+    assert app.completions.current.value == "/plugins"
 
     harness.press("up")
     assert app.completions.current.value == "/help"
@@ -5766,7 +5772,7 @@ async def test_a_character_that_is_not_an_ascii_digit_is_not_a_row_number():
     assert app.app.screens.top.name == "page"
 
 
-# -- follow-ups: the container, and the question a message typed mid-request asks ---------
+# -- follow-ups: the ctx, and the question a message typed mid-request asks ---------
 
 
 def _send_kind_page(app: ZettCodeApp) -> SendKindPage:
@@ -6513,7 +6519,7 @@ async def test_deleting_the_only_follow_up_empties_the_list_and_gives_the_rows_b
     harness.press("delete")
 
     assert app.follow_ups.messages == () and app.follow_ups.selected is None
-    assert app.follow_ups.preferred_height() == 0, "the container collapses"
+    assert app.follow_ups.preferred_height() == 0, "the ctx collapses"
     await _stop(app)
 
 
@@ -8224,9 +8230,9 @@ async def test_a_side_question_never_reports_changes():
 
 def _with_plugin_command(name: str, handler, *, when_busy="refuse"):
     """A shell whose plugin registered one command, as an installed plugin would."""
-    container = TerminalContainer(FakeConfig())
-    container.register_command(name, f"{name} for the test", handler, when_busy=when_busy)
-    return build_app(block=True, plugins=rows_and_commands(commands=container.commands))
+    ctx = terminal_context(FakeConfig())
+    ctx.tui.register_command(name, f"{name} for the test", handler, when_busy=when_busy)
+    return build_app(block=True, plugins=rows_and_commands(commands=ctx.tui.registered_commands))
 
 
 async def _typed_while_running(app, harness, line: str) -> None:
@@ -8301,6 +8307,7 @@ async def test_every_command_the_shell_runs_beside_a_request_is_one_that_cannot_
         "/help",
         "/permission",
         "/pet",
+        "/plugins",
         "/quit",
         "/self-compact",
         "/statusline",
@@ -8543,10 +8550,10 @@ def test_the_default_for_a_plugin_command_is_to_refuse():
     async def noop(context):
         return CommandResult()
 
-    container = TerminalContainer(FakeConfig())
+    ctx = terminal_context(FakeConfig())
 
-    assert container.register_command("/plain", "plain", noop).when_busy == "refuse"
-    assert container.register_command("/now", "now", noop, when_busy="now").when_busy == "now"
+    assert ctx.tui.register_command("/plain", "plain", noop).when_busy == "refuse"
+    assert ctx.tui.register_command("/now", "now", noop, when_busy="now").when_busy == "now"
 
 
 async def test_leaving_cancels_a_command_still_running_beside_the_request():

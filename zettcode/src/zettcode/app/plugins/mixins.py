@@ -30,7 +30,7 @@ class PluginUiMixin:
     overriding the method a builtin already implements replaces that segment
     rather than adding a second one. A plugin that needs another segment beside
     the builtin's, or decides what to register from the configuration, uses
-    ``TerminalContainer.register_*`` in :meth:`TerminalPlugin.activate`.
+    ``ctx.tui.register_*`` in :meth:`TuiPlugin.activate`.
 
     The names are deliberately specific, so a plugin's own ``status`` or
     ``header`` helper cannot be mistaken for a contribution. A builder returns

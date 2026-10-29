@@ -52,10 +52,12 @@ The terminal's part is `TerminalAgent` (`app/agent/agent/`): the engine's agent 
 themes, pets, `Presenters`, what plugins contributed) and `settings.py` (`AppearanceMixin`: theme, pet, status line).
 The status-line formatters live in `statusline.py`, because they are about the terminal.
 
-**Plugins.** `zettcode.engine.plugins` is what the agent uses: `Plugin` (generic over its container), `AgentPlugin`,
-`PluginContainer` (extensions, services, `@` providers, model providers), the loader and `Plugins`, and the plugins
-the engine ships. `zettcode.app.plugins` adds what only a terminal has: `TerminalPlugin`, `TerminalContainer`
-(commands, palettes, pets, presenters, the header and status rows), `TerminalLoader`, `TerminalPlugins`, and the
+**Plugins.** `zettcode.engine.plugins` is what the agent uses: `Plugin` (generic over its container), `Plugin`,
+`PluginContext` with its `agent`, `commands` and `tui` groups (the last typed by `zettcode/plugin_tui.py`, the
+leaf module both layers may import) (extensions, services, `@` providers, model providers, plain
+commands), the loader and `Plugins`, and the plugins the engine ships. `zettcode.app.plugins` adds what only a terminal
+has: `TuiPlugin`, and `TuiGroups` — the `ctx.tui` group commands, palettes, pets, presenters and rows live in
+(commands, palettes, pets, presenters, the header and status rows), `TerminalLoader`, `TuiPlugins`, and the
 shell's own plugins. The engine is handed its loader (`ZettCodeEngine.preview(config, load)`) and `TerminalAgent`
 hands it the terminal's, so the SDK and the server load the engine's plugins and none of the terminal's.
 

@@ -6,7 +6,7 @@ import asyncio
 
 from test_zettcode_app import FakeConfig, _harness, build_app, rows_and_commands
 from zettcode.app.commands import Command, CommandContext, CommandResult, Subcommand
-from zettcode.app.plugins import TerminalContainer
+from zettcode.app.plugins.loader import terminal_context
 from zettcode.app.ui import ZettCodeApp
 from zettcode.app.ui.widgets.completer import CommandCompleter
 
@@ -70,12 +70,12 @@ def test_the_commands_are_still_offered_by_their_first_word():
 
 
 def test_a_plugin_registers_the_words_with_its_command():
-    container = TerminalContainer(FakeConfig())
+    ctx = terminal_context(FakeConfig())
 
-    command = container.register_command("deploy", "ship it", nothing, subcommands=["staging", "prod"])
+    command = ctx.tui.register_command("deploy", "ship it", nothing, subcommands=["staging", "prod"])
 
     assert [option.name for option in command.options()] == ["staging", "prod"]
-    assert container.commands[0] is command
+    assert ctx.tui.registered_commands[0] is command
 
 
 async def test_the_shell_offers_config_words_and_tab_takes_one():

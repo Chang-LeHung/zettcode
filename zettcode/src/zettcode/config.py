@@ -12,6 +12,7 @@ runtime settings keep code defaults.
 
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -25,6 +26,7 @@ from ._compat import tomllib
 from .paths import (
     DEFAULT_HARNESS_DIR,
     DEFAULT_MCP_CONFIG,
+    DEFAULT_PLUGINS_FILE,
     DEFAULT_STORE,
     DEFAULT_THEME_FILE,
     DEFAULT_THEMES_DIR,
@@ -468,6 +470,8 @@ class ZettCodeConfig:
         update_file: Where that check leaves what it found; one small JSON file.
         harness_dir: Where the just-in-time harness keeps each session's tools, one folder per session id. Directly
             under ``~/.zettcode`` by default, not inside the session store, so clearing sessions does not take them.
+        plugins_file: Where ``/plugins disable`` records the switches; read at the next start, so the reader's own
+            config file is never rewritten.
     """
 
     workspace: Path
@@ -508,6 +512,8 @@ class ZettCodeConfig:
     update_enabled: bool = True
     update_file: Path = DEFAULT_UPDATE_FILE
     harness_dir: Path = DEFAULT_HARNESS_DIR
+    #: Plugins the reader switched off from the shell; a JSON file, read at the next start.
+    plugins_file: Path = DEFAULT_PLUGINS_FILE
 
     def __post_init__(self) -> None:
         """Normalize the paths and reject settings that cannot build a runtime."""
@@ -546,6 +552,7 @@ class ZettCodeConfig:
             object.__setattr__(self, "mcp_config", self.mcp_config.expanduser().resolve())
         object.__setattr__(self, "update_file", self.update_file.expanduser().resolve())
         object.__setattr__(self, "harness_dir", self.harness_dir.expanduser().resolve())
+        object.__setattr__(self, "plugins_file", self.plugins_file.expanduser().resolve())
         object.__setattr__(self, "themes_dir", self.themes_dir.expanduser().resolve())
 
     def skill_search_roots(self) -> tuple[Path, ...]:
@@ -834,6 +841,24 @@ def _read_mcp_config(raw: object, source: Path) -> Path | None:
     return Path(_typed(raw, f"Config key 'mcp.config' in {source}", str))
 
 
+def read_disabled_plugins(path: Path | None = None) -> tuple[str, ...]:
+    """Return the plugins the reader switched off with ``/plugins disable``, as that file records them.
+
+    Read here, while the configuration is built, so everything downstream sees one list: the loaders never open a
+    file of their own, and a test that builds its own config is unaffected by the machine it runs on. A file that is
+    missing, unreadable or not a list of names disables nothing.
+    """
+    target = path if path is not None else DEFAULT_PLUGINS_FILE
+    try:
+        raw = json.loads(target.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ()
+    names = raw.get("disabled") if isinstance(raw, dict) else None
+    if not isinstance(names, list):
+        return ()
+    return tuple(name.strip() for name in names if isinstance(name, str) and name.strip())
+
+
 def _read_disabled_plugins(raw: object, source: Path) -> tuple[str, ...]:
     """Return the entry-point names the ``[plugins]`` table switches off."""
     if raw is None:
@@ -958,7 +983,9 @@ def load_config(
             )
         ),
         plugins_enabled=bool(_setting(plugins, "enabled", bool, True)),
-        disabled_plugins=_read_disabled_plugins(plugins.get("disable"), source),
+        disabled_plugins=tuple(
+            dict.fromkeys((*_read_disabled_plugins(plugins.get("disable"), source), *read_disabled_plugins()))
+        ),
         subagent_enabled=bool(_setting(harness, "subagent", bool, True)),
         subagent_max_iterations=_typed(
             harness.get("subagent_max_iterations", DEFAULT_SUBAGENT_MAX_ITERATIONS),

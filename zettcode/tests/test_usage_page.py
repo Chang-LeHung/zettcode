@@ -11,8 +11,8 @@ from zett_agent.messages import AssistantMessage, UserMessage
 from zett_agent.model import ModelUsage
 
 from zettcode.app.commands import CommandContext
-from zettcode.app.plugins import TerminalContainer
 from zettcode.app.plugins.builtins import BUILTIN_PLUGINS, UsageCommand
+from zettcode.app.plugins.loader import terminal_context
 from zettcode.app.ui.widgets import UsagePage
 from zettcode.app.ui.widgets import usage_charts as charts
 from zettcode.config import ModelConfig, ZettCodeConfig
@@ -445,17 +445,17 @@ def command_over(tmp_path: Path):
         skills_enabled=False,
         mcp_enabled=False,
     )
-    container = TerminalContainer(config)
-    UsageCommand().activate(container)
-    return config, container.commands[0]
+    ctx = terminal_context(config)
+    UsageCommand().activate(ctx)
+    return config, ctx.tui.registered_commands[0]
 
 
 def test_usage_is_one_of_the_builtin_plugins_and_a_command_that_may_run_beside_a_request(tmp_path: Path):
     assert any(isinstance(plugin, UsageCommand) for plugin in BUILTIN_PLUGINS)
-    container = TerminalContainer(ZettCodeConfig(workspace=tmp_path, models=(ModelConfig(model="m", token="t"),)))
-    UsageCommand().activate(container)
+    ctx = terminal_context(ZettCodeConfig(workspace=tmp_path, models=(ModelConfig(model="m", token="t"),)))
+    UsageCommand().activate(ctx)
 
-    (command,) = container.commands
+    (command,) = ctx.tui.registered_commands
     assert command.name == "/usage" and command.when_busy == "now"
     assert command.description
 

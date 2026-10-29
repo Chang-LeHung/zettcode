@@ -7,7 +7,7 @@ it, moves it, and picks the mood.
 
 Pets are offered the way palettes are: a :class:`PetSource` names one and builds it only when it is asked for,
 the built-in plugin offers the ones that ship, and any other plugin offers its own through
-``PluginContainer.register_pet``. :class:`PetCatalog` is what ``/pet`` and the start-up read.
+``ctx.tui.register_pet``. :class:`PetCatalog` is what ``/pet`` and the start-up read.
 
 Every frame of a pet is the same size, and its height is an even number of pixel rows: two pixels fit in
 one terminal cell.

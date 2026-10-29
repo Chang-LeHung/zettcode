@@ -2,8 +2,8 @@
 
 Each class here owns one ``zett-agent`` extension and the switch in the configuration that turns it on, so
 the runtime lists none of them by hand: it asks the loaded plugins for what they contributed. They register
-through :meth:`~zettcode.engine.plugins.PluginContainer.register_extension` and
-:meth:`~zettcode.engine.plugins.PluginContainer.register_extension_factory`, which are also what a third-party
+through :meth:`~zettcode.engine.plugins.context.PluginContext` and
+:meth:`~zettcode.engine.plugins.context.PluginContext`, which are also what a third-party
 plugin uses, so a plugin that wraps a whole extension is not a second-class citizen.
 
 Two rules decide how one registers:
@@ -40,8 +40,8 @@ from zettcode.engine.permission.approval import ShellApprovalMemory
 from zettcode.engine.storage import SessionStore
 from zettcode.mentions import FileMentions, SkillMentions
 
-from .container import PluginContainer
-from .plugin import AgentPlugin
+from .context import PluginContext
+from .plugin import Plugin
 from .services import (
     APPROVAL,
     CAPABILITIES,
@@ -66,7 +66,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
     from .state import AgentBuild
 
 
-class SkillResources(AgentPlugin):
+class SkillResources(Plugin):
     """The builtin ``@`` resource provider: the skills on this machine.
 
     Registering it here rather than inside the shell keeps the shell generic: it
@@ -76,13 +76,13 @@ class SkillResources(AgentPlugin):
 
     name = "skills"
 
-    def activate(self, container: PluginContainer) -> None:
+    def activate(self, ctx: PluginContext) -> None:
         """Offer the discovered skills as ``@`` resources, when skills are on."""
-        if container.config.skills_enabled:
-            container.register_mention(SkillMentions(container.config))
+        if ctx.config.skills_enabled:
+            ctx.agent.register_mention(SkillMentions(ctx.config))
 
 
-class FileResources(AgentPlugin):
+class FileResources(Plugin):
     """The ``@`` resource provider for the workspace's own files.
 
     Registered after the skills, so a name both could offer is the skill: a
@@ -92,67 +92,67 @@ class FileResources(AgentPlugin):
 
     name = "files"
 
-    def activate(self, container: PluginContainer) -> None:
+    def activate(self, ctx: PluginContext) -> None:
         """Offer the workspace's files as ``@`` resources."""
-        container.register_mention(FileMentions(container.config.workspace))
+        ctx.agent.register_mention(FileMentions(ctx.config.workspace))
 
 
-class CodingTools(AgentPlugin):
+class CodingTools(Plugin):
     """The coding bundle: the file tools, search and the shell tool."""
 
     name = "coding"
     description = "The file, search and shell tools"
 
-    def activate(self, container: PluginContainer) -> None:
+    def activate(self, ctx: PluginContext) -> None:
         """Register the bundle; it is the largest import the agent needs, so it waits for the build."""
 
-        policy = container.service(POLICY, ShellPolicy)
+        policy = ctx.service(POLICY, ShellPolicy)
 
         def build(_: AgentBuild) -> AgentExtension:
             from zettcode.engine.extensions.files import CodingBundle
 
             return CodingBundle(policy)
 
-        container.register_extension_factory("CodingBundle", build)
+        ctx.agent.register_extension_factory("CodingBundle", build)
 
 
-class ToolOutput(AgentPlugin):
+class ToolOutput(Plugin):
     """Moves a long tool result into the session's folder before it is stored or sent anywhere."""
 
     name = "tool-output"
     description = "Keeps long tool output in the session folder"
 
-    def activate(self, container: PluginContainer) -> None:
+    def activate(self, ctx: PluginContext) -> None:
         """Register the extension over the session store."""
-        container.register_extension(ToolOutputExtension(container.service(PERSISTENCE, SessionStore)))
+        ctx.agent.register_extension(ToolOutputExtension(ctx.service(PERSISTENCE, SessionStore)))
 
 
-class Capabilities(AgentPlugin):
+class Capabilities(Plugin):
     """What the configured models can do, so a tool is not offered to one that cannot use it."""
 
     name = "capabilities"
     description = "Filters tools by what the model takes"
 
-    def activate(self, container: PluginContainer) -> None:
+    def activate(self, ctx: PluginContext) -> None:
         """Provide the filter, over the runtime's own table of the models it has built."""
-        capabilities = ModelCapabilities(container.service(MODELS, dict))
-        container.provide(CAPABILITIES, capabilities)
-        container.register_extension(capabilities)
+        capabilities = ModelCapabilities(ctx.service(MODELS, dict))
+        ctx.agent.provide(CAPABILITIES, capabilities)
+        ctx.agent.register_extension(capabilities)
 
 
-class Subagents(AgentPlugin):
+class Subagents(Plugin):
     """The ``task`` tool: children that work on a delegated piece of the job in their own sessions."""
 
     name = "subagents"
     description = "The task tool and its profiles"
 
-    def activate(self, container: PluginContainer) -> None:
+    def activate(self, ctx: PluginContext) -> None:
         """Register the tool when ``[harness] subagent`` is on, built once the provider exists."""
-        config = container.config
+        config = ctx.config
         if not config.subagent_enabled:
             return
-        persistence = container.service(PERSISTENCE, SessionStore)
-        capabilities = container.service(CAPABILITIES, ModelCapabilities)
+        persistence = ctx.service(PERSISTENCE, SessionStore)
+        capabilities = ctx.service(CAPABILITIES, ModelCapabilities)
         messaging = config.subagent_messaging
 
         def build(agent: AgentBuild) -> AgentExtension:
@@ -170,7 +170,7 @@ class Subagents(AgentPlugin):
                 shares=_shared_with_children(messaging=messaging),
             )
 
-        container.register_extension_factory("ParentModelSubAgents", build)
+        ctx.agent.register_extension_factory("ParentModelSubAgents", build)
 
 
 def _shared_with_children(*, messaging: bool) -> Callable[[AgentExtension], bool]:
@@ -231,15 +231,15 @@ def _shared_with_children(*, messaging: bool) -> Callable[[AgentExtension], bool
     return lambda extension: not isinstance(extension, private)
 
 
-class Messaging(AgentPlugin):
+class Messaging(Plugin):
     """The tools that talk to the other sessions open on this machine."""
 
     name = "messaging"
     description = "The session messaging tools"
 
-    def activate(self, container: PluginContainer) -> None:
+    def activate(self, ctx: PluginContext) -> None:
         """Register the tools when the configuration gave the runtime a line to the other sessions."""
-        messenger = container.find(MESSENGER, Messenger)
+        messenger = ctx.find(MESSENGER, Messenger)
         if messenger is None:
             return
 
@@ -248,10 +248,10 @@ class Messaging(AgentPlugin):
 
             return SessionMessagingExtension(messenger)
 
-        container.register_extension_factory("SessionMessagingExtension", build)
+        ctx.agent.register_extension_factory("SessionMessagingExtension", build)
 
 
-class ShellPermission(AgentPlugin):
+class ShellPermission(Plugin):
     """Decides which shell commands run: ``deny`` refuses them, anything else is asked about or let through.
 
     The deny extension runs before the approval one (its priority is lower), because the approval can ask
@@ -262,18 +262,18 @@ class ShellPermission(AgentPlugin):
     name = "shell-permission"
     description = "Approval and refusal of shell commands"
 
-    def activate(self, container: PluginContainer) -> None:
+    def activate(self, ctx: PluginContext) -> None:
         """Register the deny and approval extensions and provide the approval, whose memory the shell reads."""
         from zett_agent.extensions.shell_approval import ShellApprovalExtension
 
-        policy = container.service(POLICY, ShellPolicy)
+        policy = ctx.service(POLICY, ShellPolicy)
         approval = ShellApprovalExtension(ShellApprovalMemory(policy))
-        container.provide(APPROVAL, approval)
-        container.register_extension(ShellDenyExtension(policy))
-        container.register_extension(approval)
+        ctx.agent.provide(APPROVAL, approval)
+        ctx.agent.register_extension(ShellDenyExtension(policy))
+        ctx.agent.register_extension(approval)
 
 
-class Harness(AgentPlugin):
+class Harness(Plugin):
     """The just-in-time harness: the model keeps small Python tools of its own, when the reader has it on.
 
     The extension is always registered and inert until the switch is on, so ``/harness on`` reaches the next
@@ -284,11 +284,11 @@ class Harness(AgentPlugin):
     name = "harness"
     description = "The just-in-time tool harness, off by default"
 
-    def activate(self, container: PluginContainer) -> None:
+    def activate(self, ctx: PluginContext) -> None:
         """Register the switchable extension; the framework's harness is imported when the agent is built."""
-        switch = container.service(HARNESS, HarnessSwitch)
-        root = container.config.harness_dir
-        policy = container.service(POLICY, ShellPolicy)
+        switch = ctx.service(HARNESS, HarnessSwitch)
+        root = ctx.config.harness_dir
+        policy = ctx.service(POLICY, ShellPolicy)
 
         def host() -> JITToolHost:
             """Where one session's repository code runs.
@@ -322,66 +322,66 @@ class Harness(AgentPlugin):
                 unbounded=policy.sandbox_missing,
             )
 
-        container.register_extension_factory("SwitchedHarness", build)
+        ctx.agent.register_extension_factory("SwitchedHarness", build)
 
 
-class SessionLog(AgentPlugin):
+class SessionLog(Plugin):
     """Writes the conversation to the session's log as it happens, and restores it on resume."""
 
     name = "session-log"
     description = "Session persistence"
 
-    def activate(self, container: PluginContainer) -> None:
+    def activate(self, ctx: PluginContext) -> None:
         """Register the store, which is both what the shell reads sessions from and an extension."""
-        container.register_extension(container.service(PERSISTENCE, SessionStore))
+        ctx.agent.register_extension(ctx.service(PERSISTENCE, SessionStore))
 
 
-class UsageTracking(AgentPlugin):
+class UsageTracking(Plugin):
     """Counts the tokens each session has spent, for the status line and ``/usage``."""
 
     name = "usage-tracking"
     description = "Token accounting"
 
-    def activate(self, container: PluginContainer) -> None:
+    def activate(self, ctx: PluginContext) -> None:
         """Provide the counters and register the extension that fills them."""
         usage = UsageExtension()
-        container.provide(USAGE, usage)
-        container.register_extension(usage)
+        ctx.agent.provide(USAGE, usage)
+        ctx.agent.register_extension(usage)
 
 
-class ContextTracking(AgentPlugin):
+class ContextTracking(Plugin):
     """Remembers the last assembled request of each session, for ``/context``."""
 
     name = "context-tracking"
     description = "What the last request was made of"
 
-    def activate(self, container: PluginContainer) -> None:
+    def activate(self, ctx: PluginContext) -> None:
         """Provide the recorder and register the extension that fills it."""
         context = ContextExtension()
-        container.provide(CONTEXT, context)
-        container.register_extension(context)
+        ctx.agent.provide(CONTEXT, context)
+        ctx.agent.register_extension(context)
 
 
-class SideQuestionBoundary(AgentPlugin):
+class SideQuestionBoundary(Plugin):
     """``/btw``: questions answered on a read-only run beside the conversation."""
 
     name = "side-questions"
     description = "The read-only boundary side questions run behind"
 
-    def activate(self, container: PluginContainer) -> None:
+    def activate(self, ctx: PluginContext) -> None:
         """Provide the boundary, which the shell marks before it starts a side run, and register it."""
         sides = SideQuestions()
-        container.provide(SIDES, sides)
-        container.register_extension(sides)
+        ctx.agent.provide(SIDES, sides)
+        ctx.agent.register_extension(sides)
 
 
-class ToolGuidance(AgentPlugin):
+class ToolGuidance(Plugin):
     """The guidance each tool carries into the system prompt."""
 
     name = "tool-guidelines"
     description = "Per-tool guidance in the prompt"
 
-    def activate(self, container: PluginContainer) -> None:
+    def activate(self, ctx: PluginContext) -> None:
         """Register the extension; it is small, but it belongs with the others that wait for the build."""
 
         def build(_: AgentBuild) -> AgentExtension:
@@ -389,18 +389,18 @@ class ToolGuidance(AgentPlugin):
 
             return ToolGuidelinesExtension()
 
-        container.register_extension_factory("ToolGuidelinesExtension", build)
+        ctx.agent.register_extension_factory("ToolGuidelinesExtension", build)
 
 
-class AskUser(AgentPlugin):
+class AskUser(Plugin):
     """The ``ask_user`` tool: how the model puts a question to the reader instead of guessing."""
 
     name = "ask-user"
     description = "The ask_user tool"
 
-    def activate(self, container: PluginContainer) -> None:
+    def activate(self, ctx: PluginContext) -> None:
         """Hand the agent the tool, unless the configuration turned it off."""
-        if not container.config.ask_user_enabled:
+        if not ctx.config.ask_user_enabled:
             return
 
         def build(_: AgentBuild) -> AgentExtension:
@@ -408,18 +408,18 @@ class AskUser(AgentPlugin):
 
             return AskUserExtension()
 
-        container.register_extension_factory("AskUserExtension", build)
+        ctx.agent.register_extension_factory("AskUserExtension", build)
 
 
-class ProjectInstructions(AgentPlugin):
+class ProjectInstructions(Plugin):
     """The workspace's ``AGENTS.md`` files, read again for every request so an edit applies at once."""
 
     name = "project-instructions"
     description = "The workspace's AGENTS.md instructions"
 
-    def activate(self, container: PluginContainer) -> None:
+    def activate(self, ctx: PluginContext) -> None:
         """Hand the agent the instructions, unless the configuration turned them off."""
-        config = container.config
+        config = ctx.config
         if not config.agents_md_enabled:
             return
 
@@ -428,18 +428,18 @@ class ProjectInstructions(AgentPlugin):
 
             return AgentsMdExtension(config.workspace)
 
-        container.register_extension_factory("AgentsMdExtension", build)
+        ctx.agent.register_extension_factory("AgentsMdExtension", build)
 
 
-class SkillTool(AgentPlugin):
+class SkillTool(Plugin):
     """The skills the model can load: their list in the prompt and the tool that reads one."""
 
     name = "skill-tool"
     description = "Skills the model can load"
 
-    def activate(self, container: PluginContainer) -> None:
+    def activate(self, ctx: PluginContext) -> None:
         """Hand the agent the skills found under the configured roots, when skills are on."""
-        config = container.config
+        config = ctx.config
         if not config.skills_enabled:
             return
 
@@ -448,18 +448,18 @@ class SkillTool(AgentPlugin):
 
             return SkillExtension(config.skill_search_roots())
 
-        container.register_extension_factory("SkillExtension", build)
+        ctx.agent.register_extension_factory("SkillExtension", build)
 
 
-class McpTools(AgentPlugin):
+class McpTools(Plugin):
     """The tools MCP servers offer. A server that is down is skipped, never fatal."""
 
     name = "mcp"
     description = "MCP servers"
 
-    def activate(self, container: PluginContainer) -> None:
+    def activate(self, ctx: PluginContext) -> None:
         """Register the extension when MCP is on; a run with no server file gets none at all."""
-        config = container.config
+        config = ctx.config
         if not config.mcp_enabled:
             return
 
@@ -468,10 +468,10 @@ class McpTools(AgentPlugin):
 
             return build_scoped_mcp_extension(config.mcp_files())
 
-        container.register_extension_factory("ReportingMcpExtension", build)
+        ctx.agent.register_extension_factory("ReportingMcpExtension", build)
 
 
-class TodoPlan(AgentPlugin):
+class TodoPlan(Plugin):
     """The ``todo_write`` tool, and the plan it keeps, shown in the shell's panel.
 
     The extension is provided as a service whether or not the tool is on, because the shell asks it for the
@@ -482,38 +482,38 @@ class TodoPlan(AgentPlugin):
     name = "todos"
     description = "The todo_write tool and the plan it keeps"
 
-    def activate(self, container: PluginContainer) -> None:
+    def activate(self, ctx: PluginContext) -> None:
         """Provide the extension, and hand it to the agent when the tool is on."""
         from zett_agent.extensions.todo import TodoWriteExtension
 
         extension = TodoWriteExtension()
-        container.provide(TODOS, extension)
-        if container.config.todowrite_enabled:
-            container.register_extension(extension)
+        ctx.agent.provide(TODOS, extension)
+        if ctx.config.todowrite_enabled:
+            ctx.agent.register_extension(extension)
 
 
-class Compaction(AgentPlugin):
+class Compaction(Plugin):
     """Shortens the conversation when it nears the model's window, or when the reader asks."""
 
     name = "compaction"
     description = "Context compaction"
 
-    def activate(self, container: PluginContainer) -> None:
+    def activate(self, ctx: PluginContext) -> None:
         """Provide the policy, sized for the model the run starts on; the runtime resizes it on a switch."""
-        selected = container.service(SELECTED_MODEL, ModelConfig)
-        counter = container.service(COMPACTION_COUNTER, CompactionCounter)
+        selected = ctx.service(SELECTED_MODEL, ModelConfig)
+        counter = ctx.service(COMPACTION_COUNTER, CompactionCounter)
         compaction = OnDemandCompaction(
             None,
             max_tokens=selected.compaction_max_tokens,
             keep_recent_tokens=selected.compaction_keep_tokens,
             count_tokens=counter.count,
         )
-        container.provide(COMPACTION, compaction)
-        container.register_extension(compaction)
+        ctx.agent.provide(COMPACTION, compaction)
+        ctx.agent.register_extension(compaction)
 
 
 #: The agent-side plugins in the order the agent receives their extensions.
-AGENT_PLUGINS: tuple[AgentPlugin, ...] = (
+AGENT_PLUGINS: tuple[Plugin[PluginContext], ...] = (
     SkillResources(),
     FileResources(),
     CodingTools(),
