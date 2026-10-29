@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 from zettcode.app.commands import Command, CommandResult
 from zettcode.engine.plugins.builtin_agent import AGENT_PLUGINS
-from zettcode.engine.plugins.commands import PlainCommandContext
+from zettcode.engine.plugins.commands import PlainCommandContext, TextCommandResult, TurnCommandResult
 from zettcode.engine.plugins.context import PluginContext
 from zettcode.engine.plugins.loader import Loader, run
 from zettcode.tui import RESERVED_THEMES
@@ -75,9 +75,9 @@ def terminal_context(config: ZettCodeConfig, services: Mapping[str, object] | No
 def _plain_commands(context: PluginContext) -> list[Command]:
     """Turn the plugin's plain commands into the shell's, keeping the handler's contract.
 
-    The handler returns a :class:`~zettcode.engine.plugins.commands.PlainCommandResult` — text, a toast or an error —
-    so there is nothing a shell could show that a process without one could not; the adapter only maps it onto the
-    shell's richer result and hands the handler the argument it asked for.
+    The handler returns a :class:`~zettcode.engine.plugins.commands.TextCommandResult` or a
+    :class:`~zettcode.engine.plugins.commands.TurnCommandResult` — words, or a request to start — so there is nothing a
+    shell could show that a process without one could not; the adapter maps each onto what the shell does with it.
     """
     adapted: list[Command] = []
     for plain in context.commands.commands:
@@ -95,17 +95,22 @@ def _plain_commands(context: PluginContext) -> list[Command]:
 
 
 def _plain_handler(handler):
-    """Wrap one plain handler as the shell's: same words, the shell's result type."""
+    """Wrap one plain handler as the shell's, one result type at a time."""
 
     async def run(context):
         result = handler(PlainCommandContext(argument=context.argument))
         if inspect.isawaitable(result):
             result = await result
-        if result.error:
-            # The shell has no error field of its own: a ValueError is how it is told a command failed, and the
-            # reader sees the words on the error line rather than losing them.
-            raise ValueError(result.error)
-        return CommandResult(message=result.message, notification=result.notification)
+        if isinstance(result, TurnCommandResult):
+            # A preset for a turn: the shell starts it, and the conversation keeps the short form the command was
+            # typed as.
+            await context.require_host().prompt(result.prompt, shown=result.shown or None)
+            return CommandResult(notification=result.notification)
+        if isinstance(result, TextCommandResult):
+            return CommandResult(message=result.message, notification=result.notification)
+        raise TypeError(
+            f"a plain command returns a TextCommandResult or a TurnCommandResult, not {type(result).__name__}"
+        )
 
     return run
 

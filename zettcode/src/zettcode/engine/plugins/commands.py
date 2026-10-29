@@ -1,7 +1,7 @@
 """The commands a plugin may offer that say nothing about a front end.
 
-A plugin registers a *plain* command on :attr:`~zettcode.engine.plugins.container.PluginContext.commands` when the
-result is text: a paragraph to show and a one-line remark. No widget, no page, no question put to a person — those
+A plugin registers a *plain* command on :attr:`~zettcode.engine.plugins.context.PluginContext.commands` when the
+result is text: a paragraph to show and a one-line remark, or a request to start a turn. No widget, no page, no question put to a person — those
 belong to the terminal, which registers its own kind of command on ``ctx.tui`` (see
 :class:`zettcode.app.plugins.groups.TuiGroups`). Keeping the two apart is what lets a command be shown by a front end
 that has no terminal: the handler cannot reach for a shell it will not have.
@@ -19,6 +19,8 @@ __all__ = [
     "PlainCommandContext",
     "PlainCommandResult",
     "PlainHandler",
+    "TextCommandResult",
+    "TurnCommandResult",
 ]
 
 
@@ -30,16 +32,30 @@ class PlainCommandContext:
 
 
 @dataclass(frozen=True, slots=True)
-class PlainCommandResult:
-    """What a plain command reports: Markdown for the conversation, a toast, or a failure line.
-
-    Every front end can show these three; that is the whole contract, which is why it is spelled here rather than
-    borrowed from the terminal's richer ``CommandResult``.
-    """
+class TextCommandResult:
+    """Words: Markdown for the conversation, and a one-line remark for the row above the composer."""
 
     message: str = ""
     notification: str = ""
-    error: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class TurnCommandResult:
+    """A request to start rather than an answer: the text the model reads, and what the reader sees for it.
+
+    A command that is a preset for a turn — `/code-review` is the first — says so by returning this. The front end
+    that ran the command starts the turn with ``prompt``; ``shown`` is the short form the conversation keeps, which is
+    what the reader typed.
+    """
+
+    prompt: str
+    shown: str = ""
+    notification: str = ""
+
+
+#: What a plain command's handler answers with. A failure is not a third case: it raises ``ValueError``, which every
+#: front end already reports as the command's error line.
+PlainCommandResult: TypeAlias = TextCommandResult | TurnCommandResult
 
 
 #: A plain command's handler: sync or async, and it never needs a UI.

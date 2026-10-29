@@ -149,10 +149,9 @@ async def test_a_plain_command_that_fails_is_reported_as_one(tmp_path: Path):
         name = "plain-failing"
 
         def activate(self, ctx: PluginContext) -> None:
-            from zettcode.engine.plugins.commands import PlainCommandResult
 
             async def fail(context) -> object:
-                return PlainCommandResult(error="no such session")
+                raise ValueError("no such session")
 
             ctx.commands.register("/fail", "fail on purpose", fail)
 
@@ -190,10 +189,10 @@ async def test_two_plugins_cannot_claim_one_plain_command_name(tmp_path: Path):
 
 
 def _plain(text: str):
-    from zettcode.engine.plugins.commands import PlainCommandResult
+    from zettcode.engine.plugins.commands import TextCommandResult
 
     async def handler(context) -> object:
-        return PlainCommandResult(message=text)
+        return TextCommandResult(message=text)
 
     return handler
 
@@ -206,9 +205,9 @@ async def test_a_plain_command_reaches_the_shell_beside_the_tuis_own(tmp_path: P
 
         def activate(self, ctx: PluginContext) -> None:
             async def greet(context) -> object:
-                from zettcode.engine.plugins.commands import PlainCommandResult
+                from zettcode.engine.plugins.commands import TextCommandResult
 
-                return PlainCommandResult(message=f"hello {context.argument}", notification="said hello")
+                return TextCommandResult(message=f"hello {context.argument}", notification="said hello")
 
             ctx.commands.register("/greet", "say hello", greet)
 

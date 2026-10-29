@@ -46,10 +46,10 @@ class Doubled(TuiPlugin):
 
     def activate(self, ctx) -> None:
         from zettcode.app.commands import CommandResult
-        from zettcode.engine.plugins.commands import PlainCommandResult
+        from zettcode.engine.plugins.commands import TextCommandResult
 
         async def plain(context):
-            return PlainCommandResult(message="plain")
+            return TextCommandResult(message="plain")
 
         async def tui_command(context):
             return CommandResult(message="tui")
