@@ -338,7 +338,7 @@ class Runner:
                 "name": command.name,
                 "summary": command.summary,
                 "when_busy": command.when_busy,
-                "subcommands": [str(word) for word in command.subcommands],
+                "subcommands": [getattr(word, "name", str(word)) for word in command.subcommands],
             }
             for command in self.client.plugins.plain_commands
         ]

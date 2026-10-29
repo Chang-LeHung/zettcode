@@ -157,6 +157,13 @@ describe("the JSON API", () => {
       }
       if (request.url === "/settings") return json(response, settings);
       if (request.url === "/plugins") return json(response, { loaded: ["shell"], failures: [] });
+      if (request.url === "/commands") {
+        return json(response, { commands: [{ name: "/greet", summary: "say hello", when_busy: "refuse", subcommands: [] }] });
+      }
+      if (request.url === "/commands/greet") {
+        assert.deepEqual(JSON.parse(request.body), { argument: "Ada" });
+        return json(response, { message: "", notification: "said hello", prompt: "THE BRIEF", shown: "/greet Ada" });
+      }
       json(response, { error: "not_found", message: request.url }, 404);
     });
     const client = new ZettCodeClient({ baseUrl: server.url });
@@ -170,6 +177,13 @@ describe("the JSON API", () => {
     assert.equal((await client.models()).models[0]?.web_search, false);
     assert.equal((await client.updateSettings({ compact_percent: 55 })).model.compact_percent, 55);
     assert.deepEqual((await client.plugins()).loaded, ["shell"]);
+    assert.deepEqual((await client.commands()).map((command) => command.name), ["/greet"]);
+    assert.deepEqual(await client.runCommand("/greet", "Ada"), {
+      message: "",
+      notification: "said hello",
+      prompt: "THE BRIEF",
+      shown: "/greet Ada",
+    });
   });
 
   test("the use methods each change one setting, as Python's use_* do, and latest opens the newest session", async () => {
@@ -409,6 +423,7 @@ describe("a prompt", () => {
       approvals: { mode: "ask", commands: [] },
       questions: "ask",
       answerTimeout: 12,
+      instructions: "THE BRIEF",
       onApproval: (request) => {
         asked = request;
         return true;
@@ -430,6 +445,7 @@ describe("a prompt", () => {
       approvals: { mode: "ask", commands: [] },
       questions: "ask",
       answer_timeout: 12,
+      instructions: "THE BRIEF",
     });
   });
 

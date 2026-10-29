@@ -102,6 +102,7 @@ export function activate(context: vscode.ExtensionContext): void {
     command("zettcode.usage", () => provider.showUsage()),
     command("zettcode.doctor", () => provider.showDoctor()),
     command("zettcode.plugins", () => provider.showPlugins()),
+    command("zettcode.commands", () => provider.runCommandInteractive()),
     command("zettcode.restartServer", async () => {
       output.appendLine("[server] restart requested");
       await server?.restart();

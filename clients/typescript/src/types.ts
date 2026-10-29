@@ -209,8 +209,6 @@ export interface RunResult {
 export interface PluginReport {
   loaded: string[];
   failures: string[];
-  /** The commands the plugins registered for every front end, in registration order. */
-  plain_commands?: string[];
 }
 
 /** One command every front end may run: a name, a summary, and how the run is framed. */
@@ -414,6 +412,8 @@ export interface PromptOptions extends RunOptions {
   images?: ImageInput[];
   /** Resolve `@path` mentions, as the terminal does. Defaults to true on the server. */
   mentions?: boolean;
+  /** Text the model reads after the prompt and the conversation does not show — a command's preset. */
+  instructions?: string;
 }
 
 /** The token counts of a session or a run. */

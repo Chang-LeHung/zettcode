@@ -2102,6 +2102,95 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     await showPluginsPanel(client, this.extensionUri, this.workspaceName());
   }
 
+  /**
+   * Offer the commands a plugin registered on `ctx.commands`, run the one the reader picks, and follow what it
+   * answered with: words go to the conversation, and a preset starts a turn with the command as its line and the
+   * brief as the instructions the model reads.
+   */
+  async runCommandInteractive(): Promise<void> {
+    const client = await this.ensureClient();
+    const commands = await client.commands();
+    if (commands.length === 0) {
+      void vscode.window.showInformationMessage("ZettCode: no plugin offers a command yet.");
+      return;
+    }
+    const picked = await vscode.window.showQuickPick(
+      commands.map((command) => ({ label: command.name, description: command.summary, command })),
+      { title: "ZettCode: run a plugin command", placeHolder: "A command a plugin registered" },
+    );
+    if (picked === undefined) {
+      return;
+    }
+    if (this.busy && picked.command.when_busy === "refuse") {
+      this.sayBehind(`${picked.command.name} cannot run while a request is in flight; try it again when that ends.`);
+      return;
+    }
+    const argument = await vscode.window.showInputBox({
+      title: picked.command.name,
+      prompt: picked.command.summary,
+      placeHolder: "Argument (optional)",
+    });
+    if (argument === undefined) {
+      return;
+    }
+    const answer = await client.runCommand(picked.command.name, argument.trim());
+    if (answer.notification !== "") {
+      void vscode.window.showInformationMessage(`ZettCode: ${answer.notification}`);
+    }
+    if (answer.prompt !== "") {
+      await this.sendCommandTurn(answer.prompt, answer.shown || `${picked.command.name} ${argument}`.trim());
+      return;
+    }
+    if (answer.message !== "") {
+      await this.announce(answer.message);
+    }
+  }
+
+  /**
+   * Start a command's preset as a turn: the command is what the conversation shows, the preset is what the model
+   * reads. Guarded and ordered like `sendPrompt`, because it is one.
+   */
+  private async sendCommandTurn(instructions: string, shown: string): Promise<void> {
+    if (this.busy) {
+      this.sayBehind("A run is already going; try the command again when it ends.");
+      return;
+    }
+    // The view first: `readyForPrompt()` reads the health a `load()` writes, and a window that never resolved the
+    // chat has none. `initialize()` is idempotent, so it is awaited even when the view is already there.
+    if (this.view === null) {
+      await vscode.commands.executeCommand("zettcode.openChat");
+    }
+    await this.initialize();
+    if (!this.readyForPrompt()) {
+      return;
+    }
+    const client = await this.ensureClient();
+    const turn = createTurn(shown, []);
+    this.turns.push(turn);
+    this.postTurn(turn, true);
+    await this.startRun(client.prompt(shown, { ...this.runOptions([]), instructions }), turn);
+  }
+
+  /** Put a command's words where a reader will still find them: a line in the conversation, or a message. */
+  private async announce(text: string): Promise<void> {
+    if (this.view === null) {
+      void vscode.window.showInformationMessage(`ZettCode: ${text}`);
+      return;
+    }
+    const turn = announcement(text, Date.now(), newTurnId("turn-command"));
+    this.turns.push(turn);
+    this.postTurn(turn, true);
+  }
+
+  /** Say something that has nowhere to go when the chat is closed. */
+  private sayBehind(text: string): void {
+    if (this.view === null) {
+      void vscode.window.showWarningMessage(`ZettCode: ${text}`);
+      return;
+    }
+    this.post({ type: "notice", level: "warn", text });
+  }
+
   /** Open the recent-sessions drawer from a command. */
   async showSessions(): Promise<void> {
     if (this.view === null) {
