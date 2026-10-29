@@ -115,7 +115,7 @@ at once, beside the request.
 
 | Runs at once | Why it is safe |
 | --- | --- |
-| `/help`, `/context`, `/usage`, `/theme` | They only show something. `/context` reports the last request measured; `/usage` reads what the stored sessions recorded. |
+| `/help`, `/plugins`, `/context`, `/usage`, `/theme` | They only show something. `/context` reports the last request measured; `/usage` reads what the stored sessions recorded. |
 | `/bash` | It reads nothing of the session and writes nothing to it; its commands are the reader's own, so a request running behind it is not touched. |
 | `/title` | Names the session; nothing running reads it. |
 | `/permission` | The next shell command asks the level again, so a change lands in the request that is already running — `/permission full` in the middle of a long task is the point. |

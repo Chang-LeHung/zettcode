@@ -22,7 +22,10 @@ import os
 import shlex
 import subprocess
 import sys
+from collections.abc import Iterable, Iterator
+from contextlib import AbstractContextManager, contextmanager
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from zettcode.app.commands import (
     COMMAND_ERRORS,
@@ -32,12 +35,18 @@ from zettcode.app.commands import (
     Subcommand,
     subcommand_words,
 )
+from zettcode.config import read_disabled_plugins
+from zettcode.engine.plugins.context import PluginContext
+from zettcode.engine.plugins.loader import installed_entry_points
 from zettcode.paths import DEFAULT_COMMAND_HISTORY
 from zettcode.tui import Widget
 
-from .container import TerminalContainer
+from .groups import require_tui
 from .host import HOST_LINK, HostLink
-from .plugin import TerminalPlugin
+from .plugin import TuiPlugin
+
+if TYPE_CHECKING:  # pragma: no cover - annotations only
+    from zettcode.config import ZettCodeConfig
 
 #: Rows the picker panels take from the bottom of the screen: the title, the list, and the footer hint. The
 #: handler owns the number; nothing in the framework reads it.
@@ -79,19 +88,20 @@ def _panel(page: Widget) -> Widget:
 # -- the session ----------------------------------------------------------------------------------
 
 
-class SessionCommands(TerminalPlugin):
+class SessionCommands(TuiPlugin):
     """``/resume``, ``/continue``, ``/fork``, ``/title`` and ``/context``: the session you are in and the ones before it."""
 
     name = "session-commands"
     description = "resume, continue, fork, title and context"
 
-    def activate(self, container: TerminalContainer) -> None:
+    def activate(self, ctx: PluginContext) -> None:
         """Register the five commands."""
-        container.register_command("resume", "resume a session: /resume [id]", self.resume)
-        container.register_command("continue", "carry on a request that was cut short", self.continue_)
-        container.register_command("fork", "carry this conversation into a new session", self.fork)
-        container.register_command("context", "what is filling the context window", self.context, when_busy="now")
-        container.register_command("title", "name this session: /title <name>", self.title, when_busy="now")
+        tui = require_tui(ctx)
+        tui.register_command("resume", "resume a session: /resume [id]", self.resume)
+        tui.register_command("continue", "carry on a request that was cut short", self.continue_)
+        tui.register_command("fork", "carry this conversation into a new session", self.fork)
+        tui.register_command("context", "what is filling the context window", self.context, when_busy="now")
+        tui.register_command("title", "name this session: /title <name>", self.title, when_busy="now")
 
     async def resume(self, context: CommandContext) -> CommandResult:
         """Open the stored sessions with what each holds, or resume the one named in the argument.
@@ -246,26 +256,27 @@ def permission_words(host: CommandHost | None) -> tuple[Subcommand, ...]:
     return subcommand_words(host.client.permissions, PERMISSION_NOTES, host.client.permission)
 
 
-class ModelCommands(TerminalPlugin):
+class ModelCommands(TuiPlugin):
     """``/model``, ``/effort``, ``/permission`` and ``/harness``: what the next request runs on and how far it may go."""
 
     name = "model-commands"
     description = "model, effort, permission and harness"
 
-    def activate(self, container: TerminalContainer) -> None:
+    def activate(self, ctx: PluginContext) -> None:
         """Register the commands; the ones that are a choice among words read the shell for those words."""
+        tui = require_tui(ctx)
         # A container built by hand has no link to follow; the menus then offer no words, and the commands still run.
-        link = container.find(HOST_LINK, HostLink) or HostLink()
-        container.register_command("model", "choose a model", self.model, subcommands=lambda: model_words(link.host))
-        container.register_command("effort", "how much the model reasons: /effort high", self.effort, when_busy="now")
-        container.register_command(
+        link = ctx.find(HOST_LINK, HostLink) or HostLink()
+        tui.register_command("model", "choose a model", self.model, subcommands=lambda: model_words(link.host))
+        tui.register_command("effort", "how much the model reasons: /effort high", self.effort, when_busy="now")
+        tui.register_command(
             "permission",
             "how much of the shell may run unasked: /permission safe",
             self.permission,
             when_busy="now",
             subcommands=lambda: permission_words(link.host),
         )
-        container.register_command(
+        tui.register_command(
             "harness",
             "let the model write and run its own tools: /harness on|off",
             self.harness,
@@ -364,15 +375,16 @@ class ModelCommands(TerminalPlugin):
 # -- asking, and leaving ----------------------------------------------------------------------------
 
 
-class SideQuestion(TerminalPlugin):
+class SideQuestion(TuiPlugin):
     """``/btw``: a question that does not join the conversation."""
 
     name = "side-question-command"
     description = "btw"
 
-    def activate(self, container: TerminalContainer) -> None:
+    def activate(self, ctx: PluginContext) -> None:
         """Register ``/btw``; it is the one command worth taking mid-reply, so it queues."""
-        container.register_command(
+        tui = require_tui(ctx)
+        tui.register_command(
             "btw",
             "ask something that will not join the conversation: /btw <question>",
             self.btw,
@@ -397,15 +409,16 @@ class SideQuestion(TerminalPlugin):
         return CommandResult()
 
 
-class HelpCommand(TerminalPlugin):
+class HelpCommand(TuiPlugin):
     """``/help``: the commands and the keys, whoever provides them."""
 
     name = "help-command"
     description = "help"
 
-    def activate(self, container: TerminalContainer) -> None:
+    def activate(self, ctx: PluginContext) -> None:
         """Register ``/help``; it only shows something, so it is safe beside a running request."""
-        container.register_command("help", "show the commands and the keys", self.help, when_busy="now")
+        tui = require_tui(ctx)
+        tui.register_command("help", "show the commands and the keys", self.help, when_busy="now")
 
     async def help(self, context: CommandContext) -> CommandResult:
         """Describe every command the shell knows, whoever provides it."""
@@ -414,7 +427,7 @@ class HelpCommand(TerminalPlugin):
         return CommandResult(message=help_text(context.require_host().commands))
 
 
-class BashCommand(TerminalPlugin):
+class BashCommand(TuiPlugin):
     """``/bash``: a full-screen command line over the workspace.
 
     ``/bash`` opens it empty and ``/bash <command>`` opens it already running that command. It is the reader's
@@ -431,11 +444,10 @@ class BashCommand(TerminalPlugin):
     def __init__(self, history_file: Path | None = None) -> None:
         self.history_file = history_file
 
-    def activate(self, container: TerminalContainer) -> None:
+    def activate(self, ctx: PluginContext) -> None:
         """Register ``/bash``; it neither reads nor writes the session, so it may open beside a request."""
-        container.register_command(
-            "bash", "run commands in a full-screen shell: /bash [command]", self.bash, when_busy="now"
-        )
+        tui = require_tui(ctx)
+        tui.register_command("bash", "run commands in a full-screen shell: /bash [command]", self.bash, when_busy="now")
 
     async def bash(self, context: CommandContext) -> CommandResult:
         """Open the panel in the workspace, with the history of the reader's shells for Up and Tab."""
@@ -451,7 +463,7 @@ class BashCommand(TerminalPlugin):
         return CommandResult(widget=page)
 
 
-class CodeReview(TerminalPlugin):
+class CodeReview(TuiPlugin):
     """``/code-review``: ask for a review of the uncommitted changes, in this conversation."""
 
     name = "code-review-command"
@@ -516,9 +528,10 @@ class CodeReview(TerminalPlugin):
     #: started `safe`: sandboxed, which is still more than a reader at `ask` has granted.
     LEVELS = {"full": "full", "safe": "safe", "ask": "safe"}
 
-    def activate(self, container: TerminalContainer) -> None:
+    def activate(self, ctx: PluginContext) -> None:
         """Register the command; it queues, since a review is a request like any other."""
-        container.register_command(
+        tui = require_tui(ctx)
+        tui.register_command(
             "code-review",
             "review the uncommitted changes: /code-review [what to look for]",
             self.review,
@@ -571,17 +584,153 @@ class CodeReview(TerminalPlugin):
         return subprocess.list2cmdline(argv) if os.name == "nt" else shlex.join(argv)
 
 
-class ShellControl(TerminalPlugin):
+class PluginCommand(TuiPlugin):
+    """``/plugins``: what loaded, what failed, and which plugins the next start will leave out."""
+
+    name = "plugins-command"
+    description = "plugin news and switches"
+
+    def activate(self, ctx: PluginContext) -> None:
+        """Register ``/plugins``; the settings it needs are captured here, not read from the plugin object."""
+        tui = require_tui(ctx)
+        assert ctx.tui is not None
+        config = ctx.config
+
+        async def handler(context: CommandContext) -> CommandResult:
+            return await self.plugins(context, config)
+
+        tui.register_command(
+            "plugins",
+            "list the plugins, or switch one off: /plugins [disable|enable] <name>",
+            handler,
+            when_busy="now",
+        )
+
+    async def plugins(self, context: CommandContext, config: ZettCodeConfig) -> CommandResult:
+        """List what loaded and failed, or record a switch the next start will honour."""
+        path = config.plugins_file
+        argument = context.argument.strip()
+        if not argument:
+            return CommandResult(message=self._listing(context, config))
+
+        verb, _, name = argument.partition(" ")
+        name = name.strip()
+        if verb not in ("disable", "enable") or not name:
+            raise ValueError("Usage: /plugins [disable|enable] <name>")
+
+        loaded = context.require_host().agent.runtime.plugins.plugins
+        known = (
+            {plugin.origin or plugin.name for plugin in loaded} | {point.name for point in installed_entry_points()}
+            if context.host is not None
+            else set()
+        )
+        if name not in known and name not in read_disabled_plugins(path):
+            raise ValueError(f"No plugin is called {name!r}; /plugins lists the ones this process loaded")
+        if _is_builtin(name):
+            raise ValueError(
+                f"{name} is compiled into the program, so it cannot be switched off; "
+                "a plugin installed as a distribution can"
+            )
+
+        if verb == "enable" and name in set(config.disabled_plugins):
+            raise ValueError(
+                f"{name} is switched off in the configuration file; remove it from [plugins] disable there, "
+                "which this command does not edit"
+            )
+
+        with _switch_lock(path):
+            names = set(read_disabled_plugins(path))
+            if verb == "disable":
+                names.add(name)
+            else:
+                names.discard(name)
+            _write_disabled(path, names)
+        state = "off" if verb == "disable" else "on"
+        return CommandResult(
+            notification=f"{name} will be {state} from the next start",
+            message=f"`{name}` is {state} for the next start; this session keeps the plugins it loaded.",
+        )
+
+    def _listing(self, context: CommandContext, config: ZettCodeConfig) -> str:
+        """Return the loaded, failed and switched-off plugins as a short list."""
+        bundle = context.require_host().agent.runtime.plugins
+        loaded = [
+            plugin.name if plugin.name == (plugin.origin or plugin.name) else f"{plugin.name} ({plugin.origin})"
+            for plugin in bundle.plugins
+        ]
+        off: list[str] = sorted(set(config.disabled_plugins) | set(read_disabled_plugins(config.plugins_file)))
+        lines = ["**Plugins**", "", f"Loaded: {', '.join(loaded) or 'none'}"]
+        if not config.plugins_enabled:
+            lines.append("")
+            lines.append("Installed plugins are off entirely: `[plugins] enabled = false` in the configuration file.")
+        if bundle.failures:
+            lines.append("")
+            lines.append("Failed:")
+            lines += [f"- {failure}" for failure in bundle.failures]
+        if off:
+            lines.append("")
+            lines.append(f"Off from the next start: {', '.join(off)}")
+        return "\n".join(lines)
+
+
+def _is_builtin(name: str) -> bool:
+    """Return whether ``name`` is one of the plugins compiled into the program."""
+    from zettcode.app.plugins.builtins import BUILTIN_PLUGINS
+    from zettcode.engine.plugins.builtin_agent import AGENT_PLUGINS
+
+    return any(name in (plugin.name, plugin.origin) for plugin in (*BUILTIN_PLUGINS, *AGENT_PLUGINS))
+
+
+def _switch_lock(path: Path) -> AbstractContextManager[object]:
+    """Serialise a read-modify-write of the switch file between two sessions running at once."""
+    from zettcode.filelock import SingletonLock
+
+    @contextmanager
+    def held() -> Iterator[None]:
+        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        lock = SingletonLock(path.with_suffix(".lock"))
+        if not lock.acquire(wait=2.0):
+            raise ValueError("another session is changing the plugin switches; try again in a moment")
+        try:
+            yield None
+        finally:
+            lock.release()
+
+    return held()
+
+
+def _write_disabled(path: Path, names: Iterable[str]) -> None:
+    """Write the switch file in one replace, owner-only, so a crash cannot leave half a list."""
+    import json
+    import tempfile
+
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    handle, temporary = tempfile.mkstemp(dir=path.parent, prefix=".plugins-", suffix=".json")
+    try:
+        with os.fdopen(handle, "w", encoding="utf-8") as stream:
+            json.dump({"disabled": sorted(names)}, stream, indent=2)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.chmod(temporary, 0o600)
+        os.replace(temporary, path)
+    except BaseException:
+        Path(temporary).unlink(missing_ok=True)
+        raise
+
+
+class ShellControl(TuiPlugin):
     """``/clear``, ``/quit`` and ``/exit``."""
 
     name = "shell-control"
     description = "clear and quit"
 
-    def activate(self, container: TerminalContainer) -> None:
+    def activate(self, ctx: PluginContext) -> None:
         """Register the three commands; leaving does not wait for the answer."""
-        container.register_command("clear", "clear the transcript", self.clear)
-        container.register_command("quit", "exit", self.quit, when_busy="now")
-        container.register_command("exit", "exit, same as /quit", self.quit, when_busy="now")
+        tui = require_tui(ctx)
+        tui.register_command("clear", "clear the transcript", self.clear)
+        tui.register_command("quit", "exit", self.quit, when_busy="now")
+        tui.register_command("exit", "exit, same as /quit", self.quit, when_busy="now")
 
     async def clear(self, context: CommandContext) -> CommandResult:
         """Clear visible conversation entries."""

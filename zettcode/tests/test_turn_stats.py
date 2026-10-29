@@ -14,7 +14,7 @@ from zettcode.app.agent.conversation.text import (
     tools_text,
 )
 from zettcode.app.plugins.builtins import BUILTIN_PLUGINS
-from zettcode.app.plugins.container import TerminalContainer
+from zettcode.app.plugins.loader import terminal_context
 from zettcode.app.plugins.state import TurnContext
 from zettcode.app.ui.turns import TurnTally, turn_parts
 from zettcode.config import ModelConfig, ZettCodeConfig
@@ -39,11 +39,11 @@ def context(usage: Usage | None = None, tools: int = 5, failed: int = 1) -> Turn
 
 def builtin_segments(tmp_path):
     """The items the program registers, as the shell receives them."""
-    container = TerminalContainer(ZettCodeConfig(workspace=tmp_path, models=(ModelConfig(model="m", token="t"),)))
+    ctx = terminal_context(ZettCodeConfig(workspace=tmp_path, models=(ModelConfig(model="m", token="t"),)))
     for plugin in BUILTIN_PLUGINS:
         if plugin.name == "turn-line":
-            plugin.activate(container)
-    return container, container.turn_segments
+            plugin.activate(ctx)
+    return ctx, ctx.tui.turn_segments
 
 
 def view(parts: tuple[str, ...], width: int, height: int = 10) -> str:
@@ -109,9 +109,9 @@ def test_an_item_that_is_switched_off_is_left_out_and_the_rest_close_up(tmp_path
 
 
 def test_a_plugin_adds_an_item_and_it_is_a_switch_like_the_others(tmp_path):
-    container, _ = builtin_segments(tmp_path)
-    container.register_turn_segment("turn-branch", "The branch", lambda turn: "main")
-    segments = container.turn_segments
+    ctx, _ = builtin_segments(tmp_path)
+    ctx.tui.register_turn_segment("turn-branch", "The branch", lambda turn: "main")
+    segments = ctx.tui.turn_segments
 
     assert turn_parts(segments, context(), ())[-1] == "main"
     assert "main" not in turn_parts(segments, context(), {"turn-branch"})
@@ -119,33 +119,33 @@ def test_a_plugin_adds_an_item_and_it_is_a_switch_like_the_others(tmp_path):
 
 
 def test_a_plugin_replaces_an_item_by_its_name_where_it_stands(tmp_path):
-    container, _ = builtin_segments(tmp_path)
-    container.register_turn_segment("turn-clock", "The clock", lambda turn: f"at {turn.clock}")
+    ctx, _ = builtin_segments(tmp_path)
+    ctx.tui.register_turn_segment("turn-clock", "The clock", lambda turn: f"at {turn.clock}")
 
-    parts = turn_parts(container.turn_segments, context(), ())
+    parts = turn_parts(ctx.tui.turn_segments, context(), ())
 
     assert parts[1] == "at 22:53" and len(parts) == len(TURN_PARTS)
 
 
 def test_an_item_that_raises_or_says_nothing_costs_only_itself(tmp_path):
-    container, _ = builtin_segments(tmp_path)
+    ctx, _ = builtin_segments(tmp_path)
 
     def broken(turn):
         raise RuntimeError("no")
 
-    container.register_turn_segment("turn-broken", "Fails", broken)
-    container.register_turn_segment("turn-empty", "Silent", lambda turn: None)
+    ctx.tui.register_turn_segment("turn-broken", "Fails", broken)
+    ctx.tui.register_turn_segment("turn-empty", "Silent", lambda turn: None)
 
-    assert " · ".join(turn_parts(container.turn_segments, context(), ())) == FULL
+    assert " · ".join(turn_parts(ctx.tui.turn_segments, context(), ())) == FULL
 
 
 def test_an_item_is_named_with_the_prefix(tmp_path):
-    container, _ = builtin_segments(tmp_path)
+    ctx, _ = builtin_segments(tmp_path)
 
     with pytest.raises(ValueError, match="turn-"):
-        container.register_turn_segment("branch", "no prefix", lambda turn: "x")
+        ctx.tui.register_turn_segment("branch", "no prefix", lambda turn: "x")
     with pytest.raises(ValueError):
-        container.register_turn_segment("turn-", "nothing after it", lambda turn: "x")
+        ctx.tui.register_turn_segment("turn-", "nothing after it", lambda turn: "x")
 
 
 # -- the packing and the row ---------------------------------------------------------------------------------------

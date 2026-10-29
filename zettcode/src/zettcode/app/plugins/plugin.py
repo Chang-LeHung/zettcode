@@ -1,7 +1,7 @@
 """The terminal's plugin base class and the bundle of what the loaded plugins produced for the terminal.
 
-:class:`TerminalPlugin` is the engine's :class:`~zettcode.engine.plugins.plugin.Plugin` with the shell's row hooks, and
-it is activated with a :class:`~zettcode.app.plugins.container.TerminalContainer`. :class:`TerminalPlugins` is the
+:class:`TuiPlugin` is the engine's :class:`~zettcode.engine.plugins.plugin.Plugin` with the shell's row hooks, and
+it is activated with a :class:`~zettcode.engine.plugins.context.PluginContext`. :class:`TuiPlugins` is the
 engine's bundle plus what only a terminal reads: commands, palettes, pets, presenters and rows.
 """
 
@@ -10,9 +10,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from zettcode.engine.plugins.context import PluginContext
 from zettcode.engine.plugins.plugin import Plugin, Plugins
 
-from .container import TerminalContainer
 from .mixins import PluginUiMixin
 from .state import TurnSegment, UiRow
 
@@ -23,12 +23,17 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
     from zettcode.tui import ThemeSource
 
 
-class TerminalPlugin(Plugin[TerminalContainer], PluginUiMixin):
-    """Base class for a plugin that contributes to the terminal as well as, or instead of, the agent."""
+class TuiPlugin(Plugin[PluginContext], PluginUiMixin):
+    """A plugin that fills shell slots by overriding a method; ``PluginUiMixin`` holds the four.
+
+    It is the same :class:`~zettcode.engine.plugins.plugin.Plugin` with the row hooks mixed in. Nothing about it says
+    "terminal only": whether a plugin has a screen to draw on is ``ctx.tui is not None``, which is what its
+    ``activate`` should test before registering a command, a palette, a pet, a presenter or a row.
+    """
 
 
 @dataclass(frozen=True, slots=True)
-class TerminalPlugins(Plugins):
+class TuiPlugins(Plugins):
     """Everything the installed plugins contributed, for the terminal: the agent's side and the shell's.
 
     Attributes:

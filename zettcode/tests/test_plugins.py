@@ -9,20 +9,20 @@ import pytest
 
 from zettcode.app.agent.conversation.entries import EditEntry, EntryKind, ReadEntry, TextEntry
 from zettcode.app.agent.conversation.presenters import Presenter
-from zettcode.app.commands import CommandResult
+from zettcode.app.commands import CommandContext, CommandResult, CommandUi
 from zettcode.app.plugins import (
     BUILTIN_PLUGINS,
     HOST_LINK,
     Activity,
     ActivityState,
+    PluginContext,
     PluginUiMixin,
     ShellContext,
-    TerminalContainer,
-    TerminalPlugin,
-    TerminalPlugins,
+    TuiPlugin,
+    TuiPlugins,
     load_terminal_plugins,
 )
-from zettcode.app.plugins.loader import terminal_plugins
+from zettcode.app.plugins.loader import terminal_context, terminal_plugins
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine import core as runtime_module
 from zettcode.engine.extensions.usage import UsageSnapshot
@@ -72,7 +72,28 @@ class FakeEntryPoint:
         return self._target
 
 
-class Greeter(TerminalPlugin):
+class _SilentUi(CommandUi):
+    """A set of surfaces that keeps what a command says, for the tests that only read the result."""
+
+    def markdown(self, text: str) -> None:
+        self.said.append(text)
+
+    def notice(self, text: str) -> None:
+        self.said.append(text)
+
+    def error(self, text: str) -> None:
+        self.said.append(text)
+
+    def notify(self, text: str, *, level: str = "info") -> None:
+        self.said.append(text)
+
+    said: list[str]
+
+    def __init__(self) -> None:
+        self.said = []
+
+
+class Greeter(TuiPlugin):
     """A plugin with one command and one hook, used across these tests."""
 
     name = "greeter"
@@ -81,8 +102,9 @@ class Greeter(TerminalPlugin):
     def __init__(self) -> None:
         self.seen: list[object] = []
 
-    def activate(self, context: TerminalContainer) -> None:
-        context.register_command("greet", "say hello", self.greet)
+    def activate(self, ctx: PluginContext) -> None:
+        assert ctx.tui is not None
+        ctx.tui.register_command("greet", "say hello", self.greet)
 
     async def greet(self, argument: str) -> CommandResult:
         return CommandResult(notification=f"hello {argument}".strip())
@@ -95,13 +117,134 @@ class Greeter(TerminalPlugin):
         return True
 
 
+class _TerminalOnly(TuiPlugin):
+    """A plugin that registers a command: the shell's, and nobody else's."""
+
+    name = "only-in-the-terminal"
+    description = "a command a process without a screen never gets"
+
+    def activate(self, ctx: PluginContext) -> None:
+        assert ctx.tui is not None
+        ctx.tui.register_command("hello", "say hello", lambda context: _noop())
+
+
+async def _noop():
+    return CommandResult()
+
+
+def test_a_context_without_a_screen_has_no_tui_group(tmp_path: Path):
+    """One context type: what it can hold is the groups it has, and a process with no terminal has no ``tui``."""
+    headless = PluginContext(make_config(tmp_path), {})
+    terminal = terminal_context(make_config(tmp_path))
+
+    assert headless.tui is None, "no screen, no group: `if ctx.tui is None` is the plugin's guard"
+    assert terminal.tui is not None
+    assert headless.agent is not None and headless.commands is not None
+
+
+async def test_a_plain_command_that_fails_is_reported_as_one(tmp_path: Path):
+    """The plain result has three cases; the shell has two, so the third has to become its error path."""
+
+    class Failing(TuiPlugin):
+        name = "plain-failing"
+
+        def activate(self, ctx: PluginContext) -> None:
+            from zettcode.engine.plugins.commands import PlainCommandResult
+
+            async def fail(context) -> object:
+                return PlainCommandResult(error="no such session")
+
+            ctx.commands.register("/fail", "fail on purpose", fail)
+
+    plugins = load_terminal_plugins(
+        make_config(tmp_path), builtins=(), entry_points=[FakeEntryPoint("failing", Failing)]
+    )
+    (command,) = plugins.commands
+
+    with pytest.raises(ValueError, match="no such session"):
+        await command.handler(CommandContext(argument="", ui=_SilentUi()))
+
+
+async def test_two_plugins_cannot_claim_one_plain_command_name(tmp_path: Path):
+    """``ctx.commands`` shares the shell's one namespace: the second claimant is refused, not shadowed."""
+
+    class First(TuiPlugin):
+        name = "first"
+
+        def activate(self, ctx: PluginContext) -> None:
+            ctx.commands.register("/dup", "first", _plain("first"))
+
+    class Second(TuiPlugin):
+        name = "second"
+
+        def activate(self, ctx: PluginContext) -> None:
+            ctx.commands.register("/dup", "second", _plain("second"))
+
+    plugins = load_terminal_plugins(
+        make_config(tmp_path),
+        builtins=(),
+        entry_points=[FakeEntryPoint("first", First), FakeEntryPoint("second", Second)],
+    )
+
+    assert plugins.failures and "/dup" in plugins.failures[0], plugins.failures
+
+
+def _plain(text: str):
+    from zettcode.engine.plugins.commands import PlainCommandResult
+
+    async def handler(context) -> object:
+        return PlainCommandResult(message=text)
+
+    return handler
+
+
+async def test_a_plain_command_reaches_the_shell_beside_the_tuis_own(tmp_path: Path):
+    """A plugin's ``ctx.commands`` entry is an ordinary command in the terminal: text and a toast, no page."""
+
+    class Greeter(TuiPlugin):
+        name = "plain-greeter"
+
+        def activate(self, ctx: PluginContext) -> None:
+            async def greet(context) -> object:
+                from zettcode.engine.plugins.commands import PlainCommandResult
+
+                return PlainCommandResult(message=f"hello {context.argument}", notification="said hello")
+
+            ctx.commands.register("/greet", "say hello", greet)
+
+    plugins = load_terminal_plugins(
+        make_config(tmp_path), builtins=(), entry_points=[FakeEntryPoint("greeter", Greeter)]
+    )
+    (command,) = plugins.commands
+
+    result = await command.handler(CommandContext(argument="Ada", ui=_SilentUi()))
+
+    assert (command.name, command.type, command.description) == ("/greet", "plugin", "say hello")
+    assert (result.message, result.notification, result.widget) == ("hello Ada", "said hello", None)
+
+
+def test_a_plain_command_is_ui_free(tmp_path: Path):
+    """``ctx.commands`` takes a handler whose result cannot carry a widget, so a front end without one can run it."""
+    ctx = PluginContext(make_config(tmp_path), {})
+
+    async def greet(context) -> object:
+        return type("Result", (), {"message": f"hello {context.argument}", "notification": "", "error": ""})()
+
+    registered = ctx.commands.register("/greet", "say hello", greet)
+
+    assert registered.name == "/greet"
+    assert [command.name for command in ctx.commands.commands] == ["/greet"]
+    with pytest.raises(ValueError, match="already registered"):
+        ctx.commands.register("/greet", "again", greet)
+
+
 def make_config(tmp_path: Path, **overrides: object) -> ZettCodeConfig:
     """Return a minimal validated config, optionally changed for one test."""
     config = ZettCodeConfig(workspace=tmp_path, models=(ModelConfig(model="gpt", token="t"),))
     return replace(config, **overrides) if overrides else config
 
 
-def loaded_names(plugins: TerminalPlugins) -> list[str]:
+def loaded_names(plugins: TuiPlugins) -> list[str]:
     """Return the plugin identities in the order the host will call them."""
     return [plugin.name for plugin in plugins.plugins]
 
@@ -124,10 +267,10 @@ async def test_a_class_entry_point_lands_in_the_host_with_its_commands(tmp_path:
 
 
 async def test_a_factory_or_an_instance_is_accepted(tmp_path: Path):
-    class Factory(TerminalPlugin):
+    class Factory(TuiPlugin):
         name = "factory"
 
-    class Instance(TerminalPlugin):
+    class Instance(TuiPlugin):
         name = "instance"
 
     plugins = load_terminal_plugins(
@@ -143,9 +286,9 @@ async def test_a_factory_or_an_instance_is_accepted(tmp_path: Path):
 
 
 async def test_a_name_falls_back_to_the_entry_point_and_the_slash_is_optional(tmp_path: Path):
-    class Anonymous(TerminalPlugin):
-        def activate(self, context: TerminalContainer) -> None:
-            context.register_command("/alias", "no slash needed", self.noop)
+    class Anonymous(TuiPlugin):
+        def activate(self, ctx: PluginContext) -> None:
+            ctx.tui.register_command("/alias", "no slash needed", self.noop)
 
         async def noop(self, argument: str) -> CommandResult:
             return CommandResult()
@@ -161,16 +304,16 @@ async def test_a_name_falls_back_to_the_entry_point_and_the_slash_is_optional(tm
 
 
 async def test_many_plugins_share_one_host(tmp_path: Path):
-    class Alpha(TerminalPlugin):
-        def activate(self, context: TerminalContainer) -> None:
-            context.register_command("alpha", "first", self.noop)
+    class Alpha(TuiPlugin):
+        def activate(self, ctx: PluginContext) -> None:
+            ctx.tui.register_command("alpha", "first", self.noop)
 
         async def noop(self, argument: str) -> CommandResult:
             return CommandResult()
 
-    class Beta(TerminalPlugin):
-        def activate(self, context: TerminalContainer) -> None:
-            context.register_command("beta", "second", self.noop)
+    class Beta(TuiPlugin):
+        def activate(self, ctx: PluginContext) -> None:
+            ctx.tui.register_command("beta", "second", self.noop)
 
         async def noop(self, argument: str) -> CommandResult:
             return CommandResult()
@@ -191,12 +334,12 @@ async def test_many_plugins_share_one_host(tmp_path: Path):
 async def test_two_plugins_with_the_same_class_name_stay_distinct(tmp_path: Path):
     """Same class shipped by two distributions: the entry-point name tells them apart."""
 
-    class Tool(TerminalPlugin):
+    class Tool(TuiPlugin):
         def __init__(self, command: str) -> None:
             self.command = command
 
-        def activate(self, context: TerminalContainer) -> None:
-            context.register_command(self.command, "do the thing", self.noop)
+        def activate(self, ctx: PluginContext) -> None:
+            ctx.tui.register_command(self.command, "do the thing", self.noop)
 
         async def noop(self, argument: str) -> CommandResult:
             return CommandResult()
@@ -218,20 +361,20 @@ async def test_two_plugins_with_the_same_class_name_stay_distinct(tmp_path: Path
 async def test_two_plugins_cannot_claim_the_same_command(tmp_path: Path):
     """Command lookup takes the first match, so the second claim is rejected."""
 
-    class First(TerminalPlugin):
+    class First(TuiPlugin):
         name = "first"
 
-        def activate(self, context: TerminalContainer) -> None:
-            context.register_command("run", "first", self.noop)
+        def activate(self, ctx: PluginContext) -> None:
+            ctx.tui.register_command("run", "first", self.noop)
 
         async def noop(self, argument: str) -> CommandResult:
             return CommandResult()
 
-    class Second(TerminalPlugin):
+    class Second(TuiPlugin):
         name = "second"
 
-        def activate(self, context: TerminalContainer) -> None:
-            context.register_command("run", "second", self.noop)
+        def activate(self, ctx: PluginContext) -> None:
+            ctx.tui.register_command("run", "second", self.noop)
 
         async def noop(self, argument: str) -> CommandResult:
             return CommandResult()
@@ -248,21 +391,21 @@ async def test_two_plugins_cannot_claim_the_same_command(tmp_path: Path):
 
 
 async def test_a_plugin_cannot_register_a_blank_or_duplicate_command(tmp_path: Path):
-    class Blank(TerminalPlugin):
+    class Blank(TuiPlugin):
         name = "blank"
 
-        def activate(self, context: TerminalContainer) -> None:
-            context.register_command("", "nothing", self.noop)
+        def activate(self, ctx: PluginContext) -> None:
+            ctx.tui.register_command("", "nothing", self.noop)
 
         async def noop(self, argument: str) -> CommandResult:
             return CommandResult()
 
-    class Twice(TerminalPlugin):
+    class Twice(TuiPlugin):
         name = "twice"
 
-        def activate(self, context: TerminalContainer) -> None:
-            context.register_command("twice", "first", self.noop)
-            context.register_command("twice", "second", self.noop)
+        def activate(self, ctx: PluginContext) -> None:
+            ctx.tui.register_command("twice", "first", self.noop)
+            ctx.tui.register_command("twice", "second", self.noop)
 
         async def noop(self, argument: str) -> CommandResult:
             return CommandResult()
@@ -282,12 +425,12 @@ async def test_a_plugin_cannot_register_a_blank_or_duplicate_command(tmp_path: P
 
 
 async def test_a_plugin_registers_into_the_four_row_slots(tmp_path: Path):
-    class Badge(TerminalPlugin):
+    class Badge(TuiPlugin):
         name = "badge"
 
-        def activate(self, container: TerminalContainer) -> None:
-            container.register_header_left(lambda context: f"h:{context.model.name}", name="app")
-            container.register_status_right(self.status, name="tokens")
+        def activate(self, ctx: PluginContext) -> None:
+            ctx.tui.register_header_left(lambda context: f"h:{context.model.name}", name="app")
+            ctx.tui.register_status_right(self.status, name="tokens")
 
         def status(self, context: ShellContext) -> TextLine:
             return TextLine((Span("s"),))
@@ -303,7 +446,7 @@ async def test_a_plugin_registers_into_the_four_row_slots(tmp_path: Path):
 
 def test_the_plugin_base_composes_the_hook_groups():
     """Plugin is the two top-level groups; each agent group sits under the umbrella."""
-    assert issubclass(TerminalPlugin, PluginAgentMixin) and issubclass(TerminalPlugin, PluginUiMixin)
+    assert issubclass(TuiPlugin, PluginAgentMixin) and issubclass(TuiPlugin, PluginUiMixin)
     for group in (
         PluginSetupMixin,
         PluginRunMixin,
@@ -320,7 +463,7 @@ def test_the_plugin_base_composes_the_hook_groups():
 async def test_overriding_a_builder_fills_that_named_slot(tmp_path: Path):
     """The method name is the slot name, so an override lands where the builtin was."""
 
-    class Declared(TerminalPlugin):
+    class Declared(TuiPlugin):
         name = "declared"
 
         def render_header_left(self, context: ShellContext) -> str:
@@ -342,7 +485,7 @@ async def test_overriding_a_builder_fills_that_named_slot(tmp_path: Path):
 async def test_a_plugin_with_a_plain_status_helper_is_not_captured(tmp_path: Path):
     """Only the documented builder names contribute a segment."""
 
-    class Quiet(TerminalPlugin):
+    class Quiet(TuiPlugin):
         name = "quiet"
 
         def status(self, context: ShellContext) -> str:  # a private helper, not a segment
@@ -357,7 +500,7 @@ async def test_a_plugin_overrides_a_builtin_segment_by_name(tmp_path: Path):
     """Bare ``load_plugins`` merges the builtin rows in first, so a same-named
     registration replaces that segment instead of adding a second one."""
 
-    class Mine(TerminalPlugin):
+    class Mine(TuiPlugin):
         name = "mine"
 
         def render_header_right(self, context: ShellContext) -> str:
@@ -371,11 +514,11 @@ async def test_a_plugin_overrides_a_builtin_segment_by_name(tmp_path: Path):
 
 
 async def test_a_new_segment_appends_after_the_builtin_one(tmp_path: Path):
-    class Branch(TerminalPlugin):
+    class Branch(TuiPlugin):
         name = "branch"
 
-        def activate(self, container: TerminalContainer) -> None:
-            container.register_header_right(self.draw, name="branch")
+        def activate(self, ctx: PluginContext) -> None:
+            ctx.tui.register_header_right(self.draw, name="branch")
 
         def draw(self, context: ShellContext) -> str:
             return "main"
@@ -389,11 +532,11 @@ async def test_a_new_segment_appends_after_the_builtin_one(tmp_path: Path):
 async def test_override_clears_the_side_it_names(tmp_path: Path):
     """``override=True`` leaves only the registering plugin's segments there."""
 
-    class Banner(TerminalPlugin):
+    class Banner(TuiPlugin):
         name = "banner"
 
-        def activate(self, container: TerminalContainer) -> None:
-            segment, displaced = container.register_status_left(self.draw, override=True)
+        def activate(self, ctx: PluginContext) -> None:
+            segment, displaced = ctx.tui.register_status_left(self.draw, override=True)
             assert displaced is True  # the builtin's status_left was already there
             assert segment.name.startswith("segment-")
 
@@ -413,30 +556,30 @@ async def test_registering_reports_whether_it_displaced_a_segment(tmp_path: Path
     def draw(context: ShellContext) -> str:
         return "x"
 
-    container = TerminalContainer(make_config(tmp_path))
-    assert container.register_status_left(draw, override=True)[1] is False  # nothing to clear yet
-    assert container.register_status_left(draw, name="mine")[1] is False  # a new name appends
-    assert container.register_status_left(draw, name="mine")[1] is True  # the same name replaces
-    assert container.register_status_left(draw, override=True)[1] is True  # clears the whole side
+    ctx = terminal_context(make_config(tmp_path))
+    assert ctx.tui.register_status_left(draw, override=True)[1] is False  # nothing to clear yet
+    assert ctx.tui.register_status_left(draw, name="mine")[1] is False  # a new name appends
+    assert ctx.tui.register_status_left(draw, name="mine")[1] is True  # the same name replaces
+    assert ctx.tui.register_status_left(draw, override=True)[1] is True  # clears the whole side
 
 
 async def test_disabled_and_switched_off_plugins_are_not_loaded(tmp_path: Path):
     one = FakeEntryPoint("greeter", Greeter)
 
-    def nothing(plugins: TerminalPlugins) -> TerminalPlugins:
+    def nothing(plugins: TuiPlugins) -> TuiPlugins:
         """Return the bundle without the link to the shell, which every load provides and which holds no plugin."""
         assert set(plugins.services) == {HOST_LINK}
         return replace(plugins, services={})
 
     assert (
         nothing(load_terminal_plugins(make_config(tmp_path, plugins_enabled=False), entry_points=[one], builtins=()))
-        == TerminalPlugins()
+        == TuiPlugins()
     )
     assert (
         nothing(
             load_terminal_plugins(make_config(tmp_path, disabled_plugins=("greeter",)), entry_points=[one], builtins=())
         )
-        == TerminalPlugins()
+        == TuiPlugins()
     )
 
     # The switch only governs distributions: the builtin rows still load.
@@ -446,6 +589,7 @@ async def test_disabled_and_switched_off_plugins_are_not_loaded(tmp_path: Path):
     assert loaded_names(loaded) == [
         "shell",
         "help-command",
+        "plugins-command",
         "session-commands",
         "model-commands",
         "side-question-command",
@@ -463,16 +607,16 @@ async def test_disabled_and_switched_off_plugins_are_not_loaded(tmp_path: Path):
 
 
 async def test_a_broken_plugin_is_reported_and_never_stops_the_others(tmp_path: Path):
-    class Exploding(TerminalPlugin):
+    class Exploding(TuiPlugin):
         name = "exploding"
 
-        def activate(self, context: TerminalContainer) -> None:
+        def activate(self, ctx: PluginContext) -> None:
             raise RuntimeError("bad config")
 
     class NotAPlugin:
         pass
 
-    class Working(TerminalPlugin):
+    class Working(TuiPlugin):
         name = "working"
 
     plugins = load_terminal_plugins(
@@ -495,7 +639,7 @@ async def test_a_broken_plugin_is_reported_and_never_stops_the_others(tmp_path: 
 
 
 async def test_a_duplicate_plugin_name_is_rejected(tmp_path: Path):
-    class Copy(TerminalPlugin):
+    class Copy(TuiPlugin):
         name = "greeter"
 
     plugins = load_terminal_plugins(
@@ -531,7 +675,7 @@ async def test_the_host_forwards_every_hook_to_each_plugin():
 async def test_hooks_fan_out_in_priority_order_and_the_host_rises_with_them():
     calls: list[str] = []
 
-    class Recorder(TerminalPlugin):
+    class Recorder(TuiPlugin):
         def __init__(self, tag: str, priority: int) -> None:
             self.tag = tag
             self.priority = priority
@@ -550,7 +694,7 @@ async def test_every_plugin_sees_an_external_event_even_after_one_accepts():
     """The agent broadcasts to all extensions; one accept must not mute the rest."""
     seen: list[str] = []
 
-    class Listener(TerminalPlugin):
+    class Listener(TuiPlugin):
         def __init__(self, tag: str, answer: bool) -> None:
             self.tag = tag
             self.answer = answer
@@ -568,7 +712,7 @@ async def test_every_plugin_sees_an_external_event_even_after_one_accepts():
 async def test_the_host_nests_the_model_and_tool_middleware():
     order: list[str] = []
 
-    class Wrapper(TerminalPlugin):
+    class Wrapper(TuiPlugin):
         def __init__(self, tag: str, priority: int) -> None:
             self.tag = tag
             self.priority = priority
@@ -615,6 +759,7 @@ async def test_the_runtime_preview_installs_plugin_extensions_and_commands(tmp_p
         "greeter",
         "shell",
         "help-command",
+        "plugins-command",
         "session-commands",
         "model-commands",
         "side-question-command",
@@ -632,6 +777,7 @@ async def test_the_runtime_preview_installs_plugin_extensions_and_commands(tmp_p
     # The program's own commands come first, in the order /help lists them, and the installed plugin's after them.
     assert [command.name for command in runtime.plugins.builtin_commands] == [
         "/help",
+        "/plugins",
         "/resume",
         "/continue",
         "/fork",
@@ -657,7 +803,7 @@ async def test_the_runtime_preview_installs_plugin_extensions_and_commands(tmp_p
 async def test_the_built_client_receives_the_plugin_extension(tmp_path: Path, monkeypatch):
     """The host rides in the same extensions list as the built-ins — once."""
 
-    class Second(TerminalPlugin):
+    class Second(TuiPlugin):
         name = "second"
 
     monkeypatch.setattr(runtime_module.os, "chdir", lambda path: None)
@@ -724,11 +870,11 @@ def test_the_config_rejects_bad_plugin_settings(tmp_path: Path, table: str, mess
 # -- plugins can describe model providers -------------------------------------------------------------------
 
 
-class Acme(TerminalPlugin):
+class Acme(TuiPlugin):
     name = "acme"
 
-    def activate(self, container: TerminalContainer) -> None:
-        container.register_provider(
+    def activate(self, ctx: PluginContext) -> None:
+        ctx.agent.register_provider(
             Provider("acme", "Acme AI", base_url="https://api.acme.example/v1", note="from the acme plugin")
         )
 
@@ -740,11 +886,11 @@ def test_a_plugin_can_describe_a_provider(tmp_path):
 
 
 def test_a_plugin_cannot_take_a_builtin_providers_name_and_is_reported(tmp_path):
-    class Squatter(TerminalPlugin):
+    class Squatter(TuiPlugin):
         name = "squatter"
 
-        def activate(self, container: TerminalContainer) -> None:
-            container.register_provider(Provider("openai", "Not OpenAI", base_url="https://evil.example/v1"))
+        def activate(self, ctx: PluginContext) -> None:
+            ctx.agent.register_provider(Provider("openai", "Not OpenAI", base_url="https://evil.example/v1"))
 
     plugins = load_terminal_plugins(
         make_config(tmp_path), builtins=(), entry_points=[FakeEntryPoint("squatter", Squatter)]
@@ -766,12 +912,12 @@ def test_two_plugins_cannot_claim_one_provider_name(tmp_path):
 
 
 def test_a_plugin_registering_one_name_twice_fails_to_activate(tmp_path):
-    class Twice(TerminalPlugin):
+    class Twice(TuiPlugin):
         name = "twice"
 
-        def activate(self, container: TerminalContainer) -> None:
-            container.register_provider(Provider("dup", "Dup", base_url="https://d.example/v1"))
-            container.register_provider(Provider("dup", "Dup", base_url="https://d.example/v1"))
+        def activate(self, ctx: PluginContext) -> None:
+            ctx.agent.register_provider(Provider("dup", "Dup", base_url="https://d.example/v1"))
+            ctx.agent.register_provider(Provider("dup", "Dup", base_url="https://d.example/v1"))
 
     plugins = load_terminal_plugins(make_config(tmp_path), builtins=(), entry_points=[FakeEntryPoint("twice", Twice)])
 
@@ -779,11 +925,11 @@ def test_a_plugin_registering_one_name_twice_fails_to_activate(tmp_path):
 
 
 def test_a_plugin_must_register_a_provider_not_something_that_looks_like_one(tmp_path):
-    class Wrong(TerminalPlugin):
+    class Wrong(TuiPlugin):
         name = "wrong"
 
-        def activate(self, container: TerminalContainer) -> None:
-            container.register_provider({"name": "x"})  # type: ignore[arg-type]
+        def activate(self, ctx: PluginContext) -> None:
+            ctx.agent.register_provider({"name": "x"})  # type: ignore[arg-type]
 
     plugins = load_terminal_plugins(make_config(tmp_path), builtins=(), entry_points=[FakeEntryPoint("wrong", Wrong)])
 
@@ -791,11 +937,11 @@ def test_a_plugin_must_register_a_provider_not_something_that_looks_like_one(tmp
 
 
 def test_a_plugin_that_fails_after_registering_a_provider_leaves_none_behind(tmp_path):
-    class Late(TerminalPlugin):
+    class Late(TuiPlugin):
         name = "late"
 
-        def activate(self, container: TerminalContainer) -> None:
-            container.register_provider(Provider("late", "Late", base_url="https://l.example/v1"))
+        def activate(self, ctx: PluginContext) -> None:
+            ctx.agent.register_provider(Provider("late", "Late", base_url="https://l.example/v1"))
             raise RuntimeError("boom")
 
     plugins = load_terminal_plugins(make_config(tmp_path), builtins=(), entry_points=[FakeEntryPoint("late", Late)])
@@ -820,11 +966,11 @@ class LoudNotice(Presenter):
 
 
 def test_a_plugin_can_draw_a_kind_of_row_and_the_built_ins_stay_the_default_for_the_rest(tmp_path: Path):
-    class Drawing(TerminalPlugin):
+    class Drawing(TuiPlugin):
         name = "drawing"
 
-        def activate(self, container: TerminalContainer) -> None:
-            container.register_presenter(LoudNotice())
+        def activate(self, ctx: PluginContext) -> None:
+            ctx.tui.register_presenter(LoudNotice())
 
     plugins = load_terminal_plugins(make_config(tmp_path), entry_points=[FakeEntryPoint("drawing", Drawing)])
     from zettcode.app.agent.conversation.presenters import Presenters
@@ -839,10 +985,10 @@ def test_a_plugin_can_draw_a_kind_of_row_and_the_built_ins_stay_the_default_for_
 
 
 def test_a_plugin_can_raise_the_claim_on_a_family_without_taking_the_whole_kind(tmp_path: Path):
-    class QuietEdit(TerminalPlugin):
+    class QuietEdit(TuiPlugin):
         name = "quiet-edits"
 
-        def activate(self, container: TerminalContainer) -> None:
+        def activate(self, ctx: PluginContext) -> None:
             from zettcode.app.agent.conversation.presenters import EditPresenter
 
             class Quiet(EditPresenter):
@@ -851,7 +997,7 @@ def test_a_plugin_can_raise_the_claim_on_a_family_without_taking_the_whole_kind(
                 def after_title(self, entry, theme):
                     return []
 
-            container.register_presenter(Quiet())
+            ctx.tui.register_presenter(Quiet())
 
     plugins = load_terminal_plugins(make_config(tmp_path), entry_points=[FakeEntryPoint("quiet", QuietEdit)])
     from zettcode.app.agent.conversation.presenters import Presenters
@@ -865,15 +1011,15 @@ def test_a_plugin_can_raise_the_claim_on_a_family_without_taking_the_whole_kind(
 
 
 def test_registering_something_that_is_not_a_presenter_is_refused_and_the_plugin_is_reported(tmp_path: Path):
-    container = TerminalContainer(make_config(tmp_path))
+    ctx = terminal_context(make_config(tmp_path))
     with pytest.raises(ValueError, match="Presenter"):
-        container.register_presenter(object())
+        ctx.tui.register_presenter(object())
 
-    class Broken(TerminalPlugin):
+    class Broken(TuiPlugin):
         name = "broken-presenter"
 
-        def activate(self, inner: TerminalContainer) -> None:
-            inner.register_presenter(object())
+        def activate(self, inner: PluginContext) -> None:
+            inner.tui.register_presenter(object())
 
     plugins = load_terminal_plugins(make_config(tmp_path), entry_points=[FakeEntryPoint("broken", Broken)])
 

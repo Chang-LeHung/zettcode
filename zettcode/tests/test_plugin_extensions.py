@@ -27,8 +27,8 @@ from zettcode.engine.messenger import Messenger
 from zettcode.engine.plugins import (
     AGENT_PLUGINS,
     AgentBuild,
-    AgentPlugin,
-    PluginContainer,
+    Plugin,
+    PluginContext,
     Plugins,
     load_plugins,
 )
@@ -65,22 +65,22 @@ def make_config(tmp_path: Path, **overrides: object) -> ZettCodeConfig:
     return replace(config, **overrides) if overrides else config
 
 
-def offering(plugin_name: str, *ext_names: str, service: str | None = None) -> type[AgentPlugin]:
+def offering(plugin_name: str, *ext_names: str, service: str | None = None) -> type[Plugin]:
     """Return a plugin class that registers one extension per name, and maybe a service."""
 
-    class Offering(AgentPlugin):
+    class Offering(Plugin):
         name = plugin_name
 
-        def activate(self, container: PluginContainer) -> None:
+        def activate(self, ctx: PluginContext) -> None:
             for name in ext_names:
-                container.register_extension(Named(name))
+                ctx.agent.register_extension(Named(name))
             if service is not None:
-                container.provide(service, object())
+                ctx.agent.provide(service, object())
 
     return Offering
 
 
-def load(tmp_path: Path, *plugins: type[AgentPlugin], shared: dict[str, object] | None = None, **overrides: object):
+def load(tmp_path: Path, *plugins: type[Plugin], shared: dict[str, object] | None = None, **overrides: object):
     """Load these plugin classes alone, without the built-in ones."""
     points = [FakeEntryPoint(plugin.name, plugin) for plugin in plugins]
     return load_plugins(make_config(tmp_path, **overrides), builtins=(), entry_points=points, shared=shared)
@@ -122,12 +122,12 @@ def test_two_plugins_cannot_share_an_extension_name_and_the_host_name_is_taken(t
 
 
 def test_a_plugin_that_fails_after_registering_leaves_nothing_behind(tmp_path):
-    class Late(AgentPlugin):
+    class Late(Plugin):
         name = "late"
 
-        def activate(self, container: PluginContainer) -> None:
-            container.register_extension(Named("late-ext"))
-            container.provide("late-service", object())
+        def activate(self, ctx: PluginContext) -> None:
+            ctx.agent.register_extension(Named("late-ext"))
+            ctx.agent.provide("late-service", object())
             raise RuntimeError("boom")
 
     plugins = load(tmp_path, Late)
@@ -139,18 +139,18 @@ def test_a_plugin_that_fails_after_registering_leaves_nothing_behind(tmp_path):
 # -- an extension built when the agent is ---------------------------------------------------------
 
 
-def factory_plugin(plugin_name: str, ext_name: str, built: list[object], *, make: bool = True) -> type[AgentPlugin]:
+def factory_plugin(plugin_name: str, ext_name: str, built: list[object], *, make: bool = True) -> type[Plugin]:
     """Return a plugin whose extension is a factory that records what it was called with."""
 
-    class Lazy(AgentPlugin):
+    class Lazy(Plugin):
         name = plugin_name
 
-        def activate(self, container: PluginContainer) -> None:
+        def activate(self, ctx: PluginContext) -> None:
             def build(agent: AgentBuild) -> AgentExtension | None:
                 built.append(agent)
                 return Named(ext_name) if make else None
 
-            container.register_extension_factory(ext_name, build)
+            ctx.agent.register_extension_factory(ext_name, build)
 
     return Lazy
 
@@ -167,13 +167,13 @@ def test_a_factory_is_not_called_until_the_agent_is_built(tmp_path):
 
 
 def test_whole_extensions_and_factories_keep_the_order_they_were_registered_in(tmp_path):
-    class Mixed(AgentPlugin):
+    class Mixed(Plugin):
         name = "mixed"
 
-        def activate(self, container: PluginContainer) -> None:
-            container.register_extension(Named("a"))
-            container.register_extension_factory("b", lambda agent: Named("b"))
-            container.register_extension(Named("c"))
+        def activate(self, ctx: PluginContext) -> None:
+            ctx.agent.register_extension(Named("a"))
+            ctx.agent.register_extension_factory("b", lambda agent: Named("b"))
+            ctx.agent.register_extension(Named("c"))
 
     assert built_names(load(tmp_path, Mixed, offering("after", "d"))) == ["a", "b", "c", "d"]
 
@@ -185,11 +185,11 @@ def test_a_factory_may_have_nothing_to_add(tmp_path):
 
 
 def test_a_factory_that_builds_another_name_than_it_announced_fails_the_build(tmp_path):
-    class Liar(AgentPlugin):
+    class Liar(Plugin):
         name = "liar"
 
-        def activate(self, container: PluginContainer) -> None:
-            container.register_extension_factory("claimed", lambda agent: Named("other"))
+        def activate(self, ctx: PluginContext) -> None:
+            ctx.agent.register_extension_factory("claimed", lambda agent: Named("other"))
 
     with pytest.raises(ValueError, match="registered as 'claimed' was built as 'other'"):
         built_names(load(tmp_path, Liar))
@@ -208,12 +208,12 @@ def test_a_factory_name_is_checked_against_the_others_when_the_plugins_load(tmp_
 def test_a_plugin_reads_what_the_runtime_handed_over(tmp_path):
     seen: list[object] = []
 
-    class Reader(AgentPlugin):
+    class Reader(Plugin):
         name = "reader"
 
-        def activate(self, container: PluginContainer) -> None:
-            seen.append(container.service("policy", str))
-            seen.append(container.find("absent", str))
+        def activate(self, ctx: PluginContext) -> None:
+            seen.append(ctx.service("policy", str))
+            seen.append(ctx.agent.find("absent", str))
 
     plugins = load(tmp_path, Reader, shared={"policy": "ask"})
 
@@ -222,11 +222,11 @@ def test_a_plugin_reads_what_the_runtime_handed_over(tmp_path):
 
 
 def test_a_plugin_that_needs_state_nobody_handed_over_is_reported_by_name(tmp_path):
-    class Needy(AgentPlugin):
+    class Needy(Plugin):
         name = "needy"
 
-        def activate(self, container: PluginContainer) -> None:
-            container.service("persistence", object)
+        def activate(self, ctx: PluginContext) -> None:
+            ctx.service("persistence", object)
 
     plugins = load(tmp_path, Needy)
 
@@ -234,29 +234,29 @@ def test_a_plugin_that_needs_state_nobody_handed_over_is_reported_by_name(tmp_pa
 
 
 def test_a_plugin_reads_what_an_earlier_one_provided_and_not_what_a_later_one_will(tmp_path):
-    class Early(AgentPlugin):
+    class Early(Plugin):
         name = "early"
 
-        def activate(self, container: PluginContainer) -> None:
-            container.provide("made", [1])
+        def activate(self, ctx: PluginContext) -> None:
+            ctx.agent.provide("made", [1])
 
-    class Late(AgentPlugin):
+    class Late(Plugin):
         name = "late"
 
-        def activate(self, container: PluginContainer) -> None:
-            assert container.service("made", list) == [1]
+        def activate(self, ctx: PluginContext) -> None:
+            assert ctx.service("made", list) == [1]
 
-    class Backwards(AgentPlugin):
+    class Backwards(Plugin):
         name = "backwards"
 
-        def activate(self, container: PluginContainer) -> None:
-            container.service("made-later", list)
+        def activate(self, ctx: PluginContext) -> None:
+            ctx.service("made-later", list)
 
-    class Last(AgentPlugin):
+    class Last(Plugin):
         name = "last"
 
-        def activate(self, container: PluginContainer) -> None:
-            container.provide("made-later", [2])
+        def activate(self, ctx: PluginContext) -> None:
+            ctx.agent.provide("made-later", [2])
 
     plugins = load(tmp_path, Early, Late, Backwards, Last)
 
@@ -264,11 +264,11 @@ def test_a_plugin_reads_what_an_earlier_one_provided_and_not_what_a_later_one_wi
 
 
 def test_a_service_is_found_by_name_and_checked_for_its_type(tmp_path):
-    class Keeper(AgentPlugin):
+    class Keeper(Plugin):
         name = "keeper"
 
-        def activate(self, container: PluginContainer) -> None:
-            container.provide("numbers", [1, 2])
+        def activate(self, ctx: PluginContext) -> None:
+            ctx.agent.provide("numbers", [1, 2])
 
     plugins = load(tmp_path, Keeper)
 
@@ -284,12 +284,12 @@ def test_a_service_is_found_by_name_and_checked_for_its_type(tmp_path):
 
 
 def test_a_service_name_is_provided_once(tmp_path):
-    class Twice(AgentPlugin):
+    class Twice(Plugin):
         name = "twice"
 
-        def activate(self, container: PluginContainer) -> None:
-            container.provide("x", 1)
-            container.provide("x", 2)
+        def activate(self, ctx: PluginContext) -> None:
+            ctx.agent.provide("x", 1)
+            ctx.agent.provide("x", 2)
 
     plugins = load(tmp_path, Twice, offering("one", service="shared"), offering("two", service="shared"))
 

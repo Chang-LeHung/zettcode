@@ -10,10 +10,10 @@ from zett_agent.messages import UserMessage
 
 from zettcode.app.agent.agent import TerminalAgent
 from zettcode.app.agent.conversation.replay import replay
+from zettcode.app.plugins.loader import terminal_context
 from zettcode.app.ui.widgets import Composer
 from zettcode.app.ui.widgets.completer import CommandCompleter
 from zettcode.config import ModelConfig, ZettCodeConfig
-from zettcode.engine.plugins import PluginContainer
 from zettcode.engine.storage import SessionStore
 from zettcode.mentions import (
     LISTING_SECONDS,
@@ -107,16 +107,16 @@ def test_the_registry_expands_known_mentions_and_leaves_unknown_ones_alone(tmp_p
 
 def test_a_plugin_registers_one_mention_provider_per_kind(tmp_path: Path):
     config = ZettCodeConfig(workspace=tmp_path, models=(ModelConfig(model="m", token="t"),))
-    container = PluginContainer(config)
+    ctx = terminal_context(config)
     provider = _TextMentions("note", {"todo": "a note"})
 
-    assert container.register_mention(provider) is provider
-    assert container.mentions == (provider,)
+    assert ctx.agent.register_mention(provider) is provider
+    assert ctx.agent.mentions == (provider,)
 
     with pytest.raises(ValueError, match="already registered"):
-        container.register_mention(_TextMentions("note", {"other": "text"}))
+        ctx.agent.register_mention(_TextMentions("note", {"other": "text"}))
     with pytest.raises(ValueError, match="cannot be empty"):
-        container.register_mention(_TextMentions("  ", {}))
+        ctx.agent.register_mention(_TextMentions("  ", {}))
 
 
 def test_the_completer_offers_mentions_after_an_at_sign():

@@ -25,7 +25,8 @@ from zettcode.app.pets import (
     edited,
     mirrored,
 )
-from zettcode.app.plugins import TerminalContainer, TerminalPlugin, load_terminal_plugins
+from zettcode.app.plugins import PluginContext, TuiPlugin, load_terminal_plugins
+from zettcode.app.plugins.loader import terminal_context
 from zettcode.app.ui.widgets.pet_page import (
     BOX_HEIGHT,
     BOX_WIDTH,
@@ -208,15 +209,15 @@ def test_listing_the_pets_builds_none_of_them():
 # -- plugins ----------------------------------------------------------------------------------------------------
 
 
-class Dragon(TerminalPlugin):
+class Dragon(TuiPlugin):
     name = "dragon-pack"
 
     def __init__(self) -> None:
         self.built = 0
 
-    def activate(self, container: TerminalContainer) -> None:
-        container.register_pet("dragon", CATALOG.load("tiger"), description="breathes quietly")
-        container.register_pet("lazy-dragon", self.build, description=lambda: "built late")
+    def activate(self, ctx: PluginContext) -> None:
+        ctx.tui.register_pet("dragon", CATALOG.load("tiger"), description="breathes quietly")
+        ctx.tui.register_pet("lazy-dragon", self.build, description=lambda: "built late")
 
     def build(self) -> Pet:
         self.built += 1
@@ -244,11 +245,11 @@ def test_a_plugin_offers_pets_by_name_after_the_ones_that_ship(tmp_path: Path):
 
 
 def test_a_plugin_cannot_take_a_name_an_earlier_plugin_has(tmp_path: Path):
-    class Greedy(TerminalPlugin):
+    class Greedy(TuiPlugin):
         name = "greedy"
 
-        def activate(self, container: TerminalContainer) -> None:
-            container.register_pet("cat", CAT)
+        def activate(self, ctx: PluginContext) -> None:
+            ctx.tui.register_pet("cat", CAT)
 
     plugins = load_terminal_plugins(make_config(tmp_path), entry_points=[FakeEntryPoint("g", Greedy)])
 
@@ -258,18 +259,18 @@ def test_a_plugin_cannot_take_a_name_an_earlier_plugin_has(tmp_path: Path):
 
 @pytest.mark.parametrize("name", ["", "two words", "a/b", " "])
 def test_a_name_that_could_not_be_typed_after_pet_is_refused_when_registered(tmp_path: Path, name: str):
-    container = TerminalContainer(make_config(tmp_path))
+    ctx = terminal_context(make_config(tmp_path))
     with pytest.raises(ValueError):
-        container.register_pet(name, CAT)
+        ctx.tui.register_pet(name, CAT)
 
 
 def test_a_pet_registered_twice_by_one_plugin_or_not_a_pet_at_all_is_refused(tmp_path: Path):
-    container = TerminalContainer(make_config(tmp_path))
-    container.register_pet("once", CAT)
+    ctx = terminal_context(make_config(tmp_path))
+    ctx.tui.register_pet("once", CAT)
     with pytest.raises(ValueError, match="already registered"):
-        container.register_pet("once", CAT)
+        ctx.tui.register_pet("once", CAT)
     with pytest.raises(ValueError, match="must be a zettcode.app.pets.Pet"):
-        container.register_pet("twice", "a string")  # type: ignore[arg-type]
+        ctx.tui.register_pet("twice", "a string")  # type: ignore[arg-type]
 
 
 # -- the configuration ------------------------------------------------------------------------------------------

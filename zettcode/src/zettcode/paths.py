@@ -17,6 +17,10 @@ CONFIG_FILE = Path.home() / ".zettcode" / "config.toml"
 #: Session storage is an application default, not a model setting.
 DEFAULT_STORE = Path.home() / ".zettcode" / "sessions"
 
+#: Plugins the reader switched off with ``/plugins disable``; read at the next start. Kept beside the store so the
+#: reader's config file stays theirs, and a name here is an entry-point name, the same one ``[plugins] disable`` takes.
+DEFAULT_PLUGINS_FILE = DEFAULT_STORE.parent / "plugins.json"
+
 #: MCP servers are ZettCode's own file, so they are configured independently of
 #: whatever other zett tools read.
 DEFAULT_MCP_CONFIG = Path.home() / ".zettcode" / "mcp.json"

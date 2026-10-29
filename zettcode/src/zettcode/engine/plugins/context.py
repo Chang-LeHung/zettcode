@@ -1,19 +1,24 @@
-"""What a plugin receives when it activates, and how it registers what the agent uses.
+"""What a plugin receives when it activates: ``ctx``, and the groups it registers into.
 
-The container is the plugin's only channel to the application: it exposes the resolved configuration and collects
-the agent extensions, services, ``@`` providers and model providers the plugin registers. They are accumulated here
-rather than returned, so a plugin can decide what to register from the configuration it is given.
+The context is the plugin's only channel to the application. It exposes the resolved configuration, and three groups:
+``ctx.agent`` for what every front end has (extensions, providers, ``@`` providers, services), ``ctx.commands`` for
+plain commands that say nothing about a UI, and ``ctx.tui`` for what only the terminal can hold — ``None`` everywhere
+else. The context itself keeps the accumulated registrations; the groups are the stable names a plugin writes
+against, so what is added later lands in a group rather than in another method on the context.
 
-What only a terminal has — commands, palettes, pets, presenters and the header and status rows — is registered on
-the terminal's own subclass, :class:`zettcode.app.plugins.container.TerminalContainer`.
+The terminal's own group is :class:`zettcode.app.plugins.groups.TuiGroups`; the engine cannot name it, since the
+terminal is a layer above this one, which is why the attribute is untyped here and documented instead.
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, TypeVar
 
+from zettcode.plugin_tui import TuiGroup
 from zettcode.providers import Provider
 
+from .commands import CommandGroups
+from .groups import AgentGroups
 from .services import lookup, require
 from .state import Contribution, ExtensionFactory
 
@@ -28,8 +33,8 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
 _T = TypeVar("_T")
 
 
-class PluginContainer:
-    """What a plugin is handed when it activates.
+class PluginContext:
+    """What a plugin is handed when it activates, and the groups it registers into.
 
     The container is the plugin's only channel to the application: it exposes the resolved configuration, and
     collects what the plugin registers. They are accumulated here rather than returned, so a plugin can decide what
@@ -46,11 +51,29 @@ class PluginContainer:
         """
         self.config = config
         self.workspace = config.workspace
+        #: What every front end has: extensions, providers, ``@`` providers and services.
+        self.agent = AgentGroups(self)
+        #: Plain commands: text and a toast, no widget and no shell.
+        self.commands = CommandGroups()
+        self._tui: TuiGroup | None = None
         self._available: Mapping[str, object] = services if services is not None else {}
         self._mentions: list[MentionProvider] = []
         self._providers: list[Provider] = []
         self._extensions: list[Contribution] = []
         self._services: dict[str, object] = {}
+
+    @property
+    def tui(self) -> TuiGroup | None:
+        """Return the terminal's group, or ``None`` in a process without a screen.
+
+        The loader attaches it once, before the plugin activates; a plugin reads it and never replaces it.
+        :class:`zettcode.app.plugins.groups.TuiGroups` is the implementation.
+        """
+        return self._tui
+
+    def attach_tui(self, group: TuiGroup) -> None:
+        """Give this context its terminal group; the terminal's loader is the caller."""
+        self._tui = group
 
     @property
     def extensions(self) -> tuple[Contribution, ...]:

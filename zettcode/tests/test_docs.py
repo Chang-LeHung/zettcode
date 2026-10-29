@@ -17,7 +17,7 @@ from zettcode.app.agent.conversation.entries import TextEntry
 from zettcode.app.agent.conversation.presenters import WelcomePresenter
 from zettcode.app.brand import LOGO_LINES, LOGO_PALETTE, LOGO_PIXELS
 from zettcode.app.commands import CommandContext, CommandUi
-from zettcode.app.plugins import TerminalContainer
+from zettcode.app.plugins.loader import terminal_context
 from zettcode.app.ui.widgets.welcome import WELCOME
 from zettcode.config import ModelConfig, ZettCodeConfig, load_config
 from zettcode.tui import DARK, Canvas, Style
@@ -115,9 +115,9 @@ class ExampleCommandUi(CommandUi):
 @pytest.mark.parametrize("path", ["docs/guide/plugins.md", "docs/zh/guide/plugins.md"])
 async def test_documented_plugin_registers_and_runs_its_command(path, tmp_path):
     examples = code_blocks(path, "python")
-    # Five blocks build the plugin; the sixth is the command that asks the model for something (see
-    # "Asking the model" / "让模型干活"), which is a handler like any other and compiles just the same.
-    assert len(examples) == 6
+    # Seven blocks: the first two show a plugin that guards its screen-only half, the rest build the one this test
+    # loads and the last is the command that asks the model for something (see "Asking the model" / "让模型干活").
+    assert len(examples) == 7
     namespace = {}
     for example in examples:
         exec(compile(example, path, "exec"), namespace)
@@ -126,12 +126,12 @@ async def test_documented_plugin_registers_and_runs_its_command(path, tmp_path):
         store=tmp_path / "sessions",
         models=(ModelConfig(model="example-model", token="example-key"),),
     )
-    container = TerminalContainer(config)
+    ctx = terminal_context(config)
     plugin = namespace["Greeter"]()
-    plugin.activate(container)
-    assert [command.name for command in container.commands] == ["/greet"]
+    plugin.activate(ctx)
+    assert [command.name for command in ctx.tui.registered_commands] == ["/greet"]
     ui = ExampleCommandUi()
-    result = await container.commands[0].handler(CommandContext(argument="Ada", ui=ui))
+    result = await ctx.tui.registered_commands[0].handler(CommandContext(argument="Ada", ui=ui))
     assert result.notification == "hello Ada"
     assert ui.events == []
 
@@ -145,7 +145,7 @@ async def test_documented_plugin_registers_and_runs_its_command(path, tmp_path):
     assert result.message == "## Hello\n\nWelcome, Ada."
 
     # The provider example is run as written: what the page says a plugin can describe is what loads.
-    described = TerminalContainer(config)
+    described = terminal_context(config)
     namespace["Acme"]().activate(described)
     (provider,) = described.providers
     assert (provider.name, provider.label, provider.api) == ("acme", "Acme AI", "chat")
@@ -156,7 +156,7 @@ async def test_documented_plugin_registers_and_runs_its_command(path, tmp_path):
         name = "audit"
 
     namespace["AuditExtension"] = AuditExtension
-    handed = TerminalContainer(config)
+    handed = terminal_context(config)
     namespace["Audit"]().activate(handed)
     assert [type(contribution.extension) for contribution in handed.extensions] == [AuditExtension]
 

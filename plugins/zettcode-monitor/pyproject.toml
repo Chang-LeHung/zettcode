@@ -22,9 +22,9 @@ classifiers = [
 ]
 dependencies = [
   # Imported directly (the command, the plugin base classes). ``zettcode.app.plugins`` first ships in the release
-  # after 0.1.10, so that release is the floor; the 0.2 line kept that plugin API, so the range takes every 0.2.x
-  # too instead of stopping at <0.2 and letting pip downgrade a 0.2 install out from under the plugin.
-  "zettcode>=0.1.11,<0.3",
+  # The plugin API this release uses — `PluginContext`, `TuiPlugin`, the three groups — is new in 0.3, and the
+  # 0.2 line still spells it `TerminalPlugin`/`TerminalContainer`.
+  "zettcode>=0.3,<0.4",
   # Imported directly for the extension hooks and message types; the same range zettcode itself depends on.
   "zett-agent>=0.2.0,<0.3",
 ]
