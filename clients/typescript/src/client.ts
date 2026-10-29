@@ -193,7 +193,10 @@ export class ZettCodeClient {
     return body.commands;
   }
 
-  /** Run one of them; a `prompt` in the answer is sent as the next prompt, with `shown` as its line. */
+  /**
+   * Run one of them. An answer with a `prompt` is a preset for a turn: the caller sends it as the next prompt, with
+   * `shown` as the conversation's line and the prompt as the instructions.
+   */
   runCommand(name: string, argument = ""): Promise<CommandAnswer> {
     const path = name.startsWith("/") ? name.slice(1) : name;
     return this.request<CommandAnswer>(`/commands/${encodeURIComponent(path)}`, {
@@ -360,6 +363,9 @@ export class Session {
     }
     if (options.mentions !== undefined) {
       body.mentions = options.mentions;
+    }
+    if (options.instructions !== undefined) {
+      body.instructions = options.instructions;
     }
     return new Run(this.client, "/prompts", body, options);
   }

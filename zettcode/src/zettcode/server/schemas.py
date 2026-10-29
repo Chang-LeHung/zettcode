@@ -119,10 +119,26 @@ class CommandOut(BaseModel):
     shown: str = ""
 
 
+class CommandInfoOut(BaseModel):
+    """One command every front end can run, as the list names it.
+
+    Attributes:
+        name: How it is typed, with its leading slash.
+        summary: One line, for a menu.
+        when_busy: What a front end does with it while a request is in flight.
+        subcommands: The words it takes first, for a menu that offers them.
+    """
+
+    name: str
+    summary: str
+    when_busy: str = "refuse"
+    subcommands: list[str] = Field(default_factory=list)
+
+
 class CommandsOut(BaseModel):
     """The commands every front end can run, in the order the plugins registered them."""
 
-    commands: list[dict[str, object]] = Field(default_factory=list)
+    commands: list[CommandInfoOut] = Field(default_factory=list)
 
 
 class ResumeRequest(RunOptions):
