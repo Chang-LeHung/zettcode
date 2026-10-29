@@ -11,7 +11,7 @@ One folder per workspace, one folder per session, and everything about a session
         ├── data.jsonl              <- the append-only message tree
         ├── metadata.json           <- title and times: written on creation and rename only
         ├── session.lock            <- held by the process that has the session open (see :mod:`locks`)
-        └── tool-output/            <- what a long shell command printed, kept for the model to read
+        └── tool-output/            <- long output any tool produced, kept for the model to read
 
 :mod:`records` owns the conversation's record types and the parsed read model,
 :mod:`metadata` owns the per-session file and the old log, and :mod:`store` puts them
