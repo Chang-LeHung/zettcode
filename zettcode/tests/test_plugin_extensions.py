@@ -322,12 +322,20 @@ def test_the_agent_plugins_load_without_failures_and_have_distinct_names(tmp_pat
     assert len(listed) == len(set(listed))
 
 
+def test_a_long_result_is_shortened_before_the_store_sees_it(tmp_path):
+    """The store is an extension as well: a result it takes first is the megabyte this one exists to keep out."""
+    names = [extension.name for extension in agent_extensions(make_config(tmp_path))]
+
+    assert names.index("LongOutputExtension") < names.index("SessionStore")
+
+
 def test_a_run_with_the_optional_tools_off_hands_the_agent_the_extensions_the_runtime_used_to_list_in_order(tmp_path):
     extensions = agent_extensions(make_config(tmp_path, skills_enabled=False, subagent_enabled=False))
 
     assert [extension.name for extension in extensions] == [
         "CodingBundle",
         "ToolOutputExtension",
+        "LongOutputExtension",
         "ModelCapabilities",
         "ShellDenyExtension",
         "ShellApprovalExtension",
@@ -357,6 +365,7 @@ def test_a_coding_child_is_given_these_of_the_extensions_the_parent_runs_and_not
     assert shared == [
         "CodingBundle",
         "ToolOutputExtension",
+        "LongOutputExtension",
         "ShellDenyExtension",
         "ShellApprovalExtension",
         "SkillExtension",
@@ -365,7 +374,7 @@ def test_a_coding_child_is_given_these_of_the_extensions_the_parent_runs_and_not
     assert "ParentModelSubAgents" not in shared and "SwitchedHarness" not in shared, "no task, no harness"
     assert "AskUserExtension" not in shared, "a child works through its task; it does not ask the person"
     assert "TodoWriteExtension" not in shared, "its plan would be drawn for nobody"
-    assert with_messaging == [*shared[:2], "SessionMessagingExtension", *shared[2:]]
+    assert with_messaging == [*shared[:3], "SessionMessagingExtension", *shared[3:]]
 
 
 def test_every_switch_adds_its_extension_at_its_place(tmp_path):
@@ -376,6 +385,7 @@ def test_every_switch_adds_its_extension_at_its_place(tmp_path):
     assert names_ == [
         "CodingBundle",
         "ToolOutputExtension",
+        "LongOutputExtension",
         "ModelCapabilities",
         "ParentModelSubAgents",
         "SessionMessagingExtension",

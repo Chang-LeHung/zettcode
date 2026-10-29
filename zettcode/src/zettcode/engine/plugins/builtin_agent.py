@@ -33,6 +33,7 @@ from zettcode.engine.extensions.compaction import CompactionCounter, OnDemandCom
 from zettcode.engine.extensions.context import ContextExtension
 from zettcode.engine.extensions.harness_switch import HarnessSwitch
 from zettcode.engine.extensions.tool_output import ToolOutputExtension
+from zettcode.engine.extensions.truncation import LongOutputExtension
 from zettcode.engine.extensions.usage import UsageExtension
 from zettcode.engine.messenger import Messenger
 from zettcode.engine.permission import ShellDenyExtension, ShellPolicy
@@ -125,6 +126,22 @@ class ToolOutput(Plugin):
     def activate(self, ctx: PluginContext) -> None:
         """Register the extension over the session store."""
         ctx.agent.register_extension(ToolOutputExtension(ctx.service(PERSISTENCE, SessionStore)))
+
+
+class LongOutput(Plugin):
+    """Keeps a result over a tool's budget in a file, and sends its start and its end instead.
+
+    The tools in this repository bound what they return themselves; this is the backstop for the ones that come
+    from elsewhere — an MCP server, a subagent, a plugin — so one long answer cannot fill the context of every
+    later request in the session.
+    """
+
+    name = "long-output"
+    description = "Keeps over-long tool results in the session folder"
+
+    def activate(self, ctx: PluginContext) -> None:
+        """Register the extension over the session store."""
+        ctx.agent.register_extension(LongOutputExtension(ctx.service(PERSISTENCE, SessionStore)))
 
 
 class Capabilities(Plugin):
@@ -518,6 +535,7 @@ AGENT_PLUGINS: tuple[Plugin[PluginContext], ...] = (
     FileResources(),
     CodingTools(),
     ToolOutput(),
+    LongOutput(),
     Capabilities(),
     Subagents(),
     Messaging(),

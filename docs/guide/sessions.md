@@ -14,7 +14,7 @@ One store root holds every workspace, grouped by workspace first:
     ├── data.jsonl              the conversation
     ├── metadata.json           the title, the times and the model: a couple of hundred bytes
     ├── session.lock            held by the process that has the session open
-    └── tool-output/            what long shell commands printed, kept for the model to read
+    └── tool-output/            long output kept for the model to read
 ```
 
 `<workspace key>` is the resolved workspace path with a `-` between its levels —
@@ -87,10 +87,14 @@ model, and the conversation says so:
   a session recorded under the old name still finds it.
 - `/fork` starts on the model the original was using.
 
-### Long command output
+### Long tool output
 
 When a shell command prints more than fits in a reply, the model is shown the start and
-the end and told where the whole output is. That output is kept in the session's own
+the end and told where the whole output is. A tool that is not one of ZettCode's own — an
+MCP server, a subagent, a plugin — is held to the same thing: a result longer than a tool
+of ours may return is cut to its start and its end, and the whole of it goes to the same
+place, so one long answer cannot fill the context of the rest of the session. Either way
+the output is kept in the session's own
 `tool-output/` folder under `~/.zettcode`, not in your project, so it never turns up in
 `git status` or a search. It is removed along with the session. Folders named
 `.zett-tool-output` that earlier versions left in your projects are not moved or deleted;
