@@ -274,12 +274,33 @@ def test_the_agents_edit_tool_is_drawn_as_an_edit_with_its_diff_and_the_old_name
 
     for name in ("edit", "replace_in_file"):
         transcript = Transcript(clock=lambda: 0.0)
-        transcript.start_tool("c", name, {"path": "a.py", "edits": [{"old_text": "x", "new_text": "y"}]})
+        transcript.start_tool("c", name, {"file_path": "a.py", "old_string": "x", "new_string": "y"})
         transcript.complete_tool("c", "Replaced 1 occurrence in a.py", wait=False)
         source = TranscriptSource(transcript, theme=DARK)
         text = "\n".join(source.line(i, 80).text for i in range(source.count(80)))
 
-        assert "Edited a.py" in text, (name, text)
+        assert "Edit a.py" in text, (name, text)
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        {"file_path": "a.py", "old_string": "x", "new_string": "y"},
+        {"path": "a.py", "edits": [{"old_text": "x", "new_text": "y"}]},
+    ],
+)
+def test_a_stored_multi_change_call_is_drawn_as_the_same_row(arguments):
+    """The arguments of a session written before one change a call still name the file and its diff."""
+    from zettcode.app import Transcript, TranscriptSource
+    from zettcode.tui import DARK
+
+    transcript = Transcript(clock=lambda: 0.0)
+    transcript.start_tool("c", "edit", arguments)
+    transcript.complete_tool("c", "Replaced 1 occurrence in a.py", wait=False)
+    source = TranscriptSource(transcript, theme=DARK)
+    text = "\n".join(source.line(i, 80).text for i in range(source.count(80)))
+
+    assert "Edit a.py" in text and "- x" in text and "+ y" in text
 
 
 def test_read_is_drawn_as_a_read():
@@ -287,7 +308,7 @@ def test_read_is_drawn_as_a_read():
     from zettcode.tui import DARK
 
     transcript = Transcript(clock=lambda: 0.0)
-    transcript.start_tool("c", "read", {"path": "a.py"})
+    transcript.start_tool("c", "read", {"file_path": "a.py"})
     transcript.complete_tool("c", "print(1)", wait=False)
     source = TranscriptSource(transcript, theme=DARK)
 

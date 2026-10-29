@@ -26,10 +26,9 @@ from .images import MAX_IMAGE_BYTES, SIGNATURE_BYTES, image_media_type
 from .output import MAX_MATCH_BYTES, MAX_OUTPUT_BYTES, utf8_prefix
 from .workspace import (
     MAX_FILE_BYTES,
-    FileEdit,
     Located,
     Pattern,
-    apply_edits,
+    apply_edit,
     read_lines,
     read_text,
     write_text,
@@ -38,10 +37,10 @@ from .workspace import (
 # The parameter types, named once so that the tools that share one agree on its limits and its schema.
 FilePath = Annotated[str, Field(min_length=1)]
 Expression = Annotated[str, Field(min_length=1)]
-StartLine = Annotated[int, Field(ge=1)]
-LineCount = Annotated[int, Field(ge=1, le=2_000)]
+Offset = Annotated[int, Field(ge=1)]
+Limit = Annotated[int, Field(ge=1, le=2_000)]
 MaxResults = Annotated[int, Field(ge=1, le=5_000)]
-Edits = Annotated[list[FileEdit], Field(min_length=1, description="Ordered exact-text edits applied in one call")]
+OldString = Annotated[str, Field(min_length=1)]
 
 #: What a reader hands back: text, or a text line and the picture it describes.
 ReadResult = str | list[TextContent | ImageContent]
@@ -54,35 +53,33 @@ def _image_type_of(path: Path) -> str | None:
 
 
 @tool
-def read(
-    path: FilePath, start_line: StartLine = 1, line_count: LineCount = 200, start_column: StartLine = 1
-) -> ReadResult:
+def read(file_path: FilePath, offset: Offset = 1, limit: Limit = 200) -> ReadResult:
     """Read a local file: UTF-8 text as a line range, or a PNG, JPEG, GIF, or WebP image as an image.
 
     Args:
-        path: Absolute path or a path relative to the current working directory.
-        start_line: One-based first line to return; ignored for images.
-        line_count: Maximum number of lines to return; ignored for images.
-        start_column: One-based character column on start_line, used to resume a long line; ignored for images.
+        file_path: Absolute path or a path relative to the current working directory.
+        offset: One-based line number to start reading from; ignored for images.
+        limit: Maximum number of lines to return; ignored for images.
 
     Snippet:
-        read(path="docs/diagram.png")
+        read(file_path="docs/diagram.png")
 
     Guidelines:
         - Use for any local file when you do not know whether it is text or an image.
         - A text file comes back as a line range; use line ranges for large files.
-        - A trailing hint gives the next start_line and start_column when more text remains.
+        - A trailing hint says how to go on: the next offset when more lines remain, or the shell when one line is
+          longer than the output limit.
         - An image comes back as an image with a one-line description; the range arguments do not apply to it.
         - PDF and SVG files are not supported.
     """
-    located = Located.of(path)
+    located = Located.of(file_path)
     target = located.require_file()
     media_type = _image_type_of(target)
     if media_type is None:
-        return read_lines(located, start_line, line_count, start_column)
+        return read_lines(located, offset, limit)
     size = target.stat().st_size
     if size > MAX_IMAGE_BYTES:
-        raise ValueError(f"Image exceeds the {MAX_IMAGE_BYTES}-byte limit: {path}")
+        raise ValueError(f"Image exceeds the {MAX_IMAGE_BYTES}-byte limit: {file_path}")
     return [
         TextContent(text=f"Image {target.name}: {media_type}, {size} bytes"),
         ImageContent(source=ImageBytesSource(data=target.read_bytes(), media_type=media_type), alt_text=target.name),
@@ -90,28 +87,26 @@ def read(
 
 
 @tool
-def read_file(
-    path: FilePath, start_line: StartLine = 1, line_count: LineCount = 200, start_column: StartLine = 1
-) -> str:
+def read_file(file_path: FilePath, offset: Offset = 1, limit: Limit = 200) -> str:
     """Read a line range from a UTF-8 text file.
 
     Args:
-        path: Absolute path or a path relative to the current working directory.
-        start_line: One-based first line to return.
-        line_count: Maximum number of lines to return.
-        start_column: One-based character column on start_line, used to resume a long line.
+        file_path: Absolute path or a path relative to the current working directory.
+        offset: One-based line number to start reading from.
+        limit: Maximum number of lines to return.
 
     Snippet:
-        read_file(path="src/app.py", start_line=1, line_count=200)
+        read_file(file_path="src/app.py", offset=1, limit=200)
 
     Guidelines:
         - Use line ranges for large files.
         - Inspect the current content before editing a file.
-        - A trailing hint gives the next start_line and start_column when more content remains.
+        - A trailing hint says how to go on: the next offset when more lines remain, or the shell when one line is
+          longer than the output limit.
     """
-    located = Located.of(path)
+    located = Located.of(file_path)
     located.require_file()
-    return read_lines(located, start_line, line_count, start_column)
+    return read_lines(located, offset, limit)
 
 
 @tool
@@ -211,55 +206,55 @@ def grep(
 
 
 @tool
-def write_file(path: FilePath, content: str, overwrite: bool = True) -> str:
+def write_file(file_path: FilePath, content: str, overwrite: bool = True) -> str:
     """Atomically write a UTF-8 text file.
 
     Args:
-        path: Absolute path or a path relative to the current working directory.
+        file_path: Absolute path or a path relative to the current working directory.
         content: Complete UTF-8 text to write.
         overwrite: Whether an existing file may be replaced.
 
     Snippet:
-        write_file(path="notes/plan.md", content="# Plan\\n")
+        write_file(file_path="notes/plan.md", content="# Plan\\n")
 
     Guidelines:
         - Use for new files or intentional full-file replacement.
         - Prefer edit for a small change to an existing file.
     """
-    located = Located.of(path)
+    located = Located.of(file_path)
     exists = located.path.exists()
     if exists and not located.path.is_file():
-        raise ValueError(f"Path is not a file: {path}")
+        raise ValueError(f"Path is not a file: {file_path}")
     if exists and not overwrite:
-        raise ValueError(f"File already exists: {path}")
+        raise ValueError(f"File already exists: {file_path}")
     write_text(located.path, content)
     return f"{'Wrote' if exists else 'Created'} {located.shown}"
 
 
 @tool
-def edit(path: FilePath, edits: Edits) -> str:
+def edit(file_path: FilePath, old_string: OldString, new_string: str, replace_all: bool = False) -> str:
     """Edit an existing UTF-8 file by replacing exact text; always use this tool to modify a file.
 
     Args:
-        path: Absolute path or a path relative to the current working directory.
-        edits: Ordered edits applied in one call; each one replaces exact text once, or every
-            match when it sets replace_all. Pass a single-element list for one change.
+        file_path: Absolute path or a path relative to the current working directory.
+        old_string: The exact text to replace, copied from the file as it is now.
+        new_string: The text to put in its place; an empty string deletes the match.
+        replace_all: Replace every occurrence of old_string instead of insisting it appears once.
 
     Snippet:
-        edit(path="notes/plan.md", edits=[{"old_text": "Draft", "new_text": "Final"}])
-        edit(path="notes/plan.md", edits=[{"old_text": "First", "new_text": "1st"}, {"old_text": "Second", "new_text": "2nd", "replace_all": True}])
+        edit(file_path="notes/plan.md", old_string="Draft", new_string="Final")
+        edit(file_path="notes/plan.md", old_string="Total", new_string="Sum", replace_all=True)
 
     Guidelines:
         - Always use this tool when you need to modify an existing file, instead of sed, awk, perl -i, python -c, tee, or shell redirection. Reserve those for bulk or mechanical rewrites this tool cannot express, such as renaming a symbol across many files.
+        - One change a call: call edit again for the next change, and nothing is written when the old text does not match.
         - Avoid sed, cat, and similar shell commands for reading or changing files unless it is necessary; inspect files with the read tool and change them with this tool.
-        - Read the target lines first and copy old_text exactly: same indentation, quotes, and line breaks.
-        - Make old_text unique by including a neighbouring line or two; set replace_all only when every occurrence must change.
-        - Send every change for the file in one call: edits apply in order, each one sees the previous result, and nothing is written if any edit fails.
-        - When an edit fails, read the file again and retry with corrected old_text rather than switching to a shell command.
+        - Read the target lines first and copy old_string exactly: same indentation, quotes, and line breaks.
+        - Make old_string unique by including a neighbouring line or two; set replace_all only when every occurrence must change.
+        - When an edit fails, read the file again and retry with corrected old_string rather than switching to a shell command.
     """
-    located = Located.of(path)
-    updated, replacements = apply_edits(read_text(located.require_file()), edits)
-    # One write for the whole batch: a failing edit leaves the file untouched.
+    located = Located.of(file_path)
+    updated, replacements = apply_edit(read_text(located.require_file()), old_string, new_string, replace_all)
     write_text(located.path, updated)
     return f"Replaced {replacements} occurrence{'s' if replacements != 1 else ''} in {located.shown}"
 

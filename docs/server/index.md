@@ -84,7 +84,7 @@ event: event
 data: {"type":"text_delta","text":"The README describes"}
 
 event: event
-data: {"type":"tool_started","call_id":"call-1","name":"read_file","arguments":{"path":"README.md"}}
+data: {"type":"tool_started","call_id":"call-1","name":"read_file","arguments":{"file_path":"README.md"}}
 
 event: result
 data: {"text":"The README describes …","session_id":"01a15…","usage":{…},"tools":[…],"stop":null}

@@ -12,6 +12,7 @@ from zettcode.app.agent.conversation.rendering import (
     Renderers,
     ToolHandler,
     ToolRow,
+    edit_changes,
     edited_lines,
     language_for_path,
 )
@@ -74,15 +75,16 @@ def test_a_read_row_does_not_lose_its_count_when_the_title_is_restated_or_cut():
 
 
 def test_the_chain_phrases_the_coding_tools():
-    assert describe("read_file", path="src/app.py") == "Read src/app.py"
-    assert describe("write_file", path="notes/plan.md") == "Write notes/plan.md"
-    assert describe("replace_in_file", path="app.py", edits=[{"old": "a"}, {"old": "b"}]) == "Edited app.py (2 edits)"
-    assert describe("replace_in_file", path="app.py", edits=[{"old": "a"}]) == "Edited app.py (1 edit)"
-    assert describe("replace_in_file", path="app.py") == "Edited app.py"
+    assert describe("read_file", file_path="src/app.py") == "Read src/app.py"
+    assert describe("write_file", file_path="notes/plan.md") == "Write notes/plan.md"
+    assert describe("edit", file_path="app.py", old_string="a", new_string="b") == "Edit app.py"
+    assert describe("edit", file_path="app.py") == "Edit app.py"
+    assert describe("replace_in_file", path="app.py") == "Edit app.py", "a stored session keeps its own argument name"
     assert describe("delete_file", path="99\u4e58\u6cd5\u8868.txt") == "Deleted 99\u4e58\u6cd5\u8868.txt"
-    assert describe("bash", command="pwd && ls -la") == "Ran pwd && ls -la"
+    assert describe("bash", command="pwd && ls -la") == "Bash pwd && ls -la"
     assert describe("glob", pattern="**/*.py") == "Listed **/*.py"
-    assert describe("grep", pattern="TODO", path="src") == "Searched TODO in src"
+    assert describe("grep", pattern="TODO", file_pattern="src") == "Searched TODO in src"
+    assert describe("grep", pattern="TODO", path="src") == "Searched TODO in src", "a stored session's argument"
     assert describe("web_search", query="zettcode github") == 'Searched the web for "zettcode github"'
     assert describe("web_search") == "Searched the web"
     # A question is the one row that waited for a person: it is named as a thing, with a capital.
@@ -95,35 +97,26 @@ def test_the_chain_phrases_the_coding_tools():
 
 
 def test_an_edit_row_counts_the_lines_it_changes():
-    """The row says how large the change is, not only how many edits it carries.
+    """The row says how large the change is, which the tool's own answer does not.
 
-    `Replaced 2 occurrences in app.py` is the tool's whole answer, and it reads the
-    same for a two-line fix and a two-hundred-line rewrite. The edits hold both
-    texts, so the difference is counted where the tool cannot be asked, and the
-    counts ride outside the title because they are drawn in their own colours.
+    `Replaced 1 occurrence in app.py` reads the same for a two-line fix and a
+    two-hundred-line rewrite. The call carries both texts, so the difference is
+    counted where the tool cannot be asked, and the counts ride outside the title
+    because they are drawn in their own colours.
     """
     twelve = "\n".join(f"line {index}" for index in range(12))
 
-    counted = opened("replace_in_file", path="app.py", edits=[{"old_text": "a\nb\nc", "new_text": twelve}])
+    counted = opened("edit", file_path="app.py", old_string="a\nb\nc", new_string=twelve)
 
-    assert (counted.title, counted.added, counted.removed) == ("Edited app.py (1 edit)", 12, 3)
+    assert (counted.title, counted.added, counted.removed) == ("Edit app.py", 12, 3)
 
     # A side stays at zero when nothing was added or removed: the renderer draws
     # nothing for it, so there is no `-0` for a reader to decode.
-    added = opened("replace_in_file", path="app.py", edits=[{"old_text": "one\ntwo", "new_text": "one\ntwo\nthree"}])
-    assert (added.title, added.added, added.removed) == ("Edited app.py (1 edit)", 1, 0)
+    added = opened("edit", file_path="app.py", old_string="one\ntwo", new_string="one\ntwo\nthree")
+    assert (added.title, added.added, added.removed) == ("Edit app.py", 1, 0)
 
-    removed = opened(
-        "replace_in_file", path="app.py", edits=[{"old_text": "one\ntwo\nthree", "new_text": "one\nthree"}]
-    )
-    assert (removed.title, removed.added, removed.removed) == ("Edited app.py (1 edit)", 0, 1)
-
-    both = opened(
-        "replace_in_file",
-        path="app.py",
-        edits=[{"old_text": "a", "new_text": "b"}, {"old_text": "c\nd", "new_text": "e"}],
-    )
-    assert (both.title, both.added, both.removed) == ("Edited app.py (2 edits)", 2, 3)
+    removed = opened("edit", file_path="app.py", old_string="one\ntwo\nthree", new_string="one\nthree")
+    assert (removed.title, removed.added, removed.removed) == ("Edit app.py", 0, 1)
 
 
 def test_a_rewritten_line_counts_as_one_added_and_one_removed():
@@ -132,17 +125,28 @@ def test_a_rewritten_line_counts_as_one_added_and_one_removed():
     A replacement that keeps the lines around it and changes one of them is one
     line added and one removed; subtracting the lengths would call it nothing.
     """
-    rewritten = opened(
-        "replace_in_file", path="app.py", edits=[{"old_text": "keep\nold\nkeep", "new_text": "keep\nnew\nkeep"}]
+    rewritten = opened("edit", file_path="app.py", old_string="keep\nold\nkeep", new_string="keep\nnew\nkeep")
+
+    assert (rewritten.title, rewritten.added, rewritten.removed) == ("Edit app.py", 1, 1)
+
+
+def test_a_stored_batch_of_edits_is_still_read():
+    """A session written before a call carried one change has a list under ``edits``; it still shows its diff."""
+    legacy = opened(
+        "replace_in_file",
+        path="app.py",
+        edits=[{"old_text": "a", "new_text": "b"}, {"old_text": "c\nd", "new_text": "e"}],
     )
 
-    assert (rewritten.title, rewritten.added, rewritten.removed) == ("Edited app.py (1 edit)", 1, 1)
+    assert (legacy.title, legacy.added, legacy.removed) == ("Edit app.py", 2, 3)
+    assert ("@", "edit 1 of 2") in legacy.diff and ("@", "edit 2 of 2") in legacy.diff
 
 
 def test_edits_that_carry_no_texts_are_not_guessed_at():
     """An argument shape the counter does not recognise leaves the row as it was."""
-    assert describe("replace_in_file", path="app.py", edits=[{"old": "a"}]) == "Edited app.py (1 edit)"
-    assert describe("replace_in_file", path="app.py", edits="two edits, honest") == "Edited app.py"
+    assert describe("edit", file_path="app.py", old_string="a") == "Edit app.py"
+    assert describe("edit", file_path="app.py", edits="two edits, honest") == "Edit app.py"
+    assert edit_changes({"edits": [{"old_text": "a"}]}) == ()
 
 
 def test_the_counter_ignores_shapes_it_cannot_read():
@@ -151,22 +155,23 @@ def test_the_counter_ignores_shapes_it_cannot_read():
     The arguments arrive from the model, so anything can be in them; a row that
     invented a number would be worse than a row that says less.
     """
-    assert edited_lines("two edits, honest") == (0, 0)
-    assert edited_lines(None) == (0, 0)
-    assert edited_lines([]) == (0, 0)
-    assert edited_lines([{"old_text": "a"}, {"new_text": "b"}, "junk", 7]) == (0, 0)
-    assert edited_lines([{"old_text": "a", "new_text": "b"}]) == (1, 1)
+    assert edit_changes({"edits": "two edits, honest"}) == ()
+    assert edit_changes({"edits": None}) == ()
+    assert edit_changes({"edits": []}) == ()
+    assert edit_changes({"edits": [{"old_text": "a"}, {"new_text": "b"}, "junk", 7]}) == ()
+    assert edit_changes({"old_string": 7, "new_string": "b"}) == ()
+    assert edited_lines(edit_changes({"old_string": "a", "new_string": "b"})) == (1, 1)
 
 
 def test_an_edit_that_replaces_every_occurrence_counts_once():
     """Only the file knows how many matches there are; the row does not guess.
 
     `replace_all` may hit five occurrences or none, and the arguments cannot say
-    which — the tool's answer names the count, and the row counts the edit.
+    which — the tool's answer names the count, and the row counts the change.
     """
-    once = opened("replace_in_file", path="app.py", edits=[{"old_text": "old", "new_text": "new", "replace_all": True}])
+    once = opened("edit", file_path="app.py", old_string="old", new_string="new", replace_all=True)
 
-    assert (once.title, once.added, once.removed) == ("Edited app.py (1 edit)", 1, 1)
+    assert (once.title, once.added, once.removed) == ("Edit app.py", 1, 1)
 
 
 def test_a_namespaced_tool_names_its_server_without_claiming_a_protocol():
@@ -192,8 +197,8 @@ def test_the_task_tool_reads_as_a_subagent_not_as_raw_arguments():
 
 def test_a_missing_or_unusable_argument_degrades_to_a_placeholder():
     assert describe("read_file") == "Read (unknown file)"
-    assert describe("read_file", path=7) == "Read (unknown file)"
-    assert describe("bash", command="   ") == "Ran (unknown command)"
+    assert describe("read_file", file_path=7) == "Read (unknown file)"
+    assert describe("bash", command="   ") == "Bash (unknown command)"
     assert describe("glob") == "Listed files"
     assert describe("grep", pattern="x") == "Searched x"
 
@@ -214,12 +219,16 @@ def test_the_plan_tool_counts_its_steps():
 
 
 def test_read_rows_name_their_language_and_drop_the_continuation_hint():
-    assert DEFAULT_RENDERERS.describe("read_file", {"path": "app.py"}).language == "python"
-    assert DEFAULT_RENDERERS.describe("read_file", {"path": "notes.md"}).language is None
+    assert DEFAULT_RENDERERS.describe("read_file", {"file_path": "app.py"}).language == "python"
+    assert DEFAULT_RENDERERS.describe("read_file", {"file_path": "notes.md"}).language is None
 
-    body = DEFAULT_RENDERERS.body("read_file", "one\ntwo\n... [more lines; continue with start_line=3]")
-
-    assert body == "one\ntwo"
+    for hint in (
+        "... [more lines; continue with offset=3]",
+        "... [output truncated; continue with offset=1200]",
+        "... [line truncated; line 2 is longer than the 50 KB output limit and was cut here; read it with the shell]",
+    ):
+        body = DEFAULT_RENDERERS.body("read_file", f"one\ntwo\n{hint}")
+        assert body == "one\ntwo", hint
 
 
 def test_the_chain_asks_handlers_in_order():

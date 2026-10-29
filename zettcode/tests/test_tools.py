@@ -21,18 +21,17 @@ def test_every_tool_schema_stands_on_its_own():
     proxy did to every turn until the runtime expanded the references. The
     expanded form is the same schema written out longhand, so nothing is lost by
     sending it: what has to hold is that no self-reference reaches the wire.
+
+    ``edit`` used to be the tool with a nested model; it takes one change as
+    three flat strings now, so the rule is checked on a bundle where nothing is
+    nested, and that no nesting came back is checked with it.
     """
     schemas = {tool.name: json.dumps(tool.parameters) for tool in CodingBundle().tools}
 
-    # ``edit`` is the tool with a nested model, so it is the one whose
-    # rendering this test is about; a rename that emptied the bundle would
-    # otherwise make the assertions below pass on nothing.
-    assert "edit" in schemas
+    assert "edit" in schemas, "a rename that emptied the bundle would make this pass on nothing"
     assert '"$ref"' not in "".join(schemas.values())
     assert '"$defs"' not in "".join(schemas.values())
 
-    # And the nested model really is there, inlined: a field of it is described
-    # where it is used, not left behind the pointer.
-    edits = json.loads(schemas["edit"])["properties"]["edits"]
-    assert set(edits["items"]["properties"]) >= {"old_text", "new_text"}
-    assert edits["items"]["properties"]["old_text"]["description"] == "Exact text to find"
+    props = json.loads(schemas["edit"])["properties"]
+    assert set(props) == {"file_path", "old_string", "new_string", "replace_all"}
+    assert props["replace_all"]["default"] is False

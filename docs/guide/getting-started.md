@@ -171,7 +171,7 @@ make a task easier to review than "improve this project".
    never mistaken for a frozen one. It stays pinned to the bottom of the
    transcript: reasoning, tool calls, and the answer all appear above it.
 2. Reasoned text arrives collapsed under a `Thinking` row, and tool calls read
-   like a log — `Read src/app.py`, `Ran pwd`.
+   like a log — `Read src/app.py`, `Bash pwd`.
 3. When the model asks for a shell command, a panel asks first — `y` runs it
    once, `p` remembers that exact command, `s` stops asking for read-only
    commands, `a` stops asking for any, `Esc` refuses. `/permission` sets the

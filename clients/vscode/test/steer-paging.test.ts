@@ -265,6 +265,10 @@ test("a block with no language is coloured when the highlighter is sure, and lef
 test("an edit row shows the lines it added and removed, and a file written whole the lines it holds", async () => {
   assert.deepEqual(lineStats("edit", { path: "a.ts", old_text: "a\nb\n", new_text: "c\nd\ne" }), { added: 3, removed: 2 });
   assert.deepEqual(
+    lineStats("edit", { file_path: "a.ts", old_string: "a\nb\n", new_string: "c\nd\ne" }),
+    { added: 3, removed: 2 },
+  );
+  assert.deepEqual(
     lineStats("edit", { path: "a.ts", edits: [{ old_text: "x", new_text: "y\nz" }, { old_text: "", new_text: "w" }] }),
     { added: 3, removed: 1 },
   );
@@ -273,7 +277,7 @@ test("an edit row shows the lines it added and removed, and a file written whole
   assert.equal(lineStats("edit", { path: "a.ts" }), null);
 
   const turn = createTurn("edit", [], 0, "turn-e");
-  applyEvent(turn, { type: "tool_started", call_id: "c", name: "edit", arguments: { path: "a.ts", old_text: "a", new_text: "b\nc" } }, 1);
+  applyEvent(turn, { type: "tool_started", call_id: "c", name: "edit", arguments: { file_path: "a.ts", old_string: "a", new_string: "b\nc" } }, 1);
   const ui = await open([turn]);
   assert.equal(ui.text('[data-id="turn-e"] .tool-stats').replace(/\s+/g, " ").trim(), "+2−1");
 });

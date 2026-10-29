@@ -334,7 +334,7 @@ async def test_at_safe_on_a_machine_with_no_sandbox_the_child_falls_back_as_the_
 
 
 async def test_the_childs_edits_are_made_in_the_workspace_with_the_tools_it_shares(tmp_path: Path):
-    steps = (("write_file", {"path": "made.txt", "content": "hello\n"}),)
+    steps = (("write_file", {"file_path": "made.txt", "content": "hello\n"}),)
     world = _World(tmp_path, _Scripted(*steps), Permission.ASK)
 
     await world.run()

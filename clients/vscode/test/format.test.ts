@@ -114,6 +114,7 @@ test("a tool body is the command or the edit", () => {
   const diff = toolDetail("edit", { edits: [{ old_text: "a", new_text: "  b" }, { old_text: "c", new_text: "d" }] });
   assert.equal(diff, "@@ edit 1 of 2\n-a\n+  b\n@@ edit 2 of 2\n-c\n+d");
   assert.equal(toolDetail("edit", { old_text: "a", new_text: "b" }), "-a\n+b");
+  assert.equal(toolDetail("edit", { old_string: "a", new_string: "b" }), "-a\n+b", "the current argument names");
   assert.equal(toolLanguage("edit", {}), "diff");
   assert.ok(toolDetail("read_file", { path: "a" }).includes("\"path\": \"a\""));
 });

@@ -55,7 +55,8 @@ def test_the_system_prompt_tells_the_model_to_change_files_with_the_file_tools_a
     for forbidden in ("sed", "awk", "perl -i", "python -c", "cat or echo with a redirection", "a heredoc", "tee"):
         assert forbidden in flat, forbidden
     assert "Never change a file's contents through the shell" in flat
-    assert "retry it with corrected old_text; do not fall back to a shell command" in flat
+    assert "make one change a call" in flat and "call edit again for the next one" in flat
+    assert "retry it with corrected old_string; do not fall back to a shell command" in flat
 
 
 def test_the_system_prompt_tells_the_model_to_read_with_the_file_tool_and_in_line_ranges(tmp_path):
@@ -68,7 +69,7 @@ def test_the_system_prompt_tells_the_model_to_read_with_the_file_tool_and_in_lin
     assert "Reading files: call read" in flat
     for refused in ("cat", "sed", "head", "tail", "nl", "awk"):
         assert refused in flat.split("Reading files:")[1], refused
-    assert "start_line and line_count" in flat
+    assert "start_line and line_count" not in flat and "read takes file_path, offset and limit" in flat
     assert "a long file is read in the parts you need rather than whole" in flat
     assert "Those shell tools are for what read cannot do" in flat, "an exception, not a licence to use them"
     assert "and only then" in flat and "say what read could not do" in flat

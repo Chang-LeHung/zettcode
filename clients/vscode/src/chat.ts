@@ -2311,7 +2311,7 @@ function stringOf(args: Record<string, unknown>, ...keys: string[]): string {
   return "";
 }
 
-/** The `old_text`/`new_text` pairs of an edit call, in the order they were applied. */
+/** The old/new text of an edit call: `old_string`/`new_string`, and the `edits` list of a stored older one. */
 function editPairs(args: Record<string, unknown>): EditPair[] {
   const edits = args.edits;
   const list = Array.isArray(edits) ? edits : [args];
@@ -2319,8 +2319,8 @@ function editPairs(args: Record<string, unknown>): EditPair[] {
   for (const edit of list) {
     if (edit !== null && typeof edit === "object") {
       const record = edit as Record<string, unknown>;
-      const oldText = record.old_text ?? record.oldText;
-      const newText = record.new_text ?? record.newText;
+      const oldText = record.old_string ?? record.old_text ?? record.oldString ?? record.oldText;
+      const newText = record.new_string ?? record.new_text ?? record.newString ?? record.newText;
       if (typeof oldText === "string" && typeof newText === "string") {
         pairs.push({ oldText, newText });
       }

@@ -8,8 +8,8 @@ panels temporarily cover the lower part of it.
   ▐ zettcode  New session · @api · ~/projects/api   DeepSeek Pro · high  ← header
  ─────────────────────────────────────────────────────────
  ● Read src/api/users.py · 199 lines                       ← transcript
- ● Edited src/api/users.py (2 edits) +24 -6             (scrolls)
- ● Ran pytest tests/test_users.py
+ ● Edit src/api/users.py +24 -6                         (scrolls)
+ ● Bash pytest tests/test_users.py
  ─────────────────────────────────────────────────────────
    ▸ panels open here: model, context, sessions           ← panel
  ─────────────────────────────────────────────────────────
@@ -61,14 +61,14 @@ Every kind of output has its own row, in the order it happened:
 - **Your message** is marked with `›` and a band of colour.
 - **Thinking** is collapsed to one row. `Ctrl-T` or a click opens the newest one;
   each block can be opened on its own.
-- **Tool calls** read like a log — `Read src/app.py · 199 lines`, `Ran pwd`, `Edited
-  app.py (2 edits) +24 -6`, `Write src/new.py +40`, `Searched TODO in src`. A read says how many lines came back. An edit's added lines
+- **Tool calls** read like a log — `Read src/app.py · 199 lines`, `Bash pwd`, `Edit
+  app.py +24 -6`, `Write src/new.py +40`, `Searched TODO in src`. A read says how many lines came back. An edit's added lines
   are painted green and its removed ones red, whether the call is still running or done, and a
   write says how many lines the file now holds. Once an edit or a write has succeeded the row shows
   **the change itself** under the title, instead of the tool's one-line answer:
 
   ```text
-  ✓ Edited app.py (1 edit) +2 -1  0.0 s ▸
+  ✓ Edit app.py +2 -1  0.0 s ▸
     └ - x = 1
       + x = 2
         keep
@@ -76,7 +76,7 @@ Every kind of output has its own row, in the order it happened:
   ```
 
   A removed line is red, an added one green, and one unchanged line either side keeps the change in
-  place; several edits in one call are told apart by `edit 1 of 3`. A written file is shown the same
+  place. A session stored when one call could carry several changes says so with `edit 1 of 3`. A written file is shown the same
   way with **every line added**: the call holds the new content and not what it replaced, so nothing
   can be shown as removed. A failed edit or write shows its error instead, because nothing changed. The first five rows stay visible and the rest is behind a click
   (up to forty when open); a long line is cut at the width, never wrapped. Other output works the
