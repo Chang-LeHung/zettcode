@@ -3,6 +3,8 @@
 import { RunCancelledError, RunFailedError, ZettCodeError } from "./errors.js";
 import { sseFrames } from "./sse.js";
 import type {
+  CommandAnswer,
+  CommandInfo,
   ApprovalPolicy,
   Compaction,
   ContextReport,
@@ -183,6 +185,21 @@ export class ZettCodeClient {
   /** The plugins the server loaded, and the ones that failed. */
   plugins(): Promise<PluginReport> {
     return this.request<PluginReport>("/plugins");
+  }
+
+  /** The commands every front end may run — the ones a plugin registered on `ctx.commands`. */
+  async commands(): Promise<CommandInfo[]> {
+    const body = await this.request<{ commands: CommandInfo[] }>("/commands");
+    return body.commands;
+  }
+
+  /** Run one of them; a `prompt` in the answer is sent as the next prompt, with `shown` as its line. */
+  runCommand(name: string, argument = ""): Promise<CommandAnswer> {
+    const path = name.startsWith("/") ? name.slice(1) : name;
+    return this.request<CommandAnswer>(`/commands/${encodeURIComponent(path)}`, {
+      method: "POST",
+      body: JSON.stringify({ argument }),
+    });
   }
 
   // -- usage -------------------------------------------------------------

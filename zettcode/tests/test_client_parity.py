@@ -97,6 +97,8 @@ TYPESCRIPT_ONLY: dict[str, dict[str, str]] = {
         "cancelRun": "the server's run registry; Python closes the stream",
         "approve": "a remote event has no methods; Python answers on the event",
         "answer": "a remote event has no methods; Python answers on the event",
+        "commands": "the server's command registry; Python's plugins are in-process, so `client.plugins` carries them",
+        "runCommand": "the same registry, run over HTTP; Python calls the handler it already holds",
     },
     "Session": {
         "info": "what Python reads as properties",

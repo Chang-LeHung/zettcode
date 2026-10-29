@@ -66,7 +66,7 @@ from zettcode.app.plugins import (
     UiBuilder,
 )
 from zettcode.app.plugins.builtin_commands import CodeReview
-from zettcode.app.plugins.loader import terminal_context
+from zettcode.app.plugins.loader import plain_commands, terminal_context
 from zettcode.app.plugins.state import TurnSegment
 from zettcode.app.ui import app as app_module
 from zettcode.app.ui import demo
@@ -481,9 +481,10 @@ def rows_and_commands(
         ctx.tui.slots.add(region, side, name, builder)
     for presenter in presenters:
         ctx.tui.register_presenter(presenter)  # type: ignore[arg-type]
+    plain = plain_commands(ctx)
     return TuiPlugins(
-        commands=(*ctx.tui.registered_commands, *commands),
-        builtin_commands=tuple(ctx.tui.registered_commands),
+        commands=(*ctx.tui.registered_commands, *plain, *commands),
+        builtin_commands=tuple((*ctx.tui.registered_commands, *plain)),
         rows=ctx.tui.rows,
         failures=failures,
         themes=ctx.tui.themes,

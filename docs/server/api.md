@@ -43,6 +43,8 @@ Except on `/health`, every endpoint requires `Authorization: Bearer <token>` whe
 | `GET` | `/settings` | — | `{"model","effort","efforts","permission","permissions","harness"}`; after a `PATCH` that moved the compaction point it also has `"unsaved"` (see below). |
 | `PATCH` | `/settings` | `{"model"?, "effort"?, "permission"?, "harness"?, "compact_percent"?}` | The same as `GET /settings`, after the change. At least one field. `permission` is `deny`, `ask`, `safe` or `full` (`auto` is the old name of `full` and is answered as `full`); `harness` turns the just-in-time tool harness on or off from the next prompt. `compact_percent` is above 0 and at most 100, applies from the next request and is written to the configuration file; when the file cannot be written the answer carries `"unsaved": "<why>"` and the change holds for this run only. Moving `compact_percent` is refused with `409` while a run is in progress; the other fields are not. |
 | `GET` | `/plugins` | — | `{"loaded": [...], "failures": [...]}` |
+| `GET` | `/commands` | — | `{"commands": [{"name", "summary", "when_busy", "subcommands"}]}` |
+| `POST` | `/commands/{name}` | `{"argument"}` | `{"message", "notification", "prompt", "shown"}` — a `prompt` is sent as the next `POST /prompts`, with `shown` as its line |
 | `GET` | `/mentions?query=&limit=50` | — | `{"mentions": [{"token","kind","name","description"}]}`: the files, skills and plugin resources an `@` can reference. |
 | `POST` | `/doctor` | `{"timeout"?: 30}` | `{"checks": [{"model","model_id","ok","seconds","detail","input_tokens","output_tokens"}]}`: every configured model asked one short question. |
 

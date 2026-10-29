@@ -83,11 +83,46 @@ class PromptRequest(RunOptions):
         text: What to ask the agent; ``@path`` references are resolved when ``mentions`` is on.
         images: Pictures for a model that takes them.
         mentions: Resolve ``@`` references in the text, as the terminal does.
+        instructions: What the model reads after ``text`` and the conversation does not show — what a command's
+            preset is, when the reader typed ``/code-review`` and the model reads the brief.
     """
 
     text: str = Field(min_length=1)
     images: list[ImageIn] = Field(default_factory=list)
     mentions: bool = True
+    instructions: str | None = None
+
+
+class CommandIn(BaseModel):
+    """One run of a command the plugins registered for every front end.
+
+    Attributes:
+        argument: What was typed after the command's name.
+    """
+
+    argument: str = ""
+
+
+class CommandOut(BaseModel):
+    """What a command answered with: words, or a prompt to run next.
+
+    Attributes:
+        message: Markdown for the conversation.
+        notification: A one-line remark, when the command has one.
+        prompt: The text to send as ``POST /prompts`` when the command is a preset for a turn; empty otherwise.
+        shown: What the conversation should show for that turn, which is the command as typed.
+    """
+
+    message: str = ""
+    notification: str = ""
+    prompt: str = ""
+    shown: str = ""
+
+
+class CommandsOut(BaseModel):
+    """The commands every front end can run, in the order the plugins registered them."""
+
+    commands: list[dict[str, object]] = Field(default_factory=list)
 
 
 class ResumeRequest(RunOptions):
