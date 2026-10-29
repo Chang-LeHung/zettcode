@@ -114,8 +114,12 @@ export function describeTool(name: string, args: Record<string, unknown>, output
         ...(path ? { path } : {}),
       };
     case "bash":
-    case "shell":
-      return { verb: "Bash", target: command || "(command)" };
+    case "shell": {
+      // The row says where the call runs when that is not the workspace, the way the terminal's does: a
+      // resumed session has to record the directory, or the transcript cannot say what ran where.
+      const where = stringArg(args, "work_dir");
+      return { verb: "Bash", target: where ? `${command || "(command)"} · ${where}` : command || "(command)" };
+    }
     case "web_search":
       return { verb: "Searched the web", target: pattern || command || "" };
     case "fetch":

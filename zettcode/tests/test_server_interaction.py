@@ -71,6 +71,7 @@ async def test_an_approval_the_client_must_answer_is_streamed_and_posted_back():
         "kind": "approval",
         "call_id": "call-1",
         "command": "pytest -q",
+        "work_dir": None,
         "timeout_seconds": None,
         "remember_supported": True,
         "question": None,

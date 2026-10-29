@@ -40,7 +40,7 @@ async with client.prompt("fix the failing test") as run:
 | `ReasoningFinished` | — | 这段推理结束，无论模型接着回答还是调用工具。 |
 | `ToolStarted` | `call_id`、`name`、`arguments` | 模型调用了一个工具，它正在开始。 |
 | `ToolFinished` | `call_id`、`name`、`output`、`ok`、`skipped` | 工具结束了：成功、失败，或根本没有运行。 |
-| `ApprovalRequested` | `call_id`、`command`、`timeout_seconds`、`remember_supported` | 一条 shell 命令在等你决定。 |
+| `ApprovalRequested` | `call_id`、`command`、`timeout_seconds`、`remember_supported`、`work_dir` | 一条 shell 命令在等你决定。 |
 | `QuestionAsked` | `call_id`、`question`、`options`、`allow_multiple` | 模型问了你一个问题。 |
 | `Finished` | `text` | 最终回答完整了。 |
 | `UsageUpdated` | `usage` | 一次模型调用之后，会话的 token 累计。 |

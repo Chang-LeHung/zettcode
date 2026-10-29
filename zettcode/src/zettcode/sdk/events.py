@@ -207,6 +207,9 @@ class ApprovalRequested(Event):
         command: The command the model wants to run.
         timeout_seconds: The limit the command would run under, when the tool states one.
         remember_supported: Whether approving can be remembered for the rest of the run.
+        work_dir: The directory the command runs in, when the call names one instead of the workspace. What is
+            remembered is still the command text alone, so an approval remembered in one directory is offered for
+            the same command anywhere; the panel says where this one runs.
     """
 
     call_id: str
@@ -214,6 +217,9 @@ class ApprovalRequested(Event):
     timeout_seconds: int | None = None
     remember_supported: bool = False
     _reply: _Reply | None = field(default=None, repr=False, compare=False)
+    # After ``_reply`` on purpose: both have defaults, and a field added before a positional one would bind an
+    # older caller's reply to it, leaving the run waiting to be denied with nothing to show for it.
+    work_dir: str | None = None
 
     def approve(self, *, remember: bool = False) -> None:
         """Let the command run; ``remember`` also lets the same kind of command run unasked afterwards."""

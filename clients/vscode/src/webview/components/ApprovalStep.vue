@@ -28,6 +28,7 @@ function answer(approve: boolean): void {
         }}</span>
       </div>
       <pre class="approval-command"><span class="approval-prompt">$</span> <code>{{ block.command }}</code></pre>
+      <div v-if="block.workDir" class="approval-where">in <code>{{ block.workDir }}</code></div>
       <div v-if="block.approved === null" class="approval-actions">
         <button class="btn solid small" type="button" :disabled="sent" @click="answer(true)">Approve</button>
         <button class="btn small danger" type="button" :disabled="sent" @click="answer(false)">Deny</button>
@@ -92,6 +93,18 @@ function answer(approve: boolean): void {
   color: var(--teal);
   font-weight: 700;
   user-select: none;
+}
+
+.approval-where {
+  margin-top: 6px;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: var(--small);
+  overflow-wrap: anywhere;
+}
+
+.approval-where code {
+  color: var(--text);
 }
 
 .approval-actions {

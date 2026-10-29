@@ -86,7 +86,7 @@ class _SpySandbox(Sandboxer):
     def available(self) -> bool:
         return self._available
 
-    def wrap(self, command: str) -> str:
+    def wrap(self, command: str, cwd: Path | None = None) -> str:
         self.wrapped.append(command)
         return f"echo SANDBOXED && {command}"
 

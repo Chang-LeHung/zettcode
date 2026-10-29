@@ -37,7 +37,7 @@ A blank line ends a frame. The stream closes after its terminal frame. Three nam
 | `reasoning_finished` | — | The span ended, whether the model went on to answer or to call a tool. |
 | `tool_started` | `call_id`, `name`, `arguments` | A tool call began. |
 | `tool_finished` | `call_id`, `name`, `output`, `ok`, `skipped` | It ended, in success or failure; `skipped` when steering took over. |
-| `approval_requested` | `call_id`, `command`, `approved` | The model wants to run a shell command. See below. |
+| `approval_requested` | `call_id`, `command`, `work_dir`, `approved` | The model wants to run a shell command. See below. |
 | `question_asked` | `call_id`, `question`, `options`, `allow_multiple`, `answered` | The model asked something. |
 | `usage_updated` | `usage` | The session's totals after a model call. |
 | `compaction_started` | — | The conversation is being summarized. |
@@ -60,7 +60,7 @@ waits. The answer is a second request, which is what lets a client with one conn
 ```bash
 # terminal A: the stream stops after this frame
 event: event
-data: {"type":"approval_requested","call_id":"call-1","command":"pytest -q","approved":null}
+data: {"type":"approval_requested","call_id":"call-1","command":"pytest -q","work_dir":"clients/web","approved":null}
 
 # terminal B: the answer
 curl -X POST http://127.0.0.1:3290/runs/approvals \
@@ -72,6 +72,9 @@ curl -X POST http://127.0.0.1:3290/runs/approvals \
 {"resolved": true}
 ```
 
+- `work_dir` is the directory the command runs in when the call names one instead of the workspace, and `null`
+  otherwise; a client that shows where a command will run reads it here. What "remember" stores is still the command
+  text alone, so a remembered command is offered again wherever it is run.
 - `answer` a question with `POST /runs/questions` `{"call_id": "...", "answer": "sqlite"}`; `null` declines it.
 - `resolved` is `false` when the run is not waiting on that call — because it was already answered, or the run ended.
 - An approval waits at most `answer_timeout` seconds (300 by default) and then takes the safe default: the command is
@@ -80,7 +83,7 @@ curl -X POST http://127.0.0.1:3290/runs/approvals \
 - `GET /runs/current` says what is waiting, so a reconnecting client can show the request again:
 
 ```json
-{"running": true, "pending": {"kind": "approval", "call_id": "call-1", "command": "pytest -q", "remember_supported": true}}
+{"running": true, "pending": {"kind": "approval", "call_id": "call-1", "command": "pytest -q", "work_dir": "clients/web", "remember_supported": true}}
 ```
 
 The `approved` field of the frame is `null` because the frame asks the question; the answer is the POST's. With

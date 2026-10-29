@@ -113,11 +113,17 @@ class ShellSandbox(Sandboxer):
         self._probe()
         return self._reason
 
-    def wrap(self, command: str) -> str:
-        """Return ``command`` as a shell line that runs it inside the sandbox.
+    def wrap(self, command: str, cwd: Path | None = None) -> str:
+        """Return ``command`` as a shell line that runs it inside the sandbox, in ``cwd``.
 
         The environment the sandbox allows (no API keys or tokens) is spelled out with ``env -i``, because the
         shell tool starts the line with the host's own environment.
+
+        ``cwd`` is where the command is meant to run — the tool's ``work_dir``, or the workspace. A Linux sandbox
+        puts ``--chdir`` in the argv it returns, and that wins over the ``cwd=`` of the spawn, so passing the
+        workspace for a command that runs somewhere else would run it in the wrong directory without a word. A
+        directory outside the workspace is outside the policy the sandbox writes, and the command will fail there
+        rather than be let out of it.
 
         Raises:
             RuntimeError: The machine has no sandbox; check :attr:`available` first.
@@ -125,7 +131,7 @@ class ShellSandbox(Sandboxer):
         self._probe()
         if self._sandbox is None:
             raise RuntimeError(self._reason or "no sandbox")
-        wrapped = self._sandbox.wrap(command, cwd=Path.cwd())
+        wrapped = self._sandbox.wrap(command, cwd=cwd if cwd is not None else Path.cwd())
         assignments = [f"{name}={value}" for name, value in wrapped.env.items()]
         return shlex.join(["env", "-i", *assignments, *wrapped.argv])
 

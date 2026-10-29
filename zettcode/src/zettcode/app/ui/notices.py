@@ -60,6 +60,7 @@ class NoticesMixin(CommandUi, ShellState):
             on_choice=lambda choice: self._respond(event, choice),
             remember_supported=event.remember_supported,
             permission=self.client.permission,
+            work_dir=event.work_dir,
         )
         panel = bottom_panel(page, rows=APPROVAL_ROWS)
         self.app.push_screen(Screen(panel, name=PAGE_SCREEN, modal=True))

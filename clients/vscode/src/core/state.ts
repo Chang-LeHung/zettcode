@@ -61,6 +61,8 @@ export interface ApprovalBlock {
   kind: "approval";
   callId: string;
   command: string;
+  /** The directory the call runs in, when it names one instead of the workspace. */
+  workDir?: string;
   /** `null` while it waits; true or false once answered or decided by a policy. */
   approved: boolean | null;
 }
@@ -263,6 +265,7 @@ export function applyEvent(turn: Turn, event: RunEvent, now = Date.now()): void 
         kind: "approval",
         callId: event.call_id,
         command: event.command,
+        workDir: event.work_dir ?? undefined,
         approved: event.approved,
       };
       const existing = turn.blocks.find(
@@ -270,6 +273,7 @@ export function applyEvent(turn: Turn, event: RunEvent, now = Date.now()): void 
       );
       if (existing) {
         existing.command = event.command;
+        existing.workDir = event.work_dir ?? undefined;
         existing.approved = event.approved;
       } else {
         turn.blocks.push(block);

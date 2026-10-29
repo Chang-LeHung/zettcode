@@ -75,6 +75,10 @@ test("a tool row says what happened and where", () => {
     path: "src/a.py",
   });
   assert.deepEqual(describeTool("bash", { command: "pytest -q" }), { verb: "Bash", target: "pytest -q" });
+  assert.deepEqual(describeTool("bash", { command: "npm test", work_dir: "clients/web" }), {
+    verb: "Bash",
+    target: "npm test · clients/web",
+  });
   assert.deepEqual(describeTool("grep", { pattern: "Agent", path: "src" }), {
     verb: "Grep",
     target: "Agent in src",

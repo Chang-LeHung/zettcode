@@ -96,7 +96,7 @@ function fixtureTurns(): Turn[] {
     { type: "tool_finished", call_id: "c1", name: "read_file", output: "the file body", ok: true, skipped: false },
     1500,
   );
-  applyEvent(turn, { type: "approval_requested", call_id: "c2", command: "pytest -q", approved: null }, 1600);
+  applyEvent(turn, { type: "approval_requested", call_id: "c2", command: "pytest -q", work_dir: "clients/web", approved: null }, 1600);
   turn.usage = usage;
 
   const question = createTurn("", [], 2000, "turn-2");
@@ -329,12 +329,21 @@ test("a running command counts its own time instead of saying running", async ()
   assert.equal(ui.one('[data-id="turn-clock"] .tool-status')?.textContent, "1.5s", "and the whole time once it ends");
 });
 
-test("a shell step is named for the tool, and the approval card says Bash", async () => {
+test("a shell step is named for the tool, and the approval card says Bash and where it runs", async () => {
   const ui = await harness();
   const card = ui.one(".approval.pending");
   assert.ok(card);
   assert.equal(card.querySelector(".approval-head strong")?.textContent, "Bash");
+  assert.equal(card.querySelector(".approval-where")?.textContent?.replace(/\s+/g, " ").trim(), "in clients/web");
   assert.equal(ui.all(".tool .tool-verb")[0]?.textContent, "Read");
+});
+
+test("an approval that names no directory says nothing about where it runs", async () => {
+  const turn = createTurn("Fix it", [], 1000, "turn-1");
+  applyEvent(turn, { type: "approval_requested", call_id: "c9", command: "pytest -q", approved: null }, 1100);
+  const ui = await harness([turn]);
+
+  assert.equal(ui.one(".approval-where"), null);
 });
 
 test("an approval is answered from the card", async () => {

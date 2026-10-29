@@ -294,7 +294,13 @@ def event_payload(event: AnyEvent) -> dict[str, Any]:
                 "ok": ok,
             }
         case events.ApprovalRequested(call_id=call_id, command=command):
-            return {"type": "approval_requested", "call_id": call_id, "command": command, "approved": event.approved}
+            return {
+                "type": "approval_requested",
+                "call_id": call_id,
+                "command": command,
+                "work_dir": event.work_dir,
+                "approved": event.approved,
+            }
         case events.QuestionAsked(call_id=call_id, question=question, options=options, allow_multiple=allow_multiple):
             return {
                 "type": "question_asked",

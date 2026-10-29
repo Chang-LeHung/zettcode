@@ -332,13 +332,14 @@ more instead of trying the same wall again — and you can choose `/permission f
 Windows has no such sandbox, and neither does a Linux machine without `bwrap`. There `safe` is what it used to
 be: commands that only read run, and anything else asks. It never claims a boundary the machine cannot draw.
 
-At `ask` the panel shows the exact command, the level it is asking
+At `ask` the panel shows the exact command, the directory it runs in when
+the call names one instead of the workspace, the level it is asking
 at, and offers:
 
 | Key | Meaning |
 | --- | --- |
 | `y` | Run it this once. |
-| `p` | Run it, and remember this exact command for the session. |
+| `p` | Run it, and remember this exact command for the session. The memory is the command text, not the directory: a command remembered here is not asked again wherever the model runs it. |
 | `s` | Run it, and stop asking: later commands run in the sandbox (switches to `safe`). Not offered at `safe`, where it would change nothing. |
 | `a` | Run it, and stop asking: full access, no sandbox (switches to `full`). |
 | `Esc` | Refuse. The agent is told the command failed, and can react. |

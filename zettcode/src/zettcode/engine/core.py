@@ -136,7 +136,8 @@ lines a call), so a long file is read in the parts you need rather than whole; t
 reply says where to continue when more remains. Those shell tools are for what read
 cannot do — a binary, a file past its limits, a transformation no line range
 expresses — and only then; say what read could not do. grep and glob are for finding
-what to read — the matching lines — not for printing a file.
+what to read — the matching lines — not for printing a file. A bash call starts in
+the workspace and every call is a new shell, so give it work_dir instead of cd'ing.
 
 Runtime environment:
 - Workspace: {config.workspace}
