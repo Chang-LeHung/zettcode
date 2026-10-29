@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import inspect
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal, cast
@@ -48,6 +49,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
         WorkspaceUsage,
     )
 
+    from .schemas import CommandOut
     from .settings import Settings
 
 #: What a run may be asked to do, whether it starts a prompt or continues one.
@@ -328,6 +330,43 @@ class Runner:
         async for frame in self._drive(slot, lambda: self._start(slot, request, handler, images, resume), request):
             yield frame
 
+    def commands(self) -> list[dict[str, object]]:
+        """Return every command the plugins registered for all front ends, as the endpoint lists them."""
+        return [
+            {
+                "name": command.name,
+                "summary": command.summary,
+                "when_busy": command.when_busy,
+                "subcommands": [str(word) for word in command.subcommands],
+            }
+            for command in self.client.plugins.plain_commands
+        ]
+
+    async def run_command(self, name: str, argument: str) -> CommandOut:
+        """Run one of those commands and return what it answered with.
+
+        The level it is handed is the session's own, so a command that asks the model for something decides in the
+        same terms the terminal's does.
+
+        Raises:
+            KeyError: No plugin registered that name.
+        """
+        from ..sdk.commands import PlainCommandContext, TextCommandResult, TurnCommandResult
+
+        wanted = name if name.startswith("/") else f"/{name}"
+        commands = list(self.client.plugins.plain_commands)
+        command = next((item for item in commands if item.name == wanted), None)
+        if command is None:
+            raise KeyError(wanted)
+        result = command.handler(PlainCommandContext(argument=argument, level=self.client.permission))
+        if inspect.isawaitable(result):
+            result = await result
+        if isinstance(result, TurnCommandResult):
+            return CommandOut(notification=result.notification, prompt=result.prompt, shown=result.shown)
+        if isinstance(result, TextCommandResult):
+            return CommandOut(message=result.message, notification=result.notification)
+        raise TypeError(f"{wanted} answered with {type(result).__name__}")
+
     def stream_message(self, message_id: str) -> AsyncIterator[Frame]:
         """Answer one message another session sent, in the frames a prompt's stream uses.
 
@@ -417,6 +456,7 @@ class Runner:
             prompt.text,
             images=images,
             mentions=prompt.mentions,
+            instructions=prompt.instructions,
             on_approval=handler,
             timeout=request.timeout,
             keep_events=request.keep_events,

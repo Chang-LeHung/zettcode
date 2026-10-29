@@ -10,7 +10,7 @@ The package exports the everyday names from `zettcode.sdk`. Everything else is i
 
 | Module | Holds |
 | --- | --- |
-| [`zettcode.sdk`](#zettcode-sdk) | `Client`, `Session`, `RunStream`, `prompt`, `prompt_sync`, `RunResult`, `Usage`, `Image`, the common events and handlers, three errors |
+| [`zettcode.sdk`](#zettcode-sdk) | `Client`, `Session`, `RunStream`, `prompt`, `prompt_sync`, `RunResult`, `Usage`, `Image`, `PlainCommand` and the two results a plain command answers with, the common events and handlers, three errors |
 | [`zettcode.sdk.client`](#zettcode-sdk-client) | `Client`, `Sessions`, `PluginReport`, `prompt`, `prompt_sync` |
 | [`zettcode.sdk.session`](#zettcode-sdk-session) | `Session`, `RunStream` |
 | [`zettcode.sdk.events`](#zettcode-sdk-events) | every event, `AnyEvent` |
@@ -31,6 +31,10 @@ from zettcode.sdk import (
     prompt,
     prompt_sync,
     RunResult,
+    PlainCommand,
+    PlainCommandContext,
+    TextCommandResult,
+    TurnCommandResult,
     Usage,
     Image,
     TextDelta,

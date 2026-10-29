@@ -10,7 +10,7 @@ SDK 的每一个公开名字，按模块分组。签名取自已发布的包；�
 
 | 模块 | 内容 |
 | --- | --- |
-| [`zettcode.sdk`](#zettcode-sdk) | `Client`、`Session`、`RunStream`、`prompt`、`prompt_sync`、`RunResult`、`Usage`、`Image`、常用事件和处理函数、三个错误 |
+| [`zettcode.sdk`](#zettcode-sdk) | `Client`、`Session`、`RunStream`、`prompt`、`prompt_sync`、`RunResult`、`Usage`、`Image`、`PlainCommand` 与普通命令的两种返回值、常用事件和处理函数、三个错误 |
 | [`zettcode.sdk.client`](#zettcode-sdk-client) | `Client`、`Sessions`、`PluginReport`、`prompt`、`prompt_sync` |
 | [`zettcode.sdk.session`](#zettcode-sdk-session) | `Session`、`RunStream` |
 | [`zettcode.sdk.events`](#zettcode-sdk-events) | 所有事件、`AnyEvent` |
@@ -31,6 +31,10 @@ from zettcode.sdk import (
     prompt,
     prompt_sync,
     RunResult,
+    PlainCommand,
+    PlainCommandContext,
+    TextCommandResult,
+    TurnCommandResult,
     Usage,
     Image,
     TextDelta,

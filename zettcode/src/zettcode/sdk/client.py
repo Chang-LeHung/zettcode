@@ -60,7 +60,7 @@ from .types import (
     brief_of,
 )
 
-if TYPE_CHECKING:  # pragma: no cover - annotations only; the agent is imported when a client is made
+if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zett_agent.extensions.shell_approval import ShellApprovalMode
     from zett_agent.model import ReasoningEffort
 
@@ -68,6 +68,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only; the agent is imported 
     from ..config import ModelConfig, ZettCodeConfig
     from ..engine.agent import ZettCodeAgent
     from ..engine.messenger import Messenger
+    from ..engine.plugins.commands import PlainCommand
     from ..mentions import MentionRegistry
 
 __all__ = ["Client", "PluginReport", "SETTINGS", "Sessions", "prompt", "prompt_sync"]
@@ -219,13 +220,14 @@ class PluginReport:
 
     Attributes:
         loaded: Their names, in the order they take part (built-in ones first).
-        failures: One message per plugin that could not be loaded; those are skipped, never fatal.
-        rejected: Plugins that could not be loaded here — a terminal command in a server, say — and so were not
-            activated. Not a failure: they said what they were for.
+        failures: One message per plugin that could not be loaded; what fails is reported, never fatal.
+        plain_commands: The commands the plugins registered for every front end — text, or a preset for a turn — in
+            registration order, so a client with no terminal can offer them.
     """
 
     loaded: tuple[str, ...]
     failures: tuple[str, ...]
+    plain_commands: tuple[PlainCommand, ...] = ()
 
 
 def build_config(

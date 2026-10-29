@@ -43,6 +43,9 @@ from .schemas import (
     ApprovalAnswer,
     ApprovalPolicy,
     CancelledOut,
+    CommandIn,
+    CommandOut,
+    CommandsOut,
     CompactionOut,
     ContextOut,
     CurrentSessionOut,
@@ -465,6 +468,30 @@ def create_app(settings: Settings, *, client_factory: ClientFactory | None = Non
         frame and is answered through ``/runs/approvals`` or ``/runs/questions``.
         """
         return stream_of(runner, request)
+
+    @protected.get("/commands", response_model=CommandsOut, tags=["prompts"])
+    async def commands(runner: RunnerDep) -> CommandsOut:
+        """List the commands every front end may run: a name, a summary, and what the run takes.
+
+        These are what the plugins registered on ``ctx.commands`` — text and a toast, or a preset for a turn — so a
+        client with no terminal can offer them without reimplementing any of them.
+        """
+        return CommandsOut(commands=list(runner.commands()))
+
+    @protected.post("/commands/{name}", response_model=CommandOut, tags=["prompts"])
+    async def run_command(name: str, body: CommandIn, runner: RunnerDep) -> CommandOut:
+        """Run one command by name and return what it answered with.
+
+        A command that answers with a prompt is not run as a turn here: the client sends ``POST /prompts`` with that
+        text and the ``shown`` line, so the turn belongs to the conversation the client is looking at, like every
+        other prompt.
+
+        ``404 unknown_command`` when no plugin registered that name.
+        """
+        try:
+            return await runner.run_command(name, body.argument)
+        except KeyError:
+            raise StarletteHTTPException(status_code=404, detail=f"No plugin registered the command {name!r}") from None
 
     @protected.post("/runs/resume", tags=["prompts"], responses={200: {"content": {"text/event-stream": {}}}})
     async def resume_run(request: ResumeRequest, runner: RunnerDep) -> StreamingResponse:

@@ -43,6 +43,8 @@ title: HTTP API 参考
 | `GET` | `/settings` | — | `{"model","effort","efforts","permission","permissions","harness"}`;改动过压缩点的 `PATCH` 之后还会带 `"unsaved"`(见下)。 |
 | `PATCH` | `/settings` | `{"model"?, "effort"?, "permission"?, "harness"?, "compact_percent"?}` | 更改后与 `GET /settings` 相同;至少给一个字段。`permission` 是 `deny`、`ask`、`safe` 或 `full`(`auto` 是 `full` 的旧名,会按 `full` 返回);`harness` 从下一次 prompt 起开启或关闭 just-in-time 工具 harness。`compact_percent` 大于 0、至多 100,从下一次请求起生效并写入配置文件;文件写不进去时,返回里带 `"unsaved": "<原因>"`,改动只在本次运行有效。有 run 在进行时,移动 `compact_percent` 会返回 `409`,其他字段不会。 |
 | `GET` | `/plugins` | — | `{"loaded": [...], "failures": [...]}` |
+| `GET` | `/commands` | — | `{"commands": [{"name", "summary", "when_busy", "subcommands"}]}` |
+| `POST` | `/commands/{name}` | `{"argument"}` | `{"message", "notification", "prompt", "shown"}` —— 如果有 `prompt`，客户端用它发下一个 `POST /prompts`，`shown` 作为对话里显示的那一行 |
 | `GET` | `/mentions?query=&limit=50` | — | `{"mentions": [{"token","kind","name","description"}]}`:`@` 能指向的文件、skills 和插件资源。 |
 | `POST` | `/doctor` | `{"timeout"?: 30}` | `{"checks": [{"model","model_id","ok","seconds","detail","input_tokens","output_tokens"}]}`:对每个配置的模型各问一个短问题。 |
 

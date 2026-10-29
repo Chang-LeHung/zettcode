@@ -36,6 +36,7 @@ from zettcode.app.commands import (
     subcommand_words,
 )
 from zettcode.config import read_disabled_plugins
+from zettcode.engine.plugins.commands import PlainCommandContext, TurnCommandResult
 from zettcode.engine.plugins.context import PluginContext
 from zettcode.engine.plugins.loader import installed_entry_points
 from zettcode.paths import DEFAULT_COMMAND_HISTORY
@@ -529,16 +530,15 @@ class CodeReview(TuiPlugin):
     LEVELS = {"full": "full", "safe": "safe", "ask": "safe"}
 
     def activate(self, ctx: PluginContext) -> None:
-        """Register the command; it queues, since a review is a request like any other."""
-        tui = require_tui(ctx)
-        tui.register_command(
-            "code-review",
+        """Offer it to every front end: what it answers with is a turn, not a page."""
+        ctx.commands.register(
+            "/code-review",
             "review the uncommitted changes: /code-review [what to look for]",
             self.review,
             when_busy="queue",
         )
 
-    async def review(self, context: CommandContext) -> CommandResult:
+    def review(self, context: PlainCommandContext) -> TurnCommandResult:
         """Run the review as one turn, with what the reader typed as its focus.
 
         The command adds no work of its own: it writes the brief, hands it to `host.prompt`, and the ordinary turn
@@ -548,12 +548,10 @@ class CodeReview(TuiPlugin):
         The transcript shows the command the reader typed, not the brief it stands for: the brief is what the model
         reads, and `shown` is what the conversation keeps.
         """
-        host = context.require_host()
         argument = context.argument.strip()
         focus = argument or "anything that would make this change wrong or hard to keep"
         shown = f"/code-review {argument}" if argument else "/code-review"
-        await host.prompt(self.brief(level=host.client.permission, focus=focus), shown=shown)
-        return CommandResult()
+        return TurnCommandResult(prompt=self.brief(level=context.level, focus=focus), shown=shown)
 
     def brief(self, *, level: str, focus: str) -> str:
         """Return what the model reads, for a reader whose shell level is ``level``.

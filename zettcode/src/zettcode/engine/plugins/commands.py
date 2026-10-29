@@ -26,9 +26,17 @@ __all__ = [
 
 @dataclass(frozen=True, slots=True)
 class PlainCommandContext:
-    """What a plain command's handler is handed: the words typed after its name, and nothing else."""
+    """What a plain command's handler is handed.
+
+    Attributes:
+        argument: The words typed after the command's name.
+        level: The shell level the session is running at (``deny``, ``ask``, ``safe`` or ``full``), filled by the
+            front end that runs the command. A command that decides what to ask the model says it in these terms
+            rather than reaching for a shell it may not have.
+    """
 
     argument: str = ""
+    level: str = "ask"
 
 
 @dataclass(frozen=True, slots=True)

@@ -209,6 +209,26 @@ export interface RunResult {
 export interface PluginReport {
   loaded: string[];
   failures: string[];
+  /** The commands the plugins registered for every front end, in registration order. */
+  plain_commands?: string[];
+}
+
+/** One command every front end may run: a name, a summary, and how the run is framed. */
+export interface CommandInfo {
+  name: string;
+  summary: string;
+  when_busy: string;
+  subcommands: string[];
+}
+
+/** What a command answered with: words, or a prompt to send next. */
+export interface CommandAnswer {
+  message: string;
+  notification: string;
+  /** The text to send as a prompt when the command is a preset for a turn; empty otherwise. */
+  prompt: string;
+  /** What the conversation should show for that turn, which is the command as typed. */
+  shown: string;
 }
 
 /** One `@` resource a prompt can carry. */

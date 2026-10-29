@@ -72,7 +72,7 @@ def terminal_context(config: ZettCodeConfig, services: Mapping[str, object] | No
     return context
 
 
-def _plain_commands(context: PluginContext) -> list[Command]:
+def plain_commands(context: PluginContext) -> list[Command]:
     """Turn the plugin's plain commands into the shell's, keeping the handler's contract.
 
     The handler returns a :class:`~zettcode.engine.plugins.commands.TextCommandResult` or a
@@ -98,7 +98,9 @@ def _plain_handler(handler):
     """Wrap one plain handler as the shell's, one result type at a time."""
 
     async def run(context):
-        result = handler(PlainCommandContext(argument=context.argument))
+        host = context.host
+        level = host.client.permission if host is not None else "ask"
+        result = handler(PlainCommandContext(argument=context.argument, level=level))
         if inspect.isawaitable(result):
             result = await result
         if isinstance(result, TurnCommandResult):
@@ -183,7 +185,7 @@ class TerminalLoader(Loader):
         super().merge(context)
         # A plain command is one the shell can run too: text and a toast need no page, so the plugin's
         # ``ctx.commands`` become ordinary commands here, beside the ones registered on ``ctx.tui``.
-        plain = _plain_commands(context)
+        plain = plain_commands(context)
         self._claimed.update(command.name for command in plain)
         self.commands.extend(plain)
         self._theme_names.update(source.name for source in terminal.themes)
