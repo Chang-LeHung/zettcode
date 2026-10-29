@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from importlib.metadata import EntryPoint
 from pathlib import Path
 
@@ -162,7 +163,9 @@ async def test_disabling_writes_owner_only_and_only_for_a_real_name(tmp_path: Pa
     assert "off" in result.notification
     path = tmp_path / "plugins.json"
     assert json.loads(path.read_text(encoding="utf-8")) == {"disabled": ["greeter"]}
-    assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
+    if sys.platform != "win32":
+        # A POSIX permission; Windows has no equivalent, and chmod there changes only the read-only flag.
+        assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
 
     with pytest.raises(ValueError, match="No plugin is called"):
         await command.plugins(_command_context(bundle, "disable typo"), config)
