@@ -60,8 +60,9 @@ async function submit(): Promise<void> {
     confirmed.add(thread.id);
   }
   text.value = "";
+  // Keep the keyboard up, as a messenger does: a person sending several lines in a row does not want it to drop each time.
+  field.value?.focus({ preventScroll: true });
   await sendMessage(body, wantsReply(thread));
-  if (typesByEnter) field.value?.focus();
 }
 
 function onKey(event: KeyboardEvent): void {
@@ -92,12 +93,15 @@ function onKey(event: KeyboardEvent): void {
         :aria-pressed="asking"
         :title="t('Ask the agent to answer with send_message')"
         :aria-label="t('Ask the agent to answer with send_message')"
+        @pointerdown.prevent
         @click="setWantsReply(chat.id, !asking)"
       >
         <Icon name="reply" size="sm" />
       </button>
     </div>
-    <button class="sendbtn" type="submit" :disabled="empty" :aria-label="t('Send')"><Icon name="send" /></button>
+    <button class="sendbtn" type="submit" :disabled="empty" :aria-label="t('Send')" @pointerdown.prevent>
+      <Icon name="send" />
+    </button>
   </form>
 </template>
 
@@ -107,7 +111,11 @@ function onKey(event: KeyboardEvent): void {
   padding: 8px calc(var(--safe-right) + 12px) calc(8px + var(--safe-bottom)) calc(var(--safe-left) + 12px);
   background: var(--surface); border-top: 1px solid var(--divider);
 }
-.composer-field { flex: 1; min-width: 0; display: flex; align-items: flex-end; border-radius: 22px; background: var(--surface-2); padding: 0 4px 0 6px; }
+.composer-field {
+  flex: 1; min-width: 0; display: flex; align-items: flex-end; border-radius: 22px; background: var(--surface-2); padding: 0 4px 0 6px;
+  box-shadow: inset 0 0 0 1.5px transparent; transition: box-shadow 0.2s ease, background 0.2s ease;
+}
+.composer-field:focus-within { box-shadow: inset 0 0 0 1.5px var(--accent-soft); }
 .composer textarea {
   flex: 1; min-width: 0; resize: none; border: 0; outline: 0; background: none; color: var(--text);
   padding: 11px 6px; line-height: 1.35; max-height: 9.5rem; font-size: 1rem;
@@ -118,10 +126,14 @@ function onKey(event: KeyboardEvent): void {
 .composer-reply[aria-pressed="true"] { color: var(--accent); }
 .sendbtn {
   flex: none; width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center;
-  background: var(--accent); color: var(--accent-text); transition: transform 0.12s, background 0.12s;
+  background: var(--accent); color: var(--accent-text);
+  transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.2s, color 0.2s, opacity 0.2s;
 }
-.sendbtn:active:not(:disabled) { transform: scale(0.92); }
-.sendbtn:disabled { background: var(--surface-2); color: var(--muted); }
+.sendbtn:active:not(:disabled) { transform: scale(0.88); }
+.sendbtn:disabled { background: var(--surface-2); color: var(--muted); transform: scale(0.9); }
+.composer-reply { transition: color 0.2s, transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.composer-reply:active { transform: scale(0.85); }
+.composer-reply[aria-pressed="true"] { transform: rotate(-12deg); }
 .sendbtn svg { margin-left: 2px; }
 .composer-note { flex: none; padding: 6px 14px; font-size: 0.82rem; background: var(--surface); border-top: 1px solid var(--divider); color: var(--warn); }
 </style>

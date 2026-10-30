@@ -42,11 +42,11 @@ function focusFirst(element: Element): void {
 </template>
 
 <style>
-.backdrop { position: fixed; inset: 0; z-index: 30; background: var(--scrim); display: flex; align-items: flex-end; justify-content: center; animation: fade 0.15s ease-out; }
+.backdrop { position: fixed; inset: 0; z-index: 30; background: var(--scrim); display: flex; align-items: flex-end; justify-content: center; animation: fade 0.25s ease-out; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
 .sheet {
   width: 100%; max-width: 30rem; max-height: 82dvh; display: flex; flex-direction: column;
   background: var(--surface); border-radius: 18px 18px 0 0; box-shadow: var(--sheet-shadow);
-  padding-bottom: var(--safe-bottom); animation: rise 0.2s ease-out;
+  padding-bottom: var(--safe-bottom); animation: spring 0.38s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .sheet-head { display: flex; align-items: center; gap: 6px; padding: 8px 8px 4px 18px; min-height: 52px; }
 .sheet-head h3 { flex: 1; margin: 0; font-size: 1.05rem; font-weight: 650; }

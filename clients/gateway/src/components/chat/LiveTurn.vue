@@ -1,12 +1,11 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue";
-import type { ToolItem } from "../../lib/rows";
+import { settleLive } from "../../lib/rows";
 import { chat } from "../../stores/chat";
 import { streams } from "../../stores/stream";
 import { threadOf } from "../../stores/threads";
 import Avatar from "../common/Avatar.vue";
 import MessageText from "./MessageText.vue";
-import StepsGroup from "./StepsGroup.vue";
 import TypingBubble from "./TypingBubble.vue";
 
 const turn = computed(() => streams[chat.id]);
@@ -37,19 +36,17 @@ watch(
 );
 onBeforeUnmount(() => window.clearTimeout(timer));
 const owner = computed(() => threadOf(chat.id));
-// The tools of the turn so far, drawn as the steps a finished turn shows; one still running has no output yet.
-const tools = computed<ToolItem[]>(() =>
-  (turn.value?.tools ?? []).map((tool) => ({ kind: "tool", name: tool.name, brief: tool.brief, ok: tool.ok ?? undefined })),
-);
+// The tools are drawn with the stored steps (see `buildRows`), so that a turn is one group of steps. What is drawn here
+// is the answer so far, less what the conversation already holds.
+const fresh = computed(() => (turn.value ? settleLive(chat.items, { ...turn.value, text: shown.value }).text : ""));
 </script>
 
 <template>
   <template v-if="turn">
-    <StepsGroup v-if="tools.length" :tools="tools" />
-    <div v-if="shown" class="msg in live">
+    <div v-if="fresh" class="msg in live">
       <Avatar v-if="owner" class="msg-avatar" :thread="owner" size="sm" />
       <div class="bubble">
-        <MessageText :text="shown" />
+        <MessageText :text="fresh" />
       </div>
     </div>
     <TypingBubble v-else />

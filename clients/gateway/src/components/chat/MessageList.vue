@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { t } from "../../i18n";
 import { buildRows } from "../../lib/rows";
 import { chat, loadEarlier } from "../../stores/chat";
@@ -14,7 +14,7 @@ import TypingBubble from "./TypingBubble.vue";
 const scroller = ref<HTMLElement | null>(null);
 const following = ref(true);
 const unseen = ref(0);
-const rows = computed(() => buildRows(chat.items, chat.pending));
+const rows = computed(() => buildRows(chat.items, chat.pending, streams[chat.id]));
 const live = computed(() => streams[chat.id]);
 const typing = computed(() => chat.thread?.status === "working" && !live.value);
 
@@ -72,7 +72,15 @@ watch(
   () => following.value && toBottom(false),
   { flush: "post" },
 );
-onMounted(() => toBottom(false));
+// The keyboard rising or falling changes the height of the list: stay at the newest message, as a messenger does.
+function onViewport(): void {
+  if (following.value) toBottom(false);
+}
+onMounted(() => {
+  toBottom(false);
+  window.visualViewport?.addEventListener("resize", onViewport);
+});
+onBeforeUnmount(() => window.visualViewport?.removeEventListener("resize", onViewport));
 </script>
 
 <template>
@@ -107,13 +115,14 @@ onMounted(() => toBottom(false));
 .messages {
   flex: 1; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
   padding: 12px calc(var(--safe-right) + 14px) 10px calc(var(--safe-left) + 14px);
-  display: flex; flex-direction: column;
+  display: flex; flex-direction: column; overflow-anchor: none;
 }
 .messages-note { align-self: center; margin: 12px 0; padding: 4px 14px; border-radius: 14px; background: var(--chip-bg); color: #fff; font-size: 0.85rem; }
 .messages-more { align-self: center; margin: 4px 0 10px; }
 .fab {
   position: absolute; right: calc(var(--safe-right) + 14px); bottom: 12px; width: 44px; height: 44px; border-radius: 50%;
   display: grid; place-items: center; background: var(--surface); color: var(--muted); box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+  animation: pop 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 .fab .badge { position: absolute; top: -9px; left: 50%; transform: translateX(-50%); }
 </style>

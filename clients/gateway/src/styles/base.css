@@ -1,17 +1,26 @@
 /* The page's reset, and the pieces more than one view uses: buttons, badges, cards, form rows, switches. */
 
 * { box-sizing: border-box; }
-html, body { height: 100%; margin: 0; }
+html, body { height: 100%; margin: 0; overflow: hidden; }
 body {
+  position: fixed; inset: 0; width: 100%;
   font-family: var(--font);
   background: var(--bg);
   color: var(--text);
   -webkit-text-size-adjust: 100%;
   -webkit-tap-highlight-color: transparent;
-  overscroll-behavior: none;
+  overscroll-behavior: none; touch-action: manipulation;
   text-rendering: optimizeLegibility;
 }
 button, input, select, textarea { font: inherit; color: inherit; }
+input, select, textarea { -webkit-appearance: none; appearance: none; border-radius: 0; caret-color: var(--accent); }
+
+/* An app's chrome is not text: no selection loupe or callout on a long press of a button, bar or row. What is read is. */
+body { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+.bubble, .md, pre, code, input, textarea, .kv span:last-child, .errcard { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
+.iconbtn:active { background: var(--hover); color: var(--text); }
+a:active { opacity: 0.7; }
+html { overscroll-behavior: none; }
 button { cursor: pointer; background: none; border: 0; padding: 0; }
 button:disabled { cursor: default; }
 a { color: var(--accent); text-decoration: none; }
@@ -20,7 +29,18 @@ a:hover { text-decoration: underline; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .noscript { padding: 2rem; }
 
-#root { height: var(--app-h, 100dvh); overflow: hidden; }
+/* Pinned to the visual viewport, so that a phone's keyboard shrinks the page and never pushes it out of sight. */
+#root {
+  position: fixed; top: 0; left: 0; width: 100%; height: var(--app-h, 100dvh); overflow: hidden;
+  transform: translate3d(0, var(--app-top, 0px), 0);
+}
+:root[data-keyboard="true"] { --safe-bottom: 0px; }
+
+/* A field under 16px makes iOS zoom the page when it is focused, which is the other half of the page running away. */
+/* !important because most fields set their own size, and any of them under 16px brings the zoom back. */
+@media (pointer: coarse), (max-width: 719px) {
+  input, select, textarea { font-size: max(16px, 1rem) !important; }
+}
 
 svg.i { width: 1.5rem; height: 1.5rem; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
 svg.i.fill { fill: currentColor; stroke: none; }
@@ -52,6 +72,17 @@ svg.i.xs { width: 0.95rem; height: 0.95rem; }
   color: var(--muted); transition: background 0.12s, color 0.12s;
 }
 .iconbtn:hover { background: var(--hover); color: var(--text); }
+
+/* Pages of configuration come in one card after another, and every row answers a touch. */
+.page-inner > *, .page-inner .card { animation: rise 0.42s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.page-inner > :nth-child(2) { animation-delay: 0.04s; }
+.page-inner > :nth-child(3) { animation-delay: 0.08s; }
+.page-inner > :nth-child(4) { animation-delay: 0.12s; }
+.page-inner > :nth-child(n + 5) { animation-delay: 0.16s; }
+.field-row, .switch-row, .menu-item, .kv { transition: background 0.18s ease; }
+.field-row:active, .switch-row:active, .menu-item:active { background: var(--hover); }
+.field-row:focus-within { background: var(--accent-soft); }
+.card { transition: box-shadow 0.25s ease; }
 
 /* grouped cards, as a settings screen of a messenger draws them */
 .card { background: var(--surface); border-radius: var(--radius); overflow: hidden; margin: 10px 0; }
@@ -89,6 +120,11 @@ svg.i.xs { width: 0.95rem; height: 0.95rem; }
 @keyframes pop { from { opacity: 0; transform: translateY(6px) scale(0.98); } to { opacity: 1; transform: none; } }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes drop { from { opacity: 0; transform: translateY(-16px) scale(0.96); } to { opacity: 1; transform: none; } }
+@keyframes tick { from { transform: scale(0.3); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes breathe { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+@keyframes unfold { from { opacity: 0; transform: translateY(-6px) scale(0.98); } to { opacity: 1; transform: none; } }
+@keyframes spring { from { opacity: 0; transform: translateY(24px) scale(0.97); } to { opacity: 1; transform: none; } }
 @keyframes slide { from { transform: translateX(28%); opacity: 0.4; } to { transform: none; opacity: 1; } }
 
 @media (prefers-reduced-motion: reduce) {
