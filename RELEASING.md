@@ -39,7 +39,11 @@ requests `id-token: write`.
 
    Do not pass `--logo-output` for this: the site's logo is the brand mark, and the
    script's own mark is a different drawing.
-3. Tag and push:
+3. If the release moves the `monitor` extra (`zettcode/pyproject.toml`), publish its plugin
+   first: `zettcode-monitor` with a `zettcode` range that allows the old line and the new
+   one, so it installs against both. `make smoke` installs the built wheel with `[monitor]`
+   and fails if the extra cannot be resolved or the plugin does not register its command.
+4. Tag and push:
 
    ```bash
    git tag v0.1.11
@@ -47,7 +51,7 @@ requests `id-token: write`.
    git push origin v0.1.11
    ```
 
-3. The workflow builds the sdist and wheel, verifies the tag matches its project
+5. The workflow builds the sdist and wheel, verifies the tag matches its project
    version, publishes to PyPI, and then opens a GitHub release with generated
    notes. `pip install zettcode` then writes both `zettcode` and
    `zettcode-server`, which is the package the VS Code extension installs for

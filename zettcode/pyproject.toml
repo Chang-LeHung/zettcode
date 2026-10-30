@@ -64,6 +64,15 @@ dependencies = [
   "zett-agent>=0.2.2,<0.3",
 ]
 
+[project.optional-dependencies]
+# A plugin this repository ships, for reading what a session actually sent and received: `pip install
+# "zettcode[monitor]"` adds `/monitor`. It is an extra and not a dependency on purpose — it records every model
+# request and response unredacted, which is a debugging tool and not something to hand everyone — and a hard edge
+# would tie the two projects' releases together: a new minor line of zettcode would need a monitor published first
+# that accepts it (its range has to allow both lines in between), or `pip install zettcode==<new>` would fail to
+# resolve, and so would the environment the VS Code extension builds for itself.
+monitor = ["zettcode-monitor>=0.2,<0.3"]
+
 [project.scripts]
 zettcode = "zettcode.cli:main"
 zettcode-server = "zettcode.server.cli:main"
