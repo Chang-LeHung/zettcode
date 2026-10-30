@@ -297,6 +297,13 @@ so `/model` takes effect on the next request.
 A gateway may serve a search its vendor does not, so nothing else is refused up front: if the endpoint does not
 know the tool type, the request fails with its own message, and `web_search_name` is how you give it the one it does.
 
+A search is answered inside the endpoint's own reply, and it sometimes ends without a result — the provider closes
+the reply before the tool reports one, as Anthropic does when a search loop reaches its limit. That call is shown as
+`The provider did not report what this call returned`, and its row is not marked completed: the call ended without a
+result, and the answer above it says whatever the model made of it. The row belongs to the live run only: the
+provider's block cannot be stored, because the next request would be refused for a call with no result, so a reopened
+session shows the answer alone.
+
 ### Reasoning levels a model takes {#reasoning-levels-a-model-takes}
 
 Not every endpoint accepts every reasoning level, and an unsupported one can fail the whole request. An
@@ -559,7 +566,7 @@ belong to the most recent table heading; an `enabled` key immediately under
 | `harness.subagent_max_iterations` | `512` | Model calls one child agent may make for one task. A child exploring or editing a real codebase makes dozens (the library's own default of 18 ended such tasks halfway); this is a ceiling against one that never stops, not a target. Children are also given your project's `AGENTS.md`. |
 | `harness.subagent_messaging` | `false` | Give the `coding` child `list_sessions` and `send_message` as well. Off by default: a child works on one task for one session, and talking to the other sessions is that session's own business. See [What a child agent can do](#what-a-child-agent-can-do). |
 | `harness.todowrite` | `false` | Offer `todo_write`, whose checklist the shell draws in its plan panel. Keeping a plan costs turns, so it is off unless asked for. |
-| `harness.jit` | `false` | Start with the just-in-time harness on: the model may write small Python tools of its own, keep them in `~/.zettcode/harness` (one folder per session), and run them. What it writes runs in a child process of its own — a crash or a hang stays out of the window — and, at every level below `full`, inside the boundary `safe` uses, so it is still off unless you ask. At `full` it has your own access; on a machine with no sandbox the harness says so once per session, so the code the model writes is never unbounded without a word. `/harness on` and `/harness off` switch it for a run. A change that changes the boundary — to or from `full` — closes that child, the next request starts a new one, and the model's own tools are gone until it runs `repo_load` again; `ask` and `safe` share the same boundary, so moving between them costs nothing. |
+| `harness.jit` | `false` | Start with the just-in-time harness on: the model may write small Python tools of its own, keep them in `~/.zettcode/harness` (one folder per session), and run them. What it writes runs in a child process of its own — a crash or a hang stays out of the window — and, at every level below `full`, inside the boundary `safe` uses, so it is still off unless you ask. At `full` it has your own access; on a machine with no sandbox the harness says so once per session, so the code the model writes is never unbounded without a word. `/harness on` and `/harness off` switch it for a run. A change that changes the boundary — to or from `full` — closes that child, the next request starts a new one, and the model's own tools are gone until it runs `repo_load` again; `ask` and `safe` share the same boundary, so moving between them costs nothing. A repository declares itself in a `MANIFEST` beside its `__init__.py` — a name, a version, a description, and optionally the `tools` it declares — and is loadable only with one; a `BAN_TOOLS` file beside it names tools it may not define. `/harness` lists this session's repositories from those files and imports nothing, so what it shows is the declaration, not what the code defines. |
 | `shell.network` | `false` | Let a command that runs in the `safe` sandbox use the network. Off by default; `full` always has it, and so does a machine with no sandbox. See [Approvals](/guide/interface#approvals). |
 
 Example: keep less scrollback, add project-local skills, and disable remote
