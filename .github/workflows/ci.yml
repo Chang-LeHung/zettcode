@@ -14,8 +14,84 @@ permissions:
   contents: read
 
 jobs:
+  changes:
+    name: What changed
+    runs-on: ubuntu-latest
+    outputs:
+      lint: ${{ steps.files.outputs.lint }}
+      python: ${{ steps.files.outputs.python }}
+      monitor: ${{ steps.files.outputs.monitor }}
+      typescript: ${{ steps.files.outputs.typescript }}
+      vscode: ${{ steps.files.outputs.vscode }}
+      gateway: ${{ steps.files.outputs.gateway }}
+      package: ${{ steps.files.outputs.package }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The diff needs the base commit, which a shallow clone does not have.
+          fetch-depth: 0
+
+      # The split is the one `make check` uses: the Python gate for `zettcode/`, a lock file or the root
+      # `pyproject.toml`; the client for its own directory; the extension for itself or the client it bundles; the
+      # gateway page for its own directory, and with the wheel that ships it; the plugin for `plugins/` and for any
+      # change to the zettcode its suite runs against. The Makefile and the workflows themselves count as every
+      # file, because either can change what a suite means.
+      - name: Read the files this change touches
+        id: files
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          base=""
+          case "${GITHUB_EVENT_NAME}" in
+            pull_request) base="${{ github.event.pull_request.base.sha }}" ;;
+            push) base="${{ github.event.before }}" ;;
+          esac
+
+          everything=false
+          files="."
+          if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ] \
+             || ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
+            # A first push, a base that is no longer there, or a manual run: nothing to compare against.
+            everything=true
+          elif ! files="$(git diff --name-only "${base}" "${GITHUB_SHA}")"; then
+            everything=true
+          fi
+
+          if grep -qxE 'Makefile|\.github/workflows/.*' <<<"$files"; then
+            everything=true
+          fi
+          if [ "$everything" = true ]; then
+            files="."
+          fi
+
+          # A pattern that matches nothing is a false branch, not a failure.
+          matches() { [ "$everything" = true ] && return 0; grep -qE "$1" <<<"$files"; }
+
+          python=false;     matches '^(zettcode/|pyproject\.toml|uv\.lock)' && python=true
+          lint=false;       [ "$python" = true ] && lint=true;  matches '^docs/scripts/' && lint=true
+          monitor=false;    [ "$python" = true ] && monitor=true;  matches '^plugins/' && monitor=true
+          typescript=false; matches '^clients/typescript/' && typescript=true
+          vscode=false;     [ "$typescript" = true ] && vscode=true;  matches '^clients/vscode/' && vscode=true
+          gateway=false;    matches '^clients/gateway/' && gateway=true
+          package=false;    [ "$python" = true ] && package=true;  [ "$gateway" = true ] && package=true
+
+          echo "Reading the change against ${base:-nothing}:"
+          printf '%s\n' "$files" | head -20 | sed 's/^/  /'
+          {
+            echo "lint=$lint"
+            echo "python=$python"
+            echo "monitor=$monitor"
+            echo "typescript=$typescript"
+            echo "vscode=$vscode"
+            echo "gateway=$gateway"
+            echo "package=$package"
+          } >> "$GITHUB_OUTPUT"
+
   lint:
     name: Ruff
+    needs: changes
+    if: needs.changes.outputs.lint == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -39,6 +115,8 @@ jobs:
 
   test:
     name: Tests (Python ${{ matrix.python-version }})
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -63,6 +141,8 @@ jobs:
 
   monitor:
     name: Monitor plugin
+    needs: changes
+    if: needs.changes.outputs.monitor == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -93,6 +173,8 @@ jobs:
 
   test-windows:
     name: Tests (Windows, Python ${{ matrix.python-version }})
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
     runs-on: windows-latest
     strategy:
       fail-fast: false
@@ -120,6 +202,8 @@ jobs:
 
   typescript:
     name: TypeScript client
+    needs: changes
+    if: needs.changes.outputs.typescript == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -141,6 +225,8 @@ jobs:
 
   gateway:
     name: Gateway page
+    needs: changes
+    if: needs.changes.outputs.gateway == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -165,6 +251,8 @@ jobs:
 
   vscode:
     name: VS Code extension
+    needs: changes
+    if: needs.changes.outputs.vscode == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -190,6 +278,8 @@ jobs:
 
   package:
     name: Build and smoke-test the wheels
+    needs: changes
+    if: needs.changes.outputs.package == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

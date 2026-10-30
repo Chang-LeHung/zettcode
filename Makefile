@@ -13,8 +13,9 @@ SMOKE_DIR := .smoke
 LINT_PATHS := zettcode/src zettcode/tests zettcode/perf docs/scripts
 
 # `make check` runs only what the tree has changed, so a change to the VS Code webview does not spend three minutes
-# on the Python suite: CI runs every suite on every pull request, and that is where the whole gate lives. The files
-# are read against BASE, where this branch left the main line.
+# on the Python suite. CI reads the same split from the pull request's own diff and runs the suites a change needs,
+# with the Makefile and the workflows counting as every file. The files are read against BASE, where this branch left
+# the main line.
 BASE ?= $(shell git merge-base HEAD origin/main 2>/dev/null || git rev-parse --verify HEAD)
 CHANGED := $(shell { git diff --name-only $(BASE); git ls-files --others --exclude-standard; } 2>/dev/null | sort -u)
 # A changed Makefile can change any of these rules, so it counts as every file.
@@ -46,7 +47,7 @@ help:
 	@echo "  make build    Build the sdist and wheel into dist/"
 	@echo "  make smoke    Build the wheel into $(SMOKE_DIR)/ and run both programs' --help from it"
 	@echo "  make check    Run what the change needs (BASE=main to compare with another ref)"
-	@echo "  make check-all   Run every suite, as CI does"
+	@echo "  make check-all   Run every suite, whether or not the change needs it"
 	@echo "  make hooks    Install the git hooks (blocks a commit that fails mypy)"
 	@echo "  make docs     Serve the user guide at http://localhost:5173"
 	@echo "  make docs-build   Build the guide into docs/.vitepress/dist"
@@ -139,7 +140,8 @@ check:
 	@$(if $(EXTENSION),$(MAKE) --no-print-directory vscode,echo "  vscode extension: untouched, skipped")
 	@$(if $(GATEWAY),$(MAKE) --no-print-directory gateway-ui,echo "  gateway page: untouched, skipped")
 
-# The whole gate, which is what CI runs on every pull request: before handing work over, and always in CI.
+# Every suite, whatever the change: what CI runs when a change can reach all of them, and what to run before handing
+# work over.
 check-all: python client vscode gateway-ui
 
 # The guide is a VitePress site in docs/; its own package.json pins it.
