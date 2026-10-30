@@ -526,13 +526,24 @@ see whether your terminal accepted it. Several terminals ask first or refuse by 
 
 | Terminal | What it needs |
 | --- | --- |
-| iTerm2 | Turn on the setting that lets applications in the terminal access the clipboard — in Settings → General → Selection, "Applications in terminal may access clipboard" |
+| iTerm2 | Turn on the setting that lets applications in the terminal access the clipboard — in Settings → General → Selection, "Applications in terminal may access clipboard". It is off until it is turned on, and a shell can turn it on too: `defaults write com.googlecode.iterm2 AllowClipboardAccessFromTerminal -bool true`, then quit and reopen iTerm2 |
 | kitty, Alacritty, Ghostty | Nothing: they allow a program to *write* the clipboard by default |
 | WezTerm, Windows Terminal | Support it |
 | tmux | `set -g set-clipboard on` — tmux's default, `external`, does not accept it from programs inside — or `set -g allow-passthrough on`, in `~/.tmux.conf` |
 
-A terminal that does not support OSC 52 ignores it, and the text goes nowhere. Then copy with
-that terminal's own selection, which you get by holding its modifier (<kbd>Shift</kbd> or
+A terminal that does not support OSC 52 ignores it, and the text goes nowhere. The pill still says
+the text was *sent*, because the program on the far side of the connection cannot see what your
+terminal did with it. iTerm2 has the sharpest edge here: the setting above is off until it is turned
+on, and iTerm2's own warning about a refused copy can be dismissed with "Don't Show This Again",
+after which every later refusal is silent — the copy simply does nothing. To see what your terminal
+does with it, run this in it and paste:
+
+```sh
+printf '\033]52;c;%s\007' "$(printf 'hello' | base64)"
+```
+
+`hello` on the clipboard means it took the copy; nothing means it refused. Then copy with the
+terminal's own selection, which you get by holding its modifier (<kbd>Shift</kbd> or
 <kbd>Option</kbd>) while dragging.
 
 ZettCode decides where to copy from the environment: `SSH_CONNECTION`, `SSH_CLIENT` or `SSH_TTY`
