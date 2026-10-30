@@ -130,6 +130,10 @@ smoke: gateway-page
 	@# The HTML trace ships as package data: a packaging change that drops the
 	@# template, its stylesheet, or its script has to fail here, not at export time.
 	$(UV) run --no-project --python 3.14 --with ./$(SMOKE_DIR)/zettcode-*.whl python -c "from importlib.resources import files; names = sorted(p.name for p in files('zettcode.engine.export').joinpath('trace').iterdir()); assert names == ['script.js', 'style.css', 'template.html'], names; print('trace assets:', names)"
+	@# The `monitor` extra is metadata, and nothing else exercises it: a misspelt name or a range that excludes the
+	@# published plugin shows up only when a reader installs it. This installs the built wheel with the extra and
+	@# checks the plugin really registers its command under this version, which is the extra's whole promise.
+	@wheel=$$(ls $(SMOKE_DIR)/zettcode-*.whl); $(UV) run --no-project --python 3.14 --with "$$wheel[monitor]" python -c "import tempfile, pathlib; from zettcode.config import ModelConfig, ZettCodeConfig; from zettcode.app.plugins.loader import load_terminal_plugins; root = pathlib.Path(tempfile.mkdtemp()); (root / 'w').mkdir(); config = ZettCodeConfig(workspace=root / 'w', models=(ModelConfig(model='m', token='t'),), store=root / 'store', plugins_file=root / 'plugins.json', mcp_enabled=False, skills_enabled=False, harness_dir=root / 'harness'); names = [command.name for command in load_terminal_plugins(config).commands]; assert '/monitor' in names, names; print('monitor extra:', '/monitor')"
 
 check:
 	@echo "--- changed since $(BASE) ---"

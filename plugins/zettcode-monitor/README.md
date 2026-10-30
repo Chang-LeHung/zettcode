@@ -20,17 +20,21 @@ the calls. The switches are read back when a session is resumed. `ZETTCODE_MONIT
 
 ## Install
 
-    pip install zettcode-monitor
+ZettCode carries this plugin as an extra, so one command installs both into the same environment:
+
+    pip install "zettcode[monitor]"
+
+or, with `uv tool`:
+
+    uv tool install "zettcode[monitor]"
+
+`pip install zettcode-monitor` beside an installed ZettCode is the same thing, for a program that pins or vendors its
+plugins itself. Restart afterwards, and `/monitor` is there.
 
 It runs on ZettCode 0.3 and later (`zettcode>=0.3,<0.4`): the plugin API it is built on — `PluginContext`,
 `TuiPlugin` and the three groups — is the one that line introduced, while the 0.2 line still spells it
 `TerminalPlugin` / `TerminalContainer`. The 0.1.1 release on PyPI is the one for that older API: it declares
-`zettcode>=0.1.11,<0.3` and runs beside a 0.2.x release. Install it into the same environment as ZettCode, then
-restart. With a `uv tool` install:
-
-    uv tool install --force --with zettcode-monitor zettcode
-
-From a checkout of this repository:
+`zettcode>=0.1.11,<0.3` and runs beside a 0.2.x release. From a checkout of this repository:
 
     uv tool install --force --with ./plugins/zettcode-monitor zettcode
 
@@ -51,6 +55,11 @@ and fails before it builds.
 `.github/workflows/release-monitor.yml` checks the tag against the version, runs the tests, builds, and publishes with
 the same `PYPI_API_TOKEN` secret as zettcode. The `monitor-v*` tag is separate from zettcode's `v*` tag. The first
 publish needs the `zettcode-monitor` project name to be free on PyPI.
+
+When ZettCode starts a new line — 0.4, say — publish this plugin **first**, with its `zettcode` range widened to allow
+both lines (`>=0.3,<0.5`), and only then release the new ZettCode whose `monitor` extra names it. The other order
+leaves a window in which `pip install "zettcode[monitor]"` cannot resolve, because the extra would name a plugin that
+does not accept the version being installed.
 
 ## Test
 

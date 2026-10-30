@@ -2908,6 +2908,11 @@ dependencies = [
     { name = "zett-agent" },
 ]
 
+[package.optional-dependencies]
+monitor = [
+    { name = "zettcode-monitor" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "exceptiongroup", marker = "python_full_version < '3.11'", specifier = ">=1.2,<2" },
@@ -2924,6 +2929,21 @@ requires-dist = [
     { name = "wcwidth", specifier = ">=0.2,<1" },
     { name = "websockets", specifier = ">=15,<17" },
     { name = "zett-agent", specifier = ">=0.2.2,<0.3" },
+    { name = "zettcode-monitor", marker = "extra == 'monitor'", specifier = ">=0.2,<0.3" },
+]
+provides-extras = ["monitor"]
+
+[[package]]
+name = "zettcode-monitor"
+version = "0.2.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "zett-agent" },
+    { name = "zettcode" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ba/df/23f8ff17e5ee87f502fc2d27357bc08a0478f396c10ff84bc41c22c680e6/zettcode_monitor-0.2.0.tar.gz", hash = "sha256:81cd25f557924ee0baa5ce05c67569ec363d701e1ac3c0dce0fadca6b95b4f87", size = 25246, upload-time = "2026-10-30T14:51:14.6Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e8/77/36c95331a7f52195cbe861f02750e34ce1c05f4979b01771e3adeb8aad6b/zettcode_monitor-0.2.0-py3-none-any.whl", hash = "sha256:99f5b5b86da6dfe1f9853080de48daa30944aa9098615b30e663de7a834a1315", size = 23111, upload-time = "2026-10-30T14:51:13.69Z" },
 ]
 
 [[package]]
