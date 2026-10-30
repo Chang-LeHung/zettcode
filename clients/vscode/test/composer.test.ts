@@ -62,6 +62,7 @@ const state: WebviewState = {
   resumable: null,
   selfCompaction: { choice: null, effective: true },
   context: null,
+  commands: [],
   version: "0.1.8",
 };
 
@@ -74,7 +75,7 @@ after(() => {
 
 const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
-async function open(turns: unknown[] = []) {
+async function open(turns: unknown[] = [], patch: Partial<WebviewState> = {}) {
   const html = chatHtml({
     styles: ["file:///base.css", "file:///webview.css"],
     script: "file:///webview.js",
@@ -92,7 +93,7 @@ async function open(turns: unknown[] = []) {
   });
   (window.HTMLElement.prototype as unknown as { scrollIntoView: () => void }).scrollIntoView = () => undefined;
   window.eval(await readFile(process.env.ZETTCODE_WEBVIEW_BUNDLE ?? "build/webview.js", "utf8"));
-  window.dispatchEvent(new window.MessageEvent("message", { data: { type: "init", state, turns } }));
+  window.dispatchEvent(new window.MessageEvent("message", { data: { type: "init", state: { ...state, ...patch }, turns } }));
   await settle();
   const input = window.document.getElementById("input") as HTMLTextAreaElement;
   return {
@@ -251,6 +252,57 @@ test("a command whose argument is free text offers no list", async () => {
   await ui.type("/btw ");
 
   assert.deepEqual(ui.labels(), []);
+});
+
+/** The two commands a test plugin registers, as the server sends them. */
+const pluginCommands = [
+  { name: "/greet", summary: "Greet someone by name", when_busy: "now", subcommands: ["formal", "casual"] },
+  { name: "/note", summary: "Write a note", when_busy: "refuse", subcommands: [] },
+];
+
+test("a plugin's commands are offered beside the view's own, and run through the host", async () => {
+  const ui = await open([], { commands: pluginCommands });
+  await ui.type("/gre");
+  assert.deepEqual(ui.labels(), ["/greet"]);
+
+  await ui.type("/greet Ada");
+  await ui.key("Enter");
+  assert.deepEqual(
+    ui.messages.filter((message) => message.type === "run-command"),
+    [{ type: "run-command", name: "/greet", argument: "Ada" }],
+    "the name the server sent, and what was typed after it",
+  );
+});
+
+test("a plugin command that names the words it takes offers them, and one that does not runs at once", async () => {
+  const ui = await open([], { commands: pluginCommands });
+  await ui.type("/greet ");
+  assert.deepEqual(ui.labels(), ["/greet formal", "/greet casual"]);
+
+  await ui.key("Enter");
+  assert.deepEqual(ui.messages.filter((message) => message.type === "run-command"), [
+    { type: "run-command", name: "/greet", argument: "formal" },
+  ]);
+
+  await ui.type("/note ");
+  assert.deepEqual(ui.labels(), [], "nothing to list, so the menu closes and the words are free text");
+  await ui.key("Enter");
+  assert.deepEqual(ui.messages.filter((message) => message.type === "run-command").at(-1), {
+    type: "run-command",
+    name: "/note",
+    argument: "",
+  });
+});
+
+test("a plugin that takes a name the view already has does not replace it", async () => {
+  const ui = await open([], {
+    commands: [{ name: "/stop", summary: "A plugin's own idea of stopping", when_busy: "now", subcommands: [] }],
+  });
+  await ui.type("/sto");
+  assert.deepEqual(ui.labels(), ["/stop"]);
+  await ui.key("Enter");
+  assert.deepEqual(ui.messages.filter((message) => message.type === "cancel").length, 1, "still the view's own /stop");
+  assert.equal(ui.messages.some((message) => message.type === "run-command"), false);
 });
 
 test("Up brings back what was sent before, and Down walks forward to the draft again", async () => {

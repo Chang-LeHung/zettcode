@@ -1,6 +1,7 @@
 /** The messages the extension host and the chat webview exchange. */
 
 import type {
+  CommandInfo,
   ContextReport,
   CurrentSession,
   Health,
@@ -59,6 +60,8 @@ export interface WebviewState {
   resumable: ResumeInfo | null;
   selfCompaction: SelfCompaction | null;
   context: ContextReport | null;
+  /** The commands the plugins registered, which the composer's `/` menu offers beside its own. */
+  commands: CommandInfo[];
   /** The application's version from `/health`, for the footer. */
   version: string | null;
 }
@@ -98,6 +101,8 @@ export type WebviewMessage =
   | { type: "ready" }
   | { type: "focused"; focused: boolean }
   | { type: "prompt"; text: string; images: ImageInput[] }
+  /** A command a plugin registered, run with what the composer left after its name. */
+  | { type: "run-command"; name: string; argument: string }
   | { type: "steer"; text: string }
   | { type: "cancel" }
   | { type: "approve"; callId: string; approve: boolean; remember: boolean }
