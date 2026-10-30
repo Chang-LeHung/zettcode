@@ -504,7 +504,7 @@ async def test_a_config_that_cannot_be_written_is_reported_and_the_rows_stay(con
 
 async def test_the_switch_is_a_short_rail_with_a_round_knob_that_slides_instead_of_jumping(config_file):
     """A five-column rail gives the knob four places; the ten-column one must show it in most of its nine."""
-    from zettcode.app.ui.widgets.statusline_page import SWITCH_WIDTH
+    from zettcode.app.ui.widgets.switch import SWITCH_WIDTH
 
     class Clock:
         now = 1_000.0
@@ -534,7 +534,7 @@ async def test_the_switch_is_a_short_rail_with_a_round_knob_that_slides_instead_
 
 
 async def test_the_switch_is_a_thin_line_with_a_round_knob_and_not_a_bar(config_file):
-    from zettcode.app.ui.widgets.statusline_page import SWITCH_WIDTH
+    from zettcode.app.ui.widgets.switch import SWITCH_WIDTH
     from zettcode.tui import Canvas
 
     app, harness = await open_panel(None)

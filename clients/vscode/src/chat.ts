@@ -2131,8 +2131,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       this.readyForPrompt();
       return;
     }
-    const client = await this.ensureClient();
-    await showPluginsPanel(client, this.extensionUri, this.workspaceName());
+    // The panel asks for a client each time it writes, so a server restarted under it is still reachable.
+    await showPluginsPanel(() => this.ensureClient(), this.extensionUri, this.workspaceName());
   }
 
   /**

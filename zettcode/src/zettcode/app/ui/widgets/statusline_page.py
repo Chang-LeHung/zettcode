@@ -7,12 +7,12 @@ from pathlib import Path
 from time import monotonic
 
 from zettcode.statusline import GAP, PET, Part, Row
-from zettcode.tui import ARROW_DOWN, ARROW_UP, SEPARATOR, Canvas, Host, MouseAction, MouseEvent, Theme, Widget
+from zettcode.tui import ARROW_DOWN, ARROW_UP, SEPARATOR, Canvas, Host, MouseAction, MouseEvent, Widget
 from zettcode.tui.render import Style, blend, display_width, truncate
 
 from .. import labels
 from .panel import pressed
-from .self_compact_page import _Rail
+from .switch import SWITCH_WIDTH, Rail, draw_switch
 
 #: Rows the panel needs besides the list: a blank, the title, a blank, the two preview rows, a blank above the
 #: list, then below it a blank, the selected part's description and the keys.
@@ -65,7 +65,6 @@ LIST_ROWS = len(PARTS) + len(SAMPLE) + 1
 
 #: Columns the part names take, the switch, and the word beside it.
 NAME_WIDTH = 14
-SWITCH_WIDTH = 10
 WORD_WIDTH = 7
 
 #: The least columns a description is worth drawing in; narrower and the line under the list says it alone.
@@ -123,7 +122,7 @@ class StatuslinePage(Widget):
         self.parts: tuple[Part, ...] = (*PARTS[:-1], *extra, PET)
         self.row_of = {**ROW_OF, **{part.name: TURN_TITLE for part in extra}}
         self.start = {part.name: part.name not in hidden for part in self.parts}
-        self.switches = {name: _Rail(("hidden", "shown"), int(shown)) for name, shown in self.start.items()}
+        self.switches = {name: Rail(("hidden", "shown"), int(shown)) for name, shown in self.start.items()}
         self.on_apply = on_apply
         self.on_cancel = on_cancel
         #: The part the marker is on, as an index into :data:`PARTS`.
@@ -427,32 +426,3 @@ class StatuslinePage(Widget):
     def _draw_switch(self, canvas: Canvas, y: int, x: int, position: float, groove: str) -> None:
         """Draw one part's switch; see :func:`draw_switch`."""
         draw_switch(canvas, self.theme, y, x, position, groove)
-
-
-def draw_switch(canvas: Canvas, theme: Theme, y: int, x: int, position: float, groove: str) -> None:
-    """Draw a switch as a short thin rail: lit up to the knob when on, the knob at the start of a groove when off.
-
-    It is the rail the other panels use, drawn the same way, with its round knob. The rail is ten columns:
-    short enough to sit beside a name, long enough that the knob crosses nine columns in the slide instead of
-    the four a five-column rail gives it, which is what made it jump. The position is the clock's, so a slow
-    terminal drops frames instead of slowing the knob. ``/statusline`` and the panel of one model in ``/config``
-    both draw their switches with it.
-
-    Args:
-        canvas: Where to draw.
-        theme: The palette; the rail is drawn on its raised surface.
-        y: The row.
-        x: The column of the rail's first cell.
-        position: Where the knob is, from 0 (off) to 1 (on); a fraction while it travels.
-        groove: The colour of the empty stretch.
-    """
-    surface = theme.surface_alt
-    knob = round(max(0.0, min(1.0, position)) * (SWITCH_WIDTH - 1))
-    lit = blend(blend(theme.muted, surface, 0.25), theme.accent, position)
-    for cell in range(SWITCH_WIDTH):
-        if cell < knob:
-            canvas.draw_text(x + cell, y, "\u2501", Style(foreground=lit, background=surface))
-        elif cell > knob:
-            canvas.draw_text(x + cell, y, "\u2500", Style(foreground=groove, background=surface))
-    colour = blend(lit, theme.text, 0.35 * position)
-    canvas.draw_text(x + knob, y, "\u25cf", Style(foreground=colour, background=surface, bold=True))

@@ -4,6 +4,8 @@ export interface StubWebview {
   html: string;
   cspSource: string;
   asWebviewUri(value: unknown): { toString(): string };
+  onDidReceiveMessage(listener: (message: unknown) => unknown): void;
+  postMessage(message: unknown): Promise<boolean>;
 }
 
 export interface StubPanel {
@@ -14,6 +16,17 @@ export interface StubPanel {
 }
 
 export let lastPanel: StubPanel | null = null;
+
+/** What the host sent back to the page, oldest first. */
+export const posted: unknown[] = [];
+
+/** The listener the open panel registered, so a test can play the page and press a switch. */
+let receiving: ((message: unknown) => unknown) | null = null;
+
+/** Play the page: hand the host one message, as the webview's script does. */
+export async function receive(message: unknown): Promise<void> {
+  await receiving?.(message);
+}
 
 export const ViewColumn = { Active: 1 };
 
@@ -38,6 +51,13 @@ export const window = {
                 ? String(value)
                 : String(value),
           };
+        },
+        onDidReceiveMessage(listener: (message: unknown) => unknown) {
+          receiving = listener;
+        },
+        async postMessage(message: unknown) {
+          posted.push(message);
+          return true;
         },
       },
       onDidDispose() {

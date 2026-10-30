@@ -27,8 +27,7 @@ from zettcode.tui.render import blend, display_width, truncate
 
 from .form_page import LineArea, SecretLine
 from .panel import pressed
-from .self_compact_page import _Rail
-from .statusline_page import SWITCH_WIDTH, draw_switch
+from .switch import SWITCH_WIDTH, Rail, draw_switch
 
 #: What an answer is: the trimmed text of a typed row, whether a switch is on, the word a choice is on.
 Answer = str | bool
@@ -204,7 +203,7 @@ class _RailRow(_Row):
         """Start the knob on the setting's word."""
         super().__init__(page, setting.label, hint=setting.hint)
         self.setting = setting
-        self.rail = _Rail(setting.words, setting.value)
+        self.rail = Rail(setting.words, setting.value)
         self.switch = setting.kind == "switch"
         self._token = f"model-settings:{setting.key}:{id(self)}"
         #: Where each word of a choice was drawn at the last paint, for a click.
