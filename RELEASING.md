@@ -28,7 +28,18 @@ requests `id-token: write`.
    you depend on — raise its floor when a newer zett-agent is what you built
    against — then set the final version in `zettcode/src/zettcode/__init__.py` (for
    example `0.1.11`) and commit it.
-2. Tag and push:
+2. Regenerate the terminal preview: the header of `docs/public/terminal.svg` names
+   the version, so a committed bump that leaves it alone fails
+   `test_docs.py::test_published_brand_assets_match_the_shared_terminal_pixels`
+   (CI runs it on every pull request).
+
+   ```bash
+   uv run python docs/scripts/render_terminal.py
+   ```
+
+   Do not pass `--logo-output` for this: the site's logo is the brand mark, and the
+   script's own mark is a different drawing.
+3. Tag and push:
 
    ```bash
    git tag v0.1.11
