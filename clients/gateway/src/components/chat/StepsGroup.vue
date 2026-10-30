@@ -28,7 +28,7 @@ const summary = computed(() => {
           <summary class="steps-tool">
             <Icon v-if="tool.ok === false" class="steps-fail" name="warn" size="xs" />
             <Icon v-else-if="tool.ok" class="steps-ok" name="check" size="xs" />
-            <Icon v-else name="clock" size="xs" />
+            <Icon v-else class="steps-run" name="clock" size="xs" />
             <b>{{ tool.name }}</b>
             <code>{{ tool.brief }}</code>
           </summary>
@@ -55,7 +55,13 @@ const summary = computed(() => {
 .steps-tool { display: flex; align-items: center; gap: 6px; cursor: pointer; list-style: none; }
 .steps-tool b { font-weight: 600; }
 .steps-tool code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-family: var(--mono); font-size: 0.9em; }
-.steps-ok { color: var(--ok); }
+.steps-ok { color: var(--ok); animation: tick 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.steps-run { color: var(--muted); animation: breathe 1.4s ease-in-out infinite; }
+.steps { animation: pop 0.2s ease-out; }
+.steps[open] > ol { animation: unfold 0.24s cubic-bezier(0.22, 1, 0.36, 1); transform-origin: top left; }
+.steps-tool:active { opacity: 0.6; }
+.steps > summary { transition: background 0.2s, transform 0.15s; }
+.steps > summary:active { transform: scale(0.97); }
 .steps-fail { color: var(--bad); }
 .steps pre {
   margin: 6px 0 2px; max-height: 14rem; overflow: auto; padding: 8px; border-radius: 8px; background: var(--code-bg);
