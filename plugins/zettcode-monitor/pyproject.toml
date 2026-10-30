@@ -1,6 +1,6 @@
 [project]
 name = "zettcode-monitor"
-description = "A ZettCode plugin: /monitor on|off|export records every model call and exports it as an HTML report"
+description = "A ZettCode plugin: /monitor records every model call of a session and exports it as an HTML report"
 readme = "README.md"
 requires-python = ">=3.10"
 dynamic = ["version"]
@@ -25,8 +25,9 @@ dependencies = [
   # after 0.1.10, so that release is the floor; the 0.2 line kept that plugin API, so the range takes every 0.2.x
   # too instead of stopping at <0.2 and letting pip downgrade a 0.2 install out from under the plugin.
   "zettcode>=0.1.11,<0.3",
-  # Imported directly for the extension hooks and message types; the same range zettcode itself depends on.
-  "zett-agent>=0.2.0,<0.3",
+  # Imported directly for the extension hooks and message types; the floor zettcode itself asks for, so an
+  # environment carries one zett-agent.
+  "zett-agent>=0.2.1,<0.3",
 ]
 
 [project.urls]

@@ -14,7 +14,7 @@ from .recorder import MonitorExtension, default_root
 from .report import render_report, write_report
 
 #: The one place the version is written; ``pyproject.toml`` reads it from here.
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 __all__ = ["MonitorExtension", "MonitorPlugin", "__version__", "render_report"]
 
