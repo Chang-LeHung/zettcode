@@ -353,9 +353,22 @@ shell 审批、压缩、`ask_user` 工具、项目指令、skills、MCP 和待�
 
 ## 关掉一个插件
 
-`/plugins` 列出加载了什么、谁失败了。`/plugins disable <名字>` 把 entry-point 名字记进 `~/.zettcode/plugins.json`，
-`/plugins enable <名字>` 再删掉；**下次启动**生效，当前会话仍用已加载的插件。这个文件是 ZettCode 自己的，放在会话存储
-旁边；配置文件的 `[plugins] disable` 写同样的名字，两份列表会合并。`/plugins` 不会改写你的配置文件。
+`/plugins` 打开一页，每个能关掉的插件前面一个开关：编译进程序的在前，装进来的在后。上下移动，左右和空格拨开关，Enter
+把改动写下来，Esc 什么都不写。开关**下次启动**生效：当前这个会话还是用它已经加载的东西。
+
+开关写到哪儿，看这个插件是哪一种：
+
+- **装在程序旁边**的插件记在 `~/.zettcode/plugins.json`，那是 ZettCode 自己的文件，放在会话存储旁边。
+  `/plugins disable <名字>`、`/plugins enable <名字>` 对单个名字做同样的事，配置文件的 `[plugins] disable` 写同样的
+  名字，两份列表会合并。`/plugins` 不会改写你的配置文件。
+- **编译进程序**的插件由你本来就有的设置决定——`[skills] enabled`、`[mcp] enabled`、`[agents_md] enabled`、
+  `[harness] subagent`、`[harness] todowrite`、`[ask_user] enabled`——面板写的就是配置文件里的那个键。没有这种设置的
+  内置插件根本不会列出来：它上面没有可以按的东西。（加载失败的内置插件还是会列出来，写明原因——没有什么可按，
+  但这件事值得知道。）
+
+配置文件里已经用 `[plugins] disable` 关掉的名字，两个前端里都打不开，那一行归你改。在哪儿问都是同一个答案：终端的
+`/plugins` 页面、编辑器的 **ZettCode: Show Plugins** 面板以及服务器上的 `PUT /plugins/{name}`，走的是同一套规则、
+写的是同样的文件。
 
 ## 出问题的时候
 

@@ -144,7 +144,7 @@ class Client:
 | `permissions` | `tuple[str, ...]` | `("deny", "ask", "safe", "full")`。 |
 | `harness` | `bool` | just-in-time harness 是否开启。 |
 | `usage` | `Usage` | 当前会话已花的用量。 |
-| `plugins` | `PluginReport` | 已加载的插件，以及失败的。 |
+| `plugins` | `PluginReport` | 已加载的插件、开关能碰到的每一个（`entries`），以及失败的。 |
 | `self_compaction` | `bool` | 模型是否可以自己压缩这个会话。 |
 | `self_compaction_choice` | `bool \| None` | 这个会话自己的选择，`None` 表示跟随配置。 |
 
@@ -166,6 +166,7 @@ class Client:
 | `use_permission(name, *, remember=True)` | `str` | 选择权限级别；从下一条 shell 命令起生效。`remember=False` 不改动会话记住的级别，用于只覆盖这一次运行的选择。 |
 | `mentions(query="", *, limit=50)` | `tuple[MentionInfo, ...]` | 匹配查询的 `@` 资源，用于补全菜单。开启 `sessions_enabled=True` 时，正在运行的其他会话排在最前，和终端一致。 |
 | `await join_sessions(on_message, *, direct=False)` | `bool` | 加入会话 broker，让其他 ZettCode 会话找得到它、给它发消息。`on_message` 收到每条 `IncomingMessage` 并返回 `Receipt`；返回 `False` 表示该 client 未开启会话功能。`direct=True` 表示这个 client 会把带 `IncomingMessage.direct` 的消息当作读者本人的 prompt 来运行(见 `send_back`)。 |
+| `set_plugin_enabled(name, enabled)` | `PluginEntry` | 记下**下次启动**是否做某个插件的活，并返回它按列表现在的样子。装进来的插件写进插件开关文件；编译进程序的写进配置文件——程序实际用的那个(`config_file`)，不是建 client 时传的 `config_path=`。这个进程不会加载或卸载任何东西。名字不能切换时抛 `ValueError`。 |
 | `await send(to, text, *, direct=False)` | `Delivered` | 按 handle 或 id 给另一个会话发消息，内容视为读者本人所写；需要先 `join_sessions`。`direct=True` 时，支持的会话(`Peer.direct`)把这段文字当作自己的 prompt 运行，并把最终回答发回来；对其他会话该标记被忽略(`Delivered.direct` 说明实际发生了什么)。没有人能收到时抛出 `zettcode.sdk.errors.SendError`(`reason` 说明原因)。 |
 | `await send_back(message, text)` | `Delivered \| None` | 把运行了 `direct` 消息的那一轮的最终回答，以本会话 agent 的身份发回给发送方。发送方已经离开不算错误：返回 `None` 表示没有发出。 |
 | `reachable` | `bool` | 会话 broker 此刻是否连着。 |
@@ -385,6 +386,12 @@ def remove_model(name, *, path=None) -> tuple[ModelInfo, ...]: ...
 ### `MentionInfo`
 
 `token`、`kind`、`name`、`description`。
+
+### `PluginEntry`
+
+`name`、`origin`、`builtin`、`enabled`、`failure`、`setting`、`switchable`、`why`。`plugins()` 列出的一个插件：它自称的名字、承载它的发行包（开关就用这个名字写；编译进程序的插件两者相同）、
+是否编译进程序、**下次启动**是否做它的活、在这里加载失败的原因、决定内置插件的配置键（`"skills.enabled"`，装进来的为空，它的开关在插件开关文件里）、
+面板能不能给它画开关，以及不能时为什么。
 
 ### `IncomingMessage`
 

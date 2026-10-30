@@ -42,7 +42,7 @@ from zettcode.engine.storage import SessionStore
 from zettcode.mentions import FileMentions, SkillMentions
 
 from .context import PluginContext
-from .plugin import Plugin
+from .plugin import Plugin, PluginSetting
 from .services import (
     APPROVAL,
     CAPABILITIES,
@@ -76,6 +76,7 @@ class SkillResources(Plugin):
     """
 
     name = "skills"
+    setting = PluginSetting("skills_enabled", "skills")
 
     def activate(self, ctx: PluginContext) -> None:
         """Offer the discovered skills as ``@`` resources, when skills are on."""
@@ -162,6 +163,7 @@ class Subagents(Plugin):
 
     name = "subagents"
     description = "The task tool and its profiles"
+    setting = PluginSetting("subagent_enabled", "harness", "subagent")
 
     def activate(self, ctx: PluginContext) -> None:
         """Register the tool when ``[harness] subagent`` is on, built once the provider exists."""
@@ -414,6 +416,7 @@ class AskUser(Plugin):
 
     name = "ask-user"
     description = "The ask_user tool"
+    setting = PluginSetting("ask_user_enabled", "ask_user")
 
     def activate(self, ctx: PluginContext) -> None:
         """Hand the agent the tool, unless the configuration turned it off."""
@@ -433,6 +436,7 @@ class ProjectInstructions(Plugin):
 
     name = "project-instructions"
     description = "The workspace's AGENTS.md instructions"
+    setting = PluginSetting("agents_md_enabled", "agents_md")
 
     def activate(self, ctx: PluginContext) -> None:
         """Hand the agent the instructions, unless the configuration turned them off."""
@@ -473,6 +477,7 @@ class McpTools(Plugin):
 
     name = "mcp"
     description = "MCP servers"
+    setting = PluginSetting("mcp_enabled", "mcp")
 
     def activate(self, ctx: PluginContext) -> None:
         """Register the extension when MCP is on; a run with no server file gets none at all."""
@@ -498,6 +503,7 @@ class TodoPlan(Plugin):
 
     name = "todos"
     description = "The todo_write tool and the plan it keeps"
+    setting = PluginSetting("todowrite_enabled", "harness", "todowrite")
 
     def activate(self, ctx: PluginContext) -> None:
         """Provide the extension, and hand it to the agent when the tool is on."""

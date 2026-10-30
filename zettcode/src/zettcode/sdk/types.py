@@ -35,6 +35,7 @@ __all__ = [
     "ModelInfo",
     "ModelTotals",
     "Peer",
+    "PluginEntry",
     "Receipt",
     "Relay",
     "ResumeInfo",
@@ -475,6 +476,33 @@ class MentionInfo:
     kind: str
     name: str
     description: str
+
+
+@dataclass(frozen=True, slots=True)
+class PluginEntry:
+    """One plugin as a list of them shows it, and as a switch is written for it.
+
+    Attributes:
+        name: What the plugin calls itself.
+        origin: The distribution that carries it, which is the name a switch is written with; the same as ``name``
+            for a plugin compiled into the program.
+        builtin: Whether it is compiled into the program.
+        enabled: Whether the next start does its work. A switch is a promise about that start, not about this process.
+        failure: Why it could not load here, or ``""`` when it did.
+        setting: The configuration key that decides a compiled-in plugin (``"skills.enabled"``), or ``""`` for an
+            installed one, which the plugin switch file holds.
+        switchable: Whether there is a switch to draw here; a list shows the rest without one and says ``why``.
+        why: Why it cannot be switched, when it cannot; ``""`` otherwise.
+    """
+
+    name: str
+    origin: str
+    builtin: bool = False
+    enabled: bool = True
+    failure: str = ""
+    setting: str = ""
+    switchable: bool = True
+    why: str = ""
 
 
 @dataclass(frozen=True, slots=True)

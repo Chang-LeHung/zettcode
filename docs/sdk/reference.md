@@ -144,7 +144,7 @@ The agent for one workspace. An async context manager. Every configuration field
 | `permissions` | `tuple[str, ...]` | `("deny", "ask", "safe", "full")`. |
 | `harness` | `bool` | Whether the just-in-time harness is on. |
 | `usage` | `Usage` | What the current session has spent. |
-| `plugins` | `PluginReport` | The plugins that loaded, and the failures. |
+| `plugins` | `PluginReport` | The plugins that loaded, every one a switch can reach (`entries`), and the failures. |
 | `self_compaction` | `bool` | Whether the model may compact this session itself. |
 | `self_compaction_choice` | `bool \| None` | This session's own choice, or `None` when it follows the configuration. |
 
@@ -165,6 +165,7 @@ The agent for one workspace. An async context manager. Every configuration field
 | `use_compact_percent(percent)` | `tuple[ModelInfo, str \| None]` | Moves the compaction point (a share of the window, above 0 and at most 100) from the next request on, and rewrites the configuration file. The second value says why the file was not written, or is `None`. |
 | `use_permission(name, *, remember=True)` | `str` | Chooses the permission level; applies from the next shell command. `remember=False` leaves the session's remembered level alone, for a choice that covers this run only. |
 | `mentions(query="", *, limit=50)` | `tuple[MentionInfo, ...]` | The `@` resources matching a query, for a completion menu. With `sessions_enabled=True`, the other running sessions come first, as they do in the terminal. |
+| `set_plugin_enabled(name, enabled)` | `PluginEntry` | Records whether the next start does one plugin's work, and returns it as the list now shows it. An installed plugin goes in the plugin switch file; a compiled-in one in the configuration file — the one the program uses (`config_file`), not a `config_path=` a client was built with. Nothing loads or unloads in this process. Raises `ValueError` when the name cannot be switched. |
 | `await join_sessions(on_message, *, direct=False)` | `bool` | Join the session broker, so other ZettCode sessions can find this one and send it messages. `on_message` is called with each `IncomingMessage` and returns a `Receipt`; `False` means sessions are switched off for this client. `direct=True` says this client runs a message with `IncomingMessage.direct` set as its reader's own prompt (see `send_back`). |
 | `await send(to, text, *, direct=False)` | `Delivered` | Sends a message to another session by handle or id, as the reader's own words; needs `join_sessions`. With `direct=True`, a session that can (`Peer.direct`) runs the text as its own prompt and sends its final answer back; for any other the flag is ignored (`Delivered.direct` says what happened). Raises `zettcode.sdk.errors.SendError` (its `reason` says why) when nobody could be reached. |
 | `await send_back(message, text)` | `Delivered \| None` | Sends the final answer of a turn that ran a `direct` message back to its sender, as this session's agent. A sender that has gone is not an error: `None` says it was not sent. |
@@ -383,6 +384,10 @@ Properties: `ok` (`stop is None`) and `failed_tools`.
 ### `MentionInfo`
 
 `token`, `kind`, `name`, `description`.
+
+### `PluginEntry`
+
+`name`, `origin`, `builtin`, `enabled`, `failure`, `setting`, `switchable`, `why`. One plugin as `plugins()` lists it: what it calls itself, the distribution that carries it (the name a switch is written with, the same as `name` for a plugin compiled into the program), whether it is compiled in, whether the **next start** does its work, why it could not load here when it could not, the configuration key that decides a compiled-in plugin (`"skills.enabled"`) — empty for an installed one, which the plugin switch file holds — whether a panel may draw a switch at all, and why it may not when it may not.
 
 ### `IncomingMessage`
 

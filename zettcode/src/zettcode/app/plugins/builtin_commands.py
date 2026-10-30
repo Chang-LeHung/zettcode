@@ -22,10 +22,7 @@ import os
 import shlex
 import subprocess
 import sys
-from collections.abc import Iterable, Iterator
-from contextlib import AbstractContextManager, contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from zettcode.app.commands import (
     COMMAND_ERRORS,
@@ -35,19 +32,17 @@ from zettcode.app.commands import (
     Subcommand,
     subcommand_words,
 )
-from zettcode.config import read_disabled_plugins
+from zettcode.config import ZettCodeConfig
+from zettcode.engine.plugins import applied, catalog
+from zettcode.engine.plugins import set_many as switch_plugins
 from zettcode.engine.plugins.commands import PlainCommandContext, TurnCommandResult
 from zettcode.engine.plugins.context import PluginContext
-from zettcode.engine.plugins.loader import installed_entry_points
 from zettcode.paths import DEFAULT_COMMAND_HISTORY
 from zettcode.tui import Widget
 
 from .groups import require_tui
 from .host import HOST_LINK, HostLink
 from .plugin import TuiPlugin
-
-if TYPE_CHECKING:  # pragma: no cover - annotations only
-    from zettcode.config import ZettCodeConfig
 
 #: Rows the picker panels take from the bottom of the screen: the title, the list, and the footer hint. The
 #: handler owns the number; nothing in the framework reads it.
@@ -84,6 +79,13 @@ def _panel(page: Widget) -> Widget:
     from zettcode.app.ui.widgets import bottom_panel
 
     return bottom_panel(page, rows=PICKER_ROWS)
+
+
+def _switched(written: dict[str, bool]) -> str:
+    """Return the switches a panel wrote, as one line: ``a, b will be off; c will be on``."""
+    on = [name for name, enabled in written.items() if enabled]
+    off = [name for name, enabled in written.items() if not enabled]
+    return "; ".join(f"{', '.join(names)} will be {state}" for names, state in ((on, "on"), (off, "off")) if names)
 
 
 # -- the session ----------------------------------------------------------------------------------
@@ -589,132 +591,103 @@ class PluginCommand(TuiPlugin):
     description = "plugin news and switches"
 
     def activate(self, ctx: PluginContext) -> None:
-        """Register ``/plugins``; the settings it needs are captured here, not read from the plugin object."""
+        """Register ``/plugins``."""
         tui = require_tui(ctx)
-        assert ctx.tui is not None
-        config = ctx.config
 
         async def handler(context: CommandContext) -> CommandResult:
-            return await self.plugins(context, config)
+            return await self.plugins(context)
 
         tui.register_command(
             "plugins",
-            "list the plugins, or switch one off: /plugins [disable|enable] <name>",
+            "switch the plugins on or off for the next start: /plugins [disable|enable] <name>",
             handler,
             when_busy="now",
         )
 
-    async def plugins(self, context: CommandContext, config: ZettCodeConfig) -> CommandResult:
-        """List what loaded and failed, or record a switch the next start will honour."""
-        path = config.plugins_file
+    async def plugins(self, context: CommandContext) -> CommandResult:
+        """Open the page of switches, or record one switch the next start will honour.
+
+        Without an argument this is a page: the program's own plugins first, then the installed ones, each with a
+        switch. Enter writes every change down in one go and Escape writes nothing, because the switch is not a
+        setting this session reads again — what it decides is what the *next* start does.
+
+        The settings are read from the runtime now rather than from the activation: a switch this session already wrote
+        is a new configuration object, and a page that opened with the old one would show the switch where it was.
+        """
+        config = context.require_host().agent.runtime.config
         argument = context.argument.strip()
         if not argument:
-            return CommandResult(message=self._listing(context, config))
+            return CommandResult(widget=self._page(context, config))
 
         verb, _, name = argument.partition(" ")
         name = name.strip()
         if verb not in ("disable", "enable") or not name:
             raise ValueError("Usage: /plugins [disable|enable] <name>")
-
-        loaded = context.require_host().agent.runtime.plugins.plugins
-        known = (
-            {plugin.origin or plugin.name for plugin in loaded} | {point.name for point in installed_entry_points()}
-            if context.host is not None
-            else set()
-        )
-        if name not in known and name not in read_disabled_plugins(path):
-            raise ValueError(f"No plugin is called {name!r}; /plugins lists the ones this process loaded")
-        if _is_builtin(name):
-            raise ValueError(
-                f"{name} is compiled into the program, so it cannot be switched off; "
-                "a plugin installed as a distribution can"
-            )
-
-        if verb == "enable" and name in set(config.disabled_plugins):
-            raise ValueError(
-                f"{name} is switched off in the configuration file; remove it from [plugins] disable there, "
-                "which this command does not edit"
-            )
-
-        with _switch_lock(path):
-            names = set(read_disabled_plugins(path))
-            if verb == "disable":
-                names.add(name)
-            else:
-                names.discard(name)
-            _write_disabled(path, names)
+        written, problems = self._write(context, config, {name: verb == "enable"})
+        if problems:
+            raise ValueError(problems[0])
         state = "off" if verb == "disable" else "on"
         return CommandResult(
             notification=f"{name} will be {state} from the next start",
             message=f"`{name}` is {state} for the next start; this session keeps the plugins it loaded.",
         )
 
-    def _listing(self, context: CommandContext, config: ZettCodeConfig) -> str:
-        """Return the loaded, failed and switched-off plugins as a short list."""
-        bundle = context.require_host().agent.runtime.plugins
-        loaded = [
-            plugin.name if plugin.name == (plugin.origin or plugin.name) else f"{plugin.name} ({plugin.origin})"
-            for plugin in bundle.plugins
-        ]
-        off: list[str] = sorted(set(config.disabled_plugins) | set(read_disabled_plugins(config.plugins_file)))
-        lines = ["**Plugins**", "", f"Loaded: {', '.join(loaded) or 'none'}"]
-        if not config.plugins_enabled:
-            lines.append("")
-            lines.append("Installed plugins are off entirely: `[plugins] enabled = false` in the configuration file.")
-        if bundle.failures:
-            lines.append("")
-            lines.append("Failed:")
-            lines += [f"- {failure}" for failure in bundle.failures]
-        if off:
-            lines.append("")
-            lines.append(f"Off from the next start: {', '.join(off)}")
-        return "\n".join(lines)
+    def _page(self, context: CommandContext, config: ZettCodeConfig) -> Widget:
+        """Return the page of switches, which writes what it can and closes itself when Enter is pressed."""
+        from zettcode.app.ui.widgets import PluginRow, PluginsPage
 
+        entries = catalog(config, context.require_host().agent.runtime.plugins)
 
-def _is_builtin(name: str) -> bool:
-    """Return whether ``name`` is one of the plugins compiled into the program."""
-    from zettcode.app.plugins.builtins import BUILTIN_PLUGINS
-    from zettcode.engine.plugins.builtin_agent import AGENT_PLUGINS
+        def apply(changes: dict[str, bool]) -> None:
+            host = context.require_host()
+            if not changes:
+                host.close_page()
+                return
+            written, problems = self._write(context, config, changes)
+            for problem in problems:
+                host.transcript.error(problem)
+            if problems:
+                return
+            host.close_page()
+            said = _switched(written)
+            if said:
+                host.transcript.notice(f"{said} from the next start; this session keeps the plugins it loaded.")
 
-    return any(name in (plugin.name, plugin.origin) for plugin in (*BUILTIN_PLUGINS, *AGENT_PLUGINS))
+        return PluginsPage(
+            [
+                PluginRow(
+                    entry.name,
+                    entry.origin,
+                    entry.builtin,
+                    entry.enabled,
+                    entry.failure,
+                    entry.setting,
+                    entry.switchable,
+                    entry.why,
+                )
+                for entry in entries
+            ],
+            on_apply=apply,
+            on_cancel=context.require_host().close_page,
+        )
 
+    def _write(
+        self, context: CommandContext, config: ZettCodeConfig, changes: dict[str, bool]
+    ) -> tuple[dict[str, bool], list[str]]:
+        """Write every switch down; return the ones written and the message for each that could not be.
 
-def _switch_lock(path: Path) -> AbstractContextManager[object]:
-    """Serialise a read-modify-write of the switch file between two sessions running at once."""
-    from zettcode.filelock import SingletonLock
-
-    @contextmanager
-    def held() -> Iterator[None]:
-        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        lock = SingletonLock(path.with_suffix(".lock"))
-        if not lock.acquire(wait=2.0):
-            raise ValueError("another session is changing the plugin switches; try again in a moment")
+        A plugin compiled into the program is switched by a configuration key, and the running configuration takes the
+        new value too, so the next `/plugins` shows what was chosen even though this process keeps what it loaded.
+        """
+        runtime = context.require_host().agent.runtime
         try:
-            yield None
-        finally:
-            lock.release()
-
-    return held()
-
-
-def _write_disabled(path: Path, names: Iterable[str]) -> None:
-    """Write the switch file in one replace, owner-only, so a crash cannot leave half a list."""
-    import json
-    import tempfile
-
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    handle, temporary = tempfile.mkstemp(dir=path.parent, prefix=".plugins-", suffix=".json")
-    try:
-        with os.fdopen(handle, "w", encoding="utf-8") as stream:
-            json.dump({"disabled": sorted(names)}, stream, indent=2)
-            stream.write("\n")
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.chmod(temporary, 0o600)
-        os.replace(temporary, path)
-    except BaseException:
-        Path(temporary).unlink(missing_ok=True)
-        raise
+            written, keys, problems = switch_plugins(config, changes, bundle=runtime.plugins)
+        except ValueError as error:
+            # The configuration file could not be written; the switch file's names were written before it.
+            return {}, [str(error)]
+        for setting, enabled in keys:
+            runtime.config = applied(runtime.config, setting, enabled)
+        return written, problems
 
 
 class ShellControl(TuiPlugin):

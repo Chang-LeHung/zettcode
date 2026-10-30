@@ -9,13 +9,11 @@ from zettcode.tui import SEPARATOR, Canvas, Host, MouseAction, MouseEvent, Theme
 from zettcode.tui.render import Style, blend, display_width, truncate
 
 from .panel import pressed
+from .switch import Rail
 
 #: Rows the panel takes: a blank, the title, a blank, the session rail and its labels, a blank, the default
 #: rail and its labels, a blank, what is in effect, the note, and the keys.
 SELF_COMPACT_ROWS = 12
-
-#: Seconds a knob takes to travel to the option it was sent to; the same as the effort panel's.
-SLIDE_SECONDS = 0.28
 
 #: Columns kept free at the right of a rail so the last label stays inside the panel.
 RAIL_MARGIN = 5
@@ -42,49 +40,6 @@ DEFAULT_NOTES = {
     "off": "sessions that never chose start with it off",
     "on": "sessions that never chose start with it on",
 }
-
-
-class _Rail:
-    """One row's choices and the knob on them: where it is, where it is going, and how it gets there."""
-
-    def __init__(self, words: tuple[str, ...], current: int) -> None:
-        self.words = words
-        self.start = current
-        self.selected = current
-        self.origin = float(current)
-        self.set_off = 0.0
-        self.moving = False
-
-    def position(self, now: float) -> float:
-        """Return where the knob is, in options from the first: a fraction while it travels."""
-        if not self.moving:
-            return float(self.selected)
-        progress = (now - self.set_off) / SLIDE_SECONDS
-        if progress >= 1.0:
-            return float(self.selected)
-        eased = 1 - (1 - max(0.0, progress)) ** 3
-        return self.origin + (self.selected - self.origin) * eased
-
-    def choose(self, index: int, now: float, *, instant: bool) -> bool:
-        """Send the knob to an option; say whether it has somewhere to travel."""
-        index = max(0, min(len(self.words) - 1, index))
-        if index == self.selected:
-            return False
-        self.origin = self.position(now)
-        self.selected = index
-        self.set_off = now
-        self.moving = not instant
-        if instant:
-            self.origin = float(index)
-        return self.moving
-
-    def arrive(self, now: float) -> bool:
-        """Stop the knob if it has arrived; say whether this was its last frame."""
-        if self.moving and self.position(now) == float(self.selected):
-            self.moving = False
-            self.origin = float(self.selected)
-            return True
-        return False
 
 
 class SelfCompactPage(Widget):
@@ -133,8 +88,8 @@ class SelfCompactPage(Widget):
     ) -> None:
         """Start with both knobs where the settings are now."""
         super().__init__()
-        self.session_rail = _Rail(SESSION_WORDS, SESSION_CHOICES.index(choice))
-        self.default_rail = _Rail(DEFAULT_WORDS, int(default))
+        self.session_rail = Rail(SESSION_WORDS, SESSION_CHOICES.index(choice))
+        self.default_rail = Rail(DEFAULT_WORDS, int(default))
         self.on_apply = on_apply
         self.on_cancel = on_cancel
         self.session_open = session_open
@@ -178,7 +133,7 @@ class SelfCompactPage(Widget):
     def _now(self) -> float:
         return self.app.clock() if self.app is not None else monotonic()
 
-    def _active(self) -> _Rail:
+    def _active(self) -> Rail:
         return self.session_rail if self.row == 0 else self.default_rail
 
     def choose(self, row: int, index: int) -> None:
@@ -263,12 +218,12 @@ class SelfCompactPage(Widget):
         return left, max(left, self.rect.right - RAIL_MARGIN - 1)
 
     @staticmethod
-    def _column(rail: _Rail, index: float, left: int, right: int) -> int:
+    def _column(rail: Rail, index: float, left: int, right: int) -> int:
         """Return the column a (possibly fractional) option sits at."""
         steps = max(1, len(rail.words) - 1)
         return left + round(index * (right - left) / steps)
 
-    def _colour(self, theme: Theme, rail: _Rail, index: float) -> str:
+    def _colour(self, theme: Theme, rail: Rail, index: float) -> str:
         """Return the colour of a point on a rail: grey for off, the accent for on, the text for no choice."""
         stops: tuple[str, ...]
         if rail is self.session_rail:
@@ -279,7 +234,7 @@ class SelfCompactPage(Widget):
         low = min(int(scaled), len(stops) - 2)
         return blend(stops[low], stops[low + 1], scaled - low)
 
-    def _label(self, rail: _Rail, index: int) -> str:
+    def _label(self, rail: Rail, index: int) -> str:
         """Return the words under an option: ``default`` says what it would be, and the old place says ``now``."""
         word = rail.words[index]
         if rail is self.session_rail and index == 0:
@@ -343,7 +298,7 @@ class SelfCompactPage(Widget):
         canvas.draw_text(x, self.rect.y + 10, truncate(self._note(), room), muted, max_width=room)
         canvas.draw_text(x, self.rect.bottom - 1, truncate(self.HINT, room), muted, max_width=room)
 
-    def _draw_rail(self, canvas: Canvas, rail: _Rail, y: int, left: int, right: int, now: float, enabled: bool) -> None:
+    def _draw_rail(self, canvas: Canvas, rail: Rail, y: int, left: int, right: int, now: float, enabled: bool) -> None:
         """Draw one rail: lit up to the knob in the colour of where each cell sits, the nodes, and the knob."""
         theme = self.theme
         surface = theme.surface_alt
@@ -370,7 +325,7 @@ class SelfCompactPage(Widget):
         canvas.draw_text(knob, y, KNOB, Style(foreground=colour, background=surface, bold=True))
 
     def _draw_labels(
-        self, canvas: Canvas, rail: _Rail, y: int, left: int, right: int, now: float, enabled: bool
+        self, canvas: Canvas, rail: Rail, y: int, left: int, right: int, now: float, enabled: bool
     ) -> None:
         """Write each option under its node, skipping any that would run into one already written.
 

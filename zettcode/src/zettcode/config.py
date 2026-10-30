@@ -448,7 +448,9 @@ class ZettCodeConfig:
             load, so switching this off leaves the shell looking the same.
         disabled_plugins: Entry-point names not to load when
             :attr:`plugins_enabled` is true; a way to switch off one plugin
-            without uninstalling it.
+            without uninstalling it. This is the configuration file's own
+            ``[plugins] disable`` list; the names the shell's switch file adds are merged in by
+            :attr:`off_names`, so a switch can tell the two apart.
         subagent_enabled: Offer the ``task`` tool, whose profiles run a child
             agent with its own context and session log.
         subagent_max_iterations: Model calls one such child may make for one task.
@@ -983,9 +985,9 @@ def load_config(
             )
         ),
         plugins_enabled=bool(_setting(plugins, "enabled", bool, True)),
-        disabled_plugins=tuple(
-            dict.fromkeys((*_read_disabled_plugins(plugins.get("disable"), source), *read_disabled_plugins()))
-        ),
+        # The configuration file's own list. The switch file's names are read where they are needed
+        # (`zettcode.engine.plugins.switches`), so a switch can tell which list it may write.
+        disabled_plugins=_read_disabled_plugins(plugins.get("disable"), source),
         subagent_enabled=bool(_setting(harness, "subagent", bool, True)),
         subagent_max_iterations=_typed(
             harness.get("subagent_max_iterations", DEFAULT_SUBAGENT_MAX_ITERATIONS),

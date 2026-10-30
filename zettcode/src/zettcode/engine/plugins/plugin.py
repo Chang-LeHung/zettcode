@@ -35,6 +35,32 @@ _C = TypeVar("_C", bound=PluginContext)
 _T = TypeVar("_T")
 
 
+@dataclass(frozen=True, slots=True)
+class PluginSetting:
+    """The configuration key that decides whether a compiled-in plugin does its work.
+
+    A plugin installed as a distribution is switched by the plugin switch file. One compiled into the program has no
+    file of its own: what turns its work off is a setting the reader already has, such as ``[skills] enabled``. A
+    plugin that declares one is listed by a panel with a switch, and the switch writes that key; a plugin that does
+    not is not listed, because there is nothing a reader could do about it.
+
+    Attributes:
+        field: The attribute of :class:`~zettcode.config.ZettCodeConfig` that holds it now, for the state a list
+            shows and for a running process to keep up with.
+        table: The configuration table it is written to.
+        key: The key inside that table.
+    """
+
+    field: str
+    table: str
+    key: str = "enabled"
+
+    @property
+    def path(self) -> str:
+        """Return it the way the configuration file spells it, ``skills.enabled``."""
+        return f"{self.table}.{self.key}"
+
+
 class Plugin(PluginAgentMixin, Generic[_C], ABC):
     """Base class for one ZettCode plugin.
 
@@ -52,6 +78,8 @@ class Plugin(PluginAgentMixin, Generic[_C], ABC):
         description: One-line summary of what the plugin adds, for diagnostics.
         priority: Hook order against every other extension: lower runs first,
             and equal priorities keep registration order.
+        setting: The configuration key that turns its work off, for a plugin compiled into the program; ``None`` when
+            the plugin is installed as a distribution, which the plugin switch file reaches instead.
     """
 
     #: Identity the loader may resolve and record; a plain attribute, so a
@@ -63,6 +91,9 @@ class Plugin(PluginAgentMixin, Generic[_C], ABC):
     origin: str = ""
     description: ClassVar[str] = ""
     priority: ClassVar[int] = 100
+    #: The configuration key that decides whether a compiled-in plugin does its work, or ``None`` when there is none:
+    #: a plugin the reader cannot turn off is left out of the list rather than shown without a switch.
+    setting: ClassVar[PluginSetting | None] = None
 
     def activate(self, container: _C) -> None:
         """Run once at startup, before any agent client is built.
@@ -96,9 +127,13 @@ class Plugins:
             :meth:`service` and :meth:`find`.
         plain_commands: Commands a plugin registered on ``ctx.commands``, in load and registration order, each
             typed ``"plugin"``. The terminal turns them into shell commands; another front end reads them here.
-        failures: One message per plugin that could not be loaded or activated.
-            A plugin that cannot be loaded is reported rather than taking the whole application
+        failures: One message per plugin that could not be loaded or activated, ``origin: why``, read from
+            :attr:`failed`. A plugin that cannot be loaded is reported rather than taking the whole application
             with it; the shell reports these where the user can see them.
+        failed: The failures themselves, one ``(origin, why)`` pair each, for a list that groups them by the plugin
+            they belong to. This is the one record; :attr:`failures` is written from it.
+        builtins: The origins of the plugins compiled into the program, in load order. They always load, so a switch
+            cannot leave one out, and a list can say which rows are the program's own.
     """
 
     host: PluginExtension | None = None
@@ -107,7 +142,13 @@ class Plugins:
     contributed: tuple[Contribution, ...] = ()
     services: Mapping[str, object] = field(default_factory=dict)
     plain_commands: tuple[object, ...] = ()
-    failures: tuple[str, ...] = ()
+    failed: tuple[tuple[str, str], ...] = ()
+    builtins: tuple[str, ...] = ()
+
+    @property
+    def failures(self) -> tuple[str, ...]:
+        """Return each failure as the one line a transcript shows, ``origin: why``."""
+        return tuple(f"{origin}: {why}" for origin, why in self.failed)
 
     def find(self, name: str, kind: type[_T]) -> _T | None:
         """Return the service under ``name``, or ``None`` when no loaded plugin provides it.

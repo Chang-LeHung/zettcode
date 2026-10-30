@@ -206,9 +206,33 @@ export interface RunResult {
   questions: string[];
 }
 
+/** One plugin as a list of them shows it. */
+export interface PluginEntry {
+  name: string;
+  /** The distribution that carries it, and the name a switch is written with; equal to `name` for a builtin. */
+  origin: string;
+  /** Compiled into the program. */
+  builtin: boolean;
+  /** Whether the next start does its work: a switch is a promise about that start, not this process. */
+  enabled: boolean;
+  /** Why it could not load in this process, or empty when it did. */
+  failure: string;
+  /**
+   * The configuration key that decides a compiled-in plugin (`skills.enabled`), or empty for an installed one, which
+   * the plugin switch file holds.
+   */
+  setting: string;
+  /** Whether there is a switch to draw; a list shows the rest without one and says `why`. */
+  switchable: boolean;
+  /** Why it cannot be switched, when it cannot; empty otherwise. */
+  why: string;
+}
+
 export interface PluginReport {
   loaded: string[];
   failures: string[];
+  /** Every plugin a switch can reach, in the order a panel shows them. */
+  entries: PluginEntry[];
 }
 
 /** One command every front end may run: a name, a summary, and how the run is framed. */

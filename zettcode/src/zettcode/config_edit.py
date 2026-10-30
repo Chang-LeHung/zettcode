@@ -341,6 +341,23 @@ def set_self_compaction(text: str, enabled: bool, *, where: Path) -> str:
     )
 
 
+def set_boolean(text: str, table: str, key: str, enabled: bool, *, where: Path, command: str) -> str:
+    """Return ``text`` with ``[table] key`` set to a boolean, touching nothing else.
+
+    One key of one table, written and checked the way every other single-key edit is: a file that cannot take it is
+    refused whole rather than half-written.
+
+    Args:
+        text: The configuration as it is now.
+        table: The table's name (``"skills"``).
+        key: The key in it (``"enabled"``).
+        enabled: What it should read back as.
+        where: The file, for messages.
+        command: What the reader pressed, for the message when the file cannot be edited safely.
+    """
+    return _set_key(text, table, key, "true" if enabled else "false", enabled, where=where, command=command)
+
+
 def set_statusline(text: str, shown: Mapping[str, bool], *, where: Path) -> str:
     """Return ``text`` with each named part of ``[statusline]`` set to shown or hidden, touching nothing else.
 

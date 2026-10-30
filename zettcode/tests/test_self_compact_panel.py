@@ -6,7 +6,8 @@ import pytest
 
 from test_zettcode_app import _harness, _start_a_request, _stop, _type_command, _typed_while_running, build_app, walk
 from zettcode._compat import tomllib
-from zettcode.app.ui.widgets.self_compact_page import KNOB, SLIDE_SECONDS, SelfCompactPage
+from zettcode.app.ui.widgets.self_compact_page import KNOB, SelfCompactPage
+from zettcode.app.ui.widgets.switch import SLIDE_SECONDS
 
 MODEL = '[[models]]\nmodel = "m"\ntoken = "t"\n'
 

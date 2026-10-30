@@ -306,6 +306,7 @@ class FakeConfig:
     pet_position: tuple[float, float] | None = None
     plugins_enabled: bool = True
     disabled_plugins: tuple[str, ...] = ()
+    plugins_file: Path = Path("/tmp/zettcode-plugins.json")
     update_enabled: bool = True
     update_file: Path = Path("/tmp/zettcode-update.json")
     themes_dir: Path = Path("/tmp/zettcode-no-themes")
@@ -486,7 +487,7 @@ def rows_and_commands(
         commands=(*ctx.tui.registered_commands, *plain, *commands),
         builtin_commands=tuple((*ctx.tui.registered_commands, *plain)),
         rows=ctx.tui.rows,
-        failures=failures,
+        failed=tuple((origin, why) for origin, _, why in (line.partition(": ") for line in failures)),
         themes=ctx.tui.themes,
         pets=ctx.tui.pets,
         presenters=ctx.tui.presenters,
