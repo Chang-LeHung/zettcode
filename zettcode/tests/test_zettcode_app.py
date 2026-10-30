@@ -4809,7 +4809,7 @@ def test_the_sessions_panel_lines_wide_titles_up_in_one_column():
         ListedSession("01a10116", None, now - timedelta(hours=3), now - timedelta(hours=3)),
     ]
     page = SessionsPage(sessions, on_select=lambda _: None, on_cancel=lambda: None, now=now)
-    rows = [row for row in render_block(page, width=64, height=10, theme=DARK).splitlines() if "01a10" in row]
+    rows = [row for row in render_block(page, width=64, height=14, theme=DARK).splitlines() if "01a10" in row]
 
     assert len(rows) == 3
     # A wide title is padded by the columns it draws, so every age starts in the
@@ -4978,6 +4978,9 @@ async def test_sessions_command_opens_a_panel_with_titles_and_ages(tmp_path):
     page = _sessions_page(app)
     text = harness.render().text
     assert page.rect.bottom == app.app.height
+    # The panel asks for 16 rows; a 14-row screen caps it rather than pushing the title off the top.
+    assert page.rect.y == 0 and page.rect.height == 14
+    assert "Sessions" in text and "Search" in text
     assert "Fix the parser crash" in text
     assert text.count("just now") == 2
     # A session without a title reads as New session but still shows its id.
@@ -5014,6 +5017,146 @@ async def test_sessions_panel_in_a_narrow_terminal_gives_up_right_hand_columns_t
     # The two right-hand columns went first; then the title, which has MIN_TITLE columns left, is cut.
     assert "Updated" in text and "Entries" in text and "Cached" not in text
     assert "Fix the parser c\u2026" in text
+
+
+async def test_typing_in_the_sessions_panel_narrows_it_and_enter_opens_the_match(tmp_path):
+    store = SessionStore(tmp_path)
+    await store.append("alpha-1", "req", UserMessage(content="hi"))
+    await store.append("beta-2", "req", UserMessage(content="hi"))
+    await store.set_title("alpha-1", "Fix the parser crash")
+    app = build_app()
+    app.agent.runtime.persistence.sessions = await store.list_sessions()
+    app.agent.runtime.persistence.store = store
+    _read_totals_from(app, store)
+    harness = _harness(app)
+
+    harness.write("/resume")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+    page = _sessions_page(app)
+    assert page.query == ""
+
+    assert harness.write("parser"), "the panel takes the typing, not the composer behind it"
+    harness.render()
+
+    assert page.query == "parser"
+    assert [item.value for item in page.list.items] == ["alpha-1"]
+    assert "esc clear" in harness.render().text
+
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    assert app.agent.session_id == "alpha-1"
+
+
+async def test_typing_filters_while_the_list_keeps_the_keyboard_and_the_arrows_still_move_it(tmp_path):
+    store = SessionStore(tmp_path)
+    await store.append("alpha-1", "req", UserMessage(content="hi"))
+    await store.append("beta-2", "req", UserMessage(content="hi"))
+    await store.set_title("alpha-1", "Parser rewrite")
+    await store.set_title("beta-2", "Parser tests")
+    app = build_app()
+    app.agent.runtime.persistence.sessions = await store.list_sessions()
+    app.agent.runtime.persistence.store = store
+    _read_totals_from(app, store)
+    harness = _harness(app)
+
+    harness.write("/resume")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+    page = _sessions_page(app)
+    harness.write("parser")
+    harness.render()
+    assert page.query == "parser" and len(page.list.items) == 2
+
+    target = page.list.items[1].value
+    harness.press("down")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    assert app.agent.session_id == target
+
+
+async def test_up_from_the_first_row_puts_the_caret_in_the_box_and_up_again_wraps_to_the_bottom(tmp_path):
+    store = SessionStore(tmp_path)
+    for identity in ("one", "two", "three"):
+        await store.append(identity, "req", UserMessage(content="hi"))
+    app = build_app()
+    app.agent.runtime.persistence.sessions = await store.list_sessions()
+    app.agent.runtime.persistence.store = store
+    _read_totals_from(app, store)
+    harness = _harness(app)
+
+    harness.write("/resume")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+    page = _sessions_page(app)
+    assert app.app.focused_widget() is page.list and page.list.selected == 0
+
+    harness.press("up")
+    assert app.app.focused_widget() is page and page.focused, "the caret is in the search box"
+
+    harness.press("up")
+    assert app.app.focused_widget() is page.list
+    assert page.list.selected == len(page.list.items) - 1, "Up in the box wraps round to the bottom row"
+
+    harness.press("down")
+    assert app.app.focused_widget() is page
+
+    harness.press("down")
+    assert app.app.focused_widget() is page.list and page.list.selected == 0
+
+
+async def test_enter_in_the_box_opens_the_row_the_list_still_highlights(tmp_path):
+    store = SessionStore(tmp_path)
+    for identity in ("one", "two", "three"):
+        await store.append(identity, "req", UserMessage(content="hi"))
+    app = build_app()
+    app.agent.runtime.persistence.sessions = await store.list_sessions()
+    app.agent.runtime.persistence.store = store
+    _read_totals_from(app, store)
+    harness = _harness(app)
+
+    harness.write("/resume")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+    page = _sessions_page(app)
+    page.list.select(len(page.list.items) - 1, notify=False)
+
+    harness.press("down")  # the bottom row hands the keyboard back to the box, keeping its row
+    assert app.app.focused_widget() is page
+
+    target = page.list.items[-1].value
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    assert app.agent.session_id == target
+
+
+async def test_escape_in_the_sessions_panel_clears_the_search_before_closing_it(tmp_path):
+    store = SessionStore(tmp_path)
+    await store.append("alpha-1", "req", UserMessage(content="hi"))
+    await store.append("beta-2", "req", UserMessage(content="hi"))
+    app = build_app()
+    app.agent.runtime.persistence.sessions = await store.list_sessions()
+    app.agent.runtime.persistence.store = store
+    _read_totals_from(app, store)
+    harness = _harness(app)
+
+    harness.write("/resume")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+    page = _sessions_page(app)
+    harness.write("alpha")
+
+    harness.press("escape")
+    harness.render()
+    assert page.query == "" and len(page.list.items) == 2
+    assert app.app.screens.top.name == "page", "the search was cleared, the panel is still open"
+
+    harness.press("escape")
+    harness.render()
+    assert app.app.screens.top.name != "page"
 
 
 async def test_sessions_command_reports_an_empty_store():
@@ -5087,9 +5230,9 @@ def test_the_sessions_panel_numbers_its_rows_and_fills_the_panel():
     assert [item.label for item in page.list.items][:2] == [" 1. session 0", " 2. session 1"]
     assert page.list.items[9].label == "10. session 9"
 
-    # The list fills the panel it is given rather than stopping at six rows: the page's height less its title,
-    # the heading over the figures, a blank row and the footer.
-    page.layout(Rect(0, 0, 40, 14))
+    # The list fills the panel it is given rather than stopping at six rows: the page's height less its top
+    # margin, title, boxed search field, the heading over the figures, a blank row and the footer.
+    page.layout(Rect(0, 0, 40, 16))
 
     assert page.list.rect.height == 8
 

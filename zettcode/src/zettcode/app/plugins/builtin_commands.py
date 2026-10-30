@@ -48,6 +48,11 @@ from .plugin import TuiPlugin
 #: handler owns the number; nothing in the framework reads it.
 PICKER_ROWS = 14
 
+#: Rows the ``/resume`` panel asks for: the picker, plus the two the boxed search field costs, so a screen tall
+#: enough for them shows as many sessions as any other picker. A shorter screen caps the panel to its height, and
+#: the list gives those two rows up with the box rather than being cut.
+RESUME_ROWS = PICKER_ROWS + 2
+
 #: Sessions the ``/resume`` panel lists.
 RESUME_LIMIT = 20
 
@@ -74,11 +79,11 @@ EFFORT_NOTES = {
 }
 
 
-def _panel(page: Widget) -> Widget:
+def _panel(page: Widget, *, rows: int = PICKER_ROWS) -> Widget:
     """Wrap one picker in the bottom panel these commands share."""
     from zettcode.app.ui.widgets import bottom_panel
 
-    return bottom_panel(page, rows=PICKER_ROWS)
+    return bottom_panel(page, rows=rows)
 
 
 def _switched(written: dict[str, bool]) -> str:
@@ -129,7 +134,7 @@ class SessionCommands(TuiPlugin):
             context.ui.notice(f"Session totals unavailable: {error}")
             stats = None
         page = SessionsPage(sessions, stats=stats, on_select=host.select_session, on_cancel=host.close_page)
-        return CommandResult(widget=_panel(page))
+        return CommandResult(widget=_panel(page, rows=RESUME_ROWS))
 
     async def continue_(self, context: CommandContext) -> CommandResult:
         """Carry on the request that was interrupted \u2014 stopped, cut off, failed \u2014 from where it stopped.

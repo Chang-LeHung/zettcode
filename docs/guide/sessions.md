@@ -117,7 +117,11 @@ resume this session: zettcode resume 01a10b75 --workspace ~/projects/api
 
 Inside the program, `/resume` opens a panel of recent sessions for this
 workspace, newest first, each with its title and how long ago it changed;
-`/resume <id>` skips the panel. The header names the session you are in.
+`/resume <id>` skips the panel. Typing in the panel searches the list by title
+or id as you go, and an empty box is the whole list again. `Up` on the first row
+puts the caret in the search box, and `Up` there wraps to the bottom row; `Esc`
+clears the search, and a second `Esc` closes the panel. The header names the
+session you are in.
 
 `/new` starts a fresh one and leaves the current conversation on disk. `/clear`
 only empties the screen; the session keeps going, and the model still remembers
