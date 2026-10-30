@@ -410,12 +410,22 @@ WebP、GIF 都会原样送达，并按芯片所在的位置作为图片部分发
 
 | 终端 | 需要什么 |
 | --- | --- |
-| iTerm2 | 打开“允许终端里的应用访问剪贴板”的那个设置 —— 在 Settings → General → Selection 里，“Applications in terminal may access clipboard” |
+| iTerm2 | 打开“允许终端里的应用访问剪贴板”的那个设置 —— 在 Settings → General → Selection 里，“Applications in terminal may access clipboard”。它是关着的，要手动打开；也可以在 shell 里打开：`defaults write com.googlecode.iterm2 AllowClipboardAccessFromTerminal -bool true`，然后退出并重开 iTerm2 |
 | kitty、Alacritty、Ghostty | 什么都不用做：它们默认允许程序*写入*剪贴板 |
 | WezTerm、Windows Terminal | 支持 |
 | tmux | 在 `~/.tmux.conf` 里设置 `set -g set-clipboard on` —— tmux 默认的 `external` 不接受里面程序发来的 —— 或者 `set -g allow-passthrough on` |
 
-不支持 OSC 52 的终端会直接忽略它，文字哪里也不会去。这时请用那个终端自己的选择来复制：拖动时按住它的修饰键（<kbd>Shift</kbd> 或 <kbd>Option</kbd>）。
+不支持 OSC 52 的终端会直接忽略它，文字哪里也不会去。药丸照样会说文字已经**发出**，因为连接另一头的
+程序看不到你的终端拿它做了什么。iTerm2 在这里最容易让人卡住：上面那个设置默认是关的，而 iTerm2 自己
+关于“复制被拒绝”的提示可以用 “Don't Show This Again” 关掉 —— 关掉之后，后面的每一次拒绝都不再有声音，
+复制就是什么也没发生。想知道你的终端怎么处理它，在终端里跑这一行，然后粘贴：
+
+```sh
+printf '\033]52;c;%s\007' "$(printf 'hello' | base64)"
+```
+
+剪贴板上出现 `hello` 说明它接受了；什么都没有说明它拒绝了。这时请用那个终端自己的选择来复制：拖动时
+按住它的修饰键（<kbd>Shift</kbd> 或 <kbd>Option</kbd>）。
 
 ZettCode 靠环境变量判断往哪里复制：`SSH_CONNECTION`、`SSH_CLIENT` 或 `SSH_TTY` 表示它在连接的另一头。
 判断错了的时候 —— 比如 `sudo` 丢掉了这些变量，或者你转发了 X 显示、想要的恰恰是服务器的剪贴板 ——
