@@ -275,6 +275,11 @@ web_search_name = "web_search_20250305"   # 可选：这已经是它的默认值
 网关可能提供它的厂商没有的搜索，所以其他组合不会被提前拒绝：如果端点不认识这个工具类型，请求会带着它自己的
 错误失败，这时用 `web_search_name` 给它它认识的那个。
 
+搜索是在端点自己的回复里完成的，有时会**没有结果就结束**——供应商在工具报回结果之前就关掉了这次回复，Anthropic
+在搜索循环到达上限时就是这样。这种调用显示为 `The provider did not report what this call returned`，它那一行也不会
+被标成完成：调用结束了，但没有结果，上面的回答就是模型自己写下的那些。这一行只属于正在运行的这一轮：供应商的
+block 存不下来（下一次请求会因为一个没有结果的调用被拒），所以重新打开的会话只能看到回答本身。
+
 ### 模型支持的推理档位 {#reasoning-levels-a-model-takes}
 
 并不是每个接入点都接受所有推理档位，不支持的档位可能让整个请求失败。可以在模型项里写明它支持哪些：
@@ -519,7 +524,9 @@ jit = false                    # 模型可以写并运行小的 Python 工具；
 | `harness.subagent_max_iterations` | `512` | 一个子 agent 完成一个任务最多可以调用模型的次数。子 agent 在真实代码库里探索或修改要调用几十次（库自带的默认值 18 会让这类任务做到一半就结束）；这个值是防止它停不下来的上限，不是目标。子 agent 也会拿到你项目的 `AGENTS.md`。 |
 | `harness.subagent_messaging` | `false` | 让 `coding` 子 agent 也拥有 `list_sessions` 和 `send_message`。默认关闭：子 agent 只为一个会话做一件事，和其他会话对话是那个会话自己的事。见[子 agent 能做什么](#what-a-child-agent-can-do)。 |
 | `harness.todowrite` | `false` | 提供 `todo_write`，清单由界面画在计划面板里。维护计划要花轮次，所以默认关闭。 |
-| `harness.jit` | `false` | 启动时就打开 just-in-time harness：模型可以自己写小的 Python 工具，存在 `~/.zettcode/harness`（每个会话一个文件夹）里并运行它们。它写的代码跑在自己的子进程里 —— 崩溃或卡死不会带走窗口 —— 并且在 `full` 以下的每一档都跑在 `safe` 用的那个边界里，所以仍然默认关闭。`full` 下它拿到的是你自己的权限；没有沙箱的机器上，harness 会每个会话说一次，模型写的代码不会在你不知情的情况下失去边界。`/harness on` 和 `/harness off` 在本轮切换。只有**改了边界**（进或出 `full`）才会关掉那个子进程：下一次请求重新起一个，模型自己写的工具要再跑一次 `repo_load` 才回来；`ask` 和 `safe` 用的是同一个边界，在两者之间切换不花任何代价。 |
+| `harness.jit` | `false` | 启动时就打开 just-in-time harness：模型可以自己写小的 Python 工具，存在 `~/.zettcode/harness`（每个会话一个文件夹）里并运行它们。它写的代码跑在自己的子进程里 —— 崩溃或卡死不会带走窗口 —— 并且在 `full` 以下的每一档都跑在 `safe` 用的那个边界里，所以仍然默认关闭。`full` 下它拿到的是你自己的权限；没有沙箱的机器上，harness 会每个会话说一次，模型写的代码不会在你不知情的情况下失去边界。`/harness on` 和 `/harness off` 在本轮切换。只有**改了边界**（进或出 `full`）才会关掉那个子进程：下一次请求重新起一个，模型自己写的工具要再跑一次 `repo_load` 才回来；`ask` 和 `safe` 用的是同一个边界，在两者之间切换不花任何代价。仓库要在 `__init__.py` 旁边写一个 `MANIFEST`（name、version、description，以及可选的、它声明的 `tools`）才能加载；
+同一目录下的 `BAN_TOOLS` 列出它不允许定义的工具名。`/harness` 只读这些文件、不导入代码，所以显示的是声明，不是
+代码实际定义了什么。 |
 | `shell.network` | `false` | 让在 `safe` 沙箱里跑的命令可以访问网络。默认关闭；`full` 永远有网络，没有沙箱的机器也一样。见[审批](/zh/guide/interface#审批)。 |
 
 例如，减少回看内容、添加项目内 skills，再关闭远程工具服务器：

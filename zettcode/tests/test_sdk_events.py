@@ -14,7 +14,7 @@ from zett_agent.extensions.ask_user import ASK_USER_EVENT_NAME
 from zett_agent.extensions.events import CompactionEvent
 from zett_agent.extensions.shell_approval import SHELL_APPROVAL_EVENT_NAME, ShellApprovalRequestedEvent
 from zett_agent.messages import AssistantMessage, TextContent, ToolCall, ToolMessage, UserMessage
-from zett_agent.model import ServerToolCall, ServerToolInputDelta, ServerToolResult
+from zett_agent.model import NOT_REPORTED_STATUS, ServerToolCall, ServerToolInputDelta, ServerToolResult
 from zett_agent.stop import StopInfo, StopReason
 
 from zettcode.engine.extensions.mcp_notice import MCP_NOTICE_EVENT_NAME, notice_payload
@@ -511,6 +511,17 @@ def test_a_failed_hosted_tool_carries_the_providers_code():
 
     assert isinstance(finished, sdk.ServerToolFinished)
     assert finished.ok is False and finished.output == "max_uses_exceeded"
+
+
+def test_a_hosted_call_the_provider_left_open_is_not_a_completed_one():
+    """The adapter closes an abandoned call with a marker, not with a result: the event must not say it succeeded."""
+    result = ServerToolResult("c1", "web_search", {"status": NOT_REPORTED_STATUS})
+
+    (finished,) = translate(event(AgentEventType.SERVER_TOOL_COMPLETED, server_tool_result=result), Bridge())
+
+    assert isinstance(finished, sdk.ServerToolFinished)
+    assert finished.ok is False
+    assert finished.output == "The provider did not report what this call returned"
 
 
 def test_a_pattern_match_on_the_event_classes_reads_the_fields():

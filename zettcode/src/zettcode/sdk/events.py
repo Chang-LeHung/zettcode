@@ -181,8 +181,10 @@ class ServerToolFinished(Event):
         call_id: The call it answers.
         name: The tool.
         arguments: What it was asked, gathered across the input the provider streamed.
-        output: A readable summary of the result — for a search, the pages — never the provider's opaque payload.
-        ok: Whether it succeeded.
+        output: A readable summary of the result — for a search, the pages — never the provider's opaque payload. A
+            call the provider closed without a result says so here, because there is no result to show.
+        ok: Whether it succeeded. ``False`` for a call that failed, and for one that ended without a reported result:
+            the call is over, and nothing about what it returned is known.
     """
 
     call_id: str
