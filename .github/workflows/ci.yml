@@ -61,6 +61,36 @@ jobs:
         working-directory: zettcode
         run: uv run --no-sync pytest
 
+  monitor:
+    name: Monitor plugin
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The plugin is not a workspace member, so its own pyproject owns the
+        # interpreter range: the floor and the newest version claimed cover it.
+        python-version: ["3.10", "3.15"]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+
+      - name: Sync dependencies
+        run: uv sync --locked --all-packages
+
+      # The plugin runs from its source against the zettcode in this checkout,
+      # not from a built wheel: what this job checks is that the plugin still
+      # speaks the API of the zettcode beside it and that the ranges it declares
+      # admit that release. Installing the two from PyPI is the release
+      # workflow's job, where the release it names exists.
+      - name: Run tests
+        run: uv run --no-sync python -m pytest plugins/zettcode-monitor/tests -q
+        env:
+          PYTHONPATH: plugins/zettcode-monitor/src
+
   test-windows:
     name: Tests (Windows, Python ${{ matrix.python-version }})
     runs-on: windows-latest

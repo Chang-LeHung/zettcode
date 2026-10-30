@@ -1,6 +1,6 @@
 [project]
 name = "zettcode-monitor"
-description = "A ZettCode plugin: /monitor on|off|export records every model call and exports it as an HTML report"
+description = "A ZettCode plugin: /monitor records every model call of a session and exports it as an HTML report"
 readme = "README.md"
 requires-python = ">=3.10"
 dynamic = ["version"]
@@ -21,12 +21,13 @@ classifiers = [
   "Typing :: Typed",
 ]
 dependencies = [
-  # Imported directly (the command, the plugin base classes). ``zettcode.app.plugins`` first ships in the release
-  # The plugin API this release uses — `PluginContext`, `TuiPlugin`, the three groups — is new in 0.3, and the
-  # 0.2 line still spells it `TerminalPlugin`/`TerminalContainer`.
+  # Imported directly (the command, the plugin base classes). The plugin API this release uses — `PluginContext`,
+  # `TuiPlugin`, the three groups — is new in 0.3, and the 0.2 line still spells it `TerminalPlugin` /
+  # `TerminalContainer`, so the floor is the 0.3 line and the cap the one after it.
   "zettcode>=0.3,<0.4",
-  # Imported directly for the extension hooks and message types; the same range zettcode itself depends on.
-  "zett-agent>=0.2.0,<0.3",
+  # Imported directly for the extension hooks and message types; the floor zettcode itself asks for, so an
+  # environment carries one zett-agent.
+  "zett-agent>=0.2.1,<0.3",
 ]
 
 [project.urls]
