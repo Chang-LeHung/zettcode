@@ -140,15 +140,30 @@ def test_the_command_takes_no_subcommands(tmp_path):
     assert command.name == "/monitor" and not command.subcommands
 
 
+def _runs_this_checkouts_zettcode() -> bool:
+    """Return whether the zettcode imported here is the checkout this plugin is developed beside."""
+    import zettcode
+
+    source = Path(__file__).resolve().parents[3] / "zettcode" / "src"
+    return Path(zettcode.__file__).resolve().is_relative_to(source)
+
+
 def test_the_dependency_ranges_take_the_running_zettcode_and_zett_agent():
     """The plugin installs beside zettcode, so its ranges have to admit the release it runs on here.
 
     The cap was ``<0.2`` once, and a 0.2.x worktree could not install the plugin: pip either refused the local
     checkout or quietly downgraded zettcode to 0.1.x with it. A range that stops short now fails in this test instead.
+
+    ``main`` is the next line before its release commit writes the version, so a checkout of this repository runs a
+    zettcode whose version string is one minor below the plugin's floor while the API it needs is already here: the
+    import of this module is what proves that. When the zettcode under test is this checkout, the floor is checked
+    against the line after it — the release the plugin names — and a floor that skips further ahead still fails. A
+    zettcode installed from PyPI has to satisfy the range outright.
     """
     from importlib.metadata import version as installed
 
     from packaging.requirements import Requirement
+    from packaging.version import Version
 
     project = Path(__file__).resolve().parent.parent / "pyproject.toml"
     declared = (
@@ -158,10 +173,18 @@ def test_the_dependency_ranges_take_the_running_zettcode_and_zett_agent():
     )
     ranges = {requirement.name: requirement for requirement in map(Requirement, declared)}
     assert set(ranges) == {"zettcode", "zett-agent"}, "the runtime dependencies declared in pyproject.toml"
+    checkout = _runs_this_checkouts_zettcode()
     for name, requirement in ranges.items():
-        current = installed(name)
-        assert requirement.specifier.contains(current, prereleases=True), (
+        current = Version(installed(name))
+        if requirement.specifier.contains(current, prereleases=True):
+            continue
+        floors = [Version(spec.version) for spec in requirement.specifier if spec.operator == ">="]
+        assert name == "zettcode" and checkout and len(floors) == 1, (
             f"{requirement} excludes {name} {current}, the release this test runs on"
+        )
+        floor = floors[0]
+        assert (floor.major, floor.minor) == (current.major, current.minor + 1), (
+            f"{requirement} excludes {name} {current} and does not name the next line either"
         )
 
 
