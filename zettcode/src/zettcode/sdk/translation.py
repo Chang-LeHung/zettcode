@@ -20,7 +20,7 @@ from zett_agent.messages import TextContent
 from ..engine.dialogue.ask import question_from
 from ..engine.extensions.mcp_notice import notice_from, notice_level_from
 from ..engine.extensions.usage import USAGE_EVENT_NAME, UsageSnapshot
-from ..engine.server_tools import ServerToolRun, describe_output
+from ..engine.server_tools import ServerToolRun, describe_output, not_reported
 from ..engine.storage.ledger import Ledger, SessionStats, SessionUsage, Tally
 from .events import (
     AnyEvent,
@@ -306,7 +306,9 @@ def _server_tool_finished(event: AgentEvent, session: str, hosted: dict[str, str
                 parsed = None
             if isinstance(parsed, dict):
                 arguments.update(parsed)
-    ok = event.type is AgentEventType.SERVER_TOOL_COMPLETED
+    # A call closed with the adapter's "no result" marker did not succeed: it ended, and nothing about what it
+    # returned was reported, so the row must not be drawn as a completed one.
+    ok = event.type is AgentEventType.SERVER_TOOL_COMPLETED and not not_reported(result.output)
     run = ServerToolRun(result.call_id, result.name, arguments, output=result.output, error=result.error_code)
     return [ServerToolFinished(session, result.call_id, result.name, arguments, describe_output(run), ok)]
 

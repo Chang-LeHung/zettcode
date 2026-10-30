@@ -13,6 +13,7 @@ from zett_agent.events import AgentEvent, AgentEventType
 from zett_agent.messages import AssistantMessage, UserMessage
 from zett_agent.model import ServerToolCall, ServerToolInputDelta, ServerToolResult
 
+from zettcode.app.agent.conversation.entries import EntryStatus
 from zettcode.app.agent.conversation.projection import TranscriptProjector
 from zettcode.app.agent.conversation.replay import replay
 from zettcode.app.agent.conversation.transcript import Transcript
@@ -187,3 +188,66 @@ async def test_the_window_counts_a_hosted_tool_row():
     with_search = AssistantMessage(content="x", replay_blocks=BLOCKS)
 
     assert entries_added_by(with_search) == entries_added_by(AssistantMessage(content="x")) + 1
+
+
+async def test_a_hosted_call_the_provider_left_open_says_nothing_was_reported():
+    """`zett-agent` 0.2.2 closes an abandoned hosted call with `{"status": "not_reported"}`: the call ended, its
+    result is unknown, and the row must not read as a search that found nothing (or, worse, as `Completed`)."""
+    from zett_agent.model import NOT_REPORTED_STATUS
+
+    run = ServerToolRun("c", "web_search", {"query": "x"}, output={"status": NOT_REPORTED_STATUS})
+
+    assert describe_output(run) == "The provider did not report what this call returned"
+
+
+async def test_a_call_closed_without_a_result_is_not_drawn_as_completed():
+    """The line says nothing was reported; the row's status has to agree, or it wears a completed marker over it."""
+    from zett_agent.model import NOT_REPORTED_STATUS
+
+    transcript = Transcript()
+    projector = TranscriptProjector(transcript)
+    projector.begin_turn("search for zettcode")
+    await projector.dispatch(
+        AgentEvent(
+            AgentEventType.SERVER_TOOL_STARTED,
+            "s",
+            server_tool_call=ServerToolCall("call-1", "web_search", {"query": "zettcode github"}),
+        )
+    )
+    await projector.dispatch(
+        AgentEvent(
+            AgentEventType.SERVER_TOOL_COMPLETED,
+            "s",
+            server_tool_result=ServerToolResult("call-1", "web_search", {"status": NOT_REPORTED_STATUS}),
+        )
+    )
+    await projector.dispatch(
+        AgentEvent(AgentEventType.RUN_COMPLETED, "s", message=AssistantMessage(content="Here is the answer."))
+    )
+
+    (entry,) = [row for row in transcript.entries if getattr(row, "kind", None) == "tool"]
+    assert entry.status is EntryStatus.FAILED
+    assert entry.text == "The provider did not report what this call returned"
+
+
+async def test_a_call_the_runtime_dropped_has_no_row_when_the_session_is_reopened(tmp_path: Path):
+    """The API refuses a hosted call without its result, so the runtime strips that block before storing.
+
+    The live row is therefore the only one there is: a reopened session shows the answer alone, and the stored
+    answer is what the next request carries. What this pins is the shape the runtime stores — an answer whose
+    ``replay_blocks`` hold no such call — and how the replayer reads it; the stripping itself is the dependency's
+    (``zett-agent`` drops the block when the adapter closes a call with ``NOT_REPORTED_STATUS``), so a change there
+    shows up as a different stored shape, not as a silent row appearing.
+    """
+    store = SessionStore(tmp_path)
+    await store.append("s", "req", UserMessage(content="search for zettcode"))
+    await store.append(
+        "s",
+        "req",
+        AssistantMessage(
+            content="Here is the answer.",
+            replay_blocks=({"type": "text", "text": "Here is the answer."},),
+        ),
+    )
+
+    assert _rows(replay(store.read("s")).transcript) == []

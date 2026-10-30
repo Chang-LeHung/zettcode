@@ -2856,7 +2856,7 @@ wheels = [
 
 [[package]]
 name = "zett-agent"
-version = "0.2.1"
+version = "0.2.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiosqlite" },
@@ -2877,13 +2877,14 @@ dependencies = [
     { name = "sqlalchemy", version = "2.0.55", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "sqlalchemy", version = "2.1.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "tiktoken" },
+    { name = "tomli", marker = "python_full_version < '3.11'" },
     { name = "truststore" },
     { name = "typing-extensions", marker = "python_full_version < '3.12'" },
     { name = "uuid6" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/80/38/869a2d3f7f447e329c0f373cd1f8d02d471e9ef4cfb4212b3eb365babeeb/zett_agent-0.2.1.tar.gz", hash = "sha256:7b3c1c235ccd10d1dd7b83cc88da19622af0d18493bb7145608e5de4f5edeecf", size = 715899, upload-time = "2026-10-26T16:13:53.287Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/67/bb/e21139dad27ba1e6a905499b85471c4fe9f6e37f58e2d04d219ea9911e86/zett_agent-0.2.2.tar.gz", hash = "sha256:f20898e2eec21ba0dea7306eab74c71eb6a2d6d23083eb877dd0df2242d8143a", size = 725319, upload-time = "2026-10-30T12:30:15.797Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/9b/af/317bd493cbe4c00fabcf89220d759bce875df0da41713f78e587865c7469/zett_agent-0.2.1-py3-none-any.whl", hash = "sha256:6aaa0199fb48459f68c0f6f6dccbd2f61f6f321a69f236c1e2ef9918383bf92b", size = 799294, upload-time = "2026-10-26T16:13:51.956Z" },
+    { url = "https://files.pythonhosted.org/packages/56/33/ed3fa06f7bd16afab4c271c5e4be0ecba85638248b04f715abfd40474c7b/zett_agent-0.2.2-py3-none-any.whl", hash = "sha256:c1c307f028576d0bff48c8b79450dd6fd02cf7f2974041bc03a5937a0eba3868", size = 809945, upload-time = "2026-10-30T12:30:14.394Z" },
 ]
 
 [[package]]
@@ -2922,7 +2923,7 @@ requires-dist = [
     { name = "uvicorn", specifier = ">=0.35,<1" },
     { name = "wcwidth", specifier = ">=0.2,<1" },
     { name = "websockets", specifier = ">=15,<17" },
-    { name = "zett-agent", specifier = ">=0.2.1,<0.3" },
+    { name = "zett-agent", specifier = ">=0.2.2,<0.3" },
 ]
 
 [[package]]

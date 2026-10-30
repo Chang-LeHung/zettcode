@@ -355,10 +355,14 @@ class ModelCommands(TuiPlugin):
         return CommandResult()
 
     async def harness(self, context: CommandContext) -> CommandResult:
-        """Turn the just-in-time harness on or off, or say which it is.
+        """Turn the just-in-time harness on or off, say which it is, and show its repositories.
 
         Refused while a request runs: the harness's tools are mounted when a request starts, so a change made
         halfway would be announced and not be true until the next one.
+
+        The repositories are this session's, whether the switch is on or off: they are files the model wrote, and
+        since `zett-agent` 0.2.2 one is loadable only when its `MANIFEST` says what it is. The check here is
+        :func:`zett_agent.jit_harness.inspect_repository`, which reads the files and imports nothing.
         """
         host = context.require_host()
         word = context.argument.strip().lower()
@@ -372,7 +376,58 @@ class ModelCommands(TuiPlugin):
             "Starts with the next request.",
             "off": "The model has no harness.",
         }
-        return CommandResult(message=f"Harness is {state}. {notes[state]}", relayout=bool(word))
+        rows = self._repositories(host, on=state == "on")
+        return CommandResult(
+            message=f"Harness is {state}. {notes[state]}\n\n**This session's repositories**\n" + "\n".join(rows),
+            relayout=bool(word),
+        )
+
+    def _repositories(self, host: CommandHost, *, on: bool) -> list[str]:
+        """Return this session's repositories as one line each: what its files declare, or why it cannot load.
+
+        Nothing is imported: the check is the file work of
+        :func:`zett_agent.jit_harness.inspect_repository`, so a tool the `MANIFEST` declares is reported as declared,
+        not as one the code defines — the load is where the two are compared.
+        """
+        from zett_agent.jit_harness import inspect_repository
+        from zett_agent.jit_harness.repo import session_directory_name
+
+        from zettcode.app.ui import labels
+
+        config = host.client.config
+        directory = config.harness_dir / session_directory_name(host.client.session.id)
+        try:
+            found = (
+                sorted(path for path in directory.iterdir() if (path / "__init__.py").is_file())
+                if directory.is_dir()
+                else []
+            )
+        except OSError as error:
+            return [f"`{labels.compact_path(directory, limit=None)}` could not be read: {error}"]
+        if not found:
+            hint = (
+                "the model makes one with `repo_create`"
+                if on
+                else "turn the harness on and the model can make one with `repo_create`"
+            )
+            return [f"None yet in `{labels.compact_path(directory, limit=None)}`; {hint}."]
+        lines: list[str] = []
+        for path in found:
+            policy = inspect_repository(path)
+            if not policy.ok or policy.manifest is None:
+                lines.append(f"- `{path.name}` cannot load: {'; '.join(policy.problems)}")
+                continue
+            manifest = policy.manifest
+            declared = (
+                f"declares {len(manifest.tools)} tool{'s' if len(manifest.tools) != 1 else ''}"
+                if manifest.tools
+                else "declares no tools"
+            )
+            banned = f"; {len(policy.banned)} banned" if policy.banned else ""
+            lines.append(
+                f"- `{path.name}` {manifest.name} {manifest.version} — {manifest.description} ({declared}{banned})"
+            )
+        return lines
 
 
 # -- asking, and leaving ----------------------------------------------------------------------------

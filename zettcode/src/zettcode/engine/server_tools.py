@@ -3,7 +3,9 @@
 A hosted tool is not called by the agent: the endpoint runs it, and the framework reports the call and its result as
 events. Those events are not messages, so the store never sees them; but the provider's own blocks are kept as the
 answer's opaque ``replay_blocks``, which the store writes and reads back. This module is the one place that turns
-either of those into the words of a row, so a resumed session shows what the live one showed.
+either of those into the words of a row, so a resumed session shows what the live one showed — except a hosted call
+the provider closed without a result: the runtime strips that call's block so the next request is accepted, so the row
+that explains it exists only in the live transcript.
 
 The result of a search is a list of pages, each with a title, a URL and an opaque encrypted payload that must never be
 put in front of the reader or sent back in a prompt as text: only the title and the URL are shown here.
@@ -14,6 +16,8 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
+
+from zett_agent.model import NOT_REPORTED_STATUS
 
 #: The most pages one row lists. A row is a note that a search happened, not the search's own page.
 MAX_RESULTS = 5
@@ -87,10 +91,27 @@ def describe_search(output: Any) -> str:
     return "\n".join(lines)
 
 
+def not_reported(output: Any) -> bool:
+    """Return whether a hosted call's output is the adapter's marker that no result was reported.
+
+    ``zett-agent`` closes a call the provider left open with ``output={"status": NOT_REPORTED_STATUS}``. The status is
+    the adapter's own, never a provider result shape, so that one key is read as the marker here and in the event the
+    live row is closed with.
+    """
+    return isinstance(output, Mapping) and output.get("status") == NOT_REPORTED_STATUS
+
+
 def describe_output(run: ServerToolRun) -> str:
-    """Return what one hosted tool said, in the words of its own kind."""
+    """Return what one hosted tool said, in the words of its own kind.
+
+    A call the provider left open is closed by the runtime with ``output={"status": "not_reported"}``: the call
+    ended, but nothing about what it found was reported, so the row says that rather than claiming a result (or, as it
+    once did, showing the word ``Completed`` for a search that never answered).
+    """
     if run.error:
         return run.error
+    if not_reported(run.output):
+        return "The provider did not report what this call returned"
     if run.name == "web_search" or _results_in(run.output):
         return describe_search(run.output)
     # Another provider's hosted tool: its payload is already text or a plain structure.
@@ -153,5 +174,6 @@ __all__ = [
     "answer_after_tools",
     "describe_output",
     "describe_search",
+    "not_reported",
     "runs_in_blocks",
 ]
