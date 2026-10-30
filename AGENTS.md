@@ -65,8 +65,10 @@ tool configuration (Ruff, mypy, the dev dependency group) and the member list. N
 - Run `make check` while working: it compares the tree with where the branch left `main` (`BASE=…` picks another
   ref) and runs only what the change touches — Ruff, mypy and the Python suite for `zettcode/`, the TypeScript
   client for `clients/typescript/`, the extension for either JavaScript client, and nothing for a guide-only edit.
-  Run `make check-all` before handing work over; CI runs that whole gate on every pull request, so a full run does
-  not have to happen on every edit. Run `make smoke` when packaging changes so both console scripts are exercised
+  Run `make check-all` before handing work over; CI runs only the suites a pull request's diff needs — `zettcode/`,
+  `uv.lock` and the root `pyproject.toml` for the Python gate, `clients/<name>/` for a client, `plugins/` or the
+  `zettcode/` the plugin runs against for the plugin, and everything for the `Makefile` or a workflow — so a full run
+  does not have to happen on every edit. Run `make smoke` when packaging changes so both console scripts are exercised
   from the built wheel. `make vscode`
   runs the extension's type-check, jsdom tests and build on its own, and `make vscode-package` writes a `.vsix`.
 - Node 20+ builds both JavaScript clients. `clients/typescript` is dependency-free at runtime; `clients/vscode`
