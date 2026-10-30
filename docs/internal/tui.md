@@ -625,7 +625,11 @@ writes the same metadata by hand, creating the session first when it has no
 conversation yet, and the background call leaves a session that already has a
 title alone. `/resume` presents the result as another bottom panel — one row per session, with the title padded into
 a column, the age of the last change, and the short id so an untitled session is
-still identifiable.
+still identifiable. A search box above the rows narrows them as the reader types,
+matching the title or the id, case folded; an empty box is the store's order again.
+The box and the rows are one ring for the arrow keys — Up on the first row puts the
+caret in the box, Up in the box wraps to the bottom — and Escape clears the box
+before it gives the panel up.
 
 The runner asks the terminal for its background once, before the input reader
 starts, and hands the answer to `core/theme.py`'s `scheme_named`: a light profile

@@ -19,7 +19,7 @@ A command is drawn in a different colour as soon as it is one, so you can see wh
 | `/help` | List the commands and the keys. |
 | `/new` | Start a fresh session. The old one stays on disk. |
 | `/clear` | Clear the visible conversation, keeping this session. |
-| `/resume` | Pick a recent session from a panel; `/resume <id>` opens one directly. The panel lists, for each session, when it changed, how many entries it holds, its input and output tokens, the share of the input served from the provider's cache, and its short id. On a narrow terminal the columns on the right are dropped first. |
+| `/resume` | Pick a recent session from a panel; `/resume <id>` opens one directly. The panel lists, for each session, when it changed, how many entries it holds, its input and output tokens, the share of the input served from the provider's cache, and its short id. Type to search the list by title or id; an empty box is the whole list, newest first. `Up` on the first row puts the caret in the search box, `Up` there wraps to the bottom row, and `Down` in the box returns to the first. `Esc` clears the search before it closes the panel. On a narrow terminal the columns on the right are dropped first. |
 | `/continue` | Carry on a request that was cut short — stopped with `Esc`, failed, dropped by the provider, or ended at the output limit — from where it stopped. See [Carrying on](#continue). |
 | `/fork` | Carry this conversation into a new session and continue there. |
 | `/model` | Pick the model for later requests from a panel. |
