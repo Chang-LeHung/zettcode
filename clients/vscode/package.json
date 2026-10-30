@@ -36,15 +36,6 @@
     "zettcode"
   ],
   "main": "./dist/extension.js",
-  "activationEvents": [
-    "onView:zettcode.chat",
-    "onCommand:zettcode.openChat",
-    "onCommand:zettcode.newSession",
-    "onCommand:zettcode.usage",
-    "onCommand:zettcode.doctor",
-    "onCommand:zettcode.plugins",
-    "onCommand:zettcode.commands"
-  ],
   "contributes": {
     "viewsContainers": {
       "secondarySidebar": [

@@ -32,9 +32,36 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   { name: "clear", description: "Clear this view (the session is kept)" },
 ];
 
+/**
+ * The plugin commands the host last sent, spelled the way the ones above are: the server's `/greet` is `name: "greet"`.
+ *
+ * A command that declares the words it takes first gets them as its ghost hint, so the composer waits for one.
+ */
+export function pluginCommands(): SlashCommand[] {
+  return (state.ui?.commands ?? []).map((command) => ({
+    name: command.name.replace(/^\//, ""),
+    description: command.summary,
+    ...(command.subcommands.length === 0 ? {} : { args: command.subcommands.join(" | ") }),
+  }));
+}
+
+/**
+ * Every command the menu offers: the ones this view knows how to run, then the ones a plugin registered. A plugin that
+ * takes a name one of these already has does not replace it — the view's own `/stop` still stops.
+ */
+export function allCommands(): SlashCommand[] {
+  const own = new Set(SLASH_COMMANDS.map((command) => command.name));
+  return [...SLASH_COMMANDS, ...pluginCommands().filter((command) => !own.has(command.name))];
+}
+
 /** The command with this name, if we know it. */
 export function commandOf(name: string): SlashCommand | undefined {
-  return SLASH_COMMANDS.find((command) => command.name === name);
+  return allCommands().find((command) => command.name === name);
+}
+
+/** The words a plugin command declares it takes first, in the order it declared them. */
+function pluginWords(name: string): string[] {
+  return state.ui?.commands.find((command) => command.name.replace(/^\//, "") === name)?.subcommands ?? [];
 }
 
 export interface CommandArgument {
@@ -51,6 +78,10 @@ export interface CommandArgument {
  * from the state the host last sent, so `/model ` offers the models that are configured now.
  */
 export function argumentsOf(name: string): CommandArgument[] {
+  const words = pluginWords(name);
+  if (words.length > 0) {
+    return words.map((word) => ({ word, description: "" }));
+  }
   const settings = state.ui?.settings ?? null;
   switch (name) {
     case "harness":
@@ -88,6 +119,12 @@ export function parseSlash(text: string): { name: string; rest: string } | null 
 }
 
 export function runSlash(name: string, rest = ""): void {
+  if (!SLASH_COMMANDS.some((command) => command.name === name)) {
+    // A command a plugin registered: the host runs it against the server, the way the palette does, so what came back
+    // (words, a toast, a preset for a turn) is handled in exactly one place.
+    post({ type: "run-command", name: `/${name}`, argument: rest.trim() });
+    return;
+  }
   switch (name) {
     case "new":
       post({ type: "new-session" });
