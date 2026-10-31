@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import os
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TypeVar, overload
 
@@ -32,6 +32,8 @@ from .paths import (
     DEFAULT_THEMES_DIR,
     DEFAULT_UPDATE_FILE,
     check_config_path,
+    config_path,
+    plugins_dir,
 )
 from .providers import Api
 from .statusline import NAMES as STATUSLINE_NAMES
@@ -480,6 +482,8 @@ class ZettCodeConfig:
             under ``~/.zettcode`` by default, not inside the session store, so clearing sessions does not take them.
         plugins_file: Where ``/plugins disable`` records the switches; read at the next start, so the reader's own
             config file is never rewritten.
+        plugins_dir: Where single-file plugins live, one ``.py`` each; a file there is loaded at the next start
+            instead of being installed into site-packages.
     """
 
     workspace: Path
@@ -522,6 +526,8 @@ class ZettCodeConfig:
     harness_dir: Path = DEFAULT_HARNESS_DIR
     #: Plugins the reader switched off from the shell; a JSON file, read at the next start.
     plugins_file: Path = DEFAULT_PLUGINS_FILE
+    #: Single-file plugins: one ``.py`` each, loaded at the next start instead of being installed into site-packages.
+    plugins_dir: Path = field(default_factory=plugins_dir)
 
     def __post_init__(self) -> None:
         """Normalize the paths and reject settings that cannot build a runtime.
@@ -565,6 +571,7 @@ class ZettCodeConfig:
         object.__setattr__(self, "update_file", self.update_file.expanduser().resolve())
         object.__setattr__(self, "harness_dir", self.harness_dir.expanduser().resolve())
         object.__setattr__(self, "plugins_file", self.plugins_file.expanduser().resolve())
+        object.__setattr__(self, "plugins_dir", self.plugins_dir.expanduser().resolve())
         object.__setattr__(self, "themes_dir", self.themes_dir.expanduser().resolve())
 
     def skill_search_roots(self) -> tuple[Path, ...]:

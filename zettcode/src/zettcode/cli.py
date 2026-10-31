@@ -7,7 +7,7 @@ instead of a fresh one, and ``$ZETTCODE_CONFIG`` can point at a different
 config file. ``zettcode update`` (or ``upgrade``) installs the newest release and exits, and ``zettcode doctor``
 asks every configured model a one-line question and reports which of them answer. ``zettcode prompt`` sends one prompt
 without opening the terminal and prints the answer (see :mod:`zettcode.oneshot`). ``zettcode daemon``, ``zettcode
-broker`` and ``zettcode gateway`` are their own commands, parsed apart from a session start.
+broker``, ``zettcode gateway`` and ``zettcode plugins`` are their own commands, parsed apart from a session start.
 
 Nothing beyond the standard library is imported at module level: ``zettcode
 --help`` prints and exits, and paying for the agent runtime, the widget
@@ -125,6 +125,7 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_daemon(commands)
     _add_broker(commands)
     _add_gateway(commands)
+    _add_plugins(commands)
     return parser
 
 
@@ -247,6 +248,23 @@ def _add_gateway(commands: Subcommands) -> None:
             "A web page for the background agents on this machine: list the daemons and the sessions that are "
             "running, start and stop daemons, and talk to any of them. With no action it serves in this terminal; "
             "`start`, `stop` and `restart` manage one in the background. `zettcode gateway --help` has the flags."
+        ),
+    )
+
+
+def _add_plugins(commands: Subcommands) -> None:
+    """Add ``plugins``: installing, removing and switching plugins in this environment.
+
+    Only the name is declared here, so that ``zettcode --help`` lists it; the four actions are parsed and run by
+    :mod:`zettcode.plugins.cli`, which is never imported by a session start.
+    """
+    commands.add_parser(
+        "plugins",
+        help="install, remove or switch a plugin: plugins install | uninstall | enable | disable",
+        description=(
+            "Install a plugin into the Python environment ZettCode runs in (or copy a single .py file into "
+            "~/.zettcode/plugins), remove one, or enable/disable one for the next start. Start ZettCode again "
+            "afterwards."
         ),
     )
 
@@ -758,6 +776,11 @@ def main() -> None:
 
         gateway_main(argv[1:])
         return
+    if argv[:1] == ["plugins"]:
+        # Four actions over the plugins, parsed by the command that installs and switches them.
+        from .plugins.cli import plugins_program
+
+        raise SystemExit(plugins_program(argv[1:]))
     options = parse_args()
     if options.command == "update":
         from .update import update_program

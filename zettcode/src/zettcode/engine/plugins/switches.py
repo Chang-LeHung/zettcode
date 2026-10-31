@@ -66,6 +66,15 @@ class PluginEntry:
     why: str = ""
 
 
+@dataclass(frozen=True, slots=True)
+class SwitchState:
+    """What writing an installed plugin's switch needs, for a caller that did not build the whole settings object."""
+
+    plugins_file: Path
+    plugins_enabled: bool = True
+    disabled_plugins: tuple[str, ...] = ()
+
+
 def off_names(config: ZettCodeConfig) -> tuple[str, ...]:
     """Return every name the next start will leave out, sorted: the configuration's own and the switch file's."""
     return tuple(sorted(set(config.disabled_plugins) | set(read_disabled_plugins(config.plugins_file))))
@@ -346,6 +355,39 @@ def applied(config: ZettCodeConfig, setting: PluginSetting, enabled: bool) -> Ze
     """Return ``config`` with the field a switch wrote updated, so this process shows what it decided."""
     # The field name is a string the plugin declared, and its type is a bool, which no signature can say.
     return replace(config, **{setting.field: enabled})  # type: ignore[arg-type]
+
+
+def set_installed(config: ZettCodeConfig | SwitchState, name: str, *, enabled: bool) -> None:
+    """Write one installed plugin's switch to the switch file, without loading any plugin.
+
+    A management command asks this for a name it has already checked exists (an entry point, a single file in
+    :attr:`ZettCodeConfig.plugins_dir`, or a name the file already holds). It follows the same rules a panel does:
+    nothing is written while ``[plugins] enabled`` is off, and a name the configuration file holds stays the
+    configuration's.
+
+    Raises:
+        ValueError: When the name cannot be written there, or the file cannot be.
+    """
+    name = name.strip()
+    if not name:
+        raise ValueError("A switch needs the name of a plugin")
+    if not config.plugins_enabled:
+        raise ValueError(
+            "[plugins] enabled = false in the configuration file turns every installed plugin off; edit that line "
+            "to load them again"
+        )
+    if enabled and name in config.disabled_plugins:
+        raise ValueError(
+            f"{name} is switched off in the configuration file; remove it from [plugins] disable there, which this "
+            "does not edit"
+        )
+    try:
+        with _lock(config.plugins_file):
+            names = set(read_disabled_plugins(config.plugins_file))
+            names.discard(name) if enabled else names.add(name)
+            _write(config.plugins_file, names)
+    except (OSError, ValueError) as error:
+        raise ValueError(f"the plugin switch file could not be written: {error}") from error
 
 
 def _write_settings(config: ZettCodeConfig, keys: list[tuple[PluginSetting, bool]]) -> None:

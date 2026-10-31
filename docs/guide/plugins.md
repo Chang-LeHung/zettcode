@@ -71,7 +71,43 @@ restart. The command appears in the `/` menu after the built-in ones.
 Installing it into an unrelated virtual environment does not make it available
 to a `uv tool` installation.
 
-For example, if you have a local plugin project at `/path/to/greeter`:
+ZettCode can do the install itself:
+
+```sh
+zettcode plugins install /path/to/greeter                  # a local project, wheel or sdist
+zettcode plugins install ./greeter.py                      # a single Python file
+zettcode plugins install owner/repo                        # a GitHub repository
+zettcode plugins install owner/repo@v1.2.0                 # a tag, branch or commit
+zettcode plugins install https://github.com/owner/repo/tree/main/plugins/greeter
+```
+
+The target is installed into the environment `zettcode` is running in — with
+pip, or with uv's pip when that environment has none (as a `uv tool` install
+does). A plugin in a subdirectory of a repository is reached with the `tree`
+URL shown above. Start ZettCode again and the plugin is in the `/` menu.
+
+A single `.py` file is not installed into site-packages: it is copied into
+`~/.zettcode/plugins`, where the next start loads every class it defines that
+derives from `Plugin` or `TuiPlugin` — one file can hold more than one, and
+there is no name to pass. The file has to be one module (no relative imports),
+and it declares no dependencies — install those the way the plugin's
+documentation says.
+
+```sh
+zettcode plugins uninstall greeter     # the file's stem, a distribution, or an entry-point name
+zettcode plugins disable greeter       # leave it out at the next start
+zettcode plugins enable greeter        # load it again
+```
+
+`uninstall` removes the file from `~/.zettcode/plugins`, or the distribution
+behind a name; the name is the distribution's own, the entry-point name
+`/plugins` shows as its origin, or the file's stem. `enable` and `disable`
+write the same switch file the `/plugins` panel does; a plugin compiled into
+the program is switched by its own setting in the configuration file, which
+the panel edits and this command leaves alone.
+
+If you manage the environment yourself, here is the same thing by hand, for a
+local plugin project at `/path/to/greeter`:
 
 ::: code-group
 

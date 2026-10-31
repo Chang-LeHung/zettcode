@@ -65,7 +65,34 @@ class Greeter(TuiPlugin):
 把插件安装到 **ZettCode 使用的同一个 Python 环境**，再重启，命令就会出现在 `/` 菜单里，
 排在内置命令之后。安装到另一个虚拟环境，不会让 `uv tool` 安装的 ZettCode 自动发现它。
 
-例如，本地已有一个插件项目 `/path/to/greeter`，可以这样安装：
+也可以让 ZettCode 自己安装：
+
+```sh
+zettcode plugins install /path/to/greeter                  # 本地项目、wheel 或 sdist
+zettcode plugins install ./greeter.py                      # 单个 Python 文件
+zettcode plugins install owner/repo                        # GitHub 仓库
+zettcode plugins install owner/repo@v1.2.0                 # tag、分支或提交
+zettcode plugins install https://github.com/owner/repo/tree/main/plugins/greeter
+```
+
+命令会装进 `zettcode` 正在运行的那个环境——有 pip 就用 pip，没有就用 uv 的 pip（`uv tool` 安装的环境就是如此）。
+插件在仓库的子目录里时，用上面的 `tree` 地址。重启 ZettCode，插件就在 `/` 菜单里了。
+
+单个 `.py` 文件不会装进 site-packages，而是复制到 `~/.zettcode/plugins`：下次启动时，文件里每个继承
+`Plugin` 或 `TuiPlugin` 的类都会被加载——一个文件可以有多个类，不需要指定类名。文件必须是一个模块（不能用相对导入），
+而且不声明依赖——它需要的依赖按插件自己的说明安装。
+
+```sh
+zettcode plugins uninstall greeter     # 文件名（去掉 .py）、发行包名，或 entry point 名
+zettcode plugins disable greeter       # 下次启动不加载
+zettcode plugins enable greeter        # 重新加载
+```
+
+`uninstall` 会从 `~/.zettcode/plugins` 删掉文件，或者卸载名字对应的发行包；名字可以是发行包名、`/plugins` 里显示的
+entry point 名，或者文件名（去掉 `.py`）。`enable` 和 `disable` 写的就是 `/plugins` 面板用的同一个开关文件；
+编译进程序的插件由配置里的设置控制，面板会改它，这条命令不会。
+
+如果你想自己管理环境，也可以手动安装。例如本地已有一个插件项目 `/path/to/greeter`：
 
 ::: code-group
 
