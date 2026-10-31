@@ -91,7 +91,8 @@ A single `.py` file is not installed into site-packages: it is copied into
 derives from `Plugin` or `TuiPlugin` — one file can hold more than one, and
 there is no name to pass. The file has to be one module (no relative imports),
 and it declares no dependencies — install those the way the plugin's
-documentation says.
+documentation says. Installing over a file with different content is refused
+until you pass `--force` (the message says which name it would replace).
 
 ```sh
 zettcode plugins list                  # every plugin's name, origin, location and switch
@@ -103,7 +104,8 @@ zettcode plugins enable greeter        # load it again
 
 `list` shows the program's built-in agent plugins (`compiled in`), the distributions installed beside it (their
 entry-point name, distribution and site-packages folder) and the single files in `~/.zettcode/plugins` (their path),
-with whether the next start loads each one and the switch that decides it. `uninstall` removes the file from `~/.zettcode/plugins`, or the distribution
+with whether the next start loads each one and the switch that decides it. `ENABLED` is `-` for a compiled-in plugin:
+its setting is the switch shown beside it. `uninstall` removes the file from `~/.zettcode/plugins`, or the distribution
 behind a name; the name is the distribution's own, the entry-point name
 `/plugins` shows as its origin, or the file's stem. `enable` and `disable`
 write the same switch file the `/plugins` panel does; a plugin compiled into

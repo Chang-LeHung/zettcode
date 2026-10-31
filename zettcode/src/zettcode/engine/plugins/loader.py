@@ -115,7 +115,7 @@ def _file_plugins(path: Path) -> tuple[list[Plugin[Any]], list[tuple[str, BaseEx
         except KeyboardInterrupt:
             raise
         except BaseException as error:
-            failures.append((f"{path.stem}:{value.__name__}", error))
+            failures.append((value.__name__, error))
     return plugins, failures
 
 
@@ -172,7 +172,9 @@ def run(
                 continue
             try:
                 plugin = _instantiate(point)
-            except Exception as error:
+            except KeyboardInterrupt:
+                raise
+            except BaseException as error:
                 loader.fail(point.name, error)
                 continue
             loader.accept(plugin, origin=point.name)
@@ -187,8 +189,8 @@ def run(
             except BaseException as error:
                 loader.fail(origin, error)
                 continue
-            for name, failure in failures:
-                loader.fail(name, failure)
+            for class_name, failure in failures:
+                loader.fail(origin, RuntimeError(f"{class_name}: {_reason(failure)}"))
             for plugin in plugins:
                 loader.accept(plugin, origin=origin)
     return loader.bundle()
@@ -319,7 +321,9 @@ class Loader:
         try:
             plugin.activate(container)
             self.activated(plugin, container)
-        except Exception as error:
+        except KeyboardInterrupt:
+            raise
+        except BaseException as error:
             self.fail(origin, error)
             return
         clash = self.clash(container)

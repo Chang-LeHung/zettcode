@@ -94,7 +94,13 @@ def build_parser() -> argparse.ArgumentParser:
     install_parser.add_argument(
         "target",
         help="a local path (a project directory, a wheel, an sdist or a single .py file), or a GitHub repository: "
-        "owner/repo, gh:owner/repo, or its https URL, with an optional @ref",
+        "owner/repo, gh:owner/repo, or its https URL, with an optional @ref. A local path must exist (or start with "
+        "./ or /); a two-segment name is read as a GitHub owner/repo",
+    )
+    install_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="for a single .py file, replace an existing plugin file whose content differs",
     )
 
     uninstall_parser = commands.add_parser(
@@ -132,7 +138,7 @@ def plugins_program(argv: list[str] | None = None) -> int:
     if args.command == "list":
         return list_plugins(as_json=args.json)
     if args.command == "install":
-        return install(args.target)
+        return install(args.target, force=args.force)
     if args.command == "uninstall":
         return uninstall(args.name)
     return switch(args.name, enabled=args.command == "enable")
@@ -179,7 +185,7 @@ def plugin_rows() -> list[PluginRow]:
                 name,
                 origin,
                 location,
-                _switch_state(state, off_switch, held, name),
+                _switch_mechanism(state, name),
                 _enabled(state, off_switch, held, name),
             )
         )
@@ -190,7 +196,7 @@ def plugin_rows() -> list[PluginRow]:
                 path.stem,
                 path.stem,
                 str(path),
-                _switch_state(state, off_switch, held, path.stem),
+                _switch_mechanism(state, path.stem),
                 _enabled(state, off_switch, held, path.stem),
             )
         )
@@ -220,15 +226,13 @@ def _enabled(state: SwitchState, off_switch: set[str], held: set[str], name: str
     return state.plugins_enabled and name not in held and name not in off_switch
 
 
-def _switch_state(state: SwitchState, off_switch: set[str], held: set[str], name: str) -> str:
-    """Return how the next start treats ``name``: on, or why it is off."""
+def _switch_mechanism(state: SwitchState, name: str) -> str:
+    """Return where the switch for ``name`` is kept: the switch file, or a line of the configuration."""
+    if name in state.disabled_plugins:
+        return "config ([plugins] disable)"
     if not state.plugins_enabled:
-        return "off (all installed plugins are off)"
-    if name in held:
-        return "off (config)"
-    if name in off_switch:
-        return "off (switch file)"
-    return "on"
+        return "config ([plugins] enabled)"
+    return "switch file"
 
 
 def list_plugins(*, as_json: bool = False) -> int:
@@ -288,11 +292,11 @@ def _pad(text: str, width: int) -> str:
     return text + " " * max(0, width - _display_width(text))
 
 
-def install(target: str) -> int:
+def install(target: str, *, force: bool = False) -> int:
     """Install ``target`` -- a single file is copied, anything else is handed to pip -- and say what is next."""
     path = Path(target).expanduser()
     if path.is_file() and path.suffix.lower() == ".py":
-        return _install_file(path)
+        return _install_file(path, force=force)
     try:
         requirement = requirement_for(target)
     except ValueError as error:
@@ -311,7 +315,7 @@ def install(target: str) -> int:
     return EXIT_OK
 
 
-def _install_file(source: Path) -> int:
+def _install_file(source: Path, *, force: bool = False) -> int:
     """Copy a single-file plugin into the plugins folder, after checking it defines a plugin class."""
     try:
         plugin_classes(source)
@@ -326,18 +330,32 @@ def _install_file(source: Path) -> int:
         text = source.read_text(encoding="utf-8")
         target.parent.mkdir(parents=True, exist_ok=True)
         replaced = target.exists()
+        if replaced:
+            existing = target.read_text(encoding="utf-8")
+            if existing != text and not force:
+                print(
+                    f"zettcode plugins: {target} already exists with different content; remove it first or pass "
+                    "--force",
+                    file=sys.stderr,
+                )
+                return EXIT_FAILED
         write_text_atomically(target, text)
     except (OSError, ValueError) as error:
         print(f"zettcode plugins: {target} could not be written: {error}", file=sys.stderr)
         return EXIT_FAILED
+    shown = target.name if source.name == target.name else f"{source.name} as {target.name}"
     note = " (replaced the old file)" if replaced else ""
-    print(f"installed {target}{note}; start ZettCode again to load {module}")
+    print(f"installed {shown}{note}; start ZettCode again to load {module}")
     return EXIT_OK
 
 
 def uninstall(name: str) -> int:
     """Remove a single-file plugin, or the distribution behind ``name``."""
-    name = name.strip()
+    try:
+        name = _safe_name(name)
+    except ValueError as error:
+        print(f"zettcode plugins: {error}", file=sys.stderr)
+        return EXIT_FAILED
     candidates = (plugins_dir() / f"{name}.py", plugins_dir() / f"{module_name(name)}.py")
     path = next((candidate for candidate in candidates if candidate.is_file()), None)
     if path is not None:
@@ -427,7 +445,11 @@ def plugin_state() -> SwitchState:
 
 def switch(name: str, *, enabled: bool) -> int:
     """Write ``name`` on or off in the plugin switch file, for the next start."""
-    name = name.strip()
+    try:
+        name = _safe_name(name)
+    except ValueError as error:
+        print(f"zettcode plugins: {error}", file=sys.stderr)
+        return EXIT_FAILED
     try:
         config = plugin_state()
     except (OSError, ValueError) as error:
@@ -456,6 +478,14 @@ def switch(name: str, *, enabled: bool) -> int:
     return EXIT_OK
 
 
+def _safe_name(name: str) -> str:
+    """Return a plugin name, refusing anything that is a path: a plugin is an entry point, a distribution, or a stem."""
+    text = name.strip()
+    if not text or text in (".", "..") or "/" in text or "\\" in text:
+        raise ValueError(f"{name!r} is not a plugin name")
+    return text
+
+
 def _resolve_switch_name(config: SwitchState, name: str) -> str | None:
     """Return the origin the switch file is written with for ``name``, or ``None`` when nothing is called that.
 
@@ -471,6 +501,7 @@ def _resolve_switch_name(config: SwitchState, name: str) -> str | None:
     from zettcode.config import read_disabled_plugins
     from zettcode.engine.plugins.loader import PLUGIN_ENTRY_POINT_GROUP
 
+    name = _safe_name(name)
     exact = plugins_dir() / f"{name}.py"
     if exact.is_file():
         return exact.stem
@@ -523,7 +554,11 @@ def requirement_for(target: str) -> str:
     path = Path(text).expanduser()
     if path.exists():
         return str(path.resolve())
-    if text.startswith((".", "~", "/")) or text.lower().endswith((".py", ".whl", ".tar.gz", ".zip")):
+    if (
+        path.is_absolute()
+        or text.startswith((".", "~", "/"))
+        or text.lower().endswith((".py", ".whl", ".tar.gz", ".zip"))
+    ):
         raise ValueError(f"no such file or directory: {text}")
     if text.startswith(_VCS):
         return text
@@ -588,7 +623,7 @@ def plugin_classes(path: Path) -> list[str]:
         if isinstance(node, ast.ClassDef) and (node.name == "Plugin" or _derives_from_plugin(node))
     ]
     if not found:
-        raise ValueError(f"{path} defines no class deriving from Plugin or TuiPlugin")
+        raise ValueError(f"{path} defines no class whose base name ends in Plugin (derive from Plugin or TuiPlugin)")
     return found
 
 

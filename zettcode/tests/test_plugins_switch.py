@@ -809,3 +809,25 @@ def test_forget_installed_drops_a_name_and_says_whether_it_did(tmp_path: Path):
     assert switches.forget_installed(config, "greeter") is True
     assert json.loads(config.plugins_file.read_text(encoding="utf-8")) == {"disabled": []}
     assert switches.forget_installed(config, "greeter") is False
+
+
+def test_a_file_that_fails_one_class_and_loads_another_is_one_switchable_row(tmp_path: Path):
+    from zettcode.engine.plugins import switches
+
+    folder = tmp_path / "plugins"
+    folder.mkdir()
+    (folder / "pair.py").write_text(
+        "from zettcode.engine.plugins import Plugin\n\n\n"
+        "class Good(Plugin):\n    name = 'good'\n\n    def activate(self, ctx):\n        pass\n\n\n"
+        "class Bad(Plugin):\n    name = 'bad'\n\n    def __init__(self):\n        raise RuntimeError('no')\n",
+        encoding="utf-8",
+    )
+    config = _config(tmp_path, plugins_dir=folder)
+    bundle = load_terminal_plugins(config, builtins=(), entry_points=())
+
+    rows = [row for row in switches.catalog(config, bundle, entry_points=()) if row.origin == "pair"]
+
+    assert len(rows) == 1, "the class failure belongs on the file's row, not a second row"
+    assert rows[0].name == "good" and "Bad" in rows[0].failure and rows[0].switchable
+    written, _keys, problems = switches.set_many(config, {"pair": False}, bundle=bundle, entry_points=())
+    assert written == {"pair": False} and problems == []
