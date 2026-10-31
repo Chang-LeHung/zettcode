@@ -642,8 +642,6 @@ def create_app(settings: Settings, *, client_factory: ClientFactory | None = Non
         switched by a configuration key in the server's configuration file, an installed one by [plugins] disable there;
         a client that wants the change now restarts the server, which is what the extension does.
         """
-        import asyncio
-
         entry = await asyncio.to_thread(runner.client.set_plugin_enabled, name, body.enabled)
         return PluginOut(
             name=entry.name,

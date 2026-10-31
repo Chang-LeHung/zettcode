@@ -229,3 +229,24 @@ def test_an_enable_whose_legacy_name_cannot_be_cleaned_is_reported(config, monke
 
     with pytest.raises(ValueError, match="old switch file"):
         switches.set_installed(settings, "greeter", enabled=True)
+
+
+def test_an_enable_whose_configuration_was_written_but_legacy_cleanup_failed_says_so(config, monkeypatch):
+    settings, path = config
+    path.write_text(MODEL + '[plugins]\ndisable = ["greeter"]\n', encoding="utf-8")
+    settings.plugins_file.write_text(json.dumps({"disabled": ["greeter"]}), encoding="utf-8")
+    monkeypatch.setattr(switches, "_drop_legacy_names", lambda path, names: False)
+
+    with pytest.raises(ValueError, match="configuration was changed"):
+        switches.set_installed(settings, "greeter", enabled=True)
+
+    assert disabled_in(path) == [], "the configuration did get the change"
+
+
+def test_a_configuration_path_that_is_not_a_file_is_refused(config):
+    settings, path = config
+    path.unlink()
+    path.mkdir()
+
+    with pytest.raises(ValueError, match="not a file"):
+        switches.set_installed(settings, "greeter", enabled=False)

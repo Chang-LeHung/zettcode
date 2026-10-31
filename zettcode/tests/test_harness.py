@@ -404,3 +404,18 @@ def test_two_workspaces_with_one_name_get_different_folders(tmp_path: Path):
     second.mkdir(parents=True)
 
     assert workspace_directory_name(first) != workspace_directory_name(second)
+
+
+def test_a_repository_present_on_both_sides_stays_in_the_legacy_folder(tmp_path: Path):
+    from zettcode.engine.harness_paths import move_session
+
+    legacy = tmp_path / "harness"
+    root = legacy / "workspace"
+    (legacy / "sid" / "kit").mkdir(parents=True)
+    (root / "sid" / "kit").mkdir(parents=True)
+    (root / "sid" / "kit" / "new.py").write_text("", encoding="utf-8")
+
+    move_session(legacy, root, "sid")
+
+    assert (root / "sid" / "kit" / "new.py").is_file(), "the new copy wins"
+    assert (legacy / "sid" / "kit").is_dir(), "the old copy is not thrown away"

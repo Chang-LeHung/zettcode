@@ -246,33 +246,36 @@ def _write_off(config: ZettCodeConfig | SwitchState, enable: set[str], disable: 
     The configuration file is the one the reader edits and the one ``load_config`` reads, so the switch is written
     there; a file that does not exist yet gets one with the table, and the models are added when the reader sets one.
     A switch that changes nothing writes nothing and does not create the file. The read and the replace are held
-    held under a lock, so two plugin switches or a settings edit cannot lose one another.
+    under a lock, so two plugin switches (or two plugin-settings edits) cannot lose one another.
     """
     target = config_path()
     if target.exists() and not target.is_file():
         raise ValueError(f"{target} is not a file; edit the plugin switches by hand")
+    changed = False
     try:
         with _lock(target):
             text = target.read_text(encoding="utf-8") if target.is_file() else ""
             current = set(_config_disabled(target))
             names = (current | disable) - enable
-            if names == current:
-                if not _drop_legacy_names(config.plugins_file, enable | disable) and enable:
-                    raise ValueError(_still_in_legacy(enable))
-                return
-            text = set_string_list(text, "plugins", "disable", sorted(names), where=target, command="/plugins")
-            write_text_atomically(target, text)
+            if names != current:
+                text = set_string_list(text, "plugins", "disable", sorted(names), where=target, command="/plugins")
+                write_text_atomically(target, text)
+                changed = True
     except (OSError, ValueError) as error:
         raise ValueError(f"the plugin switch could not be written: {error}") from error
     if not _drop_legacy_names(config.plugins_file, enable | disable) and enable:
+        if changed:
+            raise ValueError(f"the configuration was changed, but {_still_in_legacy(enable)}")
         raise ValueError(_still_in_legacy(enable))
 
 
 def _still_in_legacy(enable: set[str]) -> str:
     """Return the message for a switch the old file would keep off even though the configuration says otherwise."""
+    names = ", ".join(sorted(enable))
+    verb = "is" if len(enable) == 1 else "are"
     return (
-        f"{', '.join(sorted(enable))} is still switched off in the old switch file; it will not load until that file "
-        "is writable or the name is removed there"
+        f"{names} {verb} still switched off in the old switch file; it will not load until that file is writable or "
+        "the name is removed there"
     )
 
 
@@ -470,8 +473,8 @@ def forget_installed(config: ZettCodeConfig | SwitchState, name: str) -> bool:
     """Drop ``name`` from ``[plugins] disable`` and the legacy switch file, and say whether it was.
 
     An uninstall calls this: a name left behind by a plugin that is gone would make a later install of the same name
-    start switched off, with nothing left to explain why. There is no policy to apply — the name is being retired,
-    not switched — so this does not consult the configuration's own list.
+    start switched off, with nothing left to explain why. The list is read to find the name, but its rules are not
+    applied — the name is being retired, not switched.
     """
     name = name.strip()
     if not name:
