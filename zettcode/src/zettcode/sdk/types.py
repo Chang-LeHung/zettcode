@@ -366,7 +366,7 @@ class Peer:
     direct: bool = False
 
 
-#: What a session sends back for a direct turn that did not end in an answer, so the window that asked is not left waiting.
+#: What a session sends back for a turn that did not end in an answer, so the sender is not left waiting.
 #: They are shared by the sessions that send them and the gateway that shows them as notes rather than as replies.
 DIRECT_FAILED = "The turn failed: "
 DIRECT_UNFINISHED = "(the turn did not finish)"
@@ -374,7 +374,7 @@ DIRECT_EMPTY = "(the turn ended without a written answer)"
 
 
 def is_direct_notice(text: str) -> bool:
-    """Return whether a message is one of the lines a session sends when a direct turn ended without an answer."""
+    """Return whether a message is one of the lines a session sends when a turn ended without an answer."""
     return text.startswith(DIRECT_FAILED) or text in (DIRECT_UNFINISHED, DIRECT_EMPTY)
 
 
@@ -456,6 +456,7 @@ class DaemonInfo:
         requested_model: A model a reader asked for, not yet in force, or ``None``.
         requested_effort: A reasoning level a reader asked for, not yet in force, or ``None``.
         requested_error: Why the last requested model or level could not be put in force, or ``None``.
+        broker: Whether the session broker was reachable at the last check, or ``None`` before one.
     """
 
     session_id: str
@@ -475,6 +476,7 @@ class DaemonInfo:
     requested_model: str | None = None
     requested_effort: str | None = None
     requested_error: str | None = None
+    broker: bool | None = None
 
 
 @dataclass(frozen=True, slots=True)

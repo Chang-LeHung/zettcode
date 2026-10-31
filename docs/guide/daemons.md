@@ -92,10 +92,14 @@ crashed); `kill` removes it. `name` is the label `spawn --name` recorded, and `t
 `context` is how full the context was on the newest call, the window it is measured against and the share of it;
 `input` and `output` are what the session had sent and generated as of the daemon's last status change. A `next`
 line appears while a model or level a reader asked for is waiting to be taken up, and an `error` line says why the
-last request could not be met. `--json` prints the same fields for a program.
+last request could not be met. A `broker` line appears while the daemon cannot reach the session broker — it keeps
+trying, and so cannot be messaged meanwhile. `--json` prints the same fields for a program.
 
 `zettcode daemon kill <session-id>...` stops each daemon and removes its record. The session stays, with everything it
 did, so you can open it in the terminal afterwards.
+
+`zettcode daemon log <session-id>` prints the last lines the daemon wrote about itself — the tools it ran, the turns
+that failed, the settings it took up — and `-n N` says how many. A daemon that seems stuck is diagnosed there first.
 
 ## Naming one
 
@@ -158,6 +162,19 @@ what it did.
 
 A daemon never exits on its own, not even when it has been idle for hours: stop it with `daemon kill` when you are
 done, or it stays there, listed, answering whenever someone writes.
+
+## When a turn fails
+
+A turn that failed in a way that may pass — a timeout, a dropped connection, a rate limit, a server error — is
+tried again, up to three times, with a short wait between tries (about seven seconds in all, so a rate limit that
+lasts longer will still end in a failure). A retry continues the request where it stopped rather than sending the
+prompt again, so the model is told which tools were cut short and decides; a tool is never run twice on its own. A
+failure that would fail again (a wrong key, a model that is not there) is not retried.
+
+If the turn still fails, the sender is told when it can be: a chat window sees the failure line, and a session that
+sent a message gets a reply saying the turn failed and why. `daemon prompt` speaks as a name rather than a session,
+so it cannot be answered — the reason is in the log. The daemon itself keeps running and takes the next message;
+`daemon list` shows it `idle` again, and `daemon log <id>` is where the attempts it made and the last reason are.
 
 ## Where it is kept
 

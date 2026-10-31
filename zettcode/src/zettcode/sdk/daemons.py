@@ -57,6 +57,7 @@ def _info(record: Record) -> DaemonInfo:
         requested_model=state.requested_model,
         requested_effort=state.requested_effort,
         requested_error=state.requested_error,
+        broker=state.broker,
     )
 
 

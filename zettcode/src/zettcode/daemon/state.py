@@ -120,6 +120,7 @@ class State:
         requested_model: A model a reader asked for while it runs, to be used from the next turn.
         requested_effort: A reasoning level a reader asked for while it runs, likewise.
         requested_error: Why the last requested model or level could not be put in force, or ``None``.
+        broker: Whether the session broker was reachable at the last check, or ``None`` before one.
         input_tokens: Everything the session has sent to the model so far, cache reads included.
         output_tokens: Everything the model has generated for it, reasoning included.
         context_tokens: How full the context was on the newest call, or ``None`` before one was made.
@@ -140,6 +141,7 @@ class State:
     requested_model: str | None = None
     requested_effort: str | None = None
     requested_error: str | None = None
+    broker: bool | None = None
     input_tokens: int | None = None
     output_tokens: int | None = None
     context_tokens: int | None = None

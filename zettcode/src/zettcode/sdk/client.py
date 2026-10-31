@@ -819,11 +819,13 @@ class Client:
         return Delivered(delivered.to.handle, delivered.disposition, delivered.direct)
 
     async def send_back(self, message: IncomingMessage, text: str) -> Delivered | None:
-        """Send the final answer of a turn that ran a ``direct`` message back to its sender.
+        """Send a turn's answer — or the reason it failed — back to the message's sender.
 
-        It goes as this session's agent speaking (not the reader), carrying the message's hop count on, so two sessions
-        cannot keep answering each other. A sender that has gone, a refusal or a lost connection is not an error: the
-        answer is in this session's own conversation whatever happens to this copy, so ``None`` says it was not sent.
+        A chat window's ``direct`` message is the common case; a daemon also answers the agent that messaged it when
+        its turn failed. It goes as this session's agent speaking (not the reader), carrying the message's hop count
+        on, so two sessions cannot keep answering each other. A sender that has gone, a refusal or a lost connection
+        is not an error: the text is in this session's own conversation whatever happens to this copy, so ``None``
+        says it was not sent — an external sender has no session to receive it.
         """
         from ..broker.models import SendError as BrokerSendError
         from ..broker.protocol import VIA_AGENT

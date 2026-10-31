@@ -23,6 +23,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from ..error_text import may_pass
 from ..sdk.types import DIRECT_EMPTY, DIRECT_FAILED, IncomingMessage, Receipt
 from .state import Record, Registry, State
 
@@ -34,6 +35,11 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
 #: Messages that may wait behind the turn in progress. A daemon is a colleague, not a queue: beyond this the sender
 #: is told it is busy and can try again, rather than its message living somewhere nobody looks.
 MAX_WAITING = 4
+
+#: How many times a turn that failed in a way that may pass is tried again, and how long to wait before each try.
+#: The retry continues the interrupted request; a failure that would fail again is not retried at all.
+TURN_RETRIES = 3
+RETRY_DELAYS = (1.0, 2.0, 4.0)
 
 #: How often the heartbeat is rewritten. A reader calls the record dead when it is older than
 #: :data:`~.state.STALE_SECONDS`, so a missed beat or two is tolerated.
@@ -225,25 +231,81 @@ class Daemon:
             self.record.log(f"the applied request could not be cleared: {error}")
 
     async def _turn(self, message: IncomingMessage) -> None:
-        """Run one message as a relayed turn, and write how it ended into the log."""
+        """Run one message, trying again when the failure may pass, and tell the sender if it still fails.
+
+        A failure the provider may recover from — a timeout, a dropped connection, a rate limit, a server error —
+        is tried again up to :data:`TURN_RETRIES` times. The retry continues the interrupted request rather than
+        sending the prompt over: the library tells the model which tools were cut short and lets it decide, so a
+        tool is never run twice on its own. A failure that would fail again is not retried. Either way the sender is
+        told how the turn ended when it can be reached, so an agent that asked is not left waiting for an answer
+        that will not come.
+        """
         from ..sdk.errors import RunError
 
         # No approval handler and no question handler, on purpose. The sandbox (`safe`) is the policy, so a command
         # that stays inside it runs and one that does not is put to a reader — and there is none here, so it is
         # refused. Approving on the daemon's behalf would turn a sandboxed run into a full one with nobody deciding.
-        try:
-            if message.direct:
-                await self._direct(message)
-            else:
-                async with self.client.session.relay(message) as run:
-                    async for event in run:
-                        self._see(event)
-        except RunError as error:
-            self.record.log(f"the turn failed: {error}")
-            await self._failed(message, str(error))
-        except Exception as error:  # noqa: BLE001 - a broken turn must not take the daemon down
-            self.record.log(f"the turn failed: {type(error).__name__}: {error}")
-            await self._failed(message, f"{type(error).__name__}: {error}")
+        why = ""
+        answer: str | None = None
+        succeeded = False
+        for attempt in range(TURN_RETRIES + 1):
+            try:
+                if attempt == 0:
+                    await self._once(message)
+                else:
+                    try:
+                        if await self.client.session.resumable() is None:
+                            # The conversation has nothing interrupted to pick up, so there is no request to
+                            # continue; sending the prompt again is not what this loop does.
+                            self.record.log("the turn is not retried: there is no interrupted request to continue")
+                            break
+                        answer = await self._resume()
+                    except RunError:
+                        # The continued request failed again: that is the turn failing, counted like any other.
+                        raise
+                    except Exception as error:  # noqa: BLE001 - the turn's own failure is what is reported
+                        self.record.log(f"the turn could not be continued: {type(error).__name__}: {error}")
+                        break
+                succeeded = True
+                break
+            except RunError as error:
+                why = str(error)
+                retryable = error.retryable
+            except Exception as error:  # noqa: BLE001 - a broken turn must not take the daemon down
+                why = f"{type(error).__name__}: {error}"
+                retryable = may_pass(error)
+            self.record.log(f"the turn failed (attempt {attempt + 1} of {TURN_RETRIES + 1}): {why}")
+            if not retryable:
+                self.record.log("the turn is not retried: this failure would happen again")
+                break
+            if attempt == TURN_RETRIES:
+                self.record.log(f"the turn failed after {TURN_RETRIES + 1} attempts")
+                break
+            await asyncio.sleep(RETRY_DELAYS[min(attempt, len(RETRY_DELAYS) - 1)])
+        if not succeeded:
+            await self._failed(message, why or "the turn failed")
+            return
+        if message.direct and answer is not None:
+            # The first attempt answered the window itself; a continued one must do it too, or the window waits
+            # for a turn that has already finished. Delivering it outside the retry loop keeps a send failure
+            # from being taken for a turn failure and continued a second time.
+            await self._tell(message, answer if answer.strip() else DIRECT_EMPTY, what="how the continued turn ended")
+
+    async def _once(self, message: IncomingMessage) -> None:
+        """Run the message once: as this session's own prompt when it is direct, and as a relayed turn otherwise."""
+        if message.direct:
+            await self._direct(message)
+            return
+        async with self.client.session.relay(message) as run:
+            async for event in run:
+                self._see(event)
+
+    async def _resume(self) -> str:
+        """Pick up the request that failed where it stopped, so nobody's prompt is sent a second time."""
+        async with self.client.session.resume_stream() as run:
+            async for event in run:
+                self._see(event)
+        return run.result.text if run.result is not None else ""
 
     async def _direct(self, message: IncomingMessage) -> None:
         """Run a chat window's text as this session's own prompt: nothing frames it, and the answer goes back to it.
@@ -255,12 +317,21 @@ class Daemon:
             async for event in run:
                 self._see(event)
         answer = run.result.text if run.result is not None else ""
-        await self.client.send_back(message, answer if answer.strip() else DIRECT_EMPTY)
+        await self._tell(message, answer if answer.strip() else DIRECT_EMPTY, what="how the turn ended")
 
     async def _failed(self, message: IncomingMessage, why: str) -> None:
-        """Tell a chat window that its turn failed, so it is not left waiting for an answer that will not come."""
-        if message.direct:
-            await self.client.send_back(message, f"{DIRECT_FAILED}{why}"[:500])
+        """Tell the sender that its turn failed, so it is not left waiting for an answer that will not come.
+
+        A sender with no session to answer — ``daemon prompt`` speaks as an external name — cannot be told; the
+        reason is left in the log, which is the only place it can be read afterwards.
+        """
+        await self._tell(message, f"{DIRECT_FAILED}{why}"[:500], what=f"the turn failed: {why}")
+
+    async def _tell(self, message: IncomingMessage, text: str, *, what: str) -> None:
+        """Send a line back to the sender, and leave the fact in the log when there is nobody to receive it."""
+        delivered = await self.client.send_back(message, text)
+        if delivered is None:
+            self.record.log(f"the sender could not be told {what}")
 
     async def _name_it(self) -> None:
         """Ask the model for a title from the first exchange, unless the session has one.
@@ -302,6 +373,7 @@ class Daemon:
             output_tokens=made,
             context_tokens=context,
             context_window=self._window(),
+            broker=self._connected(),
         )
         # The lock is tried, not waited for: this runs on the event loop, and a reader changing a label holds it for
         # a moment. A write that missed is made by the next mark — the turn did not fail for it.
@@ -343,6 +415,30 @@ class Daemon:
         except Exception:  # noqa: BLE001 - see above
             return None
 
+    def _connected(self) -> bool | None:
+        """Return whether the session broker is reachable now, or ``None`` when the client cannot say."""
+        try:
+            return self.client.reachable
+        except Exception:  # noqa: BLE001 - connectivity is a nicety beside the status a reader needs
+            return None
+
+    async def _note_connection(self) -> None:
+        """Record a change in whether the session broker is reachable, so ``list`` shows a daemon nobody can reach.
+
+        A broker this session cannot register with — another protocol, a refused token — leaves the process healthy
+        and idle, which is indistinguishable from a reachable daemon in the record unless this is written down.
+        """
+        connected = self._connected()
+        if connected is None:
+            return
+        current = State.load(self.record.folder)
+        if current is None or current.broker is connected:
+            return
+        try:
+            self.record.change(lambda state: replace(state or current, broker=connected), wait=0)
+        except OSError as error:
+            self.record.log(f"the connection could not be recorded: {error}")
+
     async def _beat(self) -> None:
         """Keep the heartbeat fresh while this process lives, and take up a setting a reader asked for.
 
@@ -353,6 +449,7 @@ class Daemon:
             self.record.beat()
             if not self.inbox.busy:
                 await self._apply_requests()
+            await self._note_connection()
             await asyncio.sleep(BEAT_SECONDS)
 
     def _title(self) -> str | None:

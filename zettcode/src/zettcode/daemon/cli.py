@@ -5,12 +5,15 @@ session is, with ``send_message``, using its session id. What is here is the lif
 
     zettcode daemon list
     zettcode daemon spawn
+    zettcode daemon update <session-id>
+    zettcode daemon prompt <session-id> TEXT...
+    zettcode daemon log <session-id>
     zettcode daemon kill <session-id>
 
 A daemon runs at the shell level it was started with and with nobody to ask, which is why nothing here asks:
 starting one is the decision, and it is taken by whoever runs ``spawn``.
 
-The three handlers are thin on purpose: they build a :class:`~.state.Registry` or a :class:`~.process.Daemons` and
+The handlers are thin on purpose: they build a :class:`~.state.Registry` or a :class:`~.process.Daemons` and
 print what it answers. What to run, how to wait for it and what to do when it dies is in those classes, not here.
 """
 
@@ -180,6 +183,19 @@ def _build_parser() -> argparse.ArgumentParser:
     prompt.add_argument("text", metavar="TEXT", nargs="+", help="what to ask it")
     prompt.add_argument("--json", action="store_true", help="print the receipt as JSON, for a program to read")
 
+    log = commands.add_parser(
+        "log",
+        help="show what a daemon wrote about itself",
+        description=(
+            "Print the last lines a daemon wrote: the tools it ran, the turns that failed, the settings it took up. "
+            "The conversation itself is not here — `zettcode resume <id>` reads that."
+        ),
+    )
+    log.add_argument("session", metavar="SESSION", help="the session id `daemon list` shows")
+    log.add_argument(
+        "-n", "--lines", type=_positive, default=200, metavar="N", help="how many last lines (default 200)"
+    )
+
     # Started by `spawn`, never by hand: it is the process a reader's shell would otherwise own.
     run = commands.add_parser(
         "run",
@@ -211,6 +227,8 @@ def daemon_program(argv: Sequence[str] | None = None) -> int:
         return _update(args)
     if args.command == "prompt":
         return _prompt(args)
+    if args.command == "log":
+        return _log(args.session, args.lines)
     if args.command == "kill":
         return _kill(args.session, args.json)
     return _run(args)
@@ -259,6 +277,8 @@ def _entry(record: Record) -> list[str]:
         fields.append(("next", f"{wanted}{level}"))
     if state.requested_error is not None:
         fields.append(("error", state.requested_error))
+    if state.broker is False and not record.dead:
+        fields.append(("broker", "offline: not reachable, and it keeps trying"))
     return [head, *block(fields)]
 
 
@@ -309,6 +329,7 @@ def _record_json(record: Record) -> dict[str, object]:
         "requested_model": state.requested_model if state is not None else None,
         "requested_effort": state.requested_effort if state is not None else None,
         "requested_error": state.requested_error if state is not None else None,
+        "broker": state.broker if state is not None else None,
         "input_tokens": state.input_tokens if state is not None else None,
         "output_tokens": state.output_tokens if state is not None else None,
         "context_tokens": state.context_tokens if state is not None else None,
@@ -468,6 +489,8 @@ def _update(args: argparse.Namespace) -> int:
             print(f"next     {wanted}{level}")
         if state.requested_error is not None:
             print(f"error    {state.requested_error}")
+        if state.broker is False and not updated.dead:
+            print("broker   offline: not reachable, and it keeps trying")
     return EXIT_OK
 
 
@@ -530,6 +553,20 @@ def _prompt(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _log(session: str, lines: int) -> int:
+    """Print the last lines a daemon wrote about itself."""
+    from ..sdk.daemons import daemon_log
+    from ..sdk.errors import SessionNotFoundError
+
+    try:
+        text = daemon_log(session, lines=lines)
+    except SessionNotFoundError:
+        sys.stderr.write(f"no daemon with that session: {session}\n")
+        return EXIT_FAILED
+    print(text or "(nothing logged)")
+    return EXIT_OK
+
+
 def _run(args: argparse.Namespace) -> int:
     """Run the daemon process itself; this is what ``spawn`` starts."""
     import asyncio
@@ -550,6 +587,17 @@ def _run(args: argparse.Namespace) -> int:
         return asyncio.run(serve(options))
     except KeyboardInterrupt:
         return EXIT_OK
+
+
+def _positive(text: str) -> int:
+    """Parse a count of lines for ``daemon log``: one at least, refused rather than quietly changed."""
+    try:
+        value = int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{text!r} is not a number") from None
+    if value < 1:
+        raise argparse.ArgumentTypeError("at least one line")
+    return value
 
 
 def _age(seconds: float) -> str:
