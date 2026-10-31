@@ -15,7 +15,8 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from .. import config as _config
-from ..config_edit import entry_from_model, render_entry, replace_model, write_text_atomically
+from ..config_edit import add_model as insert_model
+from ..config_edit import file_entries, replace_model, write_text_atomically
 from ..paths import config_path
 from .types import ModelInfo
 
@@ -97,16 +98,9 @@ def add_model(entry: Mapping[str, object], *, path: str | Path | None = None) ->
     target = _path(path)
     # Unconditionally: `read_models` answers () for a file that is not there yet and refuses one that is not a
     # file, which is what a caller naming a directory has to hear rather than an IsADirectoryError from the write.
-    existing = _config.read_models(target)
+    _config.read_models(target)
     before = target.read_text(encoding="utf-8") if target.is_file() else None
-    text = before or ""
-    if existing:
-        from ..config_edit import add_model as insert_model
-
-        text = insert_model(text, entry, where=target)
-    else:
-        block = render_entry(entry).rstrip("\n")
-        text = f"{text.rstrip()}\n\n{block}\n" if text.strip() else f"{block}\n"
+    text = insert_model(before or "", entry, where=target)
     return _infos(_write(target, before, text))
 
 
@@ -131,13 +125,15 @@ def update_model(name: str, changes: Mapping[str, object], *, path: str | Path |
     target = _path(path)
     models = _config.read_models(target)
     index = _find(models, name)
-    entry = entry_from_model(models[index])
+    before = _read_text(target)
+    # The file's own keys, not the model's: a token the environment supplied belongs to the configuration, and
+    # writing it here would copy a secret into the file this dialog shows.
+    entry = dict(file_entries(before, where=target)[index])
     for key, value in changes.items():
         if value is None:
             entry.pop(key, None)
         else:
             entry[key] = value
-    before = _read_text(target)
     text = replace_model(before, index, entry, where=target)
     return _infos(_write(target, before, text))
 
