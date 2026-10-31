@@ -2,7 +2,7 @@
   "name": "zettcode-gateway-ui",
   "version": "0.0.0",
   "private": true,
-  "description": "The web page of zettcode-gateway: a Vue and TypeScript app that is built into the zettcode package",
+  "description": "The web page of `zettcode gateway`: a Vue and TypeScript app that is built into the zettcode package",
   "type": "module",
   "license": "MIT",
   "engines": {

@@ -76,7 +76,6 @@ monitor = ["zettcode-monitor>=0.2,<0.3"]
 [project.scripts]
 zettcode = "zettcode.cli:main"
 zettcode-server = "zettcode.server.cli:main"
-zettcode-gateway = "zettcode.gateway.cli:main"
 
 [project.urls]
 Repository = "https://github.com/Chang-LeHung/zettcode"
