@@ -212,7 +212,8 @@ export class ZettCodeClient {
 
   /**
    * Run one of them. An answer with a `prompt` is a preset for a turn: the caller sends it as the next prompt, with
-   * `shown` as the conversation's line and the prompt as the instructions.
+   * `shown` as the conversation's line and the prompt as the instructions. An answer with `markdown` is a document to
+   * show in a view of its own; `message` is still the line it adds to the conversation, and may be empty.
    */
   runCommand(name: string, argument = ""): Promise<CommandAnswer> {
     const path = name.startsWith("/") ? name.slice(1) : name;

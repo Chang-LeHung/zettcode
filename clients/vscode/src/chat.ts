@@ -2191,8 +2191,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
   }
 
   /**
-   * Run one command by name and follow what it answered with: words go to the conversation, and a preset starts a
-   * turn with the command as its line and the brief as the instructions the model reads.
+   * Run one command by name and follow what it answered with: words go to the conversation, a document opens beside
+   * it, and a preset starts a turn with the command as its line and the brief as the instructions the model reads.
    *
    * The palette and the composer's `/` menu both come through here, so a command behaves the same whichever door the
    * reader used.
@@ -2217,8 +2217,34 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       await this.startCommandTurn(answer.prompt, answer.shown || `${command.name} ${argument}`.trim());
       return;
     }
+    // The words first, then the document, as the terminal draws a message before the page over it. And a document the
+    // editor cannot open is told, not thrown: the answer's own line is already where a reader will look for it, and a
+    // run that ends in an exception would hide it.
     if (answer.message !== "") {
       await this.announce(answer.message);
+    }
+    if (answer.markdown) {
+      try {
+        await this.showDocument(answer.markdown, command.name);
+      } catch (error) {
+        this.say("warn", `The document of ${command.name} could not be opened: ${String(error)}`);
+      }
+    }
+  }
+
+  /**
+   * Show a command's document: a Markdown preview beside the chat, rendered by the editor itself, and a text tab
+   * when no Markdown preview is installed. The document is untitled — it is what the command said now, not a file
+   * the reader owns — so nothing is written to disk for a page that is closed and forgotten.
+   */
+  private async showDocument(markdown: string, title: string): Promise<void> {
+    const document = await vscode.workspace.openTextDocument({ language: "markdown", content: markdown });
+    await vscode.window.showTextDocument(document, { preview: true, viewColumn: vscode.ViewColumn.Beside });
+    try {
+      await vscode.commands.executeCommand("markdown.showPreview", document.uri);
+    } catch {
+      // No Markdown preview here: the text tab is already open, which is the document itself.
+      this.say("info", `${title} opened as Markdown text: this editor has no Markdown preview.`);
     }
   }
 

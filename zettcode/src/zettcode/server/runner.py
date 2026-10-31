@@ -33,7 +33,7 @@ from zettcode.sdk.events import AnyEvent, ApprovalRequested, QuestionAsked, Stee
 from zettcode.sdk.handlers import ApprovalHandler, approve_all, approve_commands, deny_all
 from zettcode.sdk.types import Receipt
 
-from .schemas import ApprovalPolicy, PendingOut, PromptRequest, ResumeRequest, SteerIn
+from .schemas import ApprovalPolicy, CommandOut, PendingOut, PromptRequest, ResumeRequest, SteerIn
 from .serialize import event_payload, result_out
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
@@ -51,7 +51,6 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
         WorkspaceUsage,
     )
 
-    from .schemas import CommandOut
     from .settings import Settings
 
 #: What a run may be asked to do, whether it starts a prompt or continues one.
@@ -370,7 +369,7 @@ class Runner:
         if isinstance(result, TurnCommandResult):
             return CommandOut(notification=result.notification, prompt=result.prompt, shown=result.shown)
         if isinstance(result, TextCommandResult):
-            return CommandOut(message=result.message, notification=result.notification)
+            return CommandOut(message=result.message, notification=result.notification, markdown=result.markdown)
         raise TypeError(f"{wanted} answered with {type(result).__name__}")
 
     def stream_message(self, message_id: str) -> AsyncIterator[Frame]:

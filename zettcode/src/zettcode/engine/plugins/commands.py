@@ -41,10 +41,22 @@ class PlainCommandContext:
 
 @dataclass(frozen=True, slots=True)
 class TextCommandResult:
-    """Words: Markdown for the conversation, and a one-line remark for the row above the composer."""
+    """Words: Markdown for the conversation, an optional document, and a one-line remark.
+
+    ``message`` is what the conversation keeps, as before. ``markdown`` is a document for the front end to show on its
+    own — the terminal opens it as a page, the editor as a preview — for an answer too long to sit between two turns
+    or one a reader means to read rather than scroll past. It is a new field and not a new result type, so a front end
+    that predates it still runs the command and still shows ``message``.
+
+    Attributes:
+        message: Markdown added to the conversation.
+        notification: A one-line remark, as a toast.
+        markdown: A Markdown document shown by the front end in its own view; empty when there is none.
+    """
 
     message: str = ""
     notification: str = ""
+    markdown: str = ""
 
 
 @dataclass(frozen=True, slots=True)

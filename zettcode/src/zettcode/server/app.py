@@ -497,7 +497,7 @@ def create_app(settings: Settings, *, client_factory: ClientFactory | None = Non
         text and the ``shown`` line, so the turn belongs to the conversation the client is looking at, like every
         other prompt.
 
-        ``404 unknown_command`` when no plugin registered that name.
+        ``404 not_found`` when no plugin registered that name.
         """
         try:
             return await runner.run_command(name, body.argument)

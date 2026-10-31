@@ -251,12 +251,23 @@ class FakeClient:
 
     @property
     def plugins(self) -> object:
+        from zettcode.engine.plugins.commands import PlainCommand, PlainCommandContext, TextCommandResult
         from zettcode.sdk.client import PluginReport
         from zettcode.sdk.types import PluginEntry
+
+        def notes(context: PlainCommandContext) -> TextCommandResult:
+            return TextCommandResult(markdown=f"# Notes\n\n{context.argument}".rstrip())
+
+        def hello(context: PlainCommandContext) -> TextCommandResult:
+            return TextCommandResult(message="hello", notification="said hello")
 
         return PluginReport(
             ("shell", "usage"),
             ("broken: no such module",),
+            plain_commands=(
+                PlainCommand("/notes", "read the notes", notes, when_busy="now"),
+                PlainCommand("/hello", "say hello", hello),
+            ),
             entries=(
                 PluginEntry("shell", "shell", builtin=True),
                 PluginEntry("usage", "usage", builtin=True),

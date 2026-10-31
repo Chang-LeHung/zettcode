@@ -20,6 +20,7 @@ from zettcode.app.commands import CommandContext, CommandUi
 from zettcode.app.plugins.loader import terminal_context
 from zettcode.app.ui.widgets.welcome import WELCOME
 from zettcode.config import ModelConfig, ZettCodeConfig, load_config
+from zettcode.engine.plugins.commands import PlainCommandContext
 from zettcode.tui import DARK, Canvas, Style
 from zettcode.tui.theme_file import theme_from_toml
 
@@ -115,9 +116,10 @@ class ExampleCommandUi(CommandUi):
 @pytest.mark.parametrize("path", ["docs/guide/plugins.md", "docs/zh/guide/plugins.md"])
 async def test_documented_plugin_registers_and_runs_its_command(path, tmp_path):
     examples = code_blocks(path, "python")
-    # Seven blocks: the first two show a plugin that guards its screen-only half, the rest build the one this test
-    # loads and the last is the command that asks the model for something (see "Asking the model" / "让模型干活").
-    assert len(examples) == 7
+    # Eight blocks: the first two show a plugin that guards its screen-only half, the rest build the one this test
+    # loads, one answers with a document, and the last is the command that asks the model for something (see
+    # "Asking the model" / "让模型干活").
+    assert len(examples) == 8
     namespace = {}
     for example in examples:
         exec(compile(example, path, "exec"), namespace)
@@ -143,6 +145,10 @@ async def test_documented_plugin_registers_and_runs_its_command(path, tmp_path):
     result = await progress_handler(plugin, CommandContext(argument="Ada", ui=ui))
     assert ui.events == [("notice", "Preparing a greeting…")]
     assert result.message == "## Hello\n\nWelcome, Ada."
+
+    # The document example answers with the field beside the old ones, so a client that predates it still shows text.
+    result = namespace["notes"](PlainCommandContext(argument=""))
+    assert result.markdown.startswith("# ") and "- " in result.markdown and result.message == ""
 
     # The provider example is run as written: what the page says a plugin can describe is what loads.
     described = terminal_context(config)

@@ -207,7 +207,39 @@ everything at the end.
 Plugin commands are listed last and cannot shadow a built-in, so `/model`,
 `/resume` and the rest always do what [Commands](/guide/commands) says.
 
-For example, a command can report progress or render a Markdown result:
+### Answering with a document
+
+A command registered on `ctx.commands` answers with a `TextCommandResult` or a
+`TurnCommandResult` — nothing that needs a terminal. `TextCommandResult` has three fields, all
+optional: `message` for a line in the conversation, `notification` for a toast, and `markdown` for
+a document the front end shows in a view of its own. Use `markdown` for an answer a reader means
+to read rather than scroll past — a report, a review, a page from a plugin's own data — and leave
+`message` empty or put a one-line note in it:
+
+```python
+from zettcode.engine.plugins.commands import PlainCommandContext, TextCommandResult
+
+
+def notes(context: PlainCommandContext) -> TextCommandResult:
+    """Answer with a document, which the front end shows in a view of its own."""
+    return TextCommandResult(markdown="# Notes\n\n- the build is green\n- two things to read")
+```
+
+`markdown` is a field rather than a third result type, so nothing written against the older
+contract changes: a front end that does not know the field still runs the command and still shows
+`message`. What each one does with it:
+
+| Front end | Where a document goes |
+| --- | --- |
+| The terminal | A page over the conversation: rendered Markdown, scrolled with the arrow keys, closed with Escape. |
+| The editor | A Markdown preview beside the chat. |
+| The server | `markdown` in the answer to `POST /commands/{name}`; the client draws it. |
+
+`ctx.commands` has no widget and no `CommandUi`, so a document is the most a command can open: a
+command that needs a widget of its own, asks a question, or reports as it works belongs on
+`ctx.tui` and runs only where there is a terminal.
+
+For example, a command that runs on `ctx.tui` can report progress and answer in Markdown:
 
 ```python
 async def greet(self, context: CommandContext) -> CommandResult:

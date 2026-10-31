@@ -32,6 +32,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zettcode.app.commands import Command
     from zettcode.app.pets import PetSource
     from zettcode.config import ZettCodeConfig
+    from zettcode.engine.plugins.commands import PlainCommand
     from zettcode.engine.plugins.plugin import Plugin
     from zettcode.tui import ThemeSource
 
@@ -76,8 +77,9 @@ def plain_commands(context: PluginContext) -> list[Command]:
     """Turn the plugin's plain commands into the shell's, keeping the handler's contract.
 
     The handler returns a :class:`~zettcode.engine.plugins.commands.TextCommandResult` or a
-    :class:`~zettcode.engine.plugins.commands.TurnCommandResult` — words, or a request to start — so there is nothing a
-    shell could show that a process without one could not; the adapter maps each onto what the shell does with it.
+    :class:`~zettcode.engine.plugins.commands.TurnCommandResult` — words, a document, or a request to start — so there
+    is nothing a shell could show that a process without one could not; the adapter maps each onto what the shell does
+    with it.
     """
     adapted: list[Command] = []
     for plain in context.commands.commands:
@@ -86,7 +88,7 @@ def plain_commands(context: PluginContext) -> list[Command]:
                 name=plain.name,
                 description=plain.summary,
                 type="plugin",
-                handler=_plain_handler(plain.handler),
+                handler=_plain_handler(plain),
                 when_busy=plain.when_busy,  # type: ignore[arg-type]  # the shell validates the word
                 subcommands=plain.subcommands,  # type: ignore[arg-type]
             )
@@ -94,13 +96,13 @@ def plain_commands(context: PluginContext) -> list[Command]:
     return adapted
 
 
-def _plain_handler(handler):
+def _plain_handler(plain: PlainCommand):
     """Wrap one plain handler as the shell's, one result type at a time."""
 
     async def run(context):
         host = context.host
         level = host.client.permission if host is not None else "ask"
-        result = handler(PlainCommandContext(argument=context.argument, level=level))
+        result = plain.handler(PlainCommandContext(argument=context.argument, level=level))
         if inspect.isawaitable(result):
             result = await result
         if isinstance(result, TurnCommandResult):
@@ -109,7 +111,17 @@ def _plain_handler(handler):
             await context.require_host().prompt(result.prompt, shown=result.shown or None)
             return CommandResult(notification=result.notification)
         if isinstance(result, TextCommandResult):
-            return CommandResult(message=result.message, notification=result.notification)
+            # A document is a page of its own, so the shell opens one instead of stacking it into the conversation;
+            # the message beside it is unchanged, so a command that gives both gets both. The widget library is
+            # imported only where there is a document: a command that answers with words alone never pays for it.
+            widget = None
+            if result.markdown:
+                from zettcode.app.ui.widgets import DocumentPage
+
+                # Titled by the command as it was typed: the summary is already in the menu, and this page covers the
+                # conversation, so it has to say which command opened it.
+                widget = DocumentPage(result.markdown, title=plain.name)
+            return CommandResult(message=result.message, notification=result.notification, widget=widget)
         raise TypeError(
             f"a plain command returns a TextCommandResult or a TurnCommandResult, not {type(result).__name__}"
         )

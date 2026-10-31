@@ -224,8 +224,8 @@ class PluginReport:
     Attributes:
         loaded: Their names, in the order they take part (built-in ones first).
         failures: One message per plugin that could not be loaded; what fails is reported, never fatal.
-        plain_commands: The commands the plugins registered for every front end — text, or a preset for a turn — in
-            registration order, so a client with no terminal can offer them.
+        plain_commands: The commands the plugins registered for every front end — text, a Markdown document, or a
+            preset for a turn — in registration order, so a client with no terminal can offer them.
         entries: The same plugins as a list shows them: what loaded, what the next start will leave out, and what could
             not load, each with the origin a switch is written with. A front end with a panel reads this; `loaded`
             and `failures` stay for the callers that only want the names.

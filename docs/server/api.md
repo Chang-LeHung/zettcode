@@ -14,7 +14,7 @@ Every endpoint answers JSON unless it says otherwise, and every failure uses the
 | --- | --- | --- |
 | `invalid` | 400 / 422 | A setting names something that does not exist; a body fails validation; a command holds a shell character. |
 | `unauthorized` | 401 | The token is missing or wrong. |
-| `not_found` | 404 | No such session. |
+| `not_found` | 404 | No such session, or no such plugin command. |
 | `busy` | 409 | A run is in progress and this needs the conversation. |
 | `locked` | 409 | Another process has the session open. |
 | `nothing_to_do` | 409 | There is no interrupted request to continue. |
@@ -45,7 +45,7 @@ Except on `/health`, every endpoint requires `Authorization: Bearer <token>` whe
 | `GET` | `/plugins` | — | `{"loaded": [...], "failures": [...], "entries": [{"name","origin","builtin","enabled","failure","setting","switchable","why"}]}`: the names, the messages for what failed, and every plugin a panel shows — which includes rows a switch cannot move (a failed compiled-in plugin, a group switched off); `switchable` and `why` are those rows. `origin` is the distribution's name and the one a switch is written with; `enabled` says whether the **next start** does its work; `setting` is the configuration key that decides a compiled-in plugin (`"skills.enabled"`), empty for an installed one. A compiled-in plugin with no such key is not listed at all. |
 | `PUT` | `/plugins/{name}` | `{"enabled": true\|false}` | That plugin, as the list now shows it. Nothing loads or unloads in the running server: a switch is read when a process starts, so a client that wants it now restarts the server. An installed plugin is recorded in `[plugins] disable` in the server's configuration file, a compiled-in one in its own key there; a name the installation does not have is refused (`400 invalid`). |
 | `GET` | `/commands` | — | `{"commands": [{"name", "summary", "when_busy", "subcommands"}]}` |
-| `POST` | `/commands/{name}` | `{"argument"}` | `{"message", "notification", "prompt", "shown"}` — a `prompt` is sent as the next `POST /prompts`, with `shown` as its line |
+| `POST` | `/commands/{name}` | `{"argument"}` | `{"message", "notification", "prompt", "shown", "markdown"}` — a `prompt` is sent as the next `POST /prompts`, with `shown` as its line; a `markdown` document is shown in a view of its own |
 | `GET` | `/mentions?query=&limit=50` | — | `{"mentions": [{"token","kind","name","description"}]}`: the files, skills and plugin resources an `@` can reference. |
 | `POST` | `/doctor` | `{"timeout"?: 30}` | `{"checks": [{"model","model_id","ok","seconds","detail","input_tokens","output_tokens"}]}`: every configured model asked one short question. |
 

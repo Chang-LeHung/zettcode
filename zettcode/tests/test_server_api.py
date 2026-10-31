@@ -265,6 +265,22 @@ async def test_before_anything_was_measured_the_context_report_is_null_and_not_a
     assert response.status_code == 200 and response.json() is None
 
 
+async def test_a_command_answers_with_a_document_beside_the_old_fields():
+    """`markdown` is a new field on the same answer: the document, and the message a command already had."""
+    async with serve(FakeClient()) as http:
+        listed = await http.get("/commands")
+        document = await http.post("/commands/notes", json={"argument": "today"})
+        words = await http.post("/commands/hello", json={"argument": ""})
+        unknown = await http.post("/commands/missing", json={"argument": ""})
+
+    assert [entry["name"] for entry in listed.json()["commands"]] == ["/notes", "/hello"]
+    assert document.status_code == 200
+    body = document.json()
+    assert body["markdown"] == "# Notes\n\ntoday" and body["message"] == ""
+    assert words.json()["markdown"] == "" and words.json()["message"] == "hello"
+    assert unknown.status_code == 404 and unknown.json()["error"] == "not_found"
+
+
 async def test_usage_reports_the_session_totals():
     async with serve(FakeClient()) as http:
         body = (await http.get("/usage")).json()

@@ -104,19 +104,21 @@ class CommandIn(BaseModel):
 
 
 class CommandOut(BaseModel):
-    """What a command answered with: words, or a prompt to run next.
+    """What a command answered with: words, a document, or a prompt to run next.
 
     Attributes:
         message: Markdown for the conversation.
         notification: A one-line remark, when the command has one.
         prompt: The text to send as ``POST /prompts`` when the command is a preset for a turn; empty otherwise.
         shown: What the conversation should show for that turn, which is the command as typed.
+        markdown: A Markdown document for the client to show in a view of its own; empty when there is none.
     """
 
     message: str = ""
     notification: str = ""
     prompt: str = ""
     shown: str = ""
+    markdown: str = ""
 
 
 class CommandInfoOut(BaseModel):

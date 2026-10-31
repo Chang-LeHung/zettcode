@@ -222,6 +222,51 @@ async def test_a_plain_command_reaches_the_shell_beside_the_tuis_own(tmp_path: P
     assert (result.message, result.notification, result.widget) == ("hello Ada", "said hello", None)
 
 
+async def test_a_document_a_plain_command_answers_with_opens_as_a_page(tmp_path: Path):
+    """A ``markdown`` document is a page of the terminal's own, not another line in the conversation."""
+
+    class Notes(TuiPlugin):
+        name = "plain-notes"
+
+        def activate(self, ctx: PluginContext) -> None:
+            from zettcode.engine.plugins.commands import TextCommandResult
+
+            ctx.commands.register(
+                "/notes", "read the notes", lambda context: TextCommandResult(markdown="# Notes\n\nAll quiet.")
+            )
+
+    plugins = load_terminal_plugins(make_config(tmp_path), builtins=(), entry_points=[FakeEntryPoint("notes", Notes)])
+    (command,) = plugins.commands
+
+    result = await command.handler(CommandContext(argument="", ui=_SilentUi()))
+
+    from zettcode.app.ui.widgets import DocumentPage
+
+    assert result.message == ""
+    assert isinstance(result.widget, DocumentPage)
+    assert result.widget.document.text == "# Notes\n\nAll quiet."
+    assert result.widget.title == "/notes", "the page says which command opened it"
+
+
+async def test_a_plain_command_with_a_message_only_still_opens_no_page(tmp_path: Path):
+    """The document is a field beside the old ones, so a command written before it behaves as it did."""
+
+    class Plain(TuiPlugin):
+        name = "plain-only"
+
+        def activate(self, ctx: PluginContext) -> None:
+            from zettcode.engine.plugins.commands import TextCommandResult
+
+            ctx.commands.register("/plain", "just words", lambda context: TextCommandResult(message="ok"))
+
+    plugins = load_terminal_plugins(make_config(tmp_path), builtins=(), entry_points=[FakeEntryPoint("plain", Plain)])
+    (command,) = plugins.commands
+
+    result = await command.handler(CommandContext(argument="", ui=_SilentUi()))
+
+    assert (result.message, result.widget) == ("ok", None)
+
+
 def test_a_plain_command_is_ui_free(tmp_path: Path):
     """``ctx.commands`` takes a handler whose result cannot carry a widget, so a front end without one can run it."""
     ctx = PluginContext(make_config(tmp_path), {})
