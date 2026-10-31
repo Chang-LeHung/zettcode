@@ -41,7 +41,6 @@ BEAT_SECONDS = 5.0
 
 #: Exit statuses, as the daemon's own process reports them.
 EXIT_OK = 0
-EXIT_FAILED = 1
 EXIT_UNUSABLE = 2
 
 
@@ -237,11 +236,6 @@ class Daemon:
         except OSError as error:
             self.record.log(f"the state file could not be written: {error}")
 
-    @property
-    def started_seconds(self) -> float:
-        """Return how long this daemon has been running."""
-        return time.time() - self.started_at
-
     async def _beat(self) -> None:
         """Keep the heartbeat fresh while this process lives."""
         while True:
@@ -305,16 +299,6 @@ def _client(options: Options) -> Client:
         model=options.model,
         effort=options.effort,
         permission=options.permission,
-        sessions_enabled=True,
-        ask_user_enabled=False,
-    )
-    from ..sdk.client import Client
-
-    return Client(
-        options.workspace,
-        model=options.model,
-        effort=options.effort,
-        permission="full",
         sessions_enabled=True,
         ask_user_enabled=False,
     )

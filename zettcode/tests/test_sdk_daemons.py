@@ -179,6 +179,13 @@ def test_a_daemon_with_no_state_is_still_listed_by_the_name_of_its_folder(folder
     assert found.session_id == "01odd" and found.status == "dead" and found.workspace == ""
 
 
+def test_the_levels_the_sdk_offers_are_the_daemons_own():
+    """The SDK and the daemon each spell the three levels; a test keeps the two spellings one list."""
+    from zettcode.daemon import PERMISSIONS
+
+    assert daemons.PERMISSIONS == PERMISSIONS
+
+
 async def test_spawn_refuses_what_it_can_see_is_wrong_before_it_starts_anything(folders):
     with pytest.raises(ConfigurationError, match="deny, safe, full"):
         await daemons.spawn_daemon(folders, permission="ask")

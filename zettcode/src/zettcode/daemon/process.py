@@ -20,6 +20,7 @@ import time
 from pathlib import Path
 from typing import IO, TYPE_CHECKING
 
+from . import PERMISSIONS
 from .state import START_SECONDS, Record, Registry, pid_runs
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
@@ -76,9 +77,17 @@ class Daemons:
             permission: The shell level it runs at: ``deny``, ``safe`` or ``full``.
 
         Raises:
-            SpawnFailed: The process exited, or never became reachable in :data:`~.state.START_SECONDS`.
+            SpawnFailed: The permission is not one of :data:`~zettcode.daemon.PERMISSIONS`, the workspace is not a
+                directory, the process exited, or it never became reachable in :data:`~.state.START_SECONDS`.
         """
         workspace = workspace.expanduser().resolve()
+        if permission not in PERMISSIONS:
+            # Refused here rather than by the child: a process that cannot be started is not worth starting, and
+            # its failure would have to be read out of a log file.
+            raise SpawnFailed(f"a daemon's permission is one of {', '.join(PERMISSIONS)}, not {permission!r}")
+        if not workspace.is_dir():
+            # Popen's own refusal for a missing cwd is a FileNotFoundError that says nothing about the argument.
+            raise SpawnFailed(f"{workspace} is not a directory, so a daemon has nowhere to work")
         token = secrets.token_hex(8)
         early = self.registry.workspace(workspace, create=True) / ".spawn"
         early.mkdir(parents=True, exist_ok=True)
