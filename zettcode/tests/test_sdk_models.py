@@ -90,6 +90,18 @@ def test_updating_a_model_keeps_every_key_it_did_not_name_and_the_token(tmp_path
     assert 'token = "secret"' in text and 'display_model = "A"' in text
 
 
+def test_updating_a_model_never_writes_the_token_the_environment_supplied(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-env-secret")
+    path = config_file(tmp_path)
+    path.write_text('[[models]]\nmodel = "a"\n', encoding="utf-8")
+
+    models = update_model("a", {"context_window": 100000}, path=path)
+
+    assert models[0].context_window == 100_000
+    text = path.read_text(encoding="utf-8")
+    assert "token" not in text and "sk-env-secret" not in text, "a secret from the environment is not the file's"
+
+
 def test_a_model_with_only_an_id_is_a_model_and_its_token_is_not_written(tmp_path: Path, monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     path = config_file(tmp_path)
