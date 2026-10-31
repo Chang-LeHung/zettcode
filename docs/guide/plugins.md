@@ -438,8 +438,10 @@ plugins, so the switches under `[harness]` and the others simply decide whether 
 ## Turning one off
 
 `/plugins` opens a page with a switch for every plugin you can turn off, the ones compiled into the program first and
-the installed ones after them. Up and Down move, Left, Right and Space flip a switch, Enter writes the changes down and
-Escape writes nothing. A switch takes effect at the **next start**: this session does the work it loaded.
+the installed ones after them. A single-file plugin in `~/.zettcode/plugins` is one of those installed ones, and it is
+listed whether or not it is on — a file switched off stays on the page, off, so it can be switched back on. Up and
+Down move, Left, Right and Space flip a switch, Enter writes the changes down and Escape writes nothing. A switch takes
+effect at the **next start**: this session does the work it loaded.
 
 Where a switch is written depends on the plugin:
 
