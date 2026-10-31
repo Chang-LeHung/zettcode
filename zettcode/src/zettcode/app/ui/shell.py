@@ -244,6 +244,13 @@ class ShellState:
         """Start the oldest message another session sent, if one waits and nothing runs."""
         return False
 
+    def _steer_blocked(self) -> str | None:
+        """Return why the work in flight cannot be steered, or ``None`` when it can."""
+        return None
+
+    def _settle_relayed_steering(self) -> None:
+        """Hand messages a finished request never adopted to the inbox, so they still get a turn."""
+
     async def run_continue(self) -> None:
         """Pick up the interrupted request where it stopped."""
 

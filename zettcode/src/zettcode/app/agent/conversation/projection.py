@@ -71,7 +71,7 @@ class TranscriptProjector(AgentEventDispatcher):
         on_approval: Callable[[ApprovalRequested], None] | None = None,
         on_ask: Callable[[QuestionAsked], None] | None = None,
         on_usage: Callable[[Usage, str], None] | None = None,
-        on_steering_started: Callable[[str], None] | None = None,
+        on_steering_started: Callable[[str], Relayed | str | None] | None = None,
         on_steering_interrupted: Callable[[str], None] | None = None,
     ) -> None:
         """Send projected events to ``transcript``; approvals go to ``on_approval``.
@@ -89,7 +89,10 @@ class TranscriptProjector(AgentEventDispatcher):
                 the shell can refresh the status line without polling the store.
             on_steering_started: Called with the text of a queued steering
                 message the agent just adopted, so the shell can drop it from
-                the pending queue before the row is echoed.
+                the pending queue before the row is echoed. What it returns, when
+                it is a :class:`~zettcode.relay.Relayed`, is drawn as that session's
+                message — what its sender wrote, not the line the model reads; a
+                string is drawn as the row's text.
             on_steering_interrupted: Called with the text of a steering message
                 a newer one superseded, so the shell can drop it too.
         """
@@ -174,9 +177,11 @@ class TranscriptProjector(AgentEventDispatcher):
                 if stop is not None and not stop.ok:
                     transcript.error(stop_text(stop))
             case Steered(text=text):
-                if self.on_steering_started is not None:
-                    self.on_steering_started(text)
-                transcript.begin_turn(text)
+                adopted = self.on_steering_started(text) if self.on_steering_started is not None else None
+                if isinstance(adopted, Relayed):
+                    transcript.begin_turn(adopted.text, relayed=adopted)
+                else:
+                    transcript.begin_turn(adopted or text)
             case SteeringFinished():
                 transcript.complete_thinking()
             case SteeringInterrupted(text=text):

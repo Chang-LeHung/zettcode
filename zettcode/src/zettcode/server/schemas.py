@@ -696,6 +696,10 @@ class SendIn(BaseModel):
 
     to: str = Field(min_length=1, description="The session's handle, or its id")
     text: str = Field(min_length=1, description="What to say")
+    mode: Literal["steer", "followup"] = Field(
+        default="steer",
+        description="What a busy recipient does with it: steer its running request (the default), or wait until it ends",
+    )
 
 
 class SentOut(BaseModel):

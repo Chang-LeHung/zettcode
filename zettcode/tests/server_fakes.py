@@ -158,6 +158,12 @@ class FakeSession:
         self.steer_options = {"images": tuple(images), "mentions": mentions}  # type: ignore[call-overload]
         return message if self.steering else None
 
+    def _steer_message(self, message: object) -> str | None:
+        """Take a finished message, as the shell does with one another session sent; record the text it carries."""
+        text = getattr(message, "text", "")
+        self.steered.append(text)
+        return text if self.steering else None
+
     async def resumable(self) -> object | None:
         return self.resume_info
 
@@ -226,7 +232,7 @@ class FakeClient:
         self.runs = list(runs)
         self.asked: list[str] = []
         self.relayed: list[Any] = []
-        self.sent: list[tuple[str, str]] = []
+        self.sent: list[tuple[str, str, str]] = []
         self.approvals: list[Any] = []
         self.prompt_options: list[dict[str, object]] = []
         self.self_choice: bool | None = None
@@ -316,11 +322,11 @@ class FakeClient:
         run.on_approval = options.get("on_approval")
         return run
 
-    async def send(self, to: str, text: str) -> Any:
+    async def send(self, to: str, text: str, *, mode: str = "steer") -> Any:
         from zettcode.sdk.errors import SendError
         from zettcode.sdk.types import Delivered
 
-        self.sent.append((to, text))
+        self.sent.append((to, text, mode))
         if to == "nobody":
             raise SendError("not_found", "no session is called @nobody")
         return Delivered(to, "started")

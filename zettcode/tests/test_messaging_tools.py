@@ -128,12 +128,51 @@ async def test_a_message_is_delivered_and_the_model_is_told_what_the_other_sessi
 
     assert said == f"Delivered to bob (id {BOB}); it started on it now."
     (message,) = inbox.messages
-    assert (message.text, message.via, message.hops, message.sender.session_id) == (
+    assert (message.text, message.via, message.hops, message.mode, message.sender.session_id) == (
         "rerun the tests please",
         "agent",
         1,
+        "steer",
         ME,
     )
+
+
+async def test_a_message_asks_for_a_follow_up_only_when_the_model_says_so(world):
+    _, inbox = await world.other(BOB, "bob")
+    ctx = await tools_of(world)
+
+    said = await call(ctx, SEND_MESSAGE_TOOL_NAME, to=BOB, message="after this", mode="followup")
+
+    assert inbox.messages[-1].mode == "followup"
+    assert "started on it now" in said
+
+
+async def test_a_session_that_steered_the_message_says_so_to_the_model(world):
+    await world.other(BOB, "bob", inbox=Inbox(Receipt(True, "", "steered")))
+    ctx = await tools_of(world)
+
+    said = await call(ctx, SEND_MESSAGE_TOOL_NAME, to="bob", message="change course")
+
+    assert "steered it into the request it was running" in said
+
+
+async def test_a_chat_window_that_kept_the_message_says_so_to_the_model(world):
+    await world.other(BOB, "bob", inbox=Inbox(Receipt(True, "", "delivered")))
+    ctx = await tools_of(world)
+
+    said = await call(ctx, SEND_MESSAGE_TOOL_NAME, to="bob", message="hello")
+
+    assert "delivered it to that session's chat window" in said
+
+
+async def test_a_mode_nobody_knows_is_refused_before_anything_is_sent(world):
+    _, inbox = await world.other(BOB, "bob")
+    ctx = await tools_of(world)
+
+    with pytest.raises(ValueError) as failure:
+        await call(ctx, SEND_MESSAGE_TOOL_NAME, to=BOB, message="hello", mode="later")
+
+    assert "steer" in str(failure.value) and inbox.messages == []
 
 
 async def test_a_session_that_queued_the_message_says_so_to_the_model(world):

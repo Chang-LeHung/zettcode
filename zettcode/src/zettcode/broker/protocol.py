@@ -6,25 +6,28 @@ The broker is a small HTTP server on a loopback port; every route but ``/health`
 HTTP, for anyone who holds the token — a session, a script, a hook, ``curl``::
 
     GET  /sessions     ->  {"sessions": [...], "limits": {...}}
-    POST /messages     {"to", "text", "via"?, "hops"?, "from"?: {"name"}}  ->  {"to": {...}, "disposition"}
+    POST /messages     {"to", "text", "via"?, "hops"?, "mode"?, "from"?: {"name"}}  ->  {"to": {...}, "disposition"}
     GET  /health       ->  {"ok": true}
 
-A failure is an HTTP status and ``{"error": {"reason", "message"}}``; the reason is what a program acts on.
+A failure is an HTTP status and ``{"error": {"reason", "message"}}``; the reason is what a program acts on. A
+message's ``mode`` says what a busy recipient should do with it: ``steer`` (the default) hands it to the request
+that is running so it changes course, and ``followup`` waits until that request ends. An idle recipient starts a
+turn either way.
 
 A *session* — ZettCode's, or any program that wants to be listed and reached — registers by opening a WebSocket at
 ``/inbox`` and stays registered for as long as it is open. Over it the broker says::
 
-    {"op": "hello", "protocol": 6, "key": ..., "limits": {...}}      first; ``key`` is this connection's credential
+    {"op": "hello", "protocol": 7, "key": ..., "limits": {...}}      first; ``key`` is this connection's credential
     {"op": "roster", "sessions": [...]}                              on arrival and whenever it changes
     {"op": "done", "n": 1, "handle": ...}                            the answer to a session or leave
     {"op": "refused", "n": 1, "error": {"reason", "message"}}        ... or its refusal
-    {"op": "deliver", "id": 9, "from": {...}, "text", "hops", "via"} a message; answer with an ack
+    {"op": "deliver", "id": 9, "from": {...}, "text", "hops", "via", "mode"} a message; answer with an ack
 
 and the session says::
 
     {"op": "session", "n": 1, "session_id", "title", "workspace", "status", "kind"?}   who I am now
     {"op": "leave", "n": 2}                                          I am no one, but stay connected
-    {"op": "ack", "id": 9, "accepted": true, "reason": "", "disposition": "started"}
+    {"op": "ack", "id": 9, "accepted": true, "reason": "", "disposition": "started"}  how it took it
 
 A session sends with ``POST /messages`` and ``X-Session-Key: <key>``, which is how the broker knows who the message
 is from: the sender's identity is the registration the key belongs to, never something the body says. A request
@@ -50,11 +53,13 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from ..modes import MODE_STEER, MODES
 from .text import clean_text, clean_title
 
-#: Bumped whenever this protocol changes meaning. 6: an HTTP server (a WebSocket per session, ``POST /messages`` to
-#: send); 5 was lines of JSON on a TCP socket.
-PROTOCOL_VERSION = 6
+#: Bumped whenever this protocol changes meaning. 7: a message says whether a busy recipient should steer its running
+#: request with it or wait behind that request (``mode``, default steer); 6 was the HTTP server and its WebSocket per
+#: session, 5 lines of JSON on a TCP socket.
+PROTOCOL_VERSION = 7
 
 #: The longest message, in characters. Longer than anyone types, shorter than a paste of a file.
 MAX_TEXT = 32_000
@@ -94,6 +99,10 @@ VIA_USER = "user"
 VIA_AGENT = "agent"
 VIA_EXTERNAL = "external"
 VIAS = (VIA_USER, VIA_AGENT, VIA_EXTERNAL)
+
+#: What a sender asks a busy recipient to do with a message — :data:`~zettcode.modes.MODE_STEER` (the default) or
+#: :data:`~zettcode.modes.MODE_FOLLOWUP` — is named in :mod:`zettcode.modes`, which every front end may import. The
+#: names are imported here only because this is where a mode is checked.
 
 #: What a session can say about a turn that is running, for the sessions that watch it: it began, a piece of the answer,
 #: that the model is reasoning, a tool started and ended, it ended. A line is at most :data:`MAX_STREAM` characters.
@@ -265,22 +274,26 @@ class SessionUpdate:
         return cls(session_id, *_description(raw), _kind(raw), raw.get("direct") is True)
 
 
-def parse_send(raw: Mapping[str, Any], limits: Limits) -> tuple[str, str, str, int]:
-    """Read and check a ``send``: return who it is for, its cleaned text, how it came and its hop count.
+def parse_send(raw: Mapping[str, Any], limits: Limits) -> tuple[str, str, str, int, str]:
+    """Read and check a ``send``: who it is for, its cleaned text, how it came, its hops, and its mode.
 
     The text is cleaned (see :func:`~.text.clean_text`) before it is measured, so the limit is on what would be
-    delivered. A message a reader typed, or one from outside, starts a chain whatever hop count it claims.
+    delivered. A message a reader typed, or one from outside, starts a chain whatever hop count it claims. The mode
+    is :data:`MODE_STEER` unless the sender asked for :data:`MODE_FOLLOWUP`.
 
     Raises:
-        Refused: ``invalid`` for a field of the wrong kind, ``empty`` for nothing to say, ``too_long`` past the
-            limit, ``loop`` when the message would pass the hop limit.
+        Refused: ``invalid`` for a field of the wrong kind or a mode the recipient does not know, ``empty`` for
+            nothing to say, ``too_long`` past the limit, ``loop`` when the message would pass the hop limit.
     """
     to = field(raw, "to", str)
     text = clean_text(field(raw, "text", str))
     via = field(raw, "via", str, VIA_AGENT)
     hops = field(raw, "hops", int, 0)
+    mode = field(raw, "mode", str, MODE_STEER)
     if via not in VIAS:
         raise Refused("invalid", "via is 'user', 'agent' or 'external'")
+    if mode not in MODES:
+        raise Refused("invalid", "mode is 'steer' or 'followup'")
     if hops < 0:
         raise Refused("invalid", "hops is a count")
     if not text.strip():
@@ -290,4 +303,4 @@ def parse_send(raw: Mapping[str, Any], limits: Limits) -> tuple[str, str, str, i
     hops = 0 if via != VIA_AGENT else hops
     if hops + 1 > limits.max_hops:
         raise Refused("loop", f"this message has already passed through {hops} sessions; not forwarded")
-    return to, text, via, hops
+    return to, text, via, hops, mode

@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any
 from zettcode.broker.client import BrokerClient, Delivered, Incoming, Receipt, RosterEntry, SessionInfo
 from zettcode.broker.protocol import VIA_AGENT
 from zettcode.config import ZettCodeConfig
+from zettcode.modes import MODE_STEER
 from zettcode.relay import Relayed
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
@@ -214,17 +215,27 @@ class Messenger:
             self.client.publish({"t": "text", "text": text[start : start + STREAM_CHUNK]})
 
     # -- sending ----------------------------------------------------------------------------------
-    async def send(self, to: str, text: str, *, via: str = VIA_AGENT, direct: bool = False) -> Delivered:
+    async def send(
+        self, to: str, text: str, *, via: str = VIA_AGENT, direct: bool = False, mode: str = MODE_STEER
+    ) -> Delivered:
         """Send a message and return once the other session has taken it.
 
         A message sent by this session's agent while it is answering another one carries that message's
         hop count on; a message the reader sent starts again at none.
 
+        Args:
+            to: The session's handle or id.
+            text: What to say.
+            via: How it came: the agent's tool, or the reader.
+            direct: Ask a session that can to run it as its own reader's prompt and answer the sender.
+            mode: What a busy recipient does with it: ``"steer"`` (the default) hands it to the running request,
+                ``"followup"`` waits until that request ends.
+
         Raises:
             SendError: Nobody was reached, and why.
         """
         hops = self.answering.hops if self.answering is not None and via == VIA_AGENT else 0
-        return await self.client.send(to, text, hops=hops, via=via, direct=direct)
+        return await self.client.send(to, text, hops=hops, via=via, direct=direct, mode=mode)
 
     # -- what the client reports ------------------------------------------------------------------
     def _received(self, incoming: Incoming) -> Receipt:
@@ -241,6 +252,7 @@ class Messenger:
                 via=incoming.via,
                 hops=incoming.hops,
                 direct=incoming.direct,
+                mode=incoming.mode,
             )
         )
 

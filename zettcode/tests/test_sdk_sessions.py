@@ -522,6 +522,40 @@ async def test_steering_a_running_request_is_accepted_and_reaches_the_model(tmp_
     assert "actually do it differently" in str(model.requests[1].messages)
 
 
+async def test_a_message_that_says_where_it_came_from_can_be_steered_as_it_is(tmp_path, monkeypatch):
+    from zett_agent.messages import UserMessage
+
+    gate = asyncio.Event()
+    started = asyncio.Event()
+
+    async def first(request):
+        started.set()
+        await gate.wait()
+        return asks_for(call("read_file", {"file_path": "x"}, call_id="r"))
+
+    model = wire(monkeypatch, ScriptedModel(first, "adjusted"))
+    async with make(tmp_path) as client:
+        task = asyncio.create_task(client.run("start"))
+        await asyncio.wait_for(started.wait(), 2.0)
+
+        message = UserMessage(content="[from another session]\n\nstop that", attributes={"prompt": "stop that"})
+        taken = client.session._steer_message(message)
+        gate.set()
+        await task
+
+    assert taken == message.text
+    assert "from another session" in str(model.requests[1].messages), "the model reads who sent it"
+    assert model.requests[1].messages[-1].attributes.get("prompt") == "stop that"
+
+
+async def test_a_message_with_nothing_running_is_not_steered(tmp_path, monkeypatch):
+    from zett_agent.messages import UserMessage
+
+    wire(monkeypatch, ScriptedModel("x"))
+    async with make(tmp_path) as client:
+        assert client.session._steer_message(UserMessage(content="stop that")) is None
+
+
 async def test_a_steering_message_can_carry_a_picture_and_is_reported_by_the_text_it_was_built_with(
     tmp_path, monkeypatch
 ):

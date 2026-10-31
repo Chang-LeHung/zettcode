@@ -29,6 +29,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from ..modes import MODE_FOLLOWUP, MODE_STEER, MODES
 from .finder import Finder
 from .models import Delivered, Incoming, Receipt, RosterEntry, SendError, SessionInfo
 from .protocol import (
@@ -322,8 +323,19 @@ class BrokerClient:
                 await asyncio.wait_for(ws.close(), 0.5)
 
     # -- sending ----------------------------------------------------------------------------------
-    async def send(self, to: str, text: str, *, hops: int = 0, via: str = VIA_AGENT, direct: bool = False) -> Delivered:
+    async def send(
+        self, to: str, text: str, *, hops: int = 0, via: str = VIA_AGENT, direct: bool = False, mode: str = MODE_STEER
+    ) -> Delivered:
         """Send a message to another session and return once it has taken it.
+
+        Args:
+            to: The session's handle or id.
+            text: What to say.
+            hops: How many sessions it has passed through already.
+            via: How it came: the reader, the agent, or an external program.
+            direct: Ask a session that can to run it as its own reader's prompt and answer the sender.
+            mode: What a busy recipient does with it: ``"steer"`` (the default) hands it to the running request,
+                ``"followup"`` waits until that request ends.
 
         Raises:
             SendError: There is no broker, or the broker or the recipient refused, or nobody answered in time, or
@@ -334,6 +346,8 @@ class BrokerClient:
         http = self._http if self._connected else None
         if http is None:
             raise SendError("offline", "not connected to the session broker")
+        if mode not in MODES:
+            raise SendError("invalid", "mode is 'steer' or 'followup'")
         cleaned = clean_text(text)
         if not cleaned.strip():
             raise SendError("empty", "a message needs some text")
@@ -343,7 +357,14 @@ class BrokerClient:
         try:
             response = await http.post(
                 "/messages",
-                json={"to": to, "text": cleaned, "via": via, "hops": hops, **({"direct": True} if direct else {})},
+                json={
+                    "to": to,
+                    "text": cleaned,
+                    "via": via,
+                    "hops": hops,
+                    "mode": mode,
+                    **({"direct": True} if direct else {}),
+                },
                 timeout=self.reply_timeout,
             )
         except httpx.TimeoutException:
@@ -531,12 +552,18 @@ class BrokerClient:
             return _ack(Receipt(False, "the message was malformed"))
         if self.on_message is None:
             return _ack(Receipt(False, "this session is not taking messages"))
+        mode = line.get("mode")
+        if not isinstance(mode, str):
+            mode = MODE_STEER  # a peer that does not say: the protocol's default
+        elif mode not in MODES:
+            mode = MODE_FOLLOWUP  # one this version does not know: the safe half, not the disruptive one
         incoming = Incoming(
             sender,
             clean_text(text),
             hops,
             via if via in VIAS else VIA_AGENT,
             line.get("direct") is True and via == VIA_USER,
+            mode,
         )
         try:
             return _ack(self.on_message(incoming))

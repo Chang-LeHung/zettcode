@@ -7,9 +7,11 @@ behave like one the reader typed:
 * **Idle** — it starts a turn at once, drawn as a message from that session and not as the reader's
   own, and everything after is an ordinary turn: the wait row, the answer, the summary of what
   changed, the title, the stored session.
-* **Busy** — it waits, and starts when the request in flight ends, after what the reader queued. It
-  never steers the request: it came from somebody else, and "change what you are doing" is the
-  reader's to say.
+* **Busy** — it follows its ``mode``. A steer message (the default) is handed to the request that is running, so
+  it changes course now; one that cannot be steered — a command is running, the steering limit is reached, or the
+  sender asked for a follow-up — waits and starts when the request in flight ends, after what the reader queued.
+  A message from a reader's one-to-one chat window always waits, because the window is answered by the turn that
+  message starts.
 
 The shell sends nothing itself. ``@name`` in a draft is resolved like any other reference
 (:mod:`zettcode.mentions`): the model reads which session it means and how to reach it, and calls
@@ -26,6 +28,7 @@ import asyncio
 from typing import TYPE_CHECKING
 
 from zettcode.broker.client import Receipt
+from zettcode.modes import MODE_STEER
 from zettcode.relay import Relayed
 
 from .shell import ShellState
@@ -48,6 +51,10 @@ class MessagingMixin(ShellState):
     messenger: SessionLink | None
     #: Messages from other sessions waiting for the request in flight to end, oldest first.
     _inbox: list[Relayed]
+    #: Messages handed to the request in flight, in the order they were handed over, each with the text the run
+    #: will report it by. Two messages that say the same thing are two entries; the run's report takes the first.
+    #: They leave as the run adopts them, and go to the inbox in this order when it does not.
+    _relayed_steering: list[tuple[str, Relayed]]
     #: What the last turn that ran to its end answered, or ``None`` when it did not end that way.
     _turn_answer: str | None
     #: Whether the connection has been started; before that there is no loop to tell it anything on.
@@ -131,7 +138,7 @@ class MessagingMixin(ShellState):
 
     # -- receiving --------------------------------------------------------------------------------
     def _relay_received(self, relayed: Relayed) -> Receipt:
-        """Take a message another session sent: start a turn on it, or hold it until this one is free.
+        """Take a message another session sent: start a turn, steer the running one, or hold it until this one is free.
 
         Called by the connection, on the loop, with the sender waiting for the answer; what it returns
         is what the sender's agent is told. It must not block.
@@ -145,6 +152,8 @@ class MessagingMixin(ShellState):
         if not self._busy:
             self._start_relayed(relayed)
             return Receipt(True, disposition="started")
+        if relayed.mode == MODE_STEER and self._steer_relayed(relayed):
+            return Receipt(True, disposition="steered")
         if len(self._inbox) >= MAX_INBOX:
             return Receipt(
                 False, f"this session already has {len(self._inbox)} messages waiting; try again when it is less busy"
@@ -156,6 +165,50 @@ class MessagingMixin(ShellState):
         self.transcript.notice(f"message from {relayed.sender} waits for this request to end: {preview}")
         self.app.invalidate()
         return Receipt(True, disposition="queued")
+
+    def _steer_relayed(self, relayed: Relayed) -> bool:
+        """Hand a message to the request in flight, if it is a turn that can take one.
+
+        A direct chat window's message is never steered: the window is answered by the turn that message starts,
+        and a turn somebody else started cannot answer it, so it waits like a follow-up. An accepted steer counts
+        against the same limit the reader's own steering does — the run has one inbox, whoever filled it.
+        """
+        if relayed.direct or self._steer_blocked() is not None:
+            return False
+        key = self.client.session._steer_message(relayed.message())
+        if key is None:
+            return False
+        self._relayed_steering.append((key, relayed))
+        self._steering_sent += 1
+        return True
+
+    def _adopted_relayed(self, text: str) -> Relayed | None:
+        """Take the message the running request just adopted, if it was relayed, so its row can be drawn as one."""
+        for index, (key, relayed) in enumerate(self._relayed_steering):
+            if key == text:
+                del self._relayed_steering[index]
+                return relayed
+        return None
+
+    def _settle_relayed_steering(self) -> None:
+        """After a request: messages it never adopted wait for the next turn rather than being lost.
+
+        A message that was interrupted after the run adopted it is not here — it left when the run reported the
+        adoption — so nothing that the model has already read is ever run again. Recovery may take the inbox past
+        its cap, which only limits what new senders may add; the reader is told in the same words a queued message
+        uses, in the order the messages were handed over.
+        """
+        if not self._relayed_steering:
+            return
+        waiting = [relayed for _key, relayed in self._relayed_steering]
+        self._relayed_steering.clear()
+        self._inbox.extend(waiting)
+        for relayed in waiting:
+            preview = relayed.text.replace("\n", " ")
+            if len(preview) > _PREVIEW:
+                preview = preview[: _PREVIEW - 1] + "\u2026"
+            self.transcript.notice(f"message from {relayed.sender} waits for this request to end: {preview}")
+        self.app.invalidate()
 
     def _start_relayed(self, relayed: Relayed) -> None:
         """Run one received message as a turn of its own."""

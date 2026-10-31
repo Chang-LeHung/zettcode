@@ -14,6 +14,8 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from ..modes import MODE_STEER
+
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from .events import Event
 
@@ -519,6 +521,10 @@ class IncomingMessage:
             agents that keep answering each other.
         direct: ``True`` when the sender is a person's one-to-one chat: run ``text`` with :meth:`Session.prompt`, as
             the session's own reader's words, and give the final answer back with :meth:`Client.send_back`.
+        mode: ``"steer"`` (the default) asks this session to hand the message to the request that is running, and
+            ``"followup"`` asks it to wait until that request ends. An idle session starts a turn either way. A
+            front end that cannot steer a running request — a polled inbox — holds it as a follow-up and answers
+            ``queued``.
     """
 
     sender_id: str
@@ -527,6 +533,7 @@ class IncomingMessage:
     via: str = "agent"
     hops: int = 1
     direct: bool = False
+    mode: str = MODE_STEER
 
 
 @dataclass(frozen=True, slots=True)
@@ -536,8 +543,9 @@ class Receipt:
     Attributes:
         accepted: Whether it took the message. A refusal carries its reason to the sender.
         reason: Why not, in words the sender's model can act on.
-        disposition: What will happen to it: ``"started"`` (a turn began), or ``"queued"`` (it waits for the current
-            request to end).
+        disposition: What will happen to it: ``"started"`` (a turn began), ``"steered"`` (the request that was
+            running took it into account), ``"queued"`` (it waits for the current request to end), or
+            ``"delivered"`` (a chat window kept it without starting a turn).
     """
 
     accepted: bool

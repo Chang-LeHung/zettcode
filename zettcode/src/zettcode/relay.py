@@ -24,6 +24,7 @@ from typing import Protocol
 from zett_agent.messages import UserMessage
 
 from zettcode.broker.protocol import VIA_AGENT, VIA_EXTERNAL, VIA_USER
+from zettcode.modes import MODE_STEER
 
 #: Attribute of a stored message that came from another session. Its value is the :meth:`Relayed.mark`.
 RELAY = "relay"
@@ -70,6 +71,9 @@ class Relayed:
             is what ends two agents that keep answering each other.
         direct: The sender's reader asked for this to be run as this session's own prompt, and for the final answer to
             go back to the sender (see :class:`~zettcode.broker.models.Incoming`).
+        mode: What to do with it while this session is busy: ``"steer"`` (the default) hands it to the running
+            request so it changes course, and ``"followup"`` waits until that request ends. An idle session starts
+            a turn either way.
     """
 
     sender_id: str
@@ -78,6 +82,7 @@ class Relayed:
     via: str = VIA_AGENT
     hops: int = 1
     direct: bool = False
+    mode: str = MODE_STEER
 
     def mark(self) -> dict[str, object]:
         """Return what is stored beside the message, as plain data."""

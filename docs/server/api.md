@@ -67,7 +67,7 @@ The *current* session is the conversation the next prompt continues. A server st
 | `POST` | `/sessions` | `{"title"?}` | 201 with the new session, which becomes current. A run in the conversation being left goes on there. |
 | `GET` | `/sessions/current` | — | `{"id","title","locked","usage"}` |
 | `POST` | `/sessions/{id}/open` | — | The opened session, now current. 404 when it does not exist. A run in the conversation being left goes on there; opening a conversation that is running brings it back as it is. |
-| `POST` | `/sessions/current/send` | `{"to","text"}` | `{"to","disposition"}`: a message to another ZettCode session (its handle or id), as the reader's own words; `disposition` is `started` or `queued`. 404 `unreachable` when nobody could take it. |
+| `POST` | `/sessions/current/send` | `{"to","text","mode"?}` | `{"to","disposition"}`: a message to another ZettCode session (its handle or id), as the reader's own words. `mode` is `steer` (the default: hand it to the request that session is running) or `followup` (wait until that request ends); `disposition` is `started`, `steered`, `queued`, or `delivered` (a chat window kept it without starting a turn). 404 `unreachable` when nobody could take it. |
 | `POST` | `/sessions/current/rename` | `{"title"}` | The session, renamed. |
 | `POST` | `/sessions/current/name` | — | The model names the conversation and the new name is returned. |
 | `POST` | `/sessions/current/fork` | — | The new session, which continues this conversation's context. |
@@ -98,7 +98,7 @@ The *current* session is the conversation the next prompt continues. A server st
 | `POST` | `/prompts` | `PromptRequest` | `text/event-stream`: the events of the run, then `result`, `error` or `cancelled`. |
 | `POST` | `/runs/resume` | `RunOptions` | The same stream, continuing the interrupted request. |
 | `GET` | `/runs/current` | — | `{"running", "pending"}`: whether a run is going in the current conversation and what it waits on. |
-| `GET` | `/messages` | — | `{"messages": [{"id","sender_id","sender","text","via","hops"}]}`: what other sessions sent to the current conversation that is not answered yet, oldest first. |
+| `GET` | `/messages` | — | `{"messages": [{"id","sender_id","sender","text","via","hops"}]}`: what other sessions sent to the current conversation that is not answered yet, oldest first. A message that asked to steer a run that was going is in that run's stream instead, not here; if the run ended without reading it, it appears here. |
 | `POST` | `/messages/{id}` | — | `text/event-stream`, the frames `/prompts` uses: answers that message as a turn. 404 when it is not waiting. |
 | `GET` | `/runs/resumable` | — | `{"resumable","kind","description"}` |
 | `POST` | `/runs/approvals` | `{"call_id","approve","remember"?}` | `{"resolved"}`, whether the run was waiting on that call. |
