@@ -480,8 +480,8 @@ class ZettCodeConfig:
         update_file: Where that check leaves what it found; one small JSON file.
         harness_dir: Where the just-in-time harness keeps each session's tools, one folder per session id. Directly
             under ``~/.zettcode`` by default, not inside the session store, so clearing sessions does not take them.
-        plugins_file: Where ``/plugins disable`` records the switches; read at the next start, so the reader's own
-            config file is never rewritten.
+        plugins_file: The older switch file. It is still read and merged with ``[plugins] disable``; a switch written
+            now removes the name from it, so it cannot go on overriding the configuration.
         plugins_dir: Where single-file plugins live, one ``.py`` each; a file there is loaded at the next start
             instead of being installed into site-packages.
     """
