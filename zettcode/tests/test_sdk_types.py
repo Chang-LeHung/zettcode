@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import dataclasses
 from datetime import datetime
+from typing import get_args
 
 import pytest
+from zett_agent.model import CacheMode as AgentCacheMode
 
 from zettcode.sdk.types import (
+    CacheMode,
     Compaction,
     ContextReport,
     ContextShare,
@@ -21,6 +24,11 @@ from zettcode.sdk.types import (
 )
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"0" * 8
+
+
+def test_the_sdk_names_exactly_the_cache_modes_the_agent_has():
+    """The SDK's words are typed by hand; a mode the framework adds must fail here, not in a user's prompt call."""
+    assert set(get_args(CacheMode)) == {mode.value for mode in AgentCacheMode}
 
 
 # -- Usage ----------------------------------------------------------------------------------------

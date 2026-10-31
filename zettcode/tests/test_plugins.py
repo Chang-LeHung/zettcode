@@ -267,6 +267,45 @@ async def test_a_plain_command_with_a_message_only_still_opens_no_page(tmp_path:
     assert (result.message, result.widget) == ("ok", None)
 
 
+class _RecordingHost:
+    """A shell that records the turn a preset asks it to start."""
+
+    class _Client:
+        permission = "ask"
+
+    def __init__(self) -> None:
+        self.client = self._Client()
+        self.prompts: list[tuple[str, str | None, str | None]] = []
+
+    async def prompt(self, text: str, *, shown: str | None = None, cache: str | None = None) -> bool:
+        self.prompts.append((text, shown, cache))
+        return True
+
+
+async def test_a_preset_hands_the_cache_mode_it_asked_for_to_the_turn(tmp_path: Path):
+    """A one-off report is worth reading the cache without extending it, and the preset says which it is."""
+
+    class Review(TuiPlugin):
+        name = "plain-review"
+
+        def activate(self, ctx: PluginContext) -> None:
+            from zettcode.engine.plugins.commands import TurnCommandResult
+
+            ctx.commands.register(
+                "/review",
+                "review it",
+                lambda context: TurnCommandResult(prompt="the brief", shown="/review", cache="read"),
+            )
+
+    plugins = load_terminal_plugins(make_config(tmp_path), builtins=(), entry_points=[FakeEntryPoint("review", Review)])
+    (command,) = plugins.commands
+    host = _RecordingHost()
+
+    await command.handler(CommandContext(argument="", ui=_SilentUi(), host=host))  # type: ignore[arg-type]
+
+    assert host.prompts == [("the brief", "/review", "read")]
+
+
 def test_a_plain_command_is_ui_free(tmp_path: Path):
     """``ctx.commands`` takes a handler whose result cannot carry a widget, so a front end without one can run it."""
     ctx = PluginContext(make_config(tmp_path), {})

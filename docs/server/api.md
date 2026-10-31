@@ -45,7 +45,7 @@ Except on `/health`, every endpoint requires `Authorization: Bearer <token>` whe
 | `GET` | `/plugins` | — | `{"loaded": [...], "failures": [...], "entries": [{"name","origin","builtin","enabled","failure","setting","switchable","why"}]}`: the names, the messages for what failed, and every plugin a panel shows — which includes rows a switch cannot move (a failed compiled-in plugin, a group switched off); `switchable` and `why` are those rows. `origin` is the distribution's name and the one a switch is written with; `enabled` says whether the **next start** does its work; `setting` is the configuration key that decides a compiled-in plugin (`"skills.enabled"`), empty for an installed one. A compiled-in plugin with no such key is not listed at all. |
 | `PUT` | `/plugins/{name}` | `{"enabled": true\|false}` | That plugin, as the list now shows it. Nothing loads or unloads in the running server: a switch is read when a process starts, so a client that wants it now restarts the server. An installed plugin is recorded in `[plugins] disable` in the server's configuration file, a compiled-in one in its own key there; a name the installation does not have is refused (`400 invalid`). |
 | `GET` | `/commands` | — | `{"commands": [{"name", "summary", "when_busy", "subcommands"}]}` |
-| `POST` | `/commands/{name}` | `{"argument"}` | `{"message", "notification", "prompt", "shown", "markdown"}` — a `prompt` is sent as the next `POST /prompts`, with `shown` as its line; a `markdown` document is shown in a view of its own |
+| `POST` | `/commands/{name}` | `{"argument"}` | `{"message", "notification", "prompt", "shown", "markdown", "cache"}` — a `prompt` is sent as the next `POST /prompts`, with `shown` as its line and `cache` as its mode; a `markdown` document is shown in a view of its own |
 | `GET` | `/mentions?query=&limit=50` | — | `{"mentions": [{"token","kind","name","description"}]}`: the files, skills and plugin resources an `@` can reference. |
 | `POST` | `/doctor` | `{"timeout"?: 30}` | `{"checks": [{"model","model_id","ok","seconds","detail","input_tokens","output_tokens"}]}`: every configured model asked one short question. |
 
@@ -95,7 +95,7 @@ The *current* session is the conversation the next prompt continues. A server st
 
 | Method | Path | Body | Answers |
 | --- | --- | --- | --- |
-| `POST` | `/prompts` | `PromptRequest` | `text/event-stream`: the events of the run, then `result`, `error` or `cancelled`. |
+| `POST` | `/prompts` | `PromptRequest` | `text/event-stream`: the events of the run, then `result`, `error` or `cancelled`. `cache` is `read_write` (the default), `read` or `off`. |
 | `POST` | `/runs/resume` | `RunOptions` | The same stream, continuing the interrupted request. |
 | `GET` | `/runs/current` | — | `{"running", "pending"}`: whether a run is going in the current conversation and what it waits on. |
 | `GET` | `/messages` | — | `{"messages": [{"id","sender_id","sender","text","via","hops"}]}`: what other sessions sent to the current conversation that is not answered yet, oldest first. A message that asked to steer a run that was going is in that run's stream instead, not here; if the run ended without reading it, it appears here. |

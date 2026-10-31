@@ -25,6 +25,7 @@ The names importable from the package itself:
 
 ```python
 from zettcode.sdk import (
+    CacheMode,
     Client,
     Session,
     RunStream,
@@ -84,6 +85,7 @@ async def prompt(
     on_question=None,
     on_event=None,
     timeout=None,
+    cache=None,
     **settings,
 ) -> RunResult: ...
 ```
@@ -152,9 +154,9 @@ The agent for one workspace. An async context manager. Every configuration field
 
 | Method | Returns | Does |
 | --- | --- | --- |
-| `prompt(prompt, *, images, mentions, instructions, on_approval, on_question, on_event, timeout, raw, keep_events, defer_answers)` | `RunStream` | Sends a prompt on the current session. Await the result for a `RunResult`; iterate it for events. |
+| `prompt(prompt, *, images, mentions, instructions, on_approval, on_question, on_event, timeout, raw, keep_events, defer_answers, cache)` | `RunStream` | Sends a prompt on the current session. Await the result for a `RunResult`; iterate it for events. |
 | `stream(...)` | `RunStream` | The same method as `prompt`. |
-| `run(prompt, *, images, mentions, instructions, on_approval, on_question, on_event, timeout, keep_events)` | `RunResult` (awaitable) | `await client.prompt(...)` as a call. Has no `raw`. |
+| `run(prompt, *, images, mentions, instructions, on_approval, on_question, on_event, timeout, keep_events, cache)` | `RunResult` (awaitable) | `await client.prompt(...)` as a call. Has no `raw`. |
 | `use_model(name)` | `ModelInfo` | Chooses the model; takes a name or a `ModelInfo`. A name is looked for as a display name first, then as a model id; each must name one model (`ConfigurationError` otherwise). |
 | `config_file` | `Path` | The configuration file the models are read from and written to. |
 | `model_entries()` | `tuple[tuple[ModelInfo, Mapping], ...]` | Each model the file lists with the keys the file writes for it, in file order (a token left to an environment variable is absent). |
@@ -243,17 +245,20 @@ A handle on one stored conversation. Obtain it from `client.session`, `client.se
 
 | Method | Returns |
 | --- | --- |
-| `prompt(prompt, *, images, mentions, instructions, on_approval, on_question, on_event, timeout, raw, keep_events, defer_answers)` | `RunStream` |
+| `prompt(prompt, *, images, mentions, instructions, on_approval, on_question, on_event, timeout, raw, keep_events, defer_answers, cache)` | `RunStream` |
 | `stream(...)` | `RunStream` (same method) |
 | `await run(prompt, *, images, mentions, instructions, on_approval, on_question, on_event, timeout, keep_events)` | `RunResult` |
-| `await ask(question, *, on_event=None, timeout=None)` | `str` |
-| `ask_stream(question, *, on_event=None, timeout=None)` | `RunStream` |
+| `await ask(question, *, on_event=None, timeout=None, cache="read")` | `str` |
+| `ask_stream(question, *, on_event=None, timeout=None, cache="read")` | `RunStream` |
 | `steer(prompt, *, images=(), mentions=False)` | `str \| None` |
 | `await resumable()` | `ResumeInfo \| None` |
 | `resume_stream(*, on_approval, on_question, on_event, timeout, raw, keep_events, defer_answers)` | `RunStream` |
 | `await resume(*, on_approval, on_question, on_event, timeout)` | `RunResult` |
 
-`prompt` raises, at the call: `ValueError` (empty prompt, bad `timeout`), `TypeError` (a piece that is not text or `Image`), `ConfigurationError` (images for a model that cannot read them), `SessionBusyError`, `ClientClosedError`. Awaiting or iterating the run raises `RunError`, `RunTimeoutError`, `SessionLockedError` and whatever a handler raises.
+`cache` is `"read_write"` (the default), `"read"` or `"off"`; a side question starts at `"read"`, because its answer
+is never replayed and is not worth writing into the cache. See `CacheMode` in `zettcode.sdk.types`.
+
+`prompt` raises, at the call: `ValueError` (empty prompt, bad `timeout`), `TypeError` (a piece that is not text or `Image`), `ConfigurationError` (images for a model that cannot read them), `SessionBusyError`, `ClientClosedError`. Awaiting or iterating the run raises `RunError`, `RunTimeoutError`, `SessionLockedError`, a `ValueError` for a `cache` word the engine does not know (checked when the run starts), and whatever a handler raises.
 
 #### Working on the conversation
 
@@ -332,7 +337,14 @@ The first answer wins. Repeating it is harmless; the opposite raises `ValueError
 
 ## zettcode.sdk.types
 
-All are frozen dataclasses with `__slots__`.
+All are frozen dataclasses with `__slots__`, except `CacheMode`, which is the words a cache mode is written with.
+
+### `CacheMode`
+
+`"read_write"` (the default, and what a turn of the conversation uses), `"read"` (reuse a warm prefix without marking
+this request's own content — what a side question uses, since its answer is never replayed) or `"off"` (no cache
+directive at all). What a provider can honour is its own: one that caches automatically has no client-side write
+control, so `"read"` and `"read_write"` behave the same there, and `"off"` only drops a routing key.
 
 ### `Usage`
 

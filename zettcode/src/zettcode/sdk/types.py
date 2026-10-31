@@ -12,14 +12,21 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field, fields
 from datetime import date, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal, TypeAlias
 
 from ..modes import MODE_STEER
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from .events import Event
 
+#: How one request may use the provider's prompt cache. ``"read_write"`` (the default) extends the cached prefix,
+#: ``"read"`` reuses a warm one without marking this request's own content for caching, and ``"off"`` sends no cache
+#: directive at all. What a provider can honour is its own: one that caches automatically has no client-side write
+#: control, so ``"read"`` and ``"read_write"`` are the same there and ``"off"`` only drops a routing key.
+CacheMode: TypeAlias = Literal["off", "read", "read_write"]
+
 __all__ = [
+    "CacheMode",
     "DIRECT_EMPTY",
     "DIRECT_FAILED",
     "DIRECT_UNFINISHED",

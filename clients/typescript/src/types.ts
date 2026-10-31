@@ -263,6 +263,8 @@ export interface CommandAnswer {
    * than as an empty one.
    */
   markdown?: string;
+  /** The cache mode the command's preset should run with; absent or empty means no preference. */
+  cache?: string;
 }
 
 /** One `@` resource a prompt can carry. */
@@ -443,6 +445,12 @@ export interface RunOptions {
   signal?: AbortSignal;
 }
 
+/**
+ * How one request may use the provider's prompt cache. `read_write` extends the cached prefix, `read` reuses a warm
+ * one without marking this request's own content, and `off` sends no cache directive at all.
+ */
+export type CacheMode = "off" | "read" | "read_write";
+
 export interface PromptOptions extends RunOptions {
   /** Pictures for a model that takes them; `data` is base64. */
   images?: ImageInput[];
@@ -450,6 +458,8 @@ export interface PromptOptions extends RunOptions {
   mentions?: boolean;
   /** Text the model reads after the prompt and the conversation does not show — a command's preset. */
   instructions?: string;
+  /** How far this request may use the provider's prompt cache; omitted is the server's default (`read_write`). */
+  cache?: CacheMode;
 }
 
 /** The token counts of a session or a run. */

@@ -286,6 +286,25 @@ async def test_history_reads_a_session_another_client_has_open(tmp_path, monkeyp
             assert [m.text for m in await reader.session.history()] == ["hello", "kept"]
 
 
+async def test_a_side_question_reads_the_cache_without_extending_it(tmp_path, monkeypatch):
+    """The answer is never replayed, so the request marks only the stable prefix; a prompt still extends it."""
+    wire(monkeypatch, ScriptedModel("main answer", "side answer", "another"))
+    async with make(tmp_path) as client:
+        seen: list[object] = []
+        original = client._agent.stream
+
+        def spy(*args, **kwargs):
+            seen.append(kwargs.get("cache", "unset"))
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(client._agent, "stream", spy)
+        await client.prompt("main question")
+        await client.session.ask("what about the side")
+        await client.prompt("and now", cache="off")
+
+    assert seen == [None, "read", "off"]
+
+
 async def test_history_does_not_include_side_questions(tmp_path, monkeypatch):
     wire(monkeypatch, ScriptedModel("main answer", "side answer"))
     async with make(tmp_path) as client:

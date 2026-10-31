@@ -692,6 +692,34 @@ async def test_agent_stream_uses_selected_session_and_model():
     assert agent.workspace == runtime.config.workspace
 
 
+async def test_a_turn_extends_the_cache_and_a_side_question_only_reads_it():
+    """Caching is for what a later request will read: a turn extends it, a side question's answer never is replayed."""
+    from zett_agent.model import CacheMode
+
+    runtime = FakeRuntime(FakeClient())
+    agent = TerminalAgent(runtime)
+
+    async for _ in agent.stream(("hello",)):
+        pass
+    assert runtime.client.configs[-1].cache_mode is CacheMode.READ_WRITE, "a turn is what the next turn reads"
+
+    async for _ in agent.stream(("what did I ask?",), side=True):
+        pass
+    assert runtime.client.configs[-1].cache_mode is CacheMode.READ
+
+    async for _ in agent.stream(("what did I ask?",), side=True, cache="read_write"):
+        pass
+    assert runtime.client.configs[-1].cache_mode is CacheMode.READ_WRITE, "asked for explicitly, it wins"
+
+    async for _ in agent.stream(("hello",), cache="off"):
+        pass
+    assert runtime.client.configs[-1].cache_mode is CacheMode.OFF
+
+    with pytest.raises(ValueError, match="cache must be off, read or read_write"):
+        async for _ in agent.stream(("hello",), cache="sometimes"):
+            pass
+
+
 async def test_projector_maps_events_into_ordered_blocks():
     transcript = Transcript()
     projector = TranscriptProjector(transcript)

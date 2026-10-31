@@ -62,6 +62,7 @@ if TYPE_CHECKING:  # pragma: no cover - for type checkers and editors; at runtim
     from .models import add_model, list_models, remove_model, update_model
     from .session import RunStream, Session
     from .types import (
+        CacheMode,
         DayTotals,
         Image,
         IncomingMessage,
@@ -98,6 +99,7 @@ _EXPORTS: dict[str, str] = {
     "Receipt": ".types",
     "MentionInfo": ".types",
     "PluginEntry": ".types",
+    "CacheMode": ".types",
     "DayTotals": ".types",
     "ModelCheck": ".types",
     "ModelTotals": ".types",
@@ -131,6 +133,7 @@ _EXPORTS: dict[str, str] = {
 #: Kept literal so linters and editors can read it; a test checks it names exactly the keys of ``_EXPORTS``.
 __all__ = [
     "ApprovalRequested",
+    "CacheMode",
     "Client",
     "ConfigurationError",
     "DayTotals",

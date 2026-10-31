@@ -269,6 +269,12 @@ A command whose instructions are longer than what it wants to show passes them a
 puts the brief in front of the model. The brief stays part of that turn, so the model reads it again on later turns;
 only the display is short. `/code-review` is built this way.
 
+A turn reads the conversation's cached prefix and, by default, extends it for the next one — that is what makes a
+long conversation cheap. A command whose answer nobody will build on can say otherwise: `prompt(text, cache="read")`
+reuses the warm prefix without marking this request's own words for caching, and `cache="off"` sends no cache
+directive at all. A plain command says the same with `TurnCommandResult(prompt=…, cache="read")`, which every front
+end that runs it honours. The default, `"read_write"`, is what a turn of the conversation should keep.
+
 This is how a command can be a preset for the model instead of a report about it:
 
 ```python

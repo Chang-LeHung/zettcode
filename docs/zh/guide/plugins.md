@@ -229,6 +229,11 @@ async def greet(self, context: CommandContext) -> CommandResult:
 
 命令想展示的东西比它要告诉模型的短时，把两者分开传：`prompt(brief, shown="/review")` 让对话里显示 `/review` —— 现在看到的、以及会话恢复后看到的都是它 —— 而 brief 照样给模型看。brief 属于那一轮消息，所以之后每一轮模型都还能读到，短的只是展示。`/code-review` 就是这么写的。
 
+一轮对话会读取上下文的缓存前缀，默认还会把它延长给下一轮用 —— 长对话能便宜就是靠这个。如果命令的回答不会
+有人接着用，可以换个说法：`prompt(text, cache="read")` 复用已经热起来的前缀，但不把这次的文字标进缓存；
+`cache="off"` 则完全不带缓存指令。plain 命令用 `TurnCommandResult(prompt=…, cache="read")` 表达同样的事，
+运行它的每个前端都会照做。默认的 `"read_write"` 才是对话里一轮该用的。
+
 这就是“命令是给模型的预设，而不是对模型的汇报”的写法：
 
 ```python

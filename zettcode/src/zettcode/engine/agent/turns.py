@@ -14,6 +14,7 @@ from zett_agent.exceptions import AgentResumeError
 from zett_agent.extensions.external import ExternalEvent
 from zett_agent.extensions.steering import STEERING_MESSAGE_EVENT_NAME
 from zett_agent.messages import ImageBytesSource, ImageContent, TextContent, UserMessage
+from zett_agent.model import CacheMode
 from zett_agent.resume import ResumePoint
 
 from zettcode.engine.dialogue.side import SIDE, question
@@ -21,6 +22,24 @@ from zettcode.prompt import MentionPart, PromptPart, carries_image, model_text_p
 from zettcode.relay import Relayed
 
 from .base import AgentBase
+
+
+def cache_mode_of(value: CacheMode | str | None, *, side: bool) -> CacheMode:
+    """Return the cache mode one run carries, checking a word the caller wrote.
+
+    A turn of the conversation may extend the provider's cached prefix: the next turn reads it, which is what
+    caching is for. A side question is not replayed, so its own content is not worth writing into the cache; it
+    starts at ``READ``, which still reuses the conversation's warm prefix and marks only the stable parts.
+
+    Raises:
+        ValueError: ``value`` is not one of ``off``, ``read`` and ``read_write``.
+    """
+    if value is None:
+        return CacheMode.READ if side else CacheMode.READ_WRITE
+    try:
+        return CacheMode(value)
+    except ValueError:
+        raise ValueError(f"cache must be off, read or read_write, not {value!r}") from None
 
 
 class TurnsMixin(AgentBase):
@@ -37,6 +56,7 @@ class TurnsMixin(AgentBase):
         hint: str | None = None,
         side: bool = False,
         relayed: Relayed | None = None,
+        cache: CacheMode | str | None = None,
     ) -> AsyncIterator[AgentEvent]:
         """Run one turn with the selected session, model, and reasoning effort.
 
@@ -53,6 +73,10 @@ class TurnsMixin(AgentBase):
                 :mod:`zettcode.engine.dialogue.side`.
             relayed: The turn is a message another session sent. It is what the model reads
                 (with where it came from), and ``parts`` and ``hint`` are not used.
+            cache: How this request may use the provider's prompt cache: ``"read_write"`` (the default) extends
+                it, ``"read"`` reuses a warm prefix without marking this request's new content for caching, and
+                ``"off"`` sends no cache directive at all. A side question starts at ``"read"`` unless told
+                otherwise, because its answer is never replayed.
 
         Raises:
             SessionLocked: Another process has the session open. Checked before anything else, and a side
@@ -72,7 +96,10 @@ class TurnsMixin(AgentBase):
                     "AsyncGenerator[AgentEvent]",
                     client.stream(
                         self.request(parts, hint=hint, side=side) if relayed is None else relayed.message(),
-                        config=AgentRunConfig(session_id=session_id),
+                        config=AgentRunConfig(
+                            session_id=session_id,
+                            cache_mode=cache_mode_of(cache, side=side),
+                        ),
                         model=self.runtime.provider,
                         reasoning_effort=self.runtime.effort,
                     ),

@@ -108,7 +108,7 @@ def _plain_handler(plain: PlainCommand):
         if isinstance(result, TurnCommandResult):
             # A preset for a turn: the shell starts it, and the conversation keeps the short form the command was
             # typed as.
-            await context.require_host().prompt(result.prompt, shown=result.shown or None)
+            await context.require_host().prompt(result.prompt, shown=result.shown or None, cache=result.cache or None)
             return CommandResult(notification=result.notification)
         if isinstance(result, TextCommandResult):
             # A document is a page of its own, so the shell opens one instead of stacking it into the conversation;

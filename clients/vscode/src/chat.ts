@@ -42,7 +42,7 @@ import type {
   Settings,
   StreamFrame,
 } from "../../typescript/src/index.js";
-import type { CommandInfo } from "../../typescript/src/types.js";
+import type { CacheMode, CommandInfo, PromptOptions } from "../../typescript/src/types.js";
 import type {
   AttachedImage,
   HostMessage,
@@ -92,6 +92,8 @@ interface PromptRequest {
   images?: ImageInput[];
   /** Refuse instead of steering when a run is in flight: a command's preset is a turn of its own. */
   refuseWhenBusy?: boolean;
+  /** How the turn may use the provider's prompt cache, when the command that started it has a preference. */
+  cache?: CacheMode;
 }
 
 const IMMEDIATE_EVENTS = new Set([
@@ -763,7 +765,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     const turn = createTurn(shown, images);
     this.turns.push(turn);
     this.postTurn(turn, true);
-    const options = text === shown ? this.runOptions(images) : { ...this.runOptions(images), instructions: text };
+    const options: PromptOptions =
+      text === shown
+        ? this.runOptions(images)
+        : { ...this.runOptions(images), instructions: text };
+    if (request.cache !== undefined) {
+      options.cache = request.cache;
+    }
     await this.startRun(client.prompt(shown, options), turn);
   }
 
@@ -2214,7 +2222,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       void vscode.window.showInformationMessage(`ZettCode: ${answer.notification}`);
     }
     if (answer.prompt !== "") {
-      await this.startCommandTurn(answer.prompt, answer.shown || `${command.name} ${argument}`.trim());
+      await this.startCommandTurn(
+        answer.prompt,
+        answer.shown || `${command.name} ${argument}`.trim(),
+        // Empty is what a server sends for "no preference": it must not become a mode the caller never asked for.
+        answer.cache ? (answer.cache as CacheMode) : undefined,
+      );
       return;
     }
     // The words first, then the document, as the terminal draws a message before the page over it. And a document the
@@ -2252,7 +2265,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
    * Start a command's preset as a turn: the command is what the conversation shows, the preset is what the model
    * reads. The chat is opened first, because a preset is worth a window of its own whereas words are not.
    */
-  private async startCommandTurn(instructions: string, shown: string): Promise<void> {
+  private async startCommandTurn(instructions: string, shown: string, cache?: CacheMode): Promise<void> {
     if (this.busy) {
       this.say("warn", "A run is already going; try the command again when it ends.");
       return;
@@ -2263,7 +2276,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       await vscode.commands.executeCommand("zettcode.openChat");
     }
     await this.initialize();
-    await this.sendPrompt({ text: instructions, shown, refuseWhenBusy: true });
+    await this.sendPrompt({ text: instructions, shown, refuseWhenBusy: true, cache });
   }
 
   /** Put a command's words where a reader will still find them: a line in the conversation, or a message. */

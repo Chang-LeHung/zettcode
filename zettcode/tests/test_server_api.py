@@ -273,12 +273,22 @@ async def test_a_command_answers_with_a_document_beside_the_old_fields():
         words = await http.post("/commands/hello", json={"argument": ""})
         unknown = await http.post("/commands/missing", json={"argument": ""})
 
-    assert [entry["name"] for entry in listed.json()["commands"]] == ["/notes", "/hello"]
+    assert [entry["name"] for entry in listed.json()["commands"]] == ["/notes", "/hello", "/brief"]
     assert document.status_code == 200
     body = document.json()
     assert body["markdown"] == "# Notes\n\ntoday" and body["message"] == ""
     assert words.json()["markdown"] == "" and words.json()["message"] == "hello"
     assert unknown.status_code == 404 and unknown.json()["error"] == "not_found"
+
+
+async def test_a_command_preset_hands_its_cache_mode_to_the_client_that_runs_it():
+    """A preset that one-off caching is right for says so, and the answer carries it to the client."""
+    async with serve(FakeClient()) as http:
+        preset = await http.post("/commands/brief", json={"argument": ""})
+        words = await http.post("/commands/notes", json={"argument": ""})
+
+    assert preset.json()["prompt"] == "the brief" and preset.json()["cache"] == "read"
+    assert words.json()["cache"] == "", "a command without a preference leaves the turn its default"
 
 
 async def test_usage_reports_the_session_totals():

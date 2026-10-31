@@ -389,6 +389,9 @@ export class Session {
     if (options.instructions !== undefined) {
       body.instructions = options.instructions;
     }
+    if (options.cache !== undefined) {
+      body.cache = options.cache;
+    }
     return new Run(this.client, "/prompts", body, options);
   }
 
