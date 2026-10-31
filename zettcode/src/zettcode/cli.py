@@ -6,7 +6,8 @@ the directory to work in, ``-v``/``--version`` prints the version, ``-r``/``--re
 instead of a fresh one, and ``$ZETTCODE_CONFIG`` can point at a different
 config file. ``zettcode update`` (or ``upgrade``) installs the newest release and exits, and ``zettcode doctor``
 asks every configured model a one-line question and reports which of them answer. ``zettcode prompt`` sends one prompt
-without opening the terminal and prints the answer (see :mod:`zettcode.oneshot`).
+without opening the terminal and prints the answer (see :mod:`zettcode.oneshot`). ``zettcode daemon``, ``zettcode
+broker`` and ``zettcode gateway`` are their own commands, parsed apart from a session start.
 
 Nothing beyond the standard library is imported at module level: ``zettcode
 --help`` prints and exits, and paying for the agent runtime, the widget
@@ -122,6 +123,8 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_resume(commands)
     _add_prompt(commands)
     _add_daemon(commands)
+    _add_broker(commands)
+    _add_gateway(commands)
     return parser
 
 
@@ -215,6 +218,36 @@ def _add_daemon(commands: Subcommands) -> None:
         "daemon",
         help="run and manage background agents: daemon list | spawn | kill",
         description="Start a background agent another session reaches with send_message, and manage the ones running.",
+    )
+
+
+def _add_broker(commands: Subcommands) -> None:
+    """Add ``broker``: the session broker's start, stop and restart.
+
+    Only the name is declared here, so that ``zettcode --help`` lists it; its action is parsed and run by
+    :mod:`zettcode.broker.cli`, which a terminal start never imports.
+    """
+    commands.add_parser(
+        "broker",
+        help="start, stop or restart the session broker: broker start | stop | restart",
+        description="Start, stop or restart the background broker that lets sessions on this machine message each other.",
+    )
+
+
+def _add_gateway(commands: Subcommands) -> None:
+    """Add ``gateway``: the web page for the daemons, served until stopped.
+
+    Only the name is declared here, so that ``zettcode --help`` lists it. Its flags are the gateway's own
+    (``--host``, ``--port``, ``--token`` and the rest), parsed by :mod:`zettcode.gateway.cli`.
+    """
+    commands.add_parser(
+        "gateway",
+        help="serve the page for background agents: gateway start | stop | restart",
+        description=(
+            "A web page for the background agents on this machine: list the daemons and the sessions that are "
+            "running, start and stop daemons, and talk to any of them. With no action it serves in this terminal; "
+            "`start`, `stop` and `restart` manage one in the background. `zettcode gateway --help` has the flags."
+        ),
     )
 
 
@@ -695,6 +728,17 @@ def main() -> None:
         from .daemon.cli import daemon_program
 
         raise SystemExit(daemon_program(argv[1:]))
+    if argv[:1] == ["broker"]:
+        # The same: `broker start` and `broker stop` are words of their own, not flags of a session start.
+        from .broker.cli import broker_program
+
+        raise SystemExit(broker_program(argv[1:]))
+    if argv[:1] == ["gateway"]:
+        # Its flags (`--host`, `--port`, the token) are the gateway's, parsed by the command that serves it.
+        from .gateway.cli import main as gateway_main
+
+        gateway_main(argv[1:])
+        return
     options = parse_args()
     if options.command == "update":
         from .update import update_program

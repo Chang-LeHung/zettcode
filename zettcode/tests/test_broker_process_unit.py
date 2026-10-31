@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from zettcode import processes
 from zettcode.broker import process
 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="ps and POSIX signals")
@@ -35,17 +36,17 @@ def runs():
 def test_the_command_line_of_a_running_process_is_read_and_a_gone_one_has_none(runs):
     child = runs("-c", "import time; time.sleep(30)")
 
-    text = process.command_line(child.pid)
+    text = processes.command_line(child.pid)
     assert text is not None and "time.sleep(30)" in text
 
     child.kill()
     child.wait()
-    assert process.command_line(child.pid) is None
+    assert processes.command_line(child.pid) is None
 
 
 @pytest.mark.parametrize("pid", [0, -1, os.getpid()])
 def test_this_process_and_nonsense_are_never_looked_up(pid):
-    assert process.command_line(pid) is None
+    assert processes.command_line(pid) is None
 
 
 def test_a_process_is_recognised_by_the_module_it_runs_as(runs, tmp_path: Path):
@@ -55,12 +56,12 @@ def test_a_process_is_recognised_by_the_module_it_runs_as(runs, tmp_path: Path):
     )
     try:
         deadline = time.monotonic() + 5
-        while process.command_line(child.pid) is None and time.monotonic() < deadline:
+        while processes.command_line(child.pid) is None and time.monotonic() < deadline:
             time.sleep(0.02)
-        assert process.runs_module(child.pid, "toymod") is True
-        assert process.runs_module(child.pid, "toy") is False, "a module that merely starts the same way is not it"
-        assert process.runs_module(child.pid, "toymod.sub") is False
-        assert process.runs_module(child.pid, "other") is False
+        assert processes.runs_module(child.pid, "toymod") is True
+        assert processes.runs_module(child.pid, "toy") is False, "a module that merely starts the same way is not it"
+        assert processes.runs_module(child.pid, "toymod.sub") is False
+        assert processes.runs_module(child.pid, "other") is False
     finally:
         child.kill()
         child.wait()
@@ -72,8 +73,8 @@ def test_a_module_name_is_matched_whole_not_as_the_start_of_another(runs, tmp_pa
         [sys.executable, "-m", "toymodule"], cwd=tmp_path, env={**os.environ, "PYTHONPATH": str(tmp_path)}
     )
     try:
-        assert process.runs_module(child.pid, "toymod") is False
-        assert process.runs_module(child.pid, "toymodule") is True
+        assert processes.runs_module(child.pid, "toymod") is False
+        assert processes.runs_module(child.pid, "toymodule") is True
     finally:
         child.kill()
         child.wait()
@@ -83,7 +84,7 @@ def test_a_program_that_only_mentions_the_module_in_an_argument_is_not_that_modu
     """``python -c ... -m toymod`` is a different program with a flag that happens to read the same."""
     child = runs("-c", "import time; time.sleep(30)", "-m", "toymod")
 
-    assert process.runs_module(child.pid, "toymod") is False
+    assert processes.runs_module(child.pid, "toymod") is False
 
 
 @pytest.mark.parametrize(
@@ -110,7 +111,7 @@ def test_a_program_that_only_mentions_the_module_in_an_argument_is_not_that_modu
     ],
 )
 def test_which_command_lines_are_the_module_and_which_only_resemble_it(text, expected):
-    assert process._is_module_command(text, "zettcode.broker") is expected
+    assert processes.is_module_command(text, "zettcode.broker") is expected
 
 
 def test_a_process_that_is_not_recognised_is_not_touched_even_when_it_holds_the_lock(runs):
@@ -172,6 +173,6 @@ def test_a_long_command_line_is_read_whole_not_cut_at_the_width_of_a_terminal(ru
     padding = "x" * 300
     child = runs("-c", f"import time; time.sleep(30)  # {padding}")
 
-    text = process.command_line(child.pid)
+    text = processes.command_line(child.pid)
 
     assert text is not None and text.endswith(padding)

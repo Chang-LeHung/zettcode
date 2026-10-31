@@ -115,6 +115,38 @@ LAYERS = (
     ),
     # The broker is standard library only, and the shell imports it, never the other way round.
     ("zettcode.broker", ("zettcode.app", "zettcode.cli", "zettcode.config", "zettcode.tui")),
+    # Two leaves every layer may use, so neither may grow an import upward: the names a message's mode can have, and
+    # the command-line reader a package uses before it ends a process of its own.
+    (
+        "zettcode.modes",
+        (
+            "zettcode.app",
+            "zettcode.tui",
+            "zettcode.cli",
+            "zettcode.config",
+            "zettcode.sdk",
+            "zettcode.server",
+            "zettcode.gateway",
+            "zettcode.engine",
+            "zettcode.broker",
+            "zettcode.daemon",
+        ),
+    ),
+    (
+        "zettcode.processes",
+        (
+            "zettcode.app",
+            "zettcode.tui",
+            "zettcode.cli",
+            "zettcode.config",
+            "zettcode.sdk",
+            "zettcode.server",
+            "zettcode.gateway",
+            "zettcode.engine",
+            "zettcode.broker",
+            "zettcode.daemon",
+        ),
+    ),
     # A daemon is a front end like the terminal's: a session run headless, through the SDK and the broker. It owns no
     # agent of its own, draws nothing, and serves nothing over HTTP. (It reads the session store's workspace naming
     # from `engine.storage.layout`, a path helper it shares with the store rather than a second spelling of it.)

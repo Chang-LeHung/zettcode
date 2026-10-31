@@ -438,10 +438,15 @@ rather than on a user's screen.
 ### Messages between sessions
 
 A second process, the broker, lets one session message another, and lets anything that holds its token do
-the same; invariants B1-B16 hold it. It is one package, `zettcode/src/zettcode/broker/`: a Starlette application served
+the same; invariants B1-B17 hold it. It is one package, `zettcode/src/zettcode/broker/`: a Starlette application served
 by uvicorn on a loopback port, and the client a session reaches it with. A session is a WebSocket
 (`/inbox`: registered while it is open), sending is `POST /messages`, and who a message is from is the
-session its key belongs to or an external source that names itself. `zettcode/src/zettcode/filelock.py` is the
+session its key belongs to or an external source that names itself. A message says what a busy recipient should do
+with it: `steer` (the default) hands it to the request that is running, and `followup` waits until that request ends.
+The names are in `zettcode/modes.py`, a leaf every layer may import. A session that cannot steer — a command or a side
+question is running, the steering limit is reached, the sender asked for a follow-up,
+or the message answers a one-to-one window — holds it in its inbox, and a steered message the run never reads goes
+back there rather than being lost. `zettcode/src/zettcode/filelock.py` is the
 operating-system file lock the broker is made a singleton with, shared with the session store's own lock.
 
 - Server side, one job each: `protocol` is what is said and the limits on it (the routes and the WebSocket
@@ -450,12 +455,16 @@ operating-system file lock the broker is made a singleton with, shared with the 
   the rate limit, the hand-over and its ack, who is told when) and knows nothing of HTTP; `web` is the
   Starlette application over the hub (routes, the token, reading a body, the WebSocket read and write loops);
   `server` is the `Broker` (bind, uvicorn, goodbye, the exit when idle); `runner` is the process around it
-  (`python -m zettcode.broker`: the lock, the note, signals, the watch over its own files).
+  (`python -m zettcode.broker`: the lock, the note, signals, the watch over its own files); `cli` is
+  `zettcode broker start|stop|restart`, which asks the lock whether one is running, starts one the way a session does,
+  and ends one through `process` (recognised by its command line, asked to stop before it is forced).
 - Client side: `client` is `BrokerClient` (stay connected, what a session says about itself, the roster it
   keeps, sending with httpx and receiving on the WebSocket); `finder` finds the broker, starts it when the
   lock is free and replaces an older one (with `process`, which ends it); `models` is the words the rest of
   the application uses (`SessionInfo`, `Incoming`, `Receipt`, `SendError`). `files` is where the broker's files
-  are and the note a session finds it by; `text` cleans what comes from another process. The package imports
+  are and the note a session finds it by; `text` cleans what comes from another process; `process` ends one that is in
+  the way, and the command-line reader it shares with the gateway is `zettcode/processes.py`, a leaf of its own. The
+  package imports
   nothing of the shell, the agent or the terminal (`tests/test_structure.py` holds it).
 - `engine/messenger.py` (messaging is part of the engine) is the line the rest of the application holds: it describes
   this session to the broker, lists the others from memory, sends, and remembers which received
@@ -463,7 +472,8 @@ operating-system file lock the broker is made a singleton with, shared with the 
   `messaging.py` is the two tools over it, imported when the runtime builds its client.
 - `relay.py` (at the top, shared by the engine and the views) is the one type (`Relayed`) the transcript, the agent and the shell
   share: what the model reads, and what is stored beside the message (`attributes["relay"]`).
-- `app/ui/messaging.py` is the shell's part: a received message starting a turn or waiting in `_inbox`.
+- `app/ui/messaging.py` is the shell's part: a received message starting a turn, steering the request that is running,
+  or waiting in `_inbox`.
   A message the reader names with `@` is resolved by `mentions` like any other reference and sent by the
   model's tool, never by the shell. A received message runs through `_run_prompt` like any other, with a
   `relayed` argument; nothing after that point knows it came from elsewhere.
