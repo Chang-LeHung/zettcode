@@ -31,6 +31,7 @@ send_message(to="01a1726a-3109-75a7-9285-390d9e381111", message="...")
 | `--model NAME` | 用哪个模型，名字由 `daemon model` 列出（默认配置里的第一个） |
 | `--effort LEVEL` | 推理级别（默认模型自己的） |
 | `-n LABEL`、`--name LABEL` | 给这个 daemon 一个身份，记在会话旁边，由 `daemon list` 显示（默认没有） |
+| `--title TEXT` | 给它的会话起什么名字（默认由它第一次回答后自己起） |
 | `--permission LEVEL` | 它的 shell 级别：`safe`（每条命令都在沙箱里）、`deny`（完全不给 shell）、`full`（默认）。没有 `ask`：没人能答 |
 | `--resume SESSION` | 接着一个已存会话，而不是从空会话开始 |
 | `--json` | 把同样的信息打成 JSON，给脚本或 agent 读 |
@@ -53,17 +54,49 @@ send_message(to="01a1726a-3109-75a7-9285-390d9e381111", message="...")
 
 ## 列出和停止
 
-`zettcode daemon list` 列出这台机器上所有 daemon，不管它在哪个目录：
+`zettcode daemon list` 列出这台机器上所有 daemon，不管它在哪个目录，每个 daemon 一段：
 
 ```
-SESSION                               NAME      WORKSPACE        MODEL  EFFORT  PERMISSION  STATUS   FOR  TITLE
-01a1726a-3109-75a7-9285-390d9e381111  reviewer  ~/projects/api   gpt-5  high    safe        idle     8m   Reviewer
-01a1726b-2f41-75a7-9285-390d9e381112  -         ~/projects/web   gpt-5  low     full        working  2m   -
+01a1726a-3109-75a7-9285-390d9e381111  idle  8m
+  name       reviewer
+  title      Reviewer
+  workspace  ~/projects/api
+  model      gpt-5 · effort high
+  context    34k of 200k · 17%
+  input      12.3k
+  output     678
+  shell      safe
 ```
 
-`NAME` 是 `spawn --name` 记下的标签 —— 一个说明“它在干什么”的词，机器上有好几个 daemon 时靠它分得清；`TITLE` 是会话自己的名字，模型写出来之后才有。`STATUS` 是 `starting`（还没连上 broker）、`idle`、`working`、`stopping`，或者 `dead` —— dead 表示进程已经不在了（机器重启过，或者它崩了），用 `kill` 把条目清掉。`--json` 打同样的字段，方便程序读。
+第一行是 session id、它正在做什么、已经多久：`starting`（还没连上 broker）、`idle`、`working`、`stopping`，或者 `dead` —— dead 表示进程已经不在了（机器重启过，或者它崩了），用 `kill` 把条目清掉。`name` 是 `spawn --name` 记下的标签，`title` 是会话自己的名字。`context` 是最近一次调用时上下文有多满、拿多大的窗口去量、占了多少；`input` 和 `output` 是这个会话发出去和生成的总量；它们在 daemon 状态变化时写，turn 跑着的时候只要数字变了也会写（每几秒看一次）。数字截至最近一次完成的模型调用，所以一条回答还在流式输出时不会跳动。出现 `next` 行说明有一个换模型或换级别的请求还没生效；出现 `error` 行说明上一次请求为什么没成。出现 `broker` 行说明这个 daemon 现在连不上会话 broker —— 它会一直重试，这段时间没人能给它发消息。`--json` 打同样的字段，方便程序读。
 
 `zettcode daemon kill <session-id>...` 停掉每个 daemon 并删掉它的记录。会话本身留着，做过的事都在里面，之后可以在终端里打开。
+
+`zettcode daemon log <session-id>` 打印 daemon 自己记的最后几行 —— 它跑过的工具、失败的 turn、生效的设置；`-n N` 指定行数。觉得它卡住了，先看这里。
+
+## 给它起名
+
+daemon 会给自己起名：第一次回答之后，模型从这段对话里写一个短标题，`daemon list`、`/resume` 和 `zettcode resume` 显示的都是它。已经有标题的会话会保留标题，所以这是每个会话一次模型调用，不是每条消息一次。
+
+`spawn --title` 可以在开始时就命名，`daemon update` 之后也能改：
+
+```
+zettcode daemon update 01a1726a-3109-75a7-9285-390d9e381111 --title "Auth refactor review"
+zettcode daemon update 01a1726a-3109-75a7-9285-390d9e381111 --name reviewer
+zettcode daemon update 01a1726a-3109-75a7-9285-390d9e381111 --name ""        # 清掉标签
+```
+
+`--name` 是 daemon 自己的标签，任何时候都能改，包括它运行的时候：daemon 会保留读者写进去的那份。`--title` 是**会话的**名字，而会话只有持有它锁的进程能写 —— 所以运行中的 daemon 会拒绝 `--title`（先停掉它；它自己已经在命名了）。两个一起给时，标题被拒也会先把标签写进去，并说明这一点。`--json` 打改动后的记录。
+
+## 改变它跑在什么上
+
+运行中的 daemon 可以换到另一个已配置的模型、或者另一个推理级别，会话不丢；改动从下一轮生效（空闲时几秒内生效）：
+
+```
+zettcode daemon update 01a1726a-3109-75a7-9285-390d9e381111 --model gpt-5 --effort high
+```
+
+模型可以用 `daemon model` 列出的名字，也可以用 id。这台机器没有的模型会被拒绝，模型不接受的级别也会被拒绝。没在运行的 daemon 不能换：下一次起的时候用 `spawn --model/--effort`。请求还没生效时，`daemon list` 会用 `next` 行显示它；如果 daemon 没法接（比如它启动时的配置和你这边不一样），会用 `error` 行说明，而且不会再重试这个请求。
 
 ## 和它说话
 
@@ -75,14 +108,28 @@ send_message(to="01a1726a-3109-75a7-9285-390d9e381111", message="看一下 src/a
 
 daemon 一次处理一条消息。忙的时候最多再排四条，再多就告诉发送方“忙”。它也用同样的方式回答 —— `send_message(to=<你的 session id>, ...)` —— 所以问它的 agent 会把回答当成一条消息收到。
 
+命令行也可以当发送方，用来给一条不想打开会话就能给的提示：
+
+```
+zettcode daemon prompt 01a1726a-3109-75a7-9285-390d9e381111 "看一下 src/api.py 的 diff，说你打算改什么。"
+```
+
+它和别的消息一样走会话 broker。发送方是一个名字而不是会话，所以 daemon 不会回信：这一轮存在它自己的会话里，用 `zettcode resume <id>` 打开看，`daemon log` 说明它做了什么。
+
 daemon 不会自己退出，闲置几个小时也不会：不用了就用 `daemon kill` 停掉，否则它会一直在那里，被列出来，有人写就回答。
+
+## 一轮失败时
+
+可能恢复的失败 —— 超时、连接断开、限流、服务端错误 —— 会自动再试，最多三次，两次之间短暂等待（总共约七秒，所以持续时间更长的限流仍然会以失败告终）。重试是**接着中断的请求继续**，不是把提示词重发一遍：库会告诉模型哪些工具被截断，由模型决定；daemon 不会自己重跑工具。再试也不会成功的失败（密钥错、模型不存在）不会重试。
+
+如果最后还是失败，能收到消息的发送方会被告知：聊天窗口看到失败那一行，发消息的会话会收到一条说明失败原因的回复。`daemon prompt` 是以名字而不是会话身份发的，收不到回复 —— 原因在日志里。daemon 本身继续跑，接着处理下一条消息；`daemon list` 里它回到 `idle`，做过的尝试和最后的原因都在 `daemon log <id>` 里。
 
 ## 存在哪
 
 ```
 ~/.zettcode/sessions/<workspace>/<session-id>/    会话本身，和别的会话一样
 ~/.zettcode/daemon/<workspace>/<session-id>/
-    state.json                                    pid、状态、模型、effort、开始时间
+    state.json                                    pid、状态、模型、effort、开始时间，以及计数
     heartbeat                                     每几秒写一次，证明还活着
     log                                           出错的地方，以及它跑过的工具
 ```
