@@ -249,7 +249,7 @@ export interface CommandInfo {
   subcommands: string[];
 }
 
-/** What a command answered with: words, or a prompt to send next. */
+/** What a command answered with: words, a document, or a prompt to send next. */
 export interface CommandAnswer {
   message: string;
   notification: string;
@@ -257,6 +257,12 @@ export interface CommandAnswer {
   prompt: string;
   /** What the conversation should show for that turn, which is the command as typed. */
   shown: string;
+  /**
+   * A Markdown document to show in a view of its own; empty when the command gave none. Optional because a server
+   * older than the field sends no such key at all, and a host newer than it must read that as "no document" rather
+   * than as an empty one.
+   */
+  markdown?: string;
 }
 
 /** One `@` resource a prompt can carry. */

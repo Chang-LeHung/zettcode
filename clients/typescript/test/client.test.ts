@@ -179,7 +179,16 @@ describe("the JSON API", () => {
       }
       if (request.url === "/commands/greet") {
         assert.deepEqual(JSON.parse(request.body), { argument: "Ada" });
-        return json(response, { message: "", notification: "said hello", prompt: "THE BRIEF", shown: "/greet Ada" });
+        return json(response, {
+          message: "",
+          notification: "said hello",
+          prompt: "THE BRIEF",
+          shown: "/greet Ada",
+          markdown: "",
+        });
+      }
+      if (request.url === "/commands/notes") {
+        return json(response, { message: "", notification: "", prompt: "", shown: "", markdown: "# Notes\n\nAll quiet." });
       }
       json(response, { error: "not_found", message: request.url }, 404);
     });
@@ -213,7 +222,10 @@ describe("the JSON API", () => {
       notification: "said hello",
       prompt: "THE BRIEF",
       shown: "/greet Ada",
+      markdown: "",
     });
+    // A document is a field of the same answer, so a client written before it still reads the words it knows.
+    assert.equal((await client.runCommand("/notes")).markdown, "# Notes\n\nAll quiet.");
   });
 
   test("the use methods each change one setting, as Python's use_* do, and latest opens the newest session", async () => {

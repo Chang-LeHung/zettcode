@@ -181,7 +181,35 @@ class WorkspaceLabel(TuiPlugin):
 插件命令排在最后，也不能顶掉内置命令，所以 `/model`、`/resume` 等等永远和
 [命令](/zh/guide/commands)里写的一致。
 
-例如，一个命令可以汇报进度，也可以返回 Markdown 内容：
+### 返回一个文档
+
+注册在 `ctx.commands` 上的命令，返回的是 `TextCommandResult` 或 `TurnCommandResult`，都不依赖终端。
+`TextCommandResult` 有三个字段，都可以不填：`message` 是对话里的一行，`notification` 是一个 toast，
+`markdown` 是一份由前端单独展示的文档。适合用 `markdown` 的是要读而不是要划过去的内容——一份报告、
+一次评审、插件自己数据拼出来的一页；`message` 留空，或者只放一句说明：
+
+```python
+from zettcode.engine.plugins.commands import PlainCommandContext, TextCommandResult
+
+
+def notes(context: PlainCommandContext) -> TextCommandResult:
+    """返回一份文档，由前端在自己的视图里展示。"""
+    return TextCommandResult(markdown="# 笔记\n\n- 构建是绿的\n- 还有两件事要读")
+```
+
+之所以加字段而不是加第三种结果类型，是为了不破坏已经写好的命令：不认识这个字段的前端照样执行命令，
+照样显示 `message`。各端的处理：
+
+| 前端 | 文档展示在哪里 |
+| --- | --- |
+| 终端 | 盖在对话之上的一页：渲染后的 Markdown，方向键滚动，Escape 关闭。 |
+| 编辑器 | 聊天旁边的 Markdown 预览。 |
+| 服务端 | `POST /commands/{name}` 返回里的 `markdown`，由客户端负责渲染。 |
+
+`ctx.commands` 没有 widget，也没有 `CommandUi`，所以文档是一个命令最多能打开的东西；需要自己的
+widget、要向人提问、或者边跑边汇报的命令，属于 `ctx.tui`，只在有终端的地方运行。
+
+例如，一个跑在 `ctx.tui` 上的命令可以汇报进度，并把结果作为 Markdown 的 `message` 返回：
 
 ```python
 async def greet(self, context: CommandContext) -> CommandResult:
