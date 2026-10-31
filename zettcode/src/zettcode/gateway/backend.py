@@ -14,6 +14,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable
 from pathlib import Path
 
+from zettcode.modes import MODE_FOLLOWUP
 from zettcode.sdk import daemons as sdk_daemons
 from zettcode.sdk.client import Client
 from zettcode.sdk.errors import ConfigurationError, SessionLockedError, SessionNotFoundError, ZettCodeError
@@ -90,6 +91,9 @@ class Backend(ABC):
     @abstractmethod
     async def send(self, to: str, text: str, *, direct: bool = False) -> Delivered:
         """Send a message as the person at the gateway and return once the session has taken it.
+
+        A backend sends it as the person at the gateway and never steers a turn the page does not show: a message
+        waits for the session's current request to end (see the implementation for the mode it uses).
 
         With ``direct``, a session that can (``Peer.direct``) runs it as its reader's own prompt and sends its final
         answer back here; for any other the flag is ignored.
@@ -252,7 +256,9 @@ class SdkBackend(Backend):
         self.client.watch_streams(callback)
 
     async def send(self, to: str, text: str, *, direct: bool = False) -> Delivered:
-        return await self.client.send(to, text, direct=direct)
+        # A page keeps a conversation instead of watching the session's live turn, so its message never steers one:
+        # a person typing here cannot see what they would be interrupting.
+        return await self.client.send(to, text, direct=direct, mode=MODE_FOLLOWUP)
 
     def locked(self, session_id: str, workspace: str) -> bool:
         return self.client.sessions.open_elsewhere(session_id, workspace=workspace or None)

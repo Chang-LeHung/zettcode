@@ -15,6 +15,7 @@ import asyncio
 import contextlib
 import hmac
 import json
+import os
 import secrets
 import sys
 import time
@@ -35,6 +36,8 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from .backend import Backend, GatewayStartError, SdkBackend
+from .runfile import clear as clear_runfile
+from .runfile import write as write_runfile
 from .service import Gateway, GatewayError
 from .settings import Settings
 
@@ -203,11 +206,15 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
         try:
             await gateway.start()
         except GatewayStartError as error:
-            sys.stderr.write(f"zettcode-gateway: {error}\n")
+            sys.stderr.write(f"zettcode gateway: {error}\n")
             raise
+        # Written only once the gateway is a session: a second one that lost the session would otherwise replace
+        # the record of the one that kept it. The record is what `zettcode gateway stop|restart` finds.
+        write_runfile(settings)
         try:
             yield
         finally:
+            clear_runfile(settings.directory, pid=os.getpid())
             await gateway.close()
 
     # -- plumbing ---------------------------------------------------------------------------------

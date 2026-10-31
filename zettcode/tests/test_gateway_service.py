@@ -306,6 +306,25 @@ async def test_a_send_the_broker_refused_keeps_its_reason_and_a_lost_one_says_it
     assert refused.value.extra["uncertain"] is uncertain
 
 
+async def test_the_page_sends_a_follow_up_so_it_never_steers_a_live_turn(tmp_path):
+    from zettcode.gateway.backend import SdkBackend
+    from zettcode.sdk.types import Delivered
+
+    backend = SdkBackend(tmp_path / "work", tmp_path / "gw")
+    calls: list[tuple[str, str, dict[str, object]]] = []
+
+    class Client:
+        async def send(self, to: str, text: str, **options: object) -> Delivered:
+            calls.append((to, text, options))
+            return Delivered("api", "queued")
+
+    backend._client = Client()  # type: ignore[assignment]
+    sent = await backend.send("api", "hello", direct=True)
+
+    assert sent.disposition == "queued"
+    assert calls == [("api", "hello", {"direct": True, "mode": "followup"})]
+
+
 # -- what arrives ----------------------------------------------------------------------------------------------
 async def test_a_message_from_a_program_with_no_stored_conversation_is_a_chat_of_what_it_sent(tmp_path):
     gateway, backend = await make(tmp_path)

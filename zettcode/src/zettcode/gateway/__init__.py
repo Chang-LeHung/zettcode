@@ -1,6 +1,6 @@
 """The web gateway: a browser front end for the background agents on this machine.
 
-    zettcode-gateway              # then open the address it prints
+    zettcode gateway              # then open the address it prints
 
 A page lists the daemons (``zettcode daemon``) and the other sessions that are running, starts and stops daemons, and
 lets a person talk to any of them as to a contact: what is typed is sent as a message from this gateway, and what the
@@ -12,7 +12,7 @@ alone: starting and stopping daemons, who is registered, sending, and reading a 
 * :mod:`.backend` -- what the gateway needs from the SDK, as an interface, and the one implementation that uses it;
 * :mod:`.service` -- the gateway itself: threads, sending, daemons, unread marks and the events a page listens to;
 * :mod:`.app` -- the web application: sign-in, the JSON endpoints, the event socket and the page;
-* :mod:`.cli` -- the ``zettcode-gateway`` command.
+* :mod:`.cli` -- the ``zettcode gateway`` command.
 
 ``docs/internal/gateway.md`` has the design and the rules the tests pin.
 """

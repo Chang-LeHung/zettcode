@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
 from starlette.testclient import TestClient
 
 from gateway_fakes import GATEWAY_ID, FakeBackend
+from zettcode.gateway import runfile
 from zettcode.gateway.app import COOKIE, create_app
 from zettcode.gateway.settings import Settings
 
@@ -37,6 +39,19 @@ def parts(tmp_path):
 def signed_in(client: TestClient) -> TestClient:
     assert client.post("/api/login", json={"token": TOKEN}).status_code == 200
     return client
+
+
+def test_a_serving_gateway_records_itself_for_stop_and_clears_the_record_when_it_leaves(tmp_path):
+    work = tmp_path / "work"
+    work.mkdir()
+    settings = Settings(token=TOKEN, roots=(work,), directory=tmp_path / "gw")
+
+    with TestClient(create_app(settings, FakeBackend(), static=page(tmp_path)), base_url="http://testserver"):
+        record = runfile.read(settings.directory)
+        assert record is not None and record.pid == os.getpid()
+        assert record.settings.port == settings.port and record.settings.token == TOKEN
+
+    assert runfile.read(settings.directory) is None
 
 
 def test_nothing_but_the_page_and_sign_in_answers_before_sign_in(parts):

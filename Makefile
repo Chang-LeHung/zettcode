@@ -124,7 +124,7 @@ smoke: gateway-page
 	$(UV) build --package zettcode --out-dir $(SMOKE_DIR)
 	$(UV) run --no-project --python 3.14 --with ./$(SMOKE_DIR)/zettcode-*.whl zettcode --help
 	$(UV) run --no-project --python 3.14 --with ./$(SMOKE_DIR)/zettcode-*.whl zettcode-server --help
-	$(UV) run --no-project --python 3.14 --with ./$(SMOKE_DIR)/zettcode-*.whl zettcode-gateway --help
+	$(UV) run --no-project --python 3.14 --with ./$(SMOKE_DIR)/zettcode-*.whl zettcode gateway --help
 	@# The gateway's page is built, not committed: a wheel made without it would serve an API and no page.
 	$(UV) run --no-project --python 3.14 --with ./$(SMOKE_DIR)/zettcode-*.whl python -c "from importlib.resources import files; names = {p.name for p in files('zettcode.gateway').joinpath('static').iterdir()}; assert {'index.html', 'app.js', 'app.css'} <= names, names; print('gateway page:', sorted(names))"
 	@# The HTML trace ships as package data: a packaging change that drops the
