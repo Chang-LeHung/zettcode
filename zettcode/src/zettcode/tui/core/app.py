@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
 from dataclasses import replace
 from time import monotonic
@@ -16,6 +17,11 @@ from .scheduler import Scheduler
 from .screen import Screen, ScreenStack
 from .theme import DARK, Theme
 from .widget import Widget
+
+#: Seconds a caller waits for its next frame before treating the frame as missed.
+#: A runner normally paints in milliseconds; the bound is insurance against a
+#: future paint path that forgets to report one, which would wedge a command.
+FRAME_WAIT = 5.0
 
 
 class TuiApp(Host):
@@ -89,6 +95,12 @@ class TuiApp(Host):
         self._select_head: tuple[int, int] | None = None
         self._layout_dirty = True
         self._mounted = False
+        #: Whether a runner is painting this app. A headless tree has no frame to
+        #: wait for, so a caller that wants one is not left waiting forever.
+        self._painting = False
+        #: Callers waiting for the next frame to reach the terminal. The runner
+        #: resolves them after it writes the frame, not when it starts drawing it.
+        self._frame_waiters: list[asyncio.Future[None]] = []
 
     @property
     def theme(self) -> Theme:
@@ -181,6 +193,56 @@ class TuiApp(Host):
         """Request a repaint on the next frame."""
         self.scheduler.request_repaint()
 
+    def begin_painting(self) -> None:
+        """Mark the app as driven by a runner that will report painted frames.
+
+        A headless tree, and the boot tree before its runner starts, has nothing
+        painting it: :meth:`wait_for_frame` returns after one scheduling turn
+        instead of waiting for a frame that cannot come.
+        """
+        self._painting = True
+
+    def end_painting(self) -> None:
+        """Stop waiting for a runner and release callers that were waiting on one."""
+        self._painting = False
+        waiters, self._frame_waiters = self._frame_waiters, []
+        for waiter in waiters:
+            if not waiter.done():
+                waiter.set_result(None)
+
+    def frame_painted(self) -> None:
+        """Release everyone waiting for the frame the runner has just written."""
+        waiters, self._frame_waiters = self._frame_waiters, []
+        for waiter in waiters:
+            if not waiter.done():
+                waiter.set_result(None)
+
+    async def wait_for_frame(self) -> None:
+        """Wait until the next frame has reached the terminal.
+
+        A command that is about to do work with no ``await`` in it asks for this
+        first: the row saying what it is doing is in the model, and this gives
+        the runner the turn it needs to draw that row before the work starts.
+        The repaint request here is required, not a nudge: changing the
+        transcript bumps its version but does not invalidate the app itself.
+        With no runner painting the tree there is no frame to wait for, so one
+        scheduling turn is the whole wait. A frame that never arrives is a
+        missed frame, not a reason to leave a command wedged with its spinner up.
+        """
+        if not self._painting or not self.running:
+            await asyncio.sleep(0)
+            return
+        waiter = asyncio.get_running_loop().create_future()
+        self._frame_waiters.append(waiter)
+        self.scheduler.request_repaint()
+        try:
+            await asyncio.wait_for(waiter, FRAME_WAIT)
+        except asyncio.TimeoutError:
+            pass
+        finally:
+            if waiter in self._frame_waiters:
+                self._frame_waiters.remove(waiter)
+
     def request_layout(self) -> None:
         """Mark the geometry stale so the next paint measures the tree again."""
         self._layout_dirty = True
@@ -190,6 +252,11 @@ class TuiApp(Host):
     def layout_pending(self) -> bool:
         """Return whether the next frame must re-measure the widget tree."""
         return self._layout_dirty
+
+    @property
+    def waiting_for_frame(self) -> bool:
+        """Return whether a caller is waiting for the next frame to be written."""
+        return bool(self._frame_waiters)
 
     def copy(self, text: str) -> None:
         """Store text on the clipboard and mirror it to the copy handler.

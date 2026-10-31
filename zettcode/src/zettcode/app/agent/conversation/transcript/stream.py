@@ -87,11 +87,20 @@ class StreamMixin(TurnMixin):
         row.text += delta
         self._changed(row)
 
-    def complete_compaction(self) -> None:
-        """Close the running compaction row and stamp its elapsed time."""
+    def complete_compaction(self, text: str = "") -> None:
+        """Close the running compaction row and stamp its elapsed time.
+
+        Args:
+            text: What to leave in place of the streamed summary, when the pass
+                ended before writing one — a stop, for example. The row is
+                expanded so the note is on its face rather than in a fold.
+        """
         row = self._last(ThinkingEntry)
         if row is None or row.title != COMPACTING_LABEL or not row.running:
             return
+        if text:
+            row.text = text
+            row.expanded = True
         row.finish(EntryStatus.COMPLETED, self.clock())
         self._changed(row)
 

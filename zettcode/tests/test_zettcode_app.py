@@ -1505,6 +1505,47 @@ async def test_the_compact_command_compacts_now():
     assert runtime.client.messages == []
 
 
+async def test_the_compact_command_puts_its_row_up_before_the_pass(monkeypatch):
+    """The row is a placeholder for work with no await in it, so it exists before the pass starts."""
+    app = build_app()
+    seen: list[bool] = []
+    order: list[str] = []
+
+    async def wait_for_frame() -> None:
+        running = any(
+            entry.kind == "thinking" and getattr(entry, "title", "") == "Compacting" and entry.running
+            for entry in app.transcript.entries
+        )
+        order.append("wait-with-row" if running else "wait-without-row")
+
+    async def compact(self):
+        order.append("work")
+        seen.append(
+            any(
+                entry.kind == "thinking" and getattr(entry, "title", "") == "Compacting" and entry.running
+                for entry in app.transcript.entries
+            )
+        )
+        return None
+
+    monkeypatch.setattr(app.app, "wait_for_frame", wait_for_frame)
+    monkeypatch.setattr(type(app.agent), "_compact_pass", compact)
+    harness = _harness(app)
+
+    harness.write("/compact")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    assert order == ["wait-with-row", "work"], "the row has to be drawn before the pass starts"
+    assert seen == [True]
+    row = next(
+        entry
+        for entry in app.transcript.entries
+        if entry.kind == "thinking" and getattr(entry, "title", "") == "Compacting"
+    )
+    assert not row.running, "the placeholder is closed even when the pass reports nothing"
+
+
 async def test_a_second_compact_without_a_new_message_is_refused(tmp_path):
     """Nothing new since the checkpoint: the command reports it instead of running."""
     store = SessionStore(tmp_path)
@@ -1522,6 +1563,9 @@ async def test_a_second_compact_without_a_new_message_is_refused(tmp_path):
     errors = [entry for entry in app.transcript.entries if entry.kind == "notice" and entry.text.startswith("Already")]
     assert [entry.text for entry in errors] == ["Already compacted; send a message before compacting again"]
     assert app.agent.runtime.client.compactions == []  # the pass never ran
+    assert not any(
+        entry.kind == "thinking" and getattr(entry, "title", "") == "Compacting" for entry in app.transcript.entries
+    ), "a refusal must not leave an empty working row"
 
 
 async def test_the_export_command_writes_an_html_file(tmp_path):

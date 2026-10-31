@@ -20,6 +20,7 @@ from zettcode.tui import (
     Widget,
     title_sequence,
 )
+from zettcode.tui.core import app as tui_app_module
 from zettcode.tui.runner import TerminalRunner, run_app
 
 #: The loop is driven through a POSIX pipe the event loop can watch with
@@ -365,6 +366,73 @@ async def test_a_callback_asked_for_while_a_frame_is_painting_waits_for_the_one_
     assert seen == ["first", "later"]
     os.close(read_fd)
     os.close(write_fd)
+
+
+async def test_waiting_for_a_frame_returns_only_after_it_is_written():
+    """A command can let its row reach the screen before starting work with no await in it."""
+    read_fd, write_fd = os.pipe()
+    terminal = StubTerminal(read_fd, width=24, height=3)
+    app = TuiApp(Editor(), width=24, height=3)
+    runner = TerminalRunner(app, terminal=terminal)
+    app.begin_painting()
+
+    waiting = asyncio.create_task(app.wait_for_frame())
+    await asyncio.sleep(0)
+    assert not waiting.done(), "nothing has painted yet"
+
+    runner.paint()
+    await asyncio.wait_for(waiting, 1.0)
+
+    assert terminal.output.getvalue(), "the frame the wait released was written"
+    app.end_painting()
+    os.close(read_fd)
+    os.close(write_fd)
+
+
+async def test_a_wait_for_a_frame_releases_only_after_the_text_it_was_given_was_written():
+    """The point of the wait: the next synchronous change must not be what the frame shows."""
+    read_fd, write_fd = os.pipe()
+    terminal = StubTerminal(read_fd, width=24, height=3)
+    editor = Editor()
+    app = TuiApp(editor, width=24, height=3)
+    task = asyncio.create_task(run_app(app, terminal=terminal))
+    try:
+        await _wait_for(lambda: app.focused_widget() is not None)
+        editor.text = "first"
+        app.invalidate()
+        await app.wait_for_frame()
+        written = terminal.output.getvalue()
+        editor.text = "second"
+        app.invalidate()
+        await _wait_for(lambda: "second" in terminal.output.getvalue())
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        os.close(read_fd)
+        os.close(write_fd)
+
+    assert "first" in written and "second" not in written, "the wait released before the next change was drawn"
+    assert "second" in terminal.output.getvalue(), "a later frame still shows the change"
+
+
+async def test_waiting_for_a_frame_without_a_runner_takes_one_scheduling_turn():
+    """A headless tree has no runner to paint it, so a command must not wait forever."""
+    app = TuiApp(Editor(), width=24, height=3)
+
+    await asyncio.wait_for(app.wait_for_frame(), 1.0)
+
+
+async def test_a_frame_that_never_arrives_is_a_missed_frame_not_a_wedged_command(monkeypatch):
+    app = TuiApp(Editor(), width=24, height=3)
+    app.begin_painting()
+    monkeypatch.setattr(tui_app_module, "FRAME_WAIT", 0.01)
+
+    started = asyncio.get_running_loop().time()
+    await asyncio.wait_for(app.wait_for_frame(), 1.0)
+
+    assert asyncio.get_running_loop().time() - started < 0.5
+    assert not app.waiting_for_frame
+    app.end_painting()
 
 
 # -- a burst of input is one frame --------------------------------------------------------------------------

@@ -21,6 +21,7 @@ from zett_agent.messages import (
 
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine import core as runtime_module
+from zettcode.engine.extensions import compaction as compaction_module
 from zettcode.engine.extensions import context as context_module
 from zettcode.engine.extensions.compaction import (
     COMPACTION_ENCODING,
@@ -201,6 +202,57 @@ async def test_a_load_that_finishes_after_the_wait_is_adopted_by_the_next_count(
         await asyncio.sleep(0.01)
 
     assert counter.count(_messages()) == 12345, "and exact from the moment it arrived"
+
+
+async def test_a_long_count_keeps_each_message_and_does_not_tokenize_it_again(exact):
+    gate = _Gate()
+    counter = CompactionCounter(loader=gate)
+    counter.start()
+    gate.release.set()
+    assert await counter.wait(2.0) is True
+
+    messages = [UserMessage(content=f"message {index}") for index in range(100)]
+    assert counter.count(messages) == 100 * 12345
+    assert len(exact) == 100, "a long context is counted one message at a time"
+
+    assert counter.count(messages) == 100 * 12345
+    assert len(exact) == 100, "the second count uses what the first kept"
+
+
+@pytest.mark.parametrize(("count", "expected"), [(63, 1), (64, 64)])
+async def test_the_cache_boundary_switches_from_one_batch_to_one_call_per_message(monkeypatch, count, expected):
+    """The switch at ``COUNT_CACHE_FROM`` is observable, so a change to the comparison cannot hide."""
+    gate = _Gate()
+    counter = CompactionCounter(loader=gate)
+    counter.start()
+    gate.release.set()
+    assert await counter.wait(2.0) is True
+    messages = [UserMessage(content="x" * (index + 1)) for index in range(count)]
+    length = sum(len(str(message.content)) for message in messages)
+
+    def counted(messages):
+        return 10 + sum(len(str(message.content)) for message in messages)
+
+    monkeypatch.setattr(CompactionExtension, "_count_tokens", staticmethod(counted))
+
+    assert counter.count(messages) == expected * 10 + length
+
+
+async def test_a_context_longer_than_the_cache_keeps_a_stable_working_set(monkeypatch, exact):
+    gate = _Gate()
+    counter = CompactionCounter(loader=gate)
+    counter.start()
+    gate.release.set()
+    assert await counter.wait(2.0) is True
+    monkeypatch.setattr(compaction_module, "COUNT_CACHE_FROM", 2)
+    monkeypatch.setattr(compaction_module, "MAX_COUNTED_MESSAGES", 2)
+    messages = [UserMessage(content=f"message {index}") for index in range(3)]
+
+    assert counter.count(messages) == 3 * 12345
+    assert len(counter._counts) == 2, "the oldest count is evicted, not the whole cache"
+
+    assert counter.count(messages) == 3 * 12345
+    assert len(exact) == 4, "the evicted message is recounted and the other two are cache hits"
 
 
 # -- the wait --------------------------------------------------------------------------------------------

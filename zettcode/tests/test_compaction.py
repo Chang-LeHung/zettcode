@@ -174,3 +174,17 @@ def test_a_compaction_never_borrows_the_reasoning_row():
     assert rows[0].text == "weighing options"
     assert rows[1].text == "a checkpoint"
     assert rows[2].text == ", still weighing"
+
+
+def test_a_stopped_compaction_puts_its_note_on_the_face_of_the_row():
+    """A collapsed row would hide the stop note behind a click."""
+    transcript = Transcript()
+
+    transcript.start_compaction()
+    transcript.complete_compaction("Compacting stopped")
+
+    row = transcript.entries[-1]
+    assert isinstance(row, ThinkingEntry)
+    assert row.text == "Compacting stopped"
+    assert row.expanded is True
+    assert row.status is EntryStatus.COMPLETED

@@ -241,6 +241,31 @@ async def test_continue_in_a_session_with_nothing_in_it_says_so(shell):
     assert "nothing to resume" in screen and handler.requests == []
 
 
+async def test_continue_puts_its_waiting_row_up_before_reading_the_session(shell, monkeypatch):
+    """The row is on screen before restore starts, not after it has finished."""
+    app, harness = shell(answering())
+    seen: list[bool] = []
+    order: list[str] = []
+
+    async def wait_for_frame() -> None:
+        running = any(getattr(entry, "kind", None) == "wait" and entry.running for entry in app.transcript.entries)
+        order.append("wait-with-row" if running else "wait-without-row")
+
+    async def resumable():
+        order.append("work")
+        seen.append(any(getattr(entry, "kind", None) == "wait" and entry.running for entry in app.transcript.entries))
+        return None
+
+    monkeypatch.setattr(app.app, "wait_for_frame", wait_for_frame)
+    monkeypatch.setattr(app.client.session, "resumable", resumable)
+
+    await say(app, harness, "/continue")
+
+    assert order == ["wait-with-row", "work"], "the row has to be drawn before the restore starts"
+    assert seen == [True]
+    assert not any(getattr(entry, "kind", None) == "wait" and entry.running for entry in app.transcript.entries)
+
+
 async def test_continue_is_a_command_the_menu_offers_and_help_lists(shell):
     app, _ = shell(answering())
 

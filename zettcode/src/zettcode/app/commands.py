@@ -77,6 +77,14 @@ class CommandHost(Protocol):
     def request_layout(self) -> None:
         """Ask for the screen to be laid out again, after a change in what it shows."""
 
+    async def wait_for_frame(self) -> None:
+        """Wait until the next frame has reached the terminal.
+
+        A command that has just put a row on screen and is about to start work
+        with no ``await`` in it asks for this first: the row is drawn before the
+        work begins instead of after it.
+        """
+
     def offer(self, command: str) -> None:
         """Put ``command`` and a space in the draft, which opens the menu of the words it takes."""
 

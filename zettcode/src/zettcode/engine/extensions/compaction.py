@@ -17,6 +17,8 @@ gives the extension a counter that never loads anything itself.
 
 from __future__ import annotations
 
+import threading
+from collections import OrderedDict
 from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING, Any
 from weakref import WeakSet
@@ -50,6 +52,19 @@ COUNTER_WAIT = 2.0
 #: What zett-agent charges for one image, so an estimate agrees with it about pictures.
 _IMAGE_TOKENS = 1_100
 
+#: At this many messages a count is kept per message. A context with no usage
+#: baseline is counted whole at every step, and a compaction's ``older`` count
+#: then re-reads that same history; keeping the counts makes the later read a
+#: cache hit. A shorter context stays one zett-agent call, which is both faster
+#: and what its tests and a provider-specific counter expect.
+COUNT_CACHE_FROM = 64
+
+#: Most message counts kept. A session can be longer than this; the oldest
+#: counts are evicted one at a time, so a long context keeps a stable working
+#: set instead of clearing the cache in the middle of a pass. The cap counts
+#: messages, not bytes, which is the price of not tokenizing the history twice.
+MAX_COUNTED_MESSAGES = 20_000
+
 
 class CompactionCounter:
     """Count a context for compaction without ever loading a vocabulary on the caller's thread.
@@ -80,6 +95,12 @@ class CompactionCounter:
         load = loader or context_module._tiktoken_encoder
         self._call: DaemonCall[Callable[[str], Sequence[int]]] = DaemonCall(lambda: load(encoding))
         self._ready = False
+        #: Exact counts by message identity, for a long context counted more than
+        #: once by one compaction pass. The message is kept beside its count so a
+        #: reused id cannot answer for a different message; the least recently
+        #: used entry is evicted once the cap is reached.
+        self._counts: OrderedDict[int, tuple[AnyMessage, int]] = OrderedDict()
+        self._counts_lock = threading.RLock()
 
     def start(self) -> None:
         """Begin loading on a daemon thread and return at once. Needs a running event loop."""
@@ -103,10 +124,47 @@ class CompactionCounter:
         return self.ready
 
     def count(self, messages: Sequence[AnyMessage]) -> int:
-        """Return the tokens in ``messages``: zett-agent's exact count once loaded, an estimate before."""
-        if self.ready:
+        """Return the tokens in ``messages``: zett-agent's exact count once loaded, an estimate before.
+
+        A long context is counted message by message and the exact figures are
+        kept. The whole-history count repeats when there is no usage baseline:
+        the first step after a restore, every step of a provider that reports
+        no usage, and the first step after a compaction, which drops the
+        baseline. A compaction's ``older`` count then re-reads that history.
+        ``_select_compaction_window``'s slices repeat too. An on-demand
+        ``/compact`` counts its ``older`` list once, so its own benefit is a
+        later pass, and then only for what the summary did not replace. Short
+        contexts still go through zett-agent's own batch call, which is what a
+        provider-specific counter and the tests expect.
+        """
+        if not self.ready:
+            return sum(self._estimate(message) for message in messages)
+        if len(messages) < COUNT_CACHE_FROM:
             return CompactionExtension._count_tokens(messages)
-        return sum(self._estimate(message) for message in messages)
+        total = 0
+        missing: list[AnyMessage] = []
+        with self._counts_lock:
+            for message in messages:
+                key = id(message)
+                cached = self._counts.get(key)
+                if cached is not None and cached[0] is message:
+                    total += cached[1]
+                    self._counts.move_to_end(key)
+                else:
+                    missing.append(message)
+        counted: list[tuple[AnyMessage, int]] = []
+        for message in missing:
+            tokens = CompactionExtension._count_tokens([message])
+            total += tokens
+            counted.append((message, tokens))
+        with self._counts_lock:
+            for message, tokens in counted:
+                key = id(message)
+                self._counts[key] = (message, tokens)
+                self._counts.move_to_end(key)
+                if len(self._counts) > MAX_COUNTED_MESSAGES:
+                    self._counts.popitem(last=False)
+        return total
 
     @staticmethod
     def _estimate(message: AnyMessage) -> int:

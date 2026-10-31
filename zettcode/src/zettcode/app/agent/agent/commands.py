@@ -7,6 +7,8 @@ agent is where the shell asks for everything the runtime loaded.
 
 from __future__ import annotations
 
+import asyncio
+
 from zettcode.app.commands import Command, CommandContext, CommandHost, CommandResult
 from zettcode.app.pets import PetCatalog, bundled_pets
 from zettcode.app.plugins.host import HOST_LINK, HostLink
@@ -218,10 +220,28 @@ class CommandsMixin(AppearanceMixin, ExportsMixin):
     async def _command_compact(self, context: CommandContext) -> CommandResult:
         """Summarize the conversation now, whatever its size.
 
-        The row and the outcome notice arrive while this await runs: the pass
-        dispatches through the same event dispatcher a turn does, so the
-        transcript animates ``Compacting`` and ends with ``Context compaction
-        applied`` (or ``skipped`` when the summary would not be smaller).
+        The row is opened only after the refusal check. That check may read a
+        cold session on a worker, so the interface stays live while it runs;
+        once the row is up, the shell draws it before the pass starts. What
+        follows the first ``await`` is still synchronous token counting and the
+        summary request, so a row created only by ``CompactionStarted`` would
+        reach the screen after the work it was meant to explain.
         """
-        await self.compact()
+        host = context.host
+        if host is not None:
+            await self.ensure_compactable()
+            host.transcript.start_compaction()
+        try:
+            if host is not None:
+                await host.wait_for_frame()
+                await self._compact_pass()
+            else:
+                await self.compact()
+        except asyncio.CancelledError:
+            if host is not None:
+                host.transcript.complete_compaction("Compacting stopped")
+            raise
+        finally:
+            if host is not None:
+                host.transcript.complete_compaction()
         return CommandResult()

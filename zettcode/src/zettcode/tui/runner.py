@@ -114,6 +114,7 @@ class TerminalRunner:
             app.resize(*self.terminal.size)
             app.set_copy_handler(clipboard_writer(self.terminal))
             app.mount()
+            app.begin_painting()
             app.scheduler.on_request = self.wakeup.set
             # The interface goes up before the terminal is asked anything. A
             # terminal that does not answer the background query — multiplexers
@@ -184,13 +185,14 @@ class TerminalRunner:
         if (
             animation_only
             and not (refreshed or changed or self._after_paint)
-            and not (self.app.scheduler.pending or self.app.layout_pending)
+            and not (self.app.scheduler.pending or self.app.layout_pending or self.app.waiting_for_frame)
         ):
             return
         self._sync_title()
         canvas = self.app.render()
         cursor = self.app.cursor()
         self.renderer.render(canvas, cursor=None if cursor is None else (cursor.x, cursor.y))
+        self.app.frame_painted()
         callbacks, self._after_paint = self._after_paint, []
         for callback in callbacks:
             callback()
@@ -255,6 +257,7 @@ class TerminalRunner:
 
     async def _shutdown(self) -> None:
         """Cancel the reader task and release the terminal and the widget tree."""
+        self.app.end_painting()
         if self._input is not None:
             self._input.cancel()
             await asyncio.gather(self._input, return_exceptions=True)
