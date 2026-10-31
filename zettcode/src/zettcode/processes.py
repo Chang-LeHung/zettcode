@@ -70,8 +70,9 @@ def still_there(pid: int) -> bool:
     This is the question that is left when a command line cannot be read: a process that is there but unreadable is
     not the same as one that is gone, and ending (or replacing) the wrong one is worse than reporting the doubt.
     On Windows ``os.kill(pid, 0)`` is not a probe — it terminates the process — so the process table is asked through
-    ``OpenProcess`` instead. Only ``ERROR_INVALID_PARAMETER`` means "no such process"; a refusal for lack of rights,
-    and any other failure, still counts as it being there.
+    ``OpenProcess`` instead, and a handle that opens is asked for its exit code: a process that has ended but whose
+    object is still around answers with its exit code, not ``STILL_ACTIVE``. Only ``ERROR_INVALID_PARAMETER`` on the
+    open means "no such process"; a refusal for lack of rights, and any other failure, still counts as it being there.
     """
     if pid <= 0 or pid == os.getpid():
         return False
@@ -80,10 +81,17 @@ def still_there(pid: int) -> bool:
 
         kernel32 = _kernel32()
         handle = kernel32.OpenProcess(0x1000, False, int(pid))  # PROCESS_QUERY_LIMITED_INFORMATION
-        if handle:
+        if not handle:
+            # Only ERROR_INVALID_PARAMETER means there is no such process; a refusal for lack of rights, or any
+            # other failure, still counts as it being there.
+            return int(ctypes.get_last_error()) != 87  # type: ignore[attr-defined]
+        try:
+            code = ctypes.c_ulong(0)
+            if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
+                return True  # cannot tell: keep the doubt
+            return code.value == 259  # STILL_ACTIVE
+        finally:
             kernel32.CloseHandle(handle)
-            return True
-        return int(ctypes.get_last_error()) != 87  # type: ignore[attr-defined]
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
@@ -109,6 +117,8 @@ def _kernel32() -> Any:
         kernel32.OpenProcess.argtypes = (ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32)
         kernel32.OpenProcess.restype = ctypes.c_void_p
         kernel32.CloseHandle.argtypes = (ctypes.c_void_p,)
+        kernel32.GetExitCodeProcess.argtypes = (ctypes.c_void_p, ctypes.POINTER(ctypes.c_ulong))
+        kernel32.GetExitCodeProcess.restype = ctypes.c_int
         _KERNEL32 = kernel32
     return _KERNEL32
 
