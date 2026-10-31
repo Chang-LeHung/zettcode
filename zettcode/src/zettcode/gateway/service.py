@@ -213,10 +213,12 @@ class Gateway:
                 if stamp != meta.stamp:
                     # A session that is working changes its file all the time and is read when it goes quiet, so a
                     # long conversation is not parsed every look; one nobody is looking at is not read at all.
+                    # A daemon is only different when nobody is running it: its record outlives its process, so a
+                    # dead or offline daemon still has a conversation to show, while a working one is a peer.
                     working = peer is not None and peer.status == "working"
-                    reading = daemon is not None or meta.opened or (peer is not None and not working)
-                    if reading or peer is None:
-                        await self._learn(session_id, workspace, stamp, meta, wanted=reading)
+                    reading = meta.opened or peer is None or not working
+                    if reading:
+                        await self._learn(session_id, workspace, stamp, meta, wanted=True)
                         moved.append(session_id)
                 views[session_id] = self._view(session_id, daemon, peer, meta)
             expired = self._expire_live(peers)
