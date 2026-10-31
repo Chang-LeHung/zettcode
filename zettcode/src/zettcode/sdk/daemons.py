@@ -54,6 +54,9 @@ def _info(record: Record) -> DaemonInfo:
         output_tokens=state.output_tokens,
         context_tokens=state.context_tokens,
         context_window=state.context_window,
+        requested_model=state.requested_model,
+        requested_effort=state.requested_effort,
+        requested_error=state.requested_error,
     )
 
 
@@ -141,23 +144,33 @@ async def stop_daemon(session_id: str) -> str:
     return await asyncio.to_thread(Daemons(registry).stop, record)
 
 
-async def update_daemon(session_id: str, *, title: str | None = None, name: str | None = None) -> DaemonInfo:
-    """Change what is recorded about a daemon: its session's name, or its own label.
+async def update_daemon(
+    session_id: str,
+    *,
+    title: str | None = None,
+    name: str | None = None,
+    model: str | None = None,
+    effort: str | None = None,
+) -> DaemonInfo:
+    """Change what is recorded about a daemon: its session's name, its own label, or what it runs on.
 
     The label may be changed while the daemon runs; it keeps what a reader put there. The title is the session's,
     and a session is written to only by the process holding its lock, so naming one waits until the daemon is
     stopped (a running daemon names its own session from the first answer, and ``name_it`` costs nothing once it
-    has one).
+    has one). A model or an effort is a request the running daemon puts in force before its next turn; a daemon
+    that is not running cannot be moved to another model.
 
     Args:
         session_id: The daemon, as :func:`list_daemons` gives it.
         title: The name to give its session, or ``None`` to leave it.
         name: The label to record, ``""`` to clear it, or ``None`` to leave it.
+        model: The model it should run from the next turn on, by display name or id, or ``None`` to leave it.
+        effort: The reasoning level it should run from the next turn on, or ``None`` to leave it.
 
     Raises:
         SessionNotFoundError: No daemon has that session.
-        ConfigurationError: The daemon still runs, its session is open in another process, or the title is blank
-            or too long.
+        ConfigurationError: The daemon still runs, its session is open in another process, the title is blank or
+            too long, or the model or effort is not one this machine has configured.
     """
     from ..daemon.process import Daemons, UpdateFailed
     from ..daemon.state import Registry
@@ -167,7 +180,9 @@ async def update_daemon(session_id: str, *, title: str | None = None, name: str 
     if record is None:
         raise SessionNotFoundError(f"No daemon runs session {session_id!r}")
     try:
-        updated = await asyncio.to_thread(Daemons(registry).update, record, title=title, name=name)
+        updated = await asyncio.to_thread(
+            Daemons(registry).update, record, title=title, name=name, model=model, effort=effort
+        )
     except UpdateFailed as error:
         raise ConfigurationError(str(error)) from error
     return _info(updated)

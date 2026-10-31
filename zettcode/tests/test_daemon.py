@@ -326,7 +326,7 @@ def test_a_blank_title_still_writes_the_label_it_was_given_with(home):
     record.save(state_for(home, pid=2**22 + 17))
     record.beat()
 
-    with pytest.raises(process.UpdateFailed, match="label was changed"):
+    with pytest.raises(process.UpdateFailed, match="other changes were written"):
         process.Daemons().update(record, title="   ", name="reader")
 
     assert record.state is not None and record.state.name == "reader"
@@ -448,7 +448,7 @@ def test_a_label_is_written_even_when_the_running_daemon_refuses_its_title(home)
     running = Registry().find("01a1")
     assert running is not None and running.alive
 
-    with pytest.raises(process.UpdateFailed, match="label was changed"):
+    with pytest.raises(process.UpdateFailed, match="other changes were written"):
         process.Daemons().update(running, title="Taken over", name="reader")
 
     assert running.state is not None
@@ -507,6 +507,394 @@ def test_a_context_at_or_past_its_window_is_shown_as_a_count_not_a_share(home, c
     shown = capsys.readouterr().out
 
     assert "240k" in shown and "120%" not in shown
+
+
+def test_a_running_daemon_can_be_moved_to_another_model_and_effort(home):
+    """The request is written into the record; the daemon puts it in force before its next turn."""
+    from zettcode.sdk import list_models
+
+    offered = list_models()
+    assert offered, "the fixture config lists one model"
+    record = Registry().record(home, "01a1", create=True)
+    record.save(state_for(home))
+    record.beat()
+    running = Registry().find("01a1")
+    assert running is not None and running.alive
+
+    updated = process.Daemons().update(running, model=offered[0].name, effort=offered[0].efforts[0])
+
+    assert updated.state is not None
+    assert updated.state.requested_model == offered[0].name
+    assert updated.state.requested_effort == offered[0].efforts[0]
+
+
+def test_a_model_this_machine_does_not_have_is_refused_and_nothing_is_written(home):
+    record = Registry().record(home, "01a1", create=True)
+    record.save(state_for(home))
+    record.beat()
+    running = Registry().find("01a1")
+    assert running is not None and running.alive
+
+    with pytest.raises(process.UpdateFailed, match="No model called"):
+        process.Daemons().update(running, model="not-configured")
+
+    assert running.state is not None and running.state.requested_model is None
+
+
+def test_a_daemon_that_is_gone_cannot_be_moved_to_another_model(home):
+    record = Registry().record(home, "01a1", create=True)
+    record.save(state_for(home, pid=2**22 + 17))
+    record.beat()
+
+    with pytest.raises(process.UpdateFailed, match="not running"):
+        process.Daemons().update(record, model="fake")
+
+
+def test_the_daemon_puts_a_requested_model_and_effort_in_force_and_clears_the_request(home):
+    import asyncio
+    from types import SimpleNamespace
+
+    from zettcode.daemon.run import Daemon
+
+    class Client:
+        def __init__(self) -> None:
+            self.session = SimpleNamespace(id="01a1", title=None)
+            self.model = SimpleNamespace(name="fake", context_window=200_000)
+            self.effort = "low"
+            self.usage = SimpleNamespace(input_tokens=0, output_tokens=0, context_tokens=0)
+            self.calls: list[tuple[str, str]] = []
+
+        def use_model(self, name: str) -> None:
+            self.calls.append(("model", name))
+            self.model = SimpleNamespace(name=name, context_window=200_000)
+
+        def use_effort(self, name: str) -> None:
+            self.calls.append(("effort", name))
+            self.effort = name
+
+    client = Client()
+    daemon = Daemon(client, Options(workspace=home, token="t"))
+    daemon.record.save(replace(state_for(home), requested_model="other", requested_effort="high"))
+
+    asyncio.run(daemon._apply_requests())
+
+    assert client.calls == [("model", "other"), ("effort", "high")]
+    assert daemon.record.state is not None
+    assert daemon.record.state.requested_model is None and daemon.record.state.requested_effort is None
+    assert daemon.record.state.model == "other", "the record shows what it now runs on, not only at the next turn"
+
+
+def test_a_request_that_cannot_be_applied_is_cleared_but_its_reason_is_kept(home):
+    import asyncio
+    from types import SimpleNamespace
+
+    from zettcode.daemon.run import Daemon
+
+    class Client:
+        def __init__(self) -> None:
+            self.session = SimpleNamespace(id="01a1", title=None)
+            self.model = SimpleNamespace(name="fake", context_window=200_000)
+            self.effort = "low"
+            self.usage = SimpleNamespace(input_tokens=0, output_tokens=0, context_tokens=0)
+
+        def use_model(self, name: str) -> None:
+            raise ValueError(f"No model called {name!r}")
+
+        def use_effort(self, name: str) -> None:
+            self.effort = name
+
+    daemon = Daemon(Client(), Options(workspace=home, token="t"))
+    daemon.record.save(replace(state_for(home), requested_model="gone"))
+
+    asyncio.run(daemon._apply_requests())
+
+    assert daemon.record.state is not None
+    assert daemon.record.state.requested_model is None, "a name that cannot work is not tried at every turn"
+    assert daemon.record.state.requested_error is not None
+    assert "No model called" in daemon.record.state.requested_error
+
+
+def test_a_request_replaced_while_it_is_applied_is_kept(home):
+    """The daemon clears the request it applied by value, so a reader's newer request is not lost."""
+    import asyncio
+    from types import SimpleNamespace
+
+    from zettcode.daemon.run import Daemon
+
+    class Client:
+        def __init__(self) -> None:
+            self.session = SimpleNamespace(id="01a1", title=None)
+            self.model = SimpleNamespace(name="fake", context_window=200_000)
+            self.effort = "low"
+            self.usage = SimpleNamespace(input_tokens=0, output_tokens=0, context_tokens=0)
+            self.daemon: Daemon | None = None
+
+        def use_model(self, name: str) -> None:
+            assert self.daemon is not None
+            self.daemon.record.change(lambda current: replace(current, requested_model="newer"), wait=0)
+
+        def use_effort(self, name: str) -> None:
+            self.effort = name
+
+    client = Client()
+    daemon = Daemon(client, Options(workspace=home, token="t"))
+    client.daemon = daemon
+    daemon.record.save(replace(state_for(home), requested_model="first"))
+
+    asyncio.run(daemon._apply_requests())
+
+    assert daemon.record.state is not None
+    assert daemon.record.state.model == "fake"
+    assert daemon.record.state.requested_model == "newer", "the request written during the change is next"
+
+
+def test_a_level_the_model_does_not_take_is_refused(home):
+    import os
+
+    config = Path(os.environ["ZETTCODE_CONFIG"])
+    config.write_text('[[models]]\nmodel = "fake"\ntoken = "t"\nreasoning_efforts = ["low"]\n', encoding="utf-8")
+    record = Registry().record(home, "01a1", create=True)
+    record.save(replace(state_for(home), model="fake"))
+    record.beat()
+    running = Registry().find("01a1")
+    assert running is not None and running.alive
+
+    with pytest.raises(process.UpdateFailed, match="takes low"):
+        process.Daemons().update(running, effort="high")
+
+
+def test_an_effort_cannot_be_checked_when_the_daemons_model_is_not_configured(home):
+    record = Registry().record(home, "01a1", create=True)
+    record.save(replace(state_for(home), model="a model this file lost"))
+    record.beat()
+    running = Registry().find("01a1")
+    assert running is not None and running.alive
+
+    with pytest.raises(process.UpdateFailed, match="not in this configuration"):
+        process.Daemons().update(running, effort="low")
+
+
+def test_an_effort_is_checked_against_the_model_already_requested(home):
+    import os
+
+    config = Path(os.environ["ZETTCODE_CONFIG"])
+    config.write_text(
+        '[[models]]\nmodel = "fake"\ntoken = "t"\nreasoning_efforts = ["low", "high"]\n\n'
+        '[[models]]\nmodel = "other"\ntoken = "t"\nreasoning_efforts = ["low"]\n',
+        encoding="utf-8",
+    )
+    record = Registry().record(home, "01a1", create=True)
+    record.save(replace(state_for(home), model="fake"))
+    record.beat()
+    running = Registry().find("01a1")
+    assert running is not None and running.alive
+
+    process.Daemons().update(running, model="other")
+
+    with pytest.raises(process.UpdateFailed, match="other takes low"):
+        process.Daemons().update(running, effort="high")
+
+
+def test_a_model_is_checked_against_the_level_already_requested(home):
+    import os
+
+    config = Path(os.environ["ZETTCODE_CONFIG"])
+    config.write_text(
+        '[[models]]\nmodel = "fake"\ntoken = "t"\nreasoning_efforts = ["low", "high"]\n\n'
+        '[[models]]\nmodel = "other"\ntoken = "t"\nreasoning_efforts = ["low"]\n',
+        encoding="utf-8",
+    )
+    record = Registry().record(home, "01a1", create=True)
+    record.save(replace(state_for(home), model="fake"))
+    record.beat()
+    running = Registry().find("01a1")
+    assert running is not None and running.alive
+
+    process.Daemons().update(running, effort="high")
+
+    with pytest.raises(process.UpdateFailed) as raised:
+        process.Daemons().update(running, model="other")
+
+    assert "other takes low" in str(raised.value)
+    assert "already requested" in str(raised.value) and "set one it takes first" in str(raised.value)
+
+
+def test_a_label_is_written_when_the_model_asked_for_is_refused(home):
+    record = Registry().record(home, "01a1", create=True)
+    record.save(replace(state_for(home), model="fake"))
+    record.beat()
+    running = Registry().find("01a1")
+    assert running is not None and running.alive
+
+    with pytest.raises(process.UpdateFailed, match="other changes were written"):
+        process.Daemons().update(running, name="reader", model="not-configured")
+
+    assert running.state is not None and running.state.name == "reader"
+
+
+def test_a_title_is_written_when_the_model_asked_for_is_refused(home, tmp_path, monkeypatch):
+    import zettcode.engine.storage as storage
+
+    class Store:
+        def __init__(self, *, workspace: str) -> None:
+            self.workspace = workspace
+
+        def session_dir(self, session_id: str) -> Path:
+            return tmp_path / session_id
+
+        async def set_title(self, session_id: str, title: str) -> None:
+            self.title = title
+
+    monkeypatch.setattr(storage, "SessionStore", Store)
+    record = Registry().record(home, "01a1", create=True)
+    record.save(replace(state_for(home, pid=2**22 + 17), model="fake"))
+    record.beat()
+    stopped = Registry().find("01a1")
+    assert stopped is not None and not stopped.alive
+
+    with pytest.raises(process.UpdateFailed, match="other changes were written"):
+        process.Daemons().update(stopped, title="Named anyway", model="not-configured")
+
+    assert stopped.state is not None and stopped.state.title == "Named anyway"
+
+
+def test_list_shows_a_pending_request_and_why_the_last_one_failed(home, capsys):
+    import asyncio
+    from types import SimpleNamespace
+
+    from zettcode.daemon.run import Daemon
+
+    class Client:
+        def __init__(self) -> None:
+            self.session = SimpleNamespace(id="01a1", title=None)
+            self.model = SimpleNamespace(name="fake", context_window=200_000)
+            self.effort = "low"
+            self.usage = SimpleNamespace(input_tokens=0, output_tokens=0, context_tokens=0)
+
+    daemon = Daemon(Client(), Options(workspace=home, token="t"))
+    daemon.record.save(replace(state_for(home), requested_model="next-model", requested_error="No model called 'gone'"))
+
+    asyncio.run(daemon.mark("idle"))
+
+    assert daemon.record.state is not None and daemon.record.state.requested_error == "No model called 'gone'"
+    assert daemon_program(["list"]) == 0
+    shown = capsys.readouterr().out
+    assert "next" in shown and "next-model" in shown
+    assert "error" in shown and "No model called 'gone'" in shown
+
+
+def test_update_asks_for_another_model_and_says_what_comes_next(home, capsys):
+    from zettcode.sdk import list_models
+
+    offered = list_models()
+    record = Registry().record(home, "01a1", create=True)
+    record.save(state_for(home))
+    record.beat()
+
+    assert daemon_program(["update", "01a1", "--model", offered[0].name]) == 0
+    shown = capsys.readouterr().out
+
+    assert "next" in shown and offered[0].name in shown
+
+
+def test_prompt_sends_the_text_through_the_broker(home, monkeypatch, capsys):
+    """The command line is a sender like any other: the broker delivers, the daemon runs a turn, and no answer
+    comes back here — the sender is a name, not a session, so the conversation is read with `resume`."""
+    import httpx
+
+    from zettcode.broker.files import Note
+    from zettcode.broker.protocol import PROTOCOL_VERSION
+
+    record = Registry().record(home, "01a1", create=True)
+    record.save(state_for(home))
+    record.beat()
+    monkeypatch.setattr("zettcode.broker.files.read_note", lambda directory: Note(1, 1234, "tok", PROTOCOL_VERSION))
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    class Response:
+        status_code = 200
+
+        def json(self) -> dict[str, object]:
+            return {"disposition": "started"}
+
+    def post(url: str, **options: object) -> Response:
+        calls.append((url, options))
+        return Response()
+
+    monkeypatch.setattr(httpx, "post", post)
+
+    assert daemon_program(["prompt", "01a1", "review", "the", "diff"]) == 0
+
+    assert calls[0][0] == "http://127.0.0.1:1234/messages"
+    body = calls[0][1]["json"]
+    assert isinstance(body, dict)
+    assert body["to"] == "01a1" and body["text"] == "review the diff"
+    assert body["via"] == "external" and body["from"] == {"name": "zettcode daemon prompt"}
+    assert calls[0][1]["headers"] == {"Authorization": "Bearer tok"}
+    assert calls[0][1]["timeout"] == 15.0, "past the broker's own ack wait, or a timeout reads as unreachable"
+    assert calls[0][1]["trust_env"] is False, "the broker is on this machine; a proxy in the environment is not for it"
+    assert "started" in capsys.readouterr().out
+
+
+def test_prompt_refuses_a_broker_of_another_protocol(home, monkeypatch, capsys):
+    from zettcode.broker.files import Note
+
+    record = Registry().record(home, "01a1", create=True)
+    record.save(state_for(home))
+    record.beat()
+    monkeypatch.setattr("zettcode.broker.files.read_note", lambda directory: Note(1, 1234, "tok", 6))
+
+    assert daemon_program(["prompt", "01a1", "hi"]) == 1
+    assert "speaks protocol 6" in capsys.readouterr().err
+
+
+def test_prompt_needs_a_session_that_is_a_daemon_and_some_text(home, monkeypatch, capsys):
+    from zettcode.broker.files import Note
+    from zettcode.broker.protocol import PROTOCOL_VERSION
+
+    assert daemon_program(["prompt", "nope", "hi"]) == 1
+    assert "no daemon with that session" in capsys.readouterr().err
+
+    record = Registry().record(home, "01a1", create=True)
+    record.save(state_for(home))
+    record.beat()
+    monkeypatch.setattr("zettcode.broker.files.read_note", lambda directory: Note(1, 1234, "tok", PROTOCOL_VERSION))
+
+    assert daemon_program(["prompt", "01a1", "  "]) == 2
+    assert "needs some text" in capsys.readouterr().err
+
+
+def test_prompt_says_why_the_broker_refused_it(home, monkeypatch, capsys):
+    import httpx
+
+    from zettcode.broker.files import Note
+    from zettcode.broker.protocol import PROTOCOL_VERSION
+
+    record = Registry().record(home, "01a1", create=True)
+    record.save(state_for(home))
+    record.beat()
+    monkeypatch.setattr("zettcode.broker.files.read_note", lambda directory: Note(1, 1234, "tok", PROTOCOL_VERSION))
+
+    class Response:
+        status_code = 409
+
+        def json(self) -> dict[str, object]:
+            return {"error": {"reason": "gone", "message": "@01a1 is no longer connected"}}
+
+    monkeypatch.setattr(httpx, "post", lambda url, **options: Response())
+
+    assert daemon_program(["prompt", "01a1", "hi"]) == 1
+    assert "no longer connected" in capsys.readouterr().err
+
+
+def test_prompt_without_a_broker_says_so(home, monkeypatch, capsys):
+    record = Registry().record(home, "01a1", create=True)
+    record.save(state_for(home))
+    record.beat()
+    monkeypatch.setattr("zettcode.broker.files.read_note", lambda directory: None)
+
+    assert daemon_program(["prompt", "01a1", "hi"]) == 1
+    assert "no session broker" in capsys.readouterr().err
 
 
 def test_a_label_given_at_the_start_is_recorded_and_listed(home, capsys):

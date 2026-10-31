@@ -90,8 +90,9 @@ The first line is the session id, what it is doing and how long: `starting` (it 
 `idle`, `working`, `stopping`, or `dead` — a dead entry is one whose process is gone (the machine restarted, or it
 crashed); `kill` removes it. `name` is the label `spawn --name` recorded, and `title` the session's own name.
 `context` is how full the context was on the newest call, the window it is measured against and the share of it;
-`input` and `output` are what the session had sent and generated as of the daemon's last status change. `--json`
-prints the same fields for a program.
+`input` and `output` are what the session had sent and generated as of the daemon's last status change. A `next`
+line appears while a model or level a reader asked for is waiting to be taken up, and an `error` line says why the
+last request could not be met. `--json` prints the same fields for a program.
 
 `zettcode daemon kill <session-id>...` stops each daemon and removes its record. The session stays, with everything it
 did, so you can open it in the terminal afterwards.
@@ -116,6 +117,21 @@ it open — so a running daemon refuses `--title` (stop it first; the daemon is 
 Given together, the label is written even if the title is refused, and the error says so.
 `--json` prints the record afterwards.
 
+## Changing what it runs on
+
+A running daemon can be moved to another configured model, or another reasoning level, without losing the
+conversation; the change is in force from its next turn (and while it is idle, within a few seconds):
+
+```
+zettcode daemon update 01a1726a-3109-75a7-9285-390d9e381111 --model gpt-5 --effort high
+```
+
+The model may be named as `daemon model` lists it, or by its id. A model this machine does not have is refused, and
+so is a level the model does not take. A daemon that is not running cannot be moved: start the next one with the
+model and level it should use. While the request is pending, `daemon list` shows it on a `next` line; if the daemon
+cannot take it up (the configuration it was started with differs from yours, say), it says so on an `error` line
+and the request is not tried again.
+
 
 ## Talking to one
 
@@ -129,6 +145,16 @@ send_message(to="01a1726a-3109-75a7-9285-390d9e381111", message="Review the diff
 The daemon takes one message at a time. While it is working, up to four more wait their turn; beyond that the sender
 is told it is busy. It answers the same way — with `send_message(to=<your session id>, ...)` — so an agent that asked
 something reads the answer as a message of its own.
+
+The command line is a sender too, for a prompt you want to give without opening a session:
+
+```
+zettcode daemon prompt 01a1726a-3109-75a7-9285-390d9e381111 "Review the diff of src/api.py, then say what you would change."
+```
+
+It goes through the session broker like any other message. The sender is a name rather than a session, so the daemon
+does not answer back: its turn is stored in its own session, which `zettcode resume <id>` opens and `daemon log` says
+what it did.
 
 A daemon never exits on its own, not even when it has been idle for hours: stop it with `daemon kill` when you are
 done, or it stays there, listed, answering whenever someone writes.
