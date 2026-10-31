@@ -324,7 +324,12 @@ class Hub:
         except _Gone:
             raise Refused("gone", f"@{handle} is no longer connected") from None
         except asyncio.TimeoutError:
-            raise Refused("timeout", f"@{handle} did not answer in {self.ack_timeout:g} seconds") from None
+            # The message was handed to the session's queue before the ack was waited for, so a session that has
+            # not answered may still read it later; saying "not delivered" would invite a sender to send it twice.
+            raise Refused(
+                "timeout",
+                f"@{handle} did not answer in {self.ack_timeout:g} seconds; it may still receive the message",
+            ) from None
         if ack.get("accepted") is not True:
             reason = ack.get("reason")
             said = clean_text(reason)[:300] if isinstance(reason, str) else ""

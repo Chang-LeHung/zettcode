@@ -402,7 +402,7 @@ class BrokerClient:
         """
         pusher = self._pusher
         if pusher is not None and not pusher.done():
-            with contextlib.suppress(asyncio.TimeoutError, Exception):
+            with contextlib.suppress(Exception):  # the send that follows gets the broker's own answer
                 await asyncio.wait_for(asyncio.shield(pusher), self.request_timeout)
 
     # -- staying connected ------------------------------------------------------------------------

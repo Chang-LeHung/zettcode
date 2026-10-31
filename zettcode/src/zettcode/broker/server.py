@@ -97,11 +97,6 @@ class Broker:
     def limits(self, limits: Limits) -> None:
         self.hub.limits = limits
 
-    @property
-    def stopping(self) -> bool:
-        """Return whether the broker is going away."""
-        return self.hub.closing
-
     # -- the life of the server -------------------------------------------------------------------
     async def start(self) -> int:
         """Listen, and return the port. A port that cannot be had fails here, at once."""
@@ -158,7 +153,7 @@ class Broker:
             self._uvicorn.should_exit = True  # it closes every WebSocket with 1012: "service restart"
             try:
                 await asyncio.wait_for(asyncio.shield(serving), 5)
-            except (asyncio.TimeoutError, Exception):  # noqa: BLE001 - nothing here is worth failing an exit for
+            except Exception:  # noqa: BLE001 - nothing here is worth failing an exit for
                 serving.cancel()
                 await asyncio.gather(serving, return_exceptions=True)
 
