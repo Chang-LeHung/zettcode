@@ -7,8 +7,8 @@ from importlib.metadata import EntryPoint
 from pathlib import Path
 
 import pytest
-import tomllib
 
+from zettcode._compat import tomllib
 from zettcode.config import ModelConfig, ZettCodeConfig, read_disabled_plugins
 from zettcode.engine.plugins import switches
 from zettcode.engine.plugins.plugin import PluginSetting
