@@ -527,6 +527,7 @@ async def test_a_recipient_that_never_answers_times_out():
         answer = await sender.post(**message("b", "hi"))
 
         assert reason(answer) == "timeout" and "@b" in answer["error"]["message"]
+        assert "may still receive" in answer["error"]["message"], "it is waiting there: the sender must not resend"
         assert await silent.waiting()
     finally:
         await server.aclose()
