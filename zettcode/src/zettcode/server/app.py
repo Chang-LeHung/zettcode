@@ -287,9 +287,14 @@ def create_app(settings: Settings, *, client_factory: ClientFactory | None = Non
         """
         if runner.busy:
             raise SessionBusyError("A run is in progress; change the models when it ends")
-        added = await asyncio.to_thread(add_model_entry, body.entry(), path=settings.config_path)
-        if not runner.ready:
-            await runner.reload(model=added[-1].name)
+        entry = body.entry()
+        if runner.ready:
+            # The client the runs use changes with the file, so the model it lists and the one the next prompt can
+            # choose are the file's at once; a rebuild would drop the conversation in progress and its settings.
+            await asyncio.to_thread(runner.client.add_model, entry)
+        else:
+            added = await asyncio.to_thread(add_model_entry, entry, path=settings.config_path)
+            await runner.start(model=added[-1].name)
         return ModelsOut(models=[model_out(model) for model in runner.models_now()], current=runner.current_model)
 
     @protected.patch("/models/{name}", response_model=ModelsOut, tags=["models"])
@@ -300,8 +305,10 @@ def create_app(settings: Settings, *, client_factory: ClientFactory | None = Non
         changes = body.changes()
         if not changes:
             raise ValueError("Name at least one field to change")
-        await asyncio.to_thread(update_model_entry, name, changes, path=settings.config_path)
-        await runner.reload(model=runner.current_model)
+        if runner.ready:
+            await asyncio.to_thread(runner.client.update_model, name, changes)
+        else:
+            await asyncio.to_thread(update_model_entry, name, changes, path=settings.config_path)
         return ModelsOut(models=[model_out(model) for model in runner.models_now()], current=runner.current_model)
 
     @protected.delete("/models/{name}", response_model=ModelsOut, tags=["models"])
@@ -309,8 +316,10 @@ def create_app(settings: Settings, *, client_factory: ClientFactory | None = Non
         """Remove one model from the configuration file; the last one cannot go, since a client needs one."""
         if runner.busy:
             raise SessionBusyError("A run is in progress; change the models when it ends")
-        await asyncio.to_thread(remove_model_entry, name, path=settings.config_path)
-        await runner.reload()
+        if runner.ready:
+            await asyncio.to_thread(runner.client.remove_model, name)
+        else:
+            await asyncio.to_thread(remove_model_entry, name, path=settings.config_path)
         return ModelsOut(models=[model_out(model) for model in runner.models_now()], current=runner.current_model)
 
     @protected.get("/settings", response_model=SettingsOut, tags=["models"])

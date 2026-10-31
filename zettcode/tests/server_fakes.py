@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Mapping, Sequence
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -245,6 +245,9 @@ class FakeClient:
         self.unwritten: str | None = None
         self.closed = False
         self.switched: list[tuple[str, bool]] = []
+        self.added: list[dict[str, object]] = []
+        self.updated: list[tuple[str | int, dict[str, object]]] = []
+        self.removed: list[str | int] = []
 
     @property
     def plugins(self) -> object:
@@ -313,6 +316,47 @@ class FakeClient:
         )
         self.models = tuple(self.model if item.name == self.model.name else item for item in self.models)
         return self.model, self.unwritten
+
+    def add_model(self, entry: Mapping[str, object]) -> ModelInfo:
+        """Add an entry the way the SDK does: to the file and to this client, without moving the model in use."""
+        self.added.append(dict(entry))
+        name = str(entry.get("display_model") or entry["model"])
+        model = ModelInfo(name, str(entry["model"]), 100_000, False, ("low", "medium"))
+        self.models = (*self.models, model)
+        return model
+
+    def update_model(self, which: str | int, changes: Mapping[str, object]) -> ModelInfo:
+        """Change one entry; the keys a test changes are the ones the fake keeps."""
+        self.updated.append((which, dict(changes)))
+        index = self._model_index(which)
+        before = self.models[index]
+        after = ModelInfo(
+            str(changes.get("display_model", before.name)),
+            before.model,
+            int(changes.get("context_window", before.context_window)),  # type: ignore[arg-type]
+            before.multimodal,
+            before.efforts,
+            active=before.active,
+        )
+        self.models = (*self.models[:index], after, *self.models[index + 1 :])
+        if before.active:
+            self.model = after
+        return after
+
+    def remove_model(self, which: str | int) -> ModelInfo:
+        """Remove one entry and return the one a run would use afterwards, which only moves if it was the one removed."""
+        self.removed.append(which)
+        index = self._model_index(which)
+        gone = self.models[index]
+        self.models = tuple(model for place, model in enumerate(self.models) if place != index)
+        if gone.active or gone.name == self.model.name:
+            self.model = self.models[min(index, len(self.models) - 1)]
+        return self.model
+
+    def _model_index(self, which: str | int) -> int:
+        if isinstance(which, int):
+            return which
+        return next(place for place, model in enumerate(self.models) if model.name == which)
 
     def prompt(self, text: str, **options: object) -> FakeRun:
         self.asked.append(text)
