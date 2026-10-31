@@ -210,3 +210,22 @@ def test_a_disable_array_written_across_lines_is_refused_whole(config):
         switches.set_installed(settings, "b", enabled=False)
 
     assert path.read_text(encoding="utf-8") == text, "nothing is half-written"
+
+
+def test_a_switch_that_changes_nothing_does_not_rewrite_an_existing_file(config):
+    settings, path = config
+    switches.set_installed(settings, "first", enabled=False)
+    before = path.read_bytes()
+
+    switches.set_installed(settings, "second", enabled=True)
+
+    assert path.read_bytes() == before, "a name that is not off changes nothing"
+
+
+def test_an_enable_whose_legacy_name_cannot_be_cleaned_is_reported(config, monkeypatch):
+    settings, _path = config
+    settings.plugins_file.write_text(json.dumps({"disabled": ["greeter"]}), encoding="utf-8")
+    monkeypatch.setattr(switches, "_drop_legacy_names", lambda path, names: False)
+
+    with pytest.raises(ValueError, match="old switch file"):
+        switches.set_installed(settings, "greeter", enabled=True)

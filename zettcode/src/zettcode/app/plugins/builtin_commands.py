@@ -721,7 +721,7 @@ class PluginCommand(TuiPlugin):
         try:
             written, keys, problems = switch_plugins(config, changes, bundle=runtime.plugins)
         except ValueError as error:
-            # The configuration file could not be written; the switch file's names were written before it.
+            # The configuration file could not be written.
             return {}, [str(error)]
         for setting, enabled in keys:
             runtime.config = applied(runtime.config, setting, enabled)

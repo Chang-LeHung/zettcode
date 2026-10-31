@@ -1163,7 +1163,7 @@ class Client:
 
         Nothing loads or unloads in this process: a switch is read once, when a program starts, which is why the entry
         says what the *next* start does. A compiled-in plugin is switched by a configuration key, an installed one by
-        the plugin switch file; which file is written is the plugin's own business.
+        `[plugins] disable` in the configuration; which key is written is the plugin's own business.
 
         Args:
             name: The plugin's origin — the distribution's entry-point name, or a compiled-in plugin's own name.
