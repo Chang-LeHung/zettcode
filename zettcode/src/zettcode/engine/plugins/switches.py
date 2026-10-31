@@ -140,18 +140,26 @@ def catalog(
     for path in loader.installed_files(config.plugins_dir):
         if path.stem not in seen:
             installed.append(_installed(path.stem, path.stem, config, off=off, held=held))
-    # A file can load some of its classes and fail others: its failure belongs on the file's one row, not on a
-    # second row named after the class, which no switch could ever write.
-    reasons = {origin: why for origin, why in bundle.failed if origin not in builtins}
+    # A file can load some of its classes and fail others: every reason belongs on the file's one row, not on a
+    # second row named after the class, which no switch could ever write. A file that fails all of its classes still
+    # gets one row, with every reason joined.
+    reasons: dict[str, list[str]] = {}
+    for origin, why in bundle.failed:
+        if origin not in builtins:
+            reasons.setdefault(origin, []).append(why)
     if reasons:
         installed = [
-            replace(entry, failure=reasons[entry.origin]) if entry.origin in reasons else entry for entry in installed
+            replace(entry, failure="; ".join(reasons[entry.origin])) if entry.origin in reasons else entry
+            for entry in installed
         ]
     loaded_origins = {entry.origin for entry in installed}
+    failures: dict[str, list[str]] = {}
+    for origin, why in bundle.failed:
+        if origin in builtins or origin not in loaded_origins:
+            failures.setdefault(origin, []).append(why)
     failed = [
-        _failed(origin, why, config, builtin=origin in builtins, off=off, held=held)
-        for origin, why in bundle.failed
-        if origin in builtins or origin not in loaded_origins
+        _failed(origin, "; ".join(whys), config, builtin=origin in builtins, off=off, held=held)
+        for origin, whys in failures.items()
     ]
     # The group a row belongs to decides where it stands, so a group is one run of rows and gets one heading.
     return tuple(

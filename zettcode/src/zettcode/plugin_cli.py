@@ -297,6 +297,8 @@ def install(target: str, *, force: bool = False) -> int:
     path = Path(target).expanduser()
     if path.is_file() and path.suffix.lower() == ".py":
         return _install_file(path, force=force)
+    if force:
+        print("zettcode plugins: --force applies to a single .py file; installing with --upgrade", file=sys.stderr)
     try:
         requirement = requirement_for(target)
     except ValueError as error:
@@ -328,22 +330,29 @@ def _install_file(source: Path, *, force: bool = False) -> int:
 
     try:
         text = source.read_text(encoding="utf-8")
-        target.parent.mkdir(parents=True, exist_ok=True)
-        replaced = target.exists()
-        if replaced:
+    except (OSError, UnicodeError) as error:
+        print(f"zettcode plugins: {source} could not be read: {error}", file=sys.stderr)
+        return EXIT_FAILED
+    target.parent.mkdir(parents=True, exist_ok=True)
+    replaced = target.exists()
+    if replaced:
+        try:
             existing = target.read_text(encoding="utf-8")
-            if existing != text and not force:
-                print(
-                    f"zettcode plugins: {target} already exists with different content; remove it first or pass "
-                    "--force",
-                    file=sys.stderr,
-                )
-                return EXIT_FAILED
+        except (OSError, UnicodeError) as error:
+            print(f"zettcode plugins: {target} could not be read: {error}", file=sys.stderr)
+            return EXIT_FAILED
+        if existing != text and not force:
+            print(
+                f"zettcode plugins: {target} already exists with different content; remove it first or pass --force",
+                file=sys.stderr,
+            )
+            return EXIT_FAILED
+    try:
         write_text_atomically(target, text)
     except (OSError, ValueError) as error:
         print(f"zettcode plugins: {target} could not be written: {error}", file=sys.stderr)
         return EXIT_FAILED
-    shown = target.name if source.name == target.name else f"{source.name} as {target.name}"
+    shown = str(target) if source.name == target.name else f"{source.name} as {target}"
     note = " (replaced the old file)" if replaced else ""
     print(f"installed {shown}{note}; start ZettCode again to load {module}")
     return EXIT_OK
@@ -481,6 +490,8 @@ def switch(name: str, *, enabled: bool) -> int:
 def _safe_name(name: str) -> str:
     """Return a plugin name, refusing anything that is a path: a plugin is an entry point, a distribution, or a stem."""
     text = name.strip()
+    if text.startswith("./"):
+        text = text[2:]
     if not text or text in (".", "..") or "/" in text or "\\" in text:
         raise ValueError(f"{name!r} is not a plugin name")
     return text
