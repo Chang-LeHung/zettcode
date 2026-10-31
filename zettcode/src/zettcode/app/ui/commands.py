@@ -8,8 +8,8 @@ shell applies the result (see ``ZettCodeApp._apply_result``).
 
 The commands that only need the shell's narrow public surface (``/resume``, ``/model``, ``/context`` and the rest)
 are built-in plugins instead, in :mod:`zettcode.app.plugins.builtin_commands`. What stays here is what cannot be written
-against that surface yet: ``/theme`` and ``/pet`` call the shell's previews as the menu is walked, and ``/config``,
-``/statusline`` and ``/self-compact`` open panels that edit state the shell owns.
+against that surface yet: ``/theme`` and ``/pet`` call the shell's previews as the menu is walked, and ``/config``
+and ``/statusline`` open panels that edit state the shell owns; self-compaction is a `/plugins` switch now.
 """
 
 from __future__ import annotations
@@ -21,7 +21,6 @@ from zettcode.config_edit import ConfigEditError
 from zettcode.statusline import NAMES, Part
 
 from ..commands import (
-    COMMAND_ERRORS,
     Command,
     CommandContext,
     CommandProvider,
@@ -30,9 +29,7 @@ from ..commands import (
     subcommand_words,
 )
 from .widgets import (
-    SELF_COMPACT_ROWS,
     PetPage,
-    SelfCompactPage,
     StatuslinePage,
     bottom_panel,
     pet_rows,
@@ -119,13 +116,6 @@ class ShellCommands(CommandProvider):
                 "choose the pet: /pet opens a panel, /pet <name> picks one",
                 "app",
                 self.pet,
-                when_busy="now",
-            ),
-            Command(
-                "/self-compact",
-                "let the model compact its own context: /self-compact opens a panel; on|off|default|global",
-                "app",
-                self.self_compact,
                 when_busy="now",
             ),
             Command(
@@ -288,50 +278,6 @@ class ShellCommands(CommandProvider):
         if unwritten is not None:
             return unwritten
         return f"{what} will not be remembered: {error}" if applied else f"{what} is not saved: {error}"
-
-    async def self_compact(self, context: CommandContext) -> CommandResult:
-        """Change self-compaction from the words it takes, or open the panel with a rail for each setting.
-
-        The panel has two rails: this session's own choice, and the default every session that never chose
-        follows. The knobs only move; Enter applies both, which is when the session's metadata and the config
-        file are written. A part that cannot be saved is reported and the other part still applies, so a
-        missing config file does not cost the session its choice. Escape applies nothing.
-        """
-        shell = self.shell
-        if context.argument:
-            try:
-                return CommandResult(message=shell.agent.change_self_compaction(context.argument))
-            except ConfigEditError as error:
-                return CommandResult(message=self._or_reason("The default for every session", error, applied=False))
-            except ValueError as error:
-                return CommandResult(message=str(error))
-
-        def apply(choice: bool | None, default: bool) -> None:
-            shell.close_page()
-            # The default first: whether a choice differs from it is what decides if a session that has not
-            # been used yet has anything to save.
-            if default != shell.client.self_compaction_default:
-                try:
-                    shell.client.use_self_compaction_default(default)
-                except (*COMMAND_ERRORS, OSError) as error:
-                    # The default lives in the file, and the write comes before the setting does: on a machine
-                    # with no file yet the sentence says so rather than claiming a default the run does not have.
-                    self._unkept("The default for every session", error, applied=False)
-            if choice != shell.client.self_compaction_choice:
-                try:
-                    shell.client.use_self_compaction(choice)
-                except (*COMMAND_ERRORS, OSError) as error:
-                    shell.transcript.error(str(error))
-            shell.transcript.notice(shell.agent.self_compaction_summary())
-
-        page = SelfCompactPage(
-            shell.client.self_compaction_choice,
-            shell.client.self_compaction_default,
-            on_apply=apply,
-            on_cancel=shell.close_page,
-            session_open=not shell.client.session.locked,
-        )
-        return CommandResult(widget=bottom_panel(page, rows=SELF_COMPACT_ROWS))
 
     async def statusline(self, context: CommandContext) -> CommandResult:
         """Hide or show parts from the words it takes, or open the panel with a switch for each part.

@@ -26,6 +26,8 @@ _EXPORTS = {
     "EffortPage": ".effort_page",
     "FollowUpQueue": ".follow_up",
     "FORM_CHROME_ROWS": ".form_page",
+    "HARNESS_ROWS": ".harness_page",
+    "HarnessPage": ".harness_page",
     "Field": ".form_page",
     "FormPage": ".form_page",
     "form_rows": ".form_page",
@@ -73,6 +75,7 @@ if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
     from .effort_page import EFFORT_ROWS, EffortPage
     from .follow_up import FollowUpQueue
     from .form_page import FORM_CHROME_ROWS, Field, FormPage, form_rows
+    from .harness_page import HARNESS_ROWS, HarnessPage
     from .input_page import INPUT_ROWS, InputPage
     from .model_page import ModelPage
     from .model_settings_page import ModelSettingsPage, model_settings_rows
@@ -124,6 +127,8 @@ __all__ = [
     "EffortPage",
     "FollowUpQueue",
     "FORM_CHROME_ROWS",
+    "HARNESS_ROWS",
+    "HarnessPage",
     "Field",
     "FormPage",
     "form_rows",

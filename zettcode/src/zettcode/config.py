@@ -447,7 +447,7 @@ class ZettCodeConfig:
         mcp_scope: Which MCP server files to read, with the same three words; ``"both"`` (the default)
             merges them, a server named in both taken from the workspace's file.
         self_compaction: Whether a session lets the model request compaction unless it says otherwise;
-            the default a new session starts with, and what ``/self-compact`` shows until it is changed.
+            the default a new session starts with; the terminal's ``/plugins`` switch writes it.
         statusline_hidden: The names of the header and status-line parts the reader switched off in the
             ``[statusline]`` table (``ctx = false``); see :mod:`zettcode.statusline`. Every part not named
             is shown.
@@ -469,7 +469,7 @@ class ZettCodeConfig:
             updating it, and not every session wants one.
         jit_harness: Start with the just-in-time harness on: the model may write small Python tools of its own
             and run them. Off by default, because what it writes runs in this process, outside the shell's
-            permission; ``/harness on`` and ``/harness off`` change it for a run.
+            permission; the terminal's ``/plugins`` switch writes it for the next start.
         shell_network: Let a command that runs in the ``safe`` sandbox use the network. Off by default; ``[shell]
             network = true`` turns it on. ``full`` always has the network, and so does a machine with no sandbox.
         sessions_enabled: Register with the background session broker, so this session can be

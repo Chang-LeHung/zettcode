@@ -18,7 +18,7 @@ import contextlib
 import os
 import re
 import tempfile
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -352,8 +352,17 @@ def set_pet_position(text: str, across: float, down: float, *, where: Path) -> s
 def set_self_compaction(text: str, enabled: bool, *, where: Path) -> str:
     """Return ``text`` with ``[compaction] self`` set to ``enabled``, touching nothing else."""
     return _set_key(
-        text, "compaction", "self", "true" if enabled else "false", enabled, where=where, command="/self-compact"
+        text, "compaction", "self", "true" if enabled else "false", enabled, where=where, command="/plugins"
     )
+
+
+def set_string_list(text: str, table: str, key: str, values: Sequence[str], *, where: Path, command: str) -> str:
+    """Return ``text`` with ``[table] key`` set to an array of strings, touching nothing else.
+
+    The array is written on one line, in the order given; the result is checked the way every other key edit is.
+    """
+    literal = "[" + ", ".join(toml_string(value) for value in values) + "]"
+    return _set_key(text, table, key, literal, list(values), where=where, command=command)
 
 
 def set_boolean(text: str, table: str, key: str, enabled: bool, *, where: Path, command: str) -> str:

@@ -451,20 +451,20 @@ effect at the **next start**: this session does the work it loaded.
 
 Where a switch is written depends on the plugin:
 
-- A plugin **installed beside the program** is recorded in `~/.zettcode/plugins.json`, which is ZettCode's own, beside
-the session store. `/plugins disable <name>` and `/plugins enable <name>` do the same for one name, and the same names
-work in `[plugins] disable` in the config file — the two lists are merged. That file is never rewritten by `/plugins`:
-your configuration stays yours.
+- A plugin **installed beside the program**, including a single file in `~/.zettcode/plugins`, is recorded in
+`[plugins] disable` in your `config.toml`. `/plugins disable <name>` and `/plugins enable <name>` do the same for one
+name. An older switch file at `~/.zettcode/plugins.json` is still read and merged, so nothing switched off there turns
+back on by itself; the next switch written for a name removes it from that file.
 - A plugin **compiled into the program** is switched by a setting you already have — `[skills] enabled`, `[mcp]
   enabled`, `[agents_md] enabled`, `[harness] subagent`, `[harness] todowrite`, `[ask_user] enabled` — and the page
   writes that key in your config file. A compiled-in plugin with no such setting is not on the page at all: there would
   be nothing to press. (One that failed to load is still listed, for its reason — that is worth knowing even with
   nothing to press.)
 
-A name the configuration file has already turned off with `[plugins] disable` cannot be turned back on from either
-front end; that line is yours to edit. The question has one answer wherever it is asked: the terminal's `/plugins`
-page, the editor's **ZettCode: Show Plugins** panel and `PUT /plugins/{name}` on the server go through the same rules
-and write the same files.
+A name in `[plugins] disable` can be switched back on from the page: it is an ordinary switch now, not a line held back
+for the reader. The question has one answer wherever it is asked: the terminal's `/plugins` page, the editor's
+**ZettCode: Show Plugins** panel and `PUT /plugins/{name}` on the server go through the same rules and write the same
+files.
 
 ## When something goes wrong
 

@@ -394,17 +394,18 @@ shell 审批、压缩、`ask_user` 工具、项目指令、skills、MCP 和待�
 
 开关写到哪儿，看这个插件是哪一种：
 
-- **装在程序旁边**的插件记在 `~/.zettcode/plugins.json`，那是 ZettCode 自己的文件，放在会话存储旁边。
-  `/plugins disable <名字>`、`/plugins enable <名字>` 对单个名字做同样的事，配置文件的 `[plugins] disable` 写同样的
-  名字，两份列表会合并。`/plugins` 不会改写你的配置文件。
+- **装在程序旁边**的插件（包括 `~/.zettcode/plugins` 里的单文件插件）记在 `config.toml` 的
+  `[plugins] disable` 里。`/plugins disable <名字>`、`/plugins enable <名字>` 对单个名字做同样的事。旧的
+  `~/.zettcode/plugins.json` 仍然会读、会和配置合并，所以原来关掉的插件不会自己打开；下一次为某个名字写开关时，
+  会把它从那个旧文件里删掉。
 - **编译进程序**的插件由你本来就有的设置决定——`[skills] enabled`、`[mcp] enabled`、`[agents_md] enabled`、
   `[harness] subagent`、`[harness] todowrite`、`[ask_user] enabled`——面板写的就是配置文件里的那个键。没有这种设置的
   内置插件根本不会列出来：它上面没有可以按的东西。（加载失败的内置插件还是会列出来，写明原因——没有什么可按，
   但这件事值得知道。）
 
-配置文件里已经用 `[plugins] disable` 关掉的名字，两个前端里都打不开，那一行归你改。在哪儿问都是同一个答案：终端的
-`/plugins` 页面、编辑器的 **ZettCode: Show Plugins** 面板以及服务器上的 `PUT /plugins/{name}`，走的是同一套规则、
-写的是同样的文件。
+`[plugins] disable` 里的名字现在可以从页面上重新打开：它就是普通开关，不再是“只能手改”的那一行。在哪儿问都是同一个
+答案：终端的 `/plugins` 页面、编辑器的 **ZettCode: Show Plugins** 面板以及服务器上的 `PUT /plugins/{name}`，走的是
+同一套规则、写的是同样的文件。
 
 ## 出问题的时候
 

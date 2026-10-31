@@ -3,7 +3,7 @@
 The framework's :class:`~zett_agent.jit_harness.JITHarnessExtension` lets the model write small Python tools of its
 own and run them. That is opt-in by nature, and it is not behind the shell's permission level by itself: the plugin
 puts a child process (and, below `full`, a sandbox) between that code and this window. So it is registered always and
-does nothing until switched on, which is what lets ``/harness on`` take effect on the next request without rebuilding
+does nothing until switched on, which is what lets the ``/plugins`` switch take effect on the next start without rebuilding
 the client.
 """
 
@@ -46,6 +46,7 @@ class SwitchedHarness(JITHarnessExtension):
         host_factory: Callable[[], JITToolHost] | None = None,
         boundary: Callable[[], str] | None = None,
         unbounded: Callable[[], bool] | None = None,
+        legacy_root: str | Path | None = None,
     ) -> None:
         """Keep each session's repository under ``root``, and follow ``switch``.
 
@@ -62,8 +63,12 @@ class SwitchedHarness(JITHarnessExtension):
                 level now in force.
             unbounded: Whether the level in force promises a boundary this machine does not have. The code the model
                 wrote then runs with the reader's own access, which they are told once per session.
+            legacy_root: The root from before the workspace level, whose session directory is moved under ``root``
+                the first time that session asks for it.
         """
         super().__init__(root, host_factory=host_factory)
+        self._root = Path(root)
+        self._legacy_root = Path(legacy_root) if legacy_root is not None else None
         self._switch = switch
         self._boundary = boundary
         self._unbounded = unbounded
@@ -82,6 +87,10 @@ class SwitchedHarness(JITHarnessExtension):
 
     async def on_tool(self, context: AgentRunContext) -> None:
         """Mount the harness's tools, when it is on — in a host built for the level in force now."""
+        if self._legacy_root is not None:
+            from zettcode.engine.harness_paths import move_session
+
+            move_session(self._legacy_root, self._root, context.session_id)
         if not self._switch.on:
             return
         self._follow_boundary(context.session_id)
@@ -106,7 +115,7 @@ class SwitchedHarness(JITHarnessExtension):
                     name=HARNESS_NOTICE_EVENT_NAME,
                     payload=notice_payload(
                         "this machine has no sandbox, so the tools the model writes run with your own access; "
-                        "`/harness off` turns them off",
+                        "`/plugins` turns the harness plugin off",
                         "warn",
                     ),
                 )

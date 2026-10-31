@@ -220,7 +220,7 @@ Running, renaming, compacting and resuming on a locked session raise `SessionLoc
 
 ## Self-compaction
 
-Self-compaction is the model deciding when to compact its own context: the tool is offered when a request starts, and the model asks when it judges the detail is no longer needed. It has a configuration default (`[compaction] self`) and a choice per session. The terminal edits both in `/self-compact`; from code the session's choice is a property and a method:
+Self-compaction is the model deciding when to compact its own context: the tool is offered when a request starts, and the model asks when it judges the detail is no longer needed. It has a configuration default (`[compaction] self`) and a choice per session. The terminal's `/plugins` edits the default; from code the session's choice is a property and a method:
 
 ```python
 async with zc.Client(".") as client:

@@ -6,8 +6,6 @@ from zett_agent.agent import AgentRunConfig, AgentRunContext, AgentState
 from zett_agent.messages import SystemMessage
 
 from test_compaction import FakeContext, FakeModel, _dialogue
-from test_zettcode_app import build_app
-from zettcode.app.commands import CommandContext
 from zettcode.engine.dialogue.side import question
 from zettcode.engine.extensions.compaction import OnDemandCompaction
 from zettcode.engine.storage import SessionStore
@@ -70,22 +68,6 @@ async def test_the_switch_is_rechecked_when_an_already_registered_tool_runs():
     enabled[0] = False
     assert "disabled" in await ctx.tools["compact_context"].handler()
     assert ctx not in extension._requested
-
-
-async def test_command_reads_and_sets_the_current_sessions_choice():
-    app = build_app()
-    command = next(c for c in app.commands if c.name == "/self-compact")
-    result = await command.handler(CommandContext("", None))
-    assert result.widget is not None, "on its own it opens the panel"
-    result = await command.handler(CommandContext("on", None))
-    assert "**on**" in result.message and app.agent.self_compaction_choice is True and app.agent.self_compaction
-    await command.handler(CommandContext("off", None))
-    assert app.agent.self_compaction_choice is False and not app.agent.self_compaction
-    await command.handler(CommandContext("default", None))
-    assert app.agent.self_compaction_choice is None
-    for bad in ("maybe", "on off", "global", "global default", "global maybe"):
-        result = await command.handler(CommandContext(bad, None))
-        assert "Usage" in result.message
 
 
 async def test_a_fresh_runtime_reads_the_saved_choice_and_new_sessions_stay_disabled(tmp_path, monkeypatch):

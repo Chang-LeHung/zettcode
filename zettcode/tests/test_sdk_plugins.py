@@ -7,12 +7,12 @@ answer is kept are tested once, here, and the front ends only differ in how they
 
 from __future__ import annotations
 
-import json
 import pathlib
 from importlib.metadata import EntryPoint
 from pathlib import Path
 
 import pytest
+import tomllib
 
 import zettcode.sdk as zc
 from sdk_helpers import config_for
@@ -84,31 +84,39 @@ async def test_a_plugin_that_cannot_load_is_listed_with_why(tmp_path: Path, monk
     assert report.failures == ("broken: no such module",)
 
 
-async def test_a_switch_is_written_to_the_file_and_read_back(tmp_path: Path, monkeypatch):
+async def test_a_switch_is_written_to_the_configuration_file_and_read_back(tmp_path: Path, monkeypatch):
     _installed(monkeypatch, "greeter")
-    config = config_for(tmp_path, plugins_file=tmp_path / "plugins.json")
+    path = tmp_path / "config.toml"
+    path.write_text('[[models]]\nmodel = "m"\ntoken = "t"\n', encoding="utf-8")
+    monkeypatch.setenv("ZETTCODE_CONFIG", str(path))
+    config = config_for(tmp_path)
 
     async with zc.Client(config=config) as client:
         entry = client.set_plugin_enabled("greeter", False)
         assert entry.enabled is False, "the answer is the list as it now stands"
-        written = json.loads((tmp_path / "plugins.json").read_text(encoding="utf-8"))
-        assert written == {"disabled": ["greeter"]}
+        assert tomllib.loads(path.read_text(encoding="utf-8"))["plugins"]["disable"] == ["greeter"]
 
         assert client.set_plugin_enabled("greeter", True).enabled is True
-        assert json.loads((tmp_path / "plugins.json").read_text(encoding="utf-8")) == {"disabled": []}
+        assert tomllib.loads(path.read_text(encoding="utf-8"))["plugins"]["disable"] == []
 
     assert [item.name for item in client.plugins.entries if item.name == "greeter"] == ["greeter"], "still loaded here"
 
 
 async def test_the_switch_changes_the_next_start_and_not_this_one(tmp_path: Path, monkeypatch):
     _installed(monkeypatch, "greeter")
-    config = config_for(tmp_path, plugins_file=tmp_path / "plugins.json")
+    path = tmp_path / "config.toml"
+    path.write_text('[[models]]\nmodel = "m"\ntoken = "t"\n', encoding="utf-8")
+    monkeypatch.setenv("ZETTCODE_CONFIG", str(path))
+    config = config_for(tmp_path)
 
     async with zc.Client(config=config) as client:
         client.set_plugin_enabled("greeter", False)
         assert "greeter" in client.plugins.loaded, "this process keeps the plugins it loaded"
 
-    async with zc.Client(config=config) as second:
+    from zettcode.config import load_config
+
+    second_config = load_config(tmp_path, path=path)
+    async with zc.Client(config=second_config) as second:
         assert "greeter" not in second.plugins.loaded, "the next start honours the switch"
         assert [entry.enabled for entry in second.plugins.entries if entry.name == "greeter"] == [False]
 
@@ -141,18 +149,18 @@ async def test_a_name_no_plugin_has_is_refused(tmp_path: Path, monkeypatch):
             client.set_plugin_enabled("greter", False)
 
 
-async def test_a_plugin_the_configuration_switched_off_cannot_be_switched_on(tmp_path: Path, monkeypatch):
+async def test_a_plugin_the_configuration_switched_off_can_be_switched_on(tmp_path: Path, monkeypatch):
     _installed(monkeypatch, "greeter")
-    config = config_for(
-        tmp_path,
-        plugins_file=tmp_path / "plugins.json",
-        disabled_plugins=("greeter",),
-    )
+    path = tmp_path / "config.toml"
+    path.write_text('[[models]]\nmodel = "m"\ntoken = "t"\n[plugins]\ndisable = ["greeter"]\n', encoding="utf-8")
+    monkeypatch.setenv("ZETTCODE_CONFIG", str(path))
+    config = config_for(tmp_path, disabled_plugins=("greeter",))
 
     async with zc.Client(config=config) as client:
         assert [entry.enabled for entry in client.plugins.entries if entry.name == "greeter"] == [False]
-        with pytest.raises(ValueError, match="configuration file"):
-            client.set_plugin_enabled("greeter", True)
+        assert client.set_plugin_enabled("greeter", True).enabled is True
+
+    assert tomllib.loads(path.read_text(encoding="utf-8"))["plugins"]["disable"] == []
 
 
 def test_the_same_entry_is_described_the_same_way_in_every_layer():

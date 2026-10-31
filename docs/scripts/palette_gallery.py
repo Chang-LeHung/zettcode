@@ -581,13 +581,6 @@ def scenes() -> list[Scene]:
         Scene(
             "effort", "面板", "/effort 轨道旋钮", "旋钮落在 high：已点亮的轨道、经过的节点、“now” 标记。", effort_scene
         ),
-        Scene(
-            "self-compact",
-            "面板",
-            "/self-compact 双轨道",
-            "上轨道是本会话（default / off / on），下轨道是全局默认；旋钮在 on，标题右侧说明“未应用”。",
-            self_compact_scene,
-        ),
         Scene("models", "面板", "/model 选择器", "带编号的列表、当前项、选中行。", models_scene),
         Scene("sessions", "面板", "/resume 会话列表", "标题、相对时间、短 id；未命名会话。", sessions_scene),
         Scene("approval", "面板", "命令审批", "执行 shell 命令前的确认面板。", approval_scene),
