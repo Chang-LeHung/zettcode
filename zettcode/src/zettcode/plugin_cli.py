@@ -8,11 +8,11 @@ in :attr:`ZettCodeConfig.plugins_dir` (``~/.zettcode/plugins`` by default); inst
   a uv tool install has no pip). A single ``.py`` file is copied into the plugins folder instead — it is not a
   distribution, and nothing needs to be installed for it to load.
 * ``uninstall`` removes a file, or the distribution behind a name.
-* ``enable`` and ``disable`` write the plugin switch file, which is what the next start reads.
+* ``enable`` and ``disable`` write ``[plugins] disable`` in the configuration file, which is what the next start reads.
 
 It decides nothing about loading: a plugin installed here is picked up at the next start, and one removed or
 disabled is gone then. The command exists so a reader does not have to know which Python owns the environment,
-whether it has pip, or where the switch file is.
+whether it has pip, or where the configuration file is.
 """
 
 from __future__ import annotations
@@ -227,12 +227,10 @@ def _enabled(state: SwitchState, off_switch: set[str], held: set[str], name: str
 
 
 def _switch_mechanism(state: SwitchState, name: str) -> str:
-    """Return where the switch for ``name`` is kept: the switch file, or a line of the configuration."""
-    if name in state.disabled_plugins:
-        return "config ([plugins] disable)"
+    """Return where the switch for ``name`` is kept: a line of the configuration file."""
     if not state.plugins_enabled:
         return "config ([plugins] enabled)"
-    return "switch file"
+    return "config ([plugins] disable)"
 
 
 def list_plugins(*, as_json: bool = False) -> int:
@@ -400,7 +398,7 @@ def uninstall(name: str) -> int:
 
 
 def _forget_switches(names: list[str]) -> str:
-    """Drop names from the switch file, best effort, and return a note for the caller to append (or "")."""
+    """Drop names from the legacy switch file, best effort, and return a note for the caller (or "")."""
     try:
         config = plugin_state()
     except (OSError, ValueError):
@@ -452,7 +450,7 @@ def plugin_state() -> SwitchState:
 
 
 def switch(name: str, *, enabled: bool) -> int:
-    """Write ``name`` on or off in the plugin switch file, for the next start."""
+    """Write ``name`` on or off in ``[plugins] disable``, for the next start."""
     try:
         name = _safe_name(name)
     except ValueError as error:
@@ -497,7 +495,7 @@ def _safe_name(name: str) -> str:
 
 
 def _resolve_switch_name(config: SwitchState, name: str) -> str | None:
-    """Return the origin the switch file is written with for ``name``, or ``None`` when nothing is called that.
+    """Return the origin ``[plugins] disable`` is written with for ``name``, or ``None`` when nothing is called that.
 
     A file is named by its stem after the loader's rule (a hyphen in the source became an underscore when it was
     installed), an entry point by its own name, and a distribution by the one plugin it carries. A distribution with

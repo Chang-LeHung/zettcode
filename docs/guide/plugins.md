@@ -108,7 +108,7 @@ with whether the next start loads each one and the switch that decides it. `ENAB
 its setting is the switch shown beside it. `uninstall` removes the file from `~/.zettcode/plugins`, or the distribution
 behind a name; the name is the distribution's own, the entry-point name
 `/plugins` shows as its origin, or the file's stem. `enable` and `disable`
-write the same switch file the `/plugins` panel does; a plugin compiled into
+write the same `[plugins] disable` list the `/plugins` panel does; a plugin compiled into
 the program is switched by its own setting in the configuration file, which
 the panel edits and this command leaves alone.
 

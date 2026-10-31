@@ -369,6 +369,10 @@ class ModelCommands(TuiPlugin):
         from zettcode.app.ui.widgets import HARNESS_ROWS, HarnessPage
 
         host = context.require_host()
+        if context.argument.strip():
+            return CommandResult(
+                message="/harness no longer takes on or off; /plugins switches the harness, and /harness shows it."
+            )
         from zettcode.engine.harness_paths import session_directory
 
         config = host.client.config
