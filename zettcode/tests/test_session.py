@@ -719,6 +719,46 @@ async def test_restoring_keeps_instructions_and_drops_interrupted_tool_batches(t
     assert second.state.messages[-1].content == "done"
 
 
+async def test_restoring_keeps_the_tool_batch_that_was_running_when_the_process_died(tmp_path: Path):
+    """The last batch is the interrupted request, and the runtime closes it; dropping it forgets work that ran."""
+    store = SessionStore(tmp_path)
+    finished = ToolCall(id="call-1", name="read", arguments={})
+    running = ToolCall(id="call-2", name="write", arguments={})
+    first = context(request_id="req-1")
+    await store.on_state(first)
+    for message in (
+        UserMessage(content="start"),
+        AssistantMessage(content="", tool_calls=[finished, running]),
+        ToolMessage(tool_call_id="call-1", name="read", content="ok"),
+    ):
+        await store.on_event(first, appended(message))
+    await store.on_success(first, AssistantMessage(content="done"))
+
+    second = context(request_id="req-2", instructions=False)
+    await store.on_state(second)
+
+    assert [type(message).__name__ for message in second.state.messages] == [
+        "UserMessage",
+        "AssistantMessage",
+        "ToolMessage",
+    ], "the call that ran and its result are still in the context"
+    assert [call.id for call in second.state.messages[1].tool_calls] == ["call-1", "call-2"]
+
+
+def test_an_orphan_result_in_the_last_batch_is_still_dropped():
+    call = ToolCall(id="call-1", name="read", arguments={})
+    kept = SessionStore._provider_safe_messages(
+        [
+            UserMessage(content="start"),
+            AssistantMessage(content="", tool_calls=[call]),
+            ToolMessage(tool_call_id="call-1", name="read", content="ok"),
+            ToolMessage(tool_call_id="stray", name="read", content="?"),
+        ]
+    )
+
+    assert [type(message).__name__ for message in kept] == ["UserMessage"], "a result naming no call is not kept"
+
+
 async def test_restoring_skips_persisted_instructions_so_the_prefix_stays_stable(tmp_path: Path):
     """A turn's instructions are rebuilt, never replayed from the log.
 

@@ -916,12 +916,21 @@ class SessionStore(SessionPersistenceMixin, AgentExtension):
 
     @staticmethod
     def _provider_safe_messages(messages: Sequence[AnyMessage]) -> list[AnyMessage]:
-        """Exclude interrupted tool batches from restored model context.
+        """Exclude interrupted tool batches from restored model context, except the last.
 
         A process may have stopped after persisting an assistant message with
         tool calls but before persisting every matching result; providers reject
-        that sequence. Only the malformed batch is dropped, so the rest of the
-        restored dialogue still reaches the model. Storage keeps everything.
+        that sequence. A malformed batch in the middle of the history is dropped,
+        so the rest of the restored dialogue still reaches the model. Storage
+        keeps everything.
+
+        The batch at the very end is kept as it is, results that did finish
+        included: it is the request that was interrupted, and the runtime closes
+        it when the next request starts by adding a result for each call that has
+        none. Dropping it would forget the tools that did run and whatever they
+        changed. This follows zett-agent's own persistence extension, which is
+        where the rule is written; a batch there with an orphan result (a result
+        naming no call of its own) is still dropped.
         """
         restored: list[AnyMessage] = []
         index = 0
@@ -941,7 +950,8 @@ class SessionStore(SessionPersistenceMixin, AgentExtension):
                 cursor += 1
             expected = Counter(call.id for call in message.tool_calls)
             observed = Counter(result.tool_call_id for result in tool_messages)
-            if expected == observed:
+            at_end = cursor == len(messages)
+            if expected == observed or (at_end and not observed - expected):
                 restored.extend((message, *tool_messages))
             index = cursor
         return restored
