@@ -1135,3 +1135,22 @@ def test_a_file_plugin_whose_activate_exits_does_not_end_the_load(tmp_path: Path
     assert [plugin.name for plugin in plugins.plugins] == ["good"]
     assert [origin for origin, _why in plugins.failed] == ["exit"]
     assert "Exit:" in plugins.failures[0]
+
+
+def test_a_clash_in_a_file_plugin_names_the_class(tmp_path: Path):
+    folder = tmp_path / "plugins"
+    folder.mkdir()
+    body = (
+        "from zettcode.engine.plugins import Plugin\n"
+        "from zettcode.providers import Provider\n\n\n"
+        "class One(Plugin):\n    name = 'one'\n\n    def activate(self, ctx):\n"
+        "        ctx.agent.register_provider(Provider('acme', 'One', base_url='https://one.example/v1'))\n\n\n"
+        "class Two(Plugin):\n    name = 'two'\n\n    def activate(self, ctx):\n"
+        "        ctx.agent.register_provider(Provider('acme', 'Two', base_url='https://two.example/v1'))\n"
+    )
+    (folder / "pair.py").write_text(body, encoding="utf-8")
+
+    plugins = loader_module.load_plugins(file_config(tmp_path, folder), builtins=(), entry_points=())
+
+    assert [plugin.name for plugin in plugins.plugins] == ["one"]
+    assert any("Two:" in failure for failure in plugins.failures)
