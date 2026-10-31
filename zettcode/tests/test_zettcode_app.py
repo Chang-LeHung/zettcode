@@ -2726,44 +2726,19 @@ async def test_a_wrong_permission_name_lists_the_right_ones_and_changes_nothing(
     )
 
 
-async def test_the_harness_command_turns_it_on_and_off_and_says_what_it_did():
+async def test_the_harness_command_opens_a_read_only_panel():
     app = build_app()
     harness = _harness(app)
     assert app.agent.harness is False, "off unless asked for"
 
     await _type_command(app, harness, "/harness")
-    assert app.agent.harness is False
-    assert any("Harness is off" in getattr(entry, "text", "") for entry in app.transcript.entries)
 
-    await _type_command(app, harness, "/harness on")
-    assert app.agent.harness is True
-    assert any("Harness is on" in getattr(entry, "text", "") for entry in app.transcript.entries)
+    assert app.agent.harness is False, "the panel changes nothing"
+    said = harness.render().text
+    assert "Harness is off" in said and "esc close" in said
 
-    await _type_command(app, harness, "/harness OFF")
-    assert app.agent.harness is False
-
-
-async def test_a_wrong_harness_word_says_the_usage_and_changes_nothing():
-    app = build_app()
-    harness = _harness(app)
-    await _type_command(app, harness, "/harness on")
-
-    await _type_command(app, harness, "/harness maybe")
-
-    assert app.agent.harness is True
-    assert any("Usage: /harness on|off" in getattr(entry, "text", "") for entry in app.transcript.entries)
-
-
-async def test_the_harness_command_offers_on_and_off_with_the_one_in_force_marked():
-    app = build_app()
-    harness = _harness(app)
-    await _type_command(app, harness, "/harness on")
-
-    harness.write("/harness ")
-
-    items = app.completions.items
-    assert [item.value for item in items] == ["on", "off"]
-    assert [item.value for item in items if "(current)" in item.description] == ["on"]
+    harness.press("escape")
+    assert "Harness is off" not in harness.render().text
 
 
 async def test_the_permission_command_offers_the_four_levels_with_the_current_one_marked():
@@ -8491,7 +8466,6 @@ async def test_every_command_the_shell_runs_beside_a_request_is_one_that_cannot_
         "/pet",
         "/plugins",
         "/quit",
-        "/self-compact",
         "/statusline",
         "/theme",
         "/title",
@@ -8514,7 +8488,7 @@ async def test_every_command_the_shell_runs_beside_a_request_is_one_that_cannot_
 
 
 @pytest.mark.parametrize(
-    "command", ["/model", "/config", "/clear", "/new", "/resume", "/fork", "/compact", "/export", "/harness on"]
+    "command", ["/model", "/config", "/clear", "/new", "/resume", "/fork", "/compact", "/export", "/harness"]
 )
 async def test_a_command_that_touches_what_the_request_stands_on_is_still_turned_away(command):
     app = build_app(block=True)
@@ -9108,16 +9082,17 @@ async def test_the_harness_command_lists_the_sessions_repositories_and_checks_th
     answer from the files — read, never imported. What the manifest declares is what is shown: whether the code
     defines that tool is the load's question, not this command's.
     """
-    from zett_agent.jit_harness.repo import session_directory_name
+    from zettcode.engine.harness_paths import session_directory
 
     app = build_app()
     harness = _harness(app)
     app.agent.runtime.config.harness_dir = tmp_path / "harness"
-    folder = tmp_path / "harness" / session_directory_name(app.client.session.id)
+    folder = session_directory(app.agent.runtime.config, app.client.session.id)
 
     await _type_command(app, harness, "/harness")
-    said = getattr(app.transcript.entries[-1], "text", "")
-    assert "None yet" in said and "turn the harness on" in said, said
+    said = harness.render().text
+    assert "No repositories yet" in said and "repo_cr" in said, said
+    harness.press("escape")
 
     ready = folder / "kit"
     ready.mkdir(parents=True)
@@ -9139,9 +9114,9 @@ async def test_the_harness_command_lists_the_sessions_repositories_and_checks_th
 
     await _type_command(app, harness, "/harness")
 
-    said = getattr(app.transcript.entries[-1], "text", "")
-    assert "`kit` kit 1.0 \u2014 small helpers (declares 1 tool; 1 banned)" in said, said
-    assert "`old` cannot load" in said and "no MANIFEST" in said, said
+    said = harness.render().text
+    assert "kit" in said and "small helpers" in said and "1 b" in said, said
+    assert "old" in said and "no MANIFEST" in said, said
     # The declaration is what this reads; comparing it with the code is the load's job, so a repository whose code
     # defines nothing still shows what its MANIFEST declares.
-    assert "`hollow` hollow 0.1 \u2014 declares a tool it never defines (declares 1 tool)" in said, said
+    assert "hollow" in said and "declares a tool it never" in said, said

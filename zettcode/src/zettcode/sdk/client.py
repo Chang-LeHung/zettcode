@@ -1177,11 +1177,14 @@ class Client:
                 is switched off in the configuration file, or the file cannot be written.
         """
         from ..engine.plugins import applied, set_enabled
+        from ..engine.plugins.switches import applied_installed
 
         runtime = self._agent.runtime
         result = set_enabled(self.config, name, enabled=enabled, bundle=runtime.plugins)
         if result is not None:
             runtime.config = applied(runtime.config, result, enabled)
+        else:
+            runtime.config = applied_installed(runtime.config, {name: enabled})
         found = next(
             (entry for entry in self._plugin_catalog() if name in (entry.origin, entry.name)),
             None,

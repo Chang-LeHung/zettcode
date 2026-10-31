@@ -463,7 +463,7 @@ config = "~/.zettcode/mcp.json" # 服务器定义文件，不是本 TOML 文件
 scope = "both"                 # "both"、"workspace" 或 "global"
 
 [compaction]
-self = false                   # 让模型自己压缩上下文；/self-compact 可按会话覆盖
+self = false                   # 让模型自己压缩上下文；/plugins 或会话自己的选择可以覆盖
 
 [plugins]
 enabled = true                 # 加载已安装的第三方插件
@@ -493,7 +493,7 @@ subagent = true                # 提供 task 工具及其子 agent 档位
 subagent_max_iterations = 512  # 一个子 agent 完成一个任务最多调用模型的次数
 subagent_messaging = false     # 让 coding 子 agent 也有 list_sessions 和 send_message
 todowrite = false              # 提供 todo_write，界面会画出计划面板
-jit = false                    # 模型可以写并运行小的 Python 工具；/harness on|off
+jit = false                    # 模型可以写并运行小的 Python 工具；/plugins
 ```
 
 这些顶层段落应该像示例一样放在模型表之外。TOML 的键属于最近的表头：如果直接在
@@ -514,7 +514,7 @@ jit = false                    # 模型可以写并运行小的 Python 工具；
 | `mcp.enabled` | `true` | 有服务器配置时启用 MCP 工具；默认文件不存在时不加载服务器。 |
 | `mcp.config` | `~/.zettcode/mcp.json` | 用户自己的 JSON 服务器配置路径。建议用绝对路径或 `~`，避免位置不明确。 |
 | `mcp.scope` | `"both"` | 读哪些服务器文件：`"both"`（默认）合并用户的文件和 `<工作区>/.zettcode/mcp.json`，同名服务器以项目的为准；`"workspace"` 或 `"global"` 只读其中一个。工作区文件相当于仓库要求你去运行的命令，不想启动某个仓库的服务器时请设为 `"global"`。 |
-| `compaction.self` | `false` | 没有自己选择过的会话是否允许模型压缩自己的上下文。`/self-compact` 会打开面板，可以只改一个会话或改全部；见[自我压缩](/zh/guide/commands#self-compaction)。 |
+| `compaction.self` | `false` | 没有自己选择过的会话是否允许模型压缩自己的上下文。`/plugins` 里的 `self-compaction` 开关控制默认值；单个会话的选择从代码或 HTTP 设置。见[自我压缩](/zh/guide/commands#self-compaction)。 |
 | `statusline.<部分>` | `true` | 把头部或状态行的某一部分设为 `false` 即隐藏；没写的部分都显示，只有 `pet`、`turn-calls` 和 `turn-tools` 例外，它们默认隐藏，设为 `true` 才出现。部分有 `app`、`session`、`handle`、`workspace`、`model`、`effort`、`state`、`mode`、`self-compact`、`tokens`、`cache`、`speed`、`ctx`、`keys`、请求结束行的各项（`turn-time`、`turn-clock`、`turn-tokens`、`turn-cache`、`turn-calls`、`turn-speed`、`turn-tools`；插件可以加名为 `turn-<something>` 的其他项）、`pet`（对话上方的宠物，见[宠物](/zh/guide/interface#the-pet)）；不认识的名字会报错。`/statusline` 会替你改这张表。见[选择显示哪些部分](/zh/guide/interface#choosing-what-is-shown)。 |
 | `plugins.enabled` | `true` | 加载已安装的第三方插件；关闭后内置 UI 功能仍可使用。 |
 | `plugins.disable` | `[]` | 要跳过的插件 **entry-point 名称**数组，不一定等于 pip 包名。 |
@@ -524,7 +524,7 @@ jit = false                    # 模型可以写并运行小的 Python 工具；
 | `harness.subagent_max_iterations` | `512` | 一个子 agent 完成一个任务最多可以调用模型的次数。子 agent 在真实代码库里探索或修改要调用几十次（库自带的默认值 18 会让这类任务做到一半就结束）；这个值是防止它停不下来的上限，不是目标。子 agent 也会拿到你项目的 `AGENTS.md`。 |
 | `harness.subagent_messaging` | `false` | 让 `coding` 子 agent 也拥有 `list_sessions` 和 `send_message`。默认关闭：子 agent 只为一个会话做一件事，和其他会话对话是那个会话自己的事。见[子 agent 能做什么](#what-a-child-agent-can-do)。 |
 | `harness.todowrite` | `false` | 提供 `todo_write`，清单由界面画在计划面板里。维护计划要花轮次，所以默认关闭。 |
-| `harness.jit` | `false` | 启动时就打开 just-in-time harness：模型可以自己写小的 Python 工具，存在 `~/.zettcode/harness`（每个会话一个文件夹）里并运行它们。它写的代码跑在自己的子进程里 —— 崩溃或卡死不会带走窗口 —— 并且在 `full` 以下的每一档都跑在 `safe` 用的那个边界里，所以仍然默认关闭。`full` 下它拿到的是你自己的权限；没有沙箱的机器上，harness 会每个会话说一次，模型写的代码不会在你不知情的情况下失去边界。`/harness on` 和 `/harness off` 在本轮切换。只有**改了边界**（进或出 `full`）才会关掉那个子进程：下一次请求重新起一个，模型自己写的工具要再跑一次 `repo_load` 才回来；`ask` 和 `safe` 用的是同一个边界，在两者之间切换不花任何代价。仓库要在 `__init__.py` 旁边写一个 `MANIFEST`（name、version、description，以及可选的、它声明的 `tools`）才能加载；
+| `harness.jit` | `false` | 启动时就打开 just-in-time harness：模型可以自己写小的 Python 工具，存在 `~/.zettcode/harness/<工作区>/<会话 id>/` 里并运行它们。它写的代码跑在自己的子进程里 —— 崩溃或卡死不会带走窗口 —— 并且在 `full` 以下的每一档都跑在 `safe` 用的那个边界里，所以仍然默认关闭。`full` 下它拿到的是你自己的权限；没有沙箱的机器上，harness 会每个会话说一次，模型写的代码不会在你不知情的情况下失去边界。`/plugins` 在下次启动时打开或关闭它。只有**改了边界**（进或出 `full`）才会关掉那个子进程：下一次请求重新起一个，模型自己写的工具要再跑一次 `repo_load` 才回来；`ask` 和 `safe` 用的是同一个边界，在两者之间切换不花任何代价。仓库要在 `__init__.py` 旁边写一个 `MANIFEST`（name、version、description，以及可选的、它声明的 `tools`）才能加载；
 同一目录下的 `BAN_TOOLS` 列出它不允许定义的工具名。`/harness` 只读这些文件、不导入代码，所以显示的是声明，不是
 代码实际定义了什么。 |
 | `shell.network` | `false` | 让在 `safe` 沙箱里跑的命令可以访问网络。默认关闭；`full` 永远有网络，没有沙箱的机器也一样。见[审批](/zh/guide/interface#审批)。 |

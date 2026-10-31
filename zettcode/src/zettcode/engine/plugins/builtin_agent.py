@@ -302,11 +302,14 @@ class Harness(Plugin):
 
     name = "harness"
     description = "The just-in-time tool harness, off by default"
+    setting = PluginSetting("jit_harness", "harness", "jit")
 
     def activate(self, ctx: PluginContext) -> None:
         """Register the switchable extension; the framework's harness is imported when the agent is built."""
+        from zettcode.engine.harness_paths import harness_root
+
         switch = ctx.service(HARNESS, HarnessSwitch)
-        root = ctx.config.harness_dir
+        root = harness_root(ctx.config)
         policy = ctx.service(POLICY, ShellPolicy)
 
         def host() -> JITToolHost:
@@ -339,6 +342,7 @@ class Harness(Plugin):
                 host_factory=host,
                 boundary=boundary,
                 unbounded=policy.sandbox_missing,
+                legacy_root=ctx.config.harness_dir,
             )
 
         ctx.agent.register_extension_factory("SwitchedHarness", build)
@@ -515,6 +519,21 @@ class TodoPlan(Plugin):
             ctx.agent.register_extension(extension)
 
 
+class SelfCompaction(Plugin):
+    """The switch for letting the model compact its own context.
+
+    The work is the runtime's: ``[compaction] self`` is the default, and a session that chose otherwise keeps its
+    choice. This plugin exists so `/plugins` can show and write that default like any other plugin setting.
+    """
+
+    name = "self-compaction"
+    description = "Let the model compact its own context"
+    setting = PluginSetting("self_compaction", "compaction", "self")
+
+    def activate(self, ctx: PluginContext) -> None:
+        """Nothing to register: the setting decides the runtime's policy, not an object here."""
+
+
 class Compaction(Plugin):
     """Shortens the conversation when it nears the model's window, or when the reader asks."""
 
@@ -565,5 +584,6 @@ AGENT_PLUGINS: tuple[Plugin[PluginContext], ...] = (
     ProjectInstructions(),
     SkillTool(),
     McpTools(),
+    SelfCompaction(),
     Compaction(),
 )

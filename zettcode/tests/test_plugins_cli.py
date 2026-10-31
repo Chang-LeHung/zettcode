@@ -8,8 +8,17 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import tomllib
 
 from zettcode import plugin_cli as cli
+
+
+@pytest.fixture(autouse=True)
+def _config_file(tmp_path, monkeypatch):
+    """Every switch writes to a configuration file of this test, never the reader's."""
+    path = tmp_path / "config.toml"
+    monkeypatch.setenv("ZETTCODE_CONFIG", str(path))
+    return path
 
 
 def test_a_local_path_is_made_absolute(tmp_path: Path):
@@ -243,20 +252,22 @@ def test_disable_writes_the_switch_file_for_an_installed_file_plugin(tmp_path, m
 
     assert cli.switch("greeter", enabled=False) == 0
 
-    assert json.loads((config.plugins_file).read_text(encoding="utf-8")) == {"disabled": ["greeter"]}
+    data = tomllib.loads((tmp_path / "config.toml").read_text(encoding="utf-8"))
+    assert data["plugins"]["disable"] == ["greeter"]
     assert "disabled greeter" in capsys.readouterr().out
 
 
-def test_enable_removes_the_name_from_the_switch_file(tmp_path, monkeypatch, capsys):
+def test_enable_removes_the_name_from_the_configuration_file(tmp_path, monkeypatch, capsys):
     folder = folder_with_greeter(tmp_path)
     config = fake_config(tmp_path)
-    config.plugins_file.write_text(json.dumps({"disabled": ["greeter"]}), encoding="utf-8")
+    config_file = tmp_path / "config.toml"
+    config_file.write_text('[plugins]\ndisable = ["greeter"]\n', encoding="utf-8")
     monkeypatch.setattr(cli, "plugins_dir", lambda: folder)
     monkeypatch.setattr(cli, "plugin_state", lambda: config)
 
     assert cli.switch("greeter", enabled=True) == 0
 
-    assert json.loads(config.plugins_file.read_text(encoding="utf-8")) == {"disabled": []}
+    assert tomllib.loads(config_file.read_text(encoding="utf-8"))["plugins"]["disable"] == []
     assert "enabled greeter" in capsys.readouterr().out
 
 
@@ -269,14 +280,18 @@ def test_a_switch_for_something_that_is_not_installed_says_what_exists(tmp_path,
     assert "no installed plugin or plugin file" in capsys.readouterr().err
 
 
-def test_a_switch_the_configuration_holds_is_refused(tmp_path, monkeypatch, capsys):
+def test_a_name_the_configuration_holds_is_switched_off_in_the_file(tmp_path, monkeypatch, capsys):
     folder = folder_with_greeter(tmp_path)
-    config = fake_config(tmp_path, disabled_plugins=("greeter",))
+    config = fake_config(tmp_path)
+    config_file = tmp_path / "config.toml"
+    config_file.write_text('[plugins]\ndisable = ["greeter"]\n', encoding="utf-8")
     monkeypatch.setattr(cli, "plugins_dir", lambda: folder)
     monkeypatch.setattr(cli, "plugin_state", lambda: config)
 
-    assert cli.switch("greeter", enabled=True) == 1
-    assert "[plugins] disable" in capsys.readouterr().err
+    assert cli.switch("greeter", enabled=True) == 0
+
+    assert tomllib.loads(config_file.read_text(encoding="utf-8"))["plugins"]["disable"] == []
+    assert "enabled greeter" in capsys.readouterr().out
 
 
 def test_a_switch_is_refused_while_every_installed_plugin_is_off(tmp_path, monkeypatch, capsys):
@@ -299,7 +314,8 @@ def test_a_hyphenated_file_is_switched_by_the_name_it_was_installed_under(tmp_pa
 
     assert cli.switch("my-plugin", enabled=False) == 0
 
-    assert json.loads(config.plugins_file.read_text(encoding="utf-8")) == {"disabled": ["my_plugin"]}
+    data = tomllib.loads((tmp_path / "config.toml").read_text(encoding="utf-8"))
+    assert data["plugins"]["disable"] == ["my_plugin"]
 
 
 def test_a_distribution_name_resolves_to_the_one_plugin_it_carries(tmp_path, monkeypatch):
@@ -317,13 +333,14 @@ def test_a_distribution_name_resolves_to_the_one_plugin_it_carries(tmp_path, mon
 def test_uninstall_removes_the_name_from_the_switch_file(tmp_path, monkeypatch, capsys):
     folder = folder_with_greeter(tmp_path)
     config = fake_config(tmp_path)
-    config.plugins_file.write_text(json.dumps({"disabled": ["greeter"]}), encoding="utf-8")
+    config_file = tmp_path / "config.toml"
+    config_file.write_text('[plugins]\ndisable = ["greeter"]\n', encoding="utf-8")
     monkeypatch.setattr(cli, "plugins_dir", lambda: folder)
     monkeypatch.setattr(cli, "plugin_state", lambda: config)
 
     assert cli.uninstall("greeter") == 0
 
-    assert json.loads(config.plugins_file.read_text(encoding="utf-8")) == {"disabled": []}
+    assert tomllib.loads(config_file.read_text(encoding="utf-8"))["plugins"]["disable"] == []
     assert "switch was removed" in capsys.readouterr().out
 
 

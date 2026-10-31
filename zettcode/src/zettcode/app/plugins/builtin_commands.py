@@ -248,20 +248,6 @@ def model_words(host: CommandHost | None) -> tuple[Subcommand, ...]:
     )
 
 
-#: The two words ``/harness`` takes, with what each does.
-HARNESS_NOTES = {
-    "on": "the model may write small Python tools of its own and run them",
-    "off": "the model has no harness (the default)",
-}
-
-
-def harness_words(host: CommandHost | None) -> tuple[Subcommand, ...]:
-    """Offer ``on`` and ``off``, with a mark on the one in force."""
-    if host is None:
-        return ()
-    return subcommand_words(("on", "off"), HARNESS_NOTES, "on" if host.client.harness else "off")
-
-
 def permission_words(host: CommandHost | None) -> tuple[Subcommand, ...]:
     """Offer the four levels strictest first, each with what it does to a command and a mark on the one in force."""
     if host is None:
@@ -291,10 +277,9 @@ class ModelCommands(TuiPlugin):
         )
         tui.register_command(
             "harness",
-            "let the model write and run its own tools: /harness on|off",
+            "what the just-in-time harness is doing, and where its tools are",
             self.harness,
             when_busy="refuse",
-            subcommands=lambda: harness_words(link.host),
         )
 
     async def model(self, context: CommandContext) -> CommandResult:
@@ -374,47 +359,29 @@ class ModelCommands(TuiPlugin):
         return CommandResult()
 
     async def harness(self, context: CommandContext) -> CommandResult:
-        """Turn the just-in-time harness on or off, say which it is, and show its repositories.
+        """Open a read-only panel on the just-in-time harness.
 
-        Refused while a request runs: the harness's tools are mounted when a request starts, so a change made
-        halfway would be announced and not be true until the next one.
-
-        The repositories are this session's, whether the switch is on or off: they are files the model wrote, and
-        since `zett-agent` 0.2.2 one is loadable only when its `MANIFEST` says what it is. The check here is
-        :func:`zett_agent.jit_harness.inspect_repository`, which reads the files and imports nothing.
+        The switch is a plugin setting now: `/plugins` turns the harness on or off for the next start, and this page
+        says which state it found, where the repositories live, and what this session has written. Nothing on the
+        page changes anything; the repositories are read with
+        :func:`zett_agent.jit_harness.inspect_repository`, which imports nothing.
         """
+        from zettcode.app.ui.widgets import HARNESS_ROWS, HarnessPage
+
         host = context.require_host()
-        word = context.argument.strip().lower()
-        if word not in ("", "on", "off"):
-            return CommandResult(message="Usage: /harness on|off")
-        if word:
-            host.client.use_harness(word == "on")
-        state = "on" if host.client.harness else "off"
-        notes = {
-            "on": "The model can write Python tools and run them; they live in ~/.zettcode/harness. "
-            "Starts with the next request.",
-            "off": "The model has no harness.",
-        }
-        rows = self._repositories(host, on=state == "on")
-        return CommandResult(
-            message=f"Harness is {state}. {notes[state]}\n\n**This session's repositories**\n" + "\n".join(rows),
-            relayout=bool(word),
-        )
-
-    def _repositories(self, host: CommandHost, *, on: bool) -> list[str]:
-        """Return this session's repositories as one line each: what its files declare, or why it cannot load.
-
-        Nothing is imported: the check is the file work of
-        :func:`zett_agent.jit_harness.inspect_repository`, so a tool the `MANIFEST` declares is reported as declared,
-        not as one the code defines — the load is where the two are compared.
-        """
-        from zett_agent.jit_harness import inspect_repository
-        from zett_agent.jit_harness.repo import session_directory_name
-
-        from zettcode.app.ui import labels
+        from zettcode.engine.harness_paths import session_directory
 
         config = host.client.config
-        directory = config.harness_dir / session_directory_name(host.client.session.id)
+        directory = session_directory(config, host.client.session.id)
+        state = "on" if host.client.harness else "off"
+        repositories = self._repositories(directory)
+        page = HarnessPage(state=state, directory=directory, repositories=repositories, on_close=host.close_page)
+        return CommandResult(widget=_panel(page, rows=HARNESS_ROWS))
+
+    def _repositories(self, directory: Path) -> list[tuple[str, str]]:
+        """Return this session's repositories as ``(name, detail)``: what the files declare, or why they cannot load."""
+        from zett_agent.jit_harness import inspect_repository
+
         try:
             found = (
                 sorted(path for path in directory.iterdir() if (path / "__init__.py").is_file())
@@ -422,19 +389,12 @@ class ModelCommands(TuiPlugin):
                 else []
             )
         except OSError as error:
-            return [f"`{labels.compact_path(directory, limit=None)}` could not be read: {error}"]
-        if not found:
-            hint = (
-                "the model makes one with `repo_create`"
-                if on
-                else "turn the harness on and the model can make one with `repo_create`"
-            )
-            return [f"None yet in `{labels.compact_path(directory, limit=None)}`; {hint}."]
-        lines: list[str] = []
+            return [("Could not be read", str(error))]
+        rows: list[tuple[str, str]] = []
         for path in found:
             policy = inspect_repository(path)
             if not policy.ok or policy.manifest is None:
-                lines.append(f"- `{path.name}` cannot load: {'; '.join(policy.problems)}")
+                rows.append((path.name, f"cannot load: {'; '.join(policy.problems)}"))
                 continue
             manifest = policy.manifest
             declared = (
@@ -443,10 +403,10 @@ class ModelCommands(TuiPlugin):
                 else "declares no tools"
             )
             banned = f"; {len(policy.banned)} banned" if policy.banned else ""
-            lines.append(
-                f"- `{path.name}` {manifest.name} {manifest.version} — {manifest.description} ({declared}{banned})"
+            rows.append(
+                (path.name, f"{manifest.name} {manifest.version} — {manifest.description} ({declared}{banned})")
             )
-        return lines
+        return rows
 
 
 # -- asking, and leaving ----------------------------------------------------------------------------
@@ -761,6 +721,11 @@ class PluginCommand(TuiPlugin):
             return {}, [str(error)]
         for setting, enabled in keys:
             runtime.config = applied(runtime.config, setting, enabled)
+        from zettcode.engine.plugins.switches import applied_installed
+
+        installed = {name: enabled for name, enabled in written.items() if name not in runtime.plugins.builtins}
+        if installed:
+            runtime.config = applied_installed(runtime.config, installed)
         return written, problems
 
 

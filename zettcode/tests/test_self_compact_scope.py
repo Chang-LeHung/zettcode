@@ -270,14 +270,16 @@ async def test_the_one_line_summary_says_where_the_value_comes_from(tmp_path: Pa
         await agent.runtime.aclose()
 
 
-async def test_the_panel_is_the_choice_so_the_command_offers_no_word_menu():
-    """Typing the command and a space must not open a list of words: Enter has to reach the panel."""
+async def test_self_compaction_is_a_plugin_switch_not_a_command():
+    from zettcode.engine.plugins.builtin_agent import AGENT_PLUGINS
+
     app = build_app()
 
-    command = next(c for c in app.commands if c.name == "/self-compact")
-
-    assert command.options() == (), "no subcommands, as /effort has none: the panel is the choice"
-    assert next(c for c in app.commands if c.name == "/effort").options() == ()
+    assert all(command.name != "/self-compact" for command in app.commands)
+    assert any(
+        plugin.name == "self-compaction" and plugin.setting is not None and plugin.setting.path == "compaction.self"
+        for plugin in AGENT_PLUGINS
+    )
 
 
 async def test_the_tool_says_what_self_compaction_is():

@@ -67,7 +67,7 @@ async with zc.Client(".") as client:
 ## What the model may compact itself
 
 Self-compaction is the model deciding when to compact its own context. It has a configuration default and a
-per-session choice, which the terminal's `/self-compact` panel edits:
+per-session choice; the terminal's `/plugins` switch edits the default, and code edits the session's own choice:
 
 ```python
 async with zc.Client(".") as client:

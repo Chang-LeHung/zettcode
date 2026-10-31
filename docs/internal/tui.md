@@ -535,8 +535,9 @@ uses: `state.py` (`AgentBuild`, `Contribution`), `mixins.py` (the hook groups), 
 receives and registers extensions, services, `@` providers and model providers through), `plugin.py` (`Plugin`,
 `PluginSetting` and the loaded `Plugins` bundle), `loader.py` (entry-point discovery and the `Loader` that merges
 the builtins in first), `switches.py` (which plugins a reader can turn off: `catalog()` lists what a panel shows,
-and `set_enabled()` writes the switch where that plugin's belongs — the plugin switch file for an installed one, the
-configuration key a compiled-in one declares as its `setting`), `extension.py` (the host `AgentExtension` that fans
+and `set_enabled()` writes the switch where that plugin's belongs — `[plugins] disable` in the configuration file for
+an installed one, the configuration key a compiled-in one declares as its `setting`; the older switch file is read and
+merged, and a name written here is removed from it), `extension.py` (the host `AgentExtension` that fans
 every hook out in plugin-priority
 order) and `builtin_agent.py` (the program's own, including the `@` providers for skills and files).
 `app/plugins/` adds what only a terminal has: `state.py` (the `ShellContext` snapshot, `UiRow`, and the segment

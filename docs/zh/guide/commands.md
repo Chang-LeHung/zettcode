@@ -23,7 +23,7 @@
 | `/config` | 不用改文件就能添加、修改、删除模型，并设置它是否接受图片、上下文窗口多大、什么时候压缩：`/config`、`/config add <provider> …`、`/config remove <序号>`。见[用 /config 添加模型](/zh/guide/config#adding-models-with-config)。 |
 | `/effort` | 用轨道上的小圆点选择模型的推理强度：`/effort` 打开，← → 滑动，`Enter` 应用；`/effort high` 直接设置。当前模型不支持的档位（见 [`reasoning_efforts`](/zh/guide/config#reasoning-levels-a-model-takes)）会被拒绝，并列出它支持的档位。 |
 | `/permission` | 选择 shell 命令在多大范围内不用问：`/permission` 在菜单里列出各档，`/permission safe` 直接设置。`safe` 把每条命令放进只能写工作区和 `/tmp` 的沙箱里跑，`full` 用你自己的权限跑。档位属于这个会话：下次打开它就从这一档开始，新会话则从本次运行开始时的档位开始。 |
-| `/harness` | 让模型自己写小的 Python 工具并运行：`/harness on` 或 `/harness off`，单独输入 `/harness` 会告诉你当前状态，并列出本会话的仓库和它们 `MANIFEST`、`BAN_TOOLS` 里写的东西——没有 `MANIFEST` 的仓库加载不了。默认关闭，请求进行中不接受。见[可选参数参考](/zh/guide/config#可选参数参考)。 |
+| `/harness` | 打开一个只读面板：harness 是否开启、本会话的目录，以及仓库和它们 `MANIFEST`、`BAN_TOOLS` 里写的内容——没有 `MANIFEST` 的仓库加载不了。用 `/plugins` 在下次启动时开关 harness。请求进行中不接受。见[可选参数参考](/zh/guide/config#可选参数参考)。 |
 | `/btw` | 问一件只在当场回答、不进入对话的事：`/btw <问题>`。 |
 | `/code-review` | 请人评审尚未提交的改动：`/code-review` 评审现有的改动，`/code-review <文本>` 说明重点看什么。它写一段提示 —— 改了什么、怎么收集、评审要说出什么 —— 当成一轮对话交给模型，等同于你亲手打了一遍；会建议另一个 reviewer，起不来时模型自己评审。见[从一次评审开始](/zh/guide/daemons#从一次评审开始)。 |
 | `/bash` | 在工作区里打开一个全屏命令行：`/bash` 打开空面板，`/bash git status` 打开后立即运行这条命令。有历史、Tab 补全和彩色输出；因为是你自己在敲，所以不需要任何权限确认。见[Shell 面板](#bash)。 |
@@ -32,7 +32,6 @@
 | `/context` | 查看上下文窗口有多满、离自动压缩还有多远、被什么占着——用条形图表示，并列出这个会话存在哪里。见[上下文窗口](/zh/guide/context)。 |
 | `/usage` | 打开一个页面，看这个项目的会话花了多少：按模型、按会话统计 token，以及一张按天的日历图。见[Token 用量](/zh/guide/usage)。 |
 | `/compact` | 立即总结对话，而不用等到窗口快满。 |
-| `/self-compact` | 自我压缩：让模型在判断旧内容的细节已不再需要时，自己压缩自己的上下文。`/self-compact` 会打开一个面板：一条轨道管本会话，一条管所有会话的默认值；`on` / `off` / `default` 只设置当前会话，`global on` / `global off` 把默认值写进 `config.toml`。见[自我压缩](#self-compaction)。 |
 | `/statusline` | 选择头部和状态行里哪些有名字的部分要显示——`ctx`、`cache`、`workspace` 等等。`/statusline` 打开面板（↑ ↓ 选部分，← → 隐藏或显示，`Enter` 应用）；`/statusline hide ctx speed`、`/statusline show all` 在键盘上做同样的事。保存在 `config.toml` 的 `[statusline]`。见[选择显示哪些部分](/zh/guide/interface#choosing-what-is-shown)。 |
 | `/title` | 给会话命名：`/title users endpoint`；不带参数时报告当前名字。 |
 | `/export` | 把这个会话导出成一个独立的 HTML 文件：`/export [path]`。 |
@@ -60,43 +59,9 @@
 
 ## 自我压缩 {#self-compaction}
 
-平时上下文是替你压缩的：达到模型的 `compact_percent` 时自动压缩，或者你输入 `/compact`。**自我压缩**增加了第三种方式：
-模型会多得到一个 `compact_context` 工具，可以在判断某段已完成的工作不必再留在上下文里时（比如一个子任务做完之后），
-自己把更早的对话总结掉。它不会压缩当前这一轮：本次请求连同其中的工具调用和结果原样保留；如果没有更早的轮次，
-或总结并不比原文小，什么也不会发生。无论开不开，`/compact` 和自动阈值都照常工作。
-
-默认关闭。有两处可以决定，更具体的一处优先：
-
-| 是什么 | 怎么设置 | 作用范围 |
-| --- | --- | --- |
-| 默认值 | `config.toml` 里的 `[compaction] self = true`，或面板的第二条轨道，或 `/self-compact global on` / `off`（都会替你改这一行） | 所有没有自己选择过的会话 |
-| 会话自己的选择 | 面板的第一条轨道，或 `/self-compact on` / `off` | 仅该会话；随会话保存，恢复或 fork 时延续 |
-| 把选择还回去 | 面板里的 `default` 一档，或 `/self-compact default` | 该会话重新跟随默认值 |
-
-所以把默认值打开，不会改变你已经选了 `off` 的会话；把它关掉，也不会改变选了 `on` 的会话。
-
-### 面板
-
-单独输入 `/self-compact` 会打开一个和 `/effort` 同风格的面板，有两条轨道：
-
-```text
-Self-compaction                                     in effect here: on (not applied)
-
-▸ This session   ●━━━━━━━━━━━━━━━━━━━━━━━◉      default (off)    off     on
-  Every session  ◉──────────────────────○      off              on
-```
-
-- **This session（本会话）：** `default`（没有自己的选择）、`off` 或 `on`。`default` 一档会说明它此刻等于什么，
-  比如 `default (off)`，并随下面一条轨道的移动而变化。
-- **Every session（全部会话）：** `off` 或 `on`，即配置里的默认值。
-- ↑ ↓ 选择哪一行，← → 滑动旋钮，点击某一档会把旋钮送过去。按 `Enter` 之前什么都不会改变，`Enter` 会同时应用两条轨道；
-  `Esc` 什么都不应用。旋钮离开起点时，标题右侧会显示将要生效的状态，并标注 `(not applied)`。
-- 如果默认值写不进去（没有 `config.toml`），会告诉你，会话自己的选择仍然会应用。被别的进程占用的会话保持原样，
-  只有下面那条轨道可以动。
-
-开启时，状态行末尾会显示 `self-compact`。输入形式仍然可用：`/self-compact on|off|default` 和
-`/self-compact global on|off`，带参数时会报告现在生效的是什么、依据是什么。`global` 需要已有的
-`config.toml`：它不会替你创建文件，遇到无法安全编辑的文件会报告原因，而不是猜着改。
+自我压缩是模型在判断旧内容的细节已不再需要时，自己压缩自己的上下文。默认值是 `config.toml` 里的
+`[compaction] self`，`/plugins` 里有一个 `self-compaction` 开关来控制它。会话自己的选择仍然可以从代码和 HTTP 设置；
+终端现在没有单独的命令了。开启时状态行末尾会显示 `self-compact`。
 
 ## 请求运行期间
 
@@ -110,7 +75,6 @@ Self-compaction                                     in effect here: on (not appl
 | `/title` | 给会话命名，运行中的请求不读它。 |
 | `/permission` | 下一条 shell 命令会重新读取这个级别，所以修改会落在正在运行的请求里 —— 长任务进行到一半时 `/permission full` 正是为此。 |
 | `/effort` | 请求以它开始时的 effort 运行，所以修改从下一个请求开始生效，正在运行的请求不受影响。 |
-| `/self-compact` | 工具在请求开始时提供，所以修改从下一个请求开始生效；模型已经提出的申请，如果你随后关掉它就会被放弃。 |
 | `/quit`、`/exit` | 离开不用等回答。 |
 | `/btw` | 排队等轮到它再回答，和以前一样。 |
 | `/code-review` | 同样排队：评审本身就是一次请求，等手上这次结束再开始。 |

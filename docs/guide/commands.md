@@ -26,7 +26,7 @@ A command is drawn in a different colour as soon as it is one, so you can see wh
 | `/config` | Add, change or remove models, and set whether one takes images, its context window and when it is compressed, without editing the file: `/config`, `/config add <provider> …`, `/config remove <n>`. See [Adding models with /config](/guide/config#adding-models-with-config). |
 | `/effort` | Choose how much the model reasons with a knob on a rail: `/effort` opens it, ← → slide, `Enter` applies; `/effort high` sets one directly. |
 | `/permission` | Choose how much of the shell may run without asking: `/permission` lists the levels in the menu; `/permission safe` sets one. `safe` runs every command in a sandbox that writes only the workspace and `/tmp`; `full` runs them with your own access. The level belongs to the session: opening it again starts there, and a new session starts at the one a run begins with. |
-| `/harness` | Let the model write small Python tools of its own and run them: `/harness on` or `/harness off`; `/harness` alone says which, and lists this session's repositories with what their `MANIFEST` and `BAN_TOOLS` say — a repository without a `MANIFEST` cannot load. Off unless you turn it on, and not taken while a request runs. See [Optional settings](/guide/config#optional-settings-reference). |
+| `/harness` | Open a read-only panel on the just-in-time harness: whether it is on, this session's folder, and its repositories with what their `MANIFEST` and `BAN_TOOLS` say — a repository without a `MANIFEST` cannot load. `/plugins` turns the harness on or off for the next start. Not taken while a request runs. See [Optional settings](/guide/config#optional-settings-reference). |
 | `/btw` | Ask something that is answered here but never joins the conversation: `/btw <question>`. |
 | `/code-review` | Ask for a review of the uncommitted changes: `/code-review` reviews what is there, `/code-review <text>` says what to look for. It writes a brief — what changed, how to collect it, what a review should name — and hands it to the model as a turn of this conversation, exactly as if you had typed it; a reviewer of its own is suggested, and the model does the review itself when one cannot be started. See [A review to start with](/guide/daemons#a-review-to-start-with). |
 | `/bash` | Open a full-screen command line over the workspace: `/bash` opens it empty, `/bash git status` opens it already running that command. It has history, Tab completion and coloured output, and it asks no permission because you are the one typing. See [The shell panel](#bash). |
@@ -35,7 +35,6 @@ A command is drawn in a different colour as soon as it is one, so you can see wh
 | `/context` | Show how full the context window is, how close it is to being compacted, and what is filling it — as bars, with the file this session is stored in. See [The context window](/guide/context). |
 | `/usage` | Open a page of what this project's sessions have spent: tokens by model, by session, and a calendar of the days. See [Token usage](/guide/usage). |
 | `/compact` | Summarize the conversation now, instead of waiting for the window to fill. |
-| `/self-compact` | Self-compaction: let the model compact its own context when it decides the detail is no longer needed. `/self-compact` opens a panel with a rail for this session and one for the default of every session; `on` / `off` / `default` set this session, `global on` / `global off` write the default into `config.toml`. See [Self-compaction](#self-compaction). |
 | `/statusline` | Choose which named parts of the header and the status line are shown — `ctx`, `cache`, `workspace`, and so on. `/statusline` opens a panel (↑ ↓ pick a part, ← → hide or show it, `Enter` applies); `/statusline hide ctx speed` and `/statusline show all` do the same from the keyboard. Saved to `[statusline]` in `config.toml`. See [Choosing what is shown](/guide/interface#choosing-what-is-shown). |
 | `/title` | Name this session: `/title users endpoint`. On its own, it reports the current name. |
 | `/export` | Write this session to a standalone HTML file: `/export [path]`. |
@@ -64,48 +63,10 @@ It uses the model and effort the next message would, and shows what it is about 
 
 ## Self-compaction {#self-compaction}
 
-Normally the context is summarized for you: automatically when it reaches the model's `compact_percent`, or
-when you type `/compact`. **Self-compaction** adds a third way. The model is given a `compact_context` tool and
-can summarize its own earlier conversation when it judges that finished work no longer needs to stay in view,
-for example after a completed subtask. It never compacts the turn it is in: the current request, with its
-tool calls and results, is kept exactly as it is, and nothing happens when there are no older turns or the
-summary would not be smaller. `/compact` and the automatic threshold keep working either way.
-
-It is off by default. Two places decide it, and the more specific one wins:
-
-| What | How | Applies to |
-| --- | --- | --- |
-| The default | `[compaction] self = true` in `config.toml`, or the second rail of the panel, or `/self-compact global on` / `off`, which edit that line for you | Every session that has not chosen for itself |
-| A session's own choice | The first rail of the panel, or `/self-compact on` / `off` | That session only; saved with it and restored when you resume or fork it |
-| Give the choice back | The panel's `default` stop, or `/self-compact default` | That session follows the default again |
-
-So turning the default on does not change a session where you chose `off`, and turning it off does not change
-one where you chose `on`.
-
-### The panel
-
-`/self-compact` on its own opens a panel in the style of `/effort`, with two rails:
-
-```text
-Self-compaction                                     in effect here: on (not applied)
-
-▸ This session   ●━━━━━━━━━━━━━━━━━━━━━━━━◉      default (off)    off     on
-  Every session  ◉────────────────────────○      off              on
-```
-
-- **This session:** `default` (no choice of its own), `off`, or `on`. The `default` stop says what it would
-  be right now, `default (off)`, and changes as you move the lower rail.
-- **Every session:** `off` or `on`, the config default.
-- ↑ ↓ pick the row, ← → slide the knob, a click on a stop sends it there. Nothing changes until `Enter`,
-  which applies both rails; `Esc` applies nothing. The title shows what would be in force and says
-  `(not applied)` while the knobs are away from where they started.
-- If the default cannot be written (there is no `config.toml`) you are told, and the session's choice is still
-  applied. A session another process has open keeps what it has, and only the lower rail moves.
-
-While it is on, the status line ends with `self-compact`. The typed forms still work for scripts and habit:
-`/self-compact on|off|default`, and `/self-compact global on|off`. With a word, the command reports what now
-applies and why. `global` needs an existing `config.toml`; it does not create one, and it reports a file it
-cannot safely edit instead of guessing.
+Self-compaction is the model compacting its own context when it judges the detail is no longer needed. The default is
+`[compaction] self` in `config.toml`, and `/plugins` shows `self-compaction` as a switch for it. A session's own choice
+is still available from code and over HTTP; the terminal has no separate command for it now. While it is on, the status
+line ends with `self-compact`.
 
 ## While a request is running
 
@@ -120,7 +81,6 @@ at once, beside the request.
 | `/title` | Names the session; nothing running reads it. |
 | `/permission` | The next shell command asks the level again, so a change lands in the request that is already running — `/permission full` in the middle of a long task is the point. |
 | `/effort` | A request starts with the effort it had, so the change applies from the next request; the running one is not touched. A level the active model does not take (see [`reasoning_efforts`](/guide/config#reasoning-levels-a-model-takes)) is refused with the ones it does. |
-| `/self-compact` | The tool is offered when a request starts, so a change applies from the next request; one the model has already asked for is dropped if you switch it off. |
 | `/quit`, `/exit` | Leaving does not wait for the answer. |
 | `/btw` | Waits its turn and then answers, as before. |
 | `/code-review` | Waits its turn too: a review is a request of its own, so it starts when the one in flight has ended. |

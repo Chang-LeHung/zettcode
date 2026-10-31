@@ -304,7 +304,7 @@ levels, which `/permission` changes at any time between requests:
 
 | Level | What happens to a shell command |
 | --- | --- |
-| `deny` | None runs. The model is told the commands are off, and carries on with the file tools. `/harness on` still runs the Python the model writes there — in the sandbox, since it is not a shell command. |
+| `deny` | None runs. The model is told the commands are off, and carries on with the file tools. The harness, when `/plugins` has it on, still runs the Python the model writes there — in the sandbox, since it is not a shell command. |
 | `ask` | Each one waits for your answer. This is where every run starts. |
 | `safe` | Every command runs without asking, inside an operating-system sandbox: it can write the workspace and `/tmp` and nothing else, and it has no network. |
 | `full` | Every command runs with your own access, without asking and without a sandbox. (Called `auto` before; `auto` still works.) |

@@ -118,7 +118,7 @@ async def test_with_the_switch_on_a_request_has_the_four_tools_and_their_guidanc
 
 
 async def test_the_switch_applies_to_the_next_request_of_a_client_that_was_already_built(tmp_path: Path):
-    """`/harness on` does not rebuild anything: the same agent offers the tools from its next request."""
+    """The harness switch does not rebuild anything: the same agent offers the tools from its next request."""
     model, probe, switch = _Model(), _Probe(), HarnessSwitch()
     agent = await _agent(tmp_path, switch, model, probe)
 
@@ -174,10 +174,33 @@ def test_each_session_keeps_its_tools_in_its_own_folder_beside_the_sessions_not_
         harness_dir=tmp_path / "harness",
         mcp_enabled=False,
     )
+    from zettcode.engine.harness_paths import harness_root
+
     (harness,) = [e for e in agent_extensions(config) if isinstance(e, SwitchedHarness)]
 
-    assert harness.session_directory("abc").parent == (tmp_path / "harness").absolute()
+    assert harness.session_directory("abc").parent == harness_root(config)
     assert not harness.session_directory("abc").is_relative_to(tmp_path / "sessions")
+
+
+def test_a_session_directory_from_before_the_workspace_level_is_moved_under_it(tmp_path: Path):
+    from zett_agent.jit_harness.repo import session_directory_name
+
+    from zettcode.engine.harness_paths import harness_root, session_directory
+
+    config = ZettCodeConfig(
+        workspace=tmp_path,
+        models=(ModelConfig(model="m", token="t"),),
+        store=tmp_path / "sessions",
+        harness_dir=tmp_path / "harness",
+        mcp_enabled=False,
+    )
+    legacy = config.harness_dir / session_directory_name("abc")
+    (legacy / "kit").mkdir(parents=True)
+
+    moved = session_directory(config, "abc")
+
+    assert moved.parent == harness_root(config) and (moved / "kit").is_dir()
+    assert not legacy.exists()
 
 
 def test_the_harness_runs_model_code_in_a_child_and_only_sandboxes_it_below_full(tmp_path):
@@ -298,7 +321,7 @@ def test_a_machine_without_a_sandbox_says_so_once_per_session(tmp_path, monkeypa
     event = emitted[0]
     assert event.type is AgentEventType.CUSTOM and event.name == HARNESS_NOTICE_EVENT_NAME
     assert notice_level_from(event) == "warn"
-    assert "/harness off" in notice_from(event)
+    assert "/plugins" in notice_from(event)
 
 
 def _harness_host(tmp_path, policy):

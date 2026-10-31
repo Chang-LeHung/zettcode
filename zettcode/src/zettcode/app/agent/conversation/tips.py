@@ -44,7 +44,7 @@ TIPS: tuple[str, ...] = (
     "/usage shows tokens, cache and cost by day, model and session; /resume lists them per session.",
     "/statusline chooses what the header and the status line show, and turns the pet on.",
     "/pet picks a companion that sleeps while idle and works while a request runs; drag it anywhere.",
-    "/self-compact lets the model decide for itself when to compact this session.",
+    "/plugins can turn self-compaction on or off: the model decides when to compact its own context.",
     "zettcode resume <id> opens a stored session; zettcode update installs the newest release.",
     "zettcode doctor checks every configured model from a shell, with no session started.",
     "zettcode --full skips every shell question and the sandbox for that run; /permission can change it later.",
