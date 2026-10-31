@@ -372,8 +372,10 @@ def cut_short(config, task: str = "a task that gets interrupted") -> str:
 
     async def go() -> str:
         async with zc.Client(config=config) as client:
+            # Generous: a slow interpreter can still be setting up the store when
+            # a tighter timeout fires, and then there is no session to resume.
             with pytest.raises(RunTimeoutError):
-                await client.prompt(task, timeout=0.2)
+                await client.prompt(task, timeout=5.0)
             return client.session.id
 
     return asyncio.run(go())

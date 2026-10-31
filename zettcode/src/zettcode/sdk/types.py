@@ -75,7 +75,7 @@ class Usage:
         cache_read_tokens: Input the provider served from its cache.
         cache_write_tokens: Input written into the provider's cache.
         reasoning_tokens: The reasoning part of ``output_tokens``.
-        seconds: Wall time spent inside model calls.
+        seconds: Time from the first streamed data to the terminal response, the rate denominator.
         requests: How many model calls were made.
         context_tokens: How full the context was on the newest call; for a delta, the value after the run.
     """
@@ -101,7 +101,7 @@ class Usage:
 
     @property
     def output_rate(self) -> float | None:
-        """Return generated tokens per second of model time, or ``None`` when no time was measured."""
+        """Return generated tokens per second of generation time, or ``None`` when it was not measured."""
         return self.output_tokens / self.seconds if self.seconds > 0 else None
 
     def since(self, earlier: Usage) -> Usage:
