@@ -62,7 +62,7 @@ from .extensions.usage import UsageExtension
 from .permission import Permission, ShellPolicy, parse_permission
 from .permission.sandbox import ShellSandbox
 from .pipeline import ImportPipeline
-from .storage import NoLocks, SessionGuard, SessionLocks, SessionStore
+from .storage import NoLocks, SessionGuard, SessionLocked, SessionLocks, SessionStore
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only; the imports are the cost
     from zett_agent.providers.anthropic import AnthropicProvider
@@ -564,11 +564,16 @@ class ZettCodeEngine:
 
         Raises:
             ValueError: The name is not one of the four levels.
+            SessionLocked: Another process has the session open, and the level is part of the session.
             OSError: The level could not be written to the session; nothing changed, so a caller that reported
                 success would be reporting a setting that is not on disk.
         """
         selected = name if isinstance(name, Permission) else parse_permission(name)
         if remember:
+            # The level is stored in the session, so it is a write, and only the process holding the session may
+            # write to it. The other settings that are the session's own ask the same question first.
+            if self.session_locked:
+                raise SessionLocked()
             self.persistence.set_permission(self.session_id, selected.value, default=self.default_permission.value)
             self._permissions[self.session_id] = selected.value
             # The level belongs to the session again, so opening another one puts that one's level back.

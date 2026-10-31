@@ -200,6 +200,16 @@ async def test_naming_the_session_by_hand_is_refused_and_writes_no_title(locked_
 
 
 @pytest.mark.asyncio
+async def test_a_permission_chosen_for_the_session_is_refused_and_writes_nothing(locked_agent):
+    locked, owner = locked_agent
+
+    with pytest.raises(SessionLocked):
+        locked.use_permission("safe")
+
+    assert owner.runtime.permission_choice(owner.session_id) is None
+
+
+@pytest.mark.asyncio
 async def test_compacting_is_refused(locked_agent):
     locked, _ = locked_agent
 
