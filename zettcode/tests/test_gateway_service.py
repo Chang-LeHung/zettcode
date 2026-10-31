@@ -680,6 +680,23 @@ async def test_a_session_with_a_person_at_it_shows_its_last_words_and_unread_wit
     assert view["preview"] == "a new thing it said" and view["unread"] == 1
 
 
+async def test_a_daemon_that_is_working_is_read_when_it_goes_quiet_too(tmp_path):
+    """A running daemon is a peer; only a daemon nobody is running has a record and no roster entry to follow."""
+    gateway, backend = await make(tmp_path)
+    backend.add_daemon(DAEMON, "/w", name="d")
+    backend.add_peer(DAEMON, "review-d", workspace="/w")
+    await gateway.refresh()
+    backend.set_status(DAEMON, "working")
+    backend.say(DAEMON, Message("assistant", "partway"))
+    await gateway.refresh()
+    assert [item["preview"] for item in gateway.threads() if item["id"] == DAEMON] == [""]
+
+    backend.set_status(DAEMON, "idle")
+    await gateway.refresh()
+
+    assert [item["preview"] for item in gateway.threads() if item["id"] == DAEMON] == ["partway"]
+
+
 async def test_a_session_that_is_working_is_read_when_it_goes_quiet_and_not_at_every_look(tmp_path):
     gateway, backend = await make(tmp_path)
     backend.add_peer(PEER, "fix-parser", workspace="/w/p")
