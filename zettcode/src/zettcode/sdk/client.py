@@ -899,10 +899,27 @@ class Client:
 
     @property
     def model(self) -> ModelInfo:
-        """Return the model the next run uses."""
+        """Return the model the next run uses.
+
+        Raises:
+            ConfigurationError: No model is configured yet. A front end that paints before there is one asks
+                :attr:`active_model`, which answers ``None`` instead.
+        """
+        from ..config import NO_MODEL_REFUSAL
         from .models import model_info
 
-        return model_info(self._agent.active_model, active=True)
+        entry = self._agent.active_model
+        if entry is None:
+            raise ConfigurationError(NO_MODEL_REFUSAL)
+        return model_info(entry, active=True)
+
+    @property
+    def active_model(self) -> ModelInfo | None:
+        """Return the model the next run uses, or ``None`` on a machine that has none configured yet."""
+        from .models import model_info
+
+        entry = self._agent.active_model
+        return None if entry is None else model_info(entry, active=True)
 
     def use_model(self, name: str | ModelInfo) -> ModelInfo:
         """Choose the model for later runs, by the name :attr:`models` lists.
@@ -947,6 +964,8 @@ class Client:
         def is_active(model: Any) -> bool:
             # The file's model and the one in use are read separately, so they are the same entry by what names it
             # (the token may differ, e.g. when it comes from the environment), not by being the same object.
+            if active is None:
+                return False
             return (model.shown_name, model.model, model.base_url) == (active.shown_name, active.model, active.base_url)
 
         return tuple((model_info(model, active=is_active(model)), entry) for model, entry in found)

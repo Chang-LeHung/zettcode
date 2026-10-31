@@ -96,10 +96,12 @@ transcript, and the run asks.
 
 The views now read the session (id, title, lock, path, workspace), name, fork, retake and load it (`sessions.read_blocking`
 then `sessions.install`), read and set effort, permission, harness and self-compaction, list, pick and edit the models
-(`client.models`, `use_model`, `model_entries`, `add_model`, `update_model`, `remove_model`; the pickers and forms hold
-the SDK's `ModelInfo`), read the plan, and steer with pictures and `@` references (`Session.steer` returns the text the
-run reports the message by), all through the SDK's client. `test_the_shell_does_not_reach_round_the_sdk_for_what_the_sdk_offers`
-keeps each of those names off the terminal's agent.
+(`client.models`, `active_model`, `use_model`, `model_entries`, `add_model`, `update_model`, `remove_model`; the pickers and
+forms hold the SDK's `ModelInfo`), read the plan, and steer with pictures and `@` references (`Session.steer` returns the
+text the run reports the message by), all through the SDK's client.
+`test_the_shell_does_not_reach_round_the_sdk_for_what_the_sdk_offers` keeps each of those names off the terminal's
+agent. `active_model` is the reader a shell that paints uses: it answers `None` on a machine with no model, where
+`model` refuses (invariant S23).
 
 What the views still take from `TerminalAgent`:
 

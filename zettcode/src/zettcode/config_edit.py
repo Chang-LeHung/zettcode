@@ -173,9 +173,17 @@ def _parse(text: str, where: Path) -> dict[str, Any]:
 
 
 def _guarded(text: str, where: Path) -> tuple[list[str], list[tuple[int, int]], dict[str, Any]]:
-    """Return the file's lines, its model blocks and its data, or refuse a layout this cannot edit."""
+    """Return the file's lines, its model blocks and its data, or refuse a layout this cannot edit.
+
+    A file with no ``[[models]]`` table at all is an empty list of models rather than a layout to refuse: that is
+    what a fresh machine has, and ``/config`` is how the first entry is written into it.
+    """
     data = _parse(text, where)
+    declared = data.get("models") is not None
     models = data.get("models")
+    if models is None:
+        models = []
+        data = {**data, "models": models}
     if not isinstance(models, list) or not all(isinstance(entry, dict) for entry in models):
         raise ConfigEditError(f"{where} has no [[models]] entries to edit")
     lines = text.split("\n")
@@ -185,6 +193,10 @@ def _guarded(text: str, where: Path) -> tuple[list[str], list[tuple[int, int]], 
             f"{where} writes its models in a way /config cannot edit safely "
             f"({len(models)} models, {len(blocks)} [[models]] blocks); edit the file by hand"
         )
+    if declared and not blocks:
+        # `models = []`, or the key spelled some other way: this writes `[[models]]` blocks, and a second spelling
+        # of the same key cannot be added beside it — `models = []` plus one block is not TOML at all.
+        raise ConfigEditError(f"{where} writes 'models' as a value, which /config cannot edit; edit the file by hand")
     return lines, blocks, data
 
 
@@ -214,14 +226,17 @@ def add_model(text: str, entry: Mapping[str, object], *, where: Path) -> str:
     """
     lines, blocks, data = _guarded(text, where)
     block = render_entry(entry).rstrip("\n").split("\n")
-    at = blocks[-1][1] if blocks else len(lines)
+    expected = [*data["models"], dict(_parse(render_entry(entry), where)["models"][0])]
     if blocks:
-        insert = ["", *block]
-        new = [*lines[:at], *insert, *lines[at:]]
-    else:  # pragma: no cover - _guarded refuses a file with no models
-        new = [*lines, *block]
-    result = "\n".join(new)
-    _checked(result, data, [*data["models"], dict(_parse(render_entry(entry), where)["models"][0])], where)
+        at = blocks[-1][1]
+        result = "\n".join([*lines[:at], "", *block, *lines[at:]])
+    else:
+        # Nothing to insert after: the entry goes at the end, set apart from whatever the file holds by one blank
+        # line, and a file that holds nothing gets no leading blank line.
+        head = text.rstrip()
+        body = "\n".join(block)
+        result = f"{head}\n\n{body}\n" if head else f"{body}\n"
+    _checked(result, data, expected, where)
     return result
 
 
@@ -373,8 +388,8 @@ def set_statusline(text: str, shown: Mapping[str, bool], *, where: Path) -> str:
 
 
 def file_entries(text: str, *, where: Path) -> list[dict[str, Any]]:
-    """Return the models as the file writes them (a token left to the environment stays absent)."""
-    return list(_guarded(text, where)[2]["models"])
+    """Return the models as the file writes them (a token left to the environment stays absent); none is a list."""
+    return list(_guarded(text, where)[2].get("models") or [])
 
 
 def write_text_atomically(path: Path, text: str) -> None:

@@ -64,8 +64,10 @@ def boot_tree(
             only be taken away again a moment later.
         model: Name to show at the right of the header, read from the config by
             the caller — this frame draws before the settings are loaded. Without
-            one that side stays empty and the shell fills it in.
-        effort: Reasoning effort to show beside it.
+            one the corner says ``no model``, the same row a model-less machine
+            draws, rather than an empty segment the shell has to fill in.
+        effort: Reasoning effort to show beside it; dropped by
+            :func:`labels.header_right` when there is no model to reason with.
         hidden: Names of the header and status-line parts the config file switches off, so the frame is the
             rows the shell will draw and not a row with parts it is about to take away.
     """
@@ -80,7 +82,10 @@ def boot_tree(
             Slot(
                 StatusBar(
                     labels.header_left(workspace, UNTITLED).text(hidden),
-                    labels.header_right(model, effort).text(hidden) if model else "",
+                    # Drawn even with no model: the first frame says `no model` rather than leaving the segment
+                    # empty until the swap fills it in, and `header_right` drops the effort by itself when the
+                    # model is not there.
+                    labels.header_right(model or "", effort).text(hidden),
                 ),
                 size=1,
             ),

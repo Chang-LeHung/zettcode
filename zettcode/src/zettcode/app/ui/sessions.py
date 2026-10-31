@@ -284,7 +284,7 @@ class SessionMixin(ShellState):
 
     def _install_session(self, loaded: LoadedSession) -> None:
         """Make a loaded session the visible one. Assignment only; runs on the loop."""
-        previous = self.client.model
+        previous = self.model
         self.transcript.replace(loaded.replayed.transcript.entries)
         self.client.sessions.install(loaded.stored)
         if not self.transcript.entries:
@@ -301,15 +301,19 @@ class SessionMixin(ShellState):
         self._return_follow_ups_to_draft()
         self.app.request_layout()
 
-    def _announce_restored_model(self, previous: ModelInfo, stored: StoredSession) -> None:
+    def _announce_restored_model(self, previous: ModelInfo | None, stored: StoredSession) -> None:
         """Say so when resuming a session moved the model, or could not.
 
         The model is part of what the reader picks up when they come back to a session, and a
         header that quietly shows another name is not a thing to notice. Silence is for when
         nothing changed: the session never recorded a model, or it is the one already in use.
+        A machine with no model configured says nothing here at all: there is no model the session
+        could have moved to, and the line that explains the setup is the one the shell starts with.
         """
-        current = self.client.model
-        if current != previous:
+        current = self.model
+        if current is None:
+            return
+        if previous is None or current != previous:
             self.transcript.announce(f"Model set to {current.name}, the one this session last used.")
         elif stored.model and sum(stored.model in (m.name, m.model) for m in self.client.models) != 1:
             self.transcript.notice(

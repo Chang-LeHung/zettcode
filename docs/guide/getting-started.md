@@ -138,6 +138,12 @@ The [configuration reference](/guide/config) covers multiple models and all
 optional sections. Startup errors name a missing setting or invalid key; TOML
 syntax errors include the parser's location information.
 
+Haven't written any of this yet? Start anyway: the window opens, the header reads
+`no model`, and `/config` asks for the provider, the model id and the token and
+writes the entry into the same file — creating it if this machine has none. A
+request before then is refused with the same instruction, and the words you
+typed stay in the box, ready to send once the model is in.
+
 ## Send the first task
 
 Start it in the directory you want to work on:

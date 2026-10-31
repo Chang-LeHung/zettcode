@@ -28,7 +28,14 @@ from zett_agent.extensions.todo import TodoWriteExtension
 from zett_agent.ids import new_uuid7
 from zett_agent.model import ReasoningEffort
 
-from zettcode.config import DEFAULT_ANTHROPIC_BASE_URL, KEYLESS_TOKEN, ModelConfig, ZettCodeConfig, model_index
+from zettcode.config import (
+    DEFAULT_ANTHROPIC_BASE_URL,
+    KEYLESS_TOKEN,
+    NO_MODEL_REFUSAL,
+    ModelConfig,
+    ZettCodeConfig,
+    model_index,
+)
 from zettcode.engine.messenger import Messenger
 from zettcode.engine.plugins import AgentBuild, Plugins, load_plugins
 from zettcode.engine.plugins.services import (
@@ -209,7 +216,9 @@ class ZettCodeEngine:
     tokenizer: Tokenizer
     effort: ReasoningEffort
     session_id: str
-    active_model: ModelConfig
+    #: The model the next request goes to, or ``None`` on a machine with no model configured yet. The shell
+    #: paints and runs every command with ``None``; only a request insists on one, and says where to add it.
+    active_model: ModelConfig | None
     #: What the compaction counts the context with; loaded on a thread of its own so that the
     #: first turn does not load it on the event loop. See :class:`CompactionCounter`.
     compaction_counter: CompactionCounter
@@ -254,7 +263,10 @@ class ZettCodeEngine:
                 end that has plugins of its own passes its loader; the default loads the engine's.
         """
         os.chdir(config.workspace)
-        selected = config.models[0]
+        # A machine that has never been set up has no model to start on; the shell opens anyway and says so (see
+        # the invariant S23), and `use_model` sizes this runtime the moment `/config` writes the first entry.
+        selected = config.models[0] if config.models else None
+        effort = config.reasoning_effort if selected is None else selected.accepted_effort(config.reasoning_effort)
         # One policy, read by everything that decides whether a command is asked
         # about: the memory lets `safe` and `auto` through, the deny extension
         # refuses for `deny`, and the shell changes it from `/permission`.
@@ -274,8 +286,11 @@ class ZettCodeEngine:
             PERSISTENCE: persistence,
             MODELS: models,
             COMPACTION_COUNTER: counter,
-            SELECTED_MODEL: selected,
         }
+        if selected is not None:
+            # A plugin that sizes something for the model asks for this one; a machine with no model provides
+            # nothing under the name, so the same plugins build their defaults and are sized on the first switch.
+            shared[SELECTED_MODEL] = selected
         if messenger is not None:
             shared[MESSENGER] = messenger
         runtime = cls(
@@ -285,7 +300,7 @@ class ZettCodeEngine:
             policy=policy,
             default_permission=policy.level,
             tokenizer=Tokenizer(),
-            effort=selected.accepted_effort(config.reasoning_effort),
+            effort=effort,
             session_id=new_uuid7(),
             active_model=selected,
             compaction_counter=counter,
@@ -313,7 +328,14 @@ class ZettCodeEngine:
         `/context` instead of being fetched on that keystroke. Nothing waits for
         it here either: the load belongs to this runtime rather than to whoever
         needed it first, and :meth:`aclose` releases the wait.
+
+        Raises:
+            ValueError: No model is configured. Everything built here is built from one, and a build that failed
+                is never retried (the task is kept), so a machine that has not been set up is refused before a
+                task that could not finish is left behind. ``/config`` is what changes it.
         """
+        if self.active_model is None:
+            raise ValueError(NO_MODEL_REFUSAL)
         if self._starting is None:
             self._begin_imports()
             self.compaction_counter.start()
@@ -397,6 +419,10 @@ class ZettCodeEngine:
         from zett_agent.client import create_agent
 
         selected = self.active_model
+        if selected is None:
+            # Nothing to build a provider for. The shell refuses a request before it gets this far; anything
+            # else that asked anyway is told the one thing that changes it.
+            raise ValueError(NO_MODEL_REFUSAL)
         model = self._provider(selected)
         # Every extension the agent runs is a plugin's: the built-in ones (the coding tools, the session
         # store, the shell approval, the compaction ... see `zettcode.engine.plugins.builtin_agent`) in the order
@@ -444,6 +470,21 @@ class ZettCodeEngine:
         if self.model is None:
             raise RuntimeError("Runtime has not started; await start() first")
         return self.model
+
+    @property
+    def required_model(self) -> ModelConfig:
+        """Return the model the next request goes to, refusing on a machine that has none.
+
+        The readers that only make sense with a model — a turn, a title, an export's tag — say so here, in one
+        place, with the one instruction that changes it. A shell that paints instead asks
+        :attr:`active_model` and draws its own state for ``None``.
+
+        Raises:
+            ValueError: No model is configured.
+        """
+        if self.active_model is None:
+            raise ValueError(NO_MODEL_REFUSAL)
+        return self.active_model
 
     def set_event_dispatcher(self, dispatcher: AgentEventDispatcher | None) -> None:
         """Send streamed events to ``dispatcher``, now or as soon as there is a client."""
@@ -607,7 +648,7 @@ class ZettCodeEngine:
             The level now in force.
 
         Raises:
-            ValueError: The name is not a level, or the active model does not take it.
+            ValueError: The name is not a level, or the active model does not take it, or no model is configured.
         """
         if isinstance(name, ReasoningEffort):
             level = name
@@ -617,10 +658,13 @@ class ZettCodeEngine:
             except ValueError:
                 levels = ", ".join(known.value for known in ReasoningEffort)
                 raise ValueError(f"Unknown reasoning effort: {name}. Try one of: {levels}") from None
-        accepted = self.active_model.efforts
+        active = self.active_model
+        if active is None:
+            raise ValueError(NO_MODEL_REFUSAL)
+        accepted = active.efforts
         if level not in accepted:
             levels = ", ".join(known.value for known in accepted)
-            raise ValueError(f"{self.active_model.shown_name} does not take {level.value}. Try one of: {levels}")
+            raise ValueError(f"{active.shown_name} does not take {level.value}. Try one of: {levels}")
         self.effort = level
         return level
 
@@ -681,7 +725,9 @@ class ZettCodeEngine:
         use, and a removed one is replaced by its neighbour rather than by whichever came first.
 
         Args:
-            models: The configured models, in file order; must not be empty.
+            models: The configured models, in file order; must not be empty. Adding the first one to a
+                machine that had none is how ``/config`` sets this program up: that entry becomes the
+                model in use, because there is nothing it would otherwise be added beside.
 
         Returns:
             The model in use afterwards, which is the previous one unless it was removed.
@@ -690,7 +736,7 @@ class ZettCodeEngine:
             raise ValueError("At least one model must stay configured")
         previous = self.active_model
         old = self.config.models
-        place = old.index(previous) if previous in old else 0
+        place = old.index(previous) if previous is not None and previous in old else 0
         self.config = replace(self.config, models=models)
         # The adapters already built stay in the cache even for an entry that is gone: the cache is
         # what shutdown walks to close each client, so dropping one here would leak its connection.

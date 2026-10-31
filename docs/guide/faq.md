@@ -6,9 +6,12 @@
 message names the key that is wrong. Typos are rejected rather than ignored, so
 the fix is usually the spelling. [Configuration](/guide/config) has the full list.
 
-**`zettcode: No models configured`** — `~/.zettcode/config.toml` needs at least
-one `[[models]]` table. Start from the example in
-[Getting started](/guide/getting-started#name-a-model).
+**`zettcode: No models configured`** — this is what `zettcode ask` and `zettcode doctor` answer while
+`~/.zettcode/config.toml` has no `[[models]]` table. The terminal does not stop for it: it opens, the
+header reads `no model`, and `/config` walks you through the first entry — a provider, the model id and the
+token — and writes it into that file, which it creates if this machine has never had one. A prompt typed
+before then is refused with the same instruction, and the words stay in the box. The example in
+[Getting started](/guide/getting-started#name-a-model) is there for editing the file by hand instead.
 
 **`zettcode: no session <id> in <path>`** — `--resume` was given an id that this
 workspace's store does not hold. Ids are per workspace: check `-w` points at the

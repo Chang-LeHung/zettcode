@@ -45,6 +45,11 @@ class FakeRuntime:
         return self
 
     @property
+    def required_model(self) -> ModelConfig:
+        """Mirror the real runtime: the model the title's request runs on."""
+        return self.active_model
+
+    @property
     def provider(self) -> FakeModel:
         """Mirror the real runtime's provider accessor."""
         return self.model

@@ -386,6 +386,11 @@ class FakeRuntime:
         choice = self.self_compaction_choice(session_id)
         return self.config.self_compaction if choice is None else choice
 
+    @property
+    def required_model(self) -> ModelConfig:
+        """Mirror the real runtime: the model the next request goes to, which this fake always has."""
+        return self.active_model
+
     async def start(self) -> FakeRuntime:
         """A real runtime builds its provider and client here; this one is ready."""
         self.start_calls += 1

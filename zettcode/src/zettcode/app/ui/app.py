@@ -80,7 +80,15 @@ from .notices import NoticesMixin
 from .providers import ConfigMixin
 from .sessions import SessionMixin
 from .settings import SettingsMixin
-from .shell import EFFORT_TOKEN, EMPTY_REPLY, FLASH_SECONDS, PAGE_SCREEN
+from .shell import (
+    EFFORT_TOKEN,
+    EMPTY_REPLY,
+    FLASH_SECONDS,
+    NO_MODEL_ASKED,
+    NO_MODEL_QUESTION,
+    NO_MODEL_START,
+    PAGE_SCREEN,
+)
 from .turns import TurnTally, failure_line, plan_rows, prompt_pieces, turn_parts
 from .updating import UpdateMixin
 from .widgets import (
@@ -149,6 +157,10 @@ class ZettCodeApp(
         if agent.runtime.config.tips:
             self.transcript.tip_deck = TipDeck()
         self.transcript.welcome(WELCOME)
+        if agent.runtime.active_model is None:
+            # The first thing the conversation says on a machine that has never been set up, under the banner and
+            # above anything the reader does next: the shell runs, and this is the one command it is waiting for.
+            self.transcript.notice(NO_MODEL_START)
         for failure in agent.plugin_failures:
             self.transcript.error(f"plugin: {failure}")
         self.projector = TranscriptProjector(
@@ -243,6 +255,8 @@ class ZettCodeApp(
         self._previewing = None
         #: The runtime warm-up this shell started, released on the way out.
         self._warm: asyncio.Task[object] | None = None
+        #: Whether :meth:`start_background` ran: the warm-up belongs to a shell with a first frame to warm behind.
+        self._background_started = False
         self._busy = False
         #: When the garbage collector may run: while work is in flight, and not while the reader types.
         self.collector = CollectorPolicy()
@@ -401,11 +415,12 @@ class ZettCodeApp(
         the row is, so it is told where the gauge starts.
         """
         animation = self._effort_animation
-        if animation is None:
+        model = self.model
+        if animation is None or model is None:
             return None
         previous, current, started = animation
         if current in SHIMMER_LEVELS:
-            lead = display_width(self.client.model.name) + len(f" {SEPARATOR} ")
+            lead = display_width(model.name) + len(f" {SEPARATOR} ")
             reach = max(self.app.width, shimmer_width(lead, len(self.client.efforts), current))
             progress = (monotonic() - started) / shimmer_seconds(current, reach)
             return shimmer_frame(current, self.client.efforts, lead=lead, reach=reach, progress=progress)
@@ -490,15 +505,29 @@ class ZettCodeApp(
         existed.
         """
         self.collector.rest()
-        self._warm = asyncio.ensure_future(self.agent.runtime.start())
-        # Once the SDKs are loaded and the client is built, that heap is permanent: the collector has
-        # no reason to walk it again. A warm-up that failed freezes what it did load, which is as true.
-        self._warm.add_done_callback(lambda _: freeze_long_lived())
+        self._background_started = True
+        self._warm_runtime()
         self.start_update_check()
         self.offer_update()
         if self.client.session.locked:
             self._start_lock_watch()
         self._start_messaging()
+
+    def _warm_runtime(self) -> None:
+        """Start the runtime behind the first frame: its provider, its client, its token counter.
+
+        A machine with no model configured has nothing to build — ``start`` builds a provider from the model in
+        use — so the warm-up waits until ``/config`` adds the first one and calls this again. Starting it anyway
+        would leave a failed task that the first turn would find, and a build that failed does not build again.
+        A shell whose background work never began (a tree driven directly, in a test) has no first frame to warm
+        behind, so it waits for its first turn like any other caller.
+        """
+        if not self._background_started or self._warm is not None or self.model is None:
+            return
+        self._warm = asyncio.ensure_future(self.agent.runtime.start())
+        # Once the SDKs are loaded and the client is built, that heap is permanent: the collector has
+        # no reason to walk it again. A warm-up that failed freezes what it did load, which is as true.
+        self._warm.add_done_callback(lambda _: freeze_long_lived())
 
     async def stop_background(self) -> None:
         """Release what :meth:`start_background` began, and end a request still in flight."""
@@ -606,13 +635,16 @@ class ZettCodeApp(
             width: Columns to lay the discarded frame out at.
             height: Rows to lay the discarded frame out at.
         """
-        warm = self.agent.runtime.start()
+        # A machine with no model has nothing to warm, and `start` refuses without one: the dry run is about the
+        # startup — the tree, the keymap, one paint — so it paints that and leaves the provider alone.
+        warm = self.agent.runtime.start() if self.model is not None else None
         self.app.resize(width, height)
         self.app.mount()
         self.app.render()
         # A warm-up that failed is the first turn's to report, exactly as it is
         # when the shell really runs.
-        await asyncio.gather(warm, return_exceptions=True)
+        if warm is not None:
+            await asyncio.gather(warm, return_exceptions=True)
 
     # -- commands -----------------------------------------------------------
     async def run_side_question(self, question: str) -> None:
@@ -632,6 +664,13 @@ class ZettCodeApp(
         question = question.strip()
         if not question:
             self.transcript.notice("ask something: /btw <question>")
+            return
+        if self.model is None:
+            # Nothing to ask, and no turn is opened for it: one sentence, where /compact gives it, instead of a turn
+            # that the stream then fails and a "btw failed" line under it. Its own sentence, not the prompt's: a
+            # command clears the composer before its handler runs, so "your words are still in the box" would lie.
+            self.transcript.error(NO_MODEL_QUESTION)
+            self.app.invalidate()
             return
         self.projector.begin_turn(question, side=True)
         started = monotonic()
@@ -886,14 +925,21 @@ class ZettCodeApp(
         if command:
             self._task = asyncio.create_task(self._run_command(value))
         else:
+            # A machine with no model runs nothing that is asked of it, and says what to set up instead of taking
+            # the draft away: the words stay in the box, so setting the model up is all that is left to do. This is
+            # checked before the parts are taken, because nothing downstream of here has a model to ask about.
+            if self.model is None:
+                self.transcript.error(NO_MODEL_ASKED)
+                self.app.invalidate()
+                return False
             # The parts are taken before the composer is cleared, and keep the
             # order the chips sit in, so text and pictures stay interleaved.
             parts = mention_parts(self.composer.parts(), self.mentions)
-            if carries_image(parts) and not self.client.model.multimodal:
+            if carries_image(parts) and not self.model.multimodal:
                 # A pasted base64 image reaches the composer without the shell
                 # having seen the clipboard, so the model's own limits are
                 # checked again here rather than only when Ctrl-V runs.
-                self.transcript.error(f"{self.client.model.name} does not take images")
+                self.transcript.error(f"{self.model.name} does not take images")
                 self.app.invalidate()
                 return False
             self._task = asyncio.create_task(self._run_prompt(value, parts, instructions=None))

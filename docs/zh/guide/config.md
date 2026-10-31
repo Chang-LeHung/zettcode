@@ -702,7 +702,7 @@ Invoke-RestMethod -Uri "https://api.deepseek.com/chat/completions" `
 
 | 现象 | 检查什么 |
 | --- | --- |
-| `No models configured` | 创建实际选中的配置文件，并添加至少一项 `[[models]]`。 |
+| `No models configured` | 添加一项 `[[models]]`。终端没有模型也能启动，`/config` 会写下第一项；`zettcode ask` 与 `zettcode doctor` 在文件里还没有时会拒绝。 |
 | `Missing token for model ...` | 填写 `token`，或在启动终端中设置该 API 对应的变量：`OPENAI_API_KEY`，`anthropic` 项则是 `ANTHROPIC_API_KEY`。占位符是非空字符串，通常要到 API 调用时才会报错。 |
 | `Unknown config keys ...` | 只使用本页列出的键，例如 `model_name` 应该改成 `model`。 |
 | `must be bool` / `must be int` | 用 `true` 而不是 `"true"`；用 `1000000` 而不是 `"1000000"`。 |

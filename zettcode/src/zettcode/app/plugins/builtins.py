@@ -60,12 +60,15 @@ class ShellRows(TuiPlugin):
         """Show the activity glyph, status word, mode, and token use; the session is in the header."""
         activity = context.activity
         counters = usage_parts(activity.usage)
+        model = context.model.config
         return labels.status_left(
             activity.label,
             icon=activity_glyph(activity.frame) if activity.busy else STATUS,
             permission=activity.permission,
             self_compact=activity.self_compact,
-            ctx=context_share(activity.usage, context.model.config.context_window),
+            # With no model configured there is no window to measure the context against, and the row leaves the
+            # share out rather than dividing by one it does not have.
+            ctx=context_share(activity.usage, model.context_window) if model is not None else "",
             **counters,
         )
 

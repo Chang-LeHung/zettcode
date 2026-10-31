@@ -53,6 +53,26 @@ CONFIG_WORDS = (
     Subcommand("providers", "show the providers and where to get a key"),
 )
 
+
+def _missing_file(error: BaseException) -> bool:
+    """Return whether a failed write failed because there is no file yet, however deeply the error was wrapped.
+
+    The file editor raises ``ConfigEditError("… does not exist") from`` the ``FileNotFoundError``, and the SDK
+    wraps that again in ``ConfigurationError``, so the cause is the only reliable part of the answer. Note what
+    this cannot tell apart: a *read* of a missing file inside a directory that cannot be written also raises
+    ``FileNotFoundError``, so the machine is promised a file that ``/config`` will then fail to write — with its
+    own error, which is the one place that knows why.
+    """
+    seen: set[int] = set()
+    current: BaseException | None = error
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, FileNotFoundError):
+            return True
+        current = current.__cause__ or current.__context__
+    return False
+
+
 if TYPE_CHECKING:  # pragma: no cover - only needed for the annotation
     from .app import ZettCodeApp
 
@@ -171,7 +191,7 @@ class ShellCommands(CommandProvider):
         try:
             self.shell.agent.remember_theme(name)
         except ConfigEditError as error:
-            context.ui.error(f"{name} is on for this run but will not be remembered: {error}")
+            self._unkept(f"theme {name}", error, applied=True)
             return CommandResult(relayout=True)
         return CommandResult(relayout=True, notification=f"theme {name} \u2014 remembered for next time")
 
@@ -192,11 +212,13 @@ class ShellCommands(CommandProvider):
                 try:
                     shell.apply_pet(name)
                     shell.agent.remember_pet(name)
+                except ConfigEditError as error:
+                    # Before ValueError: the file editor's refusal is a ValueError too, and it is the one a
+                    # machine with no file yet should hear about without the word "failure".
+                    self._unkept(f"pet {name}", error, applied=True)
+                    return
                 except ValueError as error:
                     shell.transcript.error(str(error))
-                    return
-                except ConfigEditError as error:
-                    shell.transcript.error(f"{name} is here for this run but will not be remembered: {error}")
                     return
                 shell.transcript.notice(self._pet_chosen(name))
 
@@ -212,7 +234,7 @@ class ShellCommands(CommandProvider):
         try:
             shell.agent.remember_pet(name)
         except ConfigEditError as error:
-            context.ui.error(f"{name} is here for this run but will not be remembered: {error}")
+            self._unkept(f"pet {name}", error, applied=True)
             return CommandResult(relayout=True)
         return CommandResult(relayout=True, notification=self._pet_chosen(name))
 
@@ -221,6 +243,51 @@ class ShellCommands(CommandProvider):
         if "pet" in self.shell.agent.statusline_hidden:
             return f"pet {name} \u2014 remembered, but the pet is hidden: /statusline show pet"
         return f"pet {name} \u2014 remembered for next time"
+
+    def _unwritten_config(self, what: str, error: Exception, *, applied: bool) -> str | None:
+        """Return the sentence for a setting the missing file could not keep, or ``None`` when it is another failure.
+
+        A machine that has never been set up has no config file at all, and none of the commands that write one
+        line creates it: a file holding a palette and no models is worse than none, and ``/config`` is what writes
+        it. So on that machine the line names what brings the file rather than reporting a missing file as a
+        failure, and the branch is chosen on *why* the write failed — a file that is not there, however deeply the
+        error was wrapped — rather than on what the path looks like now.
+
+        Args:
+            what: The setting, as a noun phrase the sentence can start with ("theme nord", "the status line").
+            error: What the write raised; anything not caused by a missing file is the caller's failure to report.
+            applied: Whether the change is in force for this run. ``/theme`` and ``/pet`` apply before they write,
+                so they are on now; the compaction default and the status line write first and are not, and their
+                sentence must not claim a change the run does not have. ``/config`` writes the models, not this
+                setting, so what it brings is the file the setting can be saved into.
+        """
+        if self.shell.model is not None or not _missing_file(error):
+            return None
+        path = self.shell.client.config_file
+        if applied:
+            return f"{what} is on for this run; it is kept for next time once `/config` writes {path}"
+        return f"{what} is not saved; `/config` writes {path}, and it can be set again then"
+
+    def _unkept(self, what: str, error: Exception, *, applied: bool) -> None:
+        """Say what became of a setting the file could not keep: a notice on a fresh machine, else the failure.
+
+        The failure follows ``applied`` for the same reason the fresh branch does: "will not be remembered" says
+        the change is in force and only its memory failed, which is untrue of the pair that writes first.
+        """
+        unwritten = self._unwritten_config(what, error, applied=applied)
+        if unwritten is not None:
+            self.shell.transcript.notice(unwritten)
+        elif applied:
+            self.shell.transcript.error(f"{what} will not be remembered: {error}")
+        else:
+            self.shell.transcript.error(f"{what} is not saved: {error}")
+
+    def _or_reason(self, what: str, error: Exception, *, applied: bool) -> str:
+        """The sentence a command reports a failed setting with: the fresh machine's, or what became of it."""
+        unwritten = self._unwritten_config(what, error, applied=applied)
+        if unwritten is not None:
+            return unwritten
+        return f"{what} will not be remembered: {error}" if applied else f"{what} is not saved: {error}"
 
     async def self_compact(self, context: CommandContext) -> CommandResult:
         """Change self-compaction from the words it takes, or open the panel with a rail for each setting.
@@ -234,6 +301,8 @@ class ShellCommands(CommandProvider):
         if context.argument:
             try:
                 return CommandResult(message=shell.agent.change_self_compaction(context.argument))
+            except ConfigEditError as error:
+                return CommandResult(message=self._or_reason("The default for every session", error, applied=False))
             except ValueError as error:
                 return CommandResult(message=str(error))
 
@@ -241,17 +310,16 @@ class ShellCommands(CommandProvider):
             shell.close_page()
             # The default first: whether a choice differs from it is what decides if a session that has not
             # been used yet has anything to save.
-            for change, needed in (
-                (
-                    lambda: shell.client.use_self_compaction_default(default),
-                    default != shell.client.self_compaction_default,
-                ),
-                (lambda: shell.client.use_self_compaction(choice), choice != shell.client.self_compaction_choice),
-            ):
-                if not needed:
-                    continue
+            if default != shell.client.self_compaction_default:
                 try:
-                    change()
+                    shell.client.use_self_compaction_default(default)
+                except (*COMMAND_ERRORS, OSError) as error:
+                    # The default lives in the file, and the write comes before the setting does: on a machine
+                    # with no file yet the sentence says so rather than claiming a default the run does not have.
+                    self._unkept("The default for every session", error, applied=False)
+            if choice != shell.client.self_compaction_choice:
+                try:
+                    shell.client.use_self_compaction(choice)
                 except (*COMMAND_ERRORS, OSError) as error:
                     shell.transcript.error(str(error))
             shell.transcript.notice(shell.agent.self_compaction_summary())
@@ -276,6 +344,8 @@ class ShellCommands(CommandProvider):
         if context.argument:
             try:
                 message = shell.agent.change_statusline(context.argument)
+            except ConfigEditError as error:
+                return CommandResult(message=self._or_reason("The status line", error, applied=False))
             except ValueError as error:
                 return CommandResult(message=str(error))
             return CommandResult(message=message, relayout=True)
@@ -284,6 +354,10 @@ class ShellCommands(CommandProvider):
             shell.close_page()
             try:
                 shell.agent.remember_statusline(shown)
+            except ConfigEditError as error:
+                # Written before it applies, like the compaction default: the sentence says it is not saved.
+                self._unkept("The status line", error, applied=False)
+                return
             except ValueError as error:
                 shell.transcript.error(str(error))
                 return

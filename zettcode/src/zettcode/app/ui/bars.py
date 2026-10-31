@@ -78,17 +78,20 @@ class BarsMixin(ShellState):
         moment a reader changed something here.
         """
         gauge = self._effort_gauge()
-        if gauge is None:
+        model = self.model
+        if gauge is None or model is None:
+            # Nothing to animate the model and the gauge around: a machine with no model has no levels to switch
+            # between, so the segments a plugin registered stand.
             return self._side("header", "right")
         if isinstance(gauge, ShimmerFrame):
-            return self._shimmer_row(gauge)
+            return self._shimmer_row(gauge, model.name)
         theme = self.app.theme
         muted = Style(foreground=theme.muted)
         # The rail is the border colour brought toward the background, so an
         # unreached cell reads as a groove rather than as a dim line of text.
         groove = blend(theme.muted, theme.surface, 0.55)
         spans: list[Span] = [
-            Span(self.client.model.name, muted),
+            Span(model.name, muted),
             Span(f" {SEPARATOR} ", muted),
         ]
         away = 1.0 - gauge.presence
@@ -113,7 +116,7 @@ class BarsMixin(ShellState):
             spans.append(Span(character, Style(foreground=blend(colour, theme.muted, away))))
         return TextLine(tuple(spans))
 
-    def _shimmer_row(self, frame: ShimmerFrame) -> TextLine:
+    def _shimmer_row(self, frame: ShimmerFrame, name: str) -> TextLine:
         """Paint the show a switch to the top of the scale plays: light crossing the row, right to left.
 
         The frame says where the light is and what it has lit; the colours are chosen here, from the theme
@@ -142,7 +145,7 @@ class BarsMixin(ShellState):
 
         spans: list[Span] = []
         column = 0
-        for character in f"{self.client.model.name} {SEPARATOR} ":
+        for character in f"{name} {SEPARATOR} ":
             if column >= frame.lead:
                 break
             steady = blend(muted, gold, 0.3)
@@ -250,6 +253,7 @@ class BarsMixin(ShellState):
 
     def _shell_context(self) -> ShellContext:
         """Snapshot what a plugin's segment builder reads, rebuilt for one paint."""
+        model = self.model
         return ShellContext(
             config=self.agent.runtime.config,
             session=SessionState(
@@ -260,8 +264,8 @@ class BarsMixin(ShellState):
                 handle=self.messenger.handle if self.messenger is not None else "",
             ),
             model=ModelState(
-                config=self.client.model,
-                name=self.client.model.name,
+                config=model,
+                name="" if model is None else model.name,
                 effort=self.client.effort,
                 efforts=self.client.efforts,
             ),

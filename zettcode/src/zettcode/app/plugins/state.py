@@ -73,13 +73,15 @@ class ModelState:
 
     Attributes:
         config: The active model, with its id, display name, context window, and
-            multimodal flag.
+            multimodal flag; ``None`` on a machine with no model configured yet,
+            where ``name`` is empty, ``efforts`` is empty, and anything that needs
+            a window has none to measure against.
         name: Display name, the short form of ``config.name``.
         effort: Reasoning effort as its string value.
         efforts: Every reasoning level the runtime accepts, cheapest first.
     """
 
-    config: ModelInfo
+    config: ModelInfo | None
     name: str
     effort: str
     efforts: tuple[str, ...]

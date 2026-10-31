@@ -61,7 +61,7 @@ class TurnsMixin(AgentBase):
         self.require_session()
         await self.runtime.start()
         client = self.runtime.started
-        used = self.runtime.active_model.shown_name
+        used = self.runtime.required_model.shown_name
         session_id = self.session_id
         try:
             # Closed here, not left to the garbage collector: a consumer that stops early (a `break`, `aclose()`)
@@ -131,7 +131,7 @@ class TurnsMixin(AgentBase):
         self.require_session()
         await self.runtime.start()
         client = self.runtime.started
-        used = self.runtime.active_model.shown_name
+        used = self.runtime.required_model.shown_name
         session_id = self.session_id
         try:
             async with aclosing(

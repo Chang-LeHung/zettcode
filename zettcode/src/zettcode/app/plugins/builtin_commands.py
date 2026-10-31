@@ -184,6 +184,11 @@ class SessionCommands(TuiPlugin):
         before it exists: before that there is nothing measured to show, and the panel would be a page of zeroes.
         """
         host = context.require_host()
+        if host.client.active_model is None:
+            return CommandResult(
+                message="No model is configured yet \u2014 `/config` adds one; `/context` has something to measure "
+                "after the first request."
+            )
         report = await host.client.session.context()
         if report is None:
             return CommandResult(
@@ -296,9 +301,12 @@ class ModelCommands(TuiPlugin):
         """Open the model picker, or switch directly to a named model.
 
         The picker is a widget, so the command needs the shell: the agent owns the models, the shell owns the
-        widget that chooses between them.
+        widget that chooses between them. A machine with no model has nothing to pick, so the command points at
+        the one that adds the first entry instead of opening an empty list.
         """
         host = context.require_host()
+        if host.client.active_model is None:
+            return CommandResult(message="No model is configured yet \u2014 `/config` adds the first one.")
         if context.argument:
             host.change_model(context.argument)
             return CommandResult(relayout=True)
@@ -312,9 +320,15 @@ class ModelCommands(TuiPlugin):
 
         The levels are the runtime's own, so the panel lists what the provider adapters can actually send rather
         than a hand-written list. The arrow keys only slide the knob; Enter applies the level under it, which is
-        when the header plays its gauge and the transcript says so. Escape applies nothing.
+        when the header plays its gauge and the transcript says so. Escape applies nothing. A machine with no
+        model has no levels to list — the panel would be a rail with nothing on it — so the command says where the
+        model goes instead.
         """
         host = context.require_host()
+        if host.client.active_model is None:
+            return CommandResult(
+                message="No model is configured yet \u2014 `/config` adds one; `/effort` sets the level it reasons at."
+            )
         if context.argument:
             try:
                 host.change_effort(context.argument)

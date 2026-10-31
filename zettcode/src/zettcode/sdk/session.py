@@ -641,7 +641,8 @@ class Session:
         Raises:
             ValueError: The prompt is empty, or ``timeout`` is not a positive number.
             TypeError: A piece of the prompt is not text or an :class:`Image`.
-            ConfigurationError: The prompt carries images and the model does not accept them.
+            ConfigurationError: No model is configured, or the prompt carries images and the model does not
+                accept them.
             SessionBusyError: Another run is in progress (checked again when the run starts).
             ClientClosedError: The client was closed.
             RunTimeoutError: (when awaited or iterated) the run took longer than ``timeout``. It was stopped; what
@@ -654,13 +655,18 @@ class Session:
         client._check_free()
         _check_timeout(timeout)
         registry = client._mention_registry() if mentions else None
-        model = client._agent.active_model
+        entry = client._agent.active_model
+        if entry is None:
+            from ..config import NO_MODEL_REFUSAL
+            from .errors import ConfigurationError
+
+            raise ConfigurationError(NO_MODEL_REFUSAL)
         parts, hint = _prompt_parts(
             prompt,
             images,
             mentions=registry,
-            multimodal=model.multimodal,
-            model_name=model.shown_name,
+            multimodal=entry.multimodal,
+            model_name=entry.shown_name,
         )
         return RunStream(
             self,
@@ -823,10 +829,12 @@ class Session:
         if not self._running_here():
             return None
         registry = client._mention_registry() if mentions else None
-        model = client._agent.active_model
+        entry = client._agent.active_model
+        if entry is None:
+            return None  # nothing is running, since a run needs a model
         try:
             parts, hint = _prompt_parts(
-                prompt, images, mentions=registry, multimodal=model.multimodal, model_name=model.shown_name
+                prompt, images, mentions=registry, multimodal=entry.multimodal, model_name=entry.shown_name
             )
         except ValueError:
             return None  # blank: there is nothing to steer with

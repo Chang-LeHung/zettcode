@@ -36,6 +36,7 @@ PYTHON_ONLY: dict[str, dict[str, str]] = {
         "efforts": "read with `settings()`",
         "harness": "read with `settings()`",
         "model": "read with `settings()`",
+        "active_model": "`models()` marks the active entry and says `current: null` when the server has none",
         "permission": "read with `settings()`",
         "permissions": "read with `settings()`",
         "self_compaction_choice": "`selfCompaction()` returns the choice and the effect together",

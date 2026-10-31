@@ -569,7 +569,9 @@ State goes both ways by name (`engine/plugins/services.py` lists the names). The
 session's `policy`, `persistence`, the `models` table, the `compaction-counter`, the
 `selected-model` and, when messaging is on, the `messenger`, through `load_plugins(shared=...)`;
 a plugin reads them, and what an earlier plugin provided, with `container.service` or
-`container.find`, so a plugin's place in the order is a dependency. What the application needs
+`container.find`, so a plugin's place in the order is a dependency. `selected-model` is left out on a
+machine with no model configured — nothing to name — which is why the plugins that size something for a
+model ask for it with `find` and build their defaults when it is absent. What the application needs
 back (`approval`, `usage`, `context`, `sides`, `compaction`, `todos`) a plugin offers with
 `provide`, and `ZettCodeEngine` exposes each as a property over `Plugins.service`, not as a
 field. The things the runtime keeps for itself are the ones it uses with no extension in sight:

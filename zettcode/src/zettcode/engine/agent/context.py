@@ -46,7 +46,10 @@ class ContextMixin(AgentBase):
         """
         tokenizer = self.runtime.tokenizer
         await tokenizer.prepare()
-        window = self.runtime.active_model.context_window
+        model = self.runtime.active_model
+        # No model configured means no window to measure against. Nothing is reported either way: a request is
+        # refused before one is assembled, so the report is None and no share is ever computed from this 0.
+        window = 0 if model is None else model.context_window
         counted = self.runtime.usage.snapshot(self.session_id).context_tokens
         # The provider's own count of this conversation is the total: what it
         # billed for the request this process assembled, or — for a session

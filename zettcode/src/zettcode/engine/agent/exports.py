@@ -45,7 +45,7 @@ class ExportsMixin(SessionsMixin, SettingsMixin, ContextMixin):
             title=self.session_name,
             subtitle=f"Session {self.session_id} · {self.workspace}",
             meta=self._export_meta(session),
-            tags=(self.runtime.active_model.shown_name, self.effort),
+            tags=(self._export_model(), self.effort),
             context_messages=messages,
             tools=tuple(tool.name for tool in tools),
             report=report,
@@ -54,12 +54,18 @@ class ExportsMixin(SessionsMixin, SettingsMixin, ContextMixin):
         target = path if path is not None else self.workspace / f"zettcode-{self.session_id[:8]}.html"
         return write_export(target, render_html(trace))
 
+    def _export_model(self) -> str:
+        """Return the name a page is tagged with; a machine with no model says so rather than naming one."""
+        model = self.runtime.active_model
+        return "no model" if model is None else model.shown_name
+
     def _export_meta(self, session: Session) -> tuple[tuple[str, str], ...]:
         """Return the label/value pairs the exported page's sidebar carries."""
         model = self.runtime.active_model
+        in_use = "none configured" if model is None else f"{model.shown_name} ({model.model})"
         return (
             ("Workspace", str(self.workspace)),
-            ("Model", f"{model.shown_name} ({model.model})"),
+            ("Model", in_use),
             ("Effort", self.effort),
             ("Created", session.created_at.astimezone().strftime("%Y-%m-%d %H:%M")),
             ("Updated", session.updated_at.astimezone().strftime("%Y-%m-%d %H:%M")),

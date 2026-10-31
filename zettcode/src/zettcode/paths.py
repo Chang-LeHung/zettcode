@@ -66,6 +66,30 @@ def config_path(path: str | Path | None = None) -> Path:
     return Path(override).expanduser() if override else CONFIG_FILE
 
 
+def check_config_path(path: str | Path | None = None) -> Path:
+    """Return the config path, refusing one that exists and is not a file.
+
+    A path that exists and is not a file — a directory from ``ZETTCODE_CONFIG=.``, a FIFO — is a configuration
+    nobody can read, and it is not the fresh machine either: the terminal would start as if nothing were set up
+    and then fail every setting on that path. So is a link whose target is gone, which is not a file for the same
+    reason and would be replaced by the write rather than followed. A path with nothing at it is the fresh machine
+    and is answered with the path as it is.
+
+    Here, beside :func:`config_path`, because the command line asks this before it takes the terminal and before
+    the settings module may be imported at all.
+
+    Args:
+        path: The path to check; ``$ZETTCODE_CONFIG`` or ``~/.zettcode/config.toml`` by default.
+
+    Raises:
+        ValueError: The path exists (or is a link) and is not a file.
+    """
+    source = config_path(path)
+    if not source.is_file() and (source.exists() or source.is_symlink()):
+        raise ValueError(f"{source} is not a file, so there is nothing to read there")
+    return source
+
+
 def resume_command(session_id: str, workspace: Path) -> str:
     """Return the command that reopens one stored session from anywhere.
 

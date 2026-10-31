@@ -242,7 +242,7 @@ def test_resuming_builds_the_application_where_no_loop_is_running(tmp_path: Path
     monkeypatch.setattr(
         cli,
         "resolve_config",
-        lambda: ZettCodeConfig(workspace=tmp_path, models=(ModelConfig(model="m", token="t"),), store=root),
+        lambda **_: ZettCodeConfig(workspace=tmp_path, models=(ModelConfig(model="m", token="t"),), store=root),
     )
 
     app = cli.build_application(Options(workspace=tmp_path, resume="stored"))
@@ -282,7 +282,7 @@ def test_resuming_a_long_session_decodes_only_the_window_the_transcript_keeps(tm
     monkeypatch.setattr(
         cli,
         "resolve_config",
-        lambda: ZettCodeConfig(
+        lambda **_: ZettCodeConfig(
             workspace=tmp_path,
             models=(ModelConfig(model="m", token="t"),),
             store=root,
@@ -394,6 +394,29 @@ def test_a_dry_run_starts_everything_and_exits(tmp_path: Path, monkeypatch, caps
     assert asyncio.run(SessionStore(config.store, config.workspace).list_sessions()) == []
 
 
+def test_a_dry_run_on_a_machine_with_no_model_paints_and_exits(tmp_path: Path, monkeypatch):
+    """The start is what a dry run measures, and a machine with no model has one: nothing to warm, nothing to fail.
+
+    `runtime.start` refuses without a model (S23), so the dry run must not call it — the whole startup, the frame,
+    and an exit, which is what a profiler is pointed at. It used to raise that refusal out of `app.dry_run`.
+    """
+    from dataclasses import replace
+
+    missing = tmp_path / "config.toml"
+    monkeypatch.setenv("ZETTCODE_CONFIG", str(missing))
+    config = replace(
+        resolve_config(["-w", str(tmp_path)], require_models=False),
+        store=tmp_path / "sessions",
+        plugins_enabled=False,
+        skills_enabled=False,
+        mcp_enabled=False,
+    )
+
+    asyncio.run(async_main(config, dry_run=True))
+
+    assert config.models == ()
+
+
 def test_resolve_config_reads_the_config_file(tmp_path: Path, monkeypatch):
     path = tmp_path / "config.toml"
     path.write_text('[[models]]\nmodel = "my-model"\ntoken = "secret"\n', encoding="utf-8")
@@ -414,6 +437,52 @@ def test_resolve_config_reports_a_bad_config_file(tmp_path: Path, monkeypatch):
         resolve_config(["-w", str(tmp_path)])
 
     assert "Unknown config keys" in str(exit_info.value.code)
+
+
+def test_resolve_config_refuses_a_config_path_that_is_a_directory(tmp_path: Path, monkeypatch):
+    """`ZETTCODE_CONFIG=.` names a directory: the terminal says so instead of opening a shell nothing can configure.
+
+    The fresh machine is a path with no file at all, and that still starts; a path that exists and is not a file is
+    a mistake the reader has to be told about, because `/config` cannot write it either.
+    """
+    folder = tmp_path / "config.toml"
+    folder.mkdir()
+    monkeypatch.setenv("ZETTCODE_CONFIG", str(folder))
+
+    with pytest.raises(SystemExit) as exit_info:
+        resolve_config(["-w", str(tmp_path)], require_models=False)
+
+    assert "is not a file" in str(exit_info.value.code)
+    assert str(folder) in str(exit_info.value.code), "the path is the thing to fix"
+
+
+def test_resolve_config_starts_on_a_path_with_no_file_when_a_model_is_not_required(tmp_path: Path, monkeypatch):
+    """The fresh machine: no file, no models, and the terminal gets a configuration to paint from."""
+    missing = tmp_path / "config.toml"
+    monkeypatch.setenv("ZETTCODE_CONFIG", str(missing))
+
+    assert resolve_config(["-w", str(tmp_path)], require_models=False).models == ()
+
+
+def test_launch_refuses_an_unreadable_config_before_the_frame(tmp_path: Path, monkeypatch):
+    """The check is in `launch`, before `boot_theme` and before the terminal: a FIFO would block the palette read.
+
+    Nothing may be painted first — the reader gets the sentence on the terminal they are looking at, not a frame
+    that exits from the build thread behind it. `boot_theme` raising here would mean the frame came first.
+    """
+    folder = tmp_path / "config.toml"
+    folder.mkdir()
+    monkeypatch.setenv("ZETTCODE_CONFIG", str(folder))
+
+    def frame() -> object:
+        raise AssertionError("the first frame was started before the config path was checked")
+
+    monkeypatch.setattr(cli, "boot_theme", frame)
+
+    with pytest.raises(SystemExit) as exit_info:
+        asyncio.run(cli.launch(Options(workspace=tmp_path)))
+
+    assert "is not a file" in str(exit_info.value.code)
 
 
 def test_the_help_flag_builds_nothing():
@@ -553,7 +622,7 @@ def _resume(tmp_path: Path, monkeypatch, *, terminal, theme_file=None):
     monkeypatch.setattr(
         cli,
         "resolve_config",
-        lambda: ZettCodeConfig(
+        lambda **_: ZettCodeConfig(
             workspace=workspace, models=(ModelConfig(model="m", token="t"),), store=root, theme_file=theme_file
         ),
     )
@@ -749,7 +818,7 @@ def test_the_full_flag_has_three_spellings_and_sets_the_starting_level(tmp_path,
     config = tmp_path / "config.toml"
     config.write_text('[[models]]\nmodel = "m"\ntoken = "t"\n', encoding="utf-8")
     monkeypatch.setenv("ZETTCODE_CONFIG", str(config))
-    monkeypatch.setattr(cli, "resolve_config", lambda: resolve_config(["-w", str(tmp_path)]))
+    monkeypatch.setattr(cli, "resolve_config", lambda **_: resolve_config(["-w", str(tmp_path)]))
     from zettcode.engine.permission import Permission
 
     plain = cli.build_application(Options(workspace=tmp_path))

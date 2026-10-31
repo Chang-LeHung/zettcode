@@ -292,8 +292,11 @@ class KeysMixin(ShellState):
             return True
         if image is None:
             self.transcript.notice("no image on the clipboard")
-        elif not self.client.model.multimodal:
-            self.transcript.error(f"{self.client.model.name} does not take images")
+        elif self.model is None:
+            # Nothing would take the picture: say what to set up rather than reporting the model's limits.
+            self.transcript.error("no model is configured yet \u2014 /config adds one, then the image can go with it")
+        elif not self.model.multimodal:
+            self.transcript.error(f"{self.model.name} does not take images")
         else:
             label = self.composer.attach_image(*image)
             self._note = f"attached {label}"
