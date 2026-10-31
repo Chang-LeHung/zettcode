@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from types import SimpleNamespace
-
+from zett_agent.agent import AgentRunConfig
 from zett_agent.messages import AssistantMessage, SystemMessage, UserMessage
 from zett_agent.model import ModelEvent, ModelResponse, RetryOptions
 
@@ -41,7 +40,9 @@ class FakeContext:
 
     def __init__(self, messages, model: FakeModel) -> None:
         self.state = FakeState(messages)
-        self.config = SimpleNamespace(session_id="session-1")
+        # The real config, not a stub: the library reads more of it than one test happens to touch (the cache mode
+        # is read when a checkpoint is summarized), and a stub drifts from it.
+        self.config = AgentRunConfig(session_id="session-1")
         self.session_id = "session-1"
         self.model = model
         self.emitted: list[object] = []

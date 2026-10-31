@@ -152,7 +152,7 @@ class Client:
 
 | 方法 | 返回 | 作用 |
 | --- | --- | --- |
-| `prompt(prompt, *, images, mentions, instructions, on_approval, on_question, on_event, timeout, raw, keep_events, defer_answers)` | `RunStream` | 在当前会话上发送 prompt。await 它得到 `RunResult`；迭代它得到事件。 |
+| `prompt(prompt, *, images, mentions, instructions, on_approval, on_question, on_event, timeout, raw, keep_events, defer_answers, cache)` | `RunStream` | 在当前会话上发送 prompt。await 它得到 `RunResult`；迭代它得到事件。 |
 | `stream(...)` | `RunStream` | 与 `prompt` 是同一个方法。 |
 | `run(prompt, *, images, mentions, instructions, on_approval, on_question, on_event, timeout, keep_events)` | `RunResult`（可 await） | 把 `await client.prompt(...)` 写成调用。没有 `raw`。 |
 | `use_model(name)` | `ModelInfo` | 选择模型；接受名字或 `ModelInfo`。名字先当显示名找，找不到再当模型 id 找；两者都必须只指向一个模型（否则抛 `ConfigurationError`）。 |
@@ -245,17 +245,20 @@ def remove_model(name, *, path=None) -> tuple[ModelInfo, ...]: ...
 
 | 方法 | 返回 |
 | --- | --- |
-| `prompt(prompt, *, images, mentions, instructions, on_approval, on_question, on_event, timeout, raw, keep_events, defer_answers)` | `RunStream` |
+| `prompt(prompt, *, images, mentions, instructions, on_approval, on_question, on_event, timeout, raw, keep_events, defer_answers, cache)` | `RunStream` |
 | `stream(...)` | `RunStream`（同一个方法） |
-| `await run(prompt, *, images, mentions, instructions, on_approval, on_question, on_event, timeout, keep_events)` | `RunResult` |
-| `await ask(question, *, on_event=None, timeout=None)` | `str` |
-| `ask_stream(question, *, on_event=None, timeout=None)` | `RunStream` |
+| `await run(prompt, *, images, mentions, instructions, on_approval, on_question, on_event, timeout, keep_events, cache)` | `RunResult` |
+| `await ask(question, *, on_event=None, timeout=None, cache="read")` | `str` |
+| `ask_stream(question, *, on_event=None, timeout=None, cache="read")` | `RunStream` |
 | `steer(prompt, *, images=(), mentions=False)` | `str \| None` |
 | `await resumable()` | `ResumeInfo \| None` |
 | `resume_stream(*, on_approval, on_question, on_event, timeout, raw, keep_events, defer_answers)` | `RunStream` |
 | `await resume(*, on_approval, on_question, on_event, timeout)` | `RunResult` |
 
-`prompt` 在调用处抛出：`ValueError`（空 prompt、错误的 `timeout`）、`TypeError`（某一部分不是文本或 `Image`）、`ConfigurationError`（给读不了图的模型发图片）、`SessionBusyError`、`ClientClosedError`。await 或迭代 run 时抛出 `RunError`、`RunTimeoutError`、`SessionLockedError`，以及处理函数抛出的任何东西。
+`cache` 取 `"read_write"`（默认）、`"read"` 或 `"off"`；侧问默认 `"read"`，因为它的回答不会被重放，不值得写进缓存。
+见 `zettcode.sdk.types` 里的 `CacheMode`。
+
+`prompt` 在调用处抛出：`ValueError`（空 prompt、错误的 `timeout`）、`TypeError`（某一部分不是文本或 `Image`）、`ConfigurationError`（给读不了图的模型发图片）、`SessionBusyError`、`ClientClosedError`。await 或迭代 run 时抛出 `RunError`、`RunTimeoutError`、`SessionLockedError`、引擎不认识的 `cache` 词（在 run 启动时检查），以及处理函数抛出的任何东西。
 
 #### 操作对话
 
@@ -334,7 +337,13 @@ def remove_model(name, *, path=None) -> tuple[ModelInfo, ...]: ...
 
 ## zettcode.sdk.types
 
-都是带 `__slots__` 的冻结 dataclass。
+都是带 `__slots__` 的冻结 dataclass，`CacheMode` 除外：它是缓存模式的那几个词。
+
+### `CacheMode`
+
+`"read_write"`（默认，对话里的一轮用它）、`"read"`（复用已经热起来的前缀，但不把这次请求自己的内容标进缓存 ——
+侧问用它，因为它的回答不会被重放）、`"off"`（完全不带缓存指令）。各家 provider 能照做到什么程度由它自己决定：
+自动缓存的 provider 没有客户端写入开关，所以它那里 `"read"` 和 `"read_write"` 一样，`"off"` 只是不带路由 key。
 
 ### `Usage`
 

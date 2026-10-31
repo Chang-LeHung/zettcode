@@ -195,6 +195,30 @@ async def test_the_approval_rule_of_the_request_is_the_one_the_run_answers_with(
     assert payloads(always.text, "event")[0]["approved"] is True
 
 
+async def test_a_prompt_may_choose_how_it_uses_the_prompt_cache():
+    """A one-off report asks not to extend the cache; a prompt that says nothing takes the default."""
+    client = FakeClient()
+
+    async with serve(client) as http:
+        await http.post("/prompts", json={"text": "read only", "cache": "read"})
+        await http.post("/prompts", json={"text": "as usual"})
+
+    assert client.prompt_options[-2]["cache"] == "read"
+    assert client.prompt_options[-1]["cache"] is None
+
+
+async def test_a_cache_word_the_schema_does_not_know_is_refused_before_a_run_starts():
+    """A typo is the caller's to fix, and a 422 reaches them; an error frame would arrive after a turn was drawn."""
+    client = FakeClient()
+
+    async with serve(client) as http:
+        refused = await http.post("/prompts", json={"text": "go", "cache": "sometimes"})
+
+    assert refused.status_code == 422
+    assert refused.json()["error"] == "invalid" and "cache" in refused.json()["message"]
+    assert client.prompt_options == [], "nothing was started"
+
+
 async def test_the_default_rule_denies_every_command():
     handler = approval_handler(ApprovalPolicy())
 

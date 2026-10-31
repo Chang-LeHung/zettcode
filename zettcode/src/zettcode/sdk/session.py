@@ -56,6 +56,7 @@ from .events import (
 )
 from .handlers import ApprovalHandler, QuestionHandler, apply_approval, apply_question
 from .types import (
+    CacheMode,
     Compaction,
     ContextReport,
     ContextShare,
@@ -614,6 +615,7 @@ class Session:
         raw: bool = False,
         keep_events: bool = False,
         defer_answers: bool = False,
+        cache: CacheMode | None = None,
     ) -> RunStream:
         """Send a prompt. Await the result of the call for the answer, or iterate it for the events.
 
@@ -637,6 +639,11 @@ class Session:
                 its reader somewhere else (a panel, a chat) can answer it later with the event's own ``approve``,
                 ``deny``, ``answer`` or ``decline``. Without it, one not answered by the time the stream is asked
                 for its next event is denied or declined. Either way, whatever is still open when the run ends is.
+            cache: How this request may use the provider's prompt cache (see :data:`~zettcode.sdk.types.CacheMode`).
+                ``None`` is ``"read_write"``: the turn extends the cached prefix for the next one to read. A preset
+                that starts a turn nobody will follow — a one-off report — is worth ``"read"`` instead, which reuses
+                the conversation's warm prefix without marking its own content. A value the provider cannot honour is
+                its own business; an unknown word is a ``ValueError`` raised when the run starts, not at this call.
 
         Raises:
             ValueError: The prompt is empty, or ``timeout`` is not a positive number.
@@ -670,7 +677,7 @@ class Session:
         )
         return RunStream(
             self,
-            lambda: client._agent.stream(parts, hint=_with_instructions(hint, instructions), side=False),
+            lambda: client._agent.stream(parts, hint=_with_instructions(hint, instructions), side=False, cache=cache),
             on_approval=on_approval,
             on_question=on_question,
             on_event=on_event,
@@ -745,6 +752,7 @@ class Session:
         on_event: EventCallback | None = None,
         timeout: float | None = None,
         keep_events: bool = False,
+        cache: CacheMode | None = None,
     ) -> RunResult:
         """Send a prompt and wait for the model to finish; ``await session.prompt(...)`` spelled as a call.
 
@@ -760,16 +768,26 @@ class Session:
             on_event=on_event,
             timeout=timeout,
             keep_events=keep_events,
+            cache=cache,
         )
 
     def ask_stream(
-        self, question: str, *, on_event: EventCallback | None = None, timeout: float | None = None
+        self,
+        question: str,
+        *,
+        on_event: EventCallback | None = None,
+        timeout: float | None = None,
+        cache: CacheMode = "read",
     ) -> RunStream:
         """Ask a side question and return the stream of its answer, so it can be shown as it is written.
 
         The same side question as :meth:`ask`: the model sees the whole conversation and answers on a read-only
         footing, and neither the question nor the answer joins the history. Iterate the stream for its events
         (``TextDelta`` carries the answer as it arrives), or await it for the result.
+
+        The answer is never replayed, so the request does not extend the provider's cache by default: it starts at
+        ``"read"``, which reuses the conversation's warm prefix and marks only the stable parts. Pass ``"read_write"``
+        or ``"off"`` to decide otherwise.
 
         Raises:
             ValueError: The question is empty.
@@ -783,7 +801,7 @@ class Session:
         parts: tuple[Any, ...] = (question,)
         return RunStream(
             self,
-            lambda: client._agent.stream(parts, side=True),
+            lambda: client._agent.stream(parts, side=True, cache=cache),
             on_approval=None,
             on_question=None,
             on_event=on_event,
@@ -797,12 +815,13 @@ class Session:
         *,
         on_event: EventCallback | None = None,
         timeout: float | None = None,
+        cache: CacheMode = "read",
     ) -> str:
         """Ask a side question about the conversation and return the answer, without adding to it.
 
         The model sees the whole conversation and answers on a read-only footing; neither the question nor the
         answer joins the history the next run is built from. :meth:`ask_stream` is the same question with the
-        answer streamed.
+        answer streamed, and takes the same ``cache`` mode: ``"read"`` by default, since the answer is not replayed.
 
         Raises:
             ValueError: The question is empty.

@@ -85,12 +85,15 @@ class PromptRequest(RunOptions):
         mentions: Resolve ``@`` references in the text, as the terminal does.
         instructions: What the model reads after ``text`` and the conversation does not show — what a command's
             preset is, when the reader typed ``/code-review`` and the model reads the brief.
+        cache: How the turn may use the provider's prompt cache. ``None`` is the default, which is ``"read_write"``.
     """
 
     text: str = Field(min_length=1)
     images: list[ImageIn] = Field(default_factory=list)
     mentions: bool = True
     instructions: str | None = None
+    #: One of the three words, checked here: a typo is a 422 before a run starts, not an error frame mid-stream.
+    cache: Literal["off", "read", "read_write"] | None = None
 
 
 class CommandIn(BaseModel):
@@ -112,6 +115,7 @@ class CommandOut(BaseModel):
         prompt: The text to send as ``POST /prompts`` when the command is a preset for a turn; empty otherwise.
         shown: What the conversation should show for that turn, which is the command as typed.
         markdown: A Markdown document for the client to show in a view of its own; empty when there is none.
+        cache: The cache mode the preset's turn should run with; empty when the command has no preference.
     """
 
     message: str = ""
@@ -119,6 +123,7 @@ class CommandOut(BaseModel):
     prompt: str = ""
     shown: str = ""
     markdown: str = ""
+    cache: str = ""
 
 
 class CommandInfoOut(BaseModel):

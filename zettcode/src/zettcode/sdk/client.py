@@ -41,6 +41,7 @@ from .events import AnyEvent, ReasoningDelta, TextDelta, ToolFinished, ToolStart
 from .handlers import ApprovalHandler, QuestionHandler
 from .session import EventCallback, Prompt, RunStream, Session, messages_of
 from .types import (
+    CacheMode,
     Delivered,
     Image,
     IncomingMessage,
@@ -1353,6 +1354,7 @@ class Client:
         raw: bool = False,
         keep_events: bool = False,
         defer_answers: bool = False,
+        cache: CacheMode | None = None,
     ) -> RunStream:
         """Send a prompt on the current session. Await the call for the result, or iterate it for the events.
 
@@ -1377,6 +1379,7 @@ class Client:
             raw=raw,
             keep_events=keep_events,
             defer_answers=defer_answers,
+            cache=cache,
         )
 
     #: The same method as :meth:`prompt`, for code that says "stream" when it means to iterate.
@@ -1394,6 +1397,7 @@ class Client:
         on_event: Callable[[AnyEvent], object] | None = None,
         timeout: float | None = None,
         keep_events: bool = False,
+        cache: CacheMode | None = None,
     ) -> RunResult:
         """Send a prompt and wait for the result; ``await client.prompt(...)`` spelled as a call."""
         return await self.prompt(
@@ -1406,6 +1410,7 @@ class Client:
             on_event=on_event,
             timeout=timeout,
             keep_events=keep_events,
+            cache=cache,
         )
 
     def __repr__(self) -> str:
@@ -1618,6 +1623,7 @@ async def prompt(
     on_question: QuestionHandler | None = None,
     on_event: Callable[[AnyEvent], object] | None = None,
     timeout: float | None = None,
+    cache: CacheMode | None = None,
     **settings: Any,
 ) -> RunResult:
     """Send one prompt and close everything again: a client, a run, the result.
@@ -1648,6 +1654,7 @@ async def prompt(
             on_question=on_question,
             on_event=on_event,
             timeout=timeout,
+            cache=cache,
         )
 
 

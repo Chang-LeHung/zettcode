@@ -66,11 +66,20 @@ class TurnCommandResult:
     A command that is a preset for a turn — `/code-review` is the first — says so by returning this. The front end
     that ran the command starts the turn with ``prompt``; ``shown`` is the short form the conversation keeps, which is
     what the reader typed.
+
+    Attributes:
+        prompt: What the model reads.
+        shown: What the conversation keeps, when it is not ``prompt``.
+        notification: A one-line remark, as a toast.
+        cache: How the turn may use the provider's prompt cache: ``"read"`` for a one-off whose answer nobody will
+            follow, ``"read_write"`` to extend the cached prefix, ``"off"`` for no directive at all. Empty leaves the
+            front end's own default, which is ``"read_write"`` for a turn.
     """
 
     prompt: str
     shown: str = ""
     notification: str = ""
+    cache: str = ""
 
 
 #: What a plain command's handler answers with. A failure is not a third case: it raises ``ValueError``, which every

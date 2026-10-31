@@ -367,7 +367,9 @@ class Runner:
         if inspect.isawaitable(result):
             result = await result
         if isinstance(result, TurnCommandResult):
-            return CommandOut(notification=result.notification, prompt=result.prompt, shown=result.shown)
+            return CommandOut(
+                notification=result.notification, prompt=result.prompt, shown=result.shown, cache=result.cache
+            )
         if isinstance(result, TextCommandResult):
             return CommandOut(message=result.message, notification=result.notification, markdown=result.markdown)
         raise TypeError(f"{wanted} answered with {type(result).__name__}")
@@ -468,6 +470,7 @@ class Runner:
             images=images,
             mentions=prompt.mentions,
             instructions=prompt.instructions,
+            cache=prompt.cache,
             on_approval=handler,
             timeout=request.timeout,
             keep_events=request.keep_events,

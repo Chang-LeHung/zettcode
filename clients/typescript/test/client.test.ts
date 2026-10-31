@@ -487,6 +487,7 @@ describe("a prompt", () => {
       questions: "ask",
       answerTimeout: 12,
       instructions: "THE BRIEF",
+      cache: "read",
       onApproval: (request) => {
         asked = request;
         return true;
@@ -509,6 +510,7 @@ describe("a prompt", () => {
       questions: "ask",
       answer_timeout: 12,
       instructions: "THE BRIEF",
+      cache: "read",
     });
   });
 

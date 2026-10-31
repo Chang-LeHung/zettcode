@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Sequence
 from time import monotonic
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from zettcode.app.plugins.state import (
     Activity,
@@ -53,7 +53,7 @@ from zettcode.prompt import PromptPart, carries_image, mention_parts
 from zettcode.registry import Registry
 from zettcode.relay import Relayed
 from zettcode.sdk.events import QuestionAsked
-from zettcode.sdk.types import IncomingMessage, Usage
+from zettcode.sdk.types import CacheMode, IncomingMessage, Usage
 
 from ..agent.agent import SessionLink, TerminalAgent
 from ..agent.conversation.effort_gauge import EFFORT_SECONDS, EffortFrame, effort_frame
@@ -701,7 +701,7 @@ class ZettCodeApp(
             if outcome:
                 self._settle_wait(outcome)
 
-    async def prompt(self, text: str, *, shown: str | None = None) -> bool:
+    async def prompt(self, text: str, *, shown: str | None = None, cache: str | None = None) -> bool:
         """Run ``text`` as one turn of this conversation, as if the reader had typed it.
 
         The draft path is taken whole — the echo, ``@`` references, the transcript, the session, the row the
@@ -716,6 +716,9 @@ class ZettCodeApp(
 
         The turn is awaited, so the request slot stays the command's until the answer is in: a second draft cannot
         start behind it, and the command reports what it did once it is done.
+
+        ``cache`` is the turn's cache mode (``"read"``, ``"read_write"`` or ``"off"``); a command whose answer nobody
+        follows passes ``"read"`` so the request does not extend the provider's cache.
         """
         if not text.strip():
             return False
@@ -729,11 +732,11 @@ class ZettCodeApp(
         if display == text.strip():
             # No `@` pass here: the SDK resolves the references itself (it is asked for them below), and doing
             # both is how the same instructions once reached the model twice.
-            await self._run_prompt(text, (), advance=False)
+            await self._run_prompt(text, (), advance=False, cache=cache)
         else:
             # The brief is not the reader's message: it rides after the shown text, which is what the transcript
             # draws. The SDK keeps both in the message and shows the reader the first.
-            await self._run_prompt(display, (), instructions=text, advance=False)
+            await self._run_prompt(display, (), instructions=text, advance=False, cache=cache)
         return True
 
     async def wait_for_frame(self) -> None:
@@ -1085,6 +1088,7 @@ class ZettCodeApp(
         instructions: str | None = None,
         relayed: Relayed | None = None,
         advance: bool = True,
+        cache: str | None = None,
     ) -> None:
         """Stream one agent turn, keeping the task panel and transcript current.
 
@@ -1098,6 +1102,7 @@ class ZettCodeApp(
                 :meth:`CommandHost.prompt`). The stored message keeps ``prompt``.
             relayed: The turn answers a message another session sent, which the transcript draws as
                 that, the model is told where it came from, and the session stores as that.
+            cache: How the turn may use the provider's prompt cache; see :meth:`CommandHost.prompt`.
         """
         if relayed is None:
             self.projector.begin_turn(prompt)
@@ -1134,6 +1139,9 @@ class ZettCodeApp(
                     prompt_pieces(parts or (prompt,)),
                     mentions=True,
                     instructions=instructions,
+                    # The word is checked by the engine, which raises ValueError for one it does not know; a command
+                    # gets that as its error line rather than a turn that quietly caches the wrong way.
+                    cache=cast("CacheMode | None", cache),
                     **self._answers(),
                 )
             self._turn_answer = None

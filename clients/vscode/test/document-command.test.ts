@@ -37,6 +37,18 @@ test("a document opens after the words, and a field the server does not send is 
   assert.ok(words < document, "the words come first, as the terminal draws a message before the page over it");
 });
 
+test("a preset's cache mode reaches the turn it starts, and an empty one is no preference", async () => {
+  const source = await chatSource();
+  const run = methodBody(source, "private async runCommand(");
+
+  assert.ok(run.includes("answer.cache"), "the answer's mode is read");
+  assert.ok(run.includes(": undefined"), "an empty mode is no preference, not a mode of its own");
+
+  const send = methodBody(source, "private async sendPrompt(");
+  assert.ok(send.includes("if (request.cache !== undefined)"), "a preference is carried only when there is one");
+  assert.ok(send.includes("options.cache = request.cache"), "and it goes into the run's options");
+});
+
 test("a document the editor cannot open is told, and does not hide the words", async () => {
   const source = await chatSource();
   const body = methodBody(source, "private async runCommand(");

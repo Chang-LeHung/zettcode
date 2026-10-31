@@ -109,7 +109,7 @@ class CommandHost(Protocol):
     async def run_side_question(self, question: str) -> None:
         """Answer a question that is kept out of the conversation."""
 
-    async def prompt(self, text: str, *, shown: str | None = None) -> bool:
+    async def prompt(self, text: str, *, shown: str | None = None, cache: str | None = None) -> bool:
         """Run ``text`` as one turn of this conversation, exactly as if the reader had typed it.
 
         The text reaches the model the way a draft does: stored in the session, streamed as it is answered, and
@@ -127,6 +127,11 @@ class CommandHost(Protocol):
             text: What to ask. With no ``shown``, this is also what the reader sees.
             shown: What the transcript shows, when it differs from ``text``. The message the session keeps is
                 the same either way: ``text`` is in it, and ``shown`` is what a reader is shown of it.
+
+            cache: How the turn may use the provider's prompt cache: ``"read_write"`` (the default) extends it for
+                the next turn, ``"read"`` reuses a warm prefix without marking this turn's new content, and
+                ``"off"`` sends no cache directive. A one-off report a reader is not going to follow is worth
+                ``"read"``.
 
         Returns:
             Whether a turn was started and has ended. A request already running, a blank text and a session held
