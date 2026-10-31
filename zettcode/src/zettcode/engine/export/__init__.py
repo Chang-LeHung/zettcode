@@ -175,11 +175,6 @@ def _user_label(message: UserMessage) -> str:
     return "User message" if relayed is None else f"Message from session {relayed.sender}"
 
 
-def _branch_messages(session: Session) -> list[MessageLine]:
-    """Return the active branch's message lines, oldest first."""
-    return list(session.branch())
-
-
 def _event(number: int, line: MessageLine) -> Event:
     """Build the event one stored message becomes."""
     message = line.message[0]

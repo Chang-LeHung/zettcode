@@ -147,14 +147,6 @@ class Messenger:
         """Return the other active sessions, from memory: this is called as a draft is typed."""
         return self.client.others()
 
-    def find(self, handle: str) -> RosterEntry | None:
-        """Return the other session whose handle is ``handle`` (capitals do not matter), or ``None``."""
-        wanted = handle.casefold()
-        for entry in self.client.others():
-            if entry.handle.casefold() == wanted:
-                return entry
-        return None
-
     # -- watching a turn --------------------------------------------------------------------------
     @property
     def on_stream(self) -> Callable[[str, dict[str, Any]], None] | None:
