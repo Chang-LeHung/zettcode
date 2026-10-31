@@ -1103,7 +1103,8 @@ def test_a_bad_plugin_class_does_not_take_its_sibling(tmp_path: Path):
     plugins = loader_module.load_plugins(file_config(tmp_path, folder), builtins=(), entry_points=())
 
     assert [plugin.name for plugin in plugins.plugins] == ["good"]
-    assert [origin for origin, _why in plugins.failed] == ["pair:Bad"]
+    assert [origin for origin, _why in plugins.failed] == ["pair"]
+    assert "Bad" in plugins.failures[0]
 
 
 def test_the_same_stem_in_two_folders_is_two_modules(tmp_path: Path):
@@ -1117,3 +1118,20 @@ def test_the_same_stem_in_two_folders_is_two_modules(tmp_path: Path):
 
     assert [plugin.name for plugin in one.plugins] == ["first"]
     assert [plugin.name for plugin in two.plugins] == ["second"]
+
+
+def test_a_file_plugin_whose_activate_exits_does_not_end_the_load(tmp_path: Path):
+    folder = tmp_path / "plugins"
+    write_file_plugin(
+        folder,
+        "exit",
+        SIMPLE_PLUGIN.format(cls="Good", name="good")
+        + "\n\n"
+        + "class Exit(Plugin):\n    name = 'exit'\n\n    def activate(self, ctx):\n        raise SystemExit(1)\n",
+    )
+
+    plugins = loader_module.load_plugins(file_config(tmp_path, folder), builtins=(), entry_points=())
+
+    assert [plugin.name for plugin in plugins.plugins] == ["good"]
+    assert [origin for origin, _why in plugins.failed] == ["exit"]
+    assert plugins.failures[0].startswith("exit:")

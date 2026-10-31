@@ -140,8 +140,18 @@ def catalog(
     for path in loader.installed_files(config.plugins_dir):
         if path.stem not in seen:
             installed.append(_installed(path.stem, path.stem, config, off=off, held=held))
+    # A file can load some of its classes and fail others: its failure belongs on the file's one row, not on a
+    # second row named after the class, which no switch could ever write.
+    reasons = {origin: why for origin, why in bundle.failed if origin not in builtins}
+    if reasons:
+        installed = [
+            replace(entry, failure=reasons[entry.origin]) if entry.origin in reasons else entry for entry in installed
+        ]
+    loaded_origins = {entry.origin for entry in installed}
     failed = [
-        _failed(origin, why, config, builtin=origin in builtins, off=off, held=held) for origin, why in bundle.failed
+        _failed(origin, why, config, builtin=origin in builtins, off=off, held=held)
+        for origin, why in bundle.failed
+        if origin in builtins or origin not in loaded_origins
     ]
     # The group a row belongs to decides where it stands, so a group is one run of rows and gets one heading.
     return tuple(

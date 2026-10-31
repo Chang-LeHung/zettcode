@@ -109,7 +109,7 @@ def test_every_plugin_class_in_a_file_is_found(tmp_path):
 
 
 def test_a_file_with_no_plugin_class_says_what_it_needs(tmp_path):
-    with pytest.raises(ValueError, match="no class deriving"):
+    with pytest.raises(ValueError, match="base name ends in Plugin"):
         cli.plugin_classes(plugin_file(tmp_path, "value = 1\n"))
 
 
@@ -150,7 +150,7 @@ def test_installing_a_file_that_is_not_a_plugin_writes_nothing(tmp_path, monkeyp
 
     assert cli.install(str(source)) == 1
     assert not folder.exists()
-    assert "no class deriving" in capsys.readouterr().err
+    assert "base name ends in Plugin" in capsys.readouterr().err
 
 
 def test_uninstall_removes_a_file_plugin_first(tmp_path, monkeypatch, capsys):
@@ -375,7 +375,9 @@ def test_list_marks_a_switched_off_file_as_off(tmp_path, monkeypatch, capsys):
 
     assert cli.list_plugins() == 0
 
-    assert "off (switch file)" in capsys.readouterr().out
+    said = capsys.readouterr().out
+    row = next(line for line in said.splitlines() if "greeter" in line)
+    assert " no " in f" {row} " and "switch file" in row
 
 
 def test_list_as_json_names_the_location_and_the_switch(tmp_path, monkeypatch, capsys):
@@ -393,7 +395,7 @@ def test_list_as_json_names_the_location_and_the_switch(tmp_path, monkeypatch, c
         "name": "greeter",
         "origin": "greeter",
         "location": str(folder / "greeter.py"),
-        "switch": "on",
+        "switch": "switch file",
         "enabled": True,
     }
 
@@ -409,7 +411,7 @@ def test_list_is_one_of_the_actions(monkeypatch):
 
 def test_the_four_actions_are_dispatch(monkeypatch):
     calls: list[tuple[str, str]] = []
-    monkeypatch.setattr(cli, "install", lambda target: calls.append(("install", target)) or 0)
+    monkeypatch.setattr(cli, "install", lambda target, *, force=False: calls.append(("install", target)) or 0)
     monkeypatch.setattr(cli, "uninstall", lambda name: calls.append(("uninstall", name)) or 0)
     monkeypatch.setattr(
         cli, "switch", lambda name, *, enabled: calls.append(("enable" if enabled else "disable", name)) or 0
@@ -430,3 +432,48 @@ def test_the_four_actions_are_dispatch(monkeypatch):
 def test_an_action_is_required(capsys):
     with pytest.raises(SystemExit):
         cli.plugins_program([])
+
+
+def test_a_name_that_is_a_path_is_refused(tmp_path, monkeypatch, capsys):
+    folder = tmp_path / "plugins"
+    folder.mkdir()
+    outside = folder.parent / "greeter.py"
+    outside.write_text("", encoding="utf-8")
+    monkeypatch.setattr(cli, "plugins_dir", lambda: folder)
+    monkeypatch.setattr(cli, "plugin_state", lambda: fake_config(tmp_path))
+
+    assert cli.uninstall("../greeter") == 1
+    assert outside.exists()
+    assert "not a plugin name" in capsys.readouterr().err
+
+    assert cli.switch("../greeter", enabled=False) == 1
+    assert "not a plugin name" in capsys.readouterr().err
+
+
+def test_installing_over_a_different_file_needs_force(tmp_path, monkeypatch, capsys):
+    folder = tmp_path / "plugins"
+    folder.mkdir()
+    target = folder / "greeter.py"
+    target.write_text("old = True\n", encoding="utf-8")
+    source = tmp_path / "source" / "greeter.py"
+    source.parent.mkdir()
+    source.write_text("class Greeter(TuiPlugin):\n    pass\n", encoding="utf-8")
+    monkeypatch.setattr(cli, "plugins_dir", lambda: folder)
+
+    assert cli.install(str(source)) == 1
+    assert target.read_text(encoding="utf-8") == "old = True\n"
+    assert "different content" in capsys.readouterr().err
+
+    assert cli.install(str(source), force=True) == 0
+    assert "class Greeter" in target.read_text(encoding="utf-8")
+
+
+def test_a_renamed_file_says_what_it_was_installed_as(tmp_path, monkeypatch, capsys):
+    source = tmp_path / "_greeter.py"
+    source.write_text("class Greeter(TuiPlugin):\n    pass\n", encoding="utf-8")
+    folder = tmp_path / "plugins"
+    monkeypatch.setattr(cli, "plugins_dir", lambda: folder)
+
+    assert cli.install(str(source)) == 0
+    assert (folder / "greeter.py").is_file()
+    assert "_greeter.py as greeter.py" in capsys.readouterr().out
