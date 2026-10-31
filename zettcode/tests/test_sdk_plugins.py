@@ -12,10 +12,10 @@ from importlib.metadata import EntryPoint
 from pathlib import Path
 
 import pytest
-import tomllib
 
 import zettcode.sdk as zc
 from sdk_helpers import config_for
+from zettcode._compat import tomllib
 from zettcode.engine.plugins import Plugin
 
 
@@ -226,4 +226,3 @@ async def test_the_configuration_file_written_is_the_programs_not_the_clients(tm
     assert config_path() == program
     assert "[skills]\nenabled = false" in program.read_text(encoding="utf-8")
     assert "enabled = true" in elsewhere.read_text(encoding="utf-8"), "the file the client read is left alone"
-

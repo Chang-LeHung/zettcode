@@ -8,9 +8,9 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-import tomllib
 
 from zettcode import plugin_cli as cli
+from zettcode._compat import tomllib
 
 
 @pytest.fixture(autouse=True)
