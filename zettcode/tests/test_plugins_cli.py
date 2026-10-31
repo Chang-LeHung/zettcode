@@ -280,6 +280,60 @@ def test_pip_is_preferred_and_uv_is_used_when_this_environment_has_none(monkeypa
     assert cli.installer() is None
 
 
+def test_list_names_every_plugin_and_where_it_is(tmp_path, monkeypatch, capsys):
+    folder = folder_with_greeter(tmp_path)
+    config = fake_config(tmp_path)
+    monkeypatch.setattr(cli, "plugins_dir", lambda: folder)
+    monkeypatch.setattr(cli, "plugin_state", lambda: config)
+
+    assert cli.list_plugins() == 0
+
+    said = capsys.readouterr().out
+    assert "KIND" in said and "LOCATION" in said and "SWITCH" in said
+    assert "compiled in" in said, "the plugins compiled into the program are listed"
+    assert "greeter" in said and str(folder / "greeter.py") in said
+
+
+def test_list_marks_a_switched_off_file_as_off(tmp_path, monkeypatch, capsys):
+    folder = folder_with_greeter(tmp_path)
+    config = fake_config(tmp_path)
+    config.plugins_file.write_text('{"disabled": ["greeter"]}', encoding="utf-8")
+    monkeypatch.setattr(cli, "plugins_dir", lambda: folder)
+    monkeypatch.setattr(cli, "plugin_state", lambda: config)
+
+    assert cli.list_plugins() == 0
+
+    assert "off (switch file)" in capsys.readouterr().out
+
+
+def test_list_as_json_names_the_location_and_the_switch(tmp_path, monkeypatch, capsys):
+    folder = folder_with_greeter(tmp_path)
+    config = fake_config(tmp_path)
+    monkeypatch.setattr(cli, "plugins_dir", lambda: folder)
+    monkeypatch.setattr(cli, "plugin_state", lambda: config)
+
+    assert cli.list_plugins(as_json=True) == 0
+
+    rows = json.loads(capsys.readouterr().out)
+    file_row = next(row for row in rows if row["kind"] == "file")
+    assert file_row == {
+        "kind": "file",
+        "name": "greeter",
+        "origin": "greeter",
+        "location": str(folder / "greeter.py"),
+        "switch": "on",
+    }
+
+
+def test_list_is_one_of_the_actions(monkeypatch):
+    calls: list[bool] = []
+    monkeypatch.setattr(cli, "list_plugins", lambda *, as_json=False: calls.append(as_json) or 0)
+
+    assert cli.plugins_program(["list"]) == 0
+    assert cli.plugins_program(["list", "--json"]) == 0
+    assert calls == [False, True]
+
+
 def test_the_four_actions_are_dispatch(monkeypatch):
     calls: list[tuple[str, str]] = []
     monkeypatch.setattr(cli, "install", lambda target: calls.append(("install", target)) or 0)
