@@ -736,6 +736,16 @@ class ZettCodeApp(
             await self._run_prompt(display, (), instructions=text, advance=False)
         return True
 
+    async def wait_for_frame(self) -> None:
+        """Let the shell draw the row a command has just put up.
+
+        A command such as ``/compact`` adds its working row and then calls into
+        code that does a long synchronous stretch before its first ``await``.
+        Waiting for the frame here is what turns that row from something in the
+        model into something on screen before the stretch starts.
+        """
+        await self.app.wait_for_frame()
+
     async def run_continue(self) -> None:
         """Pick up the request that was interrupted, where it stopped, as a turn of the conversation.
 
@@ -748,12 +758,23 @@ class ZettCodeApp(
         path's. Unlike ``/btw`` it is part of the conversation, so it may be steered and what it ends on is a reply:
         the follow-ups a stop held go out behind it.
         """
-        info = await self.client.session.resumable()
-        if info is None:
-            self.transcript.notice(await self.agent.resume_blocker() or "There is nothing to continue.")
-            return
+        opened = self.transcript.wait_for_model()
+        try:
+            await self.wait_for_frame()
+            info = await self.client.session.resumable()
+            if info is None:
+                message = await self.agent.resume_blocker() or "There is nothing to continue."
+                if opened:
+                    self.transcript.settle_wait(message)
+                else:
+                    self.transcript.notice(message)
+                return
+        except BaseException as error:
+            if opened:
+                stopped = isinstance(error, asyncio.CancelledError)
+                self.transcript.settle_wait("Continue stopped" if stopped else "Continue failed")
+            raise
         self.transcript.notice(info.description)
-        self.transcript.wait_for_model()
         started = monotonic()
         completed = False
         tally = TurnTally(self.client.usage)

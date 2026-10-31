@@ -7,6 +7,8 @@ runtime assembled or, before it has assembled one, from what the store holds.
 
 from __future__ import annotations
 
+import asyncio
+
 from zett_agent.agent import AgentRunConfig
 from zett_agent.extensions.events import CompactionEvent
 from zett_agent.messages import AnyMessage, SystemMessage
@@ -71,6 +73,21 @@ class ContextMixin(AgentBase):
             reported=reported,
         )
 
+    async def ensure_compactable(self) -> None:
+        """Refuse a compaction that would do nothing, before a row is put up for it.
+
+        The command opens a working row before it starts; checking the
+        checkpoint first keeps a refusal from leaving that row behind with no
+        work and no text.
+
+        Raises:
+            SessionLocked: Another process has this session open.
+            ValueError: The newest checkpoint already covers the branch.
+        """
+        self.require_session()
+        if await self._compacted_at_the_head():
+            raise ValueError("Already compacted; send a message before compacting again")
+
     async def compact(self) -> CompactionEvent | None:
         """Summarize the conversation now, without adding a turn to it.
 
@@ -88,25 +105,29 @@ class ContextMixin(AgentBase):
             ValueError: When the newest checkpoint already covers the branch —
                 a second pass would summarize nothing but the checkpoint.
         """
-        self.require_session()
-        if self._compacted_at_the_head():
-            raise ValueError("Already compacted; send a message before compacting again")
+        await self.ensure_compactable()
+        return await self._compact_pass()
+
+    async def _compact_pass(self) -> CompactionEvent | None:
+        """Run the pass after the caller has checked that there is something to compact."""
         await self.runtime.start()
         return await self.runtime.started.compact(
             config=AgentRunConfig(session_id=self.session_id),
             model=self.runtime.provider,
         )
 
-    def _compacted_at_the_head(self) -> bool:
+    async def _compacted_at_the_head(self) -> bool:
         """Return whether nothing has been appended since the newest checkpoint.
 
         Messages and checkpoints both carry ``created_at``, so the last message
         being older than the last checkpoint is what says the branch has not
         moved since it was summarized — no matter which session is active or
         whether the transcript in this process ever showed that compaction.
+        Reading the file is file work, so it runs on a worker: it must not hold
+        the loop while a frame is waiting to be drawn.
         """
         try:
-            session = self.runtime.persistence.read(self.session_id)
+            session = await asyncio.to_thread(self.runtime.persistence.read, self.session_id)
         except ValueError:
             # A runtime without a store to read: no checkpoint can cover it.
             return False

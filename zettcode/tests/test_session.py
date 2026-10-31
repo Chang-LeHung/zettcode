@@ -409,6 +409,40 @@ async def test_appending_does_not_reparse_the_whole_file(tmp_path: Path, monkeyp
     assert path not in reads
 
 
+async def test_a_line_the_cache_already_holds_is_not_folded_in_twice(tmp_path: Path, monkeypatch):
+    """The guard for a worker read and the append that wrote the same line; not the race itself."""
+    store = SessionStore(tmp_path)
+    first = await store.append("s1", "req", UserMessage(content="hello"))
+    session = store.read("s1")
+    line = session.messages[-1]
+    path = store.session_path("s1")
+    reads: list[Path] = []
+    original = Path.read_bytes
+
+    def spy(self: Path, *args, **kwargs):
+        reads.append(self)
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_bytes", spy)
+
+    store._sessions["s1"] = ((0, 0), session)
+    store._remember("s1", line)
+
+    assert [stored.id for stored in store.read("s1").messages] == [first]
+    assert path not in reads, "the guard refreshes the stamp, so the cache stays a cache"
+
+
+async def test_a_removed_session_file_is_not_served_from_the_parse_cache(tmp_path: Path):
+    """A vanished session reads as empty, as it did before the parse moved off the loop."""
+    store = SessionStore(tmp_path)
+    await store.append("s1", "req", UserMessage(content="hello"))
+    assert store.read("s1").messages
+
+    store.session_path("s1").unlink()
+
+    assert store.read("s1").messages == ()
+
+
 async def test_the_context_cuts_at_the_latest_checkpoint(tmp_path: Path):
     store = SessionStore(tmp_path)
     ids = [await store.append("s1", "req", UserMessage(content=f"m{index + 1}")) for index in range(4)]

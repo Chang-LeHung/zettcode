@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 from collections import Counter
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
@@ -156,6 +157,11 @@ class SessionPersistenceMixin:
         # is the hot path — one call per message — so it must not re-parse the
         # whole log; the cache makes a read O(1) and a write a tuple copy.
         self._sessions: dict[str, tuple[tuple[int, int] | None, Session]] = {}
+        #: A read now runs on a worker thread for the framework's restore hook,
+        #: while appends still fold into the same cache on the loop. The lock
+        #: orders only the cache lookups and the publish; the parse itself runs
+        #: outside it. It does not make the file write atomic.
+        self._cache_lock = threading.RLock()
         #: The old log folded into rows, with the stamp of the file it came from, so a
         #: workspace with several old sessions folds it once instead of once per session.
         self._legacy: tuple[tuple[int, int] | None, dict[str, SessionInfo]] | None = None
@@ -214,16 +220,33 @@ class SessionPersistenceMixin:
         return None
 
     def read(self, session_id: str) -> Session:
-        """Parse one session file, tolerating a half-written final line."""
+        """Parse one session file, tolerating a half-written final line.
+
+        The file is parsed outside the cache lock: a worker restoring a long
+        session must not make the loop's next append wait for the whole parse.
+        The lock is taken only to look up a cached parse and to publish a new
+        one, and a parse that started before a concurrent append is discarded
+        for the newer cache entry instead of overwriting it.
+        """
         path = self.session_path(session_id)
-        if not path.is_file():
+        stamp = self._stamp(path) if path.is_file() else None
+        with self._cache_lock:
+            cached = self._sessions.get(session_id)
+            if cached is not None and cached[0] == stamp:
+                return cached[1]
+        if stamp is None:
             session = Session(header=None, messages=(), compactions=(), head_id=None)
-            self._sessions[session_id] = (None, session)
-            return session
-        stamp = self._stamp(path)
-        cached = self._sessions.get(session_id)
-        if cached is not None and cached[0] == stamp:
-            return cached[1]
+        else:
+            session = self._parse(path)
+        with self._cache_lock:
+            cached = self._sessions.get(session_id)
+            if stamp is not None and cached is not None and cached[0] is not None and cached[0] >= stamp:
+                return cached[1]
+            self._sessions[session_id] = (stamp, session)
+        return session
+
+    def _parse(self, path: Path) -> Session:
+        """Parse one session file without touching the cache."""
         # Bytes, not text: the parser takes them as they are, so the file is not
         # decoded to a string only to be encoded again, and a line is only ever split
         # where the file's own newline is. ``str.splitlines`` also breaks at U+2028,
@@ -254,13 +277,16 @@ class SessionPersistenceMixin:
                 case other:
                     raise ValueError(f"Unknown session record: {type(other).__name__}")
         self._check_links(path, messages, compactions)
-        session = Session(header=header, messages=tuple(messages), compactions=tuple(compactions), head_id=head_id)
-        self._sessions[session_id] = (stamp, session)
-        return session
+        return Session(header=header, messages=tuple(messages), compactions=tuple(compactions), head_id=head_id)
 
     @staticmethod
     def _stamp(path: Path) -> tuple[int, int]:
-        """Return the file's identity as mtime and size, the cache's validity key."""
+        """Return the file's identity as mtime and size, the cache's validity key.
+
+        The log is append-only, so a larger stamp is a newer file. ``read`` uses
+        that order to discard a parse that raced an append; replacing a session
+        file with one carrying an older stamp is not a supported operation.
+        """
         stat = path.stat()
         return (stat.st_mtime_ns, stat.st_size)
 
@@ -301,19 +327,42 @@ class SessionPersistenceMixin:
         parses the file once; when there is one, the new line is spliced into the
         parsed model and the stamp refreshed, so the append that just happened
         never pays for the parse the cache exists to avoid.
+
+        A cache entry that does not know the line's parent is dropped rather
+        than extended: a worker may have published an empty session between the
+        append's leading read and this call, and a one-line cache would then
+        claim to be the whole history.
         """
-        cached = self._sessions.get(session_id)
-        if cached is None:
-            return
-        _, session = cached
-        match line:
-            case SessionLine():
-                session = replace(session, header=line)
-            case MessageLine():
-                session = replace(session, messages=(*session.messages, line), head_id=line.id)
-            case CompactionLine():
-                session = replace(session, compactions=(*session.compactions, line))
-        self._sessions[session_id] = (self._stamp(self.session_path(session_id)), session)
+        with self._cache_lock:
+            cached = self._sessions.get(session_id)
+            if cached is None:
+                return
+            _, session = cached
+            match line:
+                case SessionLine():
+                    session = replace(session, header=line)
+                case MessageLine():
+                    if (
+                        line.parent is not None
+                        and line.parent != session.head_id
+                        and session.message(line.parent) is None
+                    ):
+                        self._sessions.pop(session_id, None)
+                        return
+                    # A read on a worker may have parsed the file after this
+                    # append wrote it but before it reached this cache update.
+                    # The line is then already the tail; splicing it again
+                    # would duplicate the message. The stamp is still refreshed
+                    # below, or the next append would re-parse the whole file.
+                    if not (session.messages and session.messages[-1].id == line.id):
+                        session = replace(session, messages=(*session.messages, line), head_id=line.id)
+                case CompactionLine():
+                    if session.message(line.parent) is None:
+                        self._sessions.pop(session_id, None)
+                        return
+                    if not any(item.id == line.id for item in session.compactions):
+                        session = replace(session, compactions=(*session.compactions, line))
+            self._sessions[session_id] = (self._stamp(self.session_path(session_id)), session)
 
     # -- the store API ------------------------------------------------------
     async def append(
@@ -890,8 +939,14 @@ class SessionStore(SessionPersistenceMixin, AgentExtension):
         self._requests.pop(context, None)
 
     async def _restore(self, context: AgentRunContext) -> tuple[CompactionLine | None, tuple[MessageLine, ...]]:
-        """Load the conversation and merge it with the current configuration."""
-        session = self.read(cast(str, context.config.session_id))
+        """Load the conversation and merge it with the current configuration.
+
+        Parsing a long JSONL file is file work with no await in it. Running it
+        on a worker leaves the loop free to finish the frame the command put up
+        before the restore began; the assignment back into the framework's
+        context stays here, where the rest of the request lifecycle lives.
+        """
+        session = await asyncio.to_thread(self.read, cast(str, context.config.session_id))
         stored_parent = session.parent_session_id
         configured_parent = context.state.parent_session_id
         session_exists = session.header is not None and bool(session.messages)
