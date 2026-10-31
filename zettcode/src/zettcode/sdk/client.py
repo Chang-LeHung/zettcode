@@ -1118,8 +1118,11 @@ class Client:
 
         Raises:
             ConfigurationError: Not one of the levels.
+            SessionLockedError: Another process has the session open; the level is part of the session.
         """
         self._check_open()
+        if remember and self.session.locked:
+            raise SessionLockedError("This session is open in another ZettCode process, so it is read-only here.")
         try:
             return str(self._agent.use_permission(name, remember=remember).value)
         except ValueError as error:
