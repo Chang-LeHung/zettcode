@@ -94,12 +94,16 @@ and it declares no dependencies — install those the way the plugin's
 documentation says.
 
 ```sh
+zettcode plugins list                  # every plugin's name, origin, location and switch
+zettcode plugins list --json           # the same, for a program to read
 zettcode plugins uninstall greeter     # the file's stem, a distribution, or an entry-point name
 zettcode plugins disable greeter       # leave it out at the next start
 zettcode plugins enable greeter        # load it again
 ```
 
-`uninstall` removes the file from `~/.zettcode/plugins`, or the distribution
+`list` shows the program's built-in agent plugins (`compiled in`), the distributions installed beside it (their
+entry-point name, distribution and site-packages folder) and the single files in `~/.zettcode/plugins` (their path),
+with whether the next start loads each one. `uninstall` removes the file from `~/.zettcode/plugins`, or the distribution
 behind a name; the name is the distribution's own, the entry-point name
 `/plugins` shows as its origin, or the file's stem. `enable` and `disable`
 write the same switch file the `/plugins` panel does; a plugin compiled into

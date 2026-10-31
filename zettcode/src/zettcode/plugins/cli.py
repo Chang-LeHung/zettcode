@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import json
 import os
 import re
 import shutil
@@ -60,6 +61,17 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     commands = parser.add_subparsers(dest="command", metavar="COMMAND", required=True)
+
+    listing = commands.add_parser(
+        "list",
+        help="list every plugin's name, origin and location",
+        description=(
+            "List the plugins compiled into the program, the distributions installed beside it, and the single files "
+            "in ~/.zettcode/plugins: each one's name, the distribution or file it came from, where it is, and whether "
+            "the next start loads it."
+        ),
+    )
+    listing.add_argument("--json", action="store_true", help="print the plugins as JSON, for a program to read")
 
     install_parser = commands.add_parser(
         "install",
@@ -117,11 +129,119 @@ def build_parser() -> argparse.ArgumentParser:
 def plugins_program(argv: list[str] | None = None) -> int:
     """Entry point of ``zettcode plugins``; 0 done, 1 failed, 2 for bad arguments."""
     args = build_parser().parse_args(argv)
+    if args.command == "list":
+        return list_plugins(as_json=args.json)
     if args.command == "install":
         return install(args.target)
     if args.command == "uninstall":
         return uninstall(args.name)
     return switch(args.name, enabled=args.command == "enable")
+
+
+@dataclass(frozen=True, slots=True)
+class PluginRow:
+    """One plugin as ``plugins list`` shows it: what it is, where it came from, and its switch."""
+
+    kind: str
+    name: str
+    origin: str
+    location: str
+    switch: str
+
+
+def plugin_rows() -> list[PluginRow]:
+    """Return every plugin the program has, installed beside it, or in the plugins folder.
+
+    Nothing is imported from a file or activated: a built-in contributes its own name and setting, an installed one
+    its entry point and distribution, a file its path. The move from "listed" to "loaded" happens at the next start.
+    """
+    state = plugin_state()
+
+    from zettcode.config import read_disabled_plugins
+    from zettcode.engine.plugins.builtin_agent import AGENT_PLUGINS
+    from zettcode.engine.plugins.loader import PLUGIN_ENTRY_POINT_GROUP, installed_files
+
+    off_switch = set(read_disabled_plugins(state.plugins_file))
+    held = set(state.disabled_plugins)
+    rows: list[PluginRow] = []
+    seen: set[str] = set()
+    for plugin in AGENT_PLUGINS:
+        if not plugin.name or plugin.name in seen:
+            continue
+        seen.add(plugin.name)
+        switch = f"setting {plugin.setting.path}" if plugin.setting is not None else "-"
+        rows.append(PluginRow("builtin", plugin.name, plugin.name, "compiled in", switch))
+    for name, origin, location in _installed_plugins(PLUGIN_ENTRY_POINT_GROUP):
+        rows.append(PluginRow("installed", name, origin, location, _switch_state(state, off_switch, held, name)))
+    for path in installed_files(plugins_dir()):
+        rows.append(
+            PluginRow("file", path.stem, path.stem, str(path), _switch_state(state, off_switch, held, path.stem))
+        )
+    return rows
+
+
+def _installed_plugins(group: str) -> list[tuple[str, str, str]]:
+    """Return ``(entry point, distribution, location)`` for every distribution that publishes a plugin."""
+    from importlib import metadata
+
+    found: list[tuple[str, str, str]] = []
+    for distribution in metadata.distributions():
+        origin = distribution.metadata["Name"] or distribution.name
+        for point in distribution.entry_points:
+            if point.group != group:
+                continue
+            try:
+                location = str(distribution.locate_file(""))
+            except (AttributeError, OSError):  # pragma: no cover - a metadata object without a path
+                location = "?"
+            found.append((point.name, origin, location))
+    return sorted(found)
+
+
+def _switch_state(state: SwitchState, off_switch: set[str], held: set[str], name: str) -> str:
+    """Return how the next start treats ``name``: on, or why it is off."""
+    if not state.plugins_enabled:
+        return "off (all installed plugins are off)"
+    if name in held:
+        return "off (config)"
+    if name in off_switch:
+        return "off (switch file)"
+    return "on"
+
+
+def list_plugins(*, as_json: bool = False) -> int:
+    """Print every plugin's name, origin, location and switch, as a table or as JSON."""
+    rows = plugin_rows()
+    if as_json:
+        print(
+            json.dumps(
+                [
+                    {
+                        "kind": row.kind,
+                        "name": row.name,
+                        "origin": row.origin,
+                        "location": row.location,
+                        "switch": row.switch,
+                    }
+                    for row in rows
+                ],
+                indent=2,
+            )
+        )
+        return EXIT_OK
+    if not rows:
+        print("no plugins")
+        return EXIT_OK
+    headers = ("KIND", "NAME", "ORIGIN", "LOCATION", "SWITCH")
+    widths = [len(header) for header in headers]
+    values = [(row.kind, row.name, row.origin, row.location, row.switch) for row in rows]
+    for entry in values:
+        for index, cell in enumerate(entry):
+            widths[index] = max(widths[index], len(cell))
+    print("  ".join(header.ljust(widths[index]) for index, header in enumerate(headers)).rstrip())
+    for entry in values:
+        print("  ".join(cell.ljust(widths[index]) for index, cell in enumerate(entry)).rstrip())
+    return EXIT_OK
 
 
 def install(target: str) -> int:
@@ -457,13 +577,16 @@ def run(command: Sequence[str]) -> int:
 __all__ = [
     "Installer",
     "NO_INSTALLER",
+    "PluginRow",
     "action",
     "build_parser",
     "distribution_for",
     "install",
     "installer",
+    "list_plugins",
     "module_name",
     "plugin_classes",
+    "plugin_rows",
     "plugin_state",
     "plugins_dir",
     "plugins_program",

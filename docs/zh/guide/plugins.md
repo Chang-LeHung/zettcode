@@ -83,14 +83,17 @@ zettcode plugins install https://github.com/owner/repo/tree/main/plugins/greeter
 而且不声明依赖——它需要的依赖按插件自己的说明安装。
 
 ```sh
+zettcode plugins list                  # 每个插件的名字、来源、位置和开关
+zettcode plugins list --json           # 同样的内容，给程序读
 zettcode plugins uninstall greeter     # 文件名（去掉 .py）、发行包名，或 entry point 名
 zettcode plugins disable greeter       # 下次启动不加载
 zettcode plugins enable greeter        # 重新加载
 ```
 
-`uninstall` 会从 `~/.zettcode/plugins` 删掉文件，或者卸载名字对应的发行包；名字可以是发行包名、`/plugins` 里显示的
-entry point 名，或者文件名（去掉 `.py`）。`enable` 和 `disable` 写的就是 `/plugins` 面板用的同一个开关文件；
-编译进程序的插件由配置里的设置控制，面板会改它，这条命令不会。
+`list` 会列出程序自带的 agent 插件（位置是 `compiled in`）、装在旁边的发行包（entry point 名、发行包名和 site-packages 目录），
+以及 `~/.zettcode/plugins` 里的单文件插件（文件路径），并说明下次启动是否加载。`uninstall` 会从 `~/.zettcode/plugins` 删掉文件，
+或者卸载名字对应的发行包；名字可以是发行包名、`/plugins` 里显示的 entry point 名，或者文件名（去掉 `.py`）。
+`enable` 和 `disable` 写的就是 `/plugins` 面板用的同一个开关文件；编译进程序的插件由配置里的设置控制，面板会改它，这条命令不会。
 
 如果你想自己管理环境，也可以手动安装。例如本地已有一个插件项目 `/path/to/greeter`：
 
