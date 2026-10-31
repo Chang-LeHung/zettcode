@@ -223,7 +223,7 @@ class Runner:
 
     @_client.setter
     def _client(self, client: Client | None) -> None:
-        # Only ever set while nothing runs: a first start, a reload, a test that takes the client away.
+        # Only ever set while nothing runs: the first start, and a test that takes the client away.
         self._slot = None if client is None else Slot(client)
 
     @property
@@ -247,39 +247,37 @@ class Runner:
         return frozenset(slot.session_id for slot in self.slots if slot.busy)
 
     # -- life -----------------------------------------------------------------
-    async def start(self) -> None:
+    async def start(self, *, model: str | None = None) -> None:
         """Open the client, or start without one when no model is configured yet.
 
         The SDK refuses a configuration with no models, and that is the state of every fresh machine. Rather than
         refuse to serve, the server keeps the configuration endpoints open and answers what needs a model with
-        ``no_model``.
+        ``no_model``. ``model`` is the entry just written by ``POST /models``; the rest come from the settings.
+
+        A client starts on a configuration that was already read, so a broken file and a file with no models are
+        told apart by that read rather than by matching the text of an error.
         """
         if self._client is not None:
             return
-        if self._factory is not None:
-            self._client = self._factory()
-            return
-        from zettcode.sdk import Client
         from zettcode.sdk.errors import ConfigurationError
 
         try:
-            self._client = await asyncio.to_thread(
-                lambda: Client(
-                    self.settings.workspace,
-                    config_path=self.settings.config_path,
-                    model=self.settings.model,
-                    effort=self.settings.effort,
-                    permission=self.settings.permission,
-                    jit_harness=self.settings.harness,
-                    sessions_enabled=True,
-                )
+            client = await self._open_client(
+                model=self.settings.model if model is None else model,
+                effort=self.settings.effort,
+                permission=self.settings.permission,
+                harness=self.settings.harness,
             )
-        except ConfigurationError as error:
-            if "No models configured" not in str(error):
-                raise
-            self._client = None
-        else:
-            await self._join(self.slot)
+        except ConfigurationError:
+            raise
+        except ValueError as error:
+            # Reading the file is what a client used to do on its way in; a file that cannot be read is a
+            # configuration error there too, so a start fails the same way whichever read noticed it.
+            raise ConfigurationError(str(error)) from error
+        if client is None:
+            return
+        self._client = client
+        await self._join(self.slot)
 
     @property
     def ready(self) -> bool:
@@ -642,58 +640,14 @@ class Runner:
         """Return the model a run would use, or ``None`` before one is configured."""
         return None if self._client is None else self._client.model.name
 
-    async def reload(self, *, model: str | None = None) -> None:
-        """Rebuild the client after the configuration file changed, keeping the conversation and its settings.
-
-        The SDK reads the models when a client is made, so a model added, changed or removed on disk reaches the agent
-        by making the client again. The session id is carried over (a fresh, never-stored one simply starts again), as
-        are the effort, permission and harness, and the model named stays if it is still configured.
-
-                Raises:
-                    SessionBusyError: A run is in progress; the configuration of a running conversation is not swapped.
-        """
-        if self.busy:
-            raise SessionBusyError("A run is in progress; change the models when it ends")
-        previous = self._client
-        session = previous.session.id if previous is not None else None
-        permission = previous.permission if previous is not None else self.settings.permission
-        harness = previous.harness if previous is not None else self.settings.harness
-        effort = previous.effort if previous is not None else self.settings.effort
-        wanted = model or (previous.model.name if previous is not None else None)
-        if previous is not None:
-            await previous.aclose()
-        self._client = None
-        if self._factory is not None:
-            self._client = self._factory()
-            if self._client is not None and model is not None:
-                self._client.use_model(model)
-            return
-
-        from zettcode.sdk.errors import SessionNotFoundError
-
-        async def open_client(resume: str | None) -> Client | None:
-            return await self._open_client(
-                model=wanted, effort=effort, permission=permission, harness=harness, resume=resume
-            )
-
-        if previous is not None:
-            await previous.aclose()
-        self._slot = None
-        try:
-            client = await open_client(session)
-        except SessionNotFoundError:
-            client = await open_client(None)
-        if client is None:
-            return
-        if self._factory is not None and model is not None:
-            client.use_model(model)
-        self._slot = Slot(client)
-        await self._join(self._slot)
-
     async def _open_client(
         self, *, model: str | None, effort: str | None, permission: str, harness: bool, resume: str | None = None
     ) -> Client | None:
-        """Make a client for this workspace that works the way the arguments say; ``None`` when no model is configured."""
+        """Make a client for this workspace that works the way the arguments say; ``None`` when no model is configured.
+
+        A model is named the way every other layer names one — its display name first, its id only when no display
+        name answers — so a client started with ``--model <id>`` is not quietly moved to the first entry.
+        """
         if self._factory is not None:
             return self._factory()
         from zettcode.sdk import Client, list_models
@@ -701,7 +655,12 @@ class Runner:
         models = list_models(self.settings.config_path)
         if not models:
             return None
-        chosen = model if model in {entry.name for entry in models} else None
+        # A name is resolved by the client, which resolves it as every layer does (the display name first, the
+        # model id only when no display name answers). This only decides whether to name one at all: a name that is
+        # none of them leaves the model in use at the first entry, as a start with no name does.
+        chosen = model
+        if model is not None and not any(entry.name == model or entry.model == model for entry in models):
+            chosen = None
         return await asyncio.to_thread(
             lambda: Client(
                 self.settings.workspace,

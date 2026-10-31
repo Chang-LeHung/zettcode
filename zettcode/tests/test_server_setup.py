@@ -81,6 +81,43 @@ async def test_adding_the_first_model_makes_the_server_ready(tmp_path: Path):
     assert after["ready"] is True and after["session"] == "session-1" and after["models"] == 2
 
 
+async def test_a_model_added_while_a_client_runs_reaches_it_without_a_rebuild(tmp_path: Path):
+    """The client the runs use is the one edited: the conversation and its session id stay where they were."""
+    client = FakeClient()
+
+    async with serve(tmp_path, factory=lambda: client) as http:
+        response = await http.post("/models", json={"model": "local", "display_model": "Local"})
+
+    assert response.status_code == 201, response.text
+    assert client.added == [{"model": "local", "display_model": "Local"}], "the edit went to the client, not to a file"
+    body = response.json()
+    assert [model["name"] for model in body["models"]] == ["gpt-5", "fast", "Local"]
+    assert body["current"] == "gpt-5", "adding a model does not change the one in use"
+
+
+async def test_a_model_changed_while_a_client_runs_reaches_it_too(tmp_path: Path):
+    client = FakeClient()
+
+    async with serve(tmp_path, factory=lambda: client) as http:
+        response = await http.patch("/models/fast", json={"context_window": 300000})
+
+    assert response.status_code == 200, response.text
+    assert client.updated == [("fast", {"context_window": 300000})]
+    assert response.json()["models"][1]["context_window"] == 300_000
+
+
+async def test_a_model_removed_while_a_client_runs_reaches_it_too(tmp_path: Path):
+    client = FakeClient()
+
+    async with serve(tmp_path, factory=lambda: client) as http:
+        response = await http.delete("/models/fast")
+
+    assert response.status_code == 200, response.text
+    assert client.removed == ["fast"]
+    assert [model["name"] for model in response.json()["models"]] == ["gpt-5"]
+    assert response.json()["current"] == "gpt-5"
+
+
 async def test_a_model_is_changed_and_its_token_kept_unless_a_new_one_is_given(tmp_path: Path):
     path = write_config(tmp_path, "a")
     async with serve(tmp_path) as http:

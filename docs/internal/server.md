@@ -60,7 +60,7 @@ model, effort, permission and harness) opens the other conversation, and `GET /s
 `running`. Opening a running session again makes its slot current as it is. A slot that is neither current nor running
 is closed (`_tidy`, after every run), so only what is running costs a client. The SDK still allows one conversation and
 one run per client, which is why this is several clients and not one client with several runs, and why a model change
-(`reload`) is refused while a run is going in the current conversation.
+is refused while a run is going in the current conversation: the client the run uses is edited in place, not rebuilt.
 
 ## Messages from other sessions
 
