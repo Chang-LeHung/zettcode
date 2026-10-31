@@ -53,7 +53,7 @@ class PluginRow:
     Attributes:
         name: What the plugin calls itself.
         origin: The distribution that carries it, and the name a switch is written with.
-        builtin: Compiled into the program, so it is switched by a configuration key rather than the switch file.
+        builtin: Compiled into the program, so it is switched by a configuration key rather than `[plugins] disable`.
         enabled: Whether the next start does its work.
         failure: Why it could not load here, or ``""`` when it did.
         setting: The configuration key that decides a compiled-in plugin, such as ``"skills.enabled"``.
@@ -99,7 +99,7 @@ class PluginsPage(Widget):
     compiled-in plugin that could not load (its setting is unknown to this process, so the row has none), one whose
     switch is a line in the configuration file, and a group the configuration turned off as a whole. A compiled-in
     plugin with no setting of its own is not on the page at all — there would be nothing to press. It is an installed
-    plugin that failed which keeps its switch, because the switch file is exactly what would leave it out.
+    plugin that failed which keeps its switch, because `[plugins] disable` is exactly what would leave it out.
 
     Args:
         rows: The plugins a list shows, in the order they are grouped: the program's first.
@@ -155,7 +155,7 @@ class PluginsPage(Widget):
 
     @property
     def changes(self) -> dict[str, bool]:
-        """Return the switches that are anywhere but where the switch file has them."""
+        """Return the switches that are anywhere but where `[plugins] disable` has them."""
         return {name: state for name, state in self.shown.items() if state != self.start[name]}
 
     @property
