@@ -1088,3 +1088,32 @@ def test_a_broken_file_plugin_is_reported_and_the_rest_still_load(tmp_path: Path
 
     assert [plugin.name for plugin in plugins.plugins] == ["greeter"]
     assert [origin for origin, _why in plugins.failed] == ["broken"]
+
+
+def test_a_bad_plugin_class_does_not_take_its_sibling(tmp_path: Path):
+    folder = tmp_path / "plugins"
+    write_file_plugin(
+        folder,
+        "pair",
+        SIMPLE_PLUGIN.format(cls="Good", name="good")
+        + "\n\n"
+        + "class Bad(Plugin):\n    name = 'bad'\n\n    def __init__(self):\n        raise RuntimeError('no')\n",
+    )
+
+    plugins = loader_module.load_plugins(file_config(tmp_path, folder), builtins=(), entry_points=())
+
+    assert [plugin.name for plugin in plugins.plugins] == ["good"]
+    assert [origin for origin, _why in plugins.failed] == ["pair:Bad"]
+
+
+def test_the_same_stem_in_two_folders_is_two_modules(tmp_path: Path):
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    write_file_plugin(first, "greeter", SIMPLE_PLUGIN.format(cls="First", name="first"))
+    write_file_plugin(second, "greeter", SIMPLE_PLUGIN.format(cls="Second", name="second"))
+
+    one = loader_module.load_plugins(file_config(tmp_path, first), builtins=(), entry_points=())
+    two = loader_module.load_plugins(file_config(tmp_path, second), builtins=(), entry_points=())
+
+    assert [plugin.name for plugin in one.plugins] == ["first"]
+    assert [plugin.name for plugin in two.plugins] == ["second"]

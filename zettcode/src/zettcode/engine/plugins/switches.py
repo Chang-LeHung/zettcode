@@ -397,6 +397,28 @@ def set_installed(config: ZettCodeConfig | SwitchState, name: str, *, enabled: b
         raise ValueError(f"the plugin switch file could not be written: {error}") from error
 
 
+def forget_installed(config: ZettCodeConfig | SwitchState, name: str) -> bool:
+    """Drop ``name`` from the switch file if it is there, and say whether it was.
+
+    An uninstall calls this: a name left behind by a plugin that is gone would make a later install of the same name
+    start switched off, with nothing left to explain why. There is no policy to apply — the name is being retired,
+    not switched — so this does not consult the configuration's own list.
+    """
+    name = name.strip()
+    if not name:
+        return False
+    try:
+        with _lock(config.plugins_file):
+            names = set(read_disabled_plugins(config.plugins_file))
+            if name not in names:
+                return False
+            names.discard(name)
+            _write(config.plugins_file, names)
+    except (OSError, ValueError):
+        return False
+    return True
+
+
 def _write_settings(config: ZettCodeConfig, keys: list[tuple[PluginSetting, bool]]) -> None:
     """Write every configuration key in one pass over one file.
 

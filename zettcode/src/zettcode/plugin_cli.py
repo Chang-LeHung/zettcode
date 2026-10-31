@@ -20,11 +20,11 @@ from __future__ import annotations
 import argparse
 import ast
 import json
-import os
 import re
 import shutil
 import subprocess
 import sys
+import unicodedata
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -36,7 +36,7 @@ EXIT_OK = 0
 EXIT_FAILED = 1
 
 #: A GitHub repository in its short form: ``owner/repo``, then an optional ``@ref`` or ``#fragment``.
-_GITHUB_SHORT = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:[@#].*)?$")
+_GITHUB_SHORT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*(?:[@#].*)?$")
 
 #: Schemes pip installs straight from, and which this passes through untouched.
 _VCS = ("git+", "hg+", "svn+", "bzr+")
@@ -147,6 +147,7 @@ class PluginRow:
     origin: str
     location: str
     switch: str
+    enabled: bool | None = None
 
 
 def plugin_rows() -> list[PluginRow]:
@@ -172,10 +173,26 @@ def plugin_rows() -> list[PluginRow]:
         switch = f"setting {plugin.setting.path}" if plugin.setting is not None else "-"
         rows.append(PluginRow("builtin", plugin.name, plugin.name, "compiled in", switch))
     for name, origin, location in _installed_plugins(PLUGIN_ENTRY_POINT_GROUP):
-        rows.append(PluginRow("installed", name, origin, location, _switch_state(state, off_switch, held, name)))
+        rows.append(
+            PluginRow(
+                "installed",
+                name,
+                origin,
+                location,
+                _switch_state(state, off_switch, held, name),
+                _enabled(state, off_switch, held, name),
+            )
+        )
     for path in installed_files(plugins_dir()):
         rows.append(
-            PluginRow("file", path.stem, path.stem, str(path), _switch_state(state, off_switch, held, path.stem))
+            PluginRow(
+                "file",
+                path.stem,
+                path.stem,
+                str(path),
+                _switch_state(state, off_switch, held, path.stem),
+                _enabled(state, off_switch, held, path.stem),
+            )
         )
     return rows
 
@@ -198,6 +215,11 @@ def _installed_plugins(group: str) -> list[tuple[str, str, str]]:
     return sorted(found)
 
 
+def _enabled(state: SwitchState, off_switch: set[str], held: set[str], name: str) -> bool:
+    """Return whether the next start loads ``name``."""
+    return state.plugins_enabled and name not in held and name not in off_switch
+
+
 def _switch_state(state: SwitchState, off_switch: set[str], held: set[str], name: str) -> str:
     """Return how the next start treats ``name``: on, or why it is off."""
     if not state.plugins_enabled:
@@ -211,7 +233,11 @@ def _switch_state(state: SwitchState, off_switch: set[str], held: set[str], name
 
 def list_plugins(*, as_json: bool = False) -> int:
     """Print every plugin's name, origin, location and switch, as a table or as JSON."""
-    rows = plugin_rows()
+    try:
+        rows = plugin_rows()
+    except (OSError, ValueError) as error:
+        print(f"zettcode plugins: the plugins could not be listed: {error}", file=sys.stderr)
+        return EXIT_FAILED
     if as_json:
         print(
             json.dumps(
@@ -222,6 +248,7 @@ def list_plugins(*, as_json: bool = False) -> int:
                         "origin": row.origin,
                         "location": row.location,
                         "switch": row.switch,
+                        "enabled": row.enabled,
                     }
                     for row in rows
                 ],
@@ -229,19 +256,36 @@ def list_plugins(*, as_json: bool = False) -> int:
             )
         )
         return EXIT_OK
-    if not rows:
-        print("no plugins")
-        return EXIT_OK
-    headers = ("KIND", "NAME", "ORIGIN", "LOCATION", "SWITCH")
-    widths = [len(header) for header in headers]
-    values = [(row.kind, row.name, row.origin, row.location, row.switch) for row in rows]
+    headers = ("KIND", "NAME", "ORIGIN", "LOCATION", "ENABLED", "SWITCH")
+    widths = [_display_width(header) for header in headers]
+    values = [
+        (
+            row.kind,
+            row.name,
+            row.origin,
+            row.location,
+            "-" if row.enabled is None else ("yes" if row.enabled else "no"),
+            row.switch,
+        )
+        for row in rows
+    ]
     for entry in values:
         for index, cell in enumerate(entry):
-            widths[index] = max(widths[index], len(cell))
-    print("  ".join(header.ljust(widths[index]) for index, header in enumerate(headers)).rstrip())
+            widths[index] = max(widths[index], _display_width(cell))
+    print("  ".join(_pad(header, widths[index]) for index, header in enumerate(headers)).rstrip())
     for entry in values:
-        print("  ".join(cell.ljust(widths[index]) for index, cell in enumerate(entry)).rstrip())
+        print("  ".join(_pad(cell, widths[index]) for index, cell in enumerate(entry)).rstrip())
     return EXIT_OK
+
+
+def _display_width(text: str) -> int:
+    """Return the columns a string occupies, counting the wide East-Asian characters as two."""
+    return sum(2 if unicodedata.east_asian_width(character) in ("W", "F") else 1 for character in text)
+
+
+def _pad(text: str, width: int) -> str:
+    """Pad ``text`` on the right to ``width`` display columns."""
+    return text + " " * max(0, width - _display_width(text))
 
 
 def install(target: str) -> int:
@@ -276,29 +320,34 @@ def _install_file(source: Path) -> int:
         return EXIT_FAILED
     module = module_name(source.stem)
     target = plugins_dir() / f"{module}.py"
+    from zettcode.config_edit import write_text_atomically
+
     try:
+        text = source.read_text(encoding="utf-8")
         target.parent.mkdir(parents=True, exist_ok=True)
-        temporary = target.with_name(f".{target.name}.tmp")
-        temporary.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
-        os.replace(temporary, target)
-    except OSError as error:
+        replaced = target.exists()
+        write_text_atomically(target, text)
+    except (OSError, ValueError) as error:
         print(f"zettcode plugins: {target} could not be written: {error}", file=sys.stderr)
         return EXIT_FAILED
-    print(f"installed {target}; start ZettCode again to load {module}")
+    note = " (replaced the old file)" if replaced else ""
+    print(f"installed {target}{note}; start ZettCode again to load {module}")
     return EXIT_OK
 
 
 def uninstall(name: str) -> int:
     """Remove a single-file plugin, or the distribution behind ``name``."""
     name = name.strip()
-    path = plugins_dir() / f"{module_name(name)}.py"
-    if path.is_file():
+    candidates = (plugins_dir() / f"{name}.py", plugins_dir() / f"{module_name(name)}.py")
+    path = next((candidate for candidate in candidates if candidate.is_file()), None)
+    if path is not None:
         try:
             path.unlink()
         except OSError as error:
             print(f"zettcode plugins: {path} could not be removed: {error}", file=sys.stderr)
             return EXIT_FAILED
-        print(f"removed {path}; start ZettCode again to drop what it added")
+        forgot = _forget_switches([path.stem])
+        print(f"removed {path}; start ZettCode again to drop what it added{forgot}")
         return EXIT_OK
     distribution = distribution_for(name)
     if distribution is None:
@@ -319,8 +368,21 @@ def uninstall(name: str) -> int:
     if code != EXIT_OK:
         print("zettcode plugins: the uninstall failed; the output above says why", file=sys.stderr)
         return EXIT_FAILED
-    print("uninstalled; start ZettCode again to drop what it added")
+    forgot = _forget_switches([name, *_entry_names_for_distribution(distribution)])
+    print(f"uninstalled; start ZettCode again to drop what it added{forgot}")
     return EXIT_OK
+
+
+def _forget_switches(names: list[str]) -> str:
+    """Drop names from the switch file, best effort, and return a note for the caller to append (or "")."""
+    try:
+        config = plugin_state()
+    except (OSError, ValueError):
+        return ""
+    from zettcode.engine.plugins.switches import forget_installed
+
+    removed = [name for name in names if forget_installed(config, name)]
+    return f" (its switch was removed: {', '.join(removed)})" if removed else ""
 
 
 def plugin_state() -> SwitchState:
@@ -345,6 +407,11 @@ def plugin_state() -> SwitchState:
     plugins = data.get("plugins", {})
     if not isinstance(plugins, dict):
         raise ValueError(f"{path}: [plugins] must be a table")
+    from zettcode.config import PLUGIN_KEYS
+
+    unknown = sorted(set(plugins) - PLUGIN_KEYS)
+    if unknown:
+        raise ValueError(f"{path}: unknown keys in [plugins]: {', '.join(unknown)}")
     enabled = plugins.get("enabled", True)
     if not isinstance(enabled, bool):
         raise ValueError(f"{path}: plugins.enabled must be true or false")
@@ -366,7 +433,12 @@ def switch(name: str, *, enabled: bool) -> int:
     except (OSError, ValueError) as error:
         print(f"zettcode plugins: the configuration could not be read: {error}", file=sys.stderr)
         return EXIT_FAILED
-    if not _known(config, name):
+    try:
+        origin = _resolve_switch_name(config, name)
+    except ValueError as error:
+        print(f"zettcode plugins: {error}", file=sys.stderr)
+        return EXIT_FAILED
+    if origin is None:
         print(
             f"zettcode plugins: no installed plugin or plugin file is called {name!r}; /plugins lists the ones there "
             "are (a compiled-in plugin is switched by its own setting, in that list)",
@@ -376,27 +448,60 @@ def switch(name: str, *, enabled: bool) -> int:
     from zettcode.engine.plugins.switches import set_installed
 
     try:
-        set_installed(config, name, enabled=enabled)
+        set_installed(config, origin, enabled=enabled)
     except ValueError as error:
         print(f"zettcode plugins: {error}", file=sys.stderr)
         return EXIT_FAILED
-    print(f"{'enabled' if enabled else 'disabled'} {name} for the next start")
+    print(f"{'enabled' if enabled else 'disabled'} {origin} for the next start")
     return EXIT_OK
 
 
-def _known(config: object, name: str) -> bool:
-    """Return whether ``name`` is something the switch file can hold: a file here, an entry point, or a recorded name."""
+def _resolve_switch_name(config: SwitchState, name: str) -> str | None:
+    """Return the origin the switch file is written with for ``name``, or ``None`` when nothing is called that.
+
+    A file is named by its stem after the loader's rule (a hyphen in the source became an underscore when it was
+    installed), an entry point by its own name, and a distribution by the one plugin it carries. A distribution with
+    several has no single switch of its own, so it is refused with the names to choose from.
+
+    Raises:
+        ValueError: A distribution carries more than one plugin.
+    """
     from importlib.metadata import entry_points
 
     from zettcode.config import read_disabled_plugins
     from zettcode.engine.plugins.loader import PLUGIN_ENTRY_POINT_GROUP
 
-    if (plugins_dir() / f"{module_name(name)}.py").is_file():
-        return True
+    exact = plugins_dir() / f"{name}.py"
+    if exact.is_file():
+        return exact.stem
+    canonical = plugins_dir() / f"{module_name(name)}.py"
+    if canonical.is_file():
+        return canonical.stem
     if any(point.name == name for point in entry_points(group=PLUGIN_ENTRY_POINT_GROUP)):
-        return True
-    plugins_file = getattr(config, "plugins_file", None)
-    return isinstance(plugins_file, Path) and name in read_disabled_plugins(plugins_file)
+        return name
+    names = _entry_names_for_distribution(name)
+    if len(names) == 1:
+        return names[0]
+    if len(names) > 1:
+        raise ValueError(f"{name} carries several plugins ({', '.join(names)}); name the one to switch")
+    if isinstance(config.plugins_file, Path) and name in read_disabled_plugins(config.plugins_file):
+        return name
+    return None
+
+
+def _entry_names_for_distribution(distribution: str) -> list[str]:
+    """Return the plugin entry-point names a distribution carries, by distribution name (case and '-'/'_' ignored)."""
+    from importlib import metadata
+
+    from zettcode.engine.plugins.loader import PLUGIN_ENTRY_POINT_GROUP
+
+    wanted = distribution.strip().lower().replace("_", "-")
+    for found in metadata.distributions():
+        origin = found.metadata["Name"] or found.name
+        if origin.lower().replace("_", "-") != wanted:
+            continue
+        return sorted(point.name for point in found.entry_points if point.group == PLUGIN_ENTRY_POINT_GROUP)
+    return []
 
 
 #: What a failure to find pip or uv says. A uv tool environment has no pip, but its uv does.
@@ -418,6 +523,8 @@ def requirement_for(target: str) -> str:
     path = Path(text).expanduser()
     if path.exists():
         return str(path.resolve())
+    if text.startswith((".", "~", "/")) or text.lower().endswith((".py", ".whl", ".tar.gz", ".zip")):
+        raise ValueError(f"no such file or directory: {text}")
     if text.startswith(_VCS):
         return text
     if text.startswith(("gh:", "github:", "https://github.com/", "http://github.com/")):
@@ -469,7 +576,7 @@ def plugin_classes(path: Path) -> list[str]:
     """
     try:
         source = path.read_text(encoding="utf-8")
-    except OSError as error:
+    except (OSError, UnicodeError) as error:
         raise ValueError(f"{path} could not be read: {error}") from error
     try:
         tree = ast.parse(source, filename=str(path))
@@ -495,8 +602,12 @@ def _derives_from_plugin(node: ast.ClassDef) -> bool:
 
 
 def module_name(stem: str) -> str:
-    """Return the module name a file's stem installs under: identifier characters, never a leading digit."""
-    name = re.sub(r"\W", "_", stem, flags=re.ASCII) or "plugin"
+    """Return the module name a file's stem installs under: identifier characters, no leading ``_`` or digit.
+
+    The loader skips files whose name starts with ``_`` or ``.``; stripping the underscore here is what keeps an
+    installed ``_greeter.py`` from being copied to a name that would never load.
+    """
+    name = re.sub(r"\W", "_", stem, flags=re.ASCII).lstrip("_") or "plugin"
     return f"plugin_{name}" if name[0].isdigit() else name
 
 

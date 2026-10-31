@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from zettcode.plugins import cli
+from zettcode import plugin_cli as cli
 
 
 def test_a_local_path_is_made_absolute(tmp_path: Path):
@@ -118,7 +118,16 @@ def test_a_file_that_is_not_python_is_refused(tmp_path):
         cli.plugin_classes(plugin_file(tmp_path, "class (\n"))
 
 
-@pytest.mark.parametrize(("stem", "module"), [("greeter", "greeter"), ("my-plugin", "my_plugin"), ("1x", "plugin_1x")])
+@pytest.mark.parametrize(
+    ("stem", "module"),
+    [
+        ("greeter", "greeter"),
+        ("my-plugin", "my_plugin"),
+        ("1x", "plugin_1x"),
+        ("_greeter", "greeter"),
+        ("__", "plugin"),
+    ],
+)
 def test_a_file_stem_becomes_a_module_name(stem, module):
     assert cli.module_name(stem) == module
 
@@ -179,6 +188,22 @@ def test_uninstall_with_uv_has_no_yes_flag(monkeypatch):
     assert cli.uninstall("greeter") == 0
 
     assert runs == [["uv", "pip", "uninstall", "--python", sys.executable, "my-plugin"]]
+
+
+def test_a_missing_file_is_not_read_as_a_github_repository():
+    with pytest.raises(ValueError, match="no such file"):
+        cli.requirement_for("./greeter.py")
+    with pytest.raises(ValueError, match="no such file"):
+        cli.requirement_for("foo/plugin.py")
+    with pytest.raises(ValueError, match="no such file"):
+        cli.requirement_for("~/.zettcode/plugins/missing")
+
+
+def test_list_says_so_when_the_configuration_cannot_be_read(monkeypatch, capsys):
+    monkeypatch.setattr(cli, "plugin_state", lambda: (_ for _ in ()).throw(ValueError("bad [plugins]")))
+
+    assert cli.list_plugins() == 1
+    assert "could not be listed" in capsys.readouterr().err
 
 
 def test_uninstall_of_something_not_installed_says_where_to_look(monkeypatch, capsys):
@@ -264,6 +289,53 @@ def test_a_switch_is_refused_while_every_installed_plugin_is_off(tmp_path, monke
     assert "[plugins] enabled = false" in capsys.readouterr().err
 
 
+def test_a_hyphenated_file_is_switched_by_the_name_it_was_installed_under(tmp_path, monkeypatch):
+    folder = tmp_path / "plugins"
+    folder.mkdir()
+    (folder / "my_plugin.py").write_text("class Greeter(TuiPlugin):\n    pass\n", encoding="utf-8")
+    config = fake_config(tmp_path)
+    monkeypatch.setattr(cli, "plugins_dir", lambda: folder)
+    monkeypatch.setattr(cli, "plugin_state", lambda: config)
+
+    assert cli.switch("my-plugin", enabled=False) == 0
+
+    assert json.loads(config.plugins_file.read_text(encoding="utf-8")) == {"disabled": ["my_plugin"]}
+
+
+def test_a_distribution_name_resolves_to_the_one_plugin_it_carries(tmp_path, monkeypatch):
+    config = fake_config(tmp_path)
+    monkeypatch.setattr(cli, "plugins_dir", lambda: tmp_path / "plugins")
+    monkeypatch.setattr(cli, "_entry_names_for_distribution", lambda name: ["monitor"])
+
+    assert cli._resolve_switch_name(config, "zettcode-monitor") == "monitor"
+
+    monkeypatch.setattr(cli, "_entry_names_for_distribution", lambda name: ["one", "two"])
+    with pytest.raises(ValueError, match="several plugins"):
+        cli._resolve_switch_name(config, "zettcode-monitor")
+
+
+def test_uninstall_removes_the_name_from_the_switch_file(tmp_path, monkeypatch, capsys):
+    folder = folder_with_greeter(tmp_path)
+    config = fake_config(tmp_path)
+    config.plugins_file.write_text(json.dumps({"disabled": ["greeter"]}), encoding="utf-8")
+    monkeypatch.setattr(cli, "plugins_dir", lambda: folder)
+    monkeypatch.setattr(cli, "plugin_state", lambda: config)
+
+    assert cli.uninstall("greeter") == 0
+
+    assert json.loads(config.plugins_file.read_text(encoding="utf-8")) == {"disabled": []}
+    assert "switch was removed" in capsys.readouterr().out
+
+
+def test_an_unknown_key_in_the_plugins_table_is_refused(tmp_path, monkeypatch):
+    path = tmp_path / "config.toml"
+    path.write_text('[plugins]\ndissable = ["x"]\n', encoding="utf-8")
+    monkeypatch.setenv("ZETTCODE_CONFIG", str(path))
+
+    with pytest.raises(ValueError, match="unknown keys"):
+        cli.plugin_state()
+
+
 def test_a_distribution_name_is_found_by_the_metadata_it_is_installed_with():
     assert cli.distribution_for("zettcode") == "zettcode"
 
@@ -322,6 +394,7 @@ def test_list_as_json_names_the_location_and_the_switch(tmp_path, monkeypatch, c
         "origin": "greeter",
         "location": str(folder / "greeter.py"),
         "switch": "on",
+        "enabled": True,
     }
 
 
