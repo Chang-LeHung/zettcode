@@ -256,7 +256,7 @@ def _add_plugins(commands: Subcommands) -> None:
     """Add ``plugins``: installing, removing and switching plugins in this environment.
 
     Only the name is declared here, so that ``zettcode --help`` lists it; the four actions are parsed and run by
-    :mod:`zettcode.plugins.cli`, which is never imported by a session start.
+    :mod:`zettcode.plugin_cli`, which is never imported by a session start.
     """
     commands.add_parser(
         "plugins",
@@ -778,7 +778,7 @@ def main() -> None:
         return
     if argv[:1] == ["plugins"]:
         # Four actions over the plugins, parsed by the command that installs and switches them.
-        from .plugins.cli import plugins_program
+        from .plugin_cli import plugins_program
 
         raise SystemExit(plugins_program(argv[1:]))
     options = parse_args()

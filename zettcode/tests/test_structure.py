@@ -166,7 +166,7 @@ LAYERS = (
     # The plugin command is a shell helper for the environment: it reads installed metadata and drives pip, and it
     # belongs to no front end. It reaches the loader only for the entry-point group's name.
     (
-        "zettcode.plugins",
+        "zettcode.plugin_cli",
         (
             "zettcode.app",
             "zettcode.tui",

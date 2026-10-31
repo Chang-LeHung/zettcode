@@ -91,7 +91,7 @@ zettcode plugins enable greeter        # 重新加载
 ```
 
 `list` 会列出程序自带的 agent 插件（位置是 `compiled in`）、装在旁边的发行包（entry point 名、发行包名和 site-packages 目录），
-以及 `~/.zettcode/plugins` 里的单文件插件（文件路径），并说明下次启动是否加载。`uninstall` 会从 `~/.zettcode/plugins` 删掉文件，
+以及 `~/.zettcode/plugins` 里的单文件插件（文件路径），并说明下次启动是否加载、由哪个开关决定。`uninstall` 会从 `~/.zettcode/plugins` 删掉文件，
 或者卸载名字对应的发行包；名字可以是发行包名、`/plugins` 里显示的 entry point 名，或者文件名（去掉 `.py`）。
 `enable` 和 `disable` 写的就是 `/plugins` 面板用的同一个开关文件；编译进程序的插件由配置里的设置控制，面板会改它，这条命令不会。
 

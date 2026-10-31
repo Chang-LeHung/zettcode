@@ -25,6 +25,7 @@ only a terminal has (see :class:`zettcode.app.plugins.loader.TerminalLoader`).
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import sys
 from pathlib import Path
@@ -71,13 +72,21 @@ def installed_files(directory: Path) -> tuple[Path, ...]:
     return tuple(path for path in found if path.is_file() and not path.name.startswith(("_", ".")))
 
 
-def _file_plugins(path: Path) -> list[Plugin[Any]]:
+def _file_plugins(path: Path) -> tuple[list[Plugin[Any]], list[tuple[str, BaseException]]]:
     """Import a single-file plugin and instantiate every Plugin subclass it defines itself.
 
+    The module name carries a digest of the resolved path, so two folders that hold the same stem in one process are
+    two modules rather than one stale entry. A constructor that raises fails only its own class; the file's other
+    classes still load.
+
+    Returns:
+        The plugins, and the ``(origin:class, error)`` of every class that could not be constructed.
+
     Raises:
-        Exception: Whatever the import or a constructor raised, which the caller reports as that file's failure.
+        BaseException: The import itself failed; the caller reports it as the file's failure.
     """
-    name = f"_zettcode_plugin_{path.stem}"
+    digest = hashlib.sha1(str(path.resolve()).encode()).hexdigest()[:8]
+    name = f"_zettcode_plugin_{path.stem}_{digest}"
     spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:  # pragma: no cover - a .py file always has a loader
         raise ImportError(f"{path.name} cannot be loaded as a module")
@@ -98,7 +107,16 @@ def _file_plugins(path: Path) -> list[Plugin[Any]]:
     ]
     if not found:
         raise ValueError(f"{path.name} defines no class deriving from Plugin or TuiPlugin")
-    return sorted((value() for value in found), key=lambda plugin: type(plugin).__name__)
+    plugins: list[Plugin[Any]] = []
+    failures: list[tuple[str, BaseException]] = []
+    for value in sorted(found, key=lambda cls: cls.__name__):
+        try:
+            plugins.append(value())
+        except KeyboardInterrupt:
+            raise
+        except BaseException as error:
+            failures.append((f"{path.stem}:{value.__name__}", error))
+    return plugins, failures
 
 
 def load_plugins(
@@ -163,10 +181,14 @@ def run(
             if origin in disabled:
                 continue
             try:
-                plugins = _file_plugins(path)
-            except Exception as error:
+                plugins, failures = _file_plugins(path)
+            except KeyboardInterrupt:
+                raise
+            except BaseException as error:
                 loader.fail(origin, error)
                 continue
+            for name, failure in failures:
+                loader.fail(name, failure)
             for plugin in plugins:
                 loader.accept(plugin, origin=origin)
     return loader.bundle()

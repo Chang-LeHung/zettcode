@@ -798,3 +798,14 @@ def test_a_broken_file_plugin_is_on_the_page_and_can_be_switched_off(tmp_path: P
 
     assert written == {"broken": False} and problems == []
     assert read_disabled_plugins(config.plugins_file) == ("broken",)
+
+
+def test_forget_installed_drops_a_name_and_says_whether_it_did(tmp_path: Path):
+    from zettcode.engine.plugins import switches
+
+    config = _config(tmp_path)
+    config.plugins_file.write_text(json.dumps({"disabled": ["greeter"]}), encoding="utf-8")
+
+    assert switches.forget_installed(config, "greeter") is True
+    assert json.loads(config.plugins_file.read_text(encoding="utf-8")) == {"disabled": []}
+    assert switches.forget_installed(config, "greeter") is False
