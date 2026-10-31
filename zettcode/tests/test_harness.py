@@ -379,3 +379,28 @@ async def test_the_runtime_turns_the_harness_on_and_off_and_starts_from_the_conf
 
     assert off.use_harness(True) is True and off.harness.on is True
     assert off.use_harness(False) is False and off.harness.on is False
+
+
+def test_a_legacy_session_directory_is_merged_when_both_exist(tmp_path: Path):
+    from zettcode.engine.harness_paths import move_session
+
+    legacy = tmp_path / "harness"
+    root = legacy / "workspace"
+    (legacy / "sid" / "kit").mkdir(parents=True)
+    (root / "sid" / "new").mkdir(parents=True)
+
+    moved = move_session(legacy, root, "sid")
+
+    assert (moved / "kit").is_dir() and (moved / "new").is_dir()
+    assert not (legacy / "sid").exists()
+
+
+def test_two_workspaces_with_one_name_get_different_folders(tmp_path: Path):
+    from zettcode.engine.harness_paths import workspace_directory_name
+
+    first = tmp_path / "a" / "app"
+    second = tmp_path / "b" / "app"
+    first.mkdir(parents=True)
+    second.mkdir(parents=True)
+
+    assert workspace_directory_name(first) != workspace_directory_name(second)

@@ -39,7 +39,7 @@ _T = TypeVar("_T")
 class PluginSetting:
     """The configuration key that decides whether a compiled-in plugin does its work.
 
-    A plugin installed as a distribution is switched by the plugin switch file. One compiled into the program has no
+    A plugin installed as a distribution is switched by `[plugins] disable` in the configuration. One compiled into the program has no
     file of its own: what turns its work off is a setting the reader already has, such as ``[skills] enabled``. A
     plugin that declares one is listed by a panel with a switch, and the switch writes that key; a plugin that does
     not is not listed, because there is nothing a reader could do about it.
@@ -79,7 +79,7 @@ class Plugin(PluginAgentMixin, Generic[_C], ABC):
         priority: Hook order against every other extension: lower runs first,
             and equal priorities keep registration order.
         setting: The configuration key that turns its work off, for a plugin compiled into the program; ``None`` when
-            the plugin is installed as a distribution, which the plugin switch file reaches instead.
+            the plugin is installed as a distribution, which `[plugins] disable` reaches instead.
     """
 
     #: Identity the loader may resolve and record; a plain attribute, so a

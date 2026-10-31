@@ -2,7 +2,8 @@
 
 Two things decide it, and both are written now for the process that starts next:
 
-* A plugin installed as a distribution is switched by a file of names beside the session store.
+* A plugin installed as a distribution is switched by `[plugins] disable` in the configuration file; an older
+  file of names beside the session store is still read and merged.
 * A plugin compiled into the program has no file of its own. What turns its work off is a setting the reader already
   has — ``[skills] enabled``, ``[mcp] enabled`` — which the plugin declares (see
   :attr:`~zettcode.engine.plugins.plugin.Plugin.setting`). A compiled-in plugin that declares none cannot be switched
@@ -78,16 +79,6 @@ class SwitchState:
 def off_names(config: ZettCodeConfig) -> tuple[str, ...]:
     """Return every name the next start will leave out, sorted: the configuration's own and the legacy switch file's."""
     return tuple(sorted(set(config.disabled_plugins) | set(read_disabled_plugins(config.plugins_file))))
-
-
-def held_by_config(config: ZettCodeConfig) -> frozenset[str]:
-    """Return the names the *configuration file* switches off — the lines neither front end may edit.
-
-    ``ZettCodeConfig.disabled_plugins`` is that list alone; the switch file's names are read here, so a name in both
-    places is still the configuration's: a set difference would call it the switch file's and let a page offer a
-    switch that the configuration goes on overriding.
-    """
-    return frozenset(config.disabled_plugins)
 
 
 def catalog(
@@ -218,9 +209,11 @@ def _config_disabled(path: Path) -> list[str]:
     """Return the names ``[plugins] disable`` holds in the configuration file, validating the shape."""
     from zettcode._compat import tomllib
 
+    if not path.is_file():
+        return []
     try:
         text = path.read_text(encoding="utf-8")
-    except FileNotFoundError:
+    except OSError:
         return []
     data = tomllib.loads(text) if text.strip() else {}
     plugins = data.get("plugins", {})
@@ -232,48 +225,55 @@ def _config_disabled(path: Path) -> list[str]:
     return [name.strip() for name in values]
 
 
-def _drop_legacy_names(path: Path, names: set[str]) -> None:
-    """Remove names this switch already wrote from the old switch file, best effort."""
+def _drop_legacy_names(path: Path, names: set[str]) -> bool:
+    """Remove names this switch wrote from the old switch file; False when it could not."""
     if not names:
-        return
+        return True
     try:
         with _lock(path):
             current = set(read_disabled_plugins(path))
             if not current & names:
-                return
+                return True
             _write(path, current - names)
     except (OSError, ValueError):
-        return
+        return False
+    return True
 
 
-def _write_off(
-    config: ZettCodeConfig | SwitchState,
-    enable: set[str],
-    disable: set[str],
-    *,
-    path: Path | None = None,
-) -> None:
+def _write_off(config: ZettCodeConfig | SwitchState, enable: set[str], disable: set[str]) -> None:
     """Edit ``[plugins] disable`` in the configuration file, then drop the same names from the legacy switch file.
 
     The configuration file is the one the reader edits and the one ``load_config`` reads, so the switch is written
     there; a file that does not exist yet gets one with the table, and the models are added when the reader sets one.
     A switch that changes nothing writes nothing and does not create the file. The read and the replace are held
-    under the same lock as the other writers of this file, so two switches or a settings edit cannot lose one another.
+    held under a lock, so two plugin switches or a settings edit cannot lose one another.
     """
-    target = config_path() if path is None else path.expanduser()
+    target = config_path()
+    if target.exists() and not target.is_file():
+        raise ValueError(f"{target} is not a file; edit the plugin switches by hand")
     try:
         with _lock(target):
             text = target.read_text(encoding="utf-8") if target.is_file() else ""
             current = set(_config_disabled(target))
             names = (current | disable) - enable
             if names == current:
-                _drop_legacy_names(config.plugins_file, enable | disable)
+                if not _drop_legacy_names(config.plugins_file, enable | disable) and enable:
+                    raise ValueError(_still_in_legacy(enable))
                 return
             text = set_string_list(text, "plugins", "disable", sorted(names), where=target, command="/plugins")
             write_text_atomically(target, text)
     except (OSError, ValueError) as error:
         raise ValueError(f"the plugin switch could not be written: {error}") from error
-    _drop_legacy_names(config.plugins_file, enable | disable)
+    if not _drop_legacy_names(config.plugins_file, enable | disable) and enable:
+        raise ValueError(_still_in_legacy(enable))
+
+
+def _still_in_legacy(enable: set[str]) -> str:
+    """Return the message for a switch the old file would keep off even though the configuration says otherwise."""
+    return (
+        f"{', '.join(sorted(enable))} is still switched off in the old switch file; it will not load until that file "
+        "is writable or the name is removed there"
+    )
 
 
 def set_many(
@@ -282,7 +282,6 @@ def set_many(
     *,
     bundle: Plugins,
     entry_points: Iterable[EntryPoint] | None = None,
-    path: Path | None = None,
 ) -> tuple[dict[str, bool], list[tuple[PluginSetting, bool]], list[str]]:
     """Write every switch down, each file once, and say what was written and what was refused.
 
@@ -355,7 +354,6 @@ def set_many(
                 config,
                 enable={name for name, enabled in off_changes.items() if enabled},
                 disable={name for name, enabled in off_changes.items() if not enabled},
-                path=path,
             )
         except ValueError as error:
             # Nothing of this batch was written, so the refusals above are still worth reporting with it.
@@ -364,7 +362,7 @@ def set_many(
     if key_changes:
         keys = [(setting, enabled) for _name, setting, enabled in key_changes]
         try:
-            _write_settings(config, keys, path=path)
+            _write_settings(config, keys)
         except ValueError as error:
             # The installed names are already in the configuration; say which, so a reader is not left guessing.
             landed = ", ".join(f"{name} {'on' if enabled else 'off'}" for name, enabled in written.items())
@@ -414,7 +412,6 @@ def set_enabled(
     enabled: bool,
     bundle: Plugins,
     entry_points: Iterable[EntryPoint] | None = None,
-    path: Path | None = None,
 ) -> PluginSetting | None:
     """Write one switch down, and return the configuration key it went to when that is where it went.
 
@@ -424,7 +421,7 @@ def set_enabled(
     Raises:
         ValueError: When the name cannot be written, or its file cannot.
     """
-    _, keys, problems = set_many(config, {name: enabled}, bundle=bundle, entry_points=entry_points, path=path)
+    _, keys, problems = set_many(config, {name: enabled}, bundle=bundle, entry_points=entry_points)
     if problems:
         raise ValueError(problems[0])
     return keys[0][0] if keys else None
@@ -448,7 +445,7 @@ def applied_installed(config: ZettCodeConfig, changes: Mapping[str, bool]) -> Ze
     return replace(config, disabled_plugins=tuple(sorted(names)))
 
 
-def set_installed(config: ZettCodeConfig | SwitchState, name: str, *, enabled: bool, path: Path | None = None) -> None:
+def set_installed(config: ZettCodeConfig | SwitchState, name: str, *, enabled: bool) -> None:
     """Write one installed plugin's switch to ``[plugins] disable``, without loading any plugin.
 
     A management command asks this for a name it has already checked exists (an entry point, a single file in
@@ -466,7 +463,7 @@ def set_installed(config: ZettCodeConfig | SwitchState, name: str, *, enabled: b
             "[plugins] enabled = false in the configuration file turns every installed plugin off; edit that line "
             "to load them again"
         )
-    _write_off(config, enable={name} if enabled else set(), disable=set() if enabled else {name}, path=path)
+    _write_off(config, enable={name} if enabled else set(), disable=set() if enabled else {name})
 
 
 def forget_installed(config: ZettCodeConfig | SwitchState, name: str) -> bool:
@@ -493,32 +490,30 @@ def forget_installed(config: ZettCodeConfig | SwitchState, name: str) -> bool:
     return True
 
 
-def _write_settings(
-    config: ZettCodeConfig, keys: list[tuple[PluginSetting, bool]], *, path: Path | None = None
-) -> None:
+def _write_settings(config: ZettCodeConfig, keys: list[tuple[PluginSetting, bool]]) -> None:
     """Write every configuration key in one pass over one file.
 
-    The file is the one the other settings are written to (:func:`zettcode.paths.config_path`), or ``path`` when a
-    client knows its own; a file that is not there yet is created with the key.
+    The file is the one the other settings are written to (:func:`zettcode.paths.config_path`); a file that is not
+    there yet is created with the key.
 
     Raises:
         ValueError: When one of the keys cannot be edited, or the file cannot be written.
     """
-    target = config_path() if path is None else path.expanduser()
+    target = config_path()
+    if target.exists() and not target.is_file():
+        raise ValueError(f"{target} is not a file; edit the plugin switches by hand")
     try:
-        text = target.read_text(encoding="utf-8") if target.is_file() else ""
-    except OSError as error:
-        raise ValueError(f"{path} could not be read: {error}") from error
-    try:
-        for setting, enabled in keys:
-            text = set_boolean(text, setting.table, setting.key, enabled, where=target, command="/plugins")
-        write_text_atomically(target, text)
+        with _lock(target):
+            text = target.read_text(encoding="utf-8") if target.is_file() else ""
+            for setting, enabled in keys:
+                text = set_boolean(text, setting.table, setting.key, enabled, where=target, command="/plugins")
+            write_text_atomically(target, text)
     except (ConfigEditError, OSError) as error:
         raise ValueError(str(error)) from error
 
 
 def _lock(path: Path) -> AbstractContextManager[object]:
-    """Serialise a read-modify-write of the switch file between two sessions running at once."""
+    """Serialise a read-modify-write of one configuration file between two sessions running at once."""
     from contextlib import contextmanager
 
     from zettcode.filelock import SingletonLock
