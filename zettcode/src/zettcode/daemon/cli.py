@@ -22,6 +22,8 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from . import PERMISSIONS
+
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from collections.abc import Sequence
 
@@ -31,7 +33,6 @@ __all__ = ["daemon_program"]
 
 EXIT_OK = 0
 EXIT_FAILED = 1
-EXIT_USAGE = 2
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -97,7 +98,7 @@ def _build_parser() -> argparse.ArgumentParser:
     spawn.add_argument(
         "--permission",
         metavar="LEVEL",
-        choices=("deny", "safe", "full"),
+        choices=PERMISSIONS,
         default="full",
         help=(
             "shell level it runs at: safe puts every command in a sandbox, deny allows none (default: full). "
@@ -135,7 +136,7 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument("--model", default=None, help=argparse.SUPPRESS)
     run.add_argument("--effort", default=None, help=argparse.SUPPRESS)
     run.add_argument("--name", default=None, help=argparse.SUPPRESS)
-    run.add_argument("--permission", default="full", help=argparse.SUPPRESS)
+    run.add_argument("--permission", default="full", choices=PERMISSIONS, help=argparse.SUPPRESS)
     return parser
 
 

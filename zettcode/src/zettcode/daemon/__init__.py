@@ -11,4 +11,7 @@ answers messages (:mod:`.run`). :mod:`.process` starts it detached and stops it;
 
 from __future__ import annotations
 
-__all__ = ["cli", "process", "run", "state"]
+#: The shell levels a daemon can be given. There is no ``ask``: nobody is there to answer it.
+PERMISSIONS = ("deny", "safe", "full")
+
+__all__ = ["PERMISSIONS", "cli", "process", "run", "state"]

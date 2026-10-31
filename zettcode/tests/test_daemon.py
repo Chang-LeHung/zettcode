@@ -217,6 +217,33 @@ def test_ask_is_not_a_permission_a_daemon_can_be_given():
     assert raised.value.code == 2
 
 
+def test_the_process_spawn_starts_refuses_ask_as_well(home):
+    """`spawn` is not the only door into `run`: the hidden command refuses it too."""
+    with pytest.raises(SystemExit) as raised:
+        daemon_program(["run", "--token", "t", "--workspace", str(home), "--permission", "ask"])
+
+    assert raised.value.code == 2
+
+
+def test_a_start_at_a_level_nobody_can_give_is_refused_before_a_process_is_made(home):
+    with pytest.raises(process.SpawnFailed) as raised:
+        process.Daemons().start(home, permission="ask")
+
+    assert "one of deny, safe, full" in str(raised.value)
+    assert Registry().all() == ()
+
+
+def test_a_start_in_a_directory_that_is_not_there_says_so_rather_than_raising(home, tmp_path):
+    """Popen's own refusal for a missing cwd is a FileNotFoundError, which says nothing about the argument."""
+    missing = tmp_path / "nowhere"
+
+    with pytest.raises(process.SpawnFailed) as raised:
+        process.Daemons().start(missing)
+
+    assert "is not a directory" in str(raised.value)
+    assert Registry().all() == ()
+
+
 def test_a_label_given_at_the_start_is_recorded_and_listed(home, capsys):
     """A spawn says what the daemon is for; `list` shows it beside the session, so a machine with several is legible."""
     record = process.Daemons().start(home, name="reviewer")
