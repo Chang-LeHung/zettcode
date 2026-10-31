@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import time
@@ -1205,6 +1206,92 @@ def test_an_unchanged_connection_is_not_written_again(home, monkeypatch):
 
     monkeypatch.setattr("zettcode.daemon.state.Record.change", must_not_write)
     asyncio.run(daemon._note_connection())
+
+
+def test_counters_are_refreshed_while_a_turn_runs(home):
+    daemon, client = _daemon_with(home, [])
+    daemon.record.save(replace(state_for(home), status="working", name="reviewer", requested_model="v2"))
+    daemon.inbox = Inbox(lambda waiting: None)
+    daemon.inbox.offer(message())
+    client.usage = type("Usage", (), {"input_tokens": 12_000, "output_tokens": 400, "context_tokens": 34_000})()
+
+    daemon._refresh_counters()
+
+    assert daemon.record.state is not None
+    assert (daemon.record.state.input_tokens, daemon.record.state.output_tokens) == (12_000, 400)
+    assert daemon.record.state.context_tokens == 34_000
+    assert daemon.record.state.status == "working", "the status is the turn's to end, not the counter's"
+    assert daemon.record.state.name == "reviewer" and daemon.record.state.requested_model == "v2"
+
+
+def test_counters_that_cannot_be_read_do_not_erase_the_record(home, monkeypatch):
+    daemon, client = _daemon_with(home, [])
+    stored = dict(input_tokens=1_000, output_tokens=10, context_tokens=2_000, context_window=200_000)
+    daemon.record.save(replace(state_for(home), **stored))
+    daemon.inbox = Inbox(lambda waiting: None)
+    daemon.inbox.offer(message())
+    monkeypatch.setattr(daemon, "_spend", lambda: (None, None, None))
+
+    def must_not_write(*args: object, **options: object) -> None:
+        raise AssertionError("counters that could not be read rewrote the record")
+
+    monkeypatch.setattr("zettcode.daemon.state.Record.change", must_not_write)
+    daemon._refresh_counters()
+
+
+def test_the_beat_refreshes_counters_only_while_a_turn_runs(home, monkeypatch):
+    daemon, client = _daemon_with(home, [])
+    daemon.record.save(state_for(home))
+    calls: list[str] = []
+    monkeypatch.setattr(daemon, "_refresh_counters", lambda: calls.append("refresh"))
+
+    async def no_requests() -> None:
+        calls.append("apply")
+
+    monkeypatch.setattr(daemon, "_apply_requests", no_requests)
+
+    async def one_beat() -> list[str]:
+        task = asyncio.ensure_future(daemon._beat())
+        await asyncio.sleep(0.05)
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+        return list(calls)
+
+    idle = asyncio.run(one_beat())
+    daemon.inbox = Inbox(lambda waiting: None)
+    daemon.inbox.offer(message())
+    calls.clear()
+    busy = asyncio.run(one_beat())
+
+    assert idle == ["apply"] and busy == ["refresh"]
+
+
+def test_counters_are_not_refreshed_when_nothing_is_running(home, monkeypatch):
+    daemon, client = _daemon_with(home, [])
+    daemon.record.save(state_for(home))
+    client.usage = type("Usage", (), {"input_tokens": 12_000, "output_tokens": 400, "context_tokens": 34_000})()
+
+    def must_not_write(*args: object, **options: object) -> None:
+        raise AssertionError("a daemon with nothing running rewrote the record")
+
+    monkeypatch.setattr("zettcode.daemon.state.Record.change", must_not_write)
+    daemon._refresh_counters()
+
+
+def test_an_unchanged_counter_does_not_rewrite_the_record(home, monkeypatch):
+    daemon, client = _daemon_with(home, [])
+    zeros = dict(input_tokens=0, output_tokens=0, context_tokens=0, context_window=200_000)
+    daemon.record.save(replace(state_for(home), **zeros))
+    daemon.inbox = Inbox(lambda waiting: None)
+    daemon.inbox.offer(message())
+    client.usage = type("Usage", (), {"input_tokens": 0, "output_tokens": 0, "context_tokens": 0})()
+
+    def must_not_write(*args: object, **options: object) -> None:
+        raise AssertionError("an unchanged counter rewrote the record")
+
+    monkeypatch.setattr("zettcode.daemon.state.Record.change", must_not_write)
+    daemon._refresh_counters()
 
 
 def test_a_label_given_at_the_start_is_recorded_and_listed(home, capsys):

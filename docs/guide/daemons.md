@@ -90,7 +90,9 @@ The first line is the session id, what it is doing and how long: `starting` (it 
 `idle`, `working`, `stopping`, or `dead` — a dead entry is one whose process is gone (the machine restarted, or it
 crashed); `kill` removes it. `name` is the label `spawn --name` recorded, and `title` the session's own name.
 `context` is how full the context was on the newest call, the window it is measured against and the share of it;
-`input` and `output` are what the session had sent and generated as of the daemon's last status change. A `next`
+`input` and `output` are what the session had sent and generated; they are written when the daemon changes status and,
+while a turn runs, whenever a number moved (checked every few seconds). The figures are as of the last completed
+model call, so they do not tick while one answer is still streaming. A `next`
 line appears while a model or level a reader asked for is waiting to be taken up, and an `error` line says why the
 last request could not be met. A `broker` line appears while the daemon cannot reach the session broker — it keeps
 trying, and so cannot be messaged meanwhile. `--json` prints the same fields for a program.

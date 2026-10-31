@@ -439,6 +439,49 @@ class Daemon:
         except OSError as error:
             self.record.log(f"the connection could not be recorded: {error}")
 
+    def _refresh_counters(self) -> None:
+        """Rewrite the counters while a turn runs, so ``daemon list`` does not stay at the numbers from its start.
+
+        The record is otherwise written when the status changes, which for one long turn is once at its start and
+        once at its end; a turn that goes through several model calls would show zeros throughout. The beat calls
+        this every five seconds, and it writes only when a number actually moved — the counters are as of the last
+        completed model call, so they do not move between calls.
+
+        Only the four counters are written: the rest of the record belongs to ``mark`` and to a reader, and this
+        runs beside a turn whose end will write its own status.
+        """
+        if not self.inbox.busy:
+            return
+        current = State.load(self.record.folder)
+        if current is None:
+            return
+        sent, made, context = self._spend()
+        if sent is None and made is None and context is None:
+            # The client could not say what it spent; writing Nones over real numbers would make `list` lose them.
+            return
+        window = self._window()
+        latest_window = window if window is not None else current.context_window
+        if (current.input_tokens, current.output_tokens, current.context_tokens, current.context_window) == (
+            sent,
+            made,
+            context,
+            latest_window,
+        ):
+            return
+        try:
+            self.record.change(
+                lambda fresh: replace(
+                    fresh or current,
+                    input_tokens=sent,
+                    output_tokens=made,
+                    context_tokens=context,
+                    context_window=latest_window,
+                ),
+                wait=0,
+            )
+        except OSError as error:
+            self.record.log(f"the counters could not be written: {error}")
+
     async def _beat(self) -> None:
         """Keep the heartbeat fresh while this process lives, and take up a setting a reader asked for.
 
@@ -449,6 +492,8 @@ class Daemon:
             self.record.beat()
             if not self.inbox.busy:
                 await self._apply_requests()
+            else:
+                self._refresh_counters()
             await self._note_connection()
             await asyncio.sleep(BEAT_SECONDS)
 
