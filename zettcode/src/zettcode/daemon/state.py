@@ -117,6 +117,9 @@ class State:
         title: The session's name, once it has one: what a reader recognises it by.
         name: The label the reader gave this daemon when starting it, if any: what it is *for*.
         permission: The shell level it runs at: ``deny``, ``safe`` or ``full``.
+        requested_model: A model a reader asked for while it runs, to be used from the next turn.
+        requested_effort: A reasoning level a reader asked for while it runs, likewise.
+        requested_error: Why the last requested model or level could not be put in force, or ``None``.
         input_tokens: Everything the session has sent to the model so far, cache reads included.
         output_tokens: Everything the model has generated for it, reasoning included.
         context_tokens: How full the context was on the newest call, or ``None`` before one was made.
@@ -134,6 +137,9 @@ class State:
     title: str | None = None
     name: str | None = None
     permission: str | None = None
+    requested_model: str | None = None
+    requested_effort: str | None = None
+    requested_error: str | None = None
     input_tokens: int | None = None
     output_tokens: int | None = None
     context_tokens: int | None = None

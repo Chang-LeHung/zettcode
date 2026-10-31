@@ -453,6 +453,9 @@ class DaemonInfo:
         output_tokens: Everything the model has generated for it, or ``None``.
         context_tokens: How full its context was on the newest call, or ``None``.
         context_window: The window of the model it runs on, or ``None``.
+        requested_model: A model a reader asked for, not yet in force, or ``None``.
+        requested_effort: A reasoning level a reader asked for, not yet in force, or ``None``.
+        requested_error: Why the last requested model or level could not be put in force, or ``None``.
     """
 
     session_id: str
@@ -469,6 +472,9 @@ class DaemonInfo:
     output_tokens: int | None = None
     context_tokens: int | None = None
     context_window: int | None = None
+    requested_model: str | None = None
+    requested_effort: str | None = None
+    requested_error: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

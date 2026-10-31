@@ -208,8 +208,16 @@ class Daemons:
         return "did not stop in time, so it was killed"
 
     # -- what a reader may change afterwards --------------------------------------------------------
-    def update(self, record: Record, *, title: str | None = None, name: str | None = None) -> Record:
-        """Change what is recorded about one daemon: the session's title, or the daemon's own label.
+    def update(
+        self,
+        record: Record,
+        *,
+        title: str | None = None,
+        name: str | None = None,
+        model: str | None = None,
+        effort: str | None = None,
+    ) -> Record:
+        """Change what is recorded about one daemon: its label, its session's title, or what it runs on.
 
         The label is the daemon's, so it may be changed while it runs; the daemon keeps a name a reader put there
         (see ``Daemon._label``). The title is the *session's*, and a session is written to only by the process that
@@ -217,55 +225,136 @@ class Daemons:
         refused here rather than written as one. Given together, a label is written even when the title cannot be,
         and the error says so.
 
+        A model or an effort is a request for a daemon that is running: it is written into the record and the daemon
+        puts it in force before its next turn (or within a beat), keeping the conversation. A daemon that is gone
+        cannot be moved to another model — it has no process to move.
+
         This blocks while it writes the session's metadata, so it is called where no event loop runs — the CLI
         calls it directly and the SDK from a worker thread.
 
         Raises:
             UpdateFailed: There is no state to change, the daemon still runs, its session is open in another
-                process, its record cannot be written, or the title is not one a session can carry.
+                process, its record cannot be written, the title is not one a session can carry, or the model or
+                the effort is not one this machine has configured.
         """
-        if title is None and name is None:
+        if title is None and name is None and model is None and effort is None:
             return record
         state = record.state
         if state is None:
             raise UpdateFailed("this daemon never recorded what it was, so there is nothing to change")
         cleaned = None if title is None else title.strip()
         label = None if name is None else (name.strip() or None)
+        wanted_model = None if model is None else model.strip()
+        wanted_effort = None if effort is None else effort.strip()
+        if model is not None and not wanted_model:
+            raise UpdateFailed("a model needs a name")
+        if effort is not None and not wanted_effort:
+            raise UpdateFailed("an effort needs a name")
+        if wanted_model is not None or wanted_effort is not None:
+            # A level is checked against the model the daemon would end on: its own, a model a previous request
+            # already asked for, or the one this command names.
+            pending_effort = wanted_effort if wanted_effort is not None else state.requested_effort
+            try:
+                if not record.alive:
+                    raise UpdateFailed("the daemon is not running, so it cannot be moved to another model")
+                self._check_runnable(state, wanted_model, pending_effort)
+            except UpdateFailed as error:
+                said = str(error)
+                if (
+                    record.alive
+                    and wanted_model is not None
+                    and wanted_effort is None
+                    and state.requested_effort is not None
+                    and " takes " in said
+                ):
+                    # The level that blocked it is not the daemon's own but one an earlier command asked for.
+                    said += f"; the level {state.requested_effort!r} was already requested, so set one it takes first"
+                # A label or a title is allowed whatever the settings are; write them and say what happened,
+                # rather than refusing the whole command for the one argument that could not be taken.
+                if title is None and name is None:
+                    raise UpdateFailed(said) from error
+                try:
+                    self.update(record, title=title, name=name)
+                except UpdateFailed as secondary:
+                    raise UpdateFailed(f"{said}; and {secondary}") from error
+                raise UpdateFailed(f"{said}; the other changes were written") from error
+        other = name is not None or wanted_model is not None or wanted_effort is not None
 
-        def named(current: State | None) -> State:
+        def applied(current: State | None, *, title: str | None) -> State:
             base = current or state
-            return dataclasses.replace(base, name=label)
-
-        def with_title(current: State | None) -> State:
-            # Only the title changes when no label was named: a name of ``None`` is "clear the label" only when the
-            # caller asked for one, which is what the ``name is None`` branch says.
-            base = named(current) if name is not None else (current or state)
-            return dataclasses.replace(base, title=cleaned)
+            if name is not None:
+                base = dataclasses.replace(base, name=label)
+            if wanted_model is not None:
+                base = dataclasses.replace(base, requested_model=wanted_model)
+            if wanted_effort is not None:
+                base = dataclasses.replace(base, requested_effort=wanted_effort)
+            if wanted_model is not None or wanted_effort is not None:
+                # A new request has not failed yet; an error left by an older one is about that one.
+                base = dataclasses.replace(base, requested_error=None)
+            if title is not None:
+                base = dataclasses.replace(base, title=title)
+            return base
 
         if title is not None and not cleaned:
-            if name is not None:
-                self._write(record, named)
-                raise UpdateFailed("a title needs at least one character; the label was changed")
+            if other:
+                self._write(record, lambda current: applied(current, title=None))
+                raise UpdateFailed("a title needs at least one character; the other changes were written")
             raise UpdateFailed("a title needs at least one character")
         if cleaned is None:
-            return self._write(record, named)
+            return self._write(record, lambda current: applied(current, title=None))
         if record.alive:
             message = "the daemon is running, and its session is its own; stop it before naming it"
-            if name is not None:
-                self._write(record, named)
-                message += "; the label was changed"
+            if other:
+                self._write(record, lambda current: applied(current, title=None))
+                message += "; the other changes were written"
             raise UpdateFailed(message)
         try:
             self._rename(record.session_id, state.workspace, cleaned)
         except UpdateFailed as error:
-            if name is not None:
-                self._write(record, named)
-                raise UpdateFailed(f"{error}; the label was changed") from error
+            if other:
+                self._write(record, lambda current: applied(current, title=None))
+                raise UpdateFailed(f"{error}; the other changes were written") from error
             raise
         try:
-            return self._write(record, with_title)
+            return self._write(record, lambda current: applied(current, title=cleaned))
         except UpdateFailed as error:
             raise UpdateFailed(f"{error}; the session was renamed, so its record still says the old title") from error
+
+    @staticmethod
+    def _check_runnable(state: State, model: str | None, effort: str | None) -> None:
+        """Refuse a model or a level this machine cannot run, naming the ones it can.
+
+        A model is resolved the way every layer resolves one (H26): its display name first, its id only when no
+        display name answers, and a name two entries share is refused rather than guessed. A level belongs to a
+        model, so it is checked against the one the request would end on — the daemon's own when only a level is
+        asked for, and that one must be findable, or there is nothing to check the level against.
+        """
+        from zettcode.sdk import list_models
+
+        try:
+            models = list_models()
+        except ValueError as error:
+            raise UpdateFailed(str(error)) from error
+        chosen = None
+        if model is not None or effort is not None:
+            wanted = model if model is not None else (state.requested_model or state.model or "")
+            shown = [entry for entry in models if entry.name == wanted]
+            matches = shown or [entry for entry in models if entry.model == wanted]
+            if len(matches) > 1:
+                raise UpdateFailed(f"Ambiguous model: {wanted}; give one a display_model")
+            chosen = matches[0] if matches else None
+        if model is not None and chosen is None:
+            raise UpdateFailed(f"No model called {model!r}; configured: {', '.join(entry.name for entry in models)}")
+        if effort is not None:
+            if chosen is None:
+                if state.requested_model is None and state.model is None:
+                    raise UpdateFailed("this daemon has not recorded a model, so its levels cannot be checked")
+                raise UpdateFailed(
+                    f"the daemon's model {state.requested_model or state.model!r} is not in this configuration, "
+                    "so its levels cannot be checked"
+                )
+            if effort not in chosen.efforts:
+                raise UpdateFailed(f"{chosen.name} takes {', '.join(chosen.efforts)}, not {effort!r}")
 
     @staticmethod
     def _write(record: Record, produce: Callable[[State | None], State]) -> Record:

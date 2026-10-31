@@ -153,7 +153,32 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="what the daemon is for, shown by `list` (an empty label clears it)",
     )
+    update.add_argument(
+        "--model",
+        metavar="NAME",
+        default=None,
+        help="the model it runs from the next turn on (a running daemon; the conversation is kept)",
+    )
+    update.add_argument(
+        "--effort",
+        metavar="LEVEL",
+        default=None,
+        help="the reasoning level it runs from the next turn on (a running daemon)",
+    )
     update.add_argument("--json", action="store_true", help="print the daemon as JSON, for a program to read")
+
+    prompt = commands.add_parser(
+        "prompt",
+        help="send a prompt to a daemon through the session broker",
+        description=(
+            "Send a daemon a message through the session broker, as a program outside every session would. Its turn "
+            "runs and the answer is stored in its session: `zettcode resume <id>` reads it, or `daemon log` shows "
+            "what it did. The sender is named, not a session, so the daemon does not answer back."
+        ),
+    )
+    prompt.add_argument("session", metavar="SESSION", help="the session id `daemon list` shows")
+    prompt.add_argument("text", metavar="TEXT", nargs="+", help="what to ask it")
+    prompt.add_argument("--json", action="store_true", help="print the receipt as JSON, for a program to read")
 
     # Started by `spawn`, never by hand: it is the process a reader's shell would otherwise own.
     run = commands.add_parser(
@@ -184,6 +209,8 @@ def daemon_program(argv: Sequence[str] | None = None) -> int:
         return _spawn(args)
     if args.command == "update":
         return _update(args)
+    if args.command == "prompt":
+        return _prompt(args)
     if args.command == "kill":
         return _kill(args.session, args.json)
     return _run(args)
@@ -216,21 +243,23 @@ def _entry(record: Record) -> list[str]:
     head = f"{record.session_id}  {record.status}  {_age(record.seconds())}"
     if state is None:
         return [head, *block([("name", "-"), ("workspace", "not recorded")])]
-    return [
-        head,
-        *block(
-            [
-                ("name", state.name or "-"),
-                ("title", state.title or "-"),
-                ("workspace", _short_path(state.workspace)),
-                ("model", f"{state.model or '?'}" + (f" · effort {state.effort}" if state.effort else "")),
-                ("context", _context_cell(state)),
-                ("input", _tokens_cell(state.input_tokens)),
-                ("output", _tokens_cell(state.output_tokens)),
-                ("shell", state.permission or "?"),
-            ]
-        ),
+    fields = [
+        ("name", state.name or "-"),
+        ("title", state.title or "-"),
+        ("workspace", _short_path(state.workspace)),
+        ("model", f"{state.model or '?'}" + (f" · effort {state.effort}" if state.effort else "")),
+        ("context", _context_cell(state)),
+        ("input", _tokens_cell(state.input_tokens)),
+        ("output", _tokens_cell(state.output_tokens)),
+        ("shell", state.permission or "?"),
     ]
+    if state.requested_model is not None or state.requested_effort is not None:
+        wanted = state.requested_model or state.model or "?"
+        level = f" · effort {state.requested_effort}" if state.requested_effort is not None else ""
+        fields.append(("next", f"{wanted}{level}"))
+    if state.requested_error is not None:
+        fields.append(("error", state.requested_error))
+    return [head, *block(fields)]
 
 
 def _tokens_cell(count: int | None) -> str:
@@ -277,6 +306,9 @@ def _record_json(record: Record) -> dict[str, object]:
         "pid": state.pid if state is not None else None,
         "seconds": round(record.seconds(), 1),
         "title": state.title if state is not None else None,
+        "requested_model": state.requested_model if state is not None else None,
+        "requested_effort": state.requested_effort if state is not None else None,
+        "requested_error": state.requested_error if state is not None else None,
         "input_tokens": state.input_tokens if state is not None else None,
         "output_tokens": state.output_tokens if state is not None else None,
         "context_tokens": state.context_tokens if state is not None else None,
@@ -402,12 +434,12 @@ def _kill(sessions: Sequence[str], as_json: bool) -> int:
 
 
 def _update(args: argparse.Namespace) -> int:
-    """Change a daemon's label, or its session's name, and print what is recorded now."""
+    """Change a daemon's label, its session's name, or what it runs on, and print what is recorded now."""
     from .process import Daemons, UpdateFailed
     from .state import Registry
 
-    if args.title is None and args.name is None:
-        sys.stderr.write("nothing to change: give --title or --name\n")
+    if args.title is None and args.name is None and args.model is None and args.effort is None:
+        sys.stderr.write("nothing to change: give --title, --name, --model or --effort\n")
         return EXIT_USAGE
     registry = Registry()
     record = registry.find(args.session)
@@ -415,7 +447,9 @@ def _update(args: argparse.Namespace) -> int:
         sys.stderr.write(f"no daemon with that session: {args.session}\n")
         return EXIT_FAILED
     try:
-        updated = Daemons(registry).update(record, title=args.title, name=args.name)
+        updated = Daemons(registry).update(
+            record, title=args.title, name=args.name, model=args.model, effort=args.effort
+        )
     except UpdateFailed as error:
         sys.stderr.write(f"zettcode daemon: {error}\n")
         return EXIT_FAILED
@@ -427,6 +461,72 @@ def _update(args: argparse.Namespace) -> int:
     if state is not None:
         print(f"name     {state.name or '-'}")
         print(f"title    {state.title or '-'}")
+        print(f"model    {state.model or '?'}" + (f" · effort {state.effort}" if state.effort else ""))
+        if state.requested_model is not None or state.requested_effort is not None:
+            wanted = state.requested_model or state.model or "?"
+            level = f" · effort {state.requested_effort}" if state.requested_effort is not None else ""
+            print(f"next     {wanted}{level}")
+        if state.requested_error is not None:
+            print(f"error    {state.requested_error}")
+    return EXIT_OK
+
+
+def _prompt(args: argparse.Namespace) -> int:
+    """Send a daemon a prompt through the session broker, and say what the broker did with it."""
+    import httpx
+
+    from ..broker.files import broker_dir, read_note
+    from ..broker.protocol import PROTOCOL_VERSION, Refused
+    from .state import Registry
+
+    record = Registry().find(args.session)
+    if record is None:
+        sys.stderr.write(f"no daemon with that session: {args.session}\n")
+        return EXIT_FAILED
+    note = read_note(broker_dir())
+    if note is None:
+        sys.stderr.write("no session broker is running, so a daemon cannot be reached\n")
+        return EXIT_FAILED
+    if note.version != PROTOCOL_VERSION:
+        sys.stderr.write(f"the session broker speaks protocol {note.version}, not {PROTOCOL_VERSION}; restart it\n")
+        return EXIT_FAILED
+    text = " ".join(args.text).strip()
+    if not text:
+        sys.stderr.write("a prompt needs some text\n")
+        return EXIT_USAGE
+    body = {
+        "to": record.session_id,
+        "text": text,
+        "via": "external",
+        "from": {"name": "zettcode daemon prompt"},
+    }
+    try:
+        response = httpx.post(
+            f"http://127.0.0.1:{note.port}/messages",
+            json=body,
+            headers={"Authorization": f"Bearer {note.token}"},
+            # The broker waits for the recipient's ack (ten seconds by default) and only then answers; a timeout
+            # as short as that would turn "it may still be delivered" into "the broker is unreachable".
+            timeout=15.0,
+            trust_env=False,
+        )
+    except httpx.HTTPError as error:
+        sys.stderr.write(f"zettcode daemon: the broker could not be reached: {error}\n")
+        return EXIT_FAILED
+    try:
+        answer = response.json()
+    except ValueError:
+        answer = None
+    if response.status_code != 200 or not isinstance(answer, dict):
+        refused = Refused.from_wire(answer.get("error") if isinstance(answer, dict) else None)
+        sys.stderr.write(f"zettcode daemon: {refused}\n")
+        return EXIT_FAILED
+    disposition = answer.get("disposition")
+    disposition = disposition if isinstance(disposition, str) and disposition else "sent"
+    if args.json:
+        print(json.dumps({"session": record.session_id, "disposition": disposition}, indent=2))
+    else:
+        print(f"{record.session_id}  {disposition}")
     return EXIT_OK
 
 

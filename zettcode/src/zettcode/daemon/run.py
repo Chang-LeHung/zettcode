@@ -167,6 +167,7 @@ class Daemon:
     async def _answer(self, message: IncomingMessage) -> None:
         """Run one turn, then the next waiting message, and go idle when there is none."""
         try:
+            await self._apply_requests()
             await self.mark("working")
             await self._turn(message)
             await self._name_it()
@@ -176,6 +177,52 @@ class Daemon:
                 asyncio.ensure_future(self._answer(following))
             else:
                 await self.mark("idle")
+
+    async def _apply_requests(self) -> None:
+        """Put a model or effort a reader asked for in force, then clear the request.
+
+        ``daemon update --model/--effort`` writes the request into the record, so the reader does not have to reach
+        this process; the beat tries it too, so a change lands without waiting for a message. The request is cleared
+        once tried — a model this configuration does not have would otherwise be attempted at every turn — and why
+        it could not be met is left in the record for ``daemon list`` to show. Clearing is by value: a request the
+        reader replaced while this one was being applied is kept for the next try.
+        """
+        state = State.load(self.record.folder)
+        if state is None or (state.requested_model is None and state.requested_effort is None):
+            return
+        wanted_model, wanted_effort = state.requested_model, state.requested_effort
+        failure: str | None = None
+        try:
+            if wanted_model is not None:
+                self.client.use_model(wanted_model)
+            if wanted_effort is not None:
+                self.client.use_effort(wanted_effort)
+        except Exception as error:  # noqa: BLE001 - a request that cannot be met leaves the daemon working
+            failure = f"{type(error).__name__}: {error}"
+            self.record.log(f"the requested model or effort could not be applied: {failure}")
+        else:
+            self.record.log(f"now running {self.client.model.name} · effort {self.client.effort}")
+
+        def applied(current: State | None) -> State:
+            base = current or state
+            clears_model = base.requested_model == wanted_model
+            clears_effort = base.requested_effort == wanted_effort
+            return replace(
+                base,
+                requested_model=None if clears_model else base.requested_model,
+                requested_effort=None if clears_effort else base.requested_effort,
+                # A request the reader replaced while this one was being applied has not failed: the error is about
+                # the request that was tried, so it is written only when that one is the one left in the record.
+                requested_error=failure if clears_model and clears_effort else base.requested_error,
+                model=self.client.model.name,
+                effort=self.client.effort,
+                context_window=self._window(),
+            )
+
+        try:
+            self.record.change(applied, wait=0)
+        except OSError as error:
+            self.record.log(f"the applied request could not be cleared: {error}")
 
     async def _turn(self, message: IncomingMessage) -> None:
         """Run one message as a relayed turn, and write how it ended into the log."""
@@ -260,7 +307,16 @@ class Daemon:
         # a moment. A write that missed is made by the next mark — the turn did not fail for it.
         for attempt in range(3):
             try:
-                self.record.change(lambda current: replace(state, name=self._label(current)), wait=0)
+                self.record.change(
+                    lambda current: replace(
+                        state,
+                        name=self._label(current),
+                        requested_model=current.requested_model if current is not None else None,
+                        requested_effort=current.requested_effort if current is not None else None,
+                        requested_error=current.requested_error if current is not None else None,
+                    ),
+                    wait=0,
+                )
                 return
             except OSError as error:
                 if attempt == 2:
@@ -288,9 +344,15 @@ class Daemon:
             return None
 
     async def _beat(self) -> None:
-        """Keep the heartbeat fresh while this process lives."""
+        """Keep the heartbeat fresh while this process lives, and take up a setting a reader asked for.
+
+        A request is applied between turns: a run in progress already holds the model and the level it started with,
+        and swapping them under it would change the compression it is halfway through.
+        """
         while True:
             self.record.beat()
+            if not self.inbox.busy:
+                await self._apply_requests()
             await asyncio.sleep(BEAT_SECONDS)
 
     def _title(self) -> str | None:
