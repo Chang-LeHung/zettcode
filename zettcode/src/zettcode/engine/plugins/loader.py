@@ -6,8 +6,10 @@ factory returning one) under the ``zettcode.plugins`` group::
     [project.entry-points."zettcode.plugins"]
     my-plugin = "my_package:MyPlugin"
 
-Nothing else registers a plugin: installing the distribution is the opt-in, and
-``[plugins] disable`` in the config is the way back out. A plugin that cannot be
+A single ``.py`` file in :attr:`ZettCodeConfig.plugins_dir` (``~/.zettcode/plugins`` by default) is the other way in:
+every class the file defines that derives from :class:`Plugin` (``TuiPlugin`` included) is loaded, under the file's
+stem as its origin. Nothing else registers a plugin: installing the distribution or dropping the file in is the
+opt-in, and ``[plugins] disable`` in the config is the way back out. A plugin that cannot be
 imported, instantiated, or activated is reported in
 :attr:`~zettcode.engine.plugins.plugin.Plugins.failures`; one broken plugin must not take
 the whole application with it.
@@ -23,6 +25,9 @@ only a terminal has (see :class:`zettcode.app.plugins.loader.TerminalLoader`).
 
 from __future__ import annotations
 
+import importlib.util
+import sys
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from zettcode.config import read_disabled_plugins
@@ -55,6 +60,45 @@ def installed_entry_points() -> tuple[EntryPoint, ...]:
     from importlib.metadata import entry_points
 
     return tuple(sorted(entry_points(group=PLUGIN_ENTRY_POINT_GROUP), key=lambda point: point.name))
+
+
+def installed_files(directory: Path) -> tuple[Path, ...]:
+    """Return the single-file plugins in ``directory``, sorted by name; a folder that is not there has none."""
+    try:
+        found = sorted(directory.glob("*.py"))
+    except OSError:
+        return ()
+    return tuple(path for path in found if path.is_file() and not path.name.startswith(("_", ".")))
+
+
+def _file_plugins(path: Path) -> list[Plugin[Any]]:
+    """Import a single-file plugin and instantiate every Plugin subclass it defines itself.
+
+    Raises:
+        Exception: Whatever the import or a constructor raised, which the caller reports as that file's failure.
+    """
+    name = f"_zettcode_plugin_{path.stem}"
+    spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None:  # pragma: no cover - a .py file always has a loader
+        raise ImportError(f"{path.name} cannot be loaded as a module")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    try:
+        spec.loader.exec_module(module)
+    except BaseException:
+        sys.modules.pop(name, None)
+        raise
+    found = [
+        value
+        for value in vars(module).values()
+        if isinstance(value, type)
+        and value is not Plugin
+        and issubclass(value, Plugin)
+        and value.__module__ == module.__name__
+    ]
+    if not found:
+        raise ValueError(f"{path.name} defines no class deriving from Plugin or TuiPlugin")
+    return sorted((value() for value in found), key=lambda plugin: type(plugin).__name__)
 
 
 def load_plugins(
@@ -91,10 +135,10 @@ def run(
     builtins: Sequence[Plugin[Any]],
     entry_points: Iterable[EntryPoint] | None,
 ) -> Plugins:
-    """Feed the builtins and then the enabled distributions to ``loader``, and return what it bundled.
+    """Feed the builtins, the enabled distributions and the single-file plugins to ``loader``, and return what it bundled.
 
     The builtins go first, so a plugin that registers under one of their names replaces it in place.
-    Builtins always load, while ``[plugins] enabled`` only gates the distributions.
+    Builtins always load, while ``[plugins] enabled`` only gates the distributions and the files.
     """
     for plugin in builtins:
         loader.accept(plugin, origin=plugin.name or type(plugin).__name__, builtin=True)
@@ -114,6 +158,17 @@ def run(
                 loader.fail(point.name, error)
                 continue
             loader.accept(plugin, origin=point.name)
+        for path in installed_files(config.plugins_dir):
+            origin = path.stem
+            if origin in disabled:
+                continue
+            try:
+                plugins = _file_plugins(path)
+            except Exception as error:
+                loader.fail(origin, error)
+                continue
+            for plugin in plugins:
+                loader.accept(plugin, origin=origin)
     return loader.bundle()
 
 

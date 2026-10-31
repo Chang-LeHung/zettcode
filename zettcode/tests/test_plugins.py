@@ -1025,3 +1025,64 @@ def test_registering_something_that_is_not_a_presenter_is_refused_and_the_plugin
     assert any("broken: A presenter must be" in failure for failure in plugins.failures)
     assert all(presenter.__class__.__name__.endswith("Presenter") for presenter in plugins.presenters)
     assert not any(presenter.__class__.__name__ == "object" for presenter in plugins.presenters)
+
+
+# -- single-file plugins in the plugins folder --------------------------------------------------------
+
+
+def write_file_plugin(folder: Path, name: str, body: str) -> None:
+    folder.mkdir(exist_ok=True)
+    (folder / f"{name}.py").write_text(body, encoding="utf-8")
+
+
+SIMPLE_PLUGIN = "from zettcode.engine.plugins import Plugin\n\n\nclass {cls}(Plugin):\n    name = {name!r}\n\n    def activate(self, ctx):\n        pass\n"
+
+
+def file_config(tmp_path: Path, folder: Path, **changes: object) -> ZettCodeConfig:
+    return replace(make_config(tmp_path), plugins_dir=folder, plugins_file=tmp_path / "off.json", **changes)
+
+
+def test_a_single_file_plugin_is_loaded_under_its_stem(tmp_path: Path):
+    folder = tmp_path / "plugins"
+    write_file_plugin(folder, "greeter", SIMPLE_PLUGIN.format(cls="Greeter", name="greeter"))
+
+    plugins = loader_module.load_plugins(file_config(tmp_path, folder), builtins=(), entry_points=())
+
+    assert [plugin.name for plugin in plugins.plugins] == ["greeter"]
+    assert plugins.plugins[0].origin == "greeter"
+
+
+def test_every_plugin_class_a_file_defines_is_loaded(tmp_path: Path):
+    folder = tmp_path / "plugins"
+    write_file_plugin(
+        folder,
+        "pair",
+        SIMPLE_PLUGIN.format(cls="Greeter", name="greeter") + "\n\n" + SIMPLE_PLUGIN.format(cls="Later", name="later"),
+    )
+
+    plugins = loader_module.load_plugins(file_config(tmp_path, folder), builtins=(), entry_points=())
+
+    assert [plugin.name for plugin in plugins.plugins] == ["greeter", "later"]
+    assert [plugin.origin for plugin in plugins.plugins] == ["pair", "pair"]
+
+
+def test_a_switched_off_file_plugin_is_left_out(tmp_path: Path):
+    folder = tmp_path / "plugins"
+    write_file_plugin(folder, "greeter", SIMPLE_PLUGIN.format(cls="Greeter", name="greeter"))
+    config = file_config(tmp_path, folder)
+    config.plugins_file.write_text('{"disabled": ["greeter"]}', encoding="utf-8")
+
+    plugins = loader_module.load_plugins(config, builtins=(), entry_points=())
+
+    assert plugins.plugins == ()
+
+
+def test_a_broken_file_plugin_is_reported_and_the_rest_still_load(tmp_path: Path):
+    folder = tmp_path / "plugins"
+    write_file_plugin(folder, "broken", "class (\n")
+    write_file_plugin(folder, "greeter", SIMPLE_PLUGIN.format(cls="Greeter", name="greeter"))
+
+    plugins = loader_module.load_plugins(file_config(tmp_path, folder), builtins=(), entry_points=())
+
+    assert [plugin.name for plugin in plugins.plugins] == ["greeter"]
+    assert [origin for origin, _why in plugins.failed] == ["broken"]

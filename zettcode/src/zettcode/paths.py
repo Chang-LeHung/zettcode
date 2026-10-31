@@ -21,6 +21,18 @@ DEFAULT_STORE = Path.home() / ".zettcode" / "sessions"
 #: reader's config file stays theirs, and a name here is an entry-point name, the same one ``[plugins] disable`` takes.
 DEFAULT_PLUGINS_FILE = DEFAULT_STORE.parent / "plugins.json"
 
+#: A plugin that is a single ``.py`` file lives here instead of being installed into site-packages: one file, one
+#: module, loaded at the next start. ``$ZETTCODE_PLUGINS_DIR`` moves it, the way ``$ZETTCODE_CONFIG`` moves the config.
+DEFAULT_PLUGINS_DIR = DEFAULT_STORE.parent / "plugins"
+PLUGINS_DIR_VARIABLE = "ZETTCODE_PLUGINS_DIR"
+
+
+def plugins_dir() -> Path:
+    """Return the folder single-file plugins live in: ``$ZETTCODE_PLUGINS_DIR`` or ``~/.zettcode/plugins``."""
+    override = os.getenv(PLUGINS_DIR_VARIABLE)
+    return Path(override).expanduser() if override else DEFAULT_PLUGINS_DIR
+
+
 #: MCP servers are ZettCode's own file, so they are configured independently of
 #: whatever other zett tools read.
 DEFAULT_MCP_CONFIG = Path.home() / ".zettcode" / "mcp.json"

@@ -554,7 +554,9 @@ def test_the_help_lists_the_version_flag(capsys):
 
     said = capsys.readouterr().out
     assert "-v, -V, --version" in said
-    assert "broker" in said and "gateway" in said, "the commands of their own are named in the help"
+    assert "broker" in said and "gateway" in said and "plugins" in said, (
+        "the commands of their own are named in the help"
+    )
 
 
 def test_the_collector_is_told_to_interrupt_the_interface_less_often_and_nothing_else_changes():

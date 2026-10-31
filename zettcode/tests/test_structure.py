@@ -163,6 +163,20 @@ LAYERS = (
             "zettcode.daemon",
         ),
     ),
+    # The plugin command is a shell helper for the environment: it reads installed metadata and drives pip, and it
+    # belongs to no front end. It reaches the loader only for the entry-point group's name.
+    (
+        "zettcode.plugins",
+        (
+            "zettcode.app",
+            "zettcode.tui",
+            "zettcode.cli",
+            "zettcode.server",
+            "zettcode.gateway",
+            "zettcode.broker",
+            "zettcode.daemon",
+        ),
+    ),
     # A daemon is a front end like the terminal's: a session run headless, through the SDK and the broker. It owns no
     # agent of its own, draws nothing, and serves nothing over HTTP. (It reads the session store's workspace naming
     # from `engine.storage.layout`, a path helper it shares with the store rather than a second spelling of it.)

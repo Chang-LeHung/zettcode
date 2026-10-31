@@ -120,6 +120,7 @@ SETTINGS: tuple[str, ...] = (
     "plugins_enabled",
     "disabled_plugins",
     "plugins_file",
+    "plugins_dir",
     "subagent_enabled",
     "subagent_max_iterations",
     "subagent_messaging",
@@ -340,7 +341,7 @@ class Client:
         store, theme_file, theme, themes_dir, pet, pet_position, reasoning_effort, shell_approval, reduced_motion,
         parallel_tool_call, max_iterations, transcript_max_entries, mouse_scroll_speed, tips, agents_md_enabled,
         ask_user_enabled, skills_enabled, skill_roots, skills_scope, mcp_enabled, mcp_config, mcp_scope,
-        self_compaction, statusline_hidden, plugins_enabled, disabled_plugins, plugins_file, subagent_enabled,
+        self_compaction, statusline_hidden, plugins_enabled, disabled_plugins, plugins_file, plugins_dir, subagent_enabled,
         subagent_max_iterations, subagent_messaging, todowrite_enabled, jit_harness, shell_network,
         sessions_enabled, update_enabled, update_file, harness_dir: One
             :class:`~zettcode.config.ZettCodeConfig` field each, laid over the configuration this client read. Every
@@ -405,6 +406,7 @@ class Client:
         plugins_enabled: bool = _UNSET,
         disabled_plugins: Sequence[str] = _UNSET,
         plugins_file: str | Path = _UNSET,
+        plugins_dir: str | Path = _UNSET,
         subagent_enabled: bool = _UNSET,
         subagent_max_iterations: int = _UNSET,
         subagent_messaging: bool = _UNSET,
