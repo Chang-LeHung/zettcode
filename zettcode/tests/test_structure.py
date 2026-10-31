@@ -115,8 +115,9 @@ LAYERS = (
     ),
     # The broker is standard library only, and the shell imports it, never the other way round.
     ("zettcode.broker", ("zettcode.app", "zettcode.cli", "zettcode.config", "zettcode.tui")),
-    # Two leaves every layer may use, so neither may grow an import upward: the names a message's mode can have, and
-    # the command-line reader a package uses before it ends a process of its own.
+    # Three leaves every layer may use, so none may grow an import upward: the names a message's mode can have, the
+    # command-line reader a package uses before it ends a process of its own, and the plain-text layout a command
+    # prints with.
     (
         "zettcode.modes",
         (
@@ -134,6 +135,21 @@ LAYERS = (
     ),
     (
         "zettcode.processes",
+        (
+            "zettcode.app",
+            "zettcode.tui",
+            "zettcode.cli",
+            "zettcode.config",
+            "zettcode.sdk",
+            "zettcode.server",
+            "zettcode.gateway",
+            "zettcode.engine",
+            "zettcode.broker",
+            "zettcode.daemon",
+        ),
+    ),
+    (
+        "zettcode.table",
         (
             "zettcode.app",
             "zettcode.tui",

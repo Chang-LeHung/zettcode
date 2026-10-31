@@ -9,6 +9,7 @@ record goes.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import dataclasses
 import os
@@ -24,7 +25,10 @@ from . import PERMISSIONS
 from .state import START_SECONDS, Record, Registry, pid_runs
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
+    from collections.abc import Callable
+
     from .run import Options
+    from .state import State
 
 #: How long a stop may take before the process is killed outright.
 KILL_GRACE = 5.0
@@ -32,7 +36,7 @@ KILL_GRACE = 5.0
 #: How often a start looks for the state file its child writes.
 POLL_SECONDS = 0.05
 
-__all__ = ["Daemons", "KILL_GRACE", "SpawnFailed"]
+__all__ = ["Daemons", "KILL_GRACE", "SpawnFailed", "UpdateFailed"]
 
 
 class SpawnFailed(RuntimeError):
@@ -42,6 +46,10 @@ class SpawnFailed(RuntimeError):
         """Carry the reason, and the file the child's first words went to."""
         super().__init__(said)
         self.log = log
+
+
+class UpdateFailed(RuntimeError):
+    """What a reader asked to change about a daemon cannot be changed, and why."""
 
 
 class Daemons:
@@ -64,6 +72,7 @@ class Daemons:
         effort: str | None = None,
         resume: str | None = None,
         name: str | None = None,
+        title: str | None = None,
         permission: str = "full",
     ) -> Record:
         """Start one daemon in ``workspace`` and return the record it wrote once it was reachable.
@@ -74,6 +83,7 @@ class Daemons:
             effort: The reasoning level, or ``None`` for the model's own default.
             resume: A stored session to continue, or ``None`` for a fresh one.
             name: A label to record beside the session, so ``daemon list`` says what it is for.
+            title: What to call the session. ``None`` lets it name itself from its first answer.
             permission: The shell level it runs at: ``deny``, ``safe`` or ``full``.
 
         Raises:
@@ -88,13 +98,18 @@ class Daemons:
         if not workspace.is_dir():
             # Popen's own refusal for a missing cwd is a FileNotFoundError that says nothing about the argument.
             raise SpawnFailed(f"{workspace} is not a directory, so a daemon has nowhere to work")
+        if title is not None and not title.strip():
+            # The daemon would be started and then fail to name itself; refusing here says which argument it was.
+            raise SpawnFailed("a session's title needs at least one character")
         token = secrets.token_hex(8)
         early = self.registry.workspace(workspace, create=True) / ".spawn"
         early.mkdir(parents=True, exist_ok=True)
         log_path = early / f"{token}.log"
         with log_path.open("wb") as log:
             child = _Child(
-                self._command(_options(workspace, token, model, effort, resume, name, permission)), workspace, log
+                self._command(_options(workspace, token, model, effort, resume, name, title, permission)),
+                workspace,
+                log,
             )
         record = self._await(child, token, START_SECONDS)
         if record is None:
@@ -125,6 +140,8 @@ class Daemons:
             argv += ["--effort", options.effort]
         if options.name is not None:
             argv += ["--name", options.name]
+        if options.title is not None:
+            argv += ["--title", options.title]
         argv += ["--permission", options.permission]
         return argv
 
@@ -161,14 +178,20 @@ class Daemons:
         A dead record is only removed: the process it described is gone already. The session is never touched — it
         is a conversation like any other, and ``zettcode resume <id>`` opens it afterwards.
         """
-        if record.state is None:
+        state = record.state
+        if state is None:
             record.remove()
             return "removed: it never recorded what it was"
         if not record.alive:
             record.remove()
             return "was already gone; its record was removed"
-        pid = record.state.pid
-        record.save(dataclasses.replace(record.state, status="stopping"))
+        pid = state.pid
+        try:
+            record.change(lambda current: dataclasses.replace(current or state, status="stopping"))
+        except OSError as error:
+            # The status is a courtesy to a reader looking while the signal lands; a state another writer holds
+            # must not keep `kill` from sending it.
+            record.log(f"the state file could not be written: {error}")
         if not _signal(pid, signal.SIGTERM):
             record.remove()
             return "was already gone; its record was removed"
@@ -183,6 +206,99 @@ class Daemons:
         _signal(pid, getattr(signal, "SIGKILL", signal.SIGTERM))
         record.remove()
         return "did not stop in time, so it was killed"
+
+    # -- what a reader may change afterwards --------------------------------------------------------
+    def update(self, record: Record, *, title: str | None = None, name: str | None = None) -> Record:
+        """Change what is recorded about one daemon: the session's title, or the daemon's own label.
+
+        The label is the daemon's, so it may be changed while it runs; the daemon keeps a name a reader put there
+        (see ``Daemon._label``). The title is the *session's*, and a session is written to only by the process that
+        holds its lock: while the daemon runs it holds it, and when it is gone the session is free. A blank title is
+        refused here rather than written as one. Given together, a label is written even when the title cannot be,
+        and the error says so.
+
+        This blocks while it writes the session's metadata, so it is called where no event loop runs — the CLI
+        calls it directly and the SDK from a worker thread.
+
+        Raises:
+            UpdateFailed: There is no state to change, the daemon still runs, its session is open in another
+                process, its record cannot be written, or the title is not one a session can carry.
+        """
+        if title is None and name is None:
+            return record
+        state = record.state
+        if state is None:
+            raise UpdateFailed("this daemon never recorded what it was, so there is nothing to change")
+        cleaned = None if title is None else title.strip()
+        label = None if name is None else (name.strip() or None)
+
+        def named(current: State | None) -> State:
+            base = current or state
+            return dataclasses.replace(base, name=label)
+
+        def with_title(current: State | None) -> State:
+            # Only the title changes when no label was named: a name of ``None`` is "clear the label" only when the
+            # caller asked for one, which is what the ``name is None`` branch says.
+            base = named(current) if name is not None else (current or state)
+            return dataclasses.replace(base, title=cleaned)
+
+        if title is not None and not cleaned:
+            if name is not None:
+                self._write(record, named)
+                raise UpdateFailed("a title needs at least one character; the label was changed")
+            raise UpdateFailed("a title needs at least one character")
+        if cleaned is None:
+            return self._write(record, named)
+        if record.alive:
+            message = "the daemon is running, and its session is its own; stop it before naming it"
+            if name is not None:
+                self._write(record, named)
+                message += "; the label was changed"
+            raise UpdateFailed(message)
+        try:
+            self._rename(record.session_id, state.workspace, cleaned)
+        except UpdateFailed as error:
+            if name is not None:
+                self._write(record, named)
+                raise UpdateFailed(f"{error}; the label was changed") from error
+            raise
+        try:
+            return self._write(record, with_title)
+        except UpdateFailed as error:
+            raise UpdateFailed(f"{error}; the session was renamed, so its record still says the old title") from error
+
+    @staticmethod
+    def _write(record: Record, produce: Callable[[State | None], State]) -> Record:
+        """Write the record through the lock that keeps a daemon's refresh and a reader's change apart."""
+        try:
+            record.change(produce)
+        except OSError as error:
+            raise UpdateFailed(f"the daemon's record could not be written: {error}") from error
+        return record
+
+    @staticmethod
+    def _rename(session_id: str, workspace: str, title: str) -> None:
+        """Write the session's title into its metadata, holding the session's lock while it is written.
+
+        The lock is what S16/H27 mean by "written only by the process holding it": asking whether it is held and
+        then writing without it is a check-then-act a terminal can slip into between the two steps.
+        """
+        from zettcode.engine.storage import SessionLocks, SessionStore
+
+        store = SessionStore(workspace=workspace)
+        locks = SessionLocks(store.session_dir)
+        try:
+            taken = locks.claim(session_id)
+        except ValueError as error:
+            raise UpdateFailed(str(error)) from error
+        if not taken:
+            raise UpdateFailed("the session is open in another process, so its name is not ours to write")
+        try:
+            asyncio.run(store.set_title(session_id, title))
+        except (OSError, ValueError) as error:
+            raise UpdateFailed(str(error)) from error
+        finally:
+            locks.release()
 
 
 class _Child:
@@ -232,6 +348,7 @@ def _options(
     effort: str | None,
     resume: str | None,
     name: str | None,
+    title: str | None,
     permission: str,
 ) -> Options:
     """Build what ``daemon run`` should be told, without importing its module until it is needed."""
@@ -244,6 +361,7 @@ def _options(
         model=model,
         effort=effort,
         name=name,
+        title=title,
         permission=permission,
     )
 

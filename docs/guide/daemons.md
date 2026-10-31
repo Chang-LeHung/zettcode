@@ -38,6 +38,7 @@ send_message(to="01a1726a-3109-75a7-9285-390d9e381111", message="...")
 | `--model NAME` | The model to run on, by the name `daemon model` lists (default: the first configured) |
 | `--effort LEVEL` | The reasoning level (default: the model's own) |
 | `-n LABEL`, `--name LABEL` | What this daemon is for, recorded beside the session and shown by `daemon list` (default: none) |
+| `--title TEXT` | What to call the session (default: it names itself from its first answer) |
 | `--permission LEVEL` | Its shell level: `safe` (every command in a sandbox), `deny` (no shell at all) or `full` (default). There is no `ask`: nobody is there to answer |
 | `--resume SESSION` | Continue a stored session instead of starting empty |
 | `--json` | Print the same facts as JSON, for a script or an agent |
@@ -71,21 +72,50 @@ carry on by hand.
 
 ## Lists and stopping
 
-`zettcode daemon list` shows every daemon on the machine, whichever workspace it works in:
+`zettcode daemon list` shows every daemon on the machine, whichever workspace it works in, one block each:
 
 ```
-SESSION                               NAME      WORKSPACE        MODEL  EFFORT  PERMISSION  STATUS   FOR  TITLE
-01a1726a-3109-75a7-9285-390d9e381111  reviewer  ~/projects/api   gpt-5  high    safe        idle     8m   Reviewer
-01a1726b-2f41-75a7-9285-390d9e381112  -         ~/projects/web   gpt-5  low     full        working  2m   -
+01a1726a-3109-75a7-9285-390d9e381111  idle  8m
+  name       reviewer
+  title      Reviewer
+  workspace  ~/projects/api
+  model      gpt-5 · effort high
+  context    34k of 200k · 17%
+  input      12.3k
+  output     678
+  shell      safe
 ```
 
-`NAME` is the label `spawn --name` recorded — a word for what the daemon is for, which is what a machine with
-several of them needs — and `TITLE` is the session's own name, once the model has written one. `STATUS` is `starting` (it has not joined the broker yet), `idle`, `working`, `stopping`, or `dead` — a dead entry is
-one whose process is gone (the machine restarted, or it crashed); `kill` removes it. `--json` prints the same
-fields for a program.
+The first line is the session id, what it is doing and how long: `starting` (it has not joined the broker yet),
+`idle`, `working`, `stopping`, or `dead` — a dead entry is one whose process is gone (the machine restarted, or it
+crashed); `kill` removes it. `name` is the label `spawn --name` recorded, and `title` the session's own name.
+`context` is how full the context was on the newest call, the window it is measured against and the share of it;
+`input` and `output` are what the session had sent and generated as of the daemon's last status change. `--json`
+prints the same fields for a program.
 
 `zettcode daemon kill <session-id>...` stops each daemon and removes its record. The session stays, with everything it
 did, so you can open it in the terminal afterwards.
+
+## Naming one
+
+A daemon names itself: after its first answer the model writes a short title from that exchange, and `daemon list`,
+`/resume` and `zettcode resume` all show it. A session that already has a title keeps it, so this is one model call
+per session and not one per message.
+
+`spawn --title` names the session from the start, and `daemon update` changes what is recorded afterwards:
+
+```
+zettcode daemon update 01a1726a-3109-75a7-9285-390d9e381111 --title "Auth refactor review"
+zettcode daemon update 01a1726a-3109-75a7-9285-390d9e381111 --name reviewer
+zettcode daemon update 01a1726a-3109-75a7-9285-390d9e381111 --name ""        # clear the label
+```
+
+`--name` is the daemon's label, and it may be changed at any time, including while the daemon runs: the daemon keeps
+what a reader put there. `--title` is the *session's* name, and a session is written to only by the process that has
+it open — so a running daemon refuses `--title` (stop it first; the daemon is already naming itself while it runs).
+Given together, the label is written even if the title is refused, and the error says so.
+`--json` prints the record afterwards.
+
 
 ## Talking to one
 

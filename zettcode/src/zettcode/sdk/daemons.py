@@ -28,7 +28,7 @@ from .types import DaemonInfo
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from ..daemon.state import Record
 
-__all__ = ["PERMISSIONS", "daemon_log", "list_daemons", "spawn_daemon", "stop_daemon"]
+__all__ = ["PERMISSIONS", "daemon_log", "list_daemons", "spawn_daemon", "stop_daemon", "update_daemon"]
 
 #: The shell levels a daemon can be given. There is no ``ask``: nobody is there to answer it.
 PERMISSIONS = ("deny", "safe", "full")
@@ -50,6 +50,10 @@ def _info(record: Record) -> DaemonInfo:
         permission=state.permission,
         pid=state.pid,
         started_at=state.started_at,
+        input_tokens=state.input_tokens,
+        output_tokens=state.output_tokens,
+        context_tokens=state.context_tokens,
+        context_window=state.context_window,
     )
 
 
@@ -72,6 +76,7 @@ async def spawn_daemon(
     effort: str | None = None,
     resume: str | None = None,
     name: str | None = None,
+    title: str | None = None,
     permission: str = "safe",
 ) -> DaemonInfo:
     """Start a background agent and return it once it can be messaged.
@@ -83,6 +88,7 @@ async def spawn_daemon(
         effort: The reasoning level, or ``None`` for the model's own.
         resume: A stored session of that workspace to continue instead of starting an empty one.
         name: A label saying what the daemon is for, recorded beside it.
+        title: What to call the session. ``None`` lets it name itself from its first answer.
         permission: Its shell level: ``deny`` (no shell), ``safe`` (every command in a sandbox) or ``full``. The
             default is ``safe``, not the ``full`` the command line starts with: a program starting an agent that
             asks nobody should have to say so.
@@ -100,7 +106,13 @@ async def spawn_daemon(
 
     def start() -> Record:
         return Daemons().start(
-            folder, model=model, effort=effort, resume=resume, name=name or None, permission=permission
+            folder,
+            model=model,
+            effort=effort,
+            resume=resume,
+            name=name or None,
+            title=title or None,
+            permission=permission,
         )
 
     try:
@@ -127,6 +139,38 @@ async def stop_daemon(session_id: str) -> str:
     if record is None:
         raise SessionNotFoundError(f"No daemon runs session {session_id!r}")
     return await asyncio.to_thread(Daemons(registry).stop, record)
+
+
+async def update_daemon(session_id: str, *, title: str | None = None, name: str | None = None) -> DaemonInfo:
+    """Change what is recorded about a daemon: its session's name, or its own label.
+
+    The label may be changed while the daemon runs; it keeps what a reader put there. The title is the session's,
+    and a session is written to only by the process holding its lock, so naming one waits until the daemon is
+    stopped (a running daemon names its own session from the first answer, and ``name_it`` costs nothing once it
+    has one).
+
+    Args:
+        session_id: The daemon, as :func:`list_daemons` gives it.
+        title: The name to give its session, or ``None`` to leave it.
+        name: The label to record, ``""`` to clear it, or ``None`` to leave it.
+
+    Raises:
+        SessionNotFoundError: No daemon has that session.
+        ConfigurationError: The daemon still runs, its session is open in another process, or the title is blank
+            or too long.
+    """
+    from ..daemon.process import Daemons, UpdateFailed
+    from ..daemon.state import Registry
+
+    registry = Registry()
+    record = registry.find(session_id)
+    if record is None:
+        raise SessionNotFoundError(f"No daemon runs session {session_id!r}")
+    try:
+        updated = await asyncio.to_thread(Daemons(registry).update, record, title=title, name=name)
+    except UpdateFailed as error:
+        raise ConfigurationError(str(error)) from error
+    return _info(updated)
 
 
 def daemon_log(session_id: str, *, lines: int = 200) -> str:
