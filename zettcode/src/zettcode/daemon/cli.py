@@ -22,17 +22,19 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ..table import block, table
 from . import PERMISSIONS
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from collections.abc import Sequence
 
-    from .state import Record
+    from .state import Record, State
 
 __all__ = ["daemon_program"]
 
 EXIT_OK = 0
 EXIT_FAILED = 1
+EXIT_USAGE = 2
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -106,6 +108,12 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     spawn.add_argument(
+        "--title",
+        metavar="TEXT",
+        default=None,
+        help="what to call its session (default: it names itself from its first answer)",
+    )
+    spawn.add_argument(
         "--resume",
         metavar="SESSION",
         default=None,
@@ -124,6 +132,29 @@ def _build_parser() -> argparse.ArgumentParser:
     kill.add_argument("session", metavar="SESSION", nargs="+", help="the session id `daemon list` shows")
     kill.add_argument("--json", action="store_true", help="print the outcome as JSON, for a program to read")
 
+    update = commands.add_parser(
+        "update",
+        help="change what is recorded about a daemon: its label, or its session's name",
+        description=(
+            "Change a daemon's label, and name its session. A running daemon's session is its own, so `--title` is "
+            "refused while it runs — stop it first; `--name` may be changed at any time."
+        ),
+    )
+    update.add_argument("session", metavar="SESSION", help="the session id `daemon list` shows")
+    update.add_argument(
+        "--title",
+        metavar="TEXT",
+        default=None,
+        help="the session's name, shown by `list` and by `zettcode resume`",
+    )
+    update.add_argument(
+        "--name",
+        metavar="LABEL",
+        default=None,
+        help="what the daemon is for, shown by `list` (an empty label clears it)",
+    )
+    update.add_argument("--json", action="store_true", help="print the daemon as JSON, for a program to read")
+
     # Started by `spawn`, never by hand: it is the process a reader's shell would otherwise own.
     run = commands.add_parser(
         "run",
@@ -136,6 +167,7 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument("--model", default=None, help=argparse.SUPPRESS)
     run.add_argument("--effort", default=None, help=argparse.SUPPRESS)
     run.add_argument("--name", default=None, help=argparse.SUPPRESS)
+    run.add_argument("--title", default=None, help=argparse.SUPPRESS)
     run.add_argument("--permission", default="full", choices=PERMISSIONS, help=argparse.SUPPRESS)
     return parser
 
@@ -150,6 +182,8 @@ def daemon_program(argv: Sequence[str] | None = None) -> int:
         return _models(args.workspace, args.json)
     if args.command == "spawn":
         return _spawn(args)
+    if args.command == "update":
+        return _update(args)
     if args.command == "kill":
         return _kill(args.session, args.json)
     return _run(args)
@@ -166,34 +200,67 @@ def _list(as_json: bool) -> int:
     if not found:
         print("No daemons. Start one with: zettcode daemon spawn")
         return EXIT_OK
-    rows: list[tuple[str, ...]] = [
-        ("SESSION", "NAME", "WORKSPACE", "MODEL", "EFFORT", "PERMISSION", "STATUS", "FOR", "TITLE")
-    ]
-    rows.extend(_row(record) for record in found)
-    widths = [max(len(row[index]) for row in rows) for index in range(len(rows[0]))]
-    for row in rows:
-        print("  ".join(cell.ljust(widths[index]) for index, cell in enumerate(row)).rstrip())
+    for index, record in enumerate(found):
+        if index:
+            print()
+        for line in _entry(record):
+            print(line)
     if any(record.dead for record in found):
         print("\nA dead record is one whose process is gone; `zettcode daemon kill <id>` removes it.")
     return EXIT_OK
 
 
-def _row(record: Record) -> tuple[str, ...]:
-    """Return one daemon as the columns ``list`` prints."""
+def _entry(record: Record) -> list[str]:
+    """Return one daemon as ``list`` prints it: its id and state first, then one field per line."""
     state = record.state
+    head = f"{record.session_id}  {record.status}  {_age(record.seconds())}"
     if state is None:
-        return (record.session_id, "-", "?", "?", "?", "?", record.status, _age(record.seconds()), "-")
-    return (
-        record.session_id,
-        state.name or "-",
-        _short_path(state.workspace),
-        state.model or "?",
-        state.effort or "-",
-        state.permission or "?",
-        record.status,
-        _age(record.seconds()),
-        state.title or "-",
-    )
+        return [head, *block([("name", "-"), ("workspace", "not recorded")])]
+    return [
+        head,
+        *block(
+            [
+                ("name", state.name or "-"),
+                ("title", state.title or "-"),
+                ("workspace", _short_path(state.workspace)),
+                ("model", f"{state.model or '?'}" + (f" · effort {state.effort}" if state.effort else "")),
+                ("context", _context_cell(state)),
+                ("input", _tokens_cell(state.input_tokens)),
+                ("output", _tokens_cell(state.output_tokens)),
+                ("shell", state.permission or "?"),
+            ]
+        ),
+    ]
+
+
+def _tokens_cell(count: int | None) -> str:
+    """Return a token count in the short form a line has room for; ``None`` is a daemon that has counted none."""
+    if count is None:
+        return "-"
+    if count < 1_000:
+        return str(count)
+    # The thresholds are where rounding would carry into the next unit: 999_950 tokens is 1M, not 1000k.
+    if count < 999_950:
+        return _short(count / 1_000, "k")
+    if count < 999_950_000:
+        return _short(count / 1_000_000, "M")
+    return _short(count / 1_000_000_000, "G")
+
+
+def _short(value: float, unit: str) -> str:
+    """Return one decimal of ``value`` with ``unit``, dropping a ``.0`` that says nothing."""
+    return f"{value:.1f}{unit}".replace(f".0{unit}", unit)
+
+
+def _context_cell(state: State) -> str:
+    """Return how full the context was, of what window and as a share of it, when the daemon recorded both."""
+    if not state.context_tokens:
+        return "-"
+    if not state.context_window or state.context_tokens >= state.context_window:
+        # At or past the window this is not a share of it: the shell refuses such a figure for the same reason.
+        return _tokens_cell(state.context_tokens)
+    share = round(100 * state.context_tokens / state.context_window)
+    return f"{_tokens_cell(state.context_tokens)} of {_tokens_cell(state.context_window)} · {share}%"
 
 
 def _record_json(record: Record) -> dict[str, object]:
@@ -210,6 +277,10 @@ def _record_json(record: Record) -> dict[str, object]:
         "pid": state.pid if state is not None else None,
         "seconds": round(record.seconds(), 1),
         "title": state.title if state is not None else None,
+        "input_tokens": state.input_tokens if state is not None else None,
+        "output_tokens": state.output_tokens if state is not None else None,
+        "context_tokens": state.context_tokens if state is not None else None,
+        "context_window": state.context_window if state is not None else None,
         "folder": str(record.folder),
     }
 
@@ -225,6 +296,7 @@ def _spawn(args: argparse.Namespace) -> int:
             effort=args.effort,
             resume=args.resume,
             name=args.name,
+            title=args.title,
             permission=args.permission,
         )
     except SpawnFailed as error:
@@ -234,25 +306,14 @@ def _spawn(args: argparse.Namespace) -> int:
         return EXIT_FAILED
     state = record.state
     if args.json:
-        print(
-            json.dumps(
-                {
-                    "session": record.session_id,
-                    "name": state.name if state is not None else None,
-                    "workspace": state.workspace if state is not None else None,
-                    "model": state.model if state is not None else None,
-                    "effort": state.effort if state is not None else None,
-                    "permission": state.permission if state is not None else None,
-                    "pid": state.pid if state is not None else None,
-                },
-                indent=2,
-            )
-        )
+        print(json.dumps(_record_json(record), indent=2))
         return EXIT_OK
     print(f"session  {record.session_id}")
     if state is not None:
         if state.name:
             print(f"name     {state.name}")
+        if state.title:
+            print(f"title    {state.title}")
         print(f"workspace {state.workspace}")
         print(f"model    {state.model or '?'}" + (f" · effort {state.effort}" if state.effort else ""))
         print(f"shell    {state.permission or '?'}")
@@ -310,9 +371,8 @@ def _models(workspace: Path, as_json: bool) -> int:
                 ", ".join(model.efforts),
             )
         )
-    widths = [max(len(row[index]) for row in rows) for index in range(len(rows[0]))]
-    for row in rows:
-        print("  ".join(cell.ljust(widths[index]) for index, cell in enumerate(row)).rstrip())
+    for line in table(rows):
+        print(line)
     print("\nPick one with: zettcode daemon spawn --model <name>")
     return EXIT_OK
 
@@ -341,6 +401,35 @@ def _kill(sessions: Sequence[str], as_json: bool) -> int:
     return EXIT_FAILED if missing else EXIT_OK
 
 
+def _update(args: argparse.Namespace) -> int:
+    """Change a daemon's label, or its session's name, and print what is recorded now."""
+    from .process import Daemons, UpdateFailed
+    from .state import Registry
+
+    if args.title is None and args.name is None:
+        sys.stderr.write("nothing to change: give --title or --name\n")
+        return EXIT_USAGE
+    registry = Registry()
+    record = registry.find(args.session)
+    if record is None:
+        sys.stderr.write(f"no daemon with that session: {args.session}\n")
+        return EXIT_FAILED
+    try:
+        updated = Daemons(registry).update(record, title=args.title, name=args.name)
+    except UpdateFailed as error:
+        sys.stderr.write(f"zettcode daemon: {error}\n")
+        return EXIT_FAILED
+    if args.json:
+        print(json.dumps(_record_json(updated), indent=2))
+        return EXIT_OK
+    state = updated.state
+    print(f"session  {updated.session_id}")
+    if state is not None:
+        print(f"name     {state.name or '-'}")
+        print(f"title    {state.title or '-'}")
+    return EXIT_OK
+
+
 def _run(args: argparse.Namespace) -> int:
     """Run the daemon process itself; this is what ``spawn`` starts."""
     import asyncio
@@ -354,6 +443,7 @@ def _run(args: argparse.Namespace) -> int:
         model=args.model,
         effort=args.effort,
         name=args.name,
+        title=args.title,
         permission=args.permission,
     )
     try:

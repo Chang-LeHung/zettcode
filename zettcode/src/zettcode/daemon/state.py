@@ -8,6 +8,7 @@ duplicates it. This module owns the other half — the process:
     ├── workspace.txt                 <- the path the folder belongs to, as the session store writes it
     └── <session-id>/
         ├── state.json                <- pid, status, model, effort, when it started (see :class:`State`)
+        ├── state.lock                <- held while state.json is read and written, so two writers do not clobber
         ├── heartbeat                 <- touched every few seconds: a pid that lives but has stopped working
         └── log                       <- what the daemon had to say: a failed turn, a refused message
 
@@ -24,6 +25,12 @@ import shutil
 import time
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+from zettcode.filelock import SingletonLock
+
+if TYPE_CHECKING:  # pragma: no cover - annotations only
+    from collections.abc import Callable
 
 #: Bumped when the meaning of a field changes, so a file written by another version is not trusted blindly.
 PROTOCOL = 1
@@ -42,6 +49,13 @@ STALE_SECONDS = 30.0
 STATE_FILE = "state.json"
 BEAT_FILE = "heartbeat"
 LOG_FILE = "log"
+
+#: The lock a write to ``state.json`` is taken on: a daemon refreshes it while a reader may be relabelling it, and
+#: a read-modify-write must not overwrite what the other just wrote.
+STATE_LOCK = "state.lock"
+
+#: How long a state write may wait for the other writer. Both hold it for one small file, so a wait is a moment.
+STATE_LOCK_WAIT = 2.0
 
 #: The file in the daemon folder that says which workspace path the folder belongs to.
 OWNER_FILE = "workspace.txt"
@@ -103,6 +117,10 @@ class State:
         title: The session's name, once it has one: what a reader recognises it by.
         name: The label the reader gave this daemon when starting it, if any: what it is *for*.
         permission: The shell level it runs at: ``deny``, ``safe`` or ``full``.
+        input_tokens: Everything the session has sent to the model so far, cache reads included.
+        output_tokens: Everything the model has generated for it, reasoning included.
+        context_tokens: How full the context was on the newest call, or ``None`` before one was made.
+        context_window: The window of the model it runs on, or ``None`` when it recorded no model.
     """
 
     session_id: str
@@ -116,6 +134,10 @@ class State:
     title: str | None = None
     name: str | None = None
     permission: str | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    context_tokens: int | None = None
+    context_window: int | None = None
     protocol: int = PROTOCOL
 
     @classmethod
@@ -208,6 +230,29 @@ class Record:
         """Write this record's state, and believe what was written."""
         state.save(self.folder)
         self.state = state
+
+    def change(self, produce: Callable[[State | None], State], *, wait: float = STATE_LOCK_WAIT) -> State:
+        """Read the state under a lock, let ``produce`` make the new one, write it, and believe it.
+
+        A daemon writes its state as a turn begins and ends; a reader changes its label while the daemon runs. Both
+        go through here, so the file is read *inside* the lock: a write cannot overwrite a field the other writer
+        put there after this caller read the record.
+
+        Args:
+            produce: Makes the new state from the one on disk, or from ``None`` when there is none.
+            wait: Seconds to wait for the lock. A caller on an event loop passes ``0`` and takes a failure for an
+                answer, rather than blocking the loop on a lock another process holds for a moment.
+        """
+        lock = SingletonLock(self.folder / STATE_LOCK)
+        if not lock.acquire(wait=wait):
+            raise OSError("another process is writing the daemon's state")
+        try:
+            state = produce(State.load(self.folder))
+            state.save(self.folder)
+            self.state = state
+            return state
+        finally:
+            lock.release()
 
     def beat(self) -> None:
         """Write the heartbeat: proof that this process is still doing its rounds."""

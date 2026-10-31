@@ -19,7 +19,7 @@ import os
 import signal
 import time
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -99,6 +99,7 @@ class Options:
         model: The model to run on, or ``None`` for the first configured.
         effort: The reasoning level, or ``None`` for the model's own default.
         name: A label the reader gave this daemon, so ``daemon list`` says what it is for.
+        title: What to call the session, when the reader named it at the start; ``None`` lets it name itself.
         permission: The shell level it runs at: ``deny``, ``safe`` or ``full``. There is nobody to answer ``ask``.
     """
 
@@ -108,6 +109,7 @@ class Options:
     model: str | None = None
     effort: str | None = None
     name: str | None = None
+    title: str | None = None
     permission: str = "full"
 
 
@@ -127,6 +129,9 @@ class Daemon:
         self.stopping = asyncio.Event()
         #: When this process began, which is what the "for 8m" column counts from.
         self.started_at = time.time()
+        #: How often this process has asked the model for a title. A session the model cannot name is left unnamed
+        #: rather than costing a call at the end of every turn.
+        self._naming_attempts = 0
 
     # -- the life of the process -------------------------------------------------------------------
     async def serve(self) -> int:
@@ -164,6 +169,7 @@ class Daemon:
         try:
             await self.mark("working")
             await self._turn(message)
+            await self._name_it()
         finally:
             following = self.inbox.done()
             if following is not None:
@@ -209,32 +215,77 @@ class Daemon:
         if message.direct:
             await self.client.send_back(message, f"{DIRECT_FAILED}{why}"[:500])
 
+    async def _name_it(self) -> None:
+        """Ask the model for a title from the first exchange, unless the session has one.
+
+        A daemon has no reader to name its conversation, and what it is called is how the reader finds it again in
+        ``/resume``; the record's title is the session's, so the next mark carries it. Naming is a nicety: a model
+        that cannot name the session leaves it unnamed (twice is enough to try), and the turn is not failed for it.
+        """
+        if self._title() is not None or self._naming_attempts >= 2:
+            return
+        self._naming_attempts += 1
+        try:
+            await self.client.session.name_it()
+        except Exception as error:  # noqa: BLE001 - a title is never worth failing a turn over
+            self.record.log(f"the session could not be named: {type(error).__name__}: {error}")
+
     # -- what it says about itself -----------------------------------------------------------------
     async def mark(self, status: str) -> None:
-        """Write the state file, so ``daemon list`` can say what this daemon is doing.
+        """Write the state file, so ``daemon list`` can say what this daemon is doing, and what it has spent.
 
         The heartbeat is touched here as well as on its own clock: the first state a reader can see is written with
         proof of life beside it, so a daemon is never listed as dead between its start and its first beat.
         """
         self.record.beat()
+        sent, made, context = self._spend()
+        state = State(
+            session_id=self.client.session.id,
+            workspace=str(self.options.workspace),
+            pid=os.getpid(),
+            status=status,
+            token=self.options.token,
+            started_at=self.started_at,
+            model=self.client.model.name,
+            effort=self.client.effort,
+            title=self._title(),
+            name=self.options.name,  # replaced inside the lock by the label the record already holds
+            permission=self.options.permission,
+            input_tokens=sent,
+            output_tokens=made,
+            context_tokens=context,
+            context_window=self._window(),
+        )
+        # The lock is tried, not waited for: this runs on the event loop, and a reader changing a label holds it for
+        # a moment. A write that missed is made by the next mark — the turn did not fail for it.
+        for attempt in range(3):
+            try:
+                self.record.change(lambda current: replace(state, name=self._label(current)), wait=0)
+                return
+            except OSError as error:
+                if attempt == 2:
+                    self.record.log(f"the state file could not be written: {error}")
+                    return
+                await asyncio.sleep(0.02)
+
+    def _spend(self) -> tuple[int | None, int | None, int | None]:
+        """Return what the session has sent and generated, and how full the context was, when that is known."""
         try:
-            self.record.save(
-                State(
-                    session_id=self.client.session.id,
-                    workspace=str(self.options.workspace),
-                    pid=os.getpid(),
-                    status=status,
-                    token=self.options.token,
-                    started_at=self.started_at,
-                    model=self.client.model.name,
-                    effort=self.client.effort,
-                    title=self._title(),
-                    name=self.options.name,
-                    permission=self.options.permission,
-                )
-            )
-        except OSError as error:
-            self.record.log(f"the state file could not be written: {error}")
+            usage = self.client.usage
+        except Exception:  # noqa: BLE001 - counters are a nicety beside the status a reader needs
+            return None, None, None
+        return usage.input_tokens, usage.output_tokens, usage.context_tokens
+
+    def _window(self) -> int | None:
+        """Return the window of the model in use, or ``None`` when it cannot be read.
+
+        The counters are a nicety; a client that cannot answer must not take the state write, and with it the turn
+        loop, down. ``_spend`` does the same for what it reads.
+        """
+        try:
+            return self.client.model.context_window
+        except Exception:  # noqa: BLE001 - see above
+            return None
 
     async def _beat(self) -> None:
         """Keep the heartbeat fresh while this process lives."""
@@ -248,6 +299,16 @@ class Daemon:
             return self.client.session.title
         except Exception:  # noqa: BLE001 - a title is never worth failing a turn over
             return None
+
+    def _label(self, current: State | None) -> str | None:
+        """Return this daemon's label: the one it was started with, or the one a reader set in the record since.
+
+        ``daemon update --name`` writes the record of a running daemon too, so when the state read inside the lock
+        is this daemon's own, its label is the answer; a record another run left behind is not.
+        """
+        if current is not None and current.session_id == self.client.session.id and current.token == self.options.token:
+            return current.name
+        return self.options.name
 
     def _see(self, event: Any) -> None:
         """Write the events worth knowing about: a tool's name, and a tool that failed."""
@@ -273,6 +334,12 @@ async def serve(options: Options) -> int:
                 try:
                     await client.sessions.open(options.session)
                 except (ConfigurationError, SessionNotFoundError, SessionLockedError) as error:
+                    return _failed(str(error))
+            if options.title:
+                # The session this process holds, so the name is written where the daemon and `/resume` both read it.
+                try:
+                    await client.session.rename(options.title)
+                except (OSError, ValueError, SessionLockedError) as error:
                     return _failed(str(error))
             return await Daemon(client, options).serve()
     except KeyboardInterrupt:

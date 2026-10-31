@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import os
 import time
+from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -244,6 +246,269 @@ def test_a_start_in_a_directory_that_is_not_there_says_so_rather_than_raising(ho
     assert Registry().all() == ()
 
 
+def test_a_title_given_at_the_start_is_put_on_the_command_line(home):
+    """`spawn --title` reaches the process that names the session, without the parent knowing how it does it."""
+    from zettcode.daemon.process import Daemons, _options
+
+    argv = Daemons()._command(_options(home, "t", None, None, None, None, "Fix the parser", "safe"))
+
+    assert argv[argv.index("--title") + 1] == "Fix the parser"
+
+
+def test_the_label_of_a_daemon_can_be_changed_while_it_runs(home):
+    """The label is the daemon's own, not the session's, so a reader may relabel it without stopping it."""
+    record = Registry().record(home, "01a1", create=True)
+    record.save(state_for(home))
+    record.beat()
+
+    updated = process.Daemons().update(record, name="now a reviewer")
+
+    assert updated.state is not None
+    assert updated.state.name == "now a reviewer"
+    assert updated.state.status == "idle", "nothing else the daemon said is touched"
+
+
+def test_naming_a_running_daemons_session_is_refused(home):
+    """A running daemon holds its session's lock: naming it from here would be a write another process owns."""
+    record = Registry().record(home, "01a1", create=True)
+    record.save(state_for(home))
+    record.beat()
+    running = Registry().find("01a1")
+    assert running is not None and running.alive
+
+    with pytest.raises(process.UpdateFailed) as raised:
+        process.Daemons().update(running, title="Taken over")
+
+    assert "stop it before naming it" in str(raised.value)
+    assert running.state is not None and running.state.title is None
+
+
+def test_a_stopped_daemons_session_can_be_named(home, tmp_path, monkeypatch):
+    """With the process gone the session is free, and its title is written where `list` and `resume` read it."""
+    import zettcode.engine.storage as storage
+
+    named: list[tuple[str, str]] = []
+
+    class Store:
+        def __init__(self, *, workspace: str) -> None:
+            self.workspace = workspace
+
+        def session_dir(self, session_id: str) -> Path:
+            return tmp_path / session_id
+
+        async def set_title(self, session_id: str, title: str) -> None:
+            named.append((session_id, title))
+
+    monkeypatch.setattr(storage, "SessionStore", Store)
+    record = Registry().record(home, "01a1", create=True)
+    record.save(replace(state_for(home, pid=2**22 + 17), name="reviewer"))
+    record.beat()
+
+    updated = process.Daemons().update(record, title="Fix the parser")
+
+    assert named == [("01a1", "Fix the parser")]
+    assert updated.state is not None and updated.state.title == "Fix the parser"
+    assert updated.state.name == "reviewer", "naming a session does not clear the daemon's own label"
+
+
+def test_updating_nothing_leaves_the_record_as_it_was(home):
+    record = Registry().record(home, "01a1", create=True)
+    record.save(replace(state_for(home), name="reviewer", title="Old title"))
+
+    same = process.Daemons().update(record)
+
+    assert same.state is not None
+    assert (same.state.name, same.state.title) == ("reviewer", "Old title")
+
+
+def test_a_blank_title_still_writes_the_label_it_was_given_with(home):
+    record = Registry().record(home, "01a1", create=True)
+    record.save(state_for(home, pid=2**22 + 17))
+    record.beat()
+
+    with pytest.raises(process.UpdateFailed, match="label was changed"):
+        process.Daemons().update(record, title="   ", name="reader")
+
+    assert record.state is not None and record.state.name == "reader"
+
+
+def test_a_blank_title_is_refused_before_anything_is_written(home):
+    record = Registry().record(home, "01a1", create=True)
+    record.save(state_for(home, pid=2**22 + 17))
+    record.beat()
+
+    with pytest.raises(process.UpdateFailed) as raised:
+        process.Daemons().update(record, title="   ")
+
+    assert "at least one character" in str(raised.value)
+    assert record.state is not None and record.state.title is None
+
+
+def test_update_says_what_it_changed_and_refuses_a_record_with_nothing_in_it(home, capsys):
+    record = Registry().record(home, "01a1", create=True)
+    record.save(state_for(home))
+
+    assert daemon_program(["update", "01a1", "--name", "reader"]) == 0
+    shown = capsys.readouterr().out
+    assert "01a1" in shown and "reader" in shown
+
+    assert daemon_program(["update", "01a1"]) == 2
+    assert "nothing to change" in capsys.readouterr().err
+    assert daemon_program(["update", "nope", "--name", "x"]) == 1
+    assert "no daemon with that session" in capsys.readouterr().err
+
+
+def test_a_daemon_names_its_own_session_and_keeps_a_label_a_reader_put_there(home):
+    """After its first answer a daemon asks for a title; the record follows the session, and a reader's label stays."""
+    import asyncio
+    from types import SimpleNamespace
+
+    from zettcode.daemon.run import Daemon
+
+    class Session:
+        id = "01a1"
+        title: str | None = None
+        asked = 0
+
+        async def name_it(self) -> str | None:
+            self.asked += 1
+            self.title = "Fix the parser"
+            return self.title
+
+    usage = SimpleNamespace(input_tokens=0, output_tokens=0, context_tokens=0)
+    model = SimpleNamespace(name="fast", context_window=200_000)
+    client = SimpleNamespace(session=Session(), model=model, effort="medium", usage=usage)
+    daemon = Daemon(client, Options(workspace=home, token="t", name="spawned"))
+    asyncio.run(daemon.mark("idle"))
+    assert daemon.record.state is not None and daemon.record.state.name == "spawned"
+
+    process.Daemons().update(daemon.record, name="reader")
+    asyncio.run(daemon.mark("idle"))
+    asyncio.run(daemon._name_it())
+    asyncio.run(daemon._name_it())
+    asyncio.run(daemon.mark("idle"))
+
+    state = daemon.record.state
+    assert state is not None
+    assert client.session.asked == 1, "a session that has a title is not named again"
+    assert state.title == "Fix the parser", "the title is the session's, and the record follows it"
+    assert state.name == "reader", "the label is the daemon's, and a reader's lasts"
+
+
+def test_list_says_how_much_a_daemon_has_spent_and_how_full_its_context_is(home, capsys):
+    """The counters are what a reader checks when a daemon is working: how full it is, and what it has cost."""
+    record = Registry().record(home, "01a1", create=True)
+    record.save(
+        replace(
+            state_for(home),
+            input_tokens=12_345,
+            output_tokens=678,
+            context_tokens=34_000,
+            context_window=200_000,
+        )
+    )
+    record.beat()
+
+    assert daemon_program(["list"]) == 0
+    shown = capsys.readouterr().out
+
+    assert "context" in shown and "34k of 200k · 17%" in shown
+    assert "input" in shown and "12.3k" in shown
+    assert "output" in shown and "678" in shown
+
+
+def test_a_record_from_before_the_counters_were_kept_says_nothing_rather_than_zero(home, capsys):
+    record = Registry().record(home, "01a1", create=True)
+    record.save(state_for(home))
+    record.beat()
+
+    assert daemon_program(["list"]) == 0
+    shown = capsys.readouterr().out
+
+    cells = [line.split() for line in shown.splitlines()]
+    values = [row[-1] for row in cells if row[:1] in (["context"], ["input"], ["output"])]
+    assert values == ["-", "-", "-"], "a daemon that never counted anything is not a daemon that spent nothing"
+
+
+def test_a_token_count_never_rounds_up_into_the_next_unit():
+    from zettcode.daemon.cli import _tokens_cell
+
+    assert _tokens_cell(999) == "999"
+    assert _tokens_cell(1_000) == "1k"
+    assert _tokens_cell(999_949) == "999.9k"
+    assert _tokens_cell(999_950) == "1M", "rounded, this is a million tokens, not a thousand k"
+    assert _tokens_cell(1_200_000) == "1.2M"
+
+
+def test_a_label_is_written_even_when_the_running_daemon_refuses_its_title(home):
+    """The two are allowed differently: the label may change now, the title may not, and the error says which landed."""
+    record = Registry().record(home, "01a1", create=True)
+    record.save(state_for(home))
+    record.beat()
+    running = Registry().find("01a1")
+    assert running is not None and running.alive
+
+    with pytest.raises(process.UpdateFailed, match="label was changed"):
+        process.Daemons().update(running, title="Taken over", name="reader")
+
+    assert running.state is not None
+    assert running.state.name == "reader" and running.state.title is None
+
+
+def test_naming_a_session_another_process_holds_is_refused_and_nothing_is_written(home, tmp_path, monkeypatch):
+    """The lock is the authority: a session a terminal resumed is not ours to name, however the record looks."""
+    import zettcode.engine.storage as storage
+    from zettcode.filelock import SingletonLock
+
+    named: list[str] = []
+
+    class Store:
+        def __init__(self, *, workspace: str) -> None:
+            self.workspace = workspace
+
+        def session_dir(self, session_id: str) -> Path:
+            return tmp_path / session_id
+
+        async def set_title(self, session_id: str, title: str) -> None:
+            named.append(title)
+
+    monkeypatch.setattr(storage, "SessionStore", Store)
+    holder = SingletonLock(tmp_path / "01a1" / "session.lock")
+    assert holder.acquire()
+    try:
+        record = Registry().record(home, "01a1", create=True)
+        record.save(state_for(home, pid=2**22 + 17))
+        record.beat()
+        stopped = Registry().find("01a1")
+        assert stopped is not None and not stopped.alive
+
+        with pytest.raises(process.UpdateFailed, match="open in another process"):
+            process.Daemons().update(stopped, title="New")
+    finally:
+        holder.release()
+
+    assert named == []
+
+
+def test_a_start_with_a_blank_title_is_refused_before_anything_runs(home):
+    with pytest.raises(process.SpawnFailed, match="at least one character"):
+        process.Daemons().start(home, title="   ")
+
+    assert Registry().all() == ()
+
+
+def test_a_context_at_or_past_its_window_is_shown_as_a_count_not_a_share(home, capsys):
+    """A billed count at or past the window is not a share of it; the shell refuses such a figure too."""
+    record = Registry().record(home, "01a1", create=True)
+    record.save(replace(state_for(home), context_tokens=240_000, context_window=200_000))
+    record.beat()
+
+    assert daemon_program(["list"]) == 0
+    shown = capsys.readouterr().out
+
+    assert "240k" in shown and "120%" not in shown
+
+
 def test_a_label_given_at_the_start_is_recorded_and_listed(home, capsys):
     """A spawn says what the daemon is for; `list` shows it beside the session, so a machine with several is legible."""
     record = process.Daemons().start(home, name="reviewer")
@@ -253,7 +518,7 @@ def test_a_label_given_at_the_start_is_recorded_and_listed(home, capsys):
 
         assert daemon_program(["list"]) == 0
         shown = capsys.readouterr().out
-        assert "NAME" in shown and "reviewer" in shown
+        assert "name" in shown and "reviewer" in shown, "the label is with the daemon, not in a table heading"
 
         assert daemon_program(["list", "--json"]) == 0
         listed = json.loads(capsys.readouterr().out)

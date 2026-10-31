@@ -205,12 +205,42 @@ async def test_spawn_starts_with_the_level_given_and_safe_when_none_is(folders, 
     project = folders / "project"
     project.mkdir()
 
-    made = await daemons.spawn_daemon(project, name="review", model="deep", effort="low")
+    made = await daemons.spawn_daemon(project, name="review", model="deep", effort="low", title="Fix the parser")
 
     assert started == [
-        {"workspace": project, "model": "deep", "effort": "low", "resume": None, "name": "review", "permission": "safe"}
+        {
+            "workspace": project,
+            "model": "deep",
+            "effort": "low",
+            "resume": None,
+            "name": "review",
+            "title": "Fix the parser",
+            "permission": "safe",
+        }
     ]
     assert made.session_id == "01made" and made.permission == "safe" and made.name == "review"
+
+
+async def test_a_daemons_label_can_be_changed_and_one_that_is_not_there_says_so(folders):
+    project = folders / "project"
+    project.mkdir()
+    record(project, "01d", name="old")
+
+    changed = await daemons.update_daemon("01d", name="new")
+
+    assert changed.name == "new"
+    assert daemons.list_daemons()[0].name == "new"
+    with pytest.raises(SessionNotFoundError):
+        await daemons.update_daemon("01nope", name="x")
+
+
+async def test_naming_a_running_daemons_session_through_the_sdk_is_refused(folders):
+    project = folders / "project"
+    project.mkdir()
+    record(project, "01d")
+
+    with pytest.raises(ConfigurationError, match="stop it"):
+        await daemons.update_daemon("01d", title="Taken over")
 
 
 async def test_a_daemon_that_never_became_reachable_says_what_it_said(folders, monkeypatch):

@@ -449,6 +449,10 @@ class DaemonInfo:
         permission: The shell level: ``deny``, ``safe`` or ``full``.
         pid: Its process id, or ``0`` when it never recorded one.
         started_at: Seconds since the epoch when it started, or ``0.0``.
+        input_tokens: Everything its session has sent to the model, or ``None`` when it has recorded none.
+        output_tokens: Everything the model has generated for it, or ``None``.
+        context_tokens: How full its context was on the newest call, or ``None``.
+        context_window: The window of the model it runs on, or ``None``.
     """
 
     session_id: str
@@ -461,6 +465,10 @@ class DaemonInfo:
     permission: str | None = None
     pid: int = 0
     started_at: float = 0.0
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    context_tokens: int | None = None
+    context_window: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
