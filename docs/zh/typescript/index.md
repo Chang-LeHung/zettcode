@@ -120,7 +120,7 @@ await client.updateSettings({ compact_percent: 70 });            // 窗口用到
 | `usage()`、`usageLedger()`、`sessionStats(ids?)` | `/usage`、`/usage/ledger`、`/sessions/.../stats` |
 | `selfCompaction()`、`useSelfCompaction(choice)`、`mentions(query, {limit})`、`checkModels({timeout})` | `/sessions/current/self-compaction`、`/mentions`、`/doctor` |
 | `prompt(text, options)` 或 `session.prompt(...)`、`session.resume(options)` | `POST /prompts`、`POST /runs/resume` |
-| `messages()`、`relay(id)`、`send(to, text)` | `/messages`、`/sessions/current/send` |
+| `messages()`、`relay(id)`、`send(to, text, { mode? })` | `/messages`、`/sessions/current/send` |
 | `runState()`、`session.resumable()`、`approve()`、`answer()`、`session.steer()`、`cancelRun()` | `/runs/...` |
 
 ## 错误

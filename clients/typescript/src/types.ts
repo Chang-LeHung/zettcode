@@ -13,6 +13,12 @@ export type ApprovalMode = "deny" | "auto" | "commands" | "ask";
 /** Whether a question the model asks waits for the client. */
 export type QuestionMode = "ask" | "decline";
 
+/** What a message asks a busy recipient to do: steer the request it is running (the default), or wait for it to end. */
+export type SendMode = "steer" | "followup";
+
+/** What a recipient will do with a message: start a turn, steer the running one, queue it, or deliver it to a chat. */
+export type Disposition = "started" | "steered" | "queued" | "delivered";
+
 export interface ApprovalPolicy {
   /** `deny` refuses everything, `auto` approves everything, `commands` approves the named ones, `ask` asks you. */
   mode?: ApprovalMode;

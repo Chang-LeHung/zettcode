@@ -118,6 +118,8 @@ async function deliver(id: string, entry: Pending, reply: boolean): Promise<void
   delete entry.error;
   try {
     const sent = await gateway.send(id, entry.text, reply);
+    // A steered reply also runs a turn (a session that chose to steer answered it); the page itself always sends
+    // follow-ups, so that word only reaches a page from a server newer than it.
     entry.state = sent.disposition === "queued" ? "queued" : "started";
     lobby.status = sent.status;
     // The session was listed as taking direct prompts and the broker did not hand it over as one (its roster was a moment

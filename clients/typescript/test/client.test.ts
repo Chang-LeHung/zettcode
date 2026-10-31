@@ -15,7 +15,7 @@ import {
   totalTokens,
   wireOptions,
 } from "../src/index.js";
-import type { RunEvent, RunResult, StreamFrame } from "../src/index.js";
+import type { RunEvent, RunResult, SendMode, StreamFrame } from "../src/index.js";
 
 interface Request {
   method: string;
@@ -292,6 +292,27 @@ describe("the JSON API", () => {
     assert.equal(await client.session.ask("why?", { timeout: 5 }), "because");
     assert.equal((await client.usage()).input_tokens, 10);
     assert.deepEqual(await client.session.resumable(), { resumable: false, kind: null, description: null });
+  });
+
+  test("a message says whether it steers, and steers when it says nothing", async () => {
+    const bodies: unknown[] = [];
+    const server = await start((request, response) => {
+      if (request.url === "/sessions/current/send") {
+        bodies.push(JSON.parse(request.body));
+        return json(response, { to: "api", disposition: "steered" });
+      }
+      json(response, { error: "not_found", message: request.url }, 404);
+    });
+    const client = new ZettCodeClient({ baseUrl: server.url });
+
+    assert.deepEqual(await client.send("api", "now"), { to: "api", disposition: "steered" });
+    const mode: SendMode = "followup";
+    await client.send("api", "later", { mode });
+
+    assert.deepEqual(bodies, [
+      { to: "api", text: "now", mode: "steer" },
+      { to: "api", text: "later", mode: "followup" },
+    ]);
   });
 
   test("an error body becomes a ZettCodeError with its code and status", async () => {
