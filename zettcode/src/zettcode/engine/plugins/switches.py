@@ -272,10 +272,11 @@ def _write_off(config: ZettCodeConfig | SwitchState, enable: set[str], disable: 
 def _still_in_legacy(enable: set[str]) -> str:
     """Return the message for a switch the old file would keep off even though the configuration says otherwise."""
     names = ", ".join(sorted(enable))
-    verb = "is" if len(enable) == 1 else "are"
+    one = len(enable) == 1
     return (
-        f"{names} {verb} still switched off in the old switch file; it will not load until that file is writable or "
-        "the name is removed there"
+        f"{names} {'is' if one else 'are'} still switched off in the old switch file; "
+        f"{'it' if one else 'they'} will not load until that file is writable or the "
+        f"{'name is' if one else 'names are'} removed there"
     )
 
 

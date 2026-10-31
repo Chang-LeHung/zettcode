@@ -522,7 +522,7 @@ class PluginOut(BaseModel):
         enabled: Whether the next start does its work. A switch is a promise about that start, not this process.
         failure: Why it could not load in this process, or empty when it did.
         setting: The configuration key that decides a compiled-in plugin (``"skills.enabled"``), or empty for an
-            installed one, which the plugin switch file holds.
+            installed one, which `[plugins] disable` holds.
         switchable: Whether there is a switch to draw; a panel shows the rest without one and says ``why``.
         why: Why it cannot be switched, when it cannot; empty otherwise.
     """

@@ -422,6 +422,8 @@ def plugin_state() -> SwitchState:
     from zettcode.paths import DEFAULT_PLUGINS_FILE, config_path
 
     path = config_path()
+    if path.exists() and not path.is_file():
+        raise ValueError(f"{path} is not a file")
     data: dict[str, object] = {}
     try:
         if path.is_file():

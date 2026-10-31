@@ -528,3 +528,12 @@ def test_a_plugins_folder_under_a_file_is_a_write_error_not_a_traceback(tmp_path
 
     assert cli.install(str(source)) == 1
     assert "could not be written" in capsys.readouterr().err
+
+
+def test_a_configuration_path_that_is_not_a_file_is_reported(tmp_path, monkeypatch, capsys):
+    path = tmp_path / "config.toml"
+    path.mkdir()
+    monkeypatch.setenv("ZETTCODE_CONFIG", str(path))
+
+    assert cli.list_plugins() == 1
+    assert "is not a file" in capsys.readouterr().err
