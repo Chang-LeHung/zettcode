@@ -32,7 +32,6 @@ from .paths import (
     DEFAULT_THEMES_DIR,
     DEFAULT_UPDATE_FILE,
     check_config_path,
-    config_path,
     plugins_dir,
 )
 from .providers import Api
