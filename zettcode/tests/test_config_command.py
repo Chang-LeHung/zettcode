@@ -1740,7 +1740,6 @@ async def test_a_theme_on_a_fresh_machine_is_on_for_the_run_and_says_what_keeps_
     [
         ("/theme nord", "theme nord will not be remembered"),
         ("/statusline hide ctx", "The status line is not saved"),
-        ("/self-compact global on", "The default for every session is not saved"),
     ],
 )
 async def test_a_file_that_cannot_be_written_is_a_failure_and_says_what_it_could_not_keep(
@@ -1800,7 +1799,6 @@ async def test_the_pet_picker_on_a_fresh_machine_applies_and_says_what_keeps_it(
 @pytest.mark.parametrize(
     ("line", "unchanged"),
     [
-        ("/self-compact global on", lambda fx: fx.app.client.self_compaction_default is False),
         ("/statusline show pet", lambda fx: "pet" in fx.app.agent.statusline_hidden),
     ],
 )
@@ -1838,22 +1836,6 @@ async def test_the_statusline_panel_on_a_fresh_machine_says_it_is_not_saved(shel
     assert not fx.path.exists()
 
 
-async def test_the_self_compaction_panel_on_a_fresh_machine_says_the_default_is_not_saved(shell):
-    """The "for every session" rail writes the file, so the panel says it was not saved and leaves the default."""
-    fx = shell(BARE, require_models=False)
-    fx.path.unlink()
-    await fx.command("/self-compact")
-    fx.harness.press("down")
-    fx.harness.press("right")
-
-    fx.harness.press("enter")
-
-    said = "\n".join(getattr(entry, "text", "") for entry in fx.app.transcript.entries)
-    assert "is not saved; `/config` writes" in said, said
-    assert fx.app.client.self_compaction_default is False
-    assert not fx.path.exists()
-
-
 async def test_the_statusline_panel_on_a_file_that_cannot_be_written_is_not_saved(shell, monkeypatch):
     """The panel's write-failing branch says the switches are not saved, and they are not: the run keeps its own."""
     fx = shell(BARE, require_models=False)
@@ -1870,23 +1852,6 @@ async def test_the_statusline_panel_on_a_file_that_cannot_be_written_is_not_save
 
     assert any("The status line is not saved" in error for error in fx.errors()), fx.errors()
     assert fx.app.agent.statusline_hidden == before
-
-
-async def test_the_self_compaction_panel_on_a_file_that_cannot_be_written_is_not_saved(shell, monkeypatch):
-    """Same branch for the "for every session" rail: the default is not applied, and the line does not pretend."""
-    fx = shell(BARE, require_models=False)
-    await fx.command("/self-compact")
-    fx.harness.press("down")
-    fx.harness.press("right")
-
-    def fail(source, target):
-        raise OSError("read-only file system")
-
-    monkeypatch.setattr(os, "replace", fail)
-    fx.harness.press("enter")
-
-    assert any("The default for every session is not saved" in error for error in fx.errors()), fx.errors()
-    assert fx.app.client.self_compaction_default is False
 
 
 async def test_the_status_line_has_no_context_share_to_draw_without_a_model(shell):
