@@ -476,4 +476,27 @@ def test_a_renamed_file_says_what_it_was_installed_as(tmp_path, monkeypatch, cap
 
     assert cli.install(str(source)) == 0
     assert (folder / "greeter.py").is_file()
-    assert "_greeter.py as greeter.py" in capsys.readouterr().out
+    said = capsys.readouterr().out
+    assert "_greeter.py as" in said and "greeter.py" in said
+
+
+def test_a_leading_dot_slash_is_stripped_from_a_name(tmp_path, monkeypatch):
+    folder = folder_with_greeter(tmp_path)
+    monkeypatch.setattr(cli, "plugins_dir", lambda: folder)
+    monkeypatch.setattr(cli, "plugin_state", lambda: fake_config(tmp_path))
+
+    assert cli.uninstall("./greeter") == 0
+    assert not (folder / "greeter.py").exists()
+
+
+def test_force_on_a_project_is_a_note_not_a_pip_flag(tmp_path, monkeypatch, capsys):
+    project = tmp_path / "greeter"
+    project.mkdir()
+    runs: list[list[str]] = []
+    monkeypatch.setattr(cli, "installer", lambda: cli.Installer("pip", (sys.executable, "-m", "pip")))
+    monkeypatch.setattr(cli, "run", lambda command: runs.append(list(command)) or 0)
+
+    assert cli.install(str(project), force=True) == 0
+
+    assert "--force" in capsys.readouterr().err
+    assert runs == [[sys.executable, "-m", "pip", "install", "--upgrade", str(project.resolve())]]

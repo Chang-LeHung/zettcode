@@ -1134,4 +1134,4 @@ def test_a_file_plugin_whose_activate_exits_does_not_end_the_load(tmp_path: Path
 
     assert [plugin.name for plugin in plugins.plugins] == ["good"]
     assert [origin for origin, _why in plugins.failed] == ["exit"]
-    assert plugins.failures[0].startswith("exit:")
+    assert "Exit:" in plugins.failures[0]

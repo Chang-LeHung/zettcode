@@ -190,9 +190,9 @@ def run(
                 loader.fail(origin, error)
                 continue
             for class_name, failure in failures:
-                loader.fail(origin, RuntimeError(f"{class_name}: {_reason(failure)}"))
+                loader.fail(origin, f"{class_name}: {_reason(failure)}")
             for plugin in plugins:
-                loader.accept(plugin, origin=origin)
+                loader.accept(plugin, origin=origin, label=type(plugin).__name__)
     return loader.bundle()
 
 
@@ -288,17 +288,19 @@ class Loader:
 
     # -- the same for every front end --
 
-    def fail(self, origin: str, error: BaseException) -> None:
-        """Record one plugin that could not be prepared."""
-        self.failed.append((origin, _reason(error)))
+    def fail(self, origin: str, error: BaseException | str, *, label: str | None = None) -> None:
+        """Record one plugin that could not be prepared, naming the class when there is one."""
+        reason = _reason(error)
+        self.failed.append((origin, f"{label}: {reason}" if label else reason))
 
-    def accept(self, plugin: Plugin[Any], *, origin: str, builtin: bool = False) -> None:
+    def accept(self, plugin: Plugin[Any], *, origin: str, builtin: bool = False, label: str | None = None) -> None:
         """Activate one plugin and merge what it registered, or report why not.
 
         Args:
             plugin: The plugin to activate.
             origin: The name of the distribution (or of the compiled-in plugin) it came from.
             builtin: Whether it is compiled into the program, which is what makes it impossible to switch off.
+            label: The class name, when this plugin came from a file that can hold several; a failure says which.
         """
         name = plugin.name or origin or type(plugin).__name__
         if builtin and origin not in self.builtins:
@@ -324,7 +326,7 @@ class Loader:
         except KeyboardInterrupt:
             raise
         except BaseException as error:
-            self.fail(origin, error)
+            self.fail(origin, error, label=label)
             return
         clash = self.clash(container)
         if clash is not None:
@@ -355,7 +357,7 @@ def _instantiate(point: EntryPoint) -> Plugin[Any]:
     raise TypeError(f"{type(target).__name__} is not a Plugin, a Plugin subclass, or a factory")
 
 
-def _reason(error: BaseException) -> str:
+def _reason(error: BaseException | str) -> str:
     """Return the text a load failure should show, never an empty message."""
     text = str(error).strip()
-    return text or type(error).__name__
+    return text or (type(error).__name__ if isinstance(error, BaseException) else "failed")

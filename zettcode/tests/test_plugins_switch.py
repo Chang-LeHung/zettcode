@@ -831,3 +831,44 @@ def test_a_file_that_fails_one_class_and_loads_another_is_one_switchable_row(tmp
     assert rows[0].name == "good" and "Bad" in rows[0].failure and rows[0].switchable
     written, _keys, problems = switches.set_many(config, {"pair": False}, bundle=bundle, entry_points=())
     assert written == {"pair": False} and problems == []
+
+
+def test_more_than_one_failed_class_in_a_file_is_one_row_with_every_reason(tmp_path: Path):
+    from zettcode.engine.plugins import switches
+
+    folder = tmp_path / "plugins"
+    folder.mkdir()
+    (folder / "pair.py").write_text(
+        "from zettcode.engine.plugins import Plugin\n\n\n"
+        "class Good(Plugin):\n    name = 'good'\n\n    def activate(self, ctx):\n        pass\n\n\n"
+        "class BadOne(Plugin):\n    def __init__(self):\n        raise RuntimeError('one')\n\n\n"
+        "class BadTwo(Plugin):\n    def __init__(self):\n        raise RuntimeError('two')\n",
+        encoding="utf-8",
+    )
+    config = _config(tmp_path, plugins_dir=folder)
+    bundle = load_terminal_plugins(config, builtins=(), entry_points=())
+
+    rows = [row for row in switches.catalog(config, bundle, entry_points=()) if row.origin == "pair"]
+
+    assert len(rows) == 1
+    assert "BadOne" in rows[0].failure and "BadTwo" in rows[0].failure
+
+
+def test_a_file_whose_classes_all_fail_is_one_row(tmp_path: Path):
+    from zettcode.engine.plugins import switches
+
+    folder = tmp_path / "plugins"
+    folder.mkdir()
+    (folder / "broken.py").write_text(
+        "from zettcode.engine.plugins import Plugin\n\n\n"
+        "class BadOne(Plugin):\n    def __init__(self):\n        raise RuntimeError('one')\n\n\n"
+        "class BadTwo(Plugin):\n    def __init__(self):\n        raise RuntimeError('two')\n",
+        encoding="utf-8",
+    )
+    config = _config(tmp_path, plugins_dir=folder)
+    bundle = load_terminal_plugins(config, builtins=(), entry_points=())
+
+    rows = [row for row in switches.catalog(config, bundle, entry_points=()) if row.origin == "broken"]
+
+    assert len(rows) == 1
+    assert "BadOne" in rows[0].failure and "BadTwo" in rows[0].failure and rows[0].switchable
