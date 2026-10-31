@@ -25,6 +25,22 @@ FLASH_SECONDS = 1.5
 #: empty reply, which the stream reports as a request that completed.
 EMPTY_REPLY = "The model sent back an empty reply. Try again, or check the model and address with /config."
 
+#: What a machine with no ``[[models]]`` entry says for itself. The shell starts anyway — a reader can look through
+#: sessions, change the theme and set a model up — so the line that opens the conversation names the one command
+#: that turns it into a working agent, rather than a start that exits with a message about a file.
+NO_MODEL_START = (
+    "no model is configured yet \u2014 /config adds one (a provider, a model id, and a token); "
+    "nothing else here waits for it"
+)
+
+#: What a prompt typed on such a machine is answered with. It is not an error in the program but in the setup, so
+#: the sentence says how to finish the setup, and the draft is kept so nothing has to be typed again.
+NO_MODEL_ASKED = "no model is configured yet \u2014 /config adds one, then ask again; your words are still in the box"
+
+#: What ``/btw`` says instead, and the difference is the box: a command is submitted and the composer cleared
+#: before its handler runs, so the prompt's "your words are still in the box" would be false there.
+NO_MODEL_QUESTION = "no model is configured yet \u2014 /config adds one; /btw asks it once there is one"
+
 #: Screen name used for a page a command presented; the shell checks it to know
 #: that Ctrl-C and Ctrl-D belong to the page rather than the composer.
 PAGE_SCREEN = "page"
@@ -170,8 +186,21 @@ class ShellState:
     def close_page(self) -> None:
         """Close the page a command presented."""
 
+    @property
+    def model(self) -> ModelInfo | None:
+        """Return the model the next request would use, or ``None`` on a machine with none configured yet.
+
+        The shell paints with ``None`` — the header says ``no model``, the counters have no window to measure
+        against — and only a request insists on one. :attr:`client.model` is that insisting reader.
+        """
+        return self.client.active_model
+
     def change_model(self, name: ModelInfo | str) -> ModelInfo:
         """Switch models and announce the change in the transcript."""
+        raise NotImplementedError
+
+    def _warm_runtime(self) -> None:
+        """Start the runtime's provider and imports behind the frame, once there is a model to build one from."""
         raise NotImplementedError
 
     async def resume_session(self, session_id: str) -> None:

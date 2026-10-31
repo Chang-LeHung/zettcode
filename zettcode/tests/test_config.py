@@ -531,6 +531,46 @@ def test_load_config_requires_at_least_one_model(tmp_path: Path):
         load_config(tmp_path, path=path)
 
 
+@pytest.mark.parametrize("reader", ["load_config", "read_models"])
+def test_a_config_path_that_is_not_a_file_is_refused_rather_than_taken_for_no_file(tmp_path: Path, reader):
+    """A directory where the config file goes is a configuration nobody can read, not a machine to set up.
+
+    ``ZETTCODE_CONFIG=.`` is the way to get one by accident: the path exists, so treating it as "the file is not
+    there yet" opens a shell whose every setting then fails on that path instead of saying what is wrong. The
+    terminal is also the one caller that does not require models, so the check must hold there too.
+    """
+    folder = tmp_path / "config.toml"
+    folder.mkdir()
+
+    with pytest.raises(ValueError) as raised:
+        if reader == "load_config":
+            load_config(tmp_path, path=folder, require_models=False)
+        else:
+            read_models(folder)
+
+    assert "is not a file" in str(raised.value) and str(folder) in str(raised.value), "the path is the thing to fix"
+
+
+def test_a_config_path_with_no_file_is_the_fresh_machine_when_a_model_is_not_required(tmp_path: Path):
+    """The other side of the rule, and the state the terminal starts in on a machine that has never been set up."""
+    missing = tmp_path / "config.toml"
+
+    assert load_config(tmp_path, path=missing, require_models=False).models == ()
+    assert read_models(missing) == ()
+
+    with pytest.raises(ValueError, match="No models configured"):
+        load_config(tmp_path, path=missing)
+
+
+def test_a_config_path_that_is_a_dangling_link_is_refused_too(tmp_path: Path):
+    """A link whose target is gone is not a file either: writing it would replace the link, not the file."""
+    link = tmp_path / "config.toml"
+    link.symlink_to(tmp_path / "gone.toml")
+
+    with pytest.raises(ValueError, match="is not a file"):
+        load_config(tmp_path, path=link, require_models=False)
+
+
 @pytest.mark.parametrize(
     ("text", "message"),
     [

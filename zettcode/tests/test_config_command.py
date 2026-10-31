@@ -16,7 +16,7 @@ from zettcode._compat import tomllib
 from zettcode.app.agent.agent import TerminalAgent
 from zettcode.app.plugins import PluginContext, TuiPlugin, load_terminal_plugins
 from zettcode.app.ui import ZettCodeApp
-from zettcode.app.ui.widgets import FormPage, InputPage, ModelSettingsPage
+from zettcode.app.ui.widgets import EffortPage, FormPage, InputPage, ModelSettingsPage
 from zettcode.app.ui.widgets.input_page import MASK
 from zettcode.config import load_config
 from zettcode.config_edit import ConfigEditError
@@ -56,7 +56,7 @@ class Fixture:
 
     @property
     def models(self) -> list[dict]:
-        return tomllib.loads(self.text)["models"]
+        return tomllib.loads(self.text).get("models", [])
 
     @property
     def configured(self) -> tuple[str, ...]:
@@ -129,7 +129,7 @@ class Fixture:
 
 @pytest.fixture
 def shell(tmp_path, monkeypatch):
-    def build(text: str = BASE, **overrides: object) -> Fixture:
+    def build(text: str = BASE, *, require_models: bool = True, **overrides: object) -> Fixture:
         path = tmp_path / "config.toml"
         path.write_text(text, encoding="utf-8")
         monkeypatch.setenv("ZETTCODE_CONFIG", str(path))
@@ -137,7 +137,7 @@ def shell(tmp_path, monkeypatch):
         workspace = tmp_path / "work"
         workspace.mkdir(exist_ok=True)
         config = replace(
-            load_config(workspace, path=path),
+            load_config(workspace, path=path, require_models=require_models),
             store=tmp_path / "sessions",
             plugins_enabled=False,
             skills_enabled=False,
@@ -1512,3 +1512,455 @@ async def test_the_api_row_starts_on_the_current_one_when_it_is_not_the_first(sh
     fx.choose("GPT-4o")
 
     assert fx.panel.values["api"] == "anthropic" and "\u25c9 anthropic" in fx.screen()
+
+
+# -- a machine that has never been set up -------------------------------------------------------------
+
+#: The file a fresh machine has: settings, and no ``[[models]]`` entry at all.
+BARE = """\
+# nothing configured yet
+[skills]
+enabled = false
+"""
+
+
+async def test_a_shell_with_no_model_starts_and_says_where_to_add_one(shell):
+    """The first launch is a shell, not an error: it opens, and the line under the banner names the way in.
+
+    A fresh machine has no model, and every entry the shell paints — the header's right side, the status line's
+    context share, the transcript — has to hold up without one. The command that fixes it is the one the reader
+    is told about, where they are already looking.
+    """
+    fx = shell(BARE, require_models=False)
+
+    assert fx.errors() == []
+    shown = "\n".join(entry.text for entry in fx.app.transcript.entries)
+    assert "no model is configured yet" in shown and "/config" in shown
+    header = fx.screen().splitlines()[0]
+    assert header.rstrip().endswith("no model"), "the effort goes with a model, and there is none to name"
+
+
+async def test_a_prompt_with_no_model_is_refused_and_the_words_stay_in_the_box(shell):
+    """Nothing runs, and nothing typed is lost: the error is about the setup, and the draft is kept to send after."""
+    fx = shell(BARE, require_models=False)
+
+    fx.harness.write("explain this repository")
+    fx.harness.press("enter")
+
+    assert [error for error in fx.errors() if "/config" in error], fx.errors()
+    assert fx.app.composer.text == "explain this repository", "the draft is still there to send once a model is"
+    assert fx.app.agent.runtime.client is None, "no provider is built for a prompt that cannot run"
+
+
+async def test_adding_the_first_model_makes_it_the_one_requests_use(shell):
+    """The first entry has nothing to be added beside, so it becomes the model in use and the shell says so."""
+    fx = shell(BARE, require_models=False)
+
+    await fx.command("/config add deepseek --model deepseek-chat --token sk-new")
+
+    assert fx.models == [{"model": "deepseek-chat", "token": "sk-new", "base_url": "https://api.deepseek.com"}]
+    assert fx.app.agent.active_model is not None and fx.app.agent.active_model.model == "deepseek-chat"
+    assert "this is the model requests now use" in fx.screen(), "the reply says the setup is done, not /model"
+    assert "deepseek-chat" in fx.screen().splitlines()[0], "the header names it, not only the reply or the draft"
+
+
+async def test_the_first_model_added_through_the_form_sets_the_machine_up_too(shell):
+    """The panel's way in — a provider, then the form — ends the same way as the one line: the model is in use."""
+    fx = shell(BARE, require_models=False)
+
+    await fx.command("/config add deepseek")
+    fx.harness.write("deepseek-chat")
+    fx.harness.press("tab")
+    fx.harness.write("sk-typed")
+    fx.harness.press("enter")
+
+    assert fx.page(FormPage) is None
+    assert fx.models == [{"model": "deepseek-chat", "token": "sk-typed", "base_url": "https://api.deepseek.com"}]
+    assert any("requests now use" in notice for notice in fx.notices()), fx.notices()
+
+
+async def test_config_creates_the_file_a_fresh_machine_has_never_had(shell):
+    """The first run has no config file at all, so the first model is written into a file that does not exist yet.
+
+    A file that vanished from a machine that *had* models is a different thing and is still reported instead of
+    being recreated — see the test above — which is why the tolerance is the setup state and not "no file".
+    """
+    fx = shell(BARE, require_models=False)
+    fx.path.unlink()
+
+    await fx.command("/config add deepseek --model deepseek-chat --token sk-new")
+
+    assert fx.path.exists() and fx.models == [
+        {"model": "deepseek-chat", "token": "sk-new", "base_url": "https://api.deepseek.com"}
+    ]
+    assert fx.app.agent.active_model is not None
+
+
+async def test_with_no_model_there_is_nothing_for_the_picker_to_choose(shell):
+    """`/model` points at `/config` rather than opening an empty list: a list of nothing is not a choice."""
+    fx = shell(BARE, require_models=False)
+
+    await fx.command("/model")
+
+    assert any("/config" in notice for notice in fx.notices()), fx.notices()
+    assert fx.page(ListPage) is None
+
+
+async def test_config_lists_an_empty_file_instead_of_refusing_it(shell):
+    """The panel `/config` opens is how the first model is written, so an empty file is a list of nothing."""
+    fx = shell(BARE, require_models=False)
+
+    await fx.command("/config")
+
+    page = fx.page(ListPage)
+    assert page is not None, fx.screen()
+    assert any("Add a model" in item.label for item in page.list.items)
+
+
+async def test_a_config_file_that_cannot_be_read_is_reported_and_not_written_over(shell):
+    """A path that exists and cannot be read is not the fresh machine, and it is not replaced with a new file."""
+    fx = shell(BARE, require_models=False)
+    fx.path.unlink()
+    fx.path.mkdir()
+
+    await fx.command("/config add deepseek --model m --token t")
+
+    assert any("cannot be read" in error for error in fx.errors()), fx.errors()
+    assert fx.path.is_dir(), "nothing was written where the reader's path is"
+
+
+async def test_effort_on_a_machine_with_no_model_points_at_config(shell):
+    """`/effort` has no level to list without a model: a rail with nothing on it is not a choice either."""
+    fx = shell(BARE, require_models=False)
+
+    await fx.command("/effort")
+
+    assert any("/config" in notice for notice in fx.notices()), fx.notices()
+    assert fx.page(EffortPage) is None
+
+
+async def test_context_on_a_machine_with_no_model_says_what_to_configure(shell):
+    """There is nothing measured to show, and the answer names the command that makes a request possible."""
+    fx = shell(BARE, require_models=False)
+
+    await fx.command("/context")
+
+    assert any("/config" in notice for notice in fx.notices()), fx.notices()
+
+
+async def test_a_shell_with_no_model_warms_nothing_that_would_fail(shell):
+    """No provider is built from a model that does not exist: the warm-up waits until `/config` writes one.
+
+    ``start`` builds a provider from the model in use, and a build that raised on a background task would leave a
+    failure for the first turn to find — and a build that failed does not build again.
+    """
+    fx = shell(BARE, require_models=False, update_enabled=False)
+
+    fx.app.start_background()
+    await asyncio.sleep(0)
+
+    assert fx.app._warm is None and fx.app.agent.runtime.client is None
+
+
+async def test_the_first_model_added_is_the_one_in_use_even_when_the_file_held_another(shell):
+    """The entry just written wins, not the first in the file: another process may have added one meanwhile."""
+    fx = shell(BARE, require_models=False)
+    # Written after this shell read the file, the way a second process would.
+    fx.path.write_text(BARE + '\n[[models]]\nmodel = "other"\ntoken = "sk-other"\n', encoding="utf-8")
+
+    await fx.command("/config add deepseek --model deepseek-chat --token sk-new")
+
+    assert fx.app.agent.active_model is not None and fx.app.agent.active_model.model == "deepseek-chat"
+    assert "this is the model requests now use" in fx.screen(), "the reply names the entry it chose"
+
+
+async def test_a_command_that_needs_the_runtime_refuses_with_config_and_starts_nothing(shell):
+    """`/compact` goes through the runtime, which has no model to build from: one sentence, and no failed build.
+
+    `runtime.client is None` would also hold for a build that started and failed later, so the point is
+    `_starting`: the refusal is before the task exists, which is what `ZettCodeEngine.start` is shaped for.
+    """
+    fx = shell(BARE, require_models=False)
+
+    await fx.command("/compact")
+
+    assert [error for error in fx.errors() if "/config" in error], fx.errors()
+    assert fx.app.agent.runtime.client is None
+    assert fx.app.agent.runtime._starting is None, "no build was ever begun"
+
+
+async def test_btw_on_a_machine_with_no_model_refuses_and_starts_nothing(shell):
+    """A side question is a run too, so it is refused where `/compact` is — before a turn is opened.
+
+    Beginning the turn first would end it with "btw failed after 0.0 s" under the right sentence, which says the
+    program tried something it knew it could not do. Its sentence is `/btw`'s own: a command is submitted and the
+    composer cleared before its handler runs, so the prompt's "your words are still in the box" would be false.
+    """
+    fx = shell(BARE, require_models=False)
+
+    await fx.command("/btw what is in this file?")
+
+    assert [error for error in fx.errors() if "/btw asks it once there is one" in error], fx.errors()
+    assert "still in the box" not in "\n".join(error for error in fx.errors()), "the box is empty: a command cleared it"
+    assert fx.app.agent.runtime.client is None
+    said = "\n".join(getattr(entry, "text", "") for entry in fx.app.transcript.entries)
+    assert "btw failed" not in said, said
+
+
+async def test_ctrl_v_on_a_machine_with_no_model_says_what_to_configure(shell, monkeypatch):
+    """An image has nothing to go to, and the shell does not pretend the model refused pictures."""
+    from zettcode.app.ui import keys as keys_module
+
+    fx = shell(BARE, require_models=False)
+    monkeypatch.setattr(keys_module, "read_image", lambda: (b"\x89PNG-bytes", "image/png"))
+
+    fx.harness.press("ctrl_v")
+
+    assert [error for error in fx.errors() if "/config" in error], fx.errors()
+    assert "[image" not in fx.app.composer.text
+
+
+async def test_a_theme_on_a_fresh_machine_is_on_for_the_run_and_says_what_keeps_it(shell):
+    """`/theme` applies first and writes second, so the palette is in force and the line says what keeps it."""
+    fx = shell(BARE, require_models=False)
+    fx.path.unlink()
+    before = fx.app.app.theme
+
+    await fx.command("/theme nord")
+
+    assert fx.app.app.theme != before, "the palette is applied even though nothing could keep it"
+    assert fx.errors() == [], "a machine with no file has not failed at anything"
+    said = "\n".join(getattr(entry, "text", "") for entry in fx.app.transcript.entries)
+    assert "is kept for next time once `/config` writes" in said, said
+    assert not fx.path.exists(), "the theme did not create a config file"
+
+
+@pytest.mark.parametrize(
+    ("line", "said"),
+    [
+        ("/theme nord", "theme nord will not be remembered"),
+        ("/statusline hide ctx", "The status line is not saved"),
+        ("/self-compact global on", "The default for every session is not saved"),
+    ],
+)
+async def test_a_file_that_cannot_be_written_is_a_failure_and_says_what_it_could_not_keep(
+    shell, monkeypatch, line, said
+):
+    """A machine that has a config file is not the fresh machine: a failed write is reported, in a sentence.
+
+    The verb follows what the write would have done: the pair that applies first "will not be remembered", the
+    pair that writes first was never in force and so "is not saved". The file keeps what it held either way.
+    """
+    fx = shell(BARE, require_models=False)
+    fx.path.write_text("# nothing yet\n", encoding="utf-8")
+
+    def fail(source, target):
+        raise OSError("read-only file system")
+
+    monkeypatch.setattr(os, "replace", fail)
+
+    await fx.command(line)
+
+    rows = "\n".join(getattr(entry, "text", "") for entry in fx.app.transcript.entries)
+    assert said in rows, rows
+    assert "is kept for next time once" not in rows, "that wording is for a machine with no file"
+    assert fx.text == "# nothing yet\n"
+
+
+async def test_a_pet_chosen_on_a_fresh_machine_is_in_force_and_says_what_keeps_it(shell):
+    """The pet is applied before the write, like the palette."""
+    fx = shell(BARE, require_models=False)
+    fx.path.unlink()
+
+    await fx.command("/pet whale")
+
+    assert fx.app.pet.pet.name == "whale"
+    assert fx.errors() == []
+    said = "\n".join(getattr(entry, "text", "") for entry in fx.app.transcript.entries)
+    assert "is kept for next time once `/config` writes" in said, said
+    assert not fx.path.exists()
+
+
+async def test_the_pet_picker_on_a_fresh_machine_applies_and_says_what_keeps_it(shell):
+    """Choosing from the panel is the same two steps as the typed form: applied, then unkept, and said so."""
+    fx = shell(BARE, require_models=False)
+    fx.path.unlink()
+    before = fx.app.pet.pet.name
+    await fx.command("/pet")
+
+    fx.harness.press("down")
+    fx.harness.press("enter")
+
+    assert fx.app.pet.pet.name != before, "the pet the reader picked is the one on screen"
+    said = "\n".join(getattr(entry, "text", "") for entry in fx.app.transcript.entries)
+    assert "is kept for next time once `/config` writes" in said, said
+    assert not fx.path.exists()
+
+
+@pytest.mark.parametrize(
+    ("line", "unchanged"),
+    [
+        ("/self-compact global on", lambda fx: fx.app.client.self_compaction_default is False),
+        ("/statusline show pet", lambda fx: "pet" in fx.app.agent.statusline_hidden),
+    ],
+)
+async def test_a_setting_the_file_keeps_is_not_claimed_while_it_cannot_be_saved(shell, line, unchanged):
+    """The compaction default and the status line are written before they apply, so a missing file means neither.
+
+    The line must say that rather than "on for this run", and nothing may be created to hold it.
+    """
+    fx = shell(BARE, require_models=False)
+    fx.path.unlink()
+
+    await fx.command(line)
+
+    said = "\n".join(getattr(entry, "text", "") for entry in fx.app.transcript.entries)
+    assert "is not saved; `/config` writes" in said, said
+    assert fx.errors() == [], "nothing failed: there is no file yet to keep it in"
+    assert unchanged(fx), "the setting is not claimed as in force"
+    assert not fx.path.exists()
+
+
+async def test_the_statusline_panel_on_a_fresh_machine_says_it_is_not_saved(shell):
+    """The panel's Enter goes through the same write, and says the same sentence — not "does not exist"."""
+    fx = shell(BARE, require_models=False)
+    fx.path.unlink()
+    before = fx.app.agent.statusline_hidden
+    await fx.command("/statusline")
+    fx.harness.press("down")
+    fx.harness.press("left")
+
+    fx.harness.press("enter")
+
+    said = "\n".join(getattr(entry, "text", "") for entry in fx.app.transcript.entries)
+    assert "is not saved; `/config` writes" in said, said
+    assert fx.app.agent.statusline_hidden == before, "the switches did not become the run's setting"
+    assert not fx.path.exists()
+
+
+async def test_the_self_compaction_panel_on_a_fresh_machine_says_the_default_is_not_saved(shell):
+    """The "for every session" rail writes the file, so the panel says it was not saved and leaves the default."""
+    fx = shell(BARE, require_models=False)
+    fx.path.unlink()
+    await fx.command("/self-compact")
+    fx.harness.press("down")
+    fx.harness.press("right")
+
+    fx.harness.press("enter")
+
+    said = "\n".join(getattr(entry, "text", "") for entry in fx.app.transcript.entries)
+    assert "is not saved; `/config` writes" in said, said
+    assert fx.app.client.self_compaction_default is False
+    assert not fx.path.exists()
+
+
+async def test_the_statusline_panel_on_a_file_that_cannot_be_written_is_not_saved(shell, monkeypatch):
+    """The panel's write-failing branch says the switches are not saved, and they are not: the run keeps its own."""
+    fx = shell(BARE, require_models=False)
+    before = fx.app.agent.statusline_hidden
+    await fx.command("/statusline")
+    fx.harness.press("down")
+    fx.harness.press("left")
+
+    def fail(source, target):
+        raise OSError("read-only file system")
+
+    monkeypatch.setattr(os, "replace", fail)
+    fx.harness.press("enter")
+
+    assert any("The status line is not saved" in error for error in fx.errors()), fx.errors()
+    assert fx.app.agent.statusline_hidden == before
+
+
+async def test_the_self_compaction_panel_on_a_file_that_cannot_be_written_is_not_saved(shell, monkeypatch):
+    """Same branch for the "for every session" rail: the default is not applied, and the line does not pretend."""
+    fx = shell(BARE, require_models=False)
+    await fx.command("/self-compact")
+    fx.harness.press("down")
+    fx.harness.press("right")
+
+    def fail(source, target):
+        raise OSError("read-only file system")
+
+    monkeypatch.setattr(os, "replace", fail)
+    fx.harness.press("enter")
+
+    assert any("The default for every session is not saved" in error for error in fx.errors()), fx.errors()
+    assert fx.app.client.self_compaction_default is False
+
+
+async def test_the_status_line_has_no_context_share_to_draw_without_a_model(shell):
+    """A share of the window needs a window: with no model the figure is left out rather than measured to zero."""
+    fx = shell(BARE, require_models=False)
+    fx.app._usage = replace(fx.app._usage, requests=1, context_tokens=1000)
+
+    assert "ctx " not in fx.screen(), fx.screen()
+
+
+async def test_usage_arriving_without_a_model_is_taken_at_face_value(shell):
+    """The re-measure guard needs a window to compare against: with no model the counters are accepted as counted."""
+    from zett_agent.events import AgentEvent, AgentEventType
+
+    from zettcode.engine.extensions.usage import USAGE_EVENT_NAME, UsageSnapshot
+
+    fx = shell(BARE, require_models=False)
+    snapshot = UsageSnapshot(input_tokens=22_000, output_tokens=600, seconds=6.0, requests=2, context_tokens=64_000)
+
+    await fx.app.projector.dispatch(
+        AgentEvent(
+            type=AgentEventType.CUSTOM,
+            session_id=fx.app.agent.session_id,
+            name=USAGE_EVENT_NAME,
+            payload=snapshot.to_payload(),
+        )
+    )
+
+    assert fx.app._usage.context_tokens == 64_000, "no window to call it impossible"
+    assert fx.app._measure_task is None, "and nothing to re-measure against"
+
+
+async def test_a_session_whose_recorded_model_is_gone_restores_without_a_word(shell):
+    """A session that names a model this machine does not have installs, and the shell says nothing about a model."""
+    from zett_agent.messages import UserMessage
+
+    fx = shell(BARE, require_models=False)
+    store = fx.app.agent.runtime.persistence
+    await store.append("stored", "r", UserMessage(content="hi"))
+    store.set_model("stored", "gpt-4o")
+
+    await fx.app.resume_session("stored")
+
+    assert fx.app.agent.session_id == "stored"
+    assert fx.app.model is None
+    said = "\n".join(getattr(entry, "text", "") for entry in fx.app.transcript.entries)
+    assert "Model set to" not in said and "staying on" not in said
+
+
+async def test_a_title_is_refused_without_a_model(shell):
+    """Naming a session reads the stored exchange and then needs a model: one sentence, and nothing built after it."""
+    from zett_agent.messages import AssistantMessage, UserMessage
+
+    fx = shell(BARE, require_models=False)
+    store = fx.app.agent.runtime.persistence
+    await store.append("stored", "r", UserMessage(content="why does it crash?"))
+    await store.append("stored", "r", AssistantMessage(content="the parser drops a token"))
+
+    with pytest.raises(ValueError, match="No model is configured"):
+        await fx.app.agent.title_session("stored")
+
+    assert fx.app.agent.runtime.client is None
+
+
+async def test_an_export_without_a_model_says_the_page_has_none(shell, tmp_path):
+    """The page names the model in its sidebar and its tags; with none configured it says so instead of failing."""
+    from zett_agent.messages import UserMessage
+
+    fx = shell(BARE, require_models=False)
+    await fx.app.agent.runtime.persistence.append(fx.app.agent.session_id, "r", UserMessage(content="hi"))
+
+    await fx.command(f"/export {tmp_path / 'page.html'}")
+
+    page = (tmp_path / "page.html").read_text(encoding="utf-8")
+    assert "none configured" in page, "the sidebar says there is no model"
+    assert "no model" in page, "and so does the page's tag"
+    assert fx.errors() == []

@@ -522,15 +522,23 @@ class Compaction(Plugin):
     description = "Context compaction"
 
     def activate(self, ctx: PluginContext) -> None:
-        """Provide the policy, sized for the model the run starts on; the runtime resizes it on a switch."""
-        selected = ctx.service(SELECTED_MODEL, ModelConfig)
+        """Provide the policy, sized for the model the run starts on; the runtime resizes it on a switch.
+
+        A machine with no model configured has nothing to size it from: the policy is provided with the
+        extension's own defaults — nothing runs to compact before there is a model — and ``use_model`` sizes it
+        the moment the first entry is written.
+        """
+        selected = ctx.find(SELECTED_MODEL, ModelConfig)
         counter = ctx.service(COMPACTION_COUNTER, CompactionCounter)
-        compaction = OnDemandCompaction(
-            None,
-            max_tokens=selected.compaction_max_tokens,
-            keep_recent_tokens=selected.compaction_keep_tokens,
-            count_tokens=counter.count,
-        )
+        if selected is None:
+            compaction = OnDemandCompaction(None, count_tokens=counter.count)
+        else:
+            compaction = OnDemandCompaction(
+                None,
+                max_tokens=selected.compaction_max_tokens,
+                keep_recent_tokens=selected.compaction_keep_tokens,
+                count_tokens=counter.count,
+            )
         ctx.agent.provide(COMPACTION, compaction)
         ctx.agent.register_extension(compaction)
 

@@ -66,6 +66,17 @@ def test_an_entry_that_is_not_a_usable_model_leaves_the_existing_file_as_it_was(
     assert path.read_text(encoding="utf-8") == before
 
 
+def test_adding_to_a_path_that_is_not_a_file_is_refused_not_written_into(tmp_path: Path):
+    """The server's first `POST /models` is one of these: a directory there must answer, not raise IsADirectoryError."""
+    folder = tmp_path / "config.toml"
+    folder.mkdir()
+
+    with pytest.raises(ValueError, match="is not a file"):
+        add({"model": "gpt-5", "token": "sk-1"}, path=folder)
+
+    assert folder.is_dir(), "nothing was written where the reader's path is"
+
+
 def test_updating_a_model_keeps_every_key_it_did_not_name_and_the_token(tmp_path: Path):
     path = config_file(tmp_path)
     path.write_text(

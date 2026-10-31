@@ -95,8 +95,10 @@ def add_model(entry: Mapping[str, object], *, path: str | Path | None = None) ->
         ValueError: The entry is not a usable model, or the file would not parse.
     """
     target = _path(path)
+    # Unconditionally: `read_models` answers () for a file that is not there yet and refuses one that is not a
+    # file, which is what a caller naming a directory has to hear rather than an IsADirectoryError from the write.
+    existing = _config.read_models(target)
     before = target.read_text(encoding="utf-8") if target.is_file() else None
-    existing = _config.read_models(target) if target.is_file() else ()
     text = before or ""
     if existing:
         from ..config_edit import add_model as insert_model

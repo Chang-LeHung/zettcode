@@ -295,9 +295,47 @@ def test_a_file_that_is_not_toml_is_refused_with_its_name():
         add_model("[[models\nmodel = ", NEW, where=WHERE)
 
 
-def test_a_file_with_no_models_has_nothing_to_edit():
-    with pytest.raises(ConfigEditError, match="no \\[\\[models\\]\\] entries"):
-        add_model("[skills]\nenabled = true\n", NEW, where=WHERE)
+def test_a_file_with_no_models_is_where_the_first_one_is_written():
+    """A fresh machine has no ``[[models]]`` table, and ``/config add`` is how it gets one: writing it into a file
+    that has nothing else works, and leaves everything else the file holds where it was."""
+    text = "[skills]\nenabled = true\n"
+
+    assert file_entries(text, where=WHERE) == []
+    written = add_model(text, NEW, where=WHERE)
+
+    assert file_entries(written, where=WHERE) == [dict(NEW)]
+    assert "[skills]\nenabled = true" in written, "the settings that were there are still there"
+    assert written.index("[[models]]") > written.index("enabled = true"), "the entry goes at the end"
+    assert "\n\n[[models]]" in written and "\n\n\n" not in written, "one blank line sets it apart, and one only"
+
+
+@pytest.mark.parametrize("text", ["", "\n\n"])
+def test_the_first_entry_into_an_empty_file_starts_at_the_top(text):
+    """An empty or whitespace-only file gets no leading blank line: the block is the first thing in it."""
+    written = add_model(text, NEW, where=WHERE)
+
+    assert written.startswith("[[models]]"), written
+    assert file_entries(written, where=WHERE) == [dict(NEW)]
+
+
+def test_the_first_entry_after_a_comment_keeps_the_comment_first_and_gets_one_blank_line():
+    written = add_model("# my config\n", NEW, where=WHERE)
+
+    assert written.startswith("# my config\n\n[[models]]"), written
+    assert file_entries(written, where=WHERE) == [dict(NEW)]
+
+
+def test_the_first_entry_after_a_file_that_ends_without_a_newline_still_gets_a_blank_line():
+    written = add_model("[skills]\nenabled = true", NEW, where=WHERE)
+
+    assert "\n\n[[models]]" in written, "a block set against the last key is not what a reader expects"
+    assert file_entries(written, where=WHERE) == [dict(NEW)]
+
+
+def test_a_file_that_writes_models_as_a_value_cannot_be_added_to():
+    """`models = []` and `[[models]]` are the same key: a block cannot be written beside the array."""
+    with pytest.raises(ConfigEditError, match="writes 'models' as a value"):
+        add_model("models = []\n[skills]\nenabled = true\n", NEW, where=WHERE)
 
 
 def test_a_header_inside_a_multi_line_string_is_not_taken_for_a_block():

@@ -140,6 +140,10 @@ already exists **replaces** that segment in place; a new name is appended after
 the ones already on that side. Returning `(value, True)` takes the side over
 entirely, which is the way to do it without depending on the built-in names.
 
+Before a model is configured, `context.model.name` is empty, `context.model.efforts`
+is empty, and `context.model.config` — the entry itself — is `None`. A segment that
+reads the entry should say it has no model rather than assume one is there.
+
 ## Writing a command
 
 A command is handed a `CommandContext`:

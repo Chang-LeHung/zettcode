@@ -127,6 +127,9 @@ class WorkspaceLabel(TuiPlugin):
 新名字追加在该侧已有的片段之后。返回 `(value, True)` 表示独占该侧，这是在不知道内置名字的
 情况下接管整侧的做法。
 
+还没配置模型时，`context.model.name` 是空串，`context.model.efforts` 是空元组，
+`context.model.config`（那一项本身）是 `None`。读这一项的片段应该说自己没有模型，而不是假定它一定在。
+
 ## 写一个命令
 
 命令处理器收到一个 `CommandContext`：

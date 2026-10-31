@@ -210,7 +210,7 @@ class SessionsMixin(ContextMixin):
             return None
         await self.runtime.start()
         # A level the model takes, so naming the session cannot be what fails on an endpoint that lacks `low`.
-        effort = self.runtime.active_model.accepted_effort(ReasoningEffort.LOW)
+        effort = self.runtime.required_model.accepted_effort(ReasoningEffort.LOW)
         title = await summarize_title(self.runtime.provider, question=question, answer=answer, effort=effort)
         if title is None:
             return None

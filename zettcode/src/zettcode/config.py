@@ -31,7 +31,7 @@ from .paths import (
     DEFAULT_THEME_FILE,
     DEFAULT_THEMES_DIR,
     DEFAULT_UPDATE_FILE,
-    config_path,
+    check_config_path,
 )
 from .providers import Api
 from .statusline import NAMES as STATUSLINE_NAMES
@@ -209,6 +209,12 @@ DEFAULT_MOUSE_SCROLL_SPEED = 1.0
 
 #: The fastest it may be set to: a notch of the wheel moves a page, and no more can be wanted.
 MAX_MOUSE_SCROLL_SPEED = 20.0
+
+#: What a path that needs a model is refused with on a machine that has none configured. One sentence for the
+#: runtime, the SDK and the file editor, because the same state reached from three directions should read the same;
+#: a shell that *paints* instead words its own (see invariant S23) — a first-run guide, not a refusal. The server
+#: has a fourth wording, ``add one with POST /models``, because that is the instruction over HTTP.
+NO_MODEL_REFUSAL = "No model is configured; add one with /config"
 
 
 @dataclass(frozen=True, slots=True)
@@ -518,13 +524,17 @@ class ZettCodeConfig:
     plugins_file: Path = DEFAULT_PLUGINS_FILE
 
     def __post_init__(self) -> None:
-        """Normalize the paths and reject settings that cannot build a runtime."""
+        """Normalize the paths and reject settings that cannot build a runtime.
+
+        No models is not refused here: the terminal starts on a machine that has never been set up, paints, and
+        lets ``/config`` write the first entry, while :func:`load_config` still refuses a file with none for
+        every caller that asked to (its default). What cannot build a runtime is the *build*, and the runtime
+        says so from the one place that needs a model.
+        """
         workspace = self.workspace.expanduser().resolve()
         store = self.store.expanduser().resolve()
         if not workspace.is_dir():
             raise ValueError(f"Workspace is not a directory: {workspace}")
-        if not self.models:
-            raise ValueError("At least one model must be configured")
         if self.max_iterations < 1:
             raise ValueError("max_iterations must be positive")
         if self.subagent_max_iterations < 1:
@@ -743,14 +753,19 @@ def model_index(models: Sequence[ModelConfig], name: str) -> int | None:
     return matches[0] if matches else None
 
 
-def _read_models(raw: object, source: Path) -> tuple[ModelConfig, ...]:
-    """Build every configured model, requiring at least one."""
-    if raw is None:
-        raise ValueError(f"No models configured in {source}; add at least one [[models]] entry")
+def _read_models(raw: object, source: Path, *, required: bool = True) -> tuple[ModelConfig, ...]:
+    """Build every configured model; ``required`` says whether a file that lists none is refused.
+
+    The terminal asks for ``required=False``: a fresh machine has no models, and the shell can set one up from
+    ``/config`` rather than refusing to start. What is left out is only the demand for one — an entry that is
+    there and wrong is still refused here, because it would fail on the first request otherwise.
+    """
+    if raw is None or raw == []:
+        if required:
+            raise ValueError(f"No models configured in {source}; add at least one [[models]] entry")
+        return ()
     if not isinstance(raw, list):
         raise ValueError("Config key 'models' must be an array of tables ([[models]])")
-    if not raw:
-        raise ValueError(f"No models configured in {source}; add at least one [[models]] entry")
     if any(not isinstance(entry, dict) for entry in raw):
         raise ValueError("Config key 'models' must be an array of tables ([[models]])")
     models = [_entry_model(entry, index) for index, entry in enumerate(raw, start=1)]
@@ -767,24 +782,18 @@ def read_models(path: str | Path | None = None) -> tuple[ModelConfig, ...]:
 
     Args:
         path: The file to read; ``$ZETTCODE_CONFIG`` or ``~/.zettcode/config.toml`` by default.
+
+    Raises:
+        ValueError: When the path exists and is not a file, or when what it holds cannot be read.
     """
-    source = config_path(path)
+    source = check_config_path(path)
     if not source.is_file():
         return ()
     try:
         data = tomllib.loads(source.read_text(encoding="utf-8"))
     except tomllib.TOMLDecodeError as error:
         raise ValueError(f"Invalid config file {source}: {error}") from error
-    raw = data.get("models", [])
-    if raw is None:
-        return ()
-    if not isinstance(raw, list):
-        raise ValueError("Config key 'models' must be an array of tables ([[models]])")
-    if any(not isinstance(entry, dict) for entry in raw):
-        raise ValueError("Config key 'models' must be an array of tables ([[models]])")
-    models = tuple(_entry_model(entry, index) for index, entry in enumerate(raw, start=1))
-    _reject_shared_display_names(models, source)
-    return models
+    return _read_models(data.get("models"), source, required=False)
 
 
 def _read_table(raw: object, key: str, source: Path, allowed: frozenset[str]) -> dict[str, object]:
@@ -902,6 +911,7 @@ def load_config(
     *,
     path: str | Path | None = None,
     reduced_motion_default: bool = False,
+    require_models: bool = True,
 ) -> ZettCodeConfig:
     """Build the runtime settings from the config file, falling back to defaults.
 
@@ -912,12 +922,16 @@ def load_config(
             ``~/.zettcode/config.toml``.
         reduced_motion_default: Value for ``reduced_motion`` when the file does
             not set it; the caller passes the terminal/environment detection.
+        require_models: Refuse a file that lists no models. The terminal passes
+            ``False``, so a machine that has never been set up reaches the shell
+            and its ``/config`` instead of an error; everything that has to run a
+            request still refuses to.
 
     Raises:
-        ValueError: For an unreadable file, an unknown key, a wrong type, or a
-            missing model.
+        ValueError: For a path that is not a file, an unreadable file, an unknown
+            key, a wrong type, or a missing model when one is required.
     """
-    source = config_path(path)
+    source = check_config_path(path)
     data: dict[str, object] = {}
     if source.is_file():
         try:
@@ -952,7 +966,7 @@ def load_config(
 
     return ZettCodeConfig(
         workspace=Path(workspace),
-        models=_read_models(data.get("models"), source),
+        models=_read_models(data.get("models"), source, required=require_models),
         theme_file=_default_theme_file(),
         theme=_read_theme_name(ui.get("theme"), source),
         pet=_read_word(ui.get("pet"), "ui.pet", "a pet name", source),

@@ -41,10 +41,10 @@ class SettingsMixin(ShellState):
 
     def change_model(self, name: ModelInfo | str) -> ModelInfo:
         """Switch models and announce the change in the transcript."""
-        previous = self.client.model
+        previous = self.model
         selected = self.client.use_model(name)
-        if selected.name != previous.name or selected.model != previous.model:
-            self.transcript.model_changed(previous.name, selected.name)
+        if previous is None or selected.name != previous.name or selected.model != previous.model:
+            self.transcript.model_changed(previous.name if previous is not None else "", selected.name)
         self.app.request_layout()
         return selected
 

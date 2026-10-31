@@ -100,11 +100,21 @@ def _fit(text: str, columns: int) -> str:
     return kept.rstrip() + ELLIPSIS
 
 
+#: What the header's model segment says before any model is configured. The row is where a reader looks to see
+#: what will answer them, and an empty segment reads as a rendering accident rather than as a machine to set up.
+NO_MODEL = "no model"
+
+
 def header_right(model: str, effort: str) -> Row:
-    """Show the model and the reasoning effort the next request will use."""
+    """Show the model and the reasoning effort the next request will use.
+
+    An empty ``model`` — a machine with no ``[[models]]`` entry yet — is named rather than left blank, and the
+    effort goes with it: a level applies to a model, and ``no model · medium`` would name one this machine does
+    not have. ``/config`` is what fills the row in.
+    """
     row = Row(trail="  ")
-    row.add("model", "The model the next request goes to", model)
-    row.add("effort", "How much the model reasons on the next request", effort)
+    row.add("model", "The model the next request goes to; no model configured yet", model or NO_MODEL)
+    row.add("effort", "How much the model reasons on the next request", effort if model else "")
     return row
 
 
@@ -125,6 +135,10 @@ def model_name(config_file: Path) -> str | None:
     """
     from zettcode._compat import tomllib
 
+    if not config_file.is_file():
+        # Not a file is not a file to open: a FIFO here would block the very frame this answers for, and a
+        # directory would raise where the caller only wants the name.
+        return None
     try:
         settings = tomllib.loads(config_file.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -149,6 +163,8 @@ def hidden_parts(config_file: Path) -> tuple[str, ...]:
     from zettcode._compat import tomllib
     from zettcode.statusline import NAMES
 
+    if not config_file.is_file():
+        return ()
     try:
         table = tomllib.loads(config_file.read_text(encoding="utf-8")).get("statusline")
     except (OSError, ValueError):

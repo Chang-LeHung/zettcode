@@ -31,8 +31,8 @@ class OneOffMixin(EntryLog):
         self._add(TextEntry(id=self._next_id, kind=EntryKind.ANNOUNCEMENT, text=text))
 
     def model_changed(self, previous: str, current: str) -> None:
-        """Announce a model change in the conversation."""
-        self.announce(f"Model changed from {previous} to {current}.")
+        """Announce a model change in the conversation; an empty previous is the first model there has been."""
+        self.announce(f"Model changed from {previous} to {current}." if previous else f"Model set to {current}.")
 
     def permission_changed(self, previous: str, current: str) -> None:
         """Announce a shell-permission change the way a model change is shown."""

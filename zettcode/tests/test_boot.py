@@ -85,6 +85,19 @@ def test_the_boot_frame_names_the_model_and_effort_the_shell_will_show(tmp_path:
     assert "m \u00b7 medium" in rows[0], rows[0]
 
 
+def test_the_boot_frame_says_no_model_rather_than_leaving_the_segment_empty(tmp_path: Path):
+    """A fresh machine's first frame is the shell's own: `no model` at the end of the row, and no effort beside it."""
+    rows = _rows(
+        TuiApp(
+            boot_tree(tmp_path.resolve(), model=labels.model_name(tmp_path / "none.toml")),
+            width=WIDTH,
+            height=HEIGHT,
+        )
+    )
+
+    assert rows[0].rstrip().endswith("no model"), rows[0]
+
+
 def test_the_boot_frames_labels_come_without_the_application(tmp_path: Path, monkeypatch):
     """Naming the model costs a file read, not the settings' import graph.
 
@@ -126,8 +139,13 @@ def test_the_boot_frames_labels_come_without_the_application(tmp_path: Path, mon
         'models = "m"\n',  # a shape the settings would refuse
     ],
 )
-def test_a_config_the_boot_frame_cannot_read_leaves_the_header_right_side_empty(tmp_path: Path, body: str | None):
-    """Nothing to name means the shell fills the corner in, not a guess at it."""
+def test_a_config_the_boot_frame_cannot_read_still_says_no_model(tmp_path: Path, body: str | None):
+    """An unreadable config is not a name to show, and the frame says the same thing a model-less one does.
+
+    The application refuses the unreadable file a moment later (a path that is not a file, a shape the settings
+    reject), so the frame is not the place for the reason — but an empty right side is the one thing it must not
+    draw, because an empty segment reads as a rendering accident rather than as a machine with no model.
+    """
     path = tmp_path / "config.toml"
     if body is not None:
         path.write_text(body, encoding="utf-8")
@@ -135,6 +153,7 @@ def test_a_config_the_boot_frame_cannot_read_leaves_the_header_right_side_empty(
     assert labels.model_name(path) is None
     rows = _rows(TuiApp(boot_tree(tmp_path.resolve(), model=labels.model_name(path)), width=WIDTH, height=HEIGHT))
     assert "zettcode" in rows[0], "the left side is still the shell's"
+    assert rows[0].rstrip().endswith("no model"), rows[0]
 
 
 def test_the_banner_and_the_composer_share_the_first_frame():

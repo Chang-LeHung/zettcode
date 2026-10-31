@@ -34,7 +34,8 @@ class NoticesMixin(CommandUi, ShellState):
         """
         if session_id != self.client.session.id:
             return
-        if snapshot.context_tokens >= self.client.model.context_window:
+        model = self.model
+        if model is not None and snapshot.context_tokens >= model.context_window:
             # A request cannot carry more than the window it is measured against,
             # so a figure that does is not this request's size: it belongs to
             # another call or to a provider counting to a rule of its own, and

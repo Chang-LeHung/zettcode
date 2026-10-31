@@ -5,8 +5,11 @@
 **`zettcode: Config key ... must be str` / `Unknown config keys ...`** —— 报错里会点名出错的键。
 拼错的键会被拒绝而不是忽略，所以通常改拼写就好。完整的键见[配置文件](/zh/guide/config)。
 
-**`zettcode: No models configured`** —— `~/.zettcode/config.toml` 至少要有一张 `[[models]]` 表。
-可以从[快速开始](/zh/guide/getting-started#先配一个模型)里的例子抄。
+**`zettcode: No models configured`** —— 这是 `zettcode ask` 和 `zettcode doctor` 在
+`~/.zettcode/config.toml` 里还没有 `[[models]]` 表时的回答。终端不会因此停下：它照常打开，头部显示
+`no model`，`/config` 会一步步问你要第一项配置 —— 供应商、model id、token —— 再把它写进那个文件；这台机器
+从来没建过配置文件时，它会连文件一起建出来。在那之前输入的 prompt 会用同一句话拒绝，你写的字仍留在输入框里。
+想直接改文件，可以照抄[快速开始](/zh/guide/getting-started#先配一个模型)里的例子。
 
 **`zettcode: no session <id> in <path>`** —— `--resume` 给的 id 不在这个工作区的存储里。会话是
 按工作区隔离的：确认 `-w` 指向的目录和创建会话时是同一个，或者直接运行 `zettcode` 用

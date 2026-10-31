@@ -372,19 +372,24 @@ def report_resume(agent: TerminalAgent) -> None:
         print(f"\nresume this session: {hint}\n")
 
 
-def resolve_config(argv: list[str] | None = None) -> ZettCodeConfig:
+def resolve_config(argv: list[str] | None = None, *, require_models: bool = True) -> ZettCodeConfig:
     """Build the settings from the config file, reporting a bad file as a clean exit.
 
     The workspace is parsed first: ``--help`` exits inside ``argparse``, and it
     would be absurd for the flag that explains the program to load the agent
     runtime on the way out.
+
+    Args:
+        argv: Arguments to read the workspace from; ``sys.argv`` by default.
+        require_models: Refuse a file that lists no models. The terminal passes ``False``: a machine that has
+            never been set up reaches the shell and its ``/config``, and only a request insists on a model.
     """
     workspace = parse_args(argv).workspace
     from .config import load_config
     from .tui.capabilities import detect_reduced_motion
 
     try:
-        return load_config(workspace, reduced_motion_default=detect_reduced_motion())
+        return load_config(workspace, reduced_motion_default=detect_reduced_motion(), require_models=require_models)
     except ValueError as error:
         raise SystemExit(f"zettcode: {error}") from error
 
@@ -429,6 +434,10 @@ def boot_theme() -> Theme | None:
     from .tui import ThemeCatalog, ThemeFileError, bundled_themes, load_theme
 
     path = config_path()
+    if not path.is_file():
+        # Only a file can be read for a palette: a FIFO would block the frame this is read for, and a path that
+        # exists and is not a file is refused before the terminal is taken.
+        return None
     try:
         data = tomllib.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, tomllib.TOMLDecodeError):
@@ -528,7 +537,7 @@ def build_application(options: Options, *, terminal: TuiApp | None = None) -> Ze
     from .app.agent.agent import TerminalAgent
     from .tui import DARK
 
-    config = resolve_config()
+    config = resolve_config(require_models=False)
     if options.resume is not None and not session_exists(config, options.resume):
         raise SystemExit(f"zettcode: no session {options.resume} in {config.store}")
     agent = TerminalAgent.preview(config)
@@ -649,8 +658,18 @@ async def launch(options: Options) -> None:
     """
     from .app.ui import labels
     from .app.ui.boot import boot_tree
-    from .paths import DEFAULT_LOG, config_path
+    from .paths import DEFAULT_LOG, check_config_path, config_path
     from .tui import DARK, Terminal, TerminalRunner, TuiApp
+
+    # `check_config_path` comes from `paths` and not from the settings module: this runs before the first frame,
+    # and importing `zettcode.config` here costs it 40-70 ms — two character cells of the numbers measured below.
+    # Before the terminal is taken, and before anything reads that path for the frame: a config path that exists
+    # and is not a file is a sentence on a plain terminal, not a frame that exits from the build thread behind it
+    # (or blocks on a FIFO while the palette is read).
+    try:
+        check_config_path()
+    except ValueError as error:
+        raise SystemExit(f"zettcode: {error}") from error
 
     # The header's right side is a file read rather than a settings load, and so is the palette: this frame is
     # painted before any of this program's modules are imported, and a reader should see which model will answer,
@@ -756,7 +775,9 @@ def main() -> None:
     _name_process()
     try:
         if options.dry_run:
-            asyncio.run(async_main(resolve_config(), resume=options.resume, auto=options.auto, dry_run=True))
+            asyncio.run(
+                async_main(resolve_config(require_models=False), resume=options.resume, auto=options.auto, dry_run=True)
+            )
             return
         asyncio.run(launch(options))
     finally:

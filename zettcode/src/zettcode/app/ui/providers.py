@@ -290,18 +290,25 @@ class ConfigMixin(ShellState):
         self._config_ask(draft)
 
     def _config_write(self, draft: Draft) -> None:
-        """Write the finished draft to the file, and announce it."""
+        """Write the finished draft to the file, and announce it.
+
+        The first model a machine ever has is the one requests go to from then on — there was nothing for it to
+        be added beside — so that one is announced as being in use rather than as one more to switch to.
+        """
+        first = self.model is None
         try:
             entry = entry_for(draft)
             model = self.client.add_model(entry)
         except ValueError as error:  # ConfigurationError is one
             self._config_failed(error)
             return
-        self._config_end(
-            f"added {describe(entry)} \u2014 /model switches to it"
-            if model.name != self.client.model.name
-            else f"added {describe(entry)}"
-        )
+        if first:
+            self._warm_runtime()
+            self._config_end(f"added {describe(entry)} \u2014 this is the model requests now use")
+        elif model.name != self.client.model.name:
+            self._config_end(f"added {describe(entry)} \u2014 /model switches to it")
+        else:
+            self._config_end(f"added {describe(entry)}")
 
     # -- changing one --------------------------------------------------------------------
     def _config_actions(self, index: int, *, replace: bool) -> None:
@@ -536,13 +543,13 @@ class ConfigMixin(ShellState):
 
     def _config_remove(self, index: int, model: ModelInfo) -> None:
         """Remove the entry and tell the reader what is in use afterwards."""
-        previous = self.client.model
+        previous = self.model
         try:
             now = self.client.remove_model(index)
         except ValueError as error:
             self._config_failed(error)
             return
-        if previous.name == model.name and now.name != model.name:
+        if previous is not None and previous.name == model.name and now.name != model.name:
             self.transcript.model_changed(previous.name, now.name)
         self._config_end(f"removed {model.name}")
         self.app.request_layout()
@@ -561,8 +568,12 @@ class ConfigMixin(ShellState):
         if draft.missing():
             self._config_ask(draft, replace=False)  # nothing of the flow is on screen yet
             return None
+        first = self.model is None
         entry = entry_for(draft)
         self.client.add_model(entry)
+        if first:
+            self._warm_runtime()
+            return f"added {describe(entry)} \u2014 this is the model requests now use"
         return f"added {describe(entry)} \u2014 /model switches to it"
 
     def config_remove_from_line(self, argument: str) -> str:
@@ -583,9 +594,9 @@ class ConfigMixin(ShellState):
                 raise ValueError(f"{wanted!r} names more than one model; use its number from /config list")
             index = matches[0]
         model = entries[index][0]
-        previous = self.client.model
+        previous = self.model
         now = self.client.remove_model(index)
-        if previous.name == model.name and now.name != model.name:
+        if previous is not None and previous.name == model.name and now.name != model.name:
             self.transcript.model_changed(previous.name, now.name)
         self.app.request_layout()
         return f"removed {model.name}"
