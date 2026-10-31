@@ -9,6 +9,7 @@ import type {
   Compaction,
   ContextReport,
   CurrentSession,
+  Disposition,
   Health,
   ImageInput,
   MentionInfo,
@@ -27,6 +28,7 @@ import type {
   RunState,
   ResumeInfo,
   SelfCompaction,
+  SendMode,
   SessionInfo,
   SessionStatsInfo,
   Settings,
@@ -291,10 +293,14 @@ export class ZettCodeClient {
   }
 
   /** Send a message to another session explicitly, without a model turn; returns who took it. */
-  send(to: string, text: string): Promise<{ to: string; disposition: string }> {
-    return this.request<{ to: string; disposition: string }>(
+  send(
+    to: string,
+    text: string,
+    options: { mode?: SendMode } = {},
+  ): Promise<{ to: string; disposition: Disposition }> {
+    return this.request<{ to: string; disposition: Disposition }>(
       "/sessions/current/send",
-      this.json("POST", { to, text }),
+      this.json("POST", { to, text, mode: options.mode ?? "steer" }),
     );
   }
 

@@ -126,7 +126,7 @@ differ it is because TypeScript talks to a server: `session.info()` reads what P
 | `usage()`, `usageLedger()`, `sessionStats(ids?)` | `/usage`, `/usage/ledger`, `/sessions/.../stats` |
 | `selfCompaction()`, `useSelfCompaction(choice)`, `mentions(query, {limit})`, `checkModels({timeout})` | `/sessions/current/self-compaction`, `/mentions`, `/doctor` |
 | `prompt(text, options)` or `session.prompt(...)`, `session.resume(options)` | `POST /prompts`, `POST /runs/resume` |
-| `messages()`, `relay(id)`, `send(to, text)` | `/messages`, `/sessions/current/send` |
+| `messages()`, `relay(id)`, `send(to, text, { mode? })` | `/messages`, `/sessions/current/send` |
 | `runState()`, `session.resumable()`, `approve()`, `answer()`, `session.steer()`, `cancelRun()` | `/runs/...` |
 
 ## Errors

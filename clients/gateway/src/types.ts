@@ -108,7 +108,8 @@ export interface SpawnForm {
 
 export interface SendReply {
   to: string;
-  disposition: "started" | "queued" | string;
+  /** `string` is kept for a disposition a newer server adds; the page draws anything but `queued` as a turn. */
+  disposition: "started" | "steered" | "queued" | "delivered" | string;
   direct: boolean;
   status: GatewayStatus;
 }
