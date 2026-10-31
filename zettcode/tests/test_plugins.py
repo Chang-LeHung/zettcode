@@ -239,7 +239,9 @@ def test_a_plain_command_is_ui_free(tmp_path: Path):
 
 def make_config(tmp_path: Path, **overrides: object) -> ZettCodeConfig:
     """Return a minimal validated config, optionally changed for one test."""
-    config = ZettCodeConfig(workspace=tmp_path, models=(ModelConfig(model="gpt", token="t"),))
+    config = ZettCodeConfig(
+        workspace=tmp_path, models=(ModelConfig(model="gpt", token="t"),), plugins_dir=tmp_path / "plugins"
+    )
     return replace(config, **overrides) if overrides else config
 
 

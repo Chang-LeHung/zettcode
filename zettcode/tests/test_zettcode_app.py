@@ -307,6 +307,7 @@ class FakeConfig:
     plugins_enabled: bool = True
     disabled_plugins: tuple[str, ...] = ()
     plugins_file: Path = Path("/tmp/zettcode-plugins.json")
+    plugins_dir: Path = Path("/tmp/zettcode-plugins")
     harness_dir: Path = Path("/tmp/zettcode-harness")
     update_enabled: bool = True
     update_file: Path = Path("/tmp/zettcode-update.json")

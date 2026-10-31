@@ -24,6 +24,7 @@ def _config(tmp_path: Path, **changes: object) -> ZettCodeConfig:
         models=(ModelConfig(model="m", token="t"),),
         store=tmp_path / "sessions",
         plugins_file=tmp_path / "plugins.json",
+        plugins_dir=tmp_path / "plugins",
         mcp_enabled=False,
         skills_enabled=False,
     )
@@ -747,3 +748,53 @@ def test_two_plugins_where_one_name_is_the_others_origin(tmp_path: Path):
     assert problems == []
     assert written == {"greeter": False}, "the name `greeter` is a distribution's origin here"
     assert json.loads((tmp_path / "plugins.json").read_text(encoding="utf-8")) == {"disabled": ["greeter"]}
+
+
+# -- single-file plugins on the page -----------------------------------------------------------------
+
+
+SIMPLE_FILE_PLUGIN = (
+    "from zettcode.engine.plugins import Plugin\n\n\nclass Greeter(Plugin):\n    name = 'greeter'\n\n"
+    "    def activate(self, ctx):\n        pass\n"
+)
+
+
+def test_a_switched_off_file_plugin_stays_on_the_page_and_can_be_enabled(tmp_path: Path):
+    from zettcode.config import read_disabled_plugins
+    from zettcode.engine.plugins import switches
+
+    folder = tmp_path / "plugins"
+    folder.mkdir()
+    (folder / "greeter.py").write_text(SIMPLE_FILE_PLUGIN, encoding="utf-8")
+    config = _config(tmp_path, plugins_dir=folder)
+    config.plugins_file.write_text(json.dumps({"disabled": ["greeter"]}), encoding="utf-8")
+    bundle = load_terminal_plugins(config, builtins=(), entry_points=())
+
+    rows = switches.catalog(config, bundle, entry_points=())
+    row = next(entry for entry in rows if entry.origin == "greeter")
+    assert row.enabled is False and row.switchable
+
+    written, keys, problems = switches.set_many(config, {"greeter": True}, bundle=bundle, entry_points=())
+
+    assert (written, keys, problems) == ({"greeter": True}, [], [])
+    assert read_disabled_plugins(config.plugins_file) == ()
+
+
+def test_a_broken_file_plugin_is_on_the_page_and_can_be_switched_off(tmp_path: Path):
+    from zettcode.config import read_disabled_plugins
+    from zettcode.engine.plugins import switches
+
+    folder = tmp_path / "plugins"
+    folder.mkdir()
+    (folder / "broken.py").write_text("class (\n", encoding="utf-8")
+    config = _config(tmp_path, plugins_dir=folder)
+    bundle = load_terminal_plugins(config, builtins=(), entry_points=())
+
+    rows = switches.catalog(config, bundle, entry_points=())
+    row = next(entry for entry in rows if entry.origin == "broken")
+    assert row.failure and row.switchable
+
+    written, _keys, problems = switches.set_many(config, {"broken": False}, bundle=bundle, entry_points=())
+
+    assert written == {"broken": False} and problems == []
+    assert read_disabled_plugins(config.plugins_file) == ("broken",)

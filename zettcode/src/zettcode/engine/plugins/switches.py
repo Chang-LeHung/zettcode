@@ -135,6 +135,11 @@ def catalog(
     for point in points:
         if point.name not in seen:
             installed.append(_installed(point.name, point.name, config, off=off, held=held))
+    # A single-file plugin that is switched off is not in the bundle (the loader never imported it), so the folder is
+    # what says it exists: it stays on the page, off, where it can be switched back on.
+    for path in loader.installed_files(config.plugins_dir):
+        if path.stem not in seen:
+            installed.append(_installed(path.stem, path.stem, config, off=off, held=held))
     failed = [
         _failed(origin, why, config, builtin=origin in builtins, off=off, held=held) for origin, why in bundle.failed
     ]
@@ -322,6 +327,8 @@ def _rules(
         known[origin] = origin
     for name in (*builtins, *(point.name for point in points)):
         known[name] = name
+    for path in loader.installed_files(config.plugins_dir):
+        known[path.stem] = path.stem
     for name in (*read_disabled_plugins(config.plugins_file), *config.disabled_plugins):
         known[name] = name
     for plugin in bundle.plugins:
