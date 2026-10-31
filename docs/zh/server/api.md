@@ -99,7 +99,7 @@ curl -X PATCH http://127.0.0.1:3290/settings \
 | `GET` | `/runs/current` | — | `{"running", "pending"}`:当前会话里是否有运行在跑、它在等什么。 |
 | `GET` | `/messages` | — | `{"messages": [{"id","sender_id","sender","text","via","hops"}]}`:其他会话发给当前会话、还没回答的消息,最早的在前。 |
 | `POST` | `/messages/{id}` | — | `text/event-stream`,帧与 `/prompts` 相同:把这条消息当一轮来回答。它不在等待时返回 404。 |
-| `POST` | `/sessions/current/send` | `{"to","text"}` | `{"to","disposition"}`:给另一个 ZettCode 会话(handle 或 id)发消息,内容视为读者本人所写;`disposition` 为 `started` 或 `queued`。没有人能收到时返回 404 `unreachable`。 |
+| `POST` | `/sessions/current/send` | `{"to","text","mode"?}` | `{"to","disposition"}`:给另一个 ZettCode 会话(handle 或 id)发消息,内容视为读者本人所写。`mode` 为 `steer`（默认：交给对方正在运行的请求）或 `followup`（等那次请求结束）；`disposition` 为 `started`、`steered` 或 `queued`。没有人能收到时返回 404 `unreachable`。 |
 | `GET` | `/runs/resumable` | — | `{"resumable","kind","description"}` |
 | `POST` | `/runs/approvals` | `{"call_id","approve","remember"?}` | `{"resolved"}`,运行是否正在等这个调用。 |
 | `POST` | `/runs/questions` | `{"call_id","answer"}` | `{"resolved"}`;`"answer": null` 表示拒绝回答。 |

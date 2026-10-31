@@ -8178,7 +8178,8 @@ async def test_the_steering_limit_is_respected_and_named():
     harness.press("ctrl_s")
 
     assert app.follow_ups.messages == ("one more",) and _steering_payloads(app) == []
-    assert f"steering limit reached ({MAX_STEERING})" in harness.render().text
+    rendered = harness.render().text
+    assert "steering limit reached" in rendered and f"({MAX_STEERING}," in rendered
     await _stop(app)
 
 

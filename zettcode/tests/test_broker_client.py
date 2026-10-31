@@ -149,12 +149,54 @@ async def test_a_message_goes_from_one_client_to_another_and_the_answer_says_wha
     await connected(host, session(B, "Receiver Two"), on_message=inbox)
     await eventually(lambda: [e.handle for e in sender.others()])
 
-    delivered = await sender.send("receiver-two", "hello there", hops=1, via="agent")
+    delivered = await sender.send("receiver-two", "hello there", hops=1, via="agent", mode="followup")
 
     assert delivered.disposition == "queued" and delivered.to.handle == "receiver-two"
     (message,) = inbox.messages
-    assert (message.text, message.hops, message.via) == ("hello there", 2, "agent")
+    assert (message.text, message.hops, message.via, message.mode) == ("hello there", 2, "agent", "followup")
     assert message.sender.session_id == A and message.sender.handle == "sender"
+
+
+async def test_a_message_that_says_nothing_about_a_mode_steers_and_an_unknown_mode_is_refused(host):
+    inbox = Inbox()
+    sender = await connected(host, session(A, "sender"))
+    await connected(host, session(B, "receiver"), on_message=inbox)
+    await eventually(lambda: [e.handle for e in sender.others()])
+
+    await sender.send("receiver", "hello")
+
+    assert inbox.messages[0].mode == "steer"
+    with pytest.raises(SendError) as refused:
+        await sender.send("receiver", "hello", mode="later")
+    assert refused.value.reason == "invalid" and len(inbox.messages) == 1
+
+
+def test_a_delivery_with_a_mode_this_version_does_not_know_is_held_as_a_follow_up():
+    seen: list[Incoming] = []
+
+    def take(incoming: Incoming) -> Receipt:
+        seen.append(incoming)
+        return Receipt(True, "", "queued")
+
+    client = BrokerClient(on_message=take)
+    wire = {
+        "session_id": A,
+        "handle": "alpha",
+        "title": "",
+        "workspace": "/w",
+        "status": "idle",
+        "kind": "zettcode",
+    }
+    line = {"from": wire, "text": "hi", "hops": 1, "via": "agent", "mode": "teleport"}
+
+    client._deliver(line)
+
+    assert seen[-1].mode == "followup", "the safe half, not the disruptive one"
+
+    line.pop("mode")
+    client._deliver(line)
+
+    assert seen[-1].mode == "steer", "a peer that says nothing means the protocol's default"
 
 
 async def test_a_send_right_after_connecting_waits_for_the_registration_it_depends_on(host, monkeypatch):

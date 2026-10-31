@@ -277,14 +277,14 @@ class Hub:
         self._throttle(sender.info.session_id)
         if sender.external:
             body = {**body, "via": VIA_EXTERNAL}
-        to, text, via, hops = parse_send(body, self.limits)
+        to, text, via, hops, mode = parse_send(body, self.limits)
         if via == VIA_EXTERNAL and not sender.external:
             raise Refused("invalid", "via is 'user' or 'agent'")
         target = self.roster.resolve(to, asker=sender.connection)
         recipient = self.sessions.get(target.owner)
         if recipient is None:
             raise Refused("gone", f"@{target.handle} is no longer connected")
-        message = {"from": sender.info.to_wire(), "text": text, "hops": hops + 1, "via": via}
+        message = {"from": sender.info.to_wire(), "text": text, "hops": hops + 1, "via": via, "mode": mode}
         # A reader's chat window may ask for its text to be run as the recipient's own prompt, but only of a session
         # that said it can; for any other the flag is dropped and the message is delivered the ordinary way.
         if body.get("direct") is True and via == VIA_USER and not sender.external and target.direct:

@@ -84,7 +84,7 @@ class FollowUpsMixin(ShellState):
         if not self._turn_running:
             return ""
         if self._steering_sent >= MAX_STEERING:
-            return f"steering limit reached ({MAX_STEERING})"
+            return f"steering limit reached ({MAX_STEERING}, messages from other sessions included)"
         return None
 
     def _ask_send_kind(self, value: str, parts: Sequence[PromptPart]) -> None:
@@ -353,18 +353,22 @@ class FollowUpsMixin(ShellState):
             if unread:
                 self._follow_ups[:0] = [FollowUp(text, tuple(parts)) for text, parts in unread]
                 self._sync_follow_ups()
-            return
-        if unread:
-            noun = "steering message was" if len(unread) == 1 else "steering messages were"
-            self._return_to_draft(
-                unread,
-                f"{len(unread)} {noun} never read by the agent and {'is' if len(unread) == 1 else 'are'} back in the draft",
-            )
-        if self._follow_ups:
-            self._follow_ups_held = True
-            held = len(self._follow_ups)
-            noun = "follow-up is" if held == 1 else "follow-ups are"
-            self.transcript.notice(f"{held} {noun} held and will be sent after your next reply completes")
+        else:
+            if unread:
+                noun = "steering message was" if len(unread) == 1 else "steering messages were"
+                self._return_to_draft(
+                    unread,
+                    f"{len(unread)} {noun} never read by the agent and {'is' if len(unread) == 1 else 'are'} back in the draft",
+                )
+            if self._follow_ups:
+                self._follow_ups_held = True
+                held = len(self._follow_ups)
+                noun = "follow-up is" if held == 1 else "follow-ups are"
+                self.transcript.notice(f"{held} {noun} held and will be sent after your next reply completes")
+        # A `/continue` is a turn run by the command path, so it reaches here with `turn=False` and still has to
+        # settle what it was steered with; a command that runs beside a request never calls this at all (`_execute_now`
+        # does not), so settling here cannot take a live request's messages.
+        self._settle_relayed_steering()
 
     def _return_to_draft(self, items: Sequence[tuple[str, Sequence[PromptPart]]], notice: str) -> None:
         """Put messages back in the composer, after whatever is already there, and say so.

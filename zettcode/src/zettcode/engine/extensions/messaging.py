@@ -3,8 +3,10 @@
 ``list_sessions`` says who is there; ``send_message`` hands one of them a message. The other session
 receives it as a turn of its own — drawn there as a message from this session, with this session's
 id so that it can answer — and this call returns as soon as it has taken the message, not when it has
-finished with it. What it does about the message is its own agent's business, and its answer, if any,
-arrives here as a message of its own.
+finished with it. A message asks for one of two things while that session is busy: it can be handed to
+the request it is running (``mode="steer"``, the default) or wait until that request ends
+(``mode="followup"``); an idle session starts a turn either way. What it does about the message is its
+own agent's business, and its answer, if any, arrives here as a message of its own.
 
 Both are request-scoped like every tool: they are registered for each request, and a request that is
 a side question keeps only ``list_sessions`` (see :mod:`zettcode.engine.dialogue.side`), because
@@ -20,6 +22,7 @@ from zett_agent.tools.base import AgentTool, tool
 from zettcode.broker.client import SendError
 from zettcode.broker.protocol import VIA_AGENT
 from zettcode.engine.messenger import Messenger
+from zettcode.modes import MODE_STEER, MODES
 
 LIST_SESSIONS_TOOL_NAME = "list_sessions"
 SEND_MESSAGE_TOOL_NAME = "send_message"
@@ -92,7 +95,7 @@ class SessionMessagingExtension(AgentExtension):
         messenger = self.messenger
 
         @tool(name=SEND_MESSAGE_TOOL_NAME)
-        async def send_message(to: str, message: str) -> str:
+        async def send_message(to: str, message: str, mode: str = MODE_STEER) -> str:
             """Send a message to another running ZettCode session, which receives it as a request of its own.
             Returns once that session has taken the message, not once it has acted on it: its reply, if it
             sends one, arrives later as a message to you.
@@ -101,9 +104,13 @@ class SessionMessagingExtension(AgentExtension):
                 to: The session to message: its id from list_sessions, or the name listed beside it.
                 message: What to tell it. It cannot see this conversation, so say everything it needs: what you
                     want, which files or facts matter, and what a useful answer looks like.
+                mode: What the other session should do if it is busy. "steer" (the default) hands the message to
+                    the request it is running, so it changes course now; "followup" waits until that request ends.
+                    A session that is idle starts on the message either way.
 
             Snippet:
                 send_message(to="fix-parser", message="The tokenizer change is merged; please rerun your tests.")
+                send_message(to="fix-parser", message="Also check the tab case.", mode="followup")
 
             Guidelines:
                 - Send a message only when your user asked you to, or when the work needs something only another session can do.
@@ -112,16 +119,19 @@ class SessionMessagingExtension(AgentExtension):
                 - Do not reply to a message just to acknowledge it; reply when you have something to say that the sender needs.
                 - Your answer to your own user is not sent to the other session; only this tool sends anything.
             """
+            if mode not in MODES:
+                raise ValueError("mode is 'steer' or 'followup'")
             try:
-                delivered = await messenger.send(to, message, via=VIA_AGENT)
+                delivered = await messenger.send(to, message, via=VIA_AGENT, mode=mode)
             except SendError as error:
                 raise ValueError(_sentence(error)) from error
             peer = delivered.to
-            said = (
-                "started on it now"
-                if delivered.disposition == "started"
-                else "queued it until its current request ends"
-            )
+            said = {
+                "started": "started on it now",
+                "steered": "steered it into the request it was running",
+                "queued": "queued it until its current request ends",
+                "delivered": "delivered it to that session's chat window",
+            }.get(delivered.disposition, "took it")
             return f"Delivered to {peer.handle} (id {peer.session_id}); it {said}."
 
         return send_message

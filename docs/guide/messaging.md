@@ -72,9 +72,15 @@ title, the stored session. The message is saved with the session and shows the s
 
 - **When the session is idle**, the message starts a request at once. This costs tokens without you pressing
   Enter, which is the point of a message from another session; switch the feature off if you do not want it.
-- **When it is busy**, the message waits and starts when the request in flight ends, after any follow-ups
-  you queued. It never steers the request that is running — "change what you are doing" is yours to say.
-  At most 16 can wait; the sender is told when it is full.
+- **When it is busy**, what happens is up to the message. A **steer** message (the default) is handed to the
+  request that is running, so it changes course now; a **follow-up** waits and starts when the request in flight
+  ends, after any follow-ups you queued. A message that cannot be steered — a command or a side question is
+  running rather than a request, the steering limit is reached, or it came from a one-to-one chat window, which is
+  answered by the turn its message starts — waits like a follow-up, and the sender is told it is queued. At most 16
+  can wait; the sender is told when it is full.
+
+  A daemon never steers — it runs one turn at a time and answers `queued` — and the web gateway's chat
+  answers `delivered`: it keeps the message for the conversation it shows instead of starting a turn.
 
 The answer to a message is shown to *you*. The session that sent it sees nothing of it unless the model
 sends a reply with its tool.
@@ -86,7 +92,7 @@ Two tools are added to the model's:
 | Tool | What it does |
 | --- | --- |
 | `list_sessions` | Lists the other running sessions: the name to use, the id, what each is about, whether it is idle or working, and its directory. A `/btw` side question may use it. |
-| `send_message` | Sends a message to a session, by id, name or title, and returns once that session has taken it. It does not wait for an answer: a reply arrives later as a message of its own. A side question cannot use it. |
+| `send_message` | Sends a message to a session, by id, name or title, and returns once that session has taken it. It does not wait for an answer: a reply arrives later as a message of its own. It takes a `mode`: `steer` (the default) hands the message to the request the other session is running, and `followup` waits until that request ends. A side question cannot use it. |
 
 In the conversation a `send_message` call is a row of its own, in mauve, the colour of the header
 of a message another session's agent sent to you. It shows who the message was for and the first lines of what was
@@ -114,7 +120,9 @@ curl -s -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   http://127.0.0.1:$PORT/messages
 ```
 
-The answer comes once the session has taken the message (or says why not). The session shows it as coming from an
+The answer comes once the session has taken the message (or says why not). A `mode` of `followup` makes a busy
+session wait for its running request instead of steering it; leave it out and the message steers, which is the
+default, and an idle session starts on it either way. The session shows it as coming from an
 **external source**, and tells its model that who sent it was not checked: the model weighs it like any outside
 request, and does not treat it as the person typing. A message cannot say it came from a reader or from another
 agent, whatever it claims.
@@ -123,6 +131,23 @@ A program that wants to be listed, and to be answered, registers like a session:
 the same token, says `{"op": "session", "session_id": "...", "title": "...", "kind": "external"}`, and is then in the
 list for everyone to write to. The messages it is sent arrive on that connection, and it sends back with the `key` it
 was given. The whole exchange is described at the top of `zettcode/src/zettcode/broker/protocol.py`.
+
+## Managing the broker
+
+Nothing has to be started by hand: the first session that needs the broker starts it, and the last one to leave lets
+it exit about half a minute later. To start, stop, or restart it yourself — after an upgrade, or when one is stuck —
+run one of these in a shell:
+
+```sh
+zettcode broker start     # start one if none is running, and print its pid and port
+zettcode broker stop      # stop the broker this machine is running
+zettcode broker restart   # stop it, then start a new one
+```
+
+Each answers plainly what it did: `start` says the broker was already running (with its pid and port) rather than
+starting a second one; `stop` says nothing was running rather than failing. Only a process recognised as ZettCode's
+own broker is ever ended (its command line must be `python -m zettcode.broker`), it is asked to stop first, and a
+broker that does not let go of its lock is forced. Sessions connected to it notice and reconnect to the next one.
 
 ## Limits and care
 

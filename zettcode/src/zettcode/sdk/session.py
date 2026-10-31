@@ -72,6 +72,8 @@ from .types import (
 )
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
+    from zett_agent.messages import UserMessage
+
     from ..mentions import MentionRegistry
     from ..prompt import PromptPart
     from .client import Client
@@ -711,6 +713,7 @@ class Session:
             via=message.via,
             hops=message.hops,
             direct=message.direct,
+            mode=message.mode,
         )
         return RunStream(
             self,
@@ -817,8 +820,7 @@ class Session:
             ConfigurationError: The message carries images and the model does not accept them.
         """
         client = self._client
-        running = client._stream
-        if client._closed or running is None or running._session.id != self.id:
+        if not self._running_here():
             return None
         registry = client._mention_registry() if mentions else None
         model = client._agent.active_model
@@ -828,7 +830,34 @@ class Session:
             )
         except ValueError:
             return None  # blank: there is nothing to steer with
-        message = client._agent.turn(parts, hint=hint)
+        return self._hand_to_run(client._agent.turn(parts, hint=hint))
+
+    def _steer_message(self, message: UserMessage) -> str | None:
+        """Send a message already made to the run in progress, and say what it will be reported as.
+
+        A message another session sent is built with the line above it that tells the model who wrote it, while the
+        text a reader sees is the message itself. Steering it as a finished message keeps both: the model reads the
+        whole user message, and the front end matches the run's report by the text this returns. It is private
+        because it exists for this repository's front ends (the terminal and the server), not for programs using the
+        SDK: those steer text with :meth:`steer`.
+
+        Returns:
+            The text the run will report the message by, or ``None`` when nothing is running in this session or the
+            run refused it. Nothing is queued for later.
+        """
+        if not self._running_here():
+            return None
+        return self._hand_to_run(message)
+
+    def _running_here(self) -> bool:
+        """Return whether this session has a run in progress that a message can steer."""
+        client = self._client
+        running = client._stream
+        return not client._closed and running is not None and running._session.id == self.id
+
+    def _hand_to_run(self, message: str | UserMessage) -> str | None:
+        """Hand one finished message to the running request and return the text it reports it by."""
+        client = self._client
         text = message if isinstance(message, str) else message.text
         return text if client._agent.steer(message) else None
 

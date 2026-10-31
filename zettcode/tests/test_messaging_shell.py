@@ -25,6 +25,7 @@ from zettcode.app.ui.messaging import MAX_INBOX
 from zettcode.broker.client import BrokerClient, SendError
 from zettcode.engine.messenger import Messenger
 from zettcode.relay import RELAY, Relayed
+from zettcode.sdk.events import Steered
 
 ME = "session-0001"
 BOB = "02b20c86-bbbb-7000-8000-000000000002"
@@ -193,7 +194,7 @@ async def test_a_message_that_arrives_during_a_request_waits_and_starts_when_it_
     await asyncio.sleep(0.02)
     assert shell.app.busy
 
-    delivered = await bob.send(ME, "when you are free", via="agent")
+    delivered = await bob.send(ME, "when you are free", via="agent", mode="followup")
 
     assert delivered.disposition == "queued"
     assert shell.relays() == [], "nothing is drawn as a turn until it is one"
@@ -206,17 +207,129 @@ async def test_a_message_that_arrives_during_a_request_waits_and_starts_when_it_
     assert shell.app.busy is False
 
 
-async def test_it_never_steers_the_request_that_is_running(make):
+async def test_a_message_steers_the_request_that_is_running_by_default(make):
     shell = await make(hold=True)
     bob, _ = await make.other()
     await see_each_other(shell, bob)
     shell.type("write the parser")
     await asyncio.sleep(0.02)
 
-    await bob.send(ME, "stop what you are doing", via="agent")
+    delivered = await bob.send(ME, "stop what you are doing", via="agent")
 
-    assert shell.model.agent.emitted == [], "nothing was handed to the running request"
-    assert shell.app._steering == [] and shell.app._follow_ups == []
+    assert delivered.disposition == "steered"
+    event, _config = shell.model.agent.emitted[-1]
+    assert event.name == "steering_message"
+    message = event.payload["message"]
+    assert "stop what you are doing" in message.text
+    assert "Another ZettCode session" in message.text, "the model is told who it came from"
+    (key, _relayed) = shell.app._relayed_steering[0]
+    adopted = shell.app._steering_started(key)
+    assert adopted is not None and adopted.text == "stop what you are doing", "the row is the sender's message"
+    assert shell.app._relayed_steering == []
+    shell.model.released.set()
+    await shell.settle()
+
+
+async def test_two_identical_steers_are_two_messages_taken_in_the_order_they_were_sent(make):
+    shell = await make(connect=False)
+    first = Relayed(BOB, "bob", "same words", hops=1, mode="steer")
+    second = Relayed(BOB, "bob", "same words", hops=1, mode="steer")
+    shell.app._relayed_steering.extend([("same words", first), ("same words", second)])
+
+    assert shell.app._steering_started("same words") is first
+    assert shell.app._steering_started("same words") is second
+
+    assert shell.app._relayed_steering == []
+
+
+async def test_recovery_keeps_the_order_across_different_texts(make):
+    shell = await make(connect=False)
+    first = Relayed(BOB, "bob", "A", hops=1, mode="steer")
+    second = Relayed(BOB, "bob", "B", hops=1, mode="steer")
+    again = Relayed(BOB, "bob", "A", hops=1, mode="steer")
+    shell.app._relayed_steering.extend([("A", first), ("B", second), ("A", again)])
+
+    shell.app._settle_queues(True, turn=True)
+
+    assert [relayed.text for relayed in shell.app._inbox] == ["A", "B", "A"]
+
+
+async def test_a_command_path_that_is_really_a_turn_settles_its_steers(make):
+    shell = await make(connect=False)
+    message = Relayed(BOB, "bob", "change course", hops=1, mode="steer")
+    shell.app._relayed_steering.append(("key", message))
+
+    # `/continue` is a turn the command path runs, so it settles with `turn=False`; nothing it was steered with may
+    # be left behind.
+    shell.app._settle_queues(True, turn=False)
+
+    assert shell.app._relayed_steering == [] and shell.app._inbox == [message]
+
+
+async def test_an_interrupted_steer_is_not_sent_back_while_the_run_is_going(make):
+    shell = await make(connect=False)
+    message = Relayed(BOB, "bob", "already read", hops=1, mode="steer")
+    shell.app._relayed_steering.append(("key", message))
+
+    shell.app._steering_interrupted("key")
+
+    assert shell.app._inbox == [], "the run is still going; an interrupted message is not a new arrival"
+    shell.app._settle_queues(True, turn=True)
+    assert shell.app._inbox == [message], "when the run ends, a message it never adopted is recovered"
+
+
+async def test_the_row_of_a_steer_the_run_adopted_is_the_senders_message(make):
+    shell = await make(hold=True)
+    bob, _ = await make.other()
+    await see_each_other(shell, bob)
+    shell.type("write the parser")
+    await asyncio.sleep(0.02)
+    await bob.send(ME, "stop what you are doing", via="agent")
+    (key, _relayed) = shell.app._relayed_steering[0]
+
+    shell.app.projector.project(Steered(ME, key))
+
+    (relayed,) = shell.relays()
+    assert relayed.text == "stop what you are doing" and relayed.peer == "bob"
+    assert all("Another ZettCode session" not in user for user in shell.users())
+    shell.model.released.set()
+    await shell.settle()
+
+
+async def test_a_steer_the_run_never_read_waits_for_a_turn_instead_of_being_lost(make):
+    shell = await make(hold=True)
+    bob, _ = await make.other()
+    await see_each_other(shell, bob)
+    shell.type("write the parser")
+    await asyncio.sleep(0.02)
+
+    await bob.send(ME, "never mind the parser", via="agent")
+    assert len(shell.app._relayed_steering) == 1
+
+    shell.app._settle_queues(True, turn=True)
+
+    assert shell.app._relayed_steering == [] and len(shell.app._inbox) == 1
+    assert any("never mind the parser" in notice and "waits" in notice for notice in shell.notices())
+
+    shell.model.released.set()
+    await eventually(lambda: shell.relays(), 3)
+    await shell.settle()
+
+    assert [r.text for r in shell.relays()] == ["never mind the parser"]
+
+
+async def test_a_direct_chat_window_message_waits_even_though_it_says_steer(make):
+    shell = await make(hold=True)
+    bob, _ = await make.other()
+    await see_each_other(shell, bob)
+    shell.type("write the parser")
+    await asyncio.sleep(0.02)
+
+    delivered = await bob.send(ME, "run this as my prompt", via="user", direct=True)
+
+    assert delivered.disposition == "queued"
+    assert shell.model.agent.emitted == [], "a window's own turn is what answers it, so it cannot be steered in"
+    assert shell.app._inbox[-1].direct
     shell.model.released.set()
     await shell.settle()
 
@@ -230,9 +343,9 @@ async def test_messages_that_waited_start_one_at_a_time_in_the_order_they_came(m
     shell.type("write the parser")
     await asyncio.sleep(0.02)
 
-    await bob.send(ME, "first")
-    await cal.send(ME, "second")
-    await bob.send(ME, "third")
+    await bob.send(ME, "first", mode="followup")
+    await cal.send(ME, "second", mode="followup")
+    await bob.send(ME, "third", mode="followup")
     shell.model.released.set()
     await eventually(lambda: len(shell.relays()) == 3, 5)
     await shell.settle()
@@ -251,7 +364,7 @@ async def test_a_follow_up_the_reader_queued_goes_before_a_message_that_arrived_
     shell.harness.press("enter")
     shell.harness.write("f")
     await asyncio.sleep(0)
-    await bob.send(ME, "from bob")
+    await bob.send(ME, "from bob", mode="followup")
 
     shell.model.released.set()
     await eventually(lambda: shell.relays(), 5)
@@ -269,9 +382,9 @@ async def test_a_shell_with_a_full_inbox_refuses_with_a_reason_the_sender_can_re
     await asyncio.sleep(0.02)
 
     for number in range(MAX_INBOX):
-        await bob.send(ME, f"message {number}")
+        await bob.send(ME, f"message {number}", mode="followup")
     with pytest.raises(SendError) as refused:
-        await bob.send(ME, "one too many")
+        await bob.send(ME, "one too many", mode="followup")
 
     assert "waiting" in str(refused.value)
     assert len(shell.app._inbox) == MAX_INBOX
@@ -582,7 +695,7 @@ async def test_messages_that_waited_when_the_session_changed_are_announced(make)
     await see_each_other(shell, bob)
     shell.type("write the parser")
     await asyncio.sleep(0.02)
-    await bob.send(ME, "waiting")
+    await bob.send(ME, "waiting", mode="followup")
     assert len(shell.app._inbox) == 1
 
     shell.app.agent.runtime.use_session("session-0009")

@@ -165,7 +165,7 @@ async def test_messages_for_a_conversation_wait_in_that_conversation():
         from zettcode.sdk.types import IncomingMessage
 
         old = runner.slots[0]
-        runner._received(old, IncomingMessage("peer", "api", "for the old one"))
+        runner._received(old, IncomingMessage("peer", "api", "for the old one", mode="followup"))
         await http.post("/sessions")
 
         assert (await http.get("/messages")).json() == {"messages": []}, "not this conversation's"

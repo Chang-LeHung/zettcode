@@ -255,6 +255,7 @@ class ZettCodeApp(
         self._follow_ups_held = False
         self._turn_running = False
         self._inbox: list[Relayed] = []
+        self._relayed_steering: list[tuple[str, Relayed]] = []
         self._turn_answer: str | None = None
         self._lock_watch: asyncio.Task[None] | None = None
         self._lock_said: str | None = None
@@ -978,12 +979,22 @@ class ZettCodeApp(
             self.app.request_layout()
         self.app.invalidate()
 
-    def _steering_started(self, text: str) -> None:
-        """Drop a message the agent just adopted; the projector echoes its row."""
+    def _steering_started(self, text: str) -> Relayed | None:
+        """Drop a message the agent just adopted; the projector echoes its row.
+
+        Returns:
+            The message, when it came from another session, so its row can be drawn as that session's message
+            rather than as the reader's own; ``None`` for the reader's own message, which is drawn as typed.
+        """
         self._drop_steering(text)
+        return self._adopted_relayed(text)
 
     def _steering_interrupted(self, text: str) -> None:
-        """Drop a queued message a newer steering message superseded."""
+        """Drop a queued message a newer steering message superseded.
+
+        A message the run had adopted has already left the queues, and one it never adopted is recovered when the
+        run ends; nothing here goes back to the inbox, because an interrupted message was read.
+        """
         self._drop_steering(text)
 
     def _answers(self) -> dict[str, Any]:

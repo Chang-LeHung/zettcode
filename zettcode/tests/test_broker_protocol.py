@@ -20,6 +20,7 @@ from zettcode.broker.protocol import (
     parse_send,
     roster_from_wire,
 )
+from zettcode.modes import MODE_FOLLOWUP, MODE_STEER
 
 # -- what a broker tells a session on arrival -------------------------------------------------------------
 
@@ -144,8 +145,17 @@ def test_a_session_id_at_the_longest_is_taken():
 # -- sending -------------------------------------------------------------------------------------------
 
 
-def test_a_send_is_read_with_agent_and_no_hops_as_the_defaults():
-    assert send({"to": "bob", "text": "hi"}) == ("bob", "hi", VIA_AGENT, 0)
+def test_a_send_is_read_with_agent_no_hops_and_steering_as_the_defaults():
+    assert send({"to": "bob", "text": "hi"}) == ("bob", "hi", VIA_AGENT, 0, MODE_STEER)
+
+
+def test_a_send_asks_to_follow_up_when_it_says_so_and_a_mode_nobody_knows_is_refused():
+    assert send({"to": "bob", "text": "hi", "mode": MODE_FOLLOWUP})[4] == MODE_FOLLOWUP
+    with pytest.raises(Refused) as refused:
+        send({"to": "bob", "text": "hi", "mode": "later"})
+    assert refused.value.reason == "invalid"
+    with pytest.raises(Refused):
+        send({"to": "bob", "text": "hi", "mode": 5})
 
 
 def test_the_text_is_cleaned_before_it_is_measured_and_before_it_is_kept():
@@ -200,6 +210,9 @@ def test_a_broker_that_announced_other_limits_applies_them():
         {"to": "bob", "text": "hi", "hops": True},
         {"to": "bob", "text": "hi", "hops": 1.5},
         {"to": "bob", "text": "hi", "hops": "2"},
+        {"to": "bob", "text": "hi", "mode": "later"},
+        {"to": "bob", "text": "hi", "mode": None},
+        {"to": "bob", "text": "hi", "mode": 5},
     ],
 )
 def test_a_send_with_a_parameter_that_is_missing_or_of_the_wrong_kind_is_refused(params):
@@ -221,7 +234,7 @@ def test_a_message_that_would_be_the_one_past_the_hop_limit_is_a_loop():
 
 
 def test_fields_nobody_defined_are_ignored_so_a_later_version_can_add_them():
-    assert send({"to": "b", "text": "hi", "priority": "high", "tags": [1]}) == ("b", "hi", VIA_AGENT, 0)
+    assert send({"to": "b", "text": "hi", "priority": "high", "tags": [1]}) == ("b", "hi", VIA_AGENT, 0, MODE_STEER)
     assert SessionUpdate.parse({"session_id": "s", "colour": "red"}).session_id == "s"
 
 

@@ -66,17 +66,21 @@ one run per client, which is why this is several clients and not one client with
 
 The server is a session, not a reader of the broker's list: `Runner` builds its client with `sessions_enabled=True`
 and hands it :meth:`Client.join_sessions`, so a terminal (or another editor) can address this chat and a message sent
-to it arrives here. Holding a message instead of running it at once is what lets the editor draw the turn: the server
-keeps what arrives (`GET /messages` lists it, oldest first, at most 16) and the extension answers each with
-`POST /messages/{id}`, which streams the turn in the same frames as `/prompts`. The model reads the message framed
-with who sent it, and the sender hears back only if the model calls `send_message`; the answer is this chat's own.
+to it arrives here. A message that asks to `steer` is handed to the run in progress when there is one — framed for
+the model, and not listed in the inbox; the run reports it when it adopts it (`Steered`), and one it never reads
+goes back to the inbox when the run ends (`_recover_steered`) rather than being lost. Holding the rest instead of
+running them at once is what lets the editor draw the turn: the server keeps what arrives (`GET /messages` lists it,
+oldest first, at most 16) and the extension answers each with `POST /messages/{id}`, which streams the turn in the
+same frames as `/prompts`. The model reads the message framed with who sent it, and the sender hears back only if
+the model calls `send_message`; the answer is this chat's own.
 
 Sending is the other direction. An `@name` in a draft is resolved by the SDK when the prompt is run, exactly as in
 the terminal: the model reads `session "name"` and the instructions for reaching it, and sends with its tool. The
-server also exposes an explicit send, `POST /sessions/current/send` (`{to, text}`, answered with who took it and
-whether the turn `started` or is `queued`), for a program that means to send without a model turn; nobody to reach
-is a `404 unreachable`, not a failure of the server. A `send_message` the model makes is a tool row like any
-other, but its card opens by itself and shows the message above the delivery line.
+server also exposes an explicit send, `POST /sessions/current/send` (`{to, text, mode?}`, answered with who took it
+and what it will do — `started`, `steered` or `queued`; `mode` defaults to `steer`), for a program that means to
+send without a model turn; nobody to reach is a `404 unreachable`, not a failure of the server. A `send_message`
+the model makes is a tool row like any other, but its card opens by itself and shows the message above the delivery
+line.
 
 ## What is deliberately absent
 

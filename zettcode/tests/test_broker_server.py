@@ -341,6 +341,26 @@ async def test_a_message_reaches_its_recipient_with_who_sent_it_and_one_more_hop
     assert answer["to"]["session_id"] == B and answer["disposition"] == "started"
 
 
+async def test_a_message_says_whether_it_steers_and_a_message_that_says_nothing_steers(running):
+    sender, recipient = await running.peer(A, "alpha"), await running.peer(B, "beta")
+
+    await sent(sender, recipient, "beta", "now")
+    await sent(sender, recipient, "beta", "later", mode="followup")
+
+    steering, following = recipient.requests()
+    assert steering["mode"] == "steer" and following["mode"] == "followup"
+
+
+async def test_the_recipient_may_say_it_steered_the_running_request(running):
+    sender, recipient = await running.peer(A, "alpha"), await running.peer(B, "beta")
+
+    pending = asyncio.ensure_future(sender.post(**message("beta", "change course")))
+    await recipient.waiting()
+    await recipient.accept("steered")
+
+    assert (await pending)["disposition"] == "steered"
+
+
 async def test_the_sender_is_answered_only_after_the_recipient_has_answered(running):
     sender, recipient = await running.peer(A, "alpha"), await running.peer(B, "beta")
 

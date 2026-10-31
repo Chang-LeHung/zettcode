@@ -26,8 +26,10 @@ from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal, cast
 
+from zettcode.modes import MODE_STEER
+from zettcode.relay import Relayed
 from zettcode.sdk.errors import SessionBusyError
-from zettcode.sdk.events import ApprovalRequested, QuestionAsked
+from zettcode.sdk.events import AnyEvent, ApprovalRequested, QuestionAsked, Steered
 from zettcode.sdk.handlers import ApprovalHandler, approve_all, approve_commands, deny_all
 from zettcode.sdk.types import Receipt
 
@@ -83,6 +85,9 @@ class Slot:
         run: The run in progress, so it can be stopped.
         pending: The approval or question the run is suspended on.
         messages: What other sessions sent here that has not been answered yet.
+        steered: Messages handed to the run in progress, in the order they were handed over, each with the text the
+            run will report it by.
+        side: Whether the run in progress is a side question, which a message is never steered into.
     """
 
     client: Client
@@ -90,6 +95,8 @@ class Slot:
     run: RunStream | None = None
     pending: Pending | None = None
     messages: list[Waiting] = field(default_factory=list)
+    steered: list[tuple[str, IncomingMessage]] = field(default_factory=list)
+    side: bool = False
 
     @property
     def session_id(self) -> str:
@@ -405,10 +412,10 @@ class Runner:
         slot = self.slot
         if slot.busy:
             raise SessionBusyError("A run is already in progress; ask again when it ends")
-        return self._drive(slot, lambda: slot.client.session.ask_stream(question, timeout=timeout))
+        return self._drive(slot, lambda: slot.client.session.ask_stream(question, timeout=timeout), side=True)
 
     async def _drive(
-        self, slot: Slot, start: Callable[[], RunStream], request: Request | None = None
+        self, slot: Slot, start: Callable[[], RunStream], request: Request | None = None, *, side: bool = False
     ) -> AsyncIterator[Frame]:
         """Hold a slot's lock for the length of one run and yield its frames.
 
@@ -417,12 +424,16 @@ class Runner:
                 that is no longer the one the reader looks at is neither lost nor mixed up with the one that is.
             start: Makes the SDK's run; called with the lock held, so a failure to start releases it.
             request: The request, when it may ask the client to answer approvals and questions.
+            side: The run is a side question; a message that asks to steer is held for the next answer instead,
+                because a side question neither joins the conversation nor takes one.
         """
         await slot.lock.acquire()
+        slot.side = side
         try:
             run = start()
             slot.run = run
             async for event in run:
+                self._settle_steered(slot, event)
                 yield "event", event_payload(event)
                 if request is not None:
                     note = await self._settle(slot, event, request)
@@ -436,11 +447,13 @@ class Runner:
         finally:
             slot.pending = None
             current, slot.run = slot.run, None
+            slot.side = False
             try:
                 if current is not None:
                     await current.aclose()
             finally:
                 slot.lock.release()
+            self._recover_steered(slot)
             await self._tidy()
 
     def _start(
@@ -713,17 +726,63 @@ class Runner:
         return self._received(self.slot, message)
 
     def _received(self, slot: Slot, message: IncomingMessage) -> Receipt:
-        """Hold a message another session sent to ``slot``; the chat answers it when its next poll asks for one.
+        """Take a message another session sent to ``slot``: steer the run, or hold it for the next poll.
 
-        Called by the SDK on the event loop with the sender waiting for the answer, so it must not block. Holding
-        the message rather than starting a run here is what lets the editor draw the turn as one of its own, with
-        the sender's name on it and the same stream a prompt uses.
+        Called by the SDK on the event loop with the sender waiting for the answer, so it must not block. A
+        ``steer`` message is handed to the run in progress when there is one; the chat sees it in that run's
+        stream rather than in its inbox. Everything else is held, and the chat answers it when its next poll asks
+        for one — holding is what lets the editor draw the turn as one of its own, with the sender's name on it.
         """
+        if message.mode == MODE_STEER and not message.direct and slot.busy and not slot.side:
+            key = self._steer(slot, message)
+            if key is not None:
+                slot.steered.append((key, message))
+                return Receipt(True, disposition="steered")
         if len(slot.messages) >= MAX_INBOX:
             return Receipt(False, f"this chat already has {len(slot.messages)} messages waiting")
+        self._hold_message(slot, message)
+        return Receipt(True, disposition="queued")
+
+    @staticmethod
+    def _steer(slot: Slot, message: IncomingMessage) -> str | None:
+        """Hand a message to the run in progress, framed for the model; the text it will report it by, or ``None``."""
+        relayed = Relayed(
+            sender_id=message.sender_id,
+            sender=message.sender,
+            text=message.text,
+            via=message.via,
+            hops=message.hops,
+            direct=message.direct,
+            mode=message.mode,
+        )
+        return slot.client.session._steer_message(relayed.message())
+
+    def _hold_message(self, slot: Slot, message: IncomingMessage) -> None:
+        """Put a message in the chat's inbox, with the id its client answers it by."""
         self._sequence += 1
         slot.messages.append(Waiting(f"message-{self._sequence}", message))
-        return Receipt(True, disposition="queued")
+
+    def _settle_steered(self, slot: Slot, event: AnyEvent) -> None:
+        """Forget the message the run just adopted.
+
+        The run reports an adoption as ``Steered``, and only then has the model read it; a message it reports as
+        interrupted was adopted first, so there is nothing left here for that event. What no event took is recovered
+        when the run ends.
+        """
+        if isinstance(event, Steered):
+            for index, (key, _message) in enumerate(slot.steered):
+                if key == event.text:
+                    del slot.steered[index]
+                    break
+
+    def _recover_steered(self, slot: Slot) -> None:
+        """A run that ended without reading a message leaves it for the next answer instead of losing it."""
+        if not slot.steered:
+            return
+        waiting = [message for _key, message in slot.steered]
+        slot.steered.clear()
+        for message in waiting:
+            self._hold_message(slot, message)
 
     def waiting(self) -> tuple[Waiting, ...]:
         """Return the messages the current conversation has not answered yet, oldest first."""
@@ -754,9 +813,9 @@ class Runner:
         """Ask every configured model one short question."""
         return await self.client.check_models(timeout=timeout)
 
-    async def send(self, to: str, text: str) -> tuple[str, str]:
+    async def send(self, to: str, text: str, *, mode: str = MODE_STEER) -> tuple[str, str]:
         """Send a message to another session; return the handle that took it and what it will do with it."""
-        delivered = await self.client.send(to, text)
+        delivered = await self.client.send(to, text, mode=mode)
         return delivered.to, delivered.disposition
 
 

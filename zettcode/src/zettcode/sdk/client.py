@@ -27,6 +27,7 @@ from pathlib import Path
 from types import TracebackType
 from typing import TYPE_CHECKING, Any, cast
 
+from ..modes import MODE_FOLLOWUP, MODE_STEER
 from .errors import (
     ClientClosedError,
     ConfigurationError,
@@ -628,6 +629,7 @@ class Client:
                     via=relayed.via,
                     hops=relayed.hops,
                     direct=relayed.direct,
+                    mode=relayed.mode,
                 )
             )
         )
@@ -778,7 +780,7 @@ class Client:
         limits = messenger.client.limits
         return SendLimits(limits.max_text, limits.rate_limit, limits.rate_window, limits.max_hops)
 
-    async def send(self, to: str, text: str, *, direct: bool = False) -> Delivered:
+    async def send(self, to: str, text: str, *, direct: bool = False, mode: str = MODE_STEER) -> Delivered:
         """Send a message to another ZettCode session without going through this session's model.
 
         Args:
@@ -786,9 +788,13 @@ class Client:
             text: What to say; the sender's own words, so the receiving agent is told its reader typed it.
             direct: Ask a session that can (``Peer.direct``) to run the text as its own reader's prompt, and to send
                 its final answer back with :meth:`send_back`. For any other session the flag is ignored.
+            mode: What a busy recipient does with it: ``"steer"`` (the default) hands it to the request that is
+                running so it changes course, and ``"followup"`` waits until that request ends. An idle recipient
+                starts a turn either way.
 
         Returns:
-            What the receiving session answered: who took it, and whether the turn started or is queued.
+            What the receiving session answered: who took it, and whether the turn started, was steered into the
+            running request, or is queued.
 
         Raises:
             ConfigurationError: This client did not join the sessions, so it has no line to send on.
@@ -805,7 +811,7 @@ class Client:
         from ..broker.models import SendError as BrokerSendError
 
         try:
-            delivered = await messenger.send(to, text, via=VIA_USER, direct=direct)
+            delivered = await messenger.send(to, text, via=VIA_USER, direct=direct, mode=mode)
         except BrokerSendError as error:
             raise SendError(error.reason, str(error)) from error
         return Delivered(delivered.to.handle, delivered.disposition, delivered.direct)
@@ -825,7 +831,10 @@ class Client:
             return None
         try:
             limit = messenger.client.limits.max_text
-            delivered = await messenger.client.send(message.sender_id, text[:limit], hops=message.hops, via=VIA_AGENT)
+            # An answer is not "change what you are doing": it must never steer the recipient's running turn.
+            delivered = await messenger.client.send(
+                message.sender_id, text[:limit], hops=message.hops, via=VIA_AGENT, mode=MODE_FOLLOWUP
+            )
         except BrokerSendError:
             return None
         return Delivered(delivered.to.handle, delivered.disposition)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from ..modes import MODE_STEER
 from .protocol import KIND_ZETTCODE, PeerInfo
 
 #: Another word for a registered session, as the rest of the application knows it.
@@ -34,6 +35,8 @@ class Incoming:
             when the sender is not a ZettCode session.
         direct: Set when the sender is a reader's one-to-one chat window: run the text as that reader's own prompt,
             not as a message from another session, and send the final answer back to the sender.
+        mode: What a busy recipient should do with it: ``"steer"`` (the default) hands it to the request that is
+            running, and ``"followup"`` waits until that request ends. An idle recipient starts a turn either way.
     """
 
     sender: PeerInfo
@@ -41,6 +44,7 @@ class Incoming:
     hops: int
     via: str
     direct: bool = False
+    mode: str = MODE_STEER
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,8 +54,9 @@ class Receipt:
     Attributes:
         accepted: Whether it took the message. A refusal carries its reason to the sender.
         reason: Why not, in words the sender's model can act on.
-        disposition: What will happen to it: ``"started"`` (a turn began), or ``"queued"`` (it waits
-            for the current request to end).
+        disposition: What will happen to it: ``"started"`` (a turn began), ``"steered"`` (the request that was
+            running took it into account), ``"queued"`` (it waits for the current request to end), or
+            ``"delivered"`` (a chat window kept it without starting a turn).
     """
 
     accepted: bool
