@@ -5292,8 +5292,15 @@ async def test_the_status_line_mirrors_the_usage_extension():
 
 async def test_resuming_a_session_restores_its_token_totals(tmp_path):
     store = SessionStore(tmp_path)
+    started = datetime.now(timezone.utc)
+    finished = started + timedelta(seconds=2)
     timing = MessageTiming(
-        started_at=datetime.now(timezone.utc), completed_at=datetime.now(timezone.utc), duration_ns=2_000_000_000
+        started_at=started,
+        completed_at=finished,
+        duration_ns=2_000_000_000,
+        content_started_at=started,
+        content_completed_at=finished,
+        content_duration_ns=2_000_000_000,
     )
     await store.append(
         "previous",

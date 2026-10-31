@@ -563,7 +563,7 @@ half keeps the two keys worth remembering (`^C/Esc to interrupt`, `^D exit`) in 
 | `· deny`, `· safe`, `· full` | The shell permission, when it is not the default `ask`. |
 | `↑18.4k ↓900` | Tokens sent to the model, and tokens it generated, this session. |
 | `71.2% cached` | The share of the input the provider served from its cache. |
-| `74 tok/s` | Generated tokens per second of model time, averaged over the session. |
+| `74 tok/s` | Generated tokens per second of streaming time, from the first fragment to the final response, averaged over the session; the wait for the model to start is not included. |
 | `ctx 12.3%` | How much of the model's declared window the newest request filled. |
 
 Those counters come from the provider's own numbers, accumulated after every
