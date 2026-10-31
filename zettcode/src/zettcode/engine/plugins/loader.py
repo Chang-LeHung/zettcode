@@ -190,7 +190,7 @@ def run(
                 loader.fail(origin, error)
                 continue
             for class_name, failure in failures:
-                loader.fail(origin, f"{class_name}: {_reason(failure)}")
+                loader.fail(origin, failure, label=class_name)
             for plugin in plugins:
                 loader.accept(plugin, origin=origin, label=type(plugin).__name__)
     return loader.bundle()
@@ -310,10 +310,14 @@ class Loader:
         if plugin.setting is not None and not _is_bool_setting(self.config, plugin.setting):
             # A switch that names a setting the configuration does not have, or one that is not a boolean, would be a
             # row nobody could move or a truthy default in a panel. It is a plugin bug, and the load says so.
-            self.failed.append((origin, f"setting {plugin.setting.path} names no boolean setting of the configuration"))
+            self.fail(
+                origin,
+                f"setting {plugin.setting.path} names no boolean setting of the configuration",
+                label=label,
+            )
             return
         if name in self._identities:
-            self.failed.append((origin, f"duplicate plugin name {name!r}"))
+            self.fail(origin, f"duplicate plugin name {name!r}", label=label)
             return
         if not plugin.name:
             plugin.name = name
@@ -330,7 +334,7 @@ class Loader:
             return
         clash = self.clash(container)
         if clash is not None:
-            self.failed.append((origin, clash))
+            self.fail(origin, clash, label=label)
             return
         self._identities.add(name)
         self.merge(container)

@@ -333,7 +333,6 @@ def _install_file(source: Path, *, force: bool = False) -> int:
     except (OSError, UnicodeError) as error:
         print(f"zettcode plugins: {source} could not be read: {error}", file=sys.stderr)
         return EXIT_FAILED
-    target.parent.mkdir(parents=True, exist_ok=True)
     replaced = target.exists()
     if replaced:
         try:

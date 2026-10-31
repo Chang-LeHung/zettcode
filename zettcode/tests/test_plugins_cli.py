@@ -500,3 +500,14 @@ def test_force_on_a_project_is_a_note_not_a_pip_flag(tmp_path, monkeypatch, caps
 
     assert "--force" in capsys.readouterr().err
     assert runs == [[sys.executable, "-m", "pip", "install", "--upgrade", str(project.resolve())]]
+
+
+def test_a_plugins_folder_under_a_file_is_a_write_error_not_a_traceback(tmp_path, monkeypatch, capsys):
+    source = tmp_path / "greeter.py"
+    source.write_text("class Greeter(TuiPlugin):\n    pass\n", encoding="utf-8")
+    blocked = tmp_path / "blocked"
+    blocked.write_text("not a directory", encoding="utf-8")
+    monkeypatch.setattr(cli, "plugins_dir", lambda: blocked)
+
+    assert cli.install(str(source)) == 1
+    assert "could not be written" in capsys.readouterr().err
