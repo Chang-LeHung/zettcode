@@ -639,7 +639,7 @@ def create_app(settings: Settings, *, client_factory: ClientFactory | None = Non
         """Turn one plugin's work on or off for the next start, and return it as the list now shows it.
 
         Nothing is loaded or unloaded here: a switch is read once, when a process starts. A compiled-in plugin is
-        switched by a configuration key in the server's configuration file, an installed one by the plugin switch file;
+        switched by a configuration key in the server's configuration file, an installed one by [plugins] disable there;
         a client that wants the change now restarts the server, which is what the extension does.
         """
         entry = runner.client.set_plugin_enabled(name, body.enabled)

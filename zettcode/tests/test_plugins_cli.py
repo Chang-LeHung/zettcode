@@ -394,7 +394,7 @@ def test_list_marks_a_switched_off_file_as_off(tmp_path, monkeypatch, capsys):
 
     said = capsys.readouterr().out
     row = next(line for line in said.splitlines() if "greeter" in line)
-    assert " no " in f" {row} " and "switch file" in row
+    assert " no " in f" {row} " and "[plugins] disable" in row
 
 
 def test_list_as_json_names_the_location_and_the_switch(tmp_path, monkeypatch, capsys):
@@ -412,7 +412,7 @@ def test_list_as_json_names_the_location_and_the_switch(tmp_path, monkeypatch, c
         "name": "greeter",
         "origin": "greeter",
         "location": str(folder / "greeter.py"),
-        "switch": "switch file",
+        "switch": "config ([plugins] disable)",
         "enabled": True,
     }
 

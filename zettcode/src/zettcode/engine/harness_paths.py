@@ -8,6 +8,7 @@ directory is moved under the workspace the first time the session asks for it, s
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 from pathlib import Path
@@ -18,9 +19,14 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
 
 
 def workspace_directory_name(workspace: Path) -> str:
-    """Return the folder name one workspace's sessions live under: its directory name, safe as a path segment."""
-    name = re.sub(r"[^A-Za-z0-9_.-]+", "_", workspace.name, flags=re.ASCII).strip("._-")
-    return name or "workspace"
+    """Return the folder name one workspace's sessions live under: its directory name and a short path digest.
+
+    Two checkouts called ``app`` must not share a folder, and a name that is a Windows device name (``CON``) must
+    not be created at all; the digest makes the first unambiguous and the second harmless.
+    """
+    name = re.sub(r"[^A-Za-z0-9_.-]+", "_", workspace.name, flags=re.ASCII).strip("._-") or "workspace"
+    digest = hashlib.sha1(str(workspace.resolve()).encode()).hexdigest()[:8]
+    return f"{name}-{digest}"
 
 
 def harness_root(config: ZettCodeConfig) -> Path:
@@ -39,12 +45,27 @@ def move_session(legacy_root: Path, root: Path, session_id: str) -> Path:
     name = session_directory_name(session_id)
     current = root / name
     legacy = legacy_root / name
-    if legacy.is_dir() and not current.exists():
-        try:
-            current.parent.mkdir(parents=True, exist_ok=True)
+    if not legacy.is_dir():
+        return current
+    try:
+        current.parent.mkdir(parents=True, exist_ok=True)
+        if not current.exists():
             os.replace(legacy, current)
+            return current
+        # Both exist: keep what the new folder already has, move over only what it lacks, then drop the empty old one.
+        for child in legacy.iterdir():
+            target = current / child.name
+            if not target.exists():
+                try:
+                    os.replace(child, target)
+                except OSError:
+                    pass
+        try:
+            legacy.rmdir()
         except OSError:
-            return legacy
+            pass
+    except OSError:
+        return legacy
     return current
 
 

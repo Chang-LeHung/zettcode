@@ -182,3 +182,31 @@ def test_the_harness_and_self_compaction_are_plugin_switches(config):
 
     assert settings["harness"] == "harness.jit"
     assert settings["self-compaction"] == "compaction.self"
+
+
+def test_a_switch_that_changes_nothing_writes_nothing(config):
+    settings, path = config
+    path.unlink()
+
+    switches.set_installed(settings, "greeter", enabled=True)
+
+    assert not path.exists(), "enabling a name that is not off must not create a configuration file"
+
+
+def test_forget_of_a_name_that_was_not_there_writes_nothing(config):
+    settings, path = config
+    path.unlink()
+
+    assert switches.forget_installed(settings, "greeter") is False
+    assert not path.exists()
+
+
+def test_a_disable_array_written_across_lines_is_refused_whole(config):
+    settings, path = config
+    text = MODEL + '[plugins]\ndisable = [\n  "a",\n]\n'
+    path.write_text(text, encoding="utf-8")
+
+    with pytest.raises(ValueError, match="not valid TOML"):
+        switches.set_installed(settings, "b", enabled=False)
+
+    assert path.read_text(encoding="utf-8") == text, "nothing is half-written"
