@@ -10,8 +10,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, TypeVar
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
-    from collections.abc import Mapping
-
     from zett_agent.extensions.base import AgentExtension
 
     from zettcode.providers import Provider
@@ -74,7 +72,3 @@ class AgentGroups:
     def find(self, name: str, kind: type[_T]) -> _T | None:
         """Return the object under ``name``, or ``None`` when there is none."""
         return self._context.find(name, kind)
-
-    def mapping(self) -> Mapping[str, object]:
-        """Return what has been provided so far, by name."""
-        return self._context.services
