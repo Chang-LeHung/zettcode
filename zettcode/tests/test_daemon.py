@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import time
-from dataclasses import replace
+from dataclasses import asdict, replace
 from pathlib import Path
 
 import pytest
@@ -895,6 +896,315 @@ def test_prompt_without_a_broker_says_so(home, monkeypatch, capsys):
 
     assert daemon_program(["prompt", "01a1", "hi"]) == 1
     assert "no session broker" in capsys.readouterr().err
+
+
+def test_list_says_when_a_daemon_cannot_reach_the_broker(home, capsys):
+    record = Registry().record(home, "01a1", create=True)
+    record.save(replace(state_for(home), broker=False))
+    record.beat()
+
+    assert daemon_program(["list"]) == 0
+    shown = capsys.readouterr().out
+    assert "broker" in shown and "offline" in shown
+
+    assert daemon_program(["list", "--json"]) == 0
+    listed = json.loads(capsys.readouterr().out)
+    assert listed[0]["broker"] is False
+
+
+def test_a_change_in_reachability_is_recorded(home):
+    import asyncio
+    from types import SimpleNamespace
+
+    from zettcode.daemon.run import Daemon
+
+    class Client:
+        def __init__(self) -> None:
+            self.session = SimpleNamespace(id="01a1", title=None)
+            self.model = SimpleNamespace(name="fake", context_window=200_000)
+            self.effort = "low"
+            self.usage = SimpleNamespace(input_tokens=0, output_tokens=0, context_tokens=0)
+            self.reachable = True
+
+    client = Client()
+    daemon = Daemon(client, Options(workspace=home, token="t"))
+    daemon.record.save(state_for(home))
+
+    asyncio.run(daemon._note_connection())
+
+    assert daemon.record.state is not None and daemon.record.state.broker is True
+
+    client.reachable = False
+    asyncio.run(daemon._note_connection())
+
+    assert daemon.record.state is not None and daemon.record.state.broker is False
+
+
+def test_log_prints_the_last_lines_a_daemon_wrote(home, capsys):
+    record = Registry().record(home, "01a1", create=True)
+    record.save(state_for(home))
+    record.log("first thing")
+    record.log("second thing")
+
+    assert daemon_program(["log", "01a1", "-n", "1"]) == 0
+    shown = capsys.readouterr().out
+    assert "second thing" in shown and "first thing" not in shown
+
+    assert daemon_program(["log", "nope"]) == 1
+    assert "no daemon with that session" in capsys.readouterr().err
+
+
+def _daemon_with(
+    home,
+    outcomes,
+    *,
+    resumable: bool = True,
+    resumable_raises: BaseException | None = None,
+    delivers: bool = True,
+):
+    """A daemon whose session runs the given outcomes: an exception is raised, a string is the answer, ``None`` is
+    a clean turn with no text."""
+    from types import SimpleNamespace
+
+    from zettcode.daemon.run import Daemon
+
+    class Run:
+        def __init__(self, outcome: BaseException | str | None) -> None:
+            self.outcome = outcome
+            self.result = SimpleNamespace(text=outcome) if isinstance(outcome, str) else None
+
+        async def __aenter__(self):
+            if isinstance(self.outcome, BaseException):
+                raise self.outcome
+            return self
+
+        async def __aexit__(self, *exc_info: object) -> bool:
+            return False
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            raise StopAsyncIteration
+
+    class Session:
+        id = "01a1"
+        title = None
+
+        def __init__(self) -> None:
+            self.outcomes = list(outcomes)
+            self.relays = 0
+            self.resumes = 0
+            self.prompts = 0
+
+        async def resumable(self):
+            if resumable_raises is not None:
+                raise resumable_raises
+            return SimpleNamespace(description="continuing") if resumable else None
+
+        def _next(self) -> Run:
+            return Run(self.outcomes.pop(0))
+
+        def relay(self, message):
+            self.relays += 1
+            return self._next()
+
+        def resume_stream(self):
+            self.resumes += 1
+            return self._next()
+
+        def prompt(self, text):
+            self.prompts += 1
+            return self._next()
+
+    class Client:
+        def __init__(self) -> None:
+            self.session = Session()
+            self.model = SimpleNamespace(name="fake", context_window=200_000)
+            self.effort = "low"
+            self.usage = SimpleNamespace(input_tokens=0, output_tokens=0, context_tokens=0)
+            self.reachable = True
+            self.sent: list[tuple[str, str]] = []
+
+        async def send_back(self, message, text: str):
+            self.sent.append((message.sender_id, text))
+            return True if delivers else None
+
+    client = Client()
+    daemon = Daemon(client, Options(workspace=home, token="t"))
+    return daemon, client
+
+
+def test_a_turn_that_may_pass_is_continued_rather_than_sent_again(home, monkeypatch):
+    from zettcode.sdk.errors import RunError
+
+    monkeypatch.setattr("zettcode.daemon.run.RETRY_DELAYS", (0.0, 0.0, 0.0))
+    daemon, client = _daemon_with(home, [RunError("timed out", retryable=True), None])
+
+    asyncio.run(daemon._turn(message()))
+
+    assert client.session.relays == 1, "the prompt is not sent a second time"
+    assert client.session.resumes == 1, "the interrupted request is continued instead"
+    assert client.sent == []
+
+
+def test_a_turn_that_keeps_failing_is_tried_three_times_and_the_sender_is_told(home, monkeypatch):
+    from zettcode.sdk.errors import RunError
+
+    monkeypatch.setattr("zettcode.daemon.run.RETRY_DELAYS", (0.0, 0.0, 0.0))
+    daemon, client = _daemon_with(home, [RunError("timed out", retryable=True)] * 4)
+
+    asyncio.run(daemon._turn(message()))
+
+    assert (client.session.relays, client.session.resumes) == (1, 3)
+    assert client.sent and client.sent[0][0] == "sender"
+    assert "timed out" in client.sent[0][1]
+
+
+def test_a_failure_that_would_fail_again_is_not_retried_and_the_sender_is_told(home):
+    from zettcode.sdk.errors import RunError
+
+    daemon, client = _daemon_with(home, [RunError("bad key")])
+
+    asyncio.run(daemon._turn(message()))
+
+    assert (client.session.relays, client.session.resumes) == (1, 0)
+    assert client.sent and "bad key" in client.sent[0][1]
+
+
+def test_a_failure_with_nothing_stored_to_continue_is_reported_without_a_second_try(home, monkeypatch):
+    from zettcode.sdk.errors import RunError
+
+    monkeypatch.setattr("zettcode.daemon.run.RETRY_DELAYS", (0.0, 0.0, 0.0))
+    daemon, client = _daemon_with(home, [RunError("rate limited", retryable=True)], resumable=False)
+
+    asyncio.run(daemon._turn(message()))
+
+    assert (client.session.relays, client.session.resumes) == (1, 0)
+    assert client.sent and "rate limited" in client.sent[0][1]
+
+
+def test_a_direct_turn_answered_after_a_retry_is_sent_back(home, monkeypatch):
+    from zettcode.sdk.errors import RunError
+
+    monkeypatch.setattr("zettcode.daemon.run.RETRY_DELAYS", (0.0, 0.0, 0.0))
+    daemon, client = _daemon_with(home, [RunError("timed out", retryable=True), "the answer"])
+    direct = IncomingMessage(sender_id="01chat", sender="window", text="hello", direct=True)
+
+    asyncio.run(daemon._turn(direct))
+
+    assert (client.session.prompts, client.session.resumes) == (1, 1)
+    assert client.sent == [("01chat", "the answer")], "the continued answer is what the window gets"
+
+
+def test_a_direct_turn_that_fails_tells_its_window(home):
+    from zettcode.sdk.errors import RunError
+
+    daemon, client = _daemon_with(home, [RunError("bad key")])
+    direct = IncomingMessage(sender_id="01chat", sender="window", text="hello", direct=True)
+
+    asyncio.run(daemon._turn(direct))
+
+    assert client.session.prompts == 1
+    assert client.sent and client.sent[0][0] == "01chat" and client.sent[0][1].startswith("The turn failed: ")
+
+
+def test_a_plain_network_error_is_retried_too(home, monkeypatch):
+    monkeypatch.setattr("zettcode.daemon.run.RETRY_DELAYS", (0.0, 0.0, 0.0))
+    daemon, client = _daemon_with(home, [OSError("connection reset"), None])
+
+    asyncio.run(daemon._turn(message()))
+
+    assert (client.session.relays, client.session.resumes) == (1, 1)
+    assert client.sent == []
+
+
+def test_a_continuation_that_cannot_run_reports_the_turns_own_failure(home, monkeypatch):
+    from zettcode.sdk.errors import RunError, SessionLockedError
+
+    monkeypatch.setattr("zettcode.daemon.run.RETRY_DELAYS", (0.0, 0.0, 0.0))
+    daemon, client = _daemon_with(
+        home, [RunError("timed out", retryable=True)], resumable_raises=SessionLockedError("locked elsewhere")
+    )
+
+    asyncio.run(daemon._turn(message()))
+
+    assert client.session.resumes == 0
+    assert client.sent and "timed out" in client.sent[0][1], "the sender hears the turn's failure, not the lock"
+    assert "could not be continued" in daemon.record.log_path.read_text(encoding="utf-8")
+
+
+def test_a_continuation_with_nothing_to_do_keeps_the_turns_own_failure(home, monkeypatch):
+    from zettcode.sdk.errors import NothingToDoError, RunError
+
+    monkeypatch.setattr("zettcode.daemon.run.RETRY_DELAYS", (0.0, 0.0, 0.0))
+    daemon, client = _daemon_with(
+        home, [RunError("timed out", retryable=True), NothingToDoError("nothing to continue")]
+    )
+
+    asyncio.run(daemon._turn(message()))
+
+    assert client.session.resumes == 1
+    assert client.sent and "timed out" in client.sent[0][1]
+    assert "nothing to continue" in daemon.record.log_path.read_text(encoding="utf-8")
+
+
+def test_a_window_that_cannot_be_reached_leaves_the_answer_in_the_log(home):
+    daemon, client = _daemon_with(home, ["the answer"], delivers=False)
+    direct = IncomingMessage(sender_id="01chat", sender="window", text="hello", direct=True)
+
+    asyncio.run(daemon._turn(direct))
+
+    assert "could not be told how the turn ended" in daemon.record.log_path.read_text(encoding="utf-8")
+
+
+def test_a_sender_that_cannot_be_reached_leaves_the_reason_in_the_log(home):
+    from zettcode.sdk.errors import RunError
+
+    daemon, client = _daemon_with(home, [RunError("bad key")], delivers=False)
+
+    asyncio.run(daemon._turn(message()))
+
+    assert "the sender could not be told the turn failed" in daemon.record.log_path.read_text(encoding="utf-8")
+
+
+def test_a_dead_record_does_not_claim_to_keep_trying(home, capsys):
+    record = Registry().record(home, "01a1", create=True)
+    record.save(replace(state_for(home, pid=2**22 + 17), broker=False))
+    record.beat()
+
+    assert daemon_program(["list"]) == 0
+    shown = capsys.readouterr().out
+    assert "dead" in shown and "offline" not in shown
+
+
+def test_a_record_written_before_the_broker_field_is_still_read(home):
+    record = Registry().record(home, "01a1", create=True)
+    data = {key: value for key, value in asdict(state_for(home)).items() if key != "broker"}
+    (record.folder / "state.json").write_text(json.dumps(data), encoding="utf-8")
+
+    loaded = State.load(record.folder)
+
+    assert loaded is not None and loaded.broker is None
+
+
+def test_log_refuses_a_number_of_lines_below_one(home):
+    with pytest.raises(SystemExit) as raised:
+        daemon_program(["log", "01a1", "-n", "0"])
+
+    assert raised.value.code == 2
+
+
+def test_an_unchanged_connection_is_not_written_again(home, monkeypatch):
+    daemon, client = _daemon_with(home, [])
+    daemon.record.save(state_for(home))
+    asyncio.run(daemon._note_connection())
+
+    def must_not_write(*args: object, **options: object) -> None:
+        raise AssertionError("an unchanged connection rewrote the record")
+
+    monkeypatch.setattr("zettcode.daemon.state.Record.change", must_not_write)
+    asyncio.run(daemon._note_connection())
 
 
 def test_a_label_given_at_the_start_is_recorded_and_listed(home, capsys):
