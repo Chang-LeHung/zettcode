@@ -291,24 +291,58 @@ def test_a_selection_past_the_end_of_a_shrunken_source_is_clamped():
     view = ScrollView(source, selectable=True)
     harness = Harness(view, width=20, height=3)
     harness.render()
-    view._selection_start = (0, 0)
-    view._selection_end = (2, 5)
+    harness.mouse_down(1, 0)
+    harness.mouse_move(4, 2)
+    harness.mouse_up(4, 2)
 
     source.lines = ["alpha"]
 
-    assert view.selected_text() == "alpha"
+    assert view.has_selection() is True
+    assert view.selected_text() == "lpha"
 
 
-def test_a_stale_selection_is_dropped_and_does_not_claim_to_exist():
+def test_a_selection_whose_last_line_disappears_covers_the_rest_of_the_last_row():
+    source = RecordingSource(["alpha", "beta", "gamma"])
+    view = ScrollView(source, selectable=True)
+    harness = Harness(view, width=20, height=3)
+    harness.render()
+    harness.mouse_down(0, 0)
+    harness.mouse_move(3, 2)
+    harness.mouse_up(3, 2)
+
+    source.lines = ["alpha", "beta"]
+
+    assert view.selected_text() == "alpha\nbeta"
+
+
+def test_a_selection_with_no_cells_left_is_not_a_selection():
+    source = RecordingSource(["a long enough line"])
+    view = ScrollView(source, selectable=True)
+    harness = Harness(view, width=20, height=3)
+    harness.render()
+    harness.mouse_down(10, 0)
+    harness.mouse_up(15, 0)
+
+    source.lines = ["x"]
+
+    assert view.has_selection() is False
+    assert view.selected_text() == ""
+
+
+def test_a_stale_selection_is_dropped_when_the_view_renders():
     source = RecordingSource(["alpha", "beta"])
     view = ScrollView(source, selectable=True)
     harness = Harness(view, width=20, height=3)
     harness.render()
-    view._selection_start = (99, 0)
-    view._selection_end = (99, 5)
+    harness.mouse_down(0, 0)
+    harness.mouse_move(3, 1)
+    harness.mouse_up(3, 1)
+    source.lines = []
 
     assert view.has_selection() is False
     assert view.selected_text() == ""
+
+    harness.render()
     assert view.selection_bounds() is None
 
 
