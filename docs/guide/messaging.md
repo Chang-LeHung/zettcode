@@ -87,12 +87,14 @@ sends a reply with its tool.
 
 ## What the model can do
 
-Two tools are added to the model's:
+These tools are added to the model's:
 
 | Tool | What it does |
 | --- | --- |
-| `list_sessions` | Lists the other running sessions: the name to use, the id, what each is about, whether it is idle or working, and its directory. A `/btw` side question may use it. |
-| `send_message` | Sends a message to a session, by id, name or title, and returns once that session has taken it. It does not wait for an answer: a reply arrives later as a message of its own. It takes a `mode`: `steer` (the default) hands the message to the request the other session is running, and `followup` waits until that request ends. A side question cannot use it. |
+| `list_sessions` | Lists the other running sessions: the name to use, the id, what each is about, whether it is idle or working, and its directory. A `/btw` side question may use it. It also lists the group chats this session is in, which are the only ones it may write to. |
+| `send_message` | Sends a message to a session, by id, name or title, and returns once that session has taken it. It does not wait for an answer: a reply arrives later as a message of its own. It takes a `mode`: `steer` (the default) hands the message to the request the other session is running, and `followup` waits until that request ends. A side question cannot use it. Give `group` instead of `to` to write to a group chat: every other member that is connected receives it. |
+| `message_history` | Reads what this session and one other session (`session`), or a group (`group`), said before. The broker keeps it across restarts. You can read only your own conversations and the groups you are in. A `/btw` side question may use it. |
+| `manage_group` | Creates a group chat, adds or removes members, leaves it, or deletes it. |
 
 In the conversation a `send_message` call is a row of its own, in mauve, the colour of the header
 of a message another session's agent sent to you. It shows who the message was for and the first lines of what was
@@ -149,6 +151,12 @@ starting a second one; `stop` says nothing was running rather than failing. Only
 own broker is ever ended (its command line must be `python -m zettcode.broker`), it is asked to stop first, and a
 broker that does not let go of its lock is forced. Sessions connected to it notice and reconnect to the next one.
 
+A new version can speak a newer protocol, and a session still running the old code then cannot reconnect. So when
+`restart` finds background agents (daemons) running, it lists them and asks before it goes on. On yes it stops them,
+restarts the broker, and starts each one again on its own stored session with the same model, effort, name and shell
+level; nothing they wrote is lost. On no, or with no terminal to ask in, it changes nothing. `zettcode broker restart
+--yes` skips the question. Terminal sessions you have open are not touched: close and reopen them to join the new broker.
+
 ## Limits and care
 
 - Sessions on the same machine and the same user only. Nothing is sent over a network.
@@ -177,3 +185,38 @@ After you upgrade ZettCode, a broker left running by an older version cannot tal
 notices, ends that broker (only if it really is ZettCode's broker) and starts its own, within a second or two; the
 sessions that were connected to it reconnect to the new one by themselves. Nothing is waited for and nothing needs doing.
 :::
+
+
+## Group chats
+
+A group chat is a named set of sessions, written `#name`. A message sent to a group goes to every other member
+that is connected, and each of them is told which group it came from, so its model can answer the whole group
+(`send_message(group="name", ...)`) or only the sender. Only a member may write to a group, read its history, or change
+who is in it, and `list_sessions` shows a session only the groups it is in. Groups are kept by the broker, so they
+survive a restart; a member that is not connected misses the message (it is still in the history).
+
+A group is made with the `manage_group` tool, or by anyone holding the broker's token with `POST /groups`
+(`{"action": "create", "name": "review", "members": ["parser", "docs"]}`). A group with nobody left is deleted.
+
+Limits: a group holds at most 64 sessions, one session may be in at most 20 groups, and a machine has at most 200
+groups. A message that would go past one of them is refused with a reason that says which.
+
+## History
+
+The broker writes every message it hands over to `~/.zettcode/broker/broker.db` (a SQLite file; the newest 20,000
+are kept), with the names the sender and recipient had at that time. `message_history` and `GET /history` read it.
+
+This is a transcript of every message between sessions, text included, kept on disk in a directory only you can list.
+To clear it, stop the broker (`zettcode broker stop`) and delete `broker.db`. A `broker.db` written by a newer ZettCode
+is never touched by an older one: that broker then remembers nothing until it runs again (the history tool says "No
+messages yet" and the graph starts empty), and says so in `broker.log`. Limits on who reads it protect a model from
+its own mistakes, not from another program running as you: any process that can read the broker's note holds its token.
+Each message a group receives costs every member a turn, so tell agents to answer only when an answer is needed.
+
+## The graph
+
+`zettcode gateway` has a **Graph** page: the sessions drawn round a circle, a line between any two that have
+talked, a ring around the members of each group, and a packet that travels from the sender to each recipient
+whenever a message passes. Hover a session, a line, a group or a packet for the details. **Replay** shows a past
+stretch of time (the last 15 minutes up to everything stored) from the stored history, with play, speed, and a
+timeline you can drag. Replaying only draws what happened: nothing is sent to any session again.
