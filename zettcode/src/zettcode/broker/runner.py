@@ -17,9 +17,9 @@ import math
 import os
 import secrets
 import signal
-import traceback
 from pathlib import Path
 
+from .. import diagnostics
 from ..filelock import SingletonLock
 from .files import Note, broker_dir, ensure_directory, lock_path, read_note, remove_note, write_note
 from .log import log
@@ -47,9 +47,11 @@ async def run(
         broker could not start at all (the log says why).
     """
     ensure_directory(directory)
+    diagnostics.write("broker", "start", directory=str(directory), idle_exit=idle_exit)
     lock = SingletonLock(lock_path(directory))
     if not lock.acquire(wait=LOCK_WAIT):
         log("another broker is already running; exiting")
+        diagnostics.write("broker", "already_running", directory=str(directory))
         return 0
     token = secrets.token_urlsafe(24)
     broker = Broker(token, port=port, idle_exit=idle_exit)
@@ -59,9 +61,11 @@ async def run(
             listening = await broker.start()
             write_note(directory, Note(os.getpid(), listening, token, PROTOCOL_VERSION))
         except OSError as error:
+            diagnostics.exception("broker", "start.failed", error, directory=str(directory))
             log(f"the broker could not start: {error}")
             return 1
         log(f"broker {os.getpid()} listening on {broker.host}:{listening}")
+        diagnostics.write("broker", "listening", directory=str(directory), port=listening)
         _stop_on_signals(broker)
         watcher = asyncio.ensure_future(_watch(directory, lock, broker, watch_interval))
         await broker.wait_closed()
@@ -73,6 +77,7 @@ async def run(
         remove_note(directory, token)
         lock.release()
         log("broker exiting")
+        diagnostics.write("broker", "stop", directory=str(directory))
     return 0
 
 
@@ -123,8 +128,9 @@ def main() -> int:
         return asyncio.run(run(broker_dir(), idle_exit=idle_seconds()))
     except KeyboardInterrupt:
         return 0
-    except Exception:  # noqa: BLE001 - the log is the only place anyone will see this
-        log("the broker failed:\n" + traceback.format_exc())
+    except Exception as error:  # noqa: BLE001 - the log is the only place anyone will see this
+        diagnostics.exception("broker", "crashed", error)
+        log(f"the broker failed: {type(error).__name__}")
         return 1
 
 

@@ -27,7 +27,7 @@ import time
 from pathlib import Path
 from typing import Any, Literal
 
-from zettcode import __version__
+from zettcode import __version__, diagnostics
 from zettcode.processes import command_line, is_module_command, still_there
 
 from . import runfile
@@ -216,7 +216,13 @@ def serve(settings: Settings) -> None:
         raise SystemExit(f"zettcode gateway: uvicorn is not installed: {error}") from error
 
     _say(settings)
-    uvicorn.run(create_app(settings), host=settings.host, port=settings.port, log_level=settings.log_level)
+    try:
+        uvicorn.run(create_app(settings), host=settings.host, port=settings.port, log_level=settings.log_level)
+    except (KeyboardInterrupt, SystemExit):
+        raise
+    except BaseException as error:
+        diagnostics.exception("gateway", "serve.failed", error, host=settings.host, port=settings.port)
+        raise
 
 
 def start(settings: Settings) -> int:
@@ -242,6 +248,7 @@ def start(settings: Settings) -> int:
     try:
         process = spawn(settings)
     except OSError as error:
+        diagnostics.exception("gateway", "spawn.failed", error, host=settings.host, port=settings.port)
         print(f"the gateway could not be started: {error}", file=sys.stderr)
         return EXIT_FAILED
     if not wait_serving(settings, process):

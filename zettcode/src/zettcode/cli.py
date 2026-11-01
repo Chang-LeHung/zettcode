@@ -26,6 +26,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from . import diagnostics
 from .paths import resume_command
 
 if TYPE_CHECKING:
@@ -708,19 +709,48 @@ async def launch(options: Options) -> None:
     runner = TerminalRunner(tui, terminal=Terminal(diagnostics=DEFAULT_LOG))
     running = asyncio.ensure_future(runner.run())
     app: ZettCodeApp | None = None
+
+    def session_id() -> str | None:
+        client = getattr(app, "client", None)
+        return None if client is None else client.session.id
+
+    diagnostics.write(
+        "terminal",
+        "cli.start",
+        path=DEFAULT_LOG,
+        workspace=str(Path(options.workspace).expanduser().resolve()),
+        resume=options.resume is not None,
+    )
     try:
         app = await asyncio.to_thread(build_application, options, terminal=tui)
         app.adopt(tui)
+        diagnostics.write("terminal", "app.ready", path=DEFAULT_LOG, session=session_id())
         # The imports the first turn needs start once the real frame is on the screen,
         # not when the tree is swapped in: they share the interpreter's one lock with
         # the drawing, and the frame is what the reader is waiting for.
         runner.after_next_paint(app.start_background)
         await running
+    except BaseException as error:
+        if not isinstance(error, (asyncio.CancelledError, SystemExit, KeyboardInterrupt)):
+            diagnostics.exception(
+                "terminal",
+                "cli.failed",
+                error,
+                path=DEFAULT_LOG,
+                session=session_id(),
+            )
+        raise
     finally:
         if app is not None:
             await app.stop_background()
         tui.exit()
         await asyncio.gather(running, return_exceptions=True)
+        diagnostics.write(
+            "terminal",
+            "cli.stop",
+            path=DEFAULT_LOG,
+            session=session_id(),
+        )
     report_resume(app.agent)
 
 

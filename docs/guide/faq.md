@@ -173,6 +173,16 @@ running code came from) instead of offering the same upgrade again. A different 
 never upgraded (for instance a `pip` install beside a `uv tool` one) is offered the upgrade
 as usual, and the command it shows is the one for the copy that is running.
 
+## Diagnostics
+
+**Something failed and I need to report it.** The three long-running faces keep separate logs:
+
+- terminal: `~/.zettcode/log/tui.log`
+- broker: `~/.zettcode/broker/broker.log`
+- gateway: `~/.zettcode/gateway/gateway.log`
+
+The program appends one JSON object per key event and, for a failure, the exception type, message and traceback. Those JSON lines are mixed with each face's own text output (uvicorn's log, the broker's start/stop lines, and anything a child process wrote while the frame owned the screen), so parse them line by line. The paths above are defaults: `ZETTCODE_BROKER_DIR` and `ZETTCODE_GATEWAY_DIR` move the last two. A daemon's own log is `~/.zettcode/daemon/<workspace>/<session-id>/log`, and `zettcode daemon log <id>` prints it. The program does not add prompts, message bodies or credentials as fields, but an exception's message and traceback are written verbatim; review a log before attaching it.
+
 ## Leaving
 
 **How do I exit?** `/quit`, or `Ctrl-D` on an empty composer. **Ctrl-C** stops
