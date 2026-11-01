@@ -46,9 +46,15 @@ or, with pip in the environment ZettCode runs in:
 
     pip install ./plugins/zettcode-recap
 
-There is no `zettcode[recap]` extra yet: the plugin has not been released, and an extra that names a package no index
-carries would break `pip install "zettcode[recap]"`. The release workflow is in place (`recap-v*`), and the extra
-lands with the first release.
+ZettCode carries this plugin as an extra, so one command installs both into the same environment:
+
+    pip install "zettcode[recap]"
+
+or, with `uv tool`:
+
+    uv tool install "zettcode[recap]"
+
+`pip install "zettcode[all]"` adds it beside every other plugin this repository publishes.
 
 It runs on ZettCode 0.3 and later (`zettcode>=0.3,<0.4`), whose terminal group has the turn hooks this plugin is
 built on.

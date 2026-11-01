@@ -2909,8 +2909,15 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+all = [
+    { name = "zettcode-monitor" },
+    { name = "zettcode-recap" },
+]
 monitor = [
     { name = "zettcode-monitor" },
+]
+recap = [
+    { name = "zettcode-recap" },
 ]
 
 [package.metadata]
@@ -2929,9 +2936,12 @@ requires-dist = [
     { name = "wcwidth", specifier = ">=0.2,<1" },
     { name = "websockets", specifier = ">=15,<17" },
     { name = "zett-agent", specifier = ">=0.2.4,<0.3" },
+    { name = "zettcode-monitor", marker = "extra == 'all'", specifier = ">=0.2,<0.3" },
     { name = "zettcode-monitor", marker = "extra == 'monitor'", specifier = ">=0.2,<0.3" },
+    { name = "zettcode-recap", marker = "extra == 'all'", editable = "plugins/zettcode-recap" },
+    { name = "zettcode-recap", marker = "extra == 'recap'", editable = "plugins/zettcode-recap" },
 ]
-provides-extras = ["monitor"]
+provides-extras = ["all", "monitor", "recap"]
 
 [[package]]
 name = "zettcode-monitor"
