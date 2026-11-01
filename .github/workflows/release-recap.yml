@@ -1,0 +1,95 @@
+name: Release zettcode-recap
+
+on:
+  push:
+    tags: ["recap-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14", "3.15"]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+
+      - name: Test
+        run: |
+          uv venv /tmp/venv
+          uv pip install --python /tmp/venv/bin/python ./zettcode ./plugins/zettcode-recap pytest pytest-asyncio
+          cd plugins/zettcode-recap && /tmp/venv/bin/python -m pytest -q
+
+  build:
+    name: Build distribution
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          enable-cache: true
+
+      - name: Check the tag matches the project version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          python3 - <<'PY'
+          import ast
+          import os
+          import pathlib
+
+          tag = os.environ["GITHUB_REF_NAME"]
+          tree = ast.parse(pathlib.Path("plugins/zettcode-recap/src/zettcode_recap/__init__.py").read_text(encoding="utf-8"))
+          version = next(
+              node.value.value
+              for node in tree.body
+              if isinstance(node, ast.Assign) and getattr(node.targets[0], "id", "") == "__version__"
+          )
+          expected = f"recap-v{version}"
+          if tag != expected:
+              raise SystemExit(f"tag {tag!r} does not match project version {version!r}; expected {expected!r}")
+          PY
+
+      - name: Build
+        run: uv build plugins/zettcode-recap --out-dir dist
+
+      - name: Check distribution metadata
+        run: uv run --no-project --with twine twine check dist/*
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/zettcode-recap
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import inspect
 from collections import Counter
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from zettcode.app.commands import Command, CommandResult
@@ -66,9 +67,11 @@ def _tui(context: PluginContext) -> TuiGroups:
     return context.tui
 
 
-def terminal_context(config: ZettCodeConfig, services: Mapping[str, object] | None = None) -> PluginContext:
+def terminal_context(
+    config: ZettCodeConfig, services: Mapping[str, object] | None = None, *, name: str = ""
+) -> PluginContext:
     """Build one context with the terminal group attached, the way this loader does for a plugin."""
-    context = PluginContext(config, services)
+    context = PluginContext(config, services, name=name)
     context.attach_tui(TuiGroups(context))
     return context
 
@@ -143,15 +146,19 @@ class TerminalLoader(Loader):
         self.themes: list[ThemeSource] = []
         self.pets: list[PetSource] = []
         self.presenters: list[Presenter[Any]] = []
+        #: Told when the terminal window gains or loses focus, and when a turn of the conversation ends.
+        self.focus_handlers: list[Callable[[bool], None]] = []
+        self.turn_start_handlers: list[Callable[[], None]] = []
+        self.turn_end_handlers: list[Callable[[bool], None]] = []
         self._claimed: set[str] = set()
         self._theme_names: set[str] = set(RESERVED_THEMES)
         self._pet_names: set[str] = set()
 
-    def new_context(self) -> PluginContext:
+    def new_context(self, name: str = "") -> PluginContext:
         # Seed the registry with what is already loaded, so a segment that
         # reuses a name — or asks to override a side — acts on the real rows
         # instead of on an empty copy. A failure leaves it untouched.
-        context = terminal_context(self.config, self.services)
+        context = terminal_context(self.config, self.services, name=name)
         tui = _tui(context)
         tui.slots.take_from(self.slots)
         for segment in self.turn_segments.values():
@@ -205,6 +212,9 @@ class TerminalLoader(Loader):
         self._pet_names.update(source.name for source in terminal.pets)
         self.pets.extend(terminal.pets)
         self.presenters.extend(terminal.presenters)
+        self.focus_handlers.extend(terminal.focus_handlers)
+        self.turn_start_handlers.extend(terminal.turn_start_handlers)
+        self.turn_end_handlers.extend(terminal.turn_end_handlers)
         self._claimed.update(command.name for command in terminal.registered_commands)
         self.commands.extend(terminal.registered_commands)
         self.slots = terminal.slots
@@ -231,4 +241,7 @@ class TerminalLoader(Loader):
             presenters=tuple(self.presenters),
             rows=self.slots.rows(),
             turn_segments=tuple(self.turn_segments.values()),
+            focus_handlers=tuple(self.focus_handlers),
+            turn_start_handlers=tuple(self.turn_start_handlers),
+            turn_end_handlers=tuple(self.turn_end_handlers),
         )

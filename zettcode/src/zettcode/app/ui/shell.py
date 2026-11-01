@@ -163,6 +163,8 @@ class ShellState:
     _follow_ups_held: bool
     #: Whether the work in flight is a turn, which can be steered, rather than a command.
     _turn_running: bool
+    #: Whether a command handed over work that is still being awaited (`CommandResult.run`).
+    _command_working: bool
     #: The in-flight request that names a session, if any.
     _title_task: asyncio.Task[None] | None
     #: The in-flight re-measure of a context figure, if any.
@@ -288,6 +290,10 @@ class ShellState:
 
     async def prompt(self, text: str, *, shown: str | None = None, cache: str | None = None) -> bool:
         """Run ``text`` as one turn, as if the reader had typed it; whether one was started and has ended."""
+        return False
+
+    def stop_working_command(self) -> bool:
+        """Stop a command that handed over work, as Escape does; whether one was working."""
         return False
 
     def flash(self, message: str, *, seconds: float = FLASH_SECONDS, level: str = "info") -> None:

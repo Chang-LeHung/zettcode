@@ -1,0 +1,63 @@
+[project]
+name = "zettcode-recap"
+description = "A ZettCode plugin: /recap sums up where the session is, and does so on its own when you step away"
+readme = "README.md"
+requires-python = ">=3.10"
+dynamic = ["version"]
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{name = "Chang-LeHung"}]
+keywords = ["zettcode", "plugin", "recap", "summary", "productivity"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Programming Language :: Python :: 3.15",
+  "Topic :: Software Development :: User Interfaces",
+  "Typing :: Typed",
+]
+dependencies = [
+  # The plugin API: `PluginContext`, `TuiPlugin`, and the terminal group's focus and turn-end hooks, which the 0.3
+  # line added.
+  "zettcode>=0.3,<0.4",
+]
+
+[project.urls]
+Repository = "https://github.com/Chang-LeHung/zettcode/tree/main/plugins/zettcode-recap"
+Issues = "https://github.com/Chang-LeHung/zettcode/issues"
+
+[project.entry-points."zettcode.plugins"]
+recap = "zettcode_recap:RecapPlugin"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/zettcode_recap/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/zettcode_recap"]
+
+[tool.hatch.build.targets.sdist]
+include = ["/src", "/tests", "/README.md", "/LICENSE", "/pyproject.toml"]
+
+[dependency-groups]
+dev = ["pytest", "pytest-asyncio"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

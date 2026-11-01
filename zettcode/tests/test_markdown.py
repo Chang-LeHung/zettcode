@@ -201,6 +201,13 @@ def test_every_inline_path_decodes_its_entities():
     assert texts == ["A\u00a0B", "  \u00b7 x&y", "\u2502 q\u00a0r"]
 
 
+def test_a_quote_wraps_between_words_and_keeps_its_bar_on_every_row():
+    """The bar is the quotation's margin, so a wrapped quote stays inside it instead of ending after one row."""
+    lines = render_markdown("> one two three four five six", 12, DARK)
+
+    assert [line.text for line in lines] == ["\u2502 one two", "\u2502 three four", "\u2502 five six"]
+
+
 def test_an_indent_spelled_with_entities_keeps_its_cells():
     """``&nbsp;&nbsp;`` is how a model indents a line, and the indent must measure.
 

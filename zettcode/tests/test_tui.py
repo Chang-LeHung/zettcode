@@ -67,10 +67,10 @@ def test_terminal_modes_follow_the_declared_capabilities() -> None:
     # The default terminal keeps the exact sequence the runner has always sent, plus
     # the keyboard protocol flags that make Shift-Enter reachable, pushed and popped.
     assert full._enter_sequences() == (
-        "\x1b[?1049h\x1b[?7l\x1b[?25l\x1b[?2004h\x1b[>1u\x1b[?1000h\x1b[?1002h\x1b[?1006h"
+        "\x1b[?1004h\x1b[?1049h\x1b[?7l\x1b[?25l\x1b[?2004h\x1b[>1u\x1b[?1000h\x1b[?1002h\x1b[?1006h"
     )
     assert full._exit_sequences() == (
-        "\x1b[0m\x1b[?25h\x1b[?7h\x1b[?1000l\x1b[?1002l\x1b[?1006l\x1b[?2004l\x1b[<u\x1b[?1049l"
+        "\x1b[?1004l\x1b[0m\x1b[?25h\x1b[?7h\x1b[?1000l\x1b[?1002l\x1b[?1006l\x1b[?2004l\x1b[<u\x1b[?1049l"
     )
 
     plain = terminal_module.Terminal(
@@ -78,8 +78,8 @@ def test_terminal_modes_follow_the_declared_capabilities() -> None:
         output=StringIO(),
         capabilities=TerminalCapabilities(mouse=False, bracketed_paste=False),
     )
-    assert plain._enter_sequences() == "\x1b[?1049h\x1b[?7l\x1b[?25l\x1b[>1u"
-    assert plain._exit_sequences() == "\x1b[0m\x1b[?25h\x1b[?7h\x1b[<u\x1b[?1049l"
+    assert plain._enter_sequences() == "\x1b[?1004h\x1b[?1049h\x1b[?7l\x1b[?25l\x1b[>1u"
+    assert plain._exit_sequences() == "\x1b[?1004l\x1b[0m\x1b[?25h\x1b[?7h\x1b[<u\x1b[?1049l"
 
 
 def test_the_terminal_keeps_stderr_out_of_the_frame(tmp_path) -> None:
@@ -204,6 +204,20 @@ def test_canvas_expands_tabs_without_replacement_glyphs():
     assert "a   b" in output.getvalue()
     assert "\ufffd" not in output.getvalue()
     assert TextLine((Span("\tx"),)).text == "\tx"
+
+
+def test_the_input_decoder_reads_focus_reports_as_their_own_event():
+    """DECSET 1004 reports the window gaining and losing focus; neither may be typed into the draft."""
+    from zettcode.tui.input.decoder import InputDecoder
+    from zettcode.tui.input.events import EventType
+
+    decoder = InputDecoder()
+
+    gained = decoder.feed(b"\x1b[I")
+    lost = decoder.feed(b"\x1b[O")
+
+    assert [(event.type, event.focused) for event in gained] == [(EventType.FOCUS, True)]
+    assert [(event.type, event.focused) for event in lost] == [(EventType.FOCUS, False)]
 
 
 def test_the_input_decoder_reads_a_terminal_reply_without_typing_it():

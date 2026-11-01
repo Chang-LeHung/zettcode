@@ -306,6 +306,55 @@ async def test_a_preset_hands_the_cache_mode_it_asked_for_to_the_turn(tmp_path: 
     assert host.prompts == [("the brief", "/review", "read")]
 
 
+def test_a_plugin_declares_its_settings_and_the_readers_value_wins(tmp_path: Path):
+    """The configuration cannot know a plugin's keys, so the plugin says what they are and what they default to."""
+    source = tmp_path / "config.toml"
+    source.write_text(
+        '[[models]]\nmodel = "m"\ntoken = "t"\n\n[plugins.recap]\nafter_seconds = 240\nmin_messages = 5\n',
+        encoding="utf-8",
+    )
+    from zettcode.config import load_config
+
+    config = load_config(tmp_path, path=source)
+    settings = PluginContext(config, {}, name="recap").settings
+
+    values = settings.declare(after_seconds=180, min_messages=3, min_since_recap=2)
+
+    assert values == {"after_seconds": 240, "min_messages": 5, "min_since_recap": 2}
+    assert settings.get("after_seconds") == 240
+    assert settings.get("min_since_recap") == 2
+
+
+def test_a_plugin_setting_that_is_not_what_its_default_is_is_refused_by_name(tmp_path: Path):
+    """A number written as text is the reader's mistake, and the message says which table and key to fix."""
+    source = tmp_path / "config.toml"
+    source.write_text(
+        '[[models]]\nmodel = "m"\ntoken = "t"\n\n[plugins.recap]\nafter_seconds = "soon"\n', encoding="utf-8"
+    )
+    from zettcode.config import load_config
+
+    settings = PluginContext(load_config(tmp_path, path=source), {}, name="recap").settings
+
+    with pytest.raises(ValueError, match=r"after_seconds.*\[plugins\.recap\].*whole number"):
+        settings.declare(after_seconds=180)
+
+
+def test_reading_a_setting_a_plugin_never_declared_is_an_error_not_a_default(tmp_path: Path):
+    settings = PluginContext(make_config(tmp_path), {}, name="recap").settings
+
+    with pytest.raises(ValueError, match="not a setting this plugin declared"):
+        settings.get("after_seconds")
+
+
+def test_a_plugin_setting_that_is_not_a_scalar_is_refused_when_the_file_is_read(tmp_path: Path):
+    source = tmp_path / "config.toml"
+    source.write_text('[[models]]\nmodel = "m"\ntoken = "t"\n\n[plugins.recap]\norbit = [1, 2]\n', encoding="utf-8")
+    from zettcode.config import load_config
+
+    with pytest.raises(ValueError, match="must be a string, a number or a boolean"):
+        load_config(tmp_path, path=source)
+
+
 def test_a_plain_command_is_ui_free(tmp_path: Path):
     """``ctx.commands`` takes a handler whose result cannot carry a widget, so a front end without one can run it."""
     ctx = PluginContext(make_config(tmp_path), {})
@@ -937,7 +986,7 @@ def test_the_config_reads_the_plugin_switches(tmp_path: Path):
 @pytest.mark.parametrize(
     ("table", "message"),
     [
-        ('[plugins]\nrotos = ["."]\n', "Unknown config keys in the \\[plugins\\] table"),
+        ('[plugins]\nrotos = ["."]\n', "must be a table for that plugin's settings"),
         ('[plugins]\ndisable = "one"\n', "must be an array of non-empty strings"),
         ('[plugins]\ndisable = [""]\n', "must be an array of non-empty strings"),
         ('[plugins]\nenabled = "yes"\n', "must be bool"),

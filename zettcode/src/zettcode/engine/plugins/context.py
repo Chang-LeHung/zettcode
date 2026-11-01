@@ -20,6 +20,7 @@ from zettcode.providers import Provider
 from .commands import CommandGroups
 from .groups import AgentGroups
 from .services import lookup, require
+from .settings import PluginSettings
 from .state import Contribution, ExtensionFactory
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay lazy
@@ -41,16 +42,20 @@ class PluginContext:
     to register from the configuration it is given.
     """
 
-    def __init__(self, config: ZettCodeConfig, services: Mapping[str, object] | None = None) -> None:
+    def __init__(self, config: ZettCodeConfig, services: Mapping[str, object] | None = None, *, name: str = "") -> None:
         """Keep the resolved settings and open empty registries.
 
         Args:
             config: The resolved settings.
             services: What is already findable by name: the objects the runtime hands over, and what the
                 plugins loaded before this one provided. Read with :meth:`service` and :meth:`find`.
+            name: The plugin this context belongs to, which is the name its ``[plugins.<name>]`` table is written
+                under. The loader passes it; a test that builds a context by hand may leave it out.
         """
         self.config = config
         self.workspace = config.workspace
+        #: The keys this plugin reads from the configuration, and the defaults it gives them.
+        self.settings = PluginSettings(name, config.plugin_settings.get(name) if name else None)
         #: What every front end has: extensions, providers, ``@`` providers and services.
         self.agent = AgentGroups(self)
         #: Plain commands: text and a toast, no widget and no shell.

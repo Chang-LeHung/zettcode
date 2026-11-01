@@ -142,6 +142,40 @@ disable = ["greeter"]
   compaction，以及外部事件。插件可以注册工具、改写发给模型的消息、转换工具结果，或者观察一次
   运行的结束。
 - **屏幕** —— 头部和状态行各自分成左右两侧，每一侧都由注册过的片段共同画出来。
+- **窗口与轮次** —— 终端启动时会请求焦点报告，所以插件能知道读者什么时候离开、什么时候回来；对话的一轮
+  开始和结束也都能收到。想在人不在时汇总、提醒，或者等读者停下来再做事的插件，就建立在这些钩子上：
+
+```python
+from zettcode.app.plugins import PluginContext, TuiPlugin
+
+
+class Away(TuiPlugin):
+    name = "away"
+
+    def activate(self, ctx: PluginContext) -> None:
+        if ctx.tui is None:
+            return
+        ctx.tui.register_focus_handler(self.focused)
+        ctx.tui.register_turn_start_handler(self.started)
+        ctx.tui.register_turn_end_handler(self.ended)
+
+    def focused(self, focused: bool) -> None:
+        """终端窗口获得（``True``）或失去（``False``）焦点。"""
+
+    def started(self) -> None:
+        """对话的一轮开始了，在请求发出之前。"""
+
+    def ended(self, completed: bool) -> None:
+        """对话的一轮结束了；被停止或失败的一轮里 ``completed`` 是 false。"""
+```
+
+两者都不是行，也不能消费事件：只是被告知，怎么处理是插件自己的事。钩子被调用时也不是动手的好时机：它运行在
+刚结束的那次请求里面，shell 还没空出来，所以要开新一轮的工作——比如 `host.prompt(...)`——应该排到之后去做，
+而不是在处理器里直接做。
+
+什么算「一轮」：读者发的一次请求，或另一个会话发来、由本会话回答的那次请求。执行命令本身不算一轮，但命令用
+`host.prompt` 开起来的那一轮算；侧问和继续的请求也不算。不支持焦点报告（``DECSET 1004``）的终端则永远不会
+调用第一个钩子，其它行为不变。
 
 ```python
 from zettcode.app.plugins import ShellContext, TuiPlugin
@@ -164,6 +198,30 @@ class WorkspaceLabel(TuiPlugin):
 还没配置模型时，`context.model.name` 是空串，`context.model.efforts` 是空元组，
 `context.model.config`（那一项本身）是 `None`。读这一项的片段应该说自己没有模型，而不是假定它一定在。
 
+## 读配置
+
+有配置项的插件自己声明这些项，以及读者没写时它们取什么值。配置文件不可能知道装了哪些插件，所以它把每个
+插件自己的表原样保留（`[plugins.<名字>]`），键的含义由插件决定：
+
+```python
+def activate(self, ctx: PluginContext) -> None:
+    given = ctx.settings.declare(after_seconds=180, quiet=False)
+    self.after_seconds = int(given["after_seconds"])
+    self.quiet = bool(given["quiet"])
+```
+
+读者的值优先；类型和默认值不一致时，插件激活时就会报错，并指出是哪张表、哪个键；读一个插件没声明过的键
+是错误，而不是悄悄给个默认值。没装某个插件时，它的 `[plugins.recap]` 表放着也无害；以后才装的插件不需要
+改配置代码。
+
+```toml
+[plugins.recap]
+after_seconds = 240
+quiet = true
+```
+
+`declare` 一次写齐插件读的所有键即可：这些默认值既是校验读者那张表的依据，也是读者没写时的取值。
+
 ## 写一个命令
 
 命令处理器收到一个 `CommandContext`：
@@ -179,6 +237,34 @@ class WorkspaceLabel(TuiPlugin):
 `notification`（toast）、`widget`（一个由你决定的页面，盖在对话之上）、以及 `relayout`
 （这次变化会挪动屏幕布局时）。慢命令可以在运行过程中通过 `context.ui` 汇报进度，而不是憋到
 最后一起说。
+
+要等模型、或任何要好几秒的命令，不要把等待留在处理器里：用 `intro` 说明正在做什么，把剩下的
+交给 `run`。shell 会把 `intro` 放进读者正在看的固定行，等 `run` 完成后再收尾；Ctrl-C、Escape、读者发下一条消息、以及在空输入框上按回车，
+都会停掉它，那一行会写成 `stopped`。
+
+```python
+from zettcode.app.plugins import HOST_LINK, HostLink
+
+
+class Recap(TuiPlugin):
+    name = "recap"
+
+    def activate(self, ctx: PluginContext) -> None:
+        # 这时 shell 还没有;命令运行时才通过它去拿。
+        self.link = ctx.find(HOST_LINK, HostLink)
+        if ctx.tui is not None:
+            ctx.tui.register_command("recap", "总结这个会话", self.recap)
+
+    async def recap(self, context: CommandContext) -> CommandResult:
+        return CommandResult(intro="Recap \u2026 writing", run=self.really_recap())
+
+    async def really_recap(self) -> CommandResult:
+        host = self.link.host
+        if host is None:
+            raise ValueError("shell 还没准备好")
+        answer = await host.client.session.ask("简短地总结这个会话进行到哪了。", cache="read")
+        return CommandResult(message=f"> {answer}")
+```
 
 插件命令排在最后，也不能顶掉内置命令，所以 `/model`、`/resume` 等等永远和
 [命令](/zh/guide/commands)里写的一致。

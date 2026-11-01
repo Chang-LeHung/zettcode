@@ -18,6 +18,9 @@ class EventType(StrEnum):
     MOUSE = "mouse"
     RESIZE = "resize"
     RENDER = "render"
+    #: The terminal window gained or lost focus (DECSET 1004 reports it as
+    #: ``CSI I`` and ``CSI O``).
+    FOCUS = "focus"
     #: An answer to a query the application sent, such as the terminal's own
     #: background colour. It is input, but no widget ever sees it.
     REPLY = "reply"
@@ -43,6 +46,7 @@ class InputEvent:
         shift: Shift modifier, where the terminal reports it.
         alt: Alt modifier, where the terminal reports it.
         control: Ctrl modifier, where the terminal reports it.
+        focused: Whether the terminal gained focus, for ``FOCUS`` events.
     """
 
     type: EventType
@@ -55,6 +59,7 @@ class InputEvent:
     shift: bool = False
     alt: bool = False
     control: bool = False
+    focused: bool = True
 
 
 __all__ = ["EventType", "InputEvent", "MouseAction"]

@@ -71,6 +71,7 @@ call; a value of the wrong type is a `ConfigurationError` when the client is bui
 | `statusline_hidden` | `Sequence[str]` | The parts of the status line that are switched off. |
 | `plugins_enabled` | `bool` | Load plugins. |
 | `disabled_plugins` | `Sequence[str]` | Plugins to leave out by name. |
+| `plugin_settings` | `Mapping[str, Mapping[str, object]]` | The `[plugins.<name>]` tables: what each plugin reads, by plugin name. |
 | `subagent_enabled` | `bool` | Give the model the subtask tool. |
 | `subagent_max_iterations` | `int` | Rounds a subtask may take. |
 | `subagent_messaging` | `bool` | Let a subtask message other sessions. |

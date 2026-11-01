@@ -102,3 +102,32 @@ class TuiGroup(ABC):
     @abstractmethod
     def register_turn_segment(self, name: str, summary: str, builder: Any) -> Any:
         """Add one item to the line a request ends on."""
+
+    @abstractmethod
+    def register_focus_handler(self, handler: Any) -> Any:
+        """Be told when the terminal window gains or loses focus: ``handler(focused: bool)``.
+
+        The terminal asks for focus reports (DECSET 1004) when it starts, so a plugin can tell a reader who stepped
+        away from one who is watching — which is what a recap, a notification or a pause waits for. A terminal that
+        does not report focus never calls it, and nothing else changes.
+        """
+
+    @abstractmethod
+    def register_turn_start_handler(self, handler: Any) -> Any:
+        """Be told when a turn of the conversation starts: ``handler()``, before the request is sent.
+
+        The counterpart of :meth:`register_turn_end_handler`, and what makes an idle wait possible: work that waits
+        for the reader to stop asking cancels on the start and is armed by the end. A side question and a resumed
+        request are not turns; a turn a command starts with ``host.prompt`` is.
+        """
+
+    @abstractmethod
+    def register_turn_end_handler(self, handler: Any) -> Any:
+        """Be told when a turn of the conversation ends: ``handler(completed: bool)``, after the row it ended on.
+
+        ``completed`` is false for a turn that was stopped or that failed; both are ends, and a plugin that only
+        cares about answered requests tests it. A request the reader sent is a turn, and so is one a command started
+        with ``host.prompt``; running a command is not itself a turn, and neither is a side question or a resume. It is
+        called from inside the run that just ended, before the shell is free again, and nothing guards two turns at
+        once: a handler that starts work schedules it instead of running a turn from there.
+        """

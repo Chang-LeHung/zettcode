@@ -1340,6 +1340,159 @@ async def test_plugin_commands_join_the_shell_and_run():
     assert "hello world" in harness.render().text
 
 
+def test_only_one_pinned_wait_row_can_be_open():
+    """A command's row and a request's row are the same row, so the shell opens it once and settles what it opened."""
+    from zettcode.app.agent.conversation.entries import EntryKind
+    from zettcode.app.agent.conversation.transcript import Transcript
+
+    transcript = Transcript()
+
+    assert transcript.wait_for_model("Processing") is True
+    assert transcript.wait_for_model("Recap \u2026 writing") is False, "the first row is the one being watched"
+
+    waits = [entry for entry in transcript.entries if entry.kind == EntryKind.WAIT]
+    assert len(waits) == 1
+
+
+async def test_a_command_that_returns_work_shows_what_it_is_doing_until_it_answers():
+    """A command that takes seconds hands the waiting to the shell, which says what is happening in the pinned row."""
+    gate = asyncio.Event()
+
+    async def slow(context: CommandContext) -> CommandResult:
+        async def work() -> CommandResult:
+            await gate.wait()
+            return CommandResult(message="the recap is here")
+
+        return CommandResult(intro="Recap \u2026 writing", run=work())
+
+    plugins = rows_and_commands(commands=(Command("/slow", "take a while", "plugin", slow),))
+    app = build_app(plugins=plugins)
+    harness = _harness(app)
+
+    harness.write("/slow")
+    harness.press("enter")
+    await asyncio.sleep(0.02)
+    assert "Recap \u2026 writing" in harness.render().text, "the row says what is happening"
+
+    gate.set()
+    await asyncio.wait_for(app.task, 2.0)
+
+    text = harness.render().text
+    assert "the recap is here" in text
+    assert "Recap \u2026 writing \u00b7 done" in text, "and settles into what it came to"
+
+
+async def test_a_command_whose_work_fails_settles_the_row_and_says_why():
+    """The row is what the reader is watching, so a failure ends it as `failed` and the error line follows."""
+
+    async def broken(context: CommandContext) -> CommandResult:
+        async def work() -> CommandResult:
+            raise ValueError("the model refused")
+
+        return CommandResult(intro="Recap \u2026 writing", run=work())
+
+    plugins = rows_and_commands(commands=(Command("/broken", "fail while working", "plugin", broken),))
+    app = build_app(plugins=plugins)
+    harness = _harness(app)
+
+    harness.write("/broken")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    text = harness.render().text
+    assert "Recap \u2026 writing \u00b7 failed" in text
+    assert "the model refused" in text
+    assert not app._busy
+
+
+async def test_enter_stops_a_working_command_and_takes_the_draft():
+    """A command working is not a request being steered: the reader's next line wins, and the row says it stopped."""
+    never = asyncio.Event()
+
+    async def slow(context: CommandContext) -> CommandResult:
+        async def work() -> CommandResult:
+            await never.wait()
+            return CommandResult()
+
+        return CommandResult(intro="Recap \u2026 writing", run=work())
+
+    plugins = rows_and_commands(commands=(Command("/slow", "take a while", "plugin", slow),))
+    app = build_app(plugins=plugins)
+    harness = _harness(app)
+
+    harness.write("/slow")
+    harness.press("enter")
+    await asyncio.sleep(0.02)
+
+    harness.write("and now something else")
+    harness.press("enter")
+    await asyncio.sleep(0.05)
+
+    assert any(
+        entry.kind == "wait" and entry.text == "Recap \u2026 writing \u00b7 stopped" for entry in app.transcript.entries
+    ), "the command's row says it stopped"
+    assert any(entry.kind == "user" and "and now something else" in entry.text for entry in app.transcript.entries), (
+        "the draft ran"
+    )
+    assert not app._busy
+    never.set()
+
+
+async def test_enter_on_an_empty_draft_stops_a_working_command():
+    """Nothing typed and Enter pressed: the row goes away because the reader is not waiting behind it."""
+    never = asyncio.Event()
+
+    async def slow(context: CommandContext) -> CommandResult:
+        async def work() -> CommandResult:
+            await never.wait()
+            return CommandResult()
+
+        return CommandResult(intro="Recap \u2026 writing", run=work())
+
+    plugins = rows_and_commands(commands=(Command("/slow", "take a while", "plugin", slow),))
+    app = build_app(plugins=plugins)
+    harness = _harness(app)
+
+    harness.write("/slow")
+    harness.press("enter")
+    await asyncio.sleep(0.02)
+    harness.press("enter")
+    await asyncio.sleep(0.02)
+
+    assert any(
+        entry.kind == "wait" and entry.text == "Recap \u2026 writing \u00b7 stopped" for entry in app.transcript.entries
+    )
+    assert not app._busy
+    assert app.composer.text == ""
+    never.set()
+
+
+async def test_escape_stops_a_command_that_is_still_working():
+    """The pinned row is what the reader is looking at, so stopping the command settles it, not leaves it spinning."""
+    never = asyncio.Event()
+
+    async def slow(context: CommandContext) -> CommandResult:
+        async def work() -> CommandResult:
+            await never.wait()
+            return CommandResult()
+
+        return CommandResult(intro="Recap \u2026 writing", run=work())
+
+    plugins = rows_and_commands(commands=(Command("/slow", "take a while", "plugin", slow),))
+    app = build_app(plugins=plugins)
+    harness = _harness(app)
+
+    harness.write("/slow")
+    harness.press("enter")
+    await asyncio.sleep(0.02)
+    harness.press("escape")
+    await asyncio.sleep(0.02)
+
+    text = harness.render().text
+    assert "Recap \u2026 writing \u00b7 stopped" in text
+    assert not app._busy
+
+
 async def test_a_command_can_run_its_argument_as_a_turn_of_the_conversation():
     """A command that asks the model something produces the turn a reader would have produced."""
     events = [AgentEvent(AgentEventType.TEXT_DELTA, "s", delta="looks fine to me")]

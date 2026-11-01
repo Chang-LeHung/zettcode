@@ -7,6 +7,7 @@ engine's bundle plus what only a terminal reads: commands, palettes, pets, prese
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -53,6 +54,9 @@ class TuiPlugins(Plugins):
             first, so an overridden segment keeps its place.
         turn_segments: The items of the line a request ends on, in the order they stand; the built-in plugin's come
             first, so a name a plugin reuses replaces that item in place.
+        focus_handlers: Told when the terminal window gains or loses focus, in load order.
+        turn_start_handlers: Told when a turn of the conversation starts, in load order.
+        turn_end_handlers: Told when a turn of the conversation ends, in load order.
     """
 
     commands: tuple[Command, ...] = ()
@@ -62,6 +66,9 @@ class TuiPlugins(Plugins):
     presenters: tuple[Presenter, ...] = ()
     rows: tuple[UiRow, ...] = ()
     turn_segments: tuple[TurnSegment, ...] = ()
+    focus_handlers: tuple[Callable[[bool], None], ...] = ()
+    turn_start_handlers: tuple[Callable[[], None], ...] = ()
+    turn_end_handlers: tuple[Callable[[bool], None], ...] = ()
 
     @property
     def installed_commands(self) -> tuple[Command, ...]:
