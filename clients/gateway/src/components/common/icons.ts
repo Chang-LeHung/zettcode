@@ -7,6 +7,8 @@ export const ICONS = {
   logs: '<rect x="3" y="4" width="18" height="16" rx="3"/><path d="m7.5 9.5 3 2.5-3 2.5M13 15h4"/>',
   settings:
     '<circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M18.4 5.6l-1.8 1.8M7.4 16.6l-1.8 1.8"/>',
+  graph:
+    '<circle cx="6" cy="7" r="2.4"/><circle cx="18" cy="7" r="2.4"/><circle cx="12" cy="18" r="2.4"/><path d="M8.4 7h7.2M7.2 9.1l3.6 6.8M16.8 9.1l-3.6 6.8"/>',
   back: '<path d="m15 5-7 7 7 7"/>',
   chevron: '<path d="m9 5 7 7-7 7"/>',
   send: '<path d="M3.4 20.4 21 12 3.4 3.6l.1 6.5L15 12 3.5 13.9z"/>',

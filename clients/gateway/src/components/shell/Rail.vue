@@ -2,7 +2,8 @@
 import { computed } from "vue";
 import { t } from "../../i18n";
 import { href, route, type Nav } from "../../stores/route";
-import { lobby, totalUnread } from "../../stores/threads";
+import { badge } from "../../lib/unread";
+import { chatsWithUnread as chatsUnread, lobby } from "../../stores/threads";
 import Icon from "../common/Icon.vue";
 import type { IconName } from "../common/icons";
 
@@ -11,6 +12,7 @@ const tabs: { nav: Nav; label: string; icon: IconName }[] = [
   { nav: "new", label: "New", icon: "plus" },
   { nav: "config", label: "Config", icon: "config" },
   { nav: "logs", label: "Logs", icon: "logs" },
+  { nav: "graph", label: "Graph", icon: "graph" },
   { nav: "settings", label: "Settings", icon: "settings" },
 ];
 
@@ -32,7 +34,7 @@ const caption = computed(() =>
     >
       <Icon :name="tab.icon" />
       <span>{{ t(tab.label) }}</span>
-      <span v-if="tab.nav === 'chats' && totalUnread" class="badge">{{ totalUnread > 99 ? "99+" : totalUnread }}</span>
+      <span v-if="tab.nav === 'chats' && chatsUnread" class="badge">{{ badge(chatsUnread) }}</span>
     </a>
     <div class="rail-spacer" />
     <div class="rail-status" :title="caption">
