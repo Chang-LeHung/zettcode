@@ -52,5 +52,17 @@ one you cannot watch. (The terminal asks whether to steer; the page simply waits
 its own, registered with the broker like a terminal's, so the daemons see a person's messages — not an
 agent's. Its name is `Web gateway`.
 
+The **Config → Models** page adds, edits and removes the models in `~/.zettcode/config.toml`, the same way
+[`/config`](/guide/config#adding-models-with-config) does in a terminal: the rest of the file and its comments stay as
+they are, a model the file would refuse is refused with the file's own reason, and the last model cannot be removed.
+The API key is write-only: the page never shows a saved one, and leaving the box empty keeps it. A change reaches
+the daemons you start afterwards; one that is already running keeps the model it started with. Anyone who can sign
+in to the gateway can change this file, so keep the token private (see [Signing in](#signing-in-and-who-may-use-it)).
+Edits made through the gateway are applied one at a time, but one made in a terminal's `/config` at the same moment
+is not seen by it: the later write wins, so avoid editing from both at once.
+
+The **Logs** page reads a daemon's own log as a list: when, which tool and what it was for, and each turn marked
+where it starts and ends. It can be narrowed to tools or to problems, and searched.
+
 The gateway needs a model configured, because its session is a real one, though it never calls the
 model itself. No model is the one reason `start` can fail with a message instead of a page; the log says so.
