@@ -440,6 +440,10 @@ class RelayPresenter(Presenter[RelayEntry]):
                 else f"\u2190 {'agent' if entry.by_agent else 'user'} of session {peer}"
             )
             detail = ""
+            if entry.group:
+                # A group message is read by every member: say so in the header, where a one-to-one message has nothing.
+                label += f" in #{terminal_safe(entry.group)}"
+                detail = f" {SEPARATOR} to the whole group"
 
         def row(*spans: Span) -> TextLine:
             used = sum(display_width(span.text) for span in spans)

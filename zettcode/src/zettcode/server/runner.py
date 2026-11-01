@@ -715,6 +715,7 @@ class Runner:
             hops=message.hops,
             direct=message.direct,
             mode=message.mode,
+            group=message.group,
         )
         return slot.client.session._steer_message(relayed.message())
 

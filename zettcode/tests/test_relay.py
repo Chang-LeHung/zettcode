@@ -567,3 +567,45 @@ def test_a_session_is_replaced_even_when_a_provider_that_does_not_know_the_name_
     (part,) = mention_parts((MentionPart("@web"),), registry)
 
     assert part == MentionPart("@web", 'session "web"')
+
+
+# -- a message written in a group chat ------------------------------------------------------------------------
+
+
+def test_a_group_message_tells_the_model_the_group_and_how_to_answer_it():
+    framed = Relayed(sender_id=BOB, sender="bob", text="ship it", group="review").framed()
+
+    assert "#review" in framed and 'send_message(group="review"' in framed
+    assert f'send_message(to="{BOB}"' in framed, "it may still be answered to the sender alone"
+    assert "#" not in relayed().framed(), "a one-to-one message mentions no group"
+
+
+def test_the_group_survives_the_store_and_a_message_without_one_has_none():
+    message = Relayed(sender_id=BOB, sender="bob", text="x", group="review").message()
+
+    assert message.attributes[RELAY]["group"] == "review"
+    assert relay_of(message.attributes, "x").group == "review"
+    assert relay_of(relayed("x").message().attributes, "x").group == ""
+
+
+def test_a_received_group_message_names_the_group_in_its_header_and_says_it_went_to_the_whole_group():
+    rows = lines(entry(by_agent=True, peer="bob", group="review"))
+
+    assert rows[2] == "  \u2190 agent of session bob in #review \u00b7 to the whole group"
+    assert "#" not in lines(entry(by_agent=True, peer="bob"))[2]
+
+
+def test_what_the_model_reads_says_not_to_answer_thanks_or_goodbyes_in_a_conversation_or_a_group():
+    for framed in (relayed().framed(), Relayed(sender_id=BOB, sender="bob", text="x", group="review").framed()):
+        assert "goodbye" in framed and "thank" in framed
+
+
+def test_the_send_tool_tells_the_model_to_reply_only_when_needed_and_never_to_close_with_courtesies():
+    from zettcode.engine.extensions.messaging import SessionMessagingExtension
+    from zettcode.engine.messenger import Messenger
+
+    tool = SessionMessagingExtension(Messenger.__new__(Messenger))._send_tool()
+    rules = " ".join(tool.guidelines)
+
+    assert "Reply only when the message needs an answer" in rules and "bye" in rules and "closing courtesy" in rules
+    assert "costs its receiver a turn" in " ".join(tool.description.split())

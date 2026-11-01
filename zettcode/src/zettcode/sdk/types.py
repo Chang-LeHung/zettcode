@@ -557,6 +557,7 @@ class IncomingMessage:
     hops: int = 1
     direct: bool = False
     mode: str = MODE_STEER
+    group: str = ""
 
 
 @dataclass(frozen=True, slots=True)

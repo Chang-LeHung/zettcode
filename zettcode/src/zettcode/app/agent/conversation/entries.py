@@ -321,6 +321,8 @@ class MessageEntry(ToolEntry):
 
     to: str = ""
     message: str = ""
+    #: The group chat it was written to (without the ``#``), or empty for one session: the row says which.
+    group: str = ""
 
     @property
     def foldable(self) -> bool:
@@ -378,3 +380,5 @@ class RelayEntry(Entry):
     by_agent: bool = True
     external: bool = False
     note: str = ""
+    #: The group chat it was written in (without the ``#``); empty for a one-to-one message.
+    group: str = ""

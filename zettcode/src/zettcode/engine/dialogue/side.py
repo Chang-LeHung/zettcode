@@ -27,7 +27,7 @@ from zett_agent.messages import UserMessage
 SIDE = "side"
 
 #: Tools a side question may use: the ones that only read.
-READ_ONLY_TOOLS = frozenset({"read", "read_file", "glob", "grep", "read_skill", "list_sessions"})
+READ_ONLY_TOOLS = frozenset({"read", "read_file", "glob", "grep", "read_skill", "list_sessions", "message_history"})
 
 
 def question(text: str) -> UserMessage:

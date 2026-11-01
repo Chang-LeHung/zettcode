@@ -667,7 +667,10 @@ class MessageTool(ToolHandler):
     names = frozenset({"send_message"})
 
     def describe(self, name: str, arguments: Mapping[str, object]) -> ToolRow:
-        """Say who it is for; an id is shortened to its end, which is how a session is named without a title."""
+        """Say who it is for: a group as ``#name`` (everyone in it reads it), a session by name or the end of its id."""
+        group = argument(arguments, "group")
+        if group:
+            return ToolRow(f"Message to group #{group.lstrip('#')}")
         return ToolRow(f"Message to {self._recipient(argument(arguments, 'to', '(unknown)'))}")
 
     @staticmethod
@@ -686,9 +689,41 @@ class MessageTool(ToolHandler):
             tool=name,
             title=self.describe(name, arguments).title,
             to=argument(arguments, "to"),
+            group=argument(arguments, "group").lstrip("#"),
             message=limit_output(message) if isinstance(message, str) else "",
             started_at=started_at,
         )
+
+
+class HistoryTool(ToolHandler):
+    """``message_history``: what was said before, with one session or in a group."""
+
+    names = frozenset({"message_history"})
+
+    def describe(self, name: str, arguments: Mapping[str, object]) -> ToolRow:
+        """Say whose history it reads: a group's as ``#name``, one session's by name or the end of its id."""
+        group = argument(arguments, "group")
+        if group:
+            return ToolRow(f"Read history of group #{group.lstrip('#')}")
+        session = argument(arguments, "session")
+        if session:
+            return ToolRow(f"Read history with {MessageTool._recipient(session)}")
+        return ToolRow("Read message history")
+
+
+class GroupTool(ToolHandler):
+    """``manage_group``: make or change a group chat."""
+
+    names = frozenset({"manage_group"})
+
+    _VERBS = {"create": "Create", "add": "Add to", "remove": "Remove from", "leave": "Leave", "delete": "Delete"}
+
+    def describe(self, name: str, arguments: Mapping[str, object]) -> ToolRow:
+        """Say what is done to which group, and with whom."""
+        verb = self._VERBS.get(argument(arguments, "action"), "Change")
+        members = argument(arguments, "members")
+        with_ = f" with {members}" if members and verb in ("Create", "Add to", "Remove from") else ""
+        return ToolRow(f"{verb} group #{argument(arguments, 'group').lstrip('#') or '(unknown)'}{with_}")
 
 
 class NamespacedTool(ToolHandler):
@@ -785,6 +820,8 @@ DEFAULT_RENDERERS = Renderers(
         SkillTool(),
         TaskTool(),
         MessageTool(),
+        HistoryTool(),
+        GroupTool(),
         NamespacedTool(),
         FallbackTool(),
         ReasoningHandler(),
