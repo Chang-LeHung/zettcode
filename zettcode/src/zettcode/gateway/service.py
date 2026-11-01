@@ -163,12 +163,14 @@ class Gateway:
         """Join the broker and begin watching; a test that wants to say when the gateway looks passes ``watch=False``."""
         await self.backend.start(self._received, self._wake_up)
         self.backend.on_stream(self._streamed)
+        self.backend.observe(self._traffic)
         await self.refresh()
         if watch:
             self._watcher = asyncio.ensure_future(self._watch())
 
     async def close(self) -> None:
         """Stop watching and leave the broker."""
+        self.backend.observe(None)
         finishing = list(self._finishing)
         for task in finishing:
             task.cancel()
@@ -781,6 +783,56 @@ class Gateway:
                 del self._live[session_id]
                 expired.append(session_id)
         return expired
+
+    # -- the graph --------------------------------------------------------------------------------
+    def _traffic(self, line: dict[str, Any]) -> None:
+        """Tell the pages what the broker saw: a message that passed, or that who is here (or the groups) changed."""
+        if line.get("kind") == "message" and isinstance(line.get("message"), dict):
+            self._publish({"type": "traffic", "message": line["message"]})
+        elif line.get("kind") == "graph":
+            self._publish({"type": "graph"})
+
+    async def graph(self) -> dict[str, Any]:
+        """Return who is connected, the groups, how much each pair has said and the latest messages."""
+        try:
+            return await self.backend.graph()
+        except SendError as error:
+            raise GatewayError(503, error.reason, str(error)) from error
+
+    async def older(self, before: object, limit: object) -> dict[str, Any]:
+        """Return the stored messages before id ``before``, oldest first: what a feed loads as it is scrolled back."""
+        try:
+            first = int(before)  # type: ignore[call-overload]
+            count = int(limit) if limit not in (None, "") else 50  # type: ignore[call-overload]
+        except (TypeError, ValueError):
+            raise GatewayError(400, "invalid", "before is a message id, limit a number") from None
+        if first < 1:
+            raise GatewayError(400, "invalid", "before is a message id")
+        try:
+            return await self.backend.older(first, max(1, min(count, 200)))
+        except SendError as error:
+            raise GatewayError(503, error.reason, str(error)) from error
+
+    async def timeline(self, since: object, until: object, limit: object) -> dict[str, Any]:
+        """Return the stored messages between two times, for the page to replay. Nothing is sent again.
+
+        Args:
+            since: Epoch seconds the stretch starts at; an hour before ``until`` when it is not given.
+            until: Epoch seconds it ends at; now when it is not given.
+            limit: The most messages to return (the newest of the stretch), at most 2000.
+        """
+        try:
+            end = float(until) if until not in (None, "") else float(self.clock())  # type: ignore[arg-type]
+            start = float(since) if since not in (None, "") else end - 3600  # type: ignore[arg-type]
+            count = int(limit) if limit not in (None, "") else 500  # type: ignore[call-overload]
+        except (TypeError, ValueError):
+            raise GatewayError(400, "invalid", "since and until are epoch seconds, limit a number") from None
+        if start > end:
+            raise GatewayError(400, "invalid", "since is after until")
+        try:
+            return await self.backend.timeline(start, end, max(1, min(count, 2000)))
+        except SendError as error:
+            raise GatewayError(503, error.reason, str(error)) from error
 
     def _publish(self, event: dict[str, Any]) -> None:
         for queue in list(self._subscribers):

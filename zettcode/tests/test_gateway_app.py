@@ -268,3 +268,87 @@ def test_the_page_is_built_into_the_wheel_and_not_kept_in_git():
 
     assert "zettcode/src/zettcode/gateway/static/" in ignored
     assert 'artifacts = ["src/zettcode/gateway/static/**"]' in project, "hatchling skips what git ignores unless named"
+
+
+# -- the graph: who talks to whom, live and as a replay of the past ----------------------------------------------
+
+
+def a_message(number: int, at: float) -> dict:
+    return {
+        "id": number,
+        "ts": at,
+        "from": {"session_id": "a", "handle": "alpha", "title": ""},
+        "to": {"kind": "session", "session_id": "b", "handle": "bravo", "title": ""},
+        "recipients": ["b"],
+        "text": f"m{number}",
+        "via": "agent",
+        "hops": 1,
+        "mode": "steer",
+        "status": "delivered",
+        "disposition": "started",
+    }
+
+
+def test_the_graph_needs_a_sign_in_and_is_what_the_broker_reported(parts):
+    client, backend, _ = parts
+    backend.graph_data = {"sessions": [], "groups": [], "edges": [], "recent": [a_message(1, 10.0)]}
+    assert client.get("/api/graph").status_code == 401
+
+    body = signed_in(client).get("/api/graph").json()
+
+    assert body["recent"][0]["text"] == "m1"
+
+
+def test_the_timeline_passes_a_window_to_the_broker_and_never_sends_anything(parts):
+    client, backend, _ = parts
+    backend.graph_data = {
+        "sessions": [],
+        "groups": [],
+        "edges": [],
+        "recent": [a_message(n, n * 100.0) for n in (1, 2, 3)],
+    }
+    signed_in(client)
+
+    body = client.get("/api/graph/timeline?since=150&until=350&limit=99999").json()
+
+    assert [m["text"] for m in body["messages"]] == ["m2", "m3"]
+    assert backend.timeline_asked == [(150.0, 350.0, 2000)], "the count is capped"
+    assert backend.sent == []
+    assert client.get("/api/graph/timeline?since=9&until=1").status_code == 400
+    assert client.get("/api/graph/timeline?since=abc").status_code == 400
+
+
+def test_a_message_the_broker_saw_reaches_the_page_as_traffic_and_a_change_as_graph(parts):
+    client, backend, _ = parts
+    signed_in(client)
+    with client.websocket_connect("/api/events") as socket:
+        socket.receive_json()  # the threads
+        backend.traffic({"kind": "message", "message": a_message(7, 1.0)})
+        backend.traffic({"kind": "graph"})
+        backend.traffic({"kind": "something-else"})
+
+        seen = []
+        while len(seen) < 2:
+            event = socket.receive_json()
+            if event["type"] in ("traffic", "graph"):
+                seen.append(event)
+
+    assert seen[0]["type"] == "traffic" and seen[0]["message"]["id"] == 7
+    assert seen[1] == {"type": "graph"}
+
+
+def test_older_returns_the_messages_before_an_id_and_refuses_a_bad_one(parts):
+    client, backend, _ = parts
+    backend.graph_data = {
+        "sessions": [],
+        "groups": [],
+        "edges": [],
+        "recent": [a_message(n, n * 10.0) for n in (1, 2, 3, 4)],
+    }
+    signed_in(client)
+
+    body = client.get("/api/graph/older?before=4&limit=2").json()
+
+    assert [m["id"] for m in body["messages"]] == [2, 3] and body["more"] is True
+    assert client.get("/api/graph/older").status_code == 400
+    assert client.get("/api/graph/older?before=abc").status_code == 400

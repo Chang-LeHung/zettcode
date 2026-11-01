@@ -62,6 +62,9 @@ class FakeBackend(Backend):
         #: The sessions whose turns the gateway asked to see, and who it told.
         self.watched: set[str] = set()
         self.stream_listener: Callable[[StreamEvent], None] | None = None
+        self.traffic_listener: Callable[[dict[str, Any]], None] | None = None
+        self.graph_data: dict[str, Any] = {"sessions": [], "groups": [], "edges": [], "recent": []}
+        self.timeline_asked: list[tuple[float, float, int]] = []
         #: Sessions another process is taken to have open.
         self.locked_ids: set[str] = set()
         self.spawned: list[dict[str, object]] = []
@@ -115,6 +118,29 @@ class FakeBackend(Backend):
         """Say what a turn running in a session just did, as the broker would have told the gateway."""
         assert self.stream_listener is not None
         self.stream_listener(StreamEvent(session_id, kind, **fields))
+
+    def observe(self, callback: Callable[[dict[str, Any]], None] | None) -> None:
+        self.traffic_listener = callback
+
+    def traffic(self, line: dict[str, Any]) -> None:
+        """Say what the broker saw pass, as an observer is told."""
+        assert self.traffic_listener is not None
+        self.traffic_listener(line)
+
+    async def graph(self) -> dict[str, Any]:
+        return self.graph_data
+
+    async def older(self, before: int, limit: int) -> dict[str, Any]:
+        found = [m for m in self.graph_data["recent"] if m["id"] < before][-limit:]
+        return {"messages": found, "more": bool(found) and found[0]["id"] > 1}
+
+    async def timeline(self, since: float, until: float, limit: int) -> dict[str, Any]:
+        self.timeline_asked.append((since, until, limit))
+        return {
+            "messages": [m for m in self.graph_data["recent"] if since <= m["ts"] <= until],
+            "span": None,
+            "now": until,
+        }
 
     def changed(self) -> None:
         """Tell the gateway something moved, as the broker client would."""

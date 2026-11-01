@@ -307,6 +307,16 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
     async def threads(_: Request) -> Any:
         return {"threads": gateway.threads(), "status": gateway.status()}
 
+    async def graph(_: Request) -> Any:
+        return await gateway.graph()
+
+    async def older(request: Request) -> Any:
+        return await gateway.older(request.query_params.get("before"), request.query_params.get("limit"))
+
+    async def timeline(request: Request) -> Any:
+        query = request.query_params
+        return await gateway.timeline(query.get("since"), query.get("until"), query.get("limit"))
+
     async def thread(request: Request) -> Any:
         everything = request.query_params.get("all") in ("1", "true")
         return await gateway.thread(request.path_params["id"], everything=everything)
@@ -387,6 +397,9 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
         Route("/api/status", api(status)),
         Route("/api/config", api(config)),
         Route("/api/dirs", api(dirs)),
+        Route("/api/graph", api(graph)),
+        Route("/api/graph/timeline", api(timeline)),
+        Route("/api/graph/older", api(older)),
         Route("/api/threads", api(threads)),
         Route("/api/threads/{id}", api(thread)),
         Route("/api/threads/{id}/read", api(read), methods=["POST"]),
