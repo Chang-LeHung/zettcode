@@ -222,6 +222,12 @@ quiet = true
 
 `declare` 一次写齐插件读的所有键即可：这些默认值既是校验读者那张表的依据，也是读者没写时的取值。
 
+插件自己的设置表和 `[plugins]` 的开关写在同一个文件里，互不妨碍。`[plugins.recap]` 生效不需要你另写一行
+`[plugins]`；`/plugins` 和 `zettcode plugin disable` 要写 `disable = [...]` 时，如果文件里只有
+`[plugins.<名字>]` 这类表，它们会把 `[plugins]` 表头补在文件末尾（你的那些表下面），你写的内容原样不动。如果文件用别的
+方式声明了 `plugins`（内联表、`plugins.disable = []` 这样的点号键、`[[plugins.<名字>]]`，或一张 `[plugins.disable]`
+表），就不会去改它：命令会直接说明，留给你手工处理。
+
 ## 写一个命令
 
 命令处理器收到一个 `CommandContext`：

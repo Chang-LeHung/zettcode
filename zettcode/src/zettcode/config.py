@@ -926,6 +926,29 @@ def _read_disabled_plugins(raw: object, source: Path) -> tuple[str, ...]:
     return tuple(entry.strip() for entry in raw)
 
 
+def read_plugins_table(raw: object, source: Path) -> tuple[bool, tuple[str, ...], dict[str, dict[str, object]]]:
+    """Return ``[plugins]`` as ``(enabled, disable, settings)``: the one reading of that table.
+
+    The configuration and ``zettcode plugin`` both need it, and the second must not build the whole settings object
+    (that insists on a model). They used to each write the rules down, and the copies drifted: the command refused a
+    ``[plugins.recap]`` table the configuration accepts. Both call this now, so a file one reads, the other reads.
+
+    Args:
+        raw: What the file holds under ``plugins``; ``None`` when it has no such table.
+        source: The file, for messages.
+
+    Returns:
+        Whether installed plugins load at all, the entry-point names left out, and each plugin's own settings table by
+        name.
+
+    Raises:
+        ValueError: The table, a plugin's table, or a value in one is not what it must be.
+    """
+    own, settings = _read_plugins(raw, source)
+    enabled = _typed(own.get("enabled", True), f"Config key 'plugins.enabled' in {source}", bool)
+    return enabled, _read_disabled_plugins(own.get("disable"), source), settings
+
+
 def _read_theme_name(raw: object, source: Path) -> str | None:
     """Return the palette name ``[ui] theme`` asks for, rejecting what could not be typed after ``/theme``."""
     return _read_word(raw, "ui.theme", "a palette name", source)
@@ -993,7 +1016,7 @@ def load_config(
     ask_user = _read_table(data.get("ask_user"), "ask_user", source, ASK_USER_KEYS)
     skills = _read_table(data.get("skills"), "skills", source, SKILL_KEYS)
     mcp = _read_table(data.get("mcp"), "mcp", source, MCP_KEYS)
-    plugins, plugin_settings = _read_plugins(data.get("plugins"), source)
+    plugins_enabled, disabled_plugins, plugin_settings = read_plugins_table(data.get("plugins"), source)
     transcript = _read_table(data.get("transcript"), "transcript", source, TRANSCRIPT_KEYS)
     update = _read_table(data.get("update"), "update", source, UPDATE_KEYS)
     harness = _read_table(data.get("harness"), "harness", source, HARNESS_KEYS)
@@ -1045,10 +1068,10 @@ def load_config(
                 statusline.get(name, name not in OFF_BY_DEFAULT), f"Config key 'statusline.{name}' in {source}", bool
             )
         ),
-        plugins_enabled=bool(_setting(plugins, "enabled", bool, True)),
+        plugins_enabled=plugins_enabled,
         # The configuration file's own list. The legacy switch file's names are read where they are needed
         # (`zettcode.engine.plugins.switches`), so a switch can tell which list it may write.
-        disabled_plugins=_read_disabled_plugins(plugins.get("disable"), source),
+        disabled_plugins=disabled_plugins,
         plugin_settings=plugin_settings,
         subagent_enabled=bool(_setting(harness, "subagent", bool, True)),
         subagent_max_iterations=_typed(

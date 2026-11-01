@@ -346,13 +346,91 @@ def test_uninstall_removes_the_name_from_the_switch_file(tmp_path, monkeypatch, 
     assert "switch was removed" in capsys.readouterr().out
 
 
-def test_an_unknown_key_in_the_plugins_table_is_refused(tmp_path, monkeypatch):
+def test_a_key_that_is_neither_a_switch_nor_a_plugin_table_is_refused(tmp_path, monkeypatch):
     path = tmp_path / "config.toml"
     path.write_text('[plugins]\ndissable = ["x"]\n', encoding="utf-8")
     monkeypatch.setenv("ZETTCODE_CONFIG", str(path))
 
-    with pytest.raises(ValueError, match="unknown keys"):
+    with pytest.raises(ValueError, match="must be a table for that plugin's settings"):
         cli.plugin_state()
+
+
+def test_a_plugin_settings_table_is_not_an_unknown_key(tmp_path, monkeypatch):
+    """``[plugins.recap]`` holds that plugin's own keys, so reading a switch must not refuse the file."""
+    path = tmp_path / "config.toml"
+    path.write_text(
+        '[plugins]\ndisable = ["greeter"]\n\n[plugins.recap]\nafter_seconds = 30\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ZETTCODE_CONFIG", str(path))
+
+    state = cli.plugin_state()
+
+    assert state.disabled_plugins == ("greeter",)
+    assert state.plugins_enabled is True
+
+
+MODEL = '[[models]]\nmodel = "m"\ntoken = "t"\n'
+
+
+@pytest.mark.parametrize(
+    "plugins_table",
+    [
+        pytest.param("", id="no-table"),
+        pytest.param('[plugins]\ndisable = ["a", " b "]\n', id="disable"),
+        pytest.param("[plugins]\nenabled = false\n", id="enabled-false"),
+        pytest.param("[plugins.recap]\nafter_seconds = 30\n", id="settings-table-only"),
+        pytest.param('[plugins]\ndisable = ["a"]\n[plugins.recap]\nafter_seconds = 30\n', id="switch-and-settings"),
+        pytest.param('[plugins]\ndissable = ["a"]\n', id="misspelt-switch"),
+        pytest.param('[plugins]\nenabled = "yes"\n', id="enabled-not-bool"),
+        pytest.param('[plugins]\ndisable = "a"\n', id="disable-not-array"),
+        pytest.param('[plugins]\ndisable = [""]\n', id="disable-blank-name"),
+        pytest.param("[plugins.recap]\nafter_seconds = [1]\n", id="setting-not-scalar"),
+        pytest.param("[plugins.recap.deep]\nx = 1\n", id="settings-table-nested"),
+    ],
+)
+def test_the_command_reads_the_plugins_table_as_the_configuration_does(tmp_path, monkeypatch, plugins_table):
+    """What starting the program refuses, the command refuses too — and what it accepts, the command does.
+
+    The two once kept their own copies of these rules and disagreed about ``[plugins.recap]``, which made every
+    ``zettcode plugin`` command fail on a file the program itself started on.
+    """
+    from zettcode.config import load_config
+
+    path = tmp_path / "config.toml"
+    path.write_text(MODEL + plugins_table, encoding="utf-8")
+    monkeypatch.setenv("ZETTCODE_CONFIG", str(path))
+
+    try:
+        config = load_config(workspace=tmp_path)
+    except ValueError as error:
+        with pytest.raises(ValueError) as raised:
+            cli.plugin_state()
+        assert str(raised.value) == str(error)
+        return
+
+    state = cli.plugin_state()
+    assert state.plugins_enabled == config.plugins_enabled
+    assert state.disabled_plugins == config.disabled_plugins
+
+
+def test_a_switch_is_written_in_a_file_that_only_has_a_plugin_settings_table(tmp_path, monkeypatch, capsys):
+    """The whole command, nothing faked: it reads the file, finds the plugin, and writes beside the settings."""
+    folder = folder_with_greeter(tmp_path)
+    config_file = tmp_path / "config.toml"
+    config_file.write_text(MODEL + "\n[plugins.recap]\nafter_seconds = 30\n", encoding="utf-8")
+    monkeypatch.setattr(cli, "plugins_dir", lambda: folder)
+    # A switch also drops the name from the legacy switch file; point it at this test's folder, not the reader's.
+    monkeypatch.setattr("zettcode.paths.DEFAULT_PLUGINS_FILE", tmp_path / "plugins.json")
+    # The patch only works while ``plugin_state`` looks the name up when it runs; say so, so hoisting that import
+    # fails here instead of quietly pointing the test back at the reader's own folder.
+    assert cli.plugin_state().plugins_file == tmp_path / "plugins.json"
+
+    assert cli.switch("greeter", enabled=False) == 0
+
+    data = tomllib.loads(config_file.read_text(encoding="utf-8"))
+    assert data["plugins"] == {"disable": ["greeter"], "recap": {"after_seconds": 30}}
+    assert "disabled greeter" in capsys.readouterr().out
 
 
 def test_a_distribution_name_is_found_by_the_metadata_it_is_installed_with():

@@ -20,6 +20,8 @@ from zettcode.config_edit import (
     remove_model,
     render_entry,
     replace_model,
+    set_boolean,
+    set_string_list,
     toml_string,
     write_text_atomically,
 )
@@ -477,3 +479,93 @@ def test_a_buggy_edit_is_stopped_before_it_is_written(monkeypatch):
 
     with pytest.raises(ConfigEditError):
         remove_model(HAND_WRITTEN, 0, where=WHERE)
+
+
+# -- a table the file opens only through its sub-tables -------------------------------------------------
+
+#: ``[plugins.recap]`` makes a ``plugins`` table without any line saying ``[plugins]``; this is the file the
+#: documentation tells a reader to write, and the one `/plugins` could not switch a plugin in.
+ONLY_SUBTABLES = (
+    '[[models]]\nmodel = "m"\ntoken = "t"\n\n# my recap\n[plugins.recap]\nafter_seconds = 30  # half a minute\n'
+)
+
+
+def test_a_table_the_file_opens_only_through_a_subtable_gets_a_header_of_its_own():
+    result = set_string_list(ONLY_SUBTABLES, "plugins", "disable", ["greeter"], where=WHERE, command="/plugins")
+
+    assert tomllib.loads(result)["plugins"] == {"disable": ["greeter"], "recap": {"after_seconds": 30}}
+    # Nothing the reader wrote moved or changed: the original is the start of the result, byte for byte.
+    assert result.startswith(ONLY_SUBTABLES.rstrip("\n"))
+
+
+def test_the_second_switch_goes_under_the_header_the_first_one_added():
+    once = set_string_list(ONLY_SUBTABLES, "plugins", "disable", ["a"], where=WHERE, command="/plugins")
+    twice = set_string_list(once, "plugins", "disable", ["a", "b"], where=WHERE, command="/plugins")
+
+    assert twice.count("[plugins]") == 1
+    assert tomllib.loads(twice)["plugins"] == {"disable": ["a", "b"], "recap": {"after_seconds": 30}}
+
+
+def test_the_header_is_added_for_a_boolean_too():
+    text = '[[models]]\nmodel = "m"\ntoken = "t"\n\n[harness.child]\nx = 1\n'
+
+    result = set_boolean(text, "harness", "subagent", False, where=WHERE, command="/plugins")
+
+    assert tomllib.loads(result)["harness"] == {"subagent": False, "child": {"x": 1}}
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        pytest.param('plugins.disable = []\n\n[[models]]\nmodel = "m"\ntoken = "t"\n', id="dotted-key"),
+        pytest.param(
+            'plugins.a.b = 1\n\n[[models]]\nmodel = "m"\ntoken = "t"\n\n[plugins.recap]\nc = 1\n', id="dotted+sub"
+        ),
+        pytest.param('plugins = { recap = { a = 1 } }\n\n[[models]]\nmodel = "m"\ntoken = "t"\n', id="inline"),
+        pytest.param('[[models]]\nmodel = "m"\ntoken = "t"\n\n[[plugins.x]]\na = 1\n', id="array-of-tables"),
+        pytest.param(
+            '[[models]]\nmodel = "m"\ntoken = "t"\n\n[plugins.disable]\nx = 1\n', id="subtable-named-like-key"
+        ),
+        # A quoted first segment is recognised, so these are refused before any append is tried.
+        pytest.param('"plugins" = { recap = { a = 1 } }\n\n[[models]]\nmodel = "m"\ntoken = "t"\n', id="inline-quoted"),
+        pytest.param(
+            '[[models]]\nmodel = "m"\ntoken = "t"\n\n["plugins"]\nx = 1\n\n["plugins".recap]\na = 1\n', id="quoted"
+        ),
+        # A key spelled with an escape is `plugins` to TOML and nothing the line patterns can see: the append IS
+        # attempted, the result does not parse, and that must still read as "we cannot edit this", not as a fault in
+        # the reader's file.
+        pytest.param(
+            '"plug\\u0069ns" = { recap = { a = 1 } }\n\n[[models]]\nmodel = "m"\ntoken = "t"\n', id="escaped-key"
+        ),
+    ],
+)
+def test_a_table_declared_any_other_way_is_still_left_for_the_reader(text):
+    """A second ``[plugins]`` would be invalid TOML after these, so the edit is refused instead of attempted.
+
+    The whole message is matched, and the one the reader's file would earn is ruled out: a loose pattern let "we
+    understood and refused" and "we wrote TOML we could not read back" pass for each other.
+    """
+    with pytest.raises(ConfigEditError) as refused:
+        set_string_list(text, "plugins", "disable", ["greeter"], where=WHERE, command="/plugins")
+
+    assert str(refused.value) == f"{WHERE} writes [plugins] in a way /plugins cannot edit safely; edit the file by hand"
+
+
+@pytest.mark.parametrize(
+    "header",
+    [
+        pytest.param("[plugins.recap]", id="bare"),
+        pytest.param('["plugins".recap]', id="quoted-first-segment"),
+        pytest.param("[ plugins . recap ]", id="spaces-around-dots"),
+        pytest.param("[plugins.'recap']", id="quoted-last-segment"),
+    ],
+)
+@pytest.mark.parametrize("ending", ["\n", ""], ids=["trailing-newline", "no-trailing-newline"])
+def test_the_header_is_added_however_the_subtable_is_spelled_and_the_file_ends(header, ending):
+    """The reader's text stays exactly as written, byte for byte, whichever way the sub-table is spelled."""
+    text = f'[[models]]\nmodel = "m"\ntoken = "t"\n\n{header}\nafter_seconds = 30{ending}'
+
+    result = set_string_list(text, "plugins", "disable", ["greeter"], where=WHERE, command="/plugins")
+
+    assert result.startswith(text.rstrip("\n"))
+    assert tomllib.loads(result)["plugins"] == {"disable": ["greeter"], "recap": {"after_seconds": 30}}

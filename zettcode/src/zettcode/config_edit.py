@@ -276,13 +276,40 @@ def remove_model(text: str, index: int, *, where: Path) -> str:
     return result
 
 
+def _opened_by_subtables(lines: Sequence[str], table: str, key: str, value: object) -> bool:
+    """Return whether the file opens ``table`` only through sub-tables of it, with none of them called ``key``.
+
+    A file that writes ``[plugins.recap]`` has a ``plugins`` table the moment it parses, although no line ever says
+    ``[plugins]``; TOML lets a parent be declared after its children, so the key can still be written under a header
+    appended at the end. That holds only when the file does not assign the table itself, inline (``plugins = {...}``)
+    or through dotted keys (``plugins.disable = []``): a table assigned like that cannot be declared a second time.
+    A sub-table already called ``key`` (``[plugins.disable]``) cannot be written at all: the key and the table would
+    be one name declared twice. One case is refused although TOML would take it, because nobody has needed it and the
+    check after the edit is what keeps a wider rule honest: an entry of the table that is not a plain sub-table (an
+    array of tables, ``[[plugins.notes]]``). Anything refused is left for the reader to edit by hand.
+
+    This looks at lines, not at TOML, so it knows the spellings it was written for: a bare or quoted first segment.
+    A spelling it cannot see makes the appended header invalid, which the edit's own check catches and reports as a
+    file it cannot edit, so a miss costs a refusal and never a wrong file.
+    """
+    first = rf"(?:{re.escape(table)}|\"{re.escape(table)}\"|'{re.escape(table)}')"
+    assigned = re.compile(rf"^\s*{first}\s*[.=]")
+    if any(assigned.match(item) for item in lines):
+        return False
+    if not isinstance(value, dict) or not value or key in value:
+        return False
+    return all(isinstance(item, dict) for item in value.values())
+
+
 def _set_key(text: str, table: str, key: str, literal: str, value: object, *, where: Path, command: str) -> str:
     """Return ``text`` with ``[table] key`` set to ``value``, touching nothing else.
 
     The key's line is replaced where the file already has one, added under an existing header, or the
     table is appended at the end. The result is checked before it is returned: it must parse and differ
     from the original in nothing but this key. A file that spells the table some other way (an inline
-    table, say) is refused rather than guessed at.
+    table, say) is refused rather than guessed at; a table it opens only through a sub-table of it, as
+    ``[plugins.recap]`` opens ``plugins``, gets a header of its own appended (see
+    :func:`_opened_by_subtables`).
 
     Args:
         table: The table's name (``"ui"``).
@@ -299,7 +326,7 @@ def _set_key(text: str, table: str, key: str, literal: str, value: object, *, wh
     line = f"{key} = {literal}"
     header = next((index for index, item in enumerate(lines) if header_pattern.match(item)), None)
     if header is None:
-        if table in before:
+        if table in before and not _opened_by_subtables(lines, table, key, before[table]):
             raise ConfigEditError(
                 f"{where} writes [{table}] in a way {command} cannot edit safely; edit the file by hand"
             )
@@ -314,7 +341,14 @@ def _set_key(text: str, table: str, key: str, literal: str, value: object, *, wh
         else:
             new = [*lines[: header + 1], line, *lines[header + 1 :]]
     result = "\n".join(new)
-    after = _parse(result, where)
+    try:
+        after = _parse(result, where)
+    except ConfigEditError as error:
+        # ``text`` parsed above, so it is this edit that made the file unreadable, not the reader: a table spelled in a
+        # way the line patterns above do not see (a quoted ``"plugins"``, say) is one the edit cannot make room in.
+        raise ConfigEditError(
+            f"{where} writes [{table}] in a way {command} cannot edit safely; edit the file by hand"
+        ) from error
     table_before = {name: item for name, item in before.get(table, {}).items() if name != key}
     table_after = {name: item for name, item in after.get(table, {}).items() if name != key}
     others_before = {name: item for name, item in before.items() if name != table}
