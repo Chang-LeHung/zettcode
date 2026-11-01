@@ -167,3 +167,119 @@ def test_the_action_word_picks_the_work_in_the_brokers_own_directory(tmp_path: P
 
     assert cli.broker_program(["stop"]) == 0
     assert used == [tmp_path]
+
+
+# -- a restart and the background agents that live on the broker ---------------------------------------------------
+
+
+class FakeCompanions(cli.Companions):
+    def __init__(self, lines: list[str], order: list[str], *, fail: bool = False) -> None:
+        self.lines, self.order, self.fail = lines, order, fail
+
+    def listing(self) -> list[str]:
+        return self.lines
+
+    def stop(self) -> list[str]:
+        self.order.append("stop-agents")
+        return [f"{line}  stopped" for line in self.lines]
+
+    def start(self) -> list[tuple[bool, str]]:
+        self.order.append("start-agents")
+        return [(not self.fail, f"{line}  again") for line in self.lines]
+
+
+def wired(monkeypatch, order: list[str], *, running: bool = True, stop_status: int = 0, start_status: int = 0):
+    monkeypatch.setattr(cli, "running", lambda directory: running)
+    monkeypatch.setattr(cli, "stop", lambda directory: order.append("stop") or stop_status)
+    monkeypatch.setattr(cli, "start", lambda directory: order.append("start") or start_status)
+
+
+def test_a_restart_with_agents_running_asks_and_on_yes_stops_them_then_the_broker_then_starts_both(
+    tmp_path: Path, monkeypatch, capsys
+):
+    order: list[str] = []
+    wired(monkeypatch, order)
+    asked: list[str] = []
+
+    status = cli.restart(
+        tmp_path,
+        FakeCompanions(["a  review  /w"], order),
+        ask=lambda prompt: asked.append(prompt) or "y",
+        interactive=lambda: True,
+    )
+
+    assert status == 0 and len(asked) == 1
+    assert order == ["stop-agents", "stop", "start", "start-agents"]
+    assert "a  review  /w" in capsys.readouterr().out
+
+
+def test_saying_no_changes_nothing(tmp_path: Path, monkeypatch, capsys):
+    order: list[str] = []
+    wired(monkeypatch, order)
+
+    status = cli.restart(tmp_path, FakeCompanions(["a  x  /w"], order), ask=lambda prompt: "", interactive=lambda: True)
+
+    assert status == 1 and order == []
+    assert "nothing was changed" in capsys.readouterr().out
+
+
+def test_with_nobody_to_ask_and_no_yes_nothing_is_stopped(tmp_path: Path, monkeypatch, capsys):
+    order: list[str] = []
+    wired(monkeypatch, order)
+
+    status = cli.restart(tmp_path, FakeCompanions(["a  x  /w"], order), interactive=lambda: False)
+
+    assert status == 1 and order == []
+    assert "--yes" in capsys.readouterr().err
+
+
+def test_yes_does_not_ask(tmp_path: Path, monkeypatch):
+    order: list[str] = []
+    wired(monkeypatch, order)
+
+    def never(prompt: str) -> str:
+        raise AssertionError("asked")
+
+    status = cli.restart(tmp_path, FakeCompanions(["a  x  /w"], order), assume_yes=True, ask=never)
+
+    assert status == 0 and order == ["stop-agents", "stop", "start", "start-agents"]
+
+
+def test_no_agents_means_no_question_and_the_old_behaviour(tmp_path: Path, monkeypatch):
+    order: list[str] = []
+    wired(monkeypatch, order)
+
+    def never(prompt: str) -> str:
+        raise AssertionError("asked")
+
+    assert cli.restart(tmp_path, FakeCompanions([], order), ask=never) == 0
+    assert order == ["stop", "start"]
+
+
+def test_when_the_broker_cannot_be_stopped_the_agents_are_brought_back_and_it_fails(tmp_path: Path, monkeypatch):
+    order: list[str] = []
+    wired(monkeypatch, order, stop_status=1)
+
+    assert cli.restart(tmp_path, FakeCompanions(["a  x  /w"], order), assume_yes=True) == 1
+    assert order == ["stop-agents", "stop", "start-agents"]
+
+
+def test_an_agent_that_cannot_be_started_again_makes_the_restart_a_failure_and_is_reported(
+    tmp_path: Path, monkeypatch, capsys
+):
+    order: list[str] = []
+    wired(monkeypatch, order)
+
+    assert cli.restart(tmp_path, FakeCompanions(["a  x  /w"], order, fail=True), assume_yes=True) == 1
+    assert "a  x  /w  again" in capsys.readouterr().err
+
+
+def test_the_yes_flag_reaches_the_restart(tmp_path: Path, monkeypatch):
+    seen: list[bool] = []
+    monkeypatch.setattr(cli, "broker_dir", lambda: tmp_path)
+    monkeypatch.setattr(
+        cli, "restart", lambda directory, companions=None, *, assume_yes=False: seen.append(assume_yes) or 0
+    )
+
+    assert cli.broker_program(["restart", "--yes"]) == 0 and cli.broker_program(["restart"]) == 0
+    assert seen == [True, False]

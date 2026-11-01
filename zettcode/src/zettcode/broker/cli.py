@@ -14,6 +14,8 @@ from __future__ import annotations
 import argparse
 import sys
 import time
+from abc import ABC, abstractmethod
+from collections.abc import Callable
 from pathlib import Path
 
 from ..filelock import is_held
@@ -31,6 +33,27 @@ START_WAIT = 8.0
 POLL = 0.05
 
 
+class Companions(ABC):
+    """Processes that live on the broker and cannot survive its being replaced, which a restart has to deal with.
+
+    The broker knows nothing of what they are (background agents, in practice: :mod:`zettcode.daemon`); the command
+    that starts it hands one in. A new broker may speak another protocol, and a session still running the old code
+    then waits for ever, so they are stopped before the broker and started again after it.
+    """
+
+    @abstractmethod
+    def listing(self) -> list[str]:
+        """Return one line for each process that is running now; empty when there is none."""
+
+    @abstractmethod
+    def stop(self) -> list[str]:
+        """Stop every one of them, remember what is needed to start them again, and return a line for each."""
+
+    @abstractmethod
+    def start(self) -> list[tuple[bool, str]]:
+        """Start again what :meth:`stop` stopped; return, for each, whether it worked and a line to show."""
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Return the parser for ``zettcode broker`` and the three things it can do."""
     parser = argparse.ArgumentParser(
@@ -45,14 +68,27 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("start", "stop", "restart"),
         help="start a broker if there is none, stop the one there is, or do both",
     )
+    parser.add_argument(
+        "-y",
+        "--yes",
+        action="store_true",
+        help="restart: do not ask before stopping and starting again the background agents running on the broker",
+    )
     return parser
 
 
-def broker_program(argv: list[str] | None = None) -> int:
-    """Entry point of ``zettcode broker``; the exit status is what the shell reads: 0 done, 1 failed."""
+def broker_program(argv: list[str] | None = None, companions: Companions | None = None) -> int:
+    """Entry point of ``zettcode broker``; the exit status is what the shell reads: 0 done, 1 failed.
+
+    Args:
+        argv: The arguments after ``broker``.
+        companions: What has to be stopped and started again with the broker on a ``restart``, if anything.
+    """
     args = build_parser().parse_args(argv)
     directory = broker_dir()
-    action = {"start": start, "stop": stop, "restart": restart}[args.action]
+    if args.action == "restart":
+        return restart(directory, companions, assume_yes=args.yes)
+    action = {"start": start, "stop": stop}[args.action]
     return action(directory)
 
 
@@ -108,11 +144,78 @@ def stop(directory: Path) -> int:
     return EXIT_FAILED
 
 
-def restart(directory: Path) -> int:
-    """Stop the broker if one is running, then start one."""
-    if running(directory) and stop(directory) != EXIT_OK:
+def restart(
+    directory: Path,
+    companions: Companions | None = None,
+    *,
+    assume_yes: bool = False,
+    ask: Callable[[str], str] = input,
+    interactive: Callable[[], bool] = lambda: sys.stdin.isatty(),
+) -> int:
+    """Stop the broker if one is running, then start one; with ``companions`` running, only once the person agrees.
+
+    Those are stopped first and started again after the broker, because a session that outlives its broker is cut off
+    from the new one when the protocol changed. Saying no (or not being able to say anything: no terminal and no
+    ``--yes``) changes nothing at all.
+
+    Args:
+        directory: The broker's directory.
+        companions: What lives on the broker, or ``None`` for nothing.
+        assume_yes: Do not ask.
+        ask: Reads the answer, injectable for tests.
+        interactive: Whether anybody can be asked.
+    """
+    running_now = companions.listing() if companions is not None else []
+    if companions is not None and running_now and not _agreed(running_now, assume_yes, ask, interactive):
         return EXIT_FAILED
-    return start(directory)
+    if companions is not None and running_now:
+        for line in companions.stop():
+            print(line)
+    if running(directory) and stop(directory) != EXIT_OK:
+        # The broker is still the old one, so what was stopped for it is brought back rather than left off.
+        return _bring_back(companions, running_now, EXIT_FAILED)
+    status = start(directory)
+    if status != EXIT_OK:
+        return _bring_back(companions, running_now, status)
+    return _bring_back(companions, running_now, EXIT_OK)
+
+
+def _agreed(
+    running_now: list[str], assume_yes: bool, ask: Callable[[str], str], interactive: Callable[[], bool]
+) -> bool:
+    """Show what a restart will stop, and return whether the person agreed to it."""
+    count = len(running_now)
+    print(f"{count} background agent{'s are' if count != 1 else ' is'} running on the broker:")
+    for line in running_now:
+        print(f"  {line}")
+    print(
+        "They are stopped, and started again from their own sessions after the broker is: nothing they wrote is lost."
+    )
+    if assume_yes:
+        return True
+    if not interactive():
+        print("not restarting: nobody can be asked here. Run it in a terminal, or add --yes.", file=sys.stderr)
+        return False
+    try:
+        answer = ask("Stop them and restart the broker? [y/N] ")
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return False
+    if answer.strip().lower() in ("y", "yes"):
+        return True
+    print("not restarting; nothing was changed.")
+    return False
+
+
+def _bring_back(companions: Companions | None, running_now: list[str], status: int) -> int:
+    """Start again what a restart stopped and report each; the status is the broker's unless one of them failed."""
+    if companions is None or not running_now:
+        return status
+    failed = False
+    for worked, line in companions.start():
+        print(line, file=sys.stdout if worked else sys.stderr)
+        failed = failed or not worked
+    return EXIT_FAILED if failed else status
 
 
 def _wait_for_note(directory: Path, before: Note | None) -> Note | None:
@@ -130,4 +233,4 @@ def _wait_for_note(directory: Path, before: Note | None) -> Note | None:
     return None
 
 
-__all__ = ["broker_program", "build_parser", "restart", "running", "start", "stop"]
+__all__ = ["Companions", "broker_program", "build_parser", "restart", "running", "start", "stop"]

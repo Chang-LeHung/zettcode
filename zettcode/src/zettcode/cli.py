@@ -798,8 +798,10 @@ def main() -> None:
     if argv[:1] == ["broker"]:
         # The same: `broker start` and `broker stop` are words of their own, not flags of a session start.
         from .broker.cli import broker_program
+        from .daemon.companions import DaemonCompanions
 
-        raise SystemExit(broker_program(argv[1:]))
+        # The broker knows nothing of daemons; a restart is given them so it can ask before it strands them.
+        raise SystemExit(broker_program(argv[1:], DaemonCompanions()))
     if argv[:1] == ["gateway"]:
         # Its flags (`--host`, `--port`, the token) are the gateway's, parsed by the command that serves it.
         from .gateway.cli import main as gateway_main
