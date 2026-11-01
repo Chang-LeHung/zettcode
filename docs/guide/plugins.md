@@ -252,6 +252,13 @@ quiet = true
 `declare` may be called once, with every key the plugin reads: the defaults are what the reader's table is checked
 against and what the values are when it says nothing.
 
+A plugin's settings table and the `[plugins]` switches live side by side in the same file. You do not need a
+`[plugins]` line of your own for `[plugins.recap]` to work, and `/plugins` and `zettcode plugin disable` write
+`disable = [...]` next to it: when the file has only `[plugins.<name>]` tables, they add the `[plugins]` header at the
+end of the file, below your tables, and leave everything you wrote where it is. A file that declares `plugins` another
+way (an inline table, dotted keys such as `plugins.disable = []`, `[[plugins.<name>]]`, or a `[plugins.disable]`
+table) is not edited; they say so and leave it to you.
+
 ## Writing a command
 
 A command is handed a `CommandContext`:

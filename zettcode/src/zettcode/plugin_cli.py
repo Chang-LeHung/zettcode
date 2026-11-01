@@ -430,25 +430,14 @@ def plugin_state() -> SwitchState:
             data = tomllib.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as error:
         raise ValueError(f"{path}: {error}") from error
-    plugins = data.get("plugins", {})
-    if not isinstance(plugins, dict):
-        raise ValueError(f"{path}: [plugins] must be a table")
-    from zettcode.config import PLUGIN_KEYS
+    from zettcode.config import read_plugins_table
 
-    unknown = sorted(set(plugins) - PLUGIN_KEYS)
-    if unknown:
-        raise ValueError(f"{path}: unknown keys in [plugins]: {', '.join(unknown)}")
-    enabled = plugins.get("enabled", True)
-    if not isinstance(enabled, bool):
-        raise ValueError(f"{path}: plugins.enabled must be true or false")
-    disable = plugins.get("disable", [])
-    if not isinstance(disable, list) or any(not isinstance(name, str) or not name.strip() for name in disable):
-        raise ValueError(f"{path}: plugins.disable must be an array of non-empty strings")
-    return SwitchState(
-        plugins_file=DEFAULT_PLUGINS_FILE,
-        plugins_enabled=enabled,
-        disabled_plugins=tuple(name.strip() for name in disable),
-    )
+    # The same reading the configuration makes of the ``[plugins]`` table, so a table of a plugin's own settings
+    # (``[plugins.recap]``) is read past here exactly as it is at startup, and a ``[plugins]`` the program refuses is
+    # refused here with the same words. That includes a value in a plugin's own table: the program would not start on it
+    # either, so a switch that went through would change nothing, and the message names the key to fix.
+    enabled, disable, _settings = read_plugins_table(data.get("plugins"), path)
+    return SwitchState(plugins_file=DEFAULT_PLUGINS_FILE, plugins_enabled=enabled, disabled_plugins=disable)
 
 
 def switch(name: str, *, enabled: bool) -> int:

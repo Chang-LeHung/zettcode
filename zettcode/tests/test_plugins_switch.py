@@ -71,6 +71,24 @@ def test_an_installed_plugin_is_switched_in_the_configuration_file(config):
     assert disabled_in(path) == []
 
 
+RECAP_TABLE = "\n# half a minute\n[plugins.recap]\nafter_seconds = 30\n"
+
+
+def test_a_plugin_is_switched_in_a_file_that_only_has_plugin_settings_tables(config):
+    """``[plugins.recap]`` with no ``[plugins]`` line is how the documentation writes a plugin's settings."""
+    settings, path = config
+    path.write_text(MODEL + RECAP_TABLE, encoding="utf-8")
+
+    switches.set_installed(settings, "greeter", enabled=False)
+    data = tomllib.loads(path.read_text(encoding="utf-8"))
+    assert data["plugins"] == {"disable": ["greeter"], "recap": {"after_seconds": 30}}
+    assert (MODEL + RECAP_TABLE).rstrip("\n") in path.read_text(encoding="utf-8")
+
+    switches.set_installed(settings, "greeter", enabled=True)
+    data = tomllib.loads(path.read_text(encoding="utf-8"))
+    assert data["plugins"] == {"disable": [], "recap": {"after_seconds": 30}}
+
+
 def test_a_name_the_configuration_disabled_is_switchable_again(config):
     settings, path = config
     path.write_text(MODEL + '[plugins]\ndisable = ["greeter"]\n', encoding="utf-8")
@@ -206,9 +224,12 @@ def test_a_disable_array_written_across_lines_is_refused_whole(config):
     text = MODEL + '[plugins]\ndisable = [\n  "a",\n]\n'
     path.write_text(text, encoding="utf-8")
 
-    with pytest.raises(ValueError, match="not valid TOML"):
+    # The file is valid TOML; it is the edit (replacing the first line of the array) that would break it, so the
+    # refusal says the file cannot be edited safely and does not blame the file for being unreadable.
+    with pytest.raises(ValueError, match=r"writes \[plugins\] in a way /plugins cannot edit safely") as refused:
         switches.set_installed(settings, "b", enabled=False)
 
+    assert "not valid TOML" not in str(refused.value)
     assert path.read_text(encoding="utf-8") == text, "nothing is half-written"
 
 
