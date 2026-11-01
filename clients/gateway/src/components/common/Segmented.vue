@@ -8,6 +8,7 @@ const model = defineModel<string>({ required: true });
     <button
       v-for="option in options"
       :key="option.value"
+      type="button"
       role="radio"
       :aria-checked="model === option.value"
       :disabled="option.disabled"
