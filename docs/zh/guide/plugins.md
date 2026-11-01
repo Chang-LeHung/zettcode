@@ -266,6 +266,9 @@ class Recap(TuiPlugin):
         return CommandResult(message=f"> {answer}")
 ```
 
+`ask` 是旁问：这一问一答不会进对话历史，shell 也不会把它画出来，所以答案只出现在命令自己放的地方 —— 这里是
+一段引用。`/btw` 是同一种问题，但它是读者问的，所以 shell 会把那一次当成一轮对话画出来。
+
 插件命令排在最后，也不能顶掉内置命令，所以 `/model`、`/resume` 等等永远和
 [命令](/zh/guide/commands)里写的一致。
 

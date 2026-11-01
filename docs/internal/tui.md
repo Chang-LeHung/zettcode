@@ -595,7 +595,14 @@ declared as mixin groups — `PluginAgentMixin` for the agent flow, mirroring
 and `PluginUiMixin` for the rows — so the base class stays scannable and the
 two surfaces can be documented and imported separately.
 
-`projection.py` maps `zett-agent` callbacks onto transcript blocks. Every
+`projection.py` maps `zett-agent` callbacks onto transcript blocks. It is the
+runtime's dispatcher, so it is handed every run the session makes, and a side
+question the shell did not begin is the one kind it leaves out: a plugin's own
+ask (the recap's) would otherwise land as an answer nobody asked for, under the
+last turn's line, and the plugin writes its own quote. The runs that are drawn
+without a turn being begun — `/continue` picking a turn back up, `/compact`'s
+pass — are not side questions, which is why the projector asks the engine for
+that fact instead of treating "not begun" as "not drawn". Every
 callback returns immediately, including the approval one: the agent is already
 suspended waiting for the response the UI emits later, so a callback that
 awaited the user would deadlock the stream. The approval callback opens a

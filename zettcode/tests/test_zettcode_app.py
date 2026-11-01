@@ -164,10 +164,8 @@ class FakeClient:
         self.configs.append(config)
         self.efforts.append(reasoning_effort)
         self.messages.append(message)
-        # The real client does not echo turns; the projector does, and only for
-        # the prompts a reader typed. A compaction run's message is not one.
-        if self.event_dispatcher is not None and isinstance(message, str):
-            self.event_dispatcher.begin_turn(message)
+        # The real client does not echo turns: the shell begins the turn it draws, before the run goes out. A
+        # compaction run's message is not a turn at all, and the shell draws its row from the events below.
         for event in self.events:
             if self.event_dispatcher is not None:
                 await self.event_dispatcher.dispatch(event)
@@ -8674,6 +8672,50 @@ async def test_a_side_question_never_reports_changes():
     await asyncio.wait_for(app.task, 2.0)
 
     assert not any(entry.kind == "changes" for entry in app.transcript.entries)
+
+
+async def test_a_side_question_the_shell_did_not_ask_is_not_drawn():
+    """A plugin's own side question is answered off the record: its words are not a turn's, so they stay out.
+
+    The projector is the runtime's dispatcher, so it is handed every run the session makes — the recap plugin's
+    side question included. Drawing that one put the recap under the last turn's line as an answer nobody asked
+    for, and then the plugin drew the same words again as its quote: the same text, twice.
+    """
+    app = build_app([AgentEvent(AgentEventType.TEXT_DELTA, "s", delta="an answer")])
+    harness = _harness(app)
+
+    await _run_turn(app, harness)
+
+    after_the_turn = list(app.transcript.entries)
+    app.agent.runtime.client.events = [
+        AgentEvent(AgentEventType.TEXT_DELTA, "s", delta="the recap's own words"),
+    ]
+    # What a plugin does when it asks the session something for itself: a side question, not a turn of the reader's.
+    answer = await app.client.session.ask("where was I?")
+
+    assert answer == "the recap's own words", "the asker still gets the answer, to show its own way"
+    assert list(app.transcript.entries) == after_the_turn, "and nothing lands after the turn that ended"
+    assert "the recap's own words" not in _rendered(app.transcript, 70)
+
+    # The turn after it is drawn: the gate opened again, and did not stay shut over the reader's next request.
+    app.agent.runtime.client.events = [AgentEvent(AgentEventType.TEXT_DELTA, "s", delta="the next answer")]
+    await _run_turn(app, harness, "next")
+
+    assert any("the next answer" in row for row in _rendered(app.transcript, 70))
+
+
+async def test_a_side_question_the_shell_asked_is_drawn():
+    """`/btw` is a side question too, but the reader asked it: it is echoed and answered on screen."""
+    app = build_app([AgentEvent(AgentEventType.TEXT_DELTA, "s", delta="an aside")])
+    harness = _harness(app)
+
+    harness.write("/btw what is this")
+    harness.press("enter")
+    await asyncio.wait_for(app.task, 2.0)
+
+    rows = _rendered(app.transcript, 70)
+    assert any("what is this" in row for row in rows), "the question the reader asked is there"
+    assert any("an aside" in row for row in rows), "and so is what the model answered"
 
 
 # -- commands that run while a request is running ------------------------------------------------------------
