@@ -7,7 +7,7 @@ instead of a fresh one, and ``$ZETTCODE_CONFIG`` can point at a different
 config file. ``zettcode update`` (or ``upgrade``) installs the newest release and exits, and ``zettcode doctor``
 asks every configured model a one-line question and reports which of them answer. ``zettcode prompt`` sends one prompt
 without opening the terminal and prints the answer (see :mod:`zettcode.oneshot`). ``zettcode daemon``, ``zettcode
-broker``, ``zettcode gateway`` and ``zettcode plugins`` are their own commands, parsed apart from a session start.
+broker``, ``zettcode gateway`` and ``zettcode plugin`` are their own commands, parsed apart from a session start.
 
 Nothing beyond the standard library is imported at module level: ``zettcode
 --help`` prints and exits, and paying for the agent runtime, the widget
@@ -126,7 +126,7 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_daemon(commands)
     _add_broker(commands)
     _add_gateway(commands)
-    _add_plugins(commands)
+    _add_plugin(commands)
     return parser
 
 
@@ -253,15 +253,21 @@ def _add_gateway(commands: Subcommands) -> None:
     )
 
 
-def _add_plugins(commands: Subcommands) -> None:
-    """Add ``plugins``: installing, removing and switching plugins in this environment.
+#: The name ``--help`` lists for the plugin command, and every word it answers to: ``plugins`` is the name it had
+#: before, kept for the scripts that already run it, and deliberately not advertised.
+PLUGIN_COMMAND = "plugin"
+PLUGIN_COMMANDS = (PLUGIN_COMMAND, "plugins")
 
-    Only the name is declared here, so that ``zettcode --help`` lists it; the four actions are parsed and run by
+
+def _add_plugin(commands: Subcommands) -> None:
+    """Add ``plugin``: listing, installing, removing and switching plugins in this environment.
+
+    Only the name is declared here, so that ``zettcode --help`` lists it; the actions are parsed and run by
     :mod:`zettcode.plugin_cli`, which is never imported by a session start.
     """
     commands.add_parser(
-        "plugins",
-        help="install, remove or switch a plugin: plugins install | uninstall | enable | disable",
+        PLUGIN_COMMAND,
+        help="list, install, remove or switch a plugin: plugin list | install | uninstall | enable | disable",
         description=(
             "Install a plugin into the Python environment ZettCode runs in (or copy a single .py file into "
             "~/.zettcode/plugins), remove one, or enable/disable one for the next start. Start ZettCode again "
@@ -806,11 +812,12 @@ def main() -> None:
 
         gateway_main(argv[1:])
         return
-    if argv[:1] == ["plugins"]:
-        # Four actions over the plugins, parsed by the command that installs and switches them.
-        from .plugin_cli import plugins_program
+    if argv and argv[0] in PLUGIN_COMMANDS:
+        # The actions over the plugins, parsed by the command that installs and switches them. `plugins` is the
+        # name this command had before; it is not listed in --help, and it still works for the scripts that use it.
+        from .plugin_cli import plugin_program
 
-        raise SystemExit(plugins_program(argv[1:]))
+        raise SystemExit(plugin_program(argv[1:]))
     options = parse_args()
     if options.command == "update":
         from .update import update_program
@@ -824,6 +831,13 @@ def main() -> None:
         from .oneshot import prompt_program
 
         raise SystemExit(prompt_program(options))
+    if options.command == PLUGIN_COMMAND:
+        # Only reached when another option came before the word (`zettcode -w DIR plugin`), which the dispatch above
+        # does not see because it reads the first word alone. Its own parser prints the usage and asks for an action
+        # rather than opening a session nobody asked for.
+        from .plugin_cli import plugin_program
+
+        raise SystemExit(plugin_program([]))
     tune_collector()
     _name_process()
     try:
