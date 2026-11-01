@@ -16,6 +16,6 @@ import ProfileCard from "./ProfileCard.vue";
     <Segmented v-model="prefs.render" :label="t('Messages')" :options="[{ value: 'markdown', label: t('Rendered') }, { value: 'source', label: t('Source') }]" />
     <p class="card-hint">{{ t("Rendered shows markdown with highlighted code and typeset math. Source shows the text exactly as it was written.") }}</p>
     <div class="card-title">{{ t("Language") }}</div>
-    <Segmented v-model="prefs.language" :label="t('Language')" :options="[{ value: 'auto', label: t('Auto') }, { value: 'en', label: 'English' }]" />
+    <Segmented v-model="prefs.language" :label="t('Language')" :options="[{ value: 'en', label: 'English' }, { value: 'zh', label: '中文' }]" />
   </div>
 </template>

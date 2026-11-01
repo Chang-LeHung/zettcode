@@ -8,6 +8,7 @@ import { ApiError } from "../api/http";
 import { t } from "../i18n";
 import { pend, settle } from "../lib/pending";
 import { debounce, storage } from "../lib/storage";
+import { seenNow } from "../lib/unread";
 import type { ChatItem, Pending, Thread } from "../types";
 import { prefs } from "./prefs";
 import { seedStream } from "./stream";
@@ -25,6 +26,8 @@ export const chat = reactive({
   pending: [] as Pending[],
   /** Bumped when the conversation grew, so a view can decide whether to follow it. */
   revision: 0,
+  /** The reader is at the bottom of the open conversation, so what arrives is seen as it arrives. */
+  atBottom: true,
 });
 
 const waiting = new Map<string, Pending[]>();
@@ -158,7 +161,8 @@ const mark = debounce((id: string) => {
 /** Say that what the open thread has said has been seen. */
 export function markRead(): void {
   const thread = chat.id ? threadOf(chat.id) : undefined;
-  if (!thread || thread.unread === 0) return;
+  // As in any messenger, what is above the reader's place has not been seen: it stays unread until they come down to it.
+  if (!thread || !seenNow({ hidden: document.hidden, atBottom: chat.atBottom, unread: thread.unread })) return;
   thread.unread = 0;
   mark(thread.id);
 }

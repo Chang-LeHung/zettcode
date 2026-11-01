@@ -5,16 +5,12 @@
 import { ref } from "vue";
 import { ZH } from "./zh";
 
-export type LanguagePreference = "auto" | "en" | "zh";
+export type LanguagePreference = "en" | "zh";
 
 const active = ref<"en" | "zh">("en");
 
-function browserLanguage(): "en" | "zh" {
-  return (globalThis.navigator?.language ?? "en").toLowerCase().startsWith("zh") ? "zh" : "en";
-}
-
 export function setLanguage(preference: LanguagePreference): void {
-  active.value = preference === "auto" ? browserLanguage() : preference;
+  active.value = preference;
   if (typeof document !== "undefined") document.documentElement.lang = active.value === "zh" ? "zh-CN" : "en";
 }
 
