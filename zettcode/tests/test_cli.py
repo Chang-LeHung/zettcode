@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from zettcode import cli, paths
+from zettcode import cli, paths, plugin_cli
 from zettcode.cli import (
     Options,
     async_main,
@@ -554,9 +554,49 @@ def test_the_help_lists_the_version_flag(capsys):
 
     said = capsys.readouterr().out
     assert "-v, -V, --version" in said
-    assert "broker" in said and "gateway" in said and "plugins" in said, (
-        "the commands of their own are named in the help"
-    )
+
+
+def test_the_help_names_the_plugin_command_and_not_the_word_it_had(capsys):
+    with pytest.raises(SystemExit):
+        parse_args(["--help"])
+
+    said = capsys.readouterr().out
+    # The rows of the command list are the lines indented exactly four columns; a wrapped description is indented
+    # further, and the options below the list begin with a dash.
+    commands = said.split("positional arguments:", 1)[1].split("options:", 1)[0]
+    rows = {
+        line.split()[0] for line in commands.splitlines() if line.startswith("    ") and not line.startswith("     ")
+    }
+    assert {"broker", "gateway", "plugin"} <= rows, "the commands of their own are named in the help"
+    assert "plugins" not in commands, "the name the command had before still works, but the help does not advertise it"
+
+
+@pytest.mark.parametrize("word", ["plugin", "plugins"])
+def test_the_plugin_command_reaches_its_parser_with_only_the_words_after_it(monkeypatch, word):
+    """The first element is the program's own name, so the actions reach `plugin_program` as `["list", "--json"]`;
+    the word this command had before (`plugins`) lands in exactly the same place."""
+    calls: list[list[str] | None] = []
+    monkeypatch.setattr(sys, "argv", ["zettcode", word, "list", "--json"])
+    monkeypatch.setattr(plugin_cli, "plugin_program", lambda argv=None: calls.append(argv) or 0)
+
+    with pytest.raises(SystemExit) as result:
+        cli.main()
+
+    assert result.value.code == 0
+    assert calls == [["list", "--json"]]
+
+
+def test_plugin_after_another_option_is_usage_and_never_a_session(monkeypatch, tmp_path, capsys):
+    """`argv[:1]` is `-w` here, so the first-word dispatch above misses the command; the action it is missing must be
+    the usage that asks for one, not a terminal session nobody asked for."""
+    monkeypatch.setattr(sys, "argv", ["zettcode", "-w", str(tmp_path), "plugin"])
+    monkeypatch.setattr(cli, "launch", lambda options: pytest.fail("no session may start"))
+
+    with pytest.raises(SystemExit) as result:
+        cli.main()
+
+    assert result.value.code == 2
+    assert "usage: zettcode plugin" in capsys.readouterr().err
 
 
 def test_the_collector_is_told_to_interrupt_the_interface_less_often_and_nothing_else_changes():

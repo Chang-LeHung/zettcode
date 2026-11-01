@@ -1,4 +1,4 @@
-"""``zettcode plugins``: install, remove, enable and disable plugins in the environment ZettCode runs in.
+"""``zettcode plugin``: install, remove, enable and disable plugins in the environment ZettCode runs in.
 
 A plugin is either a Python distribution that publishes a class under ``zettcode.plugins``, or a single ``.py`` file
 in :attr:`ZettCodeConfig.plugins_dir` (``~/.zettcode/plugins`` by default); installing it is the opt-in (see
@@ -51,9 +51,9 @@ class Installer:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Return the parser for ``zettcode plugins`` and its four actions."""
+    """Return the parser for ``zettcode plugin`` and its actions."""
     parser = argparse.ArgumentParser(
-        prog="zettcode plugins",
+        prog="zettcode plugin",
         description=(
             "Install a plugin into the environment ZettCode runs in, remove one, or switch one for the next start. "
             "A plugin is a Python distribution, or a single .py file in ~/.zettcode/plugins, that adds commands, "
@@ -83,11 +83,11 @@ def build_parser() -> argparse.ArgumentParser:
         ),
         epilog=(
             "examples:\n"
-            "  zettcode plugins install ./greeter\n"
-            "  zettcode plugins install ./greeter.py\n"
-            "  zettcode plugins install owner/repo\n"
-            "  zettcode plugins install owner/repo@v1.2.0\n"
-            "  zettcode plugins install https://github.com/owner/repo/tree/main/plugins/greeter\n"
+            "  zettcode plugin install ./greeter\n"
+            "  zettcode plugin install ./greeter.py\n"
+            "  zettcode plugin install owner/repo\n"
+            "  zettcode plugin install owner/repo@v1.2.0\n"
+            "  zettcode plugin install https://github.com/owner/repo/tree/main/plugins/greeter\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -132,8 +132,8 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def plugins_program(argv: list[str] | None = None) -> int:
-    """Entry point of ``zettcode plugins``; 0 done, 1 failed, 2 for bad arguments."""
+def plugin_program(argv: list[str] | None = None) -> int:
+    """Entry point of ``zettcode plugin``; 0 done, 1 failed, 2 for bad arguments."""
     args = build_parser().parse_args(argv)
     if args.command == "list":
         return list_plugins(as_json=args.json)
@@ -146,7 +146,7 @@ def plugins_program(argv: list[str] | None = None) -> int:
 
 @dataclass(frozen=True, slots=True)
 class PluginRow:
-    """One plugin as ``plugins list`` shows it: what it is, where it came from, and its switch."""
+    """One plugin as ``plugin list`` shows it: what it is, where it came from, and its switch."""
 
     kind: str
     name: str
@@ -238,7 +238,7 @@ def list_plugins(*, as_json: bool = False) -> int:
     try:
         rows = plugin_rows()
     except (OSError, ValueError) as error:
-        print(f"zettcode plugins: the plugins could not be listed: {error}", file=sys.stderr)
+        print(f"zettcode plugin: the plugins could not be listed: {error}", file=sys.stderr)
         return EXIT_FAILED
     if as_json:
         print(
@@ -296,11 +296,11 @@ def install(target: str, *, force: bool = False) -> int:
     if path.is_file() and path.suffix.lower() == ".py":
         return _install_file(path, force=force)
     if force:
-        print("zettcode plugins: --force applies to a single .py file; installing with --upgrade", file=sys.stderr)
+        print("zettcode plugin: --force applies to a single .py file; installing with --upgrade", file=sys.stderr)
     try:
         requirement = requirement_for(target)
     except ValueError as error:
-        print(f"zettcode plugins: {error}", file=sys.stderr)
+        print(f"zettcode plugin: {error}", file=sys.stderr)
         return EXIT_FAILED
     tool = installer()
     if tool is None:
@@ -309,7 +309,7 @@ def install(target: str, *, force: bool = False) -> int:
     print(f"installing {requirement}")
     code = run([*action(tool, "install"), "--upgrade", requirement])
     if code != EXIT_OK:
-        print("zettcode plugins: the install failed; the output above says why", file=sys.stderr)
+        print("zettcode plugin: the install failed; the output above says why", file=sys.stderr)
         return EXIT_FAILED
     print("installed; start ZettCode again for it to load")
     return EXIT_OK
@@ -320,7 +320,7 @@ def _install_file(source: Path, *, force: bool = False) -> int:
     try:
         plugin_classes(source)
     except ValueError as error:
-        print(f"zettcode plugins: {error}", file=sys.stderr)
+        print(f"zettcode plugin: {error}", file=sys.stderr)
         return EXIT_FAILED
     module = module_name(source.stem)
     target = plugins_dir() / f"{module}.py"
@@ -329,25 +329,25 @@ def _install_file(source: Path, *, force: bool = False) -> int:
     try:
         text = source.read_text(encoding="utf-8")
     except (OSError, UnicodeError) as error:
-        print(f"zettcode plugins: {source} could not be read: {error}", file=sys.stderr)
+        print(f"zettcode plugin: {source} could not be read: {error}", file=sys.stderr)
         return EXIT_FAILED
     replaced = target.exists()
     if replaced:
         try:
             existing = target.read_text(encoding="utf-8")
         except (OSError, UnicodeError) as error:
-            print(f"zettcode plugins: {target} could not be read: {error}", file=sys.stderr)
+            print(f"zettcode plugin: {target} could not be read: {error}", file=sys.stderr)
             return EXIT_FAILED
         if existing != text and not force:
             print(
-                f"zettcode plugins: {target} already exists with different content; remove it first or pass --force",
+                f"zettcode plugin: {target} already exists with different content; remove it first or pass --force",
                 file=sys.stderr,
             )
             return EXIT_FAILED
     try:
         write_text_atomically(target, text)
     except (OSError, ValueError) as error:
-        print(f"zettcode plugins: {target} could not be written: {error}", file=sys.stderr)
+        print(f"zettcode plugin: {target} could not be written: {error}", file=sys.stderr)
         return EXIT_FAILED
     shown = str(target) if source.name == target.name else f"{source.name} as {target}"
     note = " (replaced the old file)" if replaced else ""
@@ -360,7 +360,7 @@ def uninstall(name: str) -> int:
     try:
         name = _safe_name(name)
     except ValueError as error:
-        print(f"zettcode plugins: {error}", file=sys.stderr)
+        print(f"zettcode plugin: {error}", file=sys.stderr)
         return EXIT_FAILED
     candidates = (plugins_dir() / f"{name}.py", plugins_dir() / f"{module_name(name)}.py")
     path = next((candidate for candidate in candidates if candidate.is_file()), None)
@@ -368,7 +368,7 @@ def uninstall(name: str) -> int:
         try:
             path.unlink()
         except OSError as error:
-            print(f"zettcode plugins: {path} could not be removed: {error}", file=sys.stderr)
+            print(f"zettcode plugin: {path} could not be removed: {error}", file=sys.stderr)
             return EXIT_FAILED
         forgot = _forget_switches([path.stem])
         print(f"removed {path}; start ZettCode again to drop what it added{forgot}")
@@ -376,7 +376,7 @@ def uninstall(name: str) -> int:
     distribution = distribution_for(name)
     if distribution is None:
         print(
-            f"zettcode plugins: no installed distribution or plugin file is called {name!r}; /plugins lists each "
+            f"zettcode plugin: no installed distribution or plugin file is called {name!r}; /plugins lists each "
             "plugin's origin",
             file=sys.stderr,
         )
@@ -390,7 +390,7 @@ def uninstall(name: str) -> int:
     flags = ["-y", distribution] if tool.kind == "pip" else [distribution]
     code = run([*action(tool, "uninstall"), *flags])
     if code != EXIT_OK:
-        print("zettcode plugins: the uninstall failed; the output above says why", file=sys.stderr)
+        print("zettcode plugin: the uninstall failed; the output above says why", file=sys.stderr)
         return EXIT_FAILED
     forgot = _forget_switches([name, *_entry_names_for_distribution(distribution)])
     print(f"uninstalled; start ZettCode again to drop what it added{forgot}")
@@ -456,21 +456,21 @@ def switch(name: str, *, enabled: bool) -> int:
     try:
         name = _safe_name(name)
     except ValueError as error:
-        print(f"zettcode plugins: {error}", file=sys.stderr)
+        print(f"zettcode plugin: {error}", file=sys.stderr)
         return EXIT_FAILED
     try:
         config = plugin_state()
     except (OSError, ValueError) as error:
-        print(f"zettcode plugins: the configuration could not be read: {error}", file=sys.stderr)
+        print(f"zettcode plugin: the configuration could not be read: {error}", file=sys.stderr)
         return EXIT_FAILED
     try:
         origin = _resolve_switch_name(config, name)
     except ValueError as error:
-        print(f"zettcode plugins: {error}", file=sys.stderr)
+        print(f"zettcode plugin: {error}", file=sys.stderr)
         return EXIT_FAILED
     if origin is None:
         print(
-            f"zettcode plugins: no installed plugin or plugin file is called {name!r}; /plugins lists the ones there "
+            f"zettcode plugin: no installed plugin or plugin file is called {name!r}; /plugins lists the ones there "
             "are (a compiled-in plugin is switched by its own setting, in that list)",
             file=sys.stderr,
         )
@@ -480,7 +480,7 @@ def switch(name: str, *, enabled: bool) -> int:
     try:
         set_installed(config, origin, enabled=enabled)
     except ValueError as error:
-        print(f"zettcode plugins: {error}", file=sys.stderr)
+        print(f"zettcode plugin: {error}", file=sys.stderr)
         return EXIT_FAILED
     print(f"{'enabled' if enabled else 'disabled'} {origin} for the next start")
     return EXIT_OK
@@ -547,7 +547,7 @@ def _entry_names_for_distribution(distribution: str) -> list[str]:
 
 #: What a failure to find pip or uv says. A uv tool environment has no pip, but its uv does.
 NO_INSTALLER = (
-    "zettcode plugins: neither pip nor uv can install into this environment; install the plugin with the tool that "
+    "zettcode plugin: neither pip nor uv can install into this environment; install the plugin with the tool that "
     "owns it (for a uv tool install: `uv tool install --force --with <target> zettcode`)"
 )
 
@@ -726,7 +726,7 @@ def run(command: Sequence[str]) -> int:
     try:
         return subprocess.run(command, check=False).returncode  # noqa: S603
     except OSError as error:
-        print(f"zettcode plugins: could not run {command[0]}: {error}", file=sys.stderr)
+        print(f"zettcode plugin: could not run {command[0]}: {error}", file=sys.stderr)
         return 127
 
 
@@ -742,10 +742,10 @@ __all__ = [
     "list_plugins",
     "module_name",
     "plugin_classes",
+    "plugin_program",
     "plugin_rows",
     "plugin_state",
     "plugins_dir",
-    "plugins_program",
     "requirement_for",
     "run",
     "switch",

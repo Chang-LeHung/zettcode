@@ -74,11 +74,11 @@ to a `uv tool` installation.
 ZettCode can do the install itself:
 
 ```sh
-zettcode plugins install /path/to/greeter                  # a local project, wheel or sdist
-zettcode plugins install ./greeter.py                      # a single Python file
-zettcode plugins install owner/repo                        # a GitHub repository
-zettcode plugins install owner/repo@v1.2.0                 # a tag, branch or commit
-zettcode plugins install https://github.com/owner/repo/tree/main/plugins/greeter
+zettcode plugin install /path/to/greeter                  # a local project, wheel or sdist
+zettcode plugin install ./greeter.py                      # a single Python file
+zettcode plugin install owner/repo                        # a GitHub repository
+zettcode plugin install owner/repo@v1.2.0                 # a tag, branch or commit
+zettcode plugin install https://github.com/owner/repo/tree/main/plugins/greeter
 ```
 
 The target is installed into the environment `zettcode` is running in — with
@@ -95,11 +95,11 @@ documentation says. Installing over a file with different content is refused
 until you pass `--force` (the message says which name it would replace).
 
 ```sh
-zettcode plugins list                  # every plugin's name, origin, location and switch
-zettcode plugins list --json           # the same, for a program to read
-zettcode plugins uninstall greeter     # the file's stem, a distribution, or an entry-point name
-zettcode plugins disable greeter       # leave it out at the next start
-zettcode plugins enable greeter        # load it again
+zettcode plugin list                  # every plugin's name, origin, location and switch
+zettcode plugin list --json           # the same, for a program to read
+zettcode plugin uninstall greeter     # the file's stem, a distribution, or an entry-point name
+zettcode plugin disable greeter       # leave it out at the next start
+zettcode plugin enable greeter        # load it again
 ```
 
 `list` shows the program's built-in agent plugins (`compiled in`), the distributions installed beside it (their
@@ -111,6 +111,9 @@ behind a name; the name is the distribution's own, the entry-point name
 write the same `[plugins] disable` list the `/plugins` panel does; a plugin compiled into
 the program is switched by its own setting in the configuration file, which
 the panel edits and this command leaves alone.
+
+The command used to be called `zettcode plugins`; that word still works for the scripts written against it, though
+`zettcode --help` lists only `plugin`.
 
 If you manage the environment yourself, here is the same thing by hand, for a
 local plugin project at `/path/to/greeter`:

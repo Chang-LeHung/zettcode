@@ -1,4 +1,4 @@
-"""``zettcode plugins``: what a target becomes, where a single file goes, and what a switch writes."""
+"""``zettcode plugin``: what a target becomes, where a single file goes, and what a switch writes."""
 
 from __future__ import annotations
 
@@ -212,7 +212,7 @@ def test_list_says_so_when_the_configuration_cannot_be_read(monkeypatch, capsys)
     monkeypatch.setattr(cli, "plugin_state", lambda: (_ for _ in ()).throw(ValueError("bad [plugins]")))
 
     assert cli.list_plugins() == 1
-    assert "could not be listed" in capsys.readouterr().err
+    assert capsys.readouterr().err.startswith("zettcode plugin: the plugins could not be listed")
 
 
 def test_uninstall_of_something_not_installed_says_where_to_look(monkeypatch, capsys):
@@ -221,7 +221,9 @@ def test_uninstall_of_something_not_installed_says_where_to_look(monkeypatch, ca
     monkeypatch.setattr(cli, "run", lambda command: pytest.fail("nothing may be run"))
 
     assert cli.uninstall("greeter") == 1
-    assert "/plugins lists" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert err.startswith("zettcode plugin: no installed distribution")
+    assert "/plugins lists" in err
 
 
 # -- switches ----------------------------------------------------------------------------------------
@@ -421,8 +423,8 @@ def test_list_is_one_of_the_actions(monkeypatch):
     calls: list[bool] = []
     monkeypatch.setattr(cli, "list_plugins", lambda *, as_json=False: calls.append(as_json) or 0)
 
-    assert cli.plugins_program(["list"]) == 0
-    assert cli.plugins_program(["list", "--json"]) == 0
+    assert cli.plugin_program(["list"]) == 0
+    assert cli.plugin_program(["list", "--json"]) == 0
     assert calls == [False, True]
 
 
@@ -434,10 +436,10 @@ def test_the_four_actions_are_dispatch(monkeypatch):
         cli, "switch", lambda name, *, enabled: calls.append(("enable" if enabled else "disable", name)) or 0
     )
 
-    assert cli.plugins_program(["install", "owner/repo"]) == 0
-    assert cli.plugins_program(["uninstall", "greeter"]) == 0
-    assert cli.plugins_program(["enable", "greeter"]) == 0
-    assert cli.plugins_program(["disable", "greeter"]) == 0
+    assert cli.plugin_program(["install", "owner/repo"]) == 0
+    assert cli.plugin_program(["uninstall", "greeter"]) == 0
+    assert cli.plugin_program(["enable", "greeter"]) == 0
+    assert cli.plugin_program(["disable", "greeter"]) == 0
     assert calls == [
         ("install", "owner/repo"),
         ("uninstall", "greeter"),
@@ -448,7 +450,7 @@ def test_the_four_actions_are_dispatch(monkeypatch):
 
 def test_an_action_is_required(capsys):
     with pytest.raises(SystemExit):
-        cli.plugins_program([])
+        cli.plugin_program([])
 
 
 def test_a_name_that_is_a_path_is_refused(tmp_path, monkeypatch, capsys):

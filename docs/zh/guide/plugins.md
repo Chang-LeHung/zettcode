@@ -68,11 +68,11 @@ class Greeter(TuiPlugin):
 也可以让 ZettCode 自己安装：
 
 ```sh
-zettcode plugins install /path/to/greeter                  # 本地项目、wheel 或 sdist
-zettcode plugins install ./greeter.py                      # 单个 Python 文件
-zettcode plugins install owner/repo                        # GitHub 仓库
-zettcode plugins install owner/repo@v1.2.0                 # tag、分支或提交
-zettcode plugins install https://github.com/owner/repo/tree/main/plugins/greeter
+zettcode plugin install /path/to/greeter                  # 本地项目、wheel 或 sdist
+zettcode plugin install ./greeter.py                      # 单个 Python 文件
+zettcode plugin install owner/repo                        # GitHub 仓库
+zettcode plugin install owner/repo@v1.2.0                 # tag、分支或提交
+zettcode plugin install https://github.com/owner/repo/tree/main/plugins/greeter
 ```
 
 命令会装进 `zettcode` 正在运行的那个环境——有 pip 就用 pip，没有就用 uv 的 pip（`uv tool` 安装的环境就是如此）。
@@ -84,11 +84,11 @@ zettcode plugins install https://github.com/owner/repo/tree/main/plugins/greeter
 （提示会说明它要替换成哪个名字）。
 
 ```sh
-zettcode plugins list                  # 每个插件的名字、来源、位置和开关
-zettcode plugins list --json           # 同样的内容，给程序读
-zettcode plugins uninstall greeter     # 文件名（去掉 .py）、发行包名，或 entry point 名
-zettcode plugins disable greeter       # 下次启动不加载
-zettcode plugins enable greeter        # 重新加载
+zettcode plugin list                  # 每个插件的名字、来源、位置和开关
+zettcode plugin list --json           # 同样的内容，给程序读
+zettcode plugin uninstall greeter     # 文件名（去掉 .py）、发行包名，或 entry point 名
+zettcode plugin disable greeter       # 下次启动不加载
+zettcode plugin enable greeter        # 重新加载
 ```
 
 `list` 会列出程序自带的 agent 插件（位置是 `compiled in`）、装在旁边的发行包（entry point 名、发行包名和 site-packages 目录），
@@ -96,6 +96,8 @@ zettcode plugins enable greeter        # 重新加载
 `ENABLED` 是 `-`，它的设置在旁边的 `SWITCH` 里。`uninstall` 会从 `~/.zettcode/plugins` 删掉文件，
 或者卸载名字对应的发行包；名字可以是发行包名、`/plugins` 里显示的 entry point 名，或者文件名（去掉 `.py`）。
 `enable` 和 `disable` 写的就是 `/plugins` 面板用的同一个开关文件；编译进程序的插件由配置里的设置控制，面板会改它，这条命令不会。
+
+这个命令以前叫 `zettcode plugins`：为旧名字写的脚本仍然可用，不过 `zettcode --help` 里只列 `plugin`。
 
 如果你想自己管理环境，也可以手动安装。例如本地已有一个插件项目 `/path/to/greeter`：
 
