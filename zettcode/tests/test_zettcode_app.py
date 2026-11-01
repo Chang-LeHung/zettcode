@@ -4628,9 +4628,14 @@ async def test_escape_stops_a_running_turn():
 
     harness.press("escape")
 
-    # The turn ends because Escape cancelled it: without the binding this would
-    # wait for a request the fake client never finishes.
-    await asyncio.wait_for(app.task, 1.0)
+    for _ in range(10):
+        await asyncio.sleep(0)
+    try:
+        assert app.task.done(), "Escape cancels the running turn"
+    finally:
+        if not app.task.done():
+            app.task.cancel()
+            await app.task
 
     assert app.busy is False
     assert any("stopped" in entry.text for entry in app.transcript.entries), "and the shell says so"
