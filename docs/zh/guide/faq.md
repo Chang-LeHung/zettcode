@@ -124,11 +124,14 @@ macOS/Linux 可以用 `time zettcode --dry-run`，PowerShell 可以用
 
 **出错了要反馈时，日志在哪？** 三个常驻程序各有一份：
 
-- 终端：`~/.zettcode/log/tui.log`
-- broker：`~/.zettcode/broker/broker.log`
-- gateway：`~/.zettcode/gateway/gateway.log`
+- 终端 stderr：`~/.zettcode/log/tui.log`
+- 终端事件：`~/.zettcode/log/terminal.jsonl`
+- broker stderr：`~/.zettcode/broker/broker.log`
+- broker 事件：`~/.zettcode/log/broker.jsonl`
+- gateway stderr：`~/.zettcode/gateway/gateway.log`
+- gateway 事件：`~/.zettcode/log/gateway.jsonl`
 
-程序会为关键事件追加一行 JSON；失败时还会带上异常类型、消息和 traceback。这些 JSON 行会和各个程序自己的文本日志混在一起（uvicorn、broker 的启动/停止行，以及子进程在界面占用屏幕时写出的内容），所以请逐行解析。上面的路径是默认值：`ZETTCODE_BROKER_DIR` 和 `ZETTCODE_GATEWAY_DIR` 会移动后两份。daemon 自己的日志在 `~/.zettcode/daemon/<workspace>/<session-id>/log`，也可以用 `zettcode daemon log <id>` 查看。程序不会额外写入提示词、消息正文或凭据字段，但异常的 message 和 traceback 会原样写入；附加日志前请先检查。
+JSONL 文件会为关键事件追加一行；失败时带上异常类型、消息和 traceback。它在 8 MB 时轮转并保留三份旧文件。`ZETTCODE_LOG_LEVEL=debug` 会记录正常请求/工具/会话路径，`ZETTCODE_LOG_MAX_BYTES` 和 `ZETTCODE_LOG_BACKUPS` 可以改边界。文本日志会在下次启动时轮转。上面的路径是默认值：`ZETTCODE_BROKER_DIR` 和 `ZETTCODE_GATEWAY_DIR` 会移动 broker 和 gateway 目录。daemon 自己的日志在 `~/.zettcode/daemon/<workspace>/<session-id>/log`，也可以用 `zettcode daemon log <id>` 查看。程序不会额外写入提示词、消息正文或凭据字段，但异常的 message 和 traceback 会原样写入；附加日志前请先检查。
 
 ## 退出
 

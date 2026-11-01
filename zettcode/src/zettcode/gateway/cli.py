@@ -17,6 +17,7 @@ reuses the recorded settings, so a token or port is not lost by restarting.
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 import re
 import signal
@@ -27,11 +28,13 @@ import time
 from pathlib import Path
 from typing import Any, Literal
 
-from zettcode import __version__, diagnostics
+from zettcode import __version__, logging_setup
 from zettcode.processes import command_line, is_module_command, still_there
 
 from . import runfile
 from .settings import DEFAULT_HOST, DEFAULT_PORT, TOKEN_VARIABLE, Settings, default_directory
+
+logger = logging.getLogger("zettcode.gateway")
 
 LOOPBACK = ("127.0.0.1", "::1", "localhost")
 
@@ -216,12 +219,14 @@ def serve(settings: Settings) -> None:
         raise SystemExit(f"zettcode gateway: uvicorn is not installed: {error}") from error
 
     _say(settings)
+    logging_setup.setup("gateway")
+    logging_setup.rotate_text(runfile.log_path(settings.directory))
     try:
         uvicorn.run(create_app(settings), host=settings.host, port=settings.port, log_level=settings.log_level)
     except (KeyboardInterrupt, SystemExit):
         raise
-    except BaseException as error:
-        diagnostics.exception("gateway", "serve.failed", error, host=settings.host, port=settings.port)
+    except BaseException:
+        logger.exception("serve.failed", extra={"host": settings.host, "port": settings.port})
         raise
 
 
@@ -248,7 +253,7 @@ def start(settings: Settings) -> int:
     try:
         process = spawn(settings)
     except OSError as error:
-        diagnostics.exception("gateway", "spawn.failed", error, host=settings.host, port=settings.port)
+        logger.exception("spawn.failed", extra={"host": settings.host, "port": settings.port})
         print(f"the gateway could not be started: {error}", file=sys.stderr)
         return EXIT_FAILED
     if not wait_serving(settings, process):

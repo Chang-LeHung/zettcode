@@ -8,11 +8,12 @@ widgets themselves live in :mod:`zettcode.app.ui.widgets`.
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import Sequence
 from time import monotonic
 from typing import TYPE_CHECKING, Any, cast
 
-from zettcode import diagnostics
+from zettcode import logging_setup
 from zettcode.app.plugins.state import (
     Activity,
     TurnContext,
@@ -102,6 +103,8 @@ from .widgets import (
     TranscriptView,
     ZettCodeRoot,
 )
+
+logger = logging.getLogger("zettcode.terminal")
 
 
 class ZettCodeApp(
@@ -358,6 +361,8 @@ class ZettCodeApp(
         """
         from zettcode.tui import Terminal, TerminalRunner
 
+        logging_setup.setup("terminal")
+        logging_setup.rotate_text(DEFAULT_LOG)
         self.start_background()
         try:
             await TerminalRunner(self.app, terminal=Terminal(diagnostics=DEFAULT_LOG)).run()
@@ -675,7 +680,7 @@ class ZettCodeApp(
             return
         self.projector.begin_turn(question, side=True)
         session = self.client.session.id
-        diagnostics.write("terminal", "side.start", path=DEFAULT_LOG, session=session)
+        logger.info("side.start", extra={"session": session})
         started = monotonic()
         self.app.invalidate()
         outcome = ""
@@ -684,13 +689,13 @@ class ZettCodeApp(
                 async for _event in run:
                     self.app.invalidate()
         except asyncio.CancelledError:
-            diagnostics.write("terminal", "side.stopped", path=DEFAULT_LOG, session=session)
+            logger.info("side.stopped", extra={"session": session})
             self.transcript.complete_thinking()
             took = elapsed_text(monotonic() - started)
             outcome = f"btw stopped after {took} {SEPARATOR} {clock_text()}"
             raise
         except Exception as error:
-            diagnostics.exception("terminal", "side.failed", error, path=DEFAULT_LOG, session=session)
+            logger.exception("side.failed", extra={"session": session})
             self.transcript.complete_thinking()
             self.transcript.error(f"error: {describe_error(error)}")
             took = elapsed_text(monotonic() - started)
@@ -768,7 +773,7 @@ class ZettCodeApp(
         """
         opened = self.transcript.wait_for_model()
         session = self.client.session.id
-        diagnostics.write("terminal", "continue.start", path=DEFAULT_LOG, session=session)
+        logger.info("continue.start", extra={"session": session})
         try:
             await self.wait_for_frame()
             info = await self.client.session.resumable()
@@ -778,13 +783,13 @@ class ZettCodeApp(
                     self.transcript.settle_wait(message)
                 else:
                     self.transcript.notice(message)
-                diagnostics.write("terminal", "continue.nothing", path=DEFAULT_LOG, session=session)
+                logger.info("continue.nothing", extra={"session": session})
                 return
         except BaseException as error:
             if isinstance(error, asyncio.CancelledError):
-                diagnostics.write("terminal", "continue.stopped", path=DEFAULT_LOG, session=session)
+                logger.info("continue.stopped", extra={"session": session})
             else:
-                diagnostics.exception("terminal", "continue.preflight_failed", error, path=DEFAULT_LOG, session=session)
+                logger.exception("continue.preflight_failed", extra={"session": session})
             if opened:
                 stopped = isinstance(error, asyncio.CancelledError)
                 self.transcript.settle_wait("Continue stopped" if stopped else "Continue failed")
@@ -803,12 +808,12 @@ class ZettCodeApp(
                     self._refresh_tasks()
                     self.app.invalidate()
         except asyncio.CancelledError:
-            diagnostics.write("terminal", "continue.stopped", path=DEFAULT_LOG, session=session)
+            logger.info("continue.stopped", extra={"session": session})
             self.transcript.complete_thinking()
             self.transcript.notice("stopped")
             raise
         except Exception as error:
-            diagnostics.exception("terminal", "continue.failed", error, path=DEFAULT_LOG, session=session)
+            logger.exception("continue.failed", extra={"session": session})
             self.transcript.complete_thinking()
             self.transcript.error(failure_line(error))
         else:
@@ -822,13 +827,9 @@ class ZettCodeApp(
             if completed:
                 self.transcript.summarize_changes(self.client.workspace)
             seconds = monotonic() - started
-            diagnostics.write(
-                "terminal",
+            logger.info(
                 "continue.end",
-                path=DEFAULT_LOG,
-                session=session,
-                seconds=round(seconds, 3),
-                completed=completed,
+                extra={"session": session, "seconds": round(seconds, 3), "completed": completed},
             )
             self._settle_wait(
                 f"Continued for {elapsed_text(seconds)} {SEPARATOR} {clock_text()}",
@@ -883,18 +884,10 @@ class ZettCodeApp(
         try:
             result = await command.handler(CommandContext(argument=argument, ui=self, host=self))
         except COMMAND_ERRORS as error:
-            diagnostics.exception(
-                "terminal",
-                "command.refused",
-                error,
-                path=DEFAULT_LOG,
-                level="warning",
-                trace=False,
-                command=command.name,
-            )
+            logger.warning("command.refused", extra={"command": command.name, "reason": str(error)})
             self.transcript.error(str(error))
         except Exception as error:  # noqa: BLE001 - a command's bug is reported, never swallowed
-            diagnostics.exception("terminal", "command.failed", error, path=DEFAULT_LOG, command=command.name)
+            logger.exception("command.failed", extra={"command": command.name})
             self.transcript.error(f"{command.name}: {describe_error(error)}")
         else:
             self._apply_result(result)
@@ -1144,13 +1137,13 @@ class ZettCodeApp(
             # What this turn answers decides how many hops an answer sent from it carries.
             self.messenger.answering = relayed
         session = self.client.session.id
-        diagnostics.write(
-            "terminal",
+        logger.info(
             "turn.start",
-            path=DEFAULT_LOG,
-            session=session,
-            relayed=relayed is not None,
-            model=self.model.name if self.model is not None else None,
+            extra={
+                "session": session,
+                "relayed": relayed is not None,
+                "model": self.model.name if self.model is not None else None,
+            },
         )
         started = monotonic()
         completed = False
@@ -1196,7 +1189,7 @@ class ZettCodeApp(
             self.transcript.complete_thinking()
             self.transcript.notice("stopped")
         except Exception as error:
-            diagnostics.exception("terminal", "turn.failed", error, path=DEFAULT_LOG, session=session)
+            logger.exception("turn.failed", extra={"session": session})
             self.transcript.complete_thinking()
             self.transcript.error(failure_line(error))
         else:
@@ -1206,13 +1199,9 @@ class ZettCodeApp(
             self._title_session_later(self.client.session.id)
         finally:
             seconds = monotonic() - started
-            diagnostics.write(
-                "terminal",
+            logger.info(
                 "turn.end",
-                path=DEFAULT_LOG,
-                session=session,
-                seconds=round(seconds, 3),
-                completed=completed,
+                extra={"session": session, "seconds": round(seconds, 3), "completed": completed},
             )
             took = elapsed_text(seconds)
             if self.messenger is not None:
@@ -1303,19 +1292,11 @@ class ZettCodeApp(
                         self._return_follow_ups_to_draft()
                         self.app.request_layout()
                 except COMMAND_ERRORS as error:
-                    diagnostics.exception(
-                        "terminal",
-                        "command.refused",
-                        error,
-                        path=DEFAULT_LOG,
-                        level="warning",
-                        trace=False,
-                        command=name,
-                    )
+                    logger.warning("command.refused", extra={"command": name, "reason": str(error)})
                     self.transcript.error(str(error))
                     completed = True
                 except Exception as error:  # noqa: BLE001 - a command's bug must be reported and logged
-                    diagnostics.exception("terminal", "command.failed", error, path=DEFAULT_LOG, command=name)
+                    logger.exception("command.failed", extra={"command": name})
                     self.transcript.error(f"{name}: {describe_error(error)}")
                 else:
                     self._apply_result(result)

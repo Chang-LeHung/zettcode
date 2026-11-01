@@ -177,11 +177,14 @@ as usual, and the command it shows is the one for the copy that is running.
 
 **Something failed and I need to report it.** The three long-running faces keep separate logs:
 
-- terminal: `~/.zettcode/log/tui.log`
-- broker: `~/.zettcode/broker/broker.log`
-- gateway: `~/.zettcode/gateway/gateway.log`
+- terminal stderr: `~/.zettcode/log/tui.log`
+- terminal events: `~/.zettcode/log/terminal.jsonl`
+- broker stderr: `~/.zettcode/broker/broker.log`
+- broker events: `~/.zettcode/log/broker.jsonl`
+- gateway stderr: `~/.zettcode/gateway/gateway.log`
+- gateway events: `~/.zettcode/log/gateway.jsonl`
 
-The program appends one JSON object per key event and, for a failure, the exception type, message and traceback. Those JSON lines are mixed with each face's own text output (uvicorn's log, the broker's start/stop lines, and anything a child process wrote while the frame owned the screen), so parse them line by line. The paths above are defaults: `ZETTCODE_BROKER_DIR` and `ZETTCODE_GATEWAY_DIR` move the last two. A daemon's own log is `~/.zettcode/daemon/<workspace>/<session-id>/log`, and `zettcode daemon log <id>` prints it. The program does not add prompts, message bodies or credentials as fields, but an exception's message and traceback are written verbatim; review a log before attaching it.
+The JSONL file appends one object per key event; a failure carries the exception type, message and traceback. It rotates at 8 MB with three backups. `ZETTCODE_LOG_LEVEL=debug` adds the normal request/tool/session path, `ZETTCODE_LOG_MAX_BYTES` and `ZETTCODE_LOG_BACKUPS` change the bounds. The text logs are rotated at the next start. The paths above are defaults: `ZETTCODE_BROKER_DIR` and `ZETTCODE_GATEWAY_DIR` move the broker and gateway folders. A daemon's own log is `~/.zettcode/daemon/<workspace>/<session-id>/log`, and `zettcode daemon log <id>` prints it. The program does not add prompts, message bodies or credentials as fields, but an exception's message and traceback are written verbatim; review a log before attaching it.
 
 ## Leaving
 

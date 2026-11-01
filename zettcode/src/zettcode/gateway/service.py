@@ -17,6 +17,7 @@ import asyncio
 import contextlib
 import itertools
 import json
+import logging
 import os
 import re
 import time
@@ -27,7 +28,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from zettcode import __version__, diagnostics
+from zettcode import __version__
 from zettcode.sdk.errors import (
     ConfigurationError,
     DaemonStartError,
@@ -85,6 +86,9 @@ SEND_STATUS = {
     "lost": 504,
     "loop": 422,
 }
+
+
+logger = logging.getLogger("zettcode.gateway")
 
 
 class GatewayError(Exception):
@@ -198,11 +202,11 @@ class Gateway:
             except Exception:  # noqa: BLE001 - an unprintable error still has a type
                 reason = type(error).__name__
             if reason != self._refresh_error:
-                diagnostics.exception("gateway", "refresh.failed", error)
+                logger.exception("refresh.failed")
                 self._refresh_error = reason
         else:
             if self._refresh_error is not None:
-                diagnostics.write("gateway", "refresh.recovered")
+                logger.info("refresh.recovered")
                 self._refresh_error = None
 
     # -- what is there ----------------------------------------------------------------------------
