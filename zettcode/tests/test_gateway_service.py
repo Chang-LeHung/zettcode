@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from gateway_fakes import GATEWAY_ID, FakeBackend
+from zettcode.gateway import service as service_module
 from zettcode.gateway.chat import REPLY_REQUEST, strip_reply_request
 from zettcode.gateway.service import Gateway, GatewayError
 from zettcode.gateway.settings import Settings
@@ -710,3 +711,39 @@ async def test_a_session_that_is_working_is_read_when_it_goes_quiet_and_not_at_e
     await gateway.refresh()
 
     assert [item["preview"] for item in gateway.threads() if item["id"] == PEER] == ["partway"]
+
+
+async def test_a_refresh_failure_is_recorded_once_until_it_recovers(tmp_path, monkeypatch):
+    gateway, _ = await make(tmp_path)
+    records: list[str] = []
+
+    def failed(*args, **kwargs):
+        records.append("failed")
+
+    def recovered(*args, **kwargs):
+        records.append("recovered")
+
+    monkeypatch.setattr(service_module.diagnostics, "exception", failed)
+    monkeypatch.setattr(service_module.diagnostics, "write", recovered)
+
+    async def broken() -> None:
+        raise RuntimeError("the broker is down")
+
+    async def differently_broken() -> None:
+        raise ValueError("the roster changed shape")
+
+    async def healthy() -> None:
+        return None
+
+    monkeypatch.setattr(gateway, "refresh", broken)
+    await gateway._poll_once()
+    await gateway._poll_once()
+    assert records == ["failed"]
+
+    monkeypatch.setattr(gateway, "refresh", differently_broken)
+    await gateway._poll_once()
+    assert records == ["failed", "failed"]
+
+    monkeypatch.setattr(gateway, "refresh", healthy)
+    await gateway._poll_once()
+    assert records == ["failed", "failed", "recovered"]

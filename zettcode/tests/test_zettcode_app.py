@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import json
 import sys
 import threading
 import time
@@ -103,6 +104,7 @@ from zettcode.engine.extensions.usage import USAGE_EVENT_NAME, UsageExtension, U
 from zettcode.engine.permission import Permission, parse_permission
 from zettcode.engine.storage import STORE_FILE, SessionInfo, SessionStore
 from zettcode.mentions import Mention, MentionProvider, MentionRegistry
+from zettcode.paths import DEFAULT_LOG
 from zettcode.relay import Relayed
 from zettcode.sdk.types import SessionInfo as ListedSession
 from zettcode.statusline import context_text
@@ -1572,6 +1574,26 @@ async def test_the_compact_command_puts_its_row_up_before_the_pass(monkeypatch):
         if entry.kind == "thinking" and getattr(entry, "title", "") == "Compacting"
     )
     assert not row.running, "the placeholder is closed even when the pass reports nothing"
+
+
+async def test_a_command_bug_is_written_to_the_diagnostic_log():
+    app = build_app()
+    before = DEFAULT_LOG.read_text(encoding="utf-8").splitlines() if DEFAULT_LOG.exists() else []
+
+    async def boom(context):
+        raise RuntimeError("the command broke")
+
+    command = Command("/boom", "a command that fails", "test", boom)
+    await app._execute_now(command, "")
+
+    lines = DEFAULT_LOG.read_text(encoding="utf-8").splitlines()[len(before) :]
+    records = [json.loads(line) for line in lines if line.strip()]
+    failures = [record for record in records if record["event"] == "command.failed"]
+    assert len(failures) == 1
+    failure = failures[0]
+    assert failure["component"] == "terminal"
+    assert failure["command"] == "/boom"
+    assert failure["error"] == {"type": "RuntimeError", "message": "the command broke"}
 
 
 async def test_a_second_compact_without_a_new_message_is_refused(tmp_path):

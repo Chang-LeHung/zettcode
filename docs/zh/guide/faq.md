@@ -120,6 +120,16 @@ macOS/Linux 可以用 `time zettcode --dry-run`，PowerShell 可以用
 （并指出正在运行的代码来自哪个目录），而不是再提示同一个升级。另一份从没升级过的副本（比如 `uv tool` 旁边
 还有一份 `pip` 安装的）会照常被提示升级，并且显示的命令是针对正在运行的那一份的。
 
+## 诊断日志
+
+**出错了要反馈时，日志在哪？** 三个常驻程序各有一份：
+
+- 终端：`~/.zettcode/log/tui.log`
+- broker：`~/.zettcode/broker/broker.log`
+- gateway：`~/.zettcode/gateway/gateway.log`
+
+程序会为关键事件追加一行 JSON；失败时还会带上异常类型、消息和 traceback。这些 JSON 行会和各个程序自己的文本日志混在一起（uvicorn、broker 的启动/停止行，以及子进程在界面占用屏幕时写出的内容），所以请逐行解析。上面的路径是默认值：`ZETTCODE_BROKER_DIR` 和 `ZETTCODE_GATEWAY_DIR` 会移动后两份。daemon 自己的日志在 `~/.zettcode/daemon/<workspace>/<session-id>/log`，也可以用 `zettcode daemon log <id>` 查看。程序不会额外写入提示词、消息正文或凭据字段，但异常的 message 和 traceback 会原样写入；附加日志前请先检查。
+
 ## 退出
 
 **怎么退出？** `/quit`，或者在输入框为空时按 `Ctrl-D`。**Ctrl-C** 是停止正在跑的请求、请求为

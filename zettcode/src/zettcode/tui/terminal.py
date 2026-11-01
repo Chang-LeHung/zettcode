@@ -128,7 +128,14 @@ class Terminal:
             if self.diagnostics is None:
                 self._stderr_sink = os.open(os.devnull, os.O_WRONLY)
             else:
-                self.diagnostics.parent.mkdir(parents=True, exist_ok=True)
+                folder = self.diagnostics.parent
+                created = not folder.exists()
+                folder.mkdir(parents=True, exist_ok=True, mode=0o700)
+                if created and os.name != "nt":
+                    try:
+                        os.chmod(folder, 0o700)
+                    except OSError:
+                        pass
                 self._stderr_sink = os.open(self.diagnostics, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
         except OSError:
             self._stderr_sink = os.open(os.devnull, os.O_WRONLY)

@@ -35,6 +35,7 @@ from starlette.staticfiles import StaticFiles
 from starlette.types import ASGIApp, Receive, Scope, Send
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
+from .. import diagnostics
 from .backend import Backend, GatewayStartError, SdkBackend
 from .runfile import clear as clear_runfile
 from .runfile import write as write_runfile
@@ -205,17 +206,21 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
     async def lifespan(_: Starlette) -> AsyncIterator[None]:
         try:
             await gateway.start()
-        except GatewayStartError as error:
-            sys.stderr.write(f"zettcode gateway: {error}\n")
+        except Exception as error:
+            diagnostics.exception("gateway", "start.failed", error, host=settings.host, port=settings.port)
+            if isinstance(error, GatewayStartError):
+                sys.stderr.write(f"zettcode gateway: {error}\n")
             raise
         # Written only once the gateway is a session: a second one that lost the session would otherwise replace
         # the record of the one that kept it. The record is what `zettcode gateway stop|restart` finds.
         write_runfile(settings)
+        diagnostics.write("gateway", "start", host=settings.host, port=settings.port)
         try:
             yield
         finally:
             clear_runfile(settings.directory, pid=os.getpid())
             await gateway.close()
+            diagnostics.write("gateway", "stop", host=settings.host, port=settings.port)
 
     # -- plumbing ---------------------------------------------------------------------------------
     def api(handler: Handler, *, public: bool = False) -> Callable[[Request], Awaitable[Response]]:
@@ -233,6 +238,7 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
                 headers = {"retry-after": str(error.extra["retry_after"])} if "retry_after" in error.extra else None
                 return JSONResponse(error.to_dict(), error.status, headers=headers)
             except Exception as error:  # noqa: BLE001 - one request failing must not end the server
+                diagnostics.exception("gateway", "request.failed", error, method=request.method, route=request.url.path)
                 return JSONResponse(
                     {"error": {"code": "internal", "message": f"The request failed ({type(error).__name__})"}}, 500
                 )

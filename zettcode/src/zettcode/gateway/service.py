@@ -27,7 +27,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from zettcode import __version__
+from zettcode import __version__, diagnostics
 from zettcode.sdk.errors import (
     ConfigurationError,
     DaemonStartError,
@@ -150,6 +150,9 @@ class Gateway:
         self._wake = asyncio.Event()
         self._watcher: asyncio.Task[None] | None = None
         self._reachable: bool | None = None
+        #: The last failed refresh, so a permanent fault does not append a
+        #: traceback every poll interval.
+        self._refresh_error: str | None = None
 
     # -- life -------------------------------------------------------------------------------------
     async def start(self, *, watch: bool = True) -> None:
@@ -177,16 +180,30 @@ class Gateway:
 
     async def _watch(self) -> None:
         while True:
-            try:
-                await self.refresh()
-            except asyncio.CancelledError:
-                raise
-            except Exception:  # noqa: BLE001 - a look that fails is tried again, and the page keeps what it has
-                pass
+            await self._poll_once()
             with contextlib.suppress(asyncio.TimeoutError):
                 await asyncio.wait_for(self._wake.wait(), self.poll)
             self._wake.clear()
             await asyncio.sleep(0.05)
+
+    async def _poll_once(self) -> None:
+        """Take one refresh step, recording only a failure transition and its recovery."""
+        try:
+            await self.refresh()
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:  # noqa: BLE001 - a look that fails is tried again, and the page keeps what it has
+            try:
+                reason = f"{type(error).__name__}: {error}"
+            except Exception:  # noqa: BLE001 - an unprintable error still has a type
+                reason = type(error).__name__
+            if reason != self._refresh_error:
+                diagnostics.exception("gateway", "refresh.failed", error)
+                self._refresh_error = reason
+        else:
+            if self._refresh_error is not None:
+                diagnostics.write("gateway", "refresh.recovered")
+                self._refresh_error = None
 
     # -- what is there ----------------------------------------------------------------------------
     async def refresh(self) -> None:

@@ -20,6 +20,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route, WebSocketRoute
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
+from .. import diagnostics
 from .hub import Hub, Session
 from .log import log
 from .protocol import MAX_BODY, Refused
@@ -102,6 +103,7 @@ class Web:
         except Refused as refused:
             return self._refusal(refused)
         except Exception as error:  # noqa: BLE001 - one request failing must not end the server
+            diagnostics.exception("broker", "request.failed", error, method=request.method, route=request.url.path)
             log(f"a request failed: {error!r}")
             return self._refusal(Refused("internal", f"the request failed ({type(error).__name__})"))
 
@@ -178,7 +180,10 @@ class Web:
         try:
             while True:
                 await websocket.send_text(json.dumps(await session.outbox.get(), separators=(",", ":")))
-        except Exception:  # noqa: BLE001 - the reader notices the connection is gone and tidies up
+        except (WebSocketDisconnect, RuntimeError, OSError):
+            return  # the reader is gone; that is how a session ends, not a fault to report
+        except Exception as error:  # noqa: BLE001 - anything else is worth a trace in the log
+            diagnostics.exception("broker", "session.write_failed", error, connection=session.number)
             return
 
     @staticmethod
