@@ -150,6 +150,7 @@ def ensure_log_parent(path: Path) -> None:
 def setup(component: str, *, path: Path | None = None) -> logging.Logger:
     """Configure and return ``zettcode.<component>``; safe to call repeatedly."""
     logger = logging.getLogger(f"zettcode.{component}")
+    logging.raiseExceptions = False
     logger.setLevel(level())
     logger.propagate = False
     logger.handlers.clear()
