@@ -2,6 +2,7 @@
 import { computed } from "vue";
 import { t } from "../../i18n";
 import { folderName, listTime } from "../../lib/format";
+import { badge } from "../../lib/unread";
 import { href } from "../../stores/route";
 import type { Thread } from "../../types";
 import Avatar from "../common/Avatar.vue";
@@ -38,7 +39,7 @@ const line = computed(() => {
             <span v-if="mine" class="row-you">{{ t("You") }}: </span>{{ line }}
           </template>
         </span>
-        <span v-if="thread.unread" class="badge">{{ thread.unread > 99 ? "99+" : thread.unread }}</span>
+        <span v-if="thread.unread" class="badge">{{ badge(thread.unread) }}</span>
       </div>
     </div>
   </a>

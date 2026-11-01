@@ -2,6 +2,7 @@
 
 import { computed, reactive } from "vue";
 import { gateway } from "../api/gateway";
+import { unreadChats } from "../lib/unread";
 import type { GatewayStatus, Thread } from "../types";
 
 export const lobby = reactive({
@@ -15,6 +16,8 @@ export const lobby = reactive({
 export const byId = computed(() => new Map(lobby.threads.map((thread) => [thread.id, thread])));
 
 export const totalUnread = computed(() => lobby.threads.reduce((sum, thread) => sum + thread.unread, 0));
+/** How many conversations have something unread: what the tab shows. */
+export const chatsWithUnread = computed(() => unreadChats(lobby.threads));
 
 export const daemons = computed(() => lobby.threads.filter((thread) => thread.kind === "daemon"));
 

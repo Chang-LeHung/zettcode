@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { t } from "../../i18n";
 import { buildRows } from "../../lib/rows";
-import { chat, loadEarlier } from "../../stores/chat";
+import { chat, loadEarlier, markRead } from "../../stores/chat";
 import Icon from "../common/Icon.vue";
 import MessageBubble from "./MessageBubble.vue";
 import NoteBubble from "./NoteBubble.vue";
@@ -33,7 +33,11 @@ function toBottom(smooth: boolean): void {
 
 function onScroll(): void {
   following.value = nearBottom();
-  if (following.value) unseen.value = 0;
+  chat.atBottom = following.value;
+  if (following.value) {
+    unseen.value = 0;
+    if (!document.hidden) markRead();
+  }
 }
 
 watch(
@@ -43,6 +47,7 @@ watch(
     seen = 0;
     unseen.value = 0;
     following.value = true;
+    chat.atBottom = true;
   },
 );
 
@@ -56,6 +61,7 @@ watch(
     if (first || following.value || mine) {
       toBottom(!first);
       following.value = true;
+      chat.atBottom = true;
       first = first && count === 0;
     } else if (count > seen) {
       unseen.value += count - seen;

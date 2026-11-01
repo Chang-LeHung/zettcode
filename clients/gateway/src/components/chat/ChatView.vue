@@ -18,6 +18,8 @@ watch(
   () => thread.value?.unread ?? 0,
   (unread) => unread > 0 && !document.hidden && markRead(),
 );
+// Back at the bottom: what was above is read now.
+watch(() => chat.atBottom, (bottom) => bottom && !document.hidden && markRead());
 
 function onVisible(): void {
   if (!document.hidden) markRead();

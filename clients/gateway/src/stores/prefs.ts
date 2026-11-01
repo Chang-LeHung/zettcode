@@ -35,7 +35,7 @@ export interface Prefs {
 const DEFAULTS: Prefs = {
   theme: "auto",
   size: "m",
-  language: "auto",
+  language: "en",
   render: "markdown",
   avatar: "",
   notify: false,
@@ -49,8 +49,8 @@ const DEFAULTS: Prefs = {
 const saved = storage.get<Partial<Prefs>>("prefs", {});
 
 export const prefs: Prefs = reactive({ ...DEFAULTS, ...saved, defaults: { ...DEFAULTS.defaults, ...saved.defaults } });
-// There are no Chinese strings yet, so a choice of Chinese kept from before they were hidden is not honoured.
-if (prefs.language === "zh") prefs.language = "auto";
+// English is the default and Chinese is a choice. A device that saved the old "auto" (follow the browser) gets English.
+if (prefs.language !== "zh") prefs.language = "en";
 
 export function applyPrefs(): void {
   const root = document.documentElement;
