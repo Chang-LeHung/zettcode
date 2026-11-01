@@ -16,6 +16,8 @@ from zettcode.config import ModelConfig, ZettCodeConfig, load_config
 from zettcode.engine.dialogue.side import SideQuestions, question
 from zettcode.engine.extensions.messaging import (
     LIST_SESSIONS_TOOL_NAME,
+    MANAGE_GROUP_TOOL_NAME,
+    MESSAGE_HISTORY_TOOL_NAME,
     SEND_MESSAGE_TOOL_NAME,
     SessionMessagingExtension,
 )
@@ -83,9 +85,15 @@ async def call(ctx, name: str, **arguments):
 async def test_both_tools_are_registered_with_what_a_model_needs_to_use_them(world):
     ctx = await tools_of(world)
 
-    assert set(ctx.tools) == {LIST_SESSIONS_TOOL_NAME, SEND_MESSAGE_TOOL_NAME}
+    assert set(ctx.tools) == {
+        LIST_SESSIONS_TOOL_NAME,
+        SEND_MESSAGE_TOOL_NAME,
+        MESSAGE_HISTORY_TOOL_NAME,
+        MANAGE_GROUP_TOOL_NAME,
+    }
     send = ctx.tools[SEND_MESSAGE_TOOL_NAME]
-    assert send.parameters["required"] == ["to", "message"]
+    assert send.parameters.get("required", []) == []
+    assert {"to", "group"} <= set(send.parameters["properties"])
     assert "cannot see this conversation" in send.parameters["properties"]["message"]["description"]
     assert any("stands on its own" in g for g in send.guidelines)
     assert ctx.tools[LIST_SESSIONS_TOOL_NAME].parameters["properties"] == {}
@@ -268,7 +276,7 @@ async def test_a_side_question_keeps_the_listing_and_loses_the_sending(world):
 
     await SideQuestions().before_turn(ctx)
 
-    assert set(ctx.tools) == {LIST_SESSIONS_TOOL_NAME, "glob", "grep"}
+    assert set(ctx.tools) == {LIST_SESSIONS_TOOL_NAME, MESSAGE_HISTORY_TOOL_NAME, "glob", "grep"}
 
 
 # -- hops: what keeps two agents from answering each other for ever ------------------------------------
@@ -446,3 +454,79 @@ async def test_the_runtime_gives_the_agent_the_tools_only_when_the_configuration
             assert extension[0].messenger is runtime.messenger
     finally:
         await runtime.aclose()
+
+
+# -- group chats and the history ------------------------------------------------------------------------
+
+
+async def test_a_group_is_made_listed_written_to_and_read_back_by_the_tools(world):
+    _, bob_inbox = await world.other(BOB, "bob")
+    _, cal_inbox = await world.other(CAL, "cal")
+    ctx = await tools_of(world)
+
+    made = await call(ctx, MANAGE_GROUP_TOOL_NAME, action="create", group="Review", members="bob, cal")
+    assert made.startswith("Group #review has 3 members")
+    await eventually(lambda: world.groups(), 3)
+
+    listed = await call(ctx, LIST_SESSIONS_TOOL_NAME)
+    assert "1 group chat you may write to:" in listed and "- #review: " in listed
+
+    said = await call(ctx, SEND_MESSAGE_TOOL_NAME, group="review", message="round one is done")
+    assert said == "Delivered to #review: bob, cal."
+    await eventually(lambda: bob_inbox.messages and cal_inbox.messages, 3)
+    assert bob_inbox.messages[0].group == "review" and bob_inbox.messages[0].text == "round one is done"
+
+    history = await call(ctx, MESSAGE_HISTORY_TOOL_NAME, group="review")
+    assert "you -> #review: round one is done" in history
+
+
+async def test_a_message_names_a_session_or_a_group_and_not_both_or_neither(world):
+    await world.other(BOB, "bob")
+    ctx = await tools_of(world)
+
+    for arguments in ({}, {"to": "bob", "group": "review"}):
+        with pytest.raises(ValueError, match="exactly one"):
+            await call(ctx, SEND_MESSAGE_TOOL_NAME, message="hi", **arguments)
+
+
+async def test_a_session_outside_a_group_cannot_write_to_it_or_read_it(world):
+    bob, _ = await world.other(BOB, "bob")
+    await bob.manage_group("create", "secret", [])
+    ctx = await tools_of(world)
+
+    with pytest.raises(ValueError, match="not a member"):
+        await call(ctx, SEND_MESSAGE_TOOL_NAME, group="secret", message="let me in")
+    with pytest.raises(ValueError, match="not a member|only a member"):
+        await call(ctx, MESSAGE_HISTORY_TOOL_NAME, group="secret")
+    assert "secret" not in await call(ctx, LIST_SESSIONS_TOOL_NAME)
+
+
+async def test_the_history_between_two_sessions_is_what_each_said_to_the_other(world):
+    bob, _ = await world.other(BOB, "bob")
+    world.receiver = lambda relayed: Receipt(True, "", "started")
+    ctx = await tools_of(world)
+    await call(ctx, SEND_MESSAGE_TOOL_NAME, to="bob", message="first question")
+    await bob.send(ME, "the answer", hops=0)
+
+    text = await call(ctx, MESSAGE_HISTORY_TOOL_NAME, session="bob")
+
+    lines = text.splitlines()
+    assert lines[0] == "2 messages, oldest first:"
+    assert lines[1].endswith("you -> @bob: first question")
+    assert lines[2].endswith("@bob -> you: the answer")
+
+
+async def test_the_history_with_nobody_yet_says_so(world):
+    await world.other(BOB, "bob")
+    ctx = await tools_of(world)
+
+    assert await call(ctx, MESSAGE_HISTORY_TOOL_NAME, session="bob") == "No messages yet."
+
+
+async def test_send_message_lists_to_then_message_as_it_always_did_and_needs_some_text(world):
+    await world.other(BOB, "bob")
+    ctx = await tools_of(world)
+
+    assert list(ctx.tools[SEND_MESSAGE_TOOL_NAME].parameters["properties"])[:2] == ["to", "message"]
+    with pytest.raises(ValueError, match="needs some text"):
+        await call(ctx, SEND_MESSAGE_TOOL_NAME, to="bob")

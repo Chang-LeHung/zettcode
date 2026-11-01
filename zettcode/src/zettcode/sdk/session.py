@@ -727,6 +727,7 @@ class Session:
             hops=message.hops,
             direct=message.direct,
             mode=message.mode,
+            group=message.group,
         )
         return RunStream(
             self,

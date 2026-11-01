@@ -884,3 +884,27 @@ def test_a_family_the_kinds_presenter_outranks_is_not_in_the_list_at_all():
 
     families = [p for p in rows.presenters if p.kind is EntryKind.TOOL and p.entry_type is not None]
     assert families == [] and type(rows.for_entry(ToolEntry(id=1, call_id="c", tool="t", title="x"))) is Everything
+
+
+def test_a_message_to_a_group_is_titled_by_the_group_and_keeps_it():
+    transcript = Transcript()
+    transcript.start_tool("call-1", "send_message", {"group": "#Review", "message": "hi"})
+    transcript.complete_tool("call-1", "Delivered to #review: bob.", wait=False)
+    (entry,) = transcript.entries
+
+    assert entry.title == "Message to group #Review" and entry.group == "Review" and entry.to == ""
+
+
+def test_the_history_and_group_tools_have_rows_that_say_what_they_do():
+    def title(name: str, **arguments: str) -> str:
+        transcript = Transcript()
+        transcript.start_tool("c", name, arguments)
+        return transcript.entries[0].title
+
+    assert title("message_history", group="review") == "Read history of group #review"
+    assert title("message_history", session=SESSION) == "Read history with session 00f00d"
+    assert title("message_history") == "Read message history"
+    assert title("manage_group", action="create", group="review", members="bob, cal") == (
+        "Create group #review with bob, cal"
+    )
+    assert title("manage_group", action="leave", group="review") == "Leave group #review"

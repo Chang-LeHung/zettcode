@@ -19,6 +19,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from zettcode.broker.client import BrokerClient, Delivered, Incoming, Receipt, RosterEntry, SessionInfo
+from zettcode.broker.models import GroupDelivered, GroupInfo
 from zettcode.broker.protocol import VIA_AGENT
 from zettcode.config import ZettCodeConfig
 from zettcode.modes import MODE_STEER
@@ -147,6 +148,18 @@ class Messenger:
         """Return the other active sessions, from memory: this is called as a draft is typed."""
         return self.client.others()
 
+    def groups(self) -> tuple[GroupInfo, ...]:
+        """Return the group chats this session may write to, from memory."""
+        return self.client.groups
+
+    async def manage_group(self, action: str, name: str, members: list[str] | None = None) -> GroupInfo | None:
+        """Create a group, change who is in it, leave it or delete it (see :meth:`BrokerClient.manage_group`)."""
+        return await self.client.manage_group(action, name, members)
+
+    async def history(self, *, with_: str = "", group: str = "", limit: int = 20) -> tuple[list[dict[str, Any]], str]:
+        """Return stored messages with one session, in a group, or all this session's own (see the client)."""
+        return await self.client.history(with_=with_, group=group, limit=limit)
+
     # -- watching a turn --------------------------------------------------------------------------
     @property
     def on_stream(self) -> Callable[[str, dict[str, Any]], None] | None:
@@ -229,6 +242,17 @@ class Messenger:
         hops = self.answering.hops if self.answering is not None and via == VIA_AGENT else 0
         return await self.client.send(to, text, hops=hops, via=via, direct=direct, mode=mode)
 
+    async def send_group(
+        self, group: str, text: str, *, via: str = VIA_AGENT, mode: str = MODE_STEER
+    ) -> GroupDelivered:
+        """Write to a group chat this session is in; the hop count is carried on as for :meth:`send`.
+
+        Raises:
+            SendError: Nobody was reached, and why (``denied`` when this session is not in the group).
+        """
+        hops = self.answering.hops if self.answering is not None and via == VIA_AGENT else 0
+        return await self.client.send_group(group, text, hops=hops, via=via, mode=mode)
+
     # -- what the client reports ------------------------------------------------------------------
     def _received(self, incoming: Incoming) -> Receipt:
         """Turn the client's message into the shell's and ask the shell to take it."""
@@ -245,6 +269,7 @@ class Messenger:
                 hops=incoming.hops,
                 direct=incoming.direct,
                 mode=incoming.mode,
+                group=incoming.group,
             )
         )
 

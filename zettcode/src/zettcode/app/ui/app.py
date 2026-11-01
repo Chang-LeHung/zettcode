@@ -1209,6 +1209,7 @@ class ZettCodeApp(
                         text=relayed.text,
                         via=relayed.via,
                         hops=relayed.hops,
+                        group=relayed.group,
                     ),
                     **self._answers(),
                 )

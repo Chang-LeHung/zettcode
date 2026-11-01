@@ -74,6 +74,7 @@ class Relayed:
         mode: What to do with it while this session is busy: ``"steer"`` (the default) hands it to the running
             request so it changes course, and ``"followup"`` waits until that request ends. An idle session starts
             a turn either way.
+        group: The group chat it was written in (without the ``#``), or an empty string for a one-to-one message.
     """
 
     sender_id: str
@@ -83,10 +84,14 @@ class Relayed:
     hops: int = 1
     direct: bool = False
     mode: str = MODE_STEER
+    group: str = ""
 
     def mark(self) -> dict[str, object]:
         """Return what is stored beside the message, as plain data."""
-        return {"id": self.sender_id, "name": self.sender, "via": self.via, "hops": self.hops}
+        mark: dict[str, object] = {"id": self.sender_id, "name": self.sender, "via": self.via, "hops": self.hops}
+        if self.group:
+            mark["group"] = self.group
+        return mark
 
     @property
     def by_agent(self) -> bool:
@@ -119,8 +124,19 @@ class Relayed:
             source = f"The user of another ZettCode session, {who}, typed this message to you."
         reply = (
             f"Your answer here is shown only to your own user; the sender sees nothing of it. "
-            f'If the sender should hear back, call {REPLY_TOOL}(to="{self.sender_id}", message=...).'
+            f'If the sender needs an answer from you, call {REPLY_TOOL}(to="{self.sender_id}", message=...); if it needs '
+            f"none, send nothing. Never reply just to thank, confirm or say goodbye, and do not answer a message that "
+            f"only does so."
         )
+        if self.group:
+            source += f" It was written in the group chat #{self.group}, which every member of the group can read."
+            reply = (
+                f"Your answer here is shown only to your own user. Answer in the group only if the message needs an "
+                f"answer from you, and only if you are the one who has it: call "
+                f'{REPLY_TOOL}(group="{self.group}", message=...) for everyone, or '
+                f'{REPLY_TOOL}(to="{self.sender_id}", message=...) for the sender alone. Never reply just to thank, '
+                f"agree, confirm or say goodbye, and do not answer a message that only does so."
+            )
         return f"[{source} {reply}]\n\n{self.text}"
 
     def message(self) -> UserMessage:
@@ -158,4 +174,5 @@ def relay_of(attributes: object, text: str) -> Relayed | None:
         text=text,
         via=via if via in (VIA_USER, VIA_AGENT, VIA_EXTERNAL) else VIA_AGENT,
         hops=hops if isinstance(hops, int) and not isinstance(hops, bool) and hops >= 0 else 1,
+        group=mark["group"] if isinstance(mark.get("group"), str) else "",
     )

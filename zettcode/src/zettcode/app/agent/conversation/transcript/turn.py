@@ -75,6 +75,7 @@ class TurnMixin(EntryLog):
                 outgoing=False,
                 by_agent=relayed.by_agent,
                 external=relayed.via == VIA_EXTERNAL,
+                group=relayed.group,
             )
         )
 

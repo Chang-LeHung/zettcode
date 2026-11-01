@@ -635,6 +635,7 @@ class Client:
                     hops=relayed.hops,
                     direct=relayed.direct,
                     mode=relayed.mode,
+                    group=relayed.group,
                 )
             )
         )
@@ -707,6 +708,53 @@ class Client:
             return
         messenger.on_change = callback
         messenger.on_problem = None if callback is None else (lambda _said: callback())
+
+    def watch_traffic(self, callback: Callable[[dict[str, Any]], None] | None) -> None:
+        """Call ``callback`` on the event loop with every message that passes through the broker (``None`` stops).
+
+        A line is ``{"kind": "message", "message": {...}}`` for a message that was handed over (who sent it, who
+        took it, when, and the text), or ``{"kind": "graph"}`` when who is here or which groups exist changed. This
+        is a view of the whole broker for a front end that draws who talks to whom; it is not this session's mail.
+        """
+        messenger = self._agent.runtime.messenger
+        if messenger is not None:
+            messenger.client.observe(callback)
+
+    async def traffic_graph(self) -> dict[str, Any]:
+        """Return the broker's picture: ``sessions``, ``groups``, ``edges`` (messages per pair) and ``recent``.
+
+        Raises:
+            ConfigurationError: This client did not join the sessions.
+            SendError: The broker is not reachable.
+        """
+        return await self._traffic("graph")
+
+    async def traffic_older(self, before: int, limit: int = 50) -> dict[str, Any]:
+        """Return the stored messages before the one with id ``before``, oldest first, and whether ``more`` remain."""
+        return await self._traffic("older", before, limit)
+
+    async def traffic_timeline(self, since: float, until: float, limit: int = 500) -> dict[str, Any]:
+        """Return the messages the broker stored between two times (epoch seconds), oldest first.
+
+        Nothing is sent again: this is what a front end replays on screen. The answer also says ``span`` (the times of
+        the oldest and newest stored message) and ``now``.
+        """
+        return await self._traffic("timeline", since, until, limit)
+
+    async def _traffic(self, what: str, *args: Any) -> dict[str, Any]:
+        from ..broker.models import SendError as BrokerSendError
+
+        self._check_open()
+        messenger = self._messenger
+        if messenger is None:
+            raise ConfigurationError("This client has not joined the sessions; call join_sessions first")
+        try:
+            client = messenger.client
+            if what == "graph":
+                return await client.graph()
+            return await (client.older(*args) if what == "older" else client.timeline(*args))
+        except BrokerSendError as error:
+            raise SendError(error.reason, str(error)) from error
 
     def watch(self, session_id: str) -> None:
         """Ask to be told, as it happens, what the turns of another session say (see :meth:`watch_streams`).
