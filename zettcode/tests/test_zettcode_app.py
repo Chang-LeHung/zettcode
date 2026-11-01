@@ -4636,6 +4636,24 @@ async def test_escape_stops_a_running_turn():
     assert any("stopped" in entry.text for entry in app.transcript.entries), "and the shell says so"
 
 
+async def test_escape_still_stops_a_turn_when_the_selection_is_stale():
+    """A selection whose lines no longer exist must not turn Escape into a crash."""
+    app = build_app(block=True)
+    harness = _harness(app)
+    harness.write("a question that will take a while")
+    harness.press("enter")
+    await asyncio.sleep(0)
+    assert app.busy is True
+    app.view._selection_start = (999, 0)
+    app.view._selection_end = (999, 5)
+
+    harness.press("escape")
+
+    await asyncio.wait_for(app.task, 1.0)
+    assert app.busy is False
+    assert app.view.selection_bounds() is None
+
+
 async def test_escape_leaves_the_keys_other_jobs_alone_while_a_turn_runs():
     """A panel, a scrolled transcript, and a selection keep Escape while they use it."""
     app = build_app(block=True)
