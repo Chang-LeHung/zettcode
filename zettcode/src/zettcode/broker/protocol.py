@@ -8,6 +8,15 @@ HTTP, for anyone who holds the token â€” a session, a script, a hook, ``curl``::
     GET  /sessions     ->  {"sessions": [...], "limits": {...}}
     POST /messages     {"to", "text", "via"?, "hops"?, "mode"?, "from"?: {"name"}}  ->  {"to": {...}, "disposition"}
     GET  /health       ->  {"ok": true}
+    POST /messages     also takes {"group": "<name>"} instead of "to": every other connected member of that group
+                       is handed it  ->  {"group", "delivered": [{"to", "disposition"}], "failed": [...]}
+    GET  /groups       ->  {"groups": [{"name", "created", "members": [session ids]}]}  (a key: only its own)
+    POST /groups       {"action": "create"|"add"|"remove"|"leave"|"delete", "name", "members"?}
+    GET  /history      ?with=<session>|group=<name>&limit=&before=   (X-Session-Key: only the asker's own;
+                       the owner's token alone: ?a=&b= or ?group=)  ->  {"messages": [...]}
+    GET  /graph        ->  {"sessions", "groups", "edges", "recent"}   (token only; for the gateway's graph)
+    GET  /older        ?before=<message id>&limit=  ->  {"messages", "more"}   the stored messages before one
+    GET  /timeline     ?since=&until=&limit=  ->  {"messages", "span", "now"}   stored messages, to replay on screen
 
 A failure is an HTTP status and ``{"error": {"reason", "message"}}``; the reason is what a program acts on. A
 message's ``mode`` says what a busy recipient should do with it: ``steer`` (the default) hands it to the request
@@ -19,6 +28,8 @@ A *session* â€” ZettCode's, or any program that wants to be listed and reached â
 
     {"op": "hello", "protocol": 7, "key": ..., "limits": {...}}      first; ``key`` is this connection's credential
     {"op": "roster", "sessions": [...]}                              on arrival and whenever it changes
+    {"op": "groups", "groups": [...]}                                the groups this session is in, likewise
+    {"op": "traffic", "kind": "message"|"graph", "message"?}         to an observer: what passed, what changed
     {"op": "done", "n": 1, "handle": ...}                            the answer to a session or leave
     {"op": "refused", "n": 1, "error": {"reason", "message"}}        ... or its refusal
     {"op": "deliver", "id": 9, "from": {...}, "text", "hops", "via", "mode"} a message; answer with an ack
@@ -26,6 +37,7 @@ A *session* â€” ZettCode's, or any program that wants to be listed and reached â
 and the session says::
 
     {"op": "session", "n": 1, "session_id", "title", "workspace", "status", "kind"?}   who I am now
+    {"op": "observe"} / {"op": "unobserve"}                          be told of all traffic (the gateway's graph)
     {"op": "leave", "n": 2}                                          I am no one, but stay connected
     {"op": "ack", "id": 9, "accepted": true, "reason": "", "disposition": "started"}  how it took it
 
@@ -35,6 +47,14 @@ without a key is from an *external* source, named by ``from.name`` and not liste
 sender, a message carries where it came from (``via``): ``user`` when a reader typed it, ``agent`` when a session's
 agent sent it, ``external`` when the sender is not a ZettCode session (it said so itself, and the broker cannot
 check it), and a sender that is not a ZettCode session cannot claim to be one of the others.
+
+Who may see what. The token is the one credential, and every session holds it. A request with a session's key is that
+session's: it reads only its own history and the groups it is in, and writes only to groups it is in. A request without
+one is the broker's owner (the gateway, the command line), who may read any two sessions' history, any group, and
+change any group; and a session may ``observe`` every message that passes. These are limits on a model's mistakes, not
+walls against a local program that can read the note (and so the token): that is the same process owner, who could read
+the sessions' own stores. A group fans a message out to every other member, so one message becomes N-1; what keeps that
+from growing is the hop limit and the rule, in the tool's prompt, to answer only when an answer is needed.
 
 Compatibility. :data:`PROTOCOL_VERSION` changes whenever anything here changes meaning; a broker speaks one version,
 and a session that finds another one ends an older broker or waits for a newer one (see :mod:`.client`). Within a
@@ -56,10 +76,11 @@ from typing import Any
 from ..modes import MODE_STEER, MODES
 from .text import clean_text, clean_title
 
-#: Bumped whenever this protocol changes meaning. 7: a message says whether a busy recipient should steer its running
+#: Bumped whenever this protocol changes meaning. 8: group chats (``group`` on a send, the ``groups`` line, ``/groups``),
+#: the persistent ``/history``, and observers (``observe``, the ``traffic`` line); 7: a message says whether a busy recipient should steer its running
 #: request with it or wait behind that request (``mode``, default steer); 6 was the HTTP server and its WebSocket per
 #: session, 5 lines of JSON on a TCP socket.
-PROTOCOL_VERSION = 7
+PROTOCOL_VERSION = 8
 
 #: The longest message, in characters. Longer than anyone types, shorter than a paste of a file.
 MAX_TEXT = 32_000
@@ -86,6 +107,18 @@ ACK_TIMEOUT = 10.0
 #: this is the floor it hits before the hop limit does.
 RATE_LIMIT = 20
 RATE_WINDOW = 60.0
+
+#: A group chat's name, as it is typed after ``#``: lower case, so ``#Review`` and ``#review`` are one group.
+GROUP_NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,39}$")
+
+#: How many sessions one group may hold: a group is a working party, not a channel.
+MAX_GROUP_MEMBERS = 64
+
+#: How many groups one session may be in: each is a stream it is told of, and a session cannot follow dozens.
+MAX_GROUPS_PER_SESSION = 20
+
+#: How many groups may exist at once.
+MAX_GROUPS = 200
 
 #: A session id as the store writes them (UUIDs), and anything else a test or a plugin invents.
 SESSION_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
@@ -124,7 +157,7 @@ class Refused(Exception):
     """A request that cannot be done, as a reason a program can act on and a sentence a person can read.
 
     The reasons: ``invalid``, ``empty``, ``too_long``, ``rate``, ``not_registered``, ``duplicate``, ``unknown``,
-    ``ambiguous``, ``self``, ``loop``, ``rejected``, ``gone``, ``timeout``, ``busy``, and ``auth`` for a request
+    ``ambiguous``, ``denied`` (not a member of that group), ``internal`` (the broker failed on one recipient), ``self``, ``loop``, ``rejected``, ``gone``, ``timeout``, ``busy``, and ``auth`` for a request
     without the credential.
     """
 
@@ -207,6 +240,18 @@ def _description(raw: Mapping[str, Any]) -> tuple[str, str, str]:
 def _kind(raw: Mapping[str, Any]) -> str:
     kind = raw.get("kind")
     return kind if isinstance(kind, str) and kind in KINDS else KIND_ZETTCODE
+
+
+def group_name(raw: object) -> str:
+    """Return the normalised name of a group: ``#Review`` is ``review``.
+
+    Raises:
+        Refused: ``invalid`` when it is not a name a group can have.
+    """
+    name = raw.strip().lstrip("#").lower() if isinstance(raw, str) else ""
+    if not GROUP_NAME.match(name):
+        raise Refused("invalid", "a group name is 1-40 letters, digits, '-' or '_', such as #review")
+    return name
 
 
 def roster_from_wire(raw: object) -> tuple[PeerInfo, ...]:

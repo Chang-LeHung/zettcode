@@ -37,6 +37,7 @@ class Incoming:
             not as a message from another session, and send the final answer back to the sender.
         mode: What a busy recipient should do with it: ``"steer"`` (the default) hands it to the request that is
             running, and ``"followup"`` waits until that request ends. An idle recipient starts a turn either way.
+        group: The group chat it was written in (without the ``#``), or an empty string for a one-to-one message.
     """
 
     sender: PeerInfo
@@ -45,6 +46,7 @@ class Incoming:
     via: str
     direct: bool = False
     mode: str = MODE_STEER
+    group: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,6 +73,43 @@ class Delivered:
     to: PeerInfo
     disposition: str
     direct: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class GroupInfo:
+    """A group chat this session may write to: its name, when it was made, and who is in it (session ids)."""
+
+    name: str
+    created: float
+    members: tuple[str, ...]
+
+    @classmethod
+    def from_wire(cls, raw: object) -> GroupInfo | None:
+        """Return the group a line describes, or ``None`` when it is not one."""
+        if not isinstance(raw, dict) or not isinstance(raw.get("name"), str):
+            return None
+        members = raw.get("members")
+        created = raw.get("created")
+        return cls(
+            raw["name"],
+            float(created) if isinstance(created, (int, float)) and not isinstance(created, bool) else 0.0,
+            tuple(m for m in members if isinstance(m, str)) if isinstance(members, list) else (),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class GroupDelivered:
+    """The answer to a send to a group: who took the message, and who did not.
+
+    Attributes:
+        group: The group's name.
+        delivered: The members that took it, each with what it will do with it.
+        failed: The connected members that did not, as ``(handle, reason)``.
+    """
+
+    group: str
+    delivered: tuple[tuple[PeerInfo, str], ...]
+    failed: tuple[tuple[str, str], ...] = ()
 
 
 class SendError(Exception):
