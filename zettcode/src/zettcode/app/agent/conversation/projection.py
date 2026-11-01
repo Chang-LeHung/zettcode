@@ -7,6 +7,7 @@ terminal shows and what the SDK reports cannot drift apart.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 
 from zett_agent.dispatcher import AgentEventDispatcher
@@ -53,6 +54,9 @@ class _NobodyAnswers:
 
     def answer(self, question: object, text: str | None) -> None:
         raise RuntimeError("This projector has no agent to carry an answer to")
+
+
+logger = logging.getLogger("zettcode.terminal")
 
 
 class TranscriptProjector(AgentEventDispatcher):
@@ -150,8 +154,10 @@ class TranscriptProjector(AgentEventDispatcher):
             case ReasoningFinished():
                 transcript.complete_thinking()
             case ToolStarted(call_id=call_id, name=name, arguments=arguments):
+                logger.debug("tool.start", extra={"tool": name, "call": call_id})
                 transcript.start_tool(call_id, name, arguments)
             case ToolFinished(call_id=call_id, name=name, output=output, ok=ok, skipped=skipped):
+                logger.debug("tool.finish", extra={"tool": name, "call": call_id, "ok": ok, "skipped": skipped})
                 self._tool_finished(call_id, name, output, ok, skipped)
             case ServerToolStarted(call_id=call_id, name=name, arguments=arguments):
                 transcript.start_tool(call_id, name, arguments)

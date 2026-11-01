@@ -11,6 +11,7 @@ import asyncio
 import contextlib
 import hmac
 import json
+import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -20,10 +21,11 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route, WebSocketRoute
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
-from .. import diagnostics
 from .hub import Hub, Session
 from .log import log
 from .protocol import MAX_BODY, Refused
+
+logger = logging.getLogger("zettcode.broker")
 
 #: Sessions at once. A person has a handful; this only has to stop a runaway.
 MAX_CONNECTIONS = 512
@@ -103,7 +105,7 @@ class Web:
         except Refused as refused:
             return self._refusal(refused)
         except Exception as error:  # noqa: BLE001 - one request failing must not end the server
-            diagnostics.exception("broker", "request.failed", error, method=request.method, route=request.url.path)
+            logger.exception("request.failed", extra={"method": request.method, "route": request.url.path})
             log(f"a request failed: {error!r}")
             return self._refusal(Refused("internal", f"the request failed ({type(error).__name__})"))
 
@@ -156,6 +158,7 @@ class Web:
             return
         await websocket.accept()
         session = self.hub.admit(lambda code: self._close_soon(websocket, code))
+        logger.debug("session.open", extra={"connection": session.number})
         self.on_open()
         writer = asyncio.ensure_future(self._write(websocket, session))
         try:
@@ -164,6 +167,7 @@ class Web:
             writer.cancel()
             await asyncio.gather(writer, return_exceptions=True)
             self.hub.release(session)
+            logger.debug("session.close", extra={"connection": session.number})
             self.on_close()
 
     async def _read(self, websocket: WebSocket, session: Session) -> None:
@@ -182,8 +186,8 @@ class Web:
                 await websocket.send_text(json.dumps(await session.outbox.get(), separators=(",", ":")))
         except (WebSocketDisconnect, RuntimeError, OSError):
             return  # the reader is gone; that is how a session ends, not a fault to report
-        except Exception as error:  # noqa: BLE001 - anything else is worth a trace in the log
-            diagnostics.exception("broker", "session.write_failed", error, connection=session.number)
+        except Exception:  # noqa: BLE001 - anything else is worth a trace in the log
+            logger.exception("session.write_failed", extra={"connection": session.number})
             return
 
     @staticmethod

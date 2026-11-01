@@ -26,6 +26,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from .. import logging_setup
 from ..filelock import is_held
 from . import process
 from .files import MODULE, Note, broker_dir, ensure_directory, lock_path, log_path, read_note
@@ -55,11 +56,7 @@ def spawn_broker(directory: Path) -> None:
     """
     ensure_directory(directory)
     log = log_path(directory)
-    try:
-        if log.stat().st_size > MAX_LOG:
-            log.write_bytes(b"")
-    except OSError:
-        pass
+    logging_setup.rotate_text(log, max_bytes=MAX_LOG, backups=2)
     options: dict[str, Any] = {"stdin": subprocess.DEVNULL, "cwd": str(directory), "close_fds": True}
     if os.name == "nt":
         options["creationflags"] = (

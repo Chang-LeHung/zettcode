@@ -723,8 +723,8 @@ async def test_a_refresh_failure_is_recorded_once_until_it_recovers(tmp_path, mo
     def recovered(*args, **kwargs):
         records.append("recovered")
 
-    monkeypatch.setattr(service_module.diagnostics, "exception", failed)
-    monkeypatch.setattr(service_module.diagnostics, "write", recovered)
+    monkeypatch.setattr(service_module.logger, "exception", failed)
+    monkeypatch.setattr(service_module.logger, "info", recovered)
 
     async def broken() -> None:
         raise RuntimeError("the broker is down")
