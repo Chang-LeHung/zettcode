@@ -487,8 +487,10 @@ const stats = computed(() => {
     const share = (usage.cache_read_tokens / usage.input_tokens) * 100;
     facts.push({ text: `${share.toFixed(1)}% cached`, title: "Input served from the provider's cache" });
   }
-  if (usage.seconds > 0 && usage.output_tokens > 0) {
-    const rate = usage.output_tokens / usage.seconds;
+  // The opening chunk arrived when the clock started, so its tokens cost no measured time and are not credited.
+  const generated = usage.output_tokens - (usage.first_chunk_tokens ?? 0);
+  if (usage.seconds > 0 && generated > 0) {
+    const rate = generated / usage.seconds;
     if (Number.isFinite(rate)) {
       facts.push({ text: `${rate.toFixed(1)} tok/s`, title: "Output speed across the session's model calls" });
     }

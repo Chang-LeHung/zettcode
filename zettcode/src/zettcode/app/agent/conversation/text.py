@@ -245,11 +245,14 @@ def calls_text(usage: Usage) -> str | None:
 
 
 def speed_text(usage: Usage) -> str | None:
-    """Say how fast the model generated, when it can be told and is at least one token a second."""
-    if usage.requests and usage.seconds > 0 and usage.output_tokens > 0:
-        rate = usage.output_tokens / usage.seconds
-        if rate >= 1:
-            return f"{rate:.1f} tok/s" if rate < 10 else f"{rate:.0f} tok/s"
+    """Say how fast the model generated, when it can be told and is at least one token a second.
+
+    Reads :attr:`Usage.output_rate`, which leaves the opening chunk's tokens out of the numerator, so this line and the
+    status line a reader sees above it never disagree.
+    """
+    rate = usage.output_rate
+    if usage.requests and rate is not None and rate >= 1:
+        return f"{rate:.1f} tok/s" if rate < 10 else f"{rate:.0f} tok/s"
     return None
 
 

@@ -95,6 +95,7 @@ def usage_from(snapshot: UsageSnapshot) -> Usage:
         cache_read_tokens=snapshot.cache_read_tokens,
         cache_write_tokens=snapshot.cache_write_tokens,
         reasoning_tokens=snapshot.reasoning_tokens,
+        first_chunk_tokens=snapshot.first_chunk_tokens,
         seconds=snapshot.seconds,
         requests=snapshot.requests,
         context_tokens=snapshot.context_tokens,

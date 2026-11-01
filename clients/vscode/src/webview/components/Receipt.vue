@@ -44,8 +44,10 @@ const facts = computed(() => {
         title: "How many times the model was asked in this request: each round of thinking, using tools, then reading their results is one call",
       });
     }
-    if (usage.seconds > 0 && usage.output_tokens > 0) {
-      const rate = usage.output_tokens / usage.seconds;
+    // The opening chunk arrived when the clock started, so its tokens cost no measured time and are not credited.
+    const generated = usage.output_tokens - (usage.first_chunk_tokens ?? 0);
+    if (usage.seconds > 0 && generated > 0) {
+      const rate = generated / usage.seconds;
       if (Number.isFinite(rate) && rate >= 1) {
         out.push({ text: `${rate.toFixed(rate < 10 ? 1 : 0)} tok/s`, title: "Output speed" });
       }

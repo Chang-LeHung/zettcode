@@ -9,7 +9,7 @@ import pytest
 from zett_agent.events import AgentEvent, AgentEventType
 from zett_agent.extensions.events import MessageTiming
 from zett_agent.messages import AssistantMessage
-from zett_agent.model import ModelEvent, ModelResponse, ModelUsage
+from zett_agent.model import ModelEvent, ModelResponse, ModelUsage, ServerToolCall
 
 from zettcode.engine.extensions.usage import USAGE_EVENT_NAME, UsageExtension, UsageSnapshot, session_usage
 from zettcode.statusline import compact_tokens, context_text, usage_text
@@ -20,11 +20,19 @@ class _Config:
         self.session_id = session_id
 
 
-class _Context:
-    """Stand-in for the runtime context: one session and an event sink."""
+class _State:
+    """The conversation the runtime has assembled so far."""
 
-    def __init__(self, session_id: str = "s-1") -> None:
+    def __init__(self, messages: tuple[object, ...] = ()) -> None:
+        self.messages = messages
+
+
+class _Context:
+    """Stand-in for the runtime context: one session, its conversation, and an event sink."""
+
+    def __init__(self, session_id: str = "s-1", messages: tuple[object, ...] = ()) -> None:
         self.config = _Config(session_id)
+        self.state = _State(messages)
         self.emitted: list[AgentEvent] = []
 
     async def emit(self, event: AgentEvent) -> None:
@@ -85,7 +93,9 @@ async def test_the_extension_accumulates_each_call_and_publishes_the_total():
     assert snapshot.seconds == pytest.approx(4.5)
     assert snapshot.context_tokens == 2_000  # the newest call's prompt, not the sum
     assert snapshot.cache_hit_rate == pytest.approx(0.7)
-    assert snapshot.output_rate == pytest.approx(400 / 4.5)
+    # Each call's opening chunk carried one token and cost no measured time, so the rate leaves both out.
+    assert snapshot.first_chunk_tokens == 2
+    assert snapshot.output_rate == pytest.approx((400 - 2) / 4.5)
 
     event = context.emitted[-1]
     assert event.type is AgentEventType.CUSTOM
@@ -103,7 +113,53 @@ async def test_the_rate_starts_at_the_first_streamed_data_not_before_the_model_c
 
     snapshot = extension.snapshot("s-1")
     assert snapshot.seconds == pytest.approx(15.0)
-    assert snapshot.output_rate == pytest.approx(2.0)
+    assert snapshot.output_rate == pytest.approx((30 - 1) / 15)
+
+
+async def test_the_rate_leaves_out_the_tokens_the_opening_chunk_carried():
+    """The opening chunk arrived when the clock started, so its tokens are not credited with speed they never cost."""
+    extension = UsageExtension(clock=_Clock(5.0, 20.0), count_chunk=lambda text: 3)
+    context = _Context()
+
+    await _call(extension, context, _response(input_tokens=10, output_tokens=30))
+
+    snapshot = extension.snapshot("s-1")
+    assert snapshot.first_chunk_tokens == 3
+    assert snapshot.output_rate == pytest.approx((30 - 3) / 15)
+
+
+async def test_an_event_that_generated_nothing_does_not_start_the_clock():
+    """A server tool starting is a wait, not generation; opening the clock there would understate the rate."""
+    extension = UsageExtension(clock=_Clock(2.0, 20.0))
+    context = _Context()
+    response = _response(input_tokens=10, output_tokens=30)
+    events = [
+        ModelEvent.server_tool_started(ServerToolCall(id="c-1", name="web_search")),
+        ModelEvent.text("token"),
+    ]
+
+    async def source(request):
+        for event in events:
+            yield event
+        yield ModelEvent.completed(response)
+
+    async for _ in extension.on_model_request(context, None, source):
+        pass
+    await extension.after_model(context, response)
+
+    snapshot = extension.snapshot("s-1")
+    assert snapshot.seconds == pytest.approx(18.0)
+    assert snapshot.first_chunk_tokens == 1
+
+
+async def test_a_reply_that_never_generated_anything_has_no_rate():
+    """An opening chunk as large as the whole call leaves nothing the span measured."""
+    extension = UsageExtension(clock=_Clock(5.0, 20.0), count_chunk=lambda text: 30)
+    context = _Context()
+
+    await _call(extension, context, _response(input_tokens=10, output_tokens=30))
+
+    assert extension.snapshot("s-1").output_rate is None
 
 
 async def test_a_later_delta_does_not_restart_the_clock():
@@ -262,3 +318,55 @@ def test_a_call_that_reported_no_input_leaves_the_last_reading_of_the_context_in
     assert silent.requests == 2
     assert context_text(silent, 128_000) == " \u00b7 ctx 50.0%"
     assert UsageSnapshot().with_usage(ModelUsage(), 0.1).context_tokens == 0, "and before any reading, none"
+
+
+async def test_a_provider_that_stops_reporting_the_input_grows_the_context_instead_of_freezing_it():
+    """A gateway that drops usage must not leave the share standing still while the conversation goes on."""
+    counted: list[int] = []
+
+    def count_context(messages):
+        counted.append(len(messages))
+        return 10 * len(messages)
+
+    extension = UsageExtension(clock=_Clock(1.0, 2.0, 3.0, 4.0), count_context=count_context)
+    # ``r1`` is the reply this very call returns: the runtime appends it before after_model runs, so the conversation
+    # it leaves behind is the prompt it answered plus that answer.
+    context = _Context(messages=("a", "b", "r1"))
+
+    await _call(extension, context, _response(input_tokens=5_000, output_tokens=10))
+    assert extension.snapshot("s-1").context_tokens == 5_000
+
+    # A tool result and its follow-up answer arrive, and the next call reports no input count at all.
+    context.state.messages = ("a", "b", "r1", "t1", "r2")
+    await _call(extension, context, _response(input_tokens=0, output_tokens=10))
+
+    assert extension.snapshot("s-1").context_tokens == 5_030, "the prompt and its answer, plus what arrived since"
+    assert counted == [2], "only the messages after the baseline are counted"
+
+
+async def test_a_compaction_throws_the_baseline_away_and_counts_the_whole_conversation():
+    """After the conversation is replaced, a count taken against the messages of the old one means nothing."""
+    extension = UsageExtension(
+        clock=_Clock(1.0, 2.0, 3.0, 4.0, 5.0, 6.0), count_context=lambda messages: 10 * len(messages)
+    )
+    context = _Context(messages=("a", "b", "r1"))
+
+    await _call(extension, context, _response(input_tokens=5_000, output_tokens=10))
+    context.state.messages = ("a", "b", "r1", "t1", "r2")
+    await _call(extension, context, _response(input_tokens=0, output_tokens=10))
+    assert extension.snapshot("s-1").context_tokens == 5_030
+
+    # Five messages became two: the conversation did not grow, so the baseline no longer describes it.
+    context.state.messages = ("summary", "r3")
+    await _call(extension, context, _response(input_tokens=0, output_tokens=10))
+
+    assert extension.snapshot("s-1").context_tokens == 20
+
+
+async def test_a_session_that_never_reported_any_input_is_counted_whole():
+    extension = UsageExtension(clock=_Clock(1.0, 2.0), count_context=lambda messages: 7 * len(messages))
+    context = _Context(messages=("a", "b"))
+
+    await _call(extension, context, _response(input_tokens=0, output_tokens=10))
+
+    assert extension.snapshot("s-1").context_tokens == 14

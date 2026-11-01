@@ -166,6 +166,19 @@ class CompactionCounter:
                     self._counts.popitem(last=False)
         return total
 
+    def count_text(self, text: str) -> int:
+        """Return the tokens in one piece of text, estimating from its length until the encoding loads.
+
+        Sold to the usage counter, which needs a few tokens of a streamed chunk rather than a whole context. Safe to
+        call from the event loop: once the encoding is in this is one call into C, and before that it is arithmetic.
+        """
+        if not text:
+            return 0
+        encode = self._call.peek() if self.ready else None
+        if encode is not None:
+            return len(encode(text))
+        return max(1, round(len(text) / CHARS_PER_TOKEN))
+
     @staticmethod
     def _estimate(message: AnyMessage) -> int:
         """Estimate one message from the length of its text, and a fixed charge per picture."""
