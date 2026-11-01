@@ -12,6 +12,7 @@ import LiveTurn from "./LiveTurn.vue";
 import TypingBubble from "./TypingBubble.vue";
 
 const scroller = ref<HTMLElement | null>(null);
+const body = ref<HTMLElement | null>(null);
 const following = ref(true);
 const unseen = ref(0);
 const rows = computed(() => buildRows(chat.items, chat.pending, streams[chat.id]));
@@ -82,29 +83,44 @@ watch(
 function onViewport(): void {
   if (following.value) toBottom(false);
 }
+// What is inside a message grows after it is drawn (markdown, code, images, a font arriving), and nothing else moves
+// the list then: stay at the newest message for as long as the reader is following it, and leave a reader who scrolled
+// up alone. Each step is instant, so there is nothing to chase.
+let watcher: ResizeObserver | undefined;
 onMounted(() => {
   toBottom(false);
   window.visualViewport?.addEventListener("resize", onViewport);
+  if (body.value && typeof ResizeObserver !== "undefined") {
+    watcher = new ResizeObserver(() => {
+      if (following.value) toBottom(false);
+    });
+    watcher.observe(body.value);
+  }
 });
-onBeforeUnmount(() => window.visualViewport?.removeEventListener("resize", onViewport));
+onBeforeUnmount(() => {
+  window.visualViewport?.removeEventListener("resize", onViewport);
+  watcher?.disconnect();
+});
 </script>
 
 <template>
   <div class="chat-bg">
     <div ref="scroller" class="messages" role="log" aria-live="polite" @scroll.passive="onScroll">
-      <div v-if="chat.loading && !chat.items.length" class="messages-note"><span class="spin" /></div>
-      <div v-else-if="chat.error" class="errcard">{{ chat.error }}</div>
-      <button v-if="chat.truncated" class="btn sm ghost messages-more" @click="loadEarlier">
-        {{ t("Show earlier messages") }}
-      </button>
-      <template v-for="row in rows" :key="row.key">
-        <MessageBubble v-if="row.type === 'bubble'" :row="row" :thread="chat.id" />
-        <StepsGroup v-else-if="row.type === 'steps'" :tools="row.tools" />
-        <NoteBubble v-else :text="row.text" />
-      </template>
-      <LiveTurn />
-      <TypingBubble v-if="typing" />
-      <div v-if="!chat.loading && !rows.length && !chat.error && !live" class="messages-note">{{ t("No messages yet. Say something.") }}</div>
+      <div ref="body" class="messages-body">
+        <div v-if="chat.loading && !chat.items.length" class="messages-note"><span class="spin" /></div>
+        <div v-else-if="chat.error" class="errcard">{{ chat.error }}</div>
+        <button v-if="chat.truncated" class="btn sm ghost messages-more" @click="loadEarlier">
+          {{ t("Show earlier messages") }}
+        </button>
+        <template v-for="row in rows" :key="row.key">
+          <MessageBubble v-if="row.type === 'bubble'" :row="row" :thread="chat.id" />
+          <StepsGroup v-else-if="row.type === 'steps'" :tools="row.tools" />
+          <NoteBubble v-else :text="row.text" />
+        </template>
+        <LiveTurn />
+        <TypingBubble v-if="typing" />
+        <div v-if="!chat.loading && !rows.length && !chat.error && !live" class="messages-note">{{ t("No messages yet. Say something.") }}</div>
+      </div>
     </div>
     <button v-show="!following" class="fab" :aria-label="t('Scroll to the newest message')" @click="toBottom(true)">
       <Icon name="down" />
@@ -123,6 +139,7 @@ onBeforeUnmount(() => window.visualViewport?.removeEventListener("resize", onVie
   padding: 12px calc(var(--safe-right) + 14px) 10px calc(var(--safe-left) + 14px);
   display: flex; flex-direction: column; overflow-anchor: none;
 }
+.messages-body { display: flex; flex-direction: column; flex: none; }
 .messages-note { align-self: center; margin: 12px 0; padding: 4px 14px; border-radius: 14px; background: var(--chip-bg); color: #fff; font-size: 0.85rem; }
 .messages-more { align-self: center; margin: 4px 0 10px; }
 .fab {
