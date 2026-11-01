@@ -316,17 +316,28 @@ def test_a_selection_whose_last_line_disappears_covers_the_rest_of_the_last_row(
 
 
 def test_a_selection_with_no_cells_left_is_not_a_selection():
-    source = RecordingSource(["a long enough line"])
+    source = RecordingSource(["short", "", "x"])
     view = ScrollView(source, selectable=True)
     harness = Harness(view, width=20, height=3)
     harness.render()
     harness.mouse_down(10, 0)
-    harness.mouse_up(15, 0)
-
-    source.lines = ["x"]
+    harness.mouse_move(0, 2)
+    harness.mouse_up(0, 2)
 
     assert view.has_selection() is False
     assert view.selected_text() == ""
+
+
+def test_a_selection_that_starts_in_trailing_space_does_not_copy_a_blank_first_row():
+    source = RecordingSource(["alpha", "beta"])
+    view = ScrollView(source, selectable=True)
+    harness = Harness(view, width=20, height=3)
+    harness.render()
+    harness.mouse_down(10, 0)
+    harness.mouse_move(4, 1)
+    harness.mouse_up(4, 1)
+
+    assert view.selected_text() == "beta"
 
 
 def test_a_stale_selection_is_dropped_when_the_view_renders():
