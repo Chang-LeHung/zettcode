@@ -8,7 +8,7 @@ Every component uses ordinary ``logging`` calls::
 
 ``setup`` adds one rotating JSON-lines handler under ``~/.zettcode/log``. The
 terminal's stderr capture stays in ``tui.log``; structured events go to
-``tui.jsonl`` so rotation never renames the file fd 2 writes to.
+``terminal.jsonl`` so rotation never renames the file fd 2 writes to.
 """
 
 from __future__ import annotations
