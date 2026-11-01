@@ -31,6 +31,9 @@ WHEEL_SPEED = 1.0
 #: still there to follow.
 WHEEL_FRAME_SHARE = 0.5
 
+#: A selection after clamping: its first cell and its last cell, each a row and a column.
+Selection = tuple[tuple[int, int], tuple[int, int]]
+
 
 class LineSource(ABC):
     """Supplies already-wrapped lines without materializing the whole list.
@@ -155,8 +158,8 @@ class ScrollView(Widget):
         count = self.line_count()
         wanted = count - self.rect.height if self.follow_tail else self.top
         self.top = self._clamp(wanted, count)
-        selection = self._clamped_selection()
-        if selection is None and self.selection_bounds() is not None:
+        selection = self._clamped_selection(count)
+        if selection is None and self.selection_bounds() is not None and not (self._dragging or self._double_click):
             self.clear_selection()
         self._frame_start = None  # the next frame measures how far the wheel has moved from here
         for row in range(self.rect.height):
@@ -199,7 +202,7 @@ class ScrollView(Widget):
                 return False
         return True
 
-    def selection_bounds(self) -> tuple[tuple[int, int], tuple[int, int]] | None:
+    def selection_bounds(self) -> Selection | None:
         """Return the sorted selection corners, or None when nothing is selected."""
         if self._selection_start is None or self._selection_end is None:
             return None
@@ -207,20 +210,26 @@ class ScrollView(Widget):
         return None if start == end else (start, end)
 
     def has_selection(self) -> bool:
-        """Return whether a selection still covers at least one cell in the source."""
+        """Return whether a selection still covers at least one cell in the source.
+
+        This asks the source for its current count, so a virtualized source may
+        synchronize itself; it does not change the selection.
+        """
         return self._clamped_selection() is not None
 
-    def _clamped_selection(self) -> tuple[tuple[int, int], tuple[int, int]] | None:
+    def _clamped_selection(self, count: int | None = None) -> Selection | None:
         """Return the selection clamped to the current source, or None when nothing remains.
 
         A transcript can shrink while a selection is held. The old line numbers
         then name rows that no longer exist; this is the one place that maps them
         onto the current source for painting, copying and the Escape predicate.
+        Leading and trailing rows that cover no cell are dropped, so a selection
+        does not copy blank lines or answer Escape when nothing is visible.
         """
         bounds = self.selection_bounds()
         if bounds is None:
             return None
-        count = self.line_count()
+        count = self.line_count() if count is None else count
         if count <= 0:
             return None
         (first, first_column), (last, last_column) = bounds
@@ -228,15 +237,34 @@ class ScrollView(Widget):
             return None
         removed_end = last >= count
         last = min(last, count - 1)
-        first_text = self.source.line(first, self.line_width).text
-        last_text = first_text if last == first else self.source.line(last, self.line_width).text
-        first_column = min(max(0, first_column), display_width(first_text))
-        last_column = display_width(last_text) if removed_end else min(max(0, last_column), display_width(last_text))
-        if first == last and first_column >= last_column:
+
+        def row_span(index: int) -> tuple[int, int] | None:
+            text = self.source.line(index, self.line_width).text
+            width = display_width(text)
+            left = min(max(0, first_column), width) if index == first else 0
+            if index == last and removed_end:
+                right = width
+            elif index == last:
+                right = min(max(0, last_column), width)
+            else:
+                right = width
+            return None if right <= left else (left, right)
+
+        start: tuple[int, int] | None = None
+        for index in range(first, last + 1):
+            span = row_span(index)
+            if span is not None:
+                start = (index, span[0])
+                break
+        if start is None:
             return None
-        if last == first + 1 and first_column >= display_width(first_text) and last_column <= 0:
-            return None
-        return (first, first_column), (last, last_column)
+        end: tuple[int, int] | None = None
+        for index in range(last, start[0] - 1, -1):
+            span = row_span(index)
+            if span is not None:
+                end = (index, span[1])
+                break
+        return None if end is None else (start, end)
 
     def selected_text(self) -> str:
         """Return the text the current selection covers, clamped to the source."""
@@ -253,9 +281,13 @@ class ScrollView(Widget):
         return "\n".join(lines)
 
     def clear_selection(self) -> None:
-        """Drop both selection corners."""
+        """Drop both selection corners and end any drag that belonged to them."""
         self._selection_start = None
         self._selection_end = None
+        self._dragging = False
+        self._double_click = False
+        self._mouse_down = None
+        self._mouse_down_at = float("-inf")
 
     def _handle_pointer(self, event: MouseEvent, host: Host) -> bool:
         """Implement click, drag, and double-click selection for the mouse."""
@@ -322,7 +354,7 @@ class ScrollView(Widget):
         row: int,
         index: int,
         line: TextLine,
-        bounds: tuple[tuple[int, int], tuple[int, int]] | None,
+        bounds: Selection | None,
     ) -> None:
         """Invert the cells the selection covers on one visible row."""
         if bounds is None:

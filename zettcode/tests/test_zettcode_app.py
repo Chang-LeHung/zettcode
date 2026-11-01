@@ -4491,15 +4491,19 @@ async def test_a_valid_selection_keeps_escape_from_stopping_the_turn():
     await asyncio.sleep(0)
     harness.render()
     view = app.view
-    target = next(index for index in range(view.line_count()) if view.source.line(index, view.line_width).text.strip())
-    view.scroll_to(target)
-    harness.render()
-    harness.mouse_down(view.rect.x + 2, view.rect.y)
-    harness.mouse_up(view.rect.x + 6, view.rect.y)
+    target = next(
+        index
+        for index in range(view.top, min(view.top + view.rect.height, view.line_count()))
+        if view.source.line(index, view.line_width).text.strip()
+    )
+    harness.mouse_down(view.rect.x + 2, view.rect.y + target - view.top)
+    harness.mouse_up(view.rect.x + 6, view.rect.y + target - view.top)
     assert view.has_selection() is True
 
     harness.press("escape")
 
+    for _ in range(10):
+        await asyncio.sleep(0)
     assert app.busy is True
     app.task.cancel()
     await app.task
@@ -4515,16 +4519,19 @@ async def test_escape_still_stops_a_turn_when_the_selection_is_stale():
     assert app.busy is True
     harness.render()
     view = app.view
-    target = next(index for index in range(view.line_count()) if view.source.line(index, view.line_width).text.strip())
-    view.scroll_to(target)
-    harness.render()
-    harness.mouse_down(view.rect.x + 2, view.rect.y)
-    harness.mouse_up(view.rect.x + 6, view.rect.y)
+    target = next(
+        index
+        for index in range(view.top, min(view.top + view.rect.height, view.line_count()))
+        if view.source.line(index, view.line_width).text.strip()
+    )
+    harness.mouse_down(view.rect.x + 2, view.rect.y + target - view.top)
+    harness.mouse_up(view.rect.x + 6, view.rect.y + target - view.top)
     app.transcript.clear()
 
     harness.press("escape")
 
-    await asyncio.wait_for(app.task, 1.0)
+    for _ in range(10):
+        await asyncio.sleep(0)
     assert app.busy is False
     harness.render()
     assert app.view.selection_bounds() is None
