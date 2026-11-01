@@ -127,6 +127,7 @@ def usage_out(usage: Usage) -> UsageOut:
         cache_read_tokens=usage.cache_read_tokens,
         cache_write_tokens=usage.cache_write_tokens,
         reasoning_tokens=usage.reasoning_tokens,
+        first_chunk_tokens=usage.first_chunk_tokens,
         seconds=usage.seconds,
         requests=usage.requests,
         context_tokens=usage.context_tokens,

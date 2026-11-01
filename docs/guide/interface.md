@@ -563,12 +563,16 @@ half keeps the two keys worth remembering (`^C/Esc to interrupt`, `^D exit`) in 
 | `· deny`, `· safe`, `· full` | The shell permission, when it is not the default `ask`. |
 | `↑18.4k ↓900` | Tokens sent to the model, and tokens it generated, this session. |
 | `71.2% cached` | The share of the input the provider served from its cache. |
-| `74 tok/s` | Generated tokens per second of streaming time, from the first fragment to the final response, averaged over the session; the wait for the model to start is not included. |
-| `ctx 12.3%` | How much of the model's declared window the newest request filled. |
+| `74 tok/s` | Generated tokens per second of streaming time, from the first fragment to the final response, averaged over the session; the first fragment's own tokens are left out, and the wait for the model to start is not included. |
+| `ctx 12.3%` | How much of the model's declared window the newest request filled, measured from the conversation when the provider reports no input tokens. |
 
 Those counters come from the provider's own numbers, accumulated after every
-model call — nothing is estimated locally, and resuming a session seeds them
-from what was stored on its branch.
+model call, with two exceptions that are measured here: `ctx` when the provider
+reports no input tokens, and the tokens the first fragment carried, which `tok/s`
+leaves out of its numerator. Resuming a session seeds the counters from what was
+stored on its branch, and a stored reply has no first fragment recorded, so a
+resumed session's `tok/s` reads high by one fragment for each model call the
+branch recorded.
 
 ### Choosing what is shown {#choosing-what-is-shown}
 

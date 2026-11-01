@@ -91,8 +91,8 @@ occupancy is a snapshot, not an accumulated percentage.
 | --- | --- |
 | `↑` / `↓` | Cumulative input and output tokens reported by the provider. Repeated context counts as input each time it is sent. |
 | `cached` | Cumulative cache-hit input tokens ÷ cumulative input tokens. 60,000 hits out of 100,000 input tokens is `60.0%`. |
-| `tok/s` | Output tokens divided by the time the model spent streaming output, from its first fragment to its final response; not the wait for it to start, nor the time spent on tools, approvals, or reading the answer. |
-| `ctx` | Latest context occupancy relative to the selected model's configured window. |
+| `tok/s` | Output tokens less those the first fragment carried, divided by the time the model spent streaming the rest, from that first fragment to its final response; not the wait for it to start, nor the time spent on tools, approvals, or reading the answer. |
+| `ctx` | Latest context occupancy relative to the selected model's configured window. When a provider reports no input tokens, the last figure it did report plus everything appended since is measured instead. |
 
 An endpoint that does not report cache-hit usage cannot provide a meaningful
 hit-rate measurement here. These statistics are not a bill; check the

@@ -173,6 +173,7 @@ class UsageOut(BaseModel):
     cache_read_tokens: int = 0
     cache_write_tokens: int = 0
     reasoning_tokens: int = 0
+    first_chunk_tokens: int = 0
     seconds: float = 0.0
     requests: int = 0
     context_tokens: int = 0

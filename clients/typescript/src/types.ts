@@ -38,6 +38,8 @@ export interface Usage {
   cache_read_tokens: number;
   cache_write_tokens: number;
   reasoning_tokens: number;
+  /** Tokens the first streamed chunk carried; the rate leaves them out of its numerator. */
+  first_chunk_tokens?: number;
   seconds: number;
   requests: number;
   context_tokens: number;
