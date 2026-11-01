@@ -9,7 +9,7 @@ const model = defineModel<boolean>({ required: true });
       {{ label }}
       <small v-if="hint">{{ hint }}</small>
     </div>
-    <button class="switch" role="switch" :aria-checked="model" :aria-label="label" @click="model = !model" />
+    <button class="switch" type="button" role="switch" :aria-checked="model" :aria-label="label" @click="model = !model" />
   </div>
 </template>
 
