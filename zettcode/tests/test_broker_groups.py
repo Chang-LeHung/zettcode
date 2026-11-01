@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -369,6 +370,11 @@ async def test_a_member_that_fails_unexpectedly_is_reported_and_the_send_is_stil
     assert hub.history(a.session.key, {"group": "team"})["messages"][0]["status"] == "partial"
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="the scenario needs a second connection holding the file while it is rebuilt; Windows refuses to delete a "
+    "file another handle has open (the broker then keeps its history in memory, like any store that fails to open)",
+)
 def test_an_older_file_in_wal_mode_is_rebuilt_so_inserts_keep_working_and_nothing_old_comes_back(
     tmp_path: Path, monkeypatch
 ):
