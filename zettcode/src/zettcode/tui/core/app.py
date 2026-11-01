@@ -534,6 +534,8 @@ class TuiApp(Host):
         height = len(frame.cells)
         if height == 0 or last_y >= height:
             return ""
+        # The decoder clamps to the screen; these two keep a hand-built event
+        # from naming a row above the frame.
         first_y = max(0, first_y)
         if first_y > last_y:
             return ""
