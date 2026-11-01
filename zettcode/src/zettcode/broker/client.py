@@ -31,7 +31,7 @@ from typing import Any
 
 from ..modes import MODE_FOLLOWUP, MODE_STEER, MODES
 from .finder import Finder
-from .models import Delivered, Incoming, Receipt, RosterEntry, SendError, SessionInfo
+from .models import Delivered, GroupDelivered, GroupInfo, Incoming, Receipt, RosterEntry, SendError, SessionInfo
 from .protocol import (
     ACK_TIMEOUT,
     PROTOCOL_VERSION,
@@ -154,6 +154,11 @@ class BrokerClient:
         self._outage = _Outage(on_problem, problem_after)
         self._session: SessionInfo | None = None
         self._roster: tuple[PeerInfo, ...] = ()
+        self._groups: tuple[GroupInfo, ...] = ()
+        #: Called, on the loop, with each line an observer is told: ``{"kind": "message", "message": {...}}`` for a
+        #: message that passed, ``{"kind": "graph"}`` when who is here or which groups exist changed.
+        self.on_traffic: Callable[[dict[str, Any]], None] | None = None
+        self._observing = False
         self._conflict: str | None = None
         # The connection that is up, if any.
         self._ws: Any = None
@@ -203,6 +208,11 @@ class BrokerClient:
         return self._roster
 
     @property
+    def groups(self) -> tuple[GroupInfo, ...]:
+        """Return the group chats this session may write to, as of the last update."""
+        return self._groups
+
+    @property
     def session(self) -> SessionInfo | None:
         """Return what this session has told the broker, or will when it connects."""
         return self._session
@@ -211,6 +221,18 @@ class BrokerClient:
     def conflict(self) -> str | None:
         """Return why registration was refused, or ``None``."""
         return self._conflict
+
+    def observe(self, callback: Callable[[dict[str, Any]], None] | None) -> None:
+        """Ask to be told of every message that passes through the broker (``None`` stops).
+
+        This is a view of the whole broker, not of this session's own mail, and is for a front end that draws who talks
+        to whom. Kept across a lost connection.
+        """
+        self.on_traffic = callback
+        wanted = callback is not None
+        if wanted != self._observing:
+            self._observing = wanted
+            self._say({"op": "observe" if wanted else "unobserve"})
 
     def others(self) -> tuple[PeerInfo, ...]:
         """Return the sessions that are not this one."""
@@ -341,45 +363,79 @@ class BrokerClient:
             SendError: There is no broker, or the broker or the recipient refused, or nobody answered in time, or
                 the connection was lost with the message in flight.
         """
-        import httpx
-
-        http = self._http if self._connected else None
-        if http is None:
-            raise SendError("offline", "not connected to the session broker")
         if mode not in MODES:
             raise SendError("invalid", "mode is 'steer' or 'followup'")
+        cleaned = self._checked(text)
+        body = {"to": to, "text": cleaned, "via": via, "hops": hops, "mode": mode}
+        if direct:
+            body["direct"] = True
+        return self._delivered(await self._request("POST", "/messages", json=body, send=True))
+
+    async def send_group(
+        self, group: str, text: str, *, hops: int = 0, via: str = VIA_AGENT, mode: str = MODE_STEER
+    ) -> GroupDelivered:
+        """Write to a group chat: every other member that is connected is handed the message.
+
+        Raises:
+            SendError: As for :meth:`send`; ``denied`` when this session is not in the group, ``unknown`` when there
+                is no such group, ``gone`` when no other member is connected, ``rejected`` etc. when nobody took it.
+        """
+        if mode not in MODES:
+            raise SendError("invalid", "mode is 'steer' or 'followup'")
+        body = {"group": group, "text": self._checked(text), "via": via, "hops": hops, "mode": mode}
+        reply = await self._request("POST", "/messages", json=body, send=True)
+        name = reply.get("group")
+        delivered = []
+        for item in reply.get("delivered", []) if isinstance(reply.get("delivered"), list) else []:
+            peer = PeerInfo.from_wire(item.get("to")) if isinstance(item, dict) else None
+            if peer is not None:
+                disposition = item.get("disposition")
+                delivered.append((peer, disposition if isinstance(disposition, str) else ""))
+        failed = tuple(
+            (str(item.get("handle", "")), str(item.get("reason", "")))
+            for item in reply.get("failed", [])
+            if isinstance(item, dict)
+        )
+        return GroupDelivered(name if isinstance(name, str) else group, tuple(delivered), failed)
+
+    def _checked(self, text: str) -> str:
         cleaned = clean_text(text)
         if not cleaned.strip():
             raise SendError("empty", "a message needs some text")
         if len(cleaned) > self.limits.max_text:
             raise SendError("too_long", f"a message is limited to {self.limits.max_text} characters")
+        return cleaned
+
+    async def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        json: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
+        send: bool = False,
+    ) -> dict[str, Any]:
+        """Ask the broker over HTTP and return its JSON object; a refusal, or a connection lost, is a ``SendError``."""
+        import httpx
+
+        http = self._http if self._connected else None
+        if http is None:
+            raise SendError("offline", "not connected to the session broker")
         await self._registered()
         try:
-            response = await http.post(
-                "/messages",
-                json={
-                    "to": to,
-                    "text": cleaned,
-                    "via": via,
-                    "hops": hops,
-                    "mode": mode,
-                    **({"direct": True} if direct else {}),
-                },
-                timeout=self.reply_timeout,
-            )
+            response = await http.request(method, path, json=json, params=params, timeout=self.reply_timeout)
         except httpx.TimeoutException:
             raise SendError(
-                "timeout", "the session broker did not answer in time; the message may or may not have been delivered"
+                "timeout",
+                "the session broker did not answer in time"
+                + ("; the message may or may not have been delivered" if send else ""),
             ) from None
         except httpx.HTTPError:
             raise SendError(
-                "lost", "the connection to the session broker was lost; the message may or may not have been delivered"
+                "lost",
+                "the connection to the session broker was lost"
+                + ("; the message may or may not have been delivered" if send else ""),
             ) from None
-        return self._delivered(response)
-
-    @staticmethod
-    def _delivered(response: Any) -> Delivered:
-        """Read the broker's answer to a send: who took the message, or why it did not."""
         try:
             body = response.json()
         except ValueError:
@@ -387,6 +443,57 @@ class BrokerClient:
         if response.status_code != 200 or not isinstance(body, dict):
             refused = Refused.from_wire(body.get("error") if isinstance(body, dict) else None)
             raise SendError(refused.reason, str(refused))
+        return body
+
+    async def manage_group(self, action: str, name: str, members: list[str] | None = None) -> GroupInfo | None:
+        """Create a group, add or remove members, leave it or delete it; returns the group after, or ``None`` if gone.
+
+        Raises:
+            SendError: ``denied`` for a group this session is not in, ``duplicate``, ``unknown``, ``invalid``, ``busy``.
+        """
+        body = await self._request("POST", "/groups", json={"action": action, "name": name, "members": members or []})
+        return GroupInfo.from_wire(body.get("group"))
+
+    async def history(
+        self, *, with_: str = "", group: str = "", limit: int = 20, before: int | None = None
+    ) -> tuple[list[dict[str, Any]], str]:
+        """Return stored messages, oldest first, and the id of the peer when one was asked for.
+
+        With ``with_`` it is the conversation between this session and that one, with ``group`` what was said in a
+        group this session is in, and with neither all of this session's own messages.
+
+        Raises:
+            SendError: ``unknown`` or ``ambiguous`` for a name, ``denied`` for a group this session is not in.
+        """
+        params: dict[str, Any] = {"limit": limit}
+        if with_:
+            params["with"] = with_
+        if group:
+            params["group"] = group
+        if before:
+            params["before"] = before
+        body = await self._request("GET", "/history", params=params)
+        messages = body.get("messages")
+        peer = body.get("peer")
+        return ([m for m in messages if isinstance(m, dict)] if isinstance(messages, list) else []), (
+            peer if isinstance(peer, str) else ""
+        )
+
+    async def graph(self) -> dict[str, Any]:
+        """Return the broker's whole picture: sessions, groups, how much each pair has said, the latest messages."""
+        return await self._request("GET", "/graph")
+
+    async def older(self, before: int, limit: int = 50) -> dict[str, Any]:
+        """Return the messages stored before the message with id ``before``, oldest first, and ``more``."""
+        return await self._request("GET", "/older", params={"before": before, "limit": limit})
+
+    async def timeline(self, since: float, until: float, limit: int = 500) -> dict[str, Any]:
+        """Return the messages stored between two times (epoch seconds), oldest first, to replay on screen."""
+        return await self._request("GET", "/timeline", params={"since": since, "until": until, "limit": limit})
+
+    @staticmethod
+    def _delivered(body: dict[str, Any]) -> Delivered:
+        """Read the broker's answer to a send: who took the message."""
         recipient = PeerInfo.from_wire(body.get("to"))
         if recipient is None:
             raise SendError("internal", "the broker's answer did not say who took the message")
@@ -442,6 +549,7 @@ class BrokerClient:
         """Forget the connection: nothing can be sent now, and whatever was waiting on it has failed."""
         was, self._connected = self._connected, False
         self._watched = False
+        self._groups = ()
         self._outbox.clear()
         self._asks.clear()
         self._came_up.clear()
@@ -473,6 +581,8 @@ class BrokerClient:
             self._schedule_push()
             for watching in list(self._watching):
                 self._ask("watch", watching)
+            if self._observing:
+                self._say({"op": "observe"})
             try:
                 async for raw in ws:
                     await self._heard(ws, raw)
@@ -525,6 +635,18 @@ class BrokerClient:
             case "roster":
                 self._roster = roster_from_wire(line.get("sessions"))
                 self._notify_roster()
+            case "groups":
+                listed = line.get("groups")
+                groups = tuple(
+                    g for g in (GroupInfo.from_wire(item) for item in (listed if isinstance(listed, list) else [])) if g
+                )
+                if groups != self._groups:
+                    self._groups = groups
+                    self._notify_roster()
+            case "traffic":
+                if self.on_traffic is not None:
+                    with contextlib.suppress(Exception):  # a listener's bug must not end the connection
+                        self.on_traffic({k: v for k, v in line.items() if k != "op"})
             case "watched":
                 count = line.get("count")
                 self._watched = isinstance(count, int) and not isinstance(count, bool) and count > 0
@@ -564,6 +686,7 @@ class BrokerClient:
             via if via in VIAS else VIA_AGENT,
             line.get("direct") is True and via == VIA_USER,
             mode,
+            line["group"] if isinstance(line.get("group"), str) else "",
         )
         try:
             return _ack(self.on_message(incoming))

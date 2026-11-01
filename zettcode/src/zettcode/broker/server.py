@@ -19,6 +19,7 @@ import uvicorn
 from .hub import Hub
 from .protocol import ACK_TIMEOUT, MAX_BODY, Limits
 from .roster import Roster
+from .store import Store
 from .web import MAX_CONNECTIONS, Web
 
 #: Seconds the broker waits with nobody connected before it exits.
@@ -53,6 +54,7 @@ class Broker:
         ping_interval: Seconds between the WebSocket pings that find a session that has stopped answering; a session
             that does not answer one within ``ping_timeout`` is dropped.
         clock: Time source for the rate limit, injectable for tests.
+        store: What the broker remembers across restarts (messages and groups); memory only when none is given.
     """
 
     def __init__(
@@ -67,6 +69,7 @@ class Broker:
         ping_interval: float = 20.0,
         ping_timeout: float = 20.0,
         clock: Callable[[], float] = time.monotonic,
+        store: Store | None = None,
     ) -> None:
         self.token = token
         self.host = host
@@ -74,7 +77,7 @@ class Broker:
         self.idle_exit = idle_exit
         self.ping_interval = ping_interval
         self.ping_timeout = ping_timeout
-        self.hub = Hub(ack_timeout=ack_timeout, clock=clock)
+        self.hub = Hub(ack_timeout=ack_timeout, clock=clock, store=store)
         self.web = Web(
             self.hub, token, max_connections=max_connections, on_open=self._in_use, on_close=self._maybe_idle
         )

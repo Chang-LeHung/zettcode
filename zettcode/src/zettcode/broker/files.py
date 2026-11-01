@@ -24,6 +24,8 @@ from typing import TypeGuard
 NOTE_FILE = "broker.json"
 LOCK_FILE = "broker.lock"
 LOG_FILE = "broker.log"
+#: What the broker remembers: the messages that passed through it and the groups (see :mod:`.store`).
+STORE_FILE = "broker.db"
 
 #: The module the broker runs as (``python -m zettcode.broker``): how a process is recognised as one before it is
 #: ended, and what a session starts.

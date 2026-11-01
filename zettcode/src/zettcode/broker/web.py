@@ -12,6 +12,8 @@ import contextlib
 import hmac
 import json
 import logging
+import math
+import time
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -43,6 +45,7 @@ STATUS = {
     "self": 400,
     "auth": 401,
     "not_registered": 403,
+    "denied": 403,
     "unknown": 404,
     "gone": 410,
     "ambiguous": 409,
@@ -87,6 +90,11 @@ class Web:
                 Route("/health", self._health),
                 Route("/sessions", self._sessions),
                 Route("/messages", self._messages, methods=["POST"]),
+                Route("/groups", self._groups, methods=["GET", "POST"]),
+                Route("/history", self._history),
+                Route("/graph", self._graph),
+                Route("/timeline", self._timeline),
+                Route("/older", self._older),
                 WebSocketRoute("/inbox", self._inbox),
             ]
         )
@@ -126,6 +134,55 @@ class Web:
     async def _messages(self, request: Request) -> JSONResponse:
         async def work(asked: Request) -> dict[str, Any]:
             return await self.hub.send(asked.headers.get("x-session-key"), await self._json_object(asked))
+
+        return await self._guarded(request, work)
+
+    async def _groups(self, request: Request) -> JSONResponse:
+        async def work(asked: Request) -> dict[str, Any]:
+            key = asked.headers.get("x-session-key")
+            if asked.method == "POST":
+                return self.hub.manage_group(key, await self._json_object(asked))
+            return self.hub.listing_groups(key)
+
+        return await self._guarded(request, work)
+
+    async def _history(self, request: Request) -> JSONResponse:
+        async def work(asked: Request) -> dict[str, Any]:
+            return self.hub.history(asked.headers.get("x-session-key"), dict(asked.query_params))
+
+        return await self._guarded(request, work)
+
+    async def _graph(self, request: Request) -> JSONResponse:
+        async def work(_: Request) -> dict[str, Any]:
+            return self.hub.graph()
+
+        return await self._guarded(request, work)
+
+    async def _older(self, request: Request) -> JSONResponse:
+        async def work(asked: Request) -> dict[str, Any]:
+            try:
+                before = int(asked.query_params.get("before") or 0)
+                limit = int(asked.query_params.get("limit") or 50)
+            except ValueError:
+                raise Refused("invalid", "before is a message id, limit a count") from None
+            if before < 1:
+                raise Refused("invalid", "before is a message id")
+            return self.hub.older(before, limit)
+
+        return await self._guarded(request, work)
+
+    async def _timeline(self, request: Request) -> JSONResponse:
+        async def work(asked: Request) -> dict[str, Any]:
+            params = asked.query_params
+            try:
+                until = float(params.get("until") or time.time())
+                since = float(params.get("since") or until - 3600)
+                limit = int(params.get("limit") or 500)
+            except ValueError:
+                raise Refused("invalid", "since and until are epoch seconds, limit a count") from None
+            if not (math.isfinite(since) and math.isfinite(until)) or since > until:
+                raise Refused("invalid", "since must not be after until")
+            return self.hub.timeline(since, until, limit)
 
         return await self._guarded(request, work)
 

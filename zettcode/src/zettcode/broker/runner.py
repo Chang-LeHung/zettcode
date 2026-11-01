@@ -18,14 +18,16 @@ import math
 import os
 import secrets
 import signal
+import sqlite3
 from pathlib import Path
 
 from .. import logging_setup
 from ..filelock import SingletonLock
-from .files import Note, broker_dir, ensure_directory, lock_path, read_note, remove_note, write_note
+from .files import STORE_FILE, Note, broker_dir, ensure_directory, lock_path, read_note, remove_note, write_note
 from .log import log
 from .protocol import PROTOCOL_VERSION
 from .server import IDLE_EXIT, Broker
+from .store import Store, TooNew
 
 logger = logging.getLogger("zettcode.broker")
 
@@ -57,7 +59,8 @@ async def run(
         logger.info("already_running", extra={"directory": str(directory)})
         return 0
     token = secrets.token_urlsafe(24)
-    broker = Broker(token, port=port, idle_exit=idle_exit)
+    store = _open_store(directory)
+    broker = Broker(token, port=port, idle_exit=idle_exit, store=store)
     watcher: asyncio.Task[None] | None = None
     try:
         try:
@@ -77,11 +80,26 @@ async def run(
             watcher.cancel()
             await asyncio.gather(watcher, return_exceptions=True)
         await broker.aclose()
+        store.close()
         remove_note(directory, token)
         lock.release()
         log("broker exiting")
         logger.info("stop", extra={"directory": str(directory)})
     return 0
+
+
+def _open_store(directory: Path) -> Store:
+    """Open the file the broker remembers in; a file that cannot be used leaves it remembering in memory only."""
+    try:
+        return Store(directory / STORE_FILE)
+    except TooNew as error:
+        logger.warning("store.too_new", extra={"directory": str(directory)})
+        log(f"{error}; it is left alone and messages will not be remembered this time")
+        return Store()
+    except (OSError, sqlite3.Error):
+        logger.exception("store.unavailable", extra={"directory": str(directory)})
+        log("the history file could not be opened; messages will not be remembered this time")
+        return Store()
 
 
 def _stop_on_signals(broker: Broker) -> None:
