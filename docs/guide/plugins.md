@@ -301,6 +301,10 @@ class Recap(TuiPlugin):
         return CommandResult(message=f"> {answer}")
 ```
 
+`ask` is a side question: the exchange never joins the conversation, and the shell draws nothing of it, so the
+answer appears only where the command puts it — here, as a quote. `/btw` is the same kind of question, but the
+reader asked it, so the shell draws that one as a turn of its own.
+
 Plugin commands are listed last and cannot shadow a built-in, so `/model`,
 `/resume` and the rest always do what [Commands](/guide/commands) says.
 

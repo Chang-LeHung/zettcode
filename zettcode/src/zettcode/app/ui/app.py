@@ -174,6 +174,7 @@ class ZettCodeApp(
             on_usage=self._usage_updated,
             on_steering_started=self._steering_started,
             on_steering_interrupted=self._steering_interrupted,
+            side_running=self._side_question_running,
         )
         self.agent.set_event_dispatcher(self.projector)
         self.view = TranscriptView(self.transcript, theme=theme, wheel_speed=agent.runtime.config.mouse_scroll_speed)
@@ -716,9 +717,22 @@ class ZettCodeApp(
             # The same order as a turn: close what the run left open, then write
             # the line it ended on. A ``BaseException`` that is not caught above
             # leaves the outcome unset, and the running rows are still closed.
+            self.projector.end_turn()
             self._close_run()
             if outcome:
                 self._settle_wait(outcome)
+
+    def _side_question_running(self) -> bool:
+        """Return whether the run in flight is a side question, which the transcript draws only when this shell
+        asked it.
+
+        The projector's ``side_running``; the engine knows the fact and this is where the shell answers with it.
+        ``/btw`` is a side question the reader asked, so it is begun as a turn and drawn. A plugin can ask the
+        session the same kind of question for its own purposes — the recap plugin does, and shows one quote of its
+        own — and that answer must not also land in the transcript as a reply: nothing on screen asked for it, and
+        the next turn's words would go on writing into it.
+        """
+        return self.agent.runtime.sides.pending
 
     async def prompt(self, text: str, *, shown: str | None = None, cache: str | None = None) -> bool:
         """Run ``text`` as one turn of this conversation, as if the reader had typed it.
@@ -1240,6 +1254,7 @@ class ZettCodeApp(
             # messages is part of how the request ended, and the line that says how long it
             # ran stays the last thing in the transcript, where a reader looks for it.
             self._settle_queues(completed, turn=True)
+            self.projector.end_turn()
             self._close_run()
             # Which files this request changed, said once and only when there are any, above the
             # line that says how long it took.

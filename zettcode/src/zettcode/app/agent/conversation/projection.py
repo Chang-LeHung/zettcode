@@ -77,6 +77,7 @@ class TranscriptProjector(AgentEventDispatcher):
         on_usage: Callable[[Usage, str], None] | None = None,
         on_steering_started: Callable[[str], Relayed | str | None] | None = None,
         on_steering_interrupted: Callable[[str], None] | None = None,
+        side_running: Callable[[], bool] | None = None,
     ) -> None:
         """Send projected events to ``transcript``; approvals go to ``on_approval``.
 
@@ -99,6 +100,12 @@ class TranscriptProjector(AgentEventDispatcher):
                 string is drawn as the row's text.
             on_steering_interrupted: Called with the text of a steering message
                 a newer one superseded, so the shell can drop it too.
+            side_running: Asked whether the run in flight is a side question — a question the model answers without
+                the exchange joining the conversation. Such a run is drawn only when the shell began it, so a
+                plugin that asks one for itself (a recap) is not also drawn as an answer of its own. ``None``
+                treats every run as one the shell began. Two plain flags are enough here because the SDK runs one
+                request at a time: a second run is refused while one is in flight, so a plugin's ask cannot
+                overlap a turn the shell began and a stale answer cannot be drawn as a turn's.
         """
         self.transcript = transcript
         self.bridge: Bridge = bridge if bridge is not None else _NobodyAnswers()
@@ -110,27 +117,58 @@ class TranscriptProjector(AgentEventDispatcher):
         #: What a hosted tool's input has streamed so far, by call. The translation fills it as fragments arrive
         #: and reads the query out of it when the call reports back.
         self._hosted: dict[str, str] = {}
+        #: Whether the shell began the run in flight, and so draws it.
+        self._begun = False
+        #: Whether a run nobody began has been reported as left out, so dropping one is a line and not one per
+        #: token; it is cleared when a turn is begun, so it reports the next run that way too.
+        self._reported_side = False
+        self._side_running = side_running
 
     def begin_turn(self, prompt: str, *, side: bool = False, relayed: Relayed | None = None) -> None:
-        """Echo the prompt into the transcript before the run starts.
+        """Begin drawing one run into the transcript, echoing the prompt that asked for it.
+
+        The shell begins a turn before every run it shows on screen, which is also how a side question it asked
+        is told apart from one a plugin asked for itself: see ``side_running``.
 
         Args:
-            prompt: What the reader asked.
+            prompt: What the reader asked, echoed as the turn's first row.
             side: The question is a side one, which the transcript shows as such.
             relayed: The turn answers a message another session sent, which the transcript shows as that.
         """
+        # The row first, the flag second: an echo that raises leaves no run to draw, and a flag set before it would
+        # stay set, drawing every later side question as an answer of its own.
         if relayed is None:
             self.transcript.begin_turn(prompt, side=side)
         else:
             self.transcript.begin_turn(prompt, side=side, relayed=relayed)
+        self._begun = True
+        self._reported_side = False
+
+    def end_turn(self) -> None:
+        """Stop drawing, once the run the shell began has ended.
+
+        Nothing of whatever runs next is drawn until a turn is begun for it, which is what keeps a plugin's own
+        side question out of the transcript between turns.
+        """
+        self._begun = False
 
     async def dispatch(self, event: AgentEvent) -> None:
         """Note that the agent spoke, then draw what the event stands for.
 
         Every event ends a silence, whichever it is: the waiting row counts how long it has been since the model
         last said anything, and has to be told each time it does.
+
+        A side question the shell did not begin is left out: its answer would land under the last turn's line as a
+        reply nobody asked for, and whoever asked for it — a plugin's recap — draws the part it wants itself. The
+        drop is logged, a line rather than one per token, so an answer that is missing from the transcript can be
+        explained from the log.
         """
         self.transcript.heard()
+        if not self._begun and self._side_running is not None and self._side_running():
+            if not self._reported_side:
+                self._reported_side = True
+                logger.debug("projector.side_not_drawn", extra={"session": event.session_id})
+            return
         for translated in translate(event, self.bridge, self._hosted):
             self.project(translated, event)
 
