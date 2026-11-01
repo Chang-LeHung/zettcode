@@ -224,7 +224,9 @@ class ScrollView(Widget):
         then name rows that no longer exist; this is the one place that maps them
         onto the current source for painting, copying and the Escape predicate.
         Leading and trailing rows that cover no cell are dropped, so a selection
-        does not copy blank lines or answer Escape when nothing is visible.
+        does not copy blank lines or answer Escape when nothing is visible. Rows
+        are matched by index only: a rewrap changes what a row holds, and the
+        selection follows the row, not the text that was under the pointer.
         """
         bounds = self.selection_bounds()
         if bounds is None:

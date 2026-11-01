@@ -515,10 +515,9 @@ class TuiApp(Host):
         (first_x, first_y), (last_x, last_y) = sorted((self._select_anchor, self._select_head))
         rows: list[str] = []
         height = len(frame.cells)
-        if height == 0 or first_y >= height or last_y >= height:
+        if height == 0 or last_y >= height:
             return ""
         first_y = max(0, first_y)
-        last_y = min(last_y, height - 1)
         if first_y > last_y:
             return ""
         for y in range(first_y, last_y + 1):
@@ -616,8 +615,6 @@ def _invert(style: Style) -> Style:
 
 def _frame_row(frame: Canvas, y: int, left: int, right: int) -> str:
     """Return the characters one frame row holds between two columns."""
-    if y < 0 or y >= len(frame.cells):
-        return ""
     return "".join(cell.character for cell in frame.cells[y][max(0, left) : right])
 
 
