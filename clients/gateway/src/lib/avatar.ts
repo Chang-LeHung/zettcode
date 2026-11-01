@@ -7,6 +7,18 @@ export function hueOf(id: string): number {
   return value % 8;
 }
 
+/** The two ends of each palette's gradient, in the order `hueOf` numbers them: the same colours as the avatars' CSS. */
+export const PALETTE: readonly (readonly [string, string])[] = [
+  ["#ff885e", "#ff516a"],
+  ["#ffcd6a", "#ffa85c"],
+  ["#82b1ff", "#665fff"],
+  ["#a0de7e", "#54cb68"],
+  ["#53edd6", "#28c9b7"],
+  ["#72d5fd", "#2a9ef1"],
+  ["#e0a2f3", "#d669ed"],
+  ["#f7a3b6", "#ec5f87"],
+];
+
 /** The one or two letters on an avatar. */
 export function initialsOf(name: string): string {
   const words = name.trim().split(/[\s_-]+/).filter(Boolean);

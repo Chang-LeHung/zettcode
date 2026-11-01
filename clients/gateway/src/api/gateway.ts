@@ -3,11 +3,14 @@
 import type {
   DirectoryListing,
   GatewayConfig,
+  GraphData,
+  OlderMessages,
   GatewayStatus,
   SendReply,
   SpawnForm,
   SpawnReply,
   Thread,
+  Timeline,
   ThreadDetail,
 } from "../types";
 import { request } from "./http";
@@ -29,5 +32,10 @@ export const gateway = {
   stop: (threadId: string) => request<{ result: string }>("DELETE", `/api/daemons/${id(threadId)}`),
   log: (threadId: string) => request<{ text: string }>("GET", `/api/daemons/${id(threadId)}/log`),
   config: () => request<GatewayConfig>("GET", "/api/config"),
+  graph: () => request<GraphData>("GET", "/api/graph"),
+  older: (before: number, limit = 50) =>
+    request<OlderMessages>("GET", `/api/graph/older?before=${before}&limit=${limit}`),
+  timeline: (since: number, until: number, limit = 2000) =>
+    request<Timeline>("GET", `/api/graph/timeline?since=${since}&until=${until}&limit=${limit}`),
   directories: (path: string) => request<DirectoryListing>("GET", `/api/dirs?path=${encodeURIComponent(path)}`),
 };

@@ -130,7 +130,87 @@ export type GatewayEvent =
   | { type: "threads"; threads: Thread[]; status: GatewayStatus }
   | { type: "thread"; id: string }
   | { type: "stream"; id: string; event: StreamPiece }
-  | { type: "inbound"; id: string; sender: string; text: string };
+  | { type: "inbound"; id: string; sender: string; text: string }
+  | { type: "traffic"; message: GraphMessage }
+  | { type: "graph" };
+
+/** How a message got into the broker: typed by a person, sent by an agent's tool, or sent by an outside process. */
+export type Via = "user" | "agent" | "external";
+
+export interface GraphSession {
+  session_id: string;
+  handle: string;
+  title: string;
+  workspace: string;
+  status: "idle" | "working";
+  kind: "zettcode" | "external";
+}
+
+export interface GraphGroup {
+  name: string;
+  members: string[];
+  /** Epoch seconds. */
+  created: number;
+}
+
+/** The undirected total of the 1:1 messages two sessions have exchanged. */
+export interface GraphEdge {
+  a: string;
+  b: string;
+  count: number;
+  last: number;
+}
+
+export interface GraphParty {
+  session_id: string;
+  handle: string;
+  title: string;
+}
+
+export interface GraphTarget {
+  kind: "session" | "group";
+  session_id?: string;
+  handle?: string;
+  title?: string;
+  name?: string;
+}
+
+export interface GraphMessage {
+  id: number;
+  /** Epoch seconds. */
+  ts: number;
+  from: GraphParty;
+  to: GraphTarget;
+  /** The sessions the message actually reached. */
+  recipients: string[];
+  text: string;
+  via: Via;
+  hops: number;
+  mode: "steer" | "followup";
+  status: "delivered" | "partial";
+  disposition: string;
+}
+
+/** What `GET /api/graph` answers: the roster, the groups, the pair totals and the latest messages (oldest first). */
+export interface GraphData {
+  sessions: GraphSession[];
+  groups: GraphGroup[];
+  edges: GraphEdge[];
+  recent: GraphMessage[];
+}
+
+/** Stored messages from before one the page already holds: oldest first, and whether any older ones remain. */
+export interface OlderMessages {
+  messages: GraphMessage[];
+  more: boolean;
+}
+
+/** A window of stored traffic for replay: oldest first, `span` is the oldest and newest ts held, `now` the server clock. */
+export interface Timeline {
+  messages: GraphMessage[];
+  span: [number, number] | null;
+  now: number;
+}
 
 /** A message sent from this page that the stored conversation does not show yet. */
 export interface Pending {

@@ -4,6 +4,7 @@
 import { EventSocket } from "../api/events";
 import { t } from "../i18n";
 import type { GatewayEvent } from "../types";
+import { applyTraffic, loadGraph } from "./graph";
 import { chat, markRead, refreshChat } from "./chat";
 import { prefs } from "./prefs";
 import { auth } from "./auth";
@@ -35,6 +36,10 @@ function handle(event: GatewayEvent): void {
     applyStream(event.id, event.event);
   } else if (event.type === "inbound") {
     notify(event);
+  } else if (event.type === "traffic") {
+    applyTraffic(event.message);
+  } else if (event.type === "graph") {
+    void loadGraph().catch(() => {});
   }
 }
 
@@ -48,6 +53,7 @@ export function connect(): void {
       if (up) {
         resetStreams();
         void loadThreads().catch(() => {});
+        void loadGraph().catch(() => {});
         if (chat.id) void refreshChat(chat.id);
       }
     },

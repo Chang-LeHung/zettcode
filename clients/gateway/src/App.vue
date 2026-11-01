@@ -2,6 +2,8 @@
 import { computed, type Component } from "vue";
 import ChatPane from "./components/chats/ChatPane.vue";
 import ChatView from "./components/chat/ChatView.vue";
+import GraphPane from "./components/graph/GraphPane.vue";
+import GraphView from "./components/graph/GraphView.vue";
 import ConfigPage from "./components/config/ConfigPage.vue";
 import LogsPane from "./components/logs/LogsPane.vue";
 import LogView from "./components/logs/LogView.vue";
@@ -27,6 +29,8 @@ const pane = computed<{ component: Component; props: Record<string, unknown> }>(
       return { component: SectionPane, props: { nav: "config", title: t("Config"), sections: CONFIG_SECTIONS } };
     case "logs":
       return { component: LogsPane, props: {} };
+    case "graph":
+      return { component: GraphPane, props: {} };
     case "settings":
       return { component: SectionPane, props: { nav: "settings", title: t("Settings"), sections: SETTINGS_SECTIONS } };
     default:
@@ -40,6 +44,8 @@ const main = computed<{ component: Component; props: Record<string, unknown>; ke
       return { component: NewForm, props: {}, key: "new" };
     case "config":
       return { component: ConfigPage, props: {}, key: "config" };
+    case "graph":
+      return { component: GraphView, props: {}, key: "graph" };
     case "settings":
       return { component: SettingsPage, props: {}, key: "settings" };
     case "logs":
@@ -50,8 +56,8 @@ const main = computed<{ component: Component; props: Record<string, unknown>; ke
 });
 
 // On a phone only one of the list and the page is shown. A list-only section shows its list until something is chosen;
-// the New form has no list worth stopping at.
-const view = computed(() => (main.value && (route.arg || route.nav === "new") ? "main" : "pane"));
+// the New form and the Graph have no list worth stopping at (the Graph's feed is its own panel on a phone).
+const view = computed(() => (main.value && (route.arg || route.nav === "new" || route.nav === "graph") ? "main" : "pane"));
 // A conversation takes the whole screen on a phone, as a messenger's does; the tab bar comes back with the list.
 const fullscreen = computed(() => route.nav === "chats" && route.arg !== "");
 </script>
