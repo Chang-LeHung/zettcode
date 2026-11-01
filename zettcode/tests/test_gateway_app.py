@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import os
+import time
 from pathlib import Path
 
 import pytest
@@ -352,3 +354,121 @@ def test_older_returns_the_messages_before_an_id_and_refuses_a_bad_one(parts):
     assert [m["id"] for m in body["messages"]] == [2, 3] and body["more"] is True
     assert client.get("/api/graph/older").status_code == 400
     assert client.get("/api/graph/older?before=abc").status_code == 400
+
+
+def test_a_model_is_added_changed_and_removed_through_the_page(parts):
+    client, backend, _ = parts
+    signed_in(client)
+
+    added = client.post(
+        "/api/models",
+        json={"model": "gpt-x", "token": " sk-1 ", "base_url": "", "multimodal": False, "context_window": 64000},
+    )
+    assert added.status_code == 200 and [item["name"] for item in added.json()["models"]][-1] == "gpt-x"
+    assert backend.model_edits[-1] == ("add", {"model": "gpt-x", "token": "sk-1", "context_window": 64000})
+
+    changed = client.patch("/api/models/gpt-x", json={"temperature": None, "token": "", "web_search": True})
+    assert changed.status_code == 200
+    assert backend.model_edits[-1] == ("update", "gpt-x", {"temperature": None, "web_search": True})
+
+    gone = client.delete("/api/models/gpt-x")
+    assert gone.status_code == 200 and "gpt-x" not in [item["name"] for item in gone.json()["models"]]
+
+
+def test_a_model_the_file_cannot_hold_is_refused_in_the_files_words(parts):
+    client, backend, _ = parts
+    signed_in(client)
+
+    assert client.post("/api/models", json={"token": "x"}).status_code == 400
+    assert (
+        client.post("/api/models", json={"model": "a", "colour": "red"}).json()["error"]["message"].startswith("colour")
+    )
+    assert client.post("/api/models", json={"model": "a", "context_window": "big"}).status_code == 400
+    assert client.post("/api/models", json={"model": "a", "context_window": True}).status_code == 400
+    assert client.patch("/api/models/fast", json={}).status_code == 400
+    assert client.patch("/api/models/fast", json={"model": ""}).status_code == 400
+    missing = client.patch("/api/models/ghost", json={"multimodal": True})
+    assert missing.status_code == 400 and missing.json()["error"]["code"] == "invalid"
+    only = client.delete("/api/models/fast")
+    assert only.status_code == 200
+    assert client.delete("/api/models/deep").json()["error"]["message"] == "The last model cannot be removed"
+    assert client.post("/api/models", json={"model": "deep"}).status_code == 400, "a duplicate is the file's refusal"
+    assert client.post("/api/models", json={"model": "other"}).status_code == 200
+    assert all(edit[0] != "add" or edit[1].get("colour") is None for edit in backend.model_edits), "never written"
+
+
+def test_no_response_carries_a_token_and_a_change_needs_the_same_site(parts):
+    client, backend, _ = parts
+    signed_in(client)
+
+    assert "token" not in json.dumps(client.get("/api/config").json())
+    forged = client.post("/api/models", json={"model": "z"}, headers={"origin": "https://elsewhere.example"})
+    assert forged.status_code == 403
+    assert client.post("/api/models", json={"model": "z"}).status_code == 200
+
+
+def test_the_real_editor_writes_the_file_keeps_its_comments_and_reports_a_bad_entry(tmp_path, monkeypatch):
+    from zettcode.gateway.backend import SdkBackend
+    from zettcode.gateway.service import model_view
+
+    config = tmp_path / "config.toml"
+    config.write_text('# my models\n[[models]]\nmodel = "first"\ntoken = "k1"\n', encoding="utf-8")
+    monkeypatch.setenv("ZETTCODE_CONFIG", str(config))
+    backend = SdkBackend.__new__(SdkBackend)
+
+    listed = backend.add_model({"model": "second", "token": "k2", "temperature": 0.5})
+    assert [item.name for item in listed] == ["first", "second"]
+    assert "# my models" in config.read_text(encoding="utf-8")
+    backend.update_model("second", {"temperature": None, "context_window": 32000})
+    assert backend.models()[1].context_window == 32000 and backend.models()[1].temperature is None
+    assert "k1" not in json.dumps([model_view(item, i) for i, item in enumerate(backend.models())])
+    before = config.read_text(encoding="utf-8")
+    with pytest.raises(ValueError):
+        backend.add_model({"model": "bad", "anthropic": True, "responses_api": True})
+    assert config.read_text(encoding="utf-8") == before, "a refused entry leaves the file as it was"
+    assert [item.name for item in backend.remove_model("first")] == ["second"]
+    with pytest.raises(ValueError):
+        backend.remove_model("second")
+
+
+def test_a_model_id_with_a_slash_is_addressed_encoded_or_not(parts):
+    client, backend, _ = parts
+    signed_in(client)
+
+    assert client.post("/api/models", json={"model": "vendor/model"}).status_code == 200
+    assert client.patch("/api/models/vendor%2Fmodel", json={"multimodal": True}).status_code == 200
+    assert backend.model_edits[-1] == ("update", "vendor/model", {"multimodal": True})
+    assert client.patch("/api/models/vendor/model", json={"multimodal": False}).status_code == 200
+    assert client.delete("/api/models/vendor%2Fmodel").status_code == 200
+    assert backend.model_edits[-1] == ("remove", "vendor/model")
+
+
+def test_model_edits_run_one_at_a_time(parts):
+    import asyncio
+    import threading
+
+    client, backend, _ = parts
+    signed_in(client)
+    inside = 0
+    most = 0
+    guard = threading.Lock()
+    original = backend.update_model
+
+    def slow(name, changes):
+        nonlocal inside, most
+        with guard:
+            inside += 1
+            most = max(most, inside)
+        time.sleep(0.05)
+        with guard:
+            inside -= 1
+        return original(name, changes)
+
+    backend.update_model = slow  # type: ignore[method-assign]
+    gateway = client.app.state.gateway  # type: ignore[attr-defined]
+
+    async def both():
+        await asyncio.gather(*(gateway.change_model("fast", {"multimodal": True}) for _ in range(4)))
+
+    asyncio.run(both())
+    assert most == 1
