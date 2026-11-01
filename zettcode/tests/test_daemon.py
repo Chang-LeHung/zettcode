@@ -1426,3 +1426,45 @@ async def test_a_direct_turn_that_fails_or_writes_nothing_is_still_answered_so_t
     sent = [text for _, text in client.returned]
     assert sent[0].startswith("The turn failed: the model stopped")
     assert "without a written answer" in sent[1] and len(sent) == 2, "a message that is not direct is not answered here"
+
+
+def test_a_tool_line_says_what_the_call_was_for():
+    from zettcode.daemon.run import tool_detail
+
+    assert tool_detail({"command": "git  status\n-s"}) == "git status -s"
+    assert tool_detail({"file_path": "src/a.py", "offset": 3}) == "src/a.py"
+    assert tool_detail({"to": "dawn", "message": "hi"}) == "dawn → hi"
+    assert tool_detail({"group": "review", "message": "ready"}) == "#review → ready"
+    assert tool_detail({"unknown": "x"}) == ""
+    long = tool_detail({"command": "x" * 500})
+    assert len(long) == 160 and long.endswith("…")
+
+
+def test_tools_are_logged_with_their_detail_failures_and_slow_calls(home, monkeypatch):
+    # The gateway's log page parses these exact lines (clients/gateway/src/lib/logs.ts, test/logs.test.ts).
+    from types import SimpleNamespace
+
+    from zettcode.daemon import run as run_module
+    from zettcode.daemon.run import Daemon
+    from zettcode.sdk.events import ToolFinished, ToolStarted
+
+    client = SimpleNamespace(session=SimpleNamespace(id="01a1", title=None))
+    daemon = Daemon(client, Options(workspace=home, token="t"))  # type: ignore[arg-type]
+    clock = iter([100.0, 100.5, 200.0, 207.0, 300.0, 301.0])
+    monkeypatch.setattr(run_module.time, "monotonic", lambda: next(clock))
+
+    daemon._see(ToolStarted("s", "c1", "bash", {"command": "ls"}))
+    daemon._see(ToolFinished("s", "c1", "bash", "ok", True))
+    daemon._see(ToolStarted("s", "c2", "read", {"file_path": "a.py"}))
+    daemon._see(ToolFinished("s", "c2", "read", "ok", True))
+    daemon._see(ToolStarted("s", "c3", "bash", {"command": "false"}))
+    daemon._see(ToolFinished("s", "c3", "bash", "exit 1\n  boom", False))
+
+    lines = daemon.record.log_path.read_text(encoding="utf-8").splitlines()
+    assert [line[20:] for line in lines] == [
+        "tool bash · ls",
+        "tool read · a.py",
+        "tool read finished in 7.0s",
+        "tool bash · false",
+        "tool bash failed after 1.0s: exit 1 boom",
+    ]

@@ -28,7 +28,7 @@ from ..sdk.types import DIRECT_EMPTY, DIRECT_FAILED, IncomingMessage, Receipt
 from .state import Record, Registry, State
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
 
     from ..sdk.client import Client
 
@@ -138,6 +138,8 @@ class Daemon:
         #: How often this process has asked the model for a title. A session the model cannot name is left unnamed
         #: rather than costing a call at the end of every turn.
         self._naming_attempts = 0
+        #: When each running tool call began, by call id, so its end can say how long it took.
+        self._calls: dict[str, float] = {}
 
     # -- the life of the process -------------------------------------------------------------------
     async def serve(self) -> int:
@@ -242,6 +244,9 @@ class Daemon:
         """
         from ..sdk.errors import RunError
 
+        began = time.monotonic()
+        text = " ".join(message.text.split())
+        self.record.log(f"turn from {message.sender or message.sender_id[:8]} ({message.via}): {text[:120]}")
         # No approval handler and no question handler, on purpose. The sandbox (`safe`) is the policy, so a command
         # that stays inside it runs and one that does not is put to a reader — and there is none here, so it is
         # refused. Approving on the daemon's behalf would turn a sandboxed run into a full one with nobody deciding.
@@ -285,6 +290,7 @@ class Daemon:
         if not succeeded:
             await self._failed(message, why or "the turn failed")
             return
+        self.record.log(f"turn finished in {time.monotonic() - began:.1f}s")
         if message.direct and answer is not None:
             # The first attempt answered the window itself; a continued one must do it too, or the window waits
             # for a turn that has already finished. Delivering it outside the retry loop keeps a send failure
@@ -515,13 +521,48 @@ class Daemon:
         return self.options.name
 
     def _see(self, event: Any) -> None:
-        """Write the events worth knowing about: a tool's name, and a tool that failed."""
+        """Write the events worth knowing about: each tool with what it was for, one that failed, one that was slow."""
         from ..sdk.events import ToolFinished, ToolStarted
 
         if isinstance(event, ToolStarted):
-            self.record.log(f"tool {event.name}")
-        elif isinstance(event, ToolFinished) and not event.ok and not event.skipped:
-            self.record.log(f"tool {event.name} failed: {event.output.strip()[:200]}")
+            self._calls[event.call_id] = time.monotonic()
+            what = tool_detail(event.arguments)
+            self.record.log(f"tool {event.name} · {what}" if what else f"tool {event.name}")
+        elif isinstance(event, ToolFinished):
+            began = self._calls.pop(event.call_id, None)
+            took = time.monotonic() - began if began is not None else 0.0
+            if event.skipped:
+                self.record.log(f"tool {event.name} skipped: steering took over")
+            elif not event.ok:
+                reason = " ".join(event.output.split())[:200]
+                self.record.log(f"tool {event.name} failed after {took:.1f}s: {reason}")
+            elif took >= SLOW_TOOL_SECONDS:
+                self.record.log(f"tool {event.name} finished in {took:.1f}s")
+
+
+#: Arguments that say what a tool call is about, in the order they are looked for.
+DETAIL_KEYS = ("command", "file_path", "path", "pattern", "query", "url", "group", "to", "name", "message")
+DETAIL_WIDTH = 160
+#: A tool that ends faster than this is not worth a second line; one that takes longer says so.
+SLOW_TOOL_SECONDS = 5.0
+
+
+def tool_detail(arguments: Mapping[str, object]) -> str:
+    """Return one short line saying what a tool call is about: its command, file, pattern or recipient.
+
+    ``tool bash`` alone tells a reader nothing; ``tool bash · git status`` does. A group a message goes to is shown as
+    ``#name``, and a text is cut so a long prompt does not fill the log.
+    """
+    parts: list[str] = []
+    for key in DETAIL_KEYS:
+        value = arguments.get(key)
+        if isinstance(value, str) and value.strip():
+            line = " ".join(value.split())
+            parts.append(f"#{line.lstrip('#')}" if key == "group" else line)
+            if len(parts) == 2 or key in ("command", "file_path", "path", "pattern", "query", "url"):
+                break
+    text = " → ".join(parts)
+    return text if len(text) <= DETAIL_WIDTH else text[: DETAIL_WIDTH - 1] + "…"
 
 
 async def serve(options: Options) -> int:
