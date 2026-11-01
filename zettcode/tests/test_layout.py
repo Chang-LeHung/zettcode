@@ -286,6 +286,32 @@ def test_scroll_view_shift_click_extends_an_existing_selection():
     assert view.selected_text() == "alpha\nbeta\ngam"
 
 
+def test_a_selection_past_the_end_of_a_shrunken_source_is_clamped():
+    source = RecordingSource(["alpha", "beta", "gamma"])
+    view = ScrollView(source, selectable=True)
+    harness = Harness(view, width=20, height=3)
+    harness.render()
+    view._selection_start = (0, 0)
+    view._selection_end = (2, 5)
+
+    source.lines = ["alpha"]
+
+    assert view.selected_text() == "alpha"
+
+
+def test_a_stale_selection_is_dropped_and_does_not_claim_to_exist():
+    source = RecordingSource(["alpha", "beta"])
+    view = ScrollView(source, selectable=True)
+    harness = Harness(view, width=20, height=3)
+    harness.render()
+    view._selection_start = (99, 0)
+    view._selection_end = (99, 5)
+
+    assert view.has_selection() is False
+    assert view.selected_text() == ""
+    assert view.selection_bounds() is None
+
+
 def test_a_double_click_that_keeps_moving_extends_the_selection():
     """The second press picks the line; dragging on from there keeps going."""
     ticks = iter([1.0, 1.1, 1.2, 1.3])

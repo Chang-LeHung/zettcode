@@ -203,12 +203,37 @@ class ScrollView(Widget):
         start, end = sorted((self._selection_start, self._selection_end))
         return None if start == end else (start, end)
 
+    def has_selection(self) -> bool:
+        """Return whether a selection still names a line in the current source.
+
+        A transcript can shrink while a selection is held: an entry may be
+        completed or removed while the reader has rows selected. That makes the
+        old line numbers stale, and asking for their text used to raise. Here a
+        stale selection is dropped instead of being allowed to answer Escape.
+        """
+        bounds = self.selection_bounds()
+        if bounds is None:
+            return False
+        count = max(0, self.line_count())
+        if count == 0 or bounds[0][0] >= count or bounds[1][0] >= count:
+            self.clear_selection()
+            return False
+        return True
+
     def selected_text(self) -> str:
-        """Return the text the current selection covers."""
+        """Return the text the current selection covers, clamped to the source."""
         bounds = self.selection_bounds()
         if bounds is None:
             return ""
+        count = max(0, self.line_count())
+        if count == 0:
+            self.clear_selection()
+            return ""
         (first, first_column), (last, last_column) = bounds
+        if first >= count:
+            self.clear_selection()
+            return ""
+        last = min(last, count - 1)
         lines: list[str] = []
         for index in range(first, last + 1):
             text = self.source.line(index, self.line_width).text

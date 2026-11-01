@@ -214,7 +214,7 @@ class KeysMixin(ShellState):
             return False
         if self.app.screens.top.name in (PAGE_SCREEN, ASK_SCREEN):
             return False
-        if self._menu_open() or self.view.selected_text() or self._follow_up_selecting:
+        if self._menu_open() or self.view.has_selection() or self._follow_up_selecting:
             return False
         return not self._transcript_scrolled_up()
 
