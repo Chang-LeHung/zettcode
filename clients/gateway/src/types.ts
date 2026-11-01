@@ -86,6 +86,28 @@ export interface ModelOption {
   multimodal: boolean;
   efforts: string[];
   api: string;
+  display_model?: string | null;
+  compact_percent?: number;
+  base_url?: string | null;
+  temperature?: number | null;
+  web_search?: boolean;
+  web_search_name?: string | null;
+  can_search?: boolean;
+}
+
+/** What a model form edits: every field as the person sees it, text where the file holds a number. */
+export interface ModelDraft {
+  model: string;
+  display_model: string;
+  api: "chat" | "responses" | "anthropic";
+  base_url: string;
+  token: string;
+  context_window: string;
+  compact_percent: string;
+  temperature: string;
+  multimodal: boolean;
+  web_search: boolean;
+  efforts: string[];
 }
 
 export interface GatewayConfig {

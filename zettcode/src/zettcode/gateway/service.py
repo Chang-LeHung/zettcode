@@ -23,7 +23,7 @@ import re
 import time
 import unicodedata
 from collections import deque
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -37,7 +37,7 @@ from zettcode.sdk.errors import (
     SessionNotFoundError,
     ZettCodeError,
 )
-from zettcode.sdk.types import DaemonInfo, IncomingMessage, Peer, Receipt, StreamEvent, is_direct_notice
+from zettcode.sdk.types import DaemonInfo, IncomingMessage, ModelInfo, Peer, Receipt, StreamEvent, is_direct_notice
 
 from .backend import Backend
 from .chat import items_of, preview, spoken, with_reply_request
@@ -105,6 +105,90 @@ class GatewayError(Exception):
         return {"error": {"code": self.code, "message": str(self), **self.extra}}
 
 
+#: The keys of a model entry the page may write, each with the type it must have. The token is among them but is only
+#: ever written: no response carries it back.
+MODEL_FIELDS: dict[str, tuple[type, ...]] = {
+    "model": (str,),
+    "token": (str,),
+    "display_model": (str,),
+    "base_url": (str,),
+    "anthropic": (bool,),
+    "responses_api": (bool,),
+    "chat": (bool,),
+    "multimodal": (bool,),
+    "temperature": (int, float),
+    "web_search": (bool,),
+    "web_search_name": (str,),
+    "context_window": (int,),
+    "compact_percent": (int, float),
+    "reasoning_efforts": (list,),
+}
+
+
+def model_fields(data: Mapping[str, Any], *, creating: bool) -> dict[str, object]:
+    """Return the keys of a model entry a request names, refusing a key or a type the file does not have.
+
+    When creating, a blank string or an unset flag is left out, so the file holds only what was chosen. When changing,
+    ``None`` stays: it means remove the key, which is how a temperature goes back to the provider's own. A blank
+    token is dropped in both cases, because the page never shows the stored one and an empty box means keep it.
+    """
+    out: dict[str, object] = {}
+    for key, value in data.items():
+        kinds = MODEL_FIELDS.get(key)
+        if kinds is None:
+            raise GatewayError(400, "invalid", f"{key} is not a setting of a model")
+        if value is None:
+            if key in ("model", "token"):
+                continue
+            if not creating:
+                out[key] = None
+            continue
+        if isinstance(value, bool) != (bool in kinds) or not isinstance(value, kinds):
+            raise GatewayError(400, "invalid", f"{key} has the wrong type")
+        if isinstance(value, str):
+            value = value.strip()
+            if key == "token" and not value:
+                continue
+            if not value:
+                if creating:
+                    continue
+                if key == "model":
+                    raise GatewayError(400, "invalid", "The model id cannot be empty")
+                out[key] = None
+                continue
+        if creating and value is False:
+            continue
+        if key == "reasoning_efforts":
+            if not all(isinstance(level, str) for level in value):
+                raise GatewayError(400, "invalid", "reasoning_efforts is a list of names")
+            if creating and not value:
+                continue
+        out[key] = value
+    if creating and not out.get("model"):
+        raise GatewayError(400, "invalid", "A model needs the model id the endpoint expects")
+    return out
+
+
+def model_view(model: ModelInfo, index: int) -> dict[str, Any]:
+    """Return one model as a page shows it. The token is never part of it: the file keeps it, the page only writes it."""
+    return {
+        "name": model.name,
+        "model": model.model,
+        "display_model": model.display_model,
+        "default": index == 0,
+        "context_window": model.context_window,
+        "compact_percent": model.compact_percent,
+        "multimodal": model.multimodal,
+        "efforts": list(model.efforts),
+        "api": model.api,
+        "base_url": model.base_url,
+        "temperature": model.temperature,
+        "web_search": model.web_search,
+        "web_search_name": model.web_search_name,
+        "can_search": model.can_search,
+    }
+
+
 @dataclass(slots=True)
 class Meta:
     """What was learned from a thread's stored conversation the last time it changed."""
@@ -151,6 +235,8 @@ class Gateway:
         self._sent: deque[float] = deque()
         self._subscribers: set[asyncio.Queue[dict[str, Any]]] = set()
         self._lock = asyncio.Lock()
+        #: Serialises model edits: each is a read-modify-write of one file, so two at once would drop one of them.
+        self._models_lock = asyncio.Lock()
         self._wake = asyncio.Event()
         self._watcher: asyncio.Task[None] | None = None
         self._reachable: bool | None = None
@@ -400,19 +486,40 @@ class Gateway:
             "roots": [str(root) for root in self.roots],
             "allow_full": self.settings.allow_full,
             "permissions": ["deny", "safe", "full"],
-            "models": [
-                {
-                    "name": model.name,
-                    "model": model.model,
-                    "default": index == 0,
-                    "context_window": model.context_window,
-                    "multimodal": model.multimodal,
-                    "efforts": list(model.efforts),
-                    "api": model.api,
-                }
-                for index, model in enumerate(models)
-            ],
+            "models": [model_view(model, index) for index, model in enumerate(models)],
         }
+
+    async def add_model(self, data: Mapping[str, Any]) -> dict[str, Any]:
+        """Write a new model into the configuration file and return the list."""
+        entry = model_fields(data, creating=True)
+        return await self._edit_models(lambda: self.backend.add_model(entry))
+
+    async def change_model(self, name: str, data: Mapping[str, Any]) -> dict[str, Any]:
+        """Change one model of the configuration file; what is not named stays, and so does the token."""
+        changes = model_fields(data, creating=False)
+        if not changes:
+            raise GatewayError(400, "invalid", "Name at least one thing to change")
+        return await self._edit_models(lambda: self.backend.update_model(name, changes))
+
+    async def remove_model(self, name: str) -> dict[str, Any]:
+        """Remove one model from the configuration file."""
+        return await self._edit_models(lambda: self.backend.remove_model(name))
+
+    async def _edit_models(self, edit: Callable[[], list[ModelInfo]]) -> dict[str, Any]:
+        """Run a configuration edit off the loop and answer with the list it left.
+
+        A daemon reads the file when it starts, so a change reaches the next one and touches no running session. A
+        refusal is the file's own sentence, which names the wrong key, and the file is left as it was. Edits made
+        through this gateway run one at a time; one made by a terminal's ``/config`` at the same moment is not seen.
+        """
+        try:
+            async with self._models_lock:
+                models = await asyncio.to_thread(edit)
+        except ValueError as error:
+            raise GatewayError(400, "invalid", str(error)) from error
+        except OSError as error:
+            raise GatewayError(500, "config", f"The configuration file could not be written: {error}") from error
+        return {"models": [model_view(model, index) for index, model in enumerate(models)]}
 
     async def thread(self, session_id: str, *, everything: bool = False) -> dict[str, Any]:
         """Return a thread and its conversation as chat items."""

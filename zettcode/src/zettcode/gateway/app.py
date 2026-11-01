@@ -301,6 +301,15 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
     async def config(_: Request) -> Any:
         return gateway.config()
 
+    async def add_model(request: Request) -> Any:
+        return await gateway.add_model(await body(request))
+
+    async def change_model(request: Request) -> Any:
+        return await gateway.change_model(request.path_params["name"], await body(request))
+
+    async def remove_model(request: Request) -> Any:
+        return await gateway.remove_model(request.path_params["name"])
+
     async def dirs(request: Request) -> Any:
         return gateway.browse(request.query_params.get("path", ""))
 
@@ -396,6 +405,9 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
         Route("/api/logout", api(logout, public=True), methods=["POST"]),
         Route("/api/status", api(status)),
         Route("/api/config", api(config)),
+        Route("/api/models", api(add_model), methods=["POST"]),
+        Route("/api/models/{name:path}", api(change_model), methods=["PATCH"]),
+        Route("/api/models/{name:path}", api(remove_model), methods=["DELETE"]),
         Route("/api/dirs", api(dirs)),
         Route("/api/graph", api(graph)),
         Route("/api/graph/timeline", api(timeline)),

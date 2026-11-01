@@ -52,6 +52,7 @@ class FakeBackend(Backend):
         self._reachable = True
         self._limits = SendLimits()
         self.model_list = [model("fast", "low", "high"), model("deep", "low", "medium", "high", multimodal=True)]
+        self.model_edits: list[tuple[Any, ...]] = []
         self.daemon_list: dict[str, DaemonInfo] = {}
         self.peer_list: dict[str, Peer] = {}
         self.histories: dict[str, list[Message]] = {}
@@ -287,6 +288,26 @@ class FakeBackend(Backend):
 
     # -- daemons ----------------------------------------------------------------------------------
     def models(self) -> list[ModelInfo]:
+        return list(self.model_list)
+
+    def add_model(self, entry: dict[str, object]) -> list[ModelInfo]:
+        self.model_edits.append(("add", entry))
+        if any(item.name == (entry.get("display_model") or entry["model"]) for item in self.model_list):
+            raise ValueError("That model is already configured")
+        self.model_list.append(model(str(entry.get("display_model") or entry["model"])))
+        return list(self.model_list)
+
+    def update_model(self, name: str, changes: dict[str, object]) -> list[ModelInfo]:
+        self.model_edits.append(("update", name, changes))
+        if all(item.name != name for item in self.model_list):
+            raise ValueError(f"No model called {name!r}")
+        return list(self.model_list)
+
+    def remove_model(self, name: str) -> list[ModelInfo]:
+        self.model_edits.append(("remove", name))
+        if len(self.model_list) < 2:
+            raise ValueError("The last model cannot be removed")
+        self.model_list = [item for item in self.model_list if item.name != name]
         return list(self.model_list)
 
     def daemons(self) -> list[DaemonInfo]:

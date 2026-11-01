@@ -19,7 +19,7 @@ from zettcode.modes import MODE_FOLLOWUP
 from zettcode.sdk import daemons as sdk_daemons
 from zettcode.sdk.client import Client
 from zettcode.sdk.errors import ConfigurationError, SessionLockedError, SessionNotFoundError, ZettCodeError
-from zettcode.sdk.models import list_models
+from zettcode.sdk.models import add_model, list_models, remove_model, update_model
 from zettcode.sdk.types import (
     DaemonInfo,
     Delivered,
@@ -133,6 +133,18 @@ class Backend(ABC):
     @abstractmethod
     def models(self) -> list[ModelInfo]:
         """Return the models a daemon can run on, the first being the default."""
+
+    @abstractmethod
+    def add_model(self, entry: dict[str, object]) -> list[ModelInfo]:
+        """Write a model into the configuration file and return every model it now lists (``ValueError`` if unusable)."""
+
+    @abstractmethod
+    def update_model(self, name: str, changes: dict[str, object]) -> list[ModelInfo]:
+        """Change one model; a key whose value is ``None`` is removed, and the token is kept unless given."""
+
+    @abstractmethod
+    def remove_model(self, name: str) -> list[ModelInfo]:
+        """Remove one model; the last cannot go (``ValueError``)."""
 
     @abstractmethod
     def daemons(self) -> list[DaemonInfo]:
@@ -300,6 +312,15 @@ class SdkBackend(Backend):
     # -- daemons ----------------------------------------------------------------------------------
     def models(self) -> list[ModelInfo]:
         return list(list_models())
+
+    def add_model(self, entry: dict[str, object]) -> list[ModelInfo]:
+        return list(add_model(entry))
+
+    def update_model(self, name: str, changes: dict[str, object]) -> list[ModelInfo]:
+        return list(update_model(name, changes))
+
+    def remove_model(self, name: str) -> list[ModelInfo]:
+        return list(remove_model(name))
 
     def daemons(self) -> list[DaemonInfo]:
         return sdk_daemons.list_daemons()

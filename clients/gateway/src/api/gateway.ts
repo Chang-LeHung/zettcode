@@ -3,6 +3,7 @@
 import type {
   DirectoryListing,
   GatewayConfig,
+  ModelOption,
   GraphData,
   OlderMessages,
   GatewayStatus,
@@ -32,6 +33,11 @@ export const gateway = {
   stop: (threadId: string) => request<{ result: string }>("DELETE", `/api/daemons/${id(threadId)}`),
   log: (threadId: string) => request<{ text: string }>("GET", `/api/daemons/${id(threadId)}/log`),
   config: () => request<GatewayConfig>("GET", "/api/config"),
+  addModel: (entry: Record<string, unknown>) =>
+    request<{ models: ModelOption[] }>("POST", "/api/models", entry),
+  changeModel: (name: string, changes: Record<string, unknown>) =>
+    request<{ models: ModelOption[] }>("PATCH", `/api/models/${encodeURIComponent(name)}`, changes),
+  removeModel: (name: string) => request<{ models: ModelOption[] }>("DELETE", `/api/models/${encodeURIComponent(name)}`),
   graph: () => request<GraphData>("GET", "/api/graph"),
   older: (before: number, limit = 50) =>
     request<OlderMessages>("GET", `/api/graph/older?before=${before}&limit=${limit}`),
