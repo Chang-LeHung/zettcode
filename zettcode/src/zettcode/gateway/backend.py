@@ -13,6 +13,7 @@ import os
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from zettcode.modes import MODE_FOLLOWUP
 from zettcode.sdk import daemons as sdk_daemons
@@ -87,6 +88,21 @@ class Backend(ABC):
 
     def on_stream(self, callback: Callable[[StreamEvent], None]) -> None:  # noqa: B027
         """Call ``callback`` on the event loop with every event of a watched session's turn."""
+
+    def observe(self, callback: Callable[[dict[str, Any]], None] | None) -> None:  # noqa: B027
+        """Call ``callback`` with every message that passes through the broker, and when who is here changes."""
+
+    async def graph(self) -> dict[str, Any]:
+        """Return the broker's picture of who talks to whom (see ``Client.traffic_graph``); empty without a broker."""
+        return {"sessions": [], "groups": [], "edges": [], "recent": []}
+
+    async def older(self, before: int, limit: int) -> dict[str, Any]:
+        """Return the stored messages before id ``before`` (see ``Client.traffic_older``)."""
+        return {"messages": [], "more": False}
+
+    async def timeline(self, since: float, until: float, limit: int) -> dict[str, Any]:
+        """Return the stored messages of a stretch of the past (see ``Client.traffic_timeline``)."""
+        return {"messages": [], "span": None, "now": until}
 
     @abstractmethod
     async def send(self, to: str, text: str, *, direct: bool = False) -> Delivered:
@@ -254,6 +270,18 @@ class SdkBackend(Backend):
 
     def on_stream(self, callback: Callable[[StreamEvent], None]) -> None:
         self.client.watch_streams(callback)
+
+    def observe(self, callback: Callable[[dict[str, Any]], None] | None) -> None:
+        self.client.watch_traffic(callback)
+
+    async def graph(self) -> dict[str, Any]:
+        return await self.client.traffic_graph()
+
+    async def older(self, before: int, limit: int) -> dict[str, Any]:
+        return await self.client.traffic_older(before, limit)
+
+    async def timeline(self, since: float, until: float, limit: int) -> dict[str, Any]:
+        return await self.client.traffic_timeline(since, until, limit)
 
     async def send(self, to: str, text: str, *, direct: bool = False) -> Delivered:
         # A page keeps a conversation instead of watching the session's live turn, so its message never steers one:
