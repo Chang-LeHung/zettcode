@@ -155,6 +155,9 @@ class ScrollView(Widget):
         count = self.line_count()
         wanted = count - self.rect.height if self.follow_tail else self.top
         self.top = self._clamp(wanted, count)
+        selection = self._clamped_selection()
+        if selection is None and self.selection_bounds() is not None:
+            self.clear_selection()
         self._frame_start = None  # the next frame measures how far the wheel has moved from here
         for row in range(self.rect.height):
             index = self.top + row
@@ -162,7 +165,7 @@ class ScrollView(Widget):
                 break
             line = self.source.line(index, self.line_width)
             canvas.draw_spans(self.rect.x, self.rect.y + row, line.spans, max_width=self.rect.width)
-            self._paint_selection(canvas, row, index, line)
+            self._paint_selection(canvas, row, index, line, selection)
 
     def handle(self, event, host: Host) -> bool:
         """Scroll with the wheel or keys, running selection when enabled."""
@@ -204,36 +207,43 @@ class ScrollView(Widget):
         return None if start == end else (start, end)
 
     def has_selection(self) -> bool:
-        """Return whether a selection still names a line in the current source.
+        """Return whether a selection still covers at least one cell in the source."""
+        return self._clamped_selection() is not None
 
-        A transcript can shrink while a selection is held: an entry may be
-        completed or removed while the reader has rows selected. That makes the
-        old line numbers stale, and asking for their text used to raise. Here a
-        stale selection is dropped instead of being allowed to answer Escape.
+    def _clamped_selection(self) -> tuple[tuple[int, int], tuple[int, int]] | None:
+        """Return the selection clamped to the current source, or None when nothing remains.
+
+        A transcript can shrink while a selection is held. The old line numbers
+        then name rows that no longer exist; this is the one place that maps them
+        onto the current source for painting, copying and the Escape predicate.
         """
         bounds = self.selection_bounds()
         if bounds is None:
-            return False
-        count = max(0, self.line_count())
-        if count == 0 or bounds[0][0] >= count or bounds[1][0] >= count:
-            self.clear_selection()
-            return False
-        return True
+            return None
+        count = self.line_count()
+        if count <= 0:
+            return None
+        (first, first_column), (last, last_column) = bounds
+        if first >= count:
+            return None
+        removed_end = last >= count
+        last = min(last, count - 1)
+        first_text = self.source.line(first, self.line_width).text
+        last_text = first_text if last == first else self.source.line(last, self.line_width).text
+        first_column = min(max(0, first_column), display_width(first_text))
+        last_column = display_width(last_text) if removed_end else min(max(0, last_column), display_width(last_text))
+        if first == last and first_column >= last_column:
+            return None
+        if last == first + 1 and first_column >= display_width(first_text) and last_column <= 0:
+            return None
+        return (first, first_column), (last, last_column)
 
     def selected_text(self) -> str:
         """Return the text the current selection covers, clamped to the source."""
-        bounds = self.selection_bounds()
+        bounds = self._clamped_selection()
         if bounds is None:
             return ""
-        count = max(0, self.line_count())
-        if count == 0:
-            self.clear_selection()
-            return ""
         (first, first_column), (last, last_column) = bounds
-        if first >= count:
-            self.clear_selection()
-            return ""
-        last = min(last, count - 1)
         lines: list[str] = []
         for index in range(first, last + 1):
             text = self.source.line(index, self.line_width).text
@@ -306,9 +316,15 @@ class ScrollView(Widget):
             return True
         return False
 
-    def _paint_selection(self, canvas: Canvas, row: int, index: int, line: TextLine) -> None:
+    def _paint_selection(
+        self,
+        canvas: Canvas,
+        row: int,
+        index: int,
+        line: TextLine,
+        bounds: tuple[tuple[int, int], tuple[int, int]] | None,
+    ) -> None:
         """Invert the cells the selection covers on one visible row."""
-        bounds = self.selection_bounds()
         if bounds is None:
             return
         (first, first_column), (last, last_column) = bounds

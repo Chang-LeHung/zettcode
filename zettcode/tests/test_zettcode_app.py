@@ -4636,6 +4636,28 @@ async def test_escape_stops_a_running_turn():
     assert any("stopped" in entry.text for entry in app.transcript.entries), "and the shell says so"
 
 
+async def test_a_valid_selection_keeps_escape_from_stopping_the_turn():
+    app = build_app(block=True)
+    harness = _harness(app)
+    harness.write("a question that will take a while")
+    harness.press("enter")
+    await asyncio.sleep(0)
+    harness.render()
+    view = app.view
+    target = next(index for index in range(view.line_count()) if view.source.line(index, view.line_width).text.strip())
+    view.scroll_to(target)
+    harness.render()
+    harness.mouse_down(view.rect.x + 2, view.rect.y)
+    harness.mouse_up(view.rect.x + 6, view.rect.y)
+    assert view.has_selection() is True
+
+    harness.press("escape")
+
+    assert app.busy is True
+    app.task.cancel()
+    await app.task
+
+
 async def test_escape_still_stops_a_turn_when_the_selection_is_stale():
     """A selection whose lines no longer exist must not turn Escape into a crash."""
     app = build_app(block=True)
@@ -4644,13 +4666,20 @@ async def test_escape_still_stops_a_turn_when_the_selection_is_stale():
     harness.press("enter")
     await asyncio.sleep(0)
     assert app.busy is True
-    app.view._selection_start = (999, 0)
-    app.view._selection_end = (999, 5)
+    harness.render()
+    view = app.view
+    target = next(index for index in range(view.line_count()) if view.source.line(index, view.line_width).text.strip())
+    view.scroll_to(target)
+    harness.render()
+    harness.mouse_down(view.rect.x + 2, view.rect.y)
+    harness.mouse_up(view.rect.x + 6, view.rect.y)
+    app.transcript.clear()
 
     harness.press("escape")
 
     await asyncio.wait_for(app.task, 1.0)
     assert app.busy is False
+    harness.render()
     assert app.view.selection_bounds() is None
 
 
