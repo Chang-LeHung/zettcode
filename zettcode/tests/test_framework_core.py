@@ -160,14 +160,14 @@ def test_a_drag_over_text_no_widget_owns_copies_it_from_the_frame():
     assert harness.clipboard == "1. GPT-4o\n  2. Dee"
 
 
-def test_a_frame_selection_that_outlives_its_rows_copies_nothing():
-    """Rows that the drag named can be gone by the time it copies."""
+def test_a_frame_selection_that_names_a_missing_row_copies_nothing():
+    """One surviving row is not enough: the frame no longer holds what was dragged."""
     harness = Harness(Panel(), width=20, height=4)
     harness.render()
 
-    harness.mouse_down(2, 2)
+    harness.mouse_down(2, 1)
     harness.mouse_move(8, 3)
-    harness.resize(20, 2)
+    harness.resize(20, 3)
     harness.render()
 
     assert harness.app.screen_selection_text() == ""

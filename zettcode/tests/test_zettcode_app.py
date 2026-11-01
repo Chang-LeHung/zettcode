@@ -4475,8 +4475,7 @@ async def test_escape_stops_a_running_turn():
 
     harness.press("escape")
 
-    for _ in range(10):
-        await asyncio.sleep(0)
+    await _settle_escape()
     try:
         assert app.task.done(), "Escape cancels the running turn"
     finally:
@@ -4507,8 +4506,7 @@ async def test_a_valid_selection_keeps_escape_from_stopping_the_turn():
 
     harness.press("escape")
 
-    for _ in range(10):
-        await asyncio.sleep(0)
+    await _settle_escape()
     assert app.busy is True
     app.task.cancel()
     await app.task
@@ -4535,8 +4533,7 @@ async def test_escape_still_stops_a_turn_when_the_selection_is_stale():
 
     harness.press("escape")
 
-    for _ in range(10):
-        await asyncio.sleep(0)
+    await _settle_escape()
     assert app.busy is False
     harness.render()
     assert app.view.selection_bounds() is None
@@ -5488,6 +5485,12 @@ async def test_a_command_reports_through_its_context_while_it_runs():
 
 def _harness(app: ZettCodeApp) -> Harness:
     return Harness(app=app.app)
+
+
+async def _settle_escape() -> None:
+    """Let Escape's cancel reach the task, then let the turn's cleanup finish."""
+    for _ in range(10):
+        await asyncio.sleep(0)
 
 
 def _rendered(transcript: Transcript, width: int) -> list[str]:
