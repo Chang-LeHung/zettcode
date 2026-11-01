@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TypeVar, overload
@@ -458,6 +458,10 @@ class ZettCodeConfig:
             without uninstalling it. This is the configuration file's own
             ``[plugins] disable`` list; the names the older switch file adds are merged in by
             :attr:`off_names`, so a switch can tell the two apart.
+        plugin_settings: The ``[plugins.<name>]`` tables, by plugin name, exactly as written. A plugin declares
+            what its own keys mean and what they default to (``ctx.settings``); the configuration only carries the
+            reader's values, so a key no plugin knows is harmless and a plugin that ships later needs no change
+            here.
         subagent_enabled: Offer the ``task`` tool, whose profiles run a child
             agent with its own context and session log.
         subagent_max_iterations: Model calls one such child may make for one task.
@@ -513,6 +517,8 @@ class ZettCodeConfig:
     statusline_hidden: tuple[str, ...] = ()
     plugins_enabled: bool = True
     disabled_plugins: tuple[str, ...] = ()
+    #: The reader's own keys for a plugin, from its ``[plugins.<name>]`` table; the plugin supplies the defaults.
+    plugin_settings: Mapping[str, Mapping[str, object]] = field(default_factory=dict)
     subagent_enabled: bool = True
     subagent_max_iterations: int = DEFAULT_SUBAGENT_MAX_ITERATIONS
     subagent_messaging: bool = False
@@ -814,6 +820,41 @@ def _read_table(raw: object, key: str, source: Path, allowed: frozenset[str]) ->
     return raw
 
 
+def _read_plugins(raw: object, source: Path) -> tuple[dict[str, object], dict[str, dict[str, object]]]:
+    """Split the ``[plugins]`` table into its own keys and the settings of each plugin.
+
+    ``[plugins]`` holds the switch (``enabled``, ``disable``) and, under any other name, a table of that plugin's own
+    keys (``[plugins.recap] after_seconds = 180``). The configuration cannot know which plugins will be installed and
+    which keys they read, so it keeps those values as written: a plugin declares their meaning and their default, and a
+    table no plugin claims is harmless.
+
+    Raises:
+        ValueError: The table, a plugin's table, or a value in one is not what it must be.
+    """
+    if raw is None:
+        return {}, {}
+    if not isinstance(raw, dict):
+        raise ValueError("Config key 'plugins' must be a table ([plugins])")
+    own = {key: value for key, value in raw.items() if key in PLUGIN_KEYS}
+    settings: dict[str, dict[str, object]] = {}
+    for name, table in raw.items():
+        if name in PLUGIN_KEYS:
+            continue
+        where = f"Config table '[plugins.{name}]' in {source}"
+        if not isinstance(table, dict):
+            raise ValueError(
+                f"{where} must be a table for that plugin's settings (the [plugins] table itself takes "
+                f"{', '.join(sorted(PLUGIN_KEYS))})"
+            )
+        values: dict[str, object] = {}
+        for key, value in table.items():
+            if isinstance(value, (dict, list)):
+                raise ValueError(f"{where} key {key!r} must be a string, a number or a boolean")
+            values[str(key)] = value
+        settings[str(name)] = values
+    return own, settings
+
+
 def _read_reasoning_efforts(raw: object, where: str) -> tuple[ReasoningEffort, ...]:
     """Return the levels one model accepts, cheapest first; none written means every level."""
     if raw is None:
@@ -952,7 +993,7 @@ def load_config(
     ask_user = _read_table(data.get("ask_user"), "ask_user", source, ASK_USER_KEYS)
     skills = _read_table(data.get("skills"), "skills", source, SKILL_KEYS)
     mcp = _read_table(data.get("mcp"), "mcp", source, MCP_KEYS)
-    plugins = _read_table(data.get("plugins"), "plugins", source, PLUGIN_KEYS)
+    plugins, plugin_settings = _read_plugins(data.get("plugins"), source)
     transcript = _read_table(data.get("transcript"), "transcript", source, TRANSCRIPT_KEYS)
     update = _read_table(data.get("update"), "update", source, UPDATE_KEYS)
     harness = _read_table(data.get("harness"), "harness", source, HARNESS_KEYS)
@@ -1008,6 +1049,7 @@ def load_config(
         # The configuration file's own list. The legacy switch file's names are read where they are needed
         # (`zettcode.engine.plugins.switches`), so a switch can tell which list it may write.
         disabled_plugins=_read_disabled_plugins(plugins.get("disable"), source),
+        plugin_settings=plugin_settings,
         subagent_enabled=bool(_setting(harness, "subagent", bool, True)),
         subagent_max_iterations=_typed(
             harness.get("subagent_max_iterations", DEFAULT_SUBAGENT_MAX_ITERATIONS),

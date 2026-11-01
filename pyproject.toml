@@ -24,7 +24,16 @@ dev = [
   "ruff>=0.11,<1",
   "tomli>=2,<3",
   "viztracer>=1.1.1",
+  # The recap plugin is developed beside the program, so this checkout's environment carries it: `/recap` is in the
+  # menu when the terminal runs from here. It is not a dependency of the package; once it is released, a reader
+  # installs it from an extra in `zettcode/pyproject.toml` instead.
+  "zettcode-recap",
 ]
+
+[tool.uv.sources]
+# The plugin is built from this checkout, not from an index, until its first release; after that the extra is the
+# published path and this source stays for local development.
+zettcode-recap = { path = "plugins/zettcode-recap", editable = true }
 
 [tool.mypy]
 python_version = "3.10"

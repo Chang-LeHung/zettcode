@@ -17,7 +17,7 @@ from zettcode.tui import ELLIPSIS, RULE, SEPARATOR
 from ..core.theme import DARK, Theme
 from ..layout.scroll import LineSource, ScrollView
 from ..render import Canvas, Span, Style, TextLine, highlight, layout_rich_lines, wrap_spans
-from ..render.text import display_width
+from ..render.text import display_width, wrap_words
 
 FENCE = "```"
 TABLE_GAP = 3
@@ -165,6 +165,13 @@ def render_markdown(text: str, width: int, theme: Theme = DARK) -> list[TextLine
             logical.append(TextLine(rule_spans(width, theme)))
             index += 1
             continue
+        quote = _QUOTE.match(line)
+        if quote:
+            # A quote wraps by word and keeps its bar on every row: the bar is part of the margin, not of the prose,
+            # so a wrapped answer stays inside the quotation instead of losing it after the first line.
+            logical.extend(quote_lines(quote.group(1), width, theme))
+            index += 1
+            continue
         rendered = markdown_line(line, theme=theme)
         if rendered is not None:
             logical.append(rendered)
@@ -209,14 +216,16 @@ def markdown_line(line: str, *, theme: Theme) -> TextLine | None:
     if ordered:
         return list_item(f"{ordered.group(1)}{ordered.group(2)}. ", ordered.group(3), theme=theme)
 
-    quote = _QUOTE.match(line)
-    if quote:
-        prefix = [Span("\u2502 ", Style(foreground=theme.accent))]
-        return TextLine(
-            tuple(prefix + inline_markdown(quote.group(1), base=Style(foreground=theme.subtle), theme=theme))
-        )
-
     return TextLine(tuple(inline_markdown(line, theme=theme)))
+
+
+def quote_lines(body: str, width: int, theme: Theme) -> list[TextLine]:
+    """Return one quote line as rows that keep their bar, wrapped between words."""
+    room = max(1, width - 2)
+    bar = Span("\u2502 ", Style(foreground=theme.accent))
+    base = Style(foreground=theme.subtle)
+    rows = [piece for line in body.split("\n") for piece in wrap_words(line, room)] or [""]
+    return [TextLine((bar, *inline_markdown(row, base=base, theme=theme))) for row in rows]
 
 
 def list_item(marker: str, body: str, *, theme: Theme) -> TextLine:

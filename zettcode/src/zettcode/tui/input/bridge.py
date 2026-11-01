@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from ..core.events import (
     AnyEvent,
+    FocusEvent,
     KeyEvent,
     MouseEvent,
     PasteEvent,
@@ -39,5 +40,7 @@ def translate(event: InputEvent) -> AnyEvent | None:
             )
         case EventType.RESIZE:
             return ResizeEvent()
+        case EventType.FOCUS:
+            return FocusEvent(focused=event.focused)
         case _:
             return None

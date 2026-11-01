@@ -179,6 +179,9 @@ class Terminal:
         input queue stays quiet and selection still works.
         """
         parts = [
+            # DECSET 1004: report when the window gains or loses focus, so a page can stop working (or note how far a
+            # request got) while nobody is looking. A terminal that does not know the mode ignores it.
+            "\x1b[?1004h",
             "\x1b[?1049h",  # DECSET 1049: switch to the alternate screen buffer
             "\x1b[?7l",  # DECRST 7: no auto-wrap, so the last column cannot scroll
             "\x1b[?25l",  # DECTCEM: hide the cursor until a widget positions it
@@ -205,6 +208,7 @@ class Terminal:
     def _exit_sequences(self) -> str:
         """Return the modes to restore, mirroring whatever was enabled."""
         parts = [
+            "\x1b[?1004l",  # stop focus reports before anything else is restored
             "\x1b[0m",  # SGR 0: drop every attribute before the shell gets the tty
             "\x1b[?25h",  # DECTCEM: show the cursor again
             "\x1b[?7h",  # DECSET 7: restore auto-wrap

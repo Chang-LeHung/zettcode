@@ -68,6 +68,7 @@ except zc.ConfigurationError as error:
 | `statusline_hidden` | `Sequence[str]` | 状态行里被关掉的部分。 |
 | `plugins_enabled` | `bool` | 加载插件。 |
 | `disabled_plugins` | `Sequence[str]` | 按名字排除的插件。 |
+| `plugin_settings` | `Mapping[str, Mapping[str, object]]` | `[plugins.<名字>]` 表：每个插件读的那些键，按插件名分组。 |
 | `subagent_enabled` | `bool` | 给模型跑子任务的工具。 |
 | `subagent_max_iterations` | `int` | 子任务最多几轮。 |
 | `subagent_messaging` | `bool` | 允许子任务给其他会话发消息。 |

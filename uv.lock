@@ -2947,6 +2947,22 @@ wheels = [
 ]
 
 [[package]]
+name = "zettcode-recap"
+source = { editable = "plugins/zettcode-recap" }
+dependencies = [
+    { name = "zettcode" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "zettcode", specifier = ">=0.3,<0.4" }]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+]
+
+[[package]]
 name = "zettcode-workspace"
 version = "0.0.0"
 source = { virtual = "." }
@@ -2961,6 +2977,7 @@ dev = [
     { name = "ruff" },
     { name = "tomli" },
     { name = "viztracer" },
+    { name = "zettcode-recap" },
 ]
 
 [package.metadata]
@@ -2975,4 +2992,5 @@ dev = [
     { name = "ruff", specifier = ">=0.11,<1" },
     { name = "tomli", specifier = ">=2,<3" },
     { name = "viztracer", specifier = ">=1.1.1" },
+    { name = "zettcode-recap", editable = "plugins/zettcode-recap" },
 ]

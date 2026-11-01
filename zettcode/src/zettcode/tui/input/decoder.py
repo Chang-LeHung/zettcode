@@ -15,6 +15,10 @@ _MOUSE = re.compile(rb"^\x1b\[<(\d+);(\d+);(\d+)([Mm])")
 #: An operating-system command, which is how a terminal answers a query.
 _OSC = b"\x1b]"
 
+#: Focus reporting, asked for with DECSET 1004: ``CSI I`` means the window gained focus, ``CSI O`` that it lost it.
+_FOCUS_IN = b"\x1b[I"
+_FOCUS_OUT = b"\x1b[O"
+
 #: Control characters a paste may keep: tab indents code and newline separates
 #: it. Everything else — the carriage return a clipboard adds per line, a stray
 #: escape, a bell — would be drawn as a broken line or walked over silently.
@@ -115,6 +119,13 @@ class InputDecoder:
             else:
                 end, length = terminator, 2
             return InputEvent(EventType.REPLY, text=data[2:end].decode("utf-8", "replace")), end + length, False
+
+        # Focus reporting arrives as bare ``CSI I`` / ``CSI O``, which the general control-sequence table has no name
+        # for; read before it, so the window losing focus is an event and not silence.
+        if data.startswith(_FOCUS_IN):
+            return InputEvent(EventType.FOCUS, focused=True), len(_FOCUS_IN), False
+        if data.startswith(_FOCUS_OUT):
+            return InputEvent(EventType.FOCUS, focused=False), len(_FOCUS_OUT), False
 
         mouse = _MOUSE.match(data)
         if mouse:

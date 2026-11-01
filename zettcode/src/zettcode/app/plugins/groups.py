@@ -150,6 +150,57 @@ class TuiGroups(TuiGroup):
         self._presenters: list[Presenter[Any]] = []
         self._slots = UiSlots()
         self._turn_segments: dict[str, TurnSegment] = {}
+        self._focus_handlers: list[Callable[[bool], None]] = []
+        self._turn_start_handlers: list[Callable[[], None]] = []
+        self._turn_end_handlers: list[Callable[[bool], None]] = []
+
+    @property
+    def focus_handlers(self) -> tuple[Callable[[bool], None], ...]:
+        """Return the handlers told when the terminal window gains or loses focus."""
+        return tuple(self._focus_handlers)
+
+    def register_focus_handler(self, handler: Callable[[bool], None]) -> Callable[[bool], None]:
+        """Be told when the terminal gains (``True``) or loses (``False``) focus.
+
+        The terminal asks for focus reports when it starts, so this is called for a reader who switched to another
+        window and for one who came back; a terminal that does not report focus never calls it. It is a hook, not a
+        row: what it does with the news — pause, notify, summarise — is the plugin's.
+        """
+        self._focus_handlers.append(handler)
+        return handler
+
+    @property
+    def turn_start_handlers(self) -> tuple[Callable[[], None], ...]:
+        """Return the handlers told when a turn of the conversation starts."""
+        return tuple(self._turn_start_handlers)
+
+    def register_turn_start_handler(self, handler: Callable[[], None]) -> Callable[[], None]:
+        """Be told when a turn of the conversation starts, before its request is sent.
+
+        The counterpart of :meth:`register_turn_end_handler`: a plugin that waits for the reader to stop asking
+        cancels that wait here and arms it again when the turn ends. A side question and a resumed request are not
+        turns; a turn a command starts with ``host.prompt`` is. A handler that raises is told once and the shell
+        carries on.
+        """
+        self._turn_start_handlers.append(handler)
+        return handler
+
+    @property
+    def turn_end_handlers(self) -> tuple[Callable[[bool], None], ...]:
+        """Return the handlers told when a turn of the conversation ends."""
+        return tuple(self._turn_end_handlers)
+
+    def register_turn_end_handler(self, handler: Callable[[bool], None]) -> Callable[[bool], None]:
+        """Be told when a turn of the conversation ends, after the row it ended on is settled.
+
+        ``handler(completed)`` says whether the request was answered or was stopped or failed. A request the reader
+        sent is a turn, and so is one a command started with ``host.prompt``; running a command is not itself a turn,
+        and neither is a side question or a resumed request. This is called from inside the run that just ended,
+        before the shell is free again, and nothing guards two turns at once: a handler that starts work schedules it
+        rather than running a turn from here. A handler that raises is told once and the shell carries on.
+        """
+        self._turn_end_handlers.append(handler)
+        return handler
 
     @property
     def turn_segments(self) -> tuple[TurnSegment, ...]:

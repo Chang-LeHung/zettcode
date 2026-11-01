@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from contextlib import suppress
 from time import monotonic
 from typing import TYPE_CHECKING, Any, cast
 
@@ -28,6 +29,7 @@ from zettcode.tui import (
     PROMPT,
     SEPARATOR,
     CompletionPopup,
+    FocusEvent,
     Rect,
     RichText,
     Screen,
@@ -239,6 +241,13 @@ class ZettCodeApp(
         )
         # The terminal tab says what this session is about, like any editor tab.
         self.app.title = self._terminal_title
+        # Focus reports are about the window, not the widget under the pointer: watch them here, before routing.
+        self.app.add_listener(self._window_event)
+        #: The plugins whose hook failed once already, by ``id``: told once, not on every event.
+        self._failed_hooks: set[int] = set()
+        #: Whether the task in flight is a command rather than a turn, and the draft typed while it worked.
+        self._command_working = False
+        self._next_draft: tuple[str, bool] | None = None
         self._task: asyncio.Task[None] | None = None
         self._title_task: asyncio.Task[None] | None = None
         #: A short-lived message for the row above the composer: the text and the
@@ -858,6 +867,18 @@ class ZettCodeApp(
         """
         return value.startswith("/") and self._lookup(value)[0] is not None
 
+    def stop_working_command(self) -> bool:
+        """Stop a command that handed over work, as Escape does; report whether one was working.
+
+        Enter on an empty draft means this: the reader has nothing to say and is not waiting behind a summary. The
+        row settles ``stopped``, and what was queued behaves as it does after Escape.
+        """
+        if not (self._busy and self._command_working):
+            return False
+        if self._task is not None and not self._task.done():
+            self._task.cancel()
+        return True
+
     def _run_command_now(self, command: Command, argument: str) -> None:
         """Run a command beside the request in flight, without taking the busy state.
 
@@ -951,6 +972,13 @@ class ZettCodeApp(
             # typed, and this is for what arrives some other way (a draft that was there already, a recall).
             self.flash("this session is open in another ZettCode process; it is read-only here", level="error")
             return False
+        if self._busy and self._command_working:
+            # A command is working, not a request: the reader is not steering anything, and waiting for a summary
+            # they no longer want is worse than stopping it. The draft is taken once the command has stopped.
+            self._next_draft = (value, bool(command))
+            if self._task is not None and not self._task.done():
+                self._task.cancel()
+            return True
         if self._busy:
             if command:
                 # Which commands are taken mid-request is the command's own
@@ -1133,6 +1161,8 @@ class ZettCodeApp(
             self.projector.begin_turn(prompt)
         else:
             self.projector.begin_turn(prompt, relayed=relayed)
+        # Before the request goes out: a plugin that waits for the reader to stop asking cancels that wait here.
+        self._tell_plugins(self.agent.plugin_turn_start_handlers)
         if self.messenger is not None:
             # What this turn answers decides how many hops an answer sent from it carries.
             self.messenger.answering = relayed
@@ -1225,10 +1255,34 @@ class ZettCodeApp(
             self._note = None
             self._refresh_tasks()
             self.app.invalidate()
+            # After the row the turn ended on is settled, so a plugin that reads the session or asks the model sees
+            # the state the reader does.
+            self._tell_plugins(self.agent.plugin_turn_end_handlers, completed)
             if advance:
                 # A turn a command asked for leaves this to the command: it is still running, and what was queued
                 # waits for it to end, not for the turn inside it.
                 self._start_next_command()
+
+    def _window_event(self, event: object) -> None:
+        """Tell the plugins when the window gains or loses focus.
+
+        A focus report has no widget to route to, and a plugin that waits for the reader to step away (a recap, a
+        notification) needs it before the next key arrives.
+        """
+        if isinstance(event, FocusEvent):
+            self._tell_plugins(self.agent.plugin_focus_handlers, event.focused)
+
+    def _tell_plugins(self, handlers: Sequence[Callable[..., None]], *args: object) -> None:
+        """Call the plugin hooks of one kind, telling a handler that raises once and carrying on."""
+        for handler in handlers:
+            try:
+                handler(*args)
+            except Exception as error:  # a plugin's hook must not end the session
+                logger.exception("plugin.hook", extra={"session": self.client.session.id})
+                with suppress(Exception):  # the bookkeeping must not be what escapes
+                    if id(handler) not in self._failed_hooks:
+                        self._failed_hooks.add(id(handler))
+                        self.transcript.error(f"a plugin hook failed: {error}")
 
     def _set_busy(self, busy: bool) -> None:
         """Track in-flight work and keep the frame loop alive while it runs.
@@ -1280,6 +1334,7 @@ class ZettCodeApp(
             else:
                 try:
                     result = await command.handler(CommandContext(argument=argument, ui=self, host=self))
+                    result = await self._finish_command(result)
                     if name == "/new" and self.client.session.id != previous_session:
                         self.transcript.clear()
                         self.transcript.welcome(WELCOME)
@@ -1308,10 +1363,51 @@ class ZettCodeApp(
             self._set_busy(False)
             self._activity = Activity.READY
             self._note = None
+            self._command_working = False
             self.app.invalidate()
-            # A queued command waited for whatever was running; with the busy
-            # flag down again, this is where it starts.
-            self._start_next_command()
+            # A draft typed while this command worked is what the reader meant instead; it starts before anything
+            # that was queued behind the command.
+            if self._next_draft is not None:
+                value, was_command = self._next_draft
+                self._next_draft = None
+                self.submit(value, command=was_command)
+            else:
+                # A queued command waited for whatever was running; with the busy
+                # flag down again, this is where it starts.
+                self._start_next_command()
+
+    async def _finish_command(self, result: CommandResult) -> CommandResult:
+        """Await the rest of a command that returned work to do, showing what it is doing meanwhile.
+
+        A command that takes seconds — a recap asks the model — returns ``run`` instead of awaiting it, so the
+        pinned row says what is happening and the reader can stop it with Ctrl-C or Escape. A failure settles the
+        row as an error line and is reported like any other command's; a stop settles it with ``stopped``.
+        """
+        if result.run is None:
+            return result
+        intro = result.intro or "Working"
+        opened = self.transcript.wait_for_model(intro, tips=False)
+        # A command that has handed over work is the one case where the composer is not the reader's to lose: a
+        # finished command of milliseconds is not worth cancelling, a recap of twenty seconds is.
+        self._command_working = True
+        self.app.invalidate()
+        try:
+            done = await result.run
+        except asyncio.CancelledError:
+            if opened:
+                self.transcript.settle_wait(f"{intro} {SEPARATOR} stopped")
+            raise
+        except Exception:
+            # The row is what the reader is watching; a failure that leaves it spinning is worse than the failure.
+            if opened:
+                self.transcript.settle_wait(f"{intro} {SEPARATOR} failed")
+            raise
+        else:
+            if opened:
+                self.transcript.settle_wait(f"{intro} {SEPARATOR} done")
+            return done
+        finally:
+            self._command_working = False
 
     def _apply_result(self, result: CommandResult) -> None:
         """Show what a command returned: Markdown, a toast, a widget, a re-layout.

@@ -8,6 +8,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from xml.etree import ElementTree
 
 import pytest
@@ -17,6 +18,7 @@ from zettcode.app.agent.conversation.entries import TextEntry
 from zettcode.app.agent.conversation.presenters import WelcomePresenter
 from zettcode.app.brand import LOGO_LINES, LOGO_PALETTE, LOGO_PIXELS
 from zettcode.app.commands import CommandContext, CommandUi
+from zettcode.app.plugins import HOST_LINK, HostLink
 from zettcode.app.plugins.loader import terminal_context
 from zettcode.app.ui.widgets.welcome import WELCOME
 from zettcode.config import ModelConfig, ZettCodeConfig, load_config
@@ -116,10 +118,11 @@ class ExampleCommandUi(CommandUi):
 @pytest.mark.parametrize("path", ["docs/guide/plugins.md", "docs/zh/guide/plugins.md"])
 async def test_documented_plugin_registers_and_runs_its_command(path, tmp_path):
     examples = code_blocks(path, "python")
-    # Eight blocks: the first two show a plugin that guards its screen-only half, the rest build the one this test
-    # loads, one answers with a document, and the last is the command that asks the model for something (see
+    # Eleven blocks: the first two show a plugin that guards its screen-only half, two more show the window hooks and
+    # the settings a plugin declares, one hands a slow command's waiting to the shell, the rest build the one this
+    # test loads, one answers with a document, and the last is the command that asks the model for something (see
     # "Asking the model" / "让模型干活").
-    assert len(examples) == 8
+    assert len(examples) == 11
     namespace = {}
     for example in examples:
         exec(compile(example, path, "exec"), namespace)
@@ -145,6 +148,29 @@ async def test_documented_plugin_registers_and_runs_its_command(path, tmp_path):
     result = await progress_handler(plugin, CommandContext(argument="Ada", ui=ui))
     assert ui.events == [("notice", "Preparing a greeting…")]
     assert result.message == "## Hello\n\nWelcome, Ada."
+
+    # The window hooks are told, not routed to: both handlers exist on the class the page declares.
+    away = namespace["Away"]()
+    assert callable(away.focused) and callable(away.ended)
+    away.focused(False)
+    away.ended(True)
+
+    # The slow-command example runs too: the work is what the shell awaits, and the answer is a quote.
+    class _Ask:
+        async def ask(self, question, *, cache="read", timeout=None):
+            return "All green."
+
+    link = HostLink()
+    recap = namespace["Recap"]()
+    recap.activate(terminal_context(config, {HOST_LINK: link}))
+    link.attach(SimpleNamespace(client=SimpleNamespace(session=_Ask())))  # type: ignore[arg-type]
+    pending = await recap.recap(None)
+    assert pending.intro and pending.run is not None
+    assert (await pending.run).message == "> All green."
+
+    # A plugin's settings are declared with their defaults, and the values in effect come back.
+    declared = terminal_context(config).settings.declare(after_seconds=180, quiet=False)
+    assert declared == {"after_seconds": 180, "quiet": False}
 
     # The document example answers with the field beside the old ones, so a client that predates it still shows text.
     result = namespace["notes"](PlainCommandContext(argument=""))

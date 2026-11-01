@@ -104,8 +104,14 @@ class TurnMixin(EntryLog):
             self.user_message(prompt, side=side)
         self.wait_for_model()
 
-    def wait_for_model(self) -> bool:
+    def wait_for_model(self, title: str = PROCESSING, *, tips: bool = True) -> bool:
         """Open the pinned wait row for a request, and report whether it opened.
+
+        Args:
+            title: What the row says is happening; ``Processing`` for a request, and a command's own words
+                (``Recap · writing``) for work it started that will take a while.
+            tips: Attach the deck's tip for a model request. A command's row is about the command, so it takes
+                none.
 
         Nothing is known about the response yet, and a call can take seconds, so
         the row goes up as soon as the request starts and stays for all of it:
@@ -123,8 +129,8 @@ class TurnMixin(EntryLog):
         if any(self._is_open_row(entry) for entry in self.entries):
             return False
         self._turn_from = len(self.entries)
-        tips = self.tip_deck.next() if self.tip_deck is not None else ()
-        self._add(WaitEntry(id=self._next_id, title=PROCESSING, started_at=self.clock(), tips=tips))
+        shown = self.tip_deck.next() if tips and self.tip_deck is not None else ()
+        self._add(WaitEntry(id=self._next_id, title=title, started_at=self.clock(), tips=shown))
         return True
 
     def summarize_changes(self, workspace: PurePath | None = None) -> bool:

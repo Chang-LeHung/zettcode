@@ -8,6 +8,7 @@ agent is where the shell asks for everything the runtime loaded.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 
 from zettcode.app.commands import Command, CommandContext, CommandHost, CommandResult
 from zettcode.app.pets import PetCatalog, bundled_pets
@@ -117,6 +118,21 @@ class CommandsMixin(AppearanceMixin, ExportsMixin):
     def plugin_rows(self) -> tuple[UiRow, ...]:
         """Return the header and status rows plugins asked the shell to draw."""
         return self.terminal_plugins.rows
+
+    @property
+    def plugin_focus_handlers(self) -> tuple[Callable[[bool], None], ...]:
+        """Return the handlers told when the terminal window gains or loses focus."""
+        return self.terminal_plugins.focus_handlers
+
+    @property
+    def plugin_turn_start_handlers(self) -> tuple[Callable[[], None], ...]:
+        """Return the handlers told when a turn of the conversation starts."""
+        return self.terminal_plugins.turn_start_handlers
+
+    @property
+    def plugin_turn_end_handlers(self) -> tuple[Callable[[bool], None], ...]:
+        """Return the handlers told when a turn of the conversation ends."""
+        return self.terminal_plugins.turn_end_handlers
 
     async def _command_new(self, context: CommandContext) -> CommandResult:
         """Start a fresh session."""

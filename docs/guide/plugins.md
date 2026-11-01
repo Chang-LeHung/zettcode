@@ -164,6 +164,42 @@ needs (the agent's group is in `zettcode.engine.plugins`; the screen's is added 
   watch a run finish.
 - **The screen** — the header and the status line are each split into a left and
   a right side, and every side is drawn from the segments that registered.
+- **The window and the turns** — the terminal asks for focus reports when it starts, so a plugin can be told when the
+  reader steps away and when they come back; and either end of a turn of the conversation. A plugin that summarizes,
+  notifies or waits for the reader to stop asking is built on these:
+
+```python
+from zettcode.app.plugins import PluginContext, TuiPlugin
+
+
+class Away(TuiPlugin):
+    name = "away"
+
+    def activate(self, ctx: PluginContext) -> None:
+        if ctx.tui is None:
+            return
+        ctx.tui.register_focus_handler(self.focused)
+        ctx.tui.register_turn_start_handler(self.started)
+        ctx.tui.register_turn_end_handler(self.ended)
+
+    def focused(self, focused: bool) -> None:
+        """The terminal window gained (``True``) or lost (``False``) focus."""
+
+    def started(self) -> None:
+        """A turn of the conversation is starting, before its request goes out."""
+
+    def ended(self, completed: bool) -> None:
+        """A turn of the conversation ended; ``completed`` is false for a stopped or failed one."""
+```
+
+Neither is a row and neither may consume anything: they are told, and what they do with the news is their own. A hook
+is also told at a moment it must not disturb: it runs inside the request that just ended, before the shell is free
+again, so work that starts a turn of its own — `host.prompt(...)` — is scheduled, not done in the handler.
+
+What is a turn: a request the reader sent, or one another session sent and this one answered. Running a command is
+not itself a turn, though a turn a command starts with `host.prompt` is; a side question and a resumed request are
+not turns either. A terminal that does not report focus (``DECSET 1004``) simply never calls the first hook, and
+nothing else changes.
 
 ```python
 from zettcode.app.plugins import ShellContext, TuiPlugin
@@ -189,6 +225,33 @@ Before a model is configured, `context.model.name` is empty, `context.model.effo
 is empty, and `context.model.config` — the entry itself — is `None`. A segment that
 reads the entry should say it has no model rather than assume one is there.
 
+## Reading the configuration
+
+A plugin that has settings declares them, with the value each one takes when the reader has not written one. The
+configuration file cannot know which plugins are installed, so it keeps each plugin's own table as written
+(`[plugins.<name>]`), and the plugin decides what the keys mean:
+
+```python
+def activate(self, ctx: PluginContext) -> None:
+    given = ctx.settings.declare(after_seconds=180, quiet=False)
+    self.after_seconds = int(given["after_seconds"])
+    self.quiet = bool(given["quiet"])
+```
+
+The reader's value wins; a value that is not the default's type is refused when the plugin activates, naming the table
+and the key; reading a key the plugin never declared is an error rather than a silent default. A `[plugins.recap]`
+table for a plugin that is not installed is harmless, and a plugin that ships later needs no change to the
+configuration code.
+
+```toml
+[plugins.recap]
+after_seconds = 240
+quiet = true
+```
+
+`declare` may be called once, with every key the plugin reads: the defaults are what the reader's table is checked
+against and what the values are when it says nothing.
+
 ## Writing a command
 
 A command is handed a `CommandContext`:
@@ -206,6 +269,37 @@ toast), `widget` (a page of your own to present over the conversation), and
 `relayout` when the change moves the screen around. A slow command can report
 progress through `context.ui` while it runs instead of waiting to describe
 everything at the end.
+
+A command that waits on the model, or on anything else that takes seconds,
+returns the waiting instead of doing it: `intro` says what is happening and
+`run` is the rest of the result. The shell puts `intro` in the pinned row the
+reader is already watching, awaits `run`, and settles the row when it answers;
+Ctrl-C, Escape, the next line the reader sends, and Enter on an empty draft
+stop it, and the row says `stopped`.
+
+```python
+from zettcode.app.plugins import HOST_LINK, HostLink
+
+
+class Recap(TuiPlugin):
+    name = "recap"
+
+    def activate(self, ctx: PluginContext) -> None:
+        # The shell does not exist yet; this is how a command reaches it when it runs.
+        self.link = ctx.find(HOST_LINK, HostLink)
+        if ctx.tui is not None:
+            ctx.tui.register_command("recap", "summarise this session", self.recap)
+
+    async def recap(self, context: CommandContext) -> CommandResult:
+        return CommandResult(intro="Recap \u2026 writing", run=self.really_recap())
+
+    async def really_recap(self) -> CommandResult:
+        host = self.link.host
+        if host is None:
+            raise ValueError("The shell is not ready yet")
+        answer = await host.client.session.ask("Recap where this session is, briefly.", cache="read")
+        return CommandResult(message=f"> {answer}")
+```
 
 Plugin commands are listed last and cannot shadow a built-in, so `/model`,
 `/resume` and the rest always do what [Commands](/guide/commands) says.

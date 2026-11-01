@@ -41,6 +41,7 @@ class KeysMixin(ShellState):
         self.app.commands.add("interrupt_run", self._interrupt_run)
         self.app.commands.add("complete_accept", self._complete_accept)
         self.app.commands.add("complete_run", self._complete_run)
+        self.app.commands.add("stop_working_command", self._stop_working_command)
         self.app.commands.add("complete_dismiss", self._complete_dismiss)
         self.app.commands.add("follow_up_up", self._follow_up_up)
         self.app.commands.add("follow_up_down", self._follow_up_down)
@@ -127,6 +128,9 @@ class KeysMixin(ShellState):
         self.app.keymap.bind("tab", "complete_accept", priority="capture", when=self._menu_open)
         self.app.keymap.bind("escape", "complete_dismiss", priority="capture", when=self._menu_open)
         self.app.keymap.bind("enter", "complete_run", priority="capture", when=self._run_on_enter)
+        # Enter with nothing typed stops a command that handed over work: a row the reader did not ask for is not
+        # something to be held behind, and the draft (when there is one) is the command's own submit.
+        self.app.keymap.bind("enter", "stop_working_command", priority="capture", when=self._stopping_work)
         self.app.keymap.bind("enter", "complete_accept", priority="capture", when=self._accept_on_enter)
 
     def _messages_can_be_walked(self) -> bool:
@@ -302,6 +306,17 @@ class KeysMixin(ShellState):
             self._note = f"attached {label}"
         host.request_layout()
         return True
+
+    def _stop_working_command(self, event: AnyEvent, host: Host) -> bool:
+        """Enter on an empty draft stops a command that handed over work."""
+        if not self.stop_working_command():
+            return False
+        host.invalidate()
+        return True
+
+    def _stopping_work(self) -> bool:
+        """Return whether Enter should stop a working command instead of sending an empty draft."""
+        return self._command_working and not self.composer.text.strip()
 
     def _run_on_enter(self) -> bool:
         """Return whether Enter should take the highlighted word and send the draft.

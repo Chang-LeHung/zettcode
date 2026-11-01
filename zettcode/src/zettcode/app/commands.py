@@ -212,12 +212,21 @@ class CommandResult:
         relayout: Re-measure the widget tree after applying the result. Set it
             when the change affects geometry a fixed-height row already
             measured, such as the header showing a new model name.
+        intro: What a result that is still working is doing, in one line. The shell shows it in the pinned row
+            while it waits, which is how a command that takes seconds says so.
+        run: The rest of a result, when the command has not finished. The shell opens the pinned row with
+            ``intro``, awaits this, and shows what it returned; Ctrl-C, Escape, sending the next line, and Enter on an
+            empty draft stop it — a command that is working does not hold the composer. A command returns
+            this instead of awaiting the slow part itself, so the reader sees it working. The other fields of
+            *this* result are then names to the wind: only what ``run`` answers is applied.
     """
 
     message: str = ""
     notification: str | None = None
     widget: Widget | None = None
     relayout: bool = False
+    intro: str = ""
+    run: Awaitable[CommandResult] | None = None
 
 
 @dataclass(frozen=True, slots=True)

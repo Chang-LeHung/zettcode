@@ -219,9 +219,9 @@ class Loader:
 
     # -- what a subclass changes --
 
-    def new_context(self) -> PluginContext:
-        """Return the context one plugin is activated with."""
-        return PluginContext(self.config, self.services)
+    def new_context(self, name: str = "") -> PluginContext:
+        """Return the context one plugin is activated with, named so its ``[plugins.<name>]`` settings are read."""
+        return PluginContext(self.config, self.services, name=name)
 
     def activated(self, plugin: Plugin[Any], context: PluginContext) -> None:
         """Run after a plugin's ``activate`` succeeded and before its contribution is checked; may raise."""
@@ -323,7 +323,7 @@ class Loader:
             plugin.name = name
         if not plugin.origin:
             plugin.origin = origin or name
-        container = self.new_context()
+        container = self.new_context(name)
         try:
             plugin.activate(container)
             self.activated(plugin, container)

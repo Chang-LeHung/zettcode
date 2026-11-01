@@ -101,6 +101,9 @@ class TuiApp(Host):
         #: Callers waiting for the next frame to reach the terminal. The runner
         #: resolves them after it writes the frame, not when it starts drawing it.
         self._frame_waiters: list[asyncio.Future[None]] = []
+        #: Watchers of every event that arrives, before any widget sees it. A resize or a focus report has no widget
+        #: target of its own, so this is where an application learns about it.
+        self._listeners: list[Callable[[AnyEvent], None]] = []
 
     @property
     def theme(self) -> Theme:
@@ -188,6 +191,15 @@ class TuiApp(Host):
     def focused_widget(self) -> Widget | None:
         """Return the widget that receives keyboard input, if any."""
         return self.focus_manager.focused
+
+    def add_listener(self, listener: Callable[[AnyEvent], None]) -> Callable[[AnyEvent], None]:
+        """Call ``listener`` with every event that arrives, before routing.
+
+        The listener cannot consume an event; it observes. It is how an application hears about a ``FocusEvent`` or a
+        ``ResizeEvent``, which are about the window and not about the widget under the pointer.
+        """
+        self._listeners.append(listener)
+        return listener
 
     def invalidate(self) -> None:
         """Request a repaint on the next frame."""
@@ -427,6 +439,11 @@ class TuiApp(Host):
         """
         if self._layout_dirty:
             self.layout()
+        for listener in self._listeners:
+            try:
+                listener(event)
+            except Exception:  # a watcher is not allowed to take the input path down with it
+                continue
         if isinstance(event, ResizeEvent):
             self.resize(event.width or self.width, event.height or self.height)
             return True
