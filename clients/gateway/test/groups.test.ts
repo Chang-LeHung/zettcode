@@ -111,6 +111,18 @@ test("opening a group reads its newest messages, and earlier ones are added in f
   );
 });
 
+test("unread counts of a group the graph no longer lists are dropped whenever the graph is read again", async () => {
+  start([{ name: "gone", members: ["a", "b"], created: 1 }, { name: "kept", members: ["a", "b"], created: 1 }]);
+  applyGroupTraffic(say(1, "gone", "b"));
+  applyGroupTraffic(say(2, "kept", "b"));
+  assert.equal(unreadOf("gone"), 1);
+
+  applyGraph({ sessions: [], groups: [{ name: "kept", members: ["a", "b"], created: 1 }], edges: [], recent: [] });
+
+  assert.equal(unreadOf("gone"), 0, "a group of that name made later does not start with a stale badge");
+  assert.equal(unreadOf("kept"), 1);
+});
+
 test("a message written in the open group is shown there; in another it is counted as unread and updates the list", async () => {
   start([
     { name: "team", members: ["a", "b"], created: 1 },

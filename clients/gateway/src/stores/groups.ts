@@ -5,7 +5,7 @@ import { computed, reactive } from "vue";
 import { gateway } from "../api/gateway";
 import { ApiError } from "../api/http";
 import type { GraphGroup, GraphMessage } from "../types";
-import { graph } from "./graph";
+import { graph, onGraphApplied } from "./graph";
 import { lobby, threadOf } from "./threads";
 
 /** A group is addressed as `#name` in the page's address, which no session id can look like. */
@@ -77,10 +77,14 @@ export const groupList = computed(() =>
   [...graph.groups].sort((a, b) => (b.last?.ts ?? b.created) - (a.last?.ts ?? a.created)),
 );
 
-/** Forget the unread counts of groups the list no longer has. Called when the graph is read again, never from a getter. */
+/** Forget the unread counts of groups the list no longer has. Runs whenever the graph is read again (see below). */
 export function pruneUnread(): void {
   for (const name of Object.keys(unread)) if (!graph.groups.some((group) => group.name === name)) delete unread[name];
 }
+
+// Attached to the state change, not to a caller: the graph is read on the socket's graph event, on a reconnect, on the
+// Graph page's first load and on its Retry, and every one of them replaces the groups.
+onGraphApplied(pruneUnread);
 
 /** The name a message's sender goes by in a group. */
 export function senderName(message: GraphMessage): string {
