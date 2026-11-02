@@ -74,6 +74,8 @@ class FakeBackend(Backend):
         self.locked_ids: set[str] = set()
         self.spawned: list[dict[str, object]] = []
         self.stopped: list[str] = []
+        self.group_sent: list[tuple[str, str]] = []
+        self.joined: list[str] = []
         self.deleted: list[str] = []
         self.logs: dict[str, str] = {}
         self.fail: SendError | None = None
@@ -136,9 +138,32 @@ class FakeBackend(Backend):
     async def graph(self) -> dict[str, Any]:
         return self.graph_data
 
-    async def older(self, before: int, limit: int) -> dict[str, Any]:
-        found = [m for m in self.graph_data["recent"] if m["id"] < before][-limit:]
+    async def older(self, before: int, limit: int, group: str = "") -> dict[str, Any]:
+        pool = self.graph_data["recent"]
+        if group:
+            if not any(g["name"] == group for g in self.graph_data["groups"]):
+                raise SendError("unknown", f"there is no group #{group}")
+            pool = [m for m in pool if m["to"].get("kind") == "group" and m["to"].get("name") == group]
+        found = [m for m in pool if not before or m["id"] < before][-limit:]
         return {"messages": found, "more": bool(found) and found[0]["id"] > 1}
+
+    async def send_group(self, group: str, text: str) -> list[Delivered]:
+        if self.fail is not None:
+            raise self.fail
+        found = next((g for g in self.graph_data["groups"] if g["name"] == group), None)
+        if found is None:
+            raise SendError("unknown", f"there is no group #{group}")
+        if self._id not in found["members"]:
+            raise SendError("denied", f"only a member of #{group} may write to it")
+        self.group_sent.append((group, text))
+        return [Delivered(sid[:4], "queued") for sid in found["members"] if sid != self._id]
+
+    async def join_group(self, group: str) -> None:
+        found = next((g for g in self.graph_data["groups"] if g["name"] == group), None)
+        if found is None:
+            raise SendError("unknown", f"there is no group #{group}")
+        found["members"].append(self._id)
+        self.joined.append(group)
 
     async def timeline(self, since: float, until: float, limit: int) -> dict[str, Any]:
         self.timeline_asked.append((since, until, limit))

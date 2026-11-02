@@ -241,6 +241,6 @@ async def test_the_tool_takes_its_arguments_by_name_and_validates_them(here: Pat
 
     assert (await tool.handler(command="echo hi")).strip() == "hi"
     with pytest.raises(ValidationError):
-        await tool.handler(command="echo hi", timeout_seconds=301)
+        await tool.handler(command="echo hi", timeout_seconds=601)
     with pytest.raises(ValidationError):
         await tool.handler(command="")

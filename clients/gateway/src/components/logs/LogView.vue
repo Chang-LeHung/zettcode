@@ -9,7 +9,7 @@ import { go } from "../../stores/route";
 import { threadOf } from "../../stores/threads";
 import Icon from "../common/Icon.vue";
 import PageBar from "../common/PageBar.vue";
-import { restartDaemon, stopDaemon } from "../chat/threadActions";
+import { deleteDaemon, restartDaemon, stopDaemon } from "../chat/threadActions";
 
 const props = defineProps<{ id: string }>();
 const thread = computed(() => threadOf(props.id));
@@ -94,7 +94,8 @@ onBeforeUnmount(() => clearInterval(timer));
         <div class="actions">
           <button class="btn sm ghost" @click="go('chats', thread.id)">{{ t("Open chat") }}</button>
           <button class="btn sm ghost" @click="restartDaemon(thread)">{{ t("Restart with a new configuration") }}</button>
-          <button class="btn sm danger" @click="stopDaemon(thread)">{{ thread.status === "dead" ? t("Clear record") : t("Stop") }}</button>
+          <button v-if="thread.online" class="btn sm danger" @click="stopDaemon(thread)">{{ t("Stop") }}</button>
+          <button v-else class="btn sm danger" @click="deleteDaemon(thread)">{{ t("Delete") }}</button>
         </div>
       </div>
       <p v-if="error" class="errcard">{{ error }}</p>

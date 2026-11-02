@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 CREATE INDEX IF NOT EXISTS messages_ts ON messages (ts);
 CREATE INDEX IF NOT EXISTS messages_pair ON messages (kind, from_id, to_id);
+CREATE INDEX IF NOT EXISTS messages_group ON messages (kind, to_id, id);
 CREATE TABLE IF NOT EXISTS groups (
     name       TEXT PRIMARY KEY,
     created    REAL NOT NULL,
@@ -331,6 +332,13 @@ class Store:
     def has_before(self, row_id: int) -> bool:
         """Return whether any message is stored with an id below ``row_id``."""
         return self._db.execute("SELECT 1 FROM messages WHERE id < ? LIMIT 1", (row_id,)).fetchone() is not None
+
+    def has_group_before(self, name: str, row_id: int) -> bool:
+        """Return whether the group has a message stored with an id below ``row_id``."""
+        found = self._db.execute(
+            "SELECT 1 FROM messages WHERE kind = 'group' AND to_id = ? AND id < ? LIMIT 1", (name, row_id)
+        )
+        return found.fetchone() is not None
 
     def window(self, since: float, until: float, *, limit: int = MAX_ROWS) -> list[dict[str, Any]]:
         """Return the messages sent in ``[since, until]``, oldest first: what a replay of the past is drawn from.

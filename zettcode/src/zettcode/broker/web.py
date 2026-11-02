@@ -167,9 +167,10 @@ class Web:
                 limit = int(asked.query_params.get("limit") or 50)
             except ValueError:
                 raise Refused("invalid", "before is a message id, limit a count") from None
-            if before < 1:
+            group = asked.query_params.get("group")
+            if before < 1 and not group:
                 raise Refused("invalid", "before is a message id")
-            return self.hub.older(before, limit)
+            return self.hub.older(max(before, 0), limit, group or None)
 
         return await self._guarded(request, work)
 

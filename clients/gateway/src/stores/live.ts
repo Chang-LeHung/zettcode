@@ -5,6 +5,7 @@ import { EventSocket } from "../api/events";
 import { t } from "../i18n";
 import type { GatewayEvent } from "../types";
 import { applyTraffic, loadGraph } from "./graph";
+import { applyGroupTraffic } from "./groups";
 import { chat, markRead, refreshChat } from "./chat";
 import { prefs } from "./prefs";
 import { auth } from "./auth";
@@ -38,6 +39,7 @@ function handle(event: GatewayEvent): void {
     notify(event);
   } else if (event.type === "traffic") {
     applyTraffic(event.message);
+    applyGroupTraffic(event.message);
   } else if (event.type === "graph") {
     void loadGraph().catch(() => {});
   }

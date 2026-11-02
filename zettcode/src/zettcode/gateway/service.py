@@ -1090,19 +1090,60 @@ class Gateway:
         except SendError as error:
             raise GatewayError(503, error.reason, str(error)) from error
 
-    async def older(self, before: object, limit: object) -> dict[str, Any]:
-        """Return the stored messages before id ``before``, oldest first: what a feed loads as it is scrolled back."""
+    async def older(self, before: object, limit: object, group: object = None) -> dict[str, Any]:
+        """Return the stored messages before id ``before``, oldest first: what a feed loads as it is scrolled back.
+
+        With ``group`` they are that group's own messages (what its chat window shows), and ``before`` may be empty or
+        ``0`` for its newest.
+        """
         try:
-            first = int(before)  # type: ignore[call-overload]
+            first = int(before) if before not in (None, "") else 0  # type: ignore[call-overload]
             count = int(limit) if limit not in (None, "") else 50  # type: ignore[call-overload]
         except (TypeError, ValueError):
             raise GatewayError(400, "invalid", "before is a message id, limit a number") from None
-        if first < 1:
+        name = str(group).lstrip("#") if group else ""
+        if first < 1 and not name:
             raise GatewayError(400, "invalid", "before is a message id")
         try:
-            return await self.backend.older(first, max(1, min(count, 200)))
+            return await self.backend.older(max(first, 0), max(1, min(count, 200)), name)
         except SendError as error:
-            raise GatewayError(503, error.reason, str(error)) from error
+            raise GatewayError(404 if error.reason == "unknown" else 503, error.reason, str(error)) from error
+
+    async def send_group(self, name: str, text: str) -> dict[str, Any]:
+        """Write to a group chat as the person at the gateway, joining the group first when this gateway is not in it.
+
+        Raises:
+            GatewayError: The text is empty or too long, the group is not there, nobody else in it is connected, this
+                gateway has used up what the broker allows, or the broker refused.
+        """
+        name = name.lstrip("#")
+        text = text.replace("\r\n", "\n").strip()
+        if not text:
+            raise GatewayError(400, "empty", "A message needs some text")
+        limits = self.backend.limits
+        if len(text) > limits.max_text:
+            raise GatewayError(
+                413, "too_long", f"A message is limited to {limits.max_text} characters", limit=limits.max_text
+            )
+        self._spend(limits.rate_limit, limits.rate_window)
+        try:
+            try:
+                delivered = await self.backend.send_group(name, text)
+            except SendError as error:
+                if error.reason != "denied":
+                    raise
+                # Not a member: the person at the gateway is writing in this group, so they are put in it.
+                await self.backend.join_group(name)
+                delivered = await self.backend.send_group(name, text)
+        except SendError as error:
+            raise GatewayError(
+                404 if error.reason == "unknown" else SEND_STATUS.get(error.reason, 400),
+                error.reason,
+                str(error),
+                uncertain=error.reason in ("timeout", "lost"),
+            ) from error
+        self._wake_up()
+        return {"delivered": [{"to": item.to, "disposition": item.disposition} for item in delivered]}
 
     async def timeline(self, since: object, until: object, limit: object) -> dict[str, Any]:
         """Return the stored messages between two times, for the page to replay. Nothing is sent again.

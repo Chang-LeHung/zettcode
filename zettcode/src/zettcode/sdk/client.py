@@ -730,9 +730,12 @@ class Client:
         """
         return await self._traffic("graph")
 
-    async def traffic_older(self, before: int, limit: int = 50) -> dict[str, Any]:
-        """Return the stored messages before the one with id ``before``, oldest first, and whether ``more`` remain."""
-        return await self._traffic("older", before, limit)
+    async def traffic_older(self, before: int, limit: int = 50, group: str = "") -> dict[str, Any]:
+        """Return the stored messages before the one with id ``before``, oldest first, and whether ``more`` remain.
+
+        With ``group`` they are that group's own messages, and ``before`` of ``0`` asks for its newest.
+        """
+        return await self._traffic("older", before, limit, group)
 
     async def traffic_timeline(self, since: float, until: float, limit: int = 500) -> dict[str, Any]:
         """Return the messages the broker stored between two times (epoch seconds), oldest first.
@@ -882,6 +885,51 @@ class Client:
         except BrokerSendError as error:
             raise SendError(error.reason, str(error)) from error
         return Delivered(delivered.to.handle, delivered.disposition, delivered.direct)
+
+    async def send_group(self, group: str, text: str, *, mode: str = MODE_FOLLOWUP) -> list[Delivered]:
+        """Write to a group chat as this session's reader and return who took it.
+
+        Every other member that is connected is handed the message. The session must be a member (see
+        :meth:`join_group`).
+
+        Raises:
+            ConfigurationError: This client has not joined the sessions.
+            SendError: The group is unknown, this session is not in it, nobody else is connected, or nobody took it.
+        """
+        self._check_open()
+        messenger = self._messenger
+        if messenger is None:
+            raise ConfigurationError(
+                "This client has not joined the sessions; build it with sessions_enabled=True and call join_sessions"
+            )
+        from ..broker.models import SendError as BrokerSendError
+        from ..broker.protocol import VIA_USER
+
+        try:
+            reply = await messenger.send_group(group, text, via=VIA_USER, mode=mode)
+        except BrokerSendError as error:
+            raise SendError(error.reason, str(error)) from error
+        return [Delivered(peer.handle, disposition) for peer, disposition in reply.delivered]
+
+    async def join_group(self, group: str) -> None:
+        """Make this session a member of a group chat, so that it can write to it.
+
+        Raises:
+            ConfigurationError: This client has not joined the sessions.
+            SendError: The group is unknown or full.
+        """
+        self._check_open()
+        messenger = self._messenger
+        if messenger is None:
+            raise ConfigurationError(
+                "This client has not joined the sessions; build it with sessions_enabled=True and call join_sessions"
+            )
+        from ..broker.models import SendError as BrokerSendError
+
+        try:
+            await messenger.join_group(group)
+        except BrokerSendError as error:
+            raise SendError(error.reason, str(error)) from error
 
     async def send_back(self, message: IncomingMessage, text: str) -> Delivered | None:
         """Send a turn's answer — or the reason it failed — back to the message's sender.

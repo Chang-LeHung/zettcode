@@ -97,8 +97,14 @@ line appears while a model or level a reader asked for is waiting to be taken up
 last request could not be met. A `broker` line appears while the daemon cannot reach the session broker — it keeps
 trying, and so cannot be messaged meanwhile. `--json` prints the same fields for a program.
 
-`zettcode daemon kill <session-id>...` stops each daemon and removes its record. The session stays, with everything it
-did, so you can open it in the terminal afterwards.
+`zettcode daemon stop <session-id>...` stops each daemon but keeps its record, shown as `dead`, so it stays in
+`daemon list` and the gateway's list and can be started again with `spawn --resume`. `zettcode daemon kill
+<session-id>...` stops it and removes the record. Both refuse a daemon that is in the middle of a turn, because
+stopping it throws the turn away; add `--force` to stop it anyway. The session stays either way, with everything it did,
+so you can open it in the terminal afterwards.
+
+`zettcode daemon delete <session-id>...` removes a daemon for good: its record **and its conversation**. It cannot be
+undone, and a daemon that is still running is refused — stop it first. Use it when the list has grown long.
 
 `zettcode daemon log <session-id>` prints the last lines the daemon wrote about itself — the tools it ran, the turns
 that failed, the settings it took up — and `-n N` says how many. A daemon that seems stuck is diagnosed there first.
@@ -148,8 +154,10 @@ terminal's model uses when you name the daemon with `@`:
 send_message(to="01a1726a-3109-75a7-9285-390d9e381111", message="Review the diff of src/api.py, then say what you would change.")
 ```
 
-The daemon takes one message at a time. While it is working, up to four more wait their turn; beyond that the sender
-is told it is busy. It answers the same way — with `send_message(to=<your session id>, ...)` — so an agent that asked
+The daemon takes one message at a time. While it is working, up to 64 more wait their turn, and when it becomes free
+it takes everything that waited as **one** turn, each message under its own line saying who sent it. Past 64 the
+broker keeps the message and hands it over as soon as there is room, so the sender is not told to try again. It answers
+the same way — with `send_message(to=<your session id>, ...)` — so an agent that asked
 something reads the answer as a message of its own.
 
 The command line is a sender too, for a prompt you want to give without opening a session:

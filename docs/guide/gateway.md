@@ -44,8 +44,12 @@ gateway.
 
 ## What the page can do
 
-The page lists the daemons and the other sessions this machine has. A daemon can be started and stopped
-from it, and any of them can be talked to as a contact: what you type is sent as a message from the
+The page lists the daemons and the other sessions this machine has: the ones that are online first, then the ones that
+are not, each group with the latest activity first. Group chats are listed above them, as in a messenger: open one to
+read what was said in it, see its members and who is online, and write to it (writing adds the gateway to the group
+if it is not in it). A daemon can be started and stopped from it — a daemon that is working asks you to confirm
+before it is stopped — and a stopped one stays in the list, offline, until you delete it, which removes it and its
+conversation for good. Any of them can be talked to as a contact: what you type is sent as a message from the
 gateway, and what the session says comes back into the same conversation. A message from the page waits
 for the session's current request to end: the page does not show that request live, so it never changes
 one you cannot watch. (The terminal asks whether to steer; the page simply waits.) The gateway is a session of

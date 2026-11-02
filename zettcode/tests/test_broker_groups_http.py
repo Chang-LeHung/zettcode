@@ -81,3 +81,66 @@ async def test_what_a_broker_remembers_is_there_after_it_restarts(tmp_path: Path
         assert [g["name"] for g in listed.json()["groups"]] == ["team"]
     finally:
         await second.aclose()
+
+
+async def test_a_groups_own_messages_are_read_for_a_chat_window_and_the_graph_shows_the_last_one(tmp_path: Path):
+    run = await started(store=Store(tmp_path / "broker.db"))
+    try:
+        alpha = await run.peer(A, "alpha")
+        bravo = await run.peer(B, "bravo")
+        await http(
+            run.port,
+            "POST",
+            "/groups",
+            headers={"X-Session-Key": alpha.key},
+            json={"action": "create", "name": "team", "members": ["bravo"]},
+        )
+        for text in ("one", "two", "three"):
+            task = asyncio.ensure_future(
+                http(
+                    run.port,
+                    "POST",
+                    "/messages",
+                    headers={"X-Session-Key": alpha.key},
+                    json={"group": "team", "text": text},
+                )
+            )
+            await bravo.accept("queued")
+            await task
+
+        newest = (await http(run.port, "GET", "/older", params={"group": "team", "before": 0, "limit": 2})).json()
+        assert [m["text"] for m in newest["messages"]] == ["two", "three"] and newest["more"] is True
+        before = newest["messages"][0]["id"]
+        rest = (await http(run.port, "GET", "/older", params={"group": "team", "before": before, "limit": 5})).json()
+        assert [m["text"] for m in rest["messages"]] == ["one"] and rest["more"] is False
+
+        graph = (await http(run.port, "GET", "/graph")).json()
+        assert graph["groups"][0]["last"]["text"] == "three"
+        missing = await http(run.port, "GET", "/older", params={"group": "nope", "before": 0})
+        assert missing.status_code == 404
+        assert (await http(run.port, "GET", "/older", params={"before": 0})).status_code == 400
+    finally:
+        await run.aclose()
+
+
+async def test_the_owner_may_put_a_session_in_a_group_it_is_not_in_but_a_session_may_not(tmp_path: Path):
+    run = await started(store=Store(tmp_path / "broker.db"))
+    try:
+        alpha = await run.peer(A, "alpha")
+        bravo = await run.peer(B, "bravo")
+        await http(
+            run.port,
+            "POST",
+            "/groups",
+            headers={"X-Session-Key": alpha.key},
+            json={"action": "create", "name": "team", "members": []},
+        )
+        own = {"action": "add", "name": "team", "members": [B]}
+
+        refused = await http(run.port, "POST", "/groups", headers={"X-Session-Key": bravo.key}, json=own)
+        joined = await http(run.port, "POST", "/groups", headers={"X-Session-Key": ""}, json=own)
+
+        assert refused.status_code == 403
+        assert joined.status_code == 200 and B in joined.json()["group"]["members"]
+    finally:
+        await run.aclose()

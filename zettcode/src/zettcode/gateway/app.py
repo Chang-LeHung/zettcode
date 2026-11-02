@@ -323,7 +323,12 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
         return await gateway.graph()
 
     async def older(request: Request) -> Any:
-        return await gateway.older(request.query_params.get("before"), request.query_params.get("limit"))
+        query = request.query_params
+        return await gateway.older(query.get("before"), query.get("limit"), query.get("group"))
+
+    async def send_group(request: Request) -> Any:
+        given = await body(request)
+        return await gateway.send_group(request.path_params["name"], str(given.get("text") or ""))
 
     async def timeline(request: Request) -> Any:
         query = request.query_params

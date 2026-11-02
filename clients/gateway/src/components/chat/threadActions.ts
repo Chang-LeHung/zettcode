@@ -4,7 +4,7 @@ import { gateway } from "../../api/gateway";
 import { ApiError } from "../../api/http";
 import { t } from "../../i18n";
 import { copyText } from "../../lib/clipboard";
-import { go } from "../../stores/route";
+import { go, route } from "../../stores/route";
 import { fromThread } from "../../stores/spawn";
 import { loadThreads } from "../../stores/threads";
 import { openSheet, toast } from "../../stores/ui";
@@ -17,16 +17,37 @@ async function copyId(thread: Thread): Promise<void> {
 }
 
 async function stopDaemon(thread: Thread): Promise<void> {
+  const working = thread.status === "working";
   const sure = await confirmAction({
-    title: t("Stop {name}?", { name: thread.name }),
-    text: t("The daemon stops and its record is removed. Its conversation stays, and it can be started again."),
-    ok: t("Stop"),
+    title: working ? t("{name} is working. Stop it anyway?", { name: thread.name }) : t("Stop {name}?", { name: thread.name }),
+    text: working
+      ? t("It is in the middle of a turn, and stopping it now throws that turn away. It stays in the list, offline.")
+      : t("The daemon stops, and stays in the list as offline with its conversation, so it can be started again."),
+    ok: working ? t("Stop anyway") : t("Stop"),
     danger: true,
   });
   if (!sure) return;
   try {
-    await gateway.stop(thread.id);
+    await gateway.stop(thread.id, working);
     toast(t("Stopped"));
+    await loadThreads();
+  } catch (error) {
+    toast(error instanceof ApiError ? error.message : String(error), "bad");
+  }
+}
+
+async function deleteDaemon(thread: Thread): Promise<void> {
+  const sure = await confirmAction({
+    title: t("Delete {name}?", { name: thread.name }),
+    text: t("The daemon and its whole conversation are removed for good. This cannot be undone."),
+    ok: t("Delete"),
+    danger: true,
+  });
+  if (!sure) return;
+  try {
+    await gateway.remove(thread.id);
+    toast(t("Deleted"));
+    if (route.nav === "chats" && route.arg === thread.id) go("chats");
     await loadThreads();
   } catch (error) {
     toast(error instanceof ApiError ? error.message : String(error), "bad");
@@ -45,14 +66,15 @@ export function showInfo(thread: Thread): void {
 /** The menu behind the dots in a conversation's header. */
 export function showThreadMenu(thread: Thread): void {
   const daemon = thread.kind === "daemon";
-  const alive = daemon && thread.status !== "dead";
+  const alive = daemon && thread.online;
   showMenu(thread.name, [
     { icon: "info", label: t("Info"), run: () => showInfo(thread) },
     daemon && { icon: "logs", label: t("Logs"), run: () => go("logs", thread.id) },
     { icon: "copy", label: t("Copy session id"), run: () => void copyId(thread) },
     daemon && { icon: "refresh", label: t("Restart with a new configuration"), run: () => restart(thread) },
     alive && { icon: "stop", label: t("Stop daemon"), run: () => void stopDaemon(thread), danger: true },
+    daemon && !alive && { icon: "trash", label: t("Delete daemon"), run: () => void deleteDaemon(thread), danger: true },
   ]);
 }
 
-export { stopDaemon, restart as restartDaemon };
+export { stopDaemon, deleteDaemon, restart as restartDaemon };

@@ -18,7 +18,7 @@ from typing import Any
 from zettcode.modes import MODE_FOLLOWUP
 from zettcode.sdk import daemons as sdk_daemons
 from zettcode.sdk.client import Client
-from zettcode.sdk.errors import ConfigurationError, SessionLockedError, SessionNotFoundError, ZettCodeError
+from zettcode.sdk.errors import ConfigurationError, SendError, SessionLockedError, SessionNotFoundError, ZettCodeError
 from zettcode.sdk.models import add_model, list_models, remove_model, update_model
 from zettcode.sdk.types import (
     DaemonInfo,
@@ -97,9 +97,17 @@ class Backend(ABC):
         """Return the broker's picture of who talks to whom (see ``Client.traffic_graph``); empty without a broker."""
         return {"sessions": [], "groups": [], "edges": [], "recent": []}
 
-    async def older(self, before: int, limit: int) -> dict[str, Any]:
-        """Return the stored messages before id ``before`` (see ``Client.traffic_older``)."""
+    async def older(self, before: int, limit: int, group: str = "") -> dict[str, Any]:
+        """Return the stored messages before id ``before`` (see ``Client.traffic_older``); a group's own with ``group``."""
         return {"messages": [], "more": False}
+
+    async def send_group(self, group: str, text: str) -> list[Delivered]:
+        """Write to a group chat as the person at the gateway and return who took it (see ``Client.send_group``)."""
+        raise SendError("offline", "not connected to the session broker")
+
+    async def join_group(self, group: str) -> None:
+        """Make the gateway a member of a group so that it can write to it (see ``Client.join_group``)."""
+        raise SendError("offline", "not connected to the session broker")
 
     async def timeline(self, since: float, until: float, limit: int) -> dict[str, Any]:
         """Return the stored messages of a stretch of the past (see ``Client.traffic_timeline``)."""
@@ -294,8 +302,14 @@ class SdkBackend(Backend):
     async def graph(self) -> dict[str, Any]:
         return await self.client.traffic_graph()
 
-    async def older(self, before: int, limit: int) -> dict[str, Any]:
-        return await self.client.traffic_older(before, limit)
+    async def older(self, before: int, limit: int, group: str = "") -> dict[str, Any]:
+        return await self.client.traffic_older(before, limit, group)
+
+    async def send_group(self, group: str, text: str) -> list[Delivered]:
+        return await self.client.send_group(group, text, mode=MODE_FOLLOWUP)
+
+    async def join_group(self, group: str) -> None:
+        await self.client.join_group(group)
 
     async def timeline(self, since: float, until: float, limit: int) -> dict[str, Any]:
         return await self.client.traffic_timeline(since, until, limit)

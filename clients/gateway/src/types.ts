@@ -194,6 +194,8 @@ export interface GraphGroup {
   members: string[];
   /** Epoch seconds. */
   created: number;
+  /** The newest message written in it, which a chat list shows under its name; absent from an older broker. */
+  last?: GraphMessage | null;
 }
 
 /** The undirected total of the 1:1 messages two sessions have exchanged. */
@@ -230,7 +232,7 @@ export interface GraphMessage {
   via: Via;
   hops: number;
   mode: "steer" | "followup";
-  status: "delivered" | "partial";
+  status: "delivered" | "partial" | "held";
   disposition: string;
 }
 

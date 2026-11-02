@@ -36,6 +36,8 @@ PYTHON_ONLY: dict[str, dict[str, str]] = {
         "traffic_older": "the broker's whole-machine view is for the gateway page, which has its own server",
         "traffic_graph": "the broker's whole-machine view is for the gateway page, which has its own server",
         "traffic_timeline": "the broker's whole-machine view is for the gateway page, which has its own server",
+        "send_group": "group chats are written to from the gateway page, which has its own server",
+        "join_group": "group chats are written to from the gateway page, which has its own server",
         "effort": "read with `settings()`, which returns all four of these at once",
         "efforts": "read with `settings()`",
         "harness": "read with `settings()`",

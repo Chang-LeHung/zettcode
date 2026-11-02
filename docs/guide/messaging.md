@@ -76,8 +76,11 @@ title, the stored session. The message is saved with the session and shows the s
   request that is running, so it changes course now; a **follow-up** waits and starts when the request in flight
   ends, after any follow-ups you queued. A message that cannot be steered — a command or a side question is
   running rather than a request, the steering limit is reached, or it came from a one-to-one chat window, which is
-  answered by the turn its message starts — waits like a follow-up, and the sender is told it is queued. At most 16
-  can wait; the sender is told when it is full.
+  answered by the turn its message starts — waits like a follow-up, and the sender is told it is queued. At most 64
+  can wait in the session; past that the broker keeps the message itself (up to 500 per session, written to its
+  database so a restart does not lose them) and delivers it as soon as the session has room, and the sender is told
+  it is **held**. Messages that waited are run together as one turn, oldest first and each marked with who sent it
+  (at most 16 at a time); a one-to-one chat window's message is always a turn of its own.
 
   A daemon never steers — it runs one turn at a time and answers `queued` — and the web gateway's chat
   answers `delivered`: it keeps the message for the conversation it shows instead of starting a turn.

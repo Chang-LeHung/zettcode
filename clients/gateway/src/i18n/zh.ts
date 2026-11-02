@@ -314,8 +314,25 @@ export const ZH: Record<string, string> = {
   "It did not start.": "它没有启动。",
   "Stop daemon": "停止守护进程",
   "Stop {name}?": "停止 {name}?",
-  "The daemon stops and its record is removed. Its conversation stays, and it can be started again.":
-    "守护进程会停止并删除它的记录。对话仍会保留,之后可以再次启动。",
+  "The daemon stops, and stays in the list as offline with its conversation, so it can be started again.":
+    "守护进程会停止,但会以离线状态留在列表中并保留对话,之后可以再次启动。",
+  "{name} is working. Stop it anyway?": "{name} 正在工作。仍要停止吗?",
+  "It is in the middle of a turn, and stopping it now throws that turn away. It stays in the list, offline.":
+    "它正处于一轮对话中,现在停止会丢弃这一轮。它会以离线状态留在列表中。",
+  "Stop anyway": "仍然停止",
+  "The daemon and its whole conversation are removed for good. This cannot be undone.":
+    "守护进程及其全部对话会被永久删除,无法恢复。",
+  Deleted: "已删除",
+  "Delete daemon": "删除守护进程",
+  Offline: "离线",
+  Members: "成员",
+  you: "你",
+  held: "待投递",
+  "This group is not listed": "此群组不在列表中",
+  "{count} members": "{count} 位成员",
+  "{count} online": "{count} 位在线",
+  "Nothing has been said in this group yet.": "这个群里还没有人说话。",
+  "You are not in this group. Writing here adds you to it.": "你不在这个群里,在这里发言会把你加入群组。",
   "Clear record": "清除记录",
   "Restart with a new configuration": "用新配置重新启动",
   "Filled in from {name}": "已按 {name} 填入",

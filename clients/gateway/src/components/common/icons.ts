@@ -37,6 +37,8 @@ export const ICONS = {
   code: '<path d="m8 8-4 4 4 4M16 8l4 4-4 4M13.5 5l-3 14"/>',
   text: '<path d="M5 6h14M5 12h14M5 18h9"/>',
   user: '<circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20c.8-4 3.8-6 7.5-6s6.7 2 7.5 6"/>',
+  users:
+    '<circle cx="9" cy="8.5" r="3.3"/><path d="M2.8 19.5c.7-3.4 3.2-5 6.2-5s5.5 1.6 6.2 5"/><path d="M16 5.4a3.3 3.3 0 0 1 0 6.2M18 14.8c1.8.6 3 2.2 3.4 4.7"/>',
   trash: '<path d="M5 7h14M10 7V5h4v2M7 7l.8 12h8.4L17 7"/>',
 } as const;
 

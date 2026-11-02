@@ -1016,3 +1016,71 @@ async def test_a_picture_is_judged_by_its_type_and_length_before_it_is_decoded(t
     with pytest.raises(GatewayError):
         await gateway.send("01d", "look", images=raw)
     assert decoded == [] and backend.sent == []
+
+
+# -- group chats ---------------------------------------------------------------------------------------------------
+def group_message(number: int, name: str, sender: str, text: str) -> dict:
+    return {
+        "id": number,
+        "ts": 1000.0 + number,
+        "from": {"session_id": sender, "handle": sender[:3], "title": ""},
+        "to": {"kind": "group", "name": name},
+        "recipients": [],
+        "text": text,
+        "via": "agent",
+        "hops": 1,
+        "mode": "followup",
+        "status": "delivered",
+        "disposition": "queued",
+    }
+
+
+async def test_a_groups_own_messages_are_read_newest_first_and_an_unknown_group_is_not_found(tmp_path):
+    gateway, backend = await make(tmp_path)
+    backend.graph_data["groups"] = [{"name": "team", "members": ["aaa1", "bbb2"], "created": 1.0}]
+    backend.graph_data["recent"] = [
+        group_message(1, "team", "aaa1", "hello"),
+        group_message(2, "other", "bbb2", "elsewhere"),
+        group_message(3, "team", "bbb2", "hi back"),
+    ]
+
+    page = await gateway.older("", 50, "#team")
+
+    assert [m["text"] for m in page["messages"]] == ["hello", "hi back"]
+    with pytest.raises(GatewayError) as unknown:
+        await gateway.older(0, 50, "nope")
+    assert unknown.value.status == 404
+    with pytest.raises(GatewayError) as plain:
+        await gateway.older(0, 50)
+    assert plain.value.status == 400, "without a group a message id is still needed"
+
+
+async def test_writing_to_a_group_the_gateway_is_in_goes_straight_out(tmp_path):
+    gateway, backend = await make(tmp_path)
+    backend.graph_data["groups"] = [{"name": "team", "members": [GATEWAY_ID, "bbb2"], "created": 1.0}]
+
+    answer = await gateway.send_group("#team", "  hello all \r\n")
+
+    assert backend.group_sent == [("team", "hello all")] and backend.joined == []
+    assert answer["delivered"] == [{"to": "bbb2"[:4], "disposition": "queued"}]
+
+
+async def test_writing_to_a_group_it_is_not_in_joins_it_first(tmp_path):
+    gateway, backend = await make(tmp_path)
+    backend.graph_data["groups"] = [{"name": "team", "members": ["bbb2"], "created": 1.0}]
+
+    await gateway.send_group("team", "may I?")
+
+    assert backend.joined == ["team"] and backend.group_sent == [("team", "may I?")]
+
+
+async def test_a_group_message_must_have_text_and_the_group_must_exist(tmp_path):
+    gateway, backend = await make(tmp_path)
+    backend.graph_data["groups"] = [{"name": "team", "members": [GATEWAY_ID], "created": 1.0}]
+
+    with pytest.raises(GatewayError) as empty:
+        await gateway.send_group("team", "   ")
+    with pytest.raises(GatewayError) as unknown:
+        await gateway.send_group("nope", "hello")
+
+    assert empty.value.status == 400 and unknown.value.status == 404 and backend.group_sent == []

@@ -2,6 +2,8 @@
 import { computed, type Component } from "vue";
 import ChatPane from "./components/chats/ChatPane.vue";
 import ChatView from "./components/chat/ChatView.vue";
+import GroupView from "./components/groups/GroupView.vue";
+import { groupNameOf, isGroupArg } from "./stores/groups";
 import GraphPane from "./components/graph/GraphPane.vue";
 import GraphView from "./components/graph/GraphView.vue";
 import ConfigPage from "./components/config/ConfigPage.vue";
@@ -51,7 +53,10 @@ const main = computed<{ component: Component; props: Record<string, unknown>; ke
     case "logs":
       return route.arg ? { component: LogView, props: { id: route.arg }, key: `logs:${route.arg}` } : null;
     default:
-      return route.arg ? { component: ChatView, props: { id: route.arg }, key: `chat:${route.arg}` } : null;
+      if (!route.arg) return null;
+      return isGroupArg(route.arg)
+        ? { component: GroupView, props: { name: groupNameOf(route.arg) }, key: `group:${route.arg}` }
+        : { component: ChatView, props: { id: route.arg }, key: `chat:${route.arg}` };
   }
 });
 

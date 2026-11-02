@@ -428,6 +428,7 @@ class BrokerClient:
         json: dict[str, Any] | None = None,
         params: dict[str, Any] | None = None,
         send: bool = False,
+        headers: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         """Ask the broker over HTTP and return its JSON object; a refusal, or a connection lost, is a ``SendError``."""
         import httpx
@@ -437,7 +438,9 @@ class BrokerClient:
             raise SendError("offline", "not connected to the session broker")
         await self._registered()
         try:
-            response = await http.request(method, path, json=json, params=params, timeout=self.reply_timeout)
+            response = await http.request(
+                method, path, json=json, params=params, headers=headers, timeout=self.reply_timeout
+            )
         except httpx.TimeoutException:
             raise SendError(
                 "timeout",
@@ -466,6 +469,26 @@ class BrokerClient:
             SendError: ``denied`` for a group this session is not in, ``duplicate``, ``unknown``, ``invalid``, ``busy``.
         """
         body = await self._request("POST", "/groups", json={"action": action, "name": name, "members": members or []})
+        return GroupInfo.from_wire(body.get("group"))
+
+    async def join_group(self, name: str) -> GroupInfo | None:
+        """Put this session in a group, as the owner of the broker (whoever holds its token) may.
+
+        A session can only add to a group it is already in, which a person at a front end who wants to write to a
+        group that is not theirs cannot be; the owner can, and does it without a session key.
+
+        Raises:
+            SendError: ``unknown`` for a group that is not there, ``busy`` when it is full.
+        """
+        mine = self._session.session_id if self._session is not None else None
+        if mine is None:
+            raise SendError("not_registered", "this session has not said who it is")
+        body = await self._request(
+            "POST",
+            "/groups",
+            json={"action": "add", "name": name, "members": [mine]},
+            headers={"X-Session-Key": ""},
+        )
         return GroupInfo.from_wire(body.get("group"))
 
     async def history(
@@ -497,9 +520,15 @@ class BrokerClient:
         """Return the broker's whole picture: sessions, groups, how much each pair has said, the latest messages."""
         return await self._request("GET", "/graph")
 
-    async def older(self, before: int, limit: int = 50) -> dict[str, Any]:
-        """Return the messages stored before the message with id ``before``, oldest first, and ``more``."""
-        return await self._request("GET", "/older", params={"before": before, "limit": limit})
+    async def older(self, before: int, limit: int = 50, group: str = "") -> dict[str, Any]:
+        """Return the messages stored before the message with id ``before``, oldest first, and ``more``.
+
+        With ``group`` they are that group's messages, and ``before`` of ``0`` asks for its newest.
+        """
+        params: dict[str, Any] = {"before": before, "limit": limit}
+        if group:
+            params["group"] = group
+        return await self._request("GET", "/older", params=params)
 
     async def timeline(self, since: float, until: float, limit: int = 500) -> dict[str, Any]:
         """Return the messages stored between two times (epoch seconds), oldest first, to replay on screen."""

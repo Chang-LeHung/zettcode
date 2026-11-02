@@ -156,6 +156,10 @@ class Messenger:
         """Create a group, change who is in it, leave it or delete it (see :meth:`BrokerClient.manage_group`)."""
         return await self.client.manage_group(action, name, members)
 
+    async def join_group(self, name: str) -> GroupInfo | None:
+        """Put this session in a group as the broker's owner may (see :meth:`BrokerClient.join_group`)."""
+        return await self.client.join_group(name)
+
     async def history(self, *, with_: str = "", group: str = "", limit: int = 20) -> tuple[list[dict[str, Any]], str]:
         """Return stored messages with one session, in a group, or all this session's own (see the client)."""
         return await self.client.history(with_=with_, group=group, limit=limit)
