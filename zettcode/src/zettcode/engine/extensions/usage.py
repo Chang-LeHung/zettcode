@@ -48,11 +48,9 @@ class UsageSnapshot:
         cache_read_tokens: Input tokens the provider served from its cache.
         cache_write_tokens: Input tokens written into the provider cache.
         reasoning_tokens: Reasoning subset of ``output_tokens``.
-        first_chunk_tokens: Tokens the first streamed chunk carried, the part of
-            ``output_tokens`` that arrived when the clock started and so has no
-            time of its own to be measured against.
-        seconds: Time from the first streamed data that generated something to
-            the terminal response, the rate denominator.
+        seconds: Time from the first token of each call to that call's terminal
+            response, summed: the window output was generated in, the rate's
+            denominator.
         requests: Model calls counted, zero before the first answer.
         context_tokens: Input tokens the newest call carried, which is how full
             the context is right now; zero before the first answer.
@@ -63,7 +61,6 @@ class UsageSnapshot:
     cache_read_tokens: int = 0
     cache_write_tokens: int = 0
     reasoning_tokens: int = 0
-    first_chunk_tokens: int = 0
     seconds: float = 0.0
     requests: int = 0
     context_tokens: int = 0
@@ -82,30 +79,24 @@ class UsageSnapshot:
     def output_rate(self) -> float | None:
         """Return generated tokens per second of generation time, if it was measured.
 
-        The first chunk's tokens come out of the numerator. The clock starts when that chunk arrives, so those tokens
-        were generated before any time the clock could see; counting them would credit output that cost no measured
-        seconds. Subtracting them leaves the rate of the tokens the span actually covers.
-        """
-        generated = self.output_tokens - self.first_chunk_tokens
-        return generated / self.seconds if self.seconds > 0 and generated > 0 else None
+        The numerator is the provider's own count, and the denominator is the time from the first token to the end of
+        the response, both taken from the runtime's stream measurements. Counting the tokens that arrived with the
+        first chunk against a window that opens at that chunk reads a little high — those tokens were made before the
+        window — and that is the error this trades for: a rate that is never understated by a clock the program runs
+        itself, and one number for every provider instead of one per protocol.
 
-    def with_usage(
-        self,
-        usage: ModelUsage,
-        seconds: float,
-        *,
-        first_chunk_tokens: int = 0,
-        context_tokens: int | None = None,
-    ) -> UsageSnapshot:
+        A session that mixed in a call the runtime could not time keeps that call's tokens in the numerator and adds no
+        seconds for it, so the figure reads high; it is still the rate over the calls that were measured.
+        """
+        return self.output_tokens / self.seconds if self.seconds > 0 and self.output_tokens > 0 else None
+
+    def with_usage(self, usage: ModelUsage, seconds: float, *, context_tokens: int | None = None) -> UsageSnapshot:
         """Return these totals plus one model call and its measured generation time.
 
         Args:
             usage: Provider-reported counters for one model call.
-            seconds: Time from that call's first streamed data to its terminal
-                response, clamped at zero.
-            first_chunk_tokens: Tokens the call's first streamed chunk carried in
-                that same span's opening; zero when the call is replayed from
-                storage, which does not record the boundary.
+            seconds: Time from that call's first token to its terminal response,
+                clamped at zero; zero when the call streamed nothing to measure.
             context_tokens: How full the context is after this call; ``None``
                 keeps the previous reading, which is all a call that reported no
                 input can say.
@@ -117,7 +108,6 @@ class UsageSnapshot:
             cache_read_tokens=self.cache_read_tokens + usage.cache_read_tokens,
             cache_write_tokens=self.cache_write_tokens + usage.cache_write_tokens,
             reasoning_tokens=self.reasoning_tokens + usage.reasoning_tokens,
-            first_chunk_tokens=self.first_chunk_tokens + max(0, first_chunk_tokens),
             seconds=self.seconds + max(0.0, seconds),
             requests=self.requests + 1,
             # A call that reported no input says nothing about the size of the context, so the last reading stands:
@@ -133,7 +123,6 @@ class UsageSnapshot:
             "cache_read_tokens": self.cache_read_tokens,
             "cache_write_tokens": self.cache_write_tokens,
             "reasoning_tokens": self.reasoning_tokens,
-            "first_chunk_tokens": self.first_chunk_tokens,
             "seconds": self.seconds,
             "requests": self.requests,
             "context_tokens": self.context_tokens,
@@ -157,50 +146,24 @@ class UsageSnapshot:
             cache_read_tokens=count("cache_read_tokens"),
             cache_write_tokens=count("cache_write_tokens"),
             reasoning_tokens=count("reasoning_tokens"),
-            first_chunk_tokens=count("first_chunk_tokens"),
             seconds=seconds("seconds"),
             requests=count("requests"),
             context_tokens=count("context_tokens"),
         )
 
 
-def _generated_text(event: ModelEvent) -> str:
-    """Return what one streamed event generated, empty for an event that wrote nothing.
-
-    Reasoning, answer text, a tool's name and arguments, and hosted-tool input are all tokens the provider generated
-    and charged to ``output_tokens``; a server tool starting or finishing carries none of them.
-    """
-    if event.type in (ModelEventType.TEXT_DELTA, ModelEventType.REASONING_DELTA):
-        return event.delta
-    if event.type is ModelEventType.TOOL_CALL_DELTA and event.tool_call_delta is not None:
-        return event.tool_call_delta.name_delta + event.tool_call_delta.arguments_delta
-    if event.type is ModelEventType.SERVER_TOOL_INPUT_DELTA and event.server_tool_input_delta is not None:
-        return event.server_tool_input_delta.delta
-    return ""
-
-
-def _estimated_tokens(text: str) -> int:
-    """Return a rough count for one streamed fragment, for a host that wired no counter.
-
-    Only ever asked about a first chunk, a few tokens long, so four characters to the token keeps the subtraction from
-    swinging the rate. The built-in usage plugin passes ``CompactionCounter.count_text`` instead, whose encoding it has
-    already warmed; this default is what a test or another host gets.
-    """
-    return max(1, round(len(text) / 4))
-
-
-def _stored_generation_seconds(timing: MessageTiming) -> float:
+def _stored_generation_seconds(timing: MessageTiming, usage: ModelUsage | None) -> float:
     """Return the span between the first and last segment a stored reply recorded.
 
-    The store marks reasoning and content arrivals, not tool-call arguments and
-    not the provider's first byte. The span is therefore shorter than the live
-    one when a tool call follows reasoning, and there is no measurement at all
-    when neither segment was recorded; the whole-call duration is not
-    substituted, because it contains exactly the wait this change excludes.
-    The live counter does start on a tool-call delta, so a stored tool-only
-    reply contributes output tokens with no time, which can make a resumed
-    session's rate read high.
+    The line's own usage carries the first token's arrival when the runtime measured it, which is what a reply stored
+    by this version does: the window is then the call's duration less that wait, the same subtraction the live counter
+    makes. A line written before that measurement existed has only the segment marks — reasoning and content arrivals,
+    not tool-call arguments and not the provider's first byte — so the span between them stands in; it is shorter than
+    the live window when a tool call follows reasoning, and there is no measurement at all when neither segment was
+    recorded.
     """
+    if usage is not None and usage.ttft_any_ns is not None:
+        return max(0.0, (timing.duration_ns - usage.ttft_any_ns) / 1e9)
     starts = [moment for moment in (timing.reasoning_started_at, timing.content_started_at) if moment is not None]
     ends = [moment for moment in (timing.reasoning_completed_at, timing.content_completed_at) if moment is not None]
     if starts and ends:
@@ -211,14 +174,15 @@ def _stored_generation_seconds(timing: MessageTiming) -> float:
 def session_usage(lines: Sequence[MessageLine]) -> UsageSnapshot:
     """Return the totals a stored branch adds up to: what every recorded reply used, oldest first.
 
-    Needs no message decoded, which is why reading a long session for its totals is cheap. A line records the provider's
-    counters and when each segment arrived, not how much the opening chunk carried, so a replayed branch leaves that at
-    zero and its rate reads a little high, by one chunk out of however much the branch generated.
+    Needs no message decoded, which is why reading a long session for its totals is cheap. Each line records the
+    provider's counters, when the call started and ended, and when its first token arrived, so a replayed branch
+    divides by the window the runtime recorded, where a live one measures its own — a gap the width of the entry into
+    this program's middleware, not an error.
     """
     usage = UsageSnapshot()
     for line in lines:
         if line.usage is not None:
-            usage = usage.with_usage(line.usage, _stored_generation_seconds(line.timing))
+            usage = usage.with_usage(line.usage, _stored_generation_seconds(line.timing, line.usage))
     return usage
 
 
@@ -229,29 +193,24 @@ class UsageExtension(AgentExtension):
         self,
         *,
         clock: Callable[[], float] = monotonic,
-        count_chunk: Callable[[str], int] | None = None,
         count_context: Callable[[Sequence[AnyMessage]], int] | None = None,
     ) -> None:
         """Start with no totals and a monotonic clock the tests can replace.
 
         Args:
-            clock: Time source used to measure generation; it must be monotonic
-                so a wall-clock correction cannot skew the rate.
-            count_chunk: Token counter for the first streamed chunk, which the
-                rate takes out of the numerator. The default estimates from
-                length; the shell passes the counter whose encoding it warmed.
+            clock: Time source used to measure a call; it must be monotonic so a
+                wall-clock correction cannot skew the rate.
             count_context: Token counter for a conversation, used only when a
                 provider omits its usage counters. Without one the previous
                 reading stands, which is what a provider that never answered
                 leaves behind.
         """
         self.clock = clock
-        self.count_chunk = count_chunk or _estimated_tokens
         self.count_context = count_context
-        #: Generation time and opening chunk tokens by request context: first
-        #: streamed data to terminal response, filled by the model middleware
-        #: and consumed by after_model.
-        self._spans: WeakKeyDictionary[AgentRunContext, tuple[float, int]] = WeakKeyDictionary()
+        #: Whole-call time by request context, from the call's start to its
+        #: terminal response, filled by the model middleware and consumed by
+        #: after_model, which takes the first token's wait out of it.
+        self._spans: WeakKeyDictionary[AgentRunContext, float] = WeakKeyDictionary()
         #: Per session, the last input a provider reported and how many messages
         #: there were then, so a silent provider can be answered by counting only
         #: what arrived since.
@@ -272,27 +231,20 @@ class UsageExtension(AgentExtension):
     async def on_model_request(
         self, context: AgentRunContext, request: ModelRequest, call_next: ModelRequestNext
     ) -> AsyncIterator[ModelEvent]:
-        """Measure one call from its first streamed data to its terminal response."""
-        # The span belongs to this call: drop one a previous, failed call left.
-        self._spans.pop(context, None)
-        first: float | None = None
-        opening = 0
+        """Measure one call from its start to its terminal response.
+
+        The whole call, and not just the streaming part: the first token's own wait has to be known to be taken out of
+        it, and that measurement is the runtime's (``ModelUsage.ttft_any_ns``), not this clock's. What is kept here is
+        the span the runtime cannot see — when this program asked and when the answer ended.
+        """
+        started = self.clock()
         # ``call_next`` widens to AsyncIterator, which aclosing cannot close; the
         # provider stream behind it is an async generator.
         stream = cast("AsyncGenerator[ModelEvent]", call_next(request))
         async with aclosing(stream) as events:
             async for event in events:
                 if event.type is ModelEventType.RESPONSE:
-                    if first is not None:
-                        self._spans[context] = (max(0.0, self.clock() - first), opening)
-                else:
-                    generated = _generated_text(event)
-                    if first is None:
-                        # A chunk that generated nothing — a server tool starting, say — does not open the clock:
-                        # the wait it covers produced no token, and timing it would understate the rate.
-                        if generated:
-                            first = self.clock()
-                            opening = self.count_chunk(generated)
+                    self._spans[context] = max(0.0, self.clock() - started)
                 yield event
 
     def _context_tokens(self, session_id: str, context: AgentRunContext, usage: ModelUsage) -> int | None:
@@ -330,11 +282,15 @@ class UsageExtension(AgentExtension):
     async def after_model(self, context: AgentRunContext, response: ModelResponse) -> None:
         """Add this call's counters and publish the new totals as a custom event."""
         session_id = cast(str, context.config.session_id)
-        seconds, opening = self._spans.pop(context, (0.0, 0))
+        # The window output was generated in: the whole call less the wait for its first token. A call that streamed
+        # nothing has no first token to start from, so it adds no time. Its tokens still count, so a session that mixed
+        # such a call in reads high rather than "not measured".
+        waited = response.usage.ttft_any_ns
+        span = self._spans.pop(context, 0.0)
+        seconds = 0.0 if waited is None else span - waited / 1e9
         totals = self.snapshot(session_id).with_usage(
             response.usage,
             seconds,
-            first_chunk_tokens=opening,
             context_tokens=self._context_tokens(session_id, context, response.usage),
         )
         self.seed(session_id, totals)

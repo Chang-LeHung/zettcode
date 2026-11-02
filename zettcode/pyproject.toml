@@ -57,11 +57,12 @@ dependencies = [
   # tiktoken, and httpx behind their first use, so warming a runtime costs less
   # than it did. An exact pin would make zettcode fight every other tool that
   # shares the dependency — including an upgrade of zett-agent itself, which pip
-  # would downgrade to satisfy it. 0.2.2 is the floor for one reason this program
-  # now leans on: a hosted tool the provider left open is closed with
-  # ``output={"status": "not_reported"}`` instead of leaving the step waiting, and
-  # `engine/server_tools.describe_output` reads that to say so.
-  "zett-agent>=0.2.6,<0.3",
+  # would downgrade to satisfy it. The floor is raised for one reason at a time, and each reason is what the line
+  # below asks for: 0.2.2 for a hosted tool the provider left open being closed with
+  # ``output={"status": "not_reported"}`` instead of leaving the step waiting (``engine/server_tools.describe_output``
+  # reads that to say so), and 0.2.7 for the two time-to-first-token measurements, which the output rate divides by —
+  # the window starts at the first token, not at the first chunk this program happens to see.
+  "zett-agent>=0.2.7,<0.3",
 ]
 
 [project.optional-dependencies]

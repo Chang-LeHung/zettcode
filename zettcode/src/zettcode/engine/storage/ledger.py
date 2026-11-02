@@ -56,6 +56,8 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import BinaryIO
 
+from zett_agent.model import FIRST_CHUNK_LIMIT
+
 from .layout import find_workspace
 from .metadata import SESSION_METADATA_FILE
 from .records import SAFE_SESSION_ID, STORE_FILE
@@ -67,8 +69,9 @@ UNKNOWN_MODEL = "unknown"
 #: ``metadata.jsonl`` already sits, so a session listing never mistakes it for a session).
 INDEX_FILE = "usage.json"
 
-#: Bumped when the index's shape changes; an index of another version is ignored.
-INDEX_VERSION = 1
+#: Bumped when the index's shape changes; an index of another version is ignored. The fingerprint's width is part
+#: of the shape: a stored tail that was taken over other bytes never matches, and re-reading the file is the whole cost.
+INDEX_VERSION = 2
 
 #: The per-session totals the sessions panel reads, beside the index, and the version of its shape.
 SUMMARY_FILE = "sessions.json"
@@ -78,9 +81,14 @@ SUMMARY_VERSION = 1
 #: in sorted order and a message's own text is escaped, so the pair never appears inside a message.
 MESSAGE_MARKS = (b'"kind": "message"', b'"kind":"message"')
 
-#: Bytes at the start of a file, and bytes before the read point, that fingerprint a file.
+#: Bytes at the start of a file, and bytes before the read point, that fingerprint a file. The tail has to reach back
+#: over one whole record, because an edit to a count inside the newest one has to be noticed: a store writes each line
+#: with sorted keys, so the usage block is the last thing on it, and it carries two excerpts of the reply clipped at
+#: ``FIRST_CHUNK_LIMIT`` characters each, a character taking up to four bytes. Raised from 64 when the runtime began
+#: recording the first token's arrival and the block doubled; written as arithmetic, with room to spare, so that raising
+#: the limit cannot silently outgrow it.
 HEAD_BYTES = 256
-TAIL_BYTES = 64
+TAIL_BYTES = 2 * FIRST_CHUNK_LIMIT * 4 + 1024
 
 #: A quarter of an hour: every time zone's midnight falls on one, so a day is worked out once
 #: for each and not once for each reply.

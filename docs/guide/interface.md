@@ -564,16 +564,16 @@ half keeps the two keys worth remembering (`^C/Esc to interrupt`, `^D exit`) in 
 | `· deny`, `· safe`, `· full` | The shell permission, when it is not the default `ask`. |
 | `↑18.4k ↓900` | Tokens sent to the model, and tokens it generated, this session. |
 | `71.2% cached` | The share of the input the provider served from its cache. |
-| `74 tok/s` | Generated tokens per second of streaming time, from the first fragment to the final response, averaged over the session; the first fragment's own tokens are left out, and the wait for the model to start is not included. |
+| `74 tok/s` | Generated tokens per second: the provider's own output count over the time from the first token of each reply to its end, summed over the session. The wait for the first token is not in it, and the tokens that arrived with that token are counted against the window that opens at it, so the figure reads a little high rather than low. |
 | `ctx 12.3%` | How much of the model's declared window the newest request filled, measured from the conversation when the provider reports no input tokens. |
 
 Those counters come from the provider's own numbers, accumulated after every
-model call, with two exceptions that are measured here: `ctx` when the provider
-reports no input tokens, and the tokens the first fragment carried, which `tok/s`
-leaves out of its numerator. Resuming a session seeds the counters from what was
-stored on its branch, and a stored reply has no first fragment recorded, so a
-resumed session's `tok/s` reads high by one fragment for each model call the
-branch recorded.
+model call, with one exception that is measured here: `ctx`, when the provider
+reports no input tokens. `tok/s` divides the provider's count by the time the
+runtime measured from the first token to the end of the reply, so a resumed
+session reads essentially the rate a live one did: the stored reply carries that
+measurement, and the two differ only by the instant the live clock was started. A reply stored before it existed falls back to the span between its
+reasoning and content segments, which is a little shorter than the window.
 
 ### Choosing what is shown {#choosing-what-is-shown}
 
