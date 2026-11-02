@@ -291,9 +291,13 @@ class Store:
         return [(row["id"], row["message_id"]) for row in rows]
 
     def expire_orphans(self) -> None:
-        """Mark as expired the stored messages that say ``held`` while nothing is held for them."""
+        """Mark the stored messages that say ``held`` while nothing is held for them as ``unconfirmed``.
+
+        Not ``expired``: a held row whose link to its history row was lost (``link_held`` failed) is still waiting and
+        may yet be delivered, so all that is known of the history row is that how it ended was not written down.
+        """
         self._db.execute(
-            "UPDATE messages SET status = 'expired', disposition = 'expired' WHERE status = 'held'"
+            "UPDATE messages SET status = 'unconfirmed', disposition = 'unlinked' WHERE status = 'held'"
             " AND id NOT IN (SELECT message_id FROM held WHERE message_id IS NOT NULL)"
         )
 

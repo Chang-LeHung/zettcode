@@ -159,9 +159,9 @@ async def test_a_held_message_the_recipient_never_answers_is_recorded_as_unconfi
         await server.aclose()
 
 
-def test_a_history_row_that_says_held_with_nothing_held_for_it_is_expired_when_a_broker_starts(tmp_path):
+def test_a_history_row_that_says_held_with_nothing_linked_to_it_becomes_unconfirmed_when_a_broker_starts(tmp_path):
     store = Store(tmp_path / "broker.db")
-    for text in ("lost link", "still held"):
+    for text in ("lost link", "still held", "unlinked but waiting"):
         stored = store.add_message(
             sender=("a", "a", ""),
             kind="session",
@@ -176,10 +176,13 @@ def test_a_history_row_that_says_held_with_nothing_held_for_it_is_expired_when_a
         )
         if text == "still held":
             store.link_held(store.hold("b", {"text": text}), stored["id"])
+        if text == "unlinked but waiting":
+            store.hold("b", {"text": text})
 
     hub_module.Hub(store=store)
 
-    assert [m["status"] for m in store.recent()] == ["expired", "held"]
+    assert [m["status"] for m in store.recent()] == ["unconfirmed", "held", "unconfirmed"]
+    assert store.held_count("b") == 2, "nothing that is still waiting is dropped"
 
 
 def test_messages_held_for_longer_than_the_limit_are_dropped_when_a_broker_starts(tmp_path):
