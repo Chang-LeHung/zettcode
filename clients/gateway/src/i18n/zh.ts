@@ -217,6 +217,20 @@ export const ZH: Record<string, string> = {
   "Start an empty conversation instead": "改为开始一个空对话",
   "A daemon's state and log appear here.": "守护进程的状态和日志会显示在这里。",
   "The log is empty.": "日志为空。",
+  // Pictures in a chat.
+  "This period holds more messages than can be shown, so its first part is missing. Choose a shorter period to see all of it.":
+    "这段时间的消息太多,无法全部显示,开头的一部分缺失。选择更短的时间段可以看到全部。",
+  "Attach a picture": "添加图片",
+  "Pictures to send": "待发送的图片",
+  "Remove the picture": "移除图片",
+  "Enlarge the picture": "放大图片",
+  "A picture in the message": "消息中的图片",
+  "That picture could not be read.": "无法读取这张图片。",
+  "That picture is too large": "这张图片太大了",
+  "The pictures are too large together": "图片加起来太大了",
+  "At most {count} pictures go with one message": "一条消息最多附带 {count} 张图片",
+  "This session cannot be sent a picture.": "无法向这个会话发送图片。",
+  "{model} does not accept pictures.": "{model} 不支持图片。",
   // The log and the model forms.
   All: "全部",
   Tools: "工具",

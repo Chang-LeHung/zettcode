@@ -25,7 +25,7 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from .hub import Hub, Session
 from .log import log
-from .protocol import MAX_BODY, Refused
+from .protocol import MAX_BODY, MAX_MESSAGE_BODY, Refused
 
 logger = logging.getLogger("zettcode.broker")
 
@@ -133,7 +133,9 @@ class Web:
 
     async def _messages(self, request: Request) -> JSONResponse:
         async def work(asked: Request) -> dict[str, Any]:
-            return await self.hub.send(asked.headers.get("x-session-key"), await self._json_object(asked))
+            return await self.hub.send(
+                asked.headers.get("x-session-key"), await self._json_object(asked, MAX_MESSAGE_BODY)
+            )
 
         return await self._guarded(request, work)
 
@@ -187,15 +189,15 @@ class Web:
         return await self._guarded(request, work)
 
     @staticmethod
-    async def _json_object(request: Request) -> dict[str, Any]:
+    async def _json_object(request: Request, limit: int = MAX_BODY) -> dict[str, Any]:
         """Read the JSON object a request carries, refusing one past the limit before it is all in memory."""
         declared = request.headers.get("content-length", "")
-        if declared.isdigit() and int(declared) > MAX_BODY:
+        if declared.isdigit() and int(declared) > limit:
             raise Refused("too_long", "the request is too large")
         data = b""
         async for chunk in request.stream():
             data += chunk
-            if len(data) > MAX_BODY:
+            if len(data) > limit:
                 raise Refused("too_long", "the request is too large")
         try:
             body = json.loads(data)
@@ -240,7 +242,7 @@ class Web:
         """Send what is queued for a session, one line at a time, in order."""
         try:
             while True:
-                await websocket.send_text(json.dumps(await session.outbox.get(), separators=(",", ":")))
+                await websocket.send_text(json.dumps(await session.next_line(), separators=(",", ":")))
         except (WebSocketDisconnect, RuntimeError, OSError):
             return  # the reader is gone; that is how a session ends, not a fault to report
         except Exception:  # noqa: BLE001 - anything else is worth a trace in the log

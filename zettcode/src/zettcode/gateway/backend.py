@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import os
 from abc import ABC, abstractmethod
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +23,7 @@ from zettcode.sdk.models import add_model, list_models, remove_model, update_mod
 from zettcode.sdk.types import (
     DaemonInfo,
     Delivered,
+    Image,
     IncomingMessage,
     Message,
     ModelInfo,
@@ -102,17 +103,17 @@ class Backend(ABC):
 
     async def timeline(self, since: float, until: float, limit: int) -> dict[str, Any]:
         """Return the stored messages of a stretch of the past (see ``Client.traffic_timeline``)."""
-        return {"messages": [], "span": None, "now": until}
+        return {"messages": [], "truncated": False, "span": None, "now": until}
 
     @abstractmethod
-    async def send(self, to: str, text: str, *, direct: bool = False) -> Delivered:
+    async def send(self, to: str, text: str, *, direct: bool = False, images: Sequence[Image] = ()) -> Delivered:
         """Send a message as the person at the gateway and return once the session has taken it.
 
         A backend sends it as the person at the gateway and never steers a turn the page does not show: a message
         waits for the session's current request to end (see the implementation for the mode it uses).
 
         With ``direct``, a session that can (``Peer.direct``) runs it as its reader's own prompt and sends its final
-        answer back here; for any other the flag is ignored.
+        answer back here; for any other the flag is ignored. Only a ``direct`` message may carry ``images``.
 
         Raises:
             zettcode.sdk.errors.SendError: Nobody was reached, and why.
@@ -295,10 +296,10 @@ class SdkBackend(Backend):
     async def timeline(self, since: float, until: float, limit: int) -> dict[str, Any]:
         return await self.client.traffic_timeline(since, until, limit)
 
-    async def send(self, to: str, text: str, *, direct: bool = False) -> Delivered:
+    async def send(self, to: str, text: str, *, direct: bool = False, images: Sequence[Image] = ()) -> Delivered:
         # A page keeps a conversation instead of watching the session's live turn, so its message never steers one:
         # a person typing here cannot see what they would be interrupting.
-        return await self.client.send(to, text, direct=direct, mode=MODE_FOLLOWUP)
+        return await self.client.send(to, text, direct=direct, mode=MODE_FOLLOWUP, images=images)
 
     def locked(self, session_id: str, workspace: str) -> bool:
         return self.client.sessions.open_elsewhere(session_id, workspace=workspace or None)

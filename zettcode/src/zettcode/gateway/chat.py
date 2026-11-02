@@ -18,6 +18,7 @@ An item is a plain dict with a ``kind``:
 
 from __future__ import annotations
 
+import hashlib
 import re
 from collections.abc import Iterable, Sequence
 
@@ -83,14 +84,27 @@ def items_of(messages: Sequence[Message], gateway_id: str, *, handle: str = "") 
     return items
 
 
+def picture_id(data: bytes) -> str:
+    """Return the name a picture is served under: a prefix of its hash, so the same file is the same address."""
+    return hashlib.sha256(data).hexdigest()[:20]
+
+
 def _user_item(message: Message, gateway_id: str) -> dict[str, object]:
     text = strip_reply_request(message.text)
     relay = message.relay
     if relay is None:
-        return {"kind": "user", "text": text}
-    if relay.sender_id == gateway_id:
-        return {"kind": "out", "text": text}
-    return {"kind": "from", "text": text, "sender": relay.sender, "via": relay.via}
+        item: dict[str, object] = {"kind": "user", "text": text}
+    elif relay.sender_id == gateway_id:
+        item = {"kind": "out", "text": text}
+    else:
+        item = {"kind": "from", "text": text, "sender": relay.sender, "via": relay.via}
+    if message.pictures:
+        # Named, not inlined: the pictures are fetched one by one and cached, not sent again with every refresh.
+        item["images"] = [
+            {"id": picture_id(picture.data), "media_type": picture.media_type, "bytes": len(picture.data)}
+            for picture in message.pictures
+        ]
+    return item
 
 
 def _tool_item(

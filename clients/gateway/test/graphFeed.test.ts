@@ -109,3 +109,31 @@ test("a message that arrives while a read is on the way is kept once, and counte
   // The read is the broker's account up to message 3, so only message 4 (newer than it) is counted again, and once.
   assert.equal(graph.edges.find((e) => e.a === "a" && e.b === "b")?.count, 1);
 });
+
+test("a replay of a window that held more than could be read says its start is missing, and says it no more once left", async () => {
+  const { exitReplay, graphReplay, loadReplay } = await import("../src/stores/graph");
+  const real = globalThis.fetch;
+  const asked: string[] = [];
+  let answer: { messages: GraphMessage[]; truncated?: boolean } = { messages: range(5, 9), truncated: true };
+  globalThis.fetch = (async (u: string) => {
+    asked.push(String(u));
+    return new Response(JSON.stringify({ ...answer, span: [1, 9], now: 10 }), { status: 200 });
+  }) as typeof fetch;
+  try {
+    await loadReplay(1, 9);
+    assert.match(asked[0]!, /limit=20000/, "a replay asks for a whole stretch, not a page");
+    assert.equal(graphReplay.status, "ready");
+    assert.equal(graphReplay.truncated, true);
+    assert.deepEqual(graphReplay.replay?.messages.map((m) => m.id), [5, 6, 7, 8, 9], "what it holds is the end of the window");
+
+    exitReplay();
+    assert.equal(graphReplay.truncated, false);
+
+    answer = { messages: range(1, 3) }; // an answer from a broker that does not say
+    await loadReplay(1, 9);
+    assert.equal(graphReplay.truncated, false);
+    exitReplay();
+  } finally {
+    globalThis.fetch = real;
+  }
+});

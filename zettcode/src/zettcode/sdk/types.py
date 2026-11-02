@@ -433,12 +433,18 @@ class SendLimits:
         rate_limit: Messages one sender may send in ``rate_window`` seconds.
         rate_window: The length of that window, in seconds.
         max_hops: How many sessions a chain of agent messages may pass through.
+        max_images: How many pictures one message may carry.
+        max_image_bytes: The largest one picture, in bytes of the encoded file.
+        max_images_bytes: The most the pictures of one message may weigh together.
     """
 
     max_text: int = 32_000
     rate_limit: int = 20
     rate_window: float = 60.0
     max_hops: int = 6
+    max_images: int = 4
+    max_image_bytes: int = 4 << 20
+    max_images_bytes: int = 8 << 20
 
 
 @dataclass(frozen=True, slots=True)
@@ -548,6 +554,7 @@ class IncomingMessage:
             ``"followup"`` asks it to wait until that request ends. An idle session starts a turn either way. A
             front end that cannot steer a running request — a polled inbox — holds it as a follow-up and answers
             ``queued``.
+        images: The pictures a ``direct`` message carries, to put into the prompt with the text.
     """
 
     sender_id: str
@@ -558,6 +565,7 @@ class IncomingMessage:
     direct: bool = False
     mode: str = MODE_STEER
     group: str = ""
+    images: tuple[Image, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

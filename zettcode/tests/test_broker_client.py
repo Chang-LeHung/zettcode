@@ -1040,3 +1040,38 @@ async def test_a_watch_and_an_unwatch_made_one_after_the_other_reach_the_broker_
     await eventually(lambda: len(asked) == 2)
 
     assert asked == [("watch", A), ("unwatch", A)] and A not in watcher._watching
+
+
+def test_pictures_arrive_only_with_a_chat_message_and_only_if_they_are_what_they_say():
+    import base64
+
+    from zettcode.broker.protocol import ImageData
+
+    seen: list[Incoming] = []
+
+    def take(incoming: Incoming) -> Receipt:
+        seen.append(incoming)
+        return Receipt(True, "", "started")
+
+    client = BrokerClient(on_message=take)
+    sender = {"session_id": A, "handle": "alpha", "title": "", "workspace": "/w", "status": "idle", "kind": "zettcode"}
+    png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
+    picture = {"media_type": "image/png", "data": base64.b64encode(png).decode()}
+    chat = {"from": sender, "text": "see", "hops": 1, "via": "user", "direct": True, "images": [picture]}
+
+    assert client._deliver(chat)["accepted"] is True
+    assert seen[-1].images == (ImageData("image/png", png),)
+
+    assert client._deliver({**chat, "direct": False})["accepted"] is True
+    assert seen[-1].images == (), "a message that is not a chat window's carries no pictures to a session"
+    assert client._deliver({**chat, "via": "agent"})["accepted"] is True
+    assert seen[-1].images == ()
+
+    before = len(seen)
+    for broken in (
+        [{"media_type": "image/png", "data": "!!"}],
+        [{"media_type": "image/jpeg", "data": picture["data"]}],
+    ):
+        answer = client._deliver({**chat, "images": broken})
+        assert answer["accepted"] is False and "pictures" in answer["reason"]
+    assert len(seen) == before, "a message with a broken picture never reaches the session"

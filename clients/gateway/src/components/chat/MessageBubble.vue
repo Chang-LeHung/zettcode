@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { t } from "../../i18n";
 import type { Row } from "../../lib/rows";
 import { dismiss, retry, wantsReply } from "../../stores/chat";
@@ -20,6 +20,14 @@ const who = computed(() => {
 });
 const state = computed(() => props.row.pending?.state ?? "stored");
 const failure = computed(() => props.row.pending?.error);
+/** Where each picture of the message is drawn from: this page's own copy until the gateway has it, then the gateway. */
+const pictures = computed(() =>
+  (props.row.item.images ?? []).map((image) => ({
+    ...image,
+    src: image.src ?? `/api/threads/${encodeURIComponent(props.thread)}/pictures/${encodeURIComponent(image.id)}`,
+  })),
+);
+const zoomed = ref("");
 
 function again(): void {
   const entry = props.row.pending;
@@ -36,7 +44,19 @@ function again(): void {
     </template>
     <div class="bubble" :class="{ reply: row.item.kind === 'reply', err: state === 'failed' }">
       <span v-if="who" class="bubble-who">{{ who }}</span>
-      <MessageText :text="row.item.text" />
+      <div v-if="pictures.length" class="bubble-pictures" :class="{ many: pictures.length > 1 }">
+        <button
+          v-for="(picture, at) in pictures"
+          :key="at"
+          type="button"
+          class="bubble-picture"
+          :aria-label="t('Enlarge the picture')"
+          @click="zoomed = picture.src"
+        >
+          <img :src="picture.src" :alt="t('A picture in the message')" loading="lazy" decoding="async" />
+        </button>
+      </div>
+      <MessageText v-if="row.item.text" :text="row.item.text" />
       <span v-if="state === 'sending' || state === 'queued' || state === 'failed'" class="meta">
         <span v-if="state === 'queued'">{{ t("queued") }}</span>
         <Icon v-if="state === 'sending'" name="clock" size="xs" />
@@ -55,6 +75,11 @@ function again(): void {
       <UserAvatar v-if="row.tail" class="msg-avatar" size="sm" />
       <div v-else class="msg-avatar" />
     </template>
+    <Teleport to="body">
+      <button v-if="zoomed" type="button" class="zoom" :aria-label="t('Close')" @click="zoomed = ''" @keydown.esc="zoomed = ''">
+        <img :src="zoomed" :alt="t('A picture in the message')" />
+      </button>
+    </Teleport>
   </div>
 </template>
 
@@ -81,6 +106,13 @@ function again(): void {
 .meta-read { color: var(--out-meta); }
 .meta-bad { color: var(--bad); }
 .bubble-retry { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 8px; clear: both; }
+.bubble-pictures { display: grid; gap: 4px; margin: 2px 0 6px; grid-template-columns: 1fr; }
+.bubble-pictures.many { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.bubble-picture { display: block; padding: 0; border-radius: 12px; overflow: hidden; background: rgba(0, 0, 0, 0.12); cursor: zoom-in; line-height: 0; }
+.bubble-picture img { display: block; width: 100%; max-height: 22rem; min-height: 4rem; object-fit: cover; }
+.bubble-pictures:not(.many) .bubble-picture img { width: auto; max-width: 100%; margin: 0 auto; object-fit: contain; }
+.zoom { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 16px; background: rgba(0, 0, 0, 0.82); cursor: zoom-out; animation: pop 0.16s ease-out; }
+.zoom img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 6px; }
 .bubble-why { flex-basis: 100%; font-size: 0.82rem; color: #fff; line-height: 1.35; }
 @media (max-width: 719px) {
   .msg { gap: 6px; }

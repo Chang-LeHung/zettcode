@@ -150,6 +150,8 @@ export const graphReplay = reactive({
   speed: 60,
   skipSilence: true,
   error: "",
+  /** The window held more messages than were read, so the replay starts later than the window does. */
+  truncated: false,
 });
 
 let loadToken = 0;
@@ -167,6 +169,7 @@ export async function loadReplay(since: number, until: number): Promise<void> {
     if (token !== loadToken) return;
     const built = markRaw(buildReplay(timeline.messages, since, until));
     graphReplay.replay = built;
+    graphReplay.truncated = timeline.truncated === true;
     graphReplay.playhead = built.start;
     graphReplay.status = "ready";
   } catch (error) {
@@ -182,6 +185,7 @@ export function exitReplay(): void {
   graphReplay.mode = "live";
   graphReplay.status = "idle";
   graphReplay.replay = null;
+  graphReplay.truncated = false;
   graphReplay.playhead = 0;
   graphReplay.playing = false;
   graphReplay.error = "";

@@ -6,6 +6,7 @@ import type {
   ModelOption,
   GraphData,
   OlderMessages,
+  Picture,
   GatewayStatus,
   SendReply,
   SpawnForm,
@@ -27,8 +28,12 @@ export const gateway = {
     request<ThreadDetail>("GET", `/api/threads/${id(threadId)}${all ? "?all=1" : ""}`),
   recheck: (threadId: string) => request<{ thread: Thread }>("POST", `/api/threads/${id(threadId)}/recheck`),
   read: (threadId: string) => request<{ ok: true }>("POST", `/api/threads/${id(threadId)}/read`),
-  send: (threadId: string, text: string, reply: boolean) =>
-    request<SendReply>("POST", `/api/threads/${id(threadId)}/send`, { text, reply }),
+  send: (threadId: string, text: string, reply: boolean, pictures: Picture[] = []) =>
+    request<SendReply>("POST", `/api/threads/${id(threadId)}/send`, {
+      text,
+      reply,
+      ...(pictures.length ? { images: pictures.map(({ media_type, data }) => ({ media_type, data })) } : {}),
+    }),
   spawn: (form: Partial<SpawnForm>) => request<SpawnReply>("POST", "/api/daemons", form),
   stop: (threadId: string) => request<{ result: string }>("DELETE", `/api/daemons/${id(threadId)}`),
   log: (threadId: string) => request<{ text: string }>("GET", `/api/daemons/${id(threadId)}/log`),
@@ -41,7 +46,7 @@ export const gateway = {
   graph: () => request<GraphData>("GET", "/api/graph"),
   older: (before: number, limit = 50) =>
     request<OlderMessages>("GET", `/api/graph/older?before=${before}&limit=${limit}`),
-  timeline: (since: number, until: number, limit = 2000) =>
+  timeline: (since: number, until: number, limit = 20000) =>
     request<Timeline>("GET", `/api/graph/timeline?since=${since}&until=${until}&limit=${limit}`),
   directories: (path: string) => request<DirectoryListing>("GET", `/api/dirs?path=${encodeURIComponent(path)}`),
 };

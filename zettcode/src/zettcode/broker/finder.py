@@ -30,7 +30,7 @@ from .. import logging_setup
 from ..filelock import is_held
 from . import process
 from .files import MODULE, Note, broker_dir, ensure_directory, lock_path, log_path, read_note
-from .protocol import MAX_BODY, PROTOCOL_VERSION
+from .protocol import MAX_MESSAGE_BODY, PROTOCOL_VERSION
 
 #: A broker is started at most this often, so one that dies at once is not restarted in a loop.
 SPAWN_INTERVAL = 3.0
@@ -152,7 +152,7 @@ class Finder:
                 additional_headers={"Authorization": f"Bearer {note.token}"},
                 proxy=None,  # never through a proxy named in the environment: the broker is on this machine
                 compression=None,
-                max_size=MAX_BODY,
+                max_size=MAX_MESSAGE_BODY,
                 open_timeout=self.connect_timeout,
             )
         except InvalidStatus as refused:

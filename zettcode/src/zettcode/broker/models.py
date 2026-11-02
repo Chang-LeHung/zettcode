@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ..modes import MODE_STEER
-from .protocol import KIND_ZETTCODE, PeerInfo
+from .protocol import KIND_ZETTCODE, ImageData, PeerInfo
 
 #: Another word for a registered session, as the rest of the application knows it.
 RosterEntry = PeerInfo
@@ -38,6 +38,7 @@ class Incoming:
         mode: What a busy recipient should do with it: ``"steer"`` (the default) hands it to the request that is
             running, and ``"followup"`` waits until that request ends. An idle recipient starts a turn either way.
         group: The group chat it was written in (without the ``#``), or an empty string for a one-to-one message.
+        images: The pictures it carries, already checked: only a ``direct`` message has any.
     """
 
     sender: PeerInfo
@@ -47,6 +48,7 @@ class Incoming:
     direct: bool = False
     mode: str = MODE_STEER
     group: str = ""
+    images: tuple[ImageData, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

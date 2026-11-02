@@ -30,15 +30,36 @@ export interface Thread {
 }
 
 export type ChatItem =
-  | { kind: "out" | "in" | "reply" | "user" | "note"; text: string }
-  | { kind: "from"; text: string; sender: string; via: string }
+  | { kind: "out" | "in" | "reply" | "user" | "note"; text: string; images?: ChatImage[] }
+  | { kind: "from"; text: string; sender: string; via: string; images?: ChatImage[] }
   | { kind: "tool"; name: string; brief: string; ok?: boolean; output?: string };
 
 export interface Limits {
   max_text: number;
   rate_limit: number;
   rate_window: number;
+  /** What a message may carry in pictures; older gateways do not say, and the page then uses the broker's defaults. */
+  max_images?: number;
+  max_image_bytes?: number;
+  max_images_bytes?: number;
   used: number;
+}
+
+/** A picture in a conversation: fetched by its id, or shown from `src` while it is still only on this page. */
+export interface ChatImage {
+  id: string;
+  media_type: string;
+  bytes: number;
+  src?: string;
+}
+
+/** A picture picked on this page, ready to send: the file in base64, and a small preview to draw. */
+export interface Picture {
+  media_type: string;
+  data: string;
+  src: string;
+  bytes: number;
+  name: string;
 }
 
 export interface GatewayStatus {
@@ -230,6 +251,8 @@ export interface OlderMessages {
 /** A window of stored traffic for replay: oldest first, `span` is the oldest and newest ts held, `now` the server clock. */
 export interface Timeline {
   messages: GraphMessage[];
+  /** The stretch held more than was returned: the newest are here and its start is missing. */
+  truncated?: boolean;
   span: [number, number] | null;
   now: number;
 }
@@ -238,6 +261,8 @@ export interface Timeline {
 export interface Pending {
   key: number;
   text: string;
+  /** The pictures that went, or will go again, with it. */
+  pictures?: Picture[];
   /** How many of this text the conversation must hold before this message counts as shown. */
   target: number;
   state: "sending" | "started" | "queued" | "failed";

@@ -60,6 +60,9 @@ COOKIE_SECONDS = 30 * 24 * 3600
 #: The most a request body may be, in bytes. A message is at most 32,000 characters.
 MAX_BODY = 256 * 1024
 
+#: The most a message that sends pictures may be: what the broker takes (``MAX_MESSAGE_BODY``, which a test keeps equal).
+MAX_SEND_BODY = (1 << 20) + (8 << 20) // 3 * 4 + 4
+
 #: Wrong tokens tolerated in a window before sign-in is refused for a while.
 LOGIN_FAILURES = 8
 LOGIN_WINDOW = 600.0
@@ -247,14 +250,14 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
 
         return route
 
-    async def body(request: Request) -> dict[str, Any]:
+    async def body(request: Request, limit: int = MAX_BODY) -> dict[str, Any]:
         declared = request.headers.get("content-length", "")
-        if declared.isdigit() and int(declared) > MAX_BODY:
+        if declared.isdigit() and int(declared) > limit:
             raise GatewayError(413, "too_long", "The request is too large")
         data = b""
         async for chunk in request.stream():
             data += chunk
-            if len(data) > MAX_BODY:
+            if len(data) > limit:
                 raise GatewayError(413, "too_long", "The request is too large")
         try:
             parsed = json.loads(data or b"{}")
@@ -338,12 +341,23 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
         return {"thread": await gateway.recheck(request.path_params["id"])}
 
     async def send(request: Request) -> Any:
-        data = await body(request)
+        data = await body(request, MAX_SEND_BODY)
         text = data.get("text")
         reply = data.get("reply")
         if not isinstance(text, str) or (reply is not None and not isinstance(reply, bool)):
             raise GatewayError(400, "invalid", "text is a string and reply a boolean")
-        return await gateway.send(request.path_params["id"], text, reply=reply) | {"status": gateway.status()}
+        sent = await gateway.send(request.path_params["id"], text, reply=reply, images=data.get("images"))
+        return sent | {"status": gateway.status()}
+
+    async def picture(request: Request) -> Any:
+        data, media_type = await gateway.picture(request.path_params["id"], request.path_params["picture"])
+        # Named by its own hash, so it never changes: a browser keeps it. Only a type a model takes is served (the service
+        # checks it as it serves, whatever the stored file says), and the app never lets a browser guess another.
+        return Response(
+            data,
+            media_type=media_type,
+            headers={"cache-control": "private, max-age=31536000, immutable"},
+        )
 
     async def spawn(request: Request) -> Any:
         return await gateway.spawn(await body(request))
@@ -417,6 +431,7 @@ def create_app(settings: Settings, backend: Backend | None = None, *, static: Pa
         Route("/api/threads/{id}/read", api(read), methods=["POST"]),
         Route("/api/threads/{id}/recheck", api(recheck), methods=["POST"]),
         Route("/api/threads/{id}/send", api(send), methods=["POST"]),
+        Route("/api/threads/{id}/pictures/{picture}", api(picture)),
         Route("/api/daemons", api(spawn), methods=["POST"]),
         Route("/api/daemons/{id}", api(stop), methods=["DELETE"]),
         Route("/api/daemons/{id}/log", api(log)),

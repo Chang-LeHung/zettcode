@@ -16,7 +16,7 @@ from zettcode.daemon import process
 from zettcode.daemon.cli import daemon_program
 from zettcode.daemon.run import Inbox, Options, _client
 from zettcode.daemon.state import Record, Registry, State
-from zettcode.sdk.types import IncomingMessage
+from zettcode.sdk.types import IncomingMessage, Receipt
 
 MODEL = '[[models]]\nmodel = "fake"\ntoken = "t"\n'
 
@@ -1014,7 +1014,7 @@ def _daemon_with(
             self.resumes += 1
             return self._next()
 
-        def prompt(self, text):
+        def prompt(self, text, images=()):
             self.prompts += 1
             return self._next()
 
@@ -1374,7 +1374,7 @@ class _Session:
     def __init__(self) -> None:
         self.calls: list[tuple[str, str]] = []
 
-    def prompt(self, text):
+    def prompt(self, text, images=()):
         self.calls.append(("prompt", text))
         return _Stream("final answer")
 
@@ -1414,12 +1414,12 @@ async def test_a_direct_turn_that_fails_or_writes_nothing_is_still_answered_so_t
     client = _Client()
     daemon = Daemon(client, Options(workspace=home, token="t"))
 
-    def failing(text):
+    def failing(text, images=()):
         raise RunError("the model stopped")
 
     client.session.prompt = failing  # type: ignore[method-assign]
     await daemon._turn(IncomingMessage("web", "web-gateway", "run it", via="user", direct=True))
-    client.session.prompt = lambda text: _Stream("   ")  # type: ignore[method-assign]
+    client.session.prompt = lambda text, images=(): _Stream("   ")  # type: ignore[method-assign]
     await daemon._turn(IncomingMessage("web", "web-gateway", "again", via="user", direct=True))
     await daemon._turn(IncomingMessage("peer", "peer", "not direct"))
 
@@ -1468,3 +1468,55 @@ def test_tools_are_logged_with_their_detail_failures_and_slow_calls(home, monkey
         "tool bash · false",
         "tool bash failed after 1.0s: exit 1 boom",
     ]
+
+
+async def test_a_daemon_refuses_pictures_for_a_model_that_cannot_read_them_and_passes_them_to_one_that_can(home):
+    from types import SimpleNamespace
+
+    from zettcode.daemon.run import Daemon
+    from zettcode.sdk.types import Image
+
+    client = _Client()
+    client.model = SimpleNamespace(name="fast", multimodal=False)
+    daemon = Daemon(client, Options(workspace=home, token="t"))
+    taken: list[IncomingMessage] = []
+    daemon.inbox = SimpleNamespace(offer=lambda message: taken.append(message) or Receipt(True, "", "started"))  # type: ignore[assignment]
+    picture = Image(b"\x89PNG\r\n\x1a\n" + b"\x00" * 8, "image/png")
+    with_picture = IncomingMessage("web", "web-gateway", "look", via="user", direct=True, images=(picture,))
+
+    refused = daemon.take(with_picture)
+    assert refused.accepted is False and "fast does not accept pictures" in refused.reason and taken == []
+    assert daemon.take(IncomingMessage("web", "web-gateway", "just words", via="user", direct=True)).accepted is True
+
+    client.model = SimpleNamespace(name="deep", multimodal=True)
+    assert daemon.take(with_picture).accepted is True and taken[-1] is with_picture
+
+    class NoModel:
+        session = client.session
+
+        @property
+        def model(self):
+            raise RuntimeError("no model is configured")
+
+    daemon.client = NoModel()  # type: ignore[assignment]
+    assert daemon.take(with_picture).accepted is False, "no model to ask is no model that reads pictures"
+
+
+async def test_the_pictures_of_a_chat_message_go_into_the_prompt_with_its_text(home):
+    from zettcode.daemon.run import Daemon
+    from zettcode.sdk.types import Image
+
+    class Session(_Session):
+        def prompt(self, text, images=()):
+            self.calls.append(("prompt", text))
+            self.images = tuple(images)
+            return super().prompt(text, images)
+
+    client = _Client()
+    client.session = Session()
+    daemon = Daemon(client, Options(workspace=home, token="t"))
+    picture = Image(b"GIF89a" + b"\x00" * 8, "image/gif")
+
+    await daemon._turn(IncomingMessage("web", "web-gateway", "", via="user", direct=True, images=(picture,)))
+
+    assert client.session.images == (picture,) and client.session.calls[0] == ("prompt", "")

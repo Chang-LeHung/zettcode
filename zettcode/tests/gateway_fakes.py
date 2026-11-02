@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import itertools
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +20,7 @@ from zettcode.sdk.errors import SendError, SessionNotFoundError
 from zettcode.sdk.types import (
     DaemonInfo,
     Delivered,
+    Image,
     IncomingMessage,
     Message,
     ModelInfo,
@@ -60,6 +61,8 @@ class FakeBackend(Backend):
         self.sent: list[tuple[str, str]] = []
         #: For each send, whether it was run as the session's own prompt (the flag was set and the session can).
         self.direct_sent: list[bool] = []
+        #: The pictures each send carried, parallel to ``sent``.
+        self.pictures_sent: list[tuple[Image, ...]] = []
         #: The sessions whose turns the gateway asked to see, and who it told.
         self.watched: set[str] = set()
         self.stream_listener: Callable[[StreamEvent], None] | None = None
@@ -225,20 +228,21 @@ class FakeBackend(Backend):
     def locked(self, session_id: str, workspace: str) -> bool:
         return session_id in self.locked_ids
 
-    async def send(self, to: str, text: str, *, direct: bool = False) -> Delivered:
+    async def send(self, to: str, text: str, *, direct: bool = False, images: Sequence[Image] = ()) -> Delivered:
         if self.fail is not None:
             raise self.fail
         peer = self.peer_list.get(to)
         if peer is None:
             raise SendError("unknown", f"no active session is called '{to}'")
         self.sent.append((to, text))
+        self.pictures_sent.append(tuple(images))
         directly = direct and peer.direct
         self.direct_sent.append(directly)
         # What a session that runs it as its own prompt stores is the text alone; any other keeps who sent it.
         relay = None if directly else Relay(self._id, self._handle, "user", 1)
         busy = peer.status == "working"
         if to in self.daemon_list and not busy:
-            self.say(to, Message("user", text, relay=relay))
+            self.say(to, Message("user", text, relay=relay, pictures=tuple(images), images=len(images)))
         if self.simulate and to in self.daemon_list:
             self._spawn_task(self._work(to, text))
         return Delivered(peer.handle, "queued" if busy else "started", directly)

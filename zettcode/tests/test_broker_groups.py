@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -484,3 +485,143 @@ def test_a_failed_commit_does_not_leave_the_connection_unable_to_make_groups(mon
     store.create_group("two", A, [A])
 
     assert store.group("two") is not None and store.group("one") is None
+
+
+def _say(store: Store, sender: str, to: str, kind: str = "session") -> None:
+    store.add_message(
+        sender=(sender, sender, ""),
+        kind=kind,
+        to=(to, to, ""),
+        recipients=[to],
+        text="x",
+        via="user",
+        hops=1,
+        mode="steer",
+        status="delivered",
+        disposition="",
+    )
+
+
+def test_a_full_history_is_a_third_of_a_million_messages():
+    from zettcode.broker.store import KEEP
+
+    assert KEEP == 320_000 and Store().keep == KEEP
+
+
+def test_pair_totals_are_counted_once_and_kept_up_to_date_without_counting_again(tmp_path: Path):
+    clock = iter(range(1, 1000))
+    store = Store(tmp_path / "broker.db", clock=lambda: float(next(clock)))
+    for sender, to in [(A, B), (B, A), (A, B)]:
+        _say(store, sender, to)
+    _say(store, A, "team", kind="group")
+    assert store._pairs is not None and store._pairs[(A, B)][0] == 3, "counted at open, then kept up to date"
+
+    first = store.edges()
+    assert first == [{"a": A, "b": B, "count": 3, "last": 3.0}], "a pair is one pair whichever way it was said"
+    assert store._pairs is not None
+
+    _say(store, B, A)
+    _say(store, B, "03c30d97-cccc-7000-8000-000000000003")
+    _say(store, A, "team", kind="group")
+    again = store.edges()
+    assert {(e["a"], e["b"]): e["count"] for e in again} == {(A, B): 4, (B, "03c30d97-cccc-7000-8000-000000000003"): 1}
+    assert [e["last"] for e in again] == sorted((e["last"] for e in again), reverse=True), "newest pair first"
+
+    # What was kept up to date is what a fresh count of the same file says.
+    store.close()
+    assert Store(tmp_path / "broker.db", clock=lambda: 0.0).edges() == again
+
+
+def test_the_totals_are_not_taken_back_when_old_messages_are_deleted():
+    store = Store(keep=10)
+    store.edges()  # counting starts, so that what follows is kept up to date
+    for _ in range(400):
+        _say(store, A, B)
+
+    assert store.edges()[0]["count"] == 400, "a total is what was handled, not what is still in the file"
+    assert len(store.recent(limit=2000)) < 400
+
+
+def test_a_window_that_holds_more_than_was_asked_for_says_it_is_cut_and_keeps_its_end():
+    from zettcode.broker.hub import Hub
+    from zettcode.broker.store import MAX_WINDOW
+
+    hub = Hub(store=Store(keep=100_000))
+    for _ in range(30):
+        _say(hub.store, A, B)
+
+    whole = hub.timeline(0, 1e12, 30)
+    assert len(whole["messages"]) == 30 and whole["truncated"] is False, "exactly what was asked for is not cut"
+    cut = hub.timeline(0, 1e12, 29)
+    assert len(cut["messages"]) == 29 and cut["truncated"] is True
+    assert cut["messages"][-1]["id"] == whole["messages"][-1]["id"], "it is the start that is missing, never the end"
+    assert [m["id"] for m in cut["messages"]] == sorted(m["id"] for m in cut["messages"]), "still oldest first"
+    assert hub.timeline(0, 1e12, 10**9)["truncated"] is False and MAX_WINDOW == 20_000
+
+
+def test_a_replay_can_read_far_more_than_a_page_of_messages():
+    from zettcode.broker.store import MAX_ROWS, MAX_WINDOW
+
+    store = Store(keep=100_000)
+    for _ in range(MAX_ROWS + 500):
+        _say(store, A, B)
+
+    assert len(store.window(0, 1e12, limit=MAX_WINDOW)) == MAX_ROWS + 500
+    assert len(store.window(0, 1e12, limit=10**9)) == MAX_ROWS + 500, "capped at MAX_WINDOW, which is more than this"
+    assert len(store.recent(limit=10**9)) == MAX_ROWS, "an ordinary page is still bounded"
+
+
+def test_a_file_that_is_opened_again_counts_its_pairs_before_anyone_looks():
+    path = Path(tempfile.mkdtemp()) / "broker.db"
+    first = Store(path)
+    for _ in range(3):
+        _say(first, A, B)
+    first.close()
+
+    second = Store(path)
+    assert second._pairs is not None and second._pairs[(A, B)][0] == 3, "so the first look at the graph reads nothing"
+    second.close()
+
+
+def test_a_file_cannot_grow_past_its_byte_budget_however_few_messages_it_holds():
+    store = Store(keep=100_000, max_bytes=2 << 20)
+    long = "x" * 30_000
+    for n in range(400):
+        store.add_message(
+            sender=(A, "a", ""),
+            kind="session",
+            to=(B, "b", ""),
+            recipients=[B],
+            text=f"{n} {long}",
+            via="user",
+            hops=1,
+            mode="steer",
+            status="delivered",
+            disposition="",
+        )
+
+    kept = store.recent(limit=2000)
+    assert 0 < len(kept) < 400, "the oldest were dropped though the count is far below the limit"
+    assert kept[-1]["text"].startswith("399 "), "and what is kept is the newest"
+    assert store._size() <= 2 << 20, "the file is back under its budget when the last check ran (the 400th message)"
+
+
+def test_a_window_cut_exactly_at_the_cap_still_says_it_was_cut(monkeypatch):
+    from zettcode.broker import hub as hub_module
+    from zettcode.broker import store as store_module
+    from zettcode.broker.hub import Hub
+
+    monkeypatch.setattr(hub_module, "MAX_WINDOW", 10)
+    monkeypatch.setattr(store_module, "MAX_WINDOW", 10)
+    hub = Hub(store=Store(keep=1000))
+    for _ in range(25):
+        _say(hub.store, A, B)
+
+    at_cap = hub.timeline(0, 1e12, 10)  # asking for exactly the most a read can return
+    assert at_cap["truncated"] is True and len(at_cap["messages"]) == 9, "never claims a stretch of 25 is complete"
+    assert [m["id"] for m in at_cap["messages"]][-1] == 25, "and what it holds is the end of the stretch"
+    assert hub.timeline(0, 1e12, 10**9)["truncated"] is True
+    small = Hub(store=Store(keep=1000))
+    for _ in range(5):
+        _say(small.store, A, B)
+    assert small.timeline(0, 1e12, 10)["truncated"] is False and len(small.timeline(0, 1e12, 10)["messages"]) == 5

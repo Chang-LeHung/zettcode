@@ -261,6 +261,9 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
       </div>
 
       <template v-else-if="ready && rp.replay">
+        <div v-if="rp.truncated" class="rb-cut" role="status">
+          {{ t("This period holds more messages than can be shown, so its first part is missing. Choose a shorter period to see all of it.") }}
+        </div>
         <div class="rb-main">
           <div class="rb-ctl">
             <button class="rb-btn" :aria-label="t('Restart')" :title="t('Restart')" @click="restart">
@@ -364,6 +367,7 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
 }
 .rb-custom input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .rb-err { font-size: 0.78rem; color: var(--bad); }
+.rb-cut { font-size: 0.78rem; line-height: 1.35; color: var(--warn); padding: 0 2px 6px; }
 
 .rb-panel { display: flex; flex-direction: column; gap: 10px; }
 .rb-main { display: flex; align-items: center; gap: 16px; flex-wrap: nowrap; }

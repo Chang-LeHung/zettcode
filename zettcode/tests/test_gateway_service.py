@@ -323,7 +323,7 @@ async def test_the_page_sends_a_follow_up_so_it_never_steers_a_live_turn(tmp_pat
     sent = await backend.send("api", "hello", direct=True)
 
     assert sent.disposition == "queued"
-    assert calls == [("api", "hello", {"direct": True, "mode": "followup"})]
+    assert calls == [("api", "hello", {"direct": True, "mode": "followup", "images": ()})]
 
 
 # -- what arrives ----------------------------------------------------------------------------------------------
@@ -747,3 +747,236 @@ async def test_a_refresh_failure_is_recorded_once_until_it_recovers(tmp_path, mo
     monkeypatch.setattr(gateway, "refresh", healthy)
     await gateway._poll_once()
     assert records == ["failed", "failed", "recovered"]
+
+
+# -- pictures --------------------------------------------------------------------------------------------------
+import base64  # noqa: E402
+
+from zettcode.sdk.types import Image  # noqa: E402
+
+PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 24
+
+
+def picture(data: bytes = PNG, media_type: str = "image/png") -> dict[str, str]:
+    return {"media_type": media_type, "data": base64.b64encode(data).decode()}
+
+
+async def with_daemon(tmp_path: Path, *, model: str = "deep", direct: bool = True):
+    gateway, backend = await make(tmp_path)
+    backend.add_daemon("01d", str(tmp_path), name="d", model_name=model, direct=direct)
+    await gateway.refresh()
+    return gateway, backend
+
+
+async def test_a_picture_goes_to_a_session_that_takes_chat_prompts_on_a_model_that_reads_it(tmp_path):
+    gateway, backend = await with_daemon(tmp_path)
+
+    sent = await gateway.send("01d", "what is this?", images=[picture()])
+
+    assert sent["direct"] is True
+    assert backend.sent == [("01d", "what is this?")]
+    assert backend.pictures_sent[-1] == (Image(PNG, "image/png"),)
+
+
+async def test_a_picture_with_no_words_is_a_message(tmp_path):
+    gateway, backend = await with_daemon(tmp_path)
+
+    await gateway.send("01d", "   ", images=[picture()])
+    assert backend.sent[-1][1] == "" and len(backend.pictures_sent[-1]) == 1
+
+    with pytest.raises(GatewayError) as nothing:
+        await gateway.send("01d", "  ")
+    assert nothing.value.code == "empty"
+
+
+async def test_a_model_that_does_not_read_pictures_is_refused_before_anything_is_sent(tmp_path):
+    gateway, backend = await with_daemon(tmp_path, model="fast")
+
+    with pytest.raises(GatewayError) as refused:
+        await gateway.send("01d", "look", images=[picture()])
+
+    assert (refused.value.status, refused.value.code) == (400, "no_pictures")
+    assert "fast does not accept pictures" in str(refused.value) and backend.sent == []
+
+
+async def test_a_session_that_does_not_run_chat_text_as_its_own_prompt_is_not_sent_pictures(tmp_path):
+    gateway, backend = await with_daemon(tmp_path, direct=False)
+
+    with pytest.raises(GatewayError) as refused:
+        await gateway.send("01d", "look", images=[picture()])
+
+    assert refused.value.code == "no_pictures" and backend.sent == []
+
+
+@pytest.mark.parametrize(
+    ("raw", "status", "code"),
+    [
+        ("a picture", 400, "invalid"),
+        ([picture()] * 5, 413, "too_long"),
+        ([{"media_type": "image/png"}], 400, "invalid"),
+        ([{"media_type": "image/tiff", "data": "AAAA"}], 400, "invalid"),
+        ([{"media_type": "image/png", "data": "***"}], 400, "invalid"),
+        ([picture(b"x" * (5 << 20))], 413, "too_long"),
+        ([picture(b"x" * (3 << 20))] * 3, 413, "too_long"),
+    ],
+)
+async def test_what_a_page_sends_as_a_picture_is_checked_in_its_own_terms(tmp_path, raw, status, code):
+    gateway, backend = await with_daemon(tmp_path)
+
+    with pytest.raises(GatewayError) as refused:
+        await gateway.send("01d", "look", images=raw)
+
+    assert (refused.value.status, refused.value.code) == (status, code) and backend.sent == []
+
+
+async def test_a_pictures_chat_item_names_it_and_the_picture_is_served_by_that_name(tmp_path):
+    gateway, backend = await with_daemon(tmp_path)
+    await gateway.send("01d", "what is this?", images=[picture()])
+
+    detail = await gateway.thread("01d")
+    item = next(i for i in detail["items"] if i.get("images"))
+    name = item["images"][0]["id"]
+    assert item["kind"] == "user" and item["images"] == [{"id": name, "media_type": "image/png", "bytes": len(PNG)}]
+    assert PNG.hex() not in str(detail), "the bytes are fetched, not sent with every refresh"
+
+    assert await gateway.picture("01d", name) == (PNG, "image/png")
+    for missing in ("nope", name[::-1]):
+        with pytest.raises(GatewayError) as gone:
+            await gateway.picture("01d", missing)
+        assert gone.value.status == 404
+    with pytest.raises(GatewayError):
+        await gateway.picture("unknown-session", name)
+
+
+def test_the_page_may_send_exactly_what_the_broker_takes():
+    from zettcode.broker.protocol import MAX_IMAGE_BYTES, MAX_IMAGES, MAX_IMAGES_BYTES, MAX_MESSAGE_BODY
+    from zettcode.gateway.app import MAX_SEND_BODY
+
+    limits = SendLimits()
+    assert (limits.max_images, limits.max_image_bytes, limits.max_images_bytes) == (
+        MAX_IMAGES,
+        MAX_IMAGE_BYTES,
+        MAX_IMAGES_BYTES,
+    )
+    assert MAX_SEND_BODY == MAX_MESSAGE_BODY
+
+
+async def test_serving_a_chats_pictures_reads_its_conversation_once(tmp_path):
+    gateway, backend = await with_daemon(tmp_path)
+    for shade in (1, 2, 3):
+        await gateway.send("01d", f"picture {shade}", images=[picture(PNG + bytes([shade]))])
+    names = [item["images"][0]["id"] for item in (await gateway.thread("01d"))["items"] if item.get("images")]
+    reads = 0
+    original = backend.history
+
+    async def counted(session_id, workspace):
+        nonlocal reads
+        reads += 1
+        return await original(session_id, workspace)
+
+    backend.history = counted  # type: ignore[method-assign]
+    for name in names:
+        assert (await gateway.picture("01d", name))[0].startswith(PNG)
+    assert reads == 0, "the chat was read when its page was, and its pictures are kept from then"
+
+    gateway._pictures.clear()  # a gateway that has just started
+    await gateway.picture("01d", names[0])
+    await gateway.picture("01d", names[1])
+    assert reads == 1, "one read fills it for every picture after"
+
+
+async def test_only_a_few_chats_keep_their_pictures(tmp_path):
+    from zettcode.gateway.service import PICTURE_CHATS
+
+    gateway, _ = await make(tmp_path)
+    for number in range(PICTURE_CHATS + 2):
+        gateway._keep_pictures(
+            f"s{number}", [Message("user", "x", pictures=(Image(PNG + bytes([number]), "image/png"),))]
+        )
+    assert list(gateway._pictures) == [f"s{n}" for n in range(2, PICTURE_CHATS + 2)], "the oldest chats go first"
+    gateway._keep_pictures("s2", [Message("user", "x")])
+    assert gateway._pictures["s2"] == {} and list(gateway._pictures)[-1] == "s2", (
+        "a chat with none is remembered as that"
+    )
+
+
+async def test_a_name_that_is_not_there_is_answered_without_reading_anything(tmp_path):
+    gateway, backend = await with_daemon(tmp_path)
+    await gateway.send("01d", "look", images=[picture()])
+    await gateway.send("01d", "words only")
+    reads = 0
+    original = backend.history
+
+    async def counted(session_id, workspace):
+        nonlocal reads
+        reads += 1
+        return await original(session_id, workspace)
+
+    backend.history = counted  # type: ignore[method-assign]
+    gateway._pictures.clear()
+    absent = "0" * 20
+    for _ in range(3):
+        with pytest.raises(GatewayError) as gone:
+            await gateway.picture("01d", absent)
+        assert gone.value.status == 404
+    assert reads == 1, "the first asks the conversation, every later one is answered from what it said"
+    for not_a_name in ("x", "../../etc", "A" * 20, "0" * 21, ""):
+        with pytest.raises(GatewayError):
+            await gateway.picture("01d", not_a_name)
+    assert reads == 1, "what cannot be a name is refused before anything is looked at"
+
+    # A chat that holds no picture at all is just as quickly answered once it has been read.
+    gateway._pictures.clear()
+    backend.histories["01e"] = [Message("user", "hi")]
+    backend.add_daemon("01e", str(tmp_path), name="e", model_name="deep", direct=True)
+    await gateway.refresh()
+    gateway._pictures.clear()
+    before = reads
+    for _ in range(3):
+        with pytest.raises(GatewayError):
+            await gateway.picture("01e", absent)
+    assert reads == before + 1
+
+
+async def test_a_chat_of_heavy_pictures_keeps_their_names_and_reads_their_bytes_when_asked(tmp_path, monkeypatch):
+    from zettcode.gateway import service as module
+
+    gateway, backend = await with_daemon(tmp_path)
+    monkeypatch.setattr(module, "PICTURE_BYTES", 10)
+    await gateway.send("01d", "look", images=[picture()])
+    name = next(i["images"][0]["id"] for i in (await gateway.thread("01d"))["items"] if i.get("images"))
+    assert gateway._pictures["01d"][name][0] is None, "the bytes are not held"
+    reads = 0
+    original = backend.history
+
+    async def counted(session_id, workspace):
+        nonlocal reads
+        reads += 1
+        return await original(session_id, workspace)
+
+    backend.history = counted  # type: ignore[method-assign]
+    assert await gateway.picture("01d", name) == (PNG, "image/png")
+    assert reads == 1
+    for _ in range(2):
+        with pytest.raises(GatewayError):
+            await gateway.picture("01d", "f" * 20)
+    assert reads == 1, "and a name it does not hold still costs nothing"
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        [{"data": "AAAA"}],  # no type at all
+        [{"media_type": 5, "data": "AAAA"}],
+        [{"media_type": "text/html", "data": "AAAA"}],
+        [{"media_type": "image/png", "data": "A" * (6 << 20)}],  # too long to be worth decoding
+    ],
+)
+async def test_a_picture_is_judged_by_its_type_and_length_before_it_is_decoded(tmp_path, raw, monkeypatch):
+    gateway, backend = await with_daemon(tmp_path)
+    decoded = []
+    monkeypatch.setattr(service_module.base64, "b64decode", lambda *a, **k: decoded.append(1) or b"")
+
+    with pytest.raises(GatewayError):
+        await gateway.send("01d", "look", images=raw)
+    assert decoded == [] and backend.sent == []
