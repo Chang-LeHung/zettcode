@@ -17,7 +17,7 @@ from zett_agent.messages import ImageBytesSource, ImageContent, TextContent, Use
 from zett_agent.model import CacheMode
 from zett_agent.resume import ResumePoint
 
-from zettcode.engine.dialogue.side import SIDE, question
+from zettcode.engine.dialogue.side import ORIGIN, READER, SIDE, WATCHED, question, watched_by
 from zettcode.prompt import MentionPart, PromptPart, carries_image, model_text_part, plain_text
 from zettcode.relay import Relayed
 
@@ -55,6 +55,8 @@ class TurnsMixin(AgentBase):
         *,
         hint: str | None = None,
         side: bool = False,
+        origin: str = READER,
+        watched: bool | None = None,
         relayed: Relayed | None = None,
         cache: CacheMode | str | None = None,
     ) -> AsyncIterator[AgentEvent]:
@@ -77,6 +79,11 @@ class TurnsMixin(AgentBase):
                 it, ``"read"`` reuses a warm prefix without marking this request's new content for caching, and
                 ``"off"`` sends no cache directive at all. A side question starts at ``"read"`` unless told
                 otherwise, because its answer is never replayed.
+            origin: Who asked a side question — ``"reader"`` for the reader's ``/btw``, or the name of the plugin
+                asking for itself. It is stored with the exchange, and only a reader's own is restored into a transcript
+                by default.
+            watched: Whether a reopened transcript restores this exchange, overriding what ``origin`` implies. It does
+                not make a front end draw it now. Ignored when ``side`` is false.
 
         Raises:
             SessionLocked: Another process has the session open. Checked before anything else, and a side
@@ -95,7 +102,9 @@ class TurnsMixin(AgentBase):
                 cast(
                     "AsyncGenerator[AgentEvent]",
                     client.stream(
-                        self.request(parts, hint=hint, side=side) if relayed is None else relayed.message(),
+                        self.request(parts, hint=hint, side=side, origin=origin, watched=watched)
+                        if relayed is None
+                        else relayed.message(),
                         config=AgentRunConfig(
                             session_id=session_id,
                             cache_mode=cache_mode_of(cache, side=side),
@@ -191,7 +200,14 @@ class TurnsMixin(AgentBase):
             pass
 
     @staticmethod
-    def request(parts: Sequence[PromptPart], *, hint: str | None = None, side: bool = False) -> str | UserMessage:
+    def request(
+        parts: Sequence[PromptPart],
+        *,
+        hint: str | None = None,
+        side: bool = False,
+        origin: str = READER,
+        watched: bool | None = None,
+    ) -> str | UserMessage:
         """Return the user turn those ordered parts make up.
 
         Text and images keep the order they were written in inside one
@@ -207,13 +223,26 @@ class TurnsMixin(AgentBase):
                 reference contributed, then what the caller added.
             side: Mark the turn as a side question, which the store records but
                 never replays.
+            origin: Who asked it: ``"reader"``, or the name of the plugin asking for itself. The store keeps it beside
+                the side mark.
+            watched: Whether a reopened transcript restores it, overriding what ``origin`` implies. Left out, a
+                reader's question is restored and a plugin's is not; it does not make a front end draw it now.
         """
         message = TurnsMixin.turn(parts, hint=hint)
         if not side:
             return message
         if isinstance(message, UserMessage):
-            return replace(message, attributes={**message.attributes, SIDE: True}, include_in_messages=False)
-        return question(message)
+            return replace(
+                message,
+                attributes={
+                    **message.attributes,
+                    SIDE: True,
+                    ORIGIN: origin,
+                    WATCHED: watched_by(origin, watched),
+                },
+                include_in_messages=False,
+            )
+        return question(message, origin=origin, watched=watched)
 
     @staticmethod
     def turn(parts: Sequence[PromptPart], *, hint: str | None = None) -> str | UserMessage:

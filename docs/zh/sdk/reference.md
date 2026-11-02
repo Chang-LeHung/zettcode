@@ -248,8 +248,8 @@ def remove_model(name, *, path=None) -> tuple[ModelInfo, ...]: ...
 | `prompt(prompt, *, images, mentions, instructions, on_approval, on_question, on_event, timeout, raw, keep_events, defer_answers, cache)` | `RunStream` |
 | `stream(...)` | `RunStream`（同一个方法） |
 | `await run(prompt, *, images, mentions, instructions, on_approval, on_question, on_event, timeout, keep_events, cache)` | `RunResult` |
-| `await ask(question, *, on_event=None, timeout=None, cache="read")` | `str` |
-| `ask_stream(question, *, on_event=None, timeout=None, cache="read")` | `RunStream` |
+| `await ask(question, *, on_event=None, timeout=None, cache="read", origin="reader", watched=None)` | `str` |
+| `ask_stream(question, *, on_event=None, timeout=None, cache="read", origin="reader", watched=None)` | `RunStream` |
 | `steer(prompt, *, images=(), mentions=False)` | `str \| None` |
 | `await resumable()` | `ResumeInfo \| None` |
 | `resume_stream(*, on_approval, on_question, on_event, timeout, raw, keep_events, defer_answers)` | `RunStream` |
@@ -257,6 +257,12 @@ def remove_model(name, *, path=None) -> tuple[ModelInfo, ...]: ...
 
 `cache` 取 `"read_write"`（默认）、`"read"` 或 `"off"`；侧问默认 `"read"`，因为它的回答不会被重放，不值得写进缓存。
 见 `zettcode.sdk.types` 里的 `CacheMode`。
+
+`origin` 说明是谁在问，并随这一问一答记录下来：`"reader"` 是读者自己问的，插件替自己问则传插件名（`"recap"`）。
+恢复会话时会恢复读者的侧问，跳过插件的，免得模型写给自己的指令被当成读者的话重新出现；想显示的部分由你自己画成一条
+消息。`watched` 用来覆盖 origin 推出的结论，但它只管"重开时恢不恢复"：它不会让前端把这一问一答画出来 —— 终端照样
+丢掉不是自己开的那一轮 —— 所以设了它却没真画过的插件，重开后会多出一行谁也没见过的 `btw`。两者都不影响事件流：迭代
+这个 run 的人照样收到每一个事件，画不画由前端决定。这两个字段都没有的旧会话文件，一律按"没人看过"处理。
 
 `prompt` 在调用处抛出：`ValueError`（空 prompt、错误的 `timeout`）、`TypeError`（某一部分不是文本或 `Image`）、`ConfigurationError`（给读不了图的模型发图片）、`SessionBusyError`、`ClientClosedError`。await 或迭代 run 时抛出 `RunError`、`RunTimeoutError`、`SessionLockedError`、引擎不认识的 `cache` 词（在 run 启动时检查），以及处理函数抛出的任何东西。
 

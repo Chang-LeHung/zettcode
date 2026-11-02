@@ -20,7 +20,7 @@ from zett_agent.messages import AnyMessage, AssistantMessage, SystemMessage, Too
 
 from zettcode.config import DEFAULT_TRANSCRIPT_MAX_ENTRIES
 from zettcode.engine.dialogue.ask import declined_answer
-from zettcode.engine.dialogue.side import is_side_line
+from zettcode.engine.dialogue.side import is_side_line, is_watched_side_line
 from zettcode.engine.extensions.usage import UsageSnapshot, session_usage
 from zettcode.engine.server_tools import ServerToolRun, answer_after_tools, describe_output, runs_in_blocks
 from zettcode.engine.storage import MessageLine, Session
@@ -94,7 +94,9 @@ def window_start(lines: Sequence[MessageLine], entries: int) -> int:
 
     The branch is walked from its newest line, so the only messages looked inside are
     the ones the window will replay anyway; a short branch returns 0 and is replayed
-    whole.
+    whole. A side run nobody watched is skipped here as it is skipped below, or the
+    count would reach its target on rows the window then drops and the restored
+    transcript would hold fewer rows than it was asked for.
 
     Args:
         lines: The active branch, oldest first.
@@ -103,6 +105,8 @@ def window_start(lines: Sequence[MessageLine], entries: int) -> int:
     wanted = entries + WINDOW_SLACK
     seen = 0
     for index in range(len(lines) - 1, -1, -1):
+        if is_side_line(lines[index]) and not is_watched_side_line(lines[index]):
+            continue
         seen += entries_added_by(lines[index].message[0])
         if seen >= wanted:
             return index
@@ -134,10 +138,13 @@ def replay(
     transcript = Transcript(renderers=renderers, presenters=presenters, max_entries=max_entries)
     transcript.frame = frame
     for line in lines[start:]:
-        # A side question is shown again — the reader saw it, so restoring the
-        # session restores the transcript they were looking at — while staying
-        # out of ``history``, which is what the next request would carry.
+        # A side question the reader watched is shown again — restoring the session restores the transcript they were
+        # looking at — while staying out of ``history``, which is what the next request would carry. One nobody watched
+        # is left out whole, question and answer: a plugin's recap is asked with nothing on screen, so restoring it
+        # would put words in the conversation that were never said there.
         side = is_side_line(line)
+        if side and not is_watched_side_line(line):
+            continue
         message = line.message[0]
         match message:
             case UserMessage():

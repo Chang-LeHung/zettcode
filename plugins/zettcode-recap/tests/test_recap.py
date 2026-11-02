@@ -22,7 +22,7 @@ class FakeSession:
     def __init__(self, answer: str = "Fixing the parser; next, run the tests.") -> None:
         self.id = SESSION
         self.answer = answer
-        self.asked: list[tuple[str, float | None, str]] = []
+        self.asked: list[tuple[str, float | None, str, bool]] = []
         self.locked = False
         self.refuse: Exception | None = None
         #: When set, ``ask`` waits for it, so a test can hold a recap in flight.
@@ -31,8 +31,10 @@ class FakeSession:
         self.history_gate: asyncio.Event | None = None
         self.history_messages: list[object] = []
 
-    async def ask(self, question: str, *, on_event=None, timeout=None, cache="read") -> str:
-        self.asked.append((question, timeout, cache))
+    async def ask(
+        self, question: str, *, on_event=None, timeout=None, cache="read", origin: str = "reader", watched=None
+    ) -> str:
+        self.asked.append((question, timeout, cache, origin))
         if self.gate is not None:
             await self.gate.wait()
         if self.refuse is not None:
@@ -256,7 +258,9 @@ async def test_a_reader_who_stayed_away_long_enough_gets_a_recap(tmp_path):
         plugin.turn_ended(True)
     await settled(lambda: bool(session.asked))
 
-    assert session.asked == [(PROMPT, 60.0, "read")], "one side question, read-only, with a deadline"
+    assert session.asked == [(PROMPT, 60.0, "read", "recap")], (
+        "one side question, read-only, with a deadline, asked by the plugin"
+    )
     assert host.transcript.messages == ["> **Recap** \u00b7 Fixing the parser; next, run the tests."]
     assert host.redraws == 1, "the frame that shows it is asked for"
     plugin._cancel()
@@ -301,6 +305,7 @@ async def test_the_command_summarises_now_and_shows_the_answer(tmp_path):
     assert result.notification == "Recap ready"
     assert result.message == "> **Recap** \u00b7 Fixing the parser; next, run the tests.", "words are the answer"
     assert session.asked[0][2] == "read"
+    assert session.asked[0][3] == "recap", "the plugin's own question, not the reader's"
 
 
 async def test_the_command_tells_the_reader_why_there_is_no_recap(tmp_path):

@@ -784,12 +784,26 @@ class Session:
         on_event: EventCallback | None = None,
         timeout: float | None = None,
         cache: CacheMode = "read",
+        origin: str = "reader",
+        watched: bool | None = None,
     ) -> RunStream:
         """Ask a side question and return the stream of its answer, so it can be shown as it is written.
 
         The same side question as :meth:`ask`: the model sees the whole conversation and answers on a read-only
         footing, and neither the question nor the answer joins the history. Iterate the stream for its events
         (``TextDelta`` carries the answer as it arrives), or await it for the result.
+
+        ``origin`` says who is asking, and it is written down with the exchange: the default ``"reader"`` is a question
+        the reader asked, and a plugin asking for itself passes its own name (``"recap"``). A resumed session restores
+        the exchanges the reader watched and leaves the rest out, so a plugin's question — and the model's instructions
+        to itself that it carries — does not come back as the reader's words. Draw the part of the answer you want as a
+        message of your own.
+
+        ``watched`` overrides what ``origin`` implies, and it is about a reopen only: left out, a reader's question is
+        restored and a plugin's is not, and setting it does not make a front end draw the exchange now — a shell still
+        drops a side question it did not begin, so a question never drawn comes back as a row nobody saw. Neither says
+        anything about the stream: every event of the run still reaches whoever iterates it, and a front end that shows
+        nothing of a question it did not ask drops them as they arrive.
 
         The answer is never replayed, so the request does not extend the provider's cache by default: it starts at
         ``"read"``, which reuses the conversation's warm prefix and marks only the stable parts. Pass ``"read_write"``
@@ -807,7 +821,7 @@ class Session:
         parts: tuple[Any, ...] = (question,)
         return RunStream(
             self,
-            lambda: client._agent.stream(parts, side=True, cache=cache),
+            lambda: client._agent.stream(parts, side=True, origin=origin, watched=watched, cache=cache),
             on_approval=None,
             on_question=None,
             on_event=on_event,
@@ -822,17 +836,25 @@ class Session:
         on_event: EventCallback | None = None,
         timeout: float | None = None,
         cache: CacheMode = "read",
+        origin: str = "reader",
+        watched: bool | None = None,
     ) -> str:
         """Ask a side question about the conversation and return the answer, without adding to it.
 
         The model sees the whole conversation and answers on a read-only footing; neither the question nor the
         answer joins the history the next run is built from. :meth:`ask_stream` is the same question with the
         answer streamed, and takes the same ``cache`` mode: ``"read"`` by default, since the answer is not replayed.
+        ``origin`` and ``watched`` are :meth:`ask_stream`'s too: a question a plugin asks for itself is not restored
+        into a resumed transcript, and a reader's is.
 
         Raises:
             ValueError: The question is empty.
         """
-        return (await self.ask_stream(question, on_event=on_event, timeout=timeout)).text
+        return (
+            await self.ask_stream(
+                question, on_event=on_event, timeout=timeout, cache=cache, origin=origin, watched=watched
+            )
+        ).text
 
     def steer(self, prompt: Prompt, *, images: Sequence[Image] = (), mentions: bool = False) -> str | None:
         """Send a message to the run in progress, which drops what it was doing to take it into account.

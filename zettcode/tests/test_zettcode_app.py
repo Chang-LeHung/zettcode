@@ -3948,6 +3948,7 @@ async def test_btw_asks_a_side_question_and_marks_it():
     message = app.agent.runtime.client.messages[-1]
     assert isinstance(message, UserMessage)
     assert message.attributes.get("side") is True
+    assert message.attributes.get("watched") is True, "the reader asked it, so a reopen restores it"
     assert message.include_in_messages is False
 
     side_entries = [entry for entry in app.transcript.entries if getattr(entry, "side", False)]
@@ -8674,12 +8675,16 @@ async def test_a_side_question_never_reports_changes():
     assert not any(entry.kind == "changes" for entry in app.transcript.entries)
 
 
-async def test_a_side_question_the_shell_did_not_ask_is_not_drawn():
+@pytest.mark.parametrize("watched", [True, False], ids=["watched", "nobody-watched"])
+async def test_a_side_question_the_shell_did_not_ask_is_not_drawn(watched: bool):
     """A plugin's own side question is answered off the record: its words are not a turn's, so they stay out.
 
     The projector is the runtime's dispatcher, so it is handed every run the session makes — the recap plugin's
     side question included. Drawing that one put the recap under the last turn's line as an answer nobody asked
     for, and then the plugin drew the same words again as its quote: the same text, twice.
+
+    Both values of ``watched`` are tried, because the drop must not depend on it: it is the projector's own rule (the
+    shell began no turn), and the flag only decides what a resumed transcript restores.
     """
     app = build_app([AgentEvent(AgentEventType.TEXT_DELTA, "s", delta="an answer")])
     harness = _harness(app)
@@ -8690,8 +8695,9 @@ async def test_a_side_question_the_shell_did_not_ask_is_not_drawn():
     app.agent.runtime.client.events = [
         AgentEvent(AgentEventType.TEXT_DELTA, "s", delta="the recap's own words"),
     ]
-    # What a plugin does when it asks the session something for itself: a side question, not a turn of the reader's.
-    answer = await app.client.session.ask("where was I?")
+    # What a plugin does when it asks the session something for itself: a side question, not a turn of the reader's,
+    # and one nobody watches — the recap draws only the quote it makes of the answer.
+    answer = await app.client.session.ask("where was I?", watched=watched)
 
     assert answer == "the recap's own words", "the asker still gets the answer, to show its own way"
     assert list(app.transcript.entries) == after_the_turn, "and nothing lands after the turn that ended"

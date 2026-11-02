@@ -602,7 +602,10 @@ ask (the recap's) would otherwise land as an answer nobody asked for, under the
 last turn's line, and the plugin writes its own quote. The runs that are drawn
 without a turn being begun — `/continue` picking a turn back up, `/compact`'s
 pass — are not side questions, which is why the projector asks the engine for
-that fact instead of treating "not begun" as "not drawn". Every
+that fact instead of treating "not begun" as "not drawn". A resumed session is
+held to the same rule from the other side: the store tags each side exchange with
+whether it was watched, and `replay.py` restores the ones that were, so the
+recap's question does not come back as a `btw` row of the reader's. Every
 callback returns immediately, including the approval one: the agent is already
 suspended waiting for the response the UI emits later, so a callback that
 awaited the user would deadlock the stream. The approval callback opens a

@@ -75,6 +75,19 @@ line keeps that plugin API, so a 0.2.x install resolves the plugin as it is rath
 `<0.2` cap. Publish that floor first, because until it exists `pip install zettcode-monitor` has nothing to resolve
 against.
 
+## The recap plugin
+
+`plugins/zettcode-recap` is a separate PyPI project, `zettcode-recap`, with its own version and its own tag.
+
+1. Raise the plugin's `zettcode` floor in `plugins/zettcode-recap/pyproject.toml` to the release that carries the API
+   it now uses, and say the same in its `README.md`. Nothing else can catch this: `release-recap.yml` installs
+   `./zettcode` from the same checkout beside the plugin, so it always resolves against a zettcode that has whatever
+   the plugin just started calling, and a plugin published with too low a floor installs and then fails at runtime.
+2. Set `__version__` in `plugins/zettcode-recap/src/zettcode_recap/__init__.py` and commit it.
+3. Tag and push `recap-v<version>` (for example `recap-v0.1.1`). `.github/workflows/release-recap.yml` checks the tag
+   against the version, runs the plugin's tests against this checkout, builds, and publishes with the same
+   `PYPI_API_TOKEN` secret.
+
 ## CI
 
 `.github/workflows/ci.yml` runs on every push to `main` and on every pull

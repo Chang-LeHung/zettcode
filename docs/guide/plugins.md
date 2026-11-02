@@ -304,13 +304,16 @@ class Recap(TuiPlugin):
         host = self.link.host
         if host is None:
             raise ValueError("The shell is not ready yet")
-        answer = await host.client.session.ask("Recap where this session is, briefly.", cache="read")
+        answer = await host.client.session.ask("Recap where this session is, briefly.", cache="read", origin="recap")
         return CommandResult(message=f"> {answer}")
 ```
 
-`ask` is a side question: the exchange never joins the conversation, and the shell draws nothing of it, so the
-answer appears only where the command puts it — here, as a quote. `/btw` is the same kind of question, but the
-reader asked it, so the shell draws that one as a turn of its own.
+`ask` is a side question: the exchange never joins the conversation, and the shell draws nothing of it, because it
+began no turn — that happens whatever the arguments say. `origin="recap"` is the other half: it says who asked, and a
+question that is not the reader's own is left out of the transcript a resumed session rebuilds. A command that keeps the
+default `origin="reader"` would find its own words back on screen after a reopen. The answer appears only where the
+command puts it — here, as a quote. `/btw` is the same kind of question with the reader's origin, so the shell draws
+that one, and restores it.
 
 Plugin commands are listed last and cannot shadow a built-in, so `/model`,
 `/resume` and the rest always do what [Commands](/guide/commands) says.

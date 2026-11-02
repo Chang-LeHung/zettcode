@@ -22,7 +22,8 @@ classifiers = [
 ]
 dependencies = [
   # The plugin API: `PluginContext`, `TuiPlugin`, and the terminal group's focus and turn-end hooks, which the 0.3
-  # line added.
+  # line added. The recap also asks with `ask(origin=)`, which 0.3.0-0.3.3 do not take: raise this floor to the release
+  # that ships it, in the same commit that sets that version.
   "zettcode>=0.3,<0.4",
 ]
 

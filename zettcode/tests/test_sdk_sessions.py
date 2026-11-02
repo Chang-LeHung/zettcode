@@ -301,8 +301,10 @@ async def test_a_side_question_reads_the_cache_without_extending_it(tmp_path, mo
         await client.prompt("main question")
         await client.session.ask("what about the side")
         await client.prompt("and now", cache="off")
+        # `ask` takes the same `cache` word and must pass it on: it used to drop it and always ask at "read".
+        await client.session.ask("one that writes the cache", cache="read_write", watched=False)
 
-    assert seen == [None, "read", "off"]
+    assert seen == [None, "read", "off", "read_write"]
 
 
 async def test_history_does_not_include_side_questions(tmp_path, monkeypatch):

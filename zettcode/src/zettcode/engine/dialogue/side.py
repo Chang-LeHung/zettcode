@@ -18,6 +18,7 @@ question has no shell, so it is given the two search tools here.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from typing import Any
 
 from zett_agent.agent import AgentRunContext
 from zett_agent.extensions.base import AgentExtension
@@ -26,18 +27,81 @@ from zett_agent.messages import UserMessage
 #: Attribute marking the message a side question is asked as.
 SIDE = "side"
 
+#: Attribute (and stored tag) saying who asked a side question: ``/btw``, or a plugin's own ask.
+ORIGIN = "origin"
+
+#: The origin of a side question the reader asked, which is the one a resumed transcript restores by default.
+READER = "reader"
+
+#: Attribute (and stored tag) saying the reader watched the exchange on screen.
+WATCHED = "watched"
+
 #: Tools a side question may use: the ones that only read.
 READ_ONLY_TOOLS = frozenset({"read", "read_file", "glob", "grep", "read_skill", "list_sessions", "message_history"})
 
 
-def question(text: str) -> UserMessage:
-    """Return the message a side question is asked as."""
-    return UserMessage(content=text, attributes={SIDE: True}, include_in_messages=False)
+def is_reader(origin: object) -> bool:
+    """Return whether an origin names the reader, whose side questions are the ones a front end draws."""
+    return origin == READER
+
+
+def question(text: str, *, origin: str = READER, watched: bool | None = None) -> UserMessage:
+    """Return the message a side question is asked as.
+
+    Args:
+        text: The question.
+        origin: Who asked it — :data:`READER` for the reader's own ``/btw``, or the name of the plugin asking for
+            itself (``"recap"``). It is written down with the exchange, and a resumed transcript restores only what the
+            reader asked.
+        watched: Whether a reopened transcript restores this exchange. Left out, it follows ``origin``: a question the
+            reader asked comes back, a plugin's own does not. It says nothing about a front end drawing the exchange
+            now — a shell still drops a side question it did not begin — so setting it for something never drawn
+            restores a row nobody saw.
+    """
+    return UserMessage(
+        content=text,
+        attributes={SIDE: True, ORIGIN: origin, WATCHED: watched_by(origin, watched)},
+        include_in_messages=False,
+    )
 
 
 def is_side(message: object) -> bool:
     """Return whether a message is a side question."""
     return isinstance(message, UserMessage) and bool(getattr(message, "attributes", {}).get(SIDE))
+
+
+def _watched(values: Mapping[str, Any]) -> bool:
+    """Return whether a side question's attributes — or a stored line's tags — say the reader watched it.
+
+    ``watched`` is the answer, and it is written beside the origin on every new run, so it is what a stored exchange is
+    read from. ``origin`` is not consulted here: it says who asked, for whoever reads the file later, and the two are
+    written together, so a file that carries one without the other was not written by this program.
+
+    Without ``watched`` the answer is no. That is the conservative reading, because the two errors are not equal:
+    dropping an aside the reader saw costs a line of context, while restoring one they did not ask puts the model's own
+    instructions in their mouth. Files from before both tags hold the recap's asks and the reader's ``/btw`` looking
+    alike, and the only thing that asked on its own back then was the recap, so those are the lines this keeps off the
+    screen; a ``/btw`` from such a file goes with them, which is the price of not keeping the recap's words.
+    """
+    return bool(values.get(WATCHED, False))
+
+
+def watched_by(origin: str, watched: bool | None) -> bool:
+    """Return whether a side question asked as ``origin`` was watched, when the caller left it out.
+
+    A question the reader asked is restored; a plugin's own is not. This is the one place the rule is written: the
+    message and the request that carries it both come through here.
+    """
+    return is_reader(origin) if watched is None else watched
+
+
+def is_watched_side(message: object) -> bool:
+    """Return whether a side question's message says the reader watched it, False for anything that is not one."""
+    if not is_side(message):
+        return False
+    # ``is_side`` read ``attributes.get`` a moment ago, so a side message always holds a mapping here; the default is
+    # for the type checker, which sees only ``object``.
+    return _watched(getattr(message, "attributes", {}))
 
 
 def is_side_run(context: AgentRunContext) -> bool:
@@ -58,6 +122,21 @@ def is_side_line(line: object) -> bool:
     """
     tags = getattr(line, "tags", None)
     return isinstance(tags, Mapping) and bool(tags.get(SIDE))
+
+
+def is_watched_side_line(line: object) -> bool:
+    """Return whether a stored line belongs to a side question the reader watched on screen.
+
+    The run is tagged with what the caller said when it asked, and ``watched`` alone is read back: a question a plugin
+    asked for itself stays out of a reopened transcript, so the model's instructions to itself do not come back as the
+    reader's words. ``origin`` sits beside it for whoever reads the file, and a line carrying neither tag is not
+    restored either — see :func:`_watched` for why that is the cheaper error. What a front end draws *live* is a
+    separate decision, taken where the run is begun (``app.ui.app``), not here.
+    """
+    if not is_side_line(line):
+        return False
+    # ``is_side_line`` returned True, so the line carries tags.
+    return _watched(line.tags)  # type: ignore[attr-defined]
 
 
 class SideQuestions(AgentExtension):
