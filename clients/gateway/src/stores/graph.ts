@@ -97,12 +97,23 @@ export function applyGraph(data: GraphData): void {
   graph.olderFailed = false;
   graph.loaded = true;
   graph.failed = false;
-  for (const listener of [...appliedListeners]) listener();
+  notifyApplied();
 }
 
 const appliedListeners = new Set<() => void>();
 
-/** Be told whenever the graph has been replaced by a fresh read, whoever asked for it. Returns the way to stop. */
+/** Tell every listener the graph was replaced; one that throws must not break the read that brought the graph. */
+function notifyApplied(): void {
+  for (const listener of [...appliedListeners]) {
+    try {
+      listener();
+    } catch {
+      // A listener is somebody else's code: the graph is already in place whatever it does.
+    }
+  }
+}
+
+/** Be told whenever the graph has been replaced, by a read or by a reset. Returns the way to stop. */
 export function onGraphApplied(listener: () => void): () => void {
   appliedListeners.add(listener);
   return () => appliedListeners.delete(listener);
@@ -145,6 +156,7 @@ export function resetGraph(): void {
   exitReplay();
   held = [];
   loading = 0;
+  notifyApplied();
 }
 
 /** The replay of a past window: `mode` says which one the page shows; the rest is meaningful in "replay" only. */
