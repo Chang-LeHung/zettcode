@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import "./dom-setup";
-import { applyGraph, resetGraph } from "../src/stores/graph";
+import { applyGraph, graph, onGraphApplied, resetGraph } from "../src/stores/graph";
 import {
   applyGroupTraffic,
   groupChat,
@@ -121,6 +121,25 @@ test("unread counts of a group the graph no longer lists are dropped whenever th
 
   assert.equal(unreadOf("gone"), 0, "a group of that name made later does not start with a stale badge");
   assert.equal(unreadOf("kept"), 1);
+});
+
+test("a listener that throws does not break the read, and a reset tells the listeners too", async () => {
+  const calls: string[] = [];
+  const stop = [
+    onGraphApplied(() => {
+      throw new Error("a bad listener");
+    }),
+    onGraphApplied(() => calls.push("after the bad one")),
+  ];
+  try {
+    applyGraph({ sessions: [], groups: [{ name: "kept", members: ["a"], created: 1 }], edges: [], recent: [] });
+    assert.equal(graph.groups.length, 1, "the graph is in place");
+    assert.deepEqual(calls, ["after the bad one"]);
+    resetGraph();
+    assert.deepEqual(calls, ["after the bad one", "after the bad one"]);
+  } finally {
+    for (const off of stop) off();
+  }
 });
 
 test("a message written in the open group is shown there; in another it is counted as unread and updates the list", async () => {
