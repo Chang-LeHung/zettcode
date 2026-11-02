@@ -215,7 +215,7 @@ class RecapPlugin(TuiPlugin):
     async def _ask(self) -> str:
         """Ask the model for the summary, as the shell's own side question.
 
-        ``watched=False``: the question is the plugin's, not the reader's, so nothing of the exchange is drawn — the
+        ``origin="recap"``: the question is the plugin's, not the reader's, so nothing of the exchange is drawn — the
         projector drops it live — and nothing of it comes back when the session is resumed. The one line the reader
         sees is the quote :meth:`_show` draws.
 
@@ -226,7 +226,7 @@ class RecapPlugin(TuiPlugin):
         host = self._host()
         if host is None:
             raise RuntimeError("The shell is not ready yet")
-        return await host.client.session.ask(PROMPT, cache="read", timeout=TIMEOUT_SECONDS, watched=False)
+        return await host.client.session.ask(PROMPT, cache="read", timeout=TIMEOUT_SECONDS, origin="recap")
 
     async def _recap(self, *, cancellable: bool) -> str:
         """Ask for the summary and return it, saying nothing itself.

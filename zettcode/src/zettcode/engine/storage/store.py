@@ -53,7 +53,7 @@ from zett_agent.ids import new_uuid7
 from zett_agent.messages import AnyMessage, AssistantMessage, SystemMessage, ToolMessage
 from zett_agent.model import ModelUsage
 
-from ..dialogue.side import SIDE, WATCHED, is_side, is_watched_side
+from ..dialogue.side import ORIGIN, READER, SIDE, WATCHED, is_side, is_watched_side
 from .layout import claim_workspace, open_workspace
 from .ledger import LedgerReader, SessionStats
 from .locks import prune_empty
@@ -115,7 +115,10 @@ class _Request:
     side: bool = False
     #: Whether the reader watched that side question on screen, which is what
     #: a resumed transcript restores: a plugin's own question is never drawn.
-    watched: bool = True
+    watched: bool = False
+    #: Who asked it — ``"reader"``, or the plugin asking for itself — kept as a
+    #: tag so a stored exchange says what it was without reading its text.
+    origin: str = READER
     #: One stored message id for each replayable non-system context position.
     #: ``None`` marks a context-only message the store was told to skip. The
     #: checkpoint's own position is represented by its boundary message id, so
@@ -913,6 +916,7 @@ class SessionStore(SessionPersistenceMixin, AgentExtension):
                     # flushed; if that order ever changed, the tag would fall back to `watched` and a plugin's question
                     # would come back on screen, with nothing here to notice.
                     request.watched = is_watched_side(message)
+                    request.origin = str(message.attributes.get(ORIGIN, READER))
                 if request.side:
                     # A side question is recorded, never replayed: the same flag
                     # the runtime uses for a message that must not re-enter a
@@ -931,7 +935,9 @@ class SessionStore(SessionPersistenceMixin, AgentExtension):
                         # A side question's lines are tagged as well as flagged:
                         # the tag is what a replay or an export reads, since the
                         # flag alone would also match an instruction.
-                        tags={**context.tags, SIDE: True, WATCHED: request.watched} if request.side else context.tags,
+                        tags={**context.tags, SIDE: True, ORIGIN: request.origin, WATCHED: request.watched}
+                        if request.side
+                        else context.tags,
                         usage=usage,
                     )
                 if message.include_in_messages and not isinstance(message, SystemMessage):

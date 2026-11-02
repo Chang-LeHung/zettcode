@@ -27,6 +27,12 @@ from zett_agent.messages import UserMessage
 #: Attribute marking the message a side question is asked as.
 SIDE = "side"
 
+#: Attribute (and stored tag) saying who asked a side question: ``/btw``, or a plugin's own ask.
+ORIGIN = "origin"
+
+#: The origin of a side question the reader asked, which is the one a resumed transcript restores by default.
+READER = "reader"
+
 #: Attribute (and stored tag) saying the reader watched the exchange on screen.
 WATCHED = "watched"
 
@@ -34,15 +40,28 @@ WATCHED = "watched"
 READ_ONLY_TOOLS = frozenset({"read", "read_file", "glob", "grep", "read_skill", "list_sessions", "message_history"})
 
 
-def question(text: str, *, watched: bool = True) -> UserMessage:
+def is_reader(origin: object) -> bool:
+    """Return whether an origin names the reader, whose side questions are the ones a front end draws."""
+    return origin == READER
+
+
+def question(text: str, *, origin: str = READER, watched: bool | None = None) -> UserMessage:
     """Return the message a side question is asked as.
 
     Args:
         text: The question.
-        watched: Whether the reader watched this question and its answer on screen. True for one they asked; False for
-            one a plugin asks for itself, which is written down but belongs on no screen.
+        origin: Who asked it — :data:`READER` for the reader's own ``/btw``, or the name of the plugin asking for
+            itself (``"recap"``). It is written down with the exchange, and a resumed transcript restores only what the
+            reader asked.
+        watched: Whether the reader watched the question and its answer on screen. Left out, it follows ``origin``: a
+            question the reader asked was drawn and comes back, a plugin's own was not. Pass it to override that, for a
+            plugin that draws its own question on the reader's screen.
     """
-    return UserMessage(content=text, attributes={SIDE: True, WATCHED: watched}, include_in_messages=False)
+    return UserMessage(
+        content=text,
+        attributes={SIDE: True, ORIGIN: origin, WATCHED: is_reader(origin) if watched is None else watched},
+        include_in_messages=False,
+    )
 
 
 def is_side(message: object) -> bool:
@@ -53,12 +72,16 @@ def is_side(message: object) -> bool:
 def _watched(values: Mapping[str, Any]) -> bool:
     """Return whether a side question's attributes — or a stored line's tags — say the reader watched it.
 
-    A question that does not say was asked before the tag existed. Those were the ones a reader asked — a plugin asking
-    for itself is what this tag was added for — so the answer is True, and an older session keeps drawing them. It
-    cannot be exact: a recap written by an older version is in those files as a side question too, and stays on their
-    screen after a resume.
+    ``watched`` is the answer when it was written. Without it, the origin decides: a reader's own question was drawn,
+    a plugin's was not. Without either — a file from before both tags — the answer is no. That is the conservative
+    reading, because the two errors are not equal: dropping an aside the reader saw costs a line of context, while
+    restoring one they did not ask puts the model's own instructions in their mouth. The only thing that asked on its
+    own before these tags was the recap plugin, so those are the lines this keeps off the screen; a ``/btw`` from such
+    a file goes with them, which is the price of not keeping the recap's words.
     """
-    return bool(values.get(WATCHED, True))
+    if WATCHED in values:
+        return bool(values[WATCHED])
+    return is_reader(values.get(ORIGIN))
 
 
 def is_watched_side(message: object) -> bool:
@@ -93,16 +116,16 @@ def is_side_line(line: object) -> bool:
 def is_watched_side_line(line: object) -> bool:
     """Return whether a stored line belongs to a side question the reader watched on screen.
 
-    The tag records what the front end said when it asked, and that is what a resumed transcript restores. Two facts,
+    The tags record what the front end said when it asked, and that is what a resumed transcript restores. Two facts,
     not one: a question is drawn live only when the front end began a turn for it, which a plugin's own question never
-    does — so a plugin that leaves the default is dropped live and would still come back after a reopen. Lines written
-    before this tag carry ``SIDE`` alone and are read as watched; see :func:`_watched` for why that is the closest a
-    file can get to the truth.
+    does — so a plugin that leaves the default is dropped live and would still come back after a reopen. What is
+    restored is read from ``watched``, then from ``origin``, and from neither: a file written before both tags is not
+    restored; see :func:`_watched` for why that is the cheaper error.
     """
     if not is_side_line(line):
         return False
     tags = getattr(line, "tags", None)
-    return _watched(tags) if isinstance(tags, Mapping) else True
+    return _watched(tags) if isinstance(tags, Mapping) else False
 
 
 class SideQuestions(AgentExtension):

@@ -18,7 +18,9 @@ from zett_agent.messages import AssistantMessage, SystemMessage, UserMessage
 
 from zettcode.app.agent.conversation.replay import replay
 from zettcode.engine.dialogue.side import (
+    ORIGIN,
     READ_ONLY_TOOLS,
+    READER,
     SIDE,
     WATCHED,
     SideQuestions,
@@ -64,17 +66,24 @@ def test_the_question_is_a_user_message_that_is_not_replayed():
     assert not is_side(UserMessage(content="an ordinary question"))
 
 
-def test_a_question_says_whether_the_reader_watched_it():
+def test_a_question_says_who_asked_it_and_whether_it_was_watched():
     """A plugin asks for itself and is drawn nowhere, so a resumed session must not put it back on screen."""
-    assert is_watched_side(question("what does parse() do?"))
-    assert not is_watched_side(question("The user stepped away and is coming back.", watched=False))
-    # A message from before the tag existed was a question the reader asked, and is read as one the reader saw.
-    assert is_watched_side(UserMessage(content="old", attributes={SIDE: True}))
+    # Who asked is recorded, and it is what decides the default: the reader's own question was watched, a plugin's
+    # was not.
+    asked = question("what does parse() do?")
+    assert asked.attributes == {SIDE: True, ORIGIN: READER, WATCHED: True}
+    recap = question("The user stepped away and is coming back.", origin="recap")
+    assert recap.attributes == {SIDE: True, ORIGIN: "recap", WATCHED: False}
+    # A plugin that does draw its own question says so, and the word overrides what the origin implies.
+    assert question("q", origin="recap", watched=True).attributes[WATCHED] is True
     assert not is_watched_side(UserMessage(content="plain"))
-    # The same question asked of a stored line, which is what a replay reads; older files have no tag at all.
-    assert is_watched_side_line(_line({SIDE: True}))
+    # A stored line, which is what a replay reads: the tag, then who asked, then — for a file written before both —
+    # no. Nothing from such a file is restored, because the one thing that asked on its own back then was the recap.
+    assert is_watched_side_line(_line({SIDE: True, ORIGIN: READER}))
+    assert not is_watched_side_line(_line({SIDE: True, ORIGIN: "recap"}))
     assert is_watched_side_line(_line({SIDE: True, WATCHED: True}))
     assert not is_watched_side_line(_line({SIDE: True, WATCHED: False}))
+    assert not is_watched_side_line(_line({SIDE: True}))
     assert not is_watched_side_line(_line({WATCHED: False}))
 
 
@@ -252,11 +261,12 @@ async def test_the_sdk_writes_down_whether_the_reader_watched_the_question(tmp_p
     assert all(line.message[0].include_in_messages is False for line in questions)
 
 
-async def test_a_side_exchange_stored_before_the_tag_is_still_restored(tmp_path: Path):
-    """Files written before a question said whether the reader watched it hold the reader's own questions.
+async def test_a_side_exchange_from_before_both_tags_is_not_restored(tmp_path: Path):
+    """A file written before a question said who asked it holds the reader's ``/btw`` and the recap's asks alike.
 
-    They were drawn when they were asked, so a resumed transcript keeps drawing them: the tag is what a new write adds,
-    and its absence must not take the older exchanges off the screen.
+    Nothing in it tells them apart — same tags, same metadata — so the cheaper error is taken: the exchange is not
+    restored. Showing the recap's instructions as the reader's words is a wrong conversation; dropping an aside is a
+    missing line. New writes carry both tags, so this only covers files from before them.
     """
     store = SessionStore(tmp_path)
     old = {"side": True}
@@ -266,7 +276,30 @@ async def test_a_side_exchange_stored_before_the_tag_is_still_restored(tmp_path:
     replayed = replay(store.read("s1"))
     entries = [getattr(entry, "text", "") for entry in replayed.transcript.entries]
 
+    assert entries == []
+    assert replayed.history == ()
+
+
+async def test_a_side_exchange_that_names_the_reader_is_restored_without_the_watched_tag(tmp_path: Path):
+    """A file from a version that wrote ``origin`` but not ``watched`` keeps the reader's own questions."""
+    store = SessionStore(tmp_path)
+    old = {"side": True, "origin": READER}
+    await store.append("s1", "r1", question("what does parse() do?"), tags=old)
+    await store.append("s1", "r1", AssistantMessage(content="it splits the header"), tags=old)
+
+    replayed = replay(store.read("s1"))
+    entries = [getattr(entry, "text", "") for entry in replayed.transcript.entries]
     assert [entry.text for entry in replayed.transcript.entries if getattr(entry, "side", False)] == [
         "what does parse() do?"
     ]
     assert any("it splits the header" in text for text in entries)
+
+
+def test_the_sdk_spells_the_readers_origin_the_way_the_engine_does():
+    """The SDK keeps the default as a literal — importing the engine there would break its lazy import — so pin it."""
+    from inspect import signature
+
+    from zettcode.sdk.session import Session
+
+    for name in ("ask", "ask_stream"):
+        assert signature(getattr(Session, name)).parameters["origin"].default == READER

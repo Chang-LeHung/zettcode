@@ -268,14 +268,14 @@ class Recap(TuiPlugin):
         host = self.link.host
         if host is None:
             raise ValueError("shell 还没准备好")
-        answer = await host.client.session.ask("简短地总结这个会话进行到哪了。", cache="read", watched=False)
+        answer = await host.client.session.ask("简短地总结这个会话进行到哪了。", cache="read", origin="recap")
         return CommandResult(message=f"> {answer}")
 ```
 
-`ask` 是旁问：这一问一答不会进对话历史，shell 也不会把它画出来 —— 因为它没有为它开一轮，这跟这个参数无关。
-`watched=False` 管的是另一半：恢复会话时不会把问题和答案重新画回对话里；不写它，命令自己的话就会在重开之后回到屏幕上。
-答案只出现在命令自己放的地方 —— 这里是一段引用。`/btw` 是同一种问题，但它是读者问的、读者看着的，所以 shell 会把
-那一次画出来，也会在恢复时把它恢复回来。
+`ask` 是旁问：这一问一答不会进对话历史，shell 也不会把它画出来 —— 因为它没有为它开一轮，这跟参数无关。
+`origin="recap"` 管的是另一半：它说明是谁问的，而恢复会话时只有读者自己问的那些会被恢复。沿用默认 `origin="reader"`
+的命令，自己的问题就会在重开之后回到屏幕上。答案只出现在命令自己放的地方 —— 这里是一段引用。`/btw` 是同一种问题，
+origin 是读者，所以 shell 会把那一次画出来，也会在恢复时把它恢复回来。
 
 插件命令排在最后，也不能顶掉内置命令，所以 `/model`、`/resume` 等等永远和
 [命令](/zh/guide/commands)里写的一致。
