@@ -14,6 +14,7 @@ Only a sender with no stored conversation (a program that registered as external
 from __future__ import annotations
 
 import asyncio
+import base64
 import contextlib
 import itertools
 import json
@@ -23,7 +24,7 @@ import re
 import time
 import unicodedata
 from collections import deque
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -37,10 +38,23 @@ from zettcode.sdk.errors import (
     SessionNotFoundError,
     ZettCodeError,
 )
-from zettcode.sdk.types import DaemonInfo, IncomingMessage, ModelInfo, Peer, Receipt, StreamEvent, is_direct_notice
+from zettcode.sdk.types import (
+    IMAGE_TYPES,
+    DaemonInfo,
+    Image,
+    IncomingMessage,
+    Message,
+    ModelInfo,
+    Peer,
+    Receipt,
+    SendLimits,
+    StreamEvent,
+    is_direct_notice,
+)
 
 from .backend import Backend
 from .chat import items_of, preview, spoken, with_reply_request
+from .chat import picture_id as picture_name
 from .settings import Settings
 
 #: Seconds between two looks at the daemons, the roster and the stored conversations when nothing woke the watcher.
@@ -58,6 +72,14 @@ LIVE_STALE_SECONDS = 4.0
 
 #: How many notes about a session's failed direct turns a chat keeps.
 NOTE_LIMIT = 4
+
+#: How many chats' pictures are kept in memory for the page to fetch one by one, and the most bytes of pictures one chat
+#: may have kept; a chat with more keeps only their names, and its bytes are read when they are asked for.
+PICTURE_CHATS = 4
+PICTURE_BYTES = 32 << 20
+
+#: What a picture's name looks like (see :func:`~.chat.picture_id`): anything else is not one, and nothing is read for it.
+PICTURE_NAME = re.compile(r"^[0-9a-f]{20}$")
 
 #: The most messages kept from senders that have no stored conversation, per sender.
 INBOX_LIMIT = 200
@@ -85,7 +107,49 @@ SEND_STATUS = {
     "timeout": 504,
     "lost": 504,
     "loop": 422,
+    "invalid": 400,
 }
+
+
+def read_pictures(raw: object, limits: SendLimits) -> list[Image]:
+    """Read the pictures a page sent (``[{media_type, data}]``, the file in base64) and refuse what the broker would.
+
+    Checked here so that a page is told at once and in its own terms: how many, how large, and of a type a model takes.
+    That what a file says it is matches what it is, the broker decides.
+    """
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise GatewayError(400, "invalid", "images is a list")
+    if len(raw) > limits.max_images:
+        raise GatewayError(413, "too_long", f"At most {limits.max_images} pictures go with one message")
+    pictures: list[Image] = []
+    total = 0
+    for item in raw:
+        if not isinstance(item, Mapping) or not isinstance(item.get("data"), str):
+            raise GatewayError(400, "invalid", "A picture is {media_type, data}")
+        kind = item.get("media_type")
+        if not isinstance(kind, str) or kind not in IMAGE_TYPES:
+            raise GatewayError(400, "invalid", f"A picture is one of: {', '.join(sorted(IMAGE_TYPES))}")
+        # Before it is decoded: a file that is too large is turned away for its length, not after it is all in memory.
+        if len(item["data"]) > (limits.max_image_bytes + 2) // 3 * 4:
+            raise GatewayError(413, "too_long", f"A picture is limited to {limits.max_image_bytes >> 20} MiB")
+        try:
+            data = base64.b64decode(item["data"], validate=True)
+            picture = Image(data, kind)
+        except ValueError as error:
+            raise GatewayError(400, "invalid", f"A picture could not be read: {error}") from None
+        if len(data) > limits.max_image_bytes:
+            raise GatewayError(413, "too_long", f"A picture is limited to {limits.max_image_bytes >> 20} MiB")
+        total += len(data)
+        if total > limits.max_images_bytes:
+            raise GatewayError(
+                413,
+                "too_long",
+                f"The pictures of a message are limited to {limits.max_images_bytes >> 20} MiB together",
+            )
+        pictures.append(picture)
+    return pictures
 
 
 logger = logging.getLogger("zettcode.gateway")
@@ -223,6 +287,8 @@ class Gateway:
         self._turns = itertools.count(1)
         #: What a session said when a direct turn of ours ended without an answer: shown in its chat until we write again.
         self._notes: dict[str, list[str]] = {}
+        #: The pictures of the chats last read, by chat and then by name, oldest chat first.
+        self._pictures: dict[str, dict[str, tuple[bytes | None, str]]] = {}
         #: The sessions we asked to see the turns of, so one that is no longer listed can be let go of.
         self._watching: set[str] = set()
         self.roots = tuple(root.expanduser().resolve() for root in settings.roots)
@@ -471,6 +537,9 @@ class Gateway:
                 "max_text": limits.max_text,
                 "rate_limit": limits.rate_limit,
                 "rate_window": limits.rate_window,
+                "max_images": limits.max_images,
+                "max_image_bytes": limits.max_image_bytes,
+                "max_images_bytes": limits.max_images_bytes,
                 "used": used,
             },
         }
@@ -540,6 +609,7 @@ class Gateway:
                 messages = []
             else:
                 stored = True
+                self._keep_pictures(session_id, messages)
             items = items_of(messages, self.backend.gateway_id, handle=self.backend.handle)
             if stored:
                 meta.preview, meta.spoken = preview(items), spoken(items)
@@ -573,14 +643,18 @@ class Gateway:
         await self.refresh()
 
     # -- sending ----------------------------------------------------------------------------------
-    async def send(self, session_id: str, text: str, *, reply: bool | None = None) -> dict[str, Any]:
+    async def send(
+        self, session_id: str, text: str, *, reply: bool | None = None, images: object = None
+    ) -> dict[str, Any]:
         """Send a message to a thread and return who took it and what became of it.
 
         Args:
             session_id: The thread.
-            text: What the person typed.
+            text: What the person typed; it may be empty when pictures go with it.
             reply: Whether to ask the agent to answer with ``send_message``. By default a daemon is asked, since it
                 has nobody to answer to otherwise, and a session with a person at it is not.
+            images: Pictures to send with it, as a page sends them (``[{media_type, data}]``, base64). Only a session
+                that runs the text as its own prompt and whose model reads pictures takes them.
 
         Raises:
             GatewayError: The message is empty or too long, the thread is not there, this gateway has used up what
@@ -591,13 +665,16 @@ class Gateway:
         if view is None:
             raise GatewayError(404, "not_found", "No such session is listed")
         text = text.replace("\r\n", "\n").strip()
-        if not text:
+        pictures = read_pictures(images, self.backend.limits)
+        if not text and not pictures:
             raise GatewayError(400, "empty", "A message needs some text")
         if not view["online"]:
             raise GatewayError(409, "offline", f"{view['name']} is not connected, so it cannot be written to")
         # A session that runs the text as its own prompt answers by itself, and the broker brings the answer back; one that
         # does not is a colleague to be asked, and a daemon has nobody to answer to otherwise.
         direct = bool(view["direct"])
+        if pictures:
+            self._check_pictures(view, direct)
         asked = False if direct else (view["kind"] == "daemon" if reply is None else reply)
         body = with_reply_request(text, self.backend.gateway_id) if asked else text
         limits = self.backend.limits
@@ -607,7 +684,7 @@ class Gateway:
         self._spend(limits.rate_limit, limits.rate_window)
         self._notes.pop(session_id, None)
         try:
-            delivered = await self.backend.send(session_id, body, direct=direct)
+            delivered = await self.backend.send(session_id, body, direct=direct, images=pictures)
         except SendError as error:
             raise GatewayError(
                 SEND_STATUS.get(error.reason, 400),
@@ -617,6 +694,87 @@ class Gateway:
             ) from error
         self._wake_up()
         return {"to": delivered.to, "disposition": delivered.disposition, "direct": delivered.direct}
+
+    def _check_pictures(self, view: Mapping[str, Any], direct: bool) -> None:
+        """Refuse pictures for a session that cannot use them, in words a person can act on, before anything is sent."""
+        if not direct:
+            raise GatewayError(
+                400,
+                "no_pictures",
+                f"{view['name']} cannot be sent a picture: it does not run a chat's text as its own prompt",
+            )
+        name = view.get("model")
+        known = next((model for model in self.backend.models() if model.name == name), None)
+        if known is not None and not known.multimodal:
+            raise GatewayError(
+                400,
+                "no_pictures",
+                f"{name} does not accept pictures; send the text alone or start a daemon on a model that does",
+            )
+
+    async def picture(self, session_id: str, picture_id: str) -> tuple[bytes, str]:
+        """Return a picture of a thread's stored conversation by the name its chat item gave it: its bytes and type.
+
+        Reading a conversation decodes every picture in it, so what a chat was last read with is kept — the names of its
+        pictures always, and their bytes while they weigh :data:`PICTURE_BYTES` or less — and a page fetching its pictures
+        one by one does not read the file once for each. A chat that has been read is the last word on what it holds: a
+        name it does not hold is answered without reading anything, so asking for names that are not there costs nothing.
+        """
+        view = self._views.get(session_id)
+        if view is None or not view["workspace"] or not PICTURE_NAME.match(picture_id):
+            raise GatewayError(404, "not_found", "No such picture")
+        names = self._pictures.get(session_id)
+        messages: Sequence[Message] | None = None
+        if names is None:
+            messages = await self._history_of(session_id, view["workspace"])
+            names = self._keep_pictures(session_id, messages)
+        found = names.get(picture_id)
+        # Whatever the file says, only a type a model takes is served, and the page never lets a browser guess another.
+        if found is None or found[1] not in IMAGE_TYPES:
+            raise GatewayError(404, "not_found", "No such picture")
+        data, kind = found
+        if data is None:  # a chat too heavy to keep in memory: its bytes are read when they are asked for
+            if messages is None:
+                messages = await self._history_of(session_id, view["workspace"])
+            data = next(
+                (
+                    picture.data
+                    for message in messages
+                    for picture in message.pictures
+                    if picture_name(picture.data) == picture_id
+                ),
+                None,
+            )
+            if data is None:  # it was in the conversation a moment ago and is not now
+                raise GatewayError(404, "not_found", "No such picture")
+        return data, kind
+
+    async def _history_of(self, session_id: str, workspace: str) -> Sequence[Message]:
+        try:
+            return await self.backend.history(session_id, workspace)
+        except (SessionNotFoundError, ZettCodeError, OSError):
+            raise GatewayError(404, "not_found", "No such picture") from None
+
+    def _keep_pictures(self, session_id: str, messages: Sequence[Message]) -> dict[str, tuple[bytes | None, str]]:
+        """Remember the pictures of a conversation by name, for the last few chats, and return them.
+
+        A chat is remembered even when it has none, so that asking it for a picture is answered at once. Its bytes are
+        kept only when they come to :data:`PICTURE_BYTES` or less, so a conversation of large pictures cannot pin them.
+        """
+        found = {
+            picture_name(picture.data): (picture.data, picture.media_type)
+            for message in messages
+            for picture in message.pictures
+        }
+        light = sum(len(data) for data, _ in found.values()) <= PICTURE_BYTES
+        names: dict[str, tuple[bytes | None, str]] = {
+            name: (data if light else None, kind) for name, (data, kind) in found.items()
+        }
+        self._pictures.pop(session_id, None)
+        self._pictures[session_id] = names
+        while len(self._pictures) > PICTURE_CHATS:
+            self._pictures.pop(next(iter(self._pictures)))
+        return names
 
     def _spent(self, window: float) -> int:
         now = self.clock()
@@ -926,7 +1084,8 @@ class Gateway:
         Args:
             since: Epoch seconds the stretch starts at; an hour before ``until`` when it is not given.
             until: Epoch seconds it ends at; now when it is not given.
-            limit: The most messages to return (the newest of the stretch), at most 2000.
+            limit: The most messages to return (the newest of the stretch), at most 20000. The answer says ``truncated``
+                when the stretch held more, which a replay must say rather than draw a flow that is missing its start.
         """
         try:
             end = float(until) if until not in (None, "") else float(self.clock())  # type: ignore[arg-type]
@@ -937,7 +1096,7 @@ class Gateway:
         if start > end:
             raise GatewayError(400, "invalid", "since is after until")
         try:
-            return await self.backend.timeline(start, end, max(1, min(count, 2000)))
+            return await self.backend.timeline(start, end, max(1, min(count, 20_000)))
         except SendError as error:
             raise GatewayError(503, error.reason, str(error)) from error
 

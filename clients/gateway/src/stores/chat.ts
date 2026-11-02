@@ -9,7 +9,7 @@ import { t } from "../i18n";
 import { pend, settle } from "../lib/pending";
 import { debounce, storage } from "../lib/storage";
 import { seenNow } from "../lib/unread";
-import type { ChatItem, Pending, Thread } from "../types";
+import type { ChatItem, Pending, Picture, Thread } from "../types";
 import { prefs } from "./prefs";
 import { seedStream } from "./stream";
 import { lobby, threadOf } from "./threads";
@@ -106,11 +106,11 @@ export async function loadEarlier(): Promise<void> {
 }
 
 // ---- sending
-export async function sendMessage(text: string, reply: boolean): Promise<void> {
+export async function sendMessage(text: string, reply: boolean, pictures: readonly Picture[] = []): Promise<void> {
   const id = chat.id;
   if (!id) return;
   const list = pendingFor(id);
-  list.push(pend(++sequence, text, chat.items, list, Date.now()));
+  list.push(pend(++sequence, text, chat.items, list, Date.now(), pictures));
   const entry = list[list.length - 1]!;
   chat.revision += 1;
   await deliver(id, entry, reply);
@@ -120,7 +120,7 @@ async function deliver(id: string, entry: Pending, reply: boolean): Promise<void
   entry.state = "sending";
   delete entry.error;
   try {
-    const sent = await gateway.send(id, entry.text, reply);
+    const sent = await gateway.send(id, entry.text, reply, entry.pictures);
     // A steered reply also runs a turn (a session that chose to steer answered it); the page itself always sends
     // follow-ups, so that word only reaches a page from a server newer than it.
     entry.state = sent.disposition === "queued" ? "queued" : "started";
@@ -144,7 +144,7 @@ export async function retry(entry: Pending, reply: boolean): Promise<void> {
   const at = list.indexOf(entry);
   if (at < 0) return;
   list.splice(at, 1);
-  await sendMessage(entry.text, reply);
+  await sendMessage(entry.text, reply, entry.pictures ?? []);
 }
 
 export function dismiss(entry: Pending): void {

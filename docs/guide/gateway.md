@@ -52,6 +52,15 @@ one you cannot watch. (The terminal asks whether to steer; the page simply waits
 its own, registered with the broker like a terminal's, so the daemons see a person's messages — not an
 agent's. Its name is `Web gateway`.
 
+**Pictures.** A chat with a daemon has an attach button, and a picture can also be pasted or dropped on the
+composer: up to four per message, 4 MiB each and 8 MiB together. A large picture is shrunk in the browser to what a
+model reads anyway (1568 pixels on its longest side); a photo is always drawn again, which also drops what its file
+says about where it was taken, and a small PNG, GIF or WebP goes as it is. The button is
+off when the daemon's model does not read pictures, and for a session that is not a daemon or does not take a chat's
+text as its own prompt, because a picture has nowhere to go there. The broker passes the pictures on and keeps none:
+what it remembers of such a message is only that it had pictures. They are in the daemon's own conversation, which is
+where the page shows them from.
+
 The **Config → Models** page adds, edits and removes the models in `~/.zettcode/config.toml`, the same way
 [`/config`](/guide/config#adding-models-with-config) does in a terminal: the rest of the file and its comments stay as
 they are, a model the file would refuse is refused with the file's own reason, and the last model cannot be removed.

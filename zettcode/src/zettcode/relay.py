@@ -23,7 +23,7 @@ from typing import Protocol
 
 from zett_agent.messages import UserMessage
 
-from zettcode.broker.protocol import VIA_AGENT, VIA_EXTERNAL, VIA_USER
+from zettcode.broker.protocol import VIA_AGENT, VIA_EXTERNAL, VIA_USER, ImageData
 from zettcode.modes import MODE_STEER
 
 #: Attribute of a stored message that came from another session. Its value is the :meth:`Relayed.mark`.
@@ -75,6 +75,7 @@ class Relayed:
             request so it changes course, and ``"followup"`` waits until that request ends. An idle session starts
             a turn either way.
         group: The group chat it was written in (without the ``#``), or an empty string for a one-to-one message.
+        images: The pictures it carries; only a ``direct`` message has any.
     """
 
     sender_id: str
@@ -85,6 +86,7 @@ class Relayed:
     direct: bool = False
     mode: str = MODE_STEER
     group: str = ""
+    images: tuple[ImageData, ...] = ()
 
     def mark(self) -> dict[str, object]:
         """Return what is stored beside the message, as plain data."""

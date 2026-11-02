@@ -92,7 +92,14 @@ export function buildRows(items: readonly ChatItem[], pending: readonly Pending[
       type: "bubble",
       key: `p${entry.key}`,
       side: "out",
-      item: { kind: "out", text: entry.text },
+      item: {
+        kind: "out",
+        text: entry.text,
+        // Drawn from what this page holds until the conversation has the message and the gateway can serve its pictures.
+        ...(entry.pictures?.length
+          ? { images: entry.pictures.map((p) => ({ id: "", media_type: p.media_type, bytes: p.bytes, src: p.src })) }
+          : {}),
+      },
       cont: side === "out",
       tail: true,
       pending: entry,

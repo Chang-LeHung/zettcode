@@ -30,6 +30,7 @@ export const ICONS = {
   bell: '<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15ZM10 21h4"/>',
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.8h.01"/>',
   reply: '<path d="M9 7 4 12l5 5M4 12h9a7 7 0 0 1 7 7"/>',
+  image: '<rect x="3.5" y="5" width="17" height="14" rx="3"/><circle cx="9" cy="10" r="1.6"/><path d="m4 17 5-4.5 3.5 3 3-2.5L20 16"/>',
   down: '<path d="m6 9 6 6 6-6"/>',
   play: '<path d="M8 5.5v13l11-6.5z"/>',
   logout: '<path d="M10 4H6.5A2.5 2.5 0 0 0 4 6.5v11A2.5 2.5 0 0 0 6.5 20H10M15 8l4 4-4 4M19 12H9"/>',

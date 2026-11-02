@@ -636,6 +636,7 @@ class Client:
                     direct=relayed.direct,
                     mode=relayed.mode,
                     group=relayed.group,
+                    images=tuple(Image(item.data, item.media_type) for item in relayed.images),
                 )
             )
         )
@@ -833,17 +834,23 @@ class Client:
         limits = messenger.client.limits
         return SendLimits(limits.max_text, limits.rate_limit, limits.rate_window, limits.max_hops)
 
-    async def send(self, to: str, text: str, *, direct: bool = False, mode: str = MODE_STEER) -> Delivered:
+    async def send(
+        self, to: str, text: str, *, direct: bool = False, mode: str = MODE_STEER, images: Sequence[Image] = ()
+    ) -> Delivered:
         """Send a message to another ZettCode session without going through this session's model.
 
         Args:
             to: The session's handle, or its id.
-            text: What to say; the sender's own words, so the receiving agent is told its reader typed it.
+            text: What to say; the sender's own words, so the receiving agent is told its reader typed it. It may be
+                empty when ``images`` is not.
             direct: Ask a session that can (``Peer.direct``) to run the text as its own reader's prompt, and to send
                 its final answer back with :meth:`send_back`. For any other session the flag is ignored.
             mode: What a busy recipient does with it: ``"steer"`` (the default) hands it to the request that is
                 running so it changes course, and ``"followup"`` waits until that request ends. An idle recipient
                 starts a turn either way.
+            images: Pictures to send with it (at most four, 4 MiB each, 8 MiB together). Only a ``direct`` message
+                may carry them: the session that takes it puts them into its own prompt, and is refused one whose
+                model does not read images.
 
         Returns:
             What the receiving session answered: who took it, and whether the turn started, was steered into the
@@ -853,7 +860,7 @@ class Client:
             ConfigurationError: This client did not join the sessions, so it has no line to send on.
             SendError: Nobody was reached, and why (``reason``).
         """
-        from ..broker.protocol import VIA_USER
+        from ..broker.protocol import VIA_USER, ImageData
 
         self._check_open()
         messenger = self._messenger
@@ -864,7 +871,14 @@ class Client:
         from ..broker.models import SendError as BrokerSendError
 
         try:
-            delivered = await messenger.send(to, text, via=VIA_USER, direct=direct, mode=mode)
+            delivered = await messenger.send(
+                to,
+                text,
+                via=VIA_USER,
+                direct=direct,
+                mode=mode,
+                images=[ImageData(item.media_type, bytes(item.data)) for item in images],
+            )
         except BrokerSendError as error:
             raise SendError(error.reason, str(error)) from error
         return Delivered(delivered.to.handle, delivered.disposition, delivered.direct)

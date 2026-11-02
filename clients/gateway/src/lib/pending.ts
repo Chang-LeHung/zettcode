@@ -8,7 +8,7 @@
 // it counts as shown. That is the number held when it was sent, plus the identical ones still waiting ahead of it,
 // plus itself. It does not depend on order or on timing, so two equal messages sent in a row are each shown once.
 
-import type { ChatItem, Pending } from "../types";
+import type { ChatItem, Pending, Picture } from "../types";
 
 /** How many messages with exactly this text from the person the conversation holds (sent from here, or run as a prompt there). */
 export function held(items: readonly ChatItem[], text: string): number {
@@ -18,9 +18,18 @@ export function held(items: readonly ChatItem[], text: string): number {
 }
 
 /** Make the pending record for a message about to be sent. */
-export function pend(key: number, text: string, items: readonly ChatItem[], waiting: readonly Pending[], at: number): Pending {
+export function pend(
+  key: number,
+  text: string,
+  items: readonly ChatItem[],
+  waiting: readonly Pending[],
+  at: number,
+  pictures: readonly Picture[] = [],
+): Pending {
   const ahead = waiting.filter((other) => other.text === text && other.state !== "failed").length;
-  return { key, text, target: held(items, text) + ahead + 1, state: "sending", at };
+  const entry: Pending = { key, text, target: held(items, text) + ahead + 1, state: "sending", at };
+  if (pictures.length) entry.pictures = [...pictures];
+  return entry;
 }
 
 /** Drop the pending messages the conversation now holds. A failed one stays: it was never sent. */

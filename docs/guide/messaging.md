@@ -157,6 +157,17 @@ restarts the broker, and starts each one again on its own stored session with th
 level; nothing they wrote is lost. On no, or with no terminal to ask in, it changes nothing. `zettcode broker restart
 --yes` skips the question. Terminal sessions you have open are not touched: close and reopen them to join the new broker.
 
+**After an upgrade this happens by itself.** Every time `zettcode` starts it glances at the running broker's note (a few
+bytes, no network). If that broker speaks an older protocol than the code you just started, a background process runs
+`zettcode broker reload`, which replaces it; the start itself never waits for it. `reload` is careful where `restart`
+asks: a broker that is current or newer, or not running, is left alone, and so is one with background agents on it,
+because stopping them is for you to agree to — it prints that it left the broker alone and how to restart it
+knowingly. The same broker is tried at most once in ten minutes. A session that connects replaces an older broker
+the same way, and a session that loses its broker (it was replaced, restarted or crashed) reconnects to the next one
+by itself, at once when the broker said it was leaving; a send that was in flight then fails with a reason saying it
+may or may not have arrived. Only a session still running the *old* code cannot follow a new protocol, and says so;
+close and reopen it.
+
 ## Limits and care
 
 - Sessions on the same machine and the same user only. Nothing is sent over a network.
@@ -201,10 +212,20 @@ A group is made with the `manage_group` tool, or by anyone holding the broker's 
 Limits: a group holds at most 64 sessions, one session may be in at most 20 groups, and a machine has at most 200
 groups. A message that would go past one of them is refused with a reason that says which.
 
+## Pictures
+
+A one-to-one message from a reader's chat window (the gateway's) may carry up to four pictures to a session that runs
+the text as its own prompt, which today is a daemon: `images` on `POST /messages`, each `{"media_type", "data"}` with the
+file in base64 (PNG, JPEG, GIF or WebP, 4 MiB each and 8 MiB together; a file must be what it says it is). A message to
+a group, one an agent sent, and one for any other session is refused, and a daemon whose model does not read pictures
+refuses them at once, with its reason, before a turn starts. The broker never keeps a picture: the history shows
+`[2 pictures]` and nothing else. Sending them over the broker's protocol needs version 9, so older sessions are
+replaced the same way as for any change of protocol (`zettcode broker restart`).
+
 ## History
 
-The broker writes every message it hands over to `~/.zettcode/broker/broker.db` (a SQLite file; the newest 20,000
-are kept), with the names the sender and recipient had at that time. `message_history` and `GET /history` read it.
+The broker writes every message it hands over to `~/.zettcode/broker/broker.db` (a SQLite file; the newest 320,000
+are kept, about 60 MB when full, and never more than 512 MB however long the messages are), with the names the sender and recipient had at that time. `message_history` and `GET /history` read it.
 
 This is a transcript of every message between sessions, text included, kept on disk in a directory only you can list.
 To clear it, stop the broker (`zettcode broker stop`) and delete `broker.db`. A `broker.db` written by a newer ZettCode
@@ -219,4 +240,6 @@ Each message a group receives costs every member a turn, so tell agents to answe
 talked, a ring around the members of each group, and a packet that travels from the sender to each recipient
 whenever a message passes. Hover a session, a line, a group or a packet for the details. **Replay** shows a past
 stretch of time (the last 15 minutes up to everything stored) from the stored history, with play, speed, and a
-timeline you can drag. Replaying only draws what happened: nothing is sent to any session again.
+timeline you can drag. Replaying only draws what happened: nothing is sent to any session again. A replay reads at
+most 20,000 messages of the period you chose; when the period held more, the page says its first part is missing, and a
+shorter period shows all of it.
