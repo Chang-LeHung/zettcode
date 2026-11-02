@@ -234,8 +234,11 @@ def _add_broker(commands: Subcommands) -> None:
     """
     commands.add_parser(
         "broker",
-        help="start, stop or restart the session broker: broker start | stop | restart",
-        description="Start, stop or restart the background broker that lets sessions on this machine message each other.",
+        help="start, stop or restart the session broker: broker start | stop | restart | reload",
+        description=(
+            "Start, stop or restart the background broker that lets sessions on this machine message each other. "
+            "After an upgrade a broker that speaks an older protocol is replaced by itself when zettcode starts."
+        ),
     )
 
 
@@ -789,6 +792,12 @@ def tune_collector() -> None:
 def main() -> None:
     """Installed console-script entry point."""
     argv = sys.argv[1:]
+    if argv[:1] != ["broker"]:
+        # After an upgrade the broker still running may speak the old protocol. A glance at its note and lock is all
+        # this costs, and a process of its own replaces it only when it is older: the start never waits for it.
+        from .broker.reload import check_in_background
+
+        check_in_background()
     if argv[:1] == ["daemon"]:
         # Parsed by its own command: `daemon` takes subcommands of its own, which this parser would flatten into the
         # options a terminal start takes.

@@ -22,6 +22,8 @@ from ..filelock import is_held
 from . import process
 from .files import MODULE, Note, broker_dir, lock_path, log_path, read_note, remove_note
 from .finder import spawn_broker
+from .protocol import PROTOCOL_VERSION
+from .reload import outdated
 
 EXIT_OK = 0
 EXIT_FAILED = 1
@@ -65,8 +67,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "action",
-        choices=("start", "stop", "restart"),
-        help="start a broker if there is none, stop the one there is, or do both",
+        choices=("start", "stop", "restart", "reload"),
+        help=(
+            "start a broker if there is none, stop the one there is, or do both; reload restarts it only when it is "
+            "older than this version and no background agent is on it (zettcode runs this by itself after an upgrade)"
+        ),
     )
     parser.add_argument(
         "-y",
@@ -88,8 +93,42 @@ def broker_program(argv: list[str] | None = None, companions: Companions | None 
     directory = broker_dir()
     if args.action == "restart":
         return restart(directory, companions, assume_yes=args.yes)
+    if args.action == "reload":
+        return reload(directory, companions)
     action = {"start": start, "stop": stop}[args.action]
     return action(directory)
+
+
+def reload(directory: Path, companions: Companions | None = None) -> int:
+    """Replace the running broker when it is older than this version, and say nothing when there is nothing to do.
+
+    This is what runs behind every start of ``zettcode`` after an upgrade (:mod:`.reload`), so it never asks and never
+    stops what it should not: a broker with background agents on it is left as it is, with a line that says how to
+    restart it knowingly, because stopping them is something a person agrees to (``restart`` asks). A broker that is
+    current, newer, or not running is not touched. The status is 0 unless a replacement was tried and failed.
+    """
+    note = outdated(directory)
+    if note is None:
+        return EXIT_OK
+    if companions is not None and (on_it := companions.listing()):
+        count = len(on_it)
+        print(
+            f"the broker (pid {note.pid}) speaks an older protocol, but {count} background "
+            f"agent{'s are' if count != 1 else ' is'} running on it, so it was left alone: "
+            "run `zettcode broker restart` when that is fine"
+        )
+        return EXIT_OK
+    # `stop` compares the note itself, in the same step that ends the broker, so what it ends is the broker that was
+    # found and never one another start of zettcode has just put in its place.
+    if stop(directory, expect=note.pid) != EXIT_OK:
+        return EXIT_FAILED
+    if running(directory):
+        # `stop` left a broker that is not the one that was found: another start replaced it first, and it is theirs.
+        return EXIT_OK
+    status = start(directory)
+    if status == EXIT_OK:
+        print(f"replaced broker {note.pid} (protocol {note.version}) with one that speaks {PROTOCOL_VERSION}")
+    return status
 
 
 def running(directory: Path) -> bool:
@@ -118,7 +157,7 @@ def start(directory: Path) -> int:
     return EXIT_OK
 
 
-def stop(directory: Path) -> int:
+def stop(directory: Path, expect: int | None = None) -> int:
     """Stop the broker that is running, and say what happened.
 
     A note whose broker has gone is removed rather than reported: it is what the next session would read, and a
@@ -127,8 +166,14 @@ def stop(directory: Path) -> int:
     An explicit ``stop`` does not compare the broker's protocol version: that rule (never end a newer broker) is for
     a session replacing one automatically, so two versions do not end each other's in turn; a person who asks for
     this wants it stopped, whatever it says it speaks.
+
+    With ``expect``, only the broker with that process id is ended: the note is read once, here, and a broker it does
+    not name (another start of zettcode replaced the one that was meant) is left running. That is a compare and a stop
+    in one step, which a check made before calling this cannot be.
     """
     note = read_note(directory)
+    if expect is not None and (note is None or note.pid != expect):
+        return EXIT_OK
     if not running(directory):
         if note is not None:
             remove_note(directory, note.token)
