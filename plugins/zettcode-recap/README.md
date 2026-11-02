@@ -56,5 +56,6 @@ or, with `uv tool`:
 
 `pip install "zettcode[all]"` adds it beside every other plugin this repository publishes.
 
-It runs on ZettCode 0.3 and later (`zettcode>=0.3,<0.4`), whose terminal group has the turn hooks this plugin is
-built on.
+It needs a ZettCode from the 0.3 line — whose terminal group has the turn hooks this plugin is built on — and, within
+it, the release that added `ask(watched=)`: the one after 0.3.3. `pyproject.toml` still says `zettcode>=0.3,<0.4`, and
+raising that floor belongs to the release commit that sets the number.

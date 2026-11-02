@@ -797,7 +797,7 @@ class Session:
         program's own purposes — a plugin's recap — and draw the part of the answer you want as a message of your own;
         nothing of the exchange comes back when the session is reopened. The default is True, a question the reader
         asked. It says what was drawn, not what is streamed: every event of the run still reaches whoever iterates it,
-        and a terminal drops the ones it did not begin (see ``TranscriptProjector``).
+        and a front end that shows nothing of a question it did not ask drops them as they arrive.
 
         The answer is never replayed, so the request does not extend the provider's cache by default: it starts at
         ``"read"``, which reuses the conversation's warm prefix and marks only the stable parts. Pass ``"read_write"``

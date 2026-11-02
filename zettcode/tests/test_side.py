@@ -90,8 +90,9 @@ async def test_the_store_records_a_side_exchange_without_replaying_it(tmp_path: 
     ]
     assert [line.message[0].include_in_messages for line in lines] == [False, False, True]
     assert [bool(line.tags.get("side")) for line in lines] == [True, True, False]
-    # Both lines of the run say the reader watched it, since the front end drew the question it asked.
-    assert [bool(line.tags.get("watched")) for line in lines] == [True, True, False]
+    # Both lines of the run say the reader watched it, since the front end drew the question it asked; the ordinary
+    # turn carries no tag at all, which is not the same thing as a side exchange tagged False.
+    assert [line.tags.get("watched") for line in lines] == [True, True, None]
 
     # … and the next request rebuilds its context without the side exchange.
     following = _context()
@@ -109,7 +110,8 @@ async def test_a_side_exchange_the_reader_did_not_watch_is_not_restored(tmp_path
     store = await _side_then_ordinary(tmp_path, watched=False)
 
     lines = store.read("s1").messages
-    assert [bool(line.tags.get("watched")) for line in lines] == [False, False, False]
+    # Written down as False, not left off: an absent tag means the reader watched it.
+    assert [line.tags.get("watched") for line in lines] == [False, False, None]
 
     replayed = replay(store.read("s1"))
     entries = [getattr(entry, "text", "") for entry in replayed.transcript.entries]

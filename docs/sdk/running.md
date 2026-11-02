@@ -177,6 +177,10 @@ await client.prompt("now add tests")  # the model never saw the side question
 
 It returns the answer text and raises `ValueError` for an empty question. Like any run, it needs the client to be free.
 
+Pass `watched=False` for a question asked for the program's own purposes, as the recap plugin does: the exchange is
+still recorded, and a resumed transcript leaves it out instead of showing your question as the reader's and your answer
+as a reply nobody asked for. Draw the part you want as a message of your own.
+
 ## Steering a run
 
 Send a message to a request that is in progress. The agent drops what it was doing and takes the message into account at the next boundary.

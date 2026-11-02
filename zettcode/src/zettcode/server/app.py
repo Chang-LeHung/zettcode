@@ -549,10 +549,15 @@ def create_app(settings: Settings, *, client_factory: ClientFactory | None = Non
 
     @protected.post("/sessions/current/ask", response_model=AnswerOut, tags=["sessions"])
     async def ask_side_question(body: SideQuestionRequest, runner: RunnerDep) -> AnswerOut:
-        """Ask something answered from the conversation but kept out of it, as ``/btw`` does."""
+        """Ask something answered from the conversation but kept out of it, as ``/btw`` does.
+
+        Watched, as the streamed sibling is: the answer is the front end's to draw, and a client that shows it has seen
+        the exchange. Only the terminal restores one on resume — ``/history`` leaves every side exchange out — so the
+        word is about the same thing on both paths.
+        """
         if runner.busy:
             raise SessionBusyError("A run is already in progress; ask again when it ends")
-        return AnswerOut(answer=await runner.client.session.ask(body.question, timeout=body.timeout))
+        return AnswerOut(answer=await runner.client.session.ask(body.question, timeout=body.timeout, watched=True))
 
     @protected.post(
         "/sessions/current/ask/stream", tags=["sessions"], responses={200: {"content": {"text/event-stream": {}}}}

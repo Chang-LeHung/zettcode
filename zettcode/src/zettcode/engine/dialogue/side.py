@@ -50,23 +50,23 @@ def is_side(message: object) -> bool:
     return isinstance(message, UserMessage) and bool(getattr(message, "attributes", {}).get(SIDE))
 
 
-def _watched(attributes: Mapping[str, Any]) -> bool:
-    """Return whether a side question's attributes say the reader watched it.
+def _watched(values: Mapping[str, Any]) -> bool:
+    """Return whether a side question's attributes — or a stored line's tags — say the reader watched it.
 
     A question that does not say was asked before the tag existed. Those were the ones a reader asked — a plugin asking
     for itself is what this tag was added for — so the answer is True, and an older session keeps drawing them. It
     cannot be exact: a recap written by an older version is in those files as a side question too, and stays on their
     screen after a resume.
     """
-    return bool(attributes.get(WATCHED, True))
+    return bool(values.get(WATCHED, True))
 
 
 def is_watched_side(message: object) -> bool:
     """Return whether a side question's message says the reader watched it, False for anything that is not one."""
     if not is_side(message):
         return False
-    attributes = getattr(message, "attributes", None)
-    return _watched(attributes) if isinstance(attributes, Mapping) else True
+    # ``is_side`` read ``attributes.get`` a moment ago, so a side message always holds a mapping here.
+    return _watched(getattr(message, "attributes"))
 
 
 def is_side_run(context: AgentRunContext) -> bool:
@@ -92,10 +92,11 @@ def is_side_line(line: object) -> bool:
 def is_watched_side_line(line: object) -> bool:
     """Return whether a stored line belongs to a side question the reader watched on screen.
 
-    A side question is drawn only when the front end began it — ``/btw`` is, a plugin's own question is not — and that
-    is what the store writes down, so a resumed transcript restores what was on screen and nothing else. Lines written
-    before this tag carry ``SIDE`` alone and are read as watched; see :func:`_watched` for why that is the closest
-    a file can get to the truth.
+    The tag records what the front end said when it asked, and that is what a resumed transcript restores. Two facts,
+    not one: a question is drawn live only when the front end began a turn for it, which a plugin's own question never
+    does — so a plugin that leaves the default is dropped live and would still come back after a reopen. Lines written
+    before this tag carry ``SIDE`` alone and are read as watched; see :func:`_watched` for why that is the closest a
+    file can get to the truth.
     """
     if not is_side_line(line):
         return False

@@ -177,6 +177,9 @@ await client.prompt("now add tests")  # the model never saw the side question
 
 它返回回答文本，问题为空时抛出 `ValueError`。和任何 run 一样，它要求 client 此刻空闲。
 
+给程序自用的问题传 `watched=False`（recap 插件就是这么做的）：这一问一答照样会记录下来，只是恢复会话时会被跳过，
+不会把你的问题当成读者问的、把你的回答当成没人问过的回复画出来。想显示的部分由你自己画成一条消息。
+
 ## 对运行中的 run 转向
 
 向进行中的请求发一条消息。agent 会放下手头的事，在下一个边界把这条消息考虑进去。
