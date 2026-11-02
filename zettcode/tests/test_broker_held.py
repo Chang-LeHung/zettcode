@@ -141,3 +141,69 @@ async def test_a_group_message_is_held_for_a_member_whose_inbox_is_full():
         assert (await receiver.accept("started"))["text"] == "hi all"
     finally:
         await server.aclose()
+
+
+async def test_a_held_message_the_recipient_never_answers_is_recorded_as_unconfirmed_not_failed():
+    server, sender, receiver = await two(ack_timeout=0.2)
+    try:
+        pending = asyncio.ensure_future(sender.post("b", "maybe"))
+        await receiver.busy()
+        await pending
+        await receiver.waiting()  # the offer made again: it is not answered
+
+        await eventually(lambda: server.broker.hub.store.held_count() == 0)
+
+        [stored] = server.broker.hub.store.recent()
+        assert stored["status"] == "unconfirmed" and stored["disposition"] == "timeout"
+    finally:
+        await server.aclose()
+
+
+def test_a_history_row_that_says_held_with_nothing_held_for_it_is_expired_when_a_broker_starts(tmp_path):
+    store = Store(tmp_path / "broker.db")
+    for text in ("lost link", "still held"):
+        stored = store.add_message(
+            sender=("a", "a", ""),
+            kind="session",
+            to=("b", "b", ""),
+            recipients=["b"],
+            text=text,
+            via="agent",
+            hops=1,
+            mode="followup",
+            status="held",
+            disposition="held",
+        )
+        if text == "still held":
+            store.link_held(store.hold("b", {"text": text}), stored["id"])
+
+    hub_module.Hub(store=store)
+
+    assert [m["status"] for m in store.recent()] == ["expired", "held"]
+
+
+def test_messages_held_for_longer_than_the_limit_are_dropped_when_a_broker_starts(tmp_path):
+    clock = {"now": 1000.0}
+    store = Store(tmp_path / "broker.db", clock=lambda: clock["now"])
+    message = store.add_message(
+        sender=("a", "a", ""),
+        kind="session",
+        to=("b", "b", ""),
+        recipients=["b"],
+        text="old",
+        via="agent",
+        hops=1,
+        mode="followup",
+        status="held",
+        disposition="held",
+    )
+    row = store.hold("b", {"text": "old"})
+    store.link_held(row, message["id"])
+    clock["now"] = 1000.0 + hub_module.HELD_TTL / 2
+    fresh = store.hold("b", {"text": "recent"})
+
+    clock["now"] = 1000.0 + hub_module.HELD_TTL + 10
+    hub_module.Hub(store=store)
+
+    assert store.held_count() == 1 and store.next_held("b")["id"] == fresh
+    assert store.recent()[0]["status"] == "expired"

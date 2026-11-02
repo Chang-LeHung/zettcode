@@ -281,10 +281,21 @@ class Store:
         """Forget a held message: it was delivered, or will never be."""
         self._db.execute("DELETE FROM held WHERE id = ?", (held_id,))
 
-    def held_sessions(self) -> list[str]:
-        """Return the sessions that have messages held, oldest first."""
-        rows = self._db.execute("SELECT session_id FROM held GROUP BY session_id ORDER BY MIN(id)").fetchall()
-        return [row["session_id"] for row in rows]
+    def expire_held(self, before: float) -> list[tuple[int, int | None]]:
+        """Delete the held messages written before ``before`` and return them as ``(row id, history id)``.
+
+        A session that never returns would otherwise keep its rows, and count against the broker's total, for ever.
+        """
+        rows = self._db.execute("SELECT id, message_id FROM held WHERE ts < ?", (before,)).fetchall()
+        self._db.execute("DELETE FROM held WHERE ts < ?", (before,))
+        return [(row["id"], row["message_id"]) for row in rows]
+
+    def expire_orphans(self) -> None:
+        """Mark as expired the stored messages that say ``held`` while nothing is held for them."""
+        self._db.execute(
+            "UPDATE messages SET status = 'expired', disposition = 'expired' WHERE status = 'held'"
+            " AND id NOT IN (SELECT message_id FROM held WHERE message_id IS NOT NULL)"
+        )
 
     def set_delivery(self, message_id: int, status: str, disposition: str) -> dict[str, Any] | None:
         """Change how a stored message ended up (a held one is delivered later); return it, or ``None`` if it is gone."""
