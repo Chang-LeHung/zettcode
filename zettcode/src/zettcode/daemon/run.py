@@ -179,9 +179,15 @@ class Daemon:
             await self.mark("stopping")
             # The record goes with the process: a daemon that stopped cleanly is not an entry a reader has to clean
             # up, and the `kill` that asked it to stop waits for this rather than for a pid, which a zombie still
-            # answers.
-            self.record.remove()
+            # answers. A stop that asked to keep it leaves it, as a dead one the reader can start again or delete.
+            if not self._kept():
+                self.record.remove()
         return EXIT_OK
+
+    def _kept(self) -> bool:
+        """Return whether the stop that is ending this process asked for the record to stay."""
+        state = State.load(self.record.folder)
+        return state is not None and state.keep
 
     # -- what it answers ---------------------------------------------------------------------------
     def _start(self, message: IncomingMessage) -> None:

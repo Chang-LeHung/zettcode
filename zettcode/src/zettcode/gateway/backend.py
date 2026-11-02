@@ -165,8 +165,12 @@ class Backend(ABC):
         """Start a daemon and return it once it can be messaged."""
 
     @abstractmethod
-    async def stop(self, session_id: str) -> str:
-        """Stop a daemon, remove its record, and say what happened."""
+    async def stop(self, session_id: str, *, force: bool) -> str:
+        """Stop a daemon and keep its record, listed as offline, and say what happened."""
+
+    @abstractmethod
+    async def delete(self, session_id: str) -> str:
+        """Remove a stopped daemon for good, record and conversation, and say what happened."""
 
     @abstractmethod
     def log(self, session_id: str, lines: int) -> str:
@@ -340,8 +344,11 @@ class SdkBackend(Backend):
             workspace, model=model, effort=effort, resume=resume, name=name, permission=permission
         )
 
-    async def stop(self, session_id: str) -> str:
-        return await sdk_daemons.stop_daemon(session_id)
+    async def stop(self, session_id: str, *, force: bool) -> str:
+        return await sdk_daemons.stop_daemon(session_id, force=force, keep=True)
+
+    async def delete(self, session_id: str) -> str:
+        return await sdk_daemons.delete_daemon(session_id)
 
     def log(self, session_id: str, lines: int) -> str:
         return sdk_daemons.daemon_log(session_id, lines=lines)

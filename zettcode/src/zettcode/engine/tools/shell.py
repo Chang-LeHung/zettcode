@@ -31,7 +31,7 @@ OUTPUT_ROOT = ".zett-tool-output"
 
 #: The runtime a command is given unless the model asks for another, and the most it may ask for.
 DEFAULT_TIMEOUT_SECONDS = 60
-MAX_TIMEOUT_SECONDS = 300
+MAX_TIMEOUT_SECONDS = 600
 
 Command = Annotated[str, Field(min_length=1)]
 WorkDir = Annotated[str, Field(min_length=1)]

@@ -522,8 +522,8 @@ class Gateway:
 
     # -- what a page asks -------------------------------------------------------------------------
     def threads(self) -> list[dict[str, Any]]:
-        """Return the threads, the most recently active first and the dead ones last."""
-        return sorted(self._views.values(), key=lambda view: (view["status"] == "dead", -float(view["updated_at"])))
+        """Return the threads in two groups, the online ones first, each with the most recently active first."""
+        return sorted(self._views.values(), key=lambda view: (not view["online"], -float(view["updated_at"])))
 
     def status(self) -> dict[str, Any]:
         """Return the gateway itself: who it is, whether the broker is there, and how much it may still send."""
@@ -875,16 +875,42 @@ class Gateway:
         except GatewayError as error:
             return {"ok": False, **error.to_dict()}
 
-    async def stop(self, session_id: str) -> dict[str, str]:
-        """Stop a daemon and remove its record; its conversation stays."""
+    async def stop(self, session_id: str, *, force: bool = False) -> dict[str, str]:
+        """Stop a daemon; it stays listed as offline, with its conversation, and a working one needs ``force``."""
         if not SESSION_ID.match(session_id):
             raise GatewayError(400, "invalid", "A daemon is named by its session id")
         try:
-            said = await self.backend.stop(session_id)
+            said = await self.backend.stop(session_id, force=force)
         except SessionNotFoundError as error:
             raise GatewayError(404, "not_found", str(error)) from error
+        except ConfigurationError as error:
+            raise GatewayError(409, "busy", str(error)) from error
         await self.refresh()
         return {"result": said}
+
+    async def delete(self, session_id: str) -> dict[str, str]:
+        """Remove a stopped daemon for good: its record and its conversation."""
+        if not SESSION_ID.match(session_id):
+            raise GatewayError(400, "invalid", "A daemon is named by its session id")
+        try:
+            said = await self.backend.delete(session_id)
+        except SessionNotFoundError as error:
+            raise GatewayError(404, "not_found", str(error)) from error
+        except ConfigurationError as error:
+            raise GatewayError(409, "busy", str(error)) from error
+        self._forget(session_id)
+        await self.refresh()
+        return {"result": said}
+
+    def _forget(self, session_id: str) -> None:
+        """Drop what the gateway holds about a session that was deleted, so it is not listed again."""
+        self._inbox.pop(session_id, None)
+        self._senders.pop(session_id, None)
+        self._pictures.pop(session_id, None)
+        self._notes.pop(session_id, None)
+        self._live.pop(session_id, None)
+        if self._seen.pop(session_id, None) is not None:
+            self._save_seen()
 
     async def log(self, session_id: str) -> dict[str, Any]:
         """Return the end of a daemon's own log."""

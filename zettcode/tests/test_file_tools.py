@@ -114,7 +114,9 @@ def test_the_limits_in_a_schema_are_the_ones_the_tools_enforce():
     assert "start_column" not in props, "a read has one range, not a range and a column"
     assert grep.parameters["properties"]["max_results"]["maximum"] == 5000
     shell = CodingBundle().tools[-1].parameters["properties"]
-    assert shell["timeout_seconds"]["maximum"] == 300 and "work_dir" in shell
+    assert (
+        shell["timeout_seconds"]["maximum"] == 600 and shell["timeout_seconds"]["default"] == 60 and "work_dir" in shell
+    )
 
 
 async def test_a_file_is_removed_by_the_shell_like_any_command_and_the_prompt_says_so(tmp_path: Path):

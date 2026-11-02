@@ -14,6 +14,7 @@ import contextlib
 import dataclasses
 import os
 import secrets
+import shutil
 import signal
 import subprocess
 import sys
@@ -36,7 +37,7 @@ KILL_GRACE = 5.0
 #: How often a start looks for the state file its child writes.
 POLL_SECONDS = 0.05
 
-__all__ = ["Daemons", "KILL_GRACE", "SpawnFailed", "UpdateFailed"]
+__all__ = ["Daemons", "KILL_GRACE", "SpawnFailed", "StillRunning", "StillWorking", "UpdateFailed"]
 
 
 class SpawnFailed(RuntimeError):
@@ -50,6 +51,14 @@ class SpawnFailed(RuntimeError):
 
 class UpdateFailed(RuntimeError):
     """What a reader asked to change about a daemon cannot be changed, and why."""
+
+
+class StillWorking(RuntimeError):
+    """A daemon was asked to stop in the middle of a turn without ``force``."""
+
+
+class StillRunning(RuntimeError):
+    """A daemon was asked to be deleted while its process still runs."""
 
 
 class Daemons:
@@ -172,40 +181,102 @@ class Daemons:
             record.remove()
 
     # -- stopping ----------------------------------------------------------------------------------
-    def stop(self, record: Record, *, grace: float = KILL_GRACE) -> str:
-        """Stop the daemon ``record`` describes, remove its record, and say what happened in one sentence.
+    def stop(self, record: Record, *, grace: float = KILL_GRACE, force: bool = False, keep: bool = False) -> str:
+        """Stop the daemon ``record`` describes, and say what happened in one sentence.
 
-        A dead record is only removed: the process it described is gone already. The session is never touched — it
-        is a conversation like any other, and ``zettcode resume <id>`` opens it afterwards.
+        By default the record is removed too (``kill``); with ``keep`` it stays, as a dead one, so the daemon is
+        still listed and can be started again or deleted. A dead record is only removed (or, with ``keep``, left):
+        the process it described is gone already. The session is never touched — it is a conversation like any
+        other, and ``zettcode resume <id>`` opens it afterwards.
+
+        Raises:
+            StillWorking: The daemon is in the middle of a turn and ``force`` was not given; stopping it would throw
+                that turn away.
         """
         state = record.state
         if state is None:
             record.remove()
             return "removed: it never recorded what it was"
         if not record.alive:
+            if keep:
+                return "was already gone; its record was kept"
             record.remove()
             return "was already gone; its record was removed"
+        if state.status == "working" and not force:
+            raise StillWorking("it is working on a turn; stop it anyway with --force, or wait until it is idle")
         pid = state.pid
         try:
-            record.change(lambda current: dataclasses.replace(current or state, status="stopping"))
+            record.change(lambda current: dataclasses.replace(current or state, status="stopping", keep=keep))
         except OSError as error:
             # The status is a courtesy to a reader looking while the signal lands; a state another writer holds
             # must not keep `kill` from sending it.
             record.log(f"the state file could not be written: {error}")
         if not _signal(pid, signal.SIGTERM):
-            record.remove()
-            return "was already gone; its record was removed"
+            return self._gone(record, keep, "was already gone")
         deadline = time.monotonic() + grace
         while time.monotonic() < deadline:
-            # The daemon removes its own record on the way out, so the folder going is the proof it stopped — a pid
-            # can outlive the process it named, as a zombie its parent has not reaped.
+            # The daemon removes its own record on the way out (unless asked to keep it), so the folder going is the
+            # proof it stopped — a pid can outlive the process it named, as a zombie its parent has not reaped.
             if not record.folder.exists() or not pid_runs(pid):
+                if keep:
+                    return "stopped; its record was kept"
                 record.remove()
                 return "stopped"
             time.sleep(POLL_SECONDS)
         _signal(pid, getattr(signal, "SIGKILL", signal.SIGTERM))
-        record.remove()
+        if not keep:
+            record.remove()
         return "did not stop in time, so it was killed"
+
+    @staticmethod
+    def _gone(record: Record, keep: bool, said: str) -> str:
+        """Finish a stop whose process was already gone: keep the record or remove it."""
+        if keep:
+            return f"{said}; its record was kept"
+        record.remove()
+        return f"{said}; its record was removed"
+
+    def delete(self, record: Record) -> str:
+        """Remove a daemon for good: its record and its conversation, which cannot be brought back.
+
+        Raises:
+            StillRunning: The daemon's process is alive; stop it first.
+            UpdateFailed: Another process has the session open, so it is not ours to remove.
+        """
+        if record.alive:
+            raise StillRunning("it is running; stop it before deleting it")
+        state = record.state
+        removed = "its record was removed"
+        if state is not None:
+            if self._erase(state.session_id, state.workspace):
+                removed = "its record and its conversation were removed"
+        record.remove()
+        return removed
+
+    @staticmethod
+    def _erase(session_id: str, workspace: str) -> bool:
+        """Remove the stored conversation of a session, holding its lock; return whether there was one."""
+        from zettcode.engine.storage import SessionLocks, SessionStore
+
+        store = SessionStore(workspace=workspace)
+        try:
+            folder = store.session_dir(session_id)
+        except ValueError:
+            return False
+        if not folder.exists():
+            return False
+        locks = SessionLocks(store.session_dir)
+        try:
+            taken = locks.claim(session_id)
+        except ValueError as error:
+            raise UpdateFailed(str(error)) from error
+        if not taken:
+            raise UpdateFailed("the session is open in another process, so it is not ours to delete")
+        try:
+            shutil.rmtree(folder, ignore_errors=True)
+        finally:
+            locks.release()
+        return True
 
     # -- what a reader may change afterwards --------------------------------------------------------
     def update(

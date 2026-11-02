@@ -8,6 +8,7 @@ it work for a moment, run a tool or two and answer -- which is what makes the pa
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import itertools
 import time
 from collections.abc import Callable, Sequence
@@ -16,7 +17,7 @@ from typing import Any
 
 from zettcode.gateway.backend import Backend
 from zettcode.gateway.chat import strip_reply_request
-from zettcode.sdk.errors import SendError, SessionNotFoundError
+from zettcode.sdk.errors import ConfigurationError, SendError, SessionNotFoundError
 from zettcode.sdk.types import (
     DaemonInfo,
     Delivered,
@@ -73,6 +74,7 @@ class FakeBackend(Backend):
         self.locked_ids: set[str] = set()
         self.spawned: list[dict[str, object]] = []
         self.stopped: list[str] = []
+        self.deleted: list[str] = []
         self.logs: dict[str, str] = {}
         self.fail: SendError | None = None
         self.fail_spawn: Exception | None = None
@@ -345,14 +347,27 @@ class FakeBackend(Backend):
         )
         return info
 
-    async def stop(self, session_id: str) -> str:
+    async def stop(self, session_id: str, *, force: bool = False) -> str:
         if session_id not in self.daemon_list:
             raise SessionNotFoundError(f"No daemon runs session {session_id!r}")
+        peer = self.peer_list.get(session_id)
+        if peer is not None and peer.status == "working" and not force:
+            raise ConfigurationError("it is working on a turn; stop it anyway with --force, or wait until it is idle")
         self.stopped.append(session_id)
-        del self.daemon_list[session_id]
         self.peer_list.pop(session_id, None)
+        self.daemon_list[session_id] = dataclasses.replace(self.daemon_list[session_id], status="dead")
         self.changed()
-        return "stopped"
+        return "stopped; its record was kept"
+
+    async def delete(self, session_id: str) -> str:
+        if session_id not in self.daemon_list:
+            raise SessionNotFoundError(f"No daemon runs session {session_id!r}")
+        if session_id in self.peer_list:
+            raise ConfigurationError("it is running; stop it before deleting it")
+        self.deleted.append(session_id)
+        del self.daemon_list[session_id]
+        self.changed()
+        return "its record and its conversation were removed"
 
     def log(self, session_id: str, lines: int) -> str:
         if session_id not in self.daemon_list:

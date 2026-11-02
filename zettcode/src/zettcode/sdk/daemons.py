@@ -28,7 +28,7 @@ from .types import DaemonInfo
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from ..daemon.state import Record
 
-__all__ = ["PERMISSIONS", "daemon_log", "list_daemons", "spawn_daemon", "stop_daemon", "update_daemon"]
+__all__ = ["PERMISSIONS", "daemon_log", "delete_daemon", "list_daemons", "spawn_daemon", "stop_daemon", "update_daemon"]
 
 #: The shell levels a daemon can be given. There is no ``ask``: nobody is there to answer it.
 PERMISSIONS = ("deny", "safe", "full")
@@ -126,23 +126,54 @@ async def spawn_daemon(
     return _info(record)
 
 
-async def stop_daemon(session_id: str) -> str:
-    """Stop a daemon and remove its record, and say in one sentence what happened.
+async def stop_daemon(session_id: str, *, force: bool = False, keep: bool = False) -> str:
+    """Stop a daemon and say in one sentence what happened.
 
-    The session itself stays, with everything the daemon did, so it can be opened afterwards. A daemon whose process
-    was already gone only has its record removed.
+    The session itself stays, with everything the daemon did, so it can be opened afterwards. By default the
+    daemon's record is removed too; with ``keep`` it stays, listed as ``dead``, so the daemon can be started again
+    (``spawn_daemon(..., resume=session_id)``) or removed for good with :func:`delete_daemon`. A daemon whose
+    process was already gone only has its record removed (or kept).
+
+    Args:
+        session_id: The daemon, as :func:`list_daemons` gives it.
+        force: Stop it even in the middle of a turn, which throws that turn away.
+        keep: Leave the record, as a dead one, instead of removing it.
 
     Raises:
         SessionNotFoundError: No daemon has that session.
+        ConfigurationError: It is working on a turn and ``force`` was not given.
     """
-    from ..daemon.process import Daemons
+    from ..daemon.process import Daemons, StillWorking
     from ..daemon.state import Registry
 
     registry = Registry()
     record = registry.find(session_id)
     if record is None:
         raise SessionNotFoundError(f"No daemon runs session {session_id!r}")
-    return await asyncio.to_thread(Daemons(registry).stop, record)
+    try:
+        return await asyncio.to_thread(lambda: Daemons(registry).stop(record, force=force, keep=keep))
+    except StillWorking as error:
+        raise ConfigurationError(str(error)) from error
+
+
+async def delete_daemon(session_id: str) -> str:
+    """Remove a daemon for good: its record and its conversation. This cannot be undone.
+
+    Raises:
+        SessionNotFoundError: No daemon has that session.
+        ConfigurationError: Its process is still running (stop it first), or its session is open in another process.
+    """
+    from ..daemon.process import Daemons, StillRunning, UpdateFailed
+    from ..daemon.state import Registry
+
+    registry = Registry()
+    record = registry.find(session_id)
+    if record is None:
+        raise SessionNotFoundError(f"No daemon runs session {session_id!r}")
+    try:
+        return await asyncio.to_thread(Daemons(registry).delete, record)
+    except (StillRunning, UpdateFailed) as error:
+        raise ConfigurationError(str(error)) from error
 
 
 async def update_daemon(

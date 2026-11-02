@@ -8,7 +8,9 @@ session is, with ``send_message``, using its session id. What is here is the lif
     zettcode daemon update <session-id>
     zettcode daemon prompt <session-id> TEXT...
     zettcode daemon log <session-id>
-    zettcode daemon kill <session-id>
+    zettcode daemon stop <session-id> [--force]
+    zettcode daemon kill <session-id> [--force]
+    zettcode daemon delete <session-id>
 
 A daemon runs at the shell level it was started with and with nobody to ask, which is why nothing here asks:
 starting one is the decision, and it is taken by whoever runs ``spawn``.
@@ -124,16 +126,40 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     spawn.add_argument("--json", action="store_true", help="print the new daemon as JSON, for a program to read")
 
+    stop = commands.add_parser(
+        "stop",
+        help="stop daemons by session id, and keep them listed so they can be started again",
+        description=(
+            "Stop each daemon named. Its record stays, shown as dead, so the daemon is still listed and `spawn "
+            "--resume ID` starts it again. A daemon in the middle of a turn is not stopped without --force."
+        ),
+    )
+    stop.add_argument("session", metavar="SESSION", nargs="+", help="the session id `daemon list` shows")
+    stop.add_argument("--force", action="store_true", help="stop it even in the middle of a turn")
+    stop.add_argument("--json", action="store_true", help="print the outcome as JSON, for a program to read")
+
     kill = commands.add_parser(
         "kill",
         help="stop daemons by session id, and remove their records",
         description=(
             "Stop each daemon named and remove its record; the session itself stays, so `zettcode resume ID` "
-            "opens the conversation afterwards."
+            "opens the conversation afterwards. A daemon in the middle of a turn is not stopped without --force."
         ),
     )
     kill.add_argument("session", metavar="SESSION", nargs="+", help="the session id `daemon list` shows")
+    kill.add_argument("--force", action="store_true", help="stop it even in the middle of a turn")
     kill.add_argument("--json", action="store_true", help="print the outcome as JSON, for a program to read")
+
+    delete = commands.add_parser(
+        "delete",
+        help="remove daemons for good: the record and the conversation, which cannot be brought back",
+        description=(
+            "Delete each daemon named, and the session it ran. This cannot be undone. A daemon that is running is "
+            "refused: stop it first."
+        ),
+    )
+    delete.add_argument("session", metavar="SESSION", nargs="+", help="the session id `daemon list` shows")
+    delete.add_argument("--json", action="store_true", help="print the outcome as JSON, for a program to read")
 
     update = commands.add_parser(
         "update",
@@ -230,7 +256,11 @@ def daemon_program(argv: Sequence[str] | None = None) -> int:
     if args.command == "log":
         return _log(args.session, args.lines)
     if args.command == "kill":
-        return _kill(args.session, args.json)
+        return _kill(args.session, args.json, force=args.force, keep=False)
+    if args.command == "stop":
+        return _kill(args.session, args.json, force=args.force, keep=True)
+    if args.command == "delete":
+        return _delete(args.session, args.json)
     return _run(args)
 
 
@@ -430,28 +460,60 @@ def _models(workspace: Path, as_json: bool) -> int:
     return EXIT_OK
 
 
-def _kill(sessions: Sequence[str], as_json: bool) -> int:
-    """Stop each daemon named and remove its record; report one line per session."""
-    from .process import Daemons
+def _kill(sessions: Sequence[str], as_json: bool, *, force: bool = False, keep: bool = False) -> int:
+    """Stop each daemon named (and remove its record unless ``keep``); report one line per session."""
+    from .process import Daemons, StillWorking
     from .state import Registry
 
     registry = Registry()
     daemons = Daemons(registry)
     outcomes: list[dict[str, str]] = []
-    missing = False
+    failed = False
     for session in sessions:
         record = registry.find(session)
         if record is None:
-            missing = True
+            failed = True
             outcomes.append({"session": session, "result": "no daemon with that session"})
             continue
-        outcomes.append({"session": session, "result": daemons.stop(record)})
+        try:
+            outcomes.append({"session": session, "result": daemons.stop(record, force=force, keep=keep)})
+        except StillWorking as error:
+            failed = True
+            outcomes.append({"session": session, "result": f"not stopped: {error}"})
+    return _report(outcomes, as_json, failed)
+
+
+def _delete(sessions: Sequence[str], as_json: bool) -> int:
+    """Delete each daemon named, record and conversation; report one line per session."""
+    from .process import Daemons, StillRunning, UpdateFailed
+    from .state import Registry
+
+    registry = Registry()
+    daemons = Daemons(registry)
+    outcomes: list[dict[str, str]] = []
+    failed = False
+    for session in sessions:
+        record = registry.find(session)
+        if record is None:
+            failed = True
+            outcomes.append({"session": session, "result": "no daemon with that session"})
+            continue
+        try:
+            outcomes.append({"session": session, "result": daemons.delete(record)})
+        except (StillRunning, UpdateFailed) as error:
+            failed = True
+            outcomes.append({"session": session, "result": f"not deleted: {error}"})
+    return _report(outcomes, as_json, failed)
+
+
+def _report(outcomes: list[dict[str, str]], as_json: bool, failed: bool) -> int:
+    """Print one outcome per session, as JSON or as lines, and return the exit status."""
     if as_json:
         print(json.dumps(outcomes, indent=2))
     else:
         for outcome in outcomes:
             print(f"{outcome['session']}  {outcome['result']}")
-    return EXIT_FAILED if missing else EXIT_OK
+    return EXIT_FAILED if failed else EXIT_OK
 
 
 def _update(args: argparse.Namespace) -> int:

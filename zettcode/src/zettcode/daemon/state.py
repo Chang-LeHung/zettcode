@@ -146,6 +146,7 @@ class State:
     output_tokens: int | None = None
     context_tokens: int | None = None
     context_window: int | None = None
+    keep: bool = False
     protocol: int = PROTOCOL
 
     @classmethod

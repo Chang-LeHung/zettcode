@@ -157,11 +157,13 @@ def test_a_daemon_is_started_listed_and_stopped_through_the_endpoints_inside_the
     made = client.post("/api/daemons", json={"workspace": str(work), "name": "new"})
     outside = client.post("/api/daemons", json={"workspace": "/"})
     full = client.post("/api/daemons", json={"workspace": str(work), "permission": "full"})
-    stopped = client.delete("/api/daemons/01d")
+    stopped = client.post("/api/daemons/01d/stop", json={})
+    busy_delete = client.delete("/api/daemons/01d")
 
     assert made.status_code == 200 and made.json()["thread"]["name"] == "new"
     assert outside.status_code == 403 and full.status_code == 403
-    assert stopped.json() == {"result": "stopped"} and backend.stopped == ["01d"]
+    assert stopped.json() == {"result": "stopped; its record was kept"} and backend.stopped == ["01d"]
+    assert busy_delete.status_code == 200 and backend.deleted == ["01d"]
     assert client.delete("/api/daemons/01d").status_code == 404
 
 

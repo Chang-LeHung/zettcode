@@ -98,6 +98,70 @@ def test_the_registry_finds_every_workspace_and_stopping_a_dead_one_removes_its_
     assert [one.session_id for one in found] == ["01a1"]
     assert found[0].dead and found[0].status == "dead"
     assert process.Daemons().stop(found[0]) == "was already gone; its record was removed"
+
+
+def test_stopping_a_dead_daemon_can_keep_its_record_listed(home):
+    record = Registry().record(home, "01a1", create=True)
+    record.save(state_for(home, pid=2**22 + 7))
+
+    assert process.Daemons().stop(record, keep=True) == "was already gone; its record was kept"
+    assert [one.session_id for one in Registry().all()] == ["01a1"]
+
+
+def test_a_working_daemon_is_not_stopped_without_force_and_nothing_is_signalled(home, monkeypatch):
+    record = Registry().record(home, "01a1", create=True)
+    record.save(state_for(home, status="working"))
+    record.beat()
+    sent: list[int] = []
+    monkeypatch.setattr(process, "_signal", lambda pid, number: sent.append(pid) or False)
+
+    with pytest.raises(process.StillWorking, match="--force"):
+        process.Daemons().stop(Registry().record(home, "01a1"))
+
+    assert sent == [] and Registry().record(home, "01a1").state.status == "working"
+    assert process.Daemons().stop(Registry().record(home, "01a1"), force=True, keep=True) == (
+        "was already gone; its record was kept"
+    )
+    assert sent == [os.getpid()], "with force the signal goes out"
+
+
+def test_the_kill_command_refuses_a_working_daemon_and_says_force(home, capsys, monkeypatch):
+    record = Registry().record(home, "01a1", create=True)
+    record.save(state_for(home, status="working"))
+    record.beat()
+    monkeypatch.setattr(process, "_signal", lambda pid, number: False)
+
+    assert daemon_program(["stop", "01a1"]) == 1
+    assert "--force" in capsys.readouterr().out
+    assert daemon_program(["stop", "01a1", "--force"]) == 0
+    assert Registry().find("01a1") is not None, "stop keeps the record"
+    assert daemon_program(["kill", "01a1"]) == 0
+    assert Registry().find("01a1") is None, "kill removes it"
+
+
+def _stored_session(home: Path, session_id: str) -> Path:
+    from zettcode.engine.storage import SessionStore
+
+    folder = SessionStore(workspace=str(home)).session_dir(session_id)
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "conversation.jsonl").write_text("{}\n", encoding="utf-8")
+    return folder
+
+
+def test_delete_removes_a_stopped_daemon_and_its_conversation_but_refuses_a_running_one(home, capsys):
+    record = Registry().record(home, "01a1", create=True)
+    record.save(state_for(home))
+    record.beat()
+    folder = _stored_session(home, "01a1")
+
+    assert daemon_program(["delete", "01a1"]) == 1
+    assert "stop it before deleting" in capsys.readouterr().out
+    assert folder.exists() and Registry().find("01a1") is not None
+
+    record.save(state_for(home, pid=2**22 + 7))
+    assert daemon_program(["delete", "01a1"]) == 0
+    assert not folder.exists() and Registry().find("01a1") is None
+    assert daemon_program(["delete", "01a1"]) == 1, "it is gone for good"
     assert Registry().all() == ()
 
 

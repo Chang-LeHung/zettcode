@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import os
 from pathlib import Path
 
@@ -91,7 +92,8 @@ async def test_a_daemon_the_broker_does_not_list_is_offline_or_dead_and_cannot_b
         "01dead": "dead",
         "01quiet": "offline",
     }
-    assert gateway.threads()[-1]["id"] == "01dead", "a dead one sorts last"
+    flags = [view["online"] for view in gateway.threads()]
+    assert flags == sorted(flags, reverse=True) and flags[0] and not flags[-1], "the online ones come first"
     with pytest.raises(GatewayError) as refused:
         await gateway.send("01dead", "hello")
     assert (refused.value.status, refused.value.code) == (409, "offline")
@@ -498,17 +500,51 @@ async def test_the_first_message_goes_once_the_daemon_is_reachable_and_a_failure
     assert failed["thread"] is not None
 
 
-async def test_a_daemon_is_stopped_by_its_id_and_an_unknown_one_is_not_found(tmp_path):
+async def test_a_daemon_is_stopped_by_its_id_and_stays_listed_until_it_is_deleted(tmp_path):
     gateway, backend = await make(tmp_path)
     backend.add_daemon(DAEMON, "/w", name="d")
     await gateway.refresh()
 
-    assert await gateway.stop(DAEMON) == {"result": "stopped"}
-    assert gateway.threads() == [] and backend.stopped == [DAEMON]
-    for bad, status in ((DAEMON, 404), ("../x", 400)):
+    assert await gateway.stop(DAEMON) == {"result": "stopped; its record was kept"}
+    [view] = gateway.threads()
+    assert (view["status"], view["online"]) == ("dead", False) and backend.stopped == [DAEMON]
+    for bad, status in (("01nothere", 404), ("../x", 400)):
         with pytest.raises(GatewayError) as refused:
             await gateway.stop(bad)
         assert refused.value.status == status
+
+    assert await gateway.delete(DAEMON) == {"result": "its record and its conversation were removed"}
+    assert gateway.threads() == [] and backend.deleted == [DAEMON]
+    with pytest.raises(GatewayError) as gone:
+        await gateway.delete(DAEMON)
+    assert gone.value.status == 404
+
+
+async def test_a_working_daemon_is_not_stopped_without_force_and_a_running_one_is_not_deleted(tmp_path):
+    gateway, backend = await make(tmp_path)
+    backend.add_daemon(DAEMON, "/w", name="d")
+    await gateway.refresh()
+    backend.peer_list[DAEMON] = dataclasses.replace(backend.peer_list[DAEMON], status="working")
+
+    with pytest.raises(GatewayError) as busy:
+        await gateway.stop(DAEMON)
+    assert (busy.value.status, busy.value.code) == (409, "busy") and backend.stopped == []
+    with pytest.raises(GatewayError) as running:
+        await gateway.delete(DAEMON)
+    assert running.value.status == 409 and backend.deleted == []
+
+    assert await gateway.stop(DAEMON, force=True) == {"result": "stopped; its record was kept"}
+
+
+async def test_online_threads_come_first_and_each_group_is_ordered_by_latest_activity(tmp_path):
+    gateway, backend = await make(tmp_path)
+    backend.add_daemon("01a", "/w", name="a", started_at=100.0)
+    backend.add_daemon("01b", "/w", name="b", started_at=300.0, online=False)
+    backend.add_daemon("01c", "/w", name="c", started_at=200.0)
+    backend.add_daemon("01d", "/w", name="d", started_at=400.0, status="dead", online=False)
+    await gateway.refresh()
+
+    assert [view["id"] for view in gateway.threads()] == ["01c", "01a", "01d", "01b"]
 
 
 async def test_a_daemons_log_is_read_and_an_unknown_daemon_has_none(tmp_path):
