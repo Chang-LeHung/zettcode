@@ -248,8 +248,8 @@ A handle on one stored conversation. Obtain it from `client.session`, `client.se
 | `prompt(prompt, *, images, mentions, instructions, on_approval, on_question, on_event, timeout, raw, keep_events, defer_answers, cache)` | `RunStream` |
 | `stream(...)` | `RunStream` (same method) |
 | `await run(prompt, *, images, mentions, instructions, on_approval, on_question, on_event, timeout, keep_events)` | `RunResult` |
-| `await ask(question, *, on_event=None, timeout=None, cache="read")` | `str` |
-| `ask_stream(question, *, on_event=None, timeout=None, cache="read")` | `RunStream` |
+| `await ask(question, *, on_event=None, timeout=None, cache="read", shown=True)` | `str` |
+| `ask_stream(question, *, on_event=None, timeout=None, cache="read", shown=True)` | `RunStream` |
 | `steer(prompt, *, images=(), mentions=False)` | `str \| None` |
 | `await resumable()` | `ResumeInfo \| None` |
 | `resume_stream(*, on_approval, on_question, on_event, timeout, raw, keep_events, defer_answers)` | `RunStream` |
@@ -257,6 +257,10 @@ A handle on one stored conversation. Obtain it from `client.session`, `client.se
 
 `cache` is `"read_write"` (the default), `"read"` or `"off"`; a side question starts at `"read"`, because its answer
 is never replayed and is not worth writing into the cache. See `CacheMode` in `zettcode.sdk.types`.
+
+`shown` says whether the reader watches the exchange: the front end draws it, and a resumed session restores it. Pass
+`False` for a question asked for the program's own purposes — the recap plugin asks its own — and nothing of it is
+drawn now or restored later; draw the part of the answer you want as a message of your own.
 
 `prompt` raises, at the call: `ValueError` (empty prompt, bad `timeout`), `TypeError` (a piece that is not text or `Image`), `ConfigurationError` (images for a model that cannot read them), `SessionBusyError`, `ClientClosedError`. Awaiting or iterating the run raises `RunError`, `RunTimeoutError`, `SessionLockedError`, a `ValueError` for a `cache` word the engine does not know (checked when the run starts), and whatever a handler raises.
 

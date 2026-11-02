@@ -16,7 +16,7 @@ from zett_agent.extensions.events import MessageAppendedEvent, MessageTiming
 from zett_agent.messages import AssistantMessage, SystemMessage, UserMessage
 
 from zettcode.app.agent.conversation.replay import replay
-from zettcode.engine.dialogue.side import READ_ONLY_TOOLS, SideQuestions, is_side, question
+from zettcode.engine.dialogue.side import READ_ONLY_TOOLS, SIDE, SideQuestions, is_shown, is_side, question
 from zettcode.engine.export import build_trace
 from zettcode.engine.storage import SessionStore
 
@@ -49,6 +49,15 @@ def test_the_question_is_a_user_message_that_is_not_replayed():
     assert not is_side(UserMessage(content="an ordinary question"))
 
 
+def test_a_question_says_whether_the_reader_watched_it():
+    """A plugin asks for itself and is drawn nowhere, so a resumed session must not put it back on screen."""
+    assert is_shown(question("what does parse() do?"))
+    assert not is_shown(question("The user stepped away and is coming back.", shown=False))
+    # A message from before the tag existed was a question the reader asked, and is read as one the reader saw.
+    assert is_shown(UserMessage(content="old", attributes={SIDE: True}))
+    assert not is_shown(UserMessage(content="plain"))
+
+
 async def test_the_store_records_a_side_exchange_without_replaying_it(tmp_path: Path):
     store = await _side_then_ordinary(tmp_path)
 
@@ -61,6 +70,8 @@ async def test_the_store_records_a_side_exchange_without_replaying_it(tmp_path: 
     ]
     assert [line.message[0].include_in_messages for line in lines] == [False, False, True]
     assert [bool(line.tags.get("side")) for line in lines] == [True, True, False]
+    # Both lines of the run say the reader watched it, since the front end drew the question it asked.
+    assert [bool(line.tags.get("shown")) for line in lines] == [True, True, False]
 
     # … and the next request rebuilds its context without the side exchange.
     following = _context()
@@ -96,13 +107,17 @@ async def test_an_exported_trace_leaves_the_side_exchange_out(tmp_path: Path):
     assert any("now change it" in text for text in texts)
 
 
-async def _side_then_ordinary(tmp_path: Path) -> SessionStore:
-    """Store one side question with its answer, then one ordinary turn."""
+async def _side_then_ordinary(tmp_path: Path, *, shown: bool = True) -> SessionStore:
+    """Store one side question with its answer, then one ordinary turn.
+
+    Args:
+        shown: Whether the reader watched the side question, as ``/btw`` draws one and a plugin's own question is not.
+    """
     store = SessionStore(tmp_path)
     context = _context()
     await store.on_state(context)
 
-    await store.on_event(context, _appended(question("what does parse() do?")))
+    await store.on_event(context, _appended(question("what does parse() do?", shown=shown)))
     await store.on_event(context, _appended(AssistantMessage(content="it splits the header")))
 
     # The next request is an ordinary one, with its own bookkeeping.
@@ -173,3 +188,42 @@ async def test_an_ordinary_turn_keeps_every_tool():
     await extension.before_turn(context)
 
     assert set(context.tools) == {"read_file", "write_file", "bash"}
+
+
+async def test_the_sdk_writes_down_whether_the_reader_watched_the_question(tmp_path: Path, monkeypatch):
+    """The whole chain: ``ask(shown=...)`` reaches the stored tags a resumed transcript is read from."""
+    import zettcode.sdk as zc
+    from sdk_helpers import ScriptedModel, config_for, wire
+
+    wire(monkeypatch, ScriptedModel("a summary", "another summary"))
+    async with zc.Client(config=config_for(tmp_path)) as client:
+        await client.session.ask("watched", shown=True)
+        await client.session.ask("not watched", shown=False)
+        stored = SessionStore(client.config.store, client.config.workspace).read(client.session.id)
+
+    questions = [line for line in stored.messages if _text(line.message[0]) in {"watched", "not watched"}]
+    assert [(line.message[0].attributes.get("side"), line.tags.get("shown")) for line in questions] == [
+        (True, True),
+        (True, False),
+    ]
+    assert all(line.message[0].include_in_messages is False for line in questions)
+
+
+async def test_a_side_exchange_stored_before_the_tag_is_still_restored(tmp_path: Path):
+    """Files written before a question said whether the reader watched it hold the reader's own questions.
+
+    They were drawn when they were asked, so a resumed transcript keeps drawing them: the tag is what a new write adds,
+    and its absence must not take the older exchanges off the screen.
+    """
+    store = SessionStore(tmp_path)
+    old = {"side": True}
+    await store.append("s1", "r1", question("what does parse() do?"), tags=old)
+    await store.append("s1", "r1", AssistantMessage(content="it splits the header"), tags=old)
+
+    replayed = replay(store.read("s1"))
+    entries = [getattr(entry, "text", "") for entry in replayed.transcript.entries]
+
+    assert [entry.text for entry in replayed.transcript.entries if getattr(entry, "side", False)] == [
+        "what does parse() do?"
+    ]
+    assert any("it splits the header" in text for text in entries)

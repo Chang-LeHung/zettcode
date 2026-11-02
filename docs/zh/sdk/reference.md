@@ -248,8 +248,8 @@ def remove_model(name, *, path=None) -> tuple[ModelInfo, ...]: ...
 | `prompt(prompt, *, images, mentions, instructions, on_approval, on_question, on_event, timeout, raw, keep_events, defer_answers, cache)` | `RunStream` |
 | `stream(...)` | `RunStream`（同一个方法） |
 | `await run(prompt, *, images, mentions, instructions, on_approval, on_question, on_event, timeout, keep_events, cache)` | `RunResult` |
-| `await ask(question, *, on_event=None, timeout=None, cache="read")` | `str` |
-| `ask_stream(question, *, on_event=None, timeout=None, cache="read")` | `RunStream` |
+| `await ask(question, *, on_event=None, timeout=None, cache="read", shown=True)` | `str` |
+| `ask_stream(question, *, on_event=None, timeout=None, cache="read", shown=True)` | `RunStream` |
 | `steer(prompt, *, images=(), mentions=False)` | `str \| None` |
 | `await resumable()` | `ResumeInfo \| None` |
 | `resume_stream(*, on_approval, on_question, on_event, timeout, raw, keep_events, defer_answers)` | `RunStream` |
