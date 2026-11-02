@@ -72,12 +72,15 @@ export function groupNamed(name: string): GraphGroup | undefined {
   return graph.groups.find((group) => group.name === name);
 }
 
-/** Groups, the most recently written to first; one nobody has written in yet is ordered by when it was made. */
-export const groupList = computed(() => {
-  // A badge for a group that is no longer listed (deleted, or never seen by this page) would have nothing to open.
+/** The groups, the most recently written to first; one nobody has written in yet is ordered by when it was made. */
+export const groupList = computed(() =>
+  [...graph.groups].sort((a, b) => (b.last?.ts ?? b.created) - (a.last?.ts ?? a.created)),
+);
+
+/** Forget the unread counts of groups the list no longer has. Called when the graph is read again, never from a getter. */
+export function pruneUnread(): void {
   for (const name of Object.keys(unread)) if (!graph.groups.some((group) => group.name === name)) delete unread[name];
-  return [...graph.groups].sort((a, b) => (b.last?.ts ?? b.created) - (a.last?.ts ?? a.created));
-});
+}
 
 /** The name a message's sender goes by in a group. */
 export function senderName(message: GraphMessage): string {
