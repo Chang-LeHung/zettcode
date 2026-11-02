@@ -20,8 +20,8 @@ from test_zettcode_app import FakeClient, FakeRuntime, _harness, _rendered, rows
 from zettcode.app import ZettCodeApp
 from zettcode.app.agent.agent import TerminalAgent
 from zettcode.app.agent.conversation.entries import RelayEntry, TextEntry
+from zettcode.app.ui import messaging as messaging_module
 from zettcode.app.ui import updating as updating_module
-from zettcode.app.ui.messaging import MAX_INBOX
 from zettcode.broker.client import BrokerClient, SendError
 from zettcode.engine.messenger import Messenger
 from zettcode.relay import RELAY, Relayed
@@ -334,7 +334,7 @@ async def test_a_direct_chat_window_message_waits_even_though_it_says_steer(make
     await shell.settle()
 
 
-async def test_messages_that_waited_start_one_at_a_time_in_the_order_they_came(make):
+async def test_messages_that_waited_start_as_one_turn_in_the_order_they_came(make):
     shell = await make(hold=True)
     bob, _ = await make.other()
     cal, _ = await make.other(CAL, "cal")
@@ -347,11 +347,15 @@ async def test_messages_that_waited_start_one_at_a_time_in_the_order_they_came(m
     await cal.send(ME, "second", mode="followup")
     await bob.send(ME, "third", mode="followup")
     shell.model.released.set()
-    await eventually(lambda: len(shell.relays()) == 3, 5)
+    await eventually(lambda: len(shell.relays()) == 1, 5)
     await shell.settle()
 
-    assert [(r.peer, r.text) for r in shell.relays()] == [("bob", "first"), ("cal", "second"), ("bob", "third")]
-    assert [m.attributes["prompt"] for m in shell.sent_to_model()] == ["first", "second", "third"]
+    assert len(shell.relays()) == 1, "what waited is one turn, not three"
+    [read] = [m for m in shell.sent_to_model() if "Message 1 of 3" in m.content]
+    order = [read.content.index(word) for word in ("first", "second", "third")]
+    assert order == sorted(order), "oldest first"
+    assert read.content.count("--- Message") == 3 and "bob" in read.content and "cal" in read.content
+    assert read.attributes["prompt"] == "bob: first\n\ncal: second\n\nbob: third"
 
 
 async def test_a_follow_up_the_reader_queued_goes_before_a_message_that_arrived_later(make):
@@ -374,23 +378,25 @@ async def test_a_follow_up_the_reader_queued_goes_before_a_message_that_arrived_
     assert texts.index("then add tests") < texts.index("from bob")
 
 
-async def test_a_shell_with_a_full_inbox_refuses_with_a_reason_the_sender_can_read(make):
+async def test_a_shell_with_a_full_inbox_has_the_broker_keep_the_rest_and_gets_them_when_there_is_room(
+    make, monkeypatch
+):
+    monkeypatch.setattr(messaging_module, "MAX_INBOX", 3)
     shell = await make(hold=True)
     bob, _ = await make.other()
     await see_each_other(shell, bob)
     shell.type("write the parser")
     await asyncio.sleep(0.02)
 
-    for number in range(MAX_INBOX):
-        await bob.send(ME, f"message {number}", mode="followup")
-    with pytest.raises(SendError) as refused:
-        await bob.send(ME, "one too many", mode="followup")
+    answers = [await bob.send(ME, f"message {number}", mode="followup") for number in range(5)]
 
-    assert "waiting" in str(refused.value)
-    assert len(shell.app._inbox) == MAX_INBOX
+    assert [a.disposition for a in answers] == ["queued"] * 3 + ["held"] * 2
+    assert len(shell.app._inbox) == 3
     shell.model.released.set()
-    await eventually(lambda: len(shell.relays()) == MAX_INBOX, 15)
+    await eventually(lambda: len(shell.relays()) >= 2, 20)
     await shell.settle()
+    seen = " ".join(m.content for m in shell.sent_to_model())
+    assert all(f"message {number}" in seen for number in range(5)), "nothing was lost"
 
 
 async def test_a_stopped_turn_started_by_a_message_ends_like_any_other_and_the_next_one_still_starts(make):

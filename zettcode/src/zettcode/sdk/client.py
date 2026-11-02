@@ -913,7 +913,7 @@ class Client:
         """Return the broker's copy of what the program answered a message with."""
         from ..broker.models import Receipt as BrokerReceipt
 
-        return BrokerReceipt(receipt.accepted, receipt.reason, receipt.disposition)
+        return BrokerReceipt(receipt.accepted, receipt.reason, receipt.disposition, receipt.busy)
 
     def _describe(self, *, busy: bool) -> None:
         """Tell the broker what this session is, when there is a connection to tell it."""

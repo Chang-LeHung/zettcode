@@ -149,6 +149,7 @@ class Broker:
     async def aclose(self) -> None:
         """Say goodbye to every session and stop serving. Quick, and safe to call twice."""
         self.hub.closing = True
+        self.hub.stop_deliveries()
         self._stopped.set()
         self._in_use()
         serving, self._serving = self._serving, None

@@ -174,6 +174,7 @@ class SessionMessagingExtension(AgentExtension):
                 "steered": "steered it into the request it was running",
                 "queued": "queued it until its current request ends",
                 "delivered": "delivered it to that session's chat window",
+                "held": "kept it for that session, whose inbox is full, and the broker delivers it when there is room",
             }.get(delivered.disposition, "took it")
             return f"Delivered to {peer.handle} (id {peer.session_id}); it {said}."
 

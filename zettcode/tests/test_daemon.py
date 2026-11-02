@@ -187,9 +187,9 @@ def test_a_record_leaves_the_workspace_folder_and_its_note(home):
 
 
 # -- the inbox -----------------------------------------------------------------------------------------------------
-def test_the_inbox_starts_one_message_and_queues_the_rest_up_to_four():
+def test_the_inbox_starts_one_message_and_queues_the_rest_up_to_its_limit_and_says_when_it_is_only_full():
     started: list[IncomingMessage] = []
-    inbox = Inbox(started.append)
+    inbox = Inbox(started.append, limit=4)
 
     assert inbox.offer(message("one")).disposition == "started"
     for index in range(2, 6):
@@ -198,20 +198,39 @@ def test_the_inbox_starts_one_message_and_queues_the_rest_up_to_four():
 
     refused = inbox.offer(message("six"))
     assert not refused.accepted and "4 messages waiting" in refused.reason
+    assert refused.busy, "full is a state that passes, so the broker keeps the message"
     assert [item.text for item in started] == ["one"]
     assert inbox.waiting == 4
 
 
-def test_the_inbox_hands_back_one_at_a_time_and_is_idle_only_when_empty():
+def test_the_inbox_hands_back_what_waited_as_one_message_in_order_and_is_idle_only_when_empty():
     started: list[IncomingMessage] = []
     inbox = Inbox(started.append)
     inbox.offer(message("one"))
     inbox.offer(message("two"))
+    inbox.offer(message("three"))
 
-    assert inbox.done() is not None, "the next message runs"
+    merged = inbox.done()
+    assert merged is not None and [item.text for item in merged.batch] == ["two", "three"]
     assert inbox.busy and inbox.waiting == 0, "and the daemon stays busy while it does"
     assert inbox.done() is None
     assert not inbox.busy
+
+
+def test_a_chat_windows_message_is_never_merged_with_the_ones_around_it():
+    started: list[IncomingMessage] = []
+    inbox = Inbox(started.append)
+    inbox.offer(message("running"))
+    inbox.offer(message("before"))
+    inbox.offer(replace(message("window"), direct=True))
+    inbox.offer(message("after"))
+
+    first, second, third = inbox.done(), inbox.done(), inbox.done()
+
+    assert first is not None and first.text == "before" and not first.batch
+    assert second is not None and second.direct and second.text == "window"
+    assert third is not None and third.text == "after"
+    assert inbox.done() is None
 
 
 # -- the process ---------------------------------------------------------------------------------------------------

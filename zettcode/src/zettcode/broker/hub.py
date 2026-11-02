@@ -63,6 +63,16 @@ MAX_WAITING_PICTURES = 96 << 20
 #: Lines queued for one session to read. A session that is this far behind has stopped reading and is dropped.
 MAX_QUEUED = 256
 
+#: Messages the broker keeps for one session whose inbox is full, and for all of them. A session that never makes room
+#: must not be able to fill the file: past these the sender is told the session is busy, as before.
+MAX_HELD = 500
+MAX_HELD_TOTAL = 20_000
+
+#: How long a delivery waits before offering a held message again, and the longest it waits: doubled each time the
+#: inbox is still full, and started again from the shortest once a message is taken.
+RETRY_MIN = 1.0
+RETRY_MAX = 15.0
+
 #: How many sessions one connection may watch: there are rarely more than a few dozen sessions on a machine.
 MAX_WATCHING = 256
 
@@ -77,6 +87,14 @@ STOPPED_READING = 1008
 
 class _Gone(Exception):
     """The session a message was handed to went away before it answered."""
+
+
+class _Busy(Exception):
+    """The session's inbox is full for now: the message may be offered again later."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
 
 
 class Sender(NamedTuple):
@@ -152,12 +170,13 @@ class Session:
         """Hand this session a message and return its ack.
 
         Raises:
-            Refused: ``busy`` when too many are already waiting.
+            _Busy: Too many are already waiting for it to answer.
+            Refused: ``busy`` when too many pictures are waiting.
             asyncio.TimeoutError: It did not answer in ``timeout`` seconds.
             _Gone: It went away first.
         """
         if self.waiting >= MAX_WAITING:
-            raise Refused("busy", "that session has too many messages waiting")
+            raise _Busy("that session has too many messages waiting")
         weight = sum(len(picture.get("data", "")) for picture in message.get("images", ()))
         if weight and self._weight + self._queued + weight > MAX_WAITING_PICTURES:
             raise Refused("busy", "that session has too many pictures waiting")
@@ -201,10 +220,16 @@ class Hub:
         ack_timeout: float = ACK_TIMEOUT,
         clock: Callable[[], float] = time.monotonic,
         store: Store | None = None,
+        retry_min: float = RETRY_MIN,
+        retry_max: float = RETRY_MAX,
     ) -> None:
         self.ack_timeout = ack_timeout
         self.clock = clock
+        self.retry_min = retry_min
+        self.retry_max = retry_max
         self.store = store if store is not None else Store()
+        #: The tasks that offer held messages, by the session they are for.
+        self._deliveries: dict[str, asyncio.Task[None]] = {}
         self.limits = Limits()
         self.roster = Roster()
         #: Every open connection, by number, and by key.
@@ -275,6 +300,8 @@ class Hub:
             self._announce()
         else:
             self._tell_groups(session)
+        if before is None and self.store.held_count(update.session_id):
+            self._deliver_held(update.session_id)
 
     def _on_watch(self, session: Session, n: int | None, line: dict[str, Any]) -> None:
         session_id = line.get("session_id")
@@ -367,7 +394,8 @@ class Hub:
                 )
             pictures = parse_images(offered)
             message["images"] = [picture.to_wire() for picture in pictures]
-        ack = await self._hand_over(recipient, message, target.handle)
+        ack = await self._offer(recipient, target.session_id, message, target.handle)
+        held = ack.pop("held", None)
         stored = self._remember(
             sender,
             KIND_SESSION,
@@ -377,9 +405,14 @@ class Hub:
             via,
             hops + 1,
             mode,
-            "delivered",
+            "held" if held is not None else "delivered",
             ack["disposition"],
         )
+        if held is not None and stored is not None:
+            try:
+                self.store.link_held(held, stored["id"])
+            except Exception:  # noqa: BLE001 - it is still delivered; only the history will not say when
+                logger.exception("store.failed")
         return {"to": target.public().to_wire(), **ack, **({"id": stored["id"]} if stored else {})}
 
     async def _send_group(self, sender: Sender, name: str, text: str, via: str, hops: int, mode: str) -> dict[str, Any]:
@@ -409,7 +442,7 @@ class Hub:
         }
 
         async def one(holder: Session, entry: Entry) -> dict[str, Any]:
-            ack = await self._hand_over(holder, dict(message), entry.handle)
+            ack = await self._offer(holder, entry.session_id, dict(message), entry.handle)
             return {"to": entry.public().to_wire(), "disposition": ack["disposition"]}
 
         results = await asyncio.gather(*(one(h, e) for h, e in targets), return_exceptions=True)
@@ -742,6 +775,8 @@ class Hub:
             said = clean_text(reason)[:300] if isinstance(reason, str) else ""
             if not isinstance(ack.get("accepted"), bool):
                 said = "the session's answer was not understood"
+            elif ack.get("busy") is True:
+                raise _Busy(said or "that session's inbox is full")
             raise Refused("rejected", said or "not accepted")
         disposition = ack.get("disposition")
         # Whether it went as the recipient's own prompt is what the broker decided, which the sender cannot know: the
@@ -750,6 +785,110 @@ class Hub:
             "disposition": disposition if isinstance(disposition, str) else "",
             "direct": message.get("direct") is True,
         }
+
+    # -- a message that has to wait for room --------------------------------------------------------
+    async def _offer(self, recipient: Session, session_id: str, message: dict[str, Any], handle: str) -> dict[str, Any]:
+        """Hand a message over, or keep it for later when the recipient's inbox is full.
+
+        Keeping it is what separates saving from delivering: the message is written down at once and a task of its own
+        (:meth:`_drain`) offers it to the session whenever there is room, so the sender is not made to wait or to try
+        again. A message behind others that are already kept waits behind them, which keeps the order. Pictures are
+        never kept, because they are too big to hold for a session that may never make room.
+
+        Returns:
+            The same answer :meth:`_hand_over` gives, with ``disposition`` ``"held"`` and the id of the row that holds
+            the message under ``held`` when it was kept.
+        """
+        if message.get("images"):
+            try:
+                return await self._hand_over(recipient, message, handle)
+            except _Busy as busy:
+                raise Refused("busy", busy.reason) from None
+        if self.store.held_count(session_id) == 0:
+            try:
+                return await self._hand_over(recipient, message, handle)
+            except _Busy:
+                pass
+        return self._hold(session_id, message, handle)
+
+    def _hold(self, session_id: str, message: dict[str, Any], handle: str) -> dict[str, Any]:
+        """Write a message down for a session that has no room and start offering it; refuse when too much is held."""
+        if self.store.held_count(session_id) >= MAX_HELD or self.store.held_count() >= MAX_HELD_TOTAL:
+            raise Refused("busy", f"@{handle} has too many messages waiting; try again when it is less busy")
+        try:
+            held = self.store.hold(session_id, message)
+        except Exception:  # noqa: BLE001 - a store that cannot keep it leaves the sender to try again
+            logger.exception("store.failed")
+            raise Refused("busy", f"@{handle}'s inbox is full and the message could not be kept") from None
+        self._deliver_held(session_id)
+        return {"disposition": "held", "direct": message.get("direct") is True, "held": held}
+
+    def _deliver_held(self, session_id: str) -> None:
+        """Make sure a task is offering the messages held for a session."""
+        task = self._deliveries.get(session_id)
+        if self.closing or (task is not None and not task.done()):
+            return
+        self._deliveries[session_id] = asyncio.get_running_loop().create_task(self._drain(session_id))
+
+    async def _drain(self, session_id: str) -> None:
+        """Offer the messages held for one session, oldest first, until none is left or the session is gone.
+
+        A full inbox is waited out with a growing pause; a session that left ends the task, and the messages stay in
+        the file until it is registered again (:meth:`_on_session`), which may be after the broker was restarted.
+        """
+        pause = self.retry_min
+        try:
+            while not self.closing:
+                row = self.store.next_held(session_id)
+                if row is None:
+                    return
+                owner = self.roster.owner_of(session_id)
+                holder = self.sessions.get(owner) if owner is not None else None
+                entry = self.roster.of(owner) if owner is not None else None
+                if holder is None or entry is None:
+                    return
+                message = row["message"]
+                if not isinstance(message, dict):
+                    self._settle(row, "failed", "unreadable")
+                    continue
+                try:
+                    ack = await self._hand_over(holder, message, entry.handle)
+                except _Busy:
+                    await asyncio.sleep(pause)
+                    pause = min(pause * 2, self.retry_max)
+                    continue
+                except Refused as refused:
+                    if refused.reason == "gone":
+                        return
+                    # It may still read what it did not answer: offering the message again could deliver it twice.
+                    self._settle(row, "failed", refused.reason)
+                    continue
+                pause = self.retry_min
+                self._settle(row, "delivered", ack["disposition"])
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 - a delivery that breaks must not take the broker with it
+            logger.exception("delivery.failed")
+        finally:
+            if self._deliveries.get(session_id) is asyncio.current_task():
+                del self._deliveries[session_id]
+
+    def _settle(self, row: dict[str, Any], status: str, disposition: str) -> None:
+        """Finish a held message: forget it, and say in the history how it ended."""
+        try:
+            self.store.release_held(row["id"])
+            if row["message_id"] is not None:
+                stored = self.store.set_delivery(row["message_id"], status, disposition)
+                if stored is not None:
+                    self._tell_observers({"op": "traffic", "kind": "delivery", "message": stored})
+        except Exception:  # noqa: BLE001 - what was delivered stays delivered whether or not it is written down
+            logger.exception("store.failed")
+
+    def stop_deliveries(self) -> None:
+        """Stop offering held messages; they stay in the file for the next broker."""
+        for task in self._deliveries.values():
+            task.cancel()
+        self._deliveries.clear()
 
     # -- telling the sessions ---------------------------------------------------------------------
     def _announce(self) -> None:

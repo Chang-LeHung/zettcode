@@ -166,6 +166,13 @@ class RawPeer:
         await self.send({"op": "ack", "id": delivery["id"], "accepted": False, "reason": why})
         return delivery
 
+    async def busy(self, why: str = "inbox full") -> dict[str, Any]:
+        """Answer the next delivery with "my inbox is full right now"."""
+        delivery = await self.waiting()
+        self._answered.add(delivery["id"])
+        await self.send({"op": "ack", "id": delivery["id"], "accepted": False, "reason": why, "busy": True})
+        return delivery
+
     async def ended(self, timeout: float = 2.0) -> bool:
         """Wait until the connection has closed."""
         try:

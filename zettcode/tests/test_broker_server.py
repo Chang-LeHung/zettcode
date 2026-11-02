@@ -627,7 +627,7 @@ async def test_the_rate_limit_is_per_connection():
         await server.aclose()
 
 
-async def test_a_session_with_too_many_messages_waiting_is_told_busy_and_the_rest_are_not_queued_for_ever():
+async def test_a_session_with_too_many_messages_waiting_for_an_answer_has_the_rest_held_not_queued_for_ever():
     server = await started(idle_exit=60, ack_timeout=5)
     server.broker.limits = Limits(rate_limit=1000)
     try:
@@ -637,7 +637,8 @@ async def test_a_session_with_too_many_messages_waiting_is_told_busy_and_the_res
 
         answer = await sender.post(**message("b", "one too many"))
 
-        assert reason(answer) == "busy" and answer["status"] == 503
+        assert answer["status"] == 200 and answer["disposition"] == "held"
+        assert len(silent.requests()) == MAX_WAITING, "nothing more is pushed at a session that has not answered"
         for task in waiting:
             task.cancel()
     finally:

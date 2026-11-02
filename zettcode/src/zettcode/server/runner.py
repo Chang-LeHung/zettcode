@@ -62,8 +62,9 @@ ClientFactory = Callable[[], "Client"]
 #: One frame of a run: its SSE event name, and the JSON payload under it.
 Frame = tuple[str, dict[str, object]]
 
-#: Messages another session may leave waiting for this chat; beyond it the sender is refused, as in the terminal.
-MAX_INBOX = 16
+#: Messages another session may leave waiting for this chat; beyond it the broker keeps them and offers them again
+#: when there is room, as for the terminal.
+MAX_INBOX = 64
 
 
 @dataclass(frozen=True, slots=True)
@@ -700,7 +701,7 @@ class Runner:
                 slot.steered.append((key, message))
                 return Receipt(True, disposition="steered")
         if len(slot.messages) >= MAX_INBOX:
-            return Receipt(False, f"this chat already has {len(slot.messages)} messages waiting")
+            return Receipt(False, f"this chat already has {len(slot.messages)} messages waiting", busy=True)
         self._hold_message(slot, message)
         return Receipt(True, disposition="queued")
 

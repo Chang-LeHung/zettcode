@@ -719,16 +719,21 @@ class Session:
         client._check_open()
         client._check_free()
         _check_timeout(timeout)
-        relayed = Relayed(
-            sender_id=message.sender_id,
-            sender=message.sender,
-            text=message.text,
-            via=message.via,
-            hops=message.hops,
-            direct=message.direct,
-            mode=message.mode,
-            group=message.group,
-        )
+
+        def relayed_of(item: IncomingMessage) -> Relayed:
+            return Relayed(
+                sender_id=item.sender_id,
+                sender=item.sender,
+                text=item.text,
+                via=item.via,
+                hops=item.hops,
+                direct=item.direct,
+                mode=item.mode,
+                group=item.group,
+                batch=tuple(relayed_of(each) for each in item.batch),
+            )
+
+        relayed = relayed_of(message)
         return RunStream(
             self,
             lambda: client._agent.stream((), relayed=relayed),

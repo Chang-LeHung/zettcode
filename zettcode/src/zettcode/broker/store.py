@@ -80,6 +80,14 @@ CREATE TABLE IF NOT EXISTS members (
     PRIMARY KEY (name, session_id)
 );
 CREATE INDEX IF NOT EXISTS members_session ON members (session_id);
+CREATE TABLE IF NOT EXISTS held (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts         REAL NOT NULL,
+    session_id TEXT NOT NULL,
+    message_id INTEGER,
+    payload    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS held_session ON held (session_id, id);
 """
 
 
@@ -235,6 +243,55 @@ class Store:
     def _one(self, row_id: int | None) -> dict[str, Any]:
         row = self._db.execute("SELECT * FROM messages WHERE id = ?", (row_id,)).fetchone()
         return _wire(row)
+
+    # -- messages that are waiting for room ------------------------------------------------------
+    def hold(self, session_id: str, payload: dict[str, Any]) -> int:
+        """Keep a message for a session whose inbox is full, and return the id of the row that holds it."""
+        cursor = self._db.execute(
+            "INSERT INTO held (ts, session_id, message_id, payload) VALUES (?,?,NULL,?)",
+            (float(self.clock()), session_id, json.dumps(payload)),
+        )
+        return int(cursor.lastrowid or 0)
+
+    def link_held(self, held_id: int, message_id: int) -> None:
+        """Say which history row a held message is, so that delivering it can update that row."""
+        self._db.execute("UPDATE held SET message_id = ? WHERE id = ?", (message_id, held_id))
+
+    def held_count(self, session_id: str | None = None) -> int:
+        """Return how many messages are held, for one session or for all."""
+        if session_id is None:
+            return int(self._db.execute("SELECT COUNT(*) FROM held").fetchone()[0])
+        return int(self._db.execute("SELECT COUNT(*) FROM held WHERE session_id = ?", (session_id,)).fetchone()[0])
+
+    def next_held(self, session_id: str) -> dict[str, Any] | None:
+        """Return the oldest message held for a session as ``{"id", "message_id", "message"}``, or ``None``."""
+        row = self._db.execute(
+            "SELECT id, message_id, payload FROM held WHERE session_id = ? ORDER BY id LIMIT 1", (session_id,)
+        ).fetchone()
+        if row is None:
+            return None
+        try:
+            message = json.loads(row["payload"])
+        except ValueError:
+            message = None
+        return {"id": row["id"], "message_id": row["message_id"], "message": message}
+
+    def release_held(self, held_id: int) -> None:
+        """Forget a held message: it was delivered, or will never be."""
+        self._db.execute("DELETE FROM held WHERE id = ?", (held_id,))
+
+    def held_sessions(self) -> list[str]:
+        """Return the sessions that have messages held, oldest first."""
+        rows = self._db.execute("SELECT session_id FROM held GROUP BY session_id ORDER BY MIN(id)").fetchall()
+        return [row["session_id"] for row in rows]
+
+    def set_delivery(self, message_id: int, status: str, disposition: str) -> dict[str, Any] | None:
+        """Change how a stored message ended up (a held one is delivered later); return it, or ``None`` if it is gone."""
+        self._db.execute(
+            "UPDATE messages SET status = ?, disposition = ? WHERE id = ?", (status, disposition, message_id)
+        )
+        row = self._db.execute("SELECT * FROM messages WHERE id = ?", (message_id,)).fetchone()
+        return None if row is None else _wire(row)
 
     def _page(self, where: str, args: tuple[Any, ...], limit: int, before: int | None) -> list[dict[str, Any]]:
         """Return the newest ``limit`` messages that match, oldest first; ``before`` is the id to page back from."""

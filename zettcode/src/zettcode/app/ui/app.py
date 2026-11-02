@@ -109,6 +109,19 @@ from .widgets import (
 logger = logging.getLogger("zettcode.terminal")
 
 
+def _incoming(relayed: Relayed) -> IncomingMessage:
+    """Return the SDK's message for one another session sent, with the ones merged into it."""
+    return IncomingMessage(
+        sender_id=relayed.sender_id,
+        sender=relayed.sender,
+        text=relayed.text,
+        via=relayed.via,
+        hops=relayed.hops,
+        group=relayed.group,
+        batch=tuple(_incoming(each) for each in relayed.batch),
+    )
+
+
 class ZettCodeApp(
     BarsMixin,
     KeysMixin,
@@ -1202,17 +1215,7 @@ class ZettCodeApp(
             # A turn is a message the reader wrote (text, pictures, and ``@`` references the SDK resolves with the same
             # registry the composer completes from), or one another session sent.
             if relayed is not None:
-                run = self.client.session.relay(
-                    IncomingMessage(
-                        sender_id=relayed.sender_id,
-                        sender=relayed.sender,
-                        text=relayed.text,
-                        via=relayed.via,
-                        hops=relayed.hops,
-                        group=relayed.group,
-                    ),
-                    **self._answers(),
-                )
+                run = self.client.session.relay(_incoming(relayed), **self._answers())
             else:
                 run = self.client.session.prompt(
                     prompt_pieces(parts or (prompt,)),

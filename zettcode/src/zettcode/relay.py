@@ -17,7 +17,7 @@ read the one type defined here.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -87,6 +87,8 @@ class Relayed:
     mode: str = MODE_STEER
     group: str = ""
     images: tuple[ImageData, ...] = ()
+    #: The messages this one stands for when several that waited were merged into one turn (see :func:`merge`).
+    batch: tuple[Relayed, ...] = ()
 
     def mark(self) -> dict[str, object]:
         """Return what is stored beside the message, as plain data."""
@@ -108,6 +110,30 @@ class Relayed:
         says so; one the other reader typed is that reader's own words. Either way it says that this
         session's reply goes to its own reader only — the sender receives what is sent with the tool.
         """
+        if self.batch:
+            return self._framed_batch()
+        return f"[{self._source()} {self._reply()}]\n\n{self.text}"
+
+    def _framed_batch(self) -> str:
+        """Return what the model reads for several messages that waited: each under its own line of provenance."""
+        total = len(self.batch)
+        head = (
+            f"[{total} messages from other sessions waited while you were busy, and are given to you together, oldest "
+            f"first. Each says who sent it and how far to trust it. Your answer here is shown only to your own user; "
+            f"the senders see nothing of it. Answer a sender only if its message needs an answer from you, with "
+            f"{REPLY_TOOL}; never reply just to thank, confirm or say goodbye.]"
+        )
+        parts = [head]
+        for number, item in enumerate(self.batch, start=1):
+            target = f'group="{item.group}"' if item.group else f'to="{item.sender_id}"'
+            parts.append(
+                f"--- Message {number} of {total} ---\n[{item._source()} To answer: {REPLY_TOOL}({target}, message=...)]"
+                f"\n\n{item.text}"
+            )
+        return "\n\n".join(parts)
+
+    def _source(self) -> str:
+        """Return the sentence that says who wrote this message and how far to trust it."""
         who = f'"{self.sender}" (session {self.sender_id})'
         if self.via == VIA_EXTERNAL:
             source = (
@@ -124,22 +150,26 @@ class Relayed:
             )
         else:
             source = f"The user of another ZettCode session, {who}, typed this message to you."
-        reply = (
-            f"Your answer here is shown only to your own user; the sender sees nothing of it. "
-            f'If the sender needs an answer from you, call {REPLY_TOOL}(to="{self.sender_id}", message=...); if it needs '
-            f"none, send nothing. Never reply just to thank, confirm or say goodbye, and do not answer a message that "
-            f"only does so."
-        )
         if self.group:
             source += f" It was written in the group chat #{self.group}, which every member of the group can read."
-            reply = (
+        return source
+
+    def _reply(self) -> str:
+        """Return the sentence that says where this session's answer goes, and how to answer the sender."""
+        if self.group:
+            return (
                 f"Your answer here is shown only to your own user. Answer in the group only if the message needs an "
                 f"answer from you, and only if you are the one who has it: call "
                 f'{REPLY_TOOL}(group="{self.group}", message=...) for everyone, or '
                 f'{REPLY_TOOL}(to="{self.sender_id}", message=...) for the sender alone. Never reply just to thank, '
                 f"agree, confirm or say goodbye, and do not answer a message that only does so."
             )
-        return f"[{source} {reply}]\n\n{self.text}"
+        return (
+            f"Your answer here is shown only to your own user; the sender sees nothing of it. "
+            f'If the sender needs an answer from you, call {REPLY_TOOL}(to="{self.sender_id}", message=...); if it needs '
+            f"none, send nothing. Never reply just to thank, confirm or say goodbye, and do not answer a message that "
+            f"only does so."
+        )
 
     def message(self) -> UserMessage:
         """Return the message that is stored and sent to the model.
@@ -149,6 +179,62 @@ class Relayed:
         references.
         """
         return UserMessage(content=self.framed(), attributes={"prompt": self.text, RELAY: self.mark()})
+
+
+def merge(items: Sequence[Relayed]) -> Relayed:
+    """Return one message that stands for all of ``items``, oldest first, to be run as a single turn.
+
+    The model reads each message under its own line saying who sent it (see :meth:`Relayed.framed`), so merging loses
+    nothing it needs to weigh them; what is stored and shown to a reader is the senders' names and their words in
+    order. One message is returned as it is.
+    """
+    if len(items) == 1:
+        return items[0]
+    senders = list(dict.fromkeys(item.sender for item in items))
+    return Relayed(
+        sender_id=items[0].sender_id,
+        sender=", ".join(senders),
+        text="\n\n".join(f"{item.sender}: {item.text}" for item in items),
+        via=VIA_AGENT if any(item.by_agent for item in items) else VIA_USER,
+        hops=max(item.hops for item in items),
+        batch=tuple(items),
+    )
+
+
+class _Waiting(Protocol):
+    """What :func:`batch_size` reads of a message that waits."""
+
+    @property
+    def direct(self) -> bool:
+        """Whether it is a chat window's message, which has to be answered on its own."""
+
+    @property
+    def text(self) -> str:
+        """What it says."""
+
+
+#: The most messages one merged turn takes, and the most text: what is left waits for the turn after. A session that
+#: was busy for long may have a long inbox, and the model should not be handed all of it in one prompt.
+MERGE_MESSAGES = 16
+MERGE_CHARS = 48_000
+
+
+def batch_size(waiting: Sequence[_Waiting]) -> int:
+    """Return how many messages at the front of an inbox go into the next turn together.
+
+    A chat window's message is answered by the turn it starts, so it is always a turn of its own, and nothing is
+    merged into it. Otherwise it is the messages up to the first window's, as many as :data:`MERGE_MESSAGES` and
+    :data:`MERGE_CHARS` allow (the first is always taken, however long). ``0`` for an empty inbox.
+    """
+    count, chars = 0, 0
+    for item in waiting:
+        if item.direct:
+            return count or 1
+        chars += len(item.text)
+        if count and (count >= MERGE_MESSAGES or chars > MERGE_CHARS):
+            break
+        count += 1
+    return count
 
 
 def relay_of(attributes: object, text: str) -> Relayed | None:

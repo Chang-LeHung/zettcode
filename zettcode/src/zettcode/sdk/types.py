@@ -8,7 +8,7 @@ beyond arithmetic on their own fields.
 from __future__ import annotations
 
 import mimetypes
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, fields
 from datetime import date, datetime
 from pathlib import Path
@@ -563,6 +563,9 @@ class IncomingMessage:
             front end that cannot steer a running request — a polled inbox — holds it as a follow-up and answers
             ``queued``.
         images: The pictures a ``direct`` message carries, to put into the prompt with the text.
+        batch: When several messages that waited were merged into this one (see :meth:`merged`), the messages
+            themselves, oldest first. ``text`` is then their words in order, for a log or a title; the model is given
+            each under its own line saying who sent it.
     """
 
     sender_id: str
@@ -574,6 +577,26 @@ class IncomingMessage:
     mode: str = MODE_STEER
     group: str = ""
     images: tuple[Image, ...] = ()
+    batch: tuple[IncomingMessage, ...] = ()
+
+    @classmethod
+    def merged(cls, items: Sequence[IncomingMessage]) -> IncomingMessage:
+        """Return one message that stands for ``items``, oldest first, to be run as a single turn.
+
+        A chat window's message (``direct``) is answered by the turn it starts, so it is never merged: pass it alone.
+        One message is returned as it is.
+        """
+        if len(items) == 1:
+            return items[0]
+        senders = list(dict.fromkeys(item.sender for item in items))
+        return cls(
+            sender_id=items[0].sender_id,
+            sender=", ".join(senders),
+            text="\n\n".join(f"{item.sender}: {item.text}" for item in items),
+            via="agent" if any(item.via != "user" for item in items) else "user",
+            hops=max(item.hops for item in items),
+            batch=tuple(items),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -586,11 +609,14 @@ class Receipt:
         disposition: What will happen to it: ``"started"`` (a turn began), ``"steered"`` (the request that was
             running took it into account), ``"queued"`` (it waits for the current request to end), or
             ``"delivered"`` (a chat window kept it without starting a turn).
+        busy: With ``accepted`` false: the inbox is full right now, which will pass. The broker keeps such a message
+            and offers it again when there is room, instead of telling the sender it was refused.
     """
 
     accepted: bool
     reason: str = ""
     disposition: str = ""
+    busy: bool = False
 
 
 @dataclass(frozen=True, slots=True)

@@ -29,16 +29,17 @@ from typing import TYPE_CHECKING
 
 from zettcode.broker.client import Receipt
 from zettcode.modes import MODE_STEER
-from zettcode.relay import Relayed
+from zettcode.relay import Relayed, batch_size, merge
 
 from .shell import ShellState
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from ..agent.agent import SessionLink
 
-#: Messages from other sessions that may wait for a request to end. A session that is flooded refuses
-#: the rest, and the sender is told why, instead of this shell holding an unbounded list.
-MAX_INBOX = 16
+#: Messages from other sessions that may wait for a request to end. Past this the session says its inbox is full and
+#: the broker keeps the message and offers it again when there is room, so this shell does not hold an unbounded
+#: list. The ones that wait are run together as one turn when the request ends.
+MAX_INBOX = 64
 
 #: Characters of a waiting message that the notice repeats, so the reader can tell which one it is.
 _PREVIEW = 60
@@ -156,7 +157,9 @@ class MessagingMixin(ShellState):
             return Receipt(True, disposition="steered")
         if len(self._inbox) >= MAX_INBOX:
             return Receipt(
-                False, f"this session already has {len(self._inbox)} messages waiting; try again when it is less busy"
+                False,
+                f"this session already has {len(self._inbox)} messages waiting; try again when it is less busy",
+                busy=True,
             )
         self._inbox.append(relayed)
         preview = relayed.text.replace("\n", " ")
@@ -238,8 +241,14 @@ class MessagingMixin(ShellState):
             await self.client.send_back(message, answer if answer.strip() else DIRECT_EMPTY)
 
     def _start_next_relayed(self) -> bool:
-        """Start the oldest waiting message, if there is one and nothing is running."""
+        """Start the oldest waiting messages, if there are any and nothing is running.
+
+        The ones that waited start as a single turn (see :func:`~zettcode.relay.batch_size`): a window that was busy
+        answers them together instead of one turn each, and a chat window's message is always a turn of its own.
+        """
         if self._busy or self._updating or not self._inbox:
             return False
-        self._start_relayed(self._inbox.pop(0))
+        count = batch_size(self._inbox)
+        taken = [self._inbox.pop(0) for _ in range(count)]
+        self._start_relayed(merge(taken))
         return True

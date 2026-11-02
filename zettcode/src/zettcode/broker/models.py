@@ -61,11 +61,14 @@ class Receipt:
         disposition: What will happen to it: ``"started"`` (a turn began), ``"steered"`` (the request that was
             running took it into account), ``"queued"`` (it waits for the current request to end), or
             ``"delivered"`` (a chat window kept it without starting a turn).
+        busy: With ``accepted`` false: the inbox is full right now, which will pass. The broker keeps such a message
+            and offers it again when there is room, instead of telling the sender it was refused.
     """
 
     accepted: bool
     reason: str = ""
     disposition: str = ""
+    busy: bool = False
 
 
 @dataclass(frozen=True, slots=True)

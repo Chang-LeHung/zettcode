@@ -782,7 +782,14 @@ def _describe(info: SessionInfo) -> dict[str, Any]:
 
 def _ack(receipt: Receipt) -> dict[str, Any]:
     """Return a receipt as the fields of an ``ack``."""
-    return {"accepted": receipt.accepted, "reason": receipt.reason, "disposition": receipt.disposition}
+    answer: dict[str, Any] = {
+        "accepted": receipt.accepted,
+        "reason": receipt.reason,
+        "disposition": receipt.disposition,
+    }
+    if receipt.busy:
+        answer["busy"] = True
+    return answer
 
 
 __all__ = [

@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ..error_text import may_pass
+from ..relay import batch_size
 from ..sdk.types import DIRECT_EMPTY, DIRECT_FAILED, IncomingMessage, Receipt
 from .state import Record, Registry, State
 
@@ -32,9 +33,10 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
 
     from ..sdk.client import Client
 
-#: Messages that may wait behind the turn in progress. A daemon is a colleague, not a queue: beyond this the sender
-#: is told it is busy and can try again, rather than its message living somewhere nobody looks.
-MAX_WAITING = 4
+#: Messages that may wait behind the turn in progress. Past this the daemon says its inbox is full, and the broker
+#: keeps the message and offers it again when there is room, so a message is neither lost nor living somewhere nobody
+#: looks. They are run together (see :meth:`Inbox.done`), so a long inbox is one turn, not one per message.
+MAX_WAITING = 64
 
 #: How many times a turn that failed in a way that may pass is tried again, and how long to wait before each try.
 #: The retry continues the interrupted request; a failure that would fail again is not retried at all.
@@ -76,7 +78,7 @@ class Inbox:
         return len(self._waiting)
 
     def offer(self, message: IncomingMessage) -> Receipt:
-        """Take a message: start it now when nothing runs, hold it when there is room, refuse when there is not."""
+        """Take a message: start it now when nothing runs, hold it when there is room, say so when there is not."""
         if not self._busy:
             self._busy = True
             self._start(message)
@@ -84,12 +86,23 @@ class Inbox:
         if len(self._waiting) < self._limit:
             self._waiting.append(message)
             return Receipt(True, disposition="queued")
-        return Receipt(False, f"this daemon already has {self._limit} messages waiting; try again when it is less busy")
+        # ``busy`` tells the broker this will pass: it keeps the message and offers it again when there is room, so
+        # the sender is not made to try again.
+        return Receipt(
+            False,
+            f"this daemon already has {self._limit} messages waiting; try again when it is less busy",
+            busy=True,
+        )
 
     def done(self) -> IncomingMessage | None:
-        """Close the turn that ended: return the next message to run, or ``None`` when the daemon is idle again."""
+        """Close the turn that ended: return the next message to run, or ``None`` when the daemon is idle again.
+
+        The messages that waited come back as one, in order (see :func:`~zettcode.relay.batch_size`), so a daemon that
+        was busy answers them in a single turn instead of one turn each; a chat window's message is always its own.
+        """
         if self._waiting:
-            return self._waiting.popleft()
+            count = batch_size(tuple(self._waiting))
+            return IncomingMessage.merged([self._waiting.popleft() for _ in range(count)])
         self._busy = False
         return None
 
@@ -353,7 +366,10 @@ class Daemon:
         A sender with no session to answer — ``daemon prompt`` speaks as an external name — cannot be told; the
         reason is left in the log, which is the only place it can be read afterwards.
         """
-        await self._tell(message, f"{DIRECT_FAILED}{why}"[:500], what=f"the turn failed: {why}")
+        reason = f"{DIRECT_FAILED}{why}"[:500]
+        # Every sender whose message was part of a merged turn is told, not only the first.
+        for item in message.batch or (message,):
+            await self._tell(item, reason, what=f"the turn failed: {why}")
 
     async def _tell(self, message: IncomingMessage, text: str, *, what: str) -> None:
         """Send a line back to the sender, and leave the fact in the log when there is nobody to receive it."""
