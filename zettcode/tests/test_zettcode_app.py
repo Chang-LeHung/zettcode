@@ -3948,6 +3948,7 @@ async def test_btw_asks_a_side_question_and_marks_it():
     message = app.agent.runtime.client.messages[-1]
     assert isinstance(message, UserMessage)
     assert message.attributes.get("side") is True
+    assert message.attributes.get("watched") is True, "the reader asked it, so a reopen restores it"
     assert message.include_in_messages is False
 
     side_entries = [entry for entry in app.transcript.entries if getattr(entry, "side", False)]

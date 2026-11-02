@@ -309,3 +309,26 @@ def test_the_sdk_spells_the_readers_origin_the_way_the_engine_does():
 
     for name in ("ask", "ask_stream"):
         assert signature(getattr(Session, name)).parameters["origin"].default == READER
+
+
+async def test_a_window_counts_the_rows_it_draws_and_not_the_runs_it_skips(tmp_path: Path):
+    """The window reaches back past a tail of unwatched runs, so a resumed transcript still holds its rows.
+
+    The window walks back until it has counted enough rows; counting lines that replay then skips makes it stop inside
+    that tail, and the transcript comes back empty. Three ordinary turns under seventy skipped lines is the smallest
+    case that shows it: without the skip, ``max_entries=1`` is satisfied by the tail alone. With it, the tail counts
+    nothing, the window falls back to the whole branch, and the turns are there — and none of the recaps are.
+    """
+    store = SessionStore(tmp_path)
+    for index in range(3):
+        await store.append("s1", f"turn{index}", UserMessage(content=f"the reader's turn {index}"))
+    for index in range(35):
+        tags = {"side": True, "watched": False}
+        await store.append("s1", f"recap{index}", question(f"recap {index}"), tags=tags)
+        await store.append("s1", f"recap{index}", AssistantMessage(content=f"summary {index}"), tags=tags)
+
+    replayed = replay(store.read("s1"), max_entries=1)
+
+    rows = [getattr(entry, "text", "") for entry in replayed.transcript.entries]
+    assert rows == ["the reader's turn 0", "the reader's turn 1", "the reader's turn 2"]
+    assert not any(text.startswith(("recap", "summary")) for text in rows), "nor anything of the skipped tail"

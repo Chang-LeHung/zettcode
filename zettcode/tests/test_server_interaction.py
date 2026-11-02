@@ -207,7 +207,7 @@ async def test_a_side_question_is_answered_without_joining_the_conversation():
 
     assert response.json() == {"answer": "about what changed?"}
     assert client.session.asked_side == ["what changed?"]
-    assert client.session.asked_watched == [True], "the same word the streamed sibling passes"
+    assert client.session.asked_side_with == [("reader", None)], "the same pair the streamed sibling passes"
 
 
 async def test_a_side_question_is_refused_while_a_run_is_going_as_the_terminal_queues_it_instead():

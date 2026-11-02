@@ -16,7 +16,6 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from zettcode.engine.dialogue.side import READER, watched_by
 from zettcode.sdk.errors import SessionNotFoundError
 from zettcode.sdk.events import AnyEvent, TextDelta
 from zettcode.sdk.types import (
@@ -115,8 +114,9 @@ class FakeSession:
         )
         self.usage = Usage(input_tokens=10, output_tokens=2, requests=1)
         self.asked_side: list[str] = []
-        #: Whether each of those asked the reader to be watching it: both HTTP side-question paths say yes.
-        self.asked_watched: list[bool] = []
+        #: The `(origin, watched)` each of those was asked with, exactly as the endpoint passed them: both HTTP
+        #: side-question paths pass neither, which is the reader's origin and so a reopen may restore it.
+        self.asked_side_with: list[tuple[str, bool | None]] = []
         self.steered: list[str] = []
         self.steering = True
         self.resume_info: object | None = None
@@ -142,20 +142,20 @@ class FakeSession:
         return target
 
     async def ask(
-        self, question: str, *, timeout: float | None = None, origin: str = READER, watched: bool | None = None
+        self, question: str, *, timeout: float | None = None, origin: str = "reader", watched: bool | None = None
     ) -> str:
         self.asked_side.append(question)
-        self.asked_watched.append(watched_by(origin, watched))
+        self.asked_side_with.append((origin, watched))
         return f"about {question}"
 
     #: What the next streamed side question does; a test sets it to hold the answer open.
     side_hold: asyncio.Event | None = None
 
     def ask_stream(
-        self, question: str, *, timeout: float | None = None, origin: str = READER, watched: bool | None = None
+        self, question: str, *, timeout: float | None = None, origin: str = "reader", watched: bool | None = None
     ) -> FakeRun:
         self.asked_side.append(question)
-        self.asked_watched.append(watched_by(origin, watched))
+        self.asked_side_with.append((origin, watched))
         return FakeRun(
             [TextDelta(self.id, "about "), TextDelta(self.id, question)],
             result=RunResult(text=f"about {question}", session_id=self.id),

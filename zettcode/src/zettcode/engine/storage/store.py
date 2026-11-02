@@ -115,10 +115,10 @@ class _Request:
     side: bool = False
     #: Whether the reader watched that side question on screen, which is what
     #: a resumed transcript restores: a plugin's own question is never drawn.
-    #: These two are set together, from the run's own question (:meth:`on_event`),
-    #: so the values here are only read for a run whose question was never seen —
-    #: and a resumed run has no input message at all, which is why the pair cannot
-    #: be one field without losing what "no question seen" means.
+    #: Both are set together, from the run's own question (:meth:`on_event`), and
+    #: read only for a request already known to be a side one, so the defaults are
+    #: what the dataclass requires and nothing more: a run whose question was never
+    #: seen is not a side run at all, and its lines go untagged.
     watched: bool = False
     #: Who asked it — ``"reader"``, or the plugin asking for itself — kept as a
     #: tag so a stored exchange says what it was without reading its text.

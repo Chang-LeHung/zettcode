@@ -551,9 +551,9 @@ def create_app(settings: Settings, *, client_factory: ClientFactory | None = Non
     async def ask_side_question(body: SideQuestionRequest, runner: RunnerDep) -> AnswerOut:
         """Ask something answered from the conversation but kept out of it, as ``/btw`` does.
 
-        Watched, as the streamed sibling is: the answer is the front end's to draw, and a client that shows it has seen
-        the exchange. Only the terminal restores one on resume — ``/history`` leaves every side exchange out — so the
-        word is about the same thing on both paths.
+        The client that asked is the reader, so the run is stored with the reader's origin and a reopen may restore it;
+        nothing has to be passed for that. Only the terminal restores one on resume — ``/history`` leaves every side
+        exchange out — and what is drawn live is the front end's own decision, as for the streamed sibling.
         """
         if runner.busy:
             raise SessionBusyError("A run is already in progress; ask again when it ends")

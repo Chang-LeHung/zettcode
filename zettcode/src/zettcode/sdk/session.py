@@ -799,10 +799,11 @@ class Session:
         to itself that it carries — does not come back as the reader's words. Draw the part of the answer you want as a
         message of your own.
 
-        ``watched`` overrides what ``origin`` implies, for a plugin that does draw its own question on the reader's
-        screen; left out, a reader's question was watched and a plugin's was not. Neither says anything about the
-        stream: every event of the run still reaches whoever iterates it, and a front end that shows nothing of a
-        question it did not ask drops them as they arrive.
+        ``watched`` overrides what ``origin`` implies, and it is about a reopen only: left out, a reader's question is
+        restored and a plugin's is not, and setting it does not make a front end draw the exchange now — a shell still
+        drops a side question it did not begin, so a question never drawn comes back as a row nobody saw. Neither says
+        anything about the stream: every event of the run still reaches whoever iterates it, and a front end that shows
+        nothing of a question it did not ask drops them as they arrive.
 
         The answer is never replayed, so the request does not extend the provider's cache by default: it starts at
         ``"read"``, which reuses the conversation's warm prefix and marks only the stable parts. Pass ``"read_write"``

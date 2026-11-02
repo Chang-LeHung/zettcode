@@ -82,8 +82,8 @@ class TurnsMixin(AgentBase):
             origin: Who asked a side question — ``"reader"`` for the reader's ``/btw``, or the name of the plugin
                 asking for itself. It is stored with the exchange, and only a reader's own is restored into a transcript
                 by default.
-            watched: Whether the reader watched this side question on screen, overriding what ``origin`` implies, for a
-                plugin that draws its own question. Ignored when ``side`` is false.
+            watched: Whether a reopened transcript restores this exchange, overriding what ``origin`` implies. It does
+                not make a front end draw it now. Ignored when ``side`` is false.
 
         Raises:
             SessionLocked: Another process has the session open. Checked before anything else, and a side
@@ -225,8 +225,8 @@ class TurnsMixin(AgentBase):
                 never replays.
             origin: Who asked it: ``"reader"``, or the name of the plugin asking for itself. The store keeps it beside
                 the side mark.
-            watched: Whether the reader watched it, overriding what ``origin`` implies. Left out, a reader's question
-                was watched and a plugin's was not; a resumed transcript restores the watched ones.
+            watched: Whether a reopened transcript restores it, overriding what ``origin`` implies. Left out, a
+                reader's question is restored and a plugin's is not; it does not make a front end draw it now.
         """
         message = TurnsMixin.turn(parts, hint=hint)
         if not side:

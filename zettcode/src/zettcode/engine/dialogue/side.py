@@ -53,9 +53,10 @@ def question(text: str, *, origin: str = READER, watched: bool | None = None) ->
         origin: Who asked it — :data:`READER` for the reader's own ``/btw``, or the name of the plugin asking for
             itself (``"recap"``). It is written down with the exchange, and a resumed transcript restores only what the
             reader asked.
-        watched: Whether the reader watched the question and its answer on screen. Left out, it follows ``origin``: a
-            question the reader asked was drawn and comes back, a plugin's own was not. Pass it to override that, for a
-            plugin that draws its own question on the reader's screen.
+        watched: Whether a reopened transcript restores this exchange. Left out, it follows ``origin``: a question the
+            reader asked comes back, a plugin's own does not. It says nothing about a front end drawing the exchange
+            now — a shell still drops a side question it did not begin — so setting it for something never drawn
+            restores a row nobody saw.
     """
     return UserMessage(
         content=text,
@@ -88,8 +89,8 @@ def _watched(values: Mapping[str, Any]) -> bool:
 def watched_by(origin: str, watched: bool | None) -> bool:
     """Return whether a side question asked as ``origin`` was watched, when the caller left it out.
 
-    A question the reader asked was drawn and comes back; a plugin's own was not. The one place this rule is written,
-    for the message and for the request that carries it.
+    A question the reader asked is restored; a plugin's own is not. This is the one place the rule is written: the
+    message and the request that carries it both come through here.
     """
     return is_reader(origin) if watched is None else watched
 
@@ -126,11 +127,11 @@ def is_side_line(line: object) -> bool:
 def is_watched_side_line(line: object) -> bool:
     """Return whether a stored line belongs to a side question the reader watched on screen.
 
-    The tags record what the front end said when it asked, and that is what a resumed transcript restores. Two facts,
-    not one: a question is drawn live only when the front end began a turn for it, which a plugin's own question never
-    does — so a plugin that leaves the default is dropped live and would still come back after a reopen. What is
-    restored is read from ``watched``, then from ``origin``, and from neither: a file written before both tags is not
-    restored; see :func:`_watched` for why that is the cheaper error.
+    The run is tagged with what the caller said when it asked, and ``watched`` alone is read back: a question a plugin
+    asked for itself stays out of a reopened transcript, so the model's instructions to itself do not come back as the
+    reader's words. ``origin`` sits beside it for whoever reads the file, and a line carrying neither tag is not
+    restored either — see :func:`_watched` for why that is the cheaper error. What a front end draws *live* is a
+    separate decision, taken where the run is begun (``app.ui.app``), not here.
     """
     if not is_side_line(line):
         return False
