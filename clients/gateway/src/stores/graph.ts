@@ -97,6 +97,15 @@ export function applyGraph(data: GraphData): void {
   graph.olderFailed = false;
   graph.loaded = true;
   graph.failed = false;
+  for (const listener of [...appliedListeners]) listener();
+}
+
+const appliedListeners = new Set<() => void>();
+
+/** Be told whenever the graph has been replaced by a fresh read, whoever asked for it. Returns the way to stop. */
+export function onGraphApplied(listener: () => void): () => void {
+  appliedListeners.add(listener);
+  return () => appliedListeners.delete(listener);
 }
 
 export function applyTraffic(message: GraphMessage): void {

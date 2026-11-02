@@ -255,7 +255,12 @@ class Store:
         return int(cursor.lastrowid or 0)
 
     def link_held(self, held_id: int, message_id: int) -> None:
-        """Say which history row a held message is, so that delivering it can update that row."""
+        """Say which history row a held message is, so that delivering it can update that row.
+
+        Done after the history row is written, so a failure here leaves a held message that is delivered without its
+        history row ever saying so: that row stays ``held`` until a broker starts and calls :meth:`expire_orphans`,
+        which marks it ``unconfirmed``. The cost of the second write is that honest, if coarse, answer.
+        """
         self._db.execute("UPDATE held SET message_id = ? WHERE id = ?", (message_id, held_id))
 
     def held_count(self, session_id: str | None = None) -> int:

@@ -78,7 +78,8 @@ title, the stored session. The message is saved with the session and shows the s
   running rather than a request, the steering limit is reached, or it came from a one-to-one chat window, which is
   answered by the turn its message starts — waits like a follow-up, and the sender is told it is queued. At most 64
   can wait in the session; past that the broker keeps the message itself (up to 500 per session, written to its
-  database so a restart does not lose them) and delivers it as soon as the session has room, and the sender is told
+  database so a restart within a week does not lose them) and delivers it as soon as the session has room, and the
+  sender is told
   it is **held**. Messages that waited are run together as one turn, oldest first and each marked with who sent it
   (at most 16 at a time); a one-to-one chat window's message is always a turn of its own.
 
