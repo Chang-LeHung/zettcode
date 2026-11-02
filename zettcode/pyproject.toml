@@ -61,7 +61,7 @@ dependencies = [
   # now leans on: a hosted tool the provider left open is closed with
   # ``output={"status": "not_reported"}`` instead of leaving the step waiting, and
   # `engine/server_tools.describe_output` reads that to say so.
-  "zett-agent>=0.2.4,<0.3",
+  "zett-agent>=0.2.6,<0.3",
 ]
 
 [project.optional-dependencies]

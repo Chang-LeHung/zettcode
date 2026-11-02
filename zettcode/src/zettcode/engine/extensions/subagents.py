@@ -186,10 +186,10 @@ def build_subagents(
     """
     from zett_agent.extensions.agents_md import AgentsMdExtension
     from zett_agent.extensions.subagent import SubAgentDefinition
-    from zett_agent.extensions.tool_guidelines import ToolGuidelinesExtension
     from zett_agent.model import ReasoningEffort
 
     from .files import FileTools
+    from .guidance import tool_guidance
 
     def instructions() -> tuple[AgentExtension, ...]:
         """A fresh project-instructions extension per child: it reads the files on every request."""
@@ -206,7 +206,7 @@ def build_subagents(
                 FileTools(read_only=True),
                 capabilities,
                 *instructions(),
-                ToolGuidelinesExtension(),
+                tool_guidance(),
             ),
             reasoning_effort=ReasoningEffort.LOW,
             max_iterations=max_iterations,
@@ -216,7 +216,7 @@ def build_subagents(
             description=REASONING_DESCRIPTION,
             system_prompt=REASONING_PROMPT,
             model=model,
-            extensions=(persistence, capabilities, *instructions(), ToolGuidelinesExtension()),
+            extensions=(persistence, capabilities, *instructions(), tool_guidance()),
             reasoning_effort=ReasoningEffort.HIGH,
             max_iterations=max_iterations,
         ),
@@ -231,7 +231,7 @@ def build_subagents(
                 *(() if shell else (FileTools(read_only=False),)),
                 capabilities,
                 *instructions(),
-                ToolGuidelinesExtension(),
+                tool_guidance(),
             ),
             reasoning_effort=ReasoningEffort.MEDIUM,
             max_iterations=max_iterations,

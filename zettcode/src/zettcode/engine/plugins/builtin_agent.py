@@ -399,18 +399,18 @@ class SideQuestionBoundary(Plugin):
 
 
 class ToolGuidance(Plugin):
-    """The guidance each tool carries into the system prompt."""
+    """The guidance each tool carries: its call shapes, guidelines and return type, in the tool's own description."""
 
     name = "tool-guidelines"
-    description = "Per-tool guidance in the prompt"
+    description = "Per-tool guidance in each tool's description"
 
     def activate(self, ctx: PluginContext) -> None:
         """Register the extension; it is small, but it belongs with the others that wait for the build."""
 
         def build(_: AgentBuild) -> AgentExtension:
-            from zett_agent.extensions.tool_guidelines import ToolGuidelinesExtension
+            from zettcode.engine.extensions.guidance import tool_guidance
 
-            return ToolGuidelinesExtension()
+            return tool_guidance()
 
         ctx.agent.register_extension_factory("ToolGuidelinesExtension", build)
 
