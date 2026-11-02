@@ -314,7 +314,7 @@ def test_the_timeline_passes_a_window_to_the_broker_and_never_sends_anything(par
     body = client.get("/api/graph/timeline?since=150&until=350&limit=99999").json()
 
     assert [m["text"] for m in body["messages"]] == ["m2", "m3"]
-    assert backend.timeline_asked == [(150.0, 350.0, 2000)], "the count is capped"
+    assert backend.timeline_asked == [(150.0, 350.0, 20_000)], "the count is capped"
     assert backend.sent == []
     assert client.get("/api/graph/timeline?since=9&until=1").status_code == 400
     assert client.get("/api/graph/timeline?since=abc").status_code == 400
@@ -472,3 +472,42 @@ def test_model_edits_run_one_at_a_time(parts):
 
     asyncio.run(both())
     assert most == 1
+
+
+def test_a_picture_is_sent_and_served_over_http_and_a_big_body_is_still_bounded(tmp_path):
+    import base64
+
+    work = tmp_path / "work"
+    work.mkdir()
+    backend = FakeBackend()
+    backend.add_daemon("01d", str(work), name="d")
+    backend.add_daemon("01p", str(work), name="p", model_name="deep", direct=True)
+    settings = Settings(token=TOKEN, roots=(work,), directory=tmp_path / "gw")
+    with TestClient(create_app(settings, backend, static=page(tmp_path)), base_url="http://testserver") as client:
+        signed_in(client)
+        png = b"\x89PNG\r\n\x1a\n" + b"\x01" * 40
+        body = {
+            "text": "what is this?",
+            "images": [{"media_type": "image/png", "data": base64.b64encode(png).decode()}],
+        }
+
+        sent = client.post("/api/threads/01p/send", json=body)
+        assert sent.status_code == 200 and sent.json()["direct"] is True
+        assert backend.pictures_sent[-1][0].data == png
+
+        item = next(i for i in client.get("/api/threads/01p").json()["items"] if i.get("images"))
+        served = client.get(f"/api/threads/01p/pictures/{item['images'][0]['id']}")
+        assert served.status_code == 200 and served.content == png and served.headers["content-type"] == "image/png"
+        assert served.headers["x-content-type-options"] == "nosniff"
+        assert "immutable" in served.headers["cache-control"]
+        assert client.get("/api/threads/01p/pictures/nothing").status_code == 404
+
+        forged = client.post("/api/threads/01p/send", json=body, headers={"origin": "https://elsewhere.example"})
+        assert forged.status_code == 403
+        huge = client.post(
+            "/api/threads/01p/send", content=b"x" * (13 << 20), headers={"content-type": "application/json"}
+        )
+        assert huge.status_code == 413
+        other = client.post("/api/daemons", content=b"x" * (300 << 10), headers={"content-type": "application/json"})
+        assert other.status_code == 413, "only a send may be that large; every other body keeps its small limit"
+        assert client.get("/api/threads/01p/pictures/x", headers={}).status_code in (404,)

@@ -142,13 +142,29 @@ class Daemon:
         self._calls: dict[str, float] = {}
 
     # -- the life of the process -------------------------------------------------------------------
+    def take(self, message: IncomingMessage) -> Receipt:
+        """Take a message from the broker: refused at once when it carries pictures this model cannot read.
+
+        The sender is told then and there, in words it can act on, rather than after a turn that was bound to fail.
+        """
+        if message.images:
+            try:
+                model = self.client.model
+                readable = model.multimodal
+                name = model.name
+            except Exception:  # noqa: BLE001 - no model to ask is no model that reads pictures
+                readable, name = False, "this session's model"
+            if not readable:
+                return Receipt(False, f"{name} does not accept pictures; send the text alone or choose another model")
+        return self.inbox.offer(message)
+
     async def serve(self) -> int:
         """Answer messages until the process is asked to stop; return the exit status."""
         _stop_on_signals(self.stopping)
         # Written before the connection is attempted: a start that fails after this point leaves a record the start
         # that made it can recognise as its own and remove, rather than a folder nobody can account for.
         await self.mark("starting")
-        if not await self.client.join_sessions(self.inbox.offer, direct=True):
+        if not await self.client.join_sessions(self.take, direct=True):
             self.record.log("the session broker is switched off, so no session can reach this daemon")
             self.record.remove()
             return EXIT_UNUSABLE
@@ -319,7 +335,7 @@ class Daemon:
         Nobody at a daemon reads its conversation as it runs, so the window is told how the turn ended: its answer, or
         that it ended without one.
         """
-        async with self.client.session.prompt(message.text) as run:
+        async with self.client.session.prompt(message.text, images=message.images) as run:
             async for event in run:
                 self._see(event)
         answer = run.result.text if run.result is not None else ""

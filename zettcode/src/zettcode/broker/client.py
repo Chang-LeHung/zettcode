@@ -25,7 +25,7 @@ import itertools
 import json
 import time
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -38,9 +38,11 @@ from .protocol import (
     VIA_AGENT,
     VIA_USER,
     VIAS,
+    ImageData,
     Limits,
     PeerInfo,
     Refused,
+    parse_images,
     roster_from_wire,
 )
 from .text import clean_text
@@ -346,18 +348,28 @@ class BrokerClient:
 
     # -- sending ----------------------------------------------------------------------------------
     async def send(
-        self, to: str, text: str, *, hops: int = 0, via: str = VIA_AGENT, direct: bool = False, mode: str = MODE_STEER
+        self,
+        to: str,
+        text: str,
+        *,
+        hops: int = 0,
+        via: str = VIA_AGENT,
+        direct: bool = False,
+        mode: str = MODE_STEER,
+        images: Sequence[ImageData] = (),
     ) -> Delivered:
         """Send a message to another session and return once it has taken it.
 
         Args:
             to: The session's handle or id.
-            text: What to say.
+            text: What to say; it may be empty when ``images`` is not.
             hops: How many sessions it has passed through already.
             via: How it came: the reader, the agent, or an external program.
             direct: Ask a session that can to run it as its own reader's prompt and answer the sender.
             mode: What a busy recipient does with it: ``"steer"`` (the default) hands it to the running request,
                 ``"followup"`` waits until that request ends.
+            images: Pictures to send with it. Only a ``direct`` message from a reader may carry them, and the broker
+                refuses them for any other.
 
         Raises:
             SendError: There is no broker, or the broker or the recipient refused, or nobody answered in time, or
@@ -365,10 +377,12 @@ class BrokerClient:
         """
         if mode not in MODES:
             raise SendError("invalid", "mode is 'steer' or 'followup'")
-        cleaned = self._checked(text)
-        body = {"to": to, "text": cleaned, "via": via, "hops": hops, "mode": mode}
+        cleaned = self._checked(text, silent=bool(images))
+        body: dict[str, Any] = {"to": to, "text": cleaned, "via": via, "hops": hops, "mode": mode}
         if direct:
             body["direct"] = True
+        if images:
+            body["images"] = [picture.to_wire() for picture in images]
         return self._delivered(await self._request("POST", "/messages", json=body, send=True))
 
     async def send_group(
@@ -398,9 +412,9 @@ class BrokerClient:
         )
         return GroupDelivered(name if isinstance(name, str) else group, tuple(delivered), failed)
 
-    def _checked(self, text: str) -> str:
+    def _checked(self, text: str, *, silent: bool = False) -> str:
         cleaned = clean_text(text)
-        if not cleaned.strip():
+        if not cleaned.strip() and not silent:
             raise SendError("empty", "a message needs some text")
         if len(cleaned) > self.limits.max_text:
             raise SendError("too_long", f"a message is limited to {self.limits.max_text} characters")
@@ -679,6 +693,10 @@ class BrokerClient:
             mode = MODE_STEER  # a peer that does not say: the protocol's default
         elif mode not in MODES:
             mode = MODE_FOLLOWUP  # one this version does not know: the safe half, not the disruptive one
+        try:
+            pictures = parse_images(line.get("images")) if line.get("direct") is True and via == VIA_USER else ()
+        except Refused:
+            return _ack(Receipt(False, "the message's pictures were malformed"))
         incoming = Incoming(
             sender,
             clean_text(text),
@@ -687,6 +705,7 @@ class BrokerClient:
             line.get("direct") is True and via == VIA_USER,
             mode,
             line["group"] if isinstance(line.get("group"), str) else "",
+            pictures,
         )
         try:
             return _ack(self.on_message(incoming))

@@ -1,8 +1,12 @@
 """What the broker remembers: the messages that passed through it, and the groups sessions have formed.
 
 SQLite from the standard library, one file beside the broker's note (``broker.db``), opened in write-ahead mode so that
-a second process reading it (``sqlite3 broker.db``) does not block the broker. The hub calls it from the event loop; every statement is a
-single indexed lookup or insert, so it is not worth a thread.
+a second process reading it (``sqlite3 broker.db``) does not block the broker. The hub calls it from the event loop.
+Almost every statement is a single indexed lookup or insert, so it is not worth a thread. The exceptions are the reads
+that cover a stretch of history — :meth:`~Store.window` (a replay, up to :data:`MAX_WINDOW` messages) and the first
+:meth:`~Store.edges` — which take a fraction of a second to a couple of seconds on a full file and so hold up every
+session's sends meanwhile; the first is counted when the file is opened, before any session is served, and the replay
+is a request a person makes on purpose.
 
 A message is stored once it has been handed over, with the names its sender and recipient had at that moment: the
 roster only lists sessions that are connected, and a history that could not say who ``@parser`` was last week would be
@@ -14,6 +18,7 @@ A store that cannot be opened or written must never stop messages from flowing, 
 
 from __future__ import annotations
 
+import heapq
 import json
 import logging
 import sqlite3
@@ -23,11 +28,18 @@ from typing import Any
 
 logger = logging.getLogger("zettcode.broker")
 
-#: How many messages are kept; older ones are deleted as new ones arrive.
-KEEP = 20_000
+#: How many messages are kept; older ones are deleted as new ones arrive. Chat-sized messages fill a file of about 60 MB.
+KEEP = 320_000
+
+#: The most the file may hold, in bytes, whatever the number of messages: a message may be 32,000 characters, so the count
+#: alone allows gigabytes. Past it the oldest quarter of the messages is deleted (see :meth:`Store.add_message`).
+MAX_BYTES = 512 << 20
 
 #: The most a single query returns.
 MAX_ROWS = 2_000
+
+#: The most messages a replay may read at once: the stretch it plays is read whole, not a page at a time.
+MAX_WINDOW = 20_000
 
 #: The shape of the file; changed whenever a table or column does, which rebuilds it (see :meth:`Store._versioned`).
 SCHEMA_VERSION = 1
@@ -109,11 +121,15 @@ class Store:
             nobody gave a file, which is every test).
         clock: Wall-clock seconds, injectable for tests.
         keep: How many messages to keep.
+        max_bytes: The most the file may hold; see :data:`MAX_BYTES`.
     """
 
-    def __init__(self, path: Path | str = ":memory:", *, clock: Any = time.time, keep: int = KEEP) -> None:
+    def __init__(
+        self, path: Path | str = ":memory:", *, clock: Any = time.time, keep: int = KEEP, max_bytes: int = MAX_BYTES
+    ) -> None:
         self.clock = clock
         self.keep = keep
+        self.max_bytes = max_bytes
         if isinstance(path, Path):
             path.parent.mkdir(parents=True, exist_ok=True)
         self._path = path
@@ -121,6 +137,10 @@ class Store:
         self._versioned()
         self._db.executescript(_SCHEMA)
         self._added = 0
+        #: The totals :meth:`edges` returns, by pair of session ids, as ``[count, last]``. Counted when the file is
+        #: opened, which is before any session is served, so that no look at the graph has to read every message.
+        self._pairs: dict[tuple[str, str], list[float]] | None = None
+        self.edges()
 
     def _connect(self) -> sqlite3.Connection:
         db = sqlite3.connect(str(self._path), isolation_level=None, check_same_thread=False)
@@ -189,9 +209,28 @@ class Store:
             (now, *sender, kind, *to, json.dumps(recipients), text, via, hops, mode, status, disposition),
         )
         self._added += 1
+        if kind == KIND_SESSION and self._pairs is not None:
+            pair = self._pairs.setdefault(tuple(sorted((sender[0], to[0]))), [0, now])  # type: ignore[arg-type]
+            pair[0] += 1
+            pair[1] = max(pair[1], now)
         if self._added % 200 == 0:
             self._db.execute("DELETE FROM messages WHERE id <= (SELECT MAX(id) FROM messages) - ?", (self.keep,))
+            for _ in range(8):
+                if self._size() <= self.max_bytes:
+                    break
+                # The count did not keep the file small (long messages): drop the oldest quarter of what is left, and
+                # look again. Bounded, so a budget smaller than one message cannot loop.
+                self._db.execute(
+                    "DELETE FROM messages WHERE id <= (SELECT MAX(id) - (MAX(id) - MIN(id)) / 4 FROM messages)"
+                )
         return self._one(cursor.lastrowid)
+
+    def _size(self) -> int:
+        """Return the bytes of the file that hold something: pages in use, not the pages deleted rows left free."""
+        pages = self._db.execute("PRAGMA page_count").fetchone()[0]
+        free = self._db.execute("PRAGMA freelist_count").fetchone()[0]
+        size = self._db.execute("PRAGMA page_size").fetchone()[0]
+        return int((pages - free) * size)
 
     def _one(self, row_id: int | None) -> dict[str, Any]:
         row = self._db.execute("SELECT * FROM messages WHERE id = ?", (row_id,)).fetchone()
@@ -239,9 +278,14 @@ class Store:
     def window(self, since: float, until: float, *, limit: int = MAX_ROWS) -> list[dict[str, Any]]:
         """Return the messages sent in ``[since, until]``, oldest first: what a replay of the past is drawn from.
 
-        When more than ``limit`` fall in the window the newest ones are returned.
+        When more than ``limit`` fall in the window the newest ones are returned, and ``limit`` is at most
+        :data:`MAX_WINDOW`: a replay is drawn from the whole stretch at once, so it may read far more than a page.
         """
-        return self._page("ts >= ? AND ts <= ?", (since, until), limit, None)
+        limit = max(1, min(int(limit), MAX_WINDOW))
+        rows = self._db.execute(
+            "SELECT * FROM messages WHERE ts >= ? AND ts <= ? ORDER BY id DESC LIMIT ?", (since, until, limit)
+        ).fetchall()
+        return [_wire(row) for row in reversed(rows)]
 
     def span(self) -> tuple[float, float] | None:
         """Return the times of the oldest and the newest message, or ``None`` when there are none."""
@@ -258,12 +302,23 @@ class Store:
         return None if row is None else row["sid"]
 
     def edges(self) -> list[dict[str, Any]]:
-        """Return, for each pair of sessions that exchanged messages, how many and when last."""
-        rows = self._db.execute(
-            "SELECT MIN(from_id, to_id) AS a, MAX(from_id, to_id) AS b, COUNT(*) AS count, MAX(ts) AS last"
-            " FROM messages WHERE kind = 'session' GROUP BY 1, 2 ORDER BY last DESC LIMIT 500"
-        ).fetchall()
-        return [{"a": row["a"], "b": row["b"], "count": row["count"], "last": row["last"]} for row in rows]
+        """Return, for each pair of sessions that exchanged messages, how many and when last.
+
+        The totals are counted once, from the messages the file holds, and then kept up to date as messages are added:
+        counting them again for every look at the graph would read every message there is, which is most of a second
+        for a full history. They are not taken back when old messages are deleted, so a total is what this broker has
+        handled since it opened the file, plus what the file held then.
+        """
+        if self._pairs is None:
+            self._pairs = {
+                (row["a"], row["b"]): [row["count"], row["last"]]
+                for row in self._db.execute(
+                    "SELECT MIN(from_id, to_id) AS a, MAX(from_id, to_id) AS b, COUNT(*) AS count, MAX(ts) AS last"
+                    " FROM messages WHERE kind = 'session' GROUP BY 1, 2"
+                )
+            }
+        newest = heapq.nlargest(500, self._pairs.items(), key=lambda item: item[1][1])
+        return [{"a": a, "b": b, "count": int(total[0]), "last": total[1]} for (a, b), total in newest]
 
     # -- groups -----------------------------------------------------------------------------------
     def group_names(self) -> list[str]:

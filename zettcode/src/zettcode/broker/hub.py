@@ -39,19 +39,26 @@ from .protocol import (
     STREAM_TYPES,
     VIA_EXTERNAL,
     VIA_USER,
+    ImageData,
     Limits,
     PeerInfo,
     Refused,
     SessionUpdate,
     group_name,
+    parse_images,
     parse_send,
 )
 from .roster import Entry, Roster
-from .store import KIND_GROUP, KIND_SESSION, Store
+from .store import KIND_GROUP, KIND_SESSION, MAX_WINDOW, Store
 from .text import clean_text, clean_title, slug
 
 #: Messages waiting for one session to say it took them. More are told the session is busy.
 MAX_WAITING = 32
+
+#: The pictures, as base64, that one session may have waiting for it at once: in messages it has not answered, and in
+#: lines it has not read. A message may carry about 11 MiB of them, and a session that has stopped answering would
+#: otherwise hold hundreds of those in the broker.
+MAX_WAITING_PICTURES = 96 << 20
 
 #: Lines queued for one session to read. A session that is this far behind has stopped reading and is dropped.
 MAX_QUEUED = 256
@@ -103,6 +110,11 @@ class Session:
         #: Whether this connection asked to be told of every message that passes (the gateway's graph does).
         self.observing = False
         self._waiting: dict[int, asyncio.Future[dict[str, Any]]] = {}
+        #: The size, as base64, of the pictures in the messages in ``_waiting``.
+        self._weight = 0
+        #: The size, as base64, of the pictures in the lines still in ``outbox``, which a message whose ack timed out
+        #: leaves behind: a socket that never drains must not be able to hold more than the budget.
+        self._queued = 0
         self._deliveries = itertools.count(1)
 
     def push(self, line: dict[str, Any]) -> None:
@@ -113,6 +125,14 @@ class Session:
             if not self._dropped:
                 self._dropped = True
                 self.close(STOPPED_READING)
+        else:
+            self._queued += _picture_weight(line)
+
+    async def next_line(self) -> dict[str, Any]:
+        """Take the next queued line, for the writer to send: its pictures stop counting against this session's budget."""
+        line = await self.outbox.get()
+        self._queued -= _picture_weight(line)
+        return line
 
     def push_lossy(self, line: dict[str, Any]) -> None:
         """Queue a line that may be lost: when this session is half a queue behind it is skipped, not dropped for it.
@@ -138,14 +158,19 @@ class Session:
         """
         if self.waiting >= MAX_WAITING:
             raise Refused("busy", "that session has too many messages waiting")
+        weight = sum(len(picture.get("data", "")) for picture in message.get("images", ()))
+        if weight and self._weight + self._queued + weight > MAX_WAITING_PICTURES:
+            raise Refused("busy", "that session has too many pictures waiting")
         number = next(self._deliveries)
         ack: asyncio.Future[dict[str, Any]] = asyncio.get_running_loop().create_future()
         self._waiting[number] = ack
+        self._weight += weight
         try:
             self.push({"op": "deliver", "id": number, **message})
             return await asyncio.wait_for(ack, timeout)
         finally:
             self._waiting.pop(number, None)
+            self._weight -= weight
 
     def acked(self, line: dict[str, Any]) -> None:
         """Take an ack; one for something that was never asked, or already answered, is ignored."""
@@ -307,7 +332,11 @@ class Hub:
         if sender.external:
             body = {**body, "via": VIA_EXTERNAL}
         group = body.get("group")
+        # Looked at, not yet decoded: a message that may not carry pictures is turned away before they cost anything.
+        offered = body.get("images")
         if group is not None:
+            if offered:
+                raise Refused("invalid", "pictures go to one session, not to a group")
             if body.get("to") not in (None, ""):
                 raise Refused("invalid", "name a session in 'to' or a group in 'group', not both")
             # The group's name stands where a session's would while the text, the hops and the mode are checked.
@@ -315,7 +344,7 @@ class Hub:
             if via == VIA_EXTERNAL and not sender.external:
                 raise Refused("invalid", "via is 'user' or 'agent'")
             return await self._send_group(sender, group_name(group), text, via, hops, mode)
-        to, text, via, hops, mode = parse_send(body, self.limits)
+        to, text, via, hops, mode = parse_send(body, self.limits, may_be_silent=bool(offered))
         if via == VIA_EXTERNAL and not sender.external:
             raise Refused("invalid", "via is 'user' or 'agent'")
         target = self.roster.resolve(to, asker=sender.connection)
@@ -327,13 +356,24 @@ class Hub:
         # that said it can; for any other the flag is dropped and the message is delivered the ordinary way.
         if body.get("direct") is True and via == VIA_USER and not sender.external and target.direct:
             message["direct"] = True
+        pictures: tuple[ImageData, ...] = ()
+        if offered:
+            # Only a session that runs the message as its reader's own prompt has anywhere to put a picture: for any
+            # other the pictures would be dropped on the way in, and the sender told it went through.
+            if message.get("direct") is not True:
+                raise Refused(
+                    "invalid",
+                    f"@{target.handle} does not take pictures: it does not run a chat's text as its own prompt",
+                )
+            pictures = parse_images(offered)
+            message["images"] = [picture.to_wire() for picture in pictures]
         ack = await self._hand_over(recipient, message, target.handle)
         stored = self._remember(
             sender,
             KIND_SESSION,
             (target.session_id, target.handle, target.title),
             [target.session_id],
-            text,
+            _with_pictures(text, len(pictures)),
             via,
             hops + 1,
             mode,
@@ -624,11 +664,19 @@ class Hub:
     def timeline(self, since: float, until: float, limit: int) -> dict[str, Any]:
         """Return the messages of a stretch of the past, oldest first, for a front end to replay on screen.
 
-        Nothing is sent again: this is only what was stored.
+        Nothing is sent again: this is only what was stored. When more than ``limit`` messages fall in the stretch the
+        newest are returned and ``truncated`` says so, so that a replay can say it is missing the start of the stretch
+        rather than draw a flow that is quietly incomplete.
         """
+        # One less than the most a read may return, so that the extra row asked for below is always really read: at the
+        # cap itself the count could never exceed the limit, and a stretch of fifty thousand would be called complete.
+        limit = max(1, min(limit, MAX_WINDOW - 1))
+        found = self.store.window(since, until, limit=limit + 1)
+        truncated = len(found) > limit
         span = self.store.span()
         return {
-            "messages": self.store.window(since, until, limit=limit),
+            "messages": found[-limit:] if truncated else found,
+            "truncated": truncated,
             "span": list(span) if span else None,
             "now": time.time(),
         }
@@ -713,6 +761,22 @@ class Hub:
 
     def _tell_roster(self, session: Session) -> None:
         session.push({"op": "roster", "sessions": [entry.to_wire() for entry in self.roster.snapshot()]})
+
+
+def _picture_weight(line: Mapping[str, Any]) -> int:
+    """Return the size, as base64, of the pictures a line carries: a ``deliver`` is the only line that has any."""
+    images = line.get("images")
+    if not isinstance(images, list):
+        return 0
+    return sum(len(item.get("data", "")) for item in images if isinstance(item, dict))
+
+
+def _with_pictures(text: str, count: int) -> str:
+    """Return what the history keeps of a message: its words, and how many pictures went with it, never the pictures."""
+    if not count:
+        return text
+    note = f"[{count} picture{'s' if count != 1 else ''}]"
+    return f"{text}\n{note}" if text.strip() else note
 
 
 def _count(raw: object, default: int) -> int:

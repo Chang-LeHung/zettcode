@@ -17,7 +17,15 @@ from websockets.exceptions import InvalidStatus
 
 from broker_helpers import TOKEN, RawPeer, eventually, http, reason, started
 from zettcode.broker.hub import MAX_WAITING, Session
-from zettcode.broker.protocol import MAX_BODY, MAX_HOPS, MAX_TEXT, PROTOCOL_VERSION, RATE_LIMIT, Limits
+from zettcode.broker.protocol import (
+    MAX_BODY,
+    MAX_HOPS,
+    MAX_MESSAGE_BODY,
+    MAX_TEXT,
+    PROTOCOL_VERSION,
+    RATE_LIMIT,
+    Limits,
+)
 
 A = "01a10b75-aaaa-7000-8000-000000000001"
 B = "02b20c86-bbbb-7000-8000-000000000002"
@@ -144,7 +152,7 @@ async def test_a_whole_message_past_the_limit_still_ends_only_that_connection(ru
 
 
 async def test_a_request_body_past_the_limit_is_refused_before_it_is_read_into_memory(running):
-    response = await http(running.port, "POST", "/messages", content=b"x" * (MAX_BODY + 10))
+    response = await http(running.port, "POST", "/messages", content=b"x" * (MAX_MESSAGE_BODY + 10))
 
     assert response.status_code == 413 and response.json()["error"]["reason"] == "too_long"
 

@@ -40,3 +40,15 @@ test("a message run as the session's own prompt is stored as the person's and se
 
   assert.equal(settle([sent], [{ kind: "user", text: "run" }]).length, 0);
 });
+
+test("pictures sent with no words are each shown once too: the target counts items of that text, empty included", () => {
+  const picture = { media_type: "image/png", data: "", src: "", bytes: 1, name: "a.png" };
+  const a = pend(1, "", [], [], 0, [picture]);
+  const b = pend(2, "", [], [a], 0, [picture]);
+
+  assert.deepEqual([a.target, b.target], [1, 2]);
+  assert.equal(a.pictures?.length, 1, "what is sent, and sent again on a retry, is kept with it");
+  assert.deepEqual(settle([a, b], [out("")]).map((p) => p.key), [2]);
+  assert.equal(settle([a, b], [out(""), out("")]).length, 0);
+  assert.equal(pend(3, "hi", [], [], 0).pictures, undefined, "a message with none carries none");
+});

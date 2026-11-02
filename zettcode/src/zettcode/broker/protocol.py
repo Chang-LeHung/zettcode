@@ -16,7 +16,8 @@ HTTP, for anyone who holds the token — a session, a script, a hook, ``curl``::
                        the owner's token alone: ?a=&b= or ?group=)  ->  {"messages": [...]}
     GET  /graph        ->  {"sessions", "groups", "edges", "recent"}   (token only; for the gateway's graph)
     GET  /older        ?before=<message id>&limit=  ->  {"messages", "more"}   the stored messages before one
-    GET  /timeline     ?since=&until=&limit=  ->  {"messages", "span", "now"}   stored messages, to replay on screen
+    GET  /timeline     ?since=&until=&limit=  ->  {"messages", "truncated", "span", "now"}   stored messages, to replay on
+                       screen (at most MAX_WINDOW; "truncated" says the stretch held more and its start is missing)
 
 A failure is an HTTP status and ``{"error": {"reason", "message"}}``; the reason is what a program acts on. A
 message's ``mode`` says what a busy recipient should do with it: ``steer`` (the default) hands it to the request
@@ -32,7 +33,7 @@ A *session* — ZettCode's, or any program that wants to be listed and reached �
     {"op": "traffic", "kind": "message"|"graph", "message"?}         to an observer: what passed, what changed
     {"op": "done", "n": 1, "handle": ...}                            the answer to a session or leave
     {"op": "refused", "n": 1, "error": {"reason", "message"}}        ... or its refusal
-    {"op": "deliver", "id": 9, "from": {...}, "text", "hops", "via", "mode"} a message; answer with an ack
+    {"op": "deliver", "id": 9, "from": {...}, "text", "hops", "via", "mode", "images"?} a message; answer with an ack
 
 and the session says::
 
@@ -68,6 +69,7 @@ characters the composer can type, a chain of messages that keep triggering one a
 
 from __future__ import annotations
 
+import base64
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -76,14 +78,23 @@ from typing import Any
 from ..modes import MODE_STEER, MODES
 from .text import clean_text, clean_title
 
-#: Bumped whenever this protocol changes meaning. 8: group chats (``group`` on a send, the ``groups`` line, ``/groups``),
+#: Bumped whenever this protocol changes meaning. 9: a one-to-one message may carry pictures (``images`` on a send and
+#: on a ``deliver``, with a longer line for the ``deliver``); 8: group chats (``group`` on a send, the ``groups`` line,
+#: ``/groups``),
 #: the persistent ``/history``, and observers (``observe``, the ``traffic`` line); 7: a message says whether a busy recipient should steer its running
 #: request with it or wait behind that request (``mode``, default steer); 6 was the HTTP server and its WebSocket per
 #: session, 5 lines of JSON on a TCP socket.
-PROTOCOL_VERSION = 8
+PROTOCOL_VERSION = 9
 
 #: The longest message, in characters. Longer than anyone types, shorter than a paste of a file.
 MAX_TEXT = 32_000
+
+#: The pictures a one-to-one chat message may carry: how many, how large each is once decoded, and how large they are
+#: together. The broker keeps none of them: it hands them over and writes down only how many there were.
+IMAGE_TYPES = ("image/png", "image/jpeg", "image/gif", "image/webp")
+MAX_IMAGES = 4
+MAX_IMAGE_BYTES = 4 << 20
+MAX_IMAGES_BYTES = 8 << 20
 
 #: The longest title the roster keeps; a longer one is cut.
 MAX_TITLE = 120
@@ -94,6 +105,11 @@ MAX_WORKSPACE = 512
 #: The longest WebSocket message or request body either end reads, in bytes: a message in the worst case (every
 #: character escaped) and a roster of a few hundred sessions both fit. A longer one is refused or ends the connection.
 MAX_BODY = 1 << 20
+
+#: The longest ``POST /messages`` body, and the longest line a session reads from the broker: :data:`MAX_BODY` for the
+#: words, plus the pictures a message may carry as base64 (a third larger than they are). Everything else a session sends
+#: stays within :data:`MAX_BODY`.
+MAX_MESSAGE_BODY = MAX_BODY + (MAX_IMAGES_BYTES + 2) // 3 * 4
 
 #: How many sessions a message may pass through. A reader who typed it is hop zero; each session whose agent
 #: forwards it adds one. Two agents that answer each other would otherwise spend tokens for ever, so the broker
@@ -175,6 +191,75 @@ class Refused(Exception):
         if isinstance(raw, Mapping) and isinstance(raw.get("reason"), str) and isinstance(raw.get("message"), str):
             return cls(raw["reason"], raw["message"])
         return cls("invalid", "the other end refused without saying why")
+
+
+@dataclass(frozen=True, slots=True)
+class ImageData:
+    """One picture a message carries: its media type and the encoded file (not decoded pixels)."""
+
+    media_type: str
+    data: bytes
+
+    def to_wire(self) -> dict[str, str]:
+        """Return the picture as a line carries it: the media type and the file in base64."""
+        return {"media_type": self.media_type, "data": base64.b64encode(self.data).decode("ascii")}
+
+
+def sniff_image(data: bytes) -> str | None:
+    """Return the media type a file's first bytes say it is, or ``None`` when it is not a picture a model takes."""
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if data.startswith((b"GIF87a", b"GIF89a")):
+        return "image/gif"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
+
+def parse_images(raw: object) -> tuple[ImageData, ...]:
+    """Read the pictures a send carries, refusing what is not one.
+
+    A picture is ``{"media_type", "data"}`` with the file in base64. What it says it is must be what its first bytes say,
+    so a program cannot hand a model something else under an image's name, and each picture and all of them together
+    are bounded.
+
+    Raises:
+        Refused: ``invalid`` for a malformed or mislabelled picture, ``too_long`` for too many or too large.
+    """
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        raise Refused("invalid", "images is a list")
+    if len(raw) > MAX_IMAGES:
+        raise Refused("too_long", f"a message may carry at most {MAX_IMAGES} pictures")
+    pictures: list[ImageData] = []
+    total = 0
+    for item in raw:
+        if not isinstance(item, Mapping) or not isinstance(item.get("data"), str):
+            raise Refused("invalid", "a picture is {media_type, data}")
+        kind = item.get("media_type")
+        if kind not in IMAGE_TYPES:
+            raise Refused("invalid", f"a picture is one of: {', '.join(IMAGE_TYPES)}")
+        encoded: str = item["data"]
+        if len(encoded) > (MAX_IMAGE_BYTES + 2) // 3 * 4:
+            raise Refused("too_long", f"a picture is limited to {MAX_IMAGE_BYTES >> 20} MiB")
+        try:
+            data = base64.b64decode(encoded, validate=True)
+        except ValueError:
+            raise Refused("invalid", "a picture's data is not base64") from None
+        if not data:
+            raise Refused("invalid", "a picture is empty")
+        if len(data) > MAX_IMAGE_BYTES:
+            raise Refused("too_long", f"a picture is limited to {MAX_IMAGE_BYTES >> 20} MiB")
+        if sniff_image(data) != kind:
+            raise Refused("invalid", f"a picture said to be {kind} is not")
+        total += len(data)
+        if total > MAX_IMAGES_BYTES:
+            raise Refused("too_long", f"the pictures of a message are limited to {MAX_IMAGES_BYTES >> 20} MiB together")
+        pictures.append(ImageData(str(kind), data))
+    return tuple(pictures)
 
 
 def field(raw: Mapping[str, Any], name: str, kind: type, default: Any = None) -> Any:
@@ -319,19 +404,22 @@ class SessionUpdate:
         return cls(session_id, *_description(raw), _kind(raw), raw.get("direct") is True)
 
 
-def parse_send(raw: Mapping[str, Any], limits: Limits) -> tuple[str, str, str, int, str]:
+def parse_send(
+    raw: Mapping[str, Any], limits: Limits, *, may_be_silent: bool = False
+) -> tuple[str, str, str, int, str]:
     """Read and check a ``send``: who it is for, its cleaned text, how it came, its hops, and its mode.
 
     The text is cleaned (see :func:`~.text.clean_text`) before it is measured, so the limit is on what would be
     delivered. A message a reader typed, or one from outside, starts a chain whatever hop count it claims. The mode
-    is :data:`MODE_STEER` unless the sender asked for :data:`MODE_FOLLOWUP`.
+    is :data:`MODE_STEER` unless the sender asked for :data:`MODE_FOLLOWUP`. ``may_be_silent`` allows no words at all,
+    for a message that carries pictures.
 
     Raises:
         Refused: ``invalid`` for a field of the wrong kind or a mode the recipient does not know, ``empty`` for
             nothing to say, ``too_long`` past the limit, ``loop`` when the message would pass the hop limit.
     """
     to = field(raw, "to", str)
-    text = clean_text(field(raw, "text", str))
+    text = clean_text(field(raw, "text", str, "" if may_be_silent else None))
     via = field(raw, "via", str, VIA_AGENT)
     hops = field(raw, "hops", int, 0)
     mode = field(raw, "mode", str, MODE_STEER)
@@ -341,7 +429,7 @@ def parse_send(raw: Mapping[str, Any], limits: Limits) -> tuple[str, str, str, i
         raise Refused("invalid", "mode is 'steer' or 'followup'")
     if hops < 0:
         raise Refused("invalid", "hops is a count")
-    if not text.strip():
+    if not text.strip() and not may_be_silent:
         raise Refused("empty", "a message needs some text")
     if len(text) > limits.max_text:
         raise Refused("too_long", f"a message is limited to {limits.max_text} characters")

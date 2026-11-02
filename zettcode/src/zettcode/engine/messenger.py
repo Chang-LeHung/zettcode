@@ -15,12 +15,12 @@ else were running, and a send says so.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING, Any
 
 from zettcode.broker.client import BrokerClient, Delivered, Incoming, Receipt, RosterEntry, SessionInfo
 from zettcode.broker.models import GroupDelivered, GroupInfo
-from zettcode.broker.protocol import VIA_AGENT
+from zettcode.broker.protocol import VIA_AGENT, ImageData
 from zettcode.config import ZettCodeConfig
 from zettcode.modes import MODE_STEER
 from zettcode.relay import Relayed
@@ -221,7 +221,14 @@ class Messenger:
 
     # -- sending ----------------------------------------------------------------------------------
     async def send(
-        self, to: str, text: str, *, via: str = VIA_AGENT, direct: bool = False, mode: str = MODE_STEER
+        self,
+        to: str,
+        text: str,
+        *,
+        via: str = VIA_AGENT,
+        direct: bool = False,
+        mode: str = MODE_STEER,
+        images: Sequence[ImageData] = (),
     ) -> Delivered:
         """Send a message and return once the other session has taken it.
 
@@ -235,12 +242,13 @@ class Messenger:
             direct: Ask a session that can to run it as its own reader's prompt and answer the sender.
             mode: What a busy recipient does with it: ``"steer"`` (the default) hands it to the running request,
                 ``"followup"`` waits until that request ends.
+            images: Pictures to send with a ``direct`` message.
 
         Raises:
             SendError: Nobody was reached, and why.
         """
         hops = self.answering.hops if self.answering is not None and via == VIA_AGENT else 0
-        return await self.client.send(to, text, hops=hops, via=via, direct=direct, mode=mode)
+        return await self.client.send(to, text, hops=hops, via=via, direct=direct, mode=mode, images=images)
 
     async def send_group(
         self, group: str, text: str, *, via: str = VIA_AGENT, mode: str = MODE_STEER
@@ -270,6 +278,7 @@ class Messenger:
                 direct=incoming.direct,
                 mode=incoming.mode,
                 group=incoming.group,
+                images=incoming.images,
             )
         )
 
