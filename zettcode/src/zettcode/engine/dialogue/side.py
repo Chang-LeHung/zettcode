@@ -66,7 +66,7 @@ def is_watched_side(message: object) -> bool:
     if not is_side(message):
         return False
     # ``is_side`` read ``attributes.get`` a moment ago, so a side message always holds a mapping here.
-    return _watched(getattr(message, "attributes"))
+    return _watched(message.attributes)  # type: ignore[attr-defined]
 
 
 def is_side_run(context: AgentRunContext) -> bool:

@@ -138,7 +138,7 @@ class FakeSession:
         target.write_text("<html>the conversation</html>", encoding="utf-8")
         return target
 
-    async def ask(self, question: str, *, timeout: float | None = None) -> str:
+    async def ask(self, question: str, *, timeout: float | None = None, watched: bool = True) -> str:
         self.asked_side.append(question)
         return f"about {question}"
 
