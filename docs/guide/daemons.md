@@ -98,10 +98,10 @@ last request could not be met. A `broker` line appears while the daemon cannot r
 trying, and so cannot be messaged meanwhile. `--json` prints the same fields for a program.
 
 `zettcode daemon stop <session-id>...` stops each daemon but keeps its record, shown as `dead`, so it stays in
-`daemon list` and the gateway's list and can be started again with `spawn --resume`. `zettcode daemon kill
-<session-id>...` stops it and removes the record. Both refuse a daemon that is in the middle of a turn, because
-stopping it throws the turn away; add `--force` to stop it anyway. The session stays either way, with everything it did,
-so you can open it in the terminal afterwards.
+`daemon list` and the gateway's list and can be started again with `spawn --resume`.
+`zettcode daemon kill <session-id>...` stops it and removes the record. Both refuse a daemon that is in the middle of
+a turn, because stopping it throws the turn away; add `--force` to stop it anyway. The session stays either way, with
+everything it did, so you can open it in the terminal afterwards.
 
 `zettcode daemon delete <session-id>...` removes a daemon for good: its record **and its conversation**. It cannot be
 undone, and a daemon that is still running is refused — stop it first. Use it when the list has grown long.
