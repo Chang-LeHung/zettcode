@@ -268,6 +268,7 @@ async def test_a_side_question_streams_its_answer_in_the_frames_a_prompt_uses_an
     assert deltas == ["about ", "the pager"], "the answer arrives in pieces, not once at the end"
     assert payloads(response.text, "result")[0]["text"] == "about the pager"
     assert client.session.asked_side == ["the pager"]
+    assert client.session.asked_watched == [True], "the reader asked it, so a reopen may restore it"
     assert client.asked == [], "a side question is not a prompt"
 
 

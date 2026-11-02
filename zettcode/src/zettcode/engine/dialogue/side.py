@@ -65,8 +65,9 @@ def is_watched_side(message: object) -> bool:
     """Return whether a side question's message says the reader watched it, False for anything that is not one."""
     if not is_side(message):
         return False
-    # ``is_side`` read ``attributes.get`` a moment ago, so a side message always holds a mapping here.
-    return _watched(message.attributes)  # type: ignore[attr-defined]
+    # ``is_side`` read ``attributes.get`` a moment ago, so a side message always holds a mapping here; the default is
+    # for the type checker, which sees only ``object``.
+    return _watched(getattr(message, "attributes", {}))
 
 
 def is_side_run(context: AgentRunContext) -> bool:

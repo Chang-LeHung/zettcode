@@ -114,6 +114,8 @@ class FakeSession:
         )
         self.usage = Usage(input_tokens=10, output_tokens=2, requests=1)
         self.asked_side: list[str] = []
+        #: Whether each of those asked the reader to be watching it: both HTTP side-question paths say yes.
+        self.asked_watched: list[bool] = []
         self.steered: list[str] = []
         self.steering = True
         self.resume_info: object | None = None
@@ -140,6 +142,7 @@ class FakeSession:
 
     async def ask(self, question: str, *, timeout: float | None = None, watched: bool = True) -> str:
         self.asked_side.append(question)
+        self.asked_watched.append(watched)
         return f"about {question}"
 
     #: What the next streamed side question does; a test sets it to hold the answer open.
@@ -147,6 +150,7 @@ class FakeSession:
 
     def ask_stream(self, question: str, *, timeout: float | None = None, watched: bool = True) -> FakeRun:
         self.asked_side.append(question)
+        self.asked_watched.append(watched)
         return FakeRun(
             [TextDelta(self.id, "about "), TextDelta(self.id, question)],
             result=RunResult(text=f"about {question}", session_id=self.id),
