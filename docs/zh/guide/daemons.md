@@ -70,7 +70,9 @@ send_message(to="01a1726a-3109-75a7-9285-390d9e381111", message="...")
 
 第一行是 session id、它正在做什么、已经多久：`starting`（还没连上 broker）、`idle`、`working`、`stopping`，或者 `dead` —— dead 表示进程已经不在了（机器重启过，或者它崩了），用 `kill` 把条目清掉。`name` 是 `spawn --name` 记下的标签，`title` 是会话自己的名字。`context` 是最近一次调用时上下文有多满、拿多大的窗口去量、占了多少；`input` 和 `output` 是这个会话发出去和生成的总量；它们在 daemon 状态变化时写，turn 跑着的时候只要数字变了也会写（每几秒看一次）。数字截至最近一次完成的模型调用，所以一条回答还在流式输出时不会跳动。出现 `next` 行说明有一个换模型或换级别的请求还没生效；出现 `error` 行说明上一次请求为什么没成。出现 `broker` 行说明这个 daemon 现在连不上会话 broker —— 它会一直重试，这段时间没人能给它发消息。`--json` 打同样的字段，方便程序读。
 
-`zettcode daemon kill <session-id>...` 停掉每个 daemon 并删掉它的记录。会话本身留着，做过的事都在里面，之后可以在终端里打开。
+`zettcode daemon stop <session-id>...` 停掉每个 daemon，但**保留记录**，显示为 `dead`，所以它仍留在 `daemon list` 和网关的列表里，之后可以用 `spawn --resume` 再启动。`zettcode daemon kill <session-id>...` 停掉它并删掉记录。两者遇到正在跑一轮对话的 daemon 都会拒绝，因为现在停掉会丢掉这一轮；要仍然停掉就加 `--force`。无论哪种，会话本身都留着，做过的事都在里面，之后可以在终端里打开。
+
+`zettcode daemon delete <session-id>...` 永久删除一个 daemon：它的记录**和它的对话**。无法恢复；仍在运行的 daemon 会被拒绝，要先停掉。列表变得很长时用它清理。
 
 `zettcode daemon log <session-id>` 打印 daemon 自己记的最后几行 —— 它跑过的工具、失败的 turn、生效的设置；`-n N` 指定行数。觉得它卡住了，先看这里。
 
@@ -106,7 +108,7 @@ daemon 不接受输入，它的输入就是 `send_message` —— 来自另一�
 send_message(to="01a1726a-3109-75a7-9285-390d9e381111", message="看一下 src/api.py 的 diff，说你打算改什么。")
 ```
 
-daemon 一次处理一条消息。忙的时候最多再排四条，再多就告诉发送方“忙”。它也用同样的方式回答 —— `send_message(to=<你的 session id>, ...)` —— 所以问它的 agent 会把回答当成一条消息收到。
+daemon 一次处理一条消息。忙的时候最多再排 64 条，空下来后会把排着的消息**合成一轮**处理，每条消息各自带一行说明是谁发的。超过 64 条时，broker 会替它保管这条消息，有空位就立刻投递，发送方不需要重试。它也用同样的方式回答 —— `send_message(to=<你的 session id>, ...)` —— 所以问它的 agent 会把回答当成一条消息收到。
 
 命令行也可以当发送方，用来给一条不想打开会话就能给的提示：
 
