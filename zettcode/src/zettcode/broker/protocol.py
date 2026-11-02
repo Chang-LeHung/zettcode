@@ -60,7 +60,9 @@ from growing is the hop limit and the rule, in the tool's prompt, to answer only
 Compatibility. :data:`PROTOCOL_VERSION` changes whenever anything here changes meaning; a broker speaks one version,
 and a session that finds another one ends an older broker or waits for a newer one (see :mod:`.client`). Within a
 version a peer ignores fields it does not know. Delivery is *at most once*: a request lost with its connection may
-or may not have been carried out, and nothing retries it.
+or may not have been carried out, and nothing retries it. The one exception is a message the broker *held* for a full
+inbox: it is offered until the recipient acks it, so a broker that stops between handing it over and hearing the ack
+offers it again after a restart (at least once, for that message only).
 
 Everything a hostile or merely broken peer could send is bounded here — a message has a length, a name is reduced to
 characters the composer can type, a chain of messages that keep triggering one another stops after :data:`MAX_HOPS`

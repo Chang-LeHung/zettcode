@@ -68,6 +68,10 @@ MAX_QUEUED = 256
 MAX_HELD = 500
 MAX_HELD_TOTAL = 20_000
 
+#: How long a message stays held for a session that does not come back: a week-old request is not worth running, and the
+#: rows of a daemon that was deleted would otherwise count against the total for ever. Checked when the broker starts.
+HELD_TTL = 7 * 24 * 3600.0
+
 #: How long a delivery waits before offering a held message again, and the longest it waits: doubled each time the
 #: inbox is still full, and started again from the shortest once a message is taken.
 RETRY_MIN = 1.0
@@ -228,6 +232,7 @@ class Hub:
         self.retry_min = retry_min
         self.retry_max = retry_max
         self.store = store if store is not None else Store()
+        self._expire_held()
         #: The tasks that offer held messages, by the session they are for.
         self._deliveries: dict[str, asyncio.Task[None]] = {}
         self.limits = Limits()
@@ -858,6 +863,9 @@ class Hub:
             while not self.closing:
                 row = self.store.next_held(session_id)
                 if row is None:
+                    # No await lies between this and the ``finally``, so a message cannot be held in between and be
+                    # missed: ``_deliver_held`` either finds this task still listed (and this loop looks again) or
+                    # finds it gone and starts another.
                     return
                 owner = self.roster.owner_of(session_id)
                 holder = self.sessions.get(owner) if owner is not None else None
@@ -877,8 +885,9 @@ class Hub:
                 except Refused as refused:
                     if refused.reason == "gone":
                         return
-                    # It may still read what it did not answer: offering the message again could deliver it twice.
-                    self._settle(row, "failed", refused.reason)
+                    # It may still read what it did not answer: offering the message again could deliver it twice, so a
+                    # timeout is recorded as unconfirmed, not as a failure a sender would act on by sending it again.
+                    self._settle(row, "unconfirmed" if refused.reason == "timeout" else "failed", refused.reason)
                     continue
                 pause = self.retry_min
                 self._settle(row, "delivered", ack["disposition"])
@@ -899,6 +908,18 @@ class Hub:
                 if stored is not None:
                     self._tell_observers({"op": "traffic", "kind": "delivery", "message": stored})
         except Exception:  # noqa: BLE001 - what was delivered stays delivered whether or not it is written down
+            logger.exception("store.failed")
+
+    def _expire_held(self) -> None:
+        """Drop the messages held longer than :data:`HELD_TTL` and say in the history that they never arrived."""
+        try:
+            for _, message_id in self.store.expire_held(self.store.clock() - HELD_TTL):
+                if message_id is not None:
+                    self.store.set_delivery(message_id, "expired", "expired")
+            # A history row still marked held with no held row behind it (its link was lost) would read as "still
+            # coming" for ever.
+            self.store.expire_orphans()
+        except Exception:  # noqa: BLE001 - a store that cannot be cleaned still serves
             logger.exception("store.failed")
 
     def stop_deliveries(self) -> None:

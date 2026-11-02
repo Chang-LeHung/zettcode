@@ -186,7 +186,8 @@ def merge(items: Sequence[Relayed]) -> Relayed:
 
     The model reads each message under its own line saying who sent it (see :meth:`Relayed.framed`), so merging loses
     nothing it needs to weigh them; what is stored and shown to a reader is the senders' names and their words in
-    order. One message is returned as it is.
+    order. One message is returned as it is. The stored ``via`` is the least trusted of them (an agent's if any was), so
+    it no longer says who typed what; each message keeps its own line of provenance for the model.
     """
     if len(items) == 1:
         return items[0]

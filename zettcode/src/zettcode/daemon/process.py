@@ -186,7 +186,9 @@ class Daemons:
 
         By default the record is removed too (``kill``); with ``keep`` it stays, as a dead one, so the daemon is
         still listed and can be started again or deleted. A dead record is only removed (or, with ``keep``, left):
-        the process it described is gone already. The session is never touched — it is a conversation like any
+        the process it described is gone already. Whether it is ``working`` is read from the state file, which can be a
+        moment old, so a daemon that has just changed turn may be judged by the one before; ``--force`` is the answer to
+        that, not a retry. The session is never touched — it is a conversation like any
         other, and ``zettcode resume <id>`` opens it afterwards.
 
         Raises:
