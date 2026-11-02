@@ -115,6 +115,10 @@ class _Request:
     side: bool = False
     #: Whether the reader watched that side question on screen, which is what
     #: a resumed transcript restores: a plugin's own question is never drawn.
+    #: These two are set together, from the run's own question (:meth:`on_event`),
+    #: so the values here are only read for a run whose question was never seen —
+    #: and a resumed run has no input message at all, which is why the pair cannot
+    #: be one field without losing what "no question seen" means.
     watched: bool = False
     #: Who asked it — ``"reader"``, or the plugin asking for itself — kept as a
     #: tag so a stored exchange says what it was without reading its text.
@@ -910,11 +914,14 @@ class SessionStore(SessionPersistenceMixin, AgentExtension):
             case MessageAppendedEvent(message=message, timing=timing, usage=usage):
                 if is_side(message):
                     request.side = True
-                    # The question says whether the reader watched it, and every line of the run is tagged with that:
-                    # a resumed transcript restores the exchanges that were on screen and nothing else. This reads the
-                    # run's own question because the runtime publishes the input before the step's first message is
-                    # flushed; if that order ever changed, the tag would fall back to `watched` and a plugin's question
-                    # would come back on screen, with nothing here to notice.
+                    # The question says whether the reader watched it and who asked, and every line of the run is
+                    # tagged with both: a resumed transcript restores the exchanges that were on screen and nothing
+                    # else. This reads the run's own question because the runtime publishes the input before the step's
+                    # first message is flushed. That holds for a question; a resumed run (`stream_resume`) sends a
+                    # resume point instead, so an interrupted `/btw` is stored as an ordinary turn — untagged, in the
+                    # history, and untouched by any of this. If the order ever changed for a question, the tag would
+                    # fall back to the defaults and a plugin's question would come back on screen, with nothing here to
+                    # notice.
                     request.watched = is_watched_side(message)
                     request.origin = str(message.attributes.get(ORIGIN, READER))
                 if request.side:

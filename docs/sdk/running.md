@@ -179,8 +179,9 @@ It returns the answer text and raises `ValueError` for an empty question. Like a
 
 Pass `origin=` for a question asked for the program's own purposes, as the recap plugin does (`origin="recap"`): the
 exchange is still recorded, and a resumed transcript leaves it out instead of showing your question as the reader's and
-your answer as a reply nobody asked for. Draw the part you want as a message of your own; `watched=True` says the reader
-did see it, for a plugin that draws its own question.
+your answer as a reply nobody asked for. Draw the part you want as a message of your own. `watched=True` is about a
+reopen only: it does not make the shell draw the exchange, so setting it for a question you never drew restores a
+`btw` row nobody saw.
 
 ## Steering a run
 

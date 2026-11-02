@@ -17,7 +17,7 @@ from zett_agent.messages import ImageBytesSource, ImageContent, TextContent, Use
 from zett_agent.model import CacheMode
 from zett_agent.resume import ResumePoint
 
-from zettcode.engine.dialogue.side import ORIGIN, READER, SIDE, WATCHED, is_reader, question
+from zettcode.engine.dialogue.side import ORIGIN, READER, SIDE, WATCHED, question, watched_by
 from zettcode.prompt import MentionPart, PromptPart, carries_image, model_text_part, plain_text
 from zettcode.relay import Relayed
 
@@ -238,7 +238,7 @@ class TurnsMixin(AgentBase):
                     **message.attributes,
                     SIDE: True,
                     ORIGIN: origin,
-                    WATCHED: is_reader(origin) if watched is None else watched,
+                    WATCHED: watched_by(origin, watched),
                 },
                 include_in_messages=False,
             )

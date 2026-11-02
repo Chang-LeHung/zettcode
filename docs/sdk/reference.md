@@ -261,10 +261,11 @@ is never replayed and is not worth writing into the cache. See `CacheMode` in `z
 `origin` says who is asking, and is recorded with the exchange: `"reader"` for the reader's own question, or the
 name of the plugin asking for itself (`"recap"`). A resumed session restores the reader's side questions and leaves a
 plugin's out, so the model's instructions to itself do not come back as the reader's words; draw the part of the
-answer you want as a message of your own. `watched` overrides what the origin implies, for a plugin that does draw its
-own question. Neither says anything about the stream: every event of the run still reaches whoever iterates it, and the
-front end is what decides whether to draw them. A session file written before either field existed is restored as if
-nobody watched it.
+answer you want as a message of your own. `watched` overrides what the origin implies, and it is only about a reopen:
+it does not make the front end draw the exchange — a terminal still drops a question it did not ask — so a plugin that
+sets it and drew nothing gets a `btw` row restored that nobody ever saw live. Neither field says anything about the
+stream: every event of the run still reaches whoever iterates it, and the front end is what decides whether to draw
+them. A session file written before either field existed is restored as if nobody watched it.
 
 `prompt` raises, at the call: `ValueError` (empty prompt, bad `timeout`), `TypeError` (a piece that is not text or `Image`), `ConfigurationError` (images for a model that cannot read them), `SessionBusyError`, `ClientClosedError`. Awaiting or iterating the run raises `RunError`, `RunTimeoutError`, `SessionLockedError`, a `ValueError` for a `cache` word the engine does not know (checked when the run starts), and whatever a handler raises.
 

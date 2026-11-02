@@ -16,6 +16,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from zettcode.engine.dialogue.side import READER, watched_by
 from zettcode.sdk.errors import SessionNotFoundError
 from zettcode.sdk.events import AnyEvent, TextDelta
 from zettcode.sdk.types import (
@@ -140,17 +141,21 @@ class FakeSession:
         target.write_text("<html>the conversation</html>", encoding="utf-8")
         return target
 
-    async def ask(self, question: str, *, timeout: float | None = None, watched: bool = True) -> str:
+    async def ask(
+        self, question: str, *, timeout: float | None = None, origin: str = READER, watched: bool | None = None
+    ) -> str:
         self.asked_side.append(question)
-        self.asked_watched.append(watched)
+        self.asked_watched.append(watched_by(origin, watched))
         return f"about {question}"
 
     #: What the next streamed side question does; a test sets it to hold the answer open.
     side_hold: asyncio.Event | None = None
 
-    def ask_stream(self, question: str, *, timeout: float | None = None, watched: bool = True) -> FakeRun:
+    def ask_stream(
+        self, question: str, *, timeout: float | None = None, origin: str = READER, watched: bool | None = None
+    ) -> FakeRun:
         self.asked_side.append(question)
-        self.asked_watched.append(watched)
+        self.asked_watched.append(watched_by(origin, watched))
         return FakeRun(
             [TextDelta(self.id, "about "), TextDelta(self.id, question)],
             result=RunResult(text=f"about {question}", session_id=self.id),

@@ -94,7 +94,9 @@ def window_start(lines: Sequence[MessageLine], entries: int) -> int:
 
     The branch is walked from its newest line, so the only messages looked inside are
     the ones the window will replay anyway; a short branch returns 0 and is replayed
-    whole.
+    whole. A side run nobody watched is skipped here as it is skipped below, or the
+    count would reach its target on rows the window then drops and the restored
+    transcript would hold fewer rows than it was asked for.
 
     Args:
         lines: The active branch, oldest first.
@@ -103,6 +105,8 @@ def window_start(lines: Sequence[MessageLine], entries: int) -> int:
     wanted = entries + WINDOW_SLACK
     seen = 0
     for index in range(len(lines) - 1, -1, -1):
+        if is_side_line(lines[index]) and not is_watched_side_line(lines[index]):
+            continue
         seen += entries_added_by(lines[index].message[0])
         if seen >= wanted:
             return index

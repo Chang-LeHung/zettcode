@@ -59,7 +59,7 @@ def question(text: str, *, origin: str = READER, watched: bool | None = None) ->
     """
     return UserMessage(
         content=text,
-        attributes={SIDE: True, ORIGIN: origin, WATCHED: is_reader(origin) if watched is None else watched},
+        attributes={SIDE: True, ORIGIN: origin, WATCHED: watched_by(origin, watched)},
         include_in_messages=False,
     )
 
@@ -72,16 +72,26 @@ def is_side(message: object) -> bool:
 def _watched(values: Mapping[str, Any]) -> bool:
     """Return whether a side question's attributes — or a stored line's tags — say the reader watched it.
 
-    ``watched`` is the answer when it was written. Without it, the origin decides: a reader's own question was drawn,
-    a plugin's was not. Without either — a file from before both tags — the answer is no. That is the conservative
-    reading, because the two errors are not equal: dropping an aside the reader saw costs a line of context, while
-    restoring one they did not ask puts the model's own instructions in their mouth. The only thing that asked on its
-    own before these tags was the recap plugin, so those are the lines this keeps off the screen; a ``/btw`` from such
-    a file goes with them, which is the price of not keeping the recap's words.
+    ``watched`` is the answer, and it is written beside the origin on every new run, so it is what a stored exchange is
+    read from. ``origin`` is not consulted here: it says who asked, for whoever reads the file later, and the two are
+    written together, so a file that carries one without the other was not written by this program.
+
+    Without ``watched`` the answer is no. That is the conservative reading, because the two errors are not equal:
+    dropping an aside the reader saw costs a line of context, while restoring one they did not ask puts the model's own
+    instructions in their mouth. Files from before both tags hold the recap's asks and the reader's ``/btw`` looking
+    alike, and the only thing that asked on its own back then was the recap, so those are the lines this keeps off the
+    screen; a ``/btw`` from such a file goes with them, which is the price of not keeping the recap's words.
     """
-    if WATCHED in values:
-        return bool(values[WATCHED])
-    return is_reader(values.get(ORIGIN))
+    return bool(values.get(WATCHED, False))
+
+
+def watched_by(origin: str, watched: bool | None) -> bool:
+    """Return whether a side question asked as ``origin`` was watched, when the caller left it out.
+
+    A question the reader asked was drawn and comes back; a plugin's own was not. The one place this rule is written,
+    for the message and for the request that carries it.
+    """
+    return is_reader(origin) if watched is None else watched
 
 
 def is_watched_side(message: object) -> bool:
@@ -124,8 +134,8 @@ def is_watched_side_line(line: object) -> bool:
     """
     if not is_side_line(line):
         return False
-    tags = getattr(line, "tags", None)
-    return _watched(tags) if isinstance(tags, Mapping) else False
+    # ``is_side_line`` returned True, so the line carries tags.
+    return _watched(line.tags)  # type: ignore[attr-defined]
 
 
 class SideQuestions(AgentExtension):

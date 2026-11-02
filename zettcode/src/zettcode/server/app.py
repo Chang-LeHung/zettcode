@@ -557,7 +557,7 @@ def create_app(settings: Settings, *, client_factory: ClientFactory | None = Non
         """
         if runner.busy:
             raise SessionBusyError("A run is already in progress; ask again when it ends")
-        return AnswerOut(answer=await runner.client.session.ask(body.question, timeout=body.timeout, watched=True))
+        return AnswerOut(answer=await runner.client.session.ask(body.question, timeout=body.timeout))
 
     @protected.post(
         "/sessions/current/ask/stream", tags=["sessions"], responses={200: {"content": {"text/event-stream": {}}}}

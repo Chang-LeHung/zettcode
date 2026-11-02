@@ -310,7 +310,7 @@ class Recap(TuiPlugin):
 
 `ask` is a side question: the exchange never joins the conversation, and the shell draws nothing of it, because it
 began no turn — that happens whatever the arguments say. `origin="recap"` is the other half: it says who asked, and a
-question nobody but the reader asked is left out of the transcript a resumed session rebuilds. A command that keeps the
+question that is not the reader's own is left out of the transcript a resumed session rebuilds. A command that keeps the
 default `origin="reader"` would find its own words back on screen after a reopen. The answer appears only where the
 command puts it — here, as a quote. `/btw` is the same kind of question with the reader's origin, so the shell draws
 that one, and restores it.

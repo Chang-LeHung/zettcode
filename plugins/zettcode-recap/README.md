@@ -56,6 +56,7 @@ or, with `uv tool`:
 
 `pip install "zettcode[all]"` adds it beside every other plugin this repository publishes.
 
-It needs a ZettCode from the 0.3 line — whose terminal group has the turn hooks this plugin is built on — and, within
-it, the release that added `ask(watched=)`: the one after 0.3.3. `pyproject.toml` still says `zettcode>=0.3,<0.4`, and
+It needs the ZettCode release that added `ask(origin=)` — the parameter that keeps the recap's own question out of a
+resumed transcript — and one early enough to have the terminal group's turn hooks, which is every 0.3 line. Which
+release carries `ask(origin=)` is settled by `RELEASING.md`; `pyproject.toml` still says `zettcode>=0.3,<0.4`, and
 raising that floor belongs to the release commit that sets the number.

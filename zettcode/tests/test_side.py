@@ -77,9 +77,10 @@ def test_a_question_says_who_asked_it_and_whether_it_was_watched():
     # A plugin that does draw its own question says so, and the word overrides what the origin implies.
     assert question("q", origin="recap", watched=True).attributes[WATCHED] is True
     assert not is_watched_side(UserMessage(content="plain"))
-    # A stored line, which is what a replay reads: the tag, then who asked, then — for a file written before both —
-    # no. Nothing from such a file is restored, because the one thing that asked on its own back then was the recap.
-    assert is_watched_side_line(_line({SIDE: True, ORIGIN: READER}))
+    # A stored line, which is what a replay reads: only the tag it was written with decides. A line that says who
+    # asked but not whether it was watched was not written by this program, and is left out like a file from before
+    # either tag — which matters, because the thing that asked on its own back then was the recap.
+    assert not is_watched_side_line(_line({SIDE: True, ORIGIN: READER}))
     assert not is_watched_side_line(_line({SIDE: True, ORIGIN: "recap"}))
     assert is_watched_side_line(_line({SIDE: True, WATCHED: True}))
     assert not is_watched_side_line(_line({SIDE: True, WATCHED: False}))
@@ -99,9 +100,10 @@ async def test_the_store_records_a_side_exchange_without_replaying_it(tmp_path: 
     ]
     assert [line.message[0].include_in_messages for line in lines] == [False, False, True]
     assert [bool(line.tags.get("side")) for line in lines] == [True, True, False]
-    # Both lines of the run say the reader watched it, since the front end drew the question it asked; the ordinary
-    # turn carries no tag at all, which is not the same thing as a side exchange tagged False.
+    # Both lines of the run say the reader watched it and who asked; the ordinary turn carries neither tag, which is
+    # not the same thing as a side exchange tagged False.
     assert [line.tags.get("watched") for line in lines] == [True, True, None]
+    assert [line.tags.get("origin") for line in lines] == [READER, READER, None]
 
     # … and the next request rebuilds its context without the side exchange.
     following = _context()
@@ -247,16 +249,19 @@ async def test_the_sdk_writes_down_whether_the_reader_watched_the_question(tmp_p
     import zettcode.sdk as zc
     from sdk_helpers import ScriptedModel, config_for, wire
 
-    wire(monkeypatch, ScriptedModel("a summary", "another summary"))
+    wire(monkeypatch, ScriptedModel("a summary", "another summary", "a third"))
     async with zc.Client(config=config_for(tmp_path)) as client:
         await client.session.ask("watched", watched=True)
         await client.session.ask("not watched", watched=False)
+        await client.session.ask("asked by a plugin", origin="recap")
         stored = SessionStore(client.config.store, client.config.workspace).read(client.session.id)
 
-    questions = [line for line in stored.messages if _text(line.message[0]) in {"watched", "not watched"}]
-    assert [(line.message[0].attributes.get("side"), line.tags.get("watched")) for line in questions] == [
-        (True, True),
-        (True, False),
+    asked = {"watched", "not watched", "asked by a plugin"}
+    questions = [line for line in stored.messages if _text(line.message[0]) in asked]
+    assert [(line.tags.get("origin"), line.tags.get("watched")) for line in questions] == [
+        (READER, True),
+        (READER, False),
+        ("recap", False),
     ]
     assert all(line.message[0].include_in_messages is False for line in questions)
 
@@ -280,19 +285,20 @@ async def test_a_side_exchange_from_before_both_tags_is_not_restored(tmp_path: P
     assert replayed.history == ()
 
 
-async def test_a_side_exchange_that_names_the_reader_is_restored_without_the_watched_tag(tmp_path: Path):
-    """A file from a version that wrote ``origin`` but not ``watched`` keeps the reader's own questions."""
+async def test_a_line_that_says_who_asked_but_not_whether_it_was_watched_is_not_restored(tmp_path: Path):
+    """The two tags are written together, so a line with one and not the other was not written by this program.
+
+    ``origin`` is kept for whoever reads the file; the restore reads ``watched`` alone, and its absence means the
+    exchange is left out — the same reading a file from before either tag gets.
+    """
     store = SessionStore(tmp_path)
-    old = {"side": True, "origin": READER}
-    await store.append("s1", "r1", question("what does parse() do?"), tags=old)
-    await store.append("s1", "r1", AssistantMessage(content="it splits the header"), tags=old)
+    half = {"side": True, "origin": READER}
+    await store.append("s1", "r1", question("what does parse() do?"), tags=half)
+    await store.append("s1", "r1", AssistantMessage(content="it splits the header"), tags=half)
 
     replayed = replay(store.read("s1"))
-    entries = [getattr(entry, "text", "") for entry in replayed.transcript.entries]
-    assert [entry.text for entry in replayed.transcript.entries if getattr(entry, "side", False)] == [
-        "what does parse() do?"
-    ]
-    assert any("it splits the header" in text for text in entries)
+
+    assert replayed.transcript.entries == []
 
 
 def test_the_sdk_spells_the_readers_origin_the_way_the_engine_does():
