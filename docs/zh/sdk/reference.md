@@ -248,8 +248,8 @@ def remove_model(name, *, path=None) -> tuple[ModelInfo, ...]: ...
 | `prompt(prompt, *, images, mentions, instructions, on_approval, on_question, on_event, timeout, raw, keep_events, defer_answers, cache)` | `RunStream` |
 | `stream(...)` | `RunStream`（同一个方法） |
 | `await run(prompt, *, images, mentions, instructions, on_approval, on_question, on_event, timeout, keep_events, cache)` | `RunResult` |
-| `await ask(question, *, on_event=None, timeout=None, cache="read", shown=True)` | `str` |
-| `ask_stream(question, *, on_event=None, timeout=None, cache="read", shown=True)` | `RunStream` |
+| `await ask(question, *, on_event=None, timeout=None, cache="read", watched=True)` | `str` |
+| `ask_stream(question, *, on_event=None, timeout=None, cache="read", watched=True)` | `RunStream` |
 | `steer(prompt, *, images=(), mentions=False)` | `str \| None` |
 | `await resumable()` | `ResumeInfo \| None` |
 | `resume_stream(*, on_approval, on_question, on_event, timeout, raw, keep_events, defer_answers)` | `RunStream` |
@@ -257,6 +257,10 @@ def remove_model(name, *, path=None) -> tuple[ModelInfo, ...]: ...
 
 `cache` 取 `"read_write"`（默认）、`"read"` 或 `"off"`；侧问默认 `"read"`，因为它的回答不会被重放，不值得写进缓存。
 见 `zettcode.sdk.types` 里的 `CacheMode`。
+
+`watched` 记录的是读者有没有看到这一问一答，恢复会话时按它决定恢复什么：终端会恢复自己画过的侧问，丢掉插件自己问的
+那些。给程序自用的问题传 `False`（recap 插件就是这么做的），重新打开会话时它就不会再出现；想显示的部分由你自己画成
+一条消息。它说的是屏幕上有没有出现过，不是事件流的开关：迭代这个 run 的人照样收到每一个事件，画不画由前端决定。
 
 `prompt` 在调用处抛出：`ValueError`（空 prompt、错误的 `timeout`）、`TypeError`（某一部分不是文本或 `Image`）、`ConfigurationError`（给读不了图的模型发图片）、`SessionBusyError`、`ClientClosedError`。await 或迭代 run 时抛出 `RunError`、`RunTimeoutError`、`SessionLockedError`、引擎不认识的 `cache` 词（在 run 启动时检查），以及处理函数抛出的任何东西。
 

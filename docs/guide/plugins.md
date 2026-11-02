@@ -304,13 +304,14 @@ class Recap(TuiPlugin):
         host = self.link.host
         if host is None:
             raise ValueError("The shell is not ready yet")
-        answer = await host.client.session.ask("Recap where this session is, briefly.", cache="read")
+        answer = await host.client.session.ask("Recap where this session is, briefly.", cache="read", watched=False)
         return CommandResult(message=f"> {answer}")
 ```
 
-`ask` is a side question: the exchange never joins the conversation, and the shell draws nothing of it, so the
+`ask` is a side question: the exchange never joins the conversation, and nothing of it is drawn — `watched=False`
+says so, and it is what keeps the question and the answer out of the transcript a resumed session rebuilds. The
 answer appears only where the command puts it — here, as a quote. `/btw` is the same kind of question, but the
-reader asked it, so the shell draws that one as a turn of its own.
+reader asked it and watched it, so the shell draws that one, and restores it.
 
 Plugin commands are listed last and cannot shadow a built-in, so `/model`,
 `/resume` and the rest always do what [Commands](/guide/commands) says.

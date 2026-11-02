@@ -17,7 +17,7 @@ from zett_agent.messages import ImageBytesSource, ImageContent, TextContent, Use
 from zett_agent.model import CacheMode
 from zett_agent.resume import ResumePoint
 
-from zettcode.engine.dialogue.side import SHOWN, SIDE, question
+from zettcode.engine.dialogue.side import SIDE, WATCHED, question
 from zettcode.prompt import MentionPart, PromptPart, carries_image, model_text_part, plain_text
 from zettcode.relay import Relayed
 
@@ -55,7 +55,7 @@ class TurnsMixin(AgentBase):
         *,
         hint: str | None = None,
         side: bool = False,
-        shown: bool = True,
+        watched: bool = True,
         relayed: Relayed | None = None,
         cache: CacheMode | str | None = None,
     ) -> AsyncIterator[AgentEvent]:
@@ -78,6 +78,9 @@ class TurnsMixin(AgentBase):
                 it, ``"read"`` reuses a warm prefix without marking this request's new content for caching, and
                 ``"off"`` sends no cache directive at all. A side question starts at ``"read"`` unless told
                 otherwise, because its answer is never replayed.
+            watched: Whether the reader watched this side question on screen, which is what a resumed transcript
+                restores. True for one they asked; a plugin asking for itself passes False. Ignored when ``side`` is
+                false.
 
         Raises:
             SessionLocked: Another process has the session open. Checked before anything else, and a side
@@ -96,7 +99,7 @@ class TurnsMixin(AgentBase):
                 cast(
                     "AsyncGenerator[AgentEvent]",
                     client.stream(
-                        self.request(parts, hint=hint, side=side, shown=shown)
+                        self.request(parts, hint=hint, side=side, watched=watched)
                         if relayed is None
                         else relayed.message(),
                         config=AgentRunConfig(
@@ -195,7 +198,7 @@ class TurnsMixin(AgentBase):
 
     @staticmethod
     def request(
-        parts: Sequence[PromptPart], *, hint: str | None = None, side: bool = False, shown: bool = True
+        parts: Sequence[PromptPart], *, hint: str | None = None, side: bool = False, watched: bool = True
     ) -> str | UserMessage:
         """Return the user turn those ordered parts make up.
 
@@ -212,8 +215,8 @@ class TurnsMixin(AgentBase):
                 reference contributed, then what the caller added.
             side: Mark the turn as a side question, which the store records but
                 never replays.
-            shown: Whether the reader saw this side question on screen; the store keeps it beside the side mark, and a
-                resumed transcript restores only the exchanges that were drawn.
+            watched: Whether the reader watched this side question on screen; the store keeps it beside the side mark,
+                and a resumed transcript restores only the exchanges that were drawn.
         """
         message = TurnsMixin.turn(parts, hint=hint)
         if not side:
@@ -221,10 +224,10 @@ class TurnsMixin(AgentBase):
         if isinstance(message, UserMessage):
             return replace(
                 message,
-                attributes={**message.attributes, SIDE: True, SHOWN: shown},
+                attributes={**message.attributes, SIDE: True, WATCHED: watched},
                 include_in_messages=False,
             )
-        return question(message, shown=shown)
+        return question(message, watched=watched)
 
     @staticmethod
     def turn(parts: Sequence[PromptPart], *, hint: str | None = None) -> str | UserMessage:

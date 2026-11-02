@@ -31,8 +31,8 @@ class FakeSession:
         self.history_gate: asyncio.Event | None = None
         self.history_messages: list[object] = []
 
-    async def ask(self, question: str, *, on_event=None, timeout=None, cache="read", shown: bool = True) -> str:
-        self.asked.append((question, timeout, cache, shown))
+    async def ask(self, question: str, *, on_event=None, timeout=None, cache="read", watched: bool = True) -> str:
+        self.asked.append((question, timeout, cache, watched))
         if self.gate is not None:
             await self.gate.wait()
         if self.refuse is not None:

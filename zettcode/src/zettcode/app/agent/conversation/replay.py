@@ -20,7 +20,7 @@ from zett_agent.messages import AnyMessage, AssistantMessage, SystemMessage, Too
 
 from zettcode.config import DEFAULT_TRANSCRIPT_MAX_ENTRIES
 from zettcode.engine.dialogue.ask import declined_answer
-from zettcode.engine.dialogue.side import is_shown_side_line, is_side_line
+from zettcode.engine.dialogue.side import is_side_line, is_watched_side_line
 from zettcode.engine.extensions.usage import UsageSnapshot, session_usage
 from zettcode.engine.server_tools import ServerToolRun, answer_after_tools, describe_output, runs_in_blocks
 from zettcode.engine.storage import MessageLine, Session
@@ -139,7 +139,7 @@ def replay(
         # is left out whole, question and answer: a plugin's recap is asked with nothing on screen, so restoring it
         # would put words in the conversation that were never said there.
         side = is_side_line(line)
-        if side and not is_shown_side_line(line):
+        if side and not is_watched_side_line(line):
             continue
         message = line.message[0]
         match message:

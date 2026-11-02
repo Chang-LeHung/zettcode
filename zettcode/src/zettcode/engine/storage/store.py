@@ -53,7 +53,7 @@ from zett_agent.ids import new_uuid7
 from zett_agent.messages import AnyMessage, AssistantMessage, SystemMessage, ToolMessage
 from zett_agent.model import ModelUsage
 
-from ..dialogue.side import SHOWN, SIDE, is_shown, is_side
+from ..dialogue.side import SIDE, WATCHED, is_side, is_watched_side
 from .layout import claim_workspace, open_workspace
 from .ledger import LedgerReader, SessionStats
 from .locks import prune_empty
@@ -113,9 +113,9 @@ class _Request:
     #: Whether this request is a side question (see ``engine.dialogue.side``): its
     #: messages are written for the record but never replayed into a context.
     side: bool = False
-    #: Whether the reader saw that side question on screen, which is what a
-    #: resumed transcript restores: a plugin's own question is never drawn.
-    shown: bool = True
+    #: Whether the reader watched that side question on screen, which is what
+    #: a resumed transcript restores: a plugin's own question is never drawn.
+    watched: bool = True
     #: One stored message id for each replayable non-system context position.
     #: ``None`` marks a context-only message the store was told to skip. The
     #: checkpoint's own position is represented by its boundary message id, so
@@ -908,8 +908,11 @@ class SessionStore(SessionPersistenceMixin, AgentExtension):
                 if is_side(message):
                     request.side = True
                     # The question says whether the reader watched it, and every line of the run is tagged with that:
-                    # a resumed transcript restores the exchanges that were on screen and nothing else.
-                    request.shown = is_shown(message)
+                    # a resumed transcript restores the exchanges that were on screen and nothing else. This reads the
+                    # run's own question because the runtime publishes the input before the step's first message is
+                    # flushed; if that order ever changed, the tag would fall back to `watched` and a plugin's question
+                    # would come back on screen, with nothing here to notice.
+                    request.watched = is_watched_side(message)
                 if request.side:
                     # A side question is recorded, never replayed: the same flag
                     # the runtime uses for a message that must not re-enter a
@@ -928,7 +931,7 @@ class SessionStore(SessionPersistenceMixin, AgentExtension):
                         # A side question's lines are tagged as well as flagged:
                         # the tag is what a replay or an export reads, since the
                         # flag alone would also match an instruction.
-                        tags={**context.tags, SIDE: True, SHOWN: request.shown} if request.side else context.tags,
+                        tags={**context.tags, SIDE: True, WATCHED: request.watched} if request.side else context.tags,
                         usage=usage,
                     )
                 if message.include_in_messages and not isinstance(message, SystemMessage):

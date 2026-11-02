@@ -8690,8 +8690,9 @@ async def test_a_side_question_the_shell_did_not_ask_is_not_drawn():
     app.agent.runtime.client.events = [
         AgentEvent(AgentEventType.TEXT_DELTA, "s", delta="the recap's own words"),
     ]
-    # What a plugin does when it asks the session something for itself: a side question, not a turn of the reader's.
-    answer = await app.client.session.ask("where was I?")
+    # What a plugin does when it asks the session something for itself: a side question, not a turn of the reader's,
+    # and one nobody watches — the recap draws only the quote it makes of the answer.
+    answer = await app.client.session.ask("where was I?", watched=False)
 
     assert answer == "the recap's own words", "the asker still gets the answer, to show its own way"
     assert list(app.transcript.entries) == after_the_turn, "and nothing lands after the turn that ended"

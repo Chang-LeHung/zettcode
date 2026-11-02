@@ -412,7 +412,10 @@ class Runner:
         slot = self.slot
         if slot.busy:
             raise SessionBusyError("A run is already in progress; ask again when it ends")
-        return self._drive(slot, lambda: slot.client.session.ask_stream(question, timeout=timeout), side=True)
+        # Watched: the frames stream to the front end that asked, and its chat draws the question as a side one.
+        return self._drive(
+            slot, lambda: slot.client.session.ask_stream(question, timeout=timeout, watched=True), side=True
+        )
 
     async def _drive(
         self, slot: Slot, start: Callable[[], RunStream], request: Request | None = None, *, side: bool = False

@@ -708,7 +708,7 @@ class ZettCodeApp(
         self.app.invalidate()
         outcome = ""
         try:
-            async with self.client.session.ask_stream(question) as run:
+            async with self.client.session.ask_stream(question, watched=True) as run:
                 async for _event in run:
                     self.app.invalidate()
         except asyncio.CancelledError:

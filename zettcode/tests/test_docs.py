@@ -157,7 +157,10 @@ async def test_documented_plugin_registers_and_runs_its_command(path, tmp_path):
 
     # The slow-command example runs too: the work is what the shell awaits, and the answer is a quote.
     class _Ask:
-        async def ask(self, question, *, cache="read", timeout=None):
+        asked: list[bool] = []
+
+        async def ask(self, question, *, cache="read", timeout=None, watched=True):
+            _Ask.asked.append(watched)
             return "All green."
 
     link = HostLink()
@@ -167,6 +170,8 @@ async def test_documented_plugin_registers_and_runs_its_command(path, tmp_path):
     pending = await recap.recap(None)
     assert pending.intro and pending.run is not None
     assert (await pending.run).message == "> All green."
+    # The example asks a question nobody watches, which is what keeps it out of a resumed transcript.
+    assert _Ask.asked == [False]
 
     # A plugin's settings are declared with their defaults, and the values in effect come back.
     declared = terminal_context(config).settings.declare(after_seconds=180, quiet=False)

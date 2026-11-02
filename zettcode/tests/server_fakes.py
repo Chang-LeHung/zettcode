@@ -145,7 +145,7 @@ class FakeSession:
     #: What the next streamed side question does; a test sets it to hold the answer open.
     side_hold: asyncio.Event | None = None
 
-    def ask_stream(self, question: str, *, timeout: float | None = None) -> FakeRun:
+    def ask_stream(self, question: str, *, timeout: float | None = None, watched: bool = True) -> FakeRun:
         self.asked_side.append(question)
         return FakeRun(
             [TextDelta(self.id, "about "), TextDelta(self.id, question)],
