@@ -16,7 +16,7 @@ from zett_agent.agent import AgentRunConfig, AgentRunContext, AgentState
 from zett_agent.extensions.events import MessageAppendedEvent, MessageTiming
 from zett_agent.messages import AssistantMessage, SystemMessage, UserMessage
 
-from zettcode.app.agent.conversation.replay import replay
+from zettcode.app.agent.conversation.replay import WINDOW_SLACK, replay
 from zettcode.engine.dialogue.side import (
     ORIGIN,
     READ_ONLY_TOOLS,
@@ -315,14 +315,16 @@ async def test_a_window_counts_the_rows_it_draws_and_not_the_runs_it_skips(tmp_p
     """The window reaches back past a tail of unwatched runs, so a resumed transcript still holds its rows.
 
     The window walks back until it has counted enough rows; counting lines that replay then skips makes it stop inside
-    that tail, and the transcript comes back empty. Three ordinary turns under seventy skipped lines is the smallest
-    case that shows it: without the skip, ``max_entries=1`` is satisfied by the tail alone. With it, the tail counts
-    nothing, the window falls back to the whole branch, and the turns are there — and none of the recaps are.
+    that tail, and the transcript comes back empty. The tail is sized from ``WINDOW_SLACK`` rather than written out, so
+    it stays longer than the window however the constant is tuned: without the skip, ``max_entries=1`` is satisfied by
+    the tail alone. With it, the tail counts nothing, the window falls back to the whole branch, and the turns are
+    there — and none of the recaps are.
     """
     store = SessionStore(tmp_path)
     for index in range(3):
         await store.append("s1", f"turn{index}", UserMessage(content=f"the reader's turn {index}"))
-    for index in range(35):
+    # Two lines a run, and `WINDOW_SLACK + 8` of them is past `max_entries=1 + WINDOW_SLACK`.
+    for index in range(WINDOW_SLACK // 2 + 4):
         tags = {"side": True, "watched": False}
         await store.append("s1", f"recap{index}", question(f"recap {index}"), tags=tags)
         await store.append("s1", f"recap{index}", AssistantMessage(content=f"summary {index}"), tags=tags)

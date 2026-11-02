@@ -439,8 +439,9 @@ What makes it *side* is what is not kept:
 - The exchange is written into the session file, but never replayed into the
   model's context, so later turns do not know it happened.
 - It *is* replayed into the transcript when the session is resumed, marked
-  `btw ›` like it was when you asked it — you saw that answer, so it comes back —
-  but it is not in an [export](/guide/sessions#exporting).
+  `btw ›` like it was when you asked it — you asked it, so it comes back; a
+  plugin's own side question, which nobody typed, does not — but it is not in an
+  [export](/guide/sessions#exporting).
 - Only the reading tools are offered. An edit made while asking would be
   invisible to the conversation that continues afterwards, so the model would
   carry on with a false picture of the workspace.
