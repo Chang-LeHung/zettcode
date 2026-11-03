@@ -289,7 +289,11 @@ def test_an_answer_that_arrives_after_the_loop_closed_is_dropped_quietly(monkeyp
     task.cancel()
     loop.run_until_complete(asyncio.gather(task, return_exceptions=True))
     loop.close()
-    thread = next(thread for thread in threading.enumerate() if thread not in before)
+    started = [
+        thread for thread in threading.enumerate() if thread not in before and thread.name == "zettcode-background"
+    ]
+    assert len(started) == 1, started
+    (thread,) = started
 
     release.set()
     thread.join(5.0)
@@ -319,7 +323,11 @@ def test_a_failure_that_arrives_after_the_loop_closed_is_dropped_quietly(monkeyp
     task.cancel()
     loop.run_until_complete(asyncio.gather(task, return_exceptions=True))
     loop.close()
-    thread = next(thread for thread in threading.enumerate() if thread not in before)
+    started = [
+        thread for thread in threading.enumerate() if thread not in before and thread.name == "zettcode-background"
+    ]
+    assert len(started) == 1, started
+    (thread,) = started
 
     release.set()
     thread.join(5.0)
