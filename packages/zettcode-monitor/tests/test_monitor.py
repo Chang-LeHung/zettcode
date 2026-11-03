@@ -8,8 +8,8 @@ from types import SimpleNamespace
 import pytest
 from zett_agent.messages import AssistantMessage, SystemMessage, ToolCall, UserMessage
 from zett_agent.model import ModelEvent, ModelRequest, ModelResponse, ModelUsage
-from zettcode.app.commands import CommandContext
 
+from zettcode.app.commands import CommandContext
 from zettcode_monitor import MonitorPlugin, render_report
 from zettcode_monitor.recorder import MonitorExtension
 
@@ -232,7 +232,6 @@ async def test_command(tmp_path):
 
 def _page(**over):
     from zettcode.tui.testing import Harness
-
     from zettcode_monitor.panel import MonitorPage
 
     log: dict = {"applied": [], "closed": 0, "done": [], "exports": 0}

@@ -9,35 +9,51 @@ requires-python = ">=3.10"
 package = false
 
 [tool.uv.workspace]
-members = ["zettcode"]
+# `zettcode/` is the agent and its server; each `packages/*` is a plugin distribution published on its own line, built
+# and tested in this one environment rather than as a project of its own.
+members = ["zettcode", "packages/*"]
 
 [dependency-groups]
-# One package, so the tools are installed once and the same versions check everything.
+# One environment, so the tools are installed once and the same versions check every package.
 dev = [
   # Unlike the conditional runtime deps, these are installed on every
   # interpreter so mypy can check the 3.10 branch of ``_compat`` for real.
   "exceptiongroup>=1.2,<2",
   "mypy>=1.14,<2",
+  # Imported by the suite that checks the extras and the plugins' ranges against what this workspace builds.
+  "packaging>=24,<27",
   "pytest>=8,<9",
   "pytest-asyncio>=0.26,<2",
   "pytest-cov>=7.1.0",
   "ruff>=0.11,<1",
   "tomli>=2,<3",
   "viztracer>=1.1.1",
-  # The recap plugin is developed beside the program, so this checkout's environment carries it: `/recap` is in the
-  # menu when the terminal runs from here. It is not a dependency of the package; once it is released, a reader
-  # installs it from an extra in `zettcode/pyproject.toml` instead.
+  # The plugins are developed beside the program and are workspace members, so this checkout's environment carries
+  # them: `/recap` and `/monitor` are in the menu when the terminal runs from here. They are not dependencies of the
+  # package; a reader installs one from an extra in `zettcode/pyproject.toml` instead.
+  "zettcode-monitor",
   "zettcode-recap",
 ]
 
 [tool.uv.sources]
-# The plugin is built from this checkout, not from an index, until its first release; after that the extra is the
-# published path and this source stays for local development.
-zettcode-recap = { path = "plugins/zettcode-recap", editable = true }
+# Every package resolves from this checkout, not from an index: the workspace member is what `uv lock` and `uv sync`
+# see, and the extras in `zettcode/pyproject.toml` are still how a reader installs a released plugin from PyPI.
+# uv resolves a member without checking the range that asks for it (the lock records no specifier), so the ranges are
+# what nothing else would catch: `test_structure.py` checks the extras against the versions built here, and each
+# plugin's suite checks its `zettcode` range against the checkout's.
+zettcode = { workspace = true }
+zettcode-monitor = { workspace = true }
+zettcode-recap = { workspace = true }
 
 [tool.mypy]
 python_version = "3.10"
-files = ["zettcode/src", "zettcode/perf"]
+files = [
+  "zettcode/src",
+  "zettcode/perf",
+  ".github/scripts",
+  "packages/zettcode-monitor/src",
+  "packages/zettcode-recap/src",
+]
 # Check the pydantic storage models as models, not as plain classes.
 plugins = ["pydantic.mypy"]
 warn_unused_ignores = true
@@ -52,14 +68,23 @@ ignore_missing_imports = true
 [tool.ruff]
 line-length = 120
 target-version = "py310"
-src = ["zettcode/src", "zettcode/tests", "zettcode/perf"]
+# Every package in the workspace: the agent's three trees and each plugin's sources and tests.
+src = [
+  "zettcode/src",
+  "zettcode/tests",
+  "zettcode/perf",
+  "packages/zettcode-monitor/src",
+  "packages/zettcode-monitor/tests",
+  "packages/zettcode-recap/src",
+  "packages/zettcode-recap/tests",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 ignore = ["E501"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["zettcode"]
+known-first-party = ["zettcode", "zettcode_monitor", "zettcode_recap"]
 
 [tool.ruff.format]
 quote-style = "double"

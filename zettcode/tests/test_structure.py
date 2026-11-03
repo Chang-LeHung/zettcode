@@ -15,6 +15,8 @@ import re
 import subprocess
 import sys
 
+from packaging.requirements import Requirement
+
 import zettcode
 from zettcode._compat import tomllib
 
@@ -60,9 +62,10 @@ def test_every_invariant_cites_a_test_that_exists():
     reader looking for evidence that is not where the row says it is.
     """
     document = (ROOT / "docs/internal/invariants.md").read_text(encoding="utf-8")
-    # The evidence lives in one suite now: the server's tests sit beside the agent's, under ``zettcode/tests``.
+    # The evidence lives beside the code it pins: the server's tests sit with the agent's under ``zettcode/tests``, and
+    # each plugin's own under ``packages/<name>/tests``.
     evidence: dict[str, list[pathlib.Path]] = {}
-    for path in (PROJECT / "tests").glob("test_*.py"):
+    for path in [*(PROJECT / "tests").glob("test_*.py"), *(ROOT / "packages").glob("*/tests/test_*.py")]:
         evidence.setdefault(path.name, []).append(path)
     missing: list[str] = []
     unqualified: list[str] = []
@@ -384,6 +387,39 @@ def test_the_version_is_written_once_and_the_distribution_carries_it():
     assert project["tool"]["hatch"]["version"]["path"] == "src/zettcode/__init__.py"
     assert project["project"]["name"] == zettcode.__name__
     assert zettcode.__version__ == importlib.metadata.version("zettcode")
+
+
+def test_each_extra_names_a_plugin_this_workspace_builds_in_a_range_that_admits_it():
+    """`pip install "zettcode[monitor]"` is a range a reader resolves against a published plugin.
+
+    uv resolves a workspace member for a dependency without checking the range that asks for it and records no
+    specifier in the lock, so bumping a plugin past its extra — or leaving an extra behind at an older plugin's
+    version — locks, tests and ships green, and fails only in a reader's environment. `make smoke` cannot see it
+    either: it resolves the extra from PyPI, where a version that is not published yet does not exist.
+
+    The inventory is read from `packages/` rather than written down here: `packages/zettcode-<name>` is the
+    distribution `zettcode-<name>`, the extra `<name>`, and `all` carries every one of them, so a new plugin is
+    covered the moment its directory exists.
+    """
+    prefix = "zettcode-"
+    directories = [path.name for path in (ROOT / "packages").iterdir() if (path / "pyproject.toml").is_file()]
+    assert directories and all(name.startswith(prefix) for name in directories), directories
+    plugins = {name.removeprefix(prefix) for name in directories}
+
+    project = tomllib.loads((PROJECT / "pyproject.toml").read_text(encoding="utf-8"))
+    extras = project["project"]["optional-dependencies"]
+    assert set(extras) == {"all", *plugins}, "one extra per plugin under packages/, and the one that carries them all"
+    carried = {Requirement(line) for extra in plugins for line in extras[extra]}
+    assert {Requirement(line) for line in extras["all"]} == carried, "the `all` extra names every plugin extra"
+
+    for extra, lines in extras.items():
+        for line in lines:
+            requirement = Requirement(line)
+            built = importlib.metadata.version(requirement.name)
+            assert requirement.specifier.contains(built, prereleases=True), (
+                f"the {extra!r} extra requires {requirement}, which excludes {requirement.name} {built}, "
+                "the version this workspace builds"
+            )
 
 
 def test_a_facade_maps_every_name_to_the_module_it_statically_imports():

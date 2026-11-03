@@ -2,15 +2,21 @@ UV ?= uv
 #: The editor CLI `make install-vscode` installs into: `code`, `code-insiders`, `cursor`, or a path to one.
 CODE ?= code
 
-# The repository is a uv workspace of one package, `zettcode/`: the terminal agent and the HTTP server it serves
-# are one distribution, so one `pip install` writes both `zettcode` and `zettcode-server`. Tooling is configured once,
-# in the root `pyproject.toml`; `make check` runs it all.
+# The repository is a uv workspace: `zettcode/` is the terminal agent and the HTTP server in one distribution (one
+# `pip install` writes both `zettcode` and `zettcode-server`), and `packages/*` are the plugins this repository
+# publishes on their own lines. All of them share one environment, one lock file, and the tooling configured in the
+# root `pyproject.toml`; `make check` runs it all.
 #
 # `make smoke` builds here rather than into dist/, so the wheel it installs is
 # the one it just built and not a release wheel left over from an earlier run.
 SMOKE_DIR := .smoke
 
-LINT_PATHS := zettcode/src zettcode/tests zettcode/perf docs/scripts
+PACKAGES := packages
+LINT_PATHS := zettcode/src zettcode/tests zettcode/perf docs/scripts .github/scripts $(PACKAGES)
+# The plugin suites are separate test runs because each package's `pyproject.toml` is the pytest configuration its
+# tests are written against (`asyncio_mode`, `testpaths`); one run over several would take the workspace root's, which
+# has no pytest section at all.
+PACKAGE_TESTS := $(wildcard $(PACKAGES)/*/tests)
 
 # `make check` runs only what the tree has changed, so a change to the VS Code webview does not spend three minutes
 # on the Python suite. CI reads the same split from the pull request's own diff and runs the suites a change needs,
@@ -18,10 +24,12 @@ LINT_PATHS := zettcode/src zettcode/tests zettcode/perf docs/scripts
 # the main line.
 BASE ?= $(shell git merge-base HEAD origin/main 2>/dev/null || git rev-parse --verify HEAD)
 CHANGED := $(shell { git diff --name-only $(BASE); git ls-files --others --exclude-standard; } 2>/dev/null | sort -u)
-# A changed Makefile can change any of these rules, so it counts as every file.
-EVERYTHING := $(filter Makefile,$(CHANGED))
-# Files that need Ruff, mypy and the Python suite.
-PYTHON := $(if $(EVERYTHING),1,$(filter zettcode/% pyproject.toml uv.lock,$(CHANGED)))
+# A changed Makefile or workflow can change any of these rules, so either counts as every file (CI reads the same
+# rule from the pull request's diff).
+EVERYTHING := $(filter Makefile .github/workflows/%,$(CHANGED))
+# Files that need Ruff, mypy and the Python suite. The release helper is Python that only the workflow runs, and the
+# suite holds its tests.
+PYTHON := $(if $(EVERYTHING),1,$(filter zettcode/% $(PACKAGES)/% .github/scripts/% pyproject.toml uv.lock,$(CHANGED)))
 # Files Ruff alone covers (`make lint` reads docs/scripts too).
 RUFFED := $(if $(PYTHON),1,$(filter docs/scripts/%,$(CHANGED)))
 # The TypeScript client, and the extension, which bundles that client's source.
@@ -29,7 +37,7 @@ CLIENT := $(if $(EVERYTHING),1,$(filter clients/typescript/%,$(CHANGED)))
 GATEWAY := $(if $(EVERYTHING),1,$(filter clients/gateway/%,$(CHANGED)))
 EXTENSION := $(if $(EVERYTHING),1,$(filter clients/vscode/% clients/typescript/%,$(CHANGED)))
 
-.PHONY: help install lint typecheck test python client gateway-page gateway-ui vscode vscode-package install-vscode build smoke check check-all hooks docs docs-build docs-preview demo demo-all demos demo-thinking palettes themes perf perf-scaling perf-store perf-profile perf-startup perf-imports FORCE
+.PHONY: help install lint typecheck test test-zettcode test-packages python client gateway-page gateway-ui vscode vscode-package install-vscode build smoke check check-all hooks docs docs-build docs-preview demo demo-all demos demo-thinking palettes themes perf perf-scaling perf-store perf-profile perf-startup perf-imports FORCE
 
 DEMOS := text status_bar spinner progress_bar list table diff markdown textarea completion dialog collapsible toast tasks scroll layout
 
@@ -76,8 +84,17 @@ lint:
 typecheck:
 	$(UV) run --no-sync mypy
 
-test:
+test: test-zettcode test-packages
+
+test-zettcode:
 	cd zettcode && $(UV) run --no-sync pytest
+
+# Each plugin's suite is its own run: its `pyproject.toml` is the pytest configuration it is written against, and one
+# run over several would take the workspace root's, which has no pytest section at all.
+test-packages:
+	@if [ -n "$(PACKAGE_TESTS)" ]; then \
+		for suite in $(PACKAGE_TESTS); do echo "--- $$suite"; $(UV) run --no-sync pytest "$$suite" -q || exit 1; done; \
+	fi
 
 python: lint typecheck test
 

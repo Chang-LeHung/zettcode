@@ -31,7 +31,7 @@ dependencies = [
 ]
 
 [project.urls]
-Repository = "https://github.com/Chang-LeHung/zettcode/tree/main/plugins/zettcode-monitor"
+Repository = "https://github.com/Chang-LeHung/zettcode/tree/main/packages/zettcode-monitor"
 Issues = "https://github.com/Chang-LeHung/zettcode/issues"
 
 [project.entry-points."zettcode.plugins"]
@@ -51,16 +51,10 @@ packages = ["src/zettcode_monitor"]
 include = ["/src", "/tests", "/README.md", "/LICENSE", "/pyproject.toml"]
 
 [dependency-groups]
-dev = ["pytest", "pytest-asyncio"]
-
-[tool.ruff]
-line-length = 120
-target-version = "py310"
-src = ["src", "tests"]
-
-[tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B"]
-ignore = ["E501"]
+# What the tests import beyond the plugin itself. The workspace's own dev group carries the same names for `make test`;
+# this one is what the release workflow installs into the fresh environment it tests the built plugin in, so a
+# test-only import a plugin gains is declared here rather than guessed there.
+dev = ["packaging>=24,<27", "pytest>=8,<9", "pytest-asyncio>=0.26,<2"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

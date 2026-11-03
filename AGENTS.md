@@ -2,8 +2,18 @@
 
 ## Scope
 
-The repository is a uv workspace of one package, and the root `pyproject.toml` is only the workspace: the shared
-tool configuration (Ruff, mypy, the dev dependency group) and the member list. Nothing is published from the root.
+The repository is a uv workspace, and the root `pyproject.toml` is only the workspace: the shared
+tool configuration (Ruff, mypy, the dev dependency group), the uv sources, and the member list. Nothing is published
+from the root.
+
+- `packages/` holds the plugin distributions this repository publishes, one directory per PyPI project
+  (`zettcode-monitor`, `zettcode-recap`), each with its own version and tag. They are workspace members, so they share
+  the one environment, `uv.lock` and the suite `make check` runs — not separate projects with their own lock or venv —
+  and `.github/workflows/release-packages.yml` releases whichever of them has a version PyPI does not have. A plugin
+  runs against the `zettcode` in this checkout: its `zettcode` range has to admit the version beside it, and the
+  extra in `zettcode/pyproject.toml` has to admit the plugin's. Adding one is a directory with a `pyproject.toml`
+  (hatchling, `src/<module>`, a `dev` group holding what its tests import), an entry in the root `dev` group,
+  `[tool.uv.sources]`, and the Ruff/mypy paths in the root `pyproject.toml`; nothing in a workflow.
 
 - `zettcode/` is the terminal coding agent. `src/zettcode` holds `cli.py` and
   `config.py` at the top, the agent core in `engine/` (`ZettCodeEngine` in
@@ -59,15 +69,17 @@ tool configuration (Ruff, mypy, the dev dependency group) and the member list. N
 
 - Python 3.10+ and `uv` for dependency management; Ruff for formatting and
   linting with `line-length = 120`, and mypy for the shipped code under
-  `zettcode/src` and `zettcode/perf`. Both tools target 3.10 and CI runs 3.10 through 3.15, so
+  `zettcode/src`, `zettcode/perf`, each `packages/*/src`, and the release helper in `.github/scripts`. Both tools
+  target 3.10 and CI runs 3.10 through 3.15, so
   keep the source free of newer syntax and standard-library APIs; the version shims live in
   `zettcode/src/zettcode/_compat.py`.
 - Run `make check` while working: it compares the tree with where the branch left `main` (`BASE=…` picks another
-  ref) and runs only what the change touches — Ruff, mypy and the Python suite for `zettcode/`, the TypeScript
-  client for `clients/typescript/`, the extension for either JavaScript client, and nothing for a guide-only edit.
+  ref) and runs only what the change touches — Ruff, mypy and the Python suite for `zettcode/` and `packages/`, the
+  TypeScript client for `clients/typescript/`, the extension for either JavaScript client, and nothing for a
+  guide-only edit.
   Run `make check-all` before handing work over; CI runs only the suites a pull request's diff needs — `zettcode/`,
-  `uv.lock` and the root `pyproject.toml` for the Python gate, `clients/<name>/` for a client, `plugins/` or the
-  `zettcode/` the plugin runs against for the plugin, and everything for the `Makefile` or a workflow — so a full run
+  `packages/`, `uv.lock` and the root `pyproject.toml` for the Python gate, `clients/<name>/` for a client, and
+  everything for the `Makefile` or a workflow — so a full run
   does not have to happen on every edit. Run `make smoke` when packaging changes so both console scripts are exercised
   from the built wheel. `make vscode`
   runs the extension's type-check, jsdom tests and build on its own, and `make vscode-package` writes a `.vsix`.
@@ -110,6 +122,10 @@ tool configuration (Ruff, mypy, the dev dependency group) and the member list. N
   read it from there, and a release is a commit that sets it plus a `v<version>` tag. The release workflow reads the
   same file and refuses to publish when the tag and it disagree. The terminal and the server are one distribution and
   one version; there is no second tag.
+- A plugin in `packages/` is released on its own line: its version in its `__init__.py`, and a
+  `<name>-v<version>` tag — the plugin's entry-point name or its directory — or a manual run of
+  `release-packages.yml`. The workflow publishes only versions PyPI does not already have, so a re-run is a no-op;
+  adding a package needs a `pyproject.toml` and nothing in the workflow.
 - Publishing requires the `PYPI_API_TOKEN` repository secret; see `RELEASING.md`.
 - When `zett-agent` is released, raise the `zett-agent` floor in the same change
   — the dependency is a range (`>=0.1.13,<0.2`), never an exact pin, because

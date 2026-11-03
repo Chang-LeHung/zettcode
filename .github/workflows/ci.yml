@@ -20,7 +20,6 @@ jobs:
     outputs:
       lint: ${{ steps.files.outputs.lint }}
       python: ${{ steps.files.outputs.python }}
-      monitor: ${{ steps.files.outputs.monitor }}
       typescript: ${{ steps.files.outputs.typescript }}
       vscode: ${{ steps.files.outputs.vscode }}
       gateway: ${{ steps.files.outputs.gateway }}
@@ -31,11 +30,11 @@ jobs:
           # The diff needs the base commit, which a shallow clone does not have.
           fetch-depth: 0
 
-      # The split is the one `make check` uses: the Python gate for `zettcode/`, a lock file or the root
-      # `pyproject.toml`; the client for its own directory; the extension for itself or the client it bundles; the
-      # gateway page for its own directory, and with the wheel that ships it; the plugin for `plugins/` and for any
-      # change to the zettcode its suite runs against. The Makefile and the workflows themselves count as every
-      # file, because either can change what a suite means.
+      # The split is the one `make check` uses: the Python gate for `zettcode/`, `packages/`, a lock file or the root
+      # `pyproject.toml` — the workspace is one environment, so a change to a plugin can break the program and the
+      # other way round; the client for its own directory; the extension for itself or the client it bundles; the
+      # gateway page for its own directory, and with the wheel that ships it. The Makefile and the workflows
+      # themselves count as every file, because either can change what a suite means.
       - name: Read the files this change touches
         id: files
         shell: bash
@@ -68,13 +67,8 @@ jobs:
           # A pattern that matches nothing is a false branch, not a failure.
           matches() { [ "$everything" = true ] && return 0; grep -qE "$1" <<<"$files"; }
 
-          python=false;     matches '^(zettcode/|pyproject\.toml|uv\.lock)' && python=true
+          python=false;     matches '^(zettcode/|packages/|\.github/scripts/|pyproject\.toml|uv\.lock)' && python=true
           lint=false;       [ "$python" = true ] && lint=true;  matches '^docs/scripts/' && lint=true
-          monitor=false;    [ "$python" = true ] && monitor=true;  matches '^plugins/' && monitor=true
-          recap=false;      [ "$python" = true ] && recap=true;    matches '^plugins/zettcode-recap/' && recap=true
-          # The recap plugin is an editable dev dependency, so the suite loads it: a change to the plugin can break
-          # the suite without touching `zettcode/`, and has to run it.
-          [ "$recap" = true ] && python=true
           typescript=false; matches '^clients/typescript/' && typescript=true
           vscode=false;     [ "$typescript" = true ] && vscode=true;  matches '^clients/vscode/' && vscode=true
           gateway=false;    matches '^clients/gateway/' && gateway=true
@@ -85,8 +79,6 @@ jobs:
           {
             echo "lint=$lint"
             echo "python=$python"
-            echo "monitor=$monitor"
-            echo "recap=$recap"
             echo "typescript=$typescript"
             echo "vscode=$vscode"
             echo "gateway=$gateway"
@@ -109,12 +101,12 @@ jobs:
         run: uv sync --locked --all-packages
 
       - name: Check formatting
-        run: uv run --no-sync ruff format --check zettcode/src zettcode/tests zettcode/perf docs/scripts
+        run: uv run --no-sync ruff format --check zettcode/src zettcode/tests zettcode/perf docs/scripts .github/scripts packages
 
       - name: Lint
-        run: uv run --no-sync ruff check zettcode/src zettcode/tests zettcode/perf docs/scripts
+        run: uv run --no-sync ruff check zettcode/src zettcode/tests zettcode/perf docs/scripts .github/scripts packages
 
-      # The configuration at the workspace root covers the package.
+      # The configuration at the workspace root covers every package, the plugins included.
       - name: Type-check
         run: uv run --no-sync mypy
 
@@ -140,70 +132,12 @@ jobs:
       - name: Sync dependencies
         run: uv sync --locked --all-packages
 
+      # The workspace's suites, the same way a contributor runs them: the program's, and each plugin's against the
+      # zettcode in this checkout. Installing the plugins from PyPI is the release workflows' job, where the release
+      # they name exists; what this checks is that they still speak the API of the code beside them and that the
+      # ranges they declare admit it.
       - name: Run tests
-        working-directory: zettcode
-        run: uv run --no-sync pytest
-
-  monitor:
-    name: Monitor plugin
-    needs: changes
-    if: needs.changes.outputs.monitor == 'true'
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        # The plugin is not a workspace member, so its own pyproject owns the
-        # interpreter range: the floor and the newest version claimed cover it.
-        python-version: ["3.10", "3.15"]
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: astral-sh/setup-uv@v10.2.0
-        with:
-          python-version: ${{ matrix.python-version }}
-          enable-cache: true
-
-      - name: Sync dependencies
-        run: uv sync --locked --all-packages
-
-      # The plugin runs from its source against the zettcode in this checkout,
-      # not from a built wheel: what this job checks is that the plugin still
-      # speaks the API of the zettcode beside it and that the ranges it declares
-      # admit that release. Installing the two from PyPI is the release
-      # workflow's job, where the release it names exists.
-      - name: Run tests
-        run: uv run --no-sync python -m pytest plugins/zettcode-monitor/tests -q
-        env:
-          PYTHONPATH: plugins/zettcode-monitor/src
-
-  recap:
-    name: Recap plugin
-    needs: changes
-    if: needs.changes.outputs.recap == 'true'
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        # Not a workspace member, so its own pyproject owns the interpreter range: the floor and the newest version
-        # it claims.
-        python-version: ["3.10", "3.15"]
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: astral-sh/setup-uv@v10.2.0
-        with:
-          python-version: ${{ matrix.python-version }}
-          enable-cache: true
-
-      - name: Sync dependencies
-        run: uv sync --locked --all-packages
-
-      # The plugin runs from its source against the zettcode in this checkout, so the API it was written against is
-      # the one beside it.
-      - name: Run tests
-        run: uv run --no-sync python -m pytest plugins/zettcode-recap/tests -q
-        env:
-          PYTHONPATH: plugins/zettcode-recap/src
+        run: make test
 
   test-windows:
     name: Tests (Windows, Python ${{ matrix.python-version }})
@@ -233,6 +167,12 @@ jobs:
       - name: Run tests
         working-directory: zettcode
         run: uv run --no-sync pytest
+
+      # The plugins are workspace members, so they run here beside the program they extend. This is the loop `make
+      # test` runs on Linux; `make` is not on a Windows runner, so it is spelled out here.
+      - name: Run the plugin tests
+        shell: bash
+        run: for suite in packages/*/tests; do uv run --no-sync pytest "$suite" -q || exit 1; done
 
   typescript:
     name: TypeScript client
