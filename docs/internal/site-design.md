@@ -42,7 +42,7 @@ page slugs stable, and add the Chinese counterpart when adding an English page.
 Keep usage examples executable: model tables and optional config fragments are
 loaded through the real config parser, MCP examples through the released server
 config parser, and plugin command examples through registration and execution
-in `tests/test_docs.py`. Use placeholder credentials and temporary directories,
+in `packages/zettcode-app/tests/test_docs.py`. Use placeholder credentials and temporary directories,
 never make billable calls in documentation tests. Verify model ids, context
 limits, and image support against the endpoint's current official reference
 when updating provider examples; the config parser cannot verify remote claims.

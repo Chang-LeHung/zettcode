@@ -43,7 +43,7 @@ dev = [
 # Every package resolves from this checkout, not from an index: the workspace member is what `uv lock` and `uv sync`
 # see, and the extras in `packages/zettcode/pyproject.toml` are still how a reader installs a released plugin from
 # PyPI. uv resolves a member without checking the range that asks for it (the lock records no specifier), so the
-# ranges are what nothing else would catch: `tests/test_structure.py` checks the extras against the versions built
+# ranges are what nothing else would catch: `packages/zettcode/tests/test_structure.py` checks the extras against the versions built
 # here, and each plugin's suite checks its `zettcode` range against the checkout's.
 zettcode = { workspace = true }
 zettcode-app = { workspace = true }

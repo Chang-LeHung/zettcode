@@ -13,7 +13,7 @@ CODE ?= code
 SMOKE_DIR := .smoke
 
 PACKAGES := packages
-LINT_PATHS := support docs/scripts .github/scripts $(PACKAGES)
+LINT_PATHS := conftest.py support docs/scripts .github/scripts $(PACKAGES)
 # The distributions the program is built from, in dependency order (the list the release workflow reads too):
 # `make build` and `make smoke` make all of them.
 SPLIT := $(shell grep -v '^\#' $(PACKAGES)/order.txt)
@@ -32,7 +32,7 @@ CHANGED := $(shell { git diff --name-only $(BASE); git ls-files --others --exclu
 EVERYTHING := $(filter Makefile .github/workflows/%,$(CHANGED))
 # Files that need Ruff, mypy and the Python suite. The release helper is Python that only the workflow runs, and the
 # suite holds its tests.
-PYTHON := $(if $(EVERYTHING),1,$(filter $(PACKAGES)/% .github/scripts/% pyproject.toml uv.lock,$(CHANGED)))
+PYTHON := $(if $(EVERYTHING),1,$(filter $(PACKAGES)/% support/% conftest.py .github/scripts/% pyproject.toml uv.lock,$(CHANGED)))
 # Files Ruff alone covers (`make lint` reads docs/scripts too).
 RUFFED := $(if $(PYTHON),1,$(filter docs/scripts/%,$(CHANGED)))
 # The TypeScript client, and the extension, which bundles that client's source.

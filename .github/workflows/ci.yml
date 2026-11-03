@@ -68,7 +68,7 @@ jobs:
           # A pattern that matches nothing is a false branch, not a failure.
           matches() { [ "$everything" = true ] && return 0; grep -qE "$1" <<<"$files"; }
 
-          python=false;     matches '^(packages/|\.github/scripts/|pyproject\.toml|uv\.lock)' && python=true
+          python=false;     matches '^(packages/|support/|conftest\.py|\.github/scripts/|pyproject\.toml|uv\.lock)' && python=true
           lint=false;       [ "$python" = true ] && lint=true;  matches '^docs/scripts/' && lint=true
           typescript=false; matches '^clients/typescript/' && typescript=true
           vscode=false;     [ "$typescript" = true ] && vscode=true;  matches '^clients/vscode/' && vscode=true
@@ -102,10 +102,10 @@ jobs:
         run: uv sync --locked --all-packages
 
       - name: Check formatting
-        run: uv run --no-sync ruff format --check support docs/scripts .github/scripts packages
+        run: uv run --no-sync ruff format --check conftest.py support docs/scripts .github/scripts packages
 
       - name: Lint
-        run: uv run --no-sync ruff check support docs/scripts .github/scripts packages
+        run: uv run --no-sync ruff check conftest.py support docs/scripts .github/scripts packages
 
       # The configuration at the workspace root covers every package, the plugins included.
       - name: Type-check
