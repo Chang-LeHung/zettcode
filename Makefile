@@ -17,9 +17,9 @@ LINT_PATHS := tests docs/scripts .github/scripts $(PACKAGES)
 # The distributions the program is built from, in dependency order (the list the release workflow reads too):
 # `make build` and `make smoke` make all of them.
 SPLIT := $(shell grep -v '^\#' $(PACKAGES)/order.txt)
-# The plugin suites are separate test runs because each package's `pyproject.toml` is the pytest configuration its
-# tests are written against (`asyncio_mode`, `testpaths`); one run over several would take the workspace root's, which
-# has no pytest section at all.
+# Each plugin's suite runs on its own because its `pyproject.toml` is the pytest configuration it is written
+# against (`asyncio_mode`, `testpaths`): the root has a section too, for `tests/`, and a run over several packages
+# would take that one instead of theirs.
 PACKAGE_TESTS := $(wildcard $(PACKAGES)/*/tests)
 
 # `make check` runs only what the tree has changed, so a change to the VS Code webview does not spend three minutes
@@ -41,7 +41,7 @@ CLIENT := $(if $(EVERYTHING),1,$(filter clients/typescript/%,$(CHANGED)))
 GATEWAY := $(if $(EVERYTHING),1,$(filter clients/gateway/%,$(CHANGED)))
 EXTENSION := $(if $(EVERYTHING),1,$(filter clients/vscode/% clients/typescript/%,$(CHANGED)))
 
-.PHONY: help install lint typecheck test test-zettcode test-packages python client gateway-page gateway-ui vscode vscode-package install-vscode build smoke check check-all hooks docs docs-build docs-preview demo demo-all demos demo-thinking palettes themes perf perf-scaling perf-store perf-profile perf-startup perf-imports FORCE
+.PHONY: help install lint typecheck test test-program test-packages python client gateway-page gateway-ui vscode vscode-package install-vscode build smoke check check-all hooks docs docs-build docs-preview demo demo-all demos demo-thinking palettes themes perf perf-scaling perf-store perf-profile perf-startup perf-imports FORCE
 
 DEMOS := text status_bar spinner progress_bar list table diff markdown textarea completion dialog collapsible toast tasks scroll layout
 
@@ -88,13 +88,14 @@ lint:
 typecheck:
 	$(UV) run --no-sync mypy
 
-test: test-zettcode test-packages
+test: test-program test-packages
 
-test-zettcode:
+# The program's suite, from the root: it drives every distribution, and the root's `[tool.pytest.ini_options]`
+# (`testpaths = ["tests"]`) is where it is configured.
+test-program:
 	$(UV) run --no-sync pytest
 
-# Each plugin's suite is its own run: its `pyproject.toml` is the pytest configuration it is written against, and one
-# run over several would take the workspace root's, which has no pytest section at all.
+# Each plugin's suite is its own run, with its own pytest configuration; see `PACKAGE_TESTS` above.
 test-packages:
 	@if [ -n "$(PACKAGE_TESTS)" ]; then \
 		for suite in $(PACKAGE_TESTS); do echo "--- $$suite"; $(UV) run --no-sync pytest "$$suite" -q || exit 1; done; \
