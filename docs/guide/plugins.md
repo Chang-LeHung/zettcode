@@ -44,6 +44,10 @@ claim — is reported as a failure where the reader can see it.
 A plugin publishes a class under the `zettcode.plugins` entry-point group:
 
 ```toml
+[project]
+name = "my-package"
+dependencies = ["zettcode-plugin-api>=0.3,<0.4"]
+
 [project.entry-points."zettcode.plugins"]
 greeter = "my_package:Greeter"
 ```
@@ -155,8 +159,8 @@ dependencies before installing them.
 ## What a plugin can take part in
 
 `Plugin` composes two groups of hooks, and a plugin overrides only the stages it
-needs (the agent's group is in `zettcode.engine.plugins`; the screen's is added by
-`TuiPlugin` in `zettcode.app.plugins`):
+needs (the agent's group is `zettcode.engine.plugins`; the screen's is added by `TuiPlugin`; both are re-exported
+by `zettcode.plugin_api`, which is what a plugin imports):
 
 - **The agent's work** — the same lifecycle `zett-agent` extensions use: setup,
   run, turn, model, tool, compaction, and external events. A plugin can register
