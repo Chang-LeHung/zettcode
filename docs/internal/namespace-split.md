@@ -123,8 +123,8 @@ Each stage is one branch and one commit, and ends with `make check` green plus b
    157 relative imports that climbed to the namespace root are absolute.
 4. **`zettcode-plugin-api`.** *Done.* The thin re-export package exists, both plugins depend on it and import only
    from it, and `test_a_plugin_depends_on_one_package_of_ours_and_imports_from_it` holds both halves.
-5. **Releases, packaging and docs.** *Done.* `packages/order.txt` is the dependency order `make build` and
-   `release.yml` publish in; `release.yml` builds and publishes every distribution under one `v<version>` tag, and
+5. **Releases, packaging and docs.** *Done.* `.github/scripts/release_order.py` generates the dependency order
+   `make build` and `release.yml` publish in (`make order` writes it out); `release.yml` builds and publishes every distribution under one `v<version>` tag, and
    `release-packages.yml` keeps the plugins on their own; `make smoke` builds and installs the whole set; the guide
    names `zettcode.plugin_api`, and the invariants (P3–P6) pin the engine's closure, the plugin's one dependency, the
    release order and the one version file.

@@ -1,8 +1,9 @@
 name: Release
 
-# One version, one tag, every distribution the program is made of. `packages/order.txt` is the dependency order they
-# are built and published in, and it is the same list `make build` reads. The plugins are not here: they have their own
-# line and their own workflow (`.github/workflows/release-packages.yml`).
+# One version, one tag, every distribution the program is made of. The order they are built and published in is
+# generated from their `pyproject.toml` files by `.github/scripts/release_order.py` — the same script `make build`
+# reads — so nothing keeps a second list. The plugins are not here: they have their own line and their own workflow
+# (`.github/workflows/release-packages.yml`).
 
 on:
   push:
@@ -63,7 +64,7 @@ jobs:
       - name: Build
         run: |
           set -euo pipefail
-          for name in $(grep -v '^#' packages/order.txt); do
+          for name in $(python3 .github/scripts/release_order.py); do
             echo "::group::$name"
             uv build "packages/$name" --out-dir "dist/$name"
             echo "::endgroup::"
@@ -104,7 +105,7 @@ jobs:
           UV_PUBLISH_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
         run: |
           set -euo pipefail
-          for name in $(grep -v '^#' packages/order.txt); do
+          for name in $(python3 .github/scripts/release_order.py); do
             echo "::group::$name"
             uv publish --check-url https://pypi.org/simple/ "dist/$name"/*
             echo "::endgroup::"

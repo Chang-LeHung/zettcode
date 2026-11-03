@@ -10,8 +10,9 @@ from the root.
   distribution ships `zettcode/__init__.py`, so `import zettcode` is the union of what is installed and there is no
   facade to keep. `docs/internal/namespace-split.md` has the owner of every module.
   - `zettcode` is the program: `cli.py`, `plugin_cli.py`, both console scripts, and the one distribution a reader
-    installs. `packages/order.txt` lists it and the parts below in dependency order, and `release.yml` builds and
-    publishes them in that order — one version, one `v<version>` tag, read from
+    installs. `.github/scripts/release_order.py` puts it and the parts below in dependency order (read from their
+    `pyproject.toml` files; `make order` writes the list to the ignored `packages/order.txt`), and `release.yml`
+    builds and publishes them in that order — one version, one `v<version>` tag, read from
     `packages/zettcode-engine/src/zettcode/version.py`.
   - `zettcode-engine` is the root of the graph: the runtime over `zett-agent` (`core.py`, and the `dialogue/`,
     `extensions/`, `permission/`, `storage/`, `tools/`, `export/` it is built from) and the leaves it is written on
@@ -86,7 +87,8 @@ from the root.
   TypeScript client for `clients/typescript/`, the extension for either JavaScript client, and nothing for a
   guide-only edit.
   `make test` runs each distribution's suite on its own, with that package's pytest configuration; a bare `pytest`
-  at the root is refused (its conftest says why).
+  at the root is refused (its conftest says why). Each package also has its own `Makefile` (`test`, `lint`,
+  `typecheck`) for the days one distribution is all that changed: `make -C packages/zettcode-tui test`.
   Run `make check-all` before handing work over; CI runs only the suites a pull request's diff needs — `packages/`,
   `support/`, `conftest.py`, `uv.lock` and the root `pyproject.toml` for the Python gate, `clients/<name>/` for a
   client, and
@@ -132,7 +134,7 @@ from the root.
 - The version lives in `packages/zettcode-engine/src/zettcode/version.py`; every distribution's `pyproject.toml` asks
   hatchling to read it from there, and a release is a commit that sets it plus a `v<version>` tag. The release
   workflow reads the same file, refuses to publish when the tag and it disagree, and publishes every distribution in
-  `packages/order.txt` in that order. The plugins are the only ones with a tag of their own.
+  the order `.github/scripts/release_order.py` generates. The plugins are the only ones with a tag of their own.
 - A plugin in `packages/` is released on its own line: its version in its `__init__.py`, and a
   `<name>-v<version>` tag — the plugin's entry-point name or its directory — or a manual run of
   `release-packages.yml`. The workflow publishes only versions PyPI does not already have, so a re-run is a no-op;
