@@ -932,3 +932,28 @@ def test_every_distribution_imports_only_what_it_declares():
                     offenders.append(f"{where} imports {top} at module level, which {name} does not declare")
 
     assert offenders == []
+
+
+def test_every_test_path_the_documents_name_exists():
+    """A document that points at a test is evidence a reader follows, and a test that moved leaves a path nobody can.
+
+    `docs/internal/invariants.md` is checked by file and name; the other documents name tests by path, and this
+    repository just moved them by the hundred, so every `packages/<distribution>/tests/<file>.py` a document spells
+    has to be there.
+    """
+    pattern = re.compile(r"packages/[A-Za-z0-9_.-]+/tests/[A-Za-z0-9_.-]+\.py")
+    documents = [
+        ROOT / "AGENTS.md",
+        ROOT / "RELEASING.md",
+        ROOT / "pyproject.toml",
+        *sorted((ROOT / "docs").rglob("*.md")),
+    ]
+    missing = [
+        f"{path.relative_to(ROOT)}: {named}"
+        for path in documents
+        if ".vitepress" not in path.parts
+        for named in pattern.findall(path.read_text(encoding="utf-8"))
+        if not (ROOT / named).is_file()
+    ]
+
+    assert missing == []
