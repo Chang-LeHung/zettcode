@@ -101,15 +101,11 @@ no_implicit_optional = true
 module = ["pyperclip"]
 ignore_missing_imports = true
 
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-asyncio_mode = "auto"
-
 [tool.ruff]
 line-length = 120
 target-version = "py310"
-# Every package in the workspace, and the suite, which lives at the root because it drives all of them.
-src = ["packages", "tests"]
+# Every distribution, its suite included, and the shared test support at the root.
+src = ["packages", "support"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
