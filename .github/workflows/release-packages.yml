@@ -1,10 +1,11 @@
 name: Release packages
 
-# One workflow for every distribution under `packages/`, because that directory grows: a tag names one package, and a
-# manual run can publish every package whose version PyPI does not have yet. What a run does is decided from the
-# packages' own versions and from PyPI, not from a list in here, so a version that is already published is skipped
-# rather than failing the run, and a new package needs no workflow of its own. See
-# `.github/scripts/release_packages.py` for how a tag or the input becomes the list.
+# The plugins under `packages/`, one at a time: a **plugin** here is a distribution that declares a
+# `zettcode.plugins` entry point, and the nine distributions the program is made of are released together by
+# `release.yml` under its own tag. A tag names one plugin, and a manual run can publish every plugin whose version
+# PyPI does not have yet. What a run does is decided from the plugins' own versions and from PyPI, not from a list
+# in here, so a version that is already published is skipped rather than failing the run, and a new plugin needs no
+# workflow of its own. See `.github/scripts/release_packages.py` for how a tag or the input becomes the list.
 
 on:
   push:
@@ -14,7 +15,7 @@ on:
   workflow_dispatch:
     inputs:
       package:
-        description: "A directory under packages/ to release"
+        description: "A plugin directory under packages/ to release"
         required: false
         type: string
       all:
