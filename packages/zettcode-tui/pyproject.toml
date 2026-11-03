@@ -1,0 +1,39 @@
+[project]
+name = "zettcode-tui"
+description = "The widget framework ZettCode's terminal is drawn with, and nothing else"
+requires-python = ">=3.10"
+dynamic = ["version"]
+license = "MIT"
+authors = [{name = "Chang-LeHung"}]
+keywords = ["zettcode", "tui", "terminal", "widgets"]
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Programming Language :: Python :: 3.15",
+  "Typing :: Typed",
+]
+dependencies = [
+  "wcwidth>=0.2,<1",
+  "pyperclip>=1.9,<2",
+]
+
+[project.urls]
+Repository = "https://github.com/Chang-LeHung/zettcode"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+# One version for the whole repository: the engine ships the file.
+path = "../zettcode-engine/src/zettcode/version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/zettcode"]
+
+[tool.hatch.build.targets.sdist]
+include = ["/src", "/pyproject.toml"]

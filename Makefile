@@ -2,17 +2,20 @@ UV ?= uv
 #: The editor CLI `make install-vscode` installs into: `code`, `code-insiders`, `cursor`, or a path to one.
 CODE ?= code
 
-# The repository is a uv workspace: `zettcode/` is the terminal agent and the HTTP server in one distribution (one
-# `pip install` writes both `zettcode` and `zettcode-server`), and `packages/*` are the plugins this repository
-# publishes on their own lines. All of them share one environment, one lock file, and the tooling configured in the
-# root `pyproject.toml`; `make check` runs it all.
+# The repository is a uv workspace, and every distribution lives in `packages/`: the program (`zettcode`, the
+# one a reader installs, which writes both console scripts) and the parts it is made of — the engine, the widget
+# framework, the broker, the SDK, the server, the gateway, the terminal application — plus the plugins published
+# on their own lines. They share one environment, one lock file and the tooling in the root `pyproject.toml`;
+# `make check` runs it all.
 #
 # `make smoke` builds here rather than into dist/, so the wheel it installs is
 # the one it just built and not a release wheel left over from an earlier run.
 SMOKE_DIR := .smoke
 
 PACKAGES := packages
-LINT_PATHS := zettcode/src zettcode/tests zettcode/perf docs/scripts .github/scripts $(PACKAGES)
+LINT_PATHS := tests docs/scripts .github/scripts $(PACKAGES)
+# The distributions the program is built from, in dependency order: `make build` and `make smoke` make all of them.
+SPLIT := zettcode-engine zettcode-tui zettcode-broker zettcode-sdk zettcode-server zettcode-gateway zettcode-app zettcode
 # The plugin suites are separate test runs because each package's `pyproject.toml` is the pytest configuration its
 # tests are written against (`asyncio_mode`, `testpaths`); one run over several would take the workspace root's, which
 # has no pytest section at all.
@@ -29,7 +32,7 @@ CHANGED := $(shell { git diff --name-only $(BASE); git ls-files --others --exclu
 EVERYTHING := $(filter Makefile .github/workflows/%,$(CHANGED))
 # Files that need Ruff, mypy and the Python suite. The release helper is Python that only the workflow runs, and the
 # suite holds its tests.
-PYTHON := $(if $(EVERYTHING),1,$(filter zettcode/% $(PACKAGES)/% .github/scripts/% pyproject.toml uv.lock,$(CHANGED)))
+PYTHON := $(if $(EVERYTHING),1,$(filter tests/% $(PACKAGES)/% .github/scripts/% pyproject.toml uv.lock,$(CHANGED)))
 # Files Ruff alone covers (`make lint` reads docs/scripts too).
 RUFFED := $(if $(PYTHON),1,$(filter docs/scripts/%,$(CHANGED)))
 # The TypeScript client, and the extension, which bundles that client's source.
@@ -60,7 +63,7 @@ help:
 	@echo "  make docs     Serve the user guide at http://localhost:5173"
 	@echo "  make docs-build   Build the guide into docs/.vitepress/dist"
 	@echo "  make palettes     Regenerate docs/internal/palettes.html (every widget in every palette)"
-	@echo "  make themes       Rewrite zettcode/src/zettcode/tui/themes from docs/scripts/palette_data.py"
+	@echo "  make themes       Rewrite packages/zettcode-tui/src/zettcode/tui/themes from docs/scripts/palette_data.py"
 	@echo "  make demo     Browse the widgets interactively"
 	@echo "  make demo-all Print every widget preview"
 	@echo "  make demos    List the widget names"
@@ -87,7 +90,7 @@ typecheck:
 test: test-zettcode test-packages
 
 test-zettcode:
-	cd zettcode && $(UV) run --no-sync pytest
+	$(UV) run --no-sync pytest
 
 # Each plugin's suite is its own run: its `pyproject.toml` is the pytest configuration it is written against, and one
 # run over several would take the workspace root's, which has no pytest section at all.
@@ -102,7 +105,8 @@ python: lint typecheck test
 client:
 	cd clients/typescript && npm install --no-audit --no-fund && npm test
 
-# The gateway's page is a Vue and TypeScript app that is built into the Python package (zettcode/src/zettcode/gateway/static).
+# The gateway's page is a Vue and TypeScript app that is built into its distribution
+# (packages/zettcode-gateway/src/zettcode/gateway/static).
 # The build output is not in git: it is made here, and in CI and the release workflow before a wheel is built, and
 # pyproject's `artifacts` puts it in the wheel. Rebuild it after any change under clients/gateway.
 gateway-page:
@@ -131,27 +135,31 @@ install-vscode: vscode-package
 	cd clients/vscode && $(CODE) --install-extension "zettcode-$$(node -p 'require("./package.json").version').vsix" --force
 
 build: gateway-page
-	$(UV) build --package zettcode
+	@for pkg in $(SPLIT); do $(UV) build --package $$pkg || exit 1; done
 
-# The wheel is built, not found: a glob over dist/ would happily install an older
-# version that happens to be lying there, and a wheel that is not the one just
-# built proves nothing about the build. One wheel, two programs.
+# The wheels are built, not found: a glob over dist/ would happily install an older wheel that happens to be lying
+# there, and a wheel that is not the one just built proves nothing about the build. Every distribution the program is
+# made of is built and installed together, because they are published together and neither is on PyPI before the
+# first release.
 smoke: gateway-page
 	rm -rf $(SMOKE_DIR)
-	$(UV) build --package zettcode --out-dir $(SMOKE_DIR)
-	$(UV) run --no-project --python 3.14 --with ./$(SMOKE_DIR)/zettcode-*.whl zettcode --help
-	$(UV) run --no-project --python 3.14 --with ./$(SMOKE_DIR)/zettcode-*.whl zettcode-server --help
-	$(UV) run --no-project --python 3.14 --with ./$(SMOKE_DIR)/zettcode-*.whl zettcode gateway --help
+	@for pkg in $(SPLIT); do $(UV) build --package $$pkg --out-dir $(SMOKE_DIR) || exit 1; done
+	$(UV) venv --clear $(SMOKE_DIR)/venv
+	$(UV) pip install --python $(SMOKE_DIR)/venv/bin/python $(SMOKE_DIR)/*.whl
+	$(SMOKE_DIR)/venv/bin/zettcode --help
+	$(SMOKE_DIR)/venv/bin/zettcode-server --help
+	$(SMOKE_DIR)/venv/bin/zettcode gateway --help
 	@# The gateway's page is built, not committed: a wheel made without it would serve an API and no page.
-	$(UV) run --no-project --python 3.14 --with ./$(SMOKE_DIR)/zettcode-*.whl python -c "from importlib.resources import files; names = {p.name for p in files('zettcode.gateway').joinpath('static').iterdir()}; assert {'index.html', 'app.js', 'app.css'} <= names, names; print('gateway page:', sorted(names))"
+	$(SMOKE_DIR)/venv/bin/python -c "from importlib.resources import files; names = {p.name for p in files('zettcode.gateway').joinpath('static').iterdir()}; assert {'index.html', 'app.js', 'app.css'} <= names, names; print('gateway page:', sorted(names))"
 	@# The HTML trace ships as package data: a packaging change that drops the
 	@# template, its stylesheet, or its script has to fail here, not at export time.
-	$(UV) run --no-project --python 3.14 --with ./$(SMOKE_DIR)/zettcode-*.whl python -c "from importlib.resources import files; names = sorted(p.name for p in files('zettcode.engine.export').joinpath('trace').iterdir()); assert names == ['script.js', 'style.css', 'template.html'], names; print('trace assets:', names)"
-	@# The `monitor` extra is metadata, and nothing else exercises it: a misspelt name or a range that excludes the
-	@# published plugin shows up only when a reader installs it. This installs the built wheel with the extra and
-	@# checks the plugin really registers its command under this version, which is the extra's whole promise.
-	@wheel=$$(ls $(SMOKE_DIR)/zettcode-*.whl); $(UV) run --no-project --python 3.14 --with "$$wheel[monitor]" python -c "import tempfile, pathlib; from zettcode.config import ModelConfig, ZettCodeConfig; from zettcode.app.plugins.loader import load_terminal_plugins; root = pathlib.Path(tempfile.mkdtemp()); (root / 'w').mkdir(); config = ZettCodeConfig(workspace=root / 'w', models=(ModelConfig(model='m', token='t'),), store=root / 'store', plugins_file=root / 'plugins.json', mcp_enabled=False, skills_enabled=False, harness_dir=root / 'harness'); names = [command.name for command in load_terminal_plugins(config).commands]; assert '/monitor' in names, names; print('monitor extra:', '/monitor')"
-	@wheel=$$(ls $(SMOKE_DIR)/zettcode-*.whl); $(UV) run --no-project --python 3.14 --with "$$wheel[recap]" python -c "import tempfile, pathlib; from zettcode.config import ModelConfig, ZettCodeConfig; from zettcode.app.plugins.loader import load_terminal_plugins; root = pathlib.Path(tempfile.mkdtemp()); (root / 'w').mkdir(); config = ZettCodeConfig(workspace=root / 'w', models=(ModelConfig(model='m', token='t'),), store=root / 'store', plugins_file=root / 'plugins.json', mcp_enabled=False, skills_enabled=False, harness_dir=root / 'harness'); names = [command.name for command in load_terminal_plugins(config).commands]; assert '/recap' in names, names; print('recap extra:', '/recap')"
+	$(SMOKE_DIR)/venv/bin/python -c "from importlib.resources import files; names = sorted(p.name for p in files('zettcode.engine.export').joinpath('trace').iterdir()); assert names == ['script.js', 'style.css', 'template.html'], names; print('trace assets:', names)"
+	@# The `monitor` and `recap` extras are metadata, and nothing else exercises them: a misspelt name or a range that
+	@# excludes the published plugin shows up only when a reader installs it. Each extra is installed beside the wheels
+	@# just built, and the plugin has to register its command under this version -- the extra's whole promise.
+	$(UV) pip install --python $(SMOKE_DIR)/venv/bin/python "$(SMOKE_DIR)/zettcode-0.*.whl[monitor]"
+	$(UV) pip install --python $(SMOKE_DIR)/venv/bin/python "$(SMOKE_DIR)/zettcode-0.*.whl[recap]"
+	$(SMOKE_DIR)/venv/bin/python -c "import tempfile, pathlib; from zettcode.config import ModelConfig, ZettCodeConfig; from zettcode.app.plugins.loader import load_terminal_plugins; root = pathlib.Path(tempfile.mkdtemp()); (root / 'w').mkdir(); config = ZettCodeConfig(workspace=root / 'w', models=(ModelConfig(model='m', token='t'),), store=root / 'store', plugins_file=root / 'plugins.json', mcp_enabled=False, skills_enabled=False, harness_dir=root / 'harness'); names = [command.name for command in load_terminal_plugins(config).commands]; assert '/monitor' in names and '/recap' in names, names; print('plugin extras:', '/monitor', '/recap')"
 
 check:
 	@echo "--- changed since $(BASE) ---"
@@ -185,11 +193,11 @@ palettes:
 
 # The palettes that ship are files in the package, generated from the same data the page is: one table per
 # palette in docs/scripts/palette_data.py. Change a colour there, run this, and commit the files it wrote;
-# the wheel ships whatever is in zettcode/src/zettcode/tui/themes. Nothing checks the two agree, so run it
+# the wheel ships whatever is in packages/zettcode-tui/src/zettcode/tui/themes. Nothing checks the two agree, so run it
 # after a change and look at `git status`.
 themes:
-	$(UV) run --no-sync python docs/scripts/palette_gallery.py --export-themes zettcode/src/zettcode/tui/themes
-	@git status --short zettcode/src/zettcode/tui/themes
+	$(UV) run --no-sync python docs/scripts/palette_gallery.py --export-themes packages/zettcode-tui/src/zettcode/tui/themes
+	@git status --short packages/zettcode-tui/src/zettcode/tui/themes
 
 # The global hooksPath delegates to .git/hooks, so a local copy is what runs.
 hooks:
@@ -199,40 +207,40 @@ hooks:
 FORCE:
 
 demos:
-	cd zettcode && $(UV) run --no-sync python -m zettcode.tui.gallery --list
+	$(UV) run --no-sync python -m zettcode.tui.gallery --list
 
 # An explicit target beats the demo-% pattern rule below, which is what lets a
 # demo live outside the framework gallery.
 demo-thinking:
-	cd zettcode && $(UV) run --no-sync python -m zettcode.app.ui.demo
+	$(UV) run --no-sync python -m zettcode.app.ui.demo
 
 demo:
-	cd zettcode && $(UV) run --no-sync python -m zettcode.tui.gallery
+	$(UV) run --no-sync python -m zettcode.tui.gallery
 
 demo-all:
-	cd zettcode && $(UV) run --no-sync python -m zettcode.tui.gallery --print
+	$(UV) run --no-sync python -m zettcode.tui.gallery --print
 
 demo-%: FORCE
-	cd zettcode && $(UV) run --no-sync python -m zettcode.tui.gallery $*
+	$(UV) run --no-sync python -m zettcode.tui.gallery $*
 
-# Performance probes; see zettcode/perf/README.md for flags and methodology.
+# Performance probes; see packages/zettcode/perf/README.md for flags and methodology.
 perf:
-	cd zettcode && $(UV) run --no-sync python -m perf.frame_stages
+	cd packages/zettcode && $(UV) run --no-sync python -m perf.frame_stages
 
 perf-scaling:
-	cd zettcode && $(UV) run --no-sync python -m perf.scaling
+	cd packages/zettcode && $(UV) run --no-sync python -m perf.scaling
 
 perf-store:
-	cd zettcode && $(UV) run --no-sync python -m perf.store
+	cd packages/zettcode && $(UV) run --no-sync python -m perf.store
 
 perf-profile:
-	cd zettcode && $(UV) run --no-sync python -m perf.profile --scenario stream
+	cd packages/zettcode && $(UV) run --no-sync python -m perf.profile --scenario stream
 
 perf-startup:
-	cd zettcode && $(UV) run --no-sync python -m perf.startup --pty
+	cd packages/zettcode && $(UV) run --no-sync python -m perf.startup --pty
 
 perf-exit:
-	cd zettcode && $(UV) run --no-sync python -m perf.exit --pty
+	cd packages/zettcode && $(UV) run --no-sync python -m perf.exit --pty
 
 perf-imports:
-	cd zettcode && $(UV) run --no-sync python -m perf.imports
+	cd packages/zettcode && $(UV) run --no-sync python -m perf.imports

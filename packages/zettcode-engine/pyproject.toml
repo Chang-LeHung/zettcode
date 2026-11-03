@@ -1,0 +1,50 @@
+[project]
+name = "zettcode-engine"
+description = "The agent core of ZettCode: the runtime over zett-agent, and the leaf types it is written on"
+requires-python = ">=3.10"
+dynamic = ["version"]
+license = "MIT"
+authors = [{name = "Chang-LeHung"}]
+keywords = ["zettcode", "agent", "llm", "runtime"]
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Programming Language :: Python :: 3.15",
+  "Typing :: Typed",
+]
+dependencies = [
+  # The runtime this is a core over. Imported directly: the agent, the message types, the approval mode.
+  "zett-agent>=0.2.7,<0.3",
+  # The session store's records are pydantic models.
+  "pydantic>=2,<3",
+  # The stdlib gained both of these in 3.11; older runtimes take the backports.
+  "exceptiongroup>=1.2,<2; python_version < '3.11'",
+  "tomli>=2,<3; python_version < '3.11'",
+]
+
+[project.optional-dependencies]
+# Counting the context with the provider's own tokenizer. Without it the runtime estimates by characters, which is
+# what a plugin that only needs the engine gets; the program installs this extra.
+tiktoken = ["tiktoken>=0.12,<1"]
+
+[project.urls]
+Repository = "https://github.com/Chang-LeHung/zettcode"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/zettcode/version.py"
+
+# `zettcode/` is a PEP 420 namespace: the wheel ships `zettcode/engine/**` and the leaves beside it, and no
+# `zettcode/__init__.py`, so the namespace is the union of what is installed.
+[tool.hatch.build.targets.wheel]
+packages = ["src/zettcode"]
+
+[tool.hatch.build.targets.sdist]
+include = ["/src", "/pyproject.toml"]

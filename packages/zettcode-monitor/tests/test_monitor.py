@@ -142,10 +142,10 @@ def test_the_command_takes_no_subcommands(tmp_path):
 
 def _runs_this_checkouts_zettcode() -> bool:
     """Return whether the zettcode imported here is the checkout this plugin is developed beside."""
-    import zettcode
+    import zettcode.engine
 
-    source = Path(__file__).resolve().parents[3] / "zettcode" / "src"
-    return Path(zettcode.__file__).resolve().is_relative_to(source)
+    source = Path(__file__).resolve().parents[3] / "packages"
+    return Path(zettcode.engine.__file__).resolve().is_relative_to(source)
 
 
 def test_the_dependency_ranges_take_the_running_zettcode_and_zett_agent():

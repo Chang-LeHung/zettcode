@@ -1,7 +1,7 @@
 [project]
 name = "zettcode-workspace"
 version = "0.0.0"
-description = "The ZettCode workspace: the terminal coding agent and the HTTP server it ships"
+description = "The ZettCode workspace: one distribution per subsystem, and the plugins published beside them"
 requires-python = ">=3.10"
 
 # A virtual project: nothing here is published, and `uv build` builds the member.
@@ -9,9 +9,10 @@ requires-python = ">=3.10"
 package = false
 
 [tool.uv.workspace]
-# `zettcode/` is the agent and its server; each `packages/*` is a plugin distribution published on its own line, built
-# and tested in this one environment rather than as a project of its own.
-members = ["zettcode", "packages/*"]
+# Every distribution in the repository. `zettcode/` is the program a reader installs; the rest are the parts it is
+# made of (`zettcode-engine`, `-tui`, `-broker`, `-sdk`, `-server`, `-gateway`, `-app`) and the plugins published on
+# their own lines. They share one environment, one lock file and the tooling configured here.
+members = ["packages/*"]
 
 [dependency-groups]
 # One environment, so the tools are installed once and the same versions check every package.
@@ -28,31 +29,63 @@ dev = [
   "ruff>=0.11,<1",
   "tomli>=2,<3",
   "viztracer>=1.1.1",
+  # The program, which pulls every other distribution of this workspace and the tiktoken extra. `uv sync` then has
+  # the whole thing, the way `pip install zettcode` would, without `--all-packages`.
+  "zettcode",
   # The plugins are developed beside the program and are workspace members, so this checkout's environment carries
   # them: `/recap` and `/monitor` are in the menu when the terminal runs from here. They are not dependencies of the
-  # package; a reader installs one from an extra in `zettcode/pyproject.toml` instead.
+  # package; a reader installs one from an extra in `packages/zettcode/pyproject.toml` instead.
   "zettcode-monitor",
   "zettcode-recap",
 ]
 
 [tool.uv.sources]
 # Every package resolves from this checkout, not from an index: the workspace member is what `uv lock` and `uv sync`
-# see, and the extras in `zettcode/pyproject.toml` are still how a reader installs a released plugin from PyPI.
-# uv resolves a member without checking the range that asks for it (the lock records no specifier), so the ranges are
-# what nothing else would catch: `test_structure.py` checks the extras against the versions built here, and each
-# plugin's suite checks its `zettcode` range against the checkout's.
+# see, and the extras in `packages/zettcode/pyproject.toml` are still how a reader installs a released plugin from
+# PyPI. uv resolves a member without checking the range that asks for it (the lock records no specifier), so the
+# ranges are what nothing else would catch: `tests/test_structure.py` checks the extras against the versions built
+# here, and each plugin's suite checks its `zettcode` range against the checkout's.
 zettcode = { workspace = true }
+zettcode-app = { workspace = true }
+zettcode-broker = { workspace = true }
+zettcode-engine = { workspace = true }
+zettcode-gateway = { workspace = true }
+zettcode-sdk = { workspace = true }
+zettcode-server = { workspace = true }
+zettcode-tui = { workspace = true }
 zettcode-monitor = { workspace = true }
 zettcode-recap = { workspace = true }
 
 [tool.mypy]
 python_version = "3.10"
-files = [
-  "zettcode/src",
-  "zettcode/perf",
+# `zettcode` is a PEP 420 namespace spread over one source tree per distribution, so every tree is a package base and
+# a module is named for the namespace, not for the directory mypy happened to find it in.
+explicit_package_bases = true
+mypy_path = [
+  "packages/zettcode-engine/src",
+  "packages/zettcode-tui/src",
+  "packages/zettcode-broker/src",
+  "packages/zettcode-sdk/src",
+  "packages/zettcode-server/src",
+  "packages/zettcode-gateway/src",
+  "packages/zettcode-app/src",
+  "packages/zettcode/src",
+  "packages/zettcode",
   ".github/scripts",
+]
+files = [
+  "packages/zettcode-engine/src",
+  "packages/zettcode-tui/src",
+  "packages/zettcode-broker/src",
+  "packages/zettcode-sdk/src",
+  "packages/zettcode-server/src",
+  "packages/zettcode-gateway/src",
+  "packages/zettcode-app/src",
+  "packages/zettcode/src",
+  "packages/zettcode/perf",
   "packages/zettcode-monitor/src",
   "packages/zettcode-recap/src",
+  ".github/scripts",
 ]
 # Check the pydantic storage models as models, not as plain classes.
 plugins = ["pydantic.mypy"]
@@ -65,19 +98,15 @@ no_implicit_optional = true
 module = ["pyperclip"]
 ignore_missing_imports = true
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
 [tool.ruff]
 line-length = 120
 target-version = "py310"
-# Every package in the workspace: the agent's three trees and each plugin's sources and tests.
-src = [
-  "zettcode/src",
-  "zettcode/tests",
-  "zettcode/perf",
-  "packages/zettcode-monitor/src",
-  "packages/zettcode-monitor/tests",
-  "packages/zettcode-recap/src",
-  "packages/zettcode-recap/tests",
-]
+# Every package in the workspace, and the suite, which lives at the root because it drives all of them.
+src = ["packages", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]

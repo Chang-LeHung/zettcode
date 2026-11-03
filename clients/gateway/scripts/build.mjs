@@ -5,7 +5,7 @@ import { context } from "esbuild";
 import { VUE_DEFINES, vuePlugin } from "./vue-plugin.mjs";
 
 const watch = process.argv.includes("--watch");
-const out = "../../zettcode/src/zettcode/gateway/static";
+const out = "../../packages/zettcode-gateway/src/zettcode/gateway/static";
 await rm(out, { recursive: true, force: true });
 await mkdir(out, { recursive: true });
 

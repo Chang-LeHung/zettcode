@@ -79,7 +79,7 @@ jobs:
           uv venv /tmp/release
           printf '%s' "$TARGETS" | jq -r '.[] | "\(.dir)\t\(.name)"' | while IFS=$'\t' read -r dir name; do
             echo "::group::$name"
-            uv pip install --python /tmp/release/bin/python ./zettcode "./packages/$dir" \
+            uv pip install --python /tmp/release/bin/python ./packages/zettcode "./packages/$dir" \
               --group "./packages/$dir/pyproject.toml:dev"
             ( cd "packages/$dir" && /tmp/release/bin/python -m pytest -q )
             echo "::endgroup::"
