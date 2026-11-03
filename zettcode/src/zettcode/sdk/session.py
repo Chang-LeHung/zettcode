@@ -159,7 +159,7 @@ def _with_instructions(hint: str | None, instructions: str | None) -> str | None
 
 def _split_mentions(text: str) -> list[Any]:
     """Split one text run at its ``@`` tokens, keeping the order, as the terminal's composer does."""
-    from ..mentions import MENTION
+    from ..mention import MENTION
     from ..prompt import MentionPart
 
     split: list[Any] = []

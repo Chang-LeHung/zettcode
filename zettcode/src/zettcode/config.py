@@ -35,8 +35,8 @@ from .paths import (
     plugins_dir,
 )
 from .providers import Api
-from .statusline import NAMES as STATUSLINE_NAMES
-from .statusline import TURN_PREFIX
+from .statusline_parts import NAMES as STATUSLINE_NAMES
+from .statusline_parts import TURN_PREFIX
 
 #: The concrete type :func:`_typed` verifies a raw config value against.
 T = TypeVar("T")

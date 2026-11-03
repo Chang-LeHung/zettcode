@@ -1,6 +1,6 @@
 # Splitting `zettcode` into namespace packages
 
-Status: **stage 1 landed**, stages 2–5 are the plan. This is the contract for the migration: the target shape, who
+Status: **stages 1–2 landed**, stages 3–5 are the plan. This is the contract for the migration: the target shape, who
 owns every module, and the order the work lands in. Each stage ends green — `make check` plus the plugin suites — and
 is committed on its own, so a stage that goes wrong can be reverted without taking the rest with it.
 
@@ -103,9 +103,14 @@ Each stage is one branch and one commit, and ends with `make check` green plus b
    plugin of its own; the loader requires `builtins`. `extensions/context` stayed: its report types (`ContextReport`,
    `Tokenizer`) are what the runtime's own `tokenizer` field and `context` property are, so it moves when the runtime
    stops building a tokenizer — stage 2.
-2. **Split the shared modules.** `mentions`, `relay` and `statusline` become a type half in the engine and a logic
-   half above it; `extensions/context` loses its `tiktoken` half the same way. After this stage no engine file
-   imports anything outside `zettcode.engine` except the leaves the engine ships.
+2. **Split the shared modules.** *Done, with one variation.* The engine owns the data half of each and the module
+   above re-exports it, so no importer changed: `zettcode/statusline_parts.py` (the names `[statusline]` may set, which
+   `config.py` validates) is imported by `zettcode/statusline.py`, which paints them; `zettcode/mention.py` holds the
+   token, `Mention` and `MentionProvider`, and `zettcode/mentions.py` keeps the registry and the implementations;
+   `zettcode/relay.py` became the engine's whole (the message type and the wire vocabulary moved into it and
+   `broker/protocol.py` imports them), with `zettcode/wire.py` holding the two facts the broker shares without the
+   agent runtime. `test_structure.py`'s import-closure check now finds zero engine files importing something the
+   engine would not ship.
 3. **The namespace and the wheels.** Delete `zettcode/__init__.py`; give every distribution a `packages/zettcode-*/`
    directory, a `pyproject.toml` and a `__version__`; add them to the uv workspace, `[tool.uv.sources]`, Ruff, mypy, the
    Makefile and CI. Every test that used the facade or `zettcode.__version__` is updated.

@@ -78,6 +78,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..modes import MODE_STEER, MODES
+from ..wire import VIA_AGENT, VIA_EXTERNAL, VIA_USER, ImageData
 from .text import clean_text, clean_title
 
 #: Bumped whenever this protocol changes meaning. 9: a one-to-one message may carry pictures (``images`` on a send and
@@ -144,11 +145,8 @@ SESSION_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 #: What a session is doing, as the broker shows it to the others.
 STATUSES = ("idle", "working")
 
-#: How a message reached its recipient: a reader typed it into another session, an agent used its tool, or it came
-#: from something that is not a ZettCode session at all.
-VIA_USER = "user"
-VIA_AGENT = "agent"
-VIA_EXTERNAL = "external"
+#: How a message reached its recipient, defined where a relayed message is: this is the wire's copy of the same
+#: words, so the broker and the application cannot disagree about them.
 VIAS = (VIA_USER, VIA_AGENT, VIA_EXTERNAL)
 
 #: What a sender asks a busy recipient to do with a message — :data:`~zettcode.modes.MODE_STEER` (the default) or
@@ -193,18 +191,6 @@ class Refused(Exception):
         if isinstance(raw, Mapping) and isinstance(raw.get("reason"), str) and isinstance(raw.get("message"), str):
             return cls(raw["reason"], raw["message"])
         return cls("invalid", "the other end refused without saying why")
-
-
-@dataclass(frozen=True, slots=True)
-class ImageData:
-    """One picture a message carries: its media type and the encoded file (not decoded pixels)."""
-
-    media_type: str
-    data: bytes
-
-    def to_wire(self) -> dict[str, str]:
-        """Return the picture as a line carries it: the media type and the file in base64."""
-        return {"media_type": self.media_type, "data": base64.b64encode(self.data).decode("ascii")}
 
 
 def sniff_image(data: bytes) -> str | None:
