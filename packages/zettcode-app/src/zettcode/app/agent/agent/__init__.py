@@ -61,11 +61,13 @@ class TerminalAgent(CommandsMixin, ZettCodeAgent):
         return self._client
 
     @classmethod
-    async def create(cls, config: ZettCodeConfig) -> TerminalAgent:
+    async def create(cls, config: ZettCodeConfig, load: PluginLoader | None = None) -> TerminalAgent:
         """Build the engine with the terminal's plugins and start it."""
-        return cls(await ZettCodeEngine.create(config, _terminal_loader(), messenger=SessionLink.create(config)))
+        return cls(
+            await ZettCodeEngine.create(config, load or _terminal_loader(), messenger=SessionLink.create(config))
+        )
 
     @classmethod
-    def preview(cls, config: ZettCodeConfig) -> TerminalAgent:
+    def preview(cls, config: ZettCodeConfig, load: PluginLoader | None = None) -> TerminalAgent:
         """Wrap an engine that still has to start, built with the terminal's plugins, so the shell can paint first."""
-        return cls(ZettCodeEngine.preview(config, _terminal_loader(), messenger=SessionLink.create(config)))
+        return cls(ZettCodeEngine.preview(config, load or _terminal_loader(), messenger=SessionLink.create(config)))

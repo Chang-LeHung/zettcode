@@ -46,15 +46,17 @@ def test_every_distribution_reads_the_one_version_file():
     engine = ROOT / "packages" / "zettcode-engine" / "src" / "zettcode" / "version.py"
     assert zettcode.version.__version__ in engine.read_text(encoding="utf-8")
 
-    split = (
-        "zettcode",
-        "zettcode-app",
-        "zettcode-broker",
-        "zettcode-gateway",
-        "zettcode-sdk",
-        "zettcode-server",
-        "zettcode-tui",
-    )
-    for name in split:
+    order = [
+        line
+        for line in (ROOT / "packages" / "order.txt").read_text(encoding="utf-8").splitlines()
+        if line and not line.startswith("#")
+    ]
+    # The engine ships the file; every other distribution reads it.
+    for name in order:
         text = (ROOT / "packages" / name / "pyproject.toml").read_text(encoding="utf-8")
-        assert 'path = "../zettcode-engine/src/zettcode/version.py"' in text, name
+        expected = (
+            'path = "src/zettcode/version.py"'
+            if name == "zettcode-engine"
+            else 'path = "../zettcode-engine/src/zettcode/version.py"'
+        )
+        assert expected in text, name

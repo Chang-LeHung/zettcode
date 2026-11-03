@@ -697,7 +697,7 @@ def theme_json(palette: Palette) -> dict[str, object]:
 def toml_of(palette: Palette) -> str:
     """The palette as a theme file: drop it in ``~/.zettcode/themes/<name>.toml`` and ``/theme <name>`` picks it.
 
-    The same text is what ships in ``zettcode/src/zettcode/tui/themes/`` (see ``--export-themes``), so the page's copy
+    The same text is what ships in ``packages/zettcode-tui/src/zettcode/tui/themes/`` (see ``--export-themes``), so the page's copy
     button and the program's built-in palette cannot differ.
     """
     theme = palette.theme
@@ -839,7 +839,7 @@ def main() -> None:
         "--export-themes",
         type=Path,
         metavar="DIR",
-        help="write each candidate as <name>.toml into DIR (zettcode/src/zettcode/tui/themes is where the shipped ones live)",
+        help="write each candidate as <name>.toml into DIR (packages/zettcode-tui/src/zettcode/tui/themes is where the shipped ones live)",
     )
     args = parser.parse_args()
     if args.export_themes:

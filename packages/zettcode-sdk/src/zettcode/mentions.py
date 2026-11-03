@@ -21,65 +21,21 @@ from zett_agent.extensions.skill import SkillExtension
 
 from zettcode.broker.text import folder_name
 from zettcode.config import ZettCodeConfig
-from zettcode.mention import Mention, MentionProvider
-from zettcode.registry import Registry
+from zettcode.mention import Mention, MentionProvider, MentionRegistry
 from zettcode.relay import Peer
 
-
-class MentionRegistry(Registry[Mention]):
-    """The providers a draft is resolved against, in registration order."""
-
-    def __init__(self, providers: Sequence[MentionProvider] = ()) -> None:
-        """Keep the providers; the first to claim a name wins a duplicate."""
-        super().__init__(providers)
-
-    def candidates(self, query: str) -> tuple[Mention, ...]:
-        """Return every resource whose name matches ``query`` (which has no ``@``).
-
-        Each provider is asked for the query rather than handed every item it has:
-        a draft is completed on every keystroke, and the file provider holds
-        thousands of names it would otherwise build a ``Mention`` for each time.
-        An earlier provider still wins a duplicate name.
-        """
-        seen: set[str] = set()
-        merged: list[Mention] = []
-        for provider in self.mention_providers:
-            for mention in provider.candidates(query):
-                if mention.name in seen:
-                    continue
-                seen.add(mention.name)
-                merged.append(mention)
-        return tuple(merged)
-
-    @property
-    def mention_providers(self) -> tuple[MentionProvider, ...]:
-        """Return the providers as the ``@``-specific type that can expand tokens."""
-        return tuple(provider for provider in self.providers if isinstance(provider, MentionProvider))
-
-    def expand_token(self, token: str) -> str | None:
-        """Resolve one typed ``@`` token into the text it contributes, if any.
-
-        The shell gets the tokens from the composer's parts rather than scanning
-        the draft, so this is handed ``"@name"`` exactly as it was written.
-        """
-        name = token[1:] if token.startswith("@") else token
-        for provider in self.mention_providers:
-            block = provider.expand(name)
-            if block is not None:
-                return block
-        return None
-
-    def rename_token(self, token: str) -> str | None:
-        """Return the words the model reads in place of one typed token, from the provider that owns it.
-
-        The owner is the first provider that knows the name, which is the one :meth:`expand_token` asks:
-        a session and a file with one name are the session.
-        """
-        name = token[1:] if token.startswith("@") else token
-        for provider in self.mention_providers:
-            if provider.expand(name) is not None:
-                return provider.rename(name)
-        return None
+__all__ = [
+    "LISTING_SECONDS",
+    "MAX_CANDIDATES",
+    "MAX_FILES",
+    "SKIP_DIRECTORIES",
+    "FileMentions",
+    "Mention",
+    "MentionProvider",
+    "MentionRegistry",
+    "SessionMentions",
+    "SkillMentions",
+]
 
 
 class SkillMentions(MentionProvider):

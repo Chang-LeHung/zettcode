@@ -58,5 +58,5 @@ or, with `uv tool`:
 
 It needs the ZettCode release that added `ask(origin=)` — the parameter that keeps the recap's own question out of a
 resumed transcript — and one early enough to have the terminal group's turn hooks, which is every 0.3 line. Which
-release carries `ask(origin=)` is settled by `RELEASING.md`; `pyproject.toml` still says `zettcode>=0.3,<0.4`, and
-raising that floor belongs to the release commit that sets the number.
+release carries `ask(origin=)` is settled by `RELEASING.md`; `pyproject.toml` still says
+`zettcode-plugin-api>=0.3,<0.4`, and raising that floor belongs to the release commit that sets the number.

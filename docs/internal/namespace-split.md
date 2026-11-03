@@ -39,15 +39,15 @@ union of what is installed and every distribution contributes its own parts to i
 
 | Distribution | Ships | Depends on |
 | --- | --- | --- |
-| `zettcode-engine` | `zettcode/engine/**`, and the leaves the runtime needs: `config`, `config_edit`, `paths`, `providers`, `prompt`, `relay` (the marker), `wording`, `filelock`, `error_text`, `budget`, `modes`, `logging_setup`, `processes`, `_compat`, `plugin_tui`, `mentions` (the protocol) | `zett-agent`, `pydantic` |
+| `zettcode-engine` | `zettcode/engine/**`, and the leaves the runtime needs: `config`, `config_edit`, `paths`, `providers`, `prompt`, `relay` (the marker), `wire`, `wording`, `filelock`, `error_text`, `budget`, `modes`, `logging_setup`, `processes`, `registry`, `statusline_parts`, `_compat`, `plugin_tui`, `mention` (the protocol and the registry), `version` | `zett-agent`, `pydantic` |
 | `zettcode-tui` | `zettcode/tui/**` and a local `tui/_compat.py` | — (no distribution of ours) |
 | `zettcode-broker` | `zettcode/broker/**` | `zettcode-engine` (filelock, logging_setup, modes, processes) |
-| `zettcode-sdk` | `zettcode/sdk/**`, `zettcode/daemon/**`, `zettcode/doctor.py`, `zettcode/mentions.py` (the implementation), `zettcode/relay.py` (the wire half), `zettcode/registry.py`, `zettcode/table.py`, and the composition root `zettcode/sdk/builtins.py` | `zettcode-engine`, `zettcode-broker` |
+| `zettcode-sdk` | `zettcode/sdk/**`, `zettcode/daemon/**`, `zettcode/doctor.py`, `zettcode/mentions.py` (the implementations), `zettcode/table.py`, and the composition root `zettcode/sdk/builtins.py` | `zettcode-engine`, `zettcode-broker` |
 | `zettcode-server` | `zettcode/server/**` | `zettcode-engine`, `zettcode-sdk` |
 | `zettcode-gateway` | `zettcode/gateway/**` | `zettcode-engine`, `zettcode-sdk` |
-| `zettcode-app` | `zettcode/app/**`, `zettcode/collector.py`, `zettcode/statusline.py` (the rendering half) | `zettcode-engine`, `zettcode-tui`, `zettcode-sdk`, `zettcode-broker` |
+| `zettcode-app` | `zettcode/app/**`, `zettcode/collector.py`, `zettcode/statusline.py` (the rendering half), `zettcode/update.py` | `zettcode-engine`, `zettcode-tui`, `zettcode-sdk`, `zettcode-broker` |
 | `zettcode-plugin-api` | `zettcode/plugin_api/**`: re-exports only, the surface a plugin imports | `zettcode-engine`, `zettcode-tui`, `zettcode-app` |
-| `zettcode` | `zettcode/cli.py`, `plugin_cli.py`, `oneshot.py`, `update.py`, the console scripts, the built gateway page | all of the above |
+| `zettcode` | `zettcode/cli.py`, `plugin_cli.py`, `oneshot.py`, the console scripts | all of the above |
 
 `zettcode` stays the distribution a reader installs: it keeps both console scripts (the rules for that are in
 `AGENTS.md`) and depends on the server, so one `pip install zettcode` is unchanged in effect.
@@ -62,14 +62,14 @@ union of what is installed and every distribution contributes its own parts to i
 | `_compat` | engine | `StrEnum`/`tomllib`; the engine's storage and permission use it. `tui` gets a copy of the 12 lines it needs, so the framework stays dependency-free. |
 | `budget`, `error_text`, `filelock`, `logging_setup`, `modes`, `paths`, `processes`, `prompt`, `providers`, `wording`, `config`, `config_edit` | engine | Leaves with no dependency of ours; the runtime or its settings need them, and everything above imports them from here rather than re-owning them. |
 | `plugin_tui` | engine | The `TuiGroup` ABC the engine's plugin context names; the terminal implements it. It is also the first thing `zettcode-plugin-api` re-exports. |
-| `mentions` | split: protocol in engine, `FileMentions`/`SkillMentions` in sdk | The engine only needs the type; the implementation reads the workspace, the broker and the registry. |
+| `mentions` | split: the protocol and the registry in engine (`zettcode/mention.py`), `FileMentions`/`SkillMentions` in sdk | The engine needs the type and the registry that collects it (`prompt.py` takes one); the implementations read the workspace and the broker. |
 | `relay` | split: `Relayed` in engine, the broker-facing half in sdk | `agent/turns.py` marks a relayed message; building and reading one needs the broker. |
 | `statusline` | split: `NAMES`/`TURN_PREFIX` in engine, the rendering in app | `config.py` validates the `[statusline]` table and must not import the statusline's sdk and tui edges. |
 | `collector` | app | The terminal's collector policy. |
 | `doctor` | sdk | It runs model checks through the SDK. |
-| `registry` | sdk | Shared by the mentions implementation and the app. |
+| `registry` | engine | The ordered registry the `@` resources and the shell's commands are both built on; the mention registry over it is the engine's too. |
 | `table` | sdk | The daemon's output and the program's. |
-| `update` | program | It reads the program's own version and release check. |
+| `update` | app | The release check and its page are one feature; the program's `zettcode update` command imports it. |
 | `cli`, `plugin_cli`, `oneshot` | program | The console scripts. |
 
 ## What leaves the engine
@@ -107,14 +107,14 @@ Each stage is one branch and one commit, and ends with `make check` green plus b
 2. **Split the shared modules.** *Done, with one variation.* The engine owns the data half of each and the module
    above re-exports it, so no importer changed: `zettcode/statusline_parts.py` (the names `[statusline]` may set, which
    `config.py` validates) is imported by `zettcode/statusline.py`, which paints them; `zettcode/mention.py` holds the
-   token, `Mention` and `MentionProvider`, and `zettcode/mentions.py` keeps the registry and the implementations;
+   token, `Mention`, `MentionProvider` and `MentionRegistry`, and `zettcode/mentions.py` keeps the implementations;
    `zettcode/relay.py` became the engine's whole (the message type and the wire vocabulary moved into it and
    `broker/protocol.py` imports them), with `zettcode/wire.py` holding the two facts the broker shares without the
    agent runtime. `test_structure.py`'s import-closure check now finds zero engine files importing something the
    engine would not ship.
 3. **The namespace and the wheels.** *Done.* `zettcode/__init__.py` is gone; every distribution is a directory under
-   `packages/` with a `pyproject.toml`, a wheel and a `py.typed`, and all of them read the one version file in the
-   engine's tree. The suite moved to `tests/` at the root, `mypy` names every `src` tree as a package base, and the
+   `packages/` with a `pyproject.toml` and a wheel, each subpackage has a `py.typed`, and all of them read the one
+   version file in the engine's tree. The suite moved to `tests/` at the root, `mypy` names every `src` tree as a package base, and the
    157 relative imports that climbed to the namespace root are absolute.
 4. **`zettcode-plugin-api`.** *Done.* The thin re-export package exists, both plugins depend on it and import only
    from it, and `test_a_plugin_depends_on_one_package_of_ours_and_imports_from_it` holds both halves.
