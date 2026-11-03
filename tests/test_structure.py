@@ -790,6 +790,10 @@ class Distribution(NamedTuple):
 #: Imported directly, but provided by another dependency rather than declared by name.
 PROVIDED_BY = {"pydantic_core": "pydantic"}
 
+#: Standard library from 3.11 on, so a 3.10 interpreter's table lacks them while the shims name them anyway (and
+#: declare `tomli`, the backport). Counting the running interpreter's table alone fails this guard on the floor.
+LATER_STDLIB = frozenset({"tomllib"})
+
 
 def _shipped_distributions() -> dict[str, Distribution]:
     """Return every distribution under `packages/`, with what it ships and what it declares."""
@@ -915,7 +919,12 @@ def test_every_distribution_imports_only_what_it_declares():
 
             for target in _module_level_imports(path):
                 top = target.split(".")[0]
-                if top in sys.stdlib_module_names or top == "zettcode" or top in distribution.own:
+                if (
+                    top in sys.stdlib_module_names
+                    or top in LATER_STDLIB
+                    or top == "zettcode"
+                    or top in distribution.own
+                ):
                     continue
                 provided = PROVIDED_BY.get(top)
                 if provided is not None and provided in distribution.external:
