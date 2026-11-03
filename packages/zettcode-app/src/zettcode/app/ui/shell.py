@@ -134,11 +134,14 @@ class ShellState:
         """Wait for a run the shell did not start to give the client back.
 
         A plugin that asks the model for itself — a recap, a notification — takes the client's one run slot and the
-        shell's busy flag knows nothing about it. A turn, a side question, a continue, a rename or a fork that started
-        in that window was refused with "a run is already in progress on this client", which a reader saw most often
-        when another session's message arrived while a recap was being written. The reader asked for the work either
-        way, so it waits for the slot; the ask it waits for is one model call, and Ctrl-C stops the wait with
-        everything else. Never wait for a request of the shell's own: a command taken while one runs would hang.
+        shell's busy flag knows nothing about it. A turn, a side question, a continue or a fork that started in that
+        window was refused with "a run is already in progress on this client", which a reader saw most often when
+        another session's message arrived while a recap was being written. The reader asked for the work either way, so
+        it waits for the slot; the ask it waits for is one model call, and Ctrl-C stops the wait with everything else.
+
+        Two things it is not for. A rename: `Session.rename` checks the slot only when the name would switch
+        conversations, so a title beside a run needs nothing from here. And a request of the shell's own: a command
+        taken while one runs would hang.
         """
         while self.client.busy:
             await asyncio.sleep(0.05)
