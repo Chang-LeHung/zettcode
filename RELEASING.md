@@ -5,7 +5,9 @@ The program and the distributions it is made of are published from this reposito
 `packages/` holds every distribution: the program (`zettcode`, the one a reader installs and the one that writes both
 console scripts), the parts it is built from, and the plugins, which are released on their own lines by
 `.github/workflows/release-packages.yml`. One `v<version>` tag publishes the program and its parts together — one
-version, read from one file — in the dependency order `packages/order.txt` lists.
+version, read from one file — in the dependency order `.github/scripts/release_order.py` computes from the
+packages' own `pyproject.toml` files (nothing keeps that list; `make order` writes it to `packages/order.txt`,
+which is generated and not in git).
 
 The gateway's web page is built from `clients/gateway` into `packages/zettcode-gateway/src/zettcode/gateway/static`. That output is not
 in git: the release workflow (and `make build` / `make smoke`) builds it with Node 20+ before the wheel is made, and
@@ -16,7 +18,7 @@ in git: the release workflow (and `make build` / `make smoke`) builds it with No
 
 1. Create the repository secret `PYPI_API_TOKEN` under **Settings → Secrets and
    variables → Actions** with a PyPI API token that may publish every project released from here — the nine
-   distributions `packages/order.txt` lists and the two plugins, eleven projects. A token scoped to one PyPI
+   nine distributions the program is made of and the two plugins, eleven projects. A token scoped to one PyPI
    project cannot publish the others, so this has to be an account-scoped token — or one secret per project, and a
    line in the workflows choosing it. The workflows read exactly this name.
 2. Optional: add a `pypi` environment under **Settings → Environments** and
@@ -58,7 +60,7 @@ eleven of them for `release.yml`'s tag — which is why the token is what this r
    git push origin v0.1.11
    ```
 
-5. The workflow builds every distribution in `packages/order.txt` in that order, verifies the tag matches the
+5. The workflow builds every distribution the generator orders, in that order, verifies the tag matches the
    version, publishes them to PyPI, and then opens a GitHub release with generated notes. `pip install
    zettcode` then writes both `zettcode` and
    `zettcode-server`, which is the package the VS Code extension installs for

@@ -388,12 +388,16 @@ def test_importing_the_package_does_not_build_the_application():
 
 
 def _release_order() -> list[str]:
-    """Return the distributions `packages/order.txt` lists, in dependency order (the program's included)."""
-    return [
-        line
-        for line in (ROOT / "packages" / "order.txt").read_text(encoding="utf-8").splitlines()
-        if line and not line.startswith("#")
-    ]
+    """Return the order a release publishes in, from the generator that computes it.
+
+    `packages/order.txt` is a dump of this for a reader (`make order`) and is not in git, so the test holds the script
+    rather than a snapshot of what it printed once.
+    """
+    spec = importlib.util.spec_from_file_location("release_order", ROOT / ".github" / "scripts" / "release_order.py")
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.ordered()
 
 
 def test_the_version_is_written_once_and_every_distribution_carries_it():
@@ -746,18 +750,14 @@ def _imported_modules(path: pathlib.Path) -> list[str]:
 
 
 def test_the_release_order_lists_every_distribution_once_with_its_dependencies_first():
-    """`packages/order.txt` is what `release.yml` publishes in order, and a distribution must not go before what it
-    needs: PyPI has no transaction, so a wrong order publishes something whose dependency is still missing.
+    """The generated order is what `release.yml` publishes in, and a distribution must not go before what it needs:
+    PyPI has no transaction, so a wrong order publishes something whose dependency is still missing.
 
     The plugins are released on their own lines and are not in the list; every other distribution under `packages/`
     is, exactly once.
     """
     package = ROOT / "packages"
-    order = [
-        line
-        for line in (package / "order.txt").read_text(encoding="utf-8").splitlines()
-        if line and not line.startswith("#")
-    ]
+    order = _release_order()
     distributions: dict[str, pathlib.Path] = {}
     plugins: set[str] = set()
     for project in sorted(package.glob("*/pyproject.toml")):

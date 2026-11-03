@@ -14,12 +14,17 @@ SMOKE_DIR := .smoke
 
 PACKAGES := packages
 LINT_PATHS := conftest.py support docs/scripts .github/scripts $(PACKAGES)
-# The distributions the program is built from, in dependency order (the list the release workflow reads too):
-# `make build` and `make smoke` make all of them.
-SPLIT := $(shell grep -v '^\#' $(PACKAGES)/order.txt)
-# Each distribution's suite runs on its own: its `pyproject.toml` is the pytest configuration it is written
-# against (`testpaths`, `asyncio_mode`), and one run over several would take the root's instead of theirs.
+# The distributions the program is built from, in dependency order. Nothing keeps the list: it is generated from
+# the `pyproject.toml` files (`release.yml` runs the same script), and `make order` writes it to
+# `packages/order.txt` for a reader — that file is generated and not in git.
+ORDER := .github/scripts/release_order.py
+# Recursive (`=`), so the script runs when a target needs the list, not on every `make help`.
+SPLIT = $(shell $(UV) run --no-sync python $(ORDER))
+# Each distribution's suite runs on its own, in that distribution's directory: its `pyproject.toml` is the pytest
+# configuration it is written against (`testpaths`, `asyncio_mode`), and one run over several would take the
+# root's instead of theirs. Each package has a `Makefile` with the same targets for its own work.
 PACKAGE_TESTS := $(wildcard $(PACKAGES)/*/tests)
+PACKAGE_DIRS := $(patsubst %/tests,%,$(PACKAGE_TESTS))
 
 # `make check` runs only what the tree has changed, so a change to the VS Code webview does not spend three minutes
 # on the Python suite. CI reads the same split from the pull request's own diff and runs the suites a change needs,
@@ -40,7 +45,7 @@ CLIENT := $(if $(EVERYTHING),1,$(filter clients/typescript/%,$(CHANGED)))
 GATEWAY := $(if $(EVERYTHING),1,$(filter clients/gateway/%,$(CHANGED)))
 EXTENSION := $(if $(EVERYTHING),1,$(filter clients/vscode/% clients/typescript/%,$(CHANGED)))
 
-.PHONY: help install lint typecheck test test-packages python client gateway-page gateway-ui vscode vscode-package install-vscode build smoke check check-all hooks docs docs-build docs-preview demo demo-all demos demo-thinking palettes themes perf perf-scaling perf-store perf-profile perf-startup perf-imports FORCE
+.PHONY: help install lint typecheck test order python client gateway-page gateway-ui vscode vscode-package install-vscode build smoke check check-all hooks docs docs-build docs-preview demo demo-all demos demo-thinking palettes themes perf perf-scaling perf-store perf-profile perf-startup perf-imports FORCE
 
 DEMOS := text status_bar spinner progress_bar list table diff markdown textarea completion dialog collapsible toast tasks scroll layout
 
@@ -49,7 +54,8 @@ help:
 	@echo "  make install  Sync the workspace from uv.lock"
 	@echo "  make lint     Check formatting and linting with Ruff"
 	@echo "  make typecheck Check the shipped code with mypy"
-	@echo "  make test     Run the test suite"
+	@echo "  make test     Run every distribution's suite, one at a time (each package has its own Makefile)"
+	@echo "  make order    Write the release order to packages/order.txt (generated, not in git)"
 	@echo "  make python   Lint, type-check and test the Python side"
 	@echo "  make client   Build and test the TypeScript client"
 	@echo "  make vscode   Type-check, test and build the VS Code extension"
@@ -88,9 +94,14 @@ typecheck:
 	$(UV) run --no-sync mypy
 
 test:
-	@if [ -n "$(PACKAGE_TESTS)" ]; then \
-		for suite in $(PACKAGE_TESTS); do echo "--- $$suite"; $(UV) run --no-sync pytest "$$suite" -q || exit 1; done; \
-	fi
+	@for directory in $(PACKAGE_DIRS); do \
+		echo "--- $$directory"; $(MAKE) --no-print-directory -C "$$directory" test || exit 1; \
+	done
+
+# The dependency order a release publishes in, written out for a reader (`packages/order.txt`).
+order:
+	$(UV) run --no-sync python $(ORDER) > $(PACKAGES)/order.txt
+	@cat $(PACKAGES)/order.txt
 
 python: lint typecheck test
 

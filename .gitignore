@@ -32,3 +32,6 @@ packages/zettcode-gateway/src/zettcode/gateway/static/
 # every palette, written by docs/scripts/palette_gallery.py. Regenerate it
 # rather than committing a 2 MB copy that goes stale the moment a colour moves.
 docs/internal/palettes.html
+
+# The release order is generated from the pyproject.toml files (`make order`); it is not kept in git.
+packages/order.txt

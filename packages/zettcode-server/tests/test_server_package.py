@@ -46,13 +46,13 @@ def test_every_distribution_reads_the_one_version_file():
     engine = ROOT / "packages" / "zettcode-engine" / "src" / "zettcode" / "version.py"
     assert zettcode.version.__version__ in engine.read_text(encoding="utf-8")
 
-    order = [
-        line
-        for line in (ROOT / "packages" / "order.txt").read_text(encoding="utf-8").splitlines()
-        if line and not line.startswith("#")
-    ]
-    # The engine ships the file; every other distribution reads it.
-    for name in order:
+    # The engine ships the file; every other distribution of the program reads it. (The plugins have versions of their
+    # own and are not in `packages/`'s generated order.)
+    for name in sorted(
+        project.parent.name
+        for project in (ROOT / "packages").glob("*/pyproject.toml")
+        if "zettcode.plugins" not in project.read_text(encoding="utf-8")
+    ):
         text = (ROOT / "packages" / name / "pyproject.toml").read_text(encoding="utf-8")
         expected = (
             'path = "src/zettcode/version.py"'
