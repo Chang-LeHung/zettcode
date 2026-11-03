@@ -149,6 +149,12 @@ class SessionMixin(ShellState):
         Returns:
             The stored title, so the command can confirm it.
         """
+        # A run the shell did not start — a plugin asking the model — holds the client's one slot; the reader asked
+        # for the name, so it waits for the slot instead of being refused (see `_wait_for_client`). A request of the
+        # shell's own is not waited for: `/title` is taken while one runs, and holding it there would be the hang this
+        # never had.
+        if not self._busy:
+            await self._wait_for_client()
         renamed = await self.client.session.rename(title)
         self._session_title = renamed
         self._sync_messaging()
@@ -212,6 +218,9 @@ class SessionMixin(ShellState):
         """
         # The session being left, named before it is left: the notice says where the
         # reader came from, which is only knowable here.
+        if not self._busy:
+            # As for a rename: wait for a run the shell did not start, never for one of its own.
+            await self._wait_for_client()
         previous_id, previous_title = self.client.session.id, self.client.session.title
         self._activity = Activity.RUNNING
         self._note = f"fork {ELLIPSIS}"

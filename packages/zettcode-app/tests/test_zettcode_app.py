@@ -4236,6 +4236,53 @@ async def test_a_message_that_arrives_while_a_plugin_asks_the_model_waits_its_tu
     ]
 
 
+async def test_a_rename_waits_for_a_plugin_question_instead_of_being_refused(tmp_path):
+    """The other reader action that met the busy slot: `/title` (and `/fork`) asked the client while a recap held it.
+
+    The shell's busy flag is idle then, and both commands are `when_busy="refuse"`, so they reached the client and
+    were answered with the SDK's sentence about an `async with` block — in the transcript, from a command the reader
+    had every right to type. Waiting for the slot is what the reader meant.
+    """
+    app = build_app(hold=True)
+    # A session has to exist in the store for a title to be written to it.
+    app.agent.runtime.persistence.store = SessionStore(tmp_path)
+
+    holder = asyncio.create_task(_hold_the_client(app))
+    for _ in range(50):
+        await asyncio.sleep(0)
+        if app.client.busy:
+            break
+    assert app.client.busy, "the plugin's question holds the slot"
+
+    renaming = asyncio.create_task(app.rename_session("a name"))
+    for _ in range(10):
+        await asyncio.sleep(0)
+    assert not renaming.done(), "the rename waits for the slot instead of being refused"
+
+    app.agent.runtime.client.released.set()
+    await holder
+    assert await renaming == "a name"
+    assert not any("already in progress" in entry.text for entry in app.transcript.entries), [
+        entry.text for entry in app.transcript.entries
+    ]
+
+
+def test_a_refused_run_is_worded_for_the_reader_and_not_for_a_program():
+    """The SDK's sentence tells a program to leave an `async with` block; a terminal says what helps instead."""
+    from zettcode.app.ui.turns import failure_line
+    from zettcode.sdk.errors import SessionBusyError
+
+    refused = SessionBusyError(
+        "A run is already in progress on this client. Wait for it, or close it: leave the `async with "
+        "session.stream(...)` block, `await run.aclose()`, or cancel the task"
+    )
+
+    assert failure_line(refused) == "error: another run is finishing; try again in a moment"
+    assert "async with" not in failure_line(refused)
+    # The command path (`/fork`, `/title`) shows a refusal without the `error:` prefix of a turn.
+    assert build_app()._refused_line(refused) == "another run is finishing; try again in a moment"
+
+
 async def test_the_window_takes_no_input_while_the_upgrade_runs(tmp_path, monkeypatch):
     """The code this window would run is being replaced, so the composer is locked until the install is over."""
     app = build_app()

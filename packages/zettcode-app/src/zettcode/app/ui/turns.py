@@ -12,13 +12,20 @@ from collections.abc import Collection, Sequence
 
 from zettcode.error_text import CONTINUE_HINT, failure_text
 from zettcode.prompt import MentionPart, PromptPart
-from zettcode.sdk.errors import RunError
+from zettcode.sdk.errors import RunError, SessionBusyError
 from zettcode.sdk.events import AnyEvent, ToolFinished, ToolStarted
 from zettcode.sdk.types import Image, TaskInfo, Usage
 
 from ..plugins.state import TurnContext, TurnSegment
 
-__all__ = ["TurnTally", "failure_line", "plan_rows", "prompt_pieces", "turn_parts"]
+__all__ = [
+    "RUN_IN_PROGRESS",
+    "TurnTally",
+    "failure_line",
+    "plan_rows",
+    "prompt_pieces",
+    "turn_parts",
+]
 
 
 class TurnTally:
@@ -84,12 +91,20 @@ def prompt_pieces(parts: Sequence[PromptPart]) -> list[str | Image]:
     return pieces
 
 
+#: What a run the client refused because another one holds it is said as, in a terminal. The SDK's own sentence tells
+#: a program to leave an ``async with`` block or await ``aclose()``, which is a remedy a reader cannot use; the one
+#: thing that helps is that it will be free in a moment.
+RUN_IN_PROGRESS = "another run is finishing; try again in a moment"
+
+
 def failure_line(error: BaseException) -> str:
     """Return the line a failed turn is shown as: what failed, and ``/continue`` when trying again may work.
 
     An SDK run error already carries the sentence, and says whether the failure was the provider's or the network's;
     anything else is worded here, as it always was.
     """
+    if isinstance(error, SessionBusyError):
+        return f"error: {RUN_IN_PROGRESS}"
     if isinstance(error, RunError):
         text = f"error: {error}"
         return f"{text.rstrip('.')}. {CONTINUE_HINT}" if error.retryable else text
