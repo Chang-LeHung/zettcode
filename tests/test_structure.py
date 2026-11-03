@@ -14,6 +14,7 @@ import pathlib
 import re
 import subprocess
 import sys
+from typing import NamedTuple
 
 from packaging.requirements import Requirement
 
@@ -772,33 +773,89 @@ def test_the_release_order_lists_every_distribution_once_with_its_dependencies_f
                 assert order.index(requirement.name) < index, f"{name} needs {requirement.name} published first"
 
 
-def _shipped_distributions() -> dict[str, tuple[pathlib.Path, set[str], set[str]]]:
-    """Return, per distribution, its project directory, the distributions it declares, and what it ships.
+class Distribution(NamedTuple):
+    """One distribution, as the import rules need to see it."""
 
-    Shipped names are the modules and packages directly under its `src/zettcode/`, which is what a wheel of that
-    distribution puts in the namespace. A plugin ships its own top-level module instead, so it ships nothing here.
-    """
-    found: dict[str, tuple[pathlib.Path, set[str], set[str]]] = {}
+    directory: pathlib.Path
+    #: The distributions of ours it declares.
+    declared: set[str]
+    #: The top-level names it puts in the `zettcode` namespace.
+    shipped: set[str]
+    #: The top-level names it ships outside the namespace (a plugin ships one module).
+    own: set[str]
+    #: The third-party names it declares, extras included, and the ones a dependency provides.
+    external: set[str]
+
+
+#: Imported directly, but provided by another dependency rather than declared by name.
+PROVIDED_BY = {"pydantic_core": "pydantic"}
+
+
+def _shipped_distributions() -> dict[str, Distribution]:
+    """Return every distribution under `packages/`, with what it ships and what it declares."""
+    found: dict[str, Distribution] = {}
     for project in sorted((ROOT / "packages").glob("*/pyproject.toml")):
         settings = tomllib.loads(project.read_text(encoding="utf-8"))
         name = settings["project"]["name"]
-        declared = {
-            requirement.name
-            for requirement in map(Requirement, settings["project"]["dependencies"])
-            if requirement.name.startswith("zettcode")
-        }
+        requirements = [Requirement(line) for line in settings["project"]["dependencies"]]
+        extras = [
+            Requirement(line)
+            for lines in settings["project"].get("optional-dependencies", {}).values()
+            for line in lines
+        ]
         tree = project.parent / "src" / "zettcode"
         shipped = {
             entry.stem if entry.is_file() else entry.name
             for entry in (tree.iterdir() if tree.is_dir() else ())
             if entry.name not in ("__pycache__", "py.typed")
         }
-        found[name] = (project.parent, declared, shipped)
+        own = {
+            entry.stem if entry.is_file() else entry.name
+            for entry in (project.parent / "src").iterdir()
+            if entry.name not in ("__pycache__", "zettcode")
+        }
+        found[name] = Distribution(
+            directory=project.parent,
+            declared={requirement.name for requirement in requirements if requirement.name.startswith("zettcode")},
+            shipped=shipped,
+            own=own,
+            external={requirement.name.replace("-", "_") for requirement in (*requirements, *extras)},
+        )
+    return found
+
+
+def _module_level_imports(path: pathlib.Path) -> list[str]:
+    """Return the modules a file imports outside any function or class.
+
+    An import inside a function is the module's own business — a fallback, an optional feature — and costs a reader
+    nothing at install time. An import at the top level, including one inside a version branch, is what a wheel has to
+    carry to be importable at all.
+    """
+    found: list[str] = []
+
+    def visit(nodes: list[ast.stmt]) -> None:
+        for node in nodes:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                continue
+            if isinstance(node, ast.Import):
+                found.extend(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                found.append(node.module)
+            for field in ("body", "orelse", "finalbody"):
+                visit(list(getattr(node, field, []) or []))
+            for handler in getattr(node, "handlers", []) or []:
+                visit(handler.body)
+
+    visit(ast.parse(path.read_text(encoding="utf-8")).body)
     return found
 
 
 def _namespace_imports(path: pathlib.Path) -> list[str]:
-    """Return every `zettcode.*` module a source file imports, by its absolute dotted name."""
+    """Return every `zettcode.*` module a source file imports, by its absolute dotted name.
+
+    Relative imports are resolved to the absolute name they stand for, so an import that climbs out of a distribution
+    is checked like any other.
+    """
     source_root = path.parent
     while source_root.name != "src":
         source_root = source_root.parent
@@ -829,29 +886,41 @@ def test_every_distribution_imports_only_what_it_declares():
     """A namespace hides a dependency: `zettcode.x` resolves whoever shipped `x`, so an import of another
     distribution's module works in the checkout and fails in a venv holding one wheel.
 
-    Every absolute `zettcode.<name>` import in a distribution's source has to name a module that distribution ships,
-    or one whose distribution it declares; nothing else is a working install. This is the rule the split lives or
-    dies by, and the one that breaks first as modules move.
+    Both halves are checked against what the distribution declares: every absolute `zettcode.<name>` import has to
+    name a module it ships or one whose distribution it declares, and every top-level third-party import has to be a
+    dependency (or an extra) of its own — the module-level ones only, since a lazy import has a fallback. This is the
+    rule the split lives or dies by, and the one that breaks first as modules move.
     """
     distributions = _shipped_distributions()
     owner: dict[str, str] = {}
-    for name, (_, _, shipped) in distributions.items():
-        for module in shipped:
+    for name, distribution in distributions.items():
+        for module in distribution.shipped:
             assert module not in owner, f"{module} is shipped by {owner.get(module)} and {name}"
             owner[module] = name
 
     offenders: list[str] = []
-    for name, (directory, declared, _) in distributions.items():
-        for path in sorted((directory / "src").rglob("*.py")):
+    for name, distribution in distributions.items():
+        for path in sorted((distribution.directory / "src").rglob("*.py")):
+            where = f"{name}: {path.relative_to(distribution.directory)}"
+
             for target in _namespace_imports(path):
                 parts = target.split(".")
                 if len(parts) < 2:
                     continue  # `import zettcode` is the namespace itself
                 shipped_by = owner.get(parts[1])
-                where = f"{name}: {path.relative_to(directory)} imports {target}"
                 if shipped_by is None:
-                    offenders.append(f"{where}, which no distribution ships")
-                elif shipped_by != name and shipped_by not in declared:
-                    offenders.append(f"{where} from {shipped_by}, which {name} does not declare")
+                    offenders.append(f"{where} imports {target}, which no distribution ships")
+                elif shipped_by != name and shipped_by not in distribution.declared:
+                    offenders.append(f"{where} imports {target} from {shipped_by}, which {name} does not declare")
+
+            for target in _module_level_imports(path):
+                top = target.split(".")[0]
+                if top in sys.stdlib_module_names or top == "zettcode" or top in distribution.own:
+                    continue
+                provided = PROVIDED_BY.get(top)
+                if provided is not None and provided in distribution.external:
+                    continue
+                if top not in distribution.external:
+                    offenders.append(f"{where} imports {top} at module level, which {name} does not declare")
 
     assert offenders == []

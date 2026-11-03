@@ -95,7 +95,7 @@ Embedding it elsewhere: the [**SDK**](https://chang-lehung.github.io/zettcode/sd
 with sessions, approvals, steering and models.
 
 ```bash
-uv tool install zettcode          # one package, two commands: zettcode and zettcode-server
+uv tool install zettcode          # one install, two commands: zettcode and zettcode-server
 zettcode-server --workspace ~/projects/api --port 8000
 ```
 

@@ -2902,7 +2902,6 @@ name = "zettcode"
 source = { editable = "packages/zettcode" }
 dependencies = [
     { name = "setproctitle", marker = "os_name == 'posix'" },
-    { name = "truststore" },
     { name = "zettcode-app" },
     { name = "zettcode-broker" },
     { name = "zettcode-engine", extra = ["tiktoken"] },
@@ -2927,7 +2926,6 @@ recap = [
 [package.metadata]
 requires-dist = [
     { name = "setproctitle", marker = "os_name == 'posix'", specifier = ">=1.3.7,<2" },
-    { name = "truststore", specifier = ">=0.10,<1" },
     { name = "zettcode-app", editable = "packages/zettcode-app" },
     { name = "zettcode-broker", editable = "packages/zettcode-broker" },
     { name = "zettcode-engine", extras = ["tiktoken"], editable = "packages/zettcode-engine" },
@@ -2946,6 +2944,7 @@ provides-extras = ["all", "monitor", "recap"]
 name = "zettcode-app"
 source = { editable = "packages/zettcode-app" }
 dependencies = [
+    { name = "truststore" },
     { name = "zett-agent" },
     { name = "zettcode-broker" },
     { name = "zettcode-engine" },
@@ -2955,6 +2954,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "truststore", specifier = ">=0.10,<1" },
     { name = "zett-agent", specifier = ">=0.2.7,<0.3" },
     { name = "zettcode-broker", editable = "packages/zettcode-broker" },
     { name = "zettcode-engine", editable = "packages/zettcode-engine" },
@@ -3141,12 +3141,14 @@ name = "zettcode-tui"
 source = { editable = "packages/zettcode-tui" }
 dependencies = [
     { name = "pyperclip" },
+    { name = "tomli", marker = "python_full_version < '3.11'" },
     { name = "wcwidth" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "pyperclip", specifier = ">=1.9,<2" },
+    { name = "tomli", marker = "python_full_version < '3.11'", specifier = ">=2,<3" },
     { name = "wcwidth", specifier = ">=0.2,<1" },
 ]
 

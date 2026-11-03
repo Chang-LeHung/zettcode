@@ -19,6 +19,8 @@ classifiers = [
 dependencies = [
   "wcwidth>=0.2,<1",
   "pyperclip>=1.9,<2",
+  # `tui/_compat.py` reads a theme file; the stdlib only learned TOML in 3.11.
+  "tomli>=2,<3; python_version < '3.11'",
 ]
 
 [project.urls]

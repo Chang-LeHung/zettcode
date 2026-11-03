@@ -59,7 +59,7 @@ union of what is installed and every distribution contributes its own parts to i
 
 | Module | Owner | Why |
 | --- | --- | --- |
-| `_compat` | engine | `StrEnum`/`tomllib`; the engine's storage and permission use it. `tui` gets a copy of the 12 lines it needs, so the framework stays dependency-free. |
+| `_compat` | engine | `StrEnum`/`tomllib`; the engine's storage and permission use it. `tui` ships a copy of the shim it needs (`tui/_compat.py`), so the framework depends on nothing of ours — only `wcwidth`, `pyperclip`, and `tomli` on 3.10. |
 | `budget`, `error_text`, `filelock`, `logging_setup`, `modes`, `paths`, `processes`, `prompt`, `providers`, `wording`, `config`, `config_edit` | engine | Leaves with no dependency of ours; the runtime or its settings need them, and everything above imports them from here rather than re-owning them. |
 | `plugin_tui` | engine | The `TuiGroup` ABC the engine's plugin context names; the terminal implements it. It is also the first thing `zettcode-plugin-api` re-exports. |
 | `mentions` | split: the protocol and the registry in engine (`zettcode/mention.py`), `FileMentions`/`SkillMentions` in sdk | The engine needs the type and the registry that collects it (`prompt.py` takes one); the implementations read the workspace and the broker. |
