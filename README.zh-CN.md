@@ -90,7 +90,7 @@ zettcode
 包含会话、审批、steer 和模型切换。
 
 ```bash
-uv tool install zettcode          # 一个包,两个命令:zettcode 和 zettcode-server
+uv tool install zettcode          # 一次安装,两个命令:zettcode 和 zettcode-server
 zettcode-server --workspace ~/projects/api --port 8000
 ```
 

@@ -34,9 +34,8 @@ dependencies = [
   "zettcode-server",
   "zettcode-gateway",
   "zettcode-app",
-  # Named here, not only inherited: the command line uses both directly.
+  # Named here, not only inherited: the command line names the process with it.
   "setproctitle>=1.3.7,<2; os_name == 'posix'",
-  "truststore>=0.10,<1",
 ]
 
 [project.optional-dependencies]
