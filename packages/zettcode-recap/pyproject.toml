@@ -32,17 +32,17 @@ Repository = "https://github.com/Chang-LeHung/zettcode/tree/main/packages/zettco
 Issues = "https://github.com/Chang-LeHung/zettcode/issues"
 
 [project.entry-points."zettcode.plugins"]
-recap = "zettcode_recap:RecapPlugin"
+recap = "zettcode.recap:RecapPlugin"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.version]
-path = "src/zettcode_recap/__init__.py"
+path = "src/zettcode/recap/__init__.py"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/zettcode_recap"]
+packages = ["src/zettcode"]
 
 [tool.hatch.build.targets.sdist]
 include = ["/src", "/tests", "/README.md", "/LICENSE", "/pyproject.toml"]

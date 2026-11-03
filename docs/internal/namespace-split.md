@@ -49,6 +49,10 @@ union of what is installed and every distribution contributes its own parts to i
 | `zettcode-plugin-api` | `zettcode/plugin_api/**`: re-exports only, the surface a plugin imports | `zettcode-engine`, `zettcode-tui`, `zettcode-app` |
 | `zettcode` | `zettcode/cli.py`, `plugin_cli.py`, `oneshot.py`, the console scripts | all of the above |
 
+The plugins are distributions too, and they ship inside the same namespace: `zettcode-monitor` puts its module at
+`zettcode/monitor/` and `zettcode-recap` at `zettcode/recap/`, so no distribution has a top-level import root of
+its own. A test holds that: `test_every_distribution_ships_under_the_zettcode_namespace`.
+
 `zettcode` stays the distribution a reader installs: it keeps both console scripts (the rules for that are in
 `AGENTS.md`) and depends on the server, so one `pip install zettcode` is unchanged in effect.
 

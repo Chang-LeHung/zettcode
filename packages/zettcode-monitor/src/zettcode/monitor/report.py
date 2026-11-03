@@ -20,7 +20,7 @@ def render_report(session_id: str, calls: list[dict[str, Any]], *, workspace: st
     }
     # "<" is escaped so that no string in the data can close the script element.
     payload = json.dumps(data, ensure_ascii=False, default=str).replace("<", "\\u003c").replace("\u2028", "\\u2028")
-    template = files("zettcode_monitor").joinpath("report.html").read_text(encoding="utf-8")
+    template = files("zettcode.monitor").joinpath("report.html").read_text(encoding="utf-8")
     return template.replace("__TITLE__", html.escape(session_id[:8])).replace("__DATA__", payload)
 
 
