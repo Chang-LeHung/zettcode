@@ -107,28 +107,19 @@ jobs:
           set -euo pipefail
           for name in $(python3 .github/scripts/release_order.py); do
             echo "::group::$name"
-            # A release creates several projects at once, and PyPI rate-limits that: "429 Too many new projects
-            # created" clears on its own within the hour. The upload is retried with a growing pause instead of failing
-            # the release, and `--check-url` skips whatever an earlier attempt already published.
-            attempt=1
-            while true; do
-              if uv publish --check-url https://pypi.org/simple/ "dist/$name"/* > "$RUNNER_TEMP/publish.log" 2>&1; then
-                break
-              fi
-              cat "$RUNNER_TEMP/publish.log"
-              if ! grep -q "status code 429" "$RUNNER_TEMP/publish.log"; then
-                echo "::error::could not publish $name"
-                exit 1
-              fi
-              if [ "$attempt" -ge 8 ]; then
-                echo "::error::$name is still rate limited after $attempt attempts"
-                exit 1
-              fi
-              pause=$((attempt * 120))
-              echo "$name: PyPI is rate limiting new projects; retrying in ${pause}s (attempt $((attempt + 1)) of 8)"
-              sleep "$pause"
-              attempt=$((attempt + 1))
-            done
+            # A project PyPI already has takes a new version with no limit. A brand-new name counts against PyPI's
+            # new-project quota — a slow clock (documented as 20 an hour, stricter for a young account), and every
+            # rejected attempt counts too — so a new name waits a minute before it is tried, and an upload that fails
+            # stops the run rather than hammering the quota. The job is idempotent: `--check-url` skips what is already
+            # published, so re-running it later publishes whatever is left.
+            if ! curl -fsS "https://pypi.org/pypi/$name/json" > /dev/null 2>&1; then
+              echo "$name is new to PyPI; waiting a minute before creating it"
+              sleep 60
+            fi
+            if ! uv publish --check-url https://pypi.org/simple/ "dist/$name"/*; then
+              echo "::error::$name could not be published; if PyPI answered 429 for a new project name, the quota is a slow clock — re-run this job once it has cleared"
+              exit 1
+            fi
             echo "::endgroup::"
           done
 

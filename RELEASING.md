@@ -69,6 +69,13 @@ eleven of them for `release.yml`'s tag — which is why the token is what this r
 A manual `workflow_dispatch` run only builds and uploads the artifacts;
 publishing and the GitHub release both require a tag push.
 
+**The first release of several new projects can be throttled.** PyPI limits how quickly new project *names* may be
+created — documented as twenty an hour, and the wall is stricter for an account that has just started publishing —
+and each rejected attempt counts against it. The publish step waits a minute before creating a name PyPI does not have
+and stops the run when an upload fails, so a `429 Too many new projects created` leaves the job red with some of the
+nine published. The job is idempotent: `uv publish --check-url` skips every file PyPI already has, so re-running that
+job later (Actions → the run → "Re-run failed jobs") publishes whatever is left, in the same order.
+
 ## The plugins in `packages/`
 
 `packages/` holds the plugin distributions this repository publishes — `zettcode-monitor` and `zettcode-recap` today.
