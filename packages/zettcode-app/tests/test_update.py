@@ -276,8 +276,8 @@ def test_an_answer_that_arrives_after_the_loop_closed_is_dropped_quietly(monkeyp
     raised: list[BaseException] = []
     monkeypatch.setattr(threading, "excepthook", lambda args: raised.append(args.exc_value))
     loop = asyncio.new_event_loop()
-    # The thread this test starts, not any other one called `zettcode-background`: another test that warmed a check
-    # leaves one behind, and `threading.enumerate()` does not promise an order.
+    # Picked by identity and name rather than by name alone: `threading.enumerate()` promises no order, and this way
+    # the assertion below says which thread it got when the pick is wrong.
     before = set(threading.enumerate())
 
     async def start() -> asyncio.Task:
@@ -308,6 +308,7 @@ def test_a_failure_that_arrives_after_the_loop_closed_is_dropped_quietly(monkeyp
     raised: list[BaseException] = []
     monkeypatch.setattr(threading, "excepthook", lambda args: raised.append(args.exc_value))
     loop = asyncio.new_event_loop()
+    # As above: the thread this test starts, picked by identity and name.
     before = set(threading.enumerate())
 
     def fails() -> str:

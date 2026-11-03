@@ -4481,16 +4481,22 @@ async def test_a_quit_does_not_wait_for_a_check_still_in_flight(tmp_path, monkey
 
     began = time.monotonic()
     await app._stop_update_task()
+    # Measured before the thread is let go: the point is how long the quit took, not how long the cleanup does.
+    quit_took = time.monotonic() - began
+
+    # Let it finish before the suite moves on, and before an assertion below can fail: a test that fails must not
+    # also leave the thread it started for the next one to meet.
+    release.set()
+    started_threads = [
+        thread for thread in threading.enumerate() if thread not in before and thread.name == "zettcode-background"
+    ]
+    assert len(started_threads) == 1, started_threads
+    started_threads[0].join(2.0)
+    assert not started_threads[0].is_alive()
 
     assert task.cancelled()
     # The request is still in its thread; the quit does not wait for it.
-    assert time.monotonic() - began < 1.0
-    # Let it finish before the suite moves on, so no test that looks at these threads finds this one.
-    release.set()
-    left = [thread for thread in threading.enumerate() if thread not in before and thread.name == "zettcode-background"]
-    assert len(left) == 1, left
-    left[0].join(2.0)
-    assert not left[0].is_alive()
+    assert quit_took < 1.0
 
 
 async def test_ctrl_c_clears_the_composer_when_idle():
