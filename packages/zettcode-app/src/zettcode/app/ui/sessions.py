@@ -149,12 +149,8 @@ class SessionMixin(ShellState):
         Returns:
             The stored title, so the command can confirm it.
         """
-        # A run the shell did not start — a plugin asking the model — holds the client's one slot; the reader asked
-        # for the name, so it waits for the slot instead of being refused (see `_wait_for_client`). A request of the
-        # shell's own is not waited for: `/title` is taken while one runs, and holding it there would be the hang this
-        # never had.
-        if not self._busy:
-            await self._wait_for_client()
+        # No wait for the run slot: a title of the current conversation is a store write, which the SDK allows beside
+        # a run (`Session.rename` checks only when the name would switch conversations).
         renamed = await self.client.session.rename(title)
         self._session_title = renamed
         self._sync_messaging()

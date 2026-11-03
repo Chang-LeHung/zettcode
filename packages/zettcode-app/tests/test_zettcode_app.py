@@ -4236,12 +4236,12 @@ async def test_a_message_that_arrives_while_a_plugin_asks_the_model_waits_its_tu
     ]
 
 
-async def test_a_rename_waits_for_a_plugin_question_instead_of_being_refused(tmp_path):
-    """The other reader action that met the busy slot: `/title` (and `/fork`) asked the client while a recap held it.
+async def test_a_title_is_written_beside_a_plugin_question_rather_than_waiting_for_it(tmp_path):
+    """`/title` names the current conversation, which is a store write the SDK allows beside a run.
 
-    The shell's busy flag is idle then, and both commands are `when_busy="refuse"`, so they reached the client and
-    were answered with the SDK's sentence about an `async with` block — in the transcript, from a command the reader
-    had every right to type. Waiting for the slot is what the reader meant.
+    `/fork` is the command that met the busy slot (it switches conversations); a rename that waited for a recap's ask
+    would delay a write that needs nothing, for up to the recap's own timeout. So this one does not wait, and it does
+    not fail either.
     """
     app = build_app(hold=True)
     # A session has to exist in the store for a title to be written to it.
@@ -4254,14 +4254,11 @@ async def test_a_rename_waits_for_a_plugin_question_instead_of_being_refused(tmp
             break
     assert app.client.busy, "the plugin's question holds the slot"
 
-    renaming = asyncio.create_task(app.rename_session("a name"))
-    for _ in range(10):
-        await asyncio.sleep(0)
-    assert not renaming.done(), "the rename waits for the slot instead of being refused"
+    assert await asyncio.wait_for(app.rename_session("a name"), 1.0) == "a name"
+    assert app.client.busy, "and the plugin's question is still running"
 
     app.agent.runtime.client.released.set()
     await holder
-    assert await renaming == "a name"
     assert not any("already in progress" in entry.text for entry in app.transcript.entries), [
         entry.text for entry in app.transcript.entries
     ]
