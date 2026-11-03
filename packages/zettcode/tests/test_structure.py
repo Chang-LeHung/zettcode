@@ -16,6 +16,7 @@ import subprocess
 import sys
 from typing import NamedTuple
 
+import pytest
 from packaging.requirements import Requirement
 
 from zettcode._compat import tomllib
@@ -387,17 +388,22 @@ def test_importing_the_package_does_not_build_the_application():
     assert result.stdout.strip() == "False False"
 
 
-def _release_order() -> list[str]:
-    """Return the order a release publishes in, from the generator that computes it.
+def _release_order_module():
+    """Return the generator a release publishes in the order of, loaded by path.
 
-    `packages/order.txt` is a dump of this for a reader (`make order`) and is not in git, so the test holds the script
+    `packages/order.txt` is a dump of this for a reader (`make order`) and is not in git, so the tests hold the script
     rather than a snapshot of what it printed once.
     """
     spec = importlib.util.spec_from_file_location("release_order", ROOT / ".github" / "scripts" / "release_order.py")
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return module.ordered()
+    return module
+
+
+def _release_order() -> list[str]:
+    """Return the order a release publishes in, from the generator that computes it."""
+    return _release_order_module().ordered()
 
 
 def test_the_version_is_written_once_and_every_distribution_carries_it():
@@ -985,3 +991,33 @@ def test_every_distribution_ships_under_the_zettcode_namespace():
             offenders.append(f"{name}: its wheel is not built from src/zettcode")
 
     assert offenders == []
+
+
+def test_the_release_order_refuses_a_cycle_and_a_dependency_nobody_ships(tmp_path, monkeypatch):
+    """What the generator promises is an error, not a short list: an edge it cannot order would otherwise disappear.
+
+    A cycle is the obvious case. The quiet one is a name no distribution in the graph has — a typo, or a program
+    distribution that started depending on a plugin, which is published on its own line — because the readiness check
+    only looks at what is left and would simply drop it.
+    """
+    generator = _release_order_module()
+    monkeypatch.setattr(generator, "ROOT", tmp_path)
+    packages = tmp_path / "packages"
+
+    def write(name: str, needs: tuple[str, ...]) -> None:
+        directory = packages / name
+        directory.mkdir(parents=True, exist_ok=True)
+        dependencies = "".join(f'  "{need}",\n' for need in needs)
+        (directory / "pyproject.toml").write_text(
+            f'[project]\nname = "{name}"\nversion = "1.0"\ndependencies = [\n{dependencies}]\n',
+            encoding="utf-8",
+        )
+
+    write("zettcode-a", ("zettcode-b>=1",))
+    write("zettcode-b", ("zettcode-a>=1",))
+    with pytest.raises(generator.Cycle, match="need each other"):
+        generator.ordered()
+
+    write("zettcode-b", ("zettcode-missing>=1",))
+    with pytest.raises(generator.Cycle, match="zettcode-missing"):
+        generator.ordered()
