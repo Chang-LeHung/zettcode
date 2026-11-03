@@ -42,7 +42,7 @@ passes the token in `ZETTCODE_GATEWAY_TOKEN`, never on the child's command line,
 ## Files
 
 ```
-zettcode/src/zettcode/gateway/
+packages/zettcode-gateway/src/zettcode/gateway/
   chat.py      stored messages -> chat items (out / in / reply / tool / note); the request-for-an-answer footer
   backend.py   Backend (abstract) and SdkBackend: a Client that joined the broker, the SDK's daemon calls
   service.py   Gateway: threads, unread marks, send, spawn, stop, folder picker, events
@@ -51,8 +51,8 @@ zettcode/src/zettcode/gateway/
   runfile.py   the record a serving gateway leaves, and the log of a background one
   static/      the built page (not in git: `make gateway-ui` builds it, and the release workflow builds it before the wheel)
 clients/gateway/   the page: src/{api,stores,lib,components}, tests with node:test
-zettcode/src/zettcode/sdk/daemons.py   spawn_daemon / list_daemons / stop_daemon / daemon_log
-zettcode/src/zettcode/processes.py     reading a process's command line, shared by the broker's and the gateway's stop
+packages/zettcode-sdk/src/zettcode/sdk/daemons.py   spawn_daemon / list_daemons / stop_daemon / daemon_log
+packages/zettcode-engine/src/zettcode/processes.py     reading a process's command line, shared by the broker's and the gateway's stop
 ```
 
 ## Decisions

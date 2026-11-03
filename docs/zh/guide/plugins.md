@@ -17,7 +17,7 @@
 的插件，在 `activate` 开头加一句判断即可：
 
 ```python
-from zettcode.app.plugins import PluginContext, TuiPlugin
+from zettcode.plugin_api import PluginContext, TuiPlugin
 
 
 class Greeter(TuiPlugin):  # 这个 mixin 提供行相关的钩子；基类仍是同一个 Plugin
@@ -45,8 +45,8 @@ greeter = "my_package:Greeter"
 ```
 
 ```python
-from zettcode.app.commands import CommandContext, CommandResult
-from zettcode.app.plugins import PluginContext, TuiPlugin
+from zettcode.plugin_api import CommandContext, CommandResult
+from zettcode.plugin_api import PluginContext, TuiPlugin
 
 
 class Greeter(TuiPlugin):
@@ -146,7 +146,7 @@ disable = ["greeter"]
   开始和结束也都能收到。想在人不在时汇总、提醒，或者等读者停下来再做事的插件，就建立在这些钩子上：
 
 ```python
-from zettcode.app.plugins import PluginContext, TuiPlugin
+from zettcode.plugin_api import PluginContext, TuiPlugin
 
 
 class Away(TuiPlugin):
@@ -178,7 +178,7 @@ class Away(TuiPlugin):
 调用第一个钩子，其它行为不变。
 
 ```python
-from zettcode.app.plugins import ShellContext, TuiPlugin
+from zettcode.plugin_api import ShellContext, TuiPlugin
 
 
 class WorkspaceLabel(TuiPlugin):
@@ -249,7 +249,7 @@ quiet = true
 都会停掉它，那一行会写成 `stopped`。
 
 ```python
-from zettcode.app.plugins import HOST_LINK, HostLink
+from zettcode.plugin_api import HOST_LINK, HostLink
 
 
 class Recap(TuiPlugin):
@@ -288,7 +288,7 @@ origin 是读者，所以 shell 会把那一次画出来，也会在恢复时把
 一次评审、插件自己数据拼出来的一页；`message` 留空，或者只放一句说明：
 
 ```python
-from zettcode.engine.plugins.commands import PlainCommandContext, TextCommandResult
+from zettcode.plugin_api import PlainCommandContext, TextCommandResult
 
 
 def notes(context: PlainCommandContext) -> TextCommandResult:
@@ -381,8 +381,8 @@ ctx.tui.register_command("status", "show the build status", self.status, when_bu
 就能配好：
 
 ```python
-from zettcode.engine.plugins import Plugin, PluginContext
-from zettcode.providers import Provider
+from zettcode.plugin_api import Plugin, PluginContext
+from zettcode.plugin_api import Provider
 
 
 class Acme(Plugin):
@@ -417,7 +417,7 @@ ZettCode 自带的配色（`nord`、`dracula`、`gruvbox` 等）也是由一个�
 ```text
 from pathlib import Path
 
-from zettcode.app.plugins import PluginContext, TuiPlugin
+from zettcode.plugin_api import PluginContext, TuiPlugin
 
 
 class Palettes(TuiPlugin):
@@ -440,8 +440,8 @@ class Palettes(TuiPlugin):
 宠物和配色一样按名字提供，ZettCode 自带的十三只（`cat`、`dog`、`tiger`、`polarbear`、`snowbear`、`penguin`、`scarfy`、`kangaroo`、`seagull`、`whale`、`chibi`、`slime`、`sprout`）也是由一个内置插件通过同一个调用提供的。一只宠物就是一张调色板，加上它各种心情的像素图：图里的每个字符对应一种颜色，`.` 是透明，两行像素组成一行字符单元格，所以行数必须是偶数，而且同一只宠物的每一帧大小相同：
 
 ```text
-from zettcode.app.pets import Pet
-from zettcode.app.plugins import PluginContext, TuiPlugin
+from zettcode.plugin_api import Pet
+from zettcode.plugin_api import PluginContext, TuiPlugin
 
 PALETTE = {"G": "#84b795", "D": "#263d34", "H": "#e4b47c"}
 ASLEEP = ("..GGGG..", ".GGGGGG.", "GGGGGGGG", "GDDGGDDG", "GGGHHGGG", ".GGGGGG.")
@@ -466,10 +466,10 @@ class Blobs(TuiPlugin):
 也由一个内置插件注册，优先级最低，所以插件为同样的行注册一个就能覆盖，不需要压过任何东西：
 
 ```text
-from zettcode.app.agent.conversation.entries import EntryKind
-from zettcode.app.agent.conversation.presenters import Presenter
-from zettcode.app.plugins import PluginContext, TuiPlugin
-from zettcode.tui import Span, Style, TextLine
+from zettcode.plugin_api import EntryKind
+from zettcode.plugin_api import Presenter
+from zettcode.plugin_api import PluginContext, TuiPlugin
+from zettcode.plugin_api import Span, Style, TextLine
 
 
 class QuietNotice(Presenter):
@@ -501,7 +501,7 @@ presenter 指定一个 `kind`（`EntryKind` 的一项）；如果只画某一种
 `zett-agent` 的某个扩展，可以把它整个交出去：
 
 ```python
-from zettcode.engine.plugins import Plugin, PluginContext
+from zettcode.plugin_api import Plugin, PluginContext
 
 
 class Audit(Plugin):

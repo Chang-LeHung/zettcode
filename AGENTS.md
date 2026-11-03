@@ -6,31 +6,35 @@ The repository is a uv workspace, and the root `pyproject.toml` is only the work
 tool configuration (Ruff, mypy, the dev dependency group), the uv sources, and the member list. Nothing is published
 from the root.
 
-- `packages/` holds the plugin distributions this repository publishes, one directory per PyPI project
-  (`zettcode-monitor`, `zettcode-recap`), each with its own version and tag. They are workspace members, so they share
-  the one environment, `uv.lock` and the suite `make check` runs — not separate projects with their own lock or venv —
-  and `.github/workflows/release-packages.yml` releases whichever of them has a version PyPI does not have. A plugin
-  runs against the `zettcode` in this checkout: its `zettcode` range has to admit the version beside it, and the
-  extra in `zettcode/pyproject.toml` has to admit the plugin's. Adding one is a directory with a `pyproject.toml`
-  (hatchling, `src/<module>`, a `dev` group holding what its tests import), an entry in the root `dev` group,
-  `[tool.uv.sources]`, and the Ruff/mypy paths in the root `pyproject.toml`; nothing in a workflow.
-
-- `zettcode/` is the terminal coding agent. `src/zettcode` holds `cli.py` and
-  `config.py` at the top, the agent core in `engine/` (`ZettCodeEngine` in
-  `core.py`, and the `dialogue/`, `extensions/`, `permission/`, `storage/`,
-  `tools/`, `export/` it is built from;
-  it imports nothing of ours — not the terminal, the SDK, the server, the broker, nor the built-in plugin set,
-  which is `sdk/builtins.py` and is passed in by whoever builds the runtime — `docs/internal/engine.md`
-  has the design, `docs/internal/namespace-split.md` the packages it is being split into), the
-  terminal application in `app/` (`agent/` for the
-  conversation model and the event projection, `ui/` for the shell and the
-  views; `docs/internal/tui.md` has the map and `tests/test_structure.py` the
-  import order), and the reusable framework in `tui/`; `tests` drives
-  all of it without a real terminal. The session broker is `broker/`: one small
-  package, a Starlette application served by uvicorn on loopback (sessions are
-  WebSockets, sending is `POST /messages`, any process with the token may use it)
-  and the client a session reaches it with; there is no RPC layer of our own in
-  it, and none should be added.
+- `packages/` holds every distribution of the workspace, and all of them share the PEP 420 `zettcode` namespace: no
+  distribution ships `zettcode/__init__.py`, so `import zettcode` is the union of what is installed and there is no
+  facade to keep. `docs/internal/namespace-split.md` has the owner of every module.
+  - `zettcode` is the program: `cli.py`, `plugin_cli.py`, both console scripts, and the one distribution a reader
+    installs. `packages/order.txt` lists it and the parts below in dependency order, and `release.yml` builds and
+    publishes them in that order — one version, one `v<version>` tag, read from
+    `packages/zettcode-engine/src/zettcode/version.py`.
+  - `zettcode-engine` is the root of the graph: the runtime over `zett-agent` (`core.py`, and the `dialogue/`,
+    `extensions/`, `permission/`, `storage/`, `tools/`, `export/` it is built from) and the leaves it is written on
+    (`config`, `config_edit`, `paths`, `prompt`, `relay`, `wire`, ...). It imports nothing else of ours — not the
+    terminal, the SDK, the server, the broker, nor the built-in plugin set, which is `sdk/builtins.py` and is passed
+    in by whoever builds the runtime — and `tests/test_structure.py` holds that closure. `docs/internal/engine.md` has
+    the design.
+  - `zettcode-tui` is the widget framework and imports nothing of ours; `zettcode-broker` is the session broker (one
+    small Starlette application served by uvicorn on loopback; sessions are WebSockets, sending is `POST /messages`,
+    any process with the token may use it; there is no RPC layer of our own in it, and none should be added);
+    `zettcode-sdk` is the documented surface with the daemon inside it (they call each other, so they are one
+    distribution); `zettcode-server` and `zettcode-gateway` are the faces of the SDK; `zettcode-app` is the terminal
+    application (`agent/` for the conversation model and the event projection, `ui/` for the shell and the views;
+    `docs/internal/tui.md` has the map and `tests/test_structure.py` the import order).
+  - `zettcode-plugin-api` re-exports what a plugin imports, so a plugin depends on that one package.
+- The plugins are the distributions in `packages/` that declare a `zettcode.plugins` entry point (`zettcode-monitor`,
+  `zettcode-recap`), each with its own version and tag. They are workspace members like the rest — one environment,
+  `uv.lock`, the suite `make check` runs — and `.github/workflows/release-packages.yml` releases whichever of them has
+  a version PyPI does not have. A plugin depends on `zettcode-plugin-api` and imports nothing else of ours:
+  `tests/test_structure.py` holds both halves, and its range has to admit the version in this checkout. Adding one is
+  a directory with a `pyproject.toml` (hatchling, `src/<module>`, a `dev` group holding what its tests import), an
+  entry in the root `dev` group, `[tool.uv.sources]`, and the Ruff/mypy paths in the root `pyproject.toml`; nothing in
+  a workflow.
 - The agent runtime is an external dependency: depend on released `zett-agent`
   versions and never vendor or re-implement the model loop, compaction, or
   message types. Two things are the deliberate exceptions. Session persistence —
@@ -47,7 +51,7 @@ from the root.
   and `SessionGuard` are older structural protocols that have not been
   converted.)
 - The TUI owns the terminal. Raw mode, input decoding, layout, and differential
-  cell rendering live in `zettcode/src/zettcode/tui`; do not add prompt-toolkit
+  cell rendering live in `packages/zettcode-tui/src/zettcode/tui`; do not add prompt-toolkit
   or another TUI framework.
 - `zettcode-server` is the HTTP face of the same agent, in `src/zettcode/server/`, and holds no agent of its own:
   every endpoint drives
@@ -70,16 +74,16 @@ from the root.
 ## Tooling
 
 - Python 3.10+ and `uv` for dependency management; Ruff for formatting and
-  linting with `line-length = 120`, and mypy for the shipped code under
-  `zettcode/src`, `zettcode/perf`, each `packages/*/src`, and the release helper in `.github/scripts`. Both tools
+  linting with `line-length = 120`, and mypy for the shipped code under each `packages/*/src`,
+  `packages/zettcode/perf`, and the release helper in `.github/scripts`. Both tools
   target 3.10 and CI runs 3.10 through 3.15, so
   keep the source free of newer syntax and standard-library APIs; the version shims live in
-  `zettcode/src/zettcode/_compat.py`.
+  `packages/zettcode-engine/src/zettcode/_compat.py`.
 - Run `make check` while working: it compares the tree with where the branch left `main` (`BASE=…` picks another
-  ref) and runs only what the change touches — Ruff, mypy and the Python suite for `zettcode/` and `packages/`, the
+  ref) and runs only what the change touches — Ruff, mypy and the Python suite for `tests/` and `packages/`, the
   TypeScript client for `clients/typescript/`, the extension for either JavaScript client, and nothing for a
   guide-only edit.
-  Run `make check-all` before handing work over; CI runs only the suites a pull request's diff needs — `zettcode/`,
+  Run `make check-all` before handing work over; CI runs only the suites a pull request's diff needs — `tests/`,
   `packages/`, `uv.lock` and the root `pyproject.toml` for the Python gate, `clients/<name>/` for a client, and
   everything for the `Makefile` or a workflow — so a full run
   does not have to happen on every edit. Run `make smoke` when packaging changes so both console scripts are exercised
@@ -120,10 +124,10 @@ from the root.
 
 ## Releases
 
-- The version lives in `zettcode/src/zettcode/__init__.py`; `zettcode/pyproject.toml` asks hatchling to
-  read it from there, and a release is a commit that sets it plus a `v<version>` tag. The release workflow reads the
-  same file and refuses to publish when the tag and it disagree. The terminal and the server are one distribution and
-  one version; there is no second tag.
+- The version lives in `packages/zettcode-engine/src/zettcode/version.py`; every distribution's `pyproject.toml` asks
+  hatchling to read it from there, and a release is a commit that sets it plus a `v<version>` tag. The release
+  workflow reads the same file, refuses to publish when the tag and it disagree, and publishes every distribution in
+  `packages/order.txt` in that order. The plugins are the only ones with a tag of their own.
 - A plugin in `packages/` is released on its own line: its version in its `__init__.py`, and a
   `<name>-v<version>` tag — the plugin's entry-point name or its directory — or a manual run of
   `release-packages.yml`. The workflow publishes only versions PyPI does not already have, so a re-run is a no-op;
