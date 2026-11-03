@@ -52,19 +52,17 @@ def ordered() -> list[str]:
         Cycle: When a dependency names a distribution this repository does not ship, or the graph has a loop.
     """
     found: dict[str, set[str]] = {}
+    plugins: set[str] = set()
     for project in sorted((ROOT / "packages").glob("*/pyproject.toml")):
         name, needed, plugin = _described(project.parent)
-        if not plugin:
+        if plugin:
+            plugins.add(name)
+        else:
             found[name] = needed
 
     # An edge to a name that is not one of these would silently disappear from the graph: the readiness check only
     # compares against what is left, so a typo — or a program distribution that started needing a plugin, which is
     # published on another line — would be dropped instead of ordered.
-    plugins: set[str] = set()
-    for project in sorted((ROOT / "packages").glob("*/pyproject.toml")):
-        name, _, plugin = _described(project.parent)
-        if plugin:
-            plugins.add(name)
     unknown = {need for needed in found.values() for need in needed} - set(found) - plugins
     if unknown:
         raise Cycle(f"these dependencies name nothing the program is made of: {sorted(unknown)}")

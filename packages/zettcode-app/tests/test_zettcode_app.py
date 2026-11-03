@@ -4463,10 +4463,14 @@ async def test_a_quit_does_not_wait_for_a_check_still_in_flight(tmp_path, monkey
     app = build_app()
     app.agent.runtime.config.update_file = tmp_path / "update.json"
     started = threading.Event()
+    # The check is held until this test says so: a `sleep(5.0)` would leave a live `zettcode-background` thread behind
+    # for up to five seconds after the test ends, and every test that looks at those threads would meet it.
+    release = threading.Event()
+    before = set(threading.enumerate())
 
     def slow() -> str:
         started.set()
-        time.sleep(5.0)
+        release.wait(5.0)
         return "0.1.3"
 
     monkeypatch.setattr(updating_module, "check_for_update", lambda path: in_background(slow))
@@ -4481,6 +4485,12 @@ async def test_a_quit_does_not_wait_for_a_check_still_in_flight(tmp_path, monkey
     assert task.cancelled()
     # The request is still in its thread; the quit does not wait for it.
     assert time.monotonic() - began < 1.0
+    # Let it finish before the suite moves on, so no test that looks at these threads finds this one.
+    release.set()
+    left = [thread for thread in threading.enumerate() if thread not in before and thread.name == "zettcode-background"]
+    assert len(left) == 1, left
+    left[0].join(2.0)
+    assert not left[0].is_alive()
 
 
 async def test_ctrl_c_clears_the_composer_when_idle():
