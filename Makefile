@@ -158,8 +158,10 @@ smoke: gateway-page
 	@# The `monitor` and `recap` extras are metadata, and nothing else exercises them: a misspelt name or a range that
 	@# excludes the published plugin shows up only when a reader installs it. Each extra is installed beside the wheels
 	@# just built, and the plugin has to register its command under this version -- the extra's whole promise.
-	@wheel=$$(ls $(SMOKE_DIR)/zettcode-0.*.whl); $(UV) pip install --python $(SMOKE_DIR)/venv/bin/python "$$wheel[monitor]"
-	@wheel=$$(ls $(SMOKE_DIR)/zettcode-0.*.whl); $(UV) pip install --python $(SMOKE_DIR)/venv/bin/python "$$wheel[recap]"
+	@# `--no-sources`: the extra has to resolve from PyPI, which is the promise a reader installs; a workspace source
+	@# would put this checkout's plugin there instead and the check would prove nothing.
+	@wheel=$$(ls $(SMOKE_DIR)/zettcode-0.*.whl); $(UV) pip install --no-sources --python $(SMOKE_DIR)/venv/bin/python "$$wheel[monitor]"
+	@wheel=$$(ls $(SMOKE_DIR)/zettcode-0.*.whl); $(UV) pip install --no-sources --python $(SMOKE_DIR)/venv/bin/python "$$wheel[recap]"
 	$(SMOKE_DIR)/venv/bin/python -c "import tempfile, pathlib; from zettcode.config import ModelConfig, ZettCodeConfig; from zettcode.app.plugins.loader import load_terminal_plugins; root = pathlib.Path(tempfile.mkdtemp()); (root / 'w').mkdir(); config = ZettCodeConfig(workspace=root / 'w', models=(ModelConfig(model='m', token='t'),), store=root / 'store', plugins_file=root / 'plugins.json', mcp_enabled=False, skills_enabled=False, harness_dir=root / 'harness'); names = [command.name for command in load_terminal_plugins(config).commands]; assert '/monitor' in names and '/recap' in names, names; print('plugin extras:', '/monitor', '/recap')"
 
 check:

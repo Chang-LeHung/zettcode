@@ -68,18 +68,28 @@ jobs:
           python-version: ${{ matrix.python-version }}
           enable-cache: true
 
-      # A package is tested the way a reader installs it: beside the zettcode in this checkout, from the paths, not
-      # from the workspace environment it is developed in. What its tests import comes from the package's own `dev`
-      # group, which the planning step refuses to release without.
+      # A plugin is tested the way a reader installs it: beside the program built from this checkout, not from the
+      # workspace environment it is developed in and not from whatever PyPI has. The nine distributions the program is
+      # made of are built here and installed first — `uv pip install ./packages/zettcode` would resolve them from the
+      # index, and they are published by `release.yml`, under the program's tag, not by this workflow. What a plugin's
+      # tests import comes from its own `dev` group, which the planning step refuses to release without.
+      #
+      # The gateway's wheel built this way has no page: this step runs tests, it is not the packaging check.
       - name: Test what is about to be published
         env:
           TARGETS: ${{ needs.select.outputs.targets }}
         run: |
           set -euo pipefail
           uv venv /tmp/release
+          for name in $(grep -v '^#' packages/order.txt); do
+            uv build "packages/$name" --out-dir /tmp/wheels
+          done
+          uv pip install --python /tmp/release/bin/python /tmp/wheels/*.whl
           printf '%s' "$TARGETS" | jq -r '.[] | "\(.dir)\t\(.name)"' | while IFS=$'\t' read -r dir name; do
             echo "::group::$name"
-            uv pip install --python /tmp/release/bin/python ./packages/zettcode "./packages/$dir" \
+            # `--no-sources` keeps the wheels installed above: without it uv maps the plugin's requirements back
+            # onto the workspace trees (`[tool.uv.sources]`), and the run would be the checkout once more.
+            uv pip install --no-sources --python /tmp/release/bin/python "./packages/$dir" \
               --group "./packages/$dir/pyproject.toml:dev"
             ( cd "packages/$dir" && /tmp/release/bin/python -m pytest -q )
             echo "::endgroup::"
