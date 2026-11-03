@@ -31,7 +31,9 @@ from the root.
   `zettcode-recap`), each with its own version and tag. They are workspace members like the rest — one environment,
   `uv.lock`, the suite `make check` runs — and `.github/workflows/release-packages.yml` releases whichever of them has
   a version PyPI does not have. A plugin depends on `zettcode-plugin-api` and imports nothing else of ours:
-  `packages/zettcode/tests/test_structure.py` holds both halves, and its range has to admit the version in this checkout. Adding one is
+  `packages/zettcode/tests/test_structure.py` holds both halves, and its range has to admit the version in this checkout.
+  A plugin ships inside the namespace like everything else (`packages/zettcode-monitor/src/zettcode/monitor/`), so
+  no distribution has an import root of its own. Adding one is
   a directory with a `pyproject.toml` (hatchling, `src/<module>`, a `dev` group holding what its tests import), an
   entry in the root `dev` group, `[tool.uv.sources]`, and the Ruff/mypy paths in the root `pyproject.toml`; nothing in
   a workflow.

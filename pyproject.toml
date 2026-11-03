@@ -112,7 +112,7 @@ select = ["E", "F", "I", "UP", "B"]
 ignore = ["E501"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["zettcode", "zettcode_monitor", "zettcode_recap"]
+known-first-party = ["zettcode"]
 
 [tool.ruff.format]
 quote-style = "double"

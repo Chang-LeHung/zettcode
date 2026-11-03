@@ -957,3 +957,26 @@ def test_every_test_path_the_documents_name_exists():
     ]
 
     assert missing == []
+
+
+def test_every_distribution_ships_under_the_zettcode_namespace():
+    """One namespace, and no distribution with a top-level module of its own.
+
+    A PEP 420 namespace is the union of what is installed: it works because no distribution ships
+    `zettcode/__init__.py`, and because every one of them puts its modules under `zettcode/` and builds its wheel from
+    that tree. A distribution that grows a top-level directory is a second import root a reader has to know about —
+    the plugins had `zettcode_monitor` and `zettcode_recap` before they joined it.
+    """
+    offenders: list[str] = []
+    for project in sorted((ROOT / "packages").glob("*/pyproject.toml")):
+        name = project.parent.name
+        src = project.parent / "src"
+        shipped = sorted(entry.name for entry in src.iterdir() if entry.name != "__pycache__")
+        if shipped != ["zettcode"]:
+            offenders.append(f"{name}: ships {shipped}")
+        if (src / "zettcode" / "__init__.py").exists():
+            offenders.append(f"{name}: ships zettcode/__init__.py, which makes the namespace a package")
+        if 'packages = ["src/zettcode"]' not in project.read_text(encoding="utf-8"):
+            offenders.append(f"{name}: its wheel is not built from src/zettcode")
+
+    assert offenders == []

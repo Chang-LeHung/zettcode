@@ -40,7 +40,7 @@ It runs on ZettCode 0.3 and later (`zettcode-plugin-api>=0.3,<0.4`): the plugin 
 
 ## Releasing
 
-The version is `__version__` in `src/zettcode_monitor/__init__.py`. Set it, commit, then tag and push (the tag names
+The version is `__version__` in `src/zettcode/monitor/__init__.py`. Set it, commit, then tag and push (the tag names
 the version you just set):
 
     git tag monitor-v0.2.1

@@ -10,8 +10,8 @@ from zett_agent.messages import AssistantMessage, SystemMessage, ToolCall, UserM
 from zett_agent.model import ModelEvent, ModelRequest, ModelResponse, ModelUsage
 
 from zettcode.app.commands import CommandContext
-from zettcode_monitor import MonitorPlugin, render_report
-from zettcode_monitor.recorder import MonitorExtension
+from zettcode.monitor import MonitorPlugin, render_report
+from zettcode.monitor.recorder import MonitorExtension
 
 SESSION = "s-1"
 
@@ -191,7 +191,7 @@ def test_the_dependency_ranges_take_the_running_zettcode_and_zett_agent():
 def test_images_are_a_marker_unless_the_reader_keeps_them(tmp_path):
     from zett_agent.messages import ImageBytesSource, ImageContent, TextContent
 
-    from zettcode_monitor.recorder import encode_message
+    from zettcode.monitor.recorder import encode_message
 
     message = UserMessage(
         content=[TextContent(text="look"), ImageContent(ImageBytesSource(data=b"\x89PNG", media_type="image/png"))]
@@ -231,8 +231,8 @@ async def test_command(tmp_path):
 
 
 def _page(**over):
+    from zettcode.monitor.panel import MonitorPage
     from zettcode.tui.testing import Harness
-    from zettcode_monitor.panel import MonitorPage
 
     log: dict = {"applied": [], "closed": 0, "done": [], "exports": 0}
 

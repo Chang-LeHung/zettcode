@@ -35,17 +35,17 @@ Repository = "https://github.com/Chang-LeHung/zettcode/tree/main/packages/zettco
 Issues = "https://github.com/Chang-LeHung/zettcode/issues"
 
 [project.entry-points."zettcode.plugins"]
-monitor = "zettcode_monitor:MonitorPlugin"
+monitor = "zettcode.monitor:MonitorPlugin"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.version]
-path = "src/zettcode_monitor/__init__.py"
+path = "src/zettcode/monitor/__init__.py"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/zettcode_monitor"]
+packages = ["src/zettcode"]
 
 [tool.hatch.build.targets.sdist]
 include = ["/src", "/tests", "/README.md", "/LICENSE", "/pyproject.toml"]
