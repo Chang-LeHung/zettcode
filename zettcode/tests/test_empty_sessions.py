@@ -15,6 +15,7 @@ from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine import core as runtime_module
 from zettcode.engine.storage import LOCK_FILE, STORE_FILE, SessionLocks, SessionStore, prune_empty
 from zettcode.filelock import SingletonLock
+from zettcode.sdk.builtins import load_agent_plugins
 
 A = "01a10b75-aaaa-7000-8000-000000000001"
 B = "02b20c86-bbbb-7000-8000-000000000002"
@@ -31,7 +32,7 @@ def runtime(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         mcp_config=tmp_path / "absent-mcp.json",
         sessions_enabled=False,
     )
-    return runtime_module.ZettCodeEngine.preview(config)
+    return runtime_module.ZettCodeEngine.preview(config, load_agent_plugins)
 
 
 def entries(root: Path) -> list[str]:

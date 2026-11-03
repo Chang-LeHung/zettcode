@@ -15,6 +15,7 @@ from zettcode.engine.permission import Permission, ShellPolicy
 from zettcode.engine.permission.sandbox import ShellSandbox, temporary_roots
 from zettcode.engine.tools.boundary import Boundary, Sandboxer
 from zettcode.engine.tools.shell import shell_tool
+from zettcode.sdk.builtins import load_agent_plugins
 
 #: Real probes need the platform's sandbox. They are skipped, not faked, where there is none (Windows, or a Linux
 #: machine without bubblewrap): what the fallback does there is tested separately, with a stand-in.
@@ -386,7 +387,7 @@ def test_a_runtime_hands_its_sandbox_the_workspace_and_the_configured_network(tm
         shell_network=True,
     )
 
-    runtime = runtime_module.ZettCodeEngine.preview(config)
+    runtime = runtime_module.ZettCodeEngine.preview(config, load_agent_plugins)
 
     assert runtime.policy.sandbox is not None
     assert runtime.policy.sandbox.workspace == tmp_path.resolve()

@@ -70,9 +70,9 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
     from ..broker.models import Receipt as BrokerReceipt
     from ..config import ModelConfig, ZettCodeConfig
     from ..engine.agent import ZettCodeAgent
-    from ..engine.messenger import Messenger
     from ..engine.plugins.commands import PlainCommand
     from ..mentions import MentionRegistry
+    from .messenger import Messenger
 
 __all__ = ["Client", "PluginReport", "SETTINGS", "Sessions", "prompt", "prompt_sync"]
 
@@ -438,10 +438,12 @@ class Client:
         # Imported here, not at the top of the module: importing the SDK costs nothing until a client is made.
         from ..engine.agent import ZettCodeAgent
         from ..engine.core import ZettCodeEngine
+        from .builtins import load_agent_plugins
+        from .messenger import Messenger
         from .translation import AgentBridge
 
         try:
-            runtime = ZettCodeEngine.preview(resolved)
+            runtime = ZettCodeEngine.preview(resolved, load_agent_plugins, messenger=Messenger.create(resolved))
         except BaseException:
             self._unregister()
             raise
@@ -494,6 +496,15 @@ class Client:
         client.sessions = Sessions(client)
         client._ledger_reader = None
         return client
+
+    @property
+    def _link(self) -> Messenger | None:
+        """Return the runtime's line to the other sessions.
+
+        The engine carries it as ``object``: it does not import the broker, so whoever builds the runtime owns the
+        type. This is that boundary, in the one place that reads it.
+        """
+        return cast("Messenger | None", self._agent.runtime.messenger)
 
     # -- process-wide bookkeeping --
     def _register(self, workspace: Path) -> None:
@@ -620,7 +631,7 @@ class Client:
             ClientClosedError: The client was closed.
         """
         self._check_open()
-        messenger = self._agent.runtime.messenger
+        messenger = self._link
         if messenger is None:
             return False
         self._messenger = messenger
@@ -675,13 +686,13 @@ class Client:
     @property
     def reachable(self) -> bool:
         """Return whether the session broker is connected right now: the line every send and every peer rides on."""
-        messenger = self._agent.runtime.messenger
+        messenger = self._link
         return messenger is not None and messenger.connected
 
     @property
     def handle(self) -> str:
         """Return the name the other sessions call this one by, or an empty string before it is registered."""
-        messenger = self._agent.runtime.messenger
+        messenger = self._link
         return messenger.handle if messenger is not None else ""
 
     def peers(self) -> tuple[Peer, ...]:
@@ -690,7 +701,7 @@ class Client:
         A front end that lists who can be written to repaints from :meth:`watch_peers` and reads this. It is empty
         without a broker, and a client that never joined the sessions sees nobody.
         """
-        messenger = self._agent.runtime.messenger
+        messenger = self._link
         if messenger is None:
             return ()
         return tuple(
@@ -704,7 +715,7 @@ class Client:
         It takes no arguments: read :meth:`peers` and :attr:`reachable` for the state. ``None`` stops the calls.
         There is one listener; a second call replaces the first.
         """
-        messenger = self._agent.runtime.messenger
+        messenger = self._link
         if messenger is None:
             return
         messenger.on_change = callback
@@ -717,7 +728,7 @@ class Client:
         took it, when, and the text), or ``{"kind": "graph"}`` when who is here or which groups exist changed. This
         is a view of the whole broker for a front end that draws who talks to whom; it is not this session's mail.
         """
-        messenger = self._agent.runtime.messenger
+        messenger = self._link
         if messenger is not None:
             messenger.client.observe(callback)
 
@@ -766,13 +777,13 @@ class Client:
         Kept while the client lives, and asked again when the broker connection is lost and found. Watching costs the
         watched session nothing while it is idle, and a few lines a second while it works.
         """
-        messenger = self._agent.runtime.messenger
+        messenger = self._link
         if messenger is not None:
             messenger.watch(session_id)
 
     def unwatch(self, session_id: str) -> None:
         """Stop being told what a session's turns say."""
-        messenger = self._agent.runtime.messenger
+        messenger = self._link
         if messenger is not None:
             messenger.unwatch(session_id)
 
@@ -783,7 +794,7 @@ class Client:
         the stored conversation (:meth:`Sessions.history_of`) is what is true once the turn has ended. ``None`` stops the
         calls; there is one listener.
         """
-        messenger = self._agent.runtime.messenger
+        messenger = self._link
         if messenger is None:
             return
         if callback is None:
@@ -811,7 +822,7 @@ class Client:
 
     def _stream_event(self, event: Any) -> None:
         """Say what a running turn just did to whoever watches it; nothing happens when nobody does."""
-        messenger = self._agent.runtime.messenger
+        messenger = self._link
         if messenger is None or not messenger.client.watched:
             return
         if isinstance(event, TextDelta):
@@ -824,14 +835,14 @@ class Client:
             messenger.stream("tool_end", id=event.call_id, ok=event.ok)
 
     def _stream_mark(self, kind: str) -> None:
-        messenger = self._agent.runtime.messenger
+        messenger = self._link
         if messenger is not None:
             messenger.stream(kind)
 
     @property
     def send_limits(self) -> SendLimits:
         """Return what the broker accepts from a sender, as it announced it (the defaults before it has)."""
-        messenger = self._agent.runtime.messenger
+        messenger = self._link
         if messenger is None:
             return SendLimits()
         limits = messenger.client.limits
@@ -1347,7 +1358,7 @@ class Client:
         from ..mentions import MentionRegistry, SessionMentions
 
         providers = self._agent.plugin_mentions
-        messenger = self._agent.runtime.messenger
+        messenger = self._link
         if messenger is not None:
             providers = (SessionMentions(messenger.peers), *providers)
         return MentionRegistry(providers)

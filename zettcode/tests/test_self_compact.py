@@ -9,6 +9,7 @@ from test_compaction import FakeContext, FakeModel, _dialogue
 from zettcode.engine.dialogue.side import question
 from zettcode.engine.extensions.compaction import OnDemandCompaction
 from zettcode.engine.storage import SessionStore
+from zettcode.sdk.builtins import load_agent_plugins
 
 
 def context():
@@ -80,7 +81,7 @@ async def test_a_fresh_runtime_reads_the_saved_choice_and_new_sessions_stay_disa
     )
     store = SessionStore(config.store, config.workspace)
     store.set_self_compact("s1", True)
-    runtime = ZettCodeEngine.preview(config)
+    runtime = ZettCodeEngine.preview(config, load_agent_plugins)
     try:
         ctx = context()
         await runtime.compaction.on_tool(ctx)

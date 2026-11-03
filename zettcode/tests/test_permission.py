@@ -20,6 +20,7 @@ from zettcode.engine.permission import (
 )
 from zettcode.engine.permission.approval import ShellApprovalMemory
 from zettcode.engine.permission.sandbox import ShellSandbox
+from zettcode.sdk.builtins import load_agent_plugins
 
 
 class _Sandbox(ShellSandbox):
@@ -280,7 +281,7 @@ async def test_the_level_the_command_sets_is_the_one_object_the_guard_the_runtim
     config = ZettCodeConfig(
         workspace=tmp_path, models=(ModelConfig(model="m", token="t"),), store=tmp_path / "sessions", mcp_enabled=False
     )
-    runtime = ZettCodeEngine.preview(config)
+    runtime = ZettCodeEngine.preview(config, load_agent_plugins)
     guard = ShellDenyExtension(runtime.policy)  # exactly how the runtime builds it
 
     async def shell_call() -> str:
@@ -326,7 +327,7 @@ async def test_the_guard_the_runtime_really_hands_the_agent_reads_the_policy_the
     config = ZettCodeConfig(
         workspace=tmp_path, models=(ModelConfig(model="m", token="t"),), store=tmp_path / "sessions", mcp_enabled=False
     )
-    runtime = runtime_module.ZettCodeEngine.preview(config)
+    runtime = runtime_module.ZettCodeEngine.preview(config, load_agent_plugins)
     await runtime.start()
 
     (guard,) = [e for e in given[0] if isinstance(e, ShellDenyExtension)]

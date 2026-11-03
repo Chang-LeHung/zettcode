@@ -36,7 +36,6 @@ from zettcode.config import (
     ZettCodeConfig,
     model_index,
 )
-from zettcode.engine.messenger import Messenger
 from zettcode.engine.plugins import AgentBuild, Plugins, load_plugins
 from zettcode.engine.plugins.services import (
     APPROVAL,
@@ -101,8 +100,13 @@ WARM_MODULES_WHEN = (
 
 
 def _load_engine_plugins(config: ZettCodeConfig, shared: Mapping[str, object]) -> Plugins:
-    """Load the plugins the engine ships and the installed ones that need only the engine."""
-    return load_plugins(config, shared=shared)
+    """Load the installed plugins that need only the engine, and the switches that turn them off.
+
+    The engine ships no built-in plugin of its own: composing the agent (the tools, the store, the permission, the
+    compaction, the MCP client) is :mod:`zettcode.sdk.builtins`, which passes its own loader here. A runtime built
+    this way still honours ``[plugins]`` for the distributions and single files a reader installed.
+    """
+    return load_plugins(config, builtins=(), shared=shared)
 
 
 def build_system_prompt(config: ZettCodeConfig, *, now: datetime | None = None) -> str:
@@ -226,9 +230,9 @@ class ZettCodeEngine:
     #: The lock on the session this process has open: only the process that holds it writes to the session.
     #: A runtime that was not given one (a test's) shares nothing, so every claim is granted.
     session_locks: SessionGuard = field(default_factory=NoLocks)
-    #: The line to the other sessions, when the configuration switches messaging on; the shell fills in
-    #: what it does with a message received. ``None`` registers no tool and joins no broker.
-    messenger: Messenger | None = None
+    #: The line to the other sessions, as the SDK builds it; the runtime only carries it, so the engine does not
+    #: depend on the broker. ``None`` registers no tool and joins no broker.
+    messenger: object | None = None
     event_dispatcher: AgentEventDispatcher | None = None
     client: AgentClient | None = None
     model: Adapter | None = None
@@ -250,7 +254,9 @@ class ZettCodeEngine:
     _ready: asyncio.Event | None = field(default=None, repr=False)
 
     @classmethod
-    def preview(cls, config: ZettCodeConfig, load: PluginLoader | None = None) -> ZettCodeEngine:
+    def preview(
+        cls, config: ZettCodeConfig, load: PluginLoader | None = None, *, messenger: object | None = None
+    ) -> ZettCodeEngine:
         """Build the session side of the runtime, without a provider.
 
         Everything here is cheap: paths, a session identity, and the
@@ -260,7 +266,11 @@ class ZettCodeEngine:
         Args:
             config: Settings for the workspace and the session.
             load: How the plugins are loaded, given the configuration and what the runtime hands them. A front
-                end that has plugins of its own passes its loader; the default loads the engine's.
+                end that has plugins of its own passes its loader; the default loads the installed distributions
+                and no built-in plugin.
+            messenger: The line to the other sessions, which the caller builds
+                (:meth:`zettcode.sdk.messenger.Messenger.create`); the runtime hands it to the plugins by name and
+                keeps it for whoever asks. ``None`` switches messaging off for this runtime.
         """
         os.chdir(config.workspace)
         # A machine that has never been set up has no model to start on; the shell opens anyway and says so (see
@@ -276,7 +286,6 @@ class ZettCodeEngine:
         counter = CompactionCounter()
         persistence = SessionStore(config.store, config.workspace)
         models: dict[ModelConfig, Adapter] = {}
-        messenger = Messenger.create(config)
         harness = HarnessSwitch(on=config.jit_harness)
         # What the built-in agent plugins build on, handed over by name: they own the extensions, the
         # runtime owns this state and goes on using it. See `zettcode.engine.plugins.services`.
@@ -425,7 +434,7 @@ class ZettCodeEngine:
             raise ValueError(NO_MODEL_REFUSAL)
         model = self._provider(selected)
         # Every extension the agent runs is a plugin's: the built-in ones (the coding tools, the session
-        # store, the shell approval, the compaction ... see `zettcode.engine.plugins.builtin_agent`) in the order
+        # store, the shell approval, the compaction ... see `zettcode.sdk.builtins`) in the order
         # they are listed there, then any a third-party plugin brings, and last the one host that drives
         # the plugins' hooks, which places itself at the earliest priority any plugin asked for.
         extensions = [*self.plugins.agent_extensions(AgentBuild(model=model)), *self.plugins.extensions]
@@ -493,9 +502,11 @@ class ZettCodeEngine:
             self.client.event_dispatcher = dispatcher
 
     @classmethod
-    async def create(cls, config: ZettCodeConfig, load: PluginLoader | None = None) -> ZettCodeEngine:
+    async def create(
+        cls, config: ZettCodeConfig, load: PluginLoader | None = None, *, messenger: object | None = None
+    ) -> ZettCodeEngine:
         """Build and start a runtime, for callers with nothing to paint."""
-        runtime = cls.preview(config, load)
+        runtime = cls.preview(config, load, messenger=messenger)
         await runtime.start()
         return runtime
 

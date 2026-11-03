@@ -49,9 +49,8 @@ from zett_agent.agent import AgentRunContext
 from zett_agent.events import AgentEvent, AgentEventType
 from zett_agent.extensions.mcp import DEFAULT_MCP_SERVER_KEYS, McpConfiguration, McpExtension, McpStdioServer
 
+from zettcode.engine.extensions.mcp_notice import MCP_NOTICE_EVENT_NAME, notice_payload
 from zettcode.error_text import describe_error
-
-from .mcp_notice import MCP_NOTICE_EVENT_NAME, notice_payload
 
 #: The request whose tools are being discovered, so a server starting on its own task can say so in
 #: that request's transcript. Set around the framework's discovery and read by the tasks it spawns, which

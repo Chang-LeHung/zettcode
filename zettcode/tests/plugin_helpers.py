@@ -11,9 +11,10 @@ from typing import TYPE_CHECKING
 from zettcode.engine.extensions.compaction import CompactionCounter
 from zettcode.engine.extensions.harness_switch import HarnessSwitch
 from zettcode.engine.permission import ShellPolicy
-from zettcode.engine.plugins import AGENT_PLUGINS, AgentBuild, Plugins, load_plugins
+from zettcode.engine.plugins import AgentBuild, Plugins, load_plugins
 from zettcode.engine.plugins import services as names
 from zettcode.engine.storage import SessionStore
+from zettcode.sdk.builtins import AGENT_PLUGINS
 
 if TYPE_CHECKING:
     from zett_agent.extensions.base import AgentExtension

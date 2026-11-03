@@ -35,15 +35,11 @@ from zettcode.engine.extensions.harness_switch import HarnessSwitch
 from zettcode.engine.extensions.tool_output import ToolOutputExtension
 from zettcode.engine.extensions.truncation import LongOutputExtension
 from zettcode.engine.extensions.usage import UsageExtension
-from zettcode.engine.messenger import Messenger
 from zettcode.engine.permission import ShellDenyExtension, ShellPolicy
 from zettcode.engine.permission.approval import ShellApprovalMemory
-from zettcode.engine.storage import SessionStore
-from zettcode.mentions import FileMentions, SkillMentions
-
-from .context import PluginContext
-from .plugin import Plugin, PluginSetting
-from .services import (
+from zettcode.engine.plugins.context import PluginContext
+from zettcode.engine.plugins.plugin import Plugin, PluginSetting
+from zettcode.engine.plugins.services import (
     APPROVAL,
     CAPABILITIES,
     COMPACTION,
@@ -59,12 +55,20 @@ from .services import (
     TODOS,
     USAGE,
 )
+from zettcode.engine.storage import SessionStore
+from zettcode.mentions import FileMentions, SkillMentions
+
+from .messenger import Messenger
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
+    from collections.abc import Mapping
+
     from zett_agent.extensions.base import AgentExtension
     from zett_agent.jit_harness import JITToolHost
 
-    from .state import AgentBuild
+    from zettcode.config import ZettCodeConfig
+    from zettcode.engine.plugins import Plugins
+    from zettcode.engine.plugins.state import AgentBuild
 
 
 class SkillResources(Plugin):
@@ -225,9 +229,9 @@ def _shared_with_children(*, messaging: bool) -> Callable[[AgentExtension], bool
     from zett_agent.extensions.tool_guidelines import ToolGuidelinesExtension
 
     from zettcode.engine.extensions.harness import SwitchedHarness
-    from zettcode.engine.extensions.messaging import SessionMessagingExtension
+    from zettcode.engine.plugins.extension import PluginExtension
 
-    from .extension import PluginExtension
+    from .extensions.messaging import SessionMessagingExtension
 
     private: tuple[type, ...] = (
         InternalMessageExtension,
@@ -263,7 +267,7 @@ class Messaging(Plugin):
             return
 
         def build(_: AgentBuild) -> AgentExtension:
-            from zettcode.engine.extensions.messaging import SessionMessagingExtension
+            from .extensions.messaging import SessionMessagingExtension
 
             return SessionMessagingExtension(messenger)
 
@@ -493,7 +497,7 @@ class McpTools(Plugin):
             return
 
         def build(_: AgentBuild) -> AgentExtension | None:
-            from zettcode.engine.extensions.mcp import build_scoped_mcp_extension
+            from .extensions.mcp import build_scoped_mcp_extension
 
             return build_scoped_mcp_extension(config.mcp_files())
 
@@ -590,3 +594,15 @@ AGENT_PLUGINS: tuple[Plugin[PluginContext], ...] = (
     SelfCompaction(),
     Compaction(),
 )
+
+
+def load_agent_plugins(config: ZettCodeConfig, shared: Mapping[str, object]) -> Plugins:
+    """Load these builtins, plus the distributions a reader enabled: the loader a runtime is built with.
+
+    The engine's own default loads the installed plugins and no built-in at all, because the engine does not ship
+    this list. Whoever builds the runtime says which agent it wants: the SDK passes this, and the terminal passes
+    :func:`zettcode.app.plugins.loader.terminal_plugins`, which adds the plugins only a screen can hold.
+    """
+    from zettcode.engine.plugins import load_plugins
+
+    return load_plugins(config, builtins=AGENT_PLUGINS, shared=shared)

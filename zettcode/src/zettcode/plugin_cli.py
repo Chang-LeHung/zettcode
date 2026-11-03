@@ -165,8 +165,8 @@ def plugin_rows() -> list[PluginRow]:
     state = plugin_state()
 
     from zettcode.config import read_disabled_plugins
-    from zettcode.engine.plugins.builtin_agent import AGENT_PLUGINS
     from zettcode.engine.plugins.loader import PLUGIN_ENTRY_POINT_GROUP, installed_files
+    from zettcode.sdk.builtins import AGENT_PLUGINS
 
     off_switch = set(read_disabled_plugins(state.plugins_file))
     held = set(state.disabled_plugins)

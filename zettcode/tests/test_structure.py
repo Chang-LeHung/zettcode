@@ -104,10 +104,20 @@ LAYERS = (
     # The shell and its views hold an SDK client and the terminal's agent; the engine is not theirs to import.
     ("zettcode.app.ui", ("zettcode.engine",)),
     ("zettcode.app.commands", ("zettcode.engine",)),
-    # The engine is what the terminal and the SDK both drive, so it knows neither of them.
+    # The engine is what the terminal and the SDK both drive, so it knows neither of them — and it does not reach
+    # the broker, which is why the line to the other sessions is built by the SDK and only carried here.
     (
         "zettcode.engine",
-        ("zettcode.app", "zettcode.tui", "zettcode.cli", "zettcode.sdk", "zettcode.server", "zettcode.gateway"),
+        (
+            "zettcode.app",
+            "zettcode.tui",
+            "zettcode.cli",
+            "zettcode.sdk",
+            "zettcode.server",
+            "zettcode.gateway",
+            "zettcode.broker",
+            "zettcode.daemon",
+        ),
     ),
     # The SDK is the public face of the engine; it reaches the terminal's code for nothing.
     ("zettcode.sdk", ("zettcode.app", "zettcode.tui", "zettcode.cli", "zettcode.server", "zettcode.gateway")),

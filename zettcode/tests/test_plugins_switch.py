@@ -194,7 +194,7 @@ def test_a_legacy_switch_file_name_is_dropped_when_the_switch_is_written(config)
 
 
 def test_the_harness_and_self_compaction_are_plugin_switches(config):
-    from zettcode.engine.plugins.builtin_agent import AGENT_PLUGINS
+    from zettcode.sdk.builtins import AGENT_PLUGINS
 
     settings = {plugin.name: plugin.setting.path for plugin in AGENT_PLUGINS if plugin.setting is not None}
 

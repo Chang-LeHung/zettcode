@@ -23,9 +23,9 @@ from zettcode.app.agent.conversation.entries import RelayEntry, TextEntry
 from zettcode.app.ui import messaging as messaging_module
 from zettcode.app.ui import updating as updating_module
 from zettcode.broker.client import BrokerClient, SendError
-from zettcode.engine.messenger import Messenger
 from zettcode.relay import RELAY, Relayed
 from zettcode.sdk.events import Steered
+from zettcode.sdk.messenger import Messenger
 
 ME = "session-0001"
 BOB = "02b20c86-bbbb-7000-8000-000000000002"

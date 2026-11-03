@@ -15,6 +15,7 @@ from zettcode.app.agent.agent import TerminalAgent
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine import core as runtime_module
 from zettcode.engine.storage import LOCK_FILE, LOCKED_MESSAGE, STORE_FILE, SessionLocked, SessionStore
+from zettcode.sdk.builtins import load_agent_plugins
 
 
 def _runtime(tmp_path: Path, monkeypatch):
@@ -27,7 +28,7 @@ def _runtime(tmp_path: Path, monkeypatch):
         mcp_config=tmp_path / "absent-mcp.json",
         sessions_enabled=False,
     )
-    return runtime_module.ZettCodeEngine.preview(config)
+    return runtime_module.ZettCodeEngine.preview(config, load_agent_plugins)
 
 
 async def _stored(runtime, session_id: str) -> None:

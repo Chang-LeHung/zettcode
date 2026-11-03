@@ -29,6 +29,7 @@ from zettcode.engine.extensions.compaction import (
     CompactionCounter,
     OnDemandCompaction,
 )
+from zettcode.sdk.builtins import load_agent_plugins
 
 
 def _messages(text: str = "x" * 400):
@@ -351,7 +352,7 @@ def _preview(tmp_path, monkeypatch):
         store=tmp_path / "sessions",
         mcp_config=tmp_path / "absent-mcp.json",
     )
-    return runtime_module.ZettCodeEngine.preview(config)
+    return runtime_module.ZettCodeEngine.preview(config, load_agent_plugins)
 
 
 def test_the_runtimes_compaction_counts_through_the_runtimes_counter(tmp_path, monkeypatch):

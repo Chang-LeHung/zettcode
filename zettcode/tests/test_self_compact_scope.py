@@ -271,7 +271,7 @@ async def test_the_one_line_summary_says_where_the_value_comes_from(tmp_path: Pa
 
 
 async def test_self_compaction_is_a_plugin_switch_not_a_command():
-    from zettcode.engine.plugins.builtin_agent import AGENT_PLUGINS
+    from zettcode.sdk.builtins import AGENT_PLUGINS
 
     app = build_app()
 

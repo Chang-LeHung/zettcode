@@ -388,8 +388,8 @@ the two files at the top are the composition and the thing it composes.
 | Where | What is in it |
 | --- | --- |
 | `agent/` | `TerminalAgent`, the shell's one entry point: the engine's `ZettCodeAgent` (`engine/agent/`: `base`, `settings`, `context`, `sessions`, `turns`, `interaction`, `exports`, `prompt`) plus what only a terminal has: `commands` (slash commands, plugin contributions) and `settings` (`AppearanceMixin`: theme, pet, status line) |
-| `core.py` | `ZettCodeEngine`: owns the session state (policy, store, model table, counter, messenger) and the provider, and builds the client from the extensions the plugins hand it |
-| `extensions/` | What the plugins plug into zett-agent that is ours: `capabilities`, `compaction`, `context`, `files` (`FileTools` and `CodingBundle`, which register the tools),  `mcp` (and `mcp_notice`, the event it reports through), `messenger` (the line to the other sessions) and `messaging` (the two tools), `subagents`, `tool_output` (the shell's kept streams) and `truncation` (a result no tool of ours bounded), `usage`; `plugins/builtin_agent.py` registers them |
+| `core.py` | `ZettCodeEngine`: owns the session state (policy, store, model table, counter) and the provider, and builds the client from the extensions the plugins hand it; it carries the messenger the caller built without importing the broker |
+| `extensions/` | What the plugins plug into zett-agent that is ours: `capabilities`, `compaction`, `context`, `files` (`FileTools` and `CodingBundle`, which register the tools), `mcp_notice` (the event MCP reports through), `subagents`, `tool_output` (the shell's kept streams) and `truncation` (a result no tool of ours bounded), `usage`; the plugins that register them are `zettcode/sdk/builtins.py` |
 | `tools/` | The coding tools, written here and typed: `files` (`read`, `read_file`, `glob`, `grep`, `write_file`, `edit`; the main agent is given `read`, `write_file` and `edit` and searches with its shell, a subagent and a side question keep `glob` and `grep`), `shell` (`bash` and the command runner), `workspace` (paths, ranged reads, atomic writes, edits), `output` (bounded previews), `images` (what an image file starts with), `boundary` (the abstract classes the shell tool asks the permission level and a sandbox through) |
 | `permission/` | How much of the shell may run unasked: the levels and what enforces them (`__init__`), the fail-closed read-only classifier (`readonly`), what an approval may remember (`approval`) |
 | `conversation/` | The conversation as the screen shows it: `entries`, `transcript/`, `presenters`, `rendering`, `text` (the words and bounds of a row), `pulse` (how the waiting row and status icon move), `effort_gauge` and `shimmer` (the header's two effort animations), `projection` (agent events fill it), `replay` (a stored branch rebuilds it) |
@@ -467,10 +467,11 @@ operating-system file lock the broker is made a singleton with, shared with the 
   the way, and the command-line reader it shares with the gateway is `zettcode/processes.py`, a leaf of its own. The
   package imports
   nothing of the shell, the agent or the terminal (`tests/test_structure.py` holds it).
-- `engine/messenger.py` (messaging is part of the engine) is the line the rest of the application holds: it describes
+- `sdk/messenger.py` (the engine only carries it, so it does not import the broker) is the line the rest of the
+  application holds: it describes
   this session to the broker, lists the others from memory, sends, and remembers which received
   message the running turn answers (so an agent's answer carries the hop count on).
-  `messaging.py` is the two tools over it, imported when the runtime builds its client.
+  `sdk/extensions/messaging.py` is the two tools over it, imported when the runtime builds its client.
 - `relay.py` (at the top, shared by the engine and the views) is the one type (`Relayed`) the transcript, the agent and the shell
   share: what the model reads, and what is stored beside the message (`attributes["relay"]`).
 - `app/ui/messaging.py` is the shell's part: a received message starting a turn, steering the request that is running,
@@ -538,9 +539,9 @@ receives and registers extensions, services, `@` providers and model providers t
 the builtins in first), `switches.py` (which plugins a reader can turn off: `catalog()` lists what a panel shows,
 and `set_enabled()` writes the switch where that plugin's belongs — `[plugins] disable` in the configuration file for
 an installed one, the configuration key a compiled-in one declares as its `setting`; the older switch file is read and
-merged, and a name written here is removed from it), `extension.py` (the host `AgentExtension` that fans
-every hook out in plugin-priority
-order) and `builtin_agent.py` (the program's own, including the `@` providers for skills and files).
+merged, and a name written here is removed from it) and `extension.py` (the host `AgentExtension` that fans
+every hook out in plugin-priority order). The program's own agent plugins, the `@` providers for skills and files
+included, are `zettcode/sdk/builtins.py`: the engine does not carry them.
 `app/plugins/` adds what only a terminal has: `state.py` (the `ShellContext` snapshot, `UiRow`, and the segment
 types), `mixins.py` (the row hooks), `groups.py` (`TuiGroups`, behind `ctx.tui`: commands, palettes, pets, presenters and
 the named-slot registry), `plugin.py` (`TuiPlugin`, `TuiPlugins`), `loader.py` (`TerminalLoader`, which
@@ -559,7 +560,7 @@ extension. `register_extension` and `register_extension_factory` hand the agent 
 gives `create_agent`, built-ins first, then any third-party plugin's, then the one host. The
 runtime lists no extension itself.
 
-`builtin_agent.py` is where the program's own are, in `AGENT_PLUGINS` in the order the agent
+`sdk/builtins.py` is where the program's own are, in `AGENT_PLUGINS` in the order the agent
 receives them (extensions that share a priority keep it, so the order is the one `_build` used to
 write out). They are not in `BUILTIN_PLUGINS`: they build on state only a runtime has, so the
 runtime loads both, and a test that wants the shell's rows alone does not need a store. Each

@@ -34,7 +34,6 @@ from typing import TYPE_CHECKING, Any
 from zettcode.config import read_disabled_plugins
 from zettcode.providers import BUILTIN_PROVIDERS
 
-from .builtin_agent import AGENT_PLUGINS
 from .context import PluginContext
 from .extension import HOST_NAME, PluginExtension
 from .plugin import Plugin, Plugins, PluginSetting
@@ -123,7 +122,7 @@ def load_plugins(
     config: ZettCodeConfig,
     *,
     entry_points: Iterable[EntryPoint] | None = None,
-    builtins: Sequence[Plugin[Any]] = AGENT_PLUGINS,
+    builtins: Sequence[Plugin[Any]],
     shared: Mapping[str, object] | None = None,
 ) -> Plugins:
     """Load the builtin plugins and every enabled distribution into one bundle.
@@ -134,8 +133,9 @@ def load_plugins(
         entry_points: Entry points to load; ``None`` reads the installed ones.
             Tests pass their own, so discovery can be exercised without
             installing a distribution.
-        builtins: Plugins compiled into the repository; tests pass ``()`` to
-            exercise a load without them.
+        builtins: Plugins compiled into the repository, which the engine does not ship: the caller passes
+            :data:`zettcode.sdk.builtins.AGENT_PLUGINS` for the program's agent, and ``()`` to load only what a
+            reader installed.
         shared: Objects the runtime hands over by name before any plugin activates (see
             :mod:`zettcode.engine.plugins.services`); a plugin reads them with ``container.service``, and they
             stay findable on the returned bundle. A plugin cannot provide a name that is taken here.
