@@ -4194,6 +4194,48 @@ def _said(app) -> list[str]:
     return [entry.text for entry in app.transcript.entries if entry.kind == "notice"]
 
 
+async def _hold_the_client(app):
+    """Take the client's one run slot from outside the shell, as a plugin's own question does."""
+    run = app.client.session.prompt("a plugin's question")
+    async with run:
+        async for _event in run:
+            pass
+    return run
+
+
+async def test_a_message_that_arrives_while_a_plugin_asks_the_model_waits_its_turn(tmp_path):
+    """A recap's question holds the client while the shell's own busy flag says idle.
+
+    The shell starts a turn for the received message and the SDK refuses with "a run is already in progress on this
+    client" — the error a reader saw most often when another session wrote while a recap was being written. The turn
+    belongs to the reader either way, so it waits for the slot instead.
+    """
+    app = build_app(hold=True)
+    app._messaging_live = True
+
+    holder = asyncio.create_task(_hold_the_client(app))
+    for _ in range(50):
+        await asyncio.sleep(0)
+        if app.client.busy:
+            break
+    assert app.client.busy, "the plugin's question holds the slot"
+
+    receipt = app._relay_received(Relayed(sender_id="peer", sender="peer", text="hello"))
+    assert receipt.accepted is True and receipt.disposition == "started", receipt
+
+    app.agent.runtime.client.released.set()
+    await holder
+    await app._task
+
+    assert not any("already in progress" in entry.text for entry in app.transcript.entries), [
+        entry.text for entry in app.transcript.entries
+    ]
+    # The received message ran as a turn of its own, drawn as the other session's.
+    assert any(entry.kind == "relay" and entry.text == "hello" for entry in app.transcript.entries), [
+        (entry.kind, entry.text) for entry in app.transcript.entries
+    ]
+
+
 async def test_the_window_takes_no_input_while_the_upgrade_runs(tmp_path, monkeypatch):
     """The code this window would run is being replaced, so the composer is locked until the install is over."""
     app = build_app()
