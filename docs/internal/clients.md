@@ -2,7 +2,7 @@
 
 The Python SDK (`zettcode.sdk`) and the TypeScript client (`zettcode-client`, over `zettcode-server`) are the same
 interface in two languages. A program that knows one should be able to guess the other. This page is the rule, and
-`tests/test_client_parity.py` is what keeps it true.
+`packages/zettcode-server/tests/test_client_parity.py` is what keeps it true.
 
 ## The rule
 
@@ -20,7 +20,7 @@ interface in two languages. A program that knows one should be able to guess the
    one `ZettCodeError` carrying the `code`.
 
 A difference is allowed only when the two languages cannot do the same thing, and it is written down in the two
-lists at the top of `test_client_parity.py` with the reason. Adding a public method on either side that is neither
+lists at the top of `packages/zettcode-server/tests/test_client_parity.py` with the reason. Adding a public method on either side that is neither
 spelled the same nor listed fails the test.
 
 ## Where the languages must differ

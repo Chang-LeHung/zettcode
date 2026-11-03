@@ -17,7 +17,7 @@ from the root.
     `extensions/`, `permission/`, `storage/`, `tools/`, `export/` it is built from) and the leaves it is written on
     (`config`, `config_edit`, `paths`, `prompt`, `relay`, `wire`, ...). It imports nothing else of ours — not the
     terminal, the SDK, the server, the broker, nor the built-in plugin set, which is `sdk/builtins.py` and is passed
-    in by whoever builds the runtime — and `tests/test_structure.py` holds that closure. `docs/internal/engine.md` has
+    in by whoever builds the runtime — and `packages/zettcode/tests/test_structure.py` holds that closure. `docs/internal/engine.md` has
     the design.
   - `zettcode-tui` is the widget framework and imports nothing of ours; `zettcode-broker` is the session broker (one
     small Starlette application served by uvicorn on loopback; sessions are WebSockets, sending is `POST /messages`,
@@ -25,13 +25,13 @@ from the root.
     `zettcode-sdk` is the documented surface with the daemon inside it (they call each other, so they are one
     distribution); `zettcode-server` and `zettcode-gateway` are the faces of the SDK; `zettcode-app` is the terminal
     application (`agent/` for the conversation model and the event projection, `ui/` for the shell and the views;
-    `docs/internal/tui.md` has the map and `tests/test_structure.py` the import order).
+    `docs/internal/tui.md` has the map and `packages/zettcode/tests/test_structure.py` the import order).
   - `zettcode-plugin-api` re-exports what a plugin imports, so a plugin depends on that one package.
 - The plugins are the distributions in `packages/` that declare a `zettcode.plugins` entry point (`zettcode-monitor`,
   `zettcode-recap`), each with its own version and tag. They are workspace members like the rest — one environment,
   `uv.lock`, the suite `make check` runs — and `.github/workflows/release-packages.yml` releases whichever of them has
   a version PyPI does not have. A plugin depends on `zettcode-plugin-api` and imports nothing else of ours:
-  `tests/test_structure.py` holds both halves, and its range has to admit the version in this checkout. Adding one is
+  `packages/zettcode/tests/test_structure.py` holds both halves, and its range has to admit the version in this checkout. Adding one is
   a directory with a `pyproject.toml` (hatchling, `src/<module>`, a `dev` group holding what its tests import), an
   entry in the root `dev` group, `[tool.uv.sources]`, and the Ruff/mypy paths in the root `pyproject.toml`; nothing in
   a workflow.
@@ -83,8 +83,11 @@ from the root.
   ref) and runs only what the change touches — Ruff, mypy and the Python suites for `packages/`, the
   TypeScript client for `clients/typescript/`, the extension for either JavaScript client, and nothing for a
   guide-only edit.
+  `make test` runs each distribution's suite on its own, with that package's pytest configuration; a bare `pytest`
+  at the root is refused (its conftest says why).
   Run `make check-all` before handing work over; CI runs only the suites a pull request's diff needs — `packages/`,
-  `uv.lock` and the root `pyproject.toml` for the Python gate, `clients/<name>/` for a client, and
+  `support/`, `conftest.py`, `uv.lock` and the root `pyproject.toml` for the Python gate, `clients/<name>/` for a
+  client, and
   everything for the `Makefile` or a workflow — so a full run
   does not have to happen on every edit. Run `make smoke` when packaging changes so both console scripts are exercised
   from the built wheel. `make vscode`

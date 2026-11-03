@@ -40,7 +40,7 @@ for the TTY, `layout/` for boxes and scrolling, `widgets/` for the component
 library. Read only the widget you care about; `textarea.py` is the largest at
 434 lines because it implements Readline editing.
 
-The tests are the executable specification. Reach for `tests/test_app.py` for
+The tests are the executable specification. Reach for `packages/zettcode-tui/tests/test_app.py` for
 routing precedence, `test_layout.py` for the solver and selection,
 `test_zettcode_app.py` for end-to-end application behaviour, `test_performance.py`
 for the caching claims, and `test_golden.py` for what a frame should look like.
@@ -401,7 +401,7 @@ the two files at the top are the composition and the thing it composes.
 | `export/` | A stored session as a self-contained HTML page, with the page's assets under `export/trace/` |
 
 The dependency order inside it runs one way, and invariant L1 holds it
-(`tests/test_structure.py` carries the table): `dialogue`, `errors`, and `permission`
+(`packages/zettcode/tests/test_structure.py` carries the table): `dialogue`, `errors`, and `permission`
 stand alone; `storage` builds on the dialogue's side questions; `extensions` and
 `conversation` build on those; `runtime` composes the extensions; and `agent`
 composes everything. A module that sits in none of them fails the same test, which is
@@ -469,7 +469,7 @@ operating-system file lock the broker is made a singleton with, shared with the 
   are and the note a session finds it by; `text` cleans what comes from another process; `process` ends one that is in
   the way, and the command-line reader it shares with the gateway is `zettcode/processes.py`, a leaf of its own. The
   package imports
-  nothing of the shell, the agent or the terminal (`tests/test_structure.py` holds it).
+  nothing of the shell, the agent or the terminal (`packages/zettcode/tests/test_structure.py` holds it).
 - `sdk/messenger.py` (the engine only carries it, so it does not import the broker) is the line the rest of the
   application holds: it describes
   this session to the broker, lists the others from memory, sends, and remembers which received
@@ -759,7 +759,7 @@ The first golden run found a real defect: `difflib` appends its own terminator
 to diff headers, so joining with a newline inserted blank rows that parsed as
 context lines and shifted every following line number.
 
-`tests/test_input_fuzz.py` feeds randomized fragmentations of the same byte
+`packages/zettcode-tui/tests/test_input_fuzz.py` feeds randomized fragmentations of the same byte
 stream and requires an identical event sequence. It found a second defect:
 decoding byte by byte resolved `ESC [` as Alt-`[` before the rest of
 `ESC [ < ... M` arrived. The decoder now waits on an `ESC [` or `ESC O` prefix
@@ -767,7 +767,7 @@ and lets the timeout resolve it, so an unknown control sequence is never
 mistaken for a key press.
 
 Performance is asserted with counters rather than timings wherever possible:
-`tests/test_performance.py` records which transcript entries were rendered and
+`packages/zettcode-app/tests/test_performance.py` records which transcript entries were rendered and
 requires zero re-renders for an unchanged frame and for entries that only
 streamed answer text. Two generous wall-clock ceilings cover the first paint of
 a large transcript and repeated paints of an unchanged one.
