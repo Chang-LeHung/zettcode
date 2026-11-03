@@ -101,14 +101,24 @@ def describe(directory: pathlib.Path) -> Package:
 
 
 def discover() -> list[Package]:
-    """Every distribution in `packages/`, in the order `ls` would print them."""
-    found = [
-        describe(directory)
-        for directory in sorted((ROOT / "packages").iterdir())
-        if (directory / "pyproject.toml").is_file()
-    ]
+    """Every plugin in `packages/`, in the order `ls` would print them.
+
+    `packages/` also holds the distributions the program is made of — the engine, the widget framework, the broker,
+    the SDK, the server, the gateway, the terminal application and the program itself. They share one version and are
+    released together by `release.yml`, with the program they belong to; a *plugin* is a distribution that says so by
+    declaring a `zettcode.plugins` entry point, and those are released here, one line at a time.
+    """
+    found: list[Package] = []
+    for directory in sorted((ROOT / "packages").iterdir()):
+        source = directory / "pyproject.toml"
+        if not source.is_file():
+            continue
+        settings = tomllib.loads(source.read_text(encoding="utf-8"))
+        if not settings.get("project", {}).get("entry-points", {}).get("zettcode.plugins"):
+            continue
+        found.append(describe(directory))
     if not found:
-        raise Release("packages/ holds no distribution")
+        raise Release("packages/ holds no plugin")
     return found
 
 
