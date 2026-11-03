@@ -107,7 +107,28 @@ jobs:
           set -euo pipefail
           for name in $(python3 .github/scripts/release_order.py); do
             echo "::group::$name"
-            uv publish --check-url https://pypi.org/simple/ "dist/$name"/*
+            # A release creates several projects at once, and PyPI rate-limits that: "429 Too many new projects
+            # created" clears on its own within the hour. The upload is retried with a growing pause instead of failing
+            # the release, and `--check-url` skips whatever an earlier attempt already published.
+            attempt=1
+            while true; do
+              if uv publish --check-url https://pypi.org/simple/ "dist/$name"/* > "$RUNNER_TEMP/publish.log" 2>&1; then
+                break
+              fi
+              cat "$RUNNER_TEMP/publish.log"
+              if ! grep -q "status code 429" "$RUNNER_TEMP/publish.log"; then
+                echo "::error::could not publish $name"
+                exit 1
+              fi
+              if [ "$attempt" -ge 8 ]; then
+                echo "::error::$name is still rate limited after $attempt attempts"
+                exit 1
+              fi
+              pause=$((attempt * 120))
+              echo "$name: PyPI is rate limiting new projects; retrying in ${pause}s (attempt $((attempt + 1)) of 8)"
+              sleep "$pause"
+              attempt=$((attempt + 1))
+            done
             echo "::endgroup::"
           done
 
