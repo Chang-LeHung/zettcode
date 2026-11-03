@@ -60,8 +60,9 @@ input        byte-stream decoding, key tables, paste/mouse/resize/focus events
 terminal     raw mode, alternate screen, size, capability detection
 ```
 
-The repository is a uv workspace of one package, `zettcode/`, which holds both the terminal agent and the HTTP
-server in `src/zettcode/server/`; tool configuration is the root `pyproject.toml`.
+The repository is a uv workspace: `zettcode/` holds both the terminal agent and the HTTP server in
+`src/zettcode/server/`, `packages/*` hold the plugins published beside it, and tool configuration is the root
+`pyproject.toml`.
 
 Layout:
 

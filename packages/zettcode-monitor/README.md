@@ -36,25 +36,26 @@ It runs on ZettCode 0.3 and later (`zettcode>=0.3,<0.4`): the plugin API it is b
 `TerminalPlugin` / `TerminalContainer`. The 0.1.1 release on PyPI is the one for that older API: it declares
 `zettcode>=0.1.11,<0.3` and runs beside a 0.2.x release. From a checkout of this repository:
 
-    uv tool install --force --with ./plugins/zettcode-monitor zettcode
-
-ZettCode 0.3.0 has to be on PyPI before this release can be installed: until that tag exists the range names a
-version pip cannot find, so the release workflow's install step fails as well.
+    uv tool install --force --with ./packages/zettcode-monitor zettcode
 
 ## Releasing
 
-The version is `__version__` in `src/zettcode_monitor/__init__.py`. Set it, commit, then tag and push:
+The version is `__version__` in `src/zettcode_monitor/__init__.py`. Set it, commit, then tag and push (the tag names
+the version you just set):
 
-    git tag monitor-v0.2.0
-    git push origin monitor-v0.2.0
+    git tag monitor-v0.2.1
+    git push origin monitor-v0.2.1
 
-Tag this only from a commit that already sets zettcode's own version to 0.3.0: the workflow installs `./zettcode` and
-this plugin from the same checkout, so a tag on the 0.2 line resolves against a zettcode the plugin's floor excludes
-and fails before it builds.
+`.github/workflows/release-packages.yml` releases every plugin in this repository, this one included: it reads the
+version from the package and asks PyPI, so **a version PyPI already has is skipped** rather than failing, and
+re-pushing a tag whose version is already published succeeds without publishing anything. The tag is
+`<name>-v<version>`, where the name is `monitor` (the plugin's entry-point name) or `zettcode-monitor` (its
+directory); it is separate from zettcode's `v*` tag. Running the workflow by hand releases the same way, and ticking
+`all` with no package named releases every plugin whose version PyPI does not have. The first publish needs the
+`zettcode-monitor` project name to be free on PyPI.
 
-`.github/workflows/release-monitor.yml` checks the tag against the version, runs the tests, builds, and publishes with
-the same `PYPI_API_TOKEN` secret as zettcode. The `monitor-v*` tag is separate from zettcode's `v*` tag. The first
-publish needs the `zettcode-monitor` project name to be free on PyPI.
+The workflow installs `./zettcode` and this plugin from the same checkout and runs the tests on Python 3.10 and 3.15,
+so tag this only from a commit whose `zettcode` version the plugin's `zettcode>=0.3,<0.4` allows.
 
 When ZettCode starts a new line — 0.4, say — publish this plugin **first**, with its `zettcode` range widened to allow
 both lines (`>=0.3,<0.5`), and only then release the new ZettCode whose `monitor` extra names it. The other order
@@ -63,8 +64,8 @@ does not accept the version being installed.
 
 ## Test
 
-Run this from `plugins/zettcode-monitor`:
+The plugin is a member of this repository's uv workspace, so it is developed and tested in the one environment the
+workspace syncs. From the repository root:
 
-    PYTHONPATH=src <zettcode-venv>/bin/python -m pytest tests
-
-This package is not a member of the root uv workspace, so `make check` does not cover it.
+    make test                                       # the program and every plugin
+    uv run pytest packages/zettcode-monitor/tests   # this plugin alone

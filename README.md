@@ -121,7 +121,8 @@ uv run zettcode --workspace .    # run from the checkout
 
 ZettCode provides the terminal application and its HTTP server; the agent runtime is
 [`zett-agent`](https://github.com/Chang-LeHung/zett-agent). The repository is a uv workspace: `zettcode/` is the
-package — the terminal agent, and the API in `src/zettcode/server/` — and `clients/typescript/` is the TypeScript
+package — the terminal agent, and the API in `src/zettcode/server/` — `packages/` holds the plugins published beside
+it (`/monitor`, `/recap`, installed from `zettcode[all]`), and `clients/typescript/` is the TypeScript
 client for it. `clients/vscode/` is the
 VS Code sidebar built on that client. Contributor notes and
 invariants live in [`AGENTS.md`](AGENTS.md) and

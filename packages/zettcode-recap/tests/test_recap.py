@@ -6,11 +6,11 @@ import asyncio
 from pathlib import Path
 
 import pytest
+
 from zettcode.app.commands import CommandContext
 from zettcode.app.plugins import HOST_LINK, HostLink
 from zettcode.app.plugins.loader import terminal_context
 from zettcode.config import ModelConfig, ZettCodeConfig
-
 from zettcode_recap import PROMPT, RecapPlugin
 
 SESSION = "s-1"
@@ -360,3 +360,29 @@ def test_the_plugin_also_activates_without_a_screen(tmp_path):
     plugin.activate(PluginContext(config, {}))
 
     assert plugin._link is None
+
+
+def test_the_zettcode_range_admits_the_release_the_plugin_runs_on():
+    """The plugin installs beside zettcode, so the range it declares has to admit the version in this checkout.
+
+    uv resolves a workspace member for a dependency without checking the declared range, and the lock records no
+    specifier, so a zettcode bump past this cap — or a floor raised past what is published — locks, tests green and
+    fails only in a reader's environment. The release workflow installs `./zettcode` from this same checkout, which
+    satisfies every floor by construction, so it cannot catch it either: widening the range is part of the release
+    commit that sets the number.
+    """
+    from importlib.metadata import version as installed
+
+    from packaging.requirements import Requirement
+
+    from zettcode._compat import tomllib
+
+    project = Path(__file__).resolve().parent.parent / "pyproject.toml"
+    settings = tomllib.loads(project.read_text(encoding="utf-8"))
+    ranges = [Requirement(line) for line in settings["project"]["dependencies"]]
+    (plugin,) = [requirement for requirement in ranges if requirement.name == "zettcode"]
+
+    current = installed("zettcode")
+    assert plugin.specifier.contains(current, prereleases=True), (
+        f"pyproject.toml requires {plugin}, which excludes zettcode {current}, the release this test runs on"
+    )

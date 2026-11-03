@@ -40,11 +40,11 @@ waiting when the program exits ends with it.
 
 From a checkout of this repository:
 
-    uv tool install --force --with ./plugins/zettcode-recap zettcode
+    uv tool install --force --with ./packages/zettcode-recap zettcode
 
 or, with pip in the environment ZettCode runs in:
 
-    pip install ./plugins/zettcode-recap
+    pip install ./packages/zettcode-recap
 
 ZettCode carries this plugin as an extra, so one command installs both into the same environment:
 

@@ -1,0 +1,164 @@
+name: Release packages
+
+# One workflow for every distribution under `packages/`, because that directory grows: a tag names one package, and a
+# manual run can publish every package whose version PyPI does not have yet. What a run does is decided from the
+# packages' own versions and from PyPI, not from a list in here, so a version that is already published is skipped
+# rather than failing the run, and a new package needs no workflow of its own. See
+# `.github/scripts/release_packages.py` for how a tag or the input becomes the list.
+
+on:
+  push:
+    # `monitor-v0.2.0`: the plugin name its entry point declares, or the directory name, then `-v` and the version.
+    # ZettCode's own `v0.3.3` tag does not match this, and `release.yml` owns it.
+    tags: ["*-v*"]
+  workflow_dispatch:
+    inputs:
+      package:
+        description: "A directory under packages/ to release"
+        required: false
+        type: string
+      all:
+        description: "Release every package whose version PyPI does not have (ignored when `package` is set)"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  select:
+    name: What to publish
+    runs-on: ubuntu-latest
+    outputs:
+      targets: ${{ steps.plan.outputs.targets }}
+      any: ${{ steps.plan.outputs.any }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # No package cache to warm: the helper has no dependencies. The interpreter is named so the script's
+      # `tomllib` is the standard library's.
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          python-version: "3.12"
+
+      - name: Read the versions and ask PyPI
+        id: plan
+        env:
+          RELEASE_PACKAGE: ${{ inputs.package }}
+          RELEASE_ALL: ${{ inputs.all }}
+        run: uv run --no-project python .github/scripts/release_packages.py
+
+  test:
+    name: Test (Python ${{ matrix.python-version }})
+    needs: select
+    if: needs.select.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The floor and the newest version a package claims: what its own `requires-python` and its `zettcode` range
+        # have to admit. The workspace's suite, on every version, is CI's job.
+        python-version: ["3.10", "3.15"]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+
+      # A package is tested the way a reader installs it: beside the zettcode in this checkout, from the paths, not
+      # from the workspace environment it is developed in. What its tests import comes from the package's own `dev`
+      # group, which the planning step refuses to release without.
+      - name: Test what is about to be published
+        env:
+          TARGETS: ${{ needs.select.outputs.targets }}
+        run: |
+          set -euo pipefail
+          uv venv /tmp/release
+          printf '%s' "$TARGETS" | jq -r '.[] | "\(.dir)\t\(.name)"' | while IFS=$'\t' read -r dir name; do
+            echo "::group::$name"
+            uv pip install --python /tmp/release/bin/python ./zettcode "./packages/$dir" \
+              --group "./packages/$dir/pyproject.toml:dev"
+            ( cd "packages/$dir" && /tmp/release/bin/python -m pytest -q )
+            echo "::endgroup::"
+          done
+
+  build:
+    name: Build the distributions
+    needs: [select, test]
+    if: needs.select.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          enable-cache: true
+
+      # One directory per package, so the files a later job publishes are exactly the ones this run built.
+      - name: Build
+        env:
+          TARGETS: ${{ needs.select.outputs.targets }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$TARGETS" | jq -r '.[].dir' | while read -r dir; do
+            echo "::group::$dir"
+            uv build "packages/$dir" --out-dir "dist/$dir"
+            echo "::endgroup::"
+          done
+
+      - name: Check distribution metadata
+        run: uv run --no-project --with twine twine check dist/*/*
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    name: Publish to PyPI
+    needs: [select, build]
+    if: needs.select.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    # The same environment `release.yml` publishes through, so an approval rule set there covers a plugin too.
+    environment:
+      name: pypi
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          enable-cache: true
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+
+      # `--check-url` is the second half of the skip: the planning job already dropped what PyPI lists, and this turns
+      # an upload that raced another run into a skip instead of a failure. Each package is uploaded on its own, and one
+      # that fails does not hide the ones after it: every failure is reported, and the job goes red at the end.
+      - name: Publish
+        env:
+          TARGETS: ${{ needs.select.outputs.targets }}
+          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Read the list before publishing anything: a selection that cannot be parsed must not leave the job green
+          # with nothing uploaded.
+          dirs=$(printf '%s' "$TARGETS" | jq -er '.[].dir')
+          failed=()
+          while IFS= read -r dir; do
+            echo "::group::$dir"
+            # A glob, not the directory: `uv publish` takes files. The quoted prefix keeps a missing directory an
+            # error instead of letting the shell expand it to nothing.
+            uv publish --check-url https://pypi.org/simple/ "dist/$dir"/* || failed+=("$dir")
+            echo "::endgroup::"
+          done <<< "$dirs"
+          if [ "${#failed[@]}" -ne 0 ]; then
+            echo "::error::could not publish: ${failed[*]}"
+            exit 1
+          fi
