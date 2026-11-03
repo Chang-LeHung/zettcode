@@ -676,6 +676,18 @@ class ZettCodeApp(
             await asyncio.gather(warm, return_exceptions=True)
 
     # -- commands -----------------------------------------------------------
+    async def _wait_for_client(self) -> None:
+        """Wait for a run the shell did not start to give the client back.
+
+        A plugin that asks the model for itself — a recap, a notification — takes the client's one run slot and the
+        shell's busy flag knows nothing about it. A turn or a side question that started in that window raised "a run
+        is already in progress on this client", which a reader saw most often when another session's message arrived
+        while a recap was being written. The reader asked for the run either way, so it waits for the slot; the ask it
+        waits for is one model call, and Ctrl-C stops the wait with everything else.
+        """
+        while self.client.busy:
+            await asyncio.sleep(0.05)
+
     async def run_side_question(self, question: str) -> None:
         """Stream one ``/btw`` question, marking it in the transcript as one.
 
@@ -708,6 +720,7 @@ class ZettCodeApp(
         self.app.invalidate()
         outcome = ""
         try:
+            await self._wait_for_client()
             async with self.client.session.ask_stream(question) as run:
                 async for _event in run:
                     self.app.invalidate()
@@ -838,6 +851,7 @@ class ZettCodeApp(
         self.app.invalidate()
         try:
             self._refresh_tasks()
+            await self._wait_for_client()
             async with self.client.session.resume_stream(**self._answers()) as run:
                 async for event in run:
                     tally.see(event)
@@ -1212,6 +1226,7 @@ class ZettCodeApp(
         self.app.invalidate()
         try:
             self._refresh_tasks()
+            await self._wait_for_client()
             # A turn is a message the reader wrote (text, pictures, and ``@`` references the SDK resolves with the same
             # registry the composer completes from), or one another session sent.
             if relayed is not None:

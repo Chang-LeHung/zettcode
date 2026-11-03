@@ -582,6 +582,17 @@ class Client:
         if self._closed:
             raise ClientClosedError("This client was closed")
 
+    @property
+    def busy(self) -> bool:
+        """Return whether a run is in progress on this client.
+
+        One run at a time is the client's contract: a turn, a side question or a resume takes it until it ends, and
+        asking for another raises :class:`SessionBusyError`. A front end that keeps a busy flag of its own wants this
+        as well, because something other than that front end can take the slot — a plugin asking the model for itself,
+        as a recap does.
+        """
+        return self._stream is not None
+
     def _check_free(self) -> None:
         if self._stream is not None:
             raise SessionBusyError(

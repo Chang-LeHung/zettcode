@@ -30,6 +30,7 @@ PYTHON_ONLY: dict[str, dict[str, str]] = {
     "Client": {
         "aclose": "the process, not the API: a server client holds no resources",
         "closed": "the process, not the API",
+        "busy": "a run in this process; the TypeScript client reads the server's run state with `runState()`",
         "config": "the server's configuration; `settings()` and `plugins()` report what a client may see",
         "workspace": "the server serves one workspace; `health()` names it",
         "watch_traffic": "the broker's whole-machine view is for the gateway page, which has its own server",
