@@ -680,3 +680,54 @@ def test_the_engine_imports_only_what_its_package_ships():
     assert sorted(offenders) == []
     missing = sorted(name for name in ENGINE_LEAVES if not (source / f"{name}.py").is_file())
     assert missing == [], f"the engine's leaves are all present; missing {missing}"
+
+
+def test_a_plugin_depends_on_one_package_of_ours_and_imports_from_it():
+    """The split exists so a plugin installs one package: `zettcode-plugin-api`, and nothing else of ours.
+
+    A plugin that names `zettcode-app` or `zettcode-engine` in its dependencies, or imports one of them directly,
+    works here and breaks for a reader the moment one of them moves: the API package is the seam, and this holds the
+    two plugins to it.
+    """
+    checked = 0
+    for project in sorted((ROOT / "packages").glob("*/pyproject.toml")):
+        settings = tomllib.loads(project.read_text(encoding="utf-8"))
+        if not settings.get("project", {}).get("entry-points", {}).get("zettcode.plugins"):
+            continue
+        checked += 1
+        name = settings["project"]["name"]
+        ours = [
+            requirement
+            for requirement in map(Requirement, settings["project"]["dependencies"])
+            if requirement.name.startswith("zettcode")
+        ]
+        assert [requirement.name for requirement in ours] == ["zettcode-plugin-api"], name
+
+        imports = sorted(
+            target
+            for path in (project.parent / "src").rglob("*.py")
+            for target in _imported_modules(path)
+            if target.startswith("zettcode.")
+            and target != "zettcode.plugin_api"
+            and not target.startswith("zettcode.plugin_api.")
+        )
+        assert imports == [], f"{name} imports outside the API: {imports}"
+
+    assert checked >= 2, "the plugins this repository ships are the ones this checks"
+
+
+def _imported_modules(path: pathlib.Path) -> list[str]:
+    """Return every `zettcode.*` module a file imports, by its absolute name."""
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    # A plugin ships a top-level module of its own, so only its absolute imports of the namespace are the rule's.
+    return [
+        node.module
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.level == 0 and node.module and node.module.startswith("zettcode")
+    ] + [
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+        if alias.name.startswith("zettcode")
+    ]

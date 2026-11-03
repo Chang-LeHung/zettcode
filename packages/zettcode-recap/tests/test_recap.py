@@ -380,9 +380,9 @@ def test_the_zettcode_range_admits_the_release_the_plugin_runs_on():
     project = Path(__file__).resolve().parent.parent / "pyproject.toml"
     settings = tomllib.loads(project.read_text(encoding="utf-8"))
     ranges = [Requirement(line) for line in settings["project"]["dependencies"]]
-    (plugin,) = [requirement for requirement in ranges if requirement.name == "zettcode"]
+    (plugin,) = [requirement for requirement in ranges if requirement.name == "zettcode-plugin-api"]
 
-    current = installed("zettcode")
+    current = installed("zettcode-plugin-api")
     assert plugin.specifier.contains(current, prereleases=True), (
-        f"pyproject.toml requires {plugin}, which excludes zettcode {current}, the release this test runs on"
+        f"pyproject.toml requires {plugin}, which excludes zettcode-plugin-api {current}, the release this test runs on"
     )

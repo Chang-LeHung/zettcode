@@ -18,6 +18,7 @@ members = [
     "zettcode-engine",
     "zettcode-gateway",
     "zettcode-monitor",
+    "zettcode-plugin-api",
     "zettcode-recap",
     "zettcode-sdk",
     "zettcode-server",
@@ -3031,7 +3032,7 @@ name = "zettcode-monitor"
 source = { editable = "packages/zettcode-monitor" }
 dependencies = [
     { name = "zett-agent" },
-    { name = "zettcode" },
+    { name = "zettcode-plugin-api" },
 ]
 
 [package.dev-dependencies]
@@ -3044,7 +3045,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "zett-agent", specifier = ">=0.2.1,<0.3" },
-    { name = "zettcode", editable = "packages/zettcode" },
+    { name = "zettcode-plugin-api", editable = "packages/zettcode-plugin-api" },
 ]
 
 [package.metadata.requires-dev]
@@ -3055,10 +3056,26 @@ dev = [
 ]
 
 [[package]]
+name = "zettcode-plugin-api"
+source = { editable = "packages/zettcode-plugin-api" }
+dependencies = [
+    { name = "zettcode-app" },
+    { name = "zettcode-engine" },
+    { name = "zettcode-tui" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "zettcode-app", editable = "packages/zettcode-app" },
+    { name = "zettcode-engine", editable = "packages/zettcode-engine" },
+    { name = "zettcode-tui", editable = "packages/zettcode-tui" },
+]
+
+[[package]]
 name = "zettcode-recap"
 source = { editable = "packages/zettcode-recap" }
 dependencies = [
-    { name = "zettcode" },
+    { name = "zettcode-plugin-api" },
 ]
 
 [package.dev-dependencies]
@@ -3069,7 +3086,7 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "zettcode", editable = "packages/zettcode" }]
+requires-dist = [{ name = "zettcode-plugin-api", editable = "packages/zettcode-plugin-api" }]
 
 [package.metadata.requires-dev]
 dev = [

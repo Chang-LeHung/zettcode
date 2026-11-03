@@ -172,14 +172,14 @@ def test_the_dependency_ranges_take_the_running_zettcode_and_zett_agent():
         if ">=" in line
     )
     ranges = {requirement.name: requirement for requirement in map(Requirement, declared)}
-    assert set(ranges) == {"zettcode", "zett-agent"}, "the runtime dependencies declared in pyproject.toml"
+    assert set(ranges) == {"zettcode-plugin-api", "zett-agent"}, "the dependencies declared in pyproject.toml"
     checkout = _runs_this_checkouts_zettcode()
     for name, requirement in ranges.items():
         current = Version(installed(name))
         if requirement.specifier.contains(current, prereleases=True):
             continue
         floors = [Version(spec.version) for spec in requirement.specifier if spec.operator == ">="]
-        assert name == "zettcode" and checkout and len(floors) == 1, (
+        assert name == "zettcode-plugin-api" and checkout and len(floors) == 1, (
             f"{requirement} excludes {name} {current}, the release this test runs on"
         )
         floor = floors[0]

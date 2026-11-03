@@ -8,15 +8,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from zettcode.app.commands import CommandContext, CommandHost, CommandResult, CommandUi
-from zettcode.app.plugins import TuiPlugin
-from zettcode.engine.plugins.context import PluginContext
+from zettcode.plugin_api import CommandContext, CommandHost, CommandResult, CommandUi, PluginContext, TuiPlugin
 
 from .recorder import MonitorExtension, default_root
 from .report import render_report, write_report
 
 if TYPE_CHECKING:
-    from zettcode.tui.core.widget import Widget
+    from zettcode.plugin_api import Widget
 
 #: The one place the version is written; ``pyproject.toml`` reads it from here.
 __version__ = "0.2.0"
@@ -69,7 +67,7 @@ class MonitorPlugin(TuiPlugin):
 
     def panel(self, host: CommandHost, ui: CommandUi, session_id: str, workspace: Path) -> Widget:
         """Return the bottom panel for one session, its switches where the session's state has them now."""
-        from zettcode.app.ui.widgets import bottom_panel
+        from zettcode.plugin_api import bottom_panel
 
         from .panel import ROWS, MonitorPage
 
