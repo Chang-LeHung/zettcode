@@ -10,6 +10,7 @@ on its own and the runtime class stays the only implementation.
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING
 
 #: The animation token the effort gauge registers: one token, held for its second
@@ -97,7 +98,9 @@ class ShellState:
 
     The attributes are set by :meth:`ZettCodeApp.__init__` and the methods are
     implemented by one of the mixins; a mixin inherits this class only to be
-    type-checked against the surface it shares with the rest.
+    type-checked against the surface it shares with the rest. The one method
+    implemented here is the wait every part of the shell makes before it asks the
+    client for a run.
     """
 
     #: The application agent: the only channel to the conversation.
@@ -126,6 +129,20 @@ class ShellState:
     #: The merged slash commands and the ``@`` resource registry.
     commands: tuple[Command, ...]
     mentions: MentionRegistry
+
+    async def _wait_for_client(self) -> None:
+        """Wait for a run the shell did not start to give the client back.
+
+        A plugin that asks the model for itself — a recap, a notification — takes the client's one run slot and the
+        shell's busy flag knows nothing about it. A turn, a side question, a continue, a rename or a fork that started
+        in that window was refused with "a run is already in progress on this client", which a reader saw most often
+        when another session's message arrived while a recap was being written. The reader asked for the work either
+        way, so it waits for the slot; the ask it waits for is one model call, and Ctrl-C stops the wait with
+        everything else. Never wait for a request of the shell's own: a command taken while one runs would hang.
+        """
+        while self.client.busy:
+            await asyncio.sleep(0.05)
+
     #: The palette in force before the ``/theme`` menu started showing others, or ``None`` when nothing is previewed.
     _theme_before: Theme | None
     #: The pet in front of the one the ``/pet`` menu is previewing, or ``None`` when nothing is previewed.

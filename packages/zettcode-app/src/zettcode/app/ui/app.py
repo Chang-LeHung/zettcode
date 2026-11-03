@@ -56,6 +56,7 @@ from zettcode.mentions import MentionRegistry, SessionMentions
 from zettcode.prompt import PromptPart, carries_image, mention_parts
 from zettcode.registry import Registry
 from zettcode.relay import Relayed
+from zettcode.sdk.errors import SessionBusyError
 from zettcode.sdk.events import QuestionAsked
 from zettcode.sdk.types import CacheMode, IncomingMessage, Usage
 
@@ -93,7 +94,7 @@ from .shell import (
     NO_MODEL_START,
     PAGE_SCREEN,
 )
-from .turns import TurnTally, failure_line, plan_rows, prompt_pieces, turn_parts
+from .turns import RUN_IN_PROGRESS, TurnTally, failure_line, plan_rows, prompt_pieces, turn_parts
 from .updating import UpdateMixin
 from .widgets import (
     WELCOME,
@@ -676,17 +677,14 @@ class ZettCodeApp(
             await asyncio.gather(warm, return_exceptions=True)
 
     # -- commands -----------------------------------------------------------
-    async def _wait_for_client(self) -> None:
-        """Wait for a run the shell did not start to give the client back.
+    @staticmethod
+    def _refused_line(error: Exception) -> str:
+        """Return what a refused command is shown as, in a reader's words.
 
-        A plugin that asks the model for itself — a recap, a notification — takes the client's one run slot and the
-        shell's busy flag knows nothing about it. A turn or a side question that started in that window raised "a run
-        is already in progress on this client", which a reader saw most often when another session's message arrived
-        while a recap was being written. The reader asked for the run either way, so it waits for the slot; the ask it
-        waits for is one model call, and Ctrl-C stops the wait with everything else.
+        A run already in progress is the SDK's own refusal; the rest are the command's own sentences, which are written
+        for a reader already.
         """
-        while self.client.busy:
-            await asyncio.sleep(0.05)
+        return RUN_IN_PROGRESS if isinstance(error, SessionBusyError) else str(error)
 
     async def run_side_question(self, question: str) -> None:
         """Stream one ``/btw`` question, marking it in the transcript as one.
@@ -947,7 +945,7 @@ class ZettCodeApp(
             result = await command.handler(CommandContext(argument=argument, ui=self, host=self))
         except COMMAND_ERRORS as error:
             logger.warning("command.refused", extra={"command": command.name, "reason": str(error)})
-            self.transcript.error(str(error))
+            self.transcript.error(self._refused_line(error))
         except Exception as error:  # noqa: BLE001 - a command's bug is reported, never swallowed
             logger.exception("command.failed", extra={"command": command.name})
             self.transcript.error(f"{command.name}: {describe_error(error)}")
@@ -1382,7 +1380,7 @@ class ZettCodeApp(
                         self.app.request_layout()
                 except COMMAND_ERRORS as error:
                     logger.warning("command.refused", extra={"command": name, "reason": str(error)})
-                    self.transcript.error(str(error))
+                    self.transcript.error(self._refused_line(error))
                     completed = True
                 except Exception as error:  # noqa: BLE001 - a command's bug must be reported and logged
                     logger.exception("command.failed", extra={"command": name})
