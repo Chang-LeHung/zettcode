@@ -57,6 +57,18 @@ def ordered() -> list[str]:
         if not plugin:
             found[name] = needed
 
+    # An edge to a name that is not one of these would silently disappear from the graph: the readiness check only
+    # compares against what is left, so a typo — or a program distribution that started needing a plugin, which is
+    # published on another line — would be dropped instead of ordered.
+    plugins: set[str] = set()
+    for project in sorted((ROOT / "packages").glob("*/pyproject.toml")):
+        name, _, plugin = _described(project.parent)
+        if plugin:
+            plugins.add(name)
+    unknown = {need for needed in found.values() for need in needed} - set(found) - plugins
+    if unknown:
+        raise Cycle(f"these dependencies name nothing the program is made of: {sorted(unknown)}")
+
     remaining = dict(found)
     order: list[str] = []
     while remaining:

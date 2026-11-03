@@ -82,7 +82,7 @@ jobs:
         run: |
           set -euo pipefail
           uv venv /tmp/release
-          for name in $(grep -v '^#' packages/order.txt); do
+          for name in $(python3 .github/scripts/release_order.py); do
             uv build "packages/$name" --out-dir /tmp/wheels
           done
           uv pip install --python /tmp/release/bin/python /tmp/wheels/*.whl
