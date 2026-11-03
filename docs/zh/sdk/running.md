@@ -129,7 +129,7 @@ print(f"{result.usage.output_rate:.0f} tokens/s")
 | `output_tokens` | 生成的全部内容，**含**推理。 |
 | `cache_read_tokens`、`cache_write_tokens` | 输入中属于缓存的部分。 |
 | `reasoning_tokens` | 输出中属于推理的部分。 |
-| `seconds` | 模型调用内部花的墙钟时间。 |
+| `seconds` | 每次回复从第一个 token 到结束的时间，累加；也就是输出速率的分母。没有流式输出的调用不计。 |
 | `requests` | 发起了多少次模型调用。 |
 | `context_tokens` | 最近一次调用时上下文有多满。 |
 | `total_tokens` | `input_tokens + output_tokens`；没有重复计算。 |

@@ -2856,7 +2856,7 @@ wheels = [
 
 [[package]]
 name = "zett-agent"
-version = "0.2.6"
+version = "0.2.7"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiosqlite" },
@@ -2882,9 +2882,9 @@ dependencies = [
     { name = "typing-extensions", marker = "python_full_version < '3.12'" },
     { name = "uuid6" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/9f/35/722d56bebed49be80ac76a48d6bacaa9ca5f8c26352a87ce63a776eeaf1c/zett_agent-0.2.6.tar.gz", hash = "sha256:420010c3c7b820117d8cb09397b251a4c66aa9b85407de4a6bc919161de7b12b", size = 728006, upload-time = "2026-11-01T13:19:25.027Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/3c/ec/fbdbca5d729ab2940db0ccf471edd732e29c74fe5b5e49ecc963eeed2da7/zett_agent-0.2.7.tar.gz", hash = "sha256:97582141de7adf74eef291563644dad4898e70d7b72613327b3258591d301c4d", size = 730813, upload-time = "2026-11-02T14:58:30.848Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/aa/30/f10e6d94c1cd47a21defa6df6f3993b002d491e0d5a040be1d23c7598c8c/zett_agent-0.2.6-py3-none-any.whl", hash = "sha256:a21c23bc2752c4a2db933b1734d223020e0ececbccef24518ca8e499f4e66aaf", size = 812940, upload-time = "2026-11-01T13:19:23.632Z" },
+    { url = "https://files.pythonhosted.org/packages/55/3f/46d6f3f956f9f27e005e32f10cc9acf146aaa65900d85a92a85fbeb66fb5/zett_agent-0.2.7-py3-none-any.whl", hash = "sha256:5606355621382497ce5f256bbd357583e2bdc2b68093b63d1195955c5a681cdd", size = 816123, upload-time = "2026-11-02T14:58:28.962Z" },
 ]
 
 [[package]]
@@ -2935,7 +2935,7 @@ requires-dist = [
     { name = "uvicorn", specifier = ">=0.35,<1" },
     { name = "wcwidth", specifier = ">=0.2,<1" },
     { name = "websockets", specifier = ">=15,<17" },
-    { name = "zett-agent", specifier = ">=0.2.6,<0.3" },
+    { name = "zett-agent", specifier = ">=0.2.7,<0.3" },
     { name = "zettcode-monitor", marker = "extra == 'all'", specifier = ">=0.2,<0.3" },
     { name = "zettcode-monitor", marker = "extra == 'monitor'", specifier = ">=0.2,<0.3" },
     { name = "zettcode-recap", marker = "extra == 'all'", editable = "plugins/zettcode-recap" },

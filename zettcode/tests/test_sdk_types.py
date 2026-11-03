@@ -52,10 +52,11 @@ def test_the_output_rate_needs_measured_time():
     assert Usage(output_tokens=100, seconds=4.0).output_rate == 25.0
 
 
-def test_the_output_rate_leaves_out_the_tokens_the_opening_chunk_carried():
+def test_the_output_rate_divides_the_provider_count_by_the_window():
+    """Every generated token counts, and the window is the time from the first token to the end of the response."""
     assert Usage(output_tokens=100, seconds=4.0).output_rate == 25.0
-    assert Usage(output_tokens=100, first_chunk_tokens=20, seconds=4.0).output_rate == 20.0
-    assert Usage(output_tokens=5, first_chunk_tokens=5, seconds=1.0).output_rate is None, "nothing the span measured"
+    assert Usage(output_tokens=30, seconds=10.0).output_rate == 3.0
+    assert Usage(output_tokens=0, seconds=4.0).output_rate is None, "nothing generated"
 
 
 def test_since_subtracts_the_counters_and_keeps_the_level_of_the_context():
@@ -69,15 +70,15 @@ def test_since_subtracts_the_counters_and_keeps_the_level_of_the_context():
     assert spent.context_tokens == 210, "a level is not a counter, so it is what it is now"
 
 
-def test_a_delta_keeps_the_first_chunk_tokens_of_its_own_span():
-    """The rate of a delta has to describe that delta, so its opening chunks are its own, not the totals'."""
-    before = Usage(output_tokens=1_000, first_chunk_tokens=1, seconds=4.0, requests=1)
-    after = Usage(output_tokens=1_500, first_chunk_tokens=4, seconds=6.0, requests=2)
+def test_a_delta_rates_itself_over_the_time_its_calls_took():
+    """The rate of a delta has to describe that delta, so it divides its own tokens by its own window."""
+    before = Usage(output_tokens=1_000, seconds=4.0, requests=1)
+    after = Usage(output_tokens=1_500, seconds=6.0, requests=2)
 
     spent = after.since(before)
 
-    assert spent.first_chunk_tokens == 3
-    assert spent.output_rate == pytest.approx((500 - 3) / 2.0)
+    assert spent.seconds == pytest.approx(2.0)
+    assert spent.output_rate == pytest.approx(500 / 2.0)
 
 
 def test_since_never_goes_below_zero_when_a_counter_went_backwards():

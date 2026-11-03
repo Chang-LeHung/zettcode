@@ -9,8 +9,8 @@ whether the configured models work. Both read the same store the terminal does.
 
 ## What this session spent
 
-`client.usage` is the current session's totals: input, output, cache reads, reasoning, requests, model seconds and
-the context size of the newest call.
+`client.usage` is the current session's totals: input, output, cache reads, reasoning,
+requests, measured generation time and the context size of the newest call.
 
 ```python
 import zettcode.sdk as zc

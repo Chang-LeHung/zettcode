@@ -247,8 +247,8 @@ def calls_text(usage: Usage) -> str | None:
 def speed_text(usage: Usage) -> str | None:
     """Say how fast the model generated, when it can be told and is at least one token a second.
 
-    Reads :attr:`Usage.output_rate`, which leaves the opening chunk's tokens out of the numerator, so this line and the
-    status line a reader sees above it never disagree.
+    Reads :attr:`Usage.output_rate` — the provider's whole count over the time from the first token to the end of the
+    reply — so this line and the status line a reader sees above it never disagree.
     """
     rate = usage.output_rate
     if usage.requests and rate is not None and rate >= 1:

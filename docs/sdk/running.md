@@ -129,7 +129,7 @@ print(f"{result.usage.output_rate:.0f} tokens/s")
 | `output_tokens` | Everything generated, **including** reasoning. |
 | `cache_read_tokens`, `cache_write_tokens` | The cache parts of the input. |
 | `reasoning_tokens` | The reasoning part of the output. |
-| `seconds` | Wall time spent inside model calls. |
+| `seconds` | Time from the first token of each reply to that reply's end, summed: the window the output rate divides by. A call that streamed nothing contributes none. |
 | `requests` | How many model calls were made. |
 | `context_tokens` | How full the context was on the newest call. |
 | `total_tokens` | `input_tokens + output_tokens`; nothing is counted twice. |

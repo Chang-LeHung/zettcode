@@ -367,10 +367,10 @@ class UsageTracking(Plugin):
 
     def activate(self, ctx: PluginContext) -> None:
         """Provide the counters and register the extension that fills them."""
-        # Both counts come from the encoding compaction has already warmed: the opening chunk of a reply, which the
-        # rate takes out of its numerator, and the conversation, which answers for a provider that reports no usage.
+        # The count comes from the encoding compaction has already warmed, and answers for a provider that reports no
+        # usage of its own; the rate's numerator is the provider's count.
         counter = ctx.service(COMPACTION_COUNTER, CompactionCounter)
-        usage = UsageExtension(count_chunk=counter.count_text, count_context=counter.count)
+        usage = UsageExtension(count_context=counter.count)
         ctx.agent.provide(USAGE, usage)
         ctx.agent.register_extension(usage)
 

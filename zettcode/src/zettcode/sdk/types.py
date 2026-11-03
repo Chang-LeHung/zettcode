@@ -82,10 +82,8 @@ class Usage:
         cache_read_tokens: Input the provider served from its cache.
         cache_write_tokens: Input written into the provider's cache.
         reasoning_tokens: The reasoning part of ``output_tokens``.
-        first_chunk_tokens: Tokens the first streamed chunk carried, which the rate leaves out of its numerator
-            because they arrived when the clock started.
-        seconds: Time from the first streamed data that generated something to the terminal response, the rate
-            denominator.
+        seconds: Time from the first token of each call to that call's terminal response, summed: the window output
+            was generated in, the rate's denominator.
         requests: How many model calls were made.
         context_tokens: How full the context was on the newest call; for a delta, the value after the run.
     """
@@ -95,7 +93,6 @@ class Usage:
     cache_read_tokens: int = 0
     cache_write_tokens: int = 0
     reasoning_tokens: int = 0
-    first_chunk_tokens: int = 0
     seconds: float = 0.0
     requests: int = 0
     context_tokens: int = 0
@@ -114,10 +111,11 @@ class Usage:
     def output_rate(self) -> float | None:
         """Return generated tokens per second of generation time, or ``None`` when it was not measured.
 
-        The first chunk's tokens are left out: they arrived when the clock started, so they cost no measured time.
+        The numerator is the provider's own count and the denominator is the time from the first token to the end of
+        the response. Counting the tokens that arrived with the first chunk against a window that opens at that chunk
+        reads a little high, which is the trade for one number that no program-side clock can understate.
         """
-        generated = self.output_tokens - self.first_chunk_tokens
-        return generated / self.seconds if self.seconds > 0 and generated > 0 else None
+        return self.output_tokens / self.seconds if self.seconds > 0 and self.output_tokens > 0 else None
 
     def since(self, earlier: Usage) -> Usage:
         """Return what was spent after ``earlier``: the counters subtracted, never below zero.

@@ -301,11 +301,11 @@ async def test_an_edit_in_the_part_already_read_is_noticed(tmp_path: Path):
         "not json",
         "[]",
         '{"version": 99, "sessions": {}}',
-        '{"version": 1, "sessions": []}',
-        '{"version": 1, "sessions": {"a": {"size": "big"}}}',
-        '{"version": 1, "sessions": {"a": {"size": 1, "mtime_ns": 1, "offset": 1, "head": 1, "tail": 1, '
+        '{"version": 2, "sessions": []}',
+        '{"version": 2, "sessions": {"a": {"size": "big"}}}',
+        '{"version": 2, "sessions": {"a": {"size": 1, "mtime_ns": 1, "offset": 1, "head": 1, "tail": 1, '
         '"started": null, "counted": true, "rows": [["r", "t", 1, "m", 1, 1, 1]]}}}',
-        '{"version": 1, "sessions": {"a": {"size": true, "mtime_ns": 1, "offset": 1, "head": 1, "tail": 1, '
+        '{"version": 2, "sessions": {"a": {"size": true, "mtime_ns": 1, "offset": 1, "head": 1, "tail": 1, '
         '"started": null, "counted": true, "rows": []}}}',
     ],
 )
@@ -411,3 +411,27 @@ async def test_sessions_are_ordered_by_when_they_last_changed_not_when_they_bega
 
     assert [row.session_id for row in ledger.sessions] == ["started-first", "started-last"]
     assert ledger.sessions[0].started < ledger.sessions[1].started, "the order is not the start order"
+
+
+async def test_an_edit_is_noticed_in_a_record_whose_excerpts_are_long(tmp_path: Path):
+    """The tail has to cover a whole record: two clipped excerpts in a reuse-per-character script push the counters far
+    from the end of the line, and an edit there is still an edit to what was already read."""
+    store = SessionStore(tmp_path, tmp_path / WORK)
+    usage = ModelUsage(
+        input_tokens=100,
+        output_tokens=10,
+        cache_read_tokens=40,
+        ttft_any_ns=1_000_000_000,
+        first_chunk="\u6bcf" * 200,
+        first_content_chunk="\u5b57" * 200,
+    )
+    await answer(store, "a", "r1", "m", usage)
+    first = reader(tmp_path).read()
+    assert first.models["m"].cache_read_tokens == 40
+
+    path = store.session_path("a")
+    text = path.read_text(encoding="utf-8")
+    assert '"cache_read_tokens": 40' in text
+    path.write_text(text.replace('"cache_read_tokens": 40', '"cache_read_tokens": 77'), encoding="utf-8")
+
+    assert reader(tmp_path).read().models["m"].cache_read_tokens == 77

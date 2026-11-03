@@ -83,7 +83,7 @@ are in [The context window](/guide/context). Two things worth knowing here:
 
 `↑18.4k ↓900 · 71.2% cached · 74 tok/s · ctx 12.3%` — in order: tokens sent,
 tokens generated, the share of the input the provider served from its cache,
-generated tokens per second of streaming time, and how full the window was on the
+generated tokens per second, and how full the window was on the
 newest request. Input/output totals accumulate across the session; context
 occupancy is a snapshot, not an accumulated percentage.
 
@@ -91,7 +91,7 @@ occupancy is a snapshot, not an accumulated percentage.
 | --- | --- |
 | `↑` / `↓` | Cumulative input and output tokens reported by the provider. Repeated context counts as input each time it is sent. |
 | `cached` | Cumulative cache-hit input tokens ÷ cumulative input tokens. 60,000 hits out of 100,000 input tokens is `60.0%`. |
-| `tok/s` | Output tokens less those the first fragment carried, divided by the time the model spent streaming the rest, from that first fragment to its final response; not the wait for it to start, nor the time spent on tools, approvals, or reading the answer. |
+| `tok/s` | The provider's output tokens divided by the time from the first token of the reply to its end; not the wait for the first token, nor the time spent on tools, approvals, or reading the answer. The tokens that arrived with the first token are counted, so the figure reads a little high. |
 | `ctx` | Latest context occupancy relative to the selected model's configured window. When a provider reports no input tokens, the last figure it did report plus everything appended since is measured instead. |
 
 An endpoint that does not report cache-hit usage cannot provide a meaningful

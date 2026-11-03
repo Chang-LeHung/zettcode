@@ -49,14 +49,33 @@ class _Clock:
         return next(self.moments)
 
 
-def _response(*, input_tokens: int, output_tokens: int, cache_read_tokens: int = 0) -> ModelResponse:
-    """Build the assistant response one model call returns."""
+class _CountingClock(_Clock):
+    """A canned clock that also says how many times it has been read."""
+
+    def __init__(self, *moments: float) -> None:
+        super().__init__(*moments)
+        self.calls = 0
+
+    def __call__(self) -> float:
+        self.calls += 1
+        return super().__call__()
+
+
+def _response(
+    *, input_tokens: int, output_tokens: int, cache_read_tokens: int = 0, ttft: float | None = 1.0
+) -> ModelResponse:
+    """Build the assistant response one model call returns.
+
+    ``ttft`` is the wait for the first token, in seconds, as the runtime measured it; ``None`` is a call that streamed
+    nothing, which is what a non-streaming provider reports.
+    """
     return ModelResponse(
         message=AssistantMessage(content="done"),
         usage=ModelUsage(
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             cache_read_tokens=cache_read_tokens,
+            ttft_any_ns=None if ttft is None else round(ttft * 1e9),
         ),
     )
 
@@ -90,12 +109,11 @@ async def test_the_extension_accumulates_each_call_and_publishes_the_total():
     assert (snapshot.input_tokens, snapshot.output_tokens) == (3_000, 400)
     assert snapshot.cache_read_tokens == 2_100
     assert snapshot.requests == 2
-    assert snapshot.seconds == pytest.approx(4.5)
+    # Each call's window is its whole span less the one-second wait it reported: (2.5 - 1) + (2.0 - 1).
+    assert snapshot.seconds == pytest.approx(2.5)
     assert snapshot.context_tokens == 2_000  # the newest call's prompt, not the sum
     assert snapshot.cache_hit_rate == pytest.approx(0.7)
-    # Each call's opening chunk carried one token and cost no measured time, so the rate leaves both out.
-    assert snapshot.first_chunk_tokens == 2
-    assert snapshot.output_rate == pytest.approx((400 - 2) / 4.5)
+    assert snapshot.output_rate == pytest.approx(400 / 2.5), "the provider's count over the window"
 
     event = context.emitted[-1]
     assert event.type is AgentEventType.CUSTOM
@@ -104,35 +122,35 @@ async def test_the_extension_accumulates_each_call_and_publishes_the_total():
     assert UsageSnapshot.from_payload(event.payload) == snapshot
 
 
-async def test_the_rate_starts_at_the_first_streamed_data_not_before_the_model_call():
-    """The wait for a model to start talking is not generation time."""
+async def test_the_wait_for_the_first_token_is_not_generation_time():
+    """The window opens at the first token, not when the request went out."""
     extension = UsageExtension(clock=_Clock(5.0, 20.0))
     context = _Context()
 
-    await _call(extension, context, _response(input_tokens=10, output_tokens=30))
+    await _call(extension, context, _response(input_tokens=10, output_tokens=30, ttft=10.0))
 
     snapshot = extension.snapshot("s-1")
-    assert snapshot.seconds == pytest.approx(15.0)
-    assert snapshot.output_rate == pytest.approx((30 - 1) / 15)
+    assert snapshot.seconds == pytest.approx(5.0)
+    assert snapshot.output_rate == pytest.approx(6.0)
 
 
-async def test_the_rate_leaves_out_the_tokens_the_opening_chunk_carried():
-    """The opening chunk arrived when the clock started, so its tokens are not credited with speed they never cost."""
-    extension = UsageExtension(clock=_Clock(5.0, 20.0), count_chunk=lambda text: 3)
+async def test_the_numerator_is_the_count_the_provider_reported():
+    """Every generated token counts, including the ones that arrived with the first one."""
+    extension = UsageExtension(clock=_Clock(0.0, 4.0))
     context = _Context()
 
-    await _call(extension, context, _response(input_tokens=10, output_tokens=30))
+    await _call(extension, context, _response(input_tokens=10, output_tokens=30, ttft=1.0))
 
     snapshot = extension.snapshot("s-1")
-    assert snapshot.first_chunk_tokens == 3
-    assert snapshot.output_rate == pytest.approx((30 - 3) / 15)
+    assert snapshot.seconds == pytest.approx(3.0)
+    assert snapshot.output_rate == pytest.approx(30 / 3.0)
 
 
-async def test_an_event_that_generated_nothing_does_not_start_the_clock():
-    """A server tool starting is a wait, not generation; opening the clock there would understate the rate."""
+async def test_what_the_stream_carries_does_not_change_the_window():
+    """A hosted tool starting before the first token is inside the wait the runtime measured, not a clock of ours."""
     extension = UsageExtension(clock=_Clock(2.0, 20.0))
     context = _Context()
-    response = _response(input_tokens=10, output_tokens=30)
+    response = _response(input_tokens=10, output_tokens=30, ttft=6.0)
     events = [
         ModelEvent.server_tool_started(ServerToolCall(id="c-1", name="web_search")),
         ModelEvent.text("token"),
@@ -148,29 +166,54 @@ async def test_an_event_that_generated_nothing_does_not_start_the_clock():
     await extension.after_model(context, response)
 
     snapshot = extension.snapshot("s-1")
-    assert snapshot.seconds == pytest.approx(18.0)
-    assert snapshot.first_chunk_tokens == 1
+    assert snapshot.seconds == pytest.approx(12.0)
 
 
-async def test_a_reply_that_never_generated_anything_has_no_rate():
-    """An opening chunk as large as the whole call leaves nothing the span measured."""
-    extension = UsageExtension(clock=_Clock(5.0, 20.0), count_chunk=lambda text: 30)
+async def test_a_reply_whose_first_token_came_at_the_end_has_no_rate():
+    """The wait took the whole call, so there is no window to divide by."""
+    extension = UsageExtension(clock=_Clock(5.0, 20.0))
     context = _Context()
 
-    await _call(extension, context, _response(input_tokens=10, output_tokens=30))
+    await _call(extension, context, _response(input_tokens=10, output_tokens=30, ttft=15.0))
 
-    assert extension.snapshot("s-1").output_rate is None
+    snapshot = extension.snapshot("s-1")
+    assert snapshot.seconds == 0.0
+    assert snapshot.output_rate is None
 
 
-async def test_a_later_delta_does_not_restart_the_clock():
-    # The first delta is at 5s and the response at 7s; if the second delta
-    # restarted the clock the response would be read at 20s and the span 13s.
-    extension = UsageExtension(clock=_Clock(5.0, 7.0, 20.0))
+async def test_the_window_is_measured_from_the_request_going_out():
+    """The clock is read before the stream starts, so the span covers the request and not just the streaming.
+
+    Asked at 5s, answered at 20s, first token 2s in: the window is 13s. A counter that opened on the first delta
+    would first read the clock once the stream had begun, which the source checks for: its body runs at the first
+    ``__anext__``, so what it sees is whether the span was started before the stream was.
+    """
+    clock = _CountingClock(5.0, 20.0)
+    extension = UsageExtension(clock=clock)
+    context = _Context()
+    response = _response(input_tokens=10, output_tokens=30, ttft=2.0)
+    reads_when_streaming = []
+
+    async def source(request):
+        reads_when_streaming.append(clock.calls)
+        yield ModelEvent.completed(response)
+
+    async for _ in extension.on_model_request(context, None, source):
+        pass
+    await extension.after_model(context, response)
+
+    assert reads_when_streaming and reads_when_streaming[0] >= 1, "the span started before the first event"
+    assert extension.snapshot("s-1").seconds == pytest.approx(13.0)
+
+
+async def test_the_window_ends_at_the_terminal_response():
+    # Asked at 5s, answered at 7s, and the first token came one second in; a second delta does not move either end.
+    extension = UsageExtension(clock=_Clock(5.0, 7.0))
     context = _Context()
 
-    await _call(extension, context, _response(input_tokens=10, output_tokens=30), deltas=2)
+    await _call(extension, context, _response(input_tokens=10, output_tokens=30, ttft=1.0), deltas=2)
 
-    assert extension.snapshot("s-1").seconds == pytest.approx(2.0)
+    assert extension.snapshot("s-1").seconds == pytest.approx(1.0)
 
 
 async def test_the_middleware_forwards_the_provider_events_unchanged():
@@ -185,17 +228,17 @@ async def test_the_middleware_forwards_the_provider_events_unchanged():
 
 
 async def test_a_reply_with_no_streamed_data_has_no_rate():
-    extension = UsageExtension(clock=_Clock())
+    extension = UsageExtension(clock=_Clock(5.0, 20.0))
     context = _Context()
 
-    await _call(extension, context, _response(input_tokens=10, output_tokens=30), data=False)
+    await _call(extension, context, _response(input_tokens=10, output_tokens=30, ttft=None), data=False)
 
     snapshot = extension.snapshot("s-1")
     assert snapshot.seconds == 0.0
     assert snapshot.output_rate is None
 
 
-def test_a_stored_reply_uses_its_streamed_span_not_the_whole_call():
+def test_a_stored_reply_without_a_measurement_uses_its_streamed_span():
     base = datetime(2026, 1, 1, tzinfo=timezone.utc)
     timing = MessageTiming(
         started_at=base,
@@ -214,6 +257,32 @@ def test_a_stored_reply_uses_its_streamed_span_not_the_whole_call():
 
     assert snapshot.seconds == pytest.approx(6.0)
     assert snapshot.output_rate == pytest.approx(10.0)
+
+
+def test_a_stored_reply_reads_the_window_it_recorded():
+    """A reply stored with its first token's arrival divides by the call less that wait, as the live counter does.
+
+    The segment marks are there too, and they would give 6 seconds: the recorded window is the one to read.
+    """
+    base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    timing = MessageTiming(
+        started_at=base,
+        completed_at=base + timedelta(seconds=10),
+        duration_ns=10_000_000_000,
+        reasoning_started_at=base + timedelta(seconds=2),
+        reasoning_completed_at=base + timedelta(seconds=7),
+        reasoning_duration_ns=5_000_000_000,
+        content_started_at=base + timedelta(seconds=3),
+        content_completed_at=base + timedelta(seconds=8),
+        content_duration_ns=5_000_000_000,
+    )
+    usage = ModelUsage(output_tokens=60, ttft_any_ns=2_000_000_000)
+    line = SimpleNamespace(usage=usage, timing=timing)
+
+    snapshot = session_usage([line])
+
+    assert snapshot.seconds == pytest.approx(8.0)
+    assert snapshot.output_rate == pytest.approx(7.5)
 
 
 def test_a_stored_reply_with_no_stream_marks_has_no_rate():
