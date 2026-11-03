@@ -30,7 +30,7 @@ jobs:
           # The diff needs the base commit, which a shallow clone does not have.
           fetch-depth: 0
 
-      # The split is the one `make check` uses: the Python gate for `tests/`, `packages/` (every distribution of the
+      # The split is the one `make check` uses: the Python gate for `packages/` (every distribution of the
       # workspace, the program and its parts, and the plugins), a lock file or the root `pyproject.toml` — the
       # workspace is one environment, so a change to a plugin can break the program and the other way round; the
       # client for its own directory; the extension for itself or the client it bundles; the gateway page for its
@@ -68,7 +68,7 @@ jobs:
           # A pattern that matches nothing is a false branch, not a failure.
           matches() { [ "$everything" = true ] && return 0; grep -qE "$1" <<<"$files"; }
 
-          python=false;     matches '^(tests/|packages/|\.github/scripts/|pyproject\.toml|uv\.lock)' && python=true
+          python=false;     matches '^(packages/|\.github/scripts/|pyproject\.toml|uv\.lock)' && python=true
           lint=false;       [ "$python" = true ] && lint=true;  matches '^docs/scripts/' && lint=true
           typescript=false; matches '^clients/typescript/' && typescript=true
           vscode=false;     [ "$typescript" = true ] && vscode=true;  matches '^clients/vscode/' && vscode=true
@@ -102,10 +102,10 @@ jobs:
         run: uv sync --locked --all-packages
 
       - name: Check formatting
-        run: uv run --no-sync ruff format --check tests docs/scripts .github/scripts packages
+        run: uv run --no-sync ruff format --check support docs/scripts .github/scripts packages
 
       - name: Lint
-        run: uv run --no-sync ruff check tests docs/scripts .github/scripts packages
+        run: uv run --no-sync ruff check support docs/scripts .github/scripts packages
 
       # The configuration at the workspace root covers every package, the plugins included.
       - name: Type-check
@@ -164,16 +164,13 @@ jobs:
 
       # The console layer has a Windows path with no POSIX equivalent, so the
       # suite runs there too: the platform seam, the reader thread, and the
-      # resize poll are exercised on the platform that needs them. The suite lives at the root: it drives every
-      # distribution of the workspace.
-      - name: Run tests
-        run: uv run --no-sync pytest
-
-      # The plugins are workspace members, so they run here beside the program they extend. This is the loop `make
-      # test` runs on Linux; `make` is not on a Windows runner, so it is spelled out here.
-      - name: Run the plugin tests
+      # resize poll are exercised on the platform that needs them.
+      #
+      # This is the loop `make test` runs on Linux; `make` is not on a Windows runner, so it is spelled out here.
+      # Each distribution's suite is its own run, with the pytest configuration its own `pyproject.toml` holds.
+      - name: Run the tests
         shell: bash
-        run: for suite in packages/*/tests; do uv run --no-sync pytest "$suite" -q || exit 1; done
+        run: for suite in packages/*/tests; do echo "--- $suite"; uv run --no-sync pytest "$suite" -q || exit 1; done
 
   typescript:
     name: TypeScript client

@@ -114,7 +114,8 @@ Each stage is one branch and one commit, and ends with `make check` green plus b
    engine would not ship.
 3. **The namespace and the wheels.** *Done.* `zettcode/__init__.py` is gone; every distribution is a directory under
    `packages/` with a `pyproject.toml` and a wheel, each subpackage has a `py.typed`, and all of them read the one
-   version file in the engine's tree. The suite moved to `tests/` at the root, `mypy` names every `src` tree as a package base, and the
+   version file in the engine's tree. The suite moved to `tests/` inside each distribution (with the shared conftest and
+   fakes in `support/`), `mypy` names every `src` tree as a package base, and the
    157 relative imports that climbed to the namespace root are absolute.
 4. **`zettcode-plugin-api`.** *Done.* The thin re-export package exists, both plugins depend on it and import only
    from it, and `test_a_plugin_depends_on_one_package_of_ours_and_imports_from_it` holds both halves.

@@ -80,11 +80,11 @@ from the root.
   keep the source free of newer syntax and standard-library APIs; the version shims live in
   `packages/zettcode-engine/src/zettcode/_compat.py`.
 - Run `make check` while working: it compares the tree with where the branch left `main` (`BASE=…` picks another
-  ref) and runs only what the change touches — Ruff, mypy and the Python suite for `tests/` and `packages/`, the
+  ref) and runs only what the change touches — Ruff, mypy and the Python suites for `packages/`, the
   TypeScript client for `clients/typescript/`, the extension for either JavaScript client, and nothing for a
   guide-only edit.
-  Run `make check-all` before handing work over; CI runs only the suites a pull request's diff needs — `tests/`,
-  `packages/`, `uv.lock` and the root `pyproject.toml` for the Python gate, `clients/<name>/` for a client, and
+  Run `make check-all` before handing work over; CI runs only the suites a pull request's diff needs — `packages/`,
+  `uv.lock` and the root `pyproject.toml` for the Python gate, `clients/<name>/` for a client, and
   everything for the `Makefile` or a workflow — so a full run
   does not have to happen on every edit. Run `make smoke` when packaging changes so both console scripts are exercised
   from the built wheel. `make vscode`
