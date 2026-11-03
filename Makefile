@@ -15,7 +15,8 @@ SMOKE_DIR := .smoke
 PACKAGES := packages
 LINT_PATHS := tests docs/scripts .github/scripts $(PACKAGES)
 # The distributions the program is built from, in dependency order: `make build` and `make smoke` make all of them.
-SPLIT := zettcode-engine zettcode-tui zettcode-broker zettcode-sdk zettcode-server zettcode-gateway zettcode-app zettcode
+SPLIT := zettcode-engine zettcode-tui zettcode-broker zettcode-sdk zettcode-server zettcode-gateway zettcode-app
+SPLIT += zettcode-plugin-api zettcode
 # The plugin suites are separate test runs because each package's `pyproject.toml` is the pytest configuration its
 # tests are written against (`asyncio_mode`, `testpaths`); one run over several would take the workspace root's, which
 # has no pytest section at all.

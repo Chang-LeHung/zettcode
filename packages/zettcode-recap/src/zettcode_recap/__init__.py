@@ -31,15 +31,20 @@ from collections.abc import Coroutine
 from contextlib import suppress
 from typing import TYPE_CHECKING
 
-from zettcode.app.commands import CommandContext, CommandResult
-from zettcode.app.plugins import HOST_LINK, HostLink, TuiPlugin
-from zettcode.engine.plugins.context import PluginContext
+from zettcode.plugin_api import (
+    HOST_LINK,
+    CommandContext,
+    CommandHost,
+    CommandResult,
+    HostLink,
+    PluginContext,
+    TuiPlugin,
+)
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from collections.abc import Mapping
     from typing import Any
 
-    from zettcode.app.commands import CommandHost
 
 #: The one place the version is written; ``pyproject.toml`` reads it from here.
 __version__ = "0.1.0"

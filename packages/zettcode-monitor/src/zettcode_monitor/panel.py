@@ -4,10 +4,20 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from zettcode.app.ui.widgets.panel import pressed
-from zettcode.app.ui.widgets.statusline_page import SWITCH_WIDTH, draw_switch
-from zettcode.tui import Canvas, Host, MouseAction, MouseEvent, Widget
-from zettcode.tui.render import Style, blend, display_width, truncate
+from zettcode.plugin_api import (
+    SWITCH_WIDTH,
+    Canvas,
+    Host,
+    MouseAction,
+    MouseEvent,
+    Style,
+    Widget,
+    blend,
+    display_width,
+    draw_switch,
+    pressed,
+    truncate,
+)
 
 #: Rows the panel asks the shell for: a blank, the title, a blank, the three rows, a blank, the line that says what
 #: the marked row does, and the keys.

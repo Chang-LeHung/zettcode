@@ -53,6 +53,7 @@ zettcode-gateway = { workspace = true }
 zettcode-sdk = { workspace = true }
 zettcode-server = { workspace = true }
 zettcode-tui = { workspace = true }
+zettcode-plugin-api = { workspace = true }
 zettcode-monitor = { workspace = true }
 zettcode-recap = { workspace = true }
 
@@ -69,6 +70,7 @@ mypy_path = [
   "packages/zettcode-server/src",
   "packages/zettcode-gateway/src",
   "packages/zettcode-app/src",
+  "packages/zettcode-plugin-api/src",
   "packages/zettcode/src",
   "packages/zettcode",
   ".github/scripts",
@@ -81,6 +83,7 @@ files = [
   "packages/zettcode-server/src",
   "packages/zettcode-gateway/src",
   "packages/zettcode-app/src",
+  "packages/zettcode-plugin-api/src",
   "packages/zettcode/src",
   "packages/zettcode/perf",
   "packages/zettcode-monitor/src",
