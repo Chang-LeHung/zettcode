@@ -24,7 +24,7 @@ from __future__ import annotations
 from typing import TypeVar
 
 from zettcode.config import ZettCodeConfig
-from zettcode.engine.core import ZettCodeEngine
+from zettcode.engine.core import PluginLoader, ZettCodeEngine
 
 from .context import ContextMixin
 from .exports import ExportsMixin
@@ -56,19 +56,25 @@ class ZettCodeAgent(
         self.runtime = runtime
 
     @classmethod
-    async def create(cls: type[AgentT], config: ZettCodeConfig) -> AgentT:
-        """Build the engine and wrap it in the agent."""
-        return cls(await ZettCodeEngine.create(config))
+    async def create(cls: type[AgentT], config: ZettCodeConfig, load: PluginLoader) -> AgentT:
+        """Build the engine with the plugin set the caller chose, and wrap it in the agent.
+
+        The loader is required: the engine ships no built-in plugin, so a runtime built without one has no tools, no
+        session store and no approval — and the front ends that know which agent they want are the SDK
+        (:func:`zettcode.sdk.builtins.load_agent_plugins`) and the terminal
+        (:func:`zettcode.app.plugins.loader.terminal_plugins`).
+        """
+        return cls(await ZettCodeEngine.create(config, load))
 
     @classmethod
-    def preview(cls: type[AgentT], config: ZettCodeConfig) -> AgentT:
+    def preview(cls: type[AgentT], config: ZettCodeConfig, load: PluginLoader) -> AgentT:
         """Wrap an engine that still has to start, so a front end can paint first.
 
-        The engine here holds the session and the extensions this application owns; the provider SDK and the
-        client are built by the first :meth:`runtime.start`, which a turn or a command awaits. Everything a front
+        The engine here holds the session and the extensions the loader's plugins contribute; the provider SDK and
+        the client are built by the first :meth:`runtime.start`, which a turn or a command awaits. Everything a front
         end reads per frame — the model, the effort, the session, the usage — is answered from that preview.
         """
-        return cls(ZettCodeEngine.preview(config))
+        return cls(ZettCodeEngine.preview(config, load))
 
     async def aclose(self) -> None:
         """Release the underlying engine resources."""

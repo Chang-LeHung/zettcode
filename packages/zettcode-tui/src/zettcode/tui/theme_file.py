@@ -16,8 +16,7 @@ from functools import partial
 from importlib import resources
 from pathlib import Path
 
-from zettcode._compat import tomllib
-
+from ._compat import tomllib
 from .core.theme import DARK, LIGHT, Theme, ToolTheme, theme_named
 from .render.code import CodeTheme
 from .render.color import parse_hex

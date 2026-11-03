@@ -15,18 +15,19 @@ in git: the release workflow (and `make build` / `make smoke`) builds it with No
 ## One-time setup
 
 1. Create the repository secret `PYPI_API_TOKEN` under **Settings → Secrets and
-   variables → Actions** with a PyPI API token that may publish every project released from here: `zettcode` and each
-   plugin in `packages/`. A token scoped to one PyPI project cannot publish the others, so this has to be an
-   account-scoped token — or one secret per project, and a line in the workflows choosing it. The workflows read
-   exactly this name.
+   variables → Actions** with a PyPI API token that may publish every project released from here — the nine
+   distributions `packages/order.txt` lists and the two plugins, eleven projects. A token scoped to one PyPI
+   project cannot publish the others, so this has to be an account-scoped token — or one secret per project, and a
+   line in the workflows choosing it. The workflows read exactly this name.
 2. Optional: add a `pypi` environment under **Settings → Environments** and
    require reviewers there if you want a manual approval before publishing. Both
    workflows publish through that environment.
 
-Alternatively, `release.yml` can use PyPI Trusted Publishing instead of the token: drop its `password:` input, which
-leaves the `id-token: write` the job already asks for as the way in. `release-packages.yml` publishes with
-`UV_PUBLISH_TOKEN`, so a trusted-publishing setup there needs that job to gain `permissions: {id-token: write}` and
-`uv publish --trusted-publishing automatic` in place of the token.
+Alternatively, either workflow can use PyPI Trusted Publishing instead of the token. Both publish with
+`UV_PUBLISH_TOKEN` today, so the change is the same in each: add `permissions: {id-token: write}` to the publish
+job, drop the `UV_PUBLISH_TOKEN` environment entry, and pass `uv publish --trusted-publishing automatic` in place
+of the token. PyPI then has to be configured with a trusted publisher for every project the run publishes —
+eleven of them for `release.yml`'s tag — which is why the token is what this repository uses.
 
 ## Cutting a release
 

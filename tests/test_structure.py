@@ -19,7 +19,7 @@ from packaging.requirements import Requirement
 
 from zettcode._compat import tomllib
 
-#: The repository root, two levels above the tests (``zettcode/tests`` here).
+#: The repository root, two levels above the tests (``tests`` here).
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 #: The program's project directory, where its command line, probes and ``pyproject.toml`` live.
@@ -67,7 +67,7 @@ def test_every_invariant_cites_a_test_that_exists():
     reader looking for evidence that is not where the row says it is.
     """
     document = (ROOT / "docs/internal/invariants.md").read_text(encoding="utf-8")
-    # The evidence lives beside the code it pins: the server's tests sit with the agent's under ``zettcode/tests``, and
+    # The evidence lives beside the code it pins: the evidence sits at the root, under ``tests``, and
     # each plugin's own under ``packages/<name>/tests``.
     evidence: dict[str, list[pathlib.Path]] = {}
     for path in [*(ROOT / "tests").glob("test_*.py"), *(ROOT / "packages").glob("*/tests/test_*.py")]:
@@ -387,6 +387,15 @@ def test_importing_the_package_does_not_build_the_application():
     assert result.stdout.strip() == "False False"
 
 
+def _release_order() -> list[str]:
+    """Return the distributions `packages/order.txt` lists, in dependency order (the program's included)."""
+    return [
+        line
+        for line in (ROOT / "packages" / "order.txt").read_text(encoding="utf-8").splitlines()
+        if line and not line.startswith("#")
+    ]
+
+
 def test_the_version_is_written_once_and_every_distribution_carries_it():
     """A copy of the version in a ``pyproject`` would drift from the tag check.
 
@@ -397,10 +406,7 @@ def test_the_version_is_written_once_and_every_distribution_carries_it():
     """
     from zettcode.version import __version__
 
-    assert __version__ == importlib.metadata.version("zettcode")
-    for name in ("zettcode-engine", "zettcode-tui", "zettcode-broker", "zettcode-sdk"):
-        assert importlib.metadata.version(name) == __version__, name
-    for name in ("zettcode-app", "zettcode-server", "zettcode-gateway"):
+    for name in [*_release_order(), "zettcode"]:
         assert importlib.metadata.version(name) == __version__, name
 
     engine = tomllib.loads((ENGINE.parent.parent / "pyproject.toml").read_text(encoding="utf-8"))
@@ -660,9 +666,10 @@ def test_the_engine_imports_only_what_its_package_ships():
     namespace-split.md` is the plan this list comes from.
     """
     source = ENGINE
-    engine = ENGINE / "engine"
     offenders: list[str] = []
-    for path in sorted(engine.rglob("*.py")):
+    # The whole tree the wheel carries, the leaves included: a leaf that reached above the engine would be the same
+    # defect in a different file.
+    for path in sorted(source.rglob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             targets: list[str] = []
@@ -763,3 +770,88 @@ def test_the_release_order_lists_every_distribution_once_with_its_dependencies_f
         for requirement in map(Requirement, settings["project"]["dependencies"]):
             if requirement.name in distributions:
                 assert order.index(requirement.name) < index, f"{name} needs {requirement.name} published first"
+
+
+def _shipped_distributions() -> dict[str, tuple[pathlib.Path, set[str], set[str]]]:
+    """Return, per distribution, its project directory, the distributions it declares, and what it ships.
+
+    Shipped names are the modules and packages directly under its `src/zettcode/`, which is what a wheel of that
+    distribution puts in the namespace. A plugin ships its own top-level module instead, so it ships nothing here.
+    """
+    found: dict[str, tuple[pathlib.Path, set[str], set[str]]] = {}
+    for project in sorted((ROOT / "packages").glob("*/pyproject.toml")):
+        settings = tomllib.loads(project.read_text(encoding="utf-8"))
+        name = settings["project"]["name"]
+        declared = {
+            requirement.name
+            for requirement in map(Requirement, settings["project"]["dependencies"])
+            if requirement.name.startswith("zettcode")
+        }
+        tree = project.parent / "src" / "zettcode"
+        shipped = {
+            entry.stem if entry.is_file() else entry.name
+            for entry in (tree.iterdir() if tree.is_dir() else ())
+            if entry.name not in ("__pycache__", "py.typed")
+        }
+        found[name] = (project.parent, declared, shipped)
+    return found
+
+
+def _namespace_imports(path: pathlib.Path) -> list[str]:
+    """Return every `zettcode.*` module a source file imports, by its absolute dotted name."""
+    source_root = path.parent
+    while source_root.name != "src":
+        source_root = source_root.parent
+    parts = list(path.relative_to(source_root).with_suffix("").parts)
+    is_package = parts[-1] == "__init__"
+    if is_package:
+        parts.pop()
+    module = ".".join(parts)
+
+    found: list[str] = []
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        if isinstance(node, ast.Import):
+            found += [
+                alias.name for alias in node.names if alias.name == "zettcode" or alias.name.startswith("zettcode.")
+            ]
+        elif isinstance(node, ast.ImportFrom):
+            base = node.module if node.level == 0 else _resolved(module, is_package, node.level, node.module)
+            if base is None:
+                continue
+            if base == "zettcode":
+                found += [f"zettcode.{alias.name}" for alias in node.names]
+            elif base.startswith("zettcode."):
+                found.append(base)
+    return found
+
+
+def test_every_distribution_imports_only_what_it_declares():
+    """A namespace hides a dependency: `zettcode.x` resolves whoever shipped `x`, so an import of another
+    distribution's module works in the checkout and fails in a venv holding one wheel.
+
+    Every absolute `zettcode.<name>` import in a distribution's source has to name a module that distribution ships,
+    or one whose distribution it declares; nothing else is a working install. This is the rule the split lives or
+    dies by, and the one that breaks first as modules move.
+    """
+    distributions = _shipped_distributions()
+    owner: dict[str, str] = {}
+    for name, (_, _, shipped) in distributions.items():
+        for module in shipped:
+            assert module not in owner, f"{module} is shipped by {owner.get(module)} and {name}"
+            owner[module] = name
+
+    offenders: list[str] = []
+    for name, (directory, declared, _) in distributions.items():
+        for path in sorted((directory / "src").rglob("*.py")):
+            for target in _namespace_imports(path):
+                parts = target.split(".")
+                if len(parts) < 2:
+                    continue  # `import zettcode` is the namespace itself
+                shipped_by = owner.get(parts[1])
+                where = f"{name}: {path.relative_to(directory)} imports {target}"
+                if shipped_by is None:
+                    offenders.append(f"{where}, which no distribution ships")
+                elif shipped_by != name and shipped_by not in declared:
+                    offenders.append(f"{where} from {shipped_by}, which {name} does not declare")
+
+    assert offenders == []

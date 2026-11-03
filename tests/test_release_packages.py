@@ -16,7 +16,7 @@ from importlib.metadata import version
 
 import pytest
 
-#: The repository root: this file is `zettcode/tests/test_release_packages.py`.
+#: The repository root: this file is `tests/test_release_packages.py`.
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 HELPER = ROOT / ".github" / "scripts" / "release_packages.py"
 

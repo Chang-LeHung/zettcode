@@ -11,7 +11,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TypeAlias
 
-from zettcode.mentions import MentionRegistry
+from zettcode.mention import MentionRegistry
 
 
 @dataclass(frozen=True, slots=True)

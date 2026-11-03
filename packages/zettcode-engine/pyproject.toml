@@ -39,6 +39,8 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.version]
+# Every other distribution reads this file (`../zettcode-engine/src/zettcode/version.py`). A wheel built from an
+# sdist takes the version from the sdist's `PKG-INFO` instead, so a builder never needs this tree beside it.
 path = "src/zettcode/version.py"
 
 # `zettcode/` is a PEP 420 namespace: the wheel ships `zettcode/engine/**` and the leaves beside it, and no
