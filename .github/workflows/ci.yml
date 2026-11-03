@@ -30,11 +30,12 @@ jobs:
           # The diff needs the base commit, which a shallow clone does not have.
           fetch-depth: 0
 
-      # The split is the one `make check` uses: the Python gate for `zettcode/`, `packages/`, a lock file or the root
-      # `pyproject.toml` — the workspace is one environment, so a change to a plugin can break the program and the
-      # other way round; the client for its own directory; the extension for itself or the client it bundles; the
-      # gateway page for its own directory, and with the wheel that ships it. The Makefile and the workflows
-      # themselves count as every file, because either can change what a suite means.
+      # The split is the one `make check` uses: the Python gate for `tests/`, `packages/` (every distribution of the
+      # workspace, the program and its parts, and the plugins), a lock file or the root `pyproject.toml` — the
+      # workspace is one environment, so a change to a plugin can break the program and the other way round; the
+      # client for its own directory; the extension for itself or the client it bundles; the gateway page for its
+      # own directory, and with the wheels that ship it. The Makefile and the workflows themselves count as every
+      # file, because either can change what a suite means.
       - name: Read the files this change touches
         id: files
         shell: bash
@@ -163,9 +164,9 @@ jobs:
 
       # The console layer has a Windows path with no POSIX equivalent, so the
       # suite runs there too: the platform seam, the reader thread, and the
-      # resize poll are exercised on the platform that needs them.
+      # resize poll are exercised on the platform that needs them. The suite lives at the root: it drives every
+      # distribution of the workspace.
       - name: Run tests
-        working-directory: zettcode
         run: uv run --no-sync pytest
 
       # The plugins are workspace members, so they run here beside the program they extend. This is the loop `make
@@ -274,7 +275,7 @@ jobs:
       - name: Build and smoke-test the wheel
         run: make smoke
 
-      - name: Verify the wheel ships both programs
+      - name: Verify the program's wheel ships both programs
         run: |
           python3 - <<'PY'
           import glob

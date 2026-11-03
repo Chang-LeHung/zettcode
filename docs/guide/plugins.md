@@ -19,7 +19,7 @@ So a plugin never declares which front end it is for. It registers into a group,
 was loaded. One that only adds screen things starts its `activate` with the guard:
 
 ```python
-from zettcode.app.plugins import PluginContext, TuiPlugin
+from zettcode.plugin_api import PluginContext, TuiPlugin
 
 
 class Greeter(TuiPlugin):  # the mixin is for the row hooks; the base class is the same Plugin
@@ -49,8 +49,8 @@ greeter = "my_package:Greeter"
 ```
 
 ```python
-from zettcode.app.commands import CommandContext, CommandResult
-from zettcode.app.plugins import PluginContext, TuiPlugin
+from zettcode.plugin_api import CommandContext, CommandResult
+from zettcode.plugin_api import PluginContext, TuiPlugin
 
 
 class Greeter(TuiPlugin):
@@ -169,7 +169,7 @@ needs (the agent's group is in `zettcode.engine.plugins`; the screen's is added 
   notifies or waits for the reader to stop asking is built on these:
 
 ```python
-from zettcode.app.plugins import PluginContext, TuiPlugin
+from zettcode.plugin_api import PluginContext, TuiPlugin
 
 
 class Away(TuiPlugin):
@@ -202,7 +202,7 @@ not turns either. A terminal that does not report focus (``DECSET 1004``) simply
 nothing else changes.
 
 ```python
-from zettcode.app.plugins import ShellContext, TuiPlugin
+from zettcode.plugin_api import ShellContext, TuiPlugin
 
 
 class WorkspaceLabel(TuiPlugin):
@@ -285,7 +285,7 @@ Ctrl-C, Escape, the next line the reader sends, and Enter on an empty draft
 stop it, and the row says `stopped`.
 
 ```python
-from zettcode.app.plugins import HOST_LINK, HostLink
+from zettcode.plugin_api import HOST_LINK, HostLink
 
 
 class Recap(TuiPlugin):
@@ -328,7 +328,7 @@ to read rather than scroll past — a report, a review, a page from a plugin's o
 `message` empty or put a one-line note in it:
 
 ```python
-from zettcode.engine.plugins.commands import PlainCommandContext, TextCommandResult
+from zettcode.plugin_api import PlainCommandContext, TextCommandResult
 
 
 def notes(context: PlainCommandContext) -> TextCommandResult:
@@ -437,8 +437,8 @@ A plugin can add a host to the list `/config` offers, so a service ZettCode does
 set up by choosing it and giving a token:
 
 ```python
-from zettcode.engine.plugins import Plugin, PluginContext
-from zettcode.providers import Provider
+from zettcode.plugin_api import Plugin, PluginContext
+from zettcode.plugin_api import Provider
 
 
 class Acme(Plugin):
@@ -474,7 +474,7 @@ rest) are offered the same way by a built-in plugin, so this is the whole mechan
 ```text
 from pathlib import Path
 
-from zettcode.app.plugins import PluginContext, TuiPlugin
+from zettcode.plugin_api import PluginContext, TuiPlugin
 
 
 class Palettes(TuiPlugin):
@@ -501,8 +501,8 @@ its moods; each character of a map names a colour, `.` is transparent, and two r
 cells, so a map has an even number of rows and every frame of a pet is the same size:
 
 ```text
-from zettcode.app.pets import Pet
-from zettcode.app.plugins import PluginContext, TuiPlugin
+from zettcode.plugin_api import Pet
+from zettcode.plugin_api import PluginContext, TuiPlugin
 
 PALETTE = {"G": "#84b795", "D": "#263d34", "H": "#e4b47c"}
 ASLEEP = ("..GGGG..", ".GGGGGG.", "GGGGGGGG", "GDDGGDDG", "GGGHHGGG", ".GGGGGG.")
@@ -531,10 +531,10 @@ into styled lines. The presenters ZettCode ships are registered by a built-in pl
 priority, so a plugin that registers one for the same rows wins without having to outrank anything:
 
 ```text
-from zettcode.app.agent.conversation.entries import EntryKind
-from zettcode.app.agent.conversation.presenters import Presenter
-from zettcode.app.plugins import PluginContext, TuiPlugin
-from zettcode.tui import Span, Style, TextLine
+from zettcode.plugin_api import EntryKind
+from zettcode.plugin_api import Presenter
+from zettcode.plugin_api import PluginContext, TuiPlugin
+from zettcode.plugin_api import Span, Style, TextLine
 
 
 class QuietNotice(Presenter):
@@ -570,7 +570,7 @@ The hook methods above run inside one extension that ZettCode hosts for all plug
 already *is* an extension, or wraps one from `zett-agent`, can hand it over whole:
 
 ```python
-from zettcode.engine.plugins import Plugin, PluginContext
+from zettcode.plugin_api import Plugin, PluginContext
 
 
 class Audit(Plugin):

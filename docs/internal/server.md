@@ -1,6 +1,6 @@
 # The HTTP server
 
-`zettcode/src/zettcode/server/` is the HTTP face of the package. It is the same agent as the terminal, behind HTTP,
+`packages/zettcode-server/src/zettcode/server/` is the HTTP face of the package. It is the same agent as the terminal, behind HTTP,
 and it holds no agent of its own: `app.py` maps endpoints onto `zettcode.sdk`, which maps them onto the
 released `zett-agent` runtime. A bug in tools, compaction, sessions or message types is never fixed there; the SDK is
 the place to add what the server needs. `AGENTS.md` states the rule.
@@ -36,7 +36,7 @@ frame is emitted, which is what makes an unattended run possible.
 ## The files
 
 ```
-zettcode/src/zettcode/server/
+packages/zettcode-server/src/zettcode/server/
   cli.py        zettcode-server: arguments, then uvicorn; --help imports neither FastAPI nor the agent
   app.py        create_app: endpoints, the SSE helper, the error mapping, the token check
   runner.py     the client, the one run, pending approvals and questions, steering, resuming

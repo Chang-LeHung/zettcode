@@ -731,3 +731,35 @@ def _imported_modules(path: pathlib.Path) -> list[str]:
         for alias in node.names
         if alias.name.startswith("zettcode")
     ]
+
+
+def test_the_release_order_lists_every_distribution_once_with_its_dependencies_first():
+    """`packages/order.txt` is what `release.yml` publishes in order, and a distribution must not go before what it
+    needs: PyPI has no transaction, so a wrong order publishes something whose dependency is still missing.
+
+    The plugins are released on their own lines and are not in the list; every other distribution under `packages/`
+    is, exactly once.
+    """
+    package = ROOT / "packages"
+    order = [
+        line
+        for line in (package / "order.txt").read_text(encoding="utf-8").splitlines()
+        if line and not line.startswith("#")
+    ]
+    distributions: dict[str, pathlib.Path] = {}
+    plugins: set[str] = set()
+    for project in sorted(package.glob("*/pyproject.toml")):
+        settings = tomllib.loads(project.read_text(encoding="utf-8"))
+        name = settings["project"]["name"]
+        if settings["project"].get("entry-points", {}).get("zettcode.plugins"):
+            plugins.add(name)
+        else:
+            distributions[name] = project
+
+    assert set(order) == set(distributions), "every distribution of the program, once each"
+    assert len(order) == len(set(order))
+    for index, name in enumerate(order):
+        settings = tomllib.loads(distributions[name].read_text(encoding="utf-8"))
+        for requirement in map(Requirement, settings["project"]["dependencies"]):
+            if requirement.name in distributions:
+                assert order.index(requirement.name) < index, f"{name} needs {requirement.name} published first"

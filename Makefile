@@ -14,9 +14,9 @@ SMOKE_DIR := .smoke
 
 PACKAGES := packages
 LINT_PATHS := tests docs/scripts .github/scripts $(PACKAGES)
-# The distributions the program is built from, in dependency order: `make build` and `make smoke` make all of them.
-SPLIT := zettcode-engine zettcode-tui zettcode-broker zettcode-sdk zettcode-server zettcode-gateway zettcode-app
-SPLIT += zettcode-plugin-api zettcode
+# The distributions the program is built from, in dependency order (the list the release workflow reads too):
+# `make build` and `make smoke` make all of them.
+SPLIT := $(shell grep -v '^\#' $(PACKAGES)/order.txt)
 # The plugin suites are separate test runs because each package's `pyproject.toml` is the pytest configuration its
 # tests are written against (`asyncio_mode`, `testpaths`); one run over several would take the workspace root's, which
 # has no pytest section at all.
@@ -158,8 +158,8 @@ smoke: gateway-page
 	@# The `monitor` and `recap` extras are metadata, and nothing else exercises them: a misspelt name or a range that
 	@# excludes the published plugin shows up only when a reader installs it. Each extra is installed beside the wheels
 	@# just built, and the plugin has to register its command under this version -- the extra's whole promise.
-	$(UV) pip install --python $(SMOKE_DIR)/venv/bin/python "$(SMOKE_DIR)/zettcode-0.*.whl[monitor]"
-	$(UV) pip install --python $(SMOKE_DIR)/venv/bin/python "$(SMOKE_DIR)/zettcode-0.*.whl[recap]"
+	@wheel=$$(ls $(SMOKE_DIR)/zettcode-0.*.whl); $(UV) pip install --python $(SMOKE_DIR)/venv/bin/python "$$wheel[monitor]"
+	@wheel=$$(ls $(SMOKE_DIR)/zettcode-0.*.whl); $(UV) pip install --python $(SMOKE_DIR)/venv/bin/python "$$wheel[recap]"
 	$(SMOKE_DIR)/venv/bin/python -c "import tempfile, pathlib; from zettcode.config import ModelConfig, ZettCodeConfig; from zettcode.app.plugins.loader import load_terminal_plugins; root = pathlib.Path(tempfile.mkdtemp()); (root / 'w').mkdir(); config = ZettCodeConfig(workspace=root / 'w', models=(ModelConfig(model='m', token='t'),), store=root / 'store', plugins_file=root / 'plugins.json', mcp_enabled=False, skills_enabled=False, harness_dir=root / 'harness'); names = [command.name for command in load_terminal_plugins(config).commands]; assert '/monitor' in names and '/recap' in names, names; print('plugin extras:', '/monitor', '/recap')"
 
 check:

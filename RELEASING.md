@@ -1,16 +1,16 @@
 # Releasing
 
-`zettcode` is published from this repository to PyPI by
-`.github/workflows/release.yml`. The repository is a uv workspace:
-`zettcode/` is the terminal agent and its HTTP server, and `packages/*` are the
-plugins published on their own lines. One `v*` tag publishes the program — both
-console scripts, one version — and the plugins are released from
-`.github/workflows/release-packages.yml`, below.
+The program and the distributions it is made of are published from this repository to PyPI by
+`.github/workflows/release.yml`. The repository is a uv workspace under a PEP 420 `zettcode` namespace, and
+`packages/` holds every distribution: the program (`zettcode`, the one a reader installs and the one that writes both
+console scripts), the parts it is built from, and the plugins, which are released on their own lines by
+`.github/workflows/release-packages.yml`. One `v<version>` tag publishes the program and its parts together — one
+version, read from one file — in the dependency order `packages/order.txt` lists.
 
-The gateway's web page is built from `clients/gateway` into `zettcode/src/zettcode/gateway/static`. That output is not
+The gateway's web page is built from `clients/gateway` into `packages/zettcode-gateway/src/zettcode/gateway/static`. That output is not
 in git: the release workflow (and `make build` / `make smoke`) builds it with Node 20+ before the wheel is made, and
-`artifacts` in `zettcode/pyproject.toml` puts it in the wheel. Build a release by hand with `make build`, not with a bare
-`uv build`, or the wheel will have no page.
+`artifacts` in `packages/zettcode-gateway/pyproject.toml` puts it in that wheel. Build a release by hand with
+`make build`, not with a bare `uv build`, or the wheel will have no page.
 
 ## One-time setup
 
@@ -30,10 +30,10 @@ leaves the `id-token: write` the job already asks for as the way in. `release-pa
 
 ## Cutting a release
 
-1. Make sure the `zett-agent` range in `zettcode/pyproject.toml` still covers the release
+1. Make sure the `zett-agent` range in `packages/zettcode-engine/pyproject.toml` still covers the release
    you depend on — raise its floor when a newer zett-agent is what you built
-   against — then set the final version in `zettcode/src/zettcode/__init__.py` (for
-   example `0.1.11`) and commit it.
+   against — then set the final version in `packages/zettcode-engine/src/zettcode/version.py` (for
+   example `0.1.11`) and commit it. Every distribution reads that one file; there is nothing else to bump.
 2. Regenerate the terminal preview: the header of `docs/public/terminal.svg` names
    the version, so a committed bump that leaves it alone fails
    `test_docs.py::test_published_brand_assets_match_the_shared_terminal_pixels`
@@ -45,10 +45,10 @@ leaves the `id-token: write` the job already asks for as the way in. `release-pa
 
    Do not pass `--logo-output` for this: the site's logo is the brand mark, and the
    script's own mark is a different drawing.
-3. If the release moves the `monitor` extra (`zettcode/pyproject.toml`), publish its plugin
-   first: `zettcode-monitor` with a `zettcode` range that allows the old line and the new
-   one, so it installs against both. `make smoke` installs the built wheel with `[monitor]`
-   and fails if the extra cannot be resolved or the plugin does not register its command.
+3. If the release moves an extra (`packages/zettcode/pyproject.toml` names `monitor` and `recap`), publish its
+   plugin first: the plugin's `zettcode-plugin-api` range has to allow the old line and the new one, so it
+   installs against both. `make smoke` installs the built program wheel with both extras and fails if an extra
+   cannot be resolved or the plugin does not register its command.
 4. Tag and push:
 
    ```bash
@@ -57,9 +57,9 @@ leaves the `id-token: write` the job already asks for as the way in. `release-pa
    git push origin v0.1.11
    ```
 
-5. The workflow builds the sdist and wheel, verifies the tag matches its project
-   version, publishes to PyPI, and then opens a GitHub release with generated
-   notes. `pip install zettcode` then writes both `zettcode` and
+5. The workflow builds every distribution in `packages/order.txt` in that order, verifies the tag matches the
+   version, publishes them to PyPI, and then opens a GitHub release with generated notes. `pip install
+   zettcode` then writes both `zettcode` and
    `zettcode-server`, which is the package the VS Code extension installs for
    itself.
 
@@ -71,6 +71,8 @@ publishing and the GitHub release both require a tag push.
 `packages/` holds the plugin distributions this repository publishes — `zettcode-monitor` and `zettcode-recap` today.
 Each is a separate PyPI project with its own version and its own tag, and each is a member of this workspace: they
 share `uv.lock`, the root tooling and the suite `make check` runs, and are still published on their own schedule.
+A plugin depends on `zettcode-plugin-api` and imports nothing else of ours; the rest of `packages/` is the program
+and its parts, released by `release.yml` above.
 
 One workflow releases all of them, `.github/workflows/release-packages.yml`, so a new directory under `packages/`
 needs no workflow of its own. It reads each package's `pyproject.toml` — the name, and the version hatchling reads
@@ -90,19 +92,19 @@ of failing on a duplicate upload, so re-running a release or re-pushing a tag is
    every package whose version PyPI does not have yet is released, which is how several bumps go out in one run. A
    manual run that names neither is refused, so a bare "Run workflow" publishes nothing by accident.
 
-Either way, the package's tests run on Python 3.10 and 3.15 from the paths, beside the `zettcode` in the same
-checkout — the plugin is tested the way a reader installs it, with the test dependencies its own `dev` group
-declares. Then the distributions are built, their metadata is checked, and each is published with
-`PYPI_API_TOKEN`, so the one-time setup above covers them.
+Either way, the package's tests run on Python 3.10 and 3.15 from the paths, beside the program in the same checkout
+— the plugin is tested the way a reader installs it, with the test dependencies its own `dev` group declares. Then
+the distributions are built, their metadata is checked, and each is published with `PYPI_API_TOKEN`, so the
+one-time setup above covers them.
 
 Two rules the checkouts cannot enforce on their own — the first one now fails in the plugin's own suite, and only
 its ordering is left to whoever releases:
 
-- **A new line of `zettcode` needs the plugin published first.** When the program moves to 0.4, widen the plugin's
-  `zettcode` range to allow both lines (`>=0.3,<0.5`) — the plugin's suite fails until you do, because the range is
-  checked against the version in this checkout — and publish that plugin **before** the release whose extra names
-  it. Only the order is unchecked, and the wrong one leaves a window in which `pip install "zettcode[monitor]"`
-  cannot resolve.
+- **A new line of ZettCode needs the plugin published first.** When the program moves to 0.4, widen the plugin's
+  `zettcode-plugin-api` range to allow both lines (`>=0.3,<0.5`) — the plugin's suite fails until you do, because
+  the range is checked against the version in this checkout — and publish that plugin **before** the release whose
+  extra names it. Only the order is unchecked, and the wrong one leaves a window in which
+  `pip install "zettcode[monitor]"` cannot resolve.
 - **Raise a plugin's `zettcode` floor when it starts using newer API, and say so in its `README.md`.** No test can see
   this: the release run and the plugin's own suite both run against this checkout, which has whatever the plugin just
   started calling, so a floor that is too low publishes and only fails later, in a reader's environment.

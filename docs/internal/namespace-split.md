@@ -1,8 +1,9 @@
 # Splitting `zettcode` into namespace packages
 
-Status: **stages 1–2 landed**, stages 3–5 are the plan. This is the contract for the migration: the target shape, who
-owns every module, and the order the work lands in. Each stage ends green — `make check` plus the plugin suites — and
-is committed on its own, so a stage that goes wrong can be reverted without taking the rest with it.
+Status: **stages 1–4 landed**, stage 5 is the release and the documents that describe it (this file among them).
+This is the contract for the migration: the target shape, who owns every module, and the order the work lands in.
+Each stage ended green — `make check` plus the plugin suites — and was committed on its own, so a stage that went
+wrong could be reverted without taking the rest with it.
 
 ## Why
 
@@ -111,14 +112,17 @@ Each stage is one branch and one commit, and ends with `make check` green plus b
    `broker/protocol.py` imports them), with `zettcode/wire.py` holding the two facts the broker shares without the
    agent runtime. `test_structure.py`'s import-closure check now finds zero engine files importing something the
    engine would not ship.
-3. **The namespace and the wheels.** Delete `zettcode/__init__.py`; give every distribution a `packages/zettcode-*/`
-   directory, a `pyproject.toml` and a `__version__`; add them to the uv workspace, `[tool.uv.sources]`, Ruff, mypy, the
-   Makefile and CI. Every test that used the facade or `zettcode.__version__` is updated.
-4. **`zettcode-plugin-api`.** Add the thin re-export package and move the two plugins onto it (`monitor`'s imports
-   become `from zettcode.plugin_api import TuiPlugin, CommandContext, ...`). This is the stage that pays for the split.
-5. **Releases, packaging and docs.** Per-package tags through `release-packages.yml`, `make smoke` for the program's
-   wheel and the engine's, `AGENTS.md` / `RELEASING.md` / the guide, the invariant rows for the new rules (engine
-   imports nothing of ours; a plugin depends on `zettcode-plugin-api` and nothing else).
+3. **The namespace and the wheels.** *Done.* `zettcode/__init__.py` is gone; every distribution is a directory under
+   `packages/` with a `pyproject.toml`, a wheel and a `py.typed`, and all of them read the one version file in the
+   engine's tree. The suite moved to `tests/` at the root, `mypy` names every `src` tree as a package base, and the
+   157 relative imports that climbed to the namespace root are absolute.
+4. **`zettcode-plugin-api`.** *Done.* The thin re-export package exists, both plugins depend on it and import only
+   from it, and `test_a_plugin_depends_on_one_package_of_ours_and_imports_from_it` holds both halves.
+5. **Releases, packaging and docs.** *Done.* `packages/order.txt` is the dependency order `make build` and
+   `release.yml` publish in; `release.yml` builds and publishes every distribution under one `v<version>` tag, and
+   `release-packages.yml` keeps the plugins on their own; `make smoke` builds and installs the whole set; the guide
+   names `zettcode.plugin_api`, and the invariants (P3–P6) pin the engine's closure, the plugin's one dependency, the
+   release order and the one version file.
 
 ## What changes for a reader and a plugin author
 
@@ -128,7 +132,9 @@ from zettcode import ZettCodeConfig, ZettCodeEngine   # and: import zettcode; ze
 from zettcode.app.plugins import TuiPlugin, PluginContext
 
 # after
-from zettcode.engine import ZettCodeConfig, ZettCodeEngine
+from zettcode.config import ZettCodeConfig          # what the engine's settings are, shipped by `zettcode-engine`
+from zettcode.engine import ZettCodeEngine
+from zettcode.version import __version__
 from zettcode.plugin_api import TuiPlugin, PluginContext
 ```
 

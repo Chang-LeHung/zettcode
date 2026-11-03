@@ -11,7 +11,10 @@ plugin and the program cannot disagree about a signature.
 
 from __future__ import annotations
 
+from zettcode.app.agent.conversation.entries import EntryKind
+from zettcode.app.agent.conversation.presenters import Presenter
 from zettcode.app.commands import CommandContext, CommandHost, CommandResult, CommandUi
+from zettcode.app.pets import Pet
 from zettcode.app.plugins import (
     HOST_LINK,
     HostLink,
@@ -47,6 +50,7 @@ from zettcode.engine.plugins import (
     PluginToolMixin,
     PluginTurnMixin,
 )
+from zettcode.engine.plugins.commands import PlainCommandContext, TextCommandResult, TurnCommandResult
 from zettcode.mention import Mention, MentionProvider
 from zettcode.plugin_tui import TuiGroup
 from zettcode.providers import Provider
@@ -55,6 +59,12 @@ from zettcode.tui import Canvas, Host, MouseAction, MouseEvent, Span, Style, Tex
 from zettcode.tui.render import blend, display_width, truncate
 
 __all__ = [
+    "TurnCommandResult",
+    "TextCommandResult",
+    "Presenter",
+    "PlainCommandContext",
+    "Pet",
+    "EntryKind",
     "HOST_LINK",
     "AgentBuild",
     "Canvas",

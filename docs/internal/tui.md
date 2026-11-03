@@ -1,6 +1,6 @@
 # TUI Framework
 
-`zettcode/src/zettcode/tui` is a terminal UI toolkit that knows nothing about
+`packages/zettcode-tui/src/zettcode/tui` is a terminal UI toolkit that knows nothing about
 the coding agent. ZettCode is its first consumer, not its definition. This
 document is the contract and the roadmap for that framework.
 
@@ -60,16 +60,19 @@ input        byte-stream decoding, key tables, paste/mouse/resize/focus events
 terminal     raw mode, alternate screen, size, capability detection
 ```
 
-The repository is a uv workspace: `zettcode/` holds both the terminal agent and the HTTP server in
-`src/zettcode/server/`, `packages/*` hold the plugins published beside it, and tool configuration is the root
-`pyproject.toml`.
+The repository is a uv workspace of one distribution per subsystem under `packages/`, all sharing the `zettcode`
+namespace (PEP 420, no `zettcode/__init__.py` anywhere): `zettcode-engine` is the runtime and the leaves it is written
+on, `zettcode-tui` the framework, `zettcode-broker` the broker, `zettcode-sdk` the documented surface with the daemon
+inside it, `zettcode-server` and `zettcode-gateway` its faces, `zettcode-app` the terminal, `zettcode-plugin-api` what
+a plugin imports, and `zettcode` the program. Tool configuration is the root `pyproject.toml`;
+`docs/internal/namespace-split.md` has the ownership of every module.
 
-Layout:
+Layout (paths under `packages/<distribution>/src/zettcode/`):
 
 ```
-zettcode/src/zettcode/
-  cli.py, config.py  the outermost layer: entry point and validated settings
-  app/               the ZettCode application, built on the framework
+  cli.py, plugin_cli.py  the outermost layer, shipped by `zettcode`: entry point and the plugin command
+  config.py          validated settings, shipped by `zettcode-engine`
+  app/               the ZettCode application (in `zettcode-app`), built on the framework
     agent/           transcript.py (the conversation model and its render
                      cache), projection.py (agent events into that model),
                      core.py (AgentClient and composition, now in engine/), title.py (the
@@ -85,7 +88,7 @@ zettcode/src/zettcode/
                      virtualized view over the model), clipboard.py (reading a
                      desktop image), widgets/ (shell-specific widgets such as
                      the Composer)
-  tui/               the reusable, agent-agnostic framework
+  tui/               the reusable, agent-agnostic framework (in `zettcode-tui`)
 ```
 
 The arrows only point one way: `ui` reads `agent`, `agent` builds on `tui`, and
@@ -129,7 +132,7 @@ tui/
 
 The framework is complete for the shipping application and holds no reference to
 the agent or to `zettcode.app`. The old `components.py`, `application.py`, and
-`tui.py` are gone: `zettcode/src/zettcode/app/` is the only implementation of the
+`tui.py` are gone: `packages/zettcode-app/src/zettcode/app/` is the only implementation of the
 application now.
 
 ## Core contracts
@@ -373,7 +376,7 @@ cached prefix plus the open tail, and only the visible rows are ever built.
 
 ## The application
 
-`zettcode/src/zettcode/app/` is the only consumer of the framework, and the only place
+`packages/zettcode-app/src/zettcode/app/` is the only consumer of the framework, and the only place
 that knows about agents, sessions, and tools.
 
 ### How `app/agent/` and `engine/` are laid out
@@ -439,7 +442,7 @@ rather than on a user's screen.
 ### Messages between sessions
 
 A second process, the broker, lets one session message another, and lets anything that holds its token do
-the same; invariants B1-B17 hold it. It is one package, `zettcode/src/zettcode/broker/`: a Starlette application served
+the same; invariants B1-B17 hold it. It is one package, `packages/zettcode-broker/src/zettcode/broker/`: a Starlette application served
 by uvicorn on a loopback port, and the client a session reaches it with. A session is a WebSocket
 (`/inbox`: registered while it is open), sending is `POST /messages`, and who a message is from is the
 session its key belongs to or an external source that names itself. A message says what a busy recipient should do
@@ -447,7 +450,7 @@ with it: `steer` (the default) hands it to the request that is running, and `fol
 The names are in `zettcode/modes.py`, a leaf every layer may import. A session that cannot steer — a command or a side
 question is running, the steering limit is reached, the sender asked for a follow-up,
 or the message answers a one-to-one window — holds it in its inbox, and a steered message the run never reads goes
-back there rather than being lost. `zettcode/src/zettcode/filelock.py` is the
+back there rather than being lost. `packages/zettcode-engine/src/zettcode/filelock.py` is the
 operating-system file lock the broker is made a singleton with, shared with the session store's own lock.
 
 - Server side, one job each: `protocol` is what is said and the limits on it (the routes and the WebSocket

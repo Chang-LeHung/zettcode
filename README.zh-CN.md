@@ -113,9 +113,10 @@ uv run zettcode --workspace .    # 从源码运行
 ```
 
 ZettCode 提供终端应用和它的 HTTP 服务器;智能体运行时来自
-[`zett-agent`](https://github.com/Chang-LeHung/zett-agent)。仓库是一个 uv workspace:`zettcode/` 是这个包 —— 终端代理,
-以及 `src/zettcode/server/` 里的 API;`packages/` 是随它发布、各自版本的插件(`/monitor`、`/recap`,
-用 `zettcode[all]` 安装);`clients/typescript/` 是它的 TypeScript 客户端,`clients/vscode/` 是基于该客户端的
+[`zett-agent`](https://github.com/Chang-LeHung/zett-agent)。仓库是一个 uv workspace:`packages/` 下每个子系统一个发行包
+—— 读者安装的那个程序、它依赖的 engine、控件框架、broker、SDK、server 与 gateway、终端应用,以及插件 API ——
+它们共享同一个 `zettcode` 命名空间;插件(`/monitor`、`/recap`,用 `zettcode[all]` 安装)也在这里发布。
+`clients/typescript/` 是服务器的 TypeScript 客户端,`clients/vscode/` 是基于该客户端的
 VS Code 侧边栏。贡献者约定和不变量放在
 [`AGENTS.md`](AGENTS.md) 与 [`docs/internal/`](docs/internal/)，不进入用户指南。
 本地预览、重新生成效果图的方法见
