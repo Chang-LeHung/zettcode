@@ -710,6 +710,10 @@ def test_a_plugin_depends_on_one_package_of_ours_and_imports_from_it():
         ]
         assert [requirement.name for requirement in ours] == ["zettcode-plugin-api"], name
 
+        # The plugin's own module is inside the namespace too, so a subpackage two levels down has to be able to
+        # import it absolutely: the climb rule forbids `from ...x`, and `from zettcode.monitor.x` is the spelling it
+        # prescribes. Everything else of ours has to come through the API package.
+        own = {value.split(":", 1)[0] for value in settings["project"]["entry-points"]["zettcode.plugins"].values()}
         imports = sorted(
             target
             for path in (project.parent / "src").rglob("*.py")
@@ -717,6 +721,7 @@ def test_a_plugin_depends_on_one_package_of_ours_and_imports_from_it():
             if target.startswith("zettcode.")
             and target != "zettcode.plugin_api"
             and not target.startswith("zettcode.plugin_api.")
+            and not any(target == module or target.startswith(f"{module}.") for module in own)
         )
         assert imports == [], f"{name} imports outside the API: {imports}"
 
