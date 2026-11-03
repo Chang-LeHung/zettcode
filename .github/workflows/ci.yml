@@ -272,22 +272,29 @@ jobs:
       - name: Build and smoke-test the wheel
         run: make smoke
 
-      - name: Verify the program's wheel ships both programs
+      # The two programs are two distributions now: the program writes both console scripts, and the server's own wheel
+      # carries `zettcode/server/`. A misspelt entry point or a wheel that stopped shipping its code has to fail here.
+      - name: Verify the wheels ship both programs
         run: |
           python3 - <<'PY'
           import glob
           import zipfile
 
-          wheels = glob.glob(".smoke/zettcode-*.whl")
-          assert len(wheels) == 1, wheels
-          wheel = wheels[0]
-          archive = zipfile.ZipFile(wheel)
-          names = archive.namelist()
-          assert any(name.startswith("zettcode/server/") for name in names), names
-          entry_points = [name for name in names if name.endswith("entry_points.txt")]
-          assert len(entry_points) == 1, names
-          written = archive.read(entry_points[0]).decode()
+          program = glob.glob(".smoke/zettcode-0.*.whl")
+          assert len(program) == 1, program
+          with zipfile.ZipFile(program[0]) as archive:
+              names = archive.namelist()
+              entry_points = [name for name in names if name.endswith("entry_points.txt")]
+              assert len(entry_points) == 1, names
+              written = archive.read(entry_points[0]).decode()
           assert "zettcode = zettcode.cli:main" in written, written
           assert "zettcode-server = zettcode.server.cli:main" in written, written
-          print(f"{wheel}: {len(names)} files, both console scripts")
+
+          server = glob.glob(".smoke/zettcode_server-0.*.whl")
+          assert len(server) == 1, server
+          with zipfile.ZipFile(server[0]) as archive:
+              carried = archive.namelist()
+          assert any(name.startswith("zettcode/server/") for name in carried), carried
+
+          print(f"{program[0]} writes both console scripts; {server[0]} carries the server")
           PY
