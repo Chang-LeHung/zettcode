@@ -31,15 +31,15 @@ from zettcode.config import ModelConfig
 from zettcode.engine.dialogue.side import SideQuestions
 from zettcode.engine.extensions.capabilities import ModelCapabilities
 from zettcode.engine.extensions.files import CodingBundle
-from zettcode.engine.extensions.messaging import SessionMessagingExtension
 from zettcode.engine.extensions.subagents import subagent_extension
 from zettcode.engine.extensions.usage import UsageExtension
 from zettcode.engine.permission import DENIED_MESSAGE, Permission, ShellDenyExtension, ShellPolicy
 from zettcode.engine.permission.approval import ShellApprovalMemory
 from zettcode.engine.permission.sandbox import ShellSandbox
-from zettcode.engine.plugins.builtin_agent import _shared_with_children
 from zettcode.engine.storage import SessionStore
 from zettcode.engine.tools.boundary import Sandboxer
+from zettcode.sdk.builtins import _shared_with_children
+from zettcode.sdk.extensions.messaging import SessionMessagingExtension
 
 
 class _Scripted:

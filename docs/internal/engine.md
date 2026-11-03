@@ -37,8 +37,14 @@ The engine is not part of the contract. There are no third-party plugins either,
 
 In `zettcode/engine/`: `core.py` (`ZettCodeEngine`), `agent/` (`ZettCodeAgent`, built from the mixins `base`,
 `settings`, `context`, `sessions`, `turns`, `interaction`, `exports`, plus `prompt`), `dialogue/`, `extensions/`,
-`permission/`, `storage/`, `tools/`, `export/`, `plugins/`, `pipeline.py`,
-`server_tools.py`, and the messaging between sessions (`messenger.py`).
+`permission/`, `storage/`, `tools/`, `export/`, `plugins/`, `pipeline.py` and `server_tools.py`.
+
+The engine imports nothing else of ours. What it needs from the rest of the program is either a leaf it ships itself
+(the settings, the paths, the prompt parts) or is passed in by whoever builds the runtime: the plugin set that
+composes the agent (the tools, the store, the permission, the compaction, the MCP client) is
+`zettcode/sdk/builtins.py`, and the line to the other sessions is `zettcode/sdk/messenger.py`. That is what lets a
+plugin depend on the engine alone; `docs/internal/namespace-split.md` is the plan for the same boundary between the
+other packages.
 
 Shared by the engine, the SDK and the views, and so at the top and not under the engine: `budget.py` (the names of the
 context's sources), `wording.py` (the word for an unnamed session), `error_text.py` (`describe_error`), `registry.py`

@@ -23,9 +23,7 @@ from zettcode.app.agent.agent import TerminalAgent
 from zettcode.app.plugins import BUILTIN_PLUGINS
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine import core as runtime_module
-from zettcode.engine.messenger import Messenger
 from zettcode.engine.plugins import (
-    AGENT_PLUGINS,
     AgentBuild,
     Plugin,
     PluginContext,
@@ -33,6 +31,8 @@ from zettcode.engine.plugins import (
     load_plugins,
 )
 from zettcode.engine.plugins import services as names
+from zettcode.sdk.builtins import AGENT_PLUGINS, load_agent_plugins
+from zettcode.sdk.messenger import Messenger
 
 
 class FakeEntryPoint:
@@ -353,7 +353,7 @@ def test_a_run_with_the_optional_tools_off_hands_the_agent_the_extensions_the_ru
 
 def test_a_coding_child_is_given_these_of_the_extensions_the_parent_runs_and_not_those(tmp_path):
     """The parent's real list, with every switch on: a child is the parent without the complicated parts."""
-    from zettcode.engine.plugins.builtin_agent import _shared_with_children
+    from zettcode.sdk.builtins import _shared_with_children
 
     messenger = object.__new__(Messenger)
     config = make_config(tmp_path, todowrite_enabled=True, subagent_enabled=True, skills_enabled=True)
@@ -445,7 +445,7 @@ def test_the_plan_is_always_reachable_yet_only_handed_to_the_agent_when_the_tool
 
 def test_the_runtime_reads_its_extensions_back_from_the_plugins_that_made_them(tmp_path, monkeypatch):
     monkeypatch.setattr(runtime_module.os, "chdir", lambda path: None)
-    runtime = runtime_module.ZettCodeEngine.preview(make_config(tmp_path))
+    runtime = runtime_module.ZettCodeEngine.preview(make_config(tmp_path), load_agent_plugins)
     plugins = runtime.plugins
 
     assert runtime.usage is plugins.service(names.USAGE, object)
@@ -463,7 +463,7 @@ def test_the_runtime_reads_its_extensions_back_from_the_plugins_that_made_them(t
 
 def test_a_bundle_without_the_todo_plugin_shows_no_plan_instead_of_failing(tmp_path, monkeypatch):
     monkeypatch.setattr(runtime_module.os, "chdir", lambda path: None)
-    runtime = runtime_module.ZettCodeEngine.preview(make_config(tmp_path))
+    runtime = runtime_module.ZettCodeEngine.preview(make_config(tmp_path), load_agent_plugins)
     runtime.plugins = Plugins()
 
     assert runtime.todos is None
@@ -489,7 +489,7 @@ async def test_the_runtime_gives_the_agent_the_plugins_extensions_then_the_host(
     monkeypatch.setattr(runtime_module.os, "chdir", lambda path: None)
 
     config = make_config(tmp_path, todowrite_enabled=True)
-    runtime = runtime_module.ZettCodeEngine.preview(config)
+    runtime = runtime_module.ZettCodeEngine.preview(config, load_agent_plugins)
     extra = FakeEntryPoint("extra", offering("extra", "extra-ext"))
     runtime.plugins = load_plugins(config, builtins=AGENT_PLUGINS, entry_points=[extra], shared=runtime_inputs(runtime))
     await runtime.start()

@@ -27,7 +27,6 @@ from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine import core as runtime_module
 from zettcode.engine.extensions.usage import UsageSnapshot
 from zettcode.engine.plugins import (
-    AGENT_PLUGINS,
     PluginAgentMixin,
     PluginEventMixin,
     PluginExtension,
@@ -41,6 +40,7 @@ from zettcode.engine.plugins import (
 )
 from zettcode.engine.plugins import loader as loader_module
 from zettcode.providers import Provider
+from zettcode.sdk.builtins import AGENT_PLUGINS
 from zettcode.tui import DARK, Span, Style, TextLine
 
 

@@ -14,15 +14,16 @@ from zettcode.broker.client import BrokerClient, Receipt, SendError
 from zettcode.broker.protocol import MAX_HOPS, MAX_TEXT
 from zettcode.config import ModelConfig, ZettCodeConfig, load_config
 from zettcode.engine.dialogue.side import SideQuestions, question
-from zettcode.engine.extensions.messaging import (
+from zettcode.relay import Relayed
+from zettcode.sdk.builtins import load_agent_plugins
+from zettcode.sdk.extensions.messaging import (
     LIST_SESSIONS_TOOL_NAME,
     MANAGE_GROUP_TOOL_NAME,
     MESSAGE_HISTORY_TOOL_NAME,
     SEND_MESSAGE_TOOL_NAME,
     SessionMessagingExtension,
 )
-from zettcode.engine.messenger import Messenger
-from zettcode.relay import Relayed
+from zettcode.sdk.messenger import Messenger
 
 ME = "01a10b75-aaaa-7000-8000-000000000001"
 BOB = "02b20c86-bbbb-7000-8000-000000000002"
@@ -444,7 +445,10 @@ async def test_the_runtime_gives_the_agent_the_tools_only_when_the_configuration
 
     monkeypatch.setattr("zett_agent.client.create_agent", fake_create_agent)
     monkeypatch.setattr(runtime_module.os, "chdir", lambda path: None)
-    runtime = runtime_module.ZettCodeEngine.preview(_config_with(tmp_path, sessions_enabled=enabled))
+    config = _config_with(tmp_path, sessions_enabled=enabled)
+    # The runtime carries the line to the other sessions but does not build it: whoever builds the runtime does,
+    # which is how the engine stays free of the broker.
+    runtime = runtime_module.ZettCodeEngine.preview(config, load_agent_plugins, messenger=Messenger.create(config))
     assert (runtime.messenger is not None) is enabled
     await runtime.start()
     try:

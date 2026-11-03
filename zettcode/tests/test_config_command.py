@@ -21,8 +21,8 @@ from zettcode.app.ui.widgets.input_page import MASK
 from zettcode.config import load_config
 from zettcode.config_edit import ConfigEditError
 from zettcode.engine import core as runtime_module
-from zettcode.engine.plugins import AGENT_PLUGINS
 from zettcode.providers import BUILTIN_PROVIDERS, Api, Provider
+from zettcode.sdk.builtins import AGENT_PLUGINS
 from zettcode.tui import ListPage, walk
 from zettcode.tui.testing import Harness
 

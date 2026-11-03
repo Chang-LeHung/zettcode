@@ -18,9 +18,11 @@ from the root.
 - `zettcode/` is the terminal coding agent. `src/zettcode` holds `cli.py` and
   `config.py` at the top, the agent core in `engine/` (`ZettCodeEngine` in
   `core.py`, and the `dialogue/`, `extensions/`, `permission/`, `storage/`,
-  `tools/`, `export/` it is built from, plus the messenger between sessions;
-  it imports nothing of the terminal, the SDK or the server — `docs/internal/engine.md`
-  has the design), the terminal application in `app/` (`agent/` for the
+  `tools/`, `export/` it is built from;
+  it imports nothing of ours — not the terminal, the SDK, the server, the broker, nor the built-in plugin set,
+  which is `sdk/builtins.py` and is passed in by whoever builds the runtime — `docs/internal/engine.md`
+  has the design, `docs/internal/namespace-split.md` the packages it is being split into), the
+  terminal application in `app/` (`agent/` for the
   conversation model and the event projection, `ui/` for the shell and the
   views; `docs/internal/tui.md` has the map and `tests/test_structure.py` the
   import order), and the reusable framework in `tui/`; `tests` drives

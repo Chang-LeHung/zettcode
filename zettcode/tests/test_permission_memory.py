@@ -19,6 +19,7 @@ from zettcode.engine import core as runtime_module
 from zettcode.engine.permission import Permission
 from zettcode.engine.storage import SessionStore
 from zettcode.engine.storage.metadata import SESSION_METADATA_FILE
+from zettcode.sdk.builtins import load_agent_plugins
 
 
 def _runtime(tmp_path: Path, monkeypatch, *, level: Permission = Permission.ASK):
@@ -32,7 +33,7 @@ def _runtime(tmp_path: Path, monkeypatch, *, level: Permission = Permission.ASK)
         sessions_enabled=False,
         shell_approval=ShellApprovalMode.ALLOW_ALL if level is Permission.FULL else ShellApprovalMode.REVIEW,
     )
-    return runtime_module.ZettCodeEngine.preview(config)
+    return runtime_module.ZettCodeEngine.preview(config, load_agent_plugins)
 
 
 async def _stored(runtime, session_id: str, *, permission: str | None = None) -> None:

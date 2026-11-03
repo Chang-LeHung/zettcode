@@ -16,6 +16,7 @@ from plugin_helpers import agent_extensions
 from zettcode.config import ModelConfig, ZettCodeConfig, load_config
 from zettcode.engine.extensions.harness import SwitchedHarness
 from zettcode.engine.extensions.harness_switch import HarnessSwitch
+from zettcode.sdk.builtins import load_agent_plugins
 
 #: The tools the framework's harness adds to a request.
 HARNESS_TOOLS = {"repo_create", "repo_load", "repo_unload", "profile_tools"}
@@ -372,7 +373,7 @@ async def test_the_runtime_turns_the_harness_on_and_off_and_starts_from_the_conf
             mcp_enabled=False,
             **changes,
         )
-        return runtime_module.ZettCodeEngine.preview(config)
+        return runtime_module.ZettCodeEngine.preview(config, load_agent_plugins)
 
     off, on = runtime(), runtime(jit_harness=True)
     assert off.harness.on is False and on.harness.on is True

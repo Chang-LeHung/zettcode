@@ -13,10 +13,10 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from zettcode.app.commands import Command, CommandResult
-from zettcode.engine.plugins.builtin_agent import AGENT_PLUGINS
 from zettcode.engine.plugins.commands import PlainCommandContext, TextCommandResult, TurnCommandResult
 from zettcode.engine.plugins.context import PluginContext
 from zettcode.engine.plugins.loader import Loader, run
+from zettcode.sdk.builtins import AGENT_PLUGINS
 from zettcode.tui import RESERVED_THEMES
 
 from .builtins import BUILTIN_PLUGINS

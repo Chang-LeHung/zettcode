@@ -378,6 +378,7 @@ def test_a_file_reference_reaches_the_model_as_the_sentence(workspace: Path):
 def test_the_workspace_offers_files_through_the_builtin_bundle(tmp_path: Path):
     """The shell merges whatever the bundle holds, so the provider has to be in it."""
     from zettcode.engine.plugins import load_plugins
+    from zettcode.sdk.builtins import AGENT_PLUGINS
 
     config = ZettCodeConfig(
         workspace=tmp_path,
@@ -388,7 +389,7 @@ def test_the_workspace_offers_files_through_the_builtin_bundle(tmp_path: Path):
     )
     (tmp_path / "solo.py").write_text("x = 1\n")
 
-    plugins = load_plugins(config, entry_points=())
+    plugins = load_plugins(config, builtins=AGENT_PLUGINS, entry_points=())
     registry = MentionRegistry(plugins.mentions)
 
     assert "solo.py" in [mention.name for mention in registry.candidates("solo")]

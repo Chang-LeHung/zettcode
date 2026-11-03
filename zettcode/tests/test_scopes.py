@@ -15,7 +15,7 @@ from zett_agent.extensions.skill import SkillExtension
 
 from plugin_helpers import agent_extensions
 from zettcode.config import ModelConfig, ZettCodeConfig, load_config
-from zettcode.engine.extensions.mcp import build_scoped_mcp_extension
+from zettcode.sdk.extensions.mcp import build_scoped_mcp_extension
 
 
 def _config(tmp_path: Path, home: Path, **changes) -> ZettCodeConfig:

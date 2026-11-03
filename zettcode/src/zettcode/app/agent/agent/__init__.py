@@ -12,12 +12,12 @@ the store). The views import those names from here and not from the engine.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from zettcode.engine.agent import ZettCodeAgent
 from zettcode.engine.agent.sessions import StoredSession
 from zettcode.engine.core import PluginLoader, ZettCodeEngine
-from zettcode.engine.messenger import Messenger as SessionLink
+from zettcode.sdk.messenger import Messenger as SessionLink
 
 from .commands import CommandsMixin
 
@@ -43,7 +43,9 @@ class TerminalAgent(CommandsMixin, ZettCodeAgent):
     @property
     def messenger(self) -> SessionLink | None:
         """Return the line to the other sessions, or ``None`` when the configuration switches messaging off."""
-        return self.runtime.messenger
+        # The runtime carries it as ``object`` (the engine does not depend on the broker); this is the boundary that
+        # says what it really is.
+        return cast("SessionLink | None", self.runtime.messenger)
 
     @property
     def client(self) -> Client:
@@ -61,9 +63,9 @@ class TerminalAgent(CommandsMixin, ZettCodeAgent):
     @classmethod
     async def create(cls, config: ZettCodeConfig) -> TerminalAgent:
         """Build the engine with the terminal's plugins and start it."""
-        return cls(await ZettCodeEngine.create(config, _terminal_loader()))
+        return cls(await ZettCodeEngine.create(config, _terminal_loader(), messenger=SessionLink.create(config)))
 
     @classmethod
     def preview(cls, config: ZettCodeConfig) -> TerminalAgent:
         """Wrap an engine that still has to start, built with the terminal's plugins, so the shell can paint first."""
-        return cls(ZettCodeEngine.preview(config, _terminal_loader()))
+        return cls(ZettCodeEngine.preview(config, _terminal_loader(), messenger=SessionLink.create(config)))

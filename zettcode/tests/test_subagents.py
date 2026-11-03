@@ -16,6 +16,7 @@ from zettcode.engine.extensions.capabilities import ModelCapabilities
 from zettcode.engine.extensions.files import FileTools
 from zettcode.engine.extensions.subagents import build_subagents, subagent_extension
 from zettcode.engine.storage import SessionStore
+from zettcode.sdk.builtins import load_agent_plugins
 
 
 class _StubModel:
@@ -398,7 +399,7 @@ async def _started_extensions(tmp_path, monkeypatch, **settings):
         mcp_enabled=False,
         **settings,
     )
-    await runtime_module.ZettCodeEngine.preview(config).start()
+    await runtime_module.ZettCodeEngine.preview(config, load_agent_plugins).start()
     return given[0]
 
 

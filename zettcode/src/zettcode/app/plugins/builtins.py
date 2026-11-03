@@ -181,7 +181,7 @@ class BuiltinPresenters(TuiPlugin):
 
 
 #: Plugins loaded from the repository itself, never from a distribution. The agent-side ones, which build on
-#: state the runtime hands over, are :data:`~zettcode.engine.plugins.builtin_agent.AGENT_PLUGINS`.
+#: state the runtime hands over, are :data:`~zettcode.sdk.builtins.AGENT_PLUGINS`.
 BUILTIN_PLUGINS: tuple[TuiPlugin, ...] = (
     ShellRows(),
     # The commands that act on the application, in the order ``/help`` lists them.
