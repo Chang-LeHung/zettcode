@@ -23,8 +23,8 @@ from typing import Protocol
 
 from zett_agent.messages import UserMessage
 
-from zettcode.broker.protocol import VIA_AGENT, VIA_EXTERNAL, VIA_USER, ImageData
 from zettcode.modes import MODE_STEER
+from zettcode.wire import VIA_AGENT, VIA_EXTERNAL, VIA_USER, ImageData
 
 #: Attribute of a stored message that came from another session. Its value is the :meth:`Relayed.mark`.
 RELAY = "relay"

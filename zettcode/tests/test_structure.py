@@ -613,3 +613,60 @@ def test_the_hub_and_the_roster_know_nothing_of_the_web():
                     found.append(f"{name}: {module}")
 
     assert found == []
+
+
+#: What the engine's distribution ships besides its own tree: the leaves the runtime is written on. They are the
+#: engine's because it may not import anything of ours, which is what lets a plugin depend on the engine alone.
+ENGINE_LEAVES = frozenset(
+    {
+        "_compat",
+        "budget",
+        "config",
+        "config_edit",
+        "error_text",
+        "filelock",
+        "logging_setup",
+        "mention",
+        "modes",
+        "paths",
+        "plugin_tui",
+        "processes",
+        "prompt",
+        "providers",
+        "registry",
+        "relay",
+        "statusline_parts",
+        "wire",
+        "wording",
+    }
+)
+
+
+def test_the_engine_imports_only_what_its_package_ships():
+    """The engine is the root of the split: the only things it imports of ours are the leaves it ships.
+
+    An import of anything above it — the SDK, the terminal, the broker, the server — is a dependency a plugin would
+    have to carry to use the engine, and one the namespace split cannot express without a cycle. `docs/internal/
+    namespace-split.md` is the plan this list comes from.
+    """
+    source = PROJECT / "src" / "zettcode"
+    engine = source / "engine"
+    offenders: list[str] = []
+    for path in sorted(engine.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            targets: list[str] = []
+            if isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                targets = [node.module]
+            elif isinstance(node, ast.Import):
+                targets = [alias.name for alias in node.names]
+            for target in targets:
+                parts = target.split(".")
+                if len(parts) < 2 or parts[0] != "zettcode" or parts[1] == "engine":
+                    continue
+                if parts[1] not in ENGINE_LEAVES:
+                    offenders.append(f"{path.relative_to(source)}: {target}")
+
+    assert sorted(offenders) == []
+    missing = sorted(name for name in ENGINE_LEAVES if not (source / f"{name}.py").is_file())
+    assert missing == [], f"the engine's leaves are all present; missing {missing}"

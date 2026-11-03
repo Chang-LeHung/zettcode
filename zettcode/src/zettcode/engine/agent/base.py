@@ -11,7 +11,7 @@ from pathlib import Path
 
 from zettcode.engine.core import ZettCodeEngine
 from zettcode.engine.storage import SessionLocked
-from zettcode.mentions import MentionProvider
+from zettcode.mention import MentionProvider
 
 
 class AgentBase:

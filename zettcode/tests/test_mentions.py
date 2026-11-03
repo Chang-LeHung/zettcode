@@ -15,10 +15,10 @@ from zettcode.app.ui.widgets import Composer
 from zettcode.app.ui.widgets.completer import CommandCompleter
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine.storage import SessionStore
+from zettcode.mention import MENTION
 from zettcode.mentions import (
     LISTING_SECONDS,
     MAX_CANDIDATES,
-    MENTION,
     FileMentions,
     Mention,
     MentionProvider,
