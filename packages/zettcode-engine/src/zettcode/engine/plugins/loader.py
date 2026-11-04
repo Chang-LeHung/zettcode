@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import logging
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -46,6 +47,8 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zettcode.config import ZettCodeConfig
     from zettcode.mention import MentionProvider
     from zettcode.providers import Provider
+
+logger = logging.getLogger("zettcode.plugins")
 
 #: Entry-point group a distribution publishes its plugin under.
 PLUGIN_ENTRY_POINT_GROUP = "zettcode.plugins"
@@ -167,6 +170,14 @@ def run(
         # module cannot be imported here (it imports this one), so the union is written out; `off_names` is the same
         # rule for the front ends.
         disabled = set(config.disabled_plugins) | set(read_disabled_plugins(config.plugins_file))
+        # A name on that list can only ever reach a distribution or a file. The plugins the program lists are the
+        # program: they loaded above and nothing here unloads them, so a line that names one is a line that does
+        # nothing, and a reader who wrote it is told so instead of left to think the part is off.
+        for origin in sorted(disabled & set(loader.builtins)):
+            logger.warning(
+                "plugins.required",
+                extra={"plugin": origin, "reason": "part of the program; [plugins] disable does not reach it"},
+            )
         for point in points:
             if point.name in disabled:
                 continue

@@ -7,7 +7,7 @@ and a haunch. At work an ear flicks and it blinks; when patted it squints, blush
 
 from __future__ import annotations
 
-from .model import GLAD, IDLE, WORKING, Pet, edited
+from zettcode.plugin_api.pets import GLAD, IDLE, WORKING, Pet, edited
 
 DESCRIPTION = "a white bear sitting side on; an ear flicks while a request runs"
 

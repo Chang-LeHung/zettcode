@@ -6,11 +6,11 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from zettcode._compat import StrEnum
+from zettcode.plugin_api.panels import pressed
 from zettcode.tui import MARKER, PROMPT, SEPARATOR, Canvas, Host, MouseAction, MouseEvent, Widget
 from zettcode.tui.render import Style, truncate
 
 from .follow_up import one_line
-from .panel import pressed
 
 
 class SendKind(StrEnum):

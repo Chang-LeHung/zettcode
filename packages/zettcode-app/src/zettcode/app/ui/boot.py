@@ -20,11 +20,12 @@ from __future__ import annotations
 from collections.abc import Collection
 from pathlib import Path
 
+from zettcode.plugin_api.entries import EntryKind, TextEntry
+from zettcode.plugin_api.presenters import CONTENT_INDENT
+from zettcode.presenters.presenters import WelcomePresenter
 from zettcode.tui import PROMPT, Canvas, Constraints, Rule, Size, StatusBar, Text, TextArea, TextLine, VBox, Widget
 from zettcode.tui.layout import Slot
 
-from ..agent.conversation.entries import EntryKind, TextEntry
-from ..agent.conversation.presenters import CONTENT_INDENT, WelcomePresenter
 from . import labels
 from .widgets.welcome import WELCOME
 

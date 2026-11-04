@@ -14,15 +14,15 @@ from xml.etree import ElementTree
 import pytest
 from zett_agent.extensions.base import AgentExtension
 
-from zettcode.app.agent.conversation.entries import TextEntry
-from zettcode.app.agent.conversation.presenters import WelcomePresenter
-from zettcode.app.brand import LOGO_LINES, LOGO_PALETTE, LOGO_PIXELS
-from zettcode.app.commands import CommandContext, CommandUi
 from zettcode.app.plugins import HOST_LINK, HostLink
 from zettcode.app.plugins.loader import terminal_context
 from zettcode.app.ui.widgets.welcome import WELCOME
 from zettcode.config import ModelConfig, ZettCodeConfig, load_config
 from zettcode.engine.plugins.commands import PlainCommandContext
+from zettcode.plugin_api.commands import CommandContext, CommandUi
+from zettcode.plugin_api.entries import TextEntry
+from zettcode.presenters.brand import LOGO_LINES, LOGO_PALETTE, LOGO_PIXELS
+from zettcode.presenters.presenters import WelcomePresenter
 from zettcode.tui import DARK, Canvas, Style
 from zettcode.tui.theme_file import theme_from_toml
 

@@ -14,6 +14,7 @@ from zett_agent.dispatcher import AgentEventDispatcher
 from zett_agent.events import AgentEvent
 
 from zettcode.engine.dialogue.ask import declined_answer
+from zettcode.plugin_api.entries import EntryStatus
 from zettcode.relay import Relayed
 from zettcode.sdk.events import (
     AnyEvent,
@@ -41,7 +42,6 @@ from zettcode.sdk.events import (
 from zettcode.sdk.translation import Bridge, translate
 from zettcode.sdk.types import Usage
 
-from .entries import EntryStatus
 from .stops import stop_text
 from .transcript import Transcript
 

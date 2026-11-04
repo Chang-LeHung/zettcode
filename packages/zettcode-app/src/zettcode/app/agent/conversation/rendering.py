@@ -30,11 +30,18 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from zettcode.plugin_api.entries import (
+    DeleteEntry,
+    EditEntry,
+    EntryStatus,
+    MessageEntry,
+    ReadEntry,
+    ToolEntry,
+    WriteEntry,
+)
+from zettcode.presenters.text import DECLINED_NOTE, limit_output
 from zettcode.tui import ELLIPSIS, SEPARATOR
 from zettcode.tui.render import GENERIC, language_for
-
-from .entries import DeleteEntry, EditEntry, EntryStatus, MessageEntry, ReadEntry, ToolEntry, WriteEntry
-from .text import DECLINED_NOTE, limit_output
 
 #: Output kinds the chain shapes; a link claims one or more of them.
 TOOL = "tool"

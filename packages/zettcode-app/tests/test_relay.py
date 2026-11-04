@@ -9,8 +9,6 @@ from zett_agent.agent import AgentRunConfig, AgentRunContext, AgentState
 from zett_agent.extensions.events import MessageAppendedEvent, MessageTiming
 from zett_agent.messages import AssistantMessage, SystemMessage, UserMessage
 
-from zettcode.app.agent.conversation.entries import EntryKind, RelayEntry, TextEntry
-from zettcode.app.agent.conversation.presenters import DEFAULT_PRESENTERS, render_entry
 from zettcode.app.agent.conversation.replay import replay
 from zettcode.app.agent.conversation.transcript import Transcript
 from zettcode.app.ui.widgets import TranscriptSource
@@ -18,6 +16,8 @@ from zettcode.broker.client import RosterEntry
 from zettcode.engine.export import build_trace
 from zettcode.engine.storage import SessionStore
 from zettcode.mentions import MentionRegistry, SessionMentions
+from zettcode.plugin_api.entries import EntryKind, RelayEntry, TextEntry
+from zettcode.presenters.presenters import DEFAULT_PRESENTERS, render_entry
 from zettcode.relay import RELAY, VIA_AGENT, VIA_EXTERNAL, VIA_USER, Relayed, relay_of
 from zettcode.tui import DARK, LIGHT
 
@@ -425,7 +425,7 @@ def test_the_menu_line_says_where_a_session_works_so_two_alike_can_be_told_apart
 async def test_a_restored_session_has_the_whole_of_a_message_the_agent_sent_and_can_expand_it(tmp_path):
     from zett_agent.messages import ToolCall, ToolMessage
 
-    from zettcode.app.agent.conversation.entries import MessageEntry
+    from zettcode.plugin_api.entries import MessageEntry
 
     text = "\n".join(f"line {n}" for n in range(12))
     store = await _stored(

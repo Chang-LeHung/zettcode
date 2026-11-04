@@ -18,7 +18,8 @@ from dataclasses import dataclass, field
 from zettcode._compat import StrEnum
 from zettcode.tui import LineSource, Markdown
 
-from .text import THINKING_LABEL
+#: What a thinking row says until the model has said what it is doing.
+THINKING_LABEL = "Thinking"
 
 
 class EntryKind(StrEnum):

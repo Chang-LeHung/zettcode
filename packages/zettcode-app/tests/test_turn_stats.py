@@ -5,7 +5,12 @@ from __future__ import annotations
 import pytest
 
 from zettcode.app import Transcript, TranscriptView
-from zettcode.app.agent.conversation.text import (
+from zettcode.app.plugins.builtins import BUILTIN_PLUGINS
+from zettcode.app.plugins.loader import terminal_context
+from zettcode.app.ui.turns import TurnTally, turn_parts
+from zettcode.config import ModelConfig, ZettCodeConfig
+from zettcode.plugin_api.state import TurnContext
+from zettcode.presenters.text import (
     cache_text,
     calls_text,
     pack_segments,
@@ -13,11 +18,6 @@ from zettcode.app.agent.conversation.text import (
     tokens_text,
     tools_text,
 )
-from zettcode.app.plugins.builtins import BUILTIN_PLUGINS
-from zettcode.app.plugins.loader import terminal_context
-from zettcode.app.plugins.state import TurnContext
-from zettcode.app.ui.turns import TurnTally, turn_parts
-from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.sdk.events import ToolFinished, ToolStarted
 from zettcode.sdk.types import Usage
 from zettcode.statusline import NAMES, TURN_PARTS, is_part, unknown

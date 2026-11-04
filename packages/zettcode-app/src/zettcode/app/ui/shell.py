@@ -71,8 +71,9 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
     import asyncio
     from collections.abc import Sequence
 
-    from zettcode.app.plugins.state import Activity, UiRow
     from zettcode.mentions import MentionRegistry
+    from zettcode.plugin_api.commands import Command
+    from zettcode.plugin_api.state import Activity, UiRow
     from zettcode.prompt import PromptPart
     from zettcode.relay import Relayed
     from zettcode.sdk.client import Client
@@ -86,7 +87,6 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
     from ..agent.conversation.projection import TranscriptProjector
     from ..agent.conversation.shimmer import ShimmerFrame
     from ..agent.conversation.transcript import Transcript
-    from ..commands import Command
     from ..pets import Pet
     from .followups import FollowUp
     from .gc_policy import CollectorPolicy

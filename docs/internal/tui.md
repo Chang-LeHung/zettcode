@@ -411,9 +411,9 @@ The conversation is four things, each in one place:
 
 | Concept | What it is | Where |
 | --- | --- | --- |
-| **Entry** | One item of the conversation: plain data, with an `EntryKind` that says which kind of row it is | `app/agent/conversation/entries.py` |
+| **Entry** | One item of the conversation: plain data, with an `EntryKind` that says which kind of row it is | `plugin_api/entries.py` |
 | **Transcript** | The ordered list of entries, what changed since the view last looked, how many are kept, and the verbs the agent's events map onto (start a tool, stream an answer, settle the wait) | `app/agent/conversation/transcript/` |
-| **Presenter** | Turns one kind of entry into styled rows; there is exactly one per `EntryKind`, held in a `Presenters` registry | `app/agent/conversation/presenters.py` |
+| **Presenter** | Turns one kind of entry into styled rows; there is exactly one per `EntryKind`, held in a `Presenters` registry. The base class and the registry are the plugin contract (`plugin_api/presenters.py`); the built-in presenters are `zettcode-presenters` | `plugin_api/presenters.py`, `presenters/presenters.py` |
 | **TranscriptSource** | Stacks every entry's cached *block* (an entry presented as rows) into the single `LineSource` the scrolling view reads | `app/ui/widgets/transcript.py` |
 
 `Transcript` is split by responsibility the way the shell is: a state class and a

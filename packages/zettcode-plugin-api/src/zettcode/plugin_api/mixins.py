@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay lazy
-    from .state import ShellContext, UiBuilder, UiBuilderResult, UiRegion, UiSide
+    from zettcode.plugin_api.state import ShellContext, UiBuilder, UiBuilderResult, UiRegion, UiSide
 
 #: ``(method, region, side)`` for every slot the UI mixin exposes, in paint
 #: order. The method name minus its prefix is the segment name a plugin's

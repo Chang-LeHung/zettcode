@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from zettcode.app.plugins.state import (
+from zettcode.plugin_api.state import (
     ActivityState,
     DisplayState,
     ModelState,

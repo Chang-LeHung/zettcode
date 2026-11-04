@@ -5,8 +5,11 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Protocol, TypeAlias
 
+from zettcode.engine.core import ZettCodeEngine
+from zettcode.plugin_api.entries import ThinkingEntry
 from zettcode.registry import Provider
 from zettcode.sdk.errors import ZettCodeError
 from zettcode.tui import Widget
@@ -18,9 +21,6 @@ COMMAND_ERRORS = (ValueError, ZettCodeError)
 if TYPE_CHECKING:  # pragma: no cover - annotations only; the agent and the config are not imported by this module
     from zettcode.sdk.client import Client
     from zettcode.sdk.types import ModelInfo
-
-    from .agent.agent import TerminalAgent
-    from .agent.conversation.transcript import Transcript
 
 
 class CommandUi(ABC):
@@ -50,6 +50,55 @@ class CommandUi(ABC):
         """Show a one-off toast, replacing any that is still on screen."""
 
 
+class CommandAgent(Protocol):
+    """What a command may read of the application agent, without importing the terminal that implements it.
+
+    A command needs to know which session it is in and where that session works; the rest of the agent is the
+    shell's, and naming it here would put the terminal above the package every plugin depends on.
+    """
+
+    @property
+    def session_id(self) -> str:
+        """Return the session this shell is working in."""
+
+    @property
+    def workspace(self) -> Path:
+        """Return the directory the session works in."""
+
+    @property
+    def runtime(self) -> ZettCodeEngine:
+        """Return the runtime: the agent, its configuration and the session store."""
+
+    def require_session(self) -> None:
+        """Refuse to go on when the active session is another process's.
+
+        Raises:
+            SessionLocked: The lock is not held, which the shell shows as a line in the conversation.
+        """
+
+
+class CommandTranscript(Protocol):
+    """What a command may add to the conversation: a note, an error, or a row of Markdown."""
+
+    def notice(self, text: str) -> object:
+        """Add a line that says something happened."""
+
+    def error(self, text: str) -> object:
+        """Add a line that says something failed."""
+
+    def markdown(self, text: str) -> object:
+        """Add a row of Markdown, which a command's own answer is."""
+
+    def start_compaction(self) -> ThinkingEntry:
+        """Open the row that shows a compaction working."""
+
+    def complete_compaction(self, text: str = "") -> None:
+        """Close the running compaction row and stamp its elapsed time."""
+
+    def clear(self) -> None:
+        """Forget every row: the conversation starts over on screen, as a new session's does."""
+
+
 class CommandHost(Protocol):
     """What a command that acts on the application, and not only on the agent, may ask of the shell.
 
@@ -66,10 +115,16 @@ class CommandHost(Protocol):
         commands: Every command the shell knows, in the order ``/help`` lists them.
     """
 
-    agent: TerminalAgent
     client: Client
-    transcript: Transcript
     commands: tuple[Command, ...]
+
+    @property
+    def agent(self) -> CommandAgent:
+        """Return the application agent; read-only, so the terminal's own class satisfies it."""
+
+    @property
+    def transcript(self) -> CommandTranscript:
+        """Return the conversation as drawn; read-only, for the same reason."""
 
     def close_page(self) -> None:
         """Close the page a command presented and return to the composer."""

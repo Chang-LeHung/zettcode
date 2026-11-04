@@ -38,7 +38,7 @@ DEFAULT_CANDIDATES: tuple[str, ...] = (
     "zettcode.app.agent.conversation.replay",
     "zettcode.engine.dialogue.title",
     "zettcode.app.ui.updating",
-    "zettcode.app.commands",
+    "zettcode.plugin_api.commands",
     "zettcode.engine.plugins",
     "zett_agent.extensions.shell_approval",
 )

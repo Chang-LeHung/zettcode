@@ -15,13 +15,13 @@ from time import monotonic
 from typing import TYPE_CHECKING, Any, cast
 
 from zettcode import logging_setup
-from zettcode.app.plugins.state import (
+from zettcode.config_edit import ConfigEditError
+from zettcode.paths import DEFAULT_LOG
+from zettcode.plugin_api.state import (
     Activity,
     TurnContext,
     UiRow,
 )
-from zettcode.config_edit import ConfigEditError
-from zettcode.paths import DEFAULT_LOG
 from zettcode.tui import (
     DARK,
     DONE,
@@ -53,6 +53,14 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
     pass
 from zettcode.error_text import describe_error
 from zettcode.mentions import MentionRegistry, SessionMentions
+from zettcode.plugin_api.commands import (
+    COMMAND_ERRORS,
+    Command,
+    CommandContext,
+    CommandList,
+    CommandResult,
+)
+from zettcode.presenters.text import clock_text, elapsed_text
 from zettcode.prompt import PromptPart, carries_image, mention_parts
 from zettcode.registry import Registry
 from zettcode.relay import Relayed
@@ -70,10 +78,8 @@ from ..agent.conversation.shimmer import (
     shimmer_seconds,
     shimmer_width,
 )
-from ..agent.conversation.text import clock_text, elapsed_text
 from ..agent.conversation.tips import TipDeck
 from ..agent.conversation.transcript import Transcript
-from ..commands import COMMAND_ERRORS, Command, CommandContext, CommandList, CommandResult
 from ..pets import DEFAULT_PET_NAME, Pet
 from .bars import BarsMixin
 from .commands import ShellCommands

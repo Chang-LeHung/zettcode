@@ -7,7 +7,7 @@ mouth wide.
 
 from __future__ import annotations
 
-from .model import GLAD, IDLE, WORKING, Pet, edited
+from zettcode.plugin_api.pets import GLAD, IDLE, WORKING, Pet, edited
 
 DESCRIPTION = "a mint jelly; it hops while a request runs"
 

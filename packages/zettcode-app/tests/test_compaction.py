@@ -6,11 +6,11 @@ from zett_agent.agent import AgentRunConfig
 from zett_agent.messages import AssistantMessage, SystemMessage, UserMessage
 from zett_agent.model import ModelEvent, ModelResponse, RetryOptions
 
-from zettcode.app.agent.conversation.entries import EntryStatus, ThinkingEntry
-from zettcode.app.agent.conversation.text import COMPACTING_LABEL
 from zettcode.app.agent.conversation.transcript import Transcript
 from zettcode.engine.dialogue.side import question
 from zettcode.engine.extensions.compaction import OnDemandCompaction
+from zettcode.plugin_api.entries import EntryStatus, ThinkingEntry
+from zettcode.presenters.text import COMPACTING_LABEL
 
 
 class FakeModel:

@@ -13,7 +13,6 @@ from zett_agent.events import AgentEvent, AgentEventType
 from zett_agent.messages import AssistantMessage, UserMessage
 from zett_agent.model import ServerToolCall, ServerToolInputDelta, ServerToolResult
 
-from zettcode.app.agent.conversation.entries import EntryStatus
 from zettcode.app.agent.conversation.projection import TranscriptProjector
 from zettcode.app.agent.conversation.replay import replay
 from zettcode.app.agent.conversation.transcript import Transcript
@@ -25,6 +24,7 @@ from zettcode.engine.server_tools import (
     runs_in_blocks,
 )
 from zettcode.engine.storage import SessionStore
+from zettcode.plugin_api.entries import EntryStatus
 
 #: One answer as Anthropic records it: the query, ten pages, and the encrypted payloads between them.
 BLOCKS = (

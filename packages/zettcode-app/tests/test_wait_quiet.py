@@ -5,9 +5,9 @@ from __future__ import annotations
 import pytest
 
 from zettcode.app import Transcript, TranscriptSource
-from zettcode.app.agent.conversation.entries import EntryStatus, WaitEntry
 from zettcode.app.agent.conversation.projection import TranscriptProjector
-from zettcode.app.agent.conversation.text import QUIET_SECONDS, STOP_HINT, quiet_text
+from zettcode.plugin_api.entries import EntryStatus, WaitEntry
+from zettcode.presenters.text import QUIET_SECONDS, STOP_HINT, quiet_text
 from zettcode.tui import DARK, SEPARATOR
 
 

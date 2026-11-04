@@ -25,40 +25,36 @@ from typing import TYPE_CHECKING
 #: Where each public name lives; read by :func:`__getattr__` on first use.
 _EXPORTS = {
     "BUILTIN_PLUGINS": ".builtins",
-    "Activity": ".state",
-    "ActivityState": ".state",
-    "DisplayState": ".state",
-    "ModelState": ".state",
-    "SessionState": ".state",
-    "ShellContext": ".state",
-    "UiBuilder": ".state",
-    "UiRegion": ".state",
-    "UiRow": ".state",
-    "UiSegment": ".state",
-    "UiSide": ".state",
-    "PluginUiMixin": ".mixins",
+    "Activity": "zettcode.plugin_api.state",
+    "ActivityState": "zettcode.plugin_api.state",
+    "DisplayState": "zettcode.plugin_api.state",
+    "ModelState": "zettcode.plugin_api.state",
+    "SessionState": "zettcode.plugin_api.state",
+    "ShellContext": "zettcode.plugin_api.state",
+    "UiBuilder": "zettcode.plugin_api.state",
+    "UiRegion": "zettcode.plugin_api.state",
+    "UiRow": "zettcode.plugin_api.state",
+    "UiSegment": "zettcode.plugin_api.state",
+    "UiSide": "zettcode.plugin_api.state",
+    "PluginUiMixin": "zettcode.plugin_api.mixins",
     "PluginContext": "zettcode.engine.plugins.context",
     "UiSlots": ".groups",
     "TuiGroups": ".groups",
-    "TuiPlugin": ".plugin",
-    "TuiPlugins": ".plugin",
+    "TuiPlugin": "zettcode.plugin_api.plugin",
+    "TuiPlugins": "zettcode.plugin_api.plugin",
     "TerminalLoader": ".loader",
     "load_terminal_plugins": ".loader",
-    "HOST_LINK": ".host",
-    "HostLink": ".host",
+    "HOST_LINK": "zettcode.plugin_api.host",
+    "HostLink": "zettcode.plugin_api.host",
 }
 
 
 if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
     from zettcode.engine.plugins.context import PluginContext
-
-    from .builtins import BUILTIN_PLUGINS
-    from .groups import UiSlots
-    from .host import HOST_LINK, HostLink
-    from .loader import TerminalLoader, load_terminal_plugins
-    from .mixins import PluginUiMixin
-    from .plugin import TuiPlugin, TuiPlugins
-    from .state import (
+    from zettcode.plugin_api.host import HOST_LINK, HostLink
+    from zettcode.plugin_api.mixins import PluginUiMixin
+    from zettcode.plugin_api.plugin import TuiPlugin, TuiPlugins
+    from zettcode.plugin_api.state import (
         Activity,
         ActivityState,
         DisplayState,
@@ -71,6 +67,10 @@ if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
         UiSegment,
         UiSide,
     )
+
+    from .builtins import BUILTIN_PLUGINS
+    from .groups import UiSlots
+    from .loader import TerminalLoader, load_terminal_plugins
 
 
 def __getattr__(name: str) -> object:

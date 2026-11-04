@@ -10,7 +10,7 @@ The version follows the name on the title line, two spaces after it, which is
 where the presenter looks for it to draw it quietly.
 """
 
-from zettcode.app.brand import LOGO_LINES
+from zettcode.presenters.brand import LOGO_LINES
 from zettcode.version import __version__
 
 WELCOME = "\n".join(

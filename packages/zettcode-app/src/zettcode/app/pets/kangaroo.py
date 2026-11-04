@@ -7,7 +7,7 @@ is the same drawing lifted by that row. When patted it closes its eyes and opens
 
 from __future__ import annotations
 
-from .model import GLAD, IDLE, WORKING, Pet, edited
+from zettcode.plugin_api.pets import GLAD, IDLE, WORKING, Pet, edited
 
 DESCRIPTION = "a russet kangaroo; it hops while a request runs"
 

@@ -11,10 +11,10 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
+from zettcode.plugin_api.commands import CommandUi
 from zettcode.sdk.types import Usage
 from zettcode.tui import Anchor, Overlay, OverlaySlot, Screen, Toast
 
-from ..commands import CommandUi
 from .shell import APPROVAL_ROWS, ASK_SCREEN, PAGE_SCREEN, ShellState
 from .widgets import ApprovalChoice, ApprovalPage, AskUserPage, bottom_panel
 

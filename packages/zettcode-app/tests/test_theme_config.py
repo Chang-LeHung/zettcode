@@ -4,7 +4,7 @@ from dataclasses import replace
 
 import pytest
 
-from zettcode.app.agent.conversation.presenters import relay_detail
+from zettcode.presenters.presenters import relay_detail
 from zettcode.tui import DARK, EXAMPLE, LIGHT, ThemeFileError, load_theme, theme_from_toml
 from zettcode.tui.render import highlight, language_for, languages
 from zettcode.tui.widgets.markdown import render_markdown

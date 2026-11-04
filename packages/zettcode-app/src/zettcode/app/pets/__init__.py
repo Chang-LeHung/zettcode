@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import importlib
 
-from .model import GLAD, IDLE, PET_NAME, WORKING, Pet, PetCatalog, PetSource, edited, mirrored
+from zettcode.plugin_api.pets import GLAD, IDLE, PET_NAME, WORKING, Pet, PetCatalog, PetSource, edited, mirrored
 
 #: The pets that ship, in the order the ``/pet`` menu lists them.
 BUNDLED = (

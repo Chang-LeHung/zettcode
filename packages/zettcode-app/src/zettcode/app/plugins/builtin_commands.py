@@ -5,10 +5,10 @@ the reason the shell's rows and the agent's extensions are: the shell asks the l
 does not know which of it is its own, and a plugin that wants a command of this kind finds the way already laid.
 
 A command that acts on the application is handed the shell through the context it runs with
-(:meth:`~zettcode.app.commands.CommandContext.require_host`), typed as the narrow
-:class:`~zettcode.app.commands.CommandHost` and not as the shell itself, so a plugin of anybody's can do what these
+(:meth:`~zettcode.plugin_api.commands.CommandContext.require_host`), typed as the narrow
+:class:`~zettcode.plugin_api.commands.CommandHost` and not as the shell itself, so a plugin of anybody's can do what these
 do without importing it. The words a command's completion menu offers are asked for before any command runs, so they
-read the shell through :class:`~zettcode.app.plugins.host.HostLink` instead, which the shell attaches itself to.
+read the shell through :class:`~zettcode.plugin_api.host.HostLink` instead, which the shell attaches itself to.
 
 What stays in the shell is what cannot be written against that interface yet: the commands that preview as they are
 walked (``/theme``, ``/pet``) and the panels that edit a form of their own (``/config``, ``/statusline``,
@@ -24,7 +24,13 @@ import subprocess
 import sys
 from pathlib import Path
 
-from zettcode.app.commands import (
+from zettcode.config import ZettCodeConfig
+from zettcode.engine.plugins import applied, catalog
+from zettcode.engine.plugins import set_many as switch_plugins
+from zettcode.engine.plugins.commands import PlainCommandContext, TurnCommandResult
+from zettcode.engine.plugins.context import PluginContext
+from zettcode.paths import DEFAULT_COMMAND_HISTORY
+from zettcode.plugin_api.commands import (
     COMMAND_ERRORS,
     CommandContext,
     CommandHost,
@@ -32,17 +38,11 @@ from zettcode.app.commands import (
     Subcommand,
     subcommand_words,
 )
-from zettcode.config import ZettCodeConfig
-from zettcode.engine.plugins import applied, catalog
-from zettcode.engine.plugins import set_many as switch_plugins
-from zettcode.engine.plugins.commands import PlainCommandContext, TurnCommandResult
-from zettcode.engine.plugins.context import PluginContext
-from zettcode.paths import DEFAULT_COMMAND_HISTORY
+from zettcode.plugin_api.host import HOST_LINK, HostLink
+from zettcode.plugin_api.plugin import TuiPlugin
 from zettcode.tui import Widget
 
 from .groups import require_tui
-from .host import HOST_LINK, HostLink
-from .plugin import TuiPlugin
 
 #: Rows the picker panels take from the bottom of the screen: the title, the list, and the footer hint. The
 #: handler owns the number; nothing in the framework reads it.

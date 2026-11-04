@@ -12,14 +12,14 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from zettcode.app.plugins.state import Activity
 from zettcode.collector import collector_paused
+from zettcode.plugin_api.commands import COMMAND_ERRORS
+from zettcode.plugin_api.state import Activity
+from zettcode.presenters.presenters import block_for
 from zettcode.sdk.types import StoredSession
 from zettcode.tui import ELLIPSIS, SEPARATOR, Theme
 
-from ..agent.conversation.presenters import block_for
 from ..agent.conversation.replay import Replayed, replay
-from ..commands import COMMAND_ERRORS
 from .shell import ShellState
 from .widgets import LOCK_CAPTIONS, UPDATING_CAPTIONS, WELCOME
 

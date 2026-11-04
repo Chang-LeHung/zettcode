@@ -6,7 +6,6 @@ from dataclasses import replace
 
 import pytest
 
-from zettcode.app.agent.conversation.entries import EditEntry, EntryStatus, ToolEntry, WriteEntry
 from zettcode.app.agent.conversation.rendering import (
     DIFF_CONTEXT,
     MAX_DIFF_ROWS,
@@ -17,9 +16,10 @@ from zettcode.app.agent.conversation.rendering import (
     write_diff,
     written_lines,
 )
-from zettcode.app.agent.conversation.text import TOOL_EXPANDED_ROWS, TOOL_PREVIEW_ROWS
 from zettcode.app.agent.conversation.transcript import Transcript
 from zettcode.app.ui.widgets import TranscriptSource
+from zettcode.plugin_api.entries import EditEntry, EntryStatus, ToolEntry, WriteEntry
+from zettcode.presenters.text import TOOL_EXPANDED_ROWS, TOOL_PREVIEW_ROWS
 from zettcode.tui import DARK, LIGHT
 
 

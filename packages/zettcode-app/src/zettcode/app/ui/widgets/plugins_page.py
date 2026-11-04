@@ -14,11 +14,10 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from time import monotonic
 
+from zettcode.plugin_api.panels import pressed
+from zettcode.plugin_api.switch import SWITCH_WIDTH, Rail, draw_switch
 from zettcode.tui import ARROW_DOWN, ARROW_UP, SEPARATOR, Canvas, Host, MouseAction, MouseEvent, Widget
 from zettcode.tui.render import Style, blend, display_width, truncate
-
-from .panel import pressed
-from .switch import SWITCH_WIDTH, Rail, draw_switch
 
 #: Rows the page spends on something other than the list: a blank, the title, a blank under it, a blank above the
 #: description, the description, and the keys.

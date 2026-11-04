@@ -12,29 +12,29 @@ from collections import Counter
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
-from zettcode.app.commands import Command, CommandResult
 from zettcode.engine.plugins.commands import PlainCommandContext, TextCommandResult, TurnCommandResult
 from zettcode.engine.plugins.context import PluginContext
 from zettcode.engine.plugins.loader import Loader, run
+from zettcode.plugin_api.commands import Command, CommandResult
+from zettcode.plugin_api.host import HOST_LINK, HostLink
+from zettcode.plugin_api.plugin import TuiPlugin, TuiPlugins
+from zettcode.plugin_api.state import TurnSegment
 from zettcode.sdk.builtins import AGENT_PLUGINS
 from zettcode.tui import RESERVED_THEMES
 
 from .builtins import BUILTIN_PLUGINS
 from .groups import TuiGroups, UiSlots
-from .host import HOST_LINK, HostLink
-from .plugin import TuiPlugin, TuiPlugins
-from .state import TurnSegment
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from collections.abc import Iterable, Mapping, Sequence
     from importlib.metadata import EntryPoint
 
-    from zettcode.app.agent.conversation.presenters import Presenter
-    from zettcode.app.commands import Command
     from zettcode.app.pets import PetSource
     from zettcode.config import ZettCodeConfig
     from zettcode.engine.plugins.commands import PlainCommand
     from zettcode.engine.plugins.plugin import Plugin
+    from zettcode.plugin_api.commands import Command
+    from zettcode.plugin_api.presenters import Presenter
     from zettcode.tui import ThemeSource
 
 

@@ -7,9 +7,6 @@ from pathlib import Path
 
 import pytest
 
-from zettcode.app.agent.conversation.entries import EditEntry, EntryKind, ReadEntry, TextEntry
-from zettcode.app.agent.conversation.presenters import Presenter
-from zettcode.app.commands import CommandContext, CommandResult, CommandUi
 from zettcode.app.plugins import (
     BUILTIN_PLUGINS,
     HOST_LINK,
@@ -39,6 +36,9 @@ from zettcode.engine.plugins import (
     PluginTurnMixin,
 )
 from zettcode.engine.plugins import loader as loader_module
+from zettcode.plugin_api.commands import CommandContext, CommandResult, CommandUi
+from zettcode.plugin_api.entries import EditEntry, EntryKind, ReadEntry, TextEntry
+from zettcode.plugin_api.presenters import Presenter
 from zettcode.providers import Provider
 from zettcode.sdk.builtins import AGENT_PLUGINS
 from zettcode.tui import DARK, Span, Style, TextLine
@@ -1107,7 +1107,7 @@ def test_a_plugin_can_draw_a_kind_of_row_and_the_built_ins_stay_the_default_for_
             ctx.tui.register_presenter(LoudNotice())
 
     plugins = load_terminal_plugins(make_config(tmp_path), entry_points=[FakeEntryPoint("drawing", Drawing)])
-    from zettcode.app.agent.conversation.presenters import Presenters
+    from zettcode.plugin_api.presenters import Presenters
 
     rows = Presenters(plugins.presenters)
     notice = TextEntry(id=1, kind="notice", text="saved")
@@ -1123,7 +1123,7 @@ def test_a_plugin_can_raise_the_claim_on_a_family_without_taking_the_whole_kind(
         name = "quiet-edits"
 
         def activate(self, ctx: PluginContext) -> None:
-            from zettcode.app.agent.conversation.presenters import EditPresenter
+            from zettcode.presenters.presenters import EditPresenter
 
             class Quiet(EditPresenter):
                 priority = 7
@@ -1134,7 +1134,7 @@ def test_a_plugin_can_raise_the_claim_on_a_family_without_taking_the_whole_kind(
             ctx.tui.register_presenter(Quiet())
 
     plugins = load_terminal_plugins(make_config(tmp_path), entry_points=[FakeEntryPoint("quiet", QuietEdit)])
-    from zettcode.app.agent.conversation.presenters import Presenters
+    from zettcode.plugin_api.presenters import Presenters
 
     rows = Presenters(plugins.presenters)
     edit = EditEntry(id=1, call_id="c", tool="edit", title="Edited a.py", path="a.py", added=9)

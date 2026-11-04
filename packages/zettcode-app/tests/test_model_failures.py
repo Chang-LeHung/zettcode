@@ -15,11 +15,11 @@ from zett_agent.model import RetryOptions
 from zett_agent.providers.openai import OpenAIProvider
 
 from zettcode.app.agent.agent import TerminalAgent
-from zettcode.app.agent.conversation.text import QUIET_SECONDS
 from zettcode.app.ui.app import ZettCodeApp
 from zettcode.app.ui.shell import EMPTY_REPLY
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine import core as runtime_module
+from zettcode.presenters.text import QUIET_SECONDS
 from zettcode.tui.testing import Harness
 
 FAST = RetryOptions(base_delay=0.0, max_delay=0.0, max_retries=1)
@@ -193,7 +193,7 @@ async def test_a_reply_that_is_only_a_failure_is_not_also_called_empty(shell):
 async def test_a_server_that_never_answers_is_said_to_have_gone_quiet_and_the_request_can_be_stopped(
     shell, monkeypatch
 ):
-    from zettcode.app.agent.conversation import text
+    from zettcode.presenters import text
 
     monkeypatch.setattr(text, "QUIET_SECONDS", 0.2)
 

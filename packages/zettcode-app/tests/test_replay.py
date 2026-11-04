@@ -139,7 +139,7 @@ async def _long_session(tmp_path: Path, turns: int) -> SessionStore:
 
 def _shape(transcript: Transcript) -> list[tuple]:
     """Return what each entry looks like, without the ids that depend on how many came before."""
-    from zettcode.app.agent.conversation.presenters import _look_fields
+    from zettcode.plugin_api.presenters import _look_fields
 
     return [
         (

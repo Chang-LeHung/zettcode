@@ -4,7 +4,9 @@ from dataclasses import replace
 
 import pytest
 
-from zettcode.app.agent.conversation.entries import (
+from zettcode.app.agent.conversation.transcript import Transcript
+from zettcode.app.ui.widgets.transcript import TranscriptSource
+from zettcode.plugin_api.entries import (
     EditEntry,
     EntryKind,
     EntryStatus,
@@ -15,7 +17,7 @@ from zettcode.app.agent.conversation.entries import (
     ToolEntry,
     WaitEntry,
 )
-from zettcode.app.agent.conversation.presenters import (
+from zettcode.presenters.presenters import (
     DEFAULT_PRESENTERS,
     AnnouncementPresenter,
     NoticePresenter,
@@ -30,10 +32,8 @@ from zettcode.app.agent.conversation.presenters import (
     render_entry,
     tool_color,
 )
-from zettcode.app.agent.conversation.pulse import PULSE_FRAMES, RUNNING_GLYPHS, move_frames
-from zettcode.app.agent.conversation.text import COMPACTING_LABEL, STOP_HINT
-from zettcode.app.agent.conversation.transcript import Transcript
-from zettcode.app.ui.widgets.transcript import TranscriptSource
+from zettcode.presenters.pulse import PULSE_FRAMES, RUNNING_GLYPHS, move_frames
+from zettcode.presenters.text import COMPACTING_LABEL, STOP_HINT
 from zettcode.tui import DARK, LIGHT, SEPARATOR, TextLine
 from zettcode.tui.render import display_width
 
@@ -506,8 +506,8 @@ def _bare(cls, **extra):
 
 
 def test_each_family_of_tool_entry_has_its_own_presenter_and_the_rest_share_the_general_one():
-    from zettcode.app.agent.conversation.entries import WriteEntry
-    from zettcode.app.agent.conversation.presenters import EditPresenter, ReadPresenter, WritePresenter
+    from zettcode.plugin_api.entries import WriteEntry
+    from zettcode.presenters.presenters import EditPresenter, ReadPresenter, WritePresenter
 
     cases = [
         (_bare(ToolEntry), ToolPresenter),
@@ -524,7 +524,7 @@ def test_an_entry_class_nobody_wrote_a_presenter_for_is_drawn_by_the_nearest_one
     """A host's own subclass of an edit entry is drawn as an edit, not as a bare tool and not as an error."""
     from dataclasses import dataclass
 
-    from zettcode.app.agent.conversation.presenters import EditPresenter
+    from zettcode.presenters.presenters import EditPresenter
 
     @dataclass(slots=True, kw_only=True)
     class AuditedEdit(EditEntry):
@@ -563,7 +563,7 @@ def test_a_presenter_given_for_the_whole_kind_replaces_the_families_too():
 
 
 def test_a_family_given_after_the_kind_is_a_refinement_of_it_and_stays():
-    from zettcode.app.agent.conversation.presenters import EditPresenter
+    from zettcode.presenters.presenters import EditPresenter
 
     class Everything(Presenter):
         kind = EntryKind.TOOL
@@ -578,7 +578,7 @@ def test_a_family_given_after_the_kind_is_a_refinement_of_it_and_stays():
 
 
 def test_a_family_can_be_replaced_without_touching_the_others():
-    from zettcode.app.agent.conversation.presenters import EditPresenter
+    from zettcode.presenters.presenters import EditPresenter
 
     class Quiet(EditPresenter):
         def after_title(self, entry, theme):
@@ -594,7 +594,7 @@ def test_a_family_can_be_replaced_without_touching_the_others():
 
 def test_the_rows_every_tool_shares_are_drawn_the_same_whatever_the_entry():
     """The symbol, timer and body are the base's: the families add after the title and under it, nothing else."""
-    from zettcode.app.agent.conversation.entries import WriteEntry
+    from zettcode.plugin_api.entries import WriteEntry
 
     plain = [line.text for line in render_entry(_bare(ToolEntry, duration=1.5), 60, DARK, 0)]
     for cls in (ReadEntry, WriteEntry, EditEntry):
@@ -602,7 +602,7 @@ def test_the_rows_every_tool_shares_are_drawn_the_same_whatever_the_entry():
 
 
 def test_a_write_entry_paints_only_what_it_has_a_count_of():
-    from zettcode.app.agent.conversation.entries import WriteEntry
+    from zettcode.plugin_api.entries import WriteEntry
 
     spans = [s for line in render_entry(_bare(WriteEntry, added=40), 60, DARK, 0) for s in line.spans]
 
@@ -623,7 +623,7 @@ def test_a_read_entry_without_a_language_is_drawn_plain():
 
 
 def test_an_entry_has_only_the_fields_its_tool_shows():
-    from zettcode.app.agent.conversation.entries import WriteEntry
+    from zettcode.plugin_api.entries import WriteEntry
 
     assert not hasattr(_bare(ToolEntry), "language") and not hasattr(_bare(ToolEntry), "diff")
     assert not hasattr(_bare(ReadEntry), "added") and not hasattr(_bare(ReadEntry), "diff")
@@ -633,8 +633,8 @@ def test_an_entry_has_only_the_fields_its_tool_shows():
 
 
 def test_a_write_and_an_edit_are_drawn_by_the_same_file_change_code_and_differ_only_in_what_they_remove():
-    from zettcode.app.agent.conversation.entries import FileChangeEntry, WriteEntry
-    from zettcode.app.agent.conversation.presenters import EditPresenter, FileChangePresenter, WritePresenter
+    from zettcode.plugin_api.entries import FileChangeEntry, WriteEntry
+    from zettcode.presenters.presenters import EditPresenter, FileChangePresenter, WritePresenter
 
     assert issubclass(WriteEntry, FileChangeEntry) and issubclass(EditEntry, FileChangeEntry)
     assert issubclass(WritePresenter, FileChangePresenter) and issubclass(EditPresenter, FileChangePresenter)
@@ -648,7 +648,7 @@ def test_a_write_and_an_edit_are_drawn_by_the_same_file_change_code_and_differ_o
 
 
 def test_a_write_never_draws_a_removal_count_whatever_it_holds():
-    from zettcode.app.agent.conversation.entries import WriteEntry
+    from zettcode.plugin_api.entries import WriteEntry
 
     spans = [s for line in render_entry(_bare(WriteEntry, added=5), 60, DARK, 0) for s in line.spans]
 
@@ -676,7 +676,7 @@ def _plain(lines) -> list[str]:
 
 
 def test_a_sent_message_opens_as_its_own_row_that_holds_every_word():
-    from zettcode.app.agent.conversation.entries import MessageEntry
+    from zettcode.plugin_api.entries import MessageEntry
 
     long = "\n".join(f"line {number}" for number in range(30))
     transcript, entry = _sent(long)
@@ -808,7 +808,7 @@ def test_a_message_with_no_answer_yet_recorded_is_still_something_to_expand():
 
 
 def test_an_enormous_message_is_kept_bounded_like_any_tool_output():
-    from zettcode.app.agent.conversation.text import MAX_TOOL_OUTPUT
+    from zettcode.presenters.text import MAX_TOOL_OUTPUT
 
     transcript, entry = _sent("x" * (MAX_TOOL_OUTPUT * 3))
 
@@ -831,7 +831,7 @@ def test_every_tool_hue_can_be_read_on_the_surfaces_a_row_sits_on():
 
 def test_the_built_in_presenters_are_the_lowest_claim_so_a_plugin_replaces_one_by_registering():
     """Nothing has to outrank the program's own rows; registering the same kind is enough."""
-    from zettcode.app.agent.conversation.presenters import BUILTIN_PRESENTERS
+    from zettcode.presenters.presenters import BUILTIN_PRESENTERS
 
     assert {presenter.priority for presenter in BUILTIN_PRESENTERS} == {0}
 
@@ -861,7 +861,7 @@ def test_a_stronger_claim_wins_wherever_it_was_registered():
 
 def test_a_presenter_for_the_whole_kind_outranks_the_families_it_was_registered_after():
     """A claim on every tool row is a claim on the edit row too, unless the family claims more."""
-    from zettcode.app.agent.conversation.presenters import EditPresenter
+    from zettcode.presenters.presenters import EditPresenter
 
     class Everything(ToolPresenter):
         priority = 4

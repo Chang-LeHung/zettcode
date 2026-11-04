@@ -6,13 +6,13 @@ from collections.abc import Callable, Collection
 from pathlib import Path
 from time import monotonic
 
+from zettcode.plugin_api.panels import pressed
+from zettcode.plugin_api.switch import SWITCH_WIDTH, Rail, draw_switch
 from zettcode.statusline import GAP, PET, Part, Row
 from zettcode.tui import ARROW_DOWN, ARROW_UP, SEPARATOR, Canvas, Host, MouseAction, MouseEvent, Widget
 from zettcode.tui.render import Style, blend, display_width, truncate
 
 from .. import labels
-from .panel import pressed
-from .switch import SWITCH_WIDTH, Rail, draw_switch
 
 #: Rows the panel needs besides the list: a blank, the title, a blank, the two preview rows, a blank above the
 #: list, then below it a blank, the selected part's description and the keys.

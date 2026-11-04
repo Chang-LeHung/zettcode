@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
-    from zettcode.app.commands import CommandHost
+    from zettcode.plugin_api.commands import CommandHost
 
 #: Provided by the terminal's loader to every plugin: the link a plugin follows to the shell once there is one.
 HOST_LINK = "host-link"

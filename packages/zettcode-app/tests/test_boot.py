@@ -8,10 +8,10 @@ from pathlib import Path
 
 import pytest
 
-from zettcode.app.agent.conversation.text import compact_path as agent_compact_path
 from zettcode.app.ui import labels
 from zettcode.app.ui.boot import boot_tree
 from zettcode.app.ui.labels import compact_path
+from zettcode.presenters.text import compact_path as agent_compact_path
 from zettcode.tui import TuiApp
 
 WIDTH = 70

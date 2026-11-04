@@ -7,7 +7,7 @@ when patted it closes its eyes.
 
 from __future__ import annotations
 
-from .model import GLAD, IDLE, WORKING, Pet, edited
+from zettcode.plugin_api.pets import GLAD, IDLE, WORKING, Pet, edited
 
 DESCRIPTION = "a seedling in a pot; its leaves lift while a request runs"
 

@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from zettcode.app.commands import Command, CommandContext, CommandList, CommandResult
 from zettcode.app.plugins.loader import terminal_context
 from zettcode.config import ModelConfig, ZettCodeConfig
+from zettcode.plugin_api.commands import Command, CommandContext, CommandList, CommandResult
 from zettcode.registry import Registry
 
 

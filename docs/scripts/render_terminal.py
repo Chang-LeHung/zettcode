@@ -15,13 +15,13 @@ from html import escape
 from pathlib import Path
 
 from zettcode.app.agent.agent import TerminalAgent
-from zettcode.app.brand import LOGO_PALETTE, LOGO_PIXELS
 from zettcode.app.plugins.builtins import BUILTIN_PLUGINS, ShellRows
 from zettcode.app.plugins.loader import load_terminal_plugins, terminal_plugins
-from zettcode.app.plugins.state import ShellContext
 from zettcode.app.ui.app import ZettCodeApp
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine.core import ZettCodeEngine
+from zettcode.plugin_api.state import ShellContext
+from zettcode.presenters.brand import LOGO_PALETTE, LOGO_PIXELS
 from zettcode.tui import DARK, HEADER, Canvas
 
 

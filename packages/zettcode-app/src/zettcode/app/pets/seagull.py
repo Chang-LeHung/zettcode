@@ -7,7 +7,7 @@ eyes and opens its beak.
 
 from __future__ import annotations
 
-from .model import GLAD, IDLE, WORKING, Pet, edited
+from zettcode.plugin_api.pets import GLAD, IDLE, WORKING, Pet, edited
 
 DESCRIPTION = "a seagull; it flaps its wings while a request runs"
 

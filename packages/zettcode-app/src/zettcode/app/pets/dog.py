@@ -7,7 +7,7 @@ eyes and pokes its tongue out.
 
 from __future__ import annotations
 
-from .model import GLAD, IDLE, WORKING, Pet, edited
+from zettcode.plugin_api.pets import GLAD, IDLE, WORKING, Pet, edited
 
 DESCRIPTION = "a tan dog; it looks along the work and wags when patted"
 

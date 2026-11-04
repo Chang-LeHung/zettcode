@@ -10,13 +10,13 @@ import pytest
 from zett_agent.messages import AssistantMessage, UserMessage
 from zett_agent.model import ModelUsage
 
-from zettcode.app.commands import CommandContext
 from zettcode.app.plugins.builtins import BUILTIN_PLUGINS, UsageCommand
 from zettcode.app.plugins.loader import terminal_context
 from zettcode.app.ui.widgets import UsagePage
 from zettcode.app.ui.widgets import usage_charts as charts
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine.storage import SessionStore
+from zettcode.plugin_api.commands import CommandContext
 from zettcode.sdk.client import Client
 from zettcode.sdk.types import DayTotals, ModelTotals, SessionTotals, Totals, WorkspaceUsage
 from zettcode.tui import DARK, LIGHT, TuiApp

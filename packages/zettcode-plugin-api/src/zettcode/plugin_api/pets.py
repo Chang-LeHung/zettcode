@@ -1,7 +1,7 @@
 """What a pet is, and the catalog that finds one by name.
 
 A :class:`Pet` is only data: a palette and, for each mood, the pixel maps it is drawn from, in the encoding
-:mod:`zettcode.app.brand` already uses (``.`` is transparent, any other character names its colour). It
+:func:`pixel_lines` defines (``.`` is transparent, any other character names its colour). It
 knows nothing of the terminal's size, of where it stands, or of the mouse; ``app/ui/widgets/pet.py`` places
 it, moves it, and picks the mood.
 
@@ -20,8 +20,7 @@ from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from typing import NamedTuple
 
-from zettcode.app.brand import pixel_lines
-from zettcode.tui.render.style import TextLine
+from zettcode.tui.render.style import Span, Style, TextLine
 
 #: The moods a pet may have. ``idle`` is the only one it must have; a pet without the others stays as it is.
 #: A pet is asleep when it is idle, awake and busy while a request runs, and pleased when it is patted.
@@ -36,6 +35,37 @@ PET_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 def _brightness(colour: str) -> int:
     """Return the mean of a ``#rrggbb`` colour's channels, 0 to 255."""
     return sum(int(colour[index : index + 2], 16) for index in (1, 3, 5)) // 3
+
+
+def pixel_lines(pixels: tuple[str, ...], palette: dict[str, str]) -> tuple[TextLine, ...]:
+    """Encode each pixel pair with a full/half block and two independent colours.
+
+    Equal pixels use a full block. Different opaque pixels use an upper half
+    block with the lower pixel as its background. When either half is outside
+    the silhouette, its background stays unset to preserve the terminal's own
+    colour rather than drawing a rectangle around the mark.
+
+    Args:
+        pixels: Equal-length rows, an even number of them; ``.`` is transparent and any other
+            character names its colour in ``palette``.
+        palette: Colour of each pixel character.
+    """
+    lines: list[TextLine] = []
+    for index in range(0, len(pixels), 2):
+        spans: list[Span] = []
+        for upper, lower in zip(pixels[index], pixels[index + 1], strict=True):
+            if upper == lower:
+                span = Span(" " if upper == "." else "█", Style(foreground=palette.get(upper)))
+            elif upper == ".":
+                span = Span("▄", Style(foreground=palette[lower]))
+            else:
+                span = Span("▀", Style(foreground=palette[upper], background=palette.get(lower)))
+            if spans and spans[-1].style == span.style:
+                spans[-1] = Span(spans[-1].text + span.text, span.style)
+            else:
+                spans.append(span)
+        lines.append(TextLine(tuple(spans)))
+    return tuple(lines)
 
 
 class Pet:

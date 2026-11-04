@@ -16,16 +16,15 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
-from zettcode.app.agent.conversation.entries import EntryKind
-from zettcode.app.agent.conversation.presenters import Presenter
-from zettcode.app.commands import Command, CommandList, CommandProvider
 from zettcode.app.pets import PET_NAME, Pet, PetSource
 from zettcode.engine.plugins.context import PluginContext
+from zettcode.plugin_api.commands import Command, CommandList, CommandProvider
+from zettcode.plugin_api.entries import EntryKind
+from zettcode.plugin_api.presenters import Presenter
+from zettcode.plugin_api.state import TurnBuilder, TurnSegment, UiBuilder, UiRegion, UiRow, UiSegment, UiSide
 from zettcode.plugin_tui import TuiGroup
 from zettcode.statusline import TURN_PREFIX
 from zettcode.tui import RESERVED_THEMES, THEME_NAME, Theme, ThemeSource, file_theme
-
-from .state import TurnBuilder, TurnSegment, UiBuilder, UiRegion, UiRow, UiSegment, UiSide
 
 #: Rows and sides in paint order; the shell's frame, fixed by the application.
 UI_REGIONS: tuple[UiRegion, ...] = ("header", "status")
@@ -34,7 +33,7 @@ UI_SIDES: tuple[UiSide, ...] = ("left", "right")
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from pathlib import Path
 
-    from .state import UiBuilder, UiRegion
+    from zettcode.plugin_api.state import UiBuilder, UiRegion
 
 
 class UiSlots:
@@ -217,7 +216,7 @@ class TuiGroups(TuiGroup):
         Args:
             name: Starts with ``turn-``; the switch's name.
             summary: What it shows, in one line, for the ``/statusline`` panel.
-            builder: Called when a request ends with a :class:`~zettcode.app.plugins.state.TurnContext`; returns the
+            builder: Called when a request ends with a :class:`~zettcode.plugin_api.state.TurnContext`; returns the
                 text, or nothing to leave the item out this time. One that raises is left out.
 
         Raises:
@@ -318,10 +317,10 @@ class TuiGroups(TuiGroup):
         The leading slash is optional, so ``"deploy"`` and ``"/deploy"`` are the
         same command. ``description`` is the one line shown by the completion
         menu and ``/help``. ``handler`` is handed a
-        :class:`~zettcode.app.commands.CommandContext`: the trimmed argument and
+        :class:`~zettcode.plugin_api.commands.CommandContext`: the trimmed argument and
         the UI surfaces it may write to while it works
         (``context.ui.markdown``, ``.notice``, ``.error``, ``.notify``). It
-        returns a :class:`~zettcode.app.commands.CommandResult` for anything left
+        returns a :class:`~zettcode.plugin_api.commands.CommandResult` for anything left
         to show — a page to open, a re-layout. Raising ``ValueError`` reports a
         usage error instead of changing state.
 
@@ -329,7 +328,7 @@ class TuiGroups(TuiGroup):
             name: Command as typed; a leading ``/`` is added when missing.
             description: One-line summary shown in the menu and in ``/help``.
             handler: Coroutine taking a
-                :class:`~zettcode.app.commands.CommandContext` and returning the
+                :class:`~zettcode.plugin_api.commands.CommandContext` and returning the
                 result.
             when_busy: What happens when the command is typed while a request is
                 running. ``"refuse"`` (the default) turns it away; ``"queue"`` runs
@@ -340,7 +339,7 @@ class TuiGroups(TuiGroup):
                 without the busy state to itself.
             subcommands: The words the command takes first, offered by the completion menu
                 once the command and a space are typed: names, or
-                :class:`~zettcode.app.commands.Subcommand` for a name with a description. A
+                :class:`~zettcode.plugin_api.commands.Subcommand` for a name with a description. A
                 function returning them is asked each time the menu opens. They only suggest;
                 the handler gets whatever was typed as ``context.argument``.
 
@@ -504,7 +503,7 @@ class TuiGroups(TuiGroup):
                 class.
         """
         if not isinstance(presenter, Presenter):
-            raise ValueError("A presenter must be a zettcode.app.agent.conversation.presenters.Presenter")
+            raise ValueError("A presenter must be a zettcode.presenters.presenters.Presenter")
         if not isinstance(presenter.kind, EntryKind):
             raise ValueError("A presenter must name the kind of entry it draws")
         self._presenters.append(presenter)

@@ -109,7 +109,7 @@ LAYERS = (
     ("zettcode.app.agent", ("zettcode.app.ui",)),
     # The shell and its views hold an SDK client and the terminal's agent; the engine is not theirs to import.
     ("zettcode.app.ui", ("zettcode.engine",)),
-    ("zettcode.app.commands", ("zettcode.engine",)),
+    ("zettcode.plugin_api.commands", ("zettcode.engine",)),
     # The engine is what the terminal and the SDK both drive, so it knows neither of them — and it does not reach
     # the broker, which is why the line to the other sessions is built by the SDK and only carried here.
     (
@@ -567,7 +567,7 @@ def test_the_views_of_the_terminal_import_nothing_of_the_engine():
     found = sorted(
         f"{module}:{line} imports {target}"
         for path, module, is_package in _sources()
-        if module.startswith("zettcode.app.ui") or module == "zettcode.app.commands"
+        if module.startswith("zettcode.app.ui") or module == "zettcode.plugin_api.commands"
         for line, target, _relative in _imports(path, module, is_package)
         if target.startswith("zettcode.engine")
     )
@@ -1021,3 +1021,45 @@ def test_the_release_order_refuses_a_cycle_and_a_dependency_nobody_ships(tmp_pat
     write("zettcode-b", ("zettcode-missing>=1",))
     with pytest.raises(generator.Cycle, match="zettcode-missing"):
         generator.ordered()
+
+
+def _declared(distribution: str) -> set[str]:
+    """Return the distributions of ours that one declares as dependencies."""
+    settings = tomllib.loads((ROOT / "packages" / distribution / "pyproject.toml").read_text(encoding="utf-8"))
+    return {
+        requirement.name
+        for requirement in map(Requirement, settings["project"]["dependencies"])
+        if requirement.name.startswith("zettcode")
+    }
+
+
+def test_the_plugin_contract_sits_below_what_implements_it_and_below_the_application():
+    """`plugin-api` defines the contract; `presenters` and `app` are written against it, in that order.
+
+    The direction is the point of splitting them. A contract that depended on the application could not be installed
+    without it, and one that depended on an implementation of itself would hand the plugin a second package to depend
+    on. So the contract needs the runtime, the widget framework and the SDK, and nothing above them; the built-in rows
+    need the contract; the application needs both; and a release publishes them in that order.
+    """
+    api, rows, app = (_declared(name) for name in ("zettcode-plugin-api", "zettcode-presenters", "zettcode-app"))
+
+    assert api == {"zettcode-engine", "zettcode-tui", "zettcode-sdk"}
+    assert "zettcode-plugin-api" in rows and rows.isdisjoint({"zettcode-app", "zettcode-gateway", "zettcode-server"})
+    assert {"zettcode-plugin-api", "zettcode-presenters"} <= app
+
+    order = _release_order()
+    assert order.index("zettcode-plugin-api") < order.index("zettcode-presenters") < order.index("zettcode-app")
+
+
+def test_a_part_the_program_is_made_of_is_never_discoverable_as_a_plugin():
+    """What `[plugins] disable` can reach is what an entry point makes discoverable, so a part must not have one.
+
+    `zettcode-presenters` is the first built-in part to be a distribution of its own. If it declared a
+    `zettcode.plugins` entry point it would load as an installed plugin, and a line in the configuration could switch
+    the transcript's rows off; listing it in the program's built-ins is what makes that impossible.
+    """
+    parts = [name for name in _release_order() if name != "zettcode-plugin-api"]
+    assert "zettcode-presenters" in parts
+    for name in parts:
+        settings = tomllib.loads((ROOT / "packages" / name / "pyproject.toml").read_text(encoding="utf-8"))
+        assert not settings["project"].get("entry-points", {}).get("zettcode.plugins"), name
