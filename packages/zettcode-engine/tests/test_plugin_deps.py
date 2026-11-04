@@ -11,7 +11,7 @@ import pytest
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine.plugins.context import PluginContext
 from zettcode.engine.plugins.graph import Node, order
-from zettcode.engine.plugins.loader import RequiredPluginError, load_plugins
+from zettcode.engine.plugins.loader import Loader, RequiredPluginError, load_plugins, run
 from zettcode.engine.plugins.plugin import Plugin
 
 
@@ -200,3 +200,51 @@ def test_a_second_plugin_with_the_same_name_is_refused(tmp_path: Path):
 
     assert [p.origin for p in bundle.plugins] == ["one"]
     assert "duplicate plugin name 'same'" in bundle.failed[0][1]
+
+
+def test_a_plugin_cannot_take_the_entry_point_name_of_a_part_and_so_cannot_stand_in_for_a_required_one(tmp_path: Path):
+    class Impostor(Base):
+        name = "presenters"
+
+    part = Point("presenters", plugin("presenters"))
+    part.group = "zettcode.terminal"  # type: ignore[attr-defined]
+    points = [part, Point("presenters", Impostor())]
+
+    bundle = run(Loader(config(tmp_path)), config(tmp_path), builtins=(), entry_points=points, terminal=True)
+
+    assert [p.__class__ for p in bundle.plugins] == [type(part._target)]
+    assert any("cannot use the name 'presenters'" in why for _origin, why in bundle.failed)
+
+
+def test_a_part_the_reader_switched_off_is_not_a_clash_with_the_plugin_that_shares_its_name(tmp_path: Path):
+    part = Point("pets", plugin("pets"))
+    part.group = "zettcode.terminal"  # type: ignore[attr-defined]
+    other = Point("pets", plugin("pets"))
+    off = config(tmp_path, disabled_plugins=("pets",))
+
+    bundle = run(Loader(off), off, builtins=(), entry_points=[part, other], terminal=True)
+
+    assert bundle.plugins == () and bundle.failed == ()
+
+
+def test_the_same_distribution_listed_twice_is_one_plugin_and_not_a_failure(tmp_path: Path):
+    class Dist:
+        name = "some_dist"
+
+    first, second = Point("dup", plugin("dup")), Point("dup", plugin("dup"))
+    first.dist = second.dist = Dist()  # type: ignore[attr-defined]
+
+    bundle = load_plugins(config(tmp_path), builtins=(), entry_points=[first, second])
+
+    assert [p.name for p in bundle.plugins] == ["dup"] and bundle.failed == ()
+
+
+def test_a_file_that_shares_a_name_with_an_entry_point_is_reported_like_one(tmp_path: Path):
+    folder = tmp_path / "plugins"
+    folder.mkdir()
+    (folder / "same.py").write_text("from zettcode.engine.plugins import Plugin\nclass Mine(Plugin):\n    pass\n")
+
+    bundle = load_plugins(config(tmp_path), builtins=(), entry_points=[Point("same", plugin("same"))])
+
+    assert [p.name for p in bundle.plugins] == ["same"]
+    assert any("the file same.py" in origin and "already has it" in why for origin, why in bundle.failed)

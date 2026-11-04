@@ -192,9 +192,17 @@ class ShellCommands(CommandProvider):
         chooses and Escape puts the old one back. The choice is written to ``[ui] pet`` in the config file so the
         next start opens with it. A file that cannot take the line does not undo the switch: the pet is there,
         and the reader is told it will not be next time and why. A pet that is switched off in ``/statusline`` is
-        still chosen, and the reader is told why nothing appeared.
+        still chosen, and the reader is told why nothing appeared. With no pet offered at all, either way, the reader
+        is told that and why, instead of being shown a panel with nothing in it or an "unknown pet" for a name that
+        could never exist.
         """
         shell = self.shell
+        if not shell.agent.pets.names():
+            # No plugin offers a pet: there is nothing to choose from, and a panel of no rows has nowhere for the mark
+            # to stand. What the reader can do depends on why, so the config says which of the two it is.
+            if shell.agent.pets_switched_off:
+                return CommandResult(message="The pets plugin is switched off. Turn it on with /plugins.")
+            return CommandResult(message="No pets are installed. They come with the program: reinstall zettcode.")
         if not context.argument:
 
             def choose(name: str) -> None:

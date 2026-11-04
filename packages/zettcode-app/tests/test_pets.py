@@ -346,6 +346,28 @@ def test_a_pet_that_nobody_offers_is_said_in_the_conversation_and_the_cat_stands
     assert any("Unknown pet: 'unicorn'" in entry.text for entry in other.transcript.entries)
 
 
+async def test_with_no_pets_installed_the_command_says_so_and_opens_no_panel():
+    """A reader may switch the pets plugin off; the panel of no rows has nowhere for its mark to stand."""
+    app = build_app(plugins=dataclasses.replace(rows_and_commands(), pets=()))
+    harness = _harness(app)
+    harness.render()
+
+    await _type_command(app, harness, "/pet")
+    harness.press("down")
+
+    assert app.app.screens.top.name != "page"
+    texts = [getattr(entry, "text", "") for entry in app.transcript.entries]
+    assert any("No pets are installed" in text for text in texts), texts
+
+    await _type_command(app, harness, "/pet whale")
+
+    assert app.pet.pet.name == "none", "a name is not an 'unknown pet' when there is no catalog to be unknown to"
+    app.agent.runtime.config = dataclasses.replace(app.agent.runtime.config, disabled_plugins=("pets",))
+    await _type_command(app, harness, "/pet")
+    texts = [getattr(entry, "text", "") for entry in app.transcript.entries]
+    assert any("switched off" in text for text in texts), texts
+
+
 async def test_the_pet_command_names_the_pet_straight_away_and_remembers_it(config_file):  # noqa: F811
     app, harness, _ = shell()
 

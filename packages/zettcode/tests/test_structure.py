@@ -1413,3 +1413,14 @@ def test_the_suites_list_of_the_programs_parts_is_what_the_distributions_publish
 
     assert dict(listed) == published
     assert [name for name, _ in listed] == sorted(published), "listed in the order the loader sorts them"
+
+
+def test_a_part_is_named_as_its_entry_point_is():
+    """The loader pulls a required part back in by entry-point name and checks it by `Plugin.name`; they must agree."""
+    import importlib
+
+    for settings_path in sorted((ROOT / "packages").glob("*/pyproject.toml")):
+        settings = tomllib.loads(settings_path.read_text(encoding="utf-8"))
+        for name, target in settings["project"].get("entry-points", {}).get("zettcode.terminal", {}).items():
+            module, _, attribute = target.partition(":")
+            assert getattr(importlib.import_module(module), attribute).name == name, target
