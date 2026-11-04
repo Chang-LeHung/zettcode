@@ -52,6 +52,12 @@ dependencies = ["zettcode-plugin-api>=0.3,<0.4"]
 greeter = "my_package:Greeter"
 ```
 
+`zettcode-plugin-api` is the one dependency a plugin needs, and it carries everything the plugin runs against. The
+types that name the SDK's objects — the `Client` behind `host.client`, `ModelInfo`, `Usage` — are imported for the type
+checker only, so they are not installed with it: a plugin that annotates with them asks for the extra,
+`dependencies = ["zettcode-plugin-api[types]>=0.3,<0.4"]`, and otherwise those names type-check as `Any`. Nothing is
+lost at run time either way.
+
 ```python
 from zettcode.plugin_api import CommandContext, CommandResult
 from zettcode.plugin_api import PluginContext, TuiPlugin
