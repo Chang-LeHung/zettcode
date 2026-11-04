@@ -28,6 +28,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import logging
+import re
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -313,7 +314,9 @@ def run(
         if name in held:
             continue
         for who in losers:
-            loader.fail(who, f"cannot use the name {name!r}: {owners[name]} already has it")
+            # Filed under the name, which is the row that exists; who lost is said in the message, so the page has no
+            # second row for a name no switch could ever match.
+            loader.fail(name, f"{who} cannot use the name {name!r}: {owners[name]} already has it")
     ordered, refused = graph.order([graph.Node(c.name, c.deps) for c in candidates])
     loaded: set[int] = set()
     for index in sorted(refused):
@@ -358,7 +361,7 @@ def _distribution(point: EntryPoint) -> str | None:
     """Return the name of the distribution an entry point came from, or ``None`` when it does not say."""
     dist = getattr(point, "dist", None)
     name = getattr(dist, "name", None)
-    return str(name).lower().replace("_", "-") if name else None
+    return re.sub(r"[-_.]+", "-", str(name)).lower() if name else None
 
 
 def _described(point: EntryPoint) -> str:
