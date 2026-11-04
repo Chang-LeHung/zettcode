@@ -129,7 +129,7 @@ def catalog(
         # A part for a screen is listed by a process that has one. A bundle that holds none of it (the SDK, the
         # server) is not offering switches for things it never loads — unless one is switched off, which is the one
         # state in which a part is absent from a bundle that would have it.
-        if getattr(point, "group", None) in (loader.TERMINAL_PART_GROUP, loader.AGENT_PART_GROUP):
+        if loader.part_group(point) is not None:
             if point.name not in off:
                 continue
         installed.append(_installed(point.name, point.name, config, off=off))

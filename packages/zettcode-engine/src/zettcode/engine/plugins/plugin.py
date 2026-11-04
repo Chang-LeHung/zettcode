@@ -96,6 +96,8 @@ class Plugin(PluginAgentMixin, Generic[_C], ABC):
     #: Where a plugin stands among the others of its entry-point group when the loader has no ``deps`` to go by: parts
     #: are activated by ``(rank, name)`` within their group, so a group whose extensions share a priority (and so
     #: keep their registration order) is activated in a stated order and not in the order entry points happen to sort.
+    #: The program's to set: ``zettcode.sdk.builtins`` writes it for its own plugins, and a plugin of anyone else has
+    #: no use for it, since it is only read for the parts of the program.
     rank: ClassVar[int] = 0
     priority: ClassVar[int] = 100
     #: The configuration key that decides whether a compiled-in plugin does its work, or ``None`` when there is none:
