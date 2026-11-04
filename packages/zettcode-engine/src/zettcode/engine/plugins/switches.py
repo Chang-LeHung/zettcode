@@ -123,7 +123,8 @@ def catalog(
     points = tuple(entry_points) if entry_points is not None else loader.installed_entry_points()
     seen = {entry.origin for entry in installed} | {origin for origin, _why in bundle.failed}
     for point in points:
-        if point.name not in seen:
+        # A required plugin has an entry point and is the program's own: it is not a row nobody can move.
+        if point.name not in seen and point.name not in builtins:
             installed.append(_installed(point.name, point.name, config, off=off))
     # A single-file plugin that is switched off is not in the bundle (the loader never imported it), so the folder is
     # what says it exists: it stays on the page, off, where it can be switched back on.

@@ -85,6 +85,7 @@ from zettcode.plugin_api.commands import Command, CommandContext, CommandResult
 from zettcode.plugin_api.entries import EntryStatus
 from zettcode.plugin_api.state import TurnSegment
 from zettcode.presenters.brand import LOGO_LINES, LOGO_PALETTE, LOGO_PIXELS
+from zettcode.presenters.plugin import PresentersPlugin
 from zettcode.presenters.pulse import (
     ANIMATION_SECONDS,
     PULSE_FRAMES,
@@ -477,7 +478,7 @@ def rows_and_commands(
     """
     link = HostLink()
     ctx = terminal_context(config or FakeConfig(), {HOST_LINK: link})  # type: ignore[arg-type]
-    for plugin in BUILTIN_PLUGINS:
+    for plugin in (*BUILTIN_PLUGINS, PresentersPlugin()):
         plugin.activate(ctx)
         for region, side, name, builder in plugin.ui_slots():
             ctx.tui.slots.add(region, side, name, builder)
@@ -498,6 +499,7 @@ def rows_and_commands(
         presenters=ctx.tui.presenters,
         turn_segments=ctx.tui.turn_segments,
         services={HOST_LINK: link},
+        builtins=("presenters",),
     )
 
 
