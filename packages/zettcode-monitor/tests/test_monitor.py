@@ -68,7 +68,9 @@ async def test_duration_starts_at_before_model(tmp_path):
     await ext.before_model(_context(), _request())  # type: ignore[arg-type]
     time.sleep(0.05)  # work other before_model hooks do, which the terminal's rate counts too
     await _call(ext)
-    assert ext.calls(SESSION)[0]["duration_ms"] >= 50
+    # A sleep may return a little early where the clock ticks coarsely (Windows measured 49.8 ms for 50): the claim is
+    # that the wait is counted, not that it is counted to the millisecond.
+    assert ext.calls(SESSION)[0]["duration_ms"] >= 40
     await _call(ext)  # no stamp left over: the next call times itself
     assert ext.calls(SESSION)[1]["duration_ms"] < 50
 
