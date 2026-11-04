@@ -736,7 +736,20 @@ async def launch(options: Options) -> None:
         },
     )
     try:
-        app = await asyncio.to_thread(build_application, options, terminal=tui)
+        try:
+            app = await asyncio.to_thread(build_application, options, terminal=tui)
+        except Exception as error:
+            # Imported here, where the build has already loaded it: the boot frame must not pay for the engine.
+            from zettcode.engine.plugins.loader import RequiredPluginError
+
+            if not isinstance(error, RequiredPluginError):
+                raise
+            # A sentence on the plain terminal once the screen is given back, not a traceback behind the frame.
+            logger.error("cli.required_plugins", extra={"missing": error.missing})
+            raise SystemExit(
+                f"zettcode: {error}\n"
+                "These come with the program; reinstall it (pip install --force-reinstall zettcode)."
+            ) from error
         app.adopt(tui)
         logger.info("app.ready", extra={"session": session_id()})
         # The imports the first turn needs start once the real frame is on the screen,
