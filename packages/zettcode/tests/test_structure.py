@@ -1439,6 +1439,20 @@ def test_the_suites_list_of_the_agents_plugins_is_what_the_sdk_publishes():
     assert owners == ["zettcode-sdk"], "the agent is composed in one place"
 
 
+def test_the_distributions_that_may_publish_the_programs_groups_are_the_ones_that_do():
+    """`PROGRAM_DISTRIBUTIONS` is a literal in the loader; a rename would quietly make a part an ordinary, switchable plugin."""
+    from zettcode.engine.plugins.loader import PROGRAM_DISTRIBUTIONS
+
+    declared: dict[str, set[str]] = {group: set() for group in PROGRAM_DISTRIBUTIONS}
+    for path in sorted((ROOT / "packages").glob("*/pyproject.toml")):
+        project = tomllib.loads(path.read_text(encoding="utf-8"))["project"]
+        for group in PROGRAM_DISTRIBUTIONS:
+            if group in project.get("entry-points", {}):
+                declared[group].add(project["name"])
+
+    assert declared == {group: set(names) for group, names in PROGRAM_DISTRIBUTIONS.items()}
+
+
 def test_a_part_is_named_as_its_entry_point_is():
     """The loader pulls a required part back in by entry-point name and checks it by `Plugin.name`; they must agree."""
     import importlib
