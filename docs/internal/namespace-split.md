@@ -47,6 +47,7 @@ union of what is installed and every distribution contributes its own parts to i
 | `zettcode-gateway` | `zettcode/gateway/**` | `zettcode-engine`, `zettcode-sdk` |
 | `zettcode-plugin-api` | `zettcode/plugin_api/**`: the plugin contract — `Plugin`/`TuiPlugin` and the row hooks (`mixins`, `plugin`, `state`, `rows`), commands (`commands`), the row model and the presenter base class and registry (`entries`, `presenters`), the pet format (`pets`), the link to the shell (`host`), and the widgets a panel is drawn with (`panels`, `switch`) | `zettcode-engine`, `zettcode-tui` (and `zettcode-sdk` only through the `types` extra, to type-check a plugin) |
 | `zettcode-presenters` | `zettcode/presenters/**`: the built-in rows — the presenters of every kind of entry, their wording (`text`), the pulse (`pulse`) and the brand mark (`brand`) | `zettcode-plugin-api`, `zettcode-tui`, `zettcode-sdk` |
+| `zettcode-pets` | `zettcode/pets/**`: the thirteen pets that ship and `PetsPlugin`, which offers them to `/pet`; found through the `zettcode.terminal` entry point, not required | `zettcode-plugin-api` |
 | `zettcode-app` | `zettcode/app/**`, `zettcode/collector.py`, `zettcode/statusline.py` (the rendering half), `zettcode/update.py` | `zettcode-engine`, `zettcode-tui`, `zettcode-sdk`, `zettcode-broker`, `zettcode-plugin-api`, `zettcode-presenters` |
 | `zettcode` | `zettcode/cli.py`, `plugin_cli.py`, `oneshot.py`, the console scripts | all of the above |
 

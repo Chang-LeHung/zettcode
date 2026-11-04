@@ -73,6 +73,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
 
     from zettcode.mentions import MentionRegistry
     from zettcode.plugin_api.commands import Command
+    from zettcode.plugin_api.pets import Pet
     from zettcode.plugin_api.state import Activity, UiRow
     from zettcode.prompt import PromptPart
     from zettcode.relay import Relayed
@@ -87,7 +88,6 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
     from ..agent.conversation.projection import TranscriptProjector
     from ..agent.conversation.shimmer import ShimmerFrame
     from ..agent.conversation.transcript import Transcript
-    from ..pets import Pet
     from .followups import FollowUp
     from .gc_policy import CollectorPolicy
     from .widgets import Composer, FollowUpQueue, PetView, SteeringQueue, TranscriptView, ZettCodeRoot

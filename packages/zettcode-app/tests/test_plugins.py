@@ -19,6 +19,7 @@ from zettcode.app.plugins import (
     TuiPlugins,
     load_terminal_plugins,
 )
+from zettcode.app.plugins.builtins import BuiltinThemes
 from zettcode.app.plugins.loader import terminal_context, terminal_plugins
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine import core as runtime_module
@@ -36,6 +37,7 @@ from zettcode.engine.plugins import (
     PluginTurnMixin,
 )
 from zettcode.engine.plugins import loader as loader_module
+from zettcode.pets.plugin import PetsPlugin
 from zettcode.plugin_api.commands import CommandContext, CommandResult, CommandUi
 from zettcode.plugin_api.entries import EditEntry, EntryKind, ReadEntry, TextEntry
 from zettcode.plugin_api.presenters import Presenter
@@ -71,6 +73,20 @@ class FakeEntryPoint:
         if isinstance(self._target, BaseException):
             raise self._target
         return self._target
+
+
+def with_parts(*points: FakeEntryPoint) -> list[FakeEntryPoint]:
+    """The parts of the program that are found through an entry point, then the points a test adds.
+
+    A test that passes its own ``entry_points`` replaces discovery altogether, the program's parts included; this is
+    how it keeps the palettes, the pets and the presenters beside the plugin it is about.
+    """
+    return [
+        FakeEntryPoint("pets", PetsPlugin),
+        FakeEntryPoint("presenters", PresentersPlugin),
+        FakeEntryPoint("themes", BuiltinThemes),
+        *points,
+    ]
 
 
 class _SilentUi(CommandUi):
@@ -732,8 +748,6 @@ async def test_disabled_and_switched_off_plugins_are_not_loaded(tmp_path: Path):
         "shell-control",
         "turn-line",
         "usage",
-        "themes",
-        "pets",
     ]
     assert [row.region for row in loaded.rows] == ["header", "status"]
     assert all(row.left for row in loaded.rows)
@@ -905,8 +919,6 @@ async def test_the_runtime_preview_installs_plugin_extensions_and_commands(tmp_p
         "shell-control",
         "turn-line",
         "usage",
-        "themes",
-        "pets",
         *(plugin.name for plugin in AGENT_PLUGINS),
         "presenters",
     ]

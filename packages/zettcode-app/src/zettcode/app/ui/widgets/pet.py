@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from time import monotonic
 
-from zettcode.app.pets import GLAD, IDLE, WORKING, Pet
+from zettcode.plugin_api.pets import GLAD, IDLE, WORKING, Pet
 from zettcode.tui import Canvas, Host, MouseAction, MouseEvent, Rect, TextLine, Widget
 
 #: Columns left between the pet and the right edge of its ground at its resting place, the margin the

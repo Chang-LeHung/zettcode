@@ -31,6 +31,9 @@ GLAD = "glad"
 #: What a pet may be called: one word, the way a palette's name is, because it is typed after ``/pet``.
 PET_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 
+#: The pet a reader has without choosing one.
+DEFAULT_PET_NAME = "cat"
+
 
 def _brightness(colour: str) -> int:
     """Return the mean of a ``#rrggbb`` colour's channels, 0 to 255."""

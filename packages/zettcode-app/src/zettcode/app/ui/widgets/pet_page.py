@@ -5,8 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from time import monotonic
 
-from zettcode.app.pets import GLAD, IDLE, WORKING, Pet, PetCatalog
 from zettcode.plugin_api.panels import pressed
+from zettcode.plugin_api.pets import GLAD, IDLE, WORKING, Pet, PetCatalog
 from zettcode.tui import ARROW_DOWN, ARROW_UP, SEPARATOR, Canvas, Host, MouseAction, MouseEvent, Widget
 from zettcode.tui.render import Style, blend, display_width, truncate
 

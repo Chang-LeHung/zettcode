@@ -23,7 +23,7 @@ os.environ["USERPROFILE"] = _HOME  # what `Path.home()` reads on Windows
 atexit.register(shutil.rmtree, _HOME, ignore_errors=True)
 
 #: Where the entry points of the plugins the program is made of point; the others are a reader's.
-PROGRAM_PLUGIN_MODULES = ("zettcode.presenters.",)
+PROGRAM_PLUGIN_MODULES = ("zettcode.presenters.", "zettcode.pets.", "zettcode.app.")
 
 
 @pytest.fixture(autouse=True)

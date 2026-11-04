@@ -29,6 +29,10 @@ dependencies = [
   "truststore>=0.10,<1",
 ]
 
+# Parts of the program that need a screen, loaded as plugins by the terminal only; see the engine's plugin loader.
+[project.entry-points."zettcode.terminal"]
+themes = "zettcode.app.plugins.builtins:BuiltinThemes"
+
 [project.urls]
 Repository = "https://github.com/Chang-LeHung/zettcode"
 

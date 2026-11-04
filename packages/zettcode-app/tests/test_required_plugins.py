@@ -61,7 +61,7 @@ def _load(tmp_path: Path, **overrides: object):
 
 def test_the_required_plugins_are_the_rows_and_the_presenters():
     assert set(REQUIRED_PLUGINS) == {"shell", "presenters"}
-    assert {"themes", "pets"} <= set(PARTS)
+    assert {"shell", "help-command"} <= set(PARTS)
 
 
 def test_a_disable_line_that_names_a_part_of_the_program_does_nothing(tmp_path: Path):
@@ -90,11 +90,11 @@ def test_the_disable_file_does_not_reach_a_part_of_the_program_either(tmp_path: 
 
 def test_the_reader_is_told_in_the_log_when_a_disable_line_names_a_part(tmp_path: Path, caplog):
     with caplog.at_level(logging.WARNING, logger="zettcode.plugins"):
-        _load(tmp_path, disabled_plugins=("presenters", "themes"))
+        _load(tmp_path, disabled_plugins=("presenters", "help-command"))
 
     assert sorted(record.plugin for record in caplog.records if record.message == "plugins.required") == [
+        "help-command",
         "presenters",
-        "themes",
     ]
 
 

@@ -57,10 +57,12 @@ logger = logging.getLogger("zettcode.plugins")
 #: Entry-point group a distribution publishes its plugin under.
 PLUGIN_ENTRY_POINT_GROUP = "zettcode.plugins"
 
-#: Entry-point group the distributions of the program itself publish their plugins under. They are loaded the same
-#: way, ahead of the installed plugins, but they are released with the program (one version, one tag) and are not
-#: something a reader installs or removes, so the plugin tooling and the release line for plugins never see them.
-PART_ENTRY_POINT_GROUP = "zettcode.parts"
+#: Entry-point group the distributions of the program itself publish the plugins only a screen has any use for under
+#: (the presenters, the pets, the palettes). They are loaded the same way, ahead of the installed plugins, but they are
+#: released with the program (one version, one tag) and are not something a reader installs or removes, so the plugin
+#: tooling and the release line for plugins never see them. A process with no terminal (the SDK, the server) does not
+#: load them: they would import the whole terminal to offer it nothing.
+TERMINAL_PART_GROUP = "zettcode.terminal"
 
 
 def installed_entry_points() -> tuple[EntryPoint, ...]:
@@ -71,7 +73,7 @@ def installed_entry_points() -> tuple[EntryPoint, ...]:
     """
     from importlib.metadata import entry_points
 
-    parts = sorted(entry_points(group=PART_ENTRY_POINT_GROUP), key=lambda point: point.name)
+    parts = sorted(entry_points(group=TERMINAL_PART_GROUP), key=lambda point: point.name)
     plugins = sorted(entry_points(group=PLUGIN_ENTRY_POINT_GROUP), key=lambda point: point.name)
     return (*parts, *plugins)
 
@@ -207,6 +209,7 @@ def run(
     builtins: Sequence[Plugin[Any]],
     entry_points: Iterable[EntryPoint] | None,
     required: Sequence[str] = (),
+    terminal: bool = False,
 ) -> Plugins:
     """Feed the builtins, the enabled distributions and the single-file plugins to ``loader``, and return what it bundled.
 
@@ -217,6 +220,7 @@ def run(
     Args:
         required: Names of plugins the program cannot run without. A ``disable`` line that names one — or one of the
             plugins it needs — is ignored and logged, and one that still did not load makes the call raise.
+        terminal: Whether the loader has a screen, which is what the parts in the ``zettcode.terminal`` group wait for.
 
     Raises:
         RequiredPluginError: A plugin in ``required`` is not loaded.
@@ -229,20 +233,22 @@ def run(
     # Offered by origin, so the ones a ``disable`` line holds back can still be pulled in when the program needs them.
     sources: dict[str, Callable[[], list[_Candidate]]] = {}
     disabled: set[str] = set()
-    # With `[plugins] enabled = false` nothing is loaded but what the program requires, so the distributions are looked
-    # up only when something is required.
-    if config.plugins_enabled or required:
-        points = tuple(entry_points) if entry_points is not None else installed_entry_points()
-        # The configuration file's own list and the switch file's, merged for the one caller that loads. The switch
-        # module cannot be imported here (it imports this one), so the union is written out; `off_names` is the same
-        # rule for the front ends.
-        disabled = set(config.disabled_plugins) | set(read_disabled_plugins(config.plugins_file))
-        for point in points:
-            sources[point.name] = partial(_from_point, loader, point)
-        if config.plugins_enabled:
-            for path in installed_files(config.plugins_dir):
-                sources.setdefault(path.stem, partial(_from_file, loader, path))
-    held = {origin for origin in sources if origin in disabled or not config.plugins_enabled}
+    # With `[plugins] enabled = false` nothing is loaded but the parts of the program (the `zettcode.terminal` group,
+    # which that switch is not about) and the plugins the program requires.
+    points = tuple(entry_points) if entry_points is not None else installed_entry_points()
+    # The parts of the program that need a screen are for a loader that has one.
+    points = tuple(point for point in points if terminal or getattr(point, "group", None) != TERMINAL_PART_GROUP)
+    parts = {point.name for point in points if getattr(point, "group", None) == TERMINAL_PART_GROUP}
+    # The configuration file's own list and the switch file's, merged for the one caller that loads. The switch
+    # module cannot be imported here (it imports this one), so the union is written out; `off_names` is the same
+    # rule for the front ends.
+    disabled = set(config.disabled_plugins) | set(read_disabled_plugins(config.plugins_file))
+    for point in points:
+        sources[point.name] = partial(_from_point, loader, point)
+    if config.plugins_enabled:
+        for path in installed_files(config.plugins_dir):
+            sources.setdefault(path.stem, partial(_from_file, loader, path))
+    held = {origin for origin in sources if origin in disabled or (not config.plugins_enabled and origin not in parts)}
     for origin in sources:
         if origin not in held:
             candidates.extend(sources[origin]())
