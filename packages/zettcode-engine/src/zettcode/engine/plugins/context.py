@@ -196,6 +196,15 @@ class PluginContext:
         """Return the object available under ``name``, or ``None`` when there is none (see :meth:`service`)."""
         return lookup({**self._available, **self._services}, name, kind)
 
+    def inject(self, name: str, service: object) -> object:
+        """Make an object available to the other plugins under ``name``; the same as :meth:`provide`.
+
+        A plugin that lists this one in ``deps`` is activated after it and finds the object with :meth:`service`.
+        What the object is, and how it is used, is for the plugins to agree on: the loader only keeps the name
+        unique and the order right.
+        """
+        return self.provide(name, service)
+
     def provide(self, name: str, service: object) -> object:
         """Register an object under a name, so other parts of the application can look it up.
 

@@ -1374,14 +1374,18 @@ def test_the_plugin_contract_sits_below_what_implements_it_and_below_the_applica
 
 
 def test_a_part_the_program_is_made_of_is_never_discoverable_as_a_plugin():
-    """What `[plugins] disable` can reach is what an entry point makes discoverable, so a part must not have one.
+    """A part of the program offers its plugin under `zettcode.parts`, never `zettcode.plugins`.
 
-    `zettcode-presenters` is the first built-in part to be a distribution of its own. If it declared a
-    `zettcode.plugins` entry point it would load as an installed plugin, and a line in the configuration could switch
-    the transcript's rows off; listing it in the program's built-ins is what makes that impossible.
+    The second group is what the plugin tooling lists and what the plugin release line (its own version, its own
+    tag) looks for. `zettcode-presenters` is a part: it is released with the program, and it is loaded as a plugin
+    through the other group, which the terminal names as required, so no `disable` line reaches it.
     """
     parts = [name for name in _release_order() if name != "zettcode-plugin-api"]
     assert "zettcode-presenters" in parts
     for name in parts:
         settings = tomllib.loads((ROOT / "packages" / name / "pyproject.toml").read_text(encoding="utf-8"))
         assert not settings["project"].get("entry-points", {}).get("zettcode.plugins"), name
+    presenters = tomllib.loads((ROOT / "packages/zettcode-presenters/pyproject.toml").read_text(encoding="utf-8"))
+    assert presenters["project"]["entry-points"]["zettcode.parts"] == {
+        "presenters": "zettcode.presenters.plugin:PresentersPlugin"
+    }

@@ -26,6 +26,10 @@ dependencies = [
 # The wording reads `Usage` figures the SDK defines; it is imported for the annotation only.
 types = ["zettcode-sdk"]
 
+# A part of the program, not a plugin: the `zettcode.plugins` group is what the plugin release line looks for.
+[project.entry-points."zettcode.parts"]
+presenters = "zettcode.presenters.plugin:PresentersPlugin"
+
 [project.urls]
 Repository = "https://github.com/Chang-LeHung/zettcode"
 

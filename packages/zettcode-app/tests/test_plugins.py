@@ -39,6 +39,7 @@ from zettcode.engine.plugins import loader as loader_module
 from zettcode.plugin_api.commands import CommandContext, CommandResult, CommandUi
 from zettcode.plugin_api.entries import EditEntry, EntryKind, ReadEntry, TextEntry
 from zettcode.plugin_api.presenters import Presenter
+from zettcode.presenters.plugin import PresentersPlugin
 from zettcode.providers import Provider
 from zettcode.sdk.builtins import AGENT_PLUGINS
 from zettcode.tui import DARK, Span, Style, TextLine
@@ -149,7 +150,6 @@ async def test_a_plain_command_that_fails_is_reported_as_one(tmp_path: Path):
         name = "plain-failing"
 
         def activate(self, ctx: PluginContext) -> None:
-
             async def fail(context) -> object:
                 raise ValueError("no such session")
 
@@ -734,7 +734,6 @@ async def test_disabled_and_switched_off_plugins_are_not_loaded(tmp_path: Path):
         "usage",
         "themes",
         "pets",
-        "presenters",
     ]
     assert [row.region for row in loaded.rows] == ["header", "status"]
     assert all(row.left for row in loaded.rows)
@@ -884,7 +883,11 @@ def test_an_empty_host_keeps_the_default_priority():
 
 async def test_the_runtime_preview_installs_plugin_extensions_and_commands(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(runtime_module.os, "chdir", lambda path: None)
-    monkeypatch.setattr(loader_module, "installed_entry_points", lambda: (FakeEntryPoint("greeter", Greeter),))
+    monkeypatch.setattr(
+        loader_module,
+        "installed_entry_points",
+        lambda: (FakeEntryPoint("greeter", Greeter), FakeEntryPoint("presenters", PresentersPlugin)),
+    )
 
     runtime = runtime_module.ZettCodeEngine.preview(make_config(tmp_path), terminal_plugins)
 
@@ -904,8 +907,8 @@ async def test_the_runtime_preview_installs_plugin_extensions_and_commands(tmp_p
         "usage",
         "themes",
         "pets",
-        "presenters",
         *(plugin.name for plugin in AGENT_PLUGINS),
+        "presenters",
     ]
     assert len(runtime.plugins.extensions) == 1
     # The program's own commands come first, in the order /help lists them, and the installed plugin's after them.
@@ -944,7 +947,11 @@ async def test_the_built_client_receives_the_plugin_extension(tmp_path: Path, mo
     monkeypatch.setattr(
         loader_module,
         "installed_entry_points",
-        lambda: (FakeEntryPoint("greeter", Greeter), FakeEntryPoint("second", Second)),
+        lambda: (
+            FakeEntryPoint("greeter", Greeter),
+            FakeEntryPoint("second", Second),
+            FakeEntryPoint("presenters", PresentersPlugin),
+        ),
     )
     captured: dict[str, object] = {}
 
@@ -1102,11 +1109,15 @@ class LoudNotice(Presenter):
 def test_a_plugin_can_draw_a_kind_of_row_and_the_built_ins_stay_the_default_for_the_rest(tmp_path: Path):
     class Drawing(TuiPlugin):
         name = "drawing"
+        deps = ("presenters",)
 
         def activate(self, ctx: PluginContext) -> None:
             ctx.tui.register_presenter(LoudNotice())
 
-    plugins = load_terminal_plugins(make_config(tmp_path), entry_points=[FakeEntryPoint("drawing", Drawing)])
+    plugins = load_terminal_plugins(
+        make_config(tmp_path),
+        entry_points=[FakeEntryPoint("drawing", Drawing), FakeEntryPoint("presenters", PresentersPlugin)],
+    )
     from zettcode.plugin_api.presenters import Presenters
 
     rows = Presenters(plugins.presenters)
@@ -1121,6 +1132,7 @@ def test_a_plugin_can_draw_a_kind_of_row_and_the_built_ins_stay_the_default_for_
 def test_a_plugin_can_raise_the_claim_on_a_family_without_taking_the_whole_kind(tmp_path: Path):
     class QuietEdit(TuiPlugin):
         name = "quiet-edits"
+        deps = ("presenters",)
 
         def activate(self, ctx: PluginContext) -> None:
             from zettcode.presenters.presenters import EditPresenter
@@ -1133,7 +1145,10 @@ def test_a_plugin_can_raise_the_claim_on_a_family_without_taking_the_whole_kind(
 
             ctx.tui.register_presenter(Quiet())
 
-    plugins = load_terminal_plugins(make_config(tmp_path), entry_points=[FakeEntryPoint("quiet", QuietEdit)])
+    plugins = load_terminal_plugins(
+        make_config(tmp_path),
+        entry_points=[FakeEntryPoint("quiet", QuietEdit), FakeEntryPoint("presenters", PresentersPlugin)],
+    )
     from zettcode.plugin_api.presenters import Presenters
 
     rows = Presenters(plugins.presenters)

@@ -29,12 +29,16 @@ import hashlib
 import importlib.util
 import logging
 import sys
+from collections.abc import Callable
+from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from zettcode.config import read_disabled_plugins
 from zettcode.providers import BUILTIN_PROVIDERS
 
+from . import graph
 from .context import PluginContext
 from .extension import HOST_NAME, PluginExtension
 from .plugin import Plugin, Plugins, PluginSetting
@@ -53,6 +57,11 @@ logger = logging.getLogger("zettcode.plugins")
 #: Entry-point group a distribution publishes its plugin under.
 PLUGIN_ENTRY_POINT_GROUP = "zettcode.plugins"
 
+#: Entry-point group the distributions of the program itself publish their plugins under. They are loaded the same
+#: way, ahead of the installed plugins, but they are released with the program (one version, one tag) and are not
+#: something a reader installs or removes, so the plugin tooling and the release line for plugins never see them.
+PART_ENTRY_POINT_GROUP = "zettcode.parts"
+
 
 def installed_entry_points() -> tuple[EntryPoint, ...]:
     """Return every plugin entry point installed in this environment.
@@ -62,7 +71,9 @@ def installed_entry_points() -> tuple[EntryPoint, ...]:
     """
     from importlib.metadata import entry_points
 
-    return tuple(sorted(entry_points(group=PLUGIN_ENTRY_POINT_GROUP), key=lambda point: point.name))
+    parts = sorted(entry_points(group=PART_ENTRY_POINT_GROUP), key=lambda point: point.name)
+    plugins = sorted(entry_points(group=PLUGIN_ENTRY_POINT_GROUP), key=lambda point: point.name)
+    return (*parts, *plugins)
 
 
 def installed_files(directory: Path) -> tuple[Path, ...]:
@@ -127,6 +138,7 @@ def load_plugins(
     entry_points: Iterable[EntryPoint] | None = None,
     builtins: Sequence[Plugin[Any]],
     shared: Mapping[str, object] | None = None,
+    required: Sequence[str] = (),
 ) -> Plugins:
     """Load the builtin plugins and every enabled distribution into one bundle.
 
@@ -146,7 +158,46 @@ def load_plugins(
     Returns:
         The host extension, services, and load failures the plugins produced.
     """
-    return run(Loader(config, shared), config, builtins=builtins, entry_points=entry_points)
+    return run(Loader(config, shared), config, builtins=builtins, entry_points=entry_points, required=required)
+
+
+class RequiredPluginError(RuntimeError):
+    """A plugin the program cannot run without did not load.
+
+    Attributes:
+        missing: ``{name: why}`` for each required plugin that is not among the loaded ones, in the order they were
+            asked for. The message lists them, so a front end can print it as it is.
+    """
+
+    def __init__(self, missing: dict[str, str]) -> None:
+        self.missing = dict(missing)
+        lines = "; ".join(f"{name}: {why}" for name, why in self.missing.items())
+        super().__init__(f"cannot start without the required plugins ({lines})")
+
+
+@dataclass(frozen=True, slots=True)
+class _Candidate:
+    """One plugin on its way to ``accept``, or the failure of one that could not even be built.
+
+    A failure travels with the others so it is reported where it was found, in discovery order, and not before or
+    after the plugins around it.
+    """
+
+    plugin: Plugin[Any] | None
+    origin: str
+    builtin: bool = False
+    label: str | None = None
+    error: BaseException | None = None
+
+    @property
+    def name(self) -> str:
+        if self.plugin is None:
+            return f"\0failed:{self.origin}:{self.label}"
+        return self.plugin.name or self.origin or type(self.plugin).__name__
+
+    @property
+    def deps(self) -> tuple[str, ...]:
+        return tuple(self.plugin.deps) if self.plugin is not None else ()
 
 
 def run(
@@ -155,56 +206,141 @@ def run(
     *,
     builtins: Sequence[Plugin[Any]],
     entry_points: Iterable[EntryPoint] | None,
+    required: Sequence[str] = (),
 ) -> Plugins:
     """Feed the builtins, the enabled distributions and the single-file plugins to ``loader``, and return what it bundled.
 
-    The builtins go first, so a plugin that registers under one of their names replaces it in place.
+    The candidates are offered builtins first, then distributions, then files, and are activated in dependency order
+    (:mod:`~zettcode.engine.plugins.graph`): stable, so without ``deps`` that is the order they were offered in.
     Builtins always load, while ``[plugins] enabled`` only gates the distributions and the files.
+
+    Args:
+        required: Names of plugins the program cannot run without. A ``disable`` line that names one — or one of the
+            plugins it needs — is ignored and logged, and one that still did not load makes the call raise.
+
+    Raises:
+        RequiredPluginError: A plugin in ``required`` is not loaded.
     """
+    candidates: list[_Candidate] = []
     for plugin in builtins:
-        loader.accept(plugin, origin=plugin.name or type(plugin).__name__, builtin=True)
-    loader.builtins_loaded()
-    if config.plugins_enabled:
+        candidates.append(_Candidate(plugin, plugin.name or type(plugin).__name__, builtin=True))
+        if candidates[-1].origin not in loader.builtins:
+            loader.builtins.append(candidates[-1].origin)
+    # Offered by origin, so the ones a ``disable`` line holds back can still be pulled in when the program needs them.
+    sources: dict[str, Callable[[], list[_Candidate]]] = {}
+    disabled: set[str] = set()
+    # With `[plugins] enabled = false` nothing is loaded but what the program requires, so the distributions are looked
+    # up only when something is required.
+    if config.plugins_enabled or required:
         points = tuple(entry_points) if entry_points is not None else installed_entry_points()
         # The configuration file's own list and the switch file's, merged for the one caller that loads. The switch
         # module cannot be imported here (it imports this one), so the union is written out; `off_names` is the same
         # rule for the front ends.
         disabled = set(config.disabled_plugins) | set(read_disabled_plugins(config.plugins_file))
-        # A name on that list can only ever reach a distribution or a file. The plugins the program lists are the
-        # program: they loaded above and nothing here unloads them, so a line that names one is a line that does
-        # nothing, and a reader who wrote it is told so instead of left to think the part is off.
-        for origin in sorted(disabled & set(loader.builtins)):
-            logger.warning(
-                "plugins.required",
-                extra={"plugin": origin, "reason": "part of the program; [plugins] disable does not reach it"},
-            )
         for point in points:
-            if point.name in disabled:
+            sources[point.name] = partial(_from_point, loader, point)
+        if config.plugins_enabled:
+            for path in installed_files(config.plugins_dir):
+                sources.setdefault(path.stem, partial(_from_file, loader, path))
+    held = {origin for origin in sources if origin in disabled or not config.plugins_enabled}
+    for origin in sources:
+        if origin not in held:
+            candidates.extend(sources[origin]())
+    # A name on that list can only reach a distribution or a file, unless the program needs it: the plugins it lists
+    # as builtin loaded above, and the required ones, with what they need, are pulled in below. A line that names one
+    # does nothing, and a reader who wrote it is told so instead of left to think the part is off.
+    for origin in sorted(disabled & set(loader.builtins)):
+        logger.warning(
+            "plugins.required",
+            extra={"plugin": origin, "reason": "part of the program; [plugins] disable does not reach it"},
+        )
+    protected = set(required)
+    while True:
+        by_name = {candidate.name: candidate for candidate in candidates}
+        wanted: set[str] = set()
+        queue = [name for name in protected]
+        while queue:
+            name = queue.pop()
+            if name in wanted:
                 continue
-            try:
-                plugin = _instantiate(point)
-            except KeyboardInterrupt:
-                raise
-            except BaseException as error:
-                loader.fail(point.name, error)
-                continue
-            loader.accept(plugin, origin=point.name)
-        for path in installed_files(config.plugins_dir):
-            origin = path.stem
+            wanted.add(name)
+            if name in by_name:
+                queue.extend(by_name[name].deps)
+        pulled = sorted(origin for origin in held if origin in wanted)
+        if not pulled:
+            break
+        for origin in pulled:
+            held.discard(origin)
             if origin in disabled:
+                logger.warning(
+                    "plugins.required",
+                    extra={
+                        "plugin": origin,
+                        "reason": "the program cannot run without it; [plugins] disable does not reach it",
+                    },
+                )
+            candidates.extend(sources[origin]())
+    ordered, refused = graph.order([graph.Node(c.name, c.deps) for c in candidates])
+    loaded: set[int] = set()
+    for index in sorted(refused):
+        candidate = candidates[index]
+        loader.fail(candidate.origin, refused[index], label=candidate.label)
+    # ``builtins_loaded`` marks the end of the compiled-in plugins, so it runs after the last of them is activated.
+    last_builtin = max((position for position, index in enumerate(ordered) if candidates[index].builtin), default=-1)
+    if last_builtin < 0:
+        loader.builtins_loaded()
+    names_loaded: set[str] = set()
+    for position, index in enumerate(ordered):
+        candidate = candidates[index]
+        lost = next((dep for dep in candidate.deps if dep not in names_loaded), None)
+        if candidate.plugin is None:
+            assert candidate.error is not None
+            loader.fail(candidate.origin, candidate.error, label=candidate.label)
+        elif lost is not None:
+            # It was ready, but a plugin it needs failed to activate: the failure is that plugin's, and this one is
+            # reported as the casualty it is rather than activated without what it asked for.
+            loader.fail(candidate.origin, f"needs plugin {lost!r}, which cannot be loaded", label=candidate.label)
+        elif loader.accept(candidate.plugin, origin=candidate.origin, builtin=candidate.builtin, label=candidate.label):
+            loaded.add(index)
+            names_loaded.add(candidate.name)
+        if position == last_builtin:
+            loader.builtins_loaded()
+    # A required plugin is the program's own as much as a compiled-in one: no switch reaches it, and a list says so.
+    loader.builtins.extend(name for name in required if name not in loader.builtins)
+    if required:
+        have = {candidates[index].name for index in loaded}
+        absent: dict[str, str] = {}
+        for name in required:
+            if name in have:
                 continue
-            try:
-                plugins, failures = _file_plugins(path)
-            except KeyboardInterrupt:
-                raise
-            except BaseException as error:
-                loader.fail(origin, error)
-                continue
-            for class_name, failure in failures:
-                loader.fail(origin, failure, label=class_name)
-            for plugin in plugins:
-                loader.accept(plugin, origin=origin, label=type(plugin).__name__)
+            why = next((reason for origin, reason in loader.failed if origin == name), None)
+            absent[name] = why or "not installed"
+        if absent:
+            raise RequiredPluginError(absent)
     return loader.bundle()
+
+
+def _from_point(loader: Loader, point: EntryPoint) -> list[_Candidate]:
+    """Resolve one entry point into a candidate; a failure is a candidate that carries it."""
+    try:
+        return [_Candidate(_instantiate(point), point.name)]
+    except KeyboardInterrupt:
+        raise
+    except BaseException as error:
+        return [_Candidate(None, point.name, error=error)]
+
+
+def _from_file(loader: Loader, path: Path) -> list[_Candidate]:
+    """Import one single-file plugin into candidates; a failure is recorded and gives none."""
+    origin = path.stem
+    try:
+        plugins, failures = _file_plugins(path)
+    except KeyboardInterrupt:
+        raise
+    except BaseException as error:
+        return [_Candidate(None, origin, error=error)]
+    broken = [_Candidate(None, origin, label=class_name, error=failure) for class_name, failure in failures]
+    return [*broken, *(_Candidate(plugin, origin, label=type(plugin).__name__) for plugin in plugins)]
 
 
 class Loader:
@@ -304,8 +440,11 @@ class Loader:
         reason = _reason(error)
         self.failed.append((origin, f"{label}: {reason}" if label else reason))
 
-    def accept(self, plugin: Plugin[Any], *, origin: str, builtin: bool = False, label: str | None = None) -> None:
+    def accept(self, plugin: Plugin[Any], *, origin: str, builtin: bool = False, label: str | None = None) -> bool:
         """Activate one plugin and merge what it registered, or report why not.
+
+        Returns:
+            Whether the plugin was activated and merged.
 
         Args:
             plugin: The plugin to activate.
@@ -326,10 +465,10 @@ class Loader:
                 f"setting {plugin.setting.path} names no boolean setting of the configuration",
                 label=label,
             )
-            return
+            return False
         if name in self._identities:
             self.fail(origin, f"duplicate plugin name {name!r}", label=label)
-            return
+            return False
         if not plugin.name:
             plugin.name = name
         if not plugin.origin:
@@ -342,14 +481,15 @@ class Loader:
             raise
         except BaseException as error:
             self.fail(origin, error, label=label)
-            return
+            return False
         clash = self.clash(container)
         if clash is not None:
             self.fail(origin, clash, label=label)
-            return
+            return False
         self._identities.add(name)
         self.merge(container)
         self.plugins.append(plugin)
+        return True
 
 
 def _is_bool_setting(config: ZettCodeConfig, setting: PluginSetting) -> bool:

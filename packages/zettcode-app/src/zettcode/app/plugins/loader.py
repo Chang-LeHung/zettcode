@@ -44,20 +44,28 @@ def load_terminal_plugins(
     entry_points: Iterable[EntryPoint] | None = None,
     builtins: Sequence[Plugin[Any]] = (*BUILTIN_PLUGINS, *AGENT_PLUGINS),
     shared: Mapping[str, object] | None = None,
+    required: Sequence[str] = (),
 ) -> TuiPlugins:
     """Load the builtin plugins and every enabled distribution into one bundle, for the terminal.
 
     The arguments are those of :func:`zettcode.engine.plugins.loader.load_plugins`; the builtins default to the
     terminal's own followed by the agent's.
     """
-    bundle = run(TerminalLoader(config, shared), config, builtins=builtins, entry_points=entry_points)
+    bundle = run(
+        TerminalLoader(config, shared), config, builtins=builtins, entry_points=entry_points, required=required
+    )
     assert isinstance(bundle, TuiPlugins)
     return bundle
 
 
+#: The plugins the terminal cannot run without: the rows it paints and the presenters that draw the conversation.
+#: ``[plugins] disable`` does not reach them, and the terminal does not start when one is missing.
+REQUIRED_PLUGINS: tuple[str, ...] = ("shell", "presenters")
+
+
 def terminal_plugins(config: ZettCodeConfig, shared: Mapping[str, object]) -> TuiPlugins:
     """Load the plugins the terminal's way, in the shape :meth:`ZettCodeEngine.preview` takes as its loader."""
-    return load_terminal_plugins(config, shared=shared)
+    return load_terminal_plugins(config, shared=shared, required=REQUIRED_PLUGINS)
 
 
 def _tui(context: PluginContext) -> TuiGroups:

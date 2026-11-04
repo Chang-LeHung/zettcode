@@ -90,6 +90,9 @@ class Plugin(PluginAgentMixin, Generic[_C], ABC):
     #: switch file are matched against it.
     origin: str = ""
     description: ClassVar[str] = ""
+    #: The names of the plugins this one needs. The loader activates a plugin after every plugin it lists, and
+    #: leaves it out, reported, when one of them is absent, turned off, failed, or the lists go round in a circle.
+    deps: ClassVar[tuple[str, ...]] = ()
     priority: ClassVar[int] = 100
     #: The configuration key that decides whether a compiled-in plugin does its work, or ``None`` when there is none:
     #: a plugin the reader cannot turn off is left out of the list rather than shown without a switch.

@@ -17,7 +17,6 @@ from zettcode.engine.plugins.context import PluginContext
 from zettcode.plugin_api.commands import CommandContext, CommandResult
 from zettcode.plugin_api.plugin import TuiPlugin
 from zettcode.plugin_api.state import ShellContext, TurnBuilder
-from zettcode.presenters.presenters import BUILTIN_PRESENTERS
 from zettcode.presenters.pulse import activity_glyph
 from zettcode.presenters.text import (
     cache_text,
@@ -162,24 +161,6 @@ class BuiltinPets(TuiPlugin):
             tui.register_pet(source.name, source.load, description=source.description)
 
 
-class BuiltinPresenters(TuiPlugin):
-    """How the program draws its own rows, offered the way any plugin offers a presenter.
-
-    They register first, at the class's own priority, which is the lowest there is, so a plugin that
-    draws the same kind or family wins without having to outrank them; a plugin that registers
-    nothing leaves exactly the rows the program has always drawn. Adding a built-in kind of row is
-    adding a presenter to ``BUNDLED`` in the conversation and nothing here.
-    """
-
-    name = "presenters"
-
-    def activate(self, ctx: PluginContext) -> None:
-        """Register every built-in presenter at the priority its class declares."""
-        tui = require_tui(ctx)
-        for presenter in BUILTIN_PRESENTERS:
-            tui.register_presenter(presenter)
-
-
 #: Plugins loaded from the repository itself, never from a distribution. The agent-side ones, which build on
 #: state the runtime hands over, are :data:`~zettcode.sdk.builtins.AGENT_PLUGINS`.
 BUILTIN_PLUGINS: tuple[TuiPlugin, ...] = (
@@ -197,5 +178,4 @@ BUILTIN_PLUGINS: tuple[TuiPlugin, ...] = (
     UsageCommand(),
     BuiltinThemes(),
     BuiltinPets(),
-    BuiltinPresenters(),
 )

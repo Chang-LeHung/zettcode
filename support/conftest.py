@@ -22,6 +22,9 @@ os.environ["HOME"] = _HOME
 os.environ["USERPROFILE"] = _HOME  # what `Path.home()` reads on Windows
 atexit.register(shutil.rmtree, _HOME, ignore_errors=True)
 
+#: Where the entry points of the plugins the program is made of point; the others are a reader's.
+PROGRAM_PLUGIN_MODULES = ("zettcode.presenters.",)
+
 
 @pytest.fixture(autouse=True)
 def _no_broker_process(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -44,11 +47,17 @@ def _no_installed_plugins(monkeypatch: pytest.MonkeyPatch) -> None:
     ``ZettCodeEngine.preview`` loads every ``zettcode.plugins`` entry point the
     environment advertises, which would make tests depend on whatever the
     developer happens to have installed. The plugin tests inject their own entry
-    points, so discovery is only stubbed here, never removed.
+    points, so discovery is only stubbed here, never removed. The plugins the program itself is made of
+    (``PROGRAM_PLUGIN_MODULES``) are still found: without them there is nothing to draw with.
     """
     from zettcode.engine.plugins import loader
 
-    monkeypatch.setattr(loader, "installed_entry_points", lambda: ())
+    real = loader.installed_entry_points
+
+    def program_only() -> tuple:
+        return tuple(point for point in real() if point.value.startswith(PROGRAM_PLUGIN_MODULES))
+
+    monkeypatch.setattr(loader, "installed_entry_points", program_only)
 
 
 @pytest.fixture(autouse=True)
