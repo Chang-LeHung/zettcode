@@ -11,12 +11,11 @@ from __future__ import annotations
 from collections.abc import Collection, Sequence
 
 from zettcode.error_text import CONTINUE_HINT, failure_text
+from zettcode.plugin_api.state import TurnContext, TurnSegment
 from zettcode.prompt import MentionPart, PromptPart
 from zettcode.sdk.errors import RunError, SessionBusyError
 from zettcode.sdk.events import AnyEvent, ToolFinished, ToolStarted
 from zettcode.sdk.types import Image, TaskInfo, Usage
-
-from ..plugins.state import TurnContext, TurnSegment
 
 __all__ = [
     "RUN_IN_PROGRESS",

@@ -6,10 +6,10 @@ from collections.abc import Callable
 from time import monotonic
 
 from zettcode.app.pets import GLAD, IDLE, WORKING, Pet, PetCatalog
+from zettcode.plugin_api.panels import pressed
 from zettcode.tui import ARROW_DOWN, ARROW_UP, SEPARATOR, Canvas, Host, MouseAction, MouseEvent, Widget
 from zettcode.tui.render import Style, blend, display_width, truncate
 
-from .panel import pressed
 from .pet import paint_sprite
 
 #: Rows the panel needs besides the list: a blank, the title and a blank above it, and the keys below.

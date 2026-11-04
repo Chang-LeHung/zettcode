@@ -7,10 +7,10 @@ from pathlib import Path
 
 import pytest
 
-from zettcode.app.commands import CommandContext
 from zettcode.app.plugins import HOST_LINK, HostLink
 from zettcode.app.plugins.loader import terminal_context
 from zettcode.config import ModelConfig, ZettCodeConfig
+from zettcode.plugin_api.commands import CommandContext
 from zettcode.recap import PROMPT, RecapPlugin
 
 SESSION = "s-1"

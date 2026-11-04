@@ -8,7 +8,7 @@ its beak.
 
 from __future__ import annotations
 
-from .model import GLAD, IDLE, WORKING, Pet, edited
+from zettcode.plugin_api.pets import GLAD, IDLE, WORKING, Pet, edited
 
 DESCRIPTION = "a penguin in a red scarf; the scarf swings while a request runs"
 

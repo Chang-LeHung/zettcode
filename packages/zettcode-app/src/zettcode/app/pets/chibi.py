@@ -8,7 +8,7 @@ smiles.
 
 from __future__ import annotations
 
-from .model import GLAD, IDLE, WORKING, Pet, edited
+from zettcode.plugin_api.pets import GLAD, IDLE, WORKING, Pet, edited
 
 DESCRIPTION = "an original anime-style girl; her eyes follow the work"
 

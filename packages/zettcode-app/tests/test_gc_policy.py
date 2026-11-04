@@ -241,7 +241,7 @@ async def test_typing_with_nothing_running_does_not_switch_the_collector_on():
 
 
 async def test_a_command_runs_with_the_collector_on_like_any_other_work():
-    from zettcode.app.commands import Command, CommandResult
+    from zettcode.plugin_api.commands import Command, CommandResult
 
     app, harness = _shell()
     app.collector.rest()

@@ -13,11 +13,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from zettcode.presenters.text import STOP_HINT
 from zettcode.statusline import TURN_PARTS, Row
 from zettcode.tui import ARROW_DOWN, ARROW_UP, ELLIPSIS, HEADER, STATUS
 from zettcode.tui.render import display_width
-
-from ..agent.conversation.text import STOP_HINT
 
 #: The keys worth remembering, shown at the right of the status row.
 KEY_HINTS = f"{STOP_HINT}  ^D exit"

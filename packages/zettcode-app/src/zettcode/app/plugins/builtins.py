@@ -10,9 +10,16 @@ second segment beside it.
 
 from __future__ import annotations
 
-from zettcode.app.agent.conversation.presenters import BUILTIN_PRESENTERS
-from zettcode.app.agent.conversation.pulse import activity_glyph
-from zettcode.app.agent.conversation.text import (
+from zettcode.app.pets import bundled_pets
+from zettcode.app.ui import labels
+from zettcode.app.ui.widgets import UsagePage
+from zettcode.engine.plugins.context import PluginContext
+from zettcode.plugin_api.commands import CommandContext, CommandResult
+from zettcode.plugin_api.plugin import TuiPlugin
+from zettcode.plugin_api.state import ShellContext, TurnBuilder
+from zettcode.presenters.presenters import BUILTIN_PRESENTERS
+from zettcode.presenters.pulse import activity_glyph
+from zettcode.presenters.text import (
     cache_text,
     calls_text,
     elapsed_text,
@@ -20,11 +27,6 @@ from zettcode.app.agent.conversation.text import (
     tokens_text,
     tools_text,
 )
-from zettcode.app.commands import CommandContext, CommandResult
-from zettcode.app.pets import bundled_pets
-from zettcode.app.ui import labels
-from zettcode.app.ui.widgets import UsagePage
-from zettcode.engine.plugins.context import PluginContext
 from zettcode.statusline import TURN_PARTS, Row, context_share, usage_parts
 from zettcode.tui import STATUS, bundled_themes
 
@@ -39,8 +41,6 @@ from .builtin_commands import (
     SideQuestion,
 )
 from .groups import require_tui
-from .plugin import TuiPlugin
-from .state import ShellContext, TurnBuilder
 
 
 class ShellRows(TuiPlugin):

@@ -7,7 +7,8 @@ in place and tells the log it did.
 
 from __future__ import annotations
 
-from ..entries import ThinkingEntry, ToolEntry
+from zettcode.plugin_api.entries import ThinkingEntry, ToolEntry
+
 from .log import EntryLog
 
 

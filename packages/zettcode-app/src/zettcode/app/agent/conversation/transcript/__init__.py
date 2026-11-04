@@ -33,8 +33,8 @@ from collections.abc import Callable
 from time import monotonic
 
 from zettcode.config import DEFAULT_TRANSCRIPT_MAX_ENTRIES
+from zettcode.presenters.presenters import DEFAULT_PRESENTERS, Presenters
 
-from ..presenters import DEFAULT_PRESENTERS, Presenters
 from ..rendering import DEFAULT_RENDERERS, Renderers
 from ..tips import TipDeck
 from .fold import FoldMixin

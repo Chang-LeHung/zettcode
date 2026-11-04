@@ -7,8 +7,8 @@ import re
 import pytest
 
 from zettcode.app import Transcript, TranscriptSource
-from zettcode.app.agent.conversation.text import TIP_AFTER, TIP_EVERY, tip_text
 from zettcode.app.agent.conversation.tips import TIPS, TipDeck
+from zettcode.presenters.text import TIP_AFTER, TIP_EVERY, tip_text
 from zettcode.tui import DARK
 
 A, B, C = "first tip", "second tip", "third tip"
@@ -95,7 +95,7 @@ def test_a_tip_is_one_more_line_in_the_quiet_ink_and_changes_nothing_else_about_
 
 
 def test_a_tip_is_hung_the_way_a_tools_result_is_with_the_same_hook_and_indent():
-    from zettcode.app.agent.conversation.text import CONTENT_INDENT
+    from zettcode.plugin_api.presenters import CONTENT_INDENT
 
     clock, transcript = _running(("alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu",))
     clock.pass_seconds(transcript, 7)

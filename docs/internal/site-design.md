@@ -12,7 +12,7 @@ publishes them from `main`. Internal notes in this directory remain excluded.
 
 ## Design responsibilities
 
-- `packages/zettcode-app/src/zettcode/app/brand.py` holds the single 15×10 pixel map and fixed brand
+- `packages/zettcode-presenters/src/zettcode/presenters/brand.py` holds the single 15×10 pixel map and fixed brand
   palette used by every surface. There is no separate website interpretation.
   `docs/public/logo.svg` is generated from it: a green pixel robot
   with square eyes, side ears, and a warm heart. The navigation, favicon, and

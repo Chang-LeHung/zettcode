@@ -13,14 +13,14 @@ import pytest
 from zett_agent.events import AgentEvent, AgentEventType
 from zett_agent.messages import AssistantMessage, ToolCall, ToolMessage, UserMessage
 
-from zettcode.app.agent.conversation.entries import EntryStatus
-from zettcode.app.agent.conversation.presenters import render_entry
 from zettcode.app.agent.conversation.projection import TranscriptProjector
 from zettcode.app.agent.conversation.replay import replay
-from zettcode.app.agent.conversation.text import DECLINED_NOTE
 from zettcode.app.agent.conversation.transcript import Transcript
 from zettcode.engine.dialogue.ask import declined_answer
 from zettcode.engine.storage import SessionStore
+from zettcode.plugin_api.entries import EntryStatus
+from zettcode.presenters.presenters import render_entry
+from zettcode.presenters.text import DECLINED_NOTE
 from zettcode.tui import DARK
 
 #: What the tool returns when the reader cancels: the payload the shell sent, serialized.

@@ -62,8 +62,8 @@ class TuiGroup(ABC):
     ) -> Any:
         """Add a command that may open a page, ask the shell to act, or wait for a request to end.
 
-        ``handler`` is called with a :class:`~zettcode.app.commands.CommandContext` and returns a
-        :class:`~zettcode.app.commands.CommandResult`. A command whose whole answer is text belongs on
+        ``handler`` is called with a :class:`~zettcode.plugin_api.CommandContext` and returns a
+        :class:`~zettcode.plugin_api.CommandResult`. A command whose whole answer is text belongs on
         ``ctx.commands`` instead, where a process without a screen can run it too.
         """
 

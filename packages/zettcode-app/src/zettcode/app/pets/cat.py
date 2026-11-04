@@ -7,7 +7,7 @@ narrows its eyes into a smile and opens its mouth.
 
 from __future__ import annotations
 
-from .model import GLAD, IDLE, WORKING, Pet, edited
+from zettcode.plugin_api.pets import GLAD, IDLE, WORKING, Pet, edited
 
 DESCRIPTION = "a ginger cat; it blinks along while a request runs"
 

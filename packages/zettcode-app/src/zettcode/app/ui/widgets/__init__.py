@@ -58,7 +58,7 @@ _EXPORTS = {
     "UsagePage": ".usage_page",
     "WELCOME": ".welcome",
     "ZettCodeRoot": ".root",
-    "bottom_panel": ".panel",
+    "bottom_panel": "zettcode.plugin_api.panels",
     "format_ago": ".sessions_page",
     "help_text": ".completer",
     "pet_rows": ".pet_page",
@@ -67,6 +67,8 @@ _EXPORTS = {
 
 
 if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
+    from zettcode.plugin_api.panels import bottom_panel
+
     from .approval_page import ApprovalChoice, ApprovalPage
     from .ask_page import AskUserPage
     from .bash_page import BashPage
@@ -81,7 +83,6 @@ if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
     from .input_page import INPUT_ROWS, InputPage
     from .model_page import ModelPage
     from .model_settings_page import ModelSettingsPage, model_settings_rows
-    from .panel import bottom_panel
     from .pet import PetView
     from .pet_page import PetPage, pet_rows
     from .plugins_page import PluginRow, PluginsPage

@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from time import monotonic
 from typing import Literal
 
+from zettcode.plugin_api.panels import pressed
+from zettcode.plugin_api.switch import SWITCH_WIDTH, Rail, draw_switch
 from zettcode.tui import (
     ARROW_DOWN,
     ARROW_UP,
@@ -26,8 +28,6 @@ from zettcode.tui.core.geometry import Point
 from zettcode.tui.render import blend, display_width, truncate
 
 from .form_page import LineArea, SecretLine
-from .panel import pressed
-from .switch import SWITCH_WIDTH, Rail, draw_switch
 
 #: What an answer is: the trimmed text of a typed row, whether a switch is on, the word a choice is on.
 Answer = str | bool

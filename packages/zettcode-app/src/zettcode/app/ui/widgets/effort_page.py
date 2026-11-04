@@ -5,10 +5,9 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from time import monotonic
 
+from zettcode.plugin_api.panels import pressed
 from zettcode.tui import SEPARATOR, Canvas, Host, MouseAction, MouseEvent, Theme, Widget
 from zettcode.tui.render import Style, blend, display_width, truncate
-
-from .panel import pressed
 
 #: Rows the panel takes: a blank, the title, a blank, the name over the knob, the rail, the labels, what is
 #: in force, the note, and the keys.

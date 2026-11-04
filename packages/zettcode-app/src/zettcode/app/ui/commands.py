@@ -3,7 +3,7 @@
 They live outside :class:`~zettcode.app.ui.app.ZettCodeApp` so that class stays
 the wiring \u2014 widget tree, keymap, pages \u2014 rather than the command set. Every
 handler is a method here, returns a
-:class:`~zettcode.app.commands.CommandResult`, and never paints directly: the
+:class:`~zettcode.plugin_api.commands.CommandResult`, and never paints directly: the
 shell applies the result (see ``ZettCodeApp._apply_result``).
 
 The commands that only need the shell's narrow public surface (``/resume``, ``/model``, ``/context`` and the rest)
@@ -18,9 +18,7 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from zettcode.config_edit import ConfigEditError
-from zettcode.statusline import NAMES, Part
-
-from ..commands import (
+from zettcode.plugin_api.commands import (
     Command,
     CommandContext,
     CommandProvider,
@@ -28,6 +26,8 @@ from ..commands import (
     Subcommand,
     subcommand_words,
 )
+from zettcode.statusline import NAMES, Part
+
 from .widgets import (
     PetPage,
     StatuslinePage,

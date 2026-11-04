@@ -7,10 +7,10 @@ from pathlib import Path, PurePath
 import pytest
 
 from zettcode.app.agent.conversation.changes import changed_files, shown_path
-from zettcode.app.agent.conversation.entries import ChangesEntry, EntryStatus, FileSummary
-from zettcode.app.agent.conversation.presenters import DEFAULT_PRESENTERS, MAX_CHANGED_ROWS
 from zettcode.app.agent.conversation.transcript import Transcript
 from zettcode.app.ui.widgets import TranscriptSource
+from zettcode.plugin_api.entries import ChangesEntry, EntryStatus, FileSummary
+from zettcode.presenters.presenters import DEFAULT_PRESENTERS, MAX_CHANGED_ROWS
 from zettcode.tui import DARK
 
 #: A workspace that is absolute on every platform, built from the platform's own root.

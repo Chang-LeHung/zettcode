@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from zettcode.app.agent.conversation.text import CONTENT_INDENT
+from zettcode.plugin_api.presenters import CONTENT_INDENT
 from zettcode.tui import MARKER, OPTION, SEPARATOR, Canvas, Constraints, Size, Style, Widget
 from zettcode.tui.render import ELLIPSIS, display_width, truncate
 

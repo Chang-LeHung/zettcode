@@ -13,15 +13,15 @@ from typing import TYPE_CHECKING
 
 from zettcode.engine.plugins.context import PluginContext
 from zettcode.engine.plugins.plugin import Plugin, Plugins
-
-from .mixins import PluginUiMixin
-from .state import TurnSegment, UiRow
+from zettcode.plugin_api.mixins import PluginUiMixin
+from zettcode.plugin_api.state import TurnSegment, UiRow
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay lazy
-    from zettcode.app.agent.conversation.presenters import Presenter
-    from zettcode.app.commands import Command
-    from zettcode.app.pets import PetSource
+    from zettcode.plugin_api.commands import Command
+    from zettcode.plugin_api.presenters import Presenter
     from zettcode.tui import ThemeSource
+
+    from .pets import PetSource
 
 
 class TuiPlugin(Plugin[PluginContext], PluginUiMixin):

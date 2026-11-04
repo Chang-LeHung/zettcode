@@ -54,6 +54,7 @@ zettcode-sdk = { workspace = true }
 zettcode-server = { workspace = true }
 zettcode-tui = { workspace = true }
 zettcode-plugin-api = { workspace = true }
+zettcode-presenters = { workspace = true }
 zettcode-monitor = { workspace = true }
 zettcode-recap = { workspace = true }
 

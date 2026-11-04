@@ -5,11 +5,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from time import monotonic
 
+from zettcode.plugin_api.panels import pressed
+from zettcode.plugin_api.switch import Rail
 from zettcode.tui import SEPARATOR, Canvas, Host, MouseAction, MouseEvent, Theme, Widget
 from zettcode.tui.render import Style, blend, display_width, truncate
-
-from .panel import pressed
-from .switch import Rail
 
 #: Rows the panel takes: a blank, the title, a blank, the session rail and its labels, a blank, the default
 #: rail and its labels, a blank, what is in effect, the note, and the keys.

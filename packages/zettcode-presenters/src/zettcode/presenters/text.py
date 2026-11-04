@@ -14,7 +14,6 @@ from datetime import datetime
 from pathlib import Path
 
 from zettcode.sdk.types import Usage
-from zettcode.statusline import compact_tokens
 from zettcode.tui import ELLIPSIS
 from zettcode.tui.glyphs import ARROW_DOWN, ARROW_UP, SEPARATOR
 from zettcode.tui.render import count_wrapped_rows, display_width, truncate, wrap_columns
@@ -22,10 +21,8 @@ from zettcode.tui.render import count_wrapped_rows, display_width, truncate, wra
 #: Left margin of every transcript row: the width of the composer's ``\u203a ``
 #: prompt, so text lines up under what the user types and never starts left of
 #: the caret in an empty composer.
-CONTENT_INDENT = 2
 
 #: Label of the row that shows a reasoning span while it streams.
-THINKING_LABEL = "Thinking"
 
 #: Label of the row that shows the summarizer working: the same kind of row, so
 #: it carries the same marker and timer as reasoning does.
@@ -293,3 +290,12 @@ def compact_path(path: Path, *, limit: int | None = 38) -> str:
         tail = character + tail
         budget -= display_width(character)
     return ELLIPSIS + tail
+
+
+def compact_tokens(count: int) -> str:
+    """Shorten a token count for the status line: ``912``, ``12.3k``, ``1.2M``."""
+    if count < 1_000:
+        return str(count)
+    if count < 999_950:
+        return f"{count / 1_000:.1f}k"
+    return f"{count / 1_000_000:.1f}M"

@@ -35,27 +35,7 @@ from zettcode._compat import ExceptionGroup
 from zettcode.app import Transcript, TranscriptSource, TranscriptView, ZettCodeApp
 from zettcode.app.agent.agent import TerminalAgent
 from zettcode.app.agent.conversation.effort_gauge import EFFORT_SECONDS
-from zettcode.app.agent.conversation.entries import EntryStatus
 from zettcode.app.agent.conversation.projection import TranscriptProjector
-from zettcode.app.agent.conversation.pulse import (
-    ANIMATION_SECONDS,
-    PULSE_FRAMES,
-    RUNNING_GLYPHS,
-    STATUS_BLINK_FRAMES,
-    activity_glyph,
-    move_frames,
-    sweep_column,
-)
-from zettcode.app.agent.conversation.text import (
-    STOP_HINT,
-    clock_text,
-    compact_path,
-    duration_text,
-    elapsed_text,
-    terminal_safe,
-)
-from zettcode.app.brand import LOGO_LINES, LOGO_PALETTE, LOGO_PIXELS
-from zettcode.app.commands import Command, CommandContext, CommandResult
 from zettcode.app.plugins import (
     BUILTIN_PLUGINS,
     HOST_LINK,
@@ -66,7 +46,6 @@ from zettcode.app.plugins import (
 )
 from zettcode.app.plugins.builtin_commands import CodeReview
 from zettcode.app.plugins.loader import plain_commands, terminal_context
-from zettcode.app.plugins.state import TurnSegment
 from zettcode.app.ui import app as app_module
 from zettcode.app.ui import demo
 from zettcode.app.ui import keys as keys_module
@@ -102,6 +81,27 @@ from zettcode.engine.extensions.usage import USAGE_EVENT_NAME, UsageExtension, U
 from zettcode.engine.permission import Permission, parse_permission
 from zettcode.engine.storage import STORE_FILE, SessionInfo, SessionStore
 from zettcode.mentions import Mention, MentionProvider, MentionRegistry
+from zettcode.plugin_api.commands import Command, CommandContext, CommandResult
+from zettcode.plugin_api.entries import EntryStatus
+from zettcode.plugin_api.state import TurnSegment
+from zettcode.presenters.brand import LOGO_LINES, LOGO_PALETTE, LOGO_PIXELS
+from zettcode.presenters.pulse import (
+    ANIMATION_SECONDS,
+    PULSE_FRAMES,
+    RUNNING_GLYPHS,
+    STATUS_BLINK_FRAMES,
+    activity_glyph,
+    move_frames,
+    sweep_column,
+)
+from zettcode.presenters.text import (
+    STOP_HINT,
+    clock_text,
+    compact_path,
+    duration_text,
+    elapsed_text,
+    terminal_safe,
+)
 from zettcode.relay import Relayed
 from zettcode.sdk.types import SessionInfo as ListedSession
 from zettcode.statusline import context_text
@@ -635,8 +635,8 @@ def test_welcome_mark_is_wide_and_mirror_symmetric_with_a_centered_heart():
 
 @pytest.mark.parametrize("width", [1, 8, 19, 32, 40, 60])
 def test_welcome_labels_stack_without_overflow_on_narrow_windows(width):
-    from zettcode.app.agent.conversation.entries import TextEntry
-    from zettcode.app.agent.conversation.presenters import WelcomePresenter
+    from zettcode.plugin_api.entries import TextEntry
+    from zettcode.presenters.presenters import WelcomePresenter
 
     rows = WelcomePresenter().lines(TextEntry(id=0, kind="welcome", text=WELCOME), width, DARK, 0)
     assert all(row.width <= width for row in rows)
@@ -1080,7 +1080,7 @@ def test_the_animation_never_steps_faster_than_the_loop_can_paint_it():
     the counter steps still keeps time — it just drops frames of the sweep. The ceiling of
     the loop is the animation's rate, and this holds them together.
     """
-    from zettcode.app.agent.conversation.pulse import ANIMATION_FPS
+    from zettcode.presenters.pulse import ANIMATION_FPS
     from zettcode.tui.core.scheduler import Scheduler
 
     assert 1 / ANIMATION_SECONDS == pytest.approx(ANIMATION_FPS)
@@ -1340,8 +1340,8 @@ async def test_plugin_commands_join_the_shell_and_run():
 
 def test_only_one_pinned_wait_row_can_be_open():
     """A command's row and a request's row are the same row, so the shell opens it once and settles what it opened."""
-    from zettcode.app.agent.conversation.entries import EntryKind
     from zettcode.app.agent.conversation.transcript import Transcript
+    from zettcode.plugin_api.entries import EntryKind
 
     transcript = Transcript()
 
@@ -9499,9 +9499,9 @@ async def test_usage_opens_a_full_screen_page_and_escape_returns_to_the_conversa
 
 def test_a_row_on_screen_is_drawn_by_the_presenter_a_plugin_registered():
     """The built-ins reach the transcript through the plugin bundle, so a plugin's claim reaches it too."""
-    from zettcode.app.agent.conversation.entries import EntryKind
-    from zettcode.app.agent.conversation.presenters import Presenter
     from zettcode.app.ui.widgets import TranscriptSource
+    from zettcode.plugin_api.entries import EntryKind
+    from zettcode.plugin_api.presenters import Presenter
     from zettcode.tui import Span, Style, TextLine
 
     class Loud(Presenter):

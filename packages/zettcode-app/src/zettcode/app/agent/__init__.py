@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 #: Where each public name lives; read by :func:`__getattr__` on first use.
 _EXPORTS = {
-    "Entry": ".conversation.entries",
+    "Entry": "zettcode.plugin_api.entries",
     "Transcript": ".conversation.transcript",
     "TranscriptProjector": ".conversation.projection",
     "TerminalAgent": ".agent",
@@ -17,9 +17,9 @@ _EXPORTS = {
 
 if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
     from zettcode.engine.core import ZettCodeEngine
+    from zettcode.plugin_api.entries import Entry
 
     from .agent import TerminalAgent
-    from .conversation.entries import Entry
     from .conversation.projection import TranscriptProjector
     from .conversation.transcript import Transcript
 

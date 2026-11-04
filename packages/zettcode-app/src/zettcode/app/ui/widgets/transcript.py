@@ -10,9 +10,10 @@ from __future__ import annotations
 from bisect import bisect_right
 from collections.abc import Callable
 
-from zettcode.app.agent.conversation.entries import Entry, EntryKind
-from zettcode.app.agent.conversation.presenters import Presenters, block_for
 from zettcode.app.agent.conversation.transcript import Transcript
+from zettcode.plugin_api.entries import Entry, EntryKind
+from zettcode.plugin_api.presenters import Presenters
+from zettcode.presenters.presenters import block_for
 from zettcode.tui import (
     ARROW_DOWN,
     SEPARATOR,

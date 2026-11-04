@@ -83,7 +83,7 @@ Each its own pull request, `make check-all` green.
 
 ## What the seal means
 
-The terminal's views (`app/ui`, `app/commands.py`) import nothing from `zettcode.engine`, and `test_structure.py` says so
+The terminal's views (`app/ui`, `plugin_api/commands.py`) import nothing from `zettcode.engine`, and `test_structure.py` says so
 twice: in the layer table, and in `test_the_views_of_the_terminal_import_nothing_of_the_engine`, which also catches an
 import made inside a function. What they hold instead is an SDK client (`TerminalAgent.client`, built with the SDK's
 private `Client._around`) and the terminal's agent. Data the views draw comes from the SDK (`WorkspaceUsage`,

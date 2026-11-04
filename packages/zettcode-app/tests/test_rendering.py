@@ -35,7 +35,7 @@ def opened(name: str, **arguments: object):
 
 def test_a_read_row_says_how_many_lines_came_back():
     """`Read app.py` and not how much of it: the count is of what came back, not of the range asked for."""
-    from zettcode.app.agent.conversation.entries import EntryStatus
+    from zettcode.plugin_api.entries import EntryStatus
 
     entry = opened("read", path="app.py")
 
@@ -284,7 +284,7 @@ def test_a_chat_preamble_is_dropped_only_where_it_can_appear():
 
 
 def test_each_family_of_tool_opens_the_entry_that_carries_what_its_row_shows():
-    from zettcode.app.agent.conversation.entries import DeleteEntry, EditEntry, ReadEntry, ToolEntry, WriteEntry
+    from zettcode.plugin_api.entries import DeleteEntry, EditEntry, ReadEntry, ToolEntry, WriteEntry
 
     kinds = {
         "read_file": (ReadEntry, {"path": "a.py"}),
@@ -309,7 +309,7 @@ def test_an_entry_opens_with_the_words_the_row_gives_it_and_the_identity_it_was_
 
 
 def test_a_chain_with_no_link_for_a_tool_still_opens_a_plain_entry():
-    from zettcode.app.agent.conversation.entries import ToolEntry
+    from zettcode.plugin_api.entries import ToolEntry
 
     entry = Renderers(()).open_tool("mystery", {"x": 1}, id=1, call_id="c", started_at=0.0)
 
@@ -318,7 +318,7 @@ def test_a_chain_with_no_link_for_a_tool_still_opens_a_plain_entry():
 
 def test_a_link_that_only_describes_its_tool_gets_a_plain_entry_with_those_words():
     """What a plugin's handler does today: it returns a row, and nothing else has to change."""
-    from zettcode.app.agent.conversation.entries import ToolEntry
+    from zettcode.plugin_api.entries import ToolEntry
 
     class Mine(ToolHandler):
         names = frozenset({"mine"})
@@ -334,7 +334,7 @@ def test_a_link_that_only_describes_its_tool_gets_a_plain_entry_with_those_words
 def test_a_link_can_open_an_entry_class_of_its_own():
     from dataclasses import dataclass
 
-    from zettcode.app.agent.conversation.entries import ToolEntry
+    from zettcode.plugin_api.entries import ToolEntry
 
     @dataclass(slots=True, kw_only=True)
     class Deploy(ToolEntry):
@@ -354,8 +354,8 @@ def test_a_link_can_open_an_entry_class_of_its_own():
 
 
 def test_the_transcript_opens_every_row_the_same_way_and_the_handler_picks_the_class():
-    from zettcode.app.agent.conversation.entries import EditEntry, ReadEntry, ToolEntry
     from zettcode.app.agent.conversation.transcript import Transcript
+    from zettcode.plugin_api.entries import EditEntry, ReadEntry, ToolEntry
 
     transcript = Transcript(clock=lambda: 0.0)
     transcript.begin_turn("go")

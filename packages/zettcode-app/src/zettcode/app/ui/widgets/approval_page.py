@@ -6,10 +6,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from zettcode._compat import StrEnum
+from zettcode.plugin_api.panels import pressed
 from zettcode.tui import MARKER, SEPARATOR, Canvas, Host, MouseAction, MouseEvent, Widget
 from zettcode.tui.render import ELLIPSIS, SHELL, Span, Style, highlight, wrap_spans
-
-from .panel import pressed
 
 
 class ApprovalChoice(StrEnum):

@@ -7,7 +7,8 @@ the log's ``_add``.
 
 from __future__ import annotations
 
-from ..entries import EntryKind, MarkdownEntry, NoticeLevel, TextEntry
+from zettcode.plugin_api.entries import EntryKind, MarkdownEntry, NoticeLevel, TextEntry
+
 from .log import EntryLog
 
 

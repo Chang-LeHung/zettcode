@@ -14,10 +14,10 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 
+from zettcode.presenters import pulse as pulse_module
 from zettcode.tui import DARK, ELLIPSIS, SEPARATOR, AnyEvent, Host, Slot, Text, TuiApp, VBox, Widget, run_app
 from zettcode.tui.widgets import Rule
 
-from ..agent.conversation import pulse as pulse_module
 from ..agent.conversation.transcript import Transcript
 from .widgets import TranscriptView
 

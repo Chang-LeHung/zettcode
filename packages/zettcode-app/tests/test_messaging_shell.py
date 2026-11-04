@@ -19,10 +19,10 @@ from zett_agent.messages import AssistantMessage, UserMessage
 from broker_helpers import Host, Inbox, client_for, eventually, session
 from zettcode.app import ZettCodeApp
 from zettcode.app.agent.agent import TerminalAgent
-from zettcode.app.agent.conversation.entries import RelayEntry, TextEntry
 from zettcode.app.ui import messaging as messaging_module
 from zettcode.app.ui import updating as updating_module
 from zettcode.broker.client import BrokerClient, SendError
+from zettcode.plugin_api.entries import RelayEntry, TextEntry
 from zettcode.relay import RELAY, Relayed
 from zettcode.sdk.events import Steered
 from zettcode.sdk.messenger import Messenger

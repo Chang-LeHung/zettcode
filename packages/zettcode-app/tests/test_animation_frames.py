@@ -7,9 +7,10 @@ from io import StringIO
 
 import pytest
 
-from zettcode.app.agent.conversation.entries import EntryStatus, WaitEntry
-from zettcode.app.agent.conversation.presenters import _running_label
-from zettcode.app.agent.conversation.pulse import (
+from zettcode.app.agent.conversation.transcript import Transcript
+from zettcode.plugin_api.entries import EntryStatus, WaitEntry
+from zettcode.presenters.presenters import _running_label
+from zettcode.presenters.pulse import (
     ANIMATION_FPS,
     ANIMATION_SECONDS,
     PULSE_FRAMES,
@@ -21,8 +22,7 @@ from zettcode.app.agent.conversation.pulse import (
     sweep_column,
     wait_picture,
 )
-from zettcode.app.agent.conversation.text import duration_text
-from zettcode.app.agent.conversation.transcript import Transcript
+from zettcode.presenters.text import duration_text
 from zettcode.tui import DARK, ColorDepth, Style, Terminal, TerminalCapabilities, TuiApp, Widget
 from zettcode.tui.core.scheduler import Scheduler
 from zettcode.tui.render import SweepSpan

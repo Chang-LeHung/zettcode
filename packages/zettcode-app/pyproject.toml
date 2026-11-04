@@ -21,6 +21,8 @@ dependencies = [
   "zettcode-tui",
   "zettcode-sdk",
   "zettcode-broker",
+  "zettcode-plugin-api",
+  "zettcode-presenters",
   "zett-agent>=0.2.7,<0.3",
   # The release check verifies the index against the system trust store; imported by `update.py` with a
   # fallback, so it is a hint rather than a requirement.

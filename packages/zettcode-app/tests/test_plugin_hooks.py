@@ -7,7 +7,7 @@ from dataclasses import replace
 
 from test_zettcode_app import _harness, build_app, rows_and_commands
 
-from zettcode.app.plugins.state import UiRow  # noqa: F401 - imported for the bundle's field order in one test
+from zettcode.plugin_api.state import UiRow  # noqa: F401 - imported for the bundle's field order in one test
 from zettcode.tui import FocusEvent, TuiApp, Widget
 from zettcode.tui.core.events import KeyEvent
 from zettcode.tui.input.bridge import translate

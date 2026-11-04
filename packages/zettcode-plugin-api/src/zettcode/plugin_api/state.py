@@ -20,8 +20,9 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
 
     from zettcode.config import ZettCodeConfig
     from zettcode.sdk.types import ModelInfo, Usage
-    from zettcode.statusline import Row
     from zettcode.tui import TextLine, Theme
+
+    from .rows import Row
 
 
 #: Which row a plugin draws into: the header above the transcript, or the

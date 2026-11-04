@@ -45,8 +45,9 @@ union of what is installed and every distribution contributes its own parts to i
 | `zettcode-sdk` | `zettcode/sdk/**`, `zettcode/daemon/**`, `zettcode/doctor.py`, `zettcode/mentions.py` (the implementations), `zettcode/table.py`, and the composition root `zettcode/sdk/builtins.py` | `zettcode-engine`, `zettcode-broker` |
 | `zettcode-server` | `zettcode/server/**` | `zettcode-engine`, `zettcode-sdk` |
 | `zettcode-gateway` | `zettcode/gateway/**` | `zettcode-engine`, `zettcode-sdk` |
-| `zettcode-app` | `zettcode/app/**`, `zettcode/collector.py`, `zettcode/statusline.py` (the rendering half), `zettcode/update.py` | `zettcode-engine`, `zettcode-tui`, `zettcode-sdk`, `zettcode-broker` |
-| `zettcode-plugin-api` | `zettcode/plugin_api/**`: re-exports only, the surface a plugin imports | `zettcode-engine`, `zettcode-tui`, `zettcode-app` |
+| `zettcode-plugin-api` | `zettcode/plugin_api/**`: the plugin contract — `Plugin`/`TuiPlugin` and the row hooks (`mixins`, `plugin`, `state`, `rows`), commands (`commands`), the row model and the presenter base class and registry (`entries`, `presenters`), the pet format (`pets`), the link to the shell (`host`), and the widgets a panel is drawn with (`panels`, `switch`) | `zettcode-engine`, `zettcode-tui`, `zettcode-sdk` |
+| `zettcode-presenters` | `zettcode/presenters/**`: the built-in rows — the presenters of every kind of entry, their wording (`text`), the pulse (`pulse`) and the brand mark (`brand`) | `zettcode-plugin-api`, `zettcode-tui`, `zettcode-sdk` |
+| `zettcode-app` | `zettcode/app/**`, `zettcode/collector.py`, `zettcode/statusline.py` (the rendering half), `zettcode/update.py` | `zettcode-engine`, `zettcode-tui`, `zettcode-sdk`, `zettcode-broker`, `zettcode-plugin-api`, `zettcode-presenters` |
 | `zettcode` | `zettcode/cli.py`, `plugin_cli.py`, `oneshot.py`, the console scripts | all of the above |
 
 The plugins are distributions too, and they ship inside the same namespace: `zettcode-monitor` puts its module at
@@ -121,13 +122,58 @@ Each stage is one branch and one commit, and ends with `make check` green plus b
    version file in the engine's tree. The suite moved to `tests/` inside each distribution (with the shared conftest and
    fakes in `support/`), `mypy` names every `src` tree as a package base, and the
    157 relative imports that climbed to the namespace root are absolute.
-4. **`zettcode-plugin-api`.** *Done.* The thin re-export package exists, both plugins depend on it and import only
-   from it, and `test_a_plugin_depends_on_one_package_of_ours_and_imports_from_it` holds both halves.
+4. **`zettcode-plugin-api`.** *Done.* Both plugins depend on it and import only from it, and
+   `test_a_plugin_depends_on_one_package_of_ours_and_imports_from_it` holds both halves. It began as a thin re-export of
+   the application; step 6 turned it into the contract those names are defined in.
 5. **Releases, packaging and docs.** *Done.* `.github/scripts/release_order.py` generates the dependency order
    `make build` and `release.yml` publish in (`make order` writes it out); `release.yml` builds and publishes every distribution under one `v<version>` tag, and
    `release-packages.yml` keeps the plugins on their own; `make smoke` builds and installs the whole set; the guide
    names `zettcode.plugin_api`, and the invariants (P3–P6) pin the engine's closure, the plugin's one dependency, the
    release order and the one version file.
+
+6. **The contract moves down, the implementations stay up.** *Done.* `zettcode-plugin-api` used to *re-export* the
+   application, so a plugin that wanted `Presenter` installed the whole terminal and `zettcode-presenters` could not
+   exist without importing the application it was meant to be drawn by. It now *defines* the contract and depends on the
+   engine, the widget framework and the SDK only; `zettcode-presenters` (the built-in rows) and `zettcode-app` are
+   written against it:
+
+   ```
+   engine   tui   sdk
+        \   |   /
+       plugin-api            the contract: what a plugin implements and returns
+            |
+        presenters           an implementation of one family of it (the built-in rows)
+            |
+           app               the shell, the loader, the other built-in plugins
+   ```
+
+   What moved, and why each piece is a contract rather than an implementation:
+
+   | Moved to `plugin-api` | Why it is the contract |
+   | --- | --- |
+   | `commands`, `state`, `mixins`, `plugin`, `rows` | The command a handler returns, the context a row hook receives, the hooks themselves and the `Row` a segment may hand over: the types in a plugin's signatures. `CommandHost` describes the shell it is handed (`CommandAgent`, `CommandTranscript`) as protocols, so it names nothing of the terminal. |
+   | `entries`, `presenters` | The row model and `Presenter`/`Presenters`: a plugin subclasses the one and registers into the other. `CONTENT_INDENT`, `Indented` and `LeadingGap` go with them because `Presenter.block` is written in terms of them. |
+   | `pets` | `Pet` and `PetSource` are what a pet plugin builds, and `pixel_lines` is the format they are written in; the bundled pets stay in the app. |
+   | `host`, `panels`, `switch` | `HostLink`, `bottom_panel`/`pressed` and `draw_switch` are what a plugin's panel imports. They depend on the widget framework only, so the plugin does not need the application to draw one. |
+
+   What stayed in `zettcode-presenters` is the concrete presenters, `BUILTIN_PRESENTERS`/`DEFAULT_PRESENTERS`,
+   `render_entry`/`block_for`, the wording they use (`text`, which now also owns `compact_tokens`), the pulse and the
+   brand mark. `zettcode-app` keeps the transcript, the projector, the replay and `BuiltinPresenters`, the ten-line
+   plugin that registers them.
+
+   **The runtime names left the facade.** `TuiGroups`, `UiSlots`, `TerminalLoader`, `load_terminal_plugins` and
+   `terminal_context` are what a *running program* has; a plugin author does not construct them, so they are no longer
+   re-exported from `zettcode.plugin_api` (nothing in the guide or in either plugin used them). The facade resolves each
+   name on first use, because the boot frame imports a row constant before the settings or a provider SDK exist.
+
+   **A part of the program cannot be switched off.** `[plugins] disable`, the switch file and the `/plugins` panel
+   reach only what an entry point makes discoverable. A part of the program is listed by the program (`builtins=`), loads
+   before any distribution is looked at, and has no entry point, so none of them reaches it; one that is an optional
+   feature declares a `PluginSetting` and is switched by that key. A hand-written `disable` line that names a part is
+   ignored and logged (`plugins.required`). `test_required_plugins.py` holds it against the real list of built-ins, and
+   `test_a_part_the_program_is_made_of_is_never_discoverable_as_a_plugin` holds the other side: a distribution that is
+   a part must not declare the entry point. The next part to be split out (themes, pets, the shell's rows) follows the
+   same cut: contract in `plugin-api`, implementation in its own package, listed by the app, never an entry point.
 
 ## What changes for a reader and a plugin author
 

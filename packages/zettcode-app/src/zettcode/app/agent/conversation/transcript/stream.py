@@ -10,9 +10,10 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 
-from ..entries import EntryKind, EntryStatus, MarkdownEntry, ThinkingEntry, ToolEntry
+from zettcode.plugin_api.entries import EntryKind, EntryStatus, MarkdownEntry, ThinkingEntry, ToolEntry
+from zettcode.presenters.text import COMPACTING_LABEL, limit_output
+
 from ..rendering import ANSWER, THINKING, Renderers
-from ..text import COMPACTING_LABEL, limit_output
 from .turn import TurnMixin
 
 

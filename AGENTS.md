@@ -27,7 +27,14 @@ from the root.
     distribution); `zettcode-server` and `zettcode-gateway` are the faces of the SDK; `zettcode-app` is the terminal
     application (`agent/` for the conversation model and the event projection, `ui/` for the shell and the views;
     `docs/internal/tui.md` has the map and `packages/zettcode/tests/test_structure.py` the import order).
-  - `zettcode-plugin-api` re-exports what a plugin imports, so a plugin depends on that one package.
+  - `zettcode-plugin-api` is the plugin contract, and the bottom of the graph a plugin lives in: the base classes and
+    hooks, the command a handler returns, the row model and the presenter base class, the pet format, the link to the
+    shell and the few widgets a panel is drawn with are *defined* there, and it depends on the engine, the widget
+    framework and the SDK only. A plugin depends on that one package. The implementations are written against it and
+    sit above it: `zettcode-presenters` draws the built-in rows, `zettcode-app` is the shell and the loader. Moving a
+    part of the program into a distribution of its own follows the same cut — the contract goes in `plugin-api`, the
+    implementation in its own package — and a part of the program is never an entry point, so `[plugins] disable` cannot
+    reach it (`packages/zettcode-app/tests/test_required_plugins.py`).
 - The plugins are the distributions in `packages/` that declare a `zettcode.plugins` entry point (`zettcode-monitor`,
   `zettcode-recap`), each with its own version and tag. They are workspace members like the rest — one environment,
   `uv.lock`, the suite `make check` runs — and `.github/workflows/release-packages.yml` releases whichever of them has

@@ -5,7 +5,8 @@ from dataclasses import fields
 
 import pytest
 
-from zettcode.app.agent.conversation.entries import (
+from zettcode.app.agent.conversation.transcript import Transcript
+from zettcode.plugin_api.entries import (
     EditEntry,
     Entry,
     EntryKind,
@@ -19,9 +20,8 @@ from zettcode.app.agent.conversation.entries import (
     ToolEntry,
     WaitEntry,
 )
-from zettcode.app.agent.conversation.presenters import block_for
-from zettcode.app.agent.conversation.pulse import move_frames
-from zettcode.app.agent.conversation.transcript import Transcript
+from zettcode.presenters.presenters import block_for
+from zettcode.presenters.pulse import move_frames
 from zettcode.tui import DARK, LIGHT, LineSource
 
 

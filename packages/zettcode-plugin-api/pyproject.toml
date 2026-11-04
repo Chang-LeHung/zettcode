@@ -17,11 +17,10 @@ classifiers = [
   "Typing :: Typed",
 ]
 dependencies = [
-  # Every layer a plugin may name something in: the agent's runtime, the widget framework, and the terminal
-  # application, whose command result a handler returns. The versions are the program's line.
+  # The bottom of the graph a plugin lives in: the runtime it hooks into, the widgets it draws with and the SDK a command talks to. Never the application, and never an implementation of what this package defines.
   "zettcode-engine",
   "zettcode-tui",
-  "zettcode-app",
+  "zettcode-sdk",
 ]
 
 [project.urls]
@@ -40,3 +39,7 @@ packages = ["src/zettcode"]
 
 [tool.hatch.build.targets.sdist]
 include = ["/src", "/pyproject.toml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

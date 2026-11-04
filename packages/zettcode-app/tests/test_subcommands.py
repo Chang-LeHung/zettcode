@@ -6,10 +6,10 @@ import asyncio
 
 from test_zettcode_app import FakeConfig, _harness, build_app, rows_and_commands
 
-from zettcode.app.commands import Command, CommandContext, CommandResult, Subcommand
 from zettcode.app.plugins.loader import terminal_context
 from zettcode.app.ui import ZettCodeApp
 from zettcode.app.ui.widgets.completer import CommandCompleter
+from zettcode.plugin_api.commands import Command, CommandContext, CommandResult, Subcommand
 
 
 async def nothing(context: CommandContext) -> CommandResult:

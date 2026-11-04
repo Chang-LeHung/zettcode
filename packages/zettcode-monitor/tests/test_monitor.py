@@ -9,9 +9,9 @@ import pytest
 from zett_agent.messages import AssistantMessage, SystemMessage, ToolCall, UserMessage
 from zett_agent.model import ModelEvent, ModelRequest, ModelResponse, ModelUsage
 
-from zettcode.app.commands import CommandContext
 from zettcode.monitor import MonitorPlugin, render_report
 from zettcode.monitor.recorder import MonitorExtension
+from zettcode.plugin_api.commands import CommandContext
 
 SESSION = "s-1"
 

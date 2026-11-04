@@ -10,17 +10,17 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 
-from zettcode.app.commands import Command, CommandContext, CommandHost, CommandResult
 from zettcode.app.pets import PetCatalog, bundled_pets
-from zettcode.app.plugins.host import HOST_LINK, HostLink
-from zettcode.app.plugins.plugin import TuiPlugins
-from zettcode.app.plugins.state import TurnSegment, UiRow
 from zettcode.engine.agent.exports import ExportsMixin
+from zettcode.plugin_api.commands import Command, CommandContext, CommandHost, CommandResult
+from zettcode.plugin_api.host import HOST_LINK, HostLink
+from zettcode.plugin_api.plugin import TuiPlugins
+from zettcode.plugin_api.presenters import Presenters
+from zettcode.plugin_api.state import TurnSegment, UiRow
 from zettcode.providers import BUILTIN_PROVIDERS, Provider, merge_providers
 from zettcode.statusline import NAMES, unknown
 from zettcode.tui import ThemeCatalog
 
-from ..conversation.presenters import Presenters
 from .settings import AppearanceMixin
 
 #: The words ``/self-compact`` takes after it, or after ``global``.

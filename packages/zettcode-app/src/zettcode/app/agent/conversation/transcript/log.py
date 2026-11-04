@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import TypeVar
 
-from ..entries import Entry, WaitEntry
+from zettcode.plugin_api.entries import Entry, WaitEntry
 
 #: The entry subtype an add/look-up call works with, pinned by the caller.
 E = TypeVar("E", bound=Entry)

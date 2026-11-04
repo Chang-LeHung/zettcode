@@ -1,0 +1,45 @@
+[project]
+name = "zettcode-presenters"
+description = "The conversation's rows and how ZettCode's terminal draws them"
+requires-python = ">=3.10"
+dynamic = ["version"]
+license = "MIT"
+authors = [{name = "Chang-LeHung"}]
+keywords = ["zettcode", "presenters", "transcript"]
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Programming Language :: Python :: 3.15",
+  "Typing :: Typed",
+]
+dependencies = [
+  # Written against the plugin contract, which is where the row model and the presenter base class are defined.
+  "zettcode-plugin-api",
+  "zettcode-tui",
+  "zettcode-sdk",
+]
+
+[project.urls]
+Repository = "https://github.com/Chang-LeHung/zettcode"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+# One version for the whole repository: the engine ships the file.
+path = "../zettcode-engine/src/zettcode/version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/zettcode"]
+
+[tool.hatch.build.targets.sdist]
+include = ["/src", "/pyproject.toml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

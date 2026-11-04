@@ -11,11 +11,11 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING, cast
 
+from zettcode.presenters.text import compact_path
 from zettcode.providers import API_FLAG_KEYS, CUSTOM, Api, check_url
 from zettcode.sdk.errors import ConfigurationError
 from zettcode.tui import SEPARATOR, ListItem, ListPage, Screen, Widget
 
-from ..agent.conversation.text import compact_path
 from .config_form import (
     Draft,
     describe,

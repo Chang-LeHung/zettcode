@@ -6,7 +6,7 @@ with a big dark nose, and blue-grey paws. At work it blinks; when patted it clos
 
 from __future__ import annotations
 
-from .model import GLAD, IDLE, WORKING, Pet, edited
+from zettcode.plugin_api.pets import GLAD, IDLE, WORKING, Pet, edited
 
 DESCRIPTION = "a white polar bear; it blinks along while a request runs"
 

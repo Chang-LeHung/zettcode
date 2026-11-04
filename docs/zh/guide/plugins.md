@@ -356,7 +356,7 @@ async def review(self, context: CommandContext) -> CommandResult:
 ctx.tui.register_command("deploy", "ship a build", self.deploy, subcommands=["staging", "prod"])
 ```
 
-带说明的词用 `zettcode.app.commands.Subcommand("prod", "the live site")`；传一个返回列表的函数则每次打开菜单时都会被调用，
+带说明的词用 `zettcode.plugin_api.Subcommand("prod", "the live site")`；传一个返回列表的函数则每次打开菜单时都会被调用，
 适合依赖当前会话的词。它们只是建议：handler 拿到的仍然是输入的原样（`context.argument`），而且只有紧跟在命令后面
 的那个词会被提示。
 

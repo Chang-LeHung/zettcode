@@ -18,7 +18,7 @@ from .shell import ASK_SCREEN, PAGE_SCREEN, ShellState
 from .widgets.completer import COMMAND_PREFIX
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
-    from ..commands import Command
+    from zettcode.plugin_api.commands import Command
 
 
 class KeysMixin(ShellState):

@@ -410,7 +410,7 @@ offers the words as soon as the command and a space are typed:
 ctx.tui.register_command("deploy", "ship a build", self.deploy, subcommands=["staging", "prod"])
 ```
 
-A name with a description is a `zettcode.app.commands.Subcommand("prod", "the live site")`, and a
+A name with a description is a `zettcode.plugin_api.Subcommand("prod", "the live site")`, and a
 function returning the list is asked each time the menu opens, for words that depend on the session.
 They only suggest: the handler still receives whatever was typed as `context.argument`, and only the
 word right after the command is offered.

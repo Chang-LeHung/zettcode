@@ -12,11 +12,7 @@ from collections.abc import Callable
 from pathlib import PurePath
 from typing import TypeGuard
 
-from zettcode.relay import VIA_EXTERNAL, Relayed
-from zettcode.tui.render import display_width
-
-from ..changes import changed_files
-from ..entries import (
+from zettcode.plugin_api.entries import (
     ChangesEntry,
     Entry,
     EntryKind,
@@ -28,8 +24,12 @@ from ..entries import (
     ToolEntry,
     WaitEntry,
 )
-from ..pulse import ANIMATION_SECONDS, blink_state, wait_picture
-from ..text import PROCESSING, duration_text, elapsed_text, quiet_text
+from zettcode.presenters.pulse import ANIMATION_SECONDS, blink_state, wait_picture
+from zettcode.presenters.text import PROCESSING, duration_text, elapsed_text, quiet_text
+from zettcode.relay import VIA_EXTERNAL, Relayed
+from zettcode.tui.render import display_width
+
+from ..changes import changed_files
 from ..tips import TipDeck
 from .log import EntryLog
 

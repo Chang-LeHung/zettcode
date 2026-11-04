@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from pathlib import PurePath
 
-from .entries import DeleteEntry, Entry, EntryStatus, FileChangeEntry, FileSummary
+from zettcode.plugin_api.entries import DeleteEntry, Entry, EntryStatus, FileChangeEntry, FileSummary
 
 
 def shown_path(path: str, workspace: PurePath | None) -> str:
