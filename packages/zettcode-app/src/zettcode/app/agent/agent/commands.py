@@ -99,6 +99,13 @@ class CommandsMixin(AppearanceMixin, ExportsMixin):
         return self.terminal_plugins.turn_segments
 
     @property
+    def pets_switched_off(self) -> bool:
+        """Return whether the reader turned the pets plugin off, which is why a catalog of none is empty."""
+        from zettcode.engine.plugins import off_names
+
+        return "pets" in off_names(self.runtime.config)
+
+    @property
     def plugin_failures(self) -> tuple[str, ...]:
         """Return one message per plugin that could not be loaded or activated."""
         return self.terminal_plugins.failures

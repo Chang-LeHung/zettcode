@@ -246,11 +246,29 @@ def run(
     # module cannot be imported here (it imports this one), so the union is written out; `off_names` is the same
     # rule for the front ends.
     disabled = set(config.disabled_plugins) | set(read_disabled_plugins(config.plugins_file))
+    #: Who has each name, and who asked for a name that was taken, so the second can be told why it did not load.
+    owners: dict[str, str] = {}
+    owners_dist: dict[str, str | None] = {}
+    taken: dict[str, list[str]] = {}
     for point in points:
+        who = _described(point)
+        if point.name in sources:
+            # The program's parts come first, so a later plugin under the same name is the one that loses; it must
+            # not take the place of a part, a required one least of all. The same distribution listed twice (a stale
+            # `dist-info` beside an editable copy) is an environment quirk, not a clash.
+            if _distribution(point) is None or _distribution(point) != owners_dist.get(point.name):
+                taken.setdefault(point.name, []).append(who)
+            continue
+        owners[point.name] = who
+        owners_dist[point.name] = _distribution(point)
         sources[point.name] = partial(_from_point, loader, point)
     if config.plugins_enabled:
         for path in installed_files(config.plugins_dir):
-            sources.setdefault(path.stem, partial(_from_file, loader, path))
+            if path.stem in sources:
+                taken.setdefault(path.stem, []).append(f"the file {path.name}")
+                continue
+            owners[path.stem] = f"the file {path.name}"
+            sources[path.stem] = partial(_from_file, loader, path)
     held = {origin for origin in sources if origin in disabled or (not config.plugins_enabled and origin not in parts)}
     for origin in sources:
         if origin not in held:
@@ -289,6 +307,13 @@ def run(
                     },
                 )
             candidates.extend(sources[origin]())
+    # A name that was taken is reported only when the one that has it was actually offered: a part the reader switched
+    # off refused nothing, and its row on the plugins page says "off", not "failed".
+    for name, losers in taken.items():
+        if name in held:
+            continue
+        for who in losers:
+            loader.fail(who, f"cannot use the name {name!r}: {owners[name]} already has it")
     ordered, refused = graph.order([graph.Node(c.name, c.deps) for c in candidates])
     loaded: set[int] = set()
     for index in sorted(refused):
@@ -327,6 +352,20 @@ def run(
         if absent:
             raise RequiredPluginError(absent)
     return loader.bundle()
+
+
+def _distribution(point: EntryPoint) -> str | None:
+    """Return the name of the distribution an entry point came from, or ``None`` when it does not say."""
+    dist = getattr(point, "dist", None)
+    name = getattr(dist, "name", None)
+    return str(name).lower().replace("_", "-") if name else None
+
+
+def _described(point: EntryPoint) -> str:
+    """Say who an entry point is, for a message that has to name what to uninstall."""
+    dist = _distribution(point)
+    value = getattr(point, "value", None)
+    return f"{point.name!r} ({dist or 'unknown distribution'}" + (f", {value})" if value else ")")
 
 
 def _from_point(loader: Loader, point: EntryPoint) -> list[_Candidate]:

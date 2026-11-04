@@ -118,11 +118,11 @@ class ExampleCommandUi(CommandUi):
 @pytest.mark.parametrize("path", ["docs/guide/plugins.md", "docs/zh/guide/plugins.md"])
 async def test_documented_plugin_registers_and_runs_its_command(path, tmp_path):
     examples = code_blocks(path, "python")
-    # Eleven blocks: the first two show a plugin that guards its screen-only half, two more show the window hooks and
+    # Twelve blocks: the first two show a plugin that guards its screen-only half, two more show the window hooks and
     # the settings a plugin declares, one hands a slow command's waiting to the shell, the rest build the one this
-    # test loads, one answers with a document, and the last is the command that asks the model for something (see
-    # "Asking the model" / "让模型干活").
-    assert len(examples) == 11
+    # test loads, one answers with a document, one names the plugins it depends on (it only has to define its class),
+    # and the last is the command that asks the model for something (see "Asking the model" / "让模型干活").
+    assert len(examples) == 12
     namespace = {}
     for example in examples:
         exec(compile(example, path, "exec"), namespace)

@@ -526,6 +526,26 @@ class Audit(Plugin):
 绘制的时候，返回 `None` 表示什么都不加。代理运行的每一个扩展都是这样注册的：ZettCode 自带的代码工具、会话日志、
 shell 审批、压缩、`ask_user` 工具、项目指令、skills、MCP 和待办工具都是内置插件，所以 `[harness]` 等处的开关只是决定它们的插件注册与否。
 
+## 依赖别的插件 {#deps}
+
+插件用 `deps` 写出它需要的插件，ZettCode 会先激活被依赖的：
+
+```python
+class Statistics(Plugin):
+    name = "statistics"
+    deps = ("usage-ledger",)
+
+    def activate(self, ctx: PluginContext) -> None:
+        ledger = ctx.service("usage-ledger", object)  # 填对方发布的类型；`object` 接受任何对象
+```
+
+`deps` 里写的是插件的**名字**：各插件声明的 `name`；没有声明时就是它入口点的名字。依赖的插件不存在、被关掉、加载失败或处在环里时，
+这个插件会被跳过并说明原因，需要它的插件也一样。彼此没有 `deps` 的插件按发现的顺序加载。名字就是插件的身份，
+所以两个插件不能重名。
+
+插件用 `ctx.inject(name, service)` 把对象交给需要它的插件，用 `ctx.service(name, kind)` 取（`ctx.find` 在没人提供时返回
+`None`）。对象是什么、怎么用，由相关插件自己约定；ZettCode 只保证名字唯一、顺序正确。
+
 ## 关掉一个插件
 
 `/plugins` 打开一页，每个能关掉的插件前面一个开关：编译进程序的在前，装进来的在后。`~/.zettcode/plugins` 里的单文件插件

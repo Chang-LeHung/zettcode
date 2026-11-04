@@ -600,6 +600,29 @@ to add nothing. Everything the agent runs is registered this way: ZettCode's own
 shell approval, compaction, `ask_user` tool, project instructions, skills, MCP and todo tool are built-in
 plugins, so the switches under `[harness]` and the others simply decide whether their plugin registers.
 
+## Depending on another plugin {#deps}
+
+A plugin names the plugins it needs, and ZettCode activates them first:
+
+```python
+class Statistics(Plugin):
+    name = "statistics"
+    deps = ("usage-ledger",)
+
+    def activate(self, ctx: PluginContext) -> None:
+        ledger = ctx.service("usage-ledger", object)  # the type the other plugin published; `object` accepts any
+```
+
+`deps` holds plugin **names**: the `name` each plugin declares, or its distribution's entry-point name when it declares
+none. A plugin whose need is missing, switched off, failed to
+load, or part of a cycle is left out and reported with the reason, and so is every plugin that needs it. Plugins with
+no `deps` between them load in the order they were found. The name is the plugin's identity, so two plugins may not
+share one.
+
+A plugin publishes an object for the ones that need it with `ctx.inject(name, service)` and reads one with
+`ctx.service(name, kind)` (or `ctx.find`, which returns `None` when nobody provides it). What the object is, and how it
+is used, is for the plugins involved to agree on; ZettCode only keeps the name unique and the order right.
+
 ## Turning one off
 
 `/plugins` opens a page with a switch for every plugin you can turn off, the ones compiled into the program first and
