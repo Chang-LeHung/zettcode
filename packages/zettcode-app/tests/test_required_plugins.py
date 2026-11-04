@@ -14,11 +14,13 @@ from pathlib import Path
 import pytest
 
 from zettcode.app.plugins import BUILTIN_PLUGINS, load_terminal_plugins
+from zettcode.app.plugins.builtins import BuiltinThemes
 from zettcode.app.plugins.loader import REQUIRED_PLUGINS
 from zettcode.commands.plugin import CommandsPlugin
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine.plugins import catalog, set_many
 from zettcode.engine.plugins.loader import RequiredPluginError
+from zettcode.pets.plugin import PetsPlugin
 from zettcode.plugin_api import Plugin
 from zettcode.presenters.plugin import PresentersPlugin
 
@@ -35,7 +37,10 @@ class Point:
 
 
 #: The required plugins that are found through an entry point.
-POINTS = [Point("commands", CommandsPlugin), Point("presenters", PresentersPlugin)]
+REQUIRED_POINTS = [Point("commands", CommandsPlugin), Point("presenters", PresentersPlugin)]
+
+#: Every part found through an entry point: the required ones, and the ones a reader may switch off.
+POINTS = [*REQUIRED_POINTS, Point("pets", PetsPlugin), Point("themes", BuiltinThemes)]
 
 
 def _config(tmp_path: Path, **overrides: object) -> ZettCodeConfig:
@@ -133,4 +138,25 @@ def test_the_plugins_page_does_not_offer_a_switch_for_a_required_part(tmp_path: 
     listed = {entry.origin for entry in catalog(config, bundle, entry_points=POINTS)}
 
     assert listed.isdisjoint(REQUIRED), "a row with no switch would only invite the press"
-    assert listed, "the optional parts, which do have one, are still there"
+    assert {"pets", "themes"} <= listed, "the optional parts, which do have a switch, are still there"
+
+
+def test_the_pets_and_the_palettes_are_parts_a_reader_may_switch_off(tmp_path: Path):
+    """Only what the terminal cannot run without is protected: a pet is not worth a refusal to run."""
+    plugins = _load(tmp_path, disabled_plugins=("pets", "themes"))
+
+    assert plugins.pets == () and plugins.themes == ()
+    assert plugins.presenters, "while the required parts are still there"
+    assert {origin for origin, _why in plugins.failed}.isdisjoint(REQUIRED), "the agent's own plugins lack a runtime"
+
+
+def test_a_process_with_no_screen_is_not_offered_switches_for_the_parts_it_never_loads(tmp_path: Path):
+    from zettcode.engine.plugins import load_plugins
+
+    config = _config(tmp_path)
+    headless = load_plugins(config, builtins=(), entry_points=[])
+    terminal_points = [Point(name, target) for name, target in (("pets", PetsPlugin), ("themes", BuiltinThemes))]
+    for point in terminal_points:
+        point.group = "zettcode.terminal"  # type: ignore[attr-defined]
+
+    assert catalog(config, headless, entry_points=terminal_points) == ()

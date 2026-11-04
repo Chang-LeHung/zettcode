@@ -155,8 +155,8 @@ class TerminalLoader(Loader):
         self.slots = UiSlots()
         self.turn_segments: dict[str, TurnSegment] = {}
         self.commands: list[Command] = []
-        #: How many of ``commands`` the built-in plugins registered; they are loaded first.
-        self.builtin_command_count = 0
+        #: The commands the program's own plugins (built in, or its parts) registered; the bundle puts them first.
+        self.program_commands: list[Command] = []
         self.themes: list[ThemeSource] = []
         self.pets: list[PetSource] = []
         self.presenters: list[Presenter[Any]] = []
@@ -220,6 +220,7 @@ class TerminalLoader(Loader):
         # ``ctx.commands`` become ordinary commands here, beside the ones registered on ``ctx.tui``.
         plain = plain_commands(context)
         self._claimed.update(command.name for command in plain)
+        before = len(self.commands)
         self.commands.extend(plain)
         self._theme_names.update(source.name for source in terminal.themes)
         self.themes.extend(terminal.themes)
@@ -231,14 +232,15 @@ class TerminalLoader(Loader):
         self.turn_end_handlers.extend(terminal.turn_end_handlers)
         self._claimed.update(command.name for command in terminal.registered_commands)
         self.commands.extend(terminal.registered_commands)
+        if self.program:
+            self.program_commands.extend(self.commands[before:])
         self.slots = terminal.slots
         self.turn_segments = {segment.name: segment for segment in terminal.turn_segments}
 
-    def builtins_loaded(self) -> None:
-        self.builtin_command_count = len(self.commands)
-
     def bundle(self) -> TuiPlugins:
         plain = super().bundle()
+        program = tuple(self.program_commands)
+        own = {id(command) for command in program}
         return TuiPlugins(
             host=plain.host,
             mentions=plain.mentions,
@@ -248,8 +250,8 @@ class TerminalLoader(Loader):
             plain_commands=plain.plain_commands,
             failed=plain.failed,
             builtins=plain.builtins,
-            commands=tuple(self.commands),
-            builtin_commands=tuple(self.commands[: self.builtin_command_count]),
+            commands=(*program, *(command for command in self.commands if id(command) not in own)),
+            builtin_commands=tuple(program),
             themes=tuple(self.themes),
             pets=tuple(self.pets),
             presenters=tuple(self.presenters),

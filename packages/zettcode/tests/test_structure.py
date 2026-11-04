@@ -1394,3 +1394,22 @@ def test_a_part_the_program_is_made_of_is_never_discoverable_as_a_plugin():
         "presenters": "zettcode.presenters.plugin:PresentersPlugin"
     }
     assert pets["project"]["entry-points"]["zettcode.terminal"] == {"pets": "zettcode.pets.plugin:PetsPlugin"}
+
+
+def test_the_suites_list_of_the_programs_parts_is_what_the_distributions_publish():
+    """`support/conftest.py` stubs discovery with a literal list of the parts, so it has to say what the packages say."""
+    import ast
+
+    tree = ast.parse((ROOT / "support" / "conftest.py").read_text(encoding="utf-8"))
+    listed = next(
+        ast.literal_eval(node.value)
+        for node in tree.body
+        if isinstance(node, ast.Assign) and any(getattr(t, "id", "") == "PROGRAM_PARTS" for t in node.targets)
+    )
+    published: dict[str, str] = {}
+    for settings_path in sorted((ROOT / "packages").glob("*/pyproject.toml")):
+        settings = tomllib.loads(settings_path.read_text(encoding="utf-8"))
+        published.update(settings["project"].get("entry-points", {}).get("zettcode.terminal", {}))
+
+    assert dict(listed) == published
+    assert [name for name, _ in listed] == sorted(published), "listed in the order the loader sorts them"
