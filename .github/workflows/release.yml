@@ -108,10 +108,10 @@ jobs:
           for name in $(python3 .github/scripts/release_order.py); do
             echo "::group::$name"
             # A project PyPI already has takes a new version with no limit. A brand-new name counts against PyPI's
-            # new-project quota — a slow clock (documented as 20 an hour, stricter for a young account), and every
-            # rejected attempt counts too — so a new name waits a minute before it is tried, and an upload that fails
-            # stops the run rather than hammering the quota. The job is idempotent: `--check-url` skips what is already
-            # published, so re-running it later publishes whatever is left.
+            # new-project quota — four in twenty-four hours for a personal account (pypi/support#11479; ten for an
+            # organization) — and every attempt counts, rejected ones included. So a new name waits a minute before
+            # it is tried, an upload that fails stops the run rather than burning the quota, and the job is
+            # idempotent: `--check-url` skips what is published, so one re-run a day later finishes the rest.
             if ! curl -fsS "https://pypi.org/pypi/$name/json" > /dev/null 2>&1; then
               echo "$name is new to PyPI; waiting a minute before creating it"
               sleep 60
