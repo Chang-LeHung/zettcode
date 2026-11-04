@@ -126,6 +126,8 @@ def test_replacing_appends_so_a_plugin_that_registers_last_draws_the_row():
 
 
 #: What evaluates an annotation, which turns a name that only exists for the type checker into a failure at run time.
+#: This is the set of tools this repository uses, not every tool that could: a library that introspects annotations in
+#: its own way (`attrs.resolve_types`, `typeguard`, `beartype`) is a new name, added here with its first use.
 EVALUATES_ANNOTATIONS = {"get_type_hints", "TypeAdapter", "BaseModel", "create_model", "ConfigDict"}
 
 
@@ -138,6 +140,11 @@ def test_nothing_in_the_contract_evaluates_an_annotation():
     exists only under `TYPE_CHECKING` is a `NameError` for the plugin author. (Today `get_type_hints` already fails on
     nine of these classes, for `Path` and `Theme` as much as for the SDK — which is the same fact seen from the other
     side, and why the guard is on the cause and not on that call succeeding.)
+
+    This reads the contract's own modules. The accident that is likelier is in a *consumer* -- a `TypeAdapter` over a
+    contract class in the server, a page resolving hints on one -- and that is
+    `packages/zettcode/tests/test_structure.py::test_no_annotation_of_the_plugin_contract_is_evaluated_anywhere`, which
+    scans every distribution and allows only the engine's own types to be evaluated.
     """
     offenders: list[str] = []
     for file in sorted(Path(api.__file__).parent.glob("*.py")):
