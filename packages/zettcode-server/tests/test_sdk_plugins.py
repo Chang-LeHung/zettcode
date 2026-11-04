@@ -46,7 +46,8 @@ def _installed(monkeypatch: pytest.MonkeyPatch, *names: str) -> None:
     """Make the loader discover these entry points, as if they were installed."""
     from zettcode.engine.plugins import loader, switches
 
-    points = _points(*names)
+    parts = loader.installed_entry_points()  # what the suite already stubs it to: the program's own parts
+    points = (*parts, *_points(*names))
     monkeypatch.setattr(loader, "installed_entry_points", lambda: points)
     monkeypatch.setattr(switches.loader, "installed_entry_points", lambda: points)
 

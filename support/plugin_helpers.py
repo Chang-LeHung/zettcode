@@ -35,9 +35,9 @@ def runtime_inputs(runtime: ZettCodeEngine) -> dict[str, object]:
     }
 
 
-def agent_plugins(config: ZettCodeConfig, **shared: object) -> Plugins:
-    """Load only the agent-side built-in plugins for ``config``, over fresh state; ``shared`` adds or replaces."""
-    state: dict[str, object] = {
+def runtime_state(config: ZettCodeConfig) -> dict[str, object]:
+    """Return what a runtime hands its plugins by name, over fresh state, so a test can load them without a runtime."""
+    return {
         names.POLICY: ShellPolicy.from_mode(config.shell_approval, config.workspace),
         names.HARNESS: HarnessSwitch(on=config.jit_harness),
         names.PERSISTENCE: SessionStore(config.store, config.workspace),
@@ -45,6 +45,11 @@ def agent_plugins(config: ZettCodeConfig, **shared: object) -> Plugins:
         names.COMPACTION_COUNTER: CompactionCounter(),
         names.SELECTED_MODEL: config.models[0],
     }
+
+
+def agent_plugins(config: ZettCodeConfig, **shared: object) -> Plugins:
+    """Load only the agent-side built-in plugins for ``config``, over fresh state; ``shared`` adds or replaces."""
+    state = runtime_state(config)
     state.update(shared)
     return load_plugins(config, builtins=AGENT_PLUGINS, entry_points=[], shared=state)
 

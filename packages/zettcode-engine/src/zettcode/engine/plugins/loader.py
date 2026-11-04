@@ -65,6 +65,12 @@ PLUGIN_ENTRY_POINT_GROUP = "zettcode.plugins"
 #: load them: they would import the whole terminal to offer it nothing.
 TERMINAL_PART_GROUP = "zettcode.terminal"
 
+#: Entry-point group the program publishes the plugins that compose the agent under (the tools, the session log, the
+#: permission, the compaction, ...). Every loader reads it, and none of it can be switched off: these are the program as
+#: much as a compiled-in plugin is, and a configuration key such as ``[skills] enabled`` is what turns a feature off.
+#: They are activated by ``(rank, name)`` and then by ``deps``.
+AGENT_PART_GROUP = "zettcode.agent"
+
 
 def installed_entry_points() -> tuple[EntryPoint, ...]:
     """Return every plugin entry point installed in this environment.
@@ -74,9 +80,10 @@ def installed_entry_points() -> tuple[EntryPoint, ...]:
     """
     from importlib.metadata import entry_points
 
+    agent = sorted(entry_points(group=AGENT_PART_GROUP), key=lambda point: point.name)
     parts = sorted(entry_points(group=TERMINAL_PART_GROUP), key=lambda point: point.name)
     plugins = sorted(entry_points(group=PLUGIN_ENTRY_POINT_GROUP), key=lambda point: point.name)
-    return (*parts, *plugins)
+    return (*agent, *parts, *plugins)
 
 
 def installed_files(directory: Path) -> tuple[Path, ...]:
@@ -142,6 +149,7 @@ def load_plugins(
     builtins: Sequence[Plugin[Any]],
     shared: Mapping[str, object] | None = None,
     required: Sequence[str] = (),
+    agent: bool = True,
 ) -> Plugins:
     """Load the builtin plugins and every enabled distribution into one bundle.
 
@@ -151,9 +159,9 @@ def load_plugins(
         entry_points: Entry points to load; ``None`` reads the installed ones.
             Tests pass their own, so discovery can be exercised without
             installing a distribution.
-        builtins: Plugins compiled into the repository, which the engine does not ship: the caller passes
-            :data:`zettcode.sdk.builtins.AGENT_PLUGINS` for the program's agent, and ``()`` to load only what a
-            reader installed.
+        builtins: Plugins compiled into the repository, which the engine does not ship; ``()`` for none. The program's
+            agent is not passed here: it is found through the ``zettcode.agent`` entry-point group, unless ``agent`` is
+            false. A caller that cannot discover (a test) may pass :data:`zettcode.sdk.builtins.AGENT_PLUGINS`.
         shared: Objects the runtime hands over by name before any plugin activates (see
             :mod:`zettcode.engine.plugins.services`); a plugin reads them with ``container.service``, and they
             stay findable on the returned bundle. A plugin cannot provide a name that is taken here.
@@ -193,6 +201,8 @@ class _Candidate:
     error: BaseException | None = None
     #: Whether it came from the program's own entry-point group, which is ahead of every installed plugin.
     part: bool = False
+    #: Whether it is one of the plugins that compose the agent (``zettcode.agent``): a part that is also built in.
+    agent: bool = False
 
     @property
     def name(self) -> str:
@@ -213,6 +223,7 @@ def run(
     entry_points: Iterable[EntryPoint] | None,
     required: Sequence[str] = (),
     terminal: bool = False,
+    agent: bool = True,
 ) -> Plugins:
     """Feed the builtins, the enabled distributions and the single-file plugins to ``loader``, and return what it bundled.
 
@@ -242,7 +253,9 @@ def run(
     points = tuple(entry_points) if entry_points is not None else installed_entry_points()
     # The parts of the program that need a screen are for a loader that has one.
     points = tuple(point for point in points if terminal or getattr(point, "group", None) != TERMINAL_PART_GROUP)
-    parts = {point.name for point in points if getattr(point, "group", None) == TERMINAL_PART_GROUP}
+    points = tuple(point for point in points if agent or getattr(point, "group", None) != AGENT_PART_GROUP)
+    parts = {point.name for point in points if getattr(point, "group", None) in (TERMINAL_PART_GROUP, AGENT_PART_GROUP)}
+    agent_names = {point.name for point in points if getattr(point, "group", None) == AGENT_PART_GROUP}
     # The configuration file's own list and the switch file's, merged for the one caller that loads. The switch
     # module cannot be imported here (it imports this one), so the union is written out; `off_names` is the same
     # rule for the front ends.
@@ -282,7 +295,9 @@ def run(
             "plugins.required",
             extra={"plugin": origin, "reason": "part of the program; [plugins] disable does not reach it"},
         )
-    protected = set(required)
+    # The plugins that compose the agent are protected like the required ones, but a failure of one is recorded and
+    # does not stop the call: that is what they were as compiled-in plugins.
+    protected = set(required) | agent_names
     while True:
         by_name = {candidate.name: candidate for candidate in candidates}
         wanted: set[str] = set()
@@ -320,6 +335,10 @@ def run(
                 "plugins.name_taken",
                 extra={"plugin": name, "who": who, "reason": f"{owners[name]} already has the name {name!r}"},
             )
+    # Within the program's own groups the stated rank decides, then the name; the stable sort keeps everything else.
+    at = [i for i, c in enumerate(candidates) if c.agent]
+    for slot, candidate in zip(at, sorted((candidates[i] for i in at), key=_rank), strict=True):
+        candidates[slot] = candidate
     ordered, refused = graph.order([graph.Node(c.name, c.deps) for c in candidates])
     loaded: set[int] = set()
     for index in sorted(refused):
@@ -374,15 +393,22 @@ def _described(point: EntryPoint) -> str:
     return f"{point.name!r} ({dist or 'unknown distribution'}" + (f", {value})" if value else ")")
 
 
+def _rank(candidate: _Candidate) -> tuple[int, str]:
+    """Sort key of a part inside its group: its declared rank, then its name; a failure sorts first, by origin."""
+    return (candidate.plugin.rank if candidate.plugin is not None else -1, candidate.origin)
+
+
 def _from_point(loader: Loader, point: EntryPoint) -> list[_Candidate]:
     """Resolve one entry point into a candidate; a failure is a candidate that carries it."""
-    part = getattr(point, "group", None) == TERMINAL_PART_GROUP
+    group = getattr(point, "group", None)
+    part = group in (TERMINAL_PART_GROUP, AGENT_PART_GROUP)
+    agent = group == AGENT_PART_GROUP
     try:
-        return [_Candidate(_instantiate(point), point.name, part=part)]
+        return [_Candidate(_instantiate(point), point.name, builtin=agent, part=part, agent=agent)]
     except KeyboardInterrupt:
         raise
     except BaseException as error:
-        return [_Candidate(None, point.name, error=error, part=part)]
+        return [_Candidate(None, point.name, builtin=agent, error=error, part=part, agent=agent)]
 
 
 def _from_file(loader: Loader, path: Path) -> list[_Candidate]:

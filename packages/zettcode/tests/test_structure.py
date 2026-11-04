@@ -1415,12 +1415,40 @@ def test_the_suites_list_of_the_programs_parts_is_what_the_distributions_publish
     assert [name for name, _ in listed] == sorted(published), "listed in the order the loader sorts them"
 
 
+def test_the_suites_list_of_the_agents_plugins_is_what_the_sdk_publishes():
+    """`support/conftest.py` stubs discovery with a literal list of the agent's plugins too; it must say what the SDK says."""
+    import ast
+
+    tree = ast.parse((ROOT / "support" / "conftest.py").read_text(encoding="utf-8"))
+    assigned = next(
+        node.value
+        for node in tree.body
+        if isinstance(node, ast.Assign) and any(getattr(t, "id", "") == "AGENT_PARTS" for t in node.targets)
+    )
+    # The list is built by sorting a literal of (name, class) pairs; read the pairs back out of it.
+    pairs = next(node for node in ast.walk(assigned) if isinstance(node, ast.Tuple) and len(node.elts) == 22)
+    listed = {ast.literal_eval(e)[0]: f"zettcode.sdk.builtins:{ast.literal_eval(e)[1]}" for e in pairs.elts}
+    settings = tomllib.loads((ROOT / "packages/zettcode-sdk/pyproject.toml").read_text(encoding="utf-8"))
+
+    assert listed == settings["project"]["entry-points"]["zettcode.agent"]
+    owners = [
+        path.parent.name
+        for path in sorted((ROOT / "packages").glob("*/pyproject.toml"))
+        if "zettcode.agent" in tomllib.loads(path.read_text(encoding="utf-8"))["project"].get("entry-points", {})
+    ]
+    assert owners == ["zettcode-sdk"], "the agent is composed in one place"
+
+
 def test_a_part_is_named_as_its_entry_point_is():
     """The loader pulls a required part back in by entry-point name and checks it by `Plugin.name`; they must agree."""
     import importlib
 
     for settings_path in sorted((ROOT / "packages").glob("*/pyproject.toml")):
         settings = tomllib.loads(settings_path.read_text(encoding="utf-8"))
-        for name, target in settings["project"].get("entry-points", {}).get("zettcode.terminal", {}).items():
+        entry_points = settings["project"].get("entry-points", {})
+        for name, target in {
+            **entry_points.get("zettcode.terminal", {}),
+            **entry_points.get("zettcode.agent", {}),
+        }.items():
             module, _, attribute = target.partition(":")
             assert getattr(importlib.import_module(module), attribute).name == name, target

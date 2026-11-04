@@ -31,6 +31,39 @@ PROGRAM_PARTS = (
     ("themes", "zettcode.app.plugins.builtins:BuiltinThemes"),
 )
 
+#: The plugins that compose the agent, as the SDK publishes them under `zettcode.agent`, sorted by name. The loader
+#: activates them by the rank `zettcode.sdk.builtins` gives them; `test_structure.py` compares this with the
+#: distribution's `pyproject.toml`.
+AGENT_PARTS = tuple(
+    sorted(
+        (name, f"zettcode.sdk.builtins:{cls}")
+        for name, cls in (
+            ("skills", "SkillResources"),
+            ("files", "FileResources"),
+            ("coding", "CodingTools"),
+            ("tool-output", "ToolOutput"),
+            ("long-output", "LongOutput"),
+            ("capabilities", "Capabilities"),
+            ("subagents", "Subagents"),
+            ("messaging", "Messaging"),
+            ("shell-permission", "ShellPermission"),
+            ("harness", "Harness"),
+            ("session-log", "SessionLog"),
+            ("todos", "TodoPlan"),
+            ("usage-tracking", "UsageTracking"),
+            ("context-tracking", "ContextTracking"),
+            ("side-questions", "SideQuestionBoundary"),
+            ("tool-guidelines", "ToolGuidance"),
+            ("ask-user", "AskUser"),
+            ("project-instructions", "ProjectInstructions"),
+            ("skill-tool", "SkillTool"),
+            ("mcp", "McpTools"),
+            ("self-compaction", "SelfCompaction"),
+            ("compaction", "Compaction"),
+        )
+    )
+)
+
 
 @pytest.fixture(autouse=True)
 def _no_broker_process(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -61,7 +94,8 @@ def _no_installed_plugins(monkeypatch: pytest.MonkeyPatch) -> None:
 
     from zettcode.engine.plugins import loader
 
-    points = tuple(EntryPoint(name, value, loader.TERMINAL_PART_GROUP) for name, value in PROGRAM_PARTS)
+    agent = tuple(EntryPoint(name, value, loader.AGENT_PART_GROUP) for name, value in AGENT_PARTS)
+    points = (*agent, *tuple(EntryPoint(name, value, loader.TERMINAL_PART_GROUP) for name, value in PROGRAM_PARTS))
     monkeypatch.setattr(loader, "installed_entry_points", lambda: points)
 
 

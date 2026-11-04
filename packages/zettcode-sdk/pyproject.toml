@@ -23,6 +23,32 @@ dependencies = [
   "httpx>=0.27,<1",
 ]
 
+# The plugins that compose the agent. A part of the program, not a plugin: the `zettcode.plugins` group is what the
+# plugin release line looks for. They are activated by the rank `builtins.py` gives them, then by their `deps`.
+[project.entry-points."zettcode.agent"]
+skills = "zettcode.sdk.builtins:SkillResources"
+files = "zettcode.sdk.builtins:FileResources"
+coding = "zettcode.sdk.builtins:CodingTools"
+tool-output = "zettcode.sdk.builtins:ToolOutput"
+long-output = "zettcode.sdk.builtins:LongOutput"
+capabilities = "zettcode.sdk.builtins:Capabilities"
+subagents = "zettcode.sdk.builtins:Subagents"
+messaging = "zettcode.sdk.builtins:Messaging"
+shell-permission = "zettcode.sdk.builtins:ShellPermission"
+harness = "zettcode.sdk.builtins:Harness"
+session-log = "zettcode.sdk.builtins:SessionLog"
+todos = "zettcode.sdk.builtins:TodoPlan"
+usage-tracking = "zettcode.sdk.builtins:UsageTracking"
+context-tracking = "zettcode.sdk.builtins:ContextTracking"
+side-questions = "zettcode.sdk.builtins:SideQuestionBoundary"
+tool-guidelines = "zettcode.sdk.builtins:ToolGuidance"
+ask-user = "zettcode.sdk.builtins:AskUser"
+project-instructions = "zettcode.sdk.builtins:ProjectInstructions"
+skill-tool = "zettcode.sdk.builtins:SkillTool"
+mcp = "zettcode.sdk.builtins:McpTools"
+self-compaction = "zettcode.sdk.builtins:SelfCompaction"
+compaction = "zettcode.sdk.builtins:Compaction"
+
 [project.urls]
 Repository = "https://github.com/Chang-LeHung/zettcode"
 
