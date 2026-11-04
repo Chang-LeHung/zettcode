@@ -800,6 +800,46 @@ async def test_the_launch_hands_the_build_the_terminal_it_is_painting(tmp_path, 
     assert given["terminal"] is given["boot"], "the app painting the boot frame is the one the build is told about"
 
 
+async def test_a_missing_required_plugin_ends_the_launch_with_a_sentence_and_not_a_traceback(tmp_path, monkeypatch):
+    """The terminal does not start without its presenters or commands; the reader is told which, once it is theirs again."""
+    import zettcode.tui as tui_module
+    from zettcode.engine.plugins.loader import RequiredPluginError
+
+    config = tmp_path / "config.toml"
+    config.write_text('[[models]]\nmodel = "m"\ntoken = "t"\n', encoding="utf-8")
+    monkeypatch.setenv("ZETTCODE_CONFIG", str(config))
+    left: list[str] = []
+
+    class QuietRunner:
+        def __init__(self, tui, *, terminal=None):
+            pass
+
+        def after_next_paint(self, callback) -> None:
+            pass
+
+        async def run(self) -> None:
+            await asyncio.sleep(0)
+
+    class NoTerminal:
+        def __init__(self, **_):
+            pass
+
+    def build(options, *, terminal=None):
+        raise RequiredPluginError({"presenters": "not installed"})
+
+    monkeypatch.setattr(tui_module, "TerminalRunner", QuietRunner)
+    monkeypatch.setattr(tui_module, "Terminal", NoTerminal)
+    monkeypatch.setattr(tui_module.TuiApp, "exit", lambda self: left.append("exit"))
+    monkeypatch.setattr(cli, "build_application", build)
+
+    with pytest.raises(SystemExit) as raised:
+        await cli.launch(Options(workspace=tmp_path))
+
+    assert "presenters: not installed" in str(raised.value)
+    assert "reinstall" in str(raised.value)
+    assert left == ["exit"], "the screen is given back before the sentence is printed"
+
+
 async def test_the_runtime_warms_up_after_the_real_frame_is_painted_not_when_it_is_swapped_in(tmp_path, monkeypatch):
     """The imports share the interpreter's one lock with the drawing, so the frame goes first.
 
