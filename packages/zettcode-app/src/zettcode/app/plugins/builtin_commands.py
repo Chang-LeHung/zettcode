@@ -24,6 +24,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from zettcode.app.errors import COMMAND_ERRORS
 from zettcode.config import ZettCodeConfig
 from zettcode.engine.plugins import applied, catalog
 from zettcode.engine.plugins import set_many as switch_plugins
@@ -31,7 +32,6 @@ from zettcode.engine.plugins.commands import PlainCommandContext, TurnCommandRes
 from zettcode.engine.plugins.context import PluginContext
 from zettcode.paths import DEFAULT_COMMAND_HISTORY
 from zettcode.plugin_api.commands import (
-    COMMAND_ERRORS,
     CommandContext,
     CommandHost,
     CommandResult,

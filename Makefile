@@ -158,14 +158,16 @@ smoke: gateway-page
 	@# The HTML trace ships as package data: a packaging change that drops the
 	@# template, its stylesheet, or its script has to fail here, not at export time.
 	$(SMOKE_DIR)/venv/bin/python -c "from importlib.resources import files; names = sorted(p.name for p in files('zettcode.engine.export').joinpath('trace').iterdir()); assert names == ['script.js', 'style.css', 'template.html'], names; print('trace assets:', names)"
-	@# The `monitor` and `recap` extras are metadata, and nothing else exercises them: a misspelt name or a range that
-	@# excludes the published plugin shows up only when a reader installs it. Each extra is installed beside the wheels
-	@# just built, and the plugin has to register its command under this version -- the extra's whole promise.
-	@# `--no-sources`: the extra has to resolve from PyPI, which is the promise a reader installs; a workspace source
-	@# would put this checkout's plugin there instead and the check would prove nothing.
-	@wheel=$$(ls $(SMOKE_DIR)/zettcode-0.*.whl); $(UV) pip install --no-sources --python $(SMOKE_DIR)/venv/bin/python "$$wheel[monitor]"
-	@wheel=$$(ls $(SMOKE_DIR)/zettcode-0.*.whl); $(UV) pip install --no-sources --python $(SMOKE_DIR)/venv/bin/python "$$wheel[recap]"
-	$(SMOKE_DIR)/venv/bin/python -c "import tempfile, pathlib; from zettcode.config import ModelConfig, ZettCodeConfig; from zettcode.app.plugins.loader import load_terminal_plugins; root = pathlib.Path(tempfile.mkdtemp()); (root / 'w').mkdir(); config = ZettCodeConfig(workspace=root / 'w', models=(ModelConfig(model='m', token='t'),), store=root / 'store', plugins_file=root / 'plugins.json', mcp_enabled=False, skills_enabled=False, harness_dir=root / 'harness'); bundle = load_terminal_plugins(config); names = [command.name for command in bundle.commands]; failed = dict(bundle.failed); assert '/monitor' in names and '/recap' in names, 'the extras resolved to releases this program cannot load (' + repr({k: failed[k] for k in ('monitor', 'recap') if k in failed}) + '): publish zettcode-monitor and zettcode-recap on the plugin-api layout, then raise the extras ranges'; print('plugin extras:', '/monitor', '/recap')"
+	@# The two plugins are built from this checkout and installed beside the program's wheels, and each has to register
+	@# its command under this version. That is the layout this tree is: a plugin imports the contract (`zettcode-plugin-api`),
+	@# so a plugin released before the contract moved cannot load here, and installing the *published* extras from PyPI
+	@# would test those old releases and not the code in front of us. Whether the extras' ranges resolve against what is
+	@# published is a question for the release, once the plugins exist on this layout; `test_each_extra_names_a_plugin...`
+	@# holds the ranges against the versions built here until then.
+	$(UV) build --package zettcode-monitor --out-dir $(SMOKE_DIR)/plugins
+	$(UV) build --package zettcode-recap --out-dir $(SMOKE_DIR)/plugins
+	$(UV) pip install --python $(SMOKE_DIR)/venv/bin/python --find-links $(SMOKE_DIR) $(SMOKE_DIR)/plugins/*.whl
+	$(SMOKE_DIR)/venv/bin/python -c "import tempfile, pathlib; from zettcode.config import ModelConfig, ZettCodeConfig; from zettcode.app.plugins.loader import load_terminal_plugins; root = pathlib.Path(tempfile.mkdtemp()); (root / 'w').mkdir(); config = ZettCodeConfig(workspace=root / 'w', models=(ModelConfig(model='m', token='t'),), store=root / 'store', plugins_file=root / 'plugins.json', mcp_enabled=False, skills_enabled=False, harness_dir=root / 'harness'); bundle = load_terminal_plugins(config); names = [command.name for command in bundle.commands]; failed = dict(bundle.failed); assert '/monitor' in names and '/recap' in names, repr({k: failed[k] for k in ('monitor', 'recap') if k in failed}); print('plugins:', '/monitor', '/recap')"
 
 check:
 	@echo "--- changed since $(BASE) ---"

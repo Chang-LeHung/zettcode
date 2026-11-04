@@ -4,6 +4,10 @@ A presenter turns one kind of entry into lines. The built-in ones live in `zettc
 own through `ctx.tui.register_presenter`, and the row it draws is the same kind of object, so this — the base class and
 the rule for when a row is drawn again — is part of the plugin contract, not part of the terminal.
 
+The registry (`Presenters`) is here and not with the built-in rows because `Presenter.block` takes it as its `owner`:
+the base class names the registry in its own signature, so moving the registry out would make the base class import its
+implementation for a type.
+
 The two line sources here are how a block is cached: the entry keeps the last block it was drawn as, its key made of
 the width, the palette, the registry and what the row looks like, so a frame that changes nothing redraws nothing.
 """

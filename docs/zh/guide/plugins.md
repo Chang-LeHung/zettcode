@@ -139,8 +139,8 @@ disable = ["greeter"]
 
 ## 插件能参与什么
 
-`Plugin` 组合了两组钩子（代理那一组在 `zettcode.engine.plugins`，屏幕那一组由 `zettcode.app.plugins`
-里的 `TuiPlugin` 加上），插件只覆盖自己关心的阶段：
+`Plugin` 组合了两组钩子（代理那一组在 `zettcode.engine.plugins`，屏幕那一组由 `TuiPlugin` 加上；两组都由
+`zettcode.plugin_api` 重新导出，插件只需要从它导入），插件只覆盖自己关心的阶段：
 
 - **代理的工作** —— 和 `zett-agent` 扩展同一套生命周期：setup、run、turn、model、tool、
   compaction，以及外部事件。插件可以注册工具、改写发给模型的消息、转换工具结果，或者观察一次
