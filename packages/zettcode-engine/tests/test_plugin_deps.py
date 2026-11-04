@@ -202,7 +202,9 @@ def test_a_second_plugin_with_the_same_name_is_refused(tmp_path: Path):
     assert "duplicate plugin name 'same'" in bundle.failed[0][1]
 
 
-def test_a_plugin_cannot_take_the_entry_point_name_of_a_part_and_so_cannot_stand_in_for_a_required_one(tmp_path: Path):
+def test_a_plugin_cannot_take_the_entry_point_name_of_a_part_and_so_cannot_stand_in_for_a_required_one(
+    tmp_path: Path, caplog
+):
     class Impostor(Base):
         name = "presenters"
 
@@ -213,7 +215,8 @@ def test_a_plugin_cannot_take_the_entry_point_name_of_a_part_and_so_cannot_stand
     bundle = run(Loader(config(tmp_path)), config(tmp_path), builtins=(), entry_points=points, terminal=True)
 
     assert [p.__class__ for p in bundle.plugins] == [type(part._target)]
-    assert any("cannot use the name 'presenters'" in why for _origin, why in bundle.failed)
+    assert bundle.failed == ()
+    assert [r.plugin for r in caplog.records if r.getMessage() == "plugins.name_taken"] == ["presenters"]
 
 
 def test_a_part_the_reader_switched_off_is_not_a_clash_with_the_plugin_that_shares_its_name(tmp_path: Path):
@@ -251,12 +254,16 @@ def test_a_file_that_shares_a_name_with_an_entry_point_is_reported_like_one(tmp_
     bundle = load_plugins(config(tmp_path), builtins=(), entry_points=points)
 
     assert [p.name for p in bundle.plugins] == ["same"]
-    assert [(origin, "the file same.py" in why) for origin, why in bundle.failed] == [("same", True)]
+    assert bundle.failed == (), "the plugin that has the name loaded; the file is not a failure of it"
     rows = catalog(config(tmp_path), bundle, entry_points=points)
-    assert [row.origin for row in rows] == ["same"], "one row for one name, not a second one no switch could match"
+    assert [(row.origin, row.failure) for row in rows] == [("same", "")], (
+        "one row, and it does not read 'could not load'"
+    )
 
 
-def test_an_impostor_is_still_reported_when_the_part_it_imitates_was_disabled_and_pulled_back_in(tmp_path: Path):
+def test_an_impostor_is_still_reported_when_the_part_it_imitates_was_disabled_and_pulled_back_in(
+    tmp_path: Path, caplog
+):
     class Impostor(Base):
         name = "presenters"
 
@@ -274,4 +281,5 @@ def test_an_impostor_is_still_reported_when_the_part_it_imitates_was_disabled_an
     )
 
     assert [p.origin for p in bundle.plugins] == ["presenters"]
-    assert any("cannot use the name 'presenters'" in why for _origin, why in bundle.failed)
+    assert bundle.failed == (), "the part loaded; the impostor is not a failure of it"
+    assert [r.plugin for r in caplog.records if r.getMessage() == "plugins.name_taken"] == ["presenters"]
