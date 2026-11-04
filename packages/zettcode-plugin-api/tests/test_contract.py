@@ -7,6 +7,7 @@ registered into obeys the priority rule the guide promises.
 
 from __future__ import annotations
 
+import ast
 import subprocess
 import sys
 from pathlib import Path
@@ -122,3 +123,38 @@ def test_replacing_appends_so_a_plugin_that_registers_last_draws_the_row():
 
     assert registry.replacing(mine).for_entry(_entry()) is mine
     assert registry.replacing(mine).lines(_entry(), 20, DARK, 0)[0].spans[0].text == "mine"
+
+
+#: What evaluates an annotation, which turns a name that only exists for the type checker into a failure at run time.
+EVALUATES_ANNOTATIONS = {"get_type_hints", "TypeAdapter", "BaseModel", "create_model", "ConfigDict"}
+
+
+def test_nothing_in_the_contract_evaluates_an_annotation():
+    """The `types` extra is safe only because no annotation here is ever evaluated.
+
+    The contract names the SDK's `Client`, `ModelInfo` and `Usage` in annotations and imports them for the type checker
+    alone, so a plugin that does not install the extra still imports every name. That holds while the annotations stay
+    strings: the day a contract class is a pydantic model, or something calls `typing.get_type_hints` on one, a name that
+    exists only under `TYPE_CHECKING` is a `NameError` for the plugin author. (Today `get_type_hints` already fails on
+    nine of these classes, for `Path` and `Theme` as much as for the SDK — which is the same fact seen from the other
+    side, and why the guard is on the cause and not on that call succeeding.)
+    """
+    offenders: list[str] = []
+    for file in sorted(Path(api.__file__).parent.glob("*.py")):
+        tree = ast.parse(file.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            names: set[str] = set()
+            if isinstance(node, ast.Name):
+                names.add(node.id)
+            elif isinstance(node, ast.Attribute):
+                names.add(node.attr)
+            elif isinstance(node, ast.keyword) and node.arg == "eval_str":
+                names.add("eval_str")
+            elif isinstance(node, (ast.Import, ast.ImportFrom)):
+                names.update(alias.name.split(".")[-1] for alias in node.names)
+                if isinstance(node, ast.ImportFrom) and node.module and node.module.split(".")[0] == "pydantic":
+                    names.add("pydantic")
+            for name in names & (EVALUATES_ANNOTATIONS | {"eval_str", "pydantic"}):
+                offenders.append(f"{file.name}:{node.lineno} uses {name}")
+
+    assert offenders == []

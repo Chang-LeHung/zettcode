@@ -50,8 +50,17 @@ ten of them for `release.yml`'s tag — which is why the token is what this repo
    script's own mark is a different drawing.
 3. If the release moves an extra (`packages/zettcode/pyproject.toml` names `monitor` and `recap`), publish its
    plugin first: the plugin's `zettcode-plugin-api` range has to allow the old line and the new one, so it
-   installs against both. `make smoke` installs the built program wheel with both extras and fails if an extra
-   cannot be resolved or the plugin does not register its command.
+   installs against both. `make smoke` builds both plugins from this checkout and installs them beside the program's
+   wheels, and fails if either does not register its command: it proves the layout in front of you, **not** that the
+   published extras resolve. That one is yours, once the plugins are on PyPI and before the tag, in a scratch
+   environment so nothing from this checkout can answer for them:
+
+   ```bash
+   uv run --no-project --python 3.12 --with "zettcode[all]" python -c "import zettcode.monitor, zettcode.recap"
+   ```
+
+   (The extras' ranges in `packages/zettcode/pyproject.toml` are held against the versions built here by
+   `test_structure.py` until then, so a typo or a range that excludes this checkout's plugin still fails the suite.)
 4. Tag and push:
 
    ```bash

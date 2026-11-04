@@ -48,6 +48,10 @@ dependencies = ["zettcode-plugin-api>=0.3,<0.4"]
 greeter = "my_package:Greeter"
 ```
 
+插件只需要依赖 `zettcode-plugin-api` 这一个包，运行所需的一切都在里面。指向 SDK 对象的类型 —— `host.client` 背后的
+`Client`、`ModelInfo`、`Usage` —— 只在类型检查时导入，所以不会随它一起安装：用到这些类型注解的插件请加上 extra，
+`dependencies = ["zettcode-plugin-api[types]>=0.3,<0.4"]`，否则这些名字在类型检查里是 `Any`。两种写法在运行时没有任何差别。
+
 ```python
 from zettcode.plugin_api import CommandContext, CommandResult
 from zettcode.plugin_api import PluginContext, TuiPlugin

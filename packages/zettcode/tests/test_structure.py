@@ -826,13 +826,23 @@ def _type_only_imports(path: pathlib.Path) -> set[str]:
     outside: set[str] = set()
 
     def visit(node: ast.AST, in_block: bool) -> None:
+        # Only the body of `if TYPE_CHECKING:` is type-only. Its `else:` (and an `elif`, which is an `If` in the
+        # `else:`) runs exactly when the checker does not, so it inherits whatever the enclosing code is.
+        if guarded(node):
+            assert isinstance(node, ast.If)
+            visit(node.test, in_block)
+            for statement in node.body:
+                visit(statement, True)
+            for statement in node.orelse:
+                visit(statement, in_block)
+            return
+        if isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            (inside if in_block else outside).add(node.module)
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                (inside if in_block else outside).add(alias.name)
         for child in ast.iter_child_nodes(node):
-            if isinstance(child, ast.ImportFrom) and child.level == 0 and child.module:
-                (inside if in_block else outside).add(child.module)
-            elif isinstance(child, ast.Import):
-                for alias in child.names:
-                    (inside if in_block else outside).add(alias.name)
-            visit(child, in_block or guarded(child))
+            visit(child, in_block)
 
     visit(tree, False)
     return {module for module in inside - outside if module.startswith("zettcode")}
@@ -1064,6 +1074,55 @@ def test_the_release_order_refuses_a_cycle_and_a_dependency_nobody_ships(tmp_pat
     write("zettcode-b", ("zettcode-missing>=1",))
     with pytest.raises(generator.Cycle, match="zettcode-missing"):
         generator.ordered()
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        pytest.param(
+            "if TYPE_CHECKING:\n    from zettcode.sdk.types import Usage\n", {"zettcode.sdk.types"}, id="body"
+        ),
+        pytest.param(
+            "if TYPE_CHECKING:\n    from zettcode.sdk.types import Usage\nelse:\n    from zettcode.sdk.types import M\n",
+            set(),
+            id="the else branch runs when the checker does not",
+        ),
+        pytest.param(
+            "if TYPE_CHECKING:\n    from zettcode.sdk.a import A\nelif sys.platform:\n    from zettcode.sdk.a import B\n",
+            set(),
+            id="an elif is an else",
+        ),
+        pytest.param(
+            "if TYPE_CHECKING:\n    from zettcode.sdk.a import A\nelse:\n    from zettcode.sdk.b import B\n",
+            {"zettcode.sdk.a"},
+            id="a different module in the else branch leaves the guarded one type-only",
+        ),
+        pytest.param(
+            "if not TYPE_CHECKING:\n    from zettcode.sdk.a import A\n", set(), id="negated is a run-time import"
+        ),
+        pytest.param(
+            "import typing\nif typing.TYPE_CHECKING:\n    import zettcode.sdk.a\n",
+            {"zettcode.sdk.a"},
+            id="the attribute spelling",
+        ),
+        pytest.param(
+            "from zettcode.sdk.a import A\nif TYPE_CHECKING:\n    from zettcode.sdk.a import B\n",
+            set(),
+            id="also imported at run time",
+        ),
+        pytest.param(
+            "def f():\n    if TYPE_CHECKING:\n        from zettcode.sdk.a import A\n",
+            {"zettcode.sdk.a"},
+            id="in a function",
+        ),
+    ],
+)
+def test_only_the_body_of_a_type_checking_block_is_type_only(tmp_path, source: str, expected: set[str]):
+    """The extras rule trusts this helper: an import it calls type-only is one a distribution may take from an extra."""
+    module = tmp_path / "probe.py"
+    module.write_text(source, encoding="utf-8")
+
+    assert _type_only_imports(module) == expected
 
 
 def _declared(distribution: str) -> set[str]:
