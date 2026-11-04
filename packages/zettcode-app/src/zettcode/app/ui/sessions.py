@@ -12,8 +12,8 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from zettcode.app.errors import COMMAND_ERRORS
 from zettcode.collector import collector_paused
-from zettcode.plugin_api.commands import COMMAND_ERRORS
 from zettcode.plugin_api.state import Activity
 from zettcode.presenters.presenters import block_for
 from zettcode.sdk.types import StoredSession

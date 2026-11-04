@@ -29,8 +29,8 @@ from the root.
     `docs/internal/tui.md` has the map and `packages/zettcode/tests/test_structure.py` the import order).
   - `zettcode-plugin-api` is the plugin contract, and the bottom of the graph a plugin lives in: the base classes and
     hooks, the command a handler returns, the row model and the presenter base class, the pet format, the link to the
-    shell and the few widgets a panel is drawn with are *defined* there, and it depends on the engine, the widget
-    framework and the SDK only. A plugin depends on that one package. The implementations are written against it and
+    shell and the few widgets a panel is drawn with are *defined* there, and it depends on the engine and the widget
+    framework only (the SDK is an extra, for type-checking a plugin). A plugin depends on that one package. The implementations are written against it and
     sit above it: `zettcode-presenters` draws the built-in rows, `zettcode-app` is the shell and the loader. Moving a
     part of the program into a distribution of its own follows the same cut — the contract goes in `plugin-api`, the
     implementation in its own package — and a part of the program is never an entry point, so `[plugins] disable` cannot

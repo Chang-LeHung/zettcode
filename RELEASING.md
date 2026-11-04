@@ -72,12 +72,37 @@ publishing and the GitHub release both require a tag push.
 **The first release of several new projects can be throttled.** PyPI allows a personal account **four new project
 names in twenty-four hours** (ten for an organization; the published docs say twenty an hour, and the wall is lower),
 counted as a sliding window, and **every attempt counts, a rejected one included**. A release that creates more than
-that — this one creates eight — therefore stops part-way with `429 Too many new projects created`. The publish step
-waits a minute before creating a name PyPI does not have and stops the run when an upload fails rather than retrying
-into the quota, which would only push the window out. The job is idempotent: `uv publish --check-url` skips every
-file PyPI already has, so **one re-run about a day later** (Actions → the run → "Re-run failed jobs") publishes
-whatever is left, in the same order. If the whole set has to go out at once, ask for an increase at
-https://github.com/pypi/support/issues/new/choose before the release; it usually takes a day or two.
+that therefore stops part-way with `429 Too many new projects created`. The number to plan with is *the names PyPI
+does not have yet*, not the number of distributions — a distribution published once is no longer new — so count them
+before tagging:
+
+```sh
+for name in $(python3 .github/scripts/release_order.py); do
+  curl -sf "https://pypi.org/pypi/$name/json" > /dev/null || echo "new: $name"
+done
+```
+
+Divide that by four to know how many days the release takes; `ceil(n / 4)` runs of the publish job, the first at the
+tag and one re-run about a day after each failure. The publish step waits a minute before creating a name PyPI does not
+have and stops the run when an upload fails rather than retrying into the quota, which would only push the window out.
+The job is idempotent: `uv publish --check-url` skips every file PyPI already has, so a re-run (Actions → the run →
+"Re-run failed jobs") publishes whatever is left, in the same order. If the whole set has to go out at once, ask for an
+increase at https://github.com/pypi/support/issues/new/choose before the release; it usually takes a day or two.
+
+**The order across the two release lines.** The plugins depend on `zettcode-plugin-api`, and the program's extras name
+the plugins, so a release that changes the contract goes out in three steps and not one: (1) the program's tag, which
+publishes `zettcode-plugin-api`, `zettcode-presenters` and the rest; (2) the plugins, on the new layout, with
+`zettcode-plugin-api` ranges that admit it (`release-packages.yml`); (3) the raised `monitor`/`recap`/`all` ranges in
+`packages/zettcode/pyproject.toml`, which can only name plugins that exist. Until step 3 the previous program release
+keeps resolving the previous plugins.
+
+**A release that includes the contract move has to be 0.4.0, not 0.3.x.** A plugin released before it imports modules
+(`zettcode.app.commands`, `zettcode.app.ui.widgets.panel`) that are no longer there, and both published plugins declare
+`zettcode<0.4` and `zettcode-plugin-api>=0.3,<0.4`. On a 0.3.x release `pip install "zettcode[monitor]"` would resolve
+that old plugin and fail at *import*, leaving only a line in `/plugins` — a patch upgrade quietly losing `/monitor` and
+`/recap`. On 0.4.0 the plugins' own caps make the old ones *unresolvable* beside the new program, which is loud and
+honest. `version.py` is therefore raised to 0.4.0 in the release commit, together with the plugins' new `zettcode`
+and `zettcode-plugin-api` ranges (`test_structure.py` and each plugin's suite fail until they agree).
 
 ## The plugins in `packages/`
 

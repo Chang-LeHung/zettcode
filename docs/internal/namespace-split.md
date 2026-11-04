@@ -45,7 +45,7 @@ union of what is installed and every distribution contributes its own parts to i
 | `zettcode-sdk` | `zettcode/sdk/**`, `zettcode/daemon/**`, `zettcode/doctor.py`, `zettcode/mentions.py` (the implementations), `zettcode/table.py`, and the composition root `zettcode/sdk/builtins.py` | `zettcode-engine`, `zettcode-broker` |
 | `zettcode-server` | `zettcode/server/**` | `zettcode-engine`, `zettcode-sdk` |
 | `zettcode-gateway` | `zettcode/gateway/**` | `zettcode-engine`, `zettcode-sdk` |
-| `zettcode-plugin-api` | `zettcode/plugin_api/**`: the plugin contract — `Plugin`/`TuiPlugin` and the row hooks (`mixins`, `plugin`, `state`, `rows`), commands (`commands`), the row model and the presenter base class and registry (`entries`, `presenters`), the pet format (`pets`), the link to the shell (`host`), and the widgets a panel is drawn with (`panels`, `switch`) | `zettcode-engine`, `zettcode-tui`, `zettcode-sdk` |
+| `zettcode-plugin-api` | `zettcode/plugin_api/**`: the plugin contract — `Plugin`/`TuiPlugin` and the row hooks (`mixins`, `plugin`, `state`, `rows`), commands (`commands`), the row model and the presenter base class and registry (`entries`, `presenters`), the pet format (`pets`), the link to the shell (`host`), and the widgets a panel is drawn with (`panels`, `switch`) | `zettcode-engine`, `zettcode-tui` (and `zettcode-sdk` only through the `types` extra, to type-check a plugin) |
 | `zettcode-presenters` | `zettcode/presenters/**`: the built-in rows — the presenters of every kind of entry, their wording (`text`), the pulse (`pulse`) and the brand mark (`brand`) | `zettcode-plugin-api`, `zettcode-tui`, `zettcode-sdk` |
 | `zettcode-app` | `zettcode/app/**`, `zettcode/collector.py`, `zettcode/statusline.py` (the rendering half), `zettcode/update.py` | `zettcode-engine`, `zettcode-tui`, `zettcode-sdk`, `zettcode-broker`, `zettcode-plugin-api`, `zettcode-presenters` |
 | `zettcode` | `zettcode/cli.py`, `plugin_cli.py`, `oneshot.py`, the console scripts | all of the above |
@@ -134,7 +134,7 @@ Each stage is one branch and one commit, and ends with `make check` green plus b
 6. **The contract moves down, the implementations stay up.** *Done.* `zettcode-plugin-api` used to *re-export* the
    application, so a plugin that wanted `Presenter` installed the whole terminal and `zettcode-presenters` could not
    exist without importing the application it was meant to be drawn by. It now *defines* the contract and depends on the
-   engine, the widget framework and the SDK only; `zettcode-presenters` (the built-in rows) and `zettcode-app` are
+   engine and the widget framework only; `zettcode-presenters` (the built-in rows) and `zettcode-app` are
    written against it:
 
    ```

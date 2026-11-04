@@ -789,6 +789,8 @@ class Distribution(NamedTuple):
     directory: pathlib.Path
     #: The distributions of ours it declares.
     declared: set[str]
+    #: Distributions of ours named in an extra: importable for types, never at run time.
+    optional: set[str]
     #: The top-level names it puts in the `zettcode` namespace.
     shipped: set[str]
     #: The top-level names it ships outside the namespace (a plugin ships one module).
@@ -803,6 +805,37 @@ PROVIDED_BY = {"pydantic_core": "pydantic"}
 #: Standard library from 3.11 on, so a 3.10 interpreter's table lacks them while the shims name them anyway (and
 #: declare `tomli`, the backport). Counting the running interpreter's table alone fails this guard on the floor.
 LATER_STDLIB = frozenset({"tomllib"})
+
+
+def _type_only_imports(path: pathlib.Path) -> set[str]:
+    """Return the `zettcode.*` modules a file imports under `if TYPE_CHECKING:` and nowhere else.
+
+    Such an import costs nothing at run time and cannot fail there, so a distribution may take its types from one it only
+    offers through an extra (the plugin contract types `host.client` against the SDK without depending on it).
+    """
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+
+    def guarded(node: ast.AST) -> bool:
+        test = getattr(node, "test", None)
+        return isinstance(node, ast.If) and (
+            (isinstance(test, ast.Name) and test.id == "TYPE_CHECKING")
+            or (isinstance(test, ast.Attribute) and test.attr == "TYPE_CHECKING")
+        )
+
+    inside: set[str] = set()
+    outside: set[str] = set()
+
+    def visit(node: ast.AST, in_block: bool) -> None:
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, ast.ImportFrom) and child.level == 0 and child.module:
+                (inside if in_block else outside).add(child.module)
+            elif isinstance(child, ast.Import):
+                for alias in child.names:
+                    (inside if in_block else outside).add(alias.name)
+            visit(child, in_block or guarded(child))
+
+    visit(tree, False)
+    return {module for module in inside - outside if module.startswith("zettcode")}
 
 
 def _shipped_distributions() -> dict[str, Distribution]:
@@ -831,6 +864,7 @@ def _shipped_distributions() -> dict[str, Distribution]:
         found[name] = Distribution(
             directory=project.parent,
             declared={requirement.name for requirement in requirements if requirement.name.startswith("zettcode")},
+            optional={requirement.name for requirement in extras if requirement.name.startswith("zettcode")},
             shipped=shipped,
             own=own,
             external={requirement.name.replace("-", "_") for requirement in (*requirements, *extras)},
@@ -917,6 +951,7 @@ def test_every_distribution_imports_only_what_it_declares():
         for path in sorted((distribution.directory / "src").rglob("*.py")):
             where = f"{name}: {path.relative_to(distribution.directory)}"
 
+            type_only = _type_only_imports(path)
             for target in _namespace_imports(path):
                 parts = target.split(".")
                 if len(parts) < 2:
@@ -924,7 +959,15 @@ def test_every_distribution_imports_only_what_it_declares():
                 shipped_by = owner.get(parts[1])
                 if shipped_by is None:
                     offenders.append(f"{where} imports {target}, which no distribution ships")
-                elif shipped_by != name and shipped_by not in distribution.declared:
+                elif shipped_by == name or shipped_by in distribution.declared:
+                    continue
+                elif shipped_by in distribution.optional and target in type_only:
+                    continue  # offered through an extra, and only the type checker reads the import
+                elif shipped_by in distribution.optional:
+                    offenders.append(
+                        f"{where} imports {target} from {shipped_by} at run time, which {name} offers only as an extra"
+                    )
+                else:
                     offenders.append(f"{where} imports {target} from {shipped_by}, which {name} does not declare")
 
             for target in _module_level_imports(path):
@@ -1038,12 +1081,13 @@ def test_the_plugin_contract_sits_below_what_implements_it_and_below_the_applica
 
     The direction is the point of splitting them. A contract that depended on the application could not be installed
     without it, and one that depended on an implementation of itself would hand the plugin a second package to depend
-    on. So the contract needs the runtime, the widget framework and the SDK, and nothing above them; the built-in rows
+    on. So the contract needs the runtime and the widget framework, and nothing above them; the built-in rows
     need the contract; the application needs both; and a release publishes them in that order.
     """
     api, rows, app = (_declared(name) for name in ("zettcode-plugin-api", "zettcode-presenters", "zettcode-app"))
 
-    assert api == {"zettcode-engine", "zettcode-tui", "zettcode-sdk"}
+    # No SDK among them: it is only needed to type-check a plugin, so it is the `types` extra and not a dependency.
+    assert api == {"zettcode-engine", "zettcode-tui"}
     assert "zettcode-plugin-api" in rows and rows.isdisjoint({"zettcode-app", "zettcode-gateway", "zettcode-server"})
     assert {"zettcode-plugin-api", "zettcode-presenters"} <= app
 

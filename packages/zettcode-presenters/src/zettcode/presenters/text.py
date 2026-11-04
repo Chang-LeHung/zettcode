@@ -12,11 +12,14 @@ from __future__ import annotations
 import re
 from datetime import datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from zettcode.sdk.types import Usage
 from zettcode.tui import ELLIPSIS
 from zettcode.tui.glyphs import ARROW_DOWN, ARROW_UP, SEPARATOR
 from zettcode.tui.render import count_wrapped_rows, display_width, truncate, wrap_columns
+
+if TYPE_CHECKING:  # pragma: no cover - annotations only; the wording reads figures, it does not need the SDK
+    from zettcode.sdk.types import Usage
 
 #: Left margin of every transcript row: the width of the composer's ``\u203a ``
 #: prompt, so text lines up under what the user types and never starts left of

@@ -3069,32 +3069,42 @@ name = "zettcode-plugin-api"
 source = { editable = "packages/zettcode-plugin-api" }
 dependencies = [
     { name = "zettcode-engine" },
-    { name = "zettcode-sdk" },
     { name = "zettcode-tui" },
+]
+
+[package.optional-dependencies]
+types = [
+    { name = "zettcode-sdk" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "zettcode-engine", editable = "packages/zettcode-engine" },
-    { name = "zettcode-sdk", editable = "packages/zettcode-sdk" },
+    { name = "zettcode-sdk", marker = "extra == 'types'", editable = "packages/zettcode-sdk" },
     { name = "zettcode-tui", editable = "packages/zettcode-tui" },
 ]
+provides-extras = ["types"]
 
 [[package]]
 name = "zettcode-presenters"
 source = { editable = "packages/zettcode-presenters" }
 dependencies = [
     { name = "zettcode-plugin-api" },
-    { name = "zettcode-sdk" },
     { name = "zettcode-tui" },
+]
+
+[package.optional-dependencies]
+types = [
+    { name = "zettcode-sdk" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "zettcode-plugin-api", editable = "packages/zettcode-plugin-api" },
-    { name = "zettcode-sdk", editable = "packages/zettcode-sdk" },
+    { name = "zettcode-sdk", marker = "extra == 'types'", editable = "packages/zettcode-sdk" },
     { name = "zettcode-tui", editable = "packages/zettcode-tui" },
 ]
+provides-extras = ["types"]
 
 [[package]]
 name = "zettcode-recap"

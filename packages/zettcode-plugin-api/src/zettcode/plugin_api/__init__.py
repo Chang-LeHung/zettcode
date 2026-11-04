@@ -28,7 +28,6 @@ _EXPORTS = {
     "ActivityState": ".state",
     "AgentBuild": "zettcode.engine.plugins",
     "BusyPolicy": ".commands",
-    "COMMAND_ERRORS": ".commands",
     "CONTENT_INDENT": ".presenters",
     "Canvas": "zettcode.tui",
     "ChangesEntry": ".entries",
@@ -154,7 +153,6 @@ if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
     from zettcode.tui.render import blend, display_width, truncate
 
     from .commands import (
-        COMMAND_ERRORS,
         BusyPolicy,
         Command,
         CommandAgent,
@@ -237,7 +235,6 @@ __all__ = [
     "ActivityState",
     "AgentBuild",
     "BusyPolicy",
-    "COMMAND_ERRORS",
     "CONTENT_INDENT",
     "Canvas",
     "ChangesEntry",

@@ -51,10 +51,10 @@ from zettcode.tui.widgets import Rule
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     pass
+from zettcode.app.errors import COMMAND_ERRORS
 from zettcode.error_text import describe_error
 from zettcode.mentions import MentionRegistry, SessionMentions
 from zettcode.plugin_api.commands import (
-    COMMAND_ERRORS,
     Command,
     CommandContext,
     CommandList,

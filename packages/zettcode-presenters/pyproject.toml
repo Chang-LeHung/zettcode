@@ -20,8 +20,11 @@ dependencies = [
   # Written against the plugin contract, which is where the row model and the presenter base class are defined.
   "zettcode-plugin-api",
   "zettcode-tui",
-  "zettcode-sdk",
 ]
+
+[project.optional-dependencies]
+# The wording reads `Usage` figures the SDK defines; it is imported for the annotation only.
+types = ["zettcode-sdk"]
 
 [project.urls]
 Repository = "https://github.com/Chang-LeHung/zettcode"
