@@ -71,6 +71,24 @@ TERMINAL_PART_GROUP = "zettcode.terminal"
 #: They are activated by ``(rank, name)`` and then by ``deps``.
 AGENT_PART_GROUP = "zettcode.agent"
 
+#: Who may publish into the program's own groups. Being unswitchable and ahead of everything is a privilege of the
+#: program, not of whoever declares the group in a `pyproject.toml`: a point from any other distribution is an
+#: ordinary plugin whatever group it is in. A point that says nothing of its distribution (a test's stand-in) passes.
+PROGRAM_DISTRIBUTIONS: dict[str, frozenset[str]] = {
+    AGENT_PART_GROUP: frozenset({"zettcode-sdk"}),
+    TERMINAL_PART_GROUP: frozenset({"zettcode-app", "zettcode-commands", "zettcode-pets", "zettcode-presenters"}),
+}
+
+
+def part_group(point: EntryPoint) -> str | None:
+    """Return the program group ``point`` is a part of, or ``None`` when it is an ordinary plugin."""
+    group = getattr(point, "group", None)
+    allowed = PROGRAM_DISTRIBUTIONS.get(group) if group else None
+    if allowed is None:
+        return None
+    dist = _distribution(point)
+    return group if dist is None or dist in allowed else None
+
 
 def installed_entry_points() -> tuple[EntryPoint, ...]:
     """Return every plugin entry point installed in this environment.
@@ -252,10 +270,10 @@ def run(
     # which that switch is not about) and the plugins the program requires.
     points = tuple(entry_points) if entry_points is not None else installed_entry_points()
     # The parts of the program that need a screen are for a loader that has one.
-    points = tuple(point for point in points if terminal or getattr(point, "group", None) != TERMINAL_PART_GROUP)
-    points = tuple(point for point in points if agent or getattr(point, "group", None) != AGENT_PART_GROUP)
-    parts = {point.name for point in points if getattr(point, "group", None) in (TERMINAL_PART_GROUP, AGENT_PART_GROUP)}
-    agent_names = {point.name for point in points if getattr(point, "group", None) == AGENT_PART_GROUP}
+    points = tuple(point for point in points if terminal or part_group(point) != TERMINAL_PART_GROUP)
+    points = tuple(point for point in points if agent or part_group(point) != AGENT_PART_GROUP)
+    parts = {point.name for point in points if part_group(point) is not None}
+    agent_names = {point.name for point in points if part_group(point) == AGENT_PART_GROUP}
     # The configuration file's own list and the switch file's, merged for the one caller that loads. The switch
     # module cannot be imported here (it imports this one), so the union is written out; `off_names` is the same
     # rule for the front ends.
@@ -285,7 +303,9 @@ def run(
             sources[path.stem] = partial(_from_file, loader, path)
     held = {origin for origin in sources if origin in disabled or (not config.plugins_enabled and origin not in parts)}
     for origin in sources:
-        if origin not in held:
+        # A name the caller already passed as a built-in is that plugin; the discovered twin of it is the same part
+        # offered twice, not a second plugin to refuse as a duplicate.
+        if origin not in held and origin not in loader.builtins:
             candidates.extend(sources[origin]())
     # A name on that list can only reach a distribution or a file, unless the program needs it: the plugins it lists
     # as builtin loaded above, and the required ones, with what they need, are pulled in below. A line that names one
@@ -309,7 +329,9 @@ def run(
             wanted.add(name)
             if name in by_name:
                 queue.extend(by_name[name].deps)
-        pulled = sorted(origin for origin in held if origin in wanted)
+        pulled = sorted(
+            origin for origin in held if origin in wanted and not (origin in parts and origin in loader.builtins)
+        )
         if not pulled:
             break
         for origin in pulled:
@@ -335,6 +357,9 @@ def run(
                 "plugins.name_taken",
                 extra={"plugin": name, "who": who, "reason": f"{owners[name]} already has the name {name!r}"},
             )
+    # A plugin of the program is the program's own whether or not it loads, and whether or not it is ever activated: one
+    # refused for a need that failed still goes on the list a switch is refused against.
+    loader.builtins.extend(c.origin for c in candidates if c.builtin and c.origin not in loader.builtins)
     # Within the program's own groups the stated rank decides, then the name; the stable sort keeps everything else.
     at = [i for i, c in enumerate(candidates) if c.agent]
     for slot, candidate in zip(at, sorted((candidates[i] for i in at), key=_rank), strict=True):
@@ -400,8 +425,8 @@ def _rank(candidate: _Candidate) -> tuple[int, str]:
 
 def _from_point(loader: Loader, point: EntryPoint) -> list[_Candidate]:
     """Resolve one entry point into a candidate; a failure is a candidate that carries it."""
-    group = getattr(point, "group", None)
-    part = group in (TERMINAL_PART_GROUP, AGENT_PART_GROUP)
+    group = part_group(point)
+    part = group is not None
     agent = group == AGENT_PART_GROUP
     try:
         return [_Candidate(_instantiate(point), point.name, builtin=agent, part=part, agent=agent)]

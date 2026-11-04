@@ -113,3 +113,72 @@ def test_an_installation_with_none_of_them_is_refused_and_one_that_failed_to_act
     bare = load_plugins(config, builtins=(), shared={})  # discovery, but no state to build on: each one fails
     assert {origin for origin, _why in bare.failed} >= {"coding", "session-log"}
     assert require_agent_parts(bare) is bare, "a failure to activate is recorded, as it always was"
+
+
+class _Foreign:
+    """An entry point of another distribution that declares the program's group."""
+
+    class dist:  # noqa: N801 - the slice of importlib.metadata.Distribution the loader reads
+        name = "acme-tools"
+
+    group = AGENT_PART_GROUP
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self.value = "acme:Plugin"
+
+    def load(self):
+        from zettcode.engine.plugins import Plugin
+
+        class Stranger(Plugin):
+            pass
+
+        Stranger.name = self.name
+        return Stranger
+
+
+def test_a_foreign_distribution_cannot_join_the_program_by_declaring_its_group(tmp_path: Path):
+    from zettcode.engine.plugins import catalog, load_plugins
+
+    config = _config(tmp_path, disabled_plugins=("aaa",))
+    points = [_Foreign("aaa"), *entry_points(group=AGENT_PART_GROUP)]
+
+    plugins = load_plugins(config, builtins=(), entry_points=points, shared=runtime_state(config))
+
+    assert "aaa" not in plugins.builtins and "aaa" not in [plugin.name for plugin in plugins.plugins], (
+        "an ordinary plugin"
+    )
+    assert [plugin.name for plugin in plugins.plugins] == list(AGENT_PLUGIN_NAMES), "and it did not jump the queue"
+    off = _config(tmp_path)
+    shown = [
+        row.origin
+        for row in catalog(
+            off, load_plugins(off, builtins=(), entry_points=points, shared=runtime_state(off)), entry_points=points
+        )
+    ]
+    assert "aaa" in shown, "it has a row, so a switch"
+
+
+def test_a_stranger_that_names_itself_like_one_of_them_does_not_stand_in_for_the_missing_ones(tmp_path: Path):
+    import pytest
+
+    from zettcode.engine.plugins import load_plugins
+    from zettcode.engine.plugins.loader import RequiredPluginError
+
+    config = _config(tmp_path)
+    plugins = load_plugins(config, builtins=(), entry_points=[_Foreign("mcp")], shared=runtime_state(config))
+
+    with pytest.raises(RequiredPluginError):
+        require_agent_parts(plugins)
+
+
+def test_passing_the_list_as_builtins_beside_discovery_is_not_a_set_of_duplicate_failures(tmp_path: Path):
+    from zettcode.engine.plugins import load_plugins
+
+    config = _config(tmp_path)
+    points = list(entry_points(group=AGENT_PART_GROUP))
+
+    plugins = load_plugins(config, builtins=AGENT_PLUGINS, entry_points=points, shared=runtime_state(config))
+
+    assert plugins.failed == ()
+    assert [plugin.name for plugin in plugins.plugins] == list(AGENT_PLUGIN_NAMES)

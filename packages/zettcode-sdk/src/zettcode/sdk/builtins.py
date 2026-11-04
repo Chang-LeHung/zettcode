@@ -607,6 +607,8 @@ AGENT_PLUGINS: tuple[Plugin[PluginContext], ...] = (
 for _rank, _plugin in enumerate(AGENT_PLUGINS):
     # One list is the order; the rank is read from it, so there is no second number to keep in step by hand.
     type(_plugin).rank = _rank
+# The rank lives on the class, so a class listed twice would take the last index for both.
+assert len({type(plugin) for plugin in AGENT_PLUGINS}) == len(AGENT_PLUGINS), "AGENT_PLUGINS lists a class twice"
 
 #: The names of those plugins, which the program cannot run without.
 AGENT_PLUGIN_NAMES: tuple[str, ...] = tuple(plugin.name for plugin in AGENT_PLUGINS)
@@ -623,7 +625,9 @@ def require_agent_parts(plugins: _P) -> _P:
     """
     from zettcode.engine.plugins.loader import RequiredPluginError
 
-    seen = {plugin.name for plugin in plugins.plugins} | {origin for origin, _why in plugins.failed}
+    # Keyed on where a plugin came from and not on what it calls itself: ``builtins`` holds the origin of every plugin
+    # the program published, loaded or not, and a stranger that names itself ``mcp`` is not among them.
+    seen = set(plugins.builtins)
     missing = {name: "not installed" for name in AGENT_PLUGIN_NAMES if name not in seen}
     if missing:
         raise RequiredPluginError(missing)
