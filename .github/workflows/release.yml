@@ -8,7 +8,19 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  # A run by hand builds everything; `publish` uploads it too, without a tag and without a GitHub release, and
+  # `exclude` names distributions to leave out of the upload (space separated). That is how the parts are released
+  # ahead of the program itself: the program's own tag comes after, and finds the rest already on PyPI.
   workflow_dispatch:
+    inputs:
+      publish:
+        description: "Upload to PyPI (no tag, no GitHub release)"
+        type: boolean
+        default: false
+      exclude:
+        description: "Distributions to leave out of the upload, space separated (e.g. zettcode)"
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -82,7 +94,7 @@ jobs:
   publish:
     name: Publish to PyPI
     needs: build
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.publish)
     runs-on: ubuntu-latest
     environment:
       name: pypi
@@ -103,9 +115,14 @@ jobs:
       - name: Publish
         env:
           UV_PUBLISH_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+          EXCLUDE: ${{ github.event_name == 'workflow_dispatch' && inputs.exclude || '' }}
         run: |
           set -euo pipefail
           for name in $(python3 .github/scripts/release_order.py); do
+            if [[ " $EXCLUDE " == *" $name "* ]]; then
+              echo "$name is left out of this upload"
+              continue
+            fi
             echo "::group::$name"
             # A project PyPI already has takes a new version with no limit. A brand-new name counts against PyPI's
             # new-project quota — four in twenty-four hours for a personal account (pypi/support#11479; ten for an
