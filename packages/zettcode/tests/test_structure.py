@@ -1125,6 +1125,109 @@ def test_only_the_body_of_a_type_checking_block_is_type_only(tmp_path, source: s
     assert _type_only_imports(module) == expected
 
 
+#: The calls that evaluate an annotation, which resolves every name in it -- the ones that exist only for the type checker
+#: included. This is the set of tools this repository uses; a library that introspects annotations in its own way
+#: (`attrs.resolve_types`, `typeguard`, `beartype`, `pydantic.validate_call`) is a new name, to be added here with the
+#: first use rather than discovered in a bug report.
+ANNOTATION_EVALUATORS = {"get_type_hints", "get_annotations", "TypeAdapter", "validate_call", "resolve_types"}
+
+#: What may be evaluated today, by the TYPE it is evaluated on and not by the file that does it, because the premise is
+#: about the type: every one is defined in the engine without a name that exists only under `TYPE_CHECKING`.
+#: `Line` and `MetadataRecord` are the session store's own discriminated unions of models.
+EVALUATED_TYPES = {"ZettCodeConfig", "Line", "MetadataRecord"}
+
+
+def test_no_annotation_of_the_plugin_contract_is_evaluated_anywhere():
+    """The `types` extra is safe because nothing resolves the annotations of the contract, here or in a consumer.
+
+    `zettcode-plugin-api` imports the SDK's `Client`, `ModelInfo` and `Usage` for the type checker only, so a plugin that
+    does not install the extra still imports every name. That holds while the annotations stay strings. The plausible
+    accident is not in the contract but in whoever consumes it: the HTTP API serialising a shell snapshot with a
+    `TypeAdapter`, or a page resolving hints on `DisplayState`. Neither is visible from the contract's own files, so this
+    scans every module of every distribution for a call that evaluates annotations and requires the type it is evaluated
+    on to be one of the engine's (`EVALUATED_TYPES`). Before adding a contract class to a pydantic model, or a new
+    evaluator, look at the ones listed there.
+    """
+    offenders: list[str] = []
+    found = 0
+    for source in sorted((ROOT / "packages").glob("*/src/**/*.py")):
+        if "__pycache__" in source.parts:
+            continue
+        tree = ast.parse(source.read_text(encoding="utf-8"))
+        # `from pydantic import TypeAdapter as adapter` is the same call under another name, and the aliased spelling is
+        # exactly how an accident would arrive: so a name is resolved to what it was imported as before it is judged.
+        imported_as = {
+            alias.asname: alias.name
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.Import, ast.ImportFrom))
+            for alias in node.names
+            if alias.asname
+        }
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            function = node.func
+            if isinstance(function, ast.Subscript):  # `TypeAdapter[X](...)`
+                function = function.value
+            name = function.attr if isinstance(function, ast.Attribute) else getattr(function, "id", "")
+            name = imported_as.get(name, name)
+            if name not in ANNOTATION_EVALUATORS:
+                continue
+            found += 1
+            where = f"{source.relative_to(ROOT)}:{node.lineno}"
+            if not node.args:
+                offenders.append(f"{where} {name}() evaluates something this test cannot name")
+                continue
+            target = node.args[0]
+            # `TypeAdapter(cast(Any, Line))` and `get_type_hints(ZettCodeConfig)`: the type is the last name inside.
+            names = [n.id for n in ast.walk(target) if isinstance(n, ast.Name) and n.id not in {"cast", "Any"}]
+            if not names or names[-1] not in EVALUATED_TYPES:
+                offenders.append(
+                    f"{where} {name}() evaluates {names[-1] if names else '?'}, which is not in EVALUATED_TYPES"
+                )
+
+    assert found >= 3, "the scan must still see the evaluators this repository has"
+    assert offenders == []
+
+
+def test_every_type_the_evaluators_may_resolve_is_defined_without_a_checker_only_name():
+    """The allowlist is a promise about its members: none of them may name something that exists only under TYPE_CHECKING.
+
+    Otherwise listing a type there would make the scan above pass for a type whose evaluation fails at run time.
+    """
+    defined: dict[str, tuple[pathlib.Path, ast.stmt]] = {}
+    for source in sorted((ROOT / "packages").glob("*/src/**/*.py")):
+        if "__pycache__" in source.parts:
+            continue
+        for node in ast.parse(source.read_text(encoding="utf-8")).body:
+            if isinstance(node, ast.ClassDef) and node.name in EVALUATED_TYPES:
+                defined[node.name] = (source, node)
+            elif isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if isinstance(target, ast.Name) and target.id in EVALUATED_TYPES:
+                        defined[target.id] = (source, node)
+            elif (
+                isinstance(node, ast.AnnAssign)
+                and isinstance(node.target, ast.Name)
+                and node.target.id in EVALUATED_TYPES
+            ):
+                defined[node.target.id] = (source, node)  # `Line: TypeAlias = Annotated[...]`
+
+    assert set(defined) == EVALUATED_TYPES, EVALUATED_TYPES - set(defined)
+    for name, (source, _node) in defined.items():
+        tree = ast.parse(source.read_text(encoding="utf-8"))
+        guarded = {
+            alias.asname or alias.name.split(".")[0]
+            for node in ast.walk(tree)
+            if isinstance(node, ast.If) and getattr(node.test, "id", getattr(node.test, "attr", "")) == "TYPE_CHECKING"
+            for child in node.body
+            if isinstance(child, (ast.Import, ast.ImportFrom))
+            for alias in child.names
+        }
+        used = {n.id for n in ast.walk(defined[name][1]) if isinstance(n, ast.Name)}
+        assert not (used & guarded), (name, source.name, sorted(used & guarded))
+
+
 def _declared(distribution: str) -> set[str]:
     """Return the distributions of ours that one declares as dependencies."""
     settings = tomllib.loads((ROOT / "packages" / distribution / "pyproject.toml").read_text(encoding="utf-8"))
