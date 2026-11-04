@@ -67,6 +67,10 @@ def test_every_invariant_cites_a_test_that_exists():
     the ones after it belong to it, and each has to exist there. A test renamed
     without its citation, or a name written with no file in front of it, sends a
     reader looking for evidence that is not where the row says it is.
+
+    It sees cited evidence only. A test nothing cites that goes missing is indistinguishable from one that was never
+    written, and requiring every test to be cited would be false for nearly all of them; what catches that is reading
+    the diff of an edit that touches the neighbouring tests, not this.
     """
     document = (ROOT / "docs/internal/invariants.md").read_text(encoding="utf-8")
     # The evidence lives beside the code it pins: each distribution's tests are in its own `tests/`.
