@@ -31,20 +31,54 @@ def test_an_unknown_name_is_an_attribute_error_and_not_a_silent_none():
         api.Nothing  # noqa: B018
 
 
-@pytest.mark.parametrize(
-    "module", ["zettcode.plugin_api.presenters", "zettcode.plugin_api.entries", "zettcode.plugin_api.panels"]
+#: The one module that needs the agent framework by its nature: `TuiPlugin` subclasses the engine's `Plugin`, whose
+#: hooks are the framework's. Every other module is about rows, commands and widgets and must not drag the runtime in.
+NEEDS_THE_AGENT_FRAMEWORK = {"plugin"}
+
+#: What the boot frame must not have loaded: it is drawn before any of these exist.
+HEAVY = (
+    "zett_agent",
+    "pydantic",
+    "httpx",
+    "zettcode.config",
+    "zettcode.engine.core",
+    "zettcode.app",
+    "zettcode.presenters",
 )
+
+
+def _contract_modules() -> list[str]:
+    files = sorted(Path(api.__file__).parent.glob("*.py"))
+    return [file.stem for file in files if file.stem != "__init__"]
+
+
+@pytest.mark.parametrize("module", [name for name in _contract_modules() if name not in NEEDS_THE_AGENT_FRAMEWORK])
 def test_importing_a_contract_module_pulls_nothing_of_the_program_in(module: str):
-    """The boot frame is drawn before the settings, the runtime or a provider SDK exist, and it imports these."""
+    """The boot frame is drawn before the settings, the runtime or a provider SDK exist, and it imports these.
+
+    Every module is checked, so a new one is held to this without anyone adding it to a list; the one that is the
+    agent side of the contract is named above, with the reason.
+    """
     script = (
-        f"import sys, {module}\n"
-        "heavy = ('zettcode.app', 'zettcode.presenters', 'zettcode.config', 'zett_agent', 'zettcode.sdk')\n"
-        "print(sorted(name for name in sys.modules if name == 'zettcode.app' or name.startswith(heavy)))\n"
+        f"import sys, zettcode.plugin_api.{module}\n"
+        f"heavy = {HEAVY!r}\n"
+        "print(sorted(name for name in sys.modules if name.split('.')[0] in heavy or any(name.startswith(h) for h in heavy)))\n"
     )
 
     result = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, check=True)
 
     assert result.stdout.strip() == "[]", result.stdout
+
+
+def test_the_modules_that_need_the_agent_framework_are_the_ones_named_and_no_more():
+    """Guards the exception list: it can only shrink, because a module that stops needing the framework should say so."""
+    needs = []
+    for module in _contract_modules():
+        script = f"import sys, zettcode.plugin_api.{module}; print('zett_agent' in sys.modules)"
+        result = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, check=True)
+        if result.stdout.strip() == "True":
+            needs.append(module)
+    assert set(needs) == NEEDS_THE_AGENT_FRAMEWORK, needs
 
 
 def test_the_contract_names_no_implementation_of_itself():

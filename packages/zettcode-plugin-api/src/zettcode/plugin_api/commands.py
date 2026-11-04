@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Protocol, TypeAlias
 
-from zettcode.engine.core import ZettCodeEngine
 from zettcode.plugin_api.entries import ThinkingEntry
 from zettcode.registry import Provider
 from zettcode.sdk.errors import ZettCodeError
@@ -19,6 +18,7 @@ from zettcode.tui import Widget
 COMMAND_ERRORS = (ValueError, ZettCodeError)
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only; the agent and the config are not imported by this module
+    from zettcode.engine.core import ZettCodeEngine
     from zettcode.sdk.client import Client
     from zettcode.sdk.types import ModelInfo
 
