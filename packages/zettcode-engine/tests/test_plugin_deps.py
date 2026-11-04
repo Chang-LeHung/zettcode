@@ -229,10 +229,11 @@ def test_a_part_the_reader_switched_off_is_not_a_clash_with_the_plugin_that_shar
 
 def test_the_same_distribution_listed_twice_is_one_plugin_and_not_a_failure(tmp_path: Path):
     class Dist:
-        name = "some_dist"
+        def __init__(self, name: str) -> None:
+            self.name = name
 
     first, second = Point("dup", plugin("dup")), Point("dup", plugin("dup"))
-    first.dist = second.dist = Dist()  # type: ignore[attr-defined]
+    first.dist, second.dist = Dist("Some.Dist"), Dist("some_dist")  # type: ignore[attr-defined]  # one project, PEP 503
 
     bundle = load_plugins(config(tmp_path), builtins=(), entry_points=[first, second])
 
@@ -240,11 +241,37 @@ def test_the_same_distribution_listed_twice_is_one_plugin_and_not_a_failure(tmp_
 
 
 def test_a_file_that_shares_a_name_with_an_entry_point_is_reported_like_one(tmp_path: Path):
+    from zettcode.engine.plugins import catalog
+
     folder = tmp_path / "plugins"
     folder.mkdir()
     (folder / "same.py").write_text("from zettcode.engine.plugins import Plugin\nclass Mine(Plugin):\n    pass\n")
+    points = [Point("same", plugin("same"))]
 
-    bundle = load_plugins(config(tmp_path), builtins=(), entry_points=[Point("same", plugin("same"))])
+    bundle = load_plugins(config(tmp_path), builtins=(), entry_points=points)
 
     assert [p.name for p in bundle.plugins] == ["same"]
-    assert any("the file same.py" in origin and "already has it" in why for origin, why in bundle.failed)
+    assert [(origin, "the file same.py" in why) for origin, why in bundle.failed] == [("same", True)]
+    rows = catalog(config(tmp_path), bundle, entry_points=points)
+    assert [row.origin for row in rows] == ["same"], "one row for one name, not a second one no switch could match"
+
+
+def test_an_impostor_is_still_reported_when_the_part_it_imitates_was_disabled_and_pulled_back_in(tmp_path: Path):
+    class Impostor(Base):
+        name = "presenters"
+
+    part = Point("presenters", plugin("presenters"))
+    part.group = "zettcode.terminal"  # type: ignore[attr-defined]
+    off = config(tmp_path, disabled_plugins=("presenters",))
+
+    bundle = run(
+        Loader(off),
+        off,
+        builtins=(),
+        entry_points=[part, Point("presenters", Impostor())],
+        required=("presenters",),
+        terminal=True,
+    )
+
+    assert [p.origin for p in bundle.plugins] == ["presenters"]
+    assert any("cannot use the name 'presenters'" in why for _origin, why in bundle.failed)

@@ -617,7 +617,8 @@ class Statistics(Plugin):
 none. A plugin whose need is missing, switched off, failed to
 load, or part of a cycle is left out and reported with the reason, and so is every plugin that needs it. Plugins with
 no `deps` between them load in the order they were found. The name is the plugin's identity, so two plugins may not
-share one.
+share one. A distribution or a file cannot take an entry-point name another plugin already has either; the first one
+found keeps it and the other is reported.
 
 A plugin publishes an object for the ones that need it with `ctx.inject(name, service)` and reads one with
 `ctx.service(name, kind)` (or `ctx.find`, which returns `None` when nobody provides it). What the object is, and how it
