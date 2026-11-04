@@ -1132,9 +1132,53 @@ def test_only_the_body_of_a_type_checking_block_is_type_only(tmp_path, source: s
 ANNOTATION_EVALUATORS = {"get_type_hints", "get_annotations", "TypeAdapter", "validate_call", "resolve_types"}
 
 #: What may be evaluated today, by the TYPE it is evaluated on and not by the file that does it, because the premise is
-#: about the type: every one is defined in the engine without a name that exists only under `TYPE_CHECKING`.
-#: `Line` and `MetadataRecord` are the session store's own discriminated unions of models.
-EVALUATED_TYPES = {"ZettCodeConfig", "Line", "MetadataRecord"}
+#: about the type: every one is defined in the engine without a name that exists only under `TYPE_CHECKING`. The value is
+#: the module that DEFINES it -- a bare name is not an identity (`Line` is also an unrelated alias in the terminal's usage
+#: charts), and a contract class that happened to share one must not pass for it. `Line` and `MetadataRecord` are the
+#: session store's own discriminated unions of models.
+EVALUATED_TYPES = {
+    "ZettCodeConfig": "zettcode.config",
+    "Line": "zettcode.engine.storage.records",
+    "MetadataRecord": "zettcode.engine.storage.metadata",
+}
+
+
+def _module_of(source: pathlib.Path) -> str:
+    """Return the dotted module a file under `packages/<name>/src/` is."""
+    parts = source.relative_to(ROOT / "packages").parts[2:]  # drop `<name>/src`
+    return ".".join(parts).removesuffix(".py").removesuffix(".__init__")
+
+
+def _origin(tree: ast.Module, module: str, name: str) -> str | None:
+    """Return the module a name used in a file comes from: an absolute import of it, else this file if it defines it."""
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            if any((alias.asname or alias.name) == name for alias in node.names):
+                return node.module
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef) and node.name == name:
+            return module
+        targets = (
+            node.targets if isinstance(node, ast.Assign) else [node.target] if isinstance(node, ast.AnnAssign) else []
+        )
+        if any(isinstance(target, ast.Name) and target.id == name for target in targets):
+            return module
+    return None
+
+
+def _evaluated_name(target: ast.expr) -> str | None:
+    """Return the name of the type an evaluator is called on, or ``None`` when the source does not name one.
+
+    `cast(Any, Line)` is `Line`, `module.Line` is `Line`; a call, a subscript or an attribute of a value
+    (`self.config.__class__`) is a type chosen at run time, which a syntactic scan cannot name.
+    """
+    if isinstance(target, ast.Call) and getattr(target.func, "id", "") == "cast" and len(target.args) == 2:
+        return _evaluated_name(target.args[1])
+    if isinstance(target, ast.Name):
+        return target.id
+    if isinstance(target, ast.Attribute) and isinstance(target.value, ast.Name):
+        return target.attr
+    return None
 
 
 def test_no_annotation_of_the_plugin_contract_is_evaluated_anywhere():
@@ -1147,6 +1191,13 @@ def test_no_annotation_of_the_plugin_contract_is_evaluated_anywhere():
     scans every module of every distribution for a call that evaluates annotations and requires the type it is evaluated
     on to be one of the engine's (`EVALUATED_TYPES`). Before adding a contract class to a pydantic model, or a new
     evaluator, look at the ones listed there.
+
+    What it cannot see, and what covers it. A FastAPI route that annotates its body or return with a contract class
+    registers without complaint and fails only when the schema is built, so it is not this scan's to find: the server
+    does not depend on the contract (`test_only_the_terminal_its_rows_and_the_plugins_know_the_plugin_contract`), and
+    `packages/zettcode-server/tests/test_server_api.py::test_the_openapi_schema_lists_the_endpoints` builds the real
+    schema. A spelling no scan can name (`getattr(typing, "get_type_hints")`) or a type chosen at run time is the honest
+    limit of a syntactic guard; a new evaluator is a new name in `ANNOTATION_EVALUATORS`.
     """
     offenders: list[str] = []
     found = 0
@@ -1176,14 +1227,22 @@ def test_no_annotation_of_the_plugin_contract_is_evaluated_anywhere():
             found += 1
             where = f"{source.relative_to(ROOT)}:{node.lineno}"
             if not node.args:
-                offenders.append(f"{where} {name}() evaluates something this test cannot name")
-                continue
-            target = node.args[0]
-            # `TypeAdapter(cast(Any, Line))` and `get_type_hints(ZettCodeConfig)`: the type is the last name inside.
-            names = [n.id for n in ast.walk(target) if isinstance(n, ast.Name) and n.id not in {"cast", "Any"}]
-            if not names or names[-1] not in EVALUATED_TYPES:
                 offenders.append(
-                    f"{where} {name}() evaluates {names[-1] if names else '?'}, which is not in EVALUATED_TYPES"
+                    f"{where} {name}() evaluates an expression this scan cannot name -- it has no argument"
+                )
+                continue
+            evaluated = _evaluated_name(node.args[0])
+            if evaluated is None:
+                offenders.append(
+                    f"{where} {name}() evaluates an expression this scan cannot name -- call it on a plain name, "
+                    "or teach the scan the spelling"
+                )
+            elif evaluated not in EVALUATED_TYPES:
+                offenders.append(f"{where} {name}() evaluates {evaluated}, which is not in EVALUATED_TYPES")
+            elif (origin := _origin(tree, _module_of(source), evaluated)) != EVALUATED_TYPES[evaluated]:
+                offenders.append(
+                    f"{where} {name}() evaluates {evaluated} from {origin}, but EVALUATED_TYPES allows the one "
+                    f"{EVALUATED_TYPES[evaluated]} defines"
                 )
 
     assert found >= 3, "the scan must still see the evaluators this repository has"
@@ -1191,41 +1250,94 @@ def test_no_annotation_of_the_plugin_contract_is_evaluated_anywhere():
 
 
 def test_every_type_the_evaluators_may_resolve_is_defined_without_a_checker_only_name():
-    """The allowlist is a promise about its members: none of them may name something that exists only under TYPE_CHECKING.
+    """The allowlist is a promise about identity, not spelling: the allowed module defines each type, once, and the
+    plugin contract defines none of the names.
 
-    Otherwise listing a type there would make the scan above pass for a type whose evaluation fails at run time.
+    Otherwise a class called `Line` in `zettcode-plugin-api` would be indistinguishable from the session store's, and the
+    scan above would wave an evaluation of it through. Each allowed type also names nothing that exists only under
+    `TYPE_CHECKING` -- listing one that does would make the scan pass for a type whose evaluation fails at run time.
     """
-    defined: dict[str, tuple[pathlib.Path, ast.stmt]] = {}
-    for source in sorted((ROOT / "packages").glob("*/src/**/*.py")):
-        if "__pycache__" in source.parts:
-            continue
+    contract = ROOT / "packages" / "zettcode-plugin-api"
+    for source in sorted(contract.glob("src/**/*.py")):
         for node in ast.parse(source.read_text(encoding="utf-8")).body:
-            if isinstance(node, ast.ClassDef) and node.name in EVALUATED_TYPES:
-                defined[node.name] = (source, node)
-            elif isinstance(node, ast.Assign):
-                for target in node.targets:
-                    if isinstance(target, ast.Name) and target.id in EVALUATED_TYPES:
-                        defined[target.id] = (source, node)
-            elif (
-                isinstance(node, ast.AnnAssign)
-                and isinstance(node.target, ast.Name)
-                and node.target.id in EVALUATED_TYPES
-            ):
-                defined[node.target.id] = (source, node)  # `Line: TypeAlias = Annotated[...]`
+            defined = (
+                [node.name]
+                if isinstance(node, ast.ClassDef)
+                else [
+                    t.id
+                    for t in (
+                        node.targets
+                        if isinstance(node, ast.Assign)
+                        else [node.target]
+                        if isinstance(node, ast.AnnAssign)
+                        else []
+                    )
+                    if isinstance(t, ast.Name)
+                ]
+            )
+            assert not set(defined) & set(EVALUATED_TYPES), (source.name, sorted(set(defined) & set(EVALUATED_TYPES)))
 
-    assert set(defined) == EVALUATED_TYPES, EVALUATED_TYPES - set(defined)
-    for name, (source, _node) in defined.items():
+    by_module = {
+        _module_of(source): source
+        for source in (ROOT / "packages").glob("*/src/**/*.py")
+        if "__pycache__" not in source.parts
+    }
+    for name, module in EVALUATED_TYPES.items():
+        source = by_module[module]
         tree = ast.parse(source.read_text(encoding="utf-8"))
+        found = [
+            node
+            for node in tree.body
+            if (isinstance(node, ast.ClassDef) and node.name == name)
+            or (isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == name for t in node.targets))
+            or (isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.target.id == name)
+        ]
+        assert len(found) == 1, f"{module} defines {name} {len(found)} times"
         guarded = {
             alias.asname or alias.name.split(".")[0]
-            for node in ast.walk(tree)
-            if isinstance(node, ast.If) and getattr(node.test, "id", getattr(node.test, "attr", "")) == "TYPE_CHECKING"
-            for child in node.body
+            for statement in ast.walk(tree)
+            if isinstance(statement, ast.If)
+            and getattr(statement.test, "id", getattr(statement.test, "attr", "")) == "TYPE_CHECKING"
+            for child in statement.body
             if isinstance(child, (ast.Import, ast.ImportFrom))
             for alias in child.names
         }
-        used = {n.id for n in ast.walk(defined[name][1]) if isinstance(n, ast.Name)}
+        used = {n.id for n in ast.walk(found[0]) if isinstance(n, ast.Name)}
         assert not (used & guarded), (name, source.name, sorted(used & guarded))
+
+
+#: The distributions that know the plugin contract: the two that are written against it (the terminal and its built-in
+#: rows), the plugins that implement it, the program that installs it, and the contract itself. Everything else -- the
+#: server, the gateway, the SDK, the broker, the widget framework and the engine -- is not.
+KNOWS_THE_CONTRACT = {
+    "zettcode",
+    "zettcode-app",
+    "zettcode-monitor",
+    "zettcode-plugin-api",
+    "zettcode-presenters",
+    "zettcode-recap",
+}
+
+
+def test_only_the_terminal_its_rows_and_the_plugins_know_the_plugin_contract():
+    """The faces of the SDK (HTTP, the web gateway) never hold a contract class, so nothing there can serialise one.
+
+    A contract class is not a model: its annotations name the SDK's types for the checker alone, and a framework that
+    builds a response from a return annotation would resolve them. The server and the gateway are where that framework
+    is, so they do not depend on the contract, and `test_every_distribution_imports_only_what_it_declares` turns an
+    import of it there into a failure. A route that annotates one registers without complaint and fails only when the
+    schema is built, which `packages/zettcode-server/tests/test_server_api.py::test_the_openapi_schema_lists_the_endpoints`
+    does for the real app. This test makes adding the dependency itself a decision: it cannot be added without changing
+    the list above, which says why the list is short.
+    """
+    others = KNOWS_THE_CONTRACT - {"zettcode-plugin-api"}
+    knows = {
+        name
+        for name, distribution in _shipped_distributions().items()
+        if "zettcode-plugin-api" in distribution.declared
+    }
+
+    assert knows == others, knows ^ others
 
 
 def _declared(distribution: str) -> set[str]:
