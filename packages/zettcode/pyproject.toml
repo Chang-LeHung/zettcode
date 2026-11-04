@@ -49,12 +49,12 @@ dependencies = [
 # would tie the two projects' releases together: a new minor line of zettcode would need a monitor published first
 # that accepts it (its range has to allow both lines in between), or `pip install zettcode==<new>` would fail to
 # resolve, and so would the environment the VS Code extension builds for itself.
-monitor = ["zettcode-monitor>=0.2,<0.3"]
+monitor = ["zettcode-monitor>=0.3,<0.4"]
 # `/recap` for a reader who steps away. Published on its own line like the one above, and an extra for the same
 # reason: a hard edge would tie the two releases together.
-recap = ["zettcode-recap>=0.1,<0.2"]
+recap = ["zettcode-recap>=0.2,<0.3"]
 # Every plugin this repository publishes, for a reader who wants the lot: `pip install "zettcode[all]"`.
-all = ["zettcode-monitor>=0.2,<0.3", "zettcode-recap>=0.1,<0.2"]
+all = ["zettcode-monitor>=0.3,<0.4", "zettcode-recap>=0.2,<0.3"]
 
 [project.scripts]
 zettcode = "zettcode.cli:main"
