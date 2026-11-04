@@ -8,7 +8,7 @@ from importlib import resources
 from pathlib import Path
 
 import pytest
-from test_plugins import FakeEntryPoint, make_config
+from test_plugins import FakeEntryPoint, make_config, with_parts
 from test_zettcode_app import _harness, _type_command, build_app, rows_and_commands
 
 from zettcode import cli
@@ -168,7 +168,9 @@ class Sunset(TuiPlugin):
 
 def test_a_plugin_offers_palettes_by_name_after_the_ones_that_ship(tmp_path: Path):
     plugin = Sunset()
-    plugins = load_terminal_plugins(make_config(tmp_path), entry_points=[FakeEntryPoint("sunset", lambda: plugin)])
+    plugins = load_terminal_plugins(
+        make_config(tmp_path), entry_points=with_parts(FakeEntryPoint("sunset", lambda: plugin))
+    )
 
     names = [source.name for source in plugins.themes]
     assert names[: len(BUNDLED)] == list(BUNDLED), "the built-in plugin's come first"
@@ -211,7 +213,7 @@ def test_a_plugin_cannot_take_a_name_the_program_or_an_earlier_plugin_has(tmp_pa
 
     plugins = load_terminal_plugins(
         make_config(tmp_path),
-        entry_points=[FakeEntryPoint("a", Sunset), FakeEntryPoint("b", Second), FakeEntryPoint("c", Greedy)],
+        entry_points=with_parts(FakeEntryPoint("a", Sunset), FakeEntryPoint("b", Second), FakeEntryPoint("c", Greedy)),
     )
 
     assert any("c: theme nord is already registered" in failure for failure in plugins.failures)

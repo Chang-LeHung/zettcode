@@ -29,11 +29,11 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
     from collections.abc import Iterable, Mapping, Sequence
     from importlib.metadata import EntryPoint
 
-    from zettcode.app.pets import PetSource
     from zettcode.config import ZettCodeConfig
     from zettcode.engine.plugins.commands import PlainCommand
     from zettcode.engine.plugins.plugin import Plugin
     from zettcode.plugin_api.commands import Command
+    from zettcode.plugin_api.pets import PetSource
     from zettcode.plugin_api.presenters import Presenter
     from zettcode.tui import ThemeSource
 
@@ -52,7 +52,12 @@ def load_terminal_plugins(
     terminal's own followed by the agent's.
     """
     bundle = run(
-        TerminalLoader(config, shared), config, builtins=builtins, entry_points=entry_points, required=required
+        TerminalLoader(config, shared),
+        config,
+        builtins=builtins,
+        entry_points=entry_points,
+        required=required,
+        terminal=True,
     )
     assert isinstance(bundle, TuiPlugins)
     return bundle

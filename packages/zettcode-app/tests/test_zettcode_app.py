@@ -45,6 +45,7 @@ from zettcode.app.plugins import (
     UiBuilder,
 )
 from zettcode.app.plugins.builtin_commands import CodeReview
+from zettcode.app.plugins.builtins import BuiltinThemes
 from zettcode.app.plugins.loader import plain_commands, terminal_context
 from zettcode.app.ui import app as app_module
 from zettcode.app.ui import demo
@@ -81,6 +82,7 @@ from zettcode.engine.extensions.usage import USAGE_EVENT_NAME, UsageExtension, U
 from zettcode.engine.permission import Permission, parse_permission
 from zettcode.engine.storage import STORE_FILE, SessionInfo, SessionStore
 from zettcode.mentions import Mention, MentionProvider, MentionRegistry
+from zettcode.pets.plugin import PetsPlugin
 from zettcode.plugin_api.commands import Command, CommandContext, CommandResult
 from zettcode.plugin_api.entries import EntryStatus
 from zettcode.plugin_api.state import TurnSegment
@@ -478,7 +480,7 @@ def rows_and_commands(
     """
     link = HostLink()
     ctx = terminal_context(config or FakeConfig(), {HOST_LINK: link})  # type: ignore[arg-type]
-    for plugin in (*BUILTIN_PLUGINS, PresentersPlugin()):
+    for plugin in (*BUILTIN_PLUGINS, BuiltinThemes(), PetsPlugin(), PresentersPlugin()):
         plugin.activate(ctx)
         for region, side, name, builder in plugin.ui_slots():
             ctx.tui.slots.add(region, side, name, builder)

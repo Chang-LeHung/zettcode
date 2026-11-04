@@ -10,7 +10,6 @@ second segment beside it.
 
 from __future__ import annotations
 
-from zettcode.app.pets import bundled_pets
 from zettcode.app.ui import labels
 from zettcode.app.ui.widgets import UsagePage
 from zettcode.engine.plugins.context import PluginContext
@@ -139,26 +138,11 @@ class BuiltinThemes(TuiPlugin):
 
     def activate(self, ctx: PluginContext) -> None:
         """Offer each palette file by name. Nothing is read until one is asked for."""
+        if ctx.tui is None:
+            return  # loaded by a process with no screen (the server): there is nothing to offer a palette to
         tui = require_tui(ctx)
         for source in bundled_themes():
             tui.register_theme(source.name, source.load, description=source.description)
-
-
-class BuiltinPets(TuiPlugin):
-    """The pets that ship with the program, offered the way any plugin offers one.
-
-    They are registered first, so they are listed first in the ``/pet`` menu, and a plugin cannot register a name
-    they hold. Adding a built-in pet is adding a module beside the others and its name to ``BUNDLED``; nothing
-    here knows what a pet looks like.
-    """
-
-    name = "pets"
-
-    def activate(self, ctx: PluginContext) -> None:
-        """Offer each pet by name. Nothing is built until one is asked for."""
-        tui = require_tui(ctx)
-        for source in bundled_pets():
-            tui.register_pet(source.name, source.load, description=source.description)
 
 
 #: Plugins loaded from the repository itself, never from a distribution. The agent-side ones, which build on
@@ -176,6 +160,4 @@ BUILTIN_PLUGINS: tuple[TuiPlugin, ...] = (
     ShellControl(),
     TurnLine(),
     UsageCommand(),
-    BuiltinThemes(),
-    BuiltinPets(),
 )

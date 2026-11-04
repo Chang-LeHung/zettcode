@@ -14,9 +14,8 @@ from zettcode.tui import Theme
 from .shell import ShellState
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
+    from zettcode.plugin_api.pets import Pet
     from zettcode.sdk.types import ModelInfo
-
-    from ..pets import Pet
 
 
 class SettingsMixin(ShellState):

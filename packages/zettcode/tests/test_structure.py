@@ -1317,6 +1317,7 @@ KNOWS_THE_CONTRACT = {
     "zettcode",
     "zettcode-app",
     "zettcode-monitor",
+    "zettcode-pets",
     "zettcode-plugin-api",
     "zettcode-presenters",
     "zettcode-recap",
@@ -1374,11 +1375,12 @@ def test_the_plugin_contract_sits_below_what_implements_it_and_below_the_applica
 
 
 def test_a_part_the_program_is_made_of_is_never_discoverable_as_a_plugin():
-    """A part of the program offers its plugin under `zettcode.parts`, never `zettcode.plugins`.
+    """A part of the program offers its plugin under `zettcode.terminal`, never `zettcode.plugins`.
 
-    The second group is what the plugin tooling lists and what the plugin release line (its own version, its own
-    tag) looks for. `zettcode-presenters` is a part: it is released with the program, and it is loaded as a plugin
-    through the other group, which the terminal names as required, so no `disable` line reaches it.
+    `zettcode.plugins` is what the plugin tooling lists and what the plugin release line (its own version, its own
+    tag) looks for. A part is released with the program and loaded as a plugin through one of the other groups:
+    `zettcode.terminal` for the ones only a screen has a use for, which the SDK and the server never load.
+    `zettcode-presenters` is one the terminal names as required, so no `disable` line reaches it.
     """
     parts = [name for name in _release_order() if name != "zettcode-plugin-api"]
     assert "zettcode-presenters" in parts
@@ -1386,6 +1388,8 @@ def test_a_part_the_program_is_made_of_is_never_discoverable_as_a_plugin():
         settings = tomllib.loads((ROOT / "packages" / name / "pyproject.toml").read_text(encoding="utf-8"))
         assert not settings["project"].get("entry-points", {}).get("zettcode.plugins"), name
     presenters = tomllib.loads((ROOT / "packages/zettcode-presenters/pyproject.toml").read_text(encoding="utf-8"))
-    assert presenters["project"]["entry-points"]["zettcode.parts"] == {
+    pets = tomllib.loads((ROOT / "packages/zettcode-pets/pyproject.toml").read_text(encoding="utf-8"))
+    assert presenters["project"]["entry-points"]["zettcode.terminal"] == {
         "presenters": "zettcode.presenters.plugin:PresentersPlugin"
     }
+    assert pets["project"]["entry-points"]["zettcode.terminal"] == {"pets": "zettcode.pets.plugin:PetsPlugin"}

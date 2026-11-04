@@ -27,7 +27,7 @@ dependencies = [
 types = ["zettcode-sdk"]
 
 # A part of the program, not a plugin: the `zettcode.plugins` group is what the plugin release line looks for.
-[project.entry-points."zettcode.parts"]
+[project.entry-points."zettcode.terminal"]
 presenters = "zettcode.presenters.plugin:PresentersPlugin"
 
 [project.urls]

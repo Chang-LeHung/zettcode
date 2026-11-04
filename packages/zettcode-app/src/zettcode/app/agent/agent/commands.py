@@ -10,10 +10,10 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 
-from zettcode.app.pets import PetCatalog, bundled_pets
 from zettcode.engine.agent.exports import ExportsMixin
 from zettcode.plugin_api.commands import Command, CommandContext, CommandHost, CommandResult
 from zettcode.plugin_api.host import HOST_LINK, HostLink
+from zettcode.plugin_api.pets import PetCatalog
 from zettcode.plugin_api.plugin import TuiPlugins
 from zettcode.plugin_api.presenters import Presenters
 from zettcode.plugin_api.state import TurnSegment, UiRow
@@ -87,12 +87,11 @@ class CommandsMixin(AppearanceMixin, ExportsMixin):
 
     @property
     def pets(self) -> PetCatalog:
-        """Return every pet that can be asked for by name: the built-in plugin's, then any other plugin's.
+        """Return every pet that can be asked for by name, in the order the plugins registered them.
 
-        A plugin bundle that offers none (one built by hand, without the built-in plugin) gets the program's own.
+        Nothing is bundled here: with no pets plugin the catalog is empty.
         """
-        sources = self.terminal_plugins.pets
-        return PetCatalog(sources or bundled_pets())
+        return PetCatalog(self.terminal_plugins.pets)
 
     @property
     def turn_segments(self) -> tuple[TurnSegment, ...]:

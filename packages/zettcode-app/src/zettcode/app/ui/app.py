@@ -60,6 +60,7 @@ from zettcode.plugin_api.commands import (
     CommandList,
     CommandResult,
 )
+from zettcode.plugin_api.pets import DEFAULT_PET_NAME, IDLE, Pet
 from zettcode.presenters.text import clock_text, elapsed_text
 from zettcode.prompt import PromptPart, carries_image, mention_parts
 from zettcode.registry import Registry
@@ -80,7 +81,6 @@ from ..agent.conversation.shimmer import (
 )
 from ..agent.conversation.tips import TipDeck
 from ..agent.conversation.transcript import Transcript
-from ..pets import DEFAULT_PET_NAME, Pet
 from .bars import BarsMixin
 from .commands import ShellCommands
 from .followups import FollowUp, FollowUpsMixin
@@ -372,7 +372,12 @@ class ZettCodeApp(
                 return catalog.load(wanted)
             except ValueError as error:
                 self.transcript.error(f"pet: {error}")
-        return catalog.load(DEFAULT_PET_NAME)
+        try:
+            return catalog.load(DEFAULT_PET_NAME)
+        except ValueError:
+            # No plugin offers the default (the pets plugin is off or not installed): a pet of one empty cell, so the
+            # companion is simply not there rather than the shell refusing to start.
+            return Pet("none", {}, {IDLE: ((".", "."),)})
 
     @property
     def task(self) -> asyncio.Task[None] | None:

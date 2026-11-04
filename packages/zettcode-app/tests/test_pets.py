@@ -8,23 +8,10 @@ from pathlib import Path
 
 import pytest
 from test_pet import CAT, Clock, painted, shows, stands
-from test_plugins import FakeEntryPoint, make_config
+from test_plugins import FakeEntryPoint, make_config, with_parts
 from test_statusline import config_file, hidden_in  # noqa: F401 - the fixture is used by name
 from test_zettcode_app import FakeConfig, _harness, _type_command, build_app, rows_and_commands, walk
 
-from zettcode.app.pets import (
-    BUNDLED,
-    DEFAULT_PET_NAME,
-    GLAD,
-    IDLE,
-    WORKING,
-    Pet,
-    PetCatalog,
-    PetSource,
-    bundled_pets,
-    edited,
-    mirrored,
-)
 from zettcode.app.plugins import PluginContext, TuiPlugin, load_terminal_plugins
 from zettcode.app.plugins.loader import terminal_context
 from zettcode.app.ui.widgets.pet_page import (
@@ -38,6 +25,19 @@ from zettcode.app.ui.widgets.pet_page import (
 )
 from zettcode.config import load_config
 from zettcode.config_edit import ConfigEditError, set_pet
+from zettcode.pets import (
+    BUNDLED,
+    DEFAULT_PET_NAME,
+    GLAD,
+    IDLE,
+    WORKING,
+    Pet,
+    PetCatalog,
+    PetSource,
+    bundled_pets,
+    edited,
+    mirrored,
+)
 from zettcode.tui import DARK, LIGHT
 
 CATALOG = PetCatalog(bundled_pets())
@@ -155,8 +155,8 @@ def test_every_pixel_a_pet_draws_has_a_colour_in_its_palette(name: str):
 
 
 def test_every_module_beside_the_others_is_listed_and_every_listed_name_has_a_module():
-    folder = Path(importlib.import_module("zettcode.app.pets").__file__).parent
-    modules = {path.stem for path in folder.glob("*.py")} - {"__init__", "model", "palette"}
+    folder = Path(importlib.import_module("zettcode.pets").__file__).parent
+    modules = {path.stem for path in folder.glob("*.py")} - {"__init__", "plugin"}
     assert modules == set(BUNDLED)
 
 
@@ -233,7 +233,7 @@ def test_the_built_in_plugin_offers_the_pets_that_ship_first_through_the_same_ca
 
 def test_a_plugin_offers_pets_by_name_after_the_ones_that_ship(tmp_path: Path):
     plugin = Dragon()
-    plugins = load_terminal_plugins(make_config(tmp_path), entry_points=[FakeEntryPoint("d", lambda: plugin)])
+    plugins = load_terminal_plugins(make_config(tmp_path), entry_points=with_parts(FakeEntryPoint("d", lambda: plugin)))
 
     names = [source.name for source in plugins.pets]
     assert names == [*BUNDLED, "dragon", "lazy-dragon"]
@@ -251,7 +251,7 @@ def test_a_plugin_cannot_take_a_name_an_earlier_plugin_has(tmp_path: Path):
         def activate(self, ctx: PluginContext) -> None:
             ctx.tui.register_pet("cat", CAT)
 
-    plugins = load_terminal_plugins(make_config(tmp_path), entry_points=[FakeEntryPoint("g", Greedy)])
+    plugins = load_terminal_plugins(make_config(tmp_path), entry_points=with_parts(FakeEntryPoint("g", Greedy)))
 
     assert any("g: pet cat is already registered" in failure for failure in plugins.failures)
     assert [source.name for source in plugins.pets] == list(BUNDLED)
@@ -269,7 +269,7 @@ def test_a_pet_registered_twice_by_one_plugin_or_not_a_pet_at_all_is_refused(tmp
     ctx.tui.register_pet("once", CAT)
     with pytest.raises(ValueError, match="already registered"):
         ctx.tui.register_pet("once", CAT)
-    with pytest.raises(ValueError, match="must be a zettcode.app.pets.Pet"):
+    with pytest.raises(ValueError, match="must be a zettcode.plugin_api.pets.Pet"):
         ctx.tui.register_pet("twice", "a string")  # type: ignore[arg-type]
 
 
@@ -369,7 +369,9 @@ async def test_an_unknown_name_is_reported_with_the_list_and_changes_nothing(con
 
 
 async def test_a_pet_a_plugin_offered_can_be_picked_by_name(config_file):  # noqa: F811
-    plugins = load_terminal_plugins(make_config(config_file.parent), entry_points=[FakeEntryPoint("d", Dragon)])
+    plugins = load_terminal_plugins(
+        make_config(config_file.parent), entry_points=with_parts(FakeEntryPoint("d", Dragon))
+    )
     app, harness, _ = shell(*plugins.pets[len(BUNDLED) :])
 
     await _type_command(app, harness, "/pet dragon")

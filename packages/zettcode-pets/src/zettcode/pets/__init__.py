@@ -9,7 +9,18 @@ from __future__ import annotations
 
 import importlib
 
-from zettcode.plugin_api.pets import GLAD, IDLE, PET_NAME, WORKING, Pet, PetCatalog, PetSource, edited, mirrored
+from zettcode.plugin_api.pets import (
+    DEFAULT_PET_NAME,
+    GLAD,
+    IDLE,
+    PET_NAME,
+    WORKING,
+    Pet,
+    PetCatalog,
+    PetSource,
+    edited,
+    mirrored,
+)
 
 #: The pets that ship, in the order the ``/pet`` menu lists them.
 BUNDLED = (
@@ -27,9 +38,6 @@ BUNDLED = (
     "slime",
     "sprout",
 )
-
-#: The pet a reader has without choosing one.
-DEFAULT_PET_NAME = "cat"
 
 
 def _module(name: str):

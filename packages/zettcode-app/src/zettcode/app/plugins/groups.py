@@ -16,10 +16,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
-from zettcode.app.pets import PET_NAME, Pet, PetSource
 from zettcode.engine.plugins.context import PluginContext
 from zettcode.plugin_api.commands import Command, CommandList, CommandProvider
 from zettcode.plugin_api.entries import EntryKind
+from zettcode.plugin_api.pets import PET_NAME, Pet, PetSource
 from zettcode.plugin_api.presenters import Presenter
 from zettcode.plugin_api.state import TurnBuilder, TurnSegment, UiBuilder, UiRegion, UiRow, UiSegment, UiSide
 from zettcode.plugin_tui import TuiGroup
@@ -477,7 +477,7 @@ class TuiGroups(TuiGroup):
         elif callable(pet):
             source = PetSource(name, pet, description)
         else:
-            raise ValueError("A pet must be a zettcode.app.pets.Pet or a function that returns one")
+            raise ValueError("A pet must be a zettcode.plugin_api.pets.Pet or a function that returns one")
         self._pets.append(source)
         return source
 

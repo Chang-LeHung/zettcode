@@ -9,11 +9,11 @@ from test_statusline import config_file, hidden_in, notices, open_panel  # noqa:
 from test_zettcode_app import _harness, _type_command, build_app
 
 from zettcode._compat import tomllib
-from zettcode.app.pets import GLAD, IDLE, WORKING, PetCatalog, bundled_pets
 from zettcode.app.ui.widgets.pet import FRAME_SECONDS, GLAD_SECONDS, MARGIN, MIN_WIDTH
 from zettcode.app.ui.widgets.statusline_page import PARTS, ROW_OF
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.config_edit import set_pet_position
+from zettcode.pets import GLAD, IDLE, WORKING, PetCatalog, bundled_pets
 from zettcode.statusline import NAMES, PET, unknown
 
 #: The pet a shell starts with when nothing says otherwise.

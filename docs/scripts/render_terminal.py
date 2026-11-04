@@ -22,7 +22,6 @@ from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine.core import ZettCodeEngine
 from zettcode.plugin_api.state import ShellContext
 from zettcode.presenters.brand import LOGO_PALETTE, LOGO_PIXELS
-from zettcode.presenters.plugin import PresentersPlugin
 from zettcode.tui import DARK, HEADER, Canvas
 
 
@@ -41,7 +40,7 @@ def preview_plugins() -> tuple[object, ...]:
     changes, and it changes because the workspace in a documented picture is not the temporary directory the
     preview happens to run in.
     """
-    return (PreviewRows(), *(plugin for plugin in BUILTIN_PLUGINS if plugin.name != "shell"), PresentersPlugin())
+    return (PreviewRows(), *(plugin for plugin in BUILTIN_PLUGINS if plugin.name != "shell"))
 
 
 def api_users_body() -> str:
