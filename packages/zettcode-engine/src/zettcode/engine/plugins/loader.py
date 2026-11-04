@@ -314,9 +314,12 @@ def run(
         if name in held:
             continue
         for who in losers:
-            # Filed under the name, which is the row that exists; who lost is said in the message, so the page has no
-            # second row for a name no switch could ever match.
-            loader.fail(name, f"{who} cannot use the name {name!r}: {owners[name]} already has it")
+            # Not a failure of the plugin that has the name: it loaded, and its row says so. The loser has no row of
+            # its own (it shares the name, or is a file with nothing but the name), so it is written to the log.
+            logger.warning(
+                "plugins.name_taken",
+                extra={"plugin": name, "who": who, "reason": f"{owners[name]} already has the name {name!r}"},
+            )
     ordered, refused = graph.order([graph.Node(c.name, c.deps) for c in candidates])
     loaded: set[int] = set()
     for index in sorted(refused):
