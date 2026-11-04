@@ -22,8 +22,14 @@ os.environ["HOME"] = _HOME
 os.environ["USERPROFILE"] = _HOME  # what `Path.home()` reads on Windows
 atexit.register(shutil.rmtree, _HOME, ignore_errors=True)
 
-#: Where the entry points of the plugins the program is made of point; the others are a reader's.
-PROGRAM_PLUGIN_MODULES = ("zettcode.presenters.", "zettcode.pets.", "zettcode.commands.", "zettcode.app.")
+#: The plugins the program is made of, as their distributions publish them under `zettcode.terminal`, sorted by name
+#: the way the loader sorts them. Each distribution's `pyproject.toml` says the same; `test_structure.py` compares.
+PROGRAM_PARTS = (
+    ("commands", "zettcode.commands.plugin:CommandsPlugin"),
+    ("pets", "zettcode.pets.plugin:PetsPlugin"),
+    ("presenters", "zettcode.presenters.plugin:PresentersPlugin"),
+    ("themes", "zettcode.app.plugins.builtins:BuiltinThemes"),
+)
 
 
 @pytest.fixture(autouse=True)
@@ -48,16 +54,15 @@ def _no_installed_plugins(monkeypatch: pytest.MonkeyPatch) -> None:
     environment advertises, which would make tests depend on whatever the
     developer happens to have installed. The plugin tests inject their own entry
     points, so discovery is only stubbed here, never removed. The plugins the program itself is made of
-    (``PROGRAM_PLUGIN_MODULES``) are still found: without them there is nothing to draw with.
+    (``PROGRAM_PARTS``) are still found, as a literal list and not as whatever this environment advertises: without
+    them there is nothing to draw with, and which of them are installed must not change what a test sees.
     """
+    from importlib.metadata import EntryPoint
+
     from zettcode.engine.plugins import loader
 
-    real = loader.installed_entry_points
-
-    def program_only() -> tuple:
-        return tuple(point for point in real() if point.value.startswith(PROGRAM_PLUGIN_MODULES))
-
-    monkeypatch.setattr(loader, "installed_entry_points", program_only)
+    points = tuple(EntryPoint(name, value, loader.TERMINAL_PART_GROUP) for name, value in PROGRAM_PARTS)
+    monkeypatch.setattr(loader, "installed_entry_points", lambda: points)
 
 
 @pytest.fixture(autouse=True)

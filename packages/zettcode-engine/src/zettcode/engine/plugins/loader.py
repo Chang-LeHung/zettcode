@@ -221,7 +221,9 @@ def run(
 
     Args:
         required: Names of plugins the program cannot run without. A ``disable`` line that names one — or one of the
-            plugins it needs — is ignored and logged, and one that still did not load makes the call raise.
+            plugins it needs — is ignored and logged, and one that still did not load makes the call raise. A name is
+            matched against the entry-point name (the origin) as well as ``Plugin.name``, so a required plugin keeps
+            the two equal; one whose ``name`` differs cannot be pulled back in once disabled.
         terminal: Whether the loader has a screen, which is what the parts in the ``zettcode.terminal`` group wait for.
 
     Raises:
@@ -234,7 +236,6 @@ def run(
             loader.builtins.append(candidates[-1].origin)
     # Offered by origin, so the ones a ``disable`` line holds back can still be pulled in when the program needs them.
     sources: dict[str, Callable[[], list[_Candidate]]] = {}
-    disabled: set[str] = set()
     # With `[plugins] enabled = false` nothing is loaded but the parts of the program (the `zettcode.terminal` group,
     # which that switch is not about) and the plugins the program requires.
     points = tuple(entry_points) if entry_points is not None else installed_entry_points()
@@ -293,15 +294,8 @@ def run(
     for index in sorted(refused):
         candidate = candidates[index]
         loader.fail(candidate.origin, refused[index], label=candidate.label)
-    # ``builtins_loaded`` marks the end of the compiled-in plugins, so it runs after the last of them is activated.
-    last_builtin = max(
-        (position for position, index in enumerate(ordered) if candidates[index].builtin or candidates[index].part),
-        default=-1,
-    )
-    if last_builtin < 0:
-        loader.builtins_loaded()
     names_loaded: set[str] = set()
-    for position, index in enumerate(ordered):
+    for index in ordered:
         candidate = candidates[index]
         lost = next((dep for dep in candidate.deps if dep not in names_loaded), None)
         if candidate.plugin is None:
@@ -311,11 +305,15 @@ def run(
             # It was ready, but a plugin it needs failed to activate: the failure is that plugin's, and this one is
             # reported as the casualty it is rather than activated without what it asked for.
             loader.fail(candidate.origin, f"needs plugin {lost!r}, which cannot be loaded", label=candidate.label)
-        elif loader.accept(candidate.plugin, origin=candidate.origin, builtin=candidate.builtin, label=candidate.label):
+        elif loader.accept(
+            candidate.plugin,
+            origin=candidate.origin,
+            builtin=candidate.builtin,
+            part=candidate.part,
+            label=candidate.label,
+        ):
             loaded.add(index)
             names_loaded.add(candidate.name)
-        if position == last_builtin:
-            loader.builtins_loaded()
     # A required plugin is the program's own as much as a compiled-in one: no switch reaches it, and a list says so.
     loader.builtins.extend(name for name in required if name not in loader.builtins)
     if required:
@@ -371,6 +369,8 @@ class Loader:
         self.failed: list[tuple[str, str]] = []
         #: The origins of the compiled-in plugins, in load order, so a bundle can say which rows are the program's.
         self.builtins: list[str] = []
+        #: Whether the plugin being accepted is the program's own (built in, or one of its parts); read by ``merge``.
+        self.program = False
         self._identities: set[str] = set()
         self._extension_names: set[str] = {HOST_NAME}
         self._mention_kinds: set[str] = set()
@@ -428,9 +428,6 @@ class Loader:
         self.mentions.extend(context.mentions)
         self.plain_commands.extend(context.commands.commands)
 
-    def builtins_loaded(self) -> None:
-        """Called once the builtin plugins have all been offered, before any distribution."""
-
     def bundle(self) -> Plugins:
         """Return everything the accepted plugins contributed."""
         host = PluginExtension(self.plugins) if self.plugins else None
@@ -452,7 +449,15 @@ class Loader:
         reason = _reason(error)
         self.failed.append((origin, f"{label}: {reason}" if label else reason))
 
-    def accept(self, plugin: Plugin[Any], *, origin: str, builtin: bool = False, label: str | None = None) -> bool:
+    def accept(
+        self,
+        plugin: Plugin[Any],
+        *,
+        origin: str,
+        builtin: bool = False,
+        part: bool = False,
+        label: str | None = None,
+    ) -> bool:
         """Activate one plugin and merge what it registered, or report why not.
 
         Returns:
@@ -462,8 +467,12 @@ class Loader:
             plugin: The plugin to activate.
             origin: The name of the distribution (or of the compiled-in plugin) it came from.
             builtin: Whether it is compiled into the program, which is what makes it impossible to switch off.
+            part: Whether it is one of the program's own parts (the ``zettcode.terminal`` group). Unlike a builtin it
+                can be switched off, unless the loader's caller requires it; what it registers is the program's own,
+                which is what :attr:`program` tells :meth:`merge` while it runs.
             label: The class name, when this plugin came from a file that can hold several; a failure says which.
         """
+        self.program = builtin or part
         name = plugin.name or origin or type(plugin).__name__
         if builtin and origin not in self.builtins:
             # Recorded before it is activated: a compiled-in plugin is the program's own whether or not it loaded,

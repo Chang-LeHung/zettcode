@@ -236,7 +236,7 @@ async def test_the_command_opens_the_page_and_escape_leaves_it_unwritten(tmp_pat
     await _type_command(app, harness, "/plugins")
 
     page = next(widget for widget in walk(app.app.screens.top.widget) if isinstance(widget, PluginsPage))
-    assert {row.name for row in page.rows} == {"pets", "themes"}, "the optional parts are the only ones with a switch"
+    assert page.rows == (), "the fake shell's bundle carries no plugins, so there is nothing to switch"
     assert app.app.screens.top.name == "page"
     harness.press("escape")
     assert not [entry for entry in app.transcript.entries if entry.kind == "notice"]
