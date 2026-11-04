@@ -11,9 +11,7 @@ second segment beside it.
 from __future__ import annotations
 
 from zettcode.app.ui import labels
-from zettcode.app.ui.widgets import UsagePage
 from zettcode.engine.plugins.context import PluginContext
-from zettcode.plugin_api.commands import CommandContext, CommandResult
 from zettcode.plugin_api.plugin import TuiPlugin
 from zettcode.plugin_api.state import ShellContext, TurnBuilder
 from zettcode.presenters.pulse import activity_glyph
@@ -28,16 +26,6 @@ from zettcode.presenters.text import (
 from zettcode.statusline import TURN_PARTS, Row, context_share, usage_parts
 from zettcode.tui import STATUS, bundled_themes
 
-from .builtin_commands import (
-    BashCommand,
-    CodeReview,
-    HelpCommand,
-    ModelCommands,
-    PluginCommand,
-    SessionCommands,
-    ShellControl,
-    SideQuestion,
-)
 from .groups import require_tui
 
 
@@ -101,31 +89,6 @@ class TurnLine(TuiPlugin):
             tui.register_turn_segment(name, sentences[name], builder)
 
 
-class UsageCommand(TuiPlugin):
-    """``/usage``: what this workspace's sessions have spent, by model, session and day.
-
-    The numbers are read back from the stored conversations, so the page covers every
-    session of the workspace, not only the one open, and an hour from now it will still
-    agree with the files. It only reads, so it may run beside a request.
-    """
-
-    name = "usage"
-
-    def activate(self, ctx: PluginContext) -> None:
-        """Register ``/usage``; the client keeps one reader, so a second look re-reads only what changed."""
-        config = ctx.config
-        tui = require_tui(ctx)
-
-        async def show(context: CommandContext) -> CommandResult:
-            """Open the usage page, or say that nothing has been spent yet."""
-            ledger = await context.require_host().client.usage_ledger()
-            if ledger.total.requests == 0:
-                return CommandResult(message="No model replies are recorded in this workspace yet.")
-            return CommandResult(widget=UsagePage(ledger, workspace=labels.compact_path(config.workspace, limit=None)))
-
-        tui.register_command("usage", "Token use by model, by session and by day", show, when_busy="now")
-
-
 class BuiltinThemes(TuiPlugin):
     """The palettes that ship with the program, offered the way any plugin offers one.
 
@@ -149,15 +112,5 @@ class BuiltinThemes(TuiPlugin):
 #: state the runtime hands over, are :data:`~zettcode.sdk.builtins.AGENT_PLUGINS`.
 BUILTIN_PLUGINS: tuple[TuiPlugin, ...] = (
     ShellRows(),
-    # The commands that act on the application, in the order ``/help`` lists them.
-    HelpCommand(),
-    PluginCommand(),
-    SessionCommands(),
-    ModelCommands(),
-    SideQuestion(),
-    CodeReview(),
-    BashCommand(),
-    ShellControl(),
     TurnLine(),
-    UsageCommand(),
 )
