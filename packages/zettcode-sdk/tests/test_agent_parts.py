@@ -6,9 +6,8 @@ from __future__ import annotations
 from importlib.metadata import entry_points
 from pathlib import Path
 
-import tomllib
-
 from plugin_helpers import runtime_state  # noqa: E402  (support/ is on the path)
+from zettcode._compat import tomllib
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine.plugins import loader
 from zettcode.engine.plugins.loader import AGENT_PART_GROUP, run
