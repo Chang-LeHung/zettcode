@@ -190,6 +190,8 @@ class _Candidate:
     builtin: bool = False
     label: str | None = None
     error: BaseException | None = None
+    #: Whether it came from the program's own entry-point group, which is ahead of every installed plugin.
+    part: bool = False
 
     @property
     def name(self) -> str:
@@ -292,7 +294,10 @@ def run(
         candidate = candidates[index]
         loader.fail(candidate.origin, refused[index], label=candidate.label)
     # ``builtins_loaded`` marks the end of the compiled-in plugins, so it runs after the last of them is activated.
-    last_builtin = max((position for position, index in enumerate(ordered) if candidates[index].builtin), default=-1)
+    last_builtin = max(
+        (position for position, index in enumerate(ordered) if candidates[index].builtin or candidates[index].part),
+        default=-1,
+    )
     if last_builtin < 0:
         loader.builtins_loaded()
     names_loaded: set[str] = set()
@@ -328,12 +333,13 @@ def run(
 
 def _from_point(loader: Loader, point: EntryPoint) -> list[_Candidate]:
     """Resolve one entry point into a candidate; a failure is a candidate that carries it."""
+    part = getattr(point, "group", None) == TERMINAL_PART_GROUP
     try:
-        return [_Candidate(_instantiate(point), point.name)]
+        return [_Candidate(_instantiate(point), point.name, part=part)]
     except KeyboardInterrupt:
         raise
     except BaseException as error:
-        return [_Candidate(None, point.name, error=error)]
+        return [_Candidate(None, point.name, error=error, part=part)]
 
 
 def _from_file(loader: Loader, path: Path) -> list[_Candidate]:

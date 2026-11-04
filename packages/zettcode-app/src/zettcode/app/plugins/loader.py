@@ -63,9 +63,10 @@ def load_terminal_plugins(
     return bundle
 
 
-#: The plugins the terminal cannot run without: the rows it paints and the presenters that draw the conversation.
+#: The plugins the terminal cannot run without: the rows it paints, the presenters that draw the conversation and the
+#: commands that are the way back to a working setup (`/help`, `/plugins`, `/model`).
 #: ``[plugins] disable`` does not reach them, and the terminal does not start when one is missing.
-REQUIRED_PLUGINS: tuple[str, ...] = ("shell", "presenters")
+REQUIRED_PLUGINS: tuple[str, ...] = ("shell", "presenters", "commands")
 
 
 def terminal_plugins(config: ZettCodeConfig, shared: Mapping[str, object]) -> TuiPlugins:

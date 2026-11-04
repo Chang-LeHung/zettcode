@@ -611,7 +611,7 @@ def test_the_shell_does_not_reach_round_the_sdk_for_what_the_sdk_offers():
         "self_compaction_default|remember_self_compaction|effort|efforts|permission|permissions|harness"
     )
     pattern = re.compile(rf"\bagent\.({moved})\b")
-    paths = [*(APP / "ui").rglob("*.py"), APP / "plugins/builtin_commands.py"]
+    paths = [*(APP / "ui").rglob("*.py"), ROOT / "packages/zettcode-commands/src/zettcode/commands/handlers.py"]
     offenders = [
         f"{path.name}:{number}: {line.strip()}"
         for path in sorted(paths)
@@ -1316,6 +1316,7 @@ def test_every_type_the_evaluators_may_resolve_is_defined_without_a_checker_only
 KNOWS_THE_CONTRACT = {
     "zettcode",
     "zettcode-app",
+    "zettcode-commands",
     "zettcode-monitor",
     "zettcode-pets",
     "zettcode-plugin-api",

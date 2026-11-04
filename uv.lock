@@ -15,6 +15,7 @@ members = [
     "zettcode",
     "zettcode-app",
     "zettcode-broker",
+    "zettcode-commands",
     "zettcode-engine",
     "zettcode-gateway",
     "zettcode-monitor",
@@ -2906,6 +2907,7 @@ dependencies = [
     { name = "setproctitle", marker = "os_name == 'posix'" },
     { name = "zettcode-app" },
     { name = "zettcode-broker" },
+    { name = "zettcode-commands" },
     { name = "zettcode-engine", extra = ["tiktoken"] },
     { name = "zettcode-gateway" },
     { name = "zettcode-pets" },
@@ -2933,6 +2935,7 @@ requires-dist = [
     { name = "setproctitle", marker = "os_name == 'posix'", specifier = ">=1.3.7,<2" },
     { name = "zettcode-app", editable = "packages/zettcode-app" },
     { name = "zettcode-broker", editable = "packages/zettcode-broker" },
+    { name = "zettcode-commands", editable = "packages/zettcode-commands" },
     { name = "zettcode-engine", extras = ["tiktoken"], editable = "packages/zettcode-engine" },
     { name = "zettcode-gateway", editable = "packages/zettcode-gateway" },
     { name = "zettcode-monitor", marker = "extra == 'all'", editable = "packages/zettcode-monitor" },
@@ -2993,6 +2996,26 @@ requires-dist = [
     { name = "uvicorn", specifier = ">=0.35,<1" },
     { name = "websockets", specifier = ">=15,<17" },
     { name = "zettcode-engine", editable = "packages/zettcode-engine" },
+]
+
+[[package]]
+name = "zettcode-commands"
+source = { editable = "packages/zettcode-commands" }
+dependencies = [
+    { name = "zettcode-app" },
+    { name = "zettcode-engine" },
+    { name = "zettcode-plugin-api" },
+    { name = "zettcode-sdk" },
+    { name = "zettcode-tui" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "zettcode-app", editable = "packages/zettcode-app" },
+    { name = "zettcode-engine", editable = "packages/zettcode-engine" },
+    { name = "zettcode-plugin-api", editable = "packages/zettcode-plugin-api" },
+    { name = "zettcode-sdk", editable = "packages/zettcode-sdk" },
+    { name = "zettcode-tui", editable = "packages/zettcode-tui" },
 ]
 
 [[package]]

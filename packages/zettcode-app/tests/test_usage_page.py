@@ -10,10 +10,11 @@ import pytest
 from zett_agent.messages import AssistantMessage, UserMessage
 from zett_agent.model import ModelUsage
 
-from zettcode.app.plugins.builtins import BUILTIN_PLUGINS, UsageCommand
 from zettcode.app.plugins.loader import terminal_context
 from zettcode.app.ui.widgets import UsagePage
 from zettcode.app.ui.widgets import usage_charts as charts
+from zettcode.commands.plugin import CommandsPlugin
+from zettcode.commands.usage import UsageCommand
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine.storage import SessionStore
 from zettcode.plugin_api.commands import CommandContext
@@ -450,8 +451,8 @@ def command_over(tmp_path: Path):
     return config, ctx.tui.registered_commands[0]
 
 
-def test_usage_is_one_of_the_builtin_plugins_and_a_command_that_may_run_beside_a_request(tmp_path: Path):
-    assert any(isinstance(plugin, UsageCommand) for plugin in BUILTIN_PLUGINS)
+def test_usage_is_one_of_the_commands_plugin_and_a_command_that_may_run_beside_a_request(tmp_path: Path):
+    assert any(isinstance(group, UsageCommand) for group in CommandsPlugin().groups)
     ctx = terminal_context(ZettCodeConfig(workspace=tmp_path, models=(ModelConfig(model="m", token="t"),)))
     UsageCommand().activate(ctx)
 

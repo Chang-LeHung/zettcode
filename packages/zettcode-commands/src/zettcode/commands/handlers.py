@@ -25,6 +25,7 @@ import sys
 from pathlib import Path
 
 from zettcode.app.errors import COMMAND_ERRORS
+from zettcode.app.plugins.groups import require_tui
 from zettcode.config import ZettCodeConfig
 from zettcode.engine.plugins import applied, catalog
 from zettcode.engine.plugins import set_many as switch_plugins
@@ -41,8 +42,6 @@ from zettcode.plugin_api.commands import (
 from zettcode.plugin_api.host import HOST_LINK, HostLink
 from zettcode.plugin_api.plugin import TuiPlugin
 from zettcode.tui import Widget
-
-from .groups import require_tui
 
 #: Rows the picker panels take from the bottom of the screen: the title, the list, and the footer hint. The
 #: handler owns the number; nothing in the framework reads it.

@@ -15,6 +15,7 @@ import pytest
 
 from zettcode.app.plugins import BUILTIN_PLUGINS, load_terminal_plugins
 from zettcode.app.plugins.loader import REQUIRED_PLUGINS
+from zettcode.commands.plugin import CommandsPlugin
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine.plugins import catalog, set_many
 from zettcode.engine.plugins.loader import RequiredPluginError
@@ -33,7 +34,8 @@ class Point:
         return self._target
 
 
-PRESENTERS = Point("presenters", PresentersPlugin)
+#: The required plugins that are found through an entry point.
+POINTS = [Point("commands", CommandsPlugin), Point("presenters", PresentersPlugin)]
 
 
 def _config(tmp_path: Path, **overrides: object) -> ZettCodeConfig:
@@ -56,12 +58,12 @@ REQUIRED = (*PARTS, *REQUIRED_PLUGINS)
 
 
 def _load(tmp_path: Path, **overrides: object):
-    return load_terminal_plugins(_config(tmp_path, **overrides), entry_points=[PRESENTERS], required=REQUIRED_PLUGINS)
+    return load_terminal_plugins(_config(tmp_path, **overrides), entry_points=POINTS, required=REQUIRED_PLUGINS)
 
 
 def test_the_required_plugins_are_the_rows_and_the_presenters():
-    assert set(REQUIRED_PLUGINS) == {"shell", "presenters"}
-    assert {"shell", "help-command"} <= set(PARTS)
+    assert set(REQUIRED_PLUGINS) == {"shell", "presenters", "commands"}
+    assert {"shell", "turn-line"} <= set(PARTS)
 
 
 def test_a_disable_line_that_names_a_part_of_the_program_does_nothing(tmp_path: Path):
@@ -90,11 +92,11 @@ def test_the_disable_file_does_not_reach_a_part_of_the_program_either(tmp_path: 
 
 def test_the_reader_is_told_in_the_log_when_a_disable_line_names_a_part(tmp_path: Path, caplog):
     with caplog.at_level(logging.WARNING, logger="zettcode.plugins"):
-        _load(tmp_path, disabled_plugins=("presenters", "help-command"))
+        _load(tmp_path, disabled_plugins=("presenters", "turn-line"))
 
     assert sorted(record.plugin for record in caplog.records if record.message == "plugins.required") == [
-        "help-command",
         "presenters",
+        "turn-line",
     ]
 
 
@@ -109,7 +111,7 @@ def test_the_program_does_not_start_without_its_presenters(tmp_path: Path):
     with pytest.raises(RequiredPluginError) as raised:
         load_terminal_plugins(_config(tmp_path), entry_points=[], required=REQUIRED_PLUGINS)
 
-    assert raised.value.missing == {"presenters": "not installed"}
+    assert raised.value.missing == {"presenters": "not installed", "commands": "not installed"}
 
 
 @pytest.mark.parametrize("name", REQUIRED)
@@ -117,7 +119,7 @@ def test_no_switch_writes_a_required_part_off(tmp_path: Path, name: str):
     config = _config(tmp_path)
     bundle = _load(tmp_path)
 
-    written, keys, problems = set_many(config, {name: False}, bundle=bundle, entry_points=[PRESENTERS])
+    written, keys, problems = set_many(config, {name: False}, bundle=bundle, entry_points=POINTS)
 
     assert (written, keys) == ({}, [])
     assert len(problems) == 1 and "cannot be switched" in problems[0], problems
@@ -128,7 +130,7 @@ def test_the_plugins_page_does_not_offer_a_switch_for_a_required_part(tmp_path: 
     config = _config(tmp_path)
     bundle = _load(tmp_path)
 
-    listed = {entry.origin for entry in catalog(config, bundle, entry_points=[PRESENTERS])}
+    listed = {entry.origin for entry in catalog(config, bundle, entry_points=POINTS)}
 
     assert listed.isdisjoint(REQUIRED), "a row with no switch would only invite the press"
     assert listed, "the optional parts, which do have one, are still there"

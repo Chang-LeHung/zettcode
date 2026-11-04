@@ -21,6 +21,7 @@ from zettcode.app.plugins import (
 )
 from zettcode.app.plugins.builtins import BuiltinThemes
 from zettcode.app.plugins.loader import terminal_context, terminal_plugins
+from zettcode.commands.plugin import CommandsPlugin
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine import core as runtime_module
 from zettcode.engine.extensions.usage import UsageSnapshot
@@ -65,8 +66,9 @@ def test_the_activity_label_prefers_its_note_over_the_state_word():
 class FakeEntryPoint:
     """The slice of ``importlib.metadata.EntryPoint`` the loader touches."""
 
-    def __init__(self, name: str, target: object) -> None:
+    def __init__(self, name: str, target: object, group: str = "zettcode.plugins") -> None:
         self.name = name
+        self.group = group
         self._target = target
 
     def load(self) -> object:
@@ -82,9 +84,10 @@ def with_parts(*points: FakeEntryPoint) -> list[FakeEntryPoint]:
     how it keeps the palettes, the pets and the presenters beside the plugin it is about.
     """
     return [
-        FakeEntryPoint("pets", PetsPlugin),
-        FakeEntryPoint("presenters", PresentersPlugin),
-        FakeEntryPoint("themes", BuiltinThemes),
+        FakeEntryPoint("commands", CommandsPlugin, "zettcode.terminal"),
+        FakeEntryPoint("pets", PetsPlugin, "zettcode.terminal"),
+        FakeEntryPoint("presenters", PresentersPlugin, "zettcode.terminal"),
+        FakeEntryPoint("themes", BuiltinThemes, "zettcode.terminal"),
         *points,
     ]
 
@@ -736,19 +739,7 @@ async def test_disabled_and_switched_off_plugins_are_not_loaded(tmp_path: Path):
     loaded = load_terminal_plugins(
         make_config(tmp_path, plugins_enabled=False), entry_points=[one], builtins=BUILTIN_PLUGINS
     )
-    assert loaded_names(loaded) == [
-        "shell",
-        "help-command",
-        "plugins-command",
-        "session-commands",
-        "model-commands",
-        "side-question-command",
-        "code-review-command",
-        "bash-command",
-        "shell-control",
-        "turn-line",
-        "usage",
-    ]
+    assert loaded_names(loaded) == ["shell", "turn-line"]
     assert [row.region for row in loaded.rows] == ["header", "status"]
     assert all(row.left for row in loaded.rows)
 
@@ -900,7 +891,7 @@ async def test_the_runtime_preview_installs_plugin_extensions_and_commands(tmp_p
     monkeypatch.setattr(
         loader_module,
         "installed_entry_points",
-        lambda: (FakeEntryPoint("greeter", Greeter), FakeEntryPoint("presenters", PresentersPlugin)),
+        lambda: tuple(with_parts(FakeEntryPoint("greeter", Greeter))),
     )
 
     runtime = runtime_module.ZettCodeEngine.preview(make_config(tmp_path), terminal_plugins)
@@ -909,22 +900,17 @@ async def test_the_runtime_preview_installs_plugin_extensions_and_commands(tmp_p
     assert loaded_names(runtime.plugins) == [
         "greeter",
         "shell",
-        "help-command",
-        "plugins-command",
-        "session-commands",
-        "model-commands",
-        "side-question-command",
-        "code-review-command",
-        "bash-command",
-        "shell-control",
         "turn-line",
-        "usage",
         *(plugin.name for plugin in AGENT_PLUGINS),
+        "commands",
+        "pets",
         "presenters",
+        "themes",
     ]
     assert len(runtime.plugins.extensions) == 1
     # The program's own commands come first, in the order /help lists them, and the installed plugin's after them.
     assert [command.name for command in runtime.plugins.builtin_commands] == [
+        "/code-review",  # a plain command, which the loader merges ahead of the ones registered on the terminal group
         "/help",
         "/plugins",
         "/resume",
@@ -937,7 +923,6 @@ async def test_the_runtime_preview_installs_plugin_extensions_and_commands(tmp_p
         "/permission",
         "/harness",
         "/btw",
-        "/code-review",
         "/bash",
         "/clear",
         "/quit",
@@ -959,11 +944,7 @@ async def test_the_built_client_receives_the_plugin_extension(tmp_path: Path, mo
     monkeypatch.setattr(
         loader_module,
         "installed_entry_points",
-        lambda: (
-            FakeEntryPoint("greeter", Greeter),
-            FakeEntryPoint("second", Second),
-            FakeEntryPoint("presenters", PresentersPlugin),
-        ),
+        lambda: tuple(with_parts(FakeEntryPoint("greeter", Greeter), FakeEntryPoint("second", Second))),
     )
     captured: dict[str, object] = {}
 
@@ -1159,7 +1140,7 @@ def test_a_plugin_can_raise_the_claim_on_a_family_without_taking_the_whole_kind(
 
     plugins = load_terminal_plugins(
         make_config(tmp_path),
-        entry_points=[FakeEntryPoint("quiet", QuietEdit), FakeEntryPoint("presenters", PresentersPlugin)],
+        entry_points=with_parts(FakeEntryPoint("quiet", QuietEdit)),
     )
     from zettcode.plugin_api.presenters import Presenters
 

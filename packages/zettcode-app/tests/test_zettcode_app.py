@@ -44,7 +44,6 @@ from zettcode.app.plugins import (
     TuiPlugins,
     UiBuilder,
 )
-from zettcode.app.plugins.builtin_commands import CodeReview
 from zettcode.app.plugins.builtins import BuiltinThemes
 from zettcode.app.plugins.loader import plain_commands, terminal_context
 from zettcode.app.ui import app as app_module
@@ -73,6 +72,8 @@ from zettcode.app.ui.widgets import (
     help_text,
 )
 from zettcode.app.ui.widgets.follow_up import OPTION
+from zettcode.commands.handlers import CodeReview
+from zettcode.commands.plugin import CommandsPlugin
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine.core import ZettCodeEngine
 from zettcode.engine.dialogue.side import SideQuestions
@@ -480,7 +481,7 @@ def rows_and_commands(
     """
     link = HostLink()
     ctx = terminal_context(config or FakeConfig(), {HOST_LINK: link})  # type: ignore[arg-type]
-    for plugin in (*BUILTIN_PLUGINS, BuiltinThemes(), PetsPlugin(), PresentersPlugin()):
+    for plugin in (*BUILTIN_PLUGINS, CommandsPlugin(), BuiltinThemes(), PetsPlugin(), PresentersPlugin()):
         plugin.activate(ctx)
         for region, side, name, builder in plugin.ui_slots():
             ctx.tui.slots.add(region, side, name, builder)
@@ -501,7 +502,7 @@ def rows_and_commands(
         presenters=ctx.tui.presenters,
         turn_segments=ctx.tui.turn_segments,
         services={HOST_LINK: link},
-        builtins=("presenters",),
+        builtins=("presenters", "commands"),
     )
 
 
