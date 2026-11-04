@@ -106,7 +106,7 @@ def _load_engine_plugins(config: ZettCodeConfig, shared: Mapping[str, object]) -
     compaction, the MCP client) is :mod:`zettcode.sdk.builtins`, which passes its own loader here. A runtime built
     this way still honours ``[plugins]`` for the distributions and single files a reader installed.
     """
-    return load_plugins(config, builtins=(), shared=shared)
+    return load_plugins(config, builtins=(), shared=shared, agent=False)
 
 
 def build_system_prompt(config: ZettCodeConfig, *, now: datetime | None = None) -> str:

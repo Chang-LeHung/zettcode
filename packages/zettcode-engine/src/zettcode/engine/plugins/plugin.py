@@ -93,6 +93,10 @@ class Plugin(PluginAgentMixin, Generic[_C], ABC):
     #: The names of the plugins this one needs. The loader activates a plugin after every plugin it lists, and
     #: leaves it out, reported, when one of them is absent, turned off, failed, or the lists go round in a circle.
     deps: ClassVar[tuple[str, ...]] = ()
+    #: Where a plugin stands among the others of its entry-point group when the loader has no ``deps`` to go by: parts
+    #: are activated by ``(rank, name)`` within their group, so a group whose extensions share a priority (and so
+    #: keep their registration order) is activated in a stated order and not in the order entry points happen to sort.
+    rank: ClassVar[int] = 0
     priority: ClassVar[int] = 100
     #: The configuration key that decides whether a compiled-in plugin does its work, or ``None`` when there is none:
     #: a plugin the reader cannot turn off is left out of the list rather than shown without a switch.

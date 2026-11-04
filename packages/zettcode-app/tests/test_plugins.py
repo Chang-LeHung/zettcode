@@ -77,6 +77,11 @@ class FakeEntryPoint:
         return self._target
 
 
+def agent_parts() -> list[FakeEntryPoint]:
+    """The plugins that compose the agent, as the SDK publishes them, for a test that starts a whole runtime."""
+    return [FakeEntryPoint(plugin.name, type(plugin), "zettcode.agent") for plugin in AGENT_PLUGINS]
+
+
 def with_parts(*points: FakeEntryPoint) -> list[FakeEntryPoint]:
     """The parts of the program that are found through an entry point, then the points a test adds.
 
@@ -891,7 +896,7 @@ async def test_the_runtime_preview_installs_plugin_extensions_and_commands(tmp_p
     monkeypatch.setattr(
         loader_module,
         "installed_entry_points",
-        lambda: tuple(with_parts(FakeEntryPoint("greeter", Greeter))),
+        lambda: tuple(agent_parts() + with_parts(FakeEntryPoint("greeter", Greeter))),
     )
 
     runtime = runtime_module.ZettCodeEngine.preview(make_config(tmp_path), terminal_plugins)
@@ -944,7 +949,7 @@ async def test_the_built_client_receives_the_plugin_extension(tmp_path: Path, mo
     monkeypatch.setattr(
         loader_module,
         "installed_entry_points",
-        lambda: tuple(with_parts(FakeEntryPoint("greeter", Greeter), FakeEntryPoint("second", Second))),
+        lambda: tuple(agent_parts() + with_parts(FakeEntryPoint("greeter", Greeter), FakeEntryPoint("second", Second))),
     )
     captured: dict[str, object] = {}
 

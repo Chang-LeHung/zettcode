@@ -16,15 +16,17 @@ Two rules decide how one registers:
   as a service by name, and the runtime reads it from there instead of keeping a field for it.
 
 The order of :data:`AGENT_PLUGINS` is the order the agent receives the extensions in; extensions that share a
-priority keep it, so it is the order they were listed in when the runtime did the listing. What a plugin
-builds on (the session store, the permission policy) is handed over by the runtime by name, see
+priority keep it. The loader finds the plugins through the ``zettcode.agent`` entry-point group this package
+publishes and activates them by the rank that list gives them (``Plugin.rank``), then by their ``deps``: what one
+reads from another, such as the capabilities the subagents are sized by, is a ``deps`` entry and not a position. What
+a plugin builds on (the session store, the permission policy) is handed over by the runtime by name, see
 :mod:`zettcode.engine.plugins.services`.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeVar
 
 from zettcode.config import ModelConfig
 from zettcode.engine.dialogue.side import SideQuestions
@@ -69,6 +71,8 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zettcode.config import ZettCodeConfig
     from zettcode.engine.plugins import Plugins
     from zettcode.engine.plugins.state import AgentBuild
+
+_P = TypeVar("_P", bound="Plugins")
 
 
 class SkillResources(Plugin):
@@ -167,6 +171,8 @@ class Subagents(Plugin):
 
     name = "subagents"
     description = "The task tool and its profiles"
+    # Reads the capabilities the plugin below provides, so it is activated after it whatever their ranks say.
+    deps = ("capabilities",)
     setting = PluginSetting("subagent_enabled", "harness", "subagent")
 
     def activate(self, ctx: PluginContext) -> None:
@@ -569,7 +575,10 @@ class Compaction(Plugin):
         ctx.agent.register_extension(compaction)
 
 
-#: The agent-side plugins in the order the agent receives their extensions.
+#: The agent-side plugins in the order the agent receives their extensions. The distribution publishes the same list as
+#: entry points (``zettcode.agent`` in this package's ``pyproject.toml``) and the loader reads it from there; this tuple
+#: is what gives each its rank, and what a caller that loads without discovering (a test, a checkout with no installed
+#: distribution) passes as ``builtins=``. ``test_agent_parts.py`` holds the two lists together.
 AGENT_PLUGINS: tuple[Plugin[PluginContext], ...] = (
     SkillResources(),
     FileResources(),
@@ -595,14 +604,39 @@ AGENT_PLUGINS: tuple[Plugin[PluginContext], ...] = (
     Compaction(),
 )
 
+for _rank, _plugin in enumerate(AGENT_PLUGINS):
+    # One list is the order; the rank is read from it, so there is no second number to keep in step by hand.
+    type(_plugin).rank = _rank
+
+#: The names of those plugins, which the program cannot run without.
+AGENT_PLUGIN_NAMES: tuple[str, ...] = tuple(plugin.name for plugin in AGENT_PLUGINS)
+
+
+def require_agent_parts(plugins: _P) -> _P:
+    """Return ``plugins``, or raise when the plugins that compose the agent were not found at all.
+
+    A failure to activate one is recorded in ``failed`` as it always was; what is refused here is an installation that
+    has none of them to activate, which would start an agent with no tools, no session log and no compaction.
+
+    Raises:
+        RequiredPluginError: One of :data:`AGENT_PLUGIN_NAMES` neither loaded nor failed.
+    """
+    from zettcode.engine.plugins.loader import RequiredPluginError
+
+    seen = {plugin.name for plugin in plugins.plugins} | {origin for origin, _why in plugins.failed}
+    missing = {name: "not installed" for name in AGENT_PLUGIN_NAMES if name not in seen}
+    if missing:
+        raise RequiredPluginError(missing)
+    return plugins
+
 
 def load_agent_plugins(config: ZettCodeConfig, shared: Mapping[str, object]) -> Plugins:
-    """Load these builtins, plus the distributions a reader enabled: the loader a runtime is built with.
+    """Load the agent's plugins and the distributions a reader enabled: the loader a runtime is built with.
 
-    The engine's own default loads the installed plugins and no built-in at all, because the engine does not ship
-    this list. Whoever builds the runtime says which agent it wants: the SDK passes this, and the terminal passes
+    The engine's own default loads the installed plugins and none of the agent's, because the engine does not ship
+    them. Whoever builds the runtime says which agent it wants: the SDK passes this, and the terminal passes
     :func:`zettcode.app.plugins.loader.terminal_plugins`, which adds the plugins only a screen can hold.
     """
     from zettcode.engine.plugins import load_plugins
 
-    return load_plugins(config, builtins=AGENT_PLUGINS, shared=shared)
+    return require_agent_parts(load_plugins(config, builtins=(), shared=shared))

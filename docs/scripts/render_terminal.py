@@ -74,7 +74,7 @@ def preview() -> Canvas:
                 mcp_enabled=False,
             )
             runtime = ZettCodeEngine.preview(config, terminal_plugins)
-            runtime.plugins = load_terminal_plugins(config, builtins=preview_plugins())
+            runtime.plugins = load_terminal_plugins(config, builtins=preview_plugins(), agent=False)
             app = ZettCodeApp(TerminalAgent(runtime), theme=replace(DARK, background="#232a2e"))
             clock = [0.0]
             app.transcript.clock = lambda: clock[0]

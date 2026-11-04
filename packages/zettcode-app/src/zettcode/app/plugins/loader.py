@@ -19,7 +19,7 @@ from zettcode.plugin_api.commands import Command, CommandResult
 from zettcode.plugin_api.host import HOST_LINK, HostLink
 from zettcode.plugin_api.plugin import TuiPlugin, TuiPlugins
 from zettcode.plugin_api.state import TurnSegment
-from zettcode.sdk.builtins import AGENT_PLUGINS
+from zettcode.sdk.builtins import require_agent_parts
 from zettcode.tui import RESERVED_THEMES
 
 from .builtins import BUILTIN_PLUGINS
@@ -42,14 +42,16 @@ def load_terminal_plugins(
     config: ZettCodeConfig,
     *,
     entry_points: Iterable[EntryPoint] | None = None,
-    builtins: Sequence[Plugin[Any]] = (*BUILTIN_PLUGINS, *AGENT_PLUGINS),
+    builtins: Sequence[Plugin[Any]] = BUILTIN_PLUGINS,
     shared: Mapping[str, object] | None = None,
     required: Sequence[str] = (),
+    agent: bool = True,
 ) -> TuiPlugins:
     """Load the builtin plugins and every enabled distribution into one bundle, for the terminal.
 
     The arguments are those of :func:`zettcode.engine.plugins.loader.load_plugins`; the builtins default to the
-    terminal's own followed by the agent's.
+    terminal's own, and the agent's come from discovery like the other parts. ``agent=False`` leaves them out, for a
+    picture or a test that draws the shell with no runtime behind it.
     """
     bundle = run(
         TerminalLoader(config, shared),
@@ -58,6 +60,7 @@ def load_terminal_plugins(
         entry_points=entry_points,
         required=required,
         terminal=True,
+        agent=agent,
     )
     assert isinstance(bundle, TuiPlugins)
     return bundle
@@ -71,7 +74,7 @@ REQUIRED_PLUGINS: tuple[str, ...] = ("shell", "presenters", "commands")
 
 def terminal_plugins(config: ZettCodeConfig, shared: Mapping[str, object]) -> TuiPlugins:
     """Load the plugins the terminal's way, in the shape :meth:`ZettCodeEngine.preview` takes as its loader."""
-    return load_terminal_plugins(config, shared=shared, required=REQUIRED_PLUGINS)
+    return require_agent_parts(load_terminal_plugins(config, shared=shared, required=REQUIRED_PLUGINS))
 
 
 def _tui(context: PluginContext) -> TuiGroups:

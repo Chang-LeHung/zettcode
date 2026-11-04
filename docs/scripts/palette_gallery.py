@@ -99,7 +99,7 @@ class Env:
             mcp_enabled=False,
         )
         self.runtime = ZettCodeEngine.preview(config, terminal_plugins)
-        self.runtime.plugins = load_terminal_plugins(config, builtins=preview_plugins())
+        self.runtime.plugins = load_terminal_plugins(config, builtins=preview_plugins(), agent=False)
         self.workspace = workspace
 
     def close(self) -> None:

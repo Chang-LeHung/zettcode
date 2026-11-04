@@ -237,7 +237,7 @@ def shell(width: int, height: int) -> Iterator[ZettCodeApp]:
                 mcp_enabled=False,
             )
             runtime = ZettCodeEngine.preview(config, terminal_plugins)
-            runtime.plugins = load_terminal_plugins(config, builtins=preview_plugins())
+            runtime.plugins = load_terminal_plugins(config, builtins=preview_plugins(), agent=False)
             app = ZettCodeApp(TerminalAgent(runtime), theme=THEME, auto_theme=False)
             app.app.resize(width, height)
             app.app.mount()
