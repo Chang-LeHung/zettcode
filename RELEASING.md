@@ -75,8 +75,11 @@ ten of them for `release.yml`'s tag — which is why the token is what this repo
    `zettcode-server`, which is the package the VS Code extension installs for
    itself.
 
-A manual `workflow_dispatch` run only builds and uploads the artifacts;
-publishing and the GitHub release both require a tag push.
+A manual `workflow_dispatch` run only builds the artifacts, unless it is started with `publish` ticked: then it uploads
+them too, in the same order and with the same stop at the first failure, but with no tag and no GitHub release.
+`exclude` (space separated names) leaves distributions out of that upload. Use the pair to release the parts ahead of the
+program: `publish` with `exclude` set to `zettcode`, then the `v<version>` tag later, which skips what PyPI already has
+and publishes `zettcode` last.
 
 **The first release of several new projects can be throttled.** PyPI allows a personal account **four new project
 names in twenty-four hours** (ten for an organization; the published docs say twenty an hour, and the wall is lower),
