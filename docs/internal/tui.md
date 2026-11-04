@@ -32,7 +32,7 @@ loop). Everything else is built on these.
 **Pass 2 — the application (~880 lines).** `app/agent/conversation/transcript/` owns the
 conversation model and the render cache behind each entry,
 `app/agent/conversation/projection.py` maps agent events onto it, and `app/ui/app.py` owns
-the keymap, the slash commands, and the approval panel. `app/ui/transcript.py`
+the keymap, the slash commands, and the approval panel. `app/ui/widgets/transcript.py`
 is the scrollable, virtualized view over the model.
 
 **Pass 3 — by need.** `render/` for text and colour, `input/` and `terminal.py`
