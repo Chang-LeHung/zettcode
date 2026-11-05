@@ -15,7 +15,7 @@ from zett_agent.model import ModelEvent, ModelResponse, RetryOptions
 from plugin_helpers import agent_extensions
 from zettcode.config import ModelConfig, ZettCodeConfig, load_config
 from zettcode.engine.extensions.harness_switch import HarnessSwitch
-from zettcode.harness.extension import SwitchedHarness
+from zettcode.jit_harness.extension import SwitchedHarness
 from zettcode.sdk.builtins import load_agent_plugins
 
 #: The tools the framework's harness adds to a request.

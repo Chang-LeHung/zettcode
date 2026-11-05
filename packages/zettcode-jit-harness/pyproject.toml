@@ -1,6 +1,6 @@
 [project]
-name = "zettcode-harness"
-description = "The just-in-time tool harness of ZettCode, as a part of the agent that lives apart from it"
+name = "zettcode-jit-harness"
+description = "The just-in-time tool harness of ZettCode: its extension, its page and the command that opens it"
 requires-python = ">=3.10"
 dynamic = ["version"]
 license = "MIT"
@@ -19,14 +19,18 @@ classifiers = [
 dependencies = [
   # The plugin base classes, the switch the runtime provides, the shell policy and the notice the transcript knows.
   "zettcode-engine",
+  # The widget framework the `/harness` page is drawn with, and the contract the command is written against.
+  "zettcode-tui",
+  "zettcode-plugin-api",
   # The harness this subclasses.
   "zett-agent>=0.2.7,<0.3",
 ]
 
 # A part of the program, not a plugin: the `zettcode.plugins` group is what the plugin release line looks for. It is
-# activated with the agent's other parts and `[harness] jit` is what turns it on.
+# activated with the agent's other parts and `[harness] jit` is what turns it on. Its page and its command live here
+# with it, so the part owns the whole screen and the command no longer ships with the shell's own commands.
 [project.entry-points."zettcode.agent"]
-harness = "zettcode.harness.plugin:Harness"
+harness = "zettcode.jit_harness.plugin:Harness"
 
 [project.urls]
 Repository = "https://github.com/Chang-LeHung/zettcode"

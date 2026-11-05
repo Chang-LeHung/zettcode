@@ -183,7 +183,7 @@ def _shared_with_children(*, messaging: bool) -> Callable[[AgentExtension], bool
         InternalMessageExtension,
         SteeringExtension,
         SubAgentExtension,
-        JITHarnessExtension,  # the switchable one of ``zettcode-harness`` is a subclass
+        JITHarnessExtension,  # the switchable one of ``zettcode-jit-harness`` is a subclass
         AskUserExtension,
         TodoWriteExtension,
         SideQuestions,

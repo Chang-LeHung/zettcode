@@ -1,4 +1,4 @@
-# `zettcode-harness`, on its own: its suite, its sources and its types.
+# `zettcode-jit-harness`, on its own: its suite, its sources and its types.
 #
 # The same work with the whole workspace in it is `make test`, `make lint` and `make typecheck` at the root; this file
 # is for the days one distribution is all that changed.
@@ -9,7 +9,7 @@ UV ?= uv
 
 # This distribution's tests only, with the pytest configuration in this package's `pyproject.toml`.
 test:
-	@if [ -d tests ]; then $(UV) run --no-sync pytest; else echo "zettcode-harness: no tests in this distribution"; fi
+	@if [ -d tests ]; then $(UV) run --no-sync pytest; else echo "zettcode-jit-harness: no tests in this distribution"; fi
 
 # Ruff over this package, with the configuration at the workspace root. A distribution with no tests is one path.
 lint:
@@ -24,4 +24,4 @@ lint:
 # mypy over this package's sources, with the root's settings and package bases. Run from the workspace root: from
 # inside the package the same file resolves under two module names (`src.zettcode.<part>` and `zettcode.<part>`).
 typecheck:
-	@cd ../.. && $(UV) run --no-sync mypy packages/zettcode-harness/src
+	@cd ../.. && $(UV) run --no-sync mypy packages/zettcode-jit-harness/src

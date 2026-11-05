@@ -82,6 +82,7 @@ from zettcode.engine.extensions.harness_switch import HarnessSwitch
 from zettcode.engine.extensions.usage import USAGE_EVENT_NAME, UsageExtension, UsageSnapshot
 from zettcode.engine.permission import Permission, parse_permission
 from zettcode.engine.storage import STORE_FILE, SessionInfo, SessionStore
+from zettcode.jit_harness.command import HarnessCommand
 from zettcode.mentions import Mention, MentionProvider, MentionRegistry
 from zettcode.pets.plugin import PetsPlugin
 from zettcode.plugin_api.commands import Command, CommandContext, CommandResult
@@ -481,7 +482,16 @@ def rows_and_commands(
     """
     link = HostLink()
     ctx = terminal_context(config or FakeConfig(), {HOST_LINK: link})  # type: ignore[arg-type]
-    for plugin in (*BUILTIN_PLUGINS, CommandsPlugin(), BuiltinThemes(), PetsPlugin(), PresentersPlugin()):
+    # `/harness` belongs to the harness part now; the fixture registers its command directly because it does not build
+    # the agent the part's extension needs.
+    for plugin in (
+        *BUILTIN_PLUGINS,
+        CommandsPlugin(),
+        HarnessCommand(),
+        BuiltinThemes(),
+        PetsPlugin(),
+        PresentersPlugin(),
+    ):
         plugin.activate(ctx)
         for region, side, name, builder in plugin.ui_slots():
             ctx.tui.slots.add(region, side, name, builder)
@@ -2967,6 +2977,35 @@ async def test_the_harness_command_opens_a_read_only_panel():
 
     harness.press("escape")
     assert "Harness is off" not in harness.render().text
+
+
+def test_the_harness_command_is_registered_by_the_part_only_where_the_shell_is(tmp_path):
+    """The part owns the command, and registers it only where a terminal and the shell's link exist.
+
+    The command asks the host for the shell when it runs, so a process with no terminal — the SDK, the server, a
+    browser — must not register it at all, and neither must a terminal that has not attached the link yet.
+    """
+    from plugin_helpers import runtime_state
+    from sdk_helpers import config_for
+    from zettcode.engine.plugins.context import PluginContext
+    from zettcode.jit_harness.plugin import Harness
+    from zettcode.plugin_api.host import HOST_LINK, HostLink
+
+    config = config_for(tmp_path)
+    services = runtime_state(config)
+
+    plain = PluginContext(config, services)
+    Harness().activate(plain)
+    assert plain.tui is None, "a process with no terminal holds no command"
+
+    screen_only = terminal_context(config, services)
+    Harness().activate(screen_only)
+    assert screen_only.tui is not None and screen_only.tui.registered_commands == ()
+
+    with_shell = terminal_context(config, {**services, HOST_LINK: HostLink()})
+    Harness().activate(with_shell)
+    assert with_shell.tui is not None
+    assert [command.name for command in with_shell.tui.registered_commands] == ["/harness"]
 
 
 async def test_the_permission_command_offers_the_four_levels_with_the_current_one_marked():

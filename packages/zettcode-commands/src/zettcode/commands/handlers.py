@@ -255,10 +255,10 @@ def permission_words(host: CommandHost | None) -> tuple[Subcommand, ...]:
 
 
 class ModelCommands(TuiPlugin):
-    """``/model``, ``/effort``, ``/permission`` and ``/harness``: what the next request runs on and how far it may go."""
+    """``/model``, ``/effort`` and ``/permission``: what the next request runs on and how far it may go."""
 
     name = "model-commands"
-    description = "model, effort, permission and harness"
+    description = "model, effort and permission"
 
     def activate(self, ctx: PluginContext) -> None:
         """Register the commands; the ones that are a choice among words read the shell for those words."""
@@ -273,12 +273,6 @@ class ModelCommands(TuiPlugin):
             self.permission,
             when_busy="now",
             subcommands=lambda: permission_words(link.host),
-        )
-        tui.register_command(
-            "harness",
-            "what the just-in-time harness is doing, and where its tools are",
-            self.harness,
-            when_busy="refuse",
         )
 
     async def model(self, context: CommandContext) -> CommandResult:
@@ -356,60 +350,6 @@ class ModelCommands(TuiPlugin):
             return CommandResult(relayout=True)
         host.offer("/permission")
         return CommandResult()
-
-    async def harness(self, context: CommandContext) -> CommandResult:
-        """Open a read-only panel on the just-in-time harness.
-
-        The switch is a plugin setting now: `/plugins` turns the harness on or off for the next start, and this page
-        says which state it found, where the repositories live, and what this session has written. Nothing on the
-        page changes anything; the repositories are read with
-        :func:`zett_agent.jit_harness.inspect_repository`, which imports nothing.
-        """
-        from zettcode.app.ui.widgets import HARNESS_ROWS, HarnessPage
-
-        host = context.require_host()
-        if context.argument.strip():
-            return CommandResult(
-                message="/harness no longer takes on or off; /plugins switches the harness, and /harness shows it."
-            )
-        from zettcode.engine.harness_paths import session_directory
-
-        config = host.client.config
-        directory = session_directory(config, host.client.session.id)
-        state = "on" if host.client.harness else "off"
-        repositories = self._repositories(directory)
-        page = HarnessPage(state=state, directory=directory, repositories=repositories, on_close=host.close_page)
-        return CommandResult(widget=_panel(page, rows=HARNESS_ROWS))
-
-    def _repositories(self, directory: Path) -> list[tuple[str, str]]:
-        """Return this session's repositories as ``(name, detail)``: what the files declare, or why they cannot load."""
-        from zett_agent.jit_harness import inspect_repository
-
-        try:
-            found = (
-                sorted(path for path in directory.iterdir() if (path / "__init__.py").is_file())
-                if directory.is_dir()
-                else []
-            )
-        except OSError as error:
-            return [("Could not be read", str(error))]
-        rows: list[tuple[str, str]] = []
-        for path in found:
-            policy = inspect_repository(path)
-            if not policy.ok or policy.manifest is None:
-                rows.append((path.name, f"cannot load: {'; '.join(policy.problems)}"))
-                continue
-            manifest = policy.manifest
-            declared = (
-                f"declares {len(manifest.tools)} tool{'s' if len(manifest.tools) != 1 else ''}"
-                if manifest.tools
-                else "declares no tools"
-            )
-            banned = f"; {len(policy.banned)} banned" if policy.banned else ""
-            rows.append(
-                (path.name, f"{manifest.name} {manifest.version} — {manifest.description} ({declared}{banned})")
-            )
-        return rows
 
 
 # -- asking, and leaving ----------------------------------------------------------------------------
