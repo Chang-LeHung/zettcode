@@ -7,6 +7,7 @@ answer is kept are tested once, here, and the front ends only differ in how they
 
 from __future__ import annotations
 
+import dataclasses
 import pathlib
 from importlib.metadata import EntryPoint
 from pathlib import Path
@@ -268,3 +269,38 @@ async def test_a_client_reports_where_each_trigger_is_once_the_runtime_has_start
             await asyncio.sleep(0.01)
 
         assert client.plugins.triggers == (zc.client.TriggerInfo("idle", "process", "running", ""),)
+
+
+async def test_the_server_sends_where_each_trigger_is_once_the_runtime_has_started(tmp_path: Path, monkeypatch):
+    """The terminal's `/plugins` and the editor's page read one answer: the list of triggers and their state."""
+    import asyncio
+
+    import httpx
+
+    from zettcode.engine.plugins import loader, switches
+    from zettcode.server.app import create_app
+    from zettcode.server.settings import Settings
+
+    parts = loader.installed_entry_points()
+    points = (*parts, EntryPoint(name="watching", value=f"{__name__}:Watching", group="zettcode.plugins"))
+    monkeypatch.setattr(loader, "installed_entry_points", lambda: points)
+    monkeypatch.setattr(switches.loader, "installed_entry_points", lambda: points)
+
+    async with zc.Client(config=config_for(tmp_path)) as client:
+        await client._agent.runtime.start()
+        for _ in range(200):
+            if client.plugins.triggers and client.plugins.triggers[0].state == "running":
+                break
+            await asyncio.sleep(0.01)
+        # The answer is the SDK's own, field for field: a field added to TriggerInfo and not to the schema fails here.
+        watching = [dataclasses.asdict(trigger) for trigger in client.plugins.triggers]
+        assert watching and watching[0]["state"] == "running", "something has to watch for this test to say anything"
+
+        settings = Settings(workspace=tmp_path, config_path=tmp_path / "config.toml")
+        app = create_app(settings, client_factory=lambda: client)
+        async with app.router.lifespan_context(app):
+            transport = httpx.ASGITransport(app=app)
+            async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as http:
+                body = (await http.get("/plugins")).json()
+
+    assert body["triggers"] == watching

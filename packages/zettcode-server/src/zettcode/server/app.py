@@ -84,6 +84,7 @@ from .schemas import (
     SideQuestionRequest,
     SteeredOut,
     SteerIn,
+    TriggerOut,
     UsageOut,
     WorkspaceUsageOut,
 )
@@ -619,7 +620,7 @@ def create_app(settings: Settings, *, client_factory: ClientFactory | None = Non
 
     @protected.get("/plugins", response_model=PluginsOut, tags=["models"])
     async def plugins(runner: RunnerDep) -> PluginsOut:
-        """List the plugins this server loaded, the ones that failed, and every one a switch can reach."""
+        """List the plugins this server loaded, what failed, every one a switch can reach, and their triggers."""
         report = runner.client.plugins
         return PluginsOut(
             loaded=list(report.loaded),
@@ -636,6 +637,10 @@ def create_app(settings: Settings, *, client_factory: ClientFactory | None = Non
                     why=entry.why,
                 )
                 for entry in report.entries
+            ],
+            triggers=[
+                TriggerOut(name=trigger.name, scope=trigger.scope, state=trigger.state, detail=trigger.detail)
+                for trigger in report.triggers
             ],
         )
 

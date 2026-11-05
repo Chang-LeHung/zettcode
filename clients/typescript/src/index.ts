@@ -43,6 +43,7 @@ export type {
   StreamFrame,
   ToolRecord,
   Totals,
+  TriggerInfo,
   Usage,
   WorkspaceUsage,
 } from "./types.js";

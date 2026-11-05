@@ -161,6 +161,7 @@ describe("the JSON API", () => {
           loaded: ["shell"],
           failures: [],
           entries: [{ name: "shell", origin: "shell", builtin: true, enabled: true, failure: "" }],
+          triggers: [{ name: "idle", scope: "process", state: "running", detail: "" }],
         });
       }
       if (request.url === "/plugins/zettcode-acme" && request.method === "PUT") {
@@ -206,6 +207,11 @@ describe("the JSON API", () => {
     assert.deepEqual(
       (await client.plugins()).entries.map((entry) => [entry.origin, entry.builtin]),
       [["shell", true]],
+    );
+    // A trigger a plugin registered, and where it is: the four fields the SDK hands a Python caller.
+    assert.deepEqual(
+      (await client.plugins()).triggers.map((trigger) => [trigger.name, trigger.scope, trigger.state, trigger.detail]),
+      [["idle", "process", "running", ""]],
     );
     // A switch is a PUT of one field, and the answer is the plugin as the list now shows it.
     assert.deepEqual(await client.setPluginEnabled("zettcode-acme", false), {

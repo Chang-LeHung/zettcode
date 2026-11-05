@@ -544,12 +544,30 @@ class PluginOut(BaseModel):
     why: str = ""
 
 
+class TriggerOut(BaseModel):
+    """Where one trigger a plugin registered is.
+
+    Attributes:
+        name: The trigger's name.
+        scope: ``"process"`` (one per process) or ``"machine"`` (one on the whole machine).
+        state: ``pending``, ``standby`` (another process holds the machine's lock), ``running``, ``skipped``
+            (another runtime in this process runs it), ``finished``, ``failed`` or ``stopped``.
+        detail: Why, for ``standby``, ``skipped`` and ``failed``; empty otherwise.
+    """
+
+    name: str
+    scope: str
+    state: str
+    detail: str = ""
+
+
 class PluginsOut(BaseModel):
-    """The plugins this server loaded, the ones that refused to load, and every one a switch can reach."""
+    """The plugins this server loaded, what refused to load, every one a switch can reach, and its triggers."""
 
     loaded: list[str]
     failures: list[str]
     entries: list[PluginOut] = Field(default_factory=list)
+    triggers: list[TriggerOut] = Field(default_factory=list)
 
 
 class PluginSwitchIn(BaseModel):

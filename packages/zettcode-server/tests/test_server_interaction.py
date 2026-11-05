@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import dataclasses
 import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -243,20 +244,16 @@ async def test_the_conversation_exports_as_a_page_to_download():
 
 
 async def test_the_plugins_and_the_ones_that_failed_are_listed():
-    async with serve(FakeClient()) as (http, _app):
+    client = FakeClient()
+    async with serve(client) as (http, _app):
         body = (await http.get("/plugins")).json()
 
     assert body["loaded"] == ["shell", "usage"]
     assert body["failures"] == ["broken: no such module"]
-    # Every row a panel shows: what is compiled in, what is installed, what is off, and what failed.
-    assert [(entry["origin"], entry["builtin"], entry["enabled"]) for entry in body["entries"]] == [
-        ("shell", True, True),
-        ("usage", True, True),
-        ("zettcode-acme", False, True),
-        ("zettcode-quiet", False, False),
-        ("broken", False, True),
-    ]
-    assert body["entries"][-1]["failure"] == "no such module"
+    # Every row a panel shows, field for field as the SDK hands it over: what is compiled in, what is installed, what
+    # is off, and what failed. A field the report gains and the schema drops fails here.
+    assert body["entries"] == [dataclasses.asdict(entry) for entry in client.plugins.entries]
+    assert body["triggers"] == [], "the field is sent even when no plugin registered a trigger"
 
 
 async def test_a_plugin_can_be_switched_off_for_the_next_start():

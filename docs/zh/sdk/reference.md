@@ -205,7 +205,7 @@ class Client:
 
 ### `PluginReport`
 
-冻结的 dataclass：`loaded: tuple[str, ...]`、`failures: tuple[str, ...]`。
+冻结的 dataclass：`loaded: tuple[str, ...]`、`failures: tuple[str, ...]`、`plain_commands: tuple[PlainCommand, ...]`、`entries: tuple[PluginEntry, ...]`、`triggers: tuple[TriggerInfo, ...]`。运行时启动之前 `triggers` 是空的；启动之后它是插件注册的每个触发器现在在哪儿——一个 `TriggerInfo(name, scope, state, detail)`，`scope` 是 `process` 或 `machine`，`state` 是 `pending`、`standby`、`running`、`skipped`、`finished`、`failed` 或 `stopped`，`detail` 说明 `standby`、`skipped` 和 `failed` 的原因。
 
 ## zettcode.sdk.models
 
