@@ -44,7 +44,7 @@ presenters, pets, themes, commands, usage, the agent's own tools — is a plugin
 machine, a `SingletonLock` on `<store parent>/triggers/<name>.lock`; the losers poll every `RETRY_SECONDS` and take over
 when the holder exits or dies). `ZettCodeEngine.start()` starts a `TriggerHost` for `Plugins.triggers` and `aclose()`
 stops it before anything else, so the machine lock is let go first. Triggers start before the model check, so a machine with no model still runs them. Not done: a trigger
-that fails is not restarted, and its status is read only through `ZettCodeEngine.trigger_statuses()`. Invariant P12.
+that fails is not restarted, and its status is read through `ZettCodeEngine.trigger_statuses()` and `Client.plugins.triggers` (SDK only: no server endpoint or `/plugins` row yet). Invariant P12.
 
 ## Left
 

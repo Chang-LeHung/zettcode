@@ -227,3 +227,44 @@ async def test_the_configuration_file_written_is_the_programs_not_the_clients(tm
     assert config_path() == program
     assert "[skills]\nenabled = false" in program.read_text(encoding="utf-8")
     assert "enabled = true" in elsewhere.read_text(encoding="utf-8"), "the file the client read is left alone"
+
+
+class Watching(Plugin):
+    """An installed plugin that registers a trigger."""
+
+    name = "watching"
+
+    def activate(self, ctx) -> None:
+        import asyncio
+
+        from zettcode.engine.plugins import Trigger, TriggerScope
+
+        class Idle(Trigger):
+            name = "idle"
+            scope = TriggerScope.PROCESS
+
+            async def run(self, fire) -> None:
+                await asyncio.Event().wait()
+
+        ctx.agent.register_trigger(Idle(), lambda event: None)
+
+
+async def test_a_client_reports_where_each_trigger_is_once_the_runtime_has_started(tmp_path: Path, monkeypatch):
+    import asyncio
+
+    from zettcode.engine.plugins import loader, switches
+
+    parts = loader.installed_entry_points()
+    points = (*parts, EntryPoint(name="watching", value=f"{__name__}:Watching", group="zettcode.plugins"))
+    monkeypatch.setattr(loader, "installed_entry_points", lambda: points)
+    monkeypatch.setattr(switches.loader, "installed_entry_points", lambda: points)
+
+    async with zc.Client(config=config_for(tmp_path)) as client:
+        assert client.plugins.triggers == (), "nothing watches before the runtime starts"
+        await client._agent.runtime.start()
+        for _ in range(200):
+            if client.plugins.triggers and client.plugins.triggers[0].state == "running":
+                break
+            await asyncio.sleep(0.01)
+
+        assert client.plugins.triggers == (zc.client.TriggerInfo("idle", "process", "running", ""),)
