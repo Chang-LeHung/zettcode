@@ -54,7 +54,7 @@ logger = logging.getLogger("zettcode.plugins")
 RETRY_SECONDS = 5.0
 
 #: A trigger's name is also the name of its lock file, so it is one plain word.
-_NAME = re.compile(r"[a-z0-9][a-z0-9._-]*")
+_NAME = re.compile(r"[a-z0-9][a-z0-9._-]{0,63}")
 
 
 class TriggerScope(str, Enum):
@@ -174,6 +174,7 @@ class TriggerHost:
         self._lock_dir = lock_dir
         self._retry = retry
         self._tasks: list[asyncio.Task[None]] = []
+        self._loop: asyncio.AbstractEventLoop | None = None
         self._status = {
             reg.name: TriggerStatus(reg.name, reg.trigger.scope, TriggerState.PENDING) for reg in self._registrations
         }
@@ -188,6 +189,7 @@ class TriggerHost:
         if self._tasks:
             return
         loop = asyncio.get_running_loop()
+        self._loop = loop
         self._tasks = [loop.create_task(self._supervise(reg)) for reg in self._registrations]
 
     async def stop(self) -> None:
@@ -203,10 +205,17 @@ class TriggerHost:
     def _claim(self, name: str) -> bool:
         """Take the one instance this process may run of ``name``."""
         with _OWNERS_LOCK:
-            if name in _OWNERS and _OWNERS[name] is not self:
+            owner = _OWNERS.get(name)
+            # A host whose loop is gone (abandoned without ``stop``) holds nothing any more: its tasks can never run
+            # again, so the claim is free rather than permanent.
+            if owner is not None and owner is not self and not owner._abandoned():
                 return False
             _OWNERS[name] = self
             return True
+
+    def _abandoned(self) -> bool:
+        """Return whether the loop this host started on is closed, so that nothing of it can still run."""
+        return self._loop is not None and self._loop.is_closed()
 
     def _unclaim(self, name: str) -> None:
         with _OWNERS_LOCK:
@@ -223,9 +232,14 @@ class TriggerHost:
         try:
             if reg.trigger.scope is TriggerScope.MACHINE:
                 lock = SingletonLock(self._lock_dir / f"{name}.lock")
-                while not lock.acquire():
-                    self._set(reg, TriggerState.STANDBY, "another process on this machine runs it")
-                    await asyncio.sleep(self._retry)
+                try:
+                    while not lock.acquire():
+                        self._set(reg, TriggerState.STANDBY, "another process on this machine runs it")
+                        await asyncio.sleep(self._retry)
+                except OSError as error:  # the lock file cannot be opened: a read-only home, a full disk
+                    logger.warning("triggers.failed", extra={"trigger": name, "error": repr(error)})
+                    self._set(reg, TriggerState.FAILED, f"cannot take the machine lock: {error}")
+                    return
             self._set(reg, TriggerState.RUNNING)
             try:
                 await reg.trigger.run(partial(self._fire, reg))
