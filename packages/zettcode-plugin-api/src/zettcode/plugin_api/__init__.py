@@ -103,6 +103,9 @@ _EXPORTS = {
     "TuiGroup": "zettcode.plugin_tui",
     "TuiPlugin": ".plugin",
     "TuiPlugins": ".plugin",
+    "Trigger": "zettcode.engine.plugins",
+    "TriggerEvent": "zettcode.engine.plugins",
+    "TriggerScope": "zettcode.engine.plugins",
     "TurnCommandResult": "zettcode.engine.plugins.commands",
     "TurnSegment": ".state",
     "UiBuilder": ".state",
@@ -143,6 +146,9 @@ if TYPE_CHECKING:  # pragma: no cover - for type checkers, not the runtime
         PluginSetupMixin,
         PluginToolMixin,
         PluginTurnMixin,
+        Trigger,
+        TriggerEvent,
+        TriggerScope,
     )
     from zettcode.engine.plugins.commands import PlainCommandContext, TextCommandResult, TurnCommandResult
     from zettcode.mention import Mention, MentionProvider
@@ -310,6 +316,9 @@ __all__ = [
     "TuiGroup",
     "TuiPlugin",
     "TuiPlugins",
+    "Trigger",
+    "TriggerEvent",
+    "TriggerScope",
     "TurnCommandResult",
     "TurnSegment",
     "UiBuilder",

@@ -546,6 +546,45 @@ class Statistics(Plugin):
 插件用 `ctx.inject(name, service)` 把对象交给需要它的插件，用 `ctx.service(name, kind)` 取（`ctx.find` 在没人提供时返回
 `None`）。对象是什么、怎么用，由相关插件自己约定；ZettCode 只保证名字唯一、顺序正确。
 
+## 事件发生时开始工作 {#triggers}
+
+触发器(trigger)盯着某个事件(定时器、文件、套接字),在没有人提问时启动一段工作。插件把触发器连同处理函数一起注册,
+会话开着的时候 ZettCode 就一直运行它:
+
+```python
+import asyncio
+from zettcode.plugin_api import Plugin, PluginContext, Trigger, TriggerEvent, TriggerScope
+
+
+class EveryMinute(Trigger):
+    name = "every-minute"            # 一个小写单词,同时是锁文件的名字
+    scope = TriggerScope.MACHINE     # 整台机器只跑一个
+
+    async def run(self, fire):
+        while True:
+            await asyncio.sleep(60)
+            await fire({"reason": "tick"})
+
+
+class Heartbeat(Plugin):
+    name = "heartbeat"
+
+    def activate(self, ctx: PluginContext) -> None:
+        ctx.agent.register_trigger(EveryMinute(), self.on_tick)
+
+    async def on_tick(self, event: TriggerEvent) -> None:
+        ...
+```
+
+`scope` 决定同时运行几份:
+
+- `TriggerScope.PROCESS`(默认):每个进程一份。同一进程里的第二个运行时不会再启动它。
+- `TriggerScope.MACHINE`:整台机器一份,不管开了多少个 ZettCode 窗口。持有会话目录旁锁文件
+  (`~/.zettcode/triggers/<name>.lock`)的窗口运行它,其余窗口待命,持有者退出后几秒内接手。持有者崩溃时操作系统会
+  释放这把锁,所以崩掉的窗口不会卡住触发器。
+
+触发器抛出异常会被标记为失败,不会自动重启;处理函数抛出异常只影响那一次事件。两个插件不能注册同名的触发器。
+
 ## 关掉一个插件
 
 `/plugins` 打开一页，每个能关掉的插件前面一个开关：编译进程序的在前，装进来的在后。`~/.zettcode/plugins` 里的单文件插件

@@ -40,6 +40,7 @@ from .mixins import (
 from .plugin import Plugin, Plugins, PluginSetting
 from .state import AgentBuild, Contribution, ExtensionFactory
 from .switches import PluginEntry, applied, catalog, off_names, set_enabled, set_many
+from .triggers import Trigger, TriggerEvent, TriggerHost, TriggerScope, TriggerState, TriggerStatus
 
 __all__ = [
     "PLUGIN_ENTRY_POINT_GROUP",
@@ -62,6 +63,12 @@ __all__ = [
     "Plugins",
     "PluginEntry",
     "PluginSetting",
+    "Trigger",
+    "TriggerEvent",
+    "TriggerHost",
+    "TriggerScope",
+    "TriggerState",
+    "TriggerStatus",
     "applied",
     "catalog",
     "installed_entry_points",

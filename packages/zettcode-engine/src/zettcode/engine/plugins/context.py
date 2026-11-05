@@ -22,6 +22,7 @@ from .groups import AgentGroups
 from .services import lookup, require
 from .settings import PluginSettings
 from .state import Contribution, ExtensionFactory
+from .triggers import Trigger, TriggerHandler, TriggerRegistration, check_name
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay lazy
     from collections.abc import Mapping
@@ -66,6 +67,7 @@ class PluginContext:
         self._providers: list[Provider] = []
         self._extensions: list[Contribution] = []
         self._services: dict[str, object] = {}
+        self._triggers: list[TriggerRegistration] = []
 
     @property
     def tui(self) -> TuiGroup | None:
@@ -258,3 +260,32 @@ class PluginContext:
             raise ValueError(f"Mention provider already registered: {kind}")
         self._mentions.append(provider)
         return provider
+
+    @property
+    def triggers(self) -> tuple[TriggerRegistration, ...]:
+        """Return the triggers registered so far, in registration order."""
+        return tuple(self._triggers)
+
+    def register_trigger(self, trigger: Trigger, handler: TriggerHandler) -> Trigger:
+        """Register something that starts work when an event happens, and what to do when it does.
+
+        The runtime starts the trigger with itself and stops it on close. Its
+        :attr:`~zettcode.engine.plugins.triggers.Trigger.scope` decides how many run: one per process, or one on the
+        whole machine (the process that holds a lock on a file; the others stand by and take over).
+
+        Args:
+            trigger: The watcher. Its ``name`` must be unique across the application.
+            handler: Called with each :class:`~zettcode.engine.plugins.triggers.TriggerEvent`; plain or ``async``.
+                What it raises costs only that event.
+
+        Returns:
+            The trigger, in case the plugin wants to keep it.
+
+        Raises:
+            ValueError: When the name is not a lowercase word, or this plugin already registered it.
+        """
+        name = check_name(trigger)
+        if name in {existing.name for existing in self._triggers}:
+            raise ValueError(f"Trigger already registered: {name}")
+        self._triggers.append(TriggerRegistration(trigger, handler))
+        return trigger

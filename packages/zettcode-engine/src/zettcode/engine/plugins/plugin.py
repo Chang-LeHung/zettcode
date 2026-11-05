@@ -30,6 +30,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, so the imports stay la
     from zettcode.providers import Provider
 
     from .extension import PluginExtension
+    from .triggers import TriggerRegistration
 
 _C = TypeVar("_C", bound=PluginContext)
 _T = TypeVar("_T")
@@ -143,6 +144,8 @@ class Plugins:
             they belong to. This is the one record; :attr:`failures` is written from it.
         builtins: The origins of the plugins compiled into the program, in load order. They always load, so a switch
             cannot leave one out, and a list can say which rows are the program's own.
+        triggers: The triggers the plugins registered, in load and registration order; the runtime starts them with
+            itself (see :class:`~zettcode.engine.plugins.triggers.TriggerHost`).
     """
 
     host: PluginExtension | None = None
@@ -153,6 +156,7 @@ class Plugins:
     plain_commands: tuple[object, ...] = ()
     failed: tuple[tuple[str, str], ...] = ()
     builtins: tuple[str, ...] = ()
+    triggers: tuple[TriggerRegistration, ...] = ()
 
     @property
     def failures(self) -> tuple[str, ...]:

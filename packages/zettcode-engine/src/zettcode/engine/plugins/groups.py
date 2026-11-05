@@ -16,6 +16,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
 
     from .context import PluginContext
     from .state import Contribution, ExtensionFactory
+    from .triggers import Trigger, TriggerHandler, TriggerRegistration
 
 _T = TypeVar("_T")
 
@@ -60,6 +61,15 @@ class AgentGroups:
     def register_mention(self, provider: object) -> object:
         """Register one kind of ``@`` resource the composer can offer."""
         return self._context.register_mention(provider)  # type: ignore[arg-type]
+
+    @property
+    def triggers(self) -> tuple[TriggerRegistration, ...]:
+        """Return the triggers registered so far, in registration order."""
+        return self._context.triggers
+
+    def register_trigger(self, trigger: Trigger, handler: TriggerHandler) -> Trigger:
+        """Register a watcher that starts work when its event happens, once per process or once per machine."""
+        return self._context.register_trigger(trigger, handler)
 
     def provide(self, name: str, service: object) -> object:
         """Make an object findable by name, for other parts of the application."""

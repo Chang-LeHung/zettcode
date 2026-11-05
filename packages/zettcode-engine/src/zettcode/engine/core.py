@@ -36,7 +36,7 @@ from zettcode.config import (
     ZettCodeConfig,
     model_index,
 )
-from zettcode.engine.plugins import AgentBuild, Plugins, load_plugins
+from zettcode.engine.plugins import AgentBuild, Plugins, TriggerHost, TriggerStatus, load_plugins
 from zettcode.engine.plugins.services import (
     APPROVAL,
     COMPACTION,
@@ -240,6 +240,8 @@ class ZettCodeEngine:
     _counter: asyncio.Task[None] | None = field(default=None, repr=False)
     #: The sweep for empty session folders a killed process left behind, run once at the start on a thread.
     _tidying: asyncio.Task[int] | None = field(default=None, repr=False)
+    #: The plugins' triggers, started with the runtime (see :meth:`start`) and stopped by :meth:`aclose`.
+    _triggers: TriggerHost | None = field(default=None, repr=False)
     _models: dict[ModelConfig, Adapter] = field(default_factory=dict)
     #: Each session's own self-compaction choice as last read or written; see :meth:`self_compaction_choice`.
     _self_choices: dict[str, bool | None] = field(default_factory=dict, repr=False)
@@ -345,6 +347,11 @@ class ZettCodeEngine:
         """
         if self.active_model is None:
             raise ValueError(NO_MODEL_REFUSAL)
+        if self._triggers is None and self.plugins.triggers:
+            # With the runtime, once: a trigger watches for as long as this process is open, and its scope (one per
+            # process, one per machine) decides whether this runtime is the one that runs it.
+            self._triggers = TriggerHost(self.plugins.triggers, self.config.store.parent / "triggers")
+            self._triggers.start()
         if self._starting is None:
             self._begin_imports()
             self.compaction_counter.start()
@@ -354,6 +361,10 @@ class ZettCodeEngine:
             # leaves. A thread, because it is a listing and a lock probe per folder and nothing waits for it.
             self._tidying = asyncio.ensure_future(asyncio.to_thread(self.persistence.prune_empty))
         return self._starting
+
+    def trigger_statuses(self) -> tuple[TriggerStatus, ...]:
+        """Return where each of the plugins' triggers is; empty until :meth:`start` has run."""
+        return self._triggers.statuses if self._triggers is not None else ()
 
     def warm_modules(self) -> tuple[str, ...]:
         """Return the modules to import ahead of the first turn, in order.
@@ -796,6 +807,10 @@ class ZettCodeEngine:
         A build that is past them is awaited, because it is already creating the
         client this method has to close.
         """
+        triggers, self._triggers = self._triggers, None
+        if triggers is not None:
+            # First, so a machine-wide lock is let go before anything slow below: another process is waiting for it.
+            await triggers.stop()
         if self._waiting_for_imports and self._starting is not None:
             self._starting.cancel()
         if self._imports is not None:

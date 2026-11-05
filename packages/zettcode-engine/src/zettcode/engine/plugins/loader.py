@@ -53,6 +53,8 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zettcode.mention import MentionProvider
     from zettcode.providers import Provider
 
+    from .triggers import TriggerRegistration
+
 logger = logging.getLogger("zettcode.plugins")
 
 #: Entry-point group a distribution publishes its plugin under.
@@ -462,6 +464,7 @@ class Loader:
         self.contributed: list[Contribution] = []
         self.services: dict[str, object] = dict(shared or {})
         self.plain_commands: list[object] = []
+        self.triggers: list[TriggerRegistration] = []
         #: One ``(origin, why)`` per plugin that could not be loaded; the messages a front end shows are built from
         #: these, so a list can put a header on its own row.
         self.failed: list[tuple[str, str]] = []
@@ -472,6 +475,7 @@ class Loader:
         self._identities: set[str] = set()
         self._extension_names: set[str] = {HOST_NAME}
         self._mention_kinds: set[str] = set()
+        self._trigger_names: set[str] = set()
         self._provider_names: set[str] = {provider.name for provider in BUILTIN_PROVIDERS}
 
     # -- what a subclass changes --
@@ -513,6 +517,11 @@ class Loader:
         service_clash = next((name for name in context.services if name in self.services), None)
         if service_clash is not None:
             return f"service {service_clash} is already provided"
+        # A trigger is one instance per process or per machine *by name*: two plugins sharing one would be one
+        # watcher with two owners.
+        trigger_clash = next((reg.name for reg in context.triggers if reg.name in self._trigger_names), None)
+        if trigger_clash is not None:
+            return f"trigger {trigger_clash} is already registered"
         return None
 
     def merge(self, context: PluginContext) -> None:
@@ -525,6 +534,8 @@ class Loader:
         self._mention_kinds.update(provider.kind for provider in context.mentions)
         self.mentions.extend(context.mentions)
         self.plain_commands.extend(context.commands.commands)
+        self._trigger_names.update(reg.name for reg in context.triggers)
+        self.triggers.extend(context.triggers)
 
     def bundle(self) -> Plugins:
         """Return everything the accepted plugins contributed."""
@@ -538,6 +549,7 @@ class Loader:
             plain_commands=tuple(self.plain_commands),
             failed=tuple(self.failed),
             builtins=tuple(self.builtins),
+            triggers=tuple(self.triggers),
         )
 
     # -- the same for every front end --
