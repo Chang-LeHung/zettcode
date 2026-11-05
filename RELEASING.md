@@ -17,8 +17,8 @@ in git: the release workflow (and `make build` / `make smoke`) builds it with No
 ## One-time setup
 
 1. Create the repository secret `PYPI_API_TOKEN` under **Settings → Secrets and
-   variables → Actions** with a PyPI API token that may publish every project released from here — the ten
-   distributions the program is made of and the two plugins, twelve projects. A token scoped to one PyPI
+   variables → Actions** with a PyPI API token that may publish every project released from here — every
+   distribution `make order` lists and the two plugins. A token scoped to one PyPI
    project cannot publish the others, so this has to be an account-scoped token — or one secret per project, and a
    line in the workflows choosing it. The workflows read exactly this name.
 2. Optional: add a `pypi` environment under **Settings → Environments** and
