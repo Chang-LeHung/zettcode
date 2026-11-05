@@ -1426,7 +1426,11 @@ def test_the_suites_list_of_the_agents_plugins_is_what_the_sdk_publishes():
         if isinstance(node, ast.Assign) and any(getattr(t, "id", "") == "AGENT_PARTS" for t in node.targets)
     )
     # The list is built by sorting a literal of (name, class) pairs; read the pairs back out of it.
-    pairs = next(node for node in ast.walk(assigned) if isinstance(node, ast.Tuple) and len(node.elts) == 19)
+    pairs = next(
+        node
+        for node in ast.walk(assigned)
+        if isinstance(node, ast.Tuple) and node.elts and all(isinstance(e, ast.Tuple) for e in node.elts)
+    )
     listed = {ast.literal_eval(e)[0]: f"zettcode.sdk.builtins:{ast.literal_eval(e)[1]}" for e in pairs.elts}
     settings = tomllib.loads((ROOT / "packages/zettcode-sdk/pyproject.toml").read_text(encoding="utf-8"))
 

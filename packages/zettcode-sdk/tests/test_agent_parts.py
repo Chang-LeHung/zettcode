@@ -12,7 +12,7 @@ from zettcode._compat import tomllib
 from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine.plugins import AgentBuild, loader
 from zettcode.engine.plugins.loader import AGENT_PART_GROUP, run
-from zettcode.sdk.builtins import AGENT_PLUGIN_NAMES, AGENT_PLUGINS, require_agent_parts
+from zettcode.sdk.builtins import AGENT_PLUGIN_NAMES, AGENT_PLUGINS, REQUIRED_AGENT_NAMES, require_agent_parts
 
 PYPROJECT = Path(__file__).resolve().parents[1] / "pyproject.toml"
 
@@ -113,7 +113,7 @@ def test_an_installation_with_none_of_them_is_refused_and_one_that_failed_to_act
     nothing = load_plugins(config, builtins=(), entry_points=[], shared=runtime_state(config))
     with pytest.raises(RequiredPluginError) as raised:
         require_agent_parts(nothing)
-    assert set(raised.value.missing) == set(AGENT_PLUGIN_NAMES)
+    assert set(raised.value.missing) == set(REQUIRED_AGENT_NAMES) >= {"skills", "skill-tool", "mcp"}
 
     bare = load_plugins(config, builtins=(), shared={})  # discovery, but no state to build on: each one fails
     assert {origin for origin, _why in bare.failed} >= {"coding", "session-log"}
@@ -208,3 +208,10 @@ def test_the_skills_and_the_mcp_client_are_parts_of_the_agent_published_by_distr
     assert plugins.failed == ()
     built = [type(extension).__name__ for extension in plugins.agent_extensions(AgentBuild(model=object()))]  # type: ignore[arg-type]
     assert {"SkillExtension", "ReportingMcpExtension"} <= set(built)
+
+    # Where they stand among the activations is not the order the agent runs them in: that is each extension's
+    # priority, which these two do not share with anything (the rest of the agent is at 100).
+    extensions = plugins.agent_extensions(AgentBuild(model=object()))  # type: ignore[arg-type]
+    by_name = {extension.name: extension.priority for extension in extensions}
+    assert by_name["ReportingMcpExtension"] < by_name["SkillExtension"] < 100
+    assert [e.name for e in extensions][:2] == ["ReportingMcpExtension", "SkillExtension"]

@@ -79,7 +79,12 @@ class FakeEntryPoint:
 
 def agent_parts() -> list[FakeEntryPoint]:
     """The plugins that compose the agent, as the SDK publishes them, for a test that starts a whole runtime."""
-    return [FakeEntryPoint(plugin.name, type(plugin), "zettcode.agent") for plugin in AGENT_PLUGINS]
+    from zettcode.mcp.plugin import McpTools
+    from zettcode.skills.plugin import SkillResources, SkillTool
+
+    own = [FakeEntryPoint(plugin.name, type(plugin), "zettcode.agent") for plugin in AGENT_PLUGINS]
+    outside = [FakeEntryPoint(cls.name, cls, "zettcode.agent") for cls in (SkillResources, SkillTool, McpTools)]
+    return [*own, *outside]
 
 
 def with_parts(*points: FakeEntryPoint) -> list[FakeEntryPoint]:
@@ -906,7 +911,13 @@ async def test_the_runtime_preview_installs_plugin_extensions_and_commands(tmp_p
         "greeter",
         "shell",
         "turn-line",
-        *(plugin.name for plugin in AGENT_PLUGINS),
+        # The merged order of the agent's parts: a part of another distribution has no rank, so it stands among the
+        # rank-0 ones by name (hook order is the extensions' priority, not this), and the SDK's follow by rank.
+        "files",
+        "mcp",
+        "skill-tool",
+        "skills",
+        *(plugin.name for plugin in AGENT_PLUGINS if plugin.name != "files"),
         "commands",
         "pets",
         "presenters",
