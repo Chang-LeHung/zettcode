@@ -259,3 +259,45 @@ async def test_two_machine_triggers_with_different_names_do_not_wait_for_each_ot
         await _until(lambda: {s.state for s in host.statuses} == {TriggerState.RUNNING})
     finally:
         await host.stop()
+
+
+async def test_a_lock_file_that_cannot_be_opened_fails_the_trigger_and_says_so(tmp_path: Path):
+    blocker = tmp_path / "locks"
+    blocker.write_text("a file where the directory should be", encoding="utf-8")
+    host = _host(tmp_path, (Ticker(0, scope=TriggerScope.MACHINE), lambda event: None))
+    host.start()
+    try:
+        await _until(lambda: _state(host, "ticker") is TriggerState.FAILED)
+        assert "machine lock" in host.statuses[0].detail
+    finally:
+        await host.stop()
+
+
+def test_a_name_longer_than_a_file_name_can_be_is_refused(tmp_path: Path):
+    context = PluginContext(_config(tmp_path))
+
+    with pytest.raises(ValueError, match="needs a name"):
+        context.register_trigger(Ticker(name="a" * 65), lambda event: None)
+
+
+def test_a_runtime_abandoned_with_its_loop_does_not_keep_the_name_for_ever(tmp_path: Path):
+    async def abandon() -> None:
+        host = _host(tmp_path, (Ticker(0), lambda event: None))
+        host.start()
+        await _until(lambda: _state(host, "ticker") is TriggerState.RUNNING)
+        # no stop(): the script drops the runtime and its loop ends
+
+    loop = asyncio.new_event_loop()
+    loop.run_until_complete(abandon())
+    loop.close()
+
+    async def later() -> TriggerState:
+        host = _host(tmp_path, (Ticker(0), lambda event: None))
+        host.start()
+        try:
+            await _until(lambda: _state(host, "ticker") is not TriggerState.PENDING)
+            return _state(host, "ticker")
+        finally:
+            await host.stop()
+
+    assert asyncio.run(later()) is TriggerState.RUNNING

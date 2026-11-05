@@ -345,13 +345,14 @@ class ZettCodeEngine:
                 is never retried (the task is kept), so a machine that has not been set up is refused before a
                 task that could not finish is left behind. ``/config`` is what changes it.
         """
-        if self.active_model is None:
-            raise ValueError(NO_MODEL_REFUSAL)
         if self._triggers is None and self.plugins.triggers:
             # With the runtime, once: a trigger watches for as long as this process is open, and its scope (one per
-            # process, one per machine) decides whether this runtime is the one that runs it.
+            # process, one per machine) decides whether this runtime is the one that runs it. Before the model check:
+            # a trigger needs no model, and a refused start leaves them running until :meth:`aclose`.
             self._triggers = TriggerHost(self.plugins.triggers, self.config.store.parent / "triggers")
             self._triggers.start()
+        if self.active_model is None:
+            raise ValueError(NO_MODEL_REFUSAL)
         if self._starting is None:
             self._begin_imports()
             self.compaction_counter.start()

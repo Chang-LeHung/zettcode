@@ -43,8 +43,8 @@ presenters, pets, themes, commands, usage, the agent's own tools — is a plugin
 `fire(payload)`; its `scope` is `PROCESS` (one per process, enforced by a module-level owner table) or `MACHINE` (one per
 machine, a `SingletonLock` on `<store parent>/triggers/<name>.lock`; the losers poll every `RETRY_SECONDS` and take over
 when the holder exits or dies). `ZettCodeEngine.start()` starts a `TriggerHost` for `Plugins.triggers` and `aclose()`
-stops it before anything else, so the machine lock is let go first. Not done: a trigger that fails is not restarted, and
-`start()` is only reached on a machine with a model, so a model-less launch runs no triggers. Invariant P12.
+stops it before anything else, so the machine lock is let go first. Triggers start before the model check, so a machine with no model still runs them. Not done: a trigger
+that fails is not restarted, and its status is read only through `ZettCodeEngine.trigger_statuses()`. Invariant P12.
 
 ## Left
 
