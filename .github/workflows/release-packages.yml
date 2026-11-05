@@ -1,7 +1,7 @@
 name: Release packages
 
 # The plugins under `packages/`, one at a time: a **plugin** here is a distribution that declares a
-# `zettcode.plugins` entry point, and the ten distributions the program is made of are released together by
+# `zettcode.plugins` entry point, and the distributions the program is made of are released together by
 # `release.yml` under its own tag. A tag names one plugin, and a manual run can publish every plugin whose version
 # PyPI does not have yet. What a run does is decided from the plugins' own versions and from PyPI, not from a list
 # in here, so a version that is already published is skipped rather than failing the run, and a new plugin needs no
@@ -70,7 +70,7 @@ jobs:
           enable-cache: true
 
       # A plugin is tested the way a reader installs it: beside the program built from this checkout, not from the
-      # workspace environment it is developed in and not from whatever PyPI has. The ten distributions the program is
+      # workspace environment it is developed in and not from whatever PyPI has. The distributions the program is
       # made of are built here and installed first — `uv pip install ./packages/zettcode` would resolve them from the
       # index, and they are published by `release.yml`, under the program's tag, not by this workflow. What a plugin's
       # tests import comes from its own `dev` group, which the planning step refuses to release without.
