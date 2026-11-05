@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from importlib.metadata import entry_points
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -14,14 +15,19 @@ from zett_agent.messages import AssistantMessage, TextContent, ToolCall, ToolMes
 from zett_agent.model import ModelEvent, ModelResponse, RetryOptions
 from zett_agent.tools.base import tool
 
-from zettcode.engine.extensions.truncation import (
+from plugin_helpers import runtime_state
+from zettcode.config import ModelConfig, ZettCodeConfig
+from zettcode.engine.plugins import AgentBuild, load_plugins
+from zettcode.engine.plugins.loader import AGENT_PART_GROUP, part_group
+from zettcode.engine.storage import SessionStore
+from zettcode.engine.tools.files import read
+from zettcode.truncation import LongOutput
+from zettcode.truncation.extension import (
     MAX_RESULT_BYTES,
     MAX_RESULT_LINES,
     LongOutputExtension,
     over_budget,
 )
-from zettcode.engine.storage import SessionStore
-from zettcode.engine.tools.files import read
 
 #: A result over both budgets: more lines than a tool may send, and more bytes than one file of them.
 LONG = "".join(f"line {n}\n" for n in range(1, 3001))
@@ -341,3 +347,47 @@ async def test_in_a_real_agent_the_model_and_the_stored_session_both_see_the_pre
     assert model.told is not None and str(kept) in model.told and LONG not in model.told
     stored = [line.message[0] for line in store.read("s1").messages if isinstance(line.message[0], ToolMessage)]
     assert len(stored) == 1 and str(kept) in stored[0].content and LONG not in stored[0].content
+
+
+# -- the plugin that hands it to the agent ------------------------------------------------------------
+
+
+class FakeEntryPoint:
+    """The slice of ``importlib.metadata.EntryPoint`` the loader touches."""
+
+    def __init__(self, name: str, target: object) -> None:
+        self.name = name
+        self.group = AGENT_PART_GROUP
+        self._target = target
+
+    def load(self) -> object:
+        return self._target
+
+
+def test_the_plugin_is_a_part_of_the_agent_found_through_its_entry_point_group():
+    """The distribution publishes it, so the runtime discovers it like any other part and no list names it."""
+    found = {point.name: point for point in entry_points(group=AGENT_PART_GROUP)}
+
+    assert found["long-output"].value == "zettcode.truncation.plugin:LongOutput"
+    assert part_group(found["long-output"]) == AGENT_PART_GROUP
+    assert LongOutput.name == "long-output"
+
+
+def test_the_plugin_hands_the_agent_the_extension_over_the_session_store(tmp_path):
+    config = ZettCodeConfig(
+        workspace=tmp_path,
+        models=(ModelConfig(model="m", token="t"),),
+        store=tmp_path / "sessions",
+        mcp_config=tmp_path / "absent-mcp.json",
+    )
+    plugins = load_plugins(
+        config,
+        builtins=(),
+        entry_points=[FakeEntryPoint(LongOutput.name, LongOutput)],
+        shared=runtime_state(config),
+    )
+
+    assert plugins.failures == ()
+    assert [extension.name for extension in plugins.agent_extensions(AgentBuild(model=object()))] == [
+        "LongOutputExtension"
+    ]

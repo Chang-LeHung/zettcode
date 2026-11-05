@@ -24,9 +24,10 @@ from .ledger import SessionStats
 from .locks import LOCK_FILE, LOCKED_MESSAGE, NoLocks, SessionGuard, SessionLocked, SessionLocks, prune_empty
 from .metadata import MAX_TITLE, SessionInfo
 from .records import STORE_FILE, MessageLine, Session, now
-from .store import SessionPersistenceMixin, SessionStore
+from .store import KEPT_OUTPUT, SessionPersistenceMixin, SessionStore
 
 __all__ = [
+    "KEPT_OUTPUT",
     "LOCKED_MESSAGE",
     "LOCK_FILE",
     "MAX_TITLE",

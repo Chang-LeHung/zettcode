@@ -45,6 +45,9 @@ dependencies = [
   "zettcode-ask-user",
   "zettcode-instructions",
   "zettcode-todos",
+  "zettcode-tool-output",
+  "zettcode-truncation",
+  "zettcode-guidance",
   # Named here, not only inherited: the command line names the process with it.
   "setproctitle>=1.3.7,<2; os_name == 'posix'",
 ]

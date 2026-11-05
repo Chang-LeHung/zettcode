@@ -25,8 +25,8 @@ from .boundary import Boundary
 from .output import Preview, stream_preview
 from .workspace import Located
 
-#: Where a command's kept output goes, inside the working directory. The extension that moves it out of the reader's
-#: project (``ToolOutputExtension``) names the same folder.
+#: Where a command's kept output goes, inside the working directory. The part that moves it out of the reader's
+#: project (`zettcode-tool-output`) names the same folder, and a test holds the two equal.
 OUTPUT_ROOT = ".zett-tool-output"
 
 #: The runtime a command is given unless the model asks for another, and the most it may ask for.

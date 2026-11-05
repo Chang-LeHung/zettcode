@@ -22,9 +22,8 @@ from zett_agent.agent import AgentRunContext
 from zett_agent.extensions.base import AgentExtension
 from zett_agent.messages import ToolCall, ToolMessage
 
-from ..storage import SessionStore
-from ..tools.output import MAX_OUTPUT_BYTES, MAX_OUTPUT_LINES, stream_preview
-from .tool_output import KEPT_AS
+from zettcode.engine.storage import KEPT_OUTPUT, SessionStore
+from zettcode.engine.tools.output import MAX_OUTPUT_BYTES, MAX_OUTPUT_LINES, stream_preview
 
 #: The tool that keeps its own output: it names the streams it kept, and that note is the whole point of its
 #: result, so its preview is never taken apart here.
@@ -100,7 +99,7 @@ class LongOutputExtension(AgentExtension):
 
     def _write(self, text: str, call: ToolCall, session_id: str) -> Path:
         """Write the result to a new file in the session's ``tool-output`` folder, and return its path."""
-        kept = self._store.session_dir(session_id) / KEPT_AS
+        kept = self._store.session_dir(session_id) / KEPT_OUTPUT
         kept.mkdir(parents=True, exist_ok=True)
         stem = _stem(call)
         suffix = 1

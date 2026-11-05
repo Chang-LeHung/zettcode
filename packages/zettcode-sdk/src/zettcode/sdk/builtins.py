@@ -23,9 +23,10 @@ a plugin builds on (the session store, the permission policy) is handed over by 
 :mod:`zettcode.engine.plugins.services`.
 
 A part that lives in a distribution of its own (the skills, the MCP client, the files, the harness, the ``ask_user``
-tool, the project instructions and the plan) states no rank, so it is activated ahead of this list and registers its
-extension first; each of those still runs where its own priority puts it. ``ask-user`` and ``todos`` share the 100
-nearly everything else here has, so they run before what this module contributes in that band.
+tool, the project instructions, the plan, the shell's kept output, an over-long result and the per-tool guidance)
+states no rank, so it is activated ahead of this list and registers its extension first; each of those still runs where
+its own priority puts it. ``ask-user``, ``todos``, ``tool-output``, ``long-output`` and ``tool-guidelines`` share the
+100 nearly everything else here has, so they run before what this module contributes in that band.
 """
 
 from __future__ import annotations
@@ -38,8 +39,6 @@ from zettcode.engine.dialogue.side import SideQuestions
 from zettcode.engine.extensions.capabilities import ModelCapabilities
 from zettcode.engine.extensions.compaction import CompactionCounter, OnDemandCompaction
 from zettcode.engine.extensions.context import ContextExtension
-from zettcode.engine.extensions.tool_output import ToolOutputExtension
-from zettcode.engine.extensions.truncation import LongOutputExtension
 from zettcode.engine.extensions.usage import UsageExtension
 from zettcode.engine.permission import ShellDenyExtension, ShellPolicy
 from zettcode.engine.permission.approval import ShellApprovalMemory
@@ -92,33 +91,6 @@ class CodingTools(Plugin):
             return CodingBundle(policy)
 
         ctx.agent.register_extension_factory("CodingBundle", build)
-
-
-class ToolOutput(Plugin):
-    """Moves a long tool result into the session's folder before it is stored or sent anywhere."""
-
-    name = "tool-output"
-    description = "Keeps long tool output in the session folder"
-
-    def activate(self, ctx: PluginContext) -> None:
-        """Register the extension over the session store."""
-        ctx.agent.register_extension(ToolOutputExtension(ctx.service(PERSISTENCE, SessionStore)))
-
-
-class LongOutput(Plugin):
-    """Keeps a result over a tool's budget in a file, and sends its start and its end instead.
-
-    The tools in this repository bound what they return themselves; this is the backstop for the ones that come
-    from elsewhere — an MCP server, a subagent, a plugin — so one long answer cannot fill the context of every
-    later request in the session.
-    """
-
-    name = "long-output"
-    description = "Keeps over-long tool results in the session folder"
-
-    def activate(self, ctx: PluginContext) -> None:
-        """Register the extension over the session store."""
-        ctx.agent.register_extension(LongOutputExtension(ctx.service(PERSISTENCE, SessionStore)))
 
 
 class Capabilities(Plugin):
@@ -323,23 +295,6 @@ class SideQuestionBoundary(Plugin):
         ctx.agent.register_extension(sides)
 
 
-class ToolGuidance(Plugin):
-    """The guidance each tool carries: its call shapes, guidelines and return type, in the tool's own description."""
-
-    name = "tool-guidelines"
-    description = "Per-tool guidance in each tool's description"
-
-    def activate(self, ctx: PluginContext) -> None:
-        """Register the extension; it is small, but it belongs with the others that wait for the build."""
-
-        def build(_: AgentBuild) -> AgentExtension:
-            from zettcode.engine.extensions.guidance import tool_guidance
-
-            return tool_guidance()
-
-        ctx.agent.register_extension_factory("ToolGuidelinesExtension", build)
-
-
 class SelfCompaction(Plugin):
     """The switch for letting the model compact its own context.
 
@@ -389,8 +344,6 @@ class Compaction(Plugin):
 #: distribution) passes as ``builtins=``. ``test_agent_parts.py`` holds the two lists together.
 AGENT_PLUGINS: tuple[Plugin[PluginContext], ...] = (
     CodingTools(),
-    ToolOutput(),
-    LongOutput(),
     Capabilities(),
     Subagents(),
     Messaging(),
@@ -399,7 +352,6 @@ AGENT_PLUGINS: tuple[Plugin[PluginContext], ...] = (
     UsageTracking(),
     ContextTracking(),
     SideQuestionBoundary(),
-    ToolGuidance(),
     SelfCompaction(),
     Compaction(),
 )
@@ -414,7 +366,8 @@ assert len({type(plugin) for plugin in AGENT_PLUGINS}) == len(AGENT_PLUGINS), "A
 AGENT_PLUGIN_NAMES: tuple[str, ...] = tuple(plugin.name for plugin in AGENT_PLUGINS)
 
 #: Those and the parts that live in distributions of their own (skills, MCP, files, harness, ask-user, the project
-#: instructions, the plan): what an installation must hold.
+#: instructions, the plan, the shell's kept output, an over-long result and the per-tool guidance): what an
+#: installation must hold.
 REQUIRED_AGENT_NAMES: tuple[str, ...] = (
     *AGENT_PLUGIN_NAMES,
     "files",
@@ -425,6 +378,9 @@ REQUIRED_AGENT_NAMES: tuple[str, ...] = (
     "ask-user",
     "project-instructions",
     "todos",
+    "tool-output",
+    "long-output",
+    "tool-guidelines",
 )
 
 

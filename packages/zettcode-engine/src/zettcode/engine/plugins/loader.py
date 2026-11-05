@@ -87,6 +87,9 @@ PROGRAM_DISTRIBUTIONS: dict[str, frozenset[str]] = {
             "zettcode-ask-user",
             "zettcode-instructions",
             "zettcode-todos",
+            "zettcode-tool-output",
+            "zettcode-truncation",
+            "zettcode-guidance",
         }
     ),
     TERMINAL_PART_GROUP: frozenset({"zettcode-app", "zettcode-commands", "zettcode-pets", "zettcode-presenters"}),

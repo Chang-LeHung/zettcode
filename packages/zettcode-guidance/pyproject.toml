@@ -1,0 +1,51 @@
+[project]
+name = "zettcode-guidance"
+description = "The per-tool guidance ZettCode gives the model, as a part of the agent that lives apart from it"
+requires-python = ">=3.10"
+dynamic = ["version"]
+license = "MIT"
+authors = [{name = "Chang-LeHung"}]
+keywords = ["zettcode", "guidance", "agent"]
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Programming Language :: Python :: 3.15",
+  "Typing :: Typed",
+]
+dependencies = [
+  # The plugin base classes, and the factory the extension is built from (`engine.extensions.guidance`).
+  "zettcode-engine",
+  # The type the factory returns; the module is only imported by the type checker.
+  "zett-agent>=0.2.7,<0.3",
+]
+
+# A part of the program, not a plugin: the `zettcode.plugins` group is what the plugin release line looks for. It is
+# activated with the agent's other parts and nothing turns it off: every agent this program builds describes its
+# tools the same way.
+[project.entry-points."zettcode.agent"]
+tool-guidelines = "zettcode.guidance.plugin:ToolGuidance"
+
+[project.urls]
+Repository = "https://github.com/Chang-LeHung/zettcode"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+# One version for the whole repository: the engine ships the file.
+path = "../zettcode-engine/src/zettcode/version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/zettcode"]
+
+[tool.hatch.build.targets.sdist]
+include = ["/src", "/pyproject.toml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
