@@ -203,26 +203,6 @@ async def test_a_blank_command_is_refused(here: Path):
 # -- the tool ----------------------------------------------------------------------------------------------------
 
 
-def test_the_extension_that_moves_the_kept_output_names_the_folder_the_tool_makes():
-    from zettcode.engine.extensions import tool_output
-
-    assert tool_output.OUTPUT_ROOT == OUTPUT_ROOT
-
-
-def test_the_extension_that_moves_the_kept_output_is_loaded_without_the_schema_library():
-    """It is imported at start-up, so it must not be the thing that pulls the tools (and pydantic) in."""
-    import subprocess
-
-    code = (
-        "import sys; import zettcode.engine.extensions.tool_output, zettcode.engine.permission; "
-        "print(any(name.startswith('zettcode.engine.tools.') and name != 'zettcode.engine.tools.boundary' "
-        "for name in sys.modules))"
-    )
-    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True).stdout
-
-    assert out.strip() == "False"
-
-
 def test_the_tool_is_typed_the_way_the_model_is_told():
     tool = shell_tool()
 

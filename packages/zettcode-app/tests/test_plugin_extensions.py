@@ -339,16 +339,18 @@ def test_a_run_with_the_optional_tools_off_hands_the_agent_the_extensions_in_reg
     extensions = agent_extensions(make_config(tmp_path, skills_enabled=False, subagent_enabled=False))
 
     # `AskUserExtension` is first and `AgentsMdExtension` stands where the `project-instructions` part sorts: the
-    # three parts that came out of the SDK's list (`ask-user`, `project-instructions`, `todos`) have no rank of their
-    # own, so they are activated at rank 0, ahead of the SDK's `coding`, and register their extensions there. What the
-    # agent runs in which order is each extension's priority (see the run-order list below), not this list.
+    # parts that came out of the SDK's list (`ask-user`, `project-instructions`, `todos`, and now `long-output`,
+    # `tool-guidelines` and `tool-output`) have no rank of their own, so they are activated at rank 0, ahead of the
+    # SDK's `capabilities`, and register their extensions there. What the agent runs in which order is each
+    # extension's priority (see the run-order list below), not this list.
     assert [extension.name for extension in extensions] == [
         "AskUserExtension",
         "CodingBundle",
         "SwitchedHarness",
-        "AgentsMdExtension",
-        "ToolOutputExtension",
         "LongOutputExtension",
+        "AgentsMdExtension",
+        "ToolGuidelinesExtension",
+        "ToolOutputExtension",
         "ModelCapabilities",
         "ShellDenyExtension",
         "ShellApprovalExtension",
@@ -356,25 +358,27 @@ def test_a_run_with_the_optional_tools_off_hands_the_agent_the_extensions_in_reg
         "UsageExtension",
         "ContextExtension",
         "SideQuestions",
-        "ToolGuidelinesExtension",
         "OnDemandCompaction",
     ]
-    # The order the agent keeps them in: a stable sort by priority. Compared with the list the SDK alone gave, only
-    # the two extensions that share 100 with everything the SDK registers moved — `AskUserExtension` (rank 0 now) and
-    # `TodoWriteExtension`, which is absent here because the tool is off — and `AgentsMdExtension` is still first on
-    # its 10. Nothing either of them competes with the others for.
+    # The order the agent keeps them in: a stable sort by priority. Compared with the list the SDK alone gave, the
+    # rank-0 parts moved — `AskUserExtension` first, and `LongOutputExtension`, `ToolGuidelinesExtension` and
+    # `ToolOutputExtension` now register ahead of the SDK's own band instead of inside it. They share the 100 with
+    # `ShellApprovalExtension`, the store and the counters, so among those their new registration order is the order
+    # the agent runs them in: `LongOutputExtension` before the store (as before, and required), the guidance and the
+    # shell's kept output before the approval. Nothing they compete with moved: `AgentsMdExtension` is still first on
+    # its 10, the permissions still run at 50, and the capabilities and side questions at 110 and 120.
     assert [extension.name for extension in sorted(extensions, key=lambda extension: extension.priority)] == [
         "AgentsMdExtension",
         "ShellDenyExtension",
         "AskUserExtension",
         "CodingBundle",
-        "ToolOutputExtension",
         "LongOutputExtension",
+        "ToolGuidelinesExtension",
+        "ToolOutputExtension",
         "ShellApprovalExtension",
         "SessionStore",
         "UsageExtension",
         "ContextExtension",
-        "ToolGuidelinesExtension",
         "OnDemandCompaction",
         "ModelCapabilities",
         "SideQuestions",
@@ -394,11 +398,13 @@ def test_a_coding_child_is_given_these_of_the_extensions_the_parent_runs_and_not
     with_messaging = [e.name for e in parent if _shared_with_children(messaging=True)(e)]
 
     # The skills are a part of their own, activated ahead of the SDK's; where they stand at run time is their priority.
+    # The per-tool guidance is read fresh by every child and so is not shared; the two extensions that keep output in
+    # the session's folder are, and the shell's kept-output one is now handed over with the rank-0 parts.
     assert shared == [
         "CodingBundle",
+        "LongOutputExtension",
         "SkillExtension",
         "ToolOutputExtension",
-        "LongOutputExtension",
         "ShellDenyExtension",
         "ShellApprovalExtension",
         "OnDemandCompaction",
@@ -415,16 +421,18 @@ def test_every_switch_adds_its_extension_at_its_place(tmp_path):
     names_ = [extension.name for extension in agent_extensions(config, **{names.MESSENGER: messenger})]
 
     assert names_ == [
-        # The three parts of other distributions that used to be listed here (`ask-user`, `project-instructions`,
-        # `todos`) are activated at rank 0, so their extensions register ahead of the SDK's `coding`.
+        # The parts of other distributions that used to be listed here (`ask-user`, `project-instructions`, `todos`)
+        # and the three that left the SDK's list for their own (`long-output`, `tool-guidelines`, `tool-output`) are
+        # activated at rank 0, sorted by name, so their extensions register ahead of the SDK's `capabilities`.
         "AskUserExtension",
         "CodingBundle",
         "SwitchedHarness",
+        "LongOutputExtension",
         "AgentsMdExtension",
         "SkillExtension",
         "TodoWriteExtension",
+        "ToolGuidelinesExtension",
         "ToolOutputExtension",
-        "LongOutputExtension",
         "ModelCapabilities",
         "ParentModelSubAgents",
         "SessionMessagingExtension",
@@ -434,7 +442,6 @@ def test_every_switch_adds_its_extension_at_its_place(tmp_path):
         "UsageExtension",
         "ContextExtension",
         "SideQuestions",
-        "ToolGuidelinesExtension",
         "OnDemandCompaction",
     ]
 
@@ -442,13 +449,14 @@ def test_every_switch_adds_its_extension_at_its_place(tmp_path):
 def test_the_order_the_agent_runs_them_in_is_the_priority_of_each(tmp_path):
     """The list above is registration order; the agent keeps a stable sort by priority, and that is the real order.
 
-    Compared with the order the SDK's own list alone used to give, only two extensions moved, and only because
-    `ask-user` and `todos` left that list: they are parts of other distributions now, activated at rank 0 with a
-    priority of their own of 100 — the band nearly everything the SDK contributes shares — so they are handed over,
-    and so run, first among those. `AgentsMdExtension` is still first on its 10, the permissions still run at 50, the
-    skills at 80, and the capabilities and side questions at 110 and 120. Neither of the two is ordered against
-    anything it competes with: the question tool and the plan tool are tools of their own, and the shell reads the plan
-    by name rather than from a position.
+    Compared with the order the SDK's own list alone used to give, the parts of other distributions moved into the
+    band they share: `ask-user` and `todos` left the list for their own distributions, and `long-output`,
+    `tool-guidelines` and `tool-output` left it the same way. All of them are activated at rank 0 with a priority of
+    their own (100 for these five, 80 for the skills), so they are handed over, and so run, first among the 100 band.
+    `AgentsMdExtension` is still first on its 10, the permissions still run at 50 (the deny before the approval),
+    the skills at 80, and the capabilities and side questions at 110 and 120. Nothing is ordered against anything it
+    competes with: the question tool, the plan tool, the guidance and the two output keepers are features of their
+    own, and the store still comes after `LongOutputExtension`, which is the one ordering that matters.
     """
     extensions = agent_extensions(make_config(tmp_path, todowrite_enabled=True))
 
@@ -458,15 +466,15 @@ def test_the_order_the_agent_runs_them_in_is_the_priority_of_each(tmp_path):
         "SkillExtension",
         "AskUserExtension",
         "CodingBundle",
-        "TodoWriteExtension",
-        "ToolOutputExtension",
         "LongOutputExtension",
+        "TodoWriteExtension",
+        "ToolGuidelinesExtension",
+        "ToolOutputExtension",
         "ParentModelSubAgents",
         "ShellApprovalExtension",
         "SessionStore",
         "UsageExtension",
         "ContextExtension",
-        "ToolGuidelinesExtension",
         "OnDemandCompaction",
         "ModelCapabilities",
         "SideQuestions",

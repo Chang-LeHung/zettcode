@@ -29,6 +29,9 @@ dependencies = [
   "zettcode-ask-user",
   "zettcode-instructions",
   "zettcode-todos",
+  "zettcode-tool-output",
+  "zettcode-truncation",
+  "zettcode-guidance",
   "zett-agent>=0.2.7,<0.3",
   "httpx>=0.27,<1",
 ]
@@ -37,8 +40,6 @@ dependencies = [
 # plugin release line looks for. They are activated by the rank `builtins.py` gives them, then by their `deps`.
 [project.entry-points."zettcode.agent"]
 coding = "zettcode.sdk.builtins:CodingTools"
-tool-output = "zettcode.sdk.builtins:ToolOutput"
-long-output = "zettcode.sdk.builtins:LongOutput"
 capabilities = "zettcode.sdk.builtins:Capabilities"
 subagents = "zettcode.sdk.builtins:Subagents"
 messaging = "zettcode.sdk.builtins:Messaging"
@@ -47,7 +48,6 @@ session-log = "zettcode.sdk.builtins:SessionLog"
 usage-tracking = "zettcode.sdk.builtins:UsageTracking"
 context-tracking = "zettcode.sdk.builtins:ContextTracking"
 side-questions = "zettcode.sdk.builtins:SideQuestionBoundary"
-tool-guidelines = "zettcode.sdk.builtins:ToolGuidance"
 self-compaction = "zettcode.sdk.builtins:SelfCompaction"
 compaction = "zettcode.sdk.builtins:Compaction"
 

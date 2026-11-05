@@ -64,6 +64,9 @@ zettcode-harness = { workspace = true }
 zettcode-ask-user = { workspace = true }
 zettcode-instructions = { workspace = true }
 zettcode-todos = { workspace = true }
+zettcode-tool-output = { workspace = true }
+zettcode-truncation = { workspace = true }
+zettcode-guidance = { workspace = true }
 zettcode-monitor = { workspace = true }
 zettcode-recap = { workspace = true }
 
@@ -91,6 +94,9 @@ mypy_path = [
   "packages/zettcode-ask-user/src",
   "packages/zettcode-instructions/src",
   "packages/zettcode-todos/src",
+  "packages/zettcode-tool-output/src",
+  "packages/zettcode-truncation/src",
+  "packages/zettcode-guidance/src",
   "packages/zettcode/src",
   "packages/zettcode",
   ".github/scripts",
@@ -114,6 +120,9 @@ files = [
   "packages/zettcode-ask-user/src",
   "packages/zettcode-instructions/src",
   "packages/zettcode-todos/src",
+  "packages/zettcode-tool-output/src",
+  "packages/zettcode-truncation/src",
+  "packages/zettcode-guidance/src",
   "packages/zettcode/src",
   "packages/zettcode/perf",
   "packages/zettcode-monitor/src",

@@ -85,6 +85,11 @@ from .records import (
     now,
 )
 
+#: The folder a session keeps, beside its log, what a tool produced and the model reads back: a shell command's kept
+#: streams (which the ``tool-output`` part moves there) and a result no tool of ours bounded (``long-output``). Both
+#: reach it through :meth:`SessionPersistenceMixin.session_dir`, so the name is stated here, once.
+KEPT_OUTPUT = "tool-output"
+
 
 def message_context(
     value: Mapping[str, object] | None, *, field: str, nonempty_keys: bool = False

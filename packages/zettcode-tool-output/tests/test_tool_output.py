@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
+from importlib.metadata import entry_points
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -13,11 +14,17 @@ from zett_agent.client import create_agent
 from zett_agent.messages import AssistantMessage, ToolCall, ToolMessage
 from zett_agent.model import ModelEvent, ModelResponse, RetryOptions
 
-from zettcode.engine.extensions import tool_output as tool_output_module
+from plugin_helpers import runtime_state
+from zettcode.config import ModelConfig, ZettCodeConfig
 from zettcode.engine.extensions.files import CodingBundle
-from zettcode.engine.extensions.tool_output import OUTPUT_ROOT, ToolOutputExtension
+from zettcode.engine.plugins import AgentBuild, load_plugins
+from zettcode.engine.plugins.loader import AGENT_PART_GROUP, part_group
 from zettcode.engine.storage import SessionStore
+from zettcode.engine.tools.shell import OUTPUT_ROOT as SHELL_OUTPUT_ROOT
 from zettcode.engine.tools.shell import shell_tool
+from zettcode.tool_output import ToolOutput
+from zettcode.tool_output import extension as tool_output_module
+from zettcode.tool_output.extension import OUTPUT_ROOT, ToolOutputExtension
 
 bash = shell_tool()
 
@@ -440,3 +447,66 @@ async def test_a_thread_removing_the_root_does_fail_commands_which_is_why_the_ti
 
     assert raced, "no command lost the race: it is gone, and the reason for the rule with it"
     assert len(raced) >= 10, f"only {len(raced)} lost it before the deadline; the test is too weak to mean anything"
+
+
+# -- the plugin that hands it to the agent ------------------------------------------------------------
+
+
+class FakeEntryPoint:
+    """The slice of ``importlib.metadata.EntryPoint`` the loader touches."""
+
+    def __init__(self, name: str, target: object) -> None:
+        self.name = name
+        self.group = AGENT_PART_GROUP
+        self._target = target
+
+    def load(self) -> object:
+        return self._target
+
+
+def test_the_plugin_is_a_part_of_the_agent_found_through_its_entry_point_group():
+    """The distribution publishes it, so the runtime discovers it like any other part and no list names it."""
+    found = {point.name: point for point in entry_points(group=AGENT_PART_GROUP)}
+
+    assert found["tool-output"].value == "zettcode.tool_output.plugin:ToolOutput"
+    assert part_group(found["tool-output"]) == AGENT_PART_GROUP
+    assert ToolOutput.name == "tool-output"
+
+
+def test_the_plugin_hands_the_agent_the_extension_over_the_session_store(tmp_path):
+    config = ZettCodeConfig(
+        workspace=tmp_path,
+        models=(ModelConfig(model="m", token="t"),),
+        store=tmp_path / "sessions",
+        mcp_config=tmp_path / "absent-mcp.json",
+    )
+    plugins = load_plugins(
+        config,
+        builtins=(),
+        entry_points=[FakeEntryPoint(ToolOutput.name, ToolOutput)],
+        shared=runtime_state(config),
+    )
+
+    assert plugins.failures == ()
+    assert [extension.name for extension in plugins.agent_extensions(AgentBuild(model=object()))] == [
+        "ToolOutputExtension"
+    ]
+
+
+def test_the_extension_names_the_folder_the_shell_tool_makes():
+    """The folder is written out in both modules, so this holds the two equal: the one it moves is the one the tool made."""
+    assert OUTPUT_ROOT == SHELL_OUTPUT_ROOT
+
+
+def test_the_extension_is_loaded_without_the_schema_library():
+    """It is imported at start-up with the plugins, so it must not be the thing that pulls the tools (and pydantic) in."""
+    import subprocess
+
+    code = (
+        "import sys; import zettcode.tool_output.extension, zettcode.engine.permission; "
+        "print(any(name.startswith('zettcode.engine.tools.') and name != 'zettcode.engine.tools.boundary' "
+        "for name in sys.modules))"
+    )
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True).stdout
+
+    assert out.strip() == "False"

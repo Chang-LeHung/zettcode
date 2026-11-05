@@ -1,0 +1,51 @@
+[project]
+name = "zettcode-truncation"
+description = "The over-long tool result ZettCode keeps in the session's folder, as a part of the agent that lives apart from it"
+requires-python = ">=3.10"
+dynamic = ["version"]
+license = "MIT"
+authors = [{name = "Chang-LeHung"}]
+keywords = ["zettcode", "truncation", "agent"]
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Programming Language :: Python :: 3.15",
+  "Typing :: Typed",
+]
+dependencies = [
+  # The plugin base classes, the session store the result is kept in, and the budget and preview the engine's tools own.
+  "zettcode-engine",
+  # The extension, its hooks and the messages it rewrites.
+  "zett-agent>=0.2.7,<0.3",
+]
+
+# A part of the program, not a plugin: the `zettcode.plugins` group is what the plugin release line looks for. It is
+# activated with the agent's other parts and nothing turns it off: without it a result from a server, a child or a
+# plugin can fill the session's context on every later request.
+[project.entry-points."zettcode.agent"]
+long-output = "zettcode.truncation.plugin:LongOutput"
+
+[project.urls]
+Repository = "https://github.com/Chang-LeHung/zettcode"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+# One version for the whole repository: the engine ships the file.
+path = "../zettcode-engine/src/zettcode/version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/zettcode"]
+
+[tool.hatch.build.targets.sdist]
+include = ["/src", "/pyproject.toml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

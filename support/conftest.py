@@ -39,8 +39,6 @@ AGENT_PARTS = tuple(
         (name, f"zettcode.sdk.builtins:{cls}")
         for name, cls in (
             ("coding", "CodingTools"),
-            ("tool-output", "ToolOutput"),
-            ("long-output", "LongOutput"),
             ("capabilities", "Capabilities"),
             ("subagents", "Subagents"),
             ("messaging", "Messaging"),
@@ -49,7 +47,6 @@ AGENT_PARTS = tuple(
             ("usage-tracking", "UsageTracking"),
             ("context-tracking", "ContextTracking"),
             ("side-questions", "SideQuestionBoundary"),
-            ("tool-guidelines", "ToolGuidance"),
             ("self-compaction", "SelfCompaction"),
             ("compaction", "Compaction"),
         )
@@ -64,11 +61,14 @@ EXTERNAL_AGENT_PARTS = (
     ("ask-user", "zettcode.ask_user.plugin:AskUser"),
     ("files", "zettcode.files.plugin:FileResources"),
     ("harness", "zettcode.harness.plugin:Harness"),
+    ("long-output", "zettcode.truncation.plugin:LongOutput"),
     ("mcp", "zettcode.mcp.plugin:McpTools"),
     ("project-instructions", "zettcode.instructions.plugin:ProjectInstructions"),
     ("skill-tool", "zettcode.skills.plugin:SkillTool"),
     ("skills", "zettcode.skills.plugin:SkillResources"),
     ("todos", "zettcode.todos.plugin:TodoPlan"),
+    ("tool-guidelines", "zettcode.guidance.plugin:ToolGuidance"),
+    ("tool-output", "zettcode.tool_output.plugin:ToolOutput"),
 )
 
 

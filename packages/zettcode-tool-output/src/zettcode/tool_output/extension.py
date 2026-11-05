@@ -31,7 +31,7 @@ from zett_agent.agent import AgentRunContext
 from zett_agent.extensions.base import AgentExtension
 from zett_agent.messages import ToolCall, ToolMessage
 
-from ..storage import SessionStore
+from zettcode.engine.storage import KEPT_OUTPUT, SessionStore
 
 #: The tool whose output is moved.
 SHELL_TOOL = "bash"
@@ -40,9 +40,6 @@ SHELL_TOOL = "bash"
 #: because the tool's module brings the schema library with it and this one is loaded at start-up; a test holds the two
 #: equal.
 OUTPUT_ROOT = ".zett-tool-output"
-
-#: Where, inside a session's folder, the moved output is kept.
-KEPT_AS = "tool-output"
 
 #: The note the tool ends its result with when a preview was cut short. It is matched at the very
 #: end of the text and nowhere else: a command can print anything it likes, and a line that merely
@@ -140,7 +137,7 @@ class ToolOutputExtension(AgentExtension):
         try:
             if not (source / "stdout.txt").is_file() or not (source / "stderr.txt").is_file():
                 return None
-            kept = self._store.session_dir(session_id) / KEPT_AS
+            kept = self._store.session_dir(session_id) / KEPT_OUTPUT
             kept.mkdir(parents=True, exist_ok=True)
             target = kept / source.name
             suffix = 1

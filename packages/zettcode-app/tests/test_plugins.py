@@ -81,14 +81,29 @@ def agent_parts() -> list[FakeEntryPoint]:
     """The plugins that compose the agent, as their distributions publish them, for a test that starts a whole runtime."""
     from zettcode.ask_user.plugin import AskUser
     from zettcode.files.plugin import FileResources
+    from zettcode.guidance.plugin import ToolGuidance
     from zettcode.harness.plugin import Harness
     from zettcode.instructions.plugin import ProjectInstructions
     from zettcode.mcp.plugin import McpTools
     from zettcode.skills.plugin import SkillResources, SkillTool
     from zettcode.todos.plugin import TodoPlan
+    from zettcode.tool_output.plugin import ToolOutput
+    from zettcode.truncation.plugin import LongOutput
 
     own = [FakeEntryPoint(plugin.name, type(plugin), "zettcode.agent") for plugin in AGENT_PLUGINS]
-    parts = (AskUser, FileResources, Harness, ProjectInstructions, SkillResources, SkillTool, McpTools, TodoPlan)
+    parts = (
+        AskUser,
+        FileResources,
+        Harness,
+        LongOutput,
+        ProjectInstructions,
+        SkillResources,
+        SkillTool,
+        McpTools,
+        TodoPlan,
+        ToolGuidance,
+        ToolOutput,
+    )
     outside = [FakeEntryPoint(cls.name, cls, "zettcode.agent") for cls in parts]
     return [*own, *outside]
 
@@ -923,11 +938,14 @@ async def test_the_runtime_preview_installs_plugin_extensions_and_commands(tmp_p
         "coding",
         "files",
         "harness",
+        "long-output",
         "mcp",
         "project-instructions",
         "skill-tool",
         "skills",
         "todos",
+        "tool-guidelines",
+        "tool-output",
         *(plugin.name for plugin in AGENT_PLUGINS if plugin.name != "coding"),
         "commands",
         "pets",
