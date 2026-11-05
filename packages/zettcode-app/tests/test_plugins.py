@@ -82,8 +82,8 @@ def agent_parts() -> list[FakeEntryPoint]:
     from zettcode.ask_user.plugin import AskUser
     from zettcode.files.plugin import FileResources
     from zettcode.guidance.plugin import ToolGuidance
-    from zettcode.harness.plugin import Harness
     from zettcode.instructions.plugin import ProjectInstructions
+    from zettcode.jit_harness.plugin import Harness
     from zettcode.mcp.plugin import McpTools
     from zettcode.skills.plugin import SkillResources, SkillTool
     from zettcode.todos.plugin import TodoPlan
@@ -955,6 +955,10 @@ async def test_the_runtime_preview_installs_plugin_extensions_and_commands(tmp_p
     assert len(runtime.plugins.extensions) == 1
     # The program's own commands come first, in the order /help lists them, and the installed plugin's after them.
     assert [command.name for command in runtime.plugins.builtin_commands] == [
+        # `/harness` is registered by the harness part itself. The shell's own plugins load first, then the agent's
+        # parts, and the terminal's command plugin (where `/code-review` and the rest come from) last, so the part's
+        # command is listed before them.
+        "/harness",
         "/code-review",  # a plain command, which the loader merges ahead of the ones registered on the terminal group
         "/help",
         "/plugins",
@@ -966,7 +970,6 @@ async def test_the_runtime_preview_installs_plugin_extensions_and_commands(tmp_p
         "/model",
         "/effort",
         "/permission",
-        "/harness",
         "/btw",
         "/bash",
         "/clear",

@@ -7,10 +7,21 @@ from pathlib import Path
 
 from zettcode.tui import ListItem, ListPage
 
-from .. import labels
-
 #: Rows the panel asks for when it is anchored to the bottom edge.
 HARNESS_ROWS = 12
+
+
+def _shown(directory: Path) -> str:
+    """Return the folder as the subtitle shows it: the whole path, with the home directory collapsed to ``~``.
+
+    The panel has the width of the screen, so unlike the header it does not shorten the tail; the one substitution is
+    the home directory, which is longer than it says.
+    """
+    value = str(directory)
+    home = str(Path.home())
+    if value == home or value.startswith(home + "/"):
+        return "~" + value[len(home) :]
+    return value
 
 
 class HarnessPage(ListPage):
@@ -40,7 +51,7 @@ class HarnessPage(ListPage):
         super().__init__(
             items,
             title=f"Harness is {state}",
-            subtitle=labels.compact_path(directory, limit=None),
+            subtitle=_shown(directory),
             footer="/plugins switches it \u00b7 esc close",
             on_select=lambda _value: on_close(),
             on_cancel=on_close,

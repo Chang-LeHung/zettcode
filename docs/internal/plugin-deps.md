@@ -19,7 +19,7 @@ presenters, pets, themes, commands, usage, the agent's own tools — is a plugin
   - `zettcode.terminal`: parts only a screen has a use for (`presenters`, `pets`, `themes`, `commands`). The SDK and
     the server do not load it. `REQUIRED_PLUGINS = (shell, presenters, commands)` in `app/plugins/loader.py`.
   - `zettcode.agent`: the plugins that compose the agent. 11 are published by `zettcode-sdk`; `zettcode-skills`
-    (`skills`, `skill-tool`), `zettcode-mcp` (`mcp`), `zettcode-files` (`files`), `zettcode-harness` (`harness`),
+    (`skills`, `skill-tool`), `zettcode-mcp` (`mcp`), `zettcode-files` (`files`), `zettcode-jit-harness` (`harness`),
     `zettcode-ask-user` (`ask-user`), `zettcode-instructions` (`project-instructions`), `zettcode-todos` (`todos`),
     `zettcode-tool-output` (`tool-output`), `zettcode-truncation` (`long-output`) and `zettcode-guidance`
     (`tool-guidelines`) are distributions of their own, allowed into the group by

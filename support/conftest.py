@@ -60,7 +60,7 @@ AGENT_PARTS = tuple(
 EXTERNAL_AGENT_PARTS = (
     ("ask-user", "zettcode.ask_user.plugin:AskUser"),
     ("files", "zettcode.files.plugin:FileResources"),
-    ("harness", "zettcode.harness.plugin:Harness"),
+    ("harness", "zettcode.jit_harness.plugin:Harness"),
     ("long-output", "zettcode.truncation.plugin:LongOutput"),
     ("mcp", "zettcode.mcp.plugin:McpTools"),
     ("project-instructions", "zettcode.instructions.plugin:ProjectInstructions"),

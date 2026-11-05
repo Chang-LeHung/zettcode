@@ -1311,12 +1311,14 @@ def test_every_type_the_evaluators_may_resolve_is_defined_without_a_checker_only
 
 
 #: The distributions that know the plugin contract: the two that are written against it (the terminal and its built-in
-#: rows), the plugins that implement it, the program that installs it, and the contract itself. Everything else -- the
-#: server, the gateway, the SDK, the broker, the widget framework and the engine -- is not.
+#: rows), the plugins that implement it, the program that installs it, the part whose page and command are written
+#: against it, and the contract itself. Everything else -- the server, the gateway, the SDK, the broker, the widget
+#: framework and the engine -- is not.
 KNOWS_THE_CONTRACT = {
     "zettcode",
     "zettcode-app",
     "zettcode-commands",
+    "zettcode-jit-harness",
     "zettcode-monitor",
     "zettcode-pets",
     "zettcode-plugin-api",
@@ -1457,7 +1459,7 @@ def test_the_suites_list_of_the_agents_plugins_is_what_the_sdk_publishes():
         "zettcode-skills",
         "zettcode-mcp",
         "zettcode-files",
-        "zettcode-harness",
+        "zettcode-jit-harness",
         "zettcode-ask-user",
         "zettcode-instructions",
         "zettcode-todos",

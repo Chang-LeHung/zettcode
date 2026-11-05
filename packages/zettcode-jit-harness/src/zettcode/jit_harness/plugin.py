@@ -8,6 +8,7 @@ from zettcode.engine.extensions.harness_switch import HarnessSwitch
 from zettcode.engine.permission import ShellPolicy
 from zettcode.engine.plugins.plugin import Plugin, PluginSetting
 from zettcode.engine.plugins.services import HARNESS, POLICY
+from zettcode.plugin_api.host import HOST_LINK, HostLink
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zett_agent.extensions.base import AgentExtension
@@ -20,9 +21,12 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
 class Harness(Plugin):
     """The just-in-time harness: the model keeps small Python tools of its own, when the reader has it on.
 
-    The extension is always registered and inert until the switch is on, so ``/harness on`` reaches the next
-    request of a client that was already built. Each session keeps its tools in its own folder under
-    ``config.harness_dir``, which is ``~/.zettcode/harness`` unless the configuration object says otherwise.
+    The extension is always registered and inert until the switch is on, so a switch written by ``/plugins`` reaches the
+    next request of a client that was already built. Each session keeps its tools in its own folder under
+    ``config.harness_dir``, which is ``~/.zettcode/harness`` unless the configuration object says otherwise. The page
+    ``/harness`` opens (:mod:`.page`) and the command that opens it (:mod:`.command`) ship with the part; the command
+    is registered here, only for a process that has a screen and the shell's link, so the SDK and the server hold
+    nothing of the terminal.
     """
 
     name = "harness"
@@ -71,3 +75,10 @@ class Harness(Plugin):
             )
 
         ctx.agent.register_extension_factory("SwitchedHarness", build)
+
+        # The page and the command that opens it are this part's; only a terminal can hold a command, and only the
+        # shell attaches the link a command runs against, so a process without a screen registers nothing here.
+        if ctx.tui is not None and ctx.find(HOST_LINK, HostLink) is not None:
+            from .command import HarnessCommand
+
+            HarnessCommand().activate(ctx)
