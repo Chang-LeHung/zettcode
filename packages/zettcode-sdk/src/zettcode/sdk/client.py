@@ -76,7 +76,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only
 
     from .messenger import Messenger
 
-__all__ = ["Client", "PluginReport", "SETTINGS", "Sessions", "prompt", "prompt_sync"]
+__all__ = ["Client", "PluginReport", "SETTINGS", "Sessions", "TriggerInfo", "prompt", "prompt_sync"]
 
 
 class _Missing:
@@ -222,6 +222,24 @@ _ORIGINAL_CWD: list[str] = []
 
 
 @dataclass(frozen=True, slots=True)
+class TriggerInfo:
+    """Where one trigger a plugin registered is.
+
+    Attributes:
+        name: The trigger's name.
+        scope: ``"process"`` (one per process) or ``"machine"`` (one on the whole machine).
+        state: ``pending``, ``standby`` (another process holds the machine's lock), ``running``, ``skipped`` (another
+            runtime in this process runs it), ``finished``, ``failed`` or ``stopped``.
+        detail: Why, for ``standby``, ``skipped`` and ``failed``; empty otherwise.
+    """
+
+    name: str
+    scope: str
+    state: str
+    detail: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class PluginReport:
     """The plugins a client loaded.
 
@@ -239,6 +257,7 @@ class PluginReport:
     failures: tuple[str, ...]
     plain_commands: tuple[PlainCommand, ...] = ()
     entries: tuple[PluginEntry, ...] = ()
+    triggers: tuple[TriggerInfo, ...] = ()
 
 
 def _plugin_entry(entry: Any) -> PluginEntry:
@@ -1297,6 +1316,10 @@ class Client:
             tuple(plugin.name for plugin in bundle.plugins),
             tuple(bundle.failures),
             entries=tuple(_plugin_entry(entry) for entry in self._plugin_catalog()),
+            triggers=tuple(
+                TriggerInfo(status.name, status.scope.value, status.state.value, status.detail)
+                for status in self._agent.runtime.trigger_statuses()
+            ),
         )
 
     def set_plugin_enabled(self, name: str, enabled: bool) -> PluginEntry:
