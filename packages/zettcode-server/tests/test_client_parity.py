@@ -171,6 +171,40 @@ GROUPS = (
 )
 
 
+def typescript_fields(interface: str) -> set[str]:
+    """Return the field names of one interface in ``types.ts``, read from the source."""
+    source = (TS / "types.ts").read_text(encoding="utf-8")
+    match = re.search(rf"export interface {interface} \{{(.*?)\n\}}", source, re.S)
+    assert match is not None, f"clients/typescript/src/types.ts has no {interface}"
+    return set(re.findall(r"^  ([a-z][A-Za-z0-9]*)\??:", match.group(1), re.M))
+
+
+#: Values both languages hand back, and the Python dataclass each is.
+PAYLOADS = (
+    ("PluginEntry", sdk_types.PluginEntry),
+    ("PluginReport", sdk_client.PluginReport),
+    ("TriggerInfo", sdk_client.TriggerInfo),
+)
+
+#: Fields a payload has in Python only, and why.
+PAYLOAD_PYTHON_ONLY: dict[str, dict[str, str]] = {
+    "PluginReport": {
+        "plain_commands": "the server has no such field: `GET /commands` returns the same registry as data",
+    },
+}
+
+
+@pytest.mark.parametrize(("name", "owner"), PAYLOADS, ids=[payload[0] for payload in PAYLOADS])
+def test_a_value_both_languages_return_has_the_same_fields(name: str, owner: type):
+    """A field renamed on one side arrives empty on the other, and nothing else would say so."""
+    fields = set(owner.__dataclass_fields__)
+    allowed = PAYLOAD_PYTHON_ONLY.get(name, {})
+    stale = sorted(set(allowed) - fields)
+    assert stale == [], f"{name}: {stale} are listed as Python-only but do not exist"
+
+    assert fields - set(allowed) == typescript_fields(name)
+
+
 @pytest.mark.parametrize(("name", "owner", "extra", "ts_class"), GROUPS, ids=[g[0] for g in GROUPS])
 def test_every_python_method_has_the_typescript_name_in_camel_case_or_a_reason_not_to(name, owner, extra, ts_class):
     ts = typescript_members(ts_class)

@@ -235,11 +235,28 @@ export interface PluginEntry {
   why: string;
 }
 
+/** Where one trigger a plugin registered is. */
+export interface TriggerInfo {
+  /** The trigger's name. */
+  name: string;
+  /** `"process"` (one per process) or `"machine"` (one on the whole machine). */
+  scope: string;
+  /**
+   * `pending`, `standby` (another process holds the machine's lock), `running`, `skipped` (another runtime in this
+   * process runs it), `finished`, `failed` or `stopped`.
+   */
+  state: string;
+  /** Why, for `standby`, `skipped` and `failed`; empty otherwise. */
+  detail: string;
+}
+
 export interface PluginReport {
   loaded: string[];
   failures: string[];
   /** Every plugin a switch can reach, in the order a panel shows them. */
   entries: PluginEntry[];
+  /** Every trigger the loaded plugins registered, and where each one is now. */
+  triggers: TriggerInfo[];
 }
 
 /** One command every front end may run: a name, a summary, and how the run is framed. */

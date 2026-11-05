@@ -207,7 +207,11 @@ The agent for one workspace. An async context manager. Every configuration field
 
 ### `PluginReport`
 
-Frozen dataclass: `loaded: tuple[str, ...]`, `failures: tuple[str, ...]`.
+Frozen dataclass: `loaded: tuple[str, ...]`, `failures: tuple[str, ...]`, `plain_commands: tuple[PlainCommand, ...]`,
+`entries: tuple[PluginEntry, ...]`, `triggers: tuple[TriggerInfo, ...]`. `triggers` is empty until the runtime has
+started; then it is where each trigger a plugin registered is — a `TriggerInfo(name, scope, state, detail)`, with
+`scope` `process` or `machine`, `state` `pending`, `standby`, `running`, `skipped`, `finished`, `failed` or `stopped`,
+and `detail` saying why for `standby`, `skipped` and `failed`.
 
 ## zettcode.sdk.models
 

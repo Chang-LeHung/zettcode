@@ -90,6 +90,7 @@ const plugins: PluginReport = {
   loaded: ["skills", "mcp", "lint"],
   failures: ["zettcode-search: missing binary"],
   entries,
+  triggers: [],
 };
 
 const client = {

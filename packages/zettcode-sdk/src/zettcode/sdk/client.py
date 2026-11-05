@@ -251,6 +251,8 @@ class PluginReport:
         entries: The same plugins as a list shows them: what loaded, what the next start will leave out, and what could
             not load, each with the origin a switch is written with. A front end with a panel reads this; `loaded`
             and `failures` stay for the callers that only want the names.
+        triggers: Where each trigger the plugins registered is, and what it is doing; empty until the runtime has
+            started.
     """
 
     loaded: tuple[str, ...]
