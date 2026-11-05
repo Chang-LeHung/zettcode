@@ -18,8 +18,9 @@ presenters, pets, themes, commands, usage, the agent's own tools — is a plugin
   - `zettcode.plugins`: what a reader installs. Own version, own release line.
   - `zettcode.terminal`: parts only a screen has a use for (`presenters`, `pets`, `themes`, `commands`). The SDK and
     the server do not load it. `REQUIRED_PLUGINS = (shell, presenters, commands)` in `app/plugins/loader.py`.
-  - `zettcode.agent`: the plugins that compose the agent. 19 are published by `zettcode-sdk`; `zettcode-skills`
-    (`skills`, `skill-tool`) and `zettcode-mcp` (`mcp`) are distributions of their own, allowed into the group by
+  - `zettcode.agent`: the plugins that compose the agent. 17 are published by `zettcode-sdk`; `zettcode-skills`
+    (`skills`, `skill-tool`), `zettcode-mcp` (`mcp`), `zettcode-files` (`files`) and `zettcode-harness` (`harness`) are
+    distributions of their own, allowed into the group by
     `PROGRAM_DISTRIBUTIONS`. Every loader reads it (the engine's own default does not: `agent=False`). None can be
     switched off — they are protected like a compiled-in plugin, `[skills] enabled` and the other configuration keys
     being what turns a feature off — but a failure to activate one is recorded in `failed`, not raised, as it was when
@@ -32,9 +33,18 @@ presenters, pets, themes, commands, usage, the agent's own tools — is a plugin
   skills 80, MCP 70, against the 100 nearly everything else shares), and the agent sorts by that. What registration
   order used to decide for the skills — a skill beating a file of the same name in `@` — is
   `MentionProvider.precedence` now (a session −20, a skill −10, anything else 0).
-- `require_agent_parts(plugins)` refuses an installation that has none of the SDK's 19 (a damaged one), in the SDK's and
-  the terminal's loaders. The skills and the MCP client are not required: without them the agent runs, with no skills
-  and no MCP tools.
+- `require_agent_parts(plugins)` refuses an installation that lacks any of the parts (`REQUIRED_AGENT_NAMES`: the
+  SDK's own plus `files`, `harness`, `skills`, `skill-tool`, `mcp`), in the SDK's and the terminal's loaders: a damaged
+  one would otherwise start an agent with no file references, no skills or no MCP, silently.
+
+## Triggers
+
+`ctx.agent.register_trigger(trigger, handler)` (engine `plugins/triggers.py`). A `Trigger` is a coroutine that calls
+`fire(payload)`; its `scope` is `PROCESS` (one per process, enforced by a module-level owner table) or `MACHINE` (one per
+machine, a `SingletonLock` on `<store parent>/triggers/<name>.lock`; the losers poll every `RETRY_SECONDS` and take over
+when the holder exits or dies). `ZettCodeEngine.start()` starts a `TriggerHost` for `Plugins.triggers` and `aclose()`
+stops it before anything else, so the machine lock is let go first. Not done: a trigger that fails is not restarted, and
+`start()` is only reached on a machine with a model, so a model-less launch runs no triggers. Invariant P12.
 
 ## Left
 

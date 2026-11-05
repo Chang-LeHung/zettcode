@@ -624,6 +624,47 @@ A plugin publishes an object for the ones that need it with `ctx.inject(name, se
 `ctx.service(name, kind)` (or `ctx.find`, which returns `None` when nobody provides it). What the object is, and how it
 is used, is for the plugins involved to agree on; ZettCode only keeps the name unique and the order right.
 
+## Starting work when something happens {#triggers}
+
+A trigger watches for an event (a timer, a file, a socket) and starts work no prompt asked for. A plugin registers one
+with a handler, and ZettCode runs it for as long as the session is open:
+
+```python
+import asyncio
+from zettcode.plugin_api import Plugin, PluginContext, Trigger, TriggerEvent, TriggerScope
+
+
+class EveryMinute(Trigger):
+    name = "every-minute"            # one lowercase word: it names the lock file
+    scope = TriggerScope.MACHINE     # one on the whole machine
+
+    async def run(self, fire):
+        while True:
+            await asyncio.sleep(60)
+            await fire({"reason": "tick"})
+
+
+class Heartbeat(Plugin):
+    name = "heartbeat"
+
+    def activate(self, ctx: PluginContext) -> None:
+        ctx.agent.register_trigger(EveryMinute(), self.on_tick)
+
+    async def on_tick(self, event: TriggerEvent) -> None:
+        ...
+```
+
+`scope` says how many copies run:
+
+- `TriggerScope.PROCESS` (the default) -- one per process. A second runtime in the same process does not start it.
+- `TriggerScope.MACHINE` -- one on the whole machine, however many ZettCode windows are open. The window that holds a
+  lock on a file beside the session store (`~/.zettcode/triggers/<name>.lock`) runs it; the others stand by and take
+  over within a few seconds when it closes. The operating system releases the lock when its holder dies, so a window
+  that crashed never blocks the trigger.
+
+A trigger that raises is marked failed and is not restarted; a handler that raises costs only that event. Two plugins
+cannot register the same trigger name.
+
 ## Turning one off
 
 `/plugins` opens a page with a switch for every plugin you can turn off, the ones compiled into the program first and
