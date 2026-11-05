@@ -214,4 +214,8 @@ def test_the_skills_and_the_mcp_client_are_parts_of_the_agent_published_by_distr
     extensions = plugins.agent_extensions(AgentBuild(model=object()))  # type: ignore[arg-type]
     by_name = {extension.name: extension.priority for extension in extensions}
     assert by_name["ReportingMcpExtension"] < by_name["SkillExtension"] < 100
-    assert [e.name for e in extensions][:2] == ["ReportingMcpExtension", "SkillExtension"]
+    # The agent sorts by priority (stably), so these two run first whatever the activation order put them after.
+    run_order = [e.name for e in sorted(extensions, key=lambda e: e.priority)]
+    assert (
+        run_order.index("ReportingMcpExtension") < run_order.index("SkillExtension") < run_order.index("CodingBundle")
+    )

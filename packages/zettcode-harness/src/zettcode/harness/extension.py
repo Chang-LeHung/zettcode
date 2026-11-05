@@ -21,8 +21,8 @@ from zett_agent.messages import ToolCall, ToolMessage
 from zett_agent.model import ModelEvent, ModelRequest
 from zett_agent.tools.base import ToolResult
 
-from .harness_switch import HarnessSwitch
-from .mcp_notice import HARNESS_NOTICE_EVENT_NAME, notice_payload
+from zettcode.engine.extensions.harness_switch import HarnessSwitch
+from zettcode.engine.extensions.mcp_notice import HARNESS_NOTICE_EVENT_NAME, notice_payload
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from zett_agent.jit_harness import JITToolHost

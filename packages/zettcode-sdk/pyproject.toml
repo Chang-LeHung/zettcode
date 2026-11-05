@@ -23,6 +23,8 @@ dependencies = [
   # the ones published here. An SDK client offers skills and MCP servers, so it installs them.
   "zettcode-skills",
   "zettcode-mcp",
+  "zettcode-files",
+  "zettcode-harness",
   "zett-agent>=0.2.7,<0.3",
   "httpx>=0.27,<1",
 ]
@@ -30,7 +32,6 @@ dependencies = [
 # The plugins that compose the agent. A part of the program, not a plugin: the `zettcode.plugins` group is what the
 # plugin release line looks for. They are activated by the rank `builtins.py` gives them, then by their `deps`.
 [project.entry-points."zettcode.agent"]
-files = "zettcode.sdk.builtins:FileResources"
 coding = "zettcode.sdk.builtins:CodingTools"
 tool-output = "zettcode.sdk.builtins:ToolOutput"
 long-output = "zettcode.sdk.builtins:LongOutput"
@@ -38,7 +39,6 @@ capabilities = "zettcode.sdk.builtins:Capabilities"
 subagents = "zettcode.sdk.builtins:Subagents"
 messaging = "zettcode.sdk.builtins:Messaging"
 shell-permission = "zettcode.sdk.builtins:ShellPermission"
-harness = "zettcode.sdk.builtins:Harness"
 session-log = "zettcode.sdk.builtins:SessionLog"
 todos = "zettcode.sdk.builtins:TodoPlan"
 usage-tracking = "zettcode.sdk.builtins:UsageTracking"
