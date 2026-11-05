@@ -18,24 +18,34 @@ presenters, pets, themes, commands, usage, the agent's own tools — is a plugin
   - `zettcode.plugins`: what a reader installs. Own version, own release line.
   - `zettcode.terminal`: parts only a screen has a use for (`presenters`, `pets`, `themes`, `commands`). The SDK and
     the server do not load it. `REQUIRED_PLUGINS = (shell, presenters, commands)` in `app/plugins/loader.py`.
-  - `zettcode.agent`: the plugins that compose the agent. 17 are published by `zettcode-sdk`; `zettcode-skills`
-    (`skills`, `skill-tool`), `zettcode-mcp` (`mcp`), `zettcode-files` (`files`) and `zettcode-harness` (`harness`) are
-    distributions of their own, allowed into the group by
+  - `zettcode.agent`: the plugins that compose the agent. 14 are published by `zettcode-sdk`; `zettcode-skills`
+    (`skills`, `skill-tool`), `zettcode-mcp` (`mcp`), `zettcode-files` (`files`), `zettcode-harness` (`harness`),
+    `zettcode-ask-user` (`ask-user`), `zettcode-instructions` (`project-instructions`) and `zettcode-todos` (`todos`)
+    are distributions of their own, allowed into the group by
     `PROGRAM_DISTRIBUTIONS`. Every loader reads it (the engine's own default does not: `agent=False`). None can be
     switched off — they are protected like a compiled-in plugin, `[skills] enabled` and the other configuration keys
     being what turns a feature off — but a failure to activate one is recorded in `failed`, not raised, as it was when
-    they were compiled in. `zettcode-sdk` and `zettcode` depend on both, so installing the program installs them.
+    they were compiled in. `zettcode-sdk` and `zettcode` depend on them all, so installing the program installs them.
 - Order inside a group is `(Plugin.rank, name)`, then `deps`. `AGENT_PLUGINS` in `sdk/builtins.py` is the one list that
   says the order of the SDK's own (and gives each class its rank); the entry points in the SDK's `pyproject.toml`
   repeat it, and `test_agent_parts.py` and `test_structure.py` hold the two, and the suite's literal copies in
   `support/conftest.py`, together. The only service one reads from another is `subagents` ← `capabilities`, written
   as a `deps`. A part in another distribution states no rank: its extension has a `priority` of its own (the
-  skills 80, MCP 70, against the 100 nearly everything else shares), and the agent sorts by that. What registration
-  order used to decide for the skills — a skill beating a file of the same name in `@` — is
-  `MentionProvider.precedence` now (a session −20, a skill −10, anything else 0).
+  skills 80, MCP 70, project instructions 10, against the 100 nearly everything else shares), and the agent sorts by
+  that. Registration order still decides, though, wherever a priority is shared: the parts of other distributions are
+  activated at rank 0, before the SDK's list, so `ask-user` and `todos` — both at 100 — are handed over before
+  `coding`, and among the 100 band the order they registered in is the order the agent runs them in. That order is
+  visible in one place and only there: the tools array a provider is handed is
+  `tuple(tool.definition for tool in context.tools.values())`, so `ask_user` is now offered before `read` and
+  `todo_write` before `task`, where before the move they were last and second to last. Nothing else reads a
+  position — the shell reads the plan by name, the model picks tools by name — so the tools array is the whole
+  effect, and `test_plugin_extensions.py` pins it. What registration order used to decide for the skills — a skill
+  beating a file of the same name in `@` — is `MentionProvider.precedence` now (a session −20, a skill −10, anything
+  else 0).
 - `require_agent_parts(plugins)` refuses an installation that lacks any of the parts (`REQUIRED_AGENT_NAMES`: the
-  SDK's own plus `files`, `harness`, `skills`, `skill-tool`, `mcp`), in the SDK's and the terminal's loaders: a damaged
-  one would otherwise start an agent with no file references, no skills or no MCP, silently.
+  SDK's own plus `files`, `harness`, `skills`, `skill-tool`, `mcp`, `ask-user`, `project-instructions`, `todos`), in the
+  SDK's and the terminal's loaders: a damaged one would otherwise start an agent with no file references, no skills, no
+  MCP or no way to ask the reader a question, silently.
 
 ## Triggers
 

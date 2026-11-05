@@ -1458,6 +1458,9 @@ def test_the_suites_list_of_the_agents_plugins_is_what_the_sdk_publishes():
         "zettcode-mcp",
         "zettcode-files",
         "zettcode-harness",
+        "zettcode-ask-user",
+        "zettcode-instructions",
+        "zettcode-todos",
     }, "the agent is composed in these places"
     assert not set(listed) & set(outside), "a part has one owner"
 

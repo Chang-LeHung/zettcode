@@ -78,7 +78,16 @@ AGENT_PART_GROUP = "zettcode.agent"
 #: ordinary plugin whatever group it is in. A point that says nothing of its distribution (a test's stand-in) passes.
 PROGRAM_DISTRIBUTIONS: dict[str, frozenset[str]] = {
     AGENT_PART_GROUP: frozenset(
-        {"zettcode-sdk", "zettcode-skills", "zettcode-mcp", "zettcode-files", "zettcode-harness"}
+        {
+            "zettcode-sdk",
+            "zettcode-skills",
+            "zettcode-mcp",
+            "zettcode-files",
+            "zettcode-harness",
+            "zettcode-ask-user",
+            "zettcode-instructions",
+            "zettcode-todos",
+        }
     ),
     TERMINAL_PART_GROUP: frozenset({"zettcode-app", "zettcode-commands", "zettcode-pets", "zettcode-presenters"}),
 }

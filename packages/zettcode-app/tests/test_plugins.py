@@ -78,14 +78,17 @@ class FakeEntryPoint:
 
 
 def agent_parts() -> list[FakeEntryPoint]:
-    """The plugins that compose the agent, as the SDK publishes them, for a test that starts a whole runtime."""
+    """The plugins that compose the agent, as their distributions publish them, for a test that starts a whole runtime."""
+    from zettcode.ask_user.plugin import AskUser
     from zettcode.files.plugin import FileResources
     from zettcode.harness.plugin import Harness
+    from zettcode.instructions.plugin import ProjectInstructions
     from zettcode.mcp.plugin import McpTools
     from zettcode.skills.plugin import SkillResources, SkillTool
+    from zettcode.todos.plugin import TodoPlan
 
     own = [FakeEntryPoint(plugin.name, type(plugin), "zettcode.agent") for plugin in AGENT_PLUGINS]
-    parts = (FileResources, Harness, SkillResources, SkillTool, McpTools)
+    parts = (AskUser, FileResources, Harness, ProjectInstructions, SkillResources, SkillTool, McpTools, TodoPlan)
     outside = [FakeEntryPoint(cls.name, cls, "zettcode.agent") for cls in parts]
     return [*own, *outside]
 
@@ -916,12 +919,15 @@ async def test_the_runtime_preview_installs_plugin_extensions_and_commands(tmp_p
         "turn-line",
         # The merged order of the agent's parts: a part of another distribution has no rank, so it stands among the
         # rank-0 ones by name (hook order is the extensions' priority, not this), and the SDK's follow by rank.
+        "ask-user",
         "coding",
         "files",
         "harness",
         "mcp",
+        "project-instructions",
         "skill-tool",
         "skills",
+        "todos",
         *(plugin.name for plugin in AGENT_PLUGINS if plugin.name != "coding"),
         "commands",
         "pets",
